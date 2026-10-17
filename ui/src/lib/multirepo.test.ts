@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addLabel, addRequests, defaultPicked, editedRepos, foundNote, mergeCandidates, worthAsking } from './multirepo'
+import { addLabel, addRequests, addedRepos, defaultPicked, editedRepos, foundNote, isHomeRepo, mergeCandidates, repoChoices, rowRepo, worthAsking } from './multirepo'
 import { matchLength, memberOf, worktreeKeyOf, type Project, type RepoInfo } from './projects'
 import { buildSidebar } from './sidebar'
 import type { SessionSummary } from './api'
@@ -75,5 +75,32 @@ describe('a session in a multi-repo project', () => {
     expect(web?.repo).toBe('web')
     expect(node.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === 's2'))).toBe(true)
     expect(model.projects.find((n) => n.project.id === '2')?.live ?? 0).toBe(0)
+  })
+})
+
+describe('a project of repositories picked one by one (ADR-077)', () => {
+  const home = { id: '7', root: 'C:\\dev\\ai-crm', name: 'Back office', kind: 'repo', repos: [repo('C:\\dev\\ai-crm', 'ai-crm'), repo('D:\\work\\ai-notary', 'ai-notary')] } as Project
+  it('starts in the home repository first, then each other one', () => {
+    expect(repoChoices(home)).toEqual([{ path: 'C:\\dev\\ai-crm', label: 'ai-crm · home' }, { path: 'D:\\work\\ai-notary', label: 'ai-notary' }])
+    const folder = { id: '8', root: '/w', name: 'w', kind: 'folder', repos: [repo('/w/a', 'a')] } as Project
+    expect(repoChoices(folder)[0]).toEqual({ path: '/w', label: 'The folder · reaches every repository' })
+    expect(repoChoices({ id: '9', root: '/x', name: 'x', kind: 'repo' } as Project)).toEqual([])
+  })
+  it('names the repository on a session row, Windows paths included', () => {
+    expect(rowRepo(home, 'D:\\work\\ai-notary\\src')).toBe('ai-notary')
+    expect(rowRepo(home, 'C:\\dev\\ai-crm')).toBe('ai-crm')
+    expect(rowRepo(home, 'C:\\dev\\ai-crm-old')).toBe('')
+    expect(rowRepo({ repos: undefined }, '/x')).toBe('')
+  })
+  it('knows its home repository, and adds ticked ones after its own', () => {
+    expect(isHomeRepo(home, 'C:\\dev\\ai-crm')).toBe(true)
+    expect(isHomeRepo(home, 'D:\\work\\ai-notary')).toBe(false)
+    expect(addedRepos(home, ['E:\\x\\ops', 'C:\\dev\\ai-crm'])).toEqual(['C:\\dev\\ai-crm', 'D:\\work\\ai-notary', 'E:\\x\\ops'])
+    expect(addedRepos({ repos: undefined }, ['/a'])).toEqual(['/a'])
+  })
+  it('keys a session in the home repository like any repository project: its worktrees stay worktrees', () => {
+    const p = { ...home, root: '/d/crm', repos: [repo('/d/crm', 'crm'), repo('/e/notary', 'notary')], worktrees: [{ name: 'fix', path: '/d/crm/.claude/worktrees/fix', branch: 'fix' }] } as unknown as Project
+    expect(worktreeKeyOf({ cwd: '/d/crm/.claude/worktrees/fix' }, p)).toBe('fix')
+    expect(worktreeKeyOf({ cwd: '/e/notary' }, p)).toBe('repo:/e/notary')
   })
 })

@@ -5393,3 +5393,98 @@ without a key; a module reachable from a paired device.
 **Revisit if:** a module must be reachable from the phone (it would get its own
 paired-device decision), a module from someone else's hands needs isolation
 (a sandboxed, cross-origin frame and a scoped token), or keys need to expire.
+
+## ADR-077 — A project of chosen repositories: no folder of its own, the first one is home
+
+**Date:** 2026-10-18 · **Status:** accepted (owner, 2026-10-18, translated: "I
+still can't understand how to make multi-repo projects."). Amends
+[ADR-055](#adr-055--multi-repo-projects-a-folder-of-repositories-is-one-project-its-members-named-its-agents-given-each-other-repository).
+Contract: [03-contracts.md § Projects and shells](03-contracts.md), *Multi-repo
+projects*; screen: [04-ui.md § New project](04-ui.md).
+
+**Context.** ADR-055 made a multi-repo project out of a folder: Continue on
+`~/dev` scanned it and offered every repository there as a card. The owner
+was looking at the New project dialog with `~/dev` in the field and its
+thirty repositories listed under *Inside ~/dev — a click picks one*, and could
+not see how to put `ai-crm` and `ai-notary` together: a click on a row made
+that one repository a project, and the way to the cards was to press
+Continue on the folder without clicking anything. Had he found it, the
+project would have been worse than his intent:
+
+- Its root would have been `~/dev`, so every agent started there reached all
+  thirty repositories, not the two picked.
+- `projects.root` is `UNIQUE`: `~/dev` could hold one multi-repo project, so
+  `ai-advision` with `ai-foo` could not become a second one.
+- Merge did the same: two repository projects in `~/dev` merged into a new
+  project at `~/dev`, and two in different folders were refused unless they
+  shared one below home.
+
+**Decision.**
+
+- **A project of repositories picked one by one has no folder of its own.**
+  Its root is the first repository picked, its *home repository*, and every
+  repository picked — the home one included — is a member in
+  `project_repos`. It is an ordinary repository project (`kind = 'repo'`)
+  that has members, so the home repository keeps its git state, its
+  worktrees, its Changes and its copies as before. No column, no kind and no
+  migration were added; `roots` as a new list was not needed, because
+  `project_repos` already is that list.
+- **Picked where?** The New project dialog's Folder step has a visible
+  switch, *Put several repositories in one project*, with one line under it.
+  It turns the rows into checkboxes (a folder that is not a repository is
+  still gone into), keeps the picks while the field moves between folders,
+  shows them as chips with the home one marked, and its button reads *Tick
+  two or more*, *1 selected · tick one more*, *2 selected · Continue*. The
+  second step shows the picks as cards, a Name field (the home repository's
+  name when left empty) and the instructions box, and creates with
+  `POST /v1/projects {repos, name?}`.
+- **A folder project is every repository the folder holds.** Continue on a
+  folder still offers its repositories as cards, all ticked: with all of them
+  (those already in another project aside) the folder is the project, as in
+  ADR-055. Untick some and it becomes a project of the ones left, with no
+  folder: the first ticked is home, and the folder stays free.
+- **Later, from the project's menu**: *Add a repository…* opens a sheet with
+  the same folder list and checkboxes; it sends `PATCH repos` with the
+  project's repositories and the ticked ones. On a plain repository project
+  its own root joins the members. The project page's Repositories section
+  has *Add…* beside *Edit*.
+- **Merging** repository projects keeps the first one and makes its
+  repository home; the others are members. Projects in different folders now
+  merge.
+- **Splitting** a project with a home repository lists each other member on
+  its own and keeps the project itself, as that repository, under its name.
+  A repository project left with only its own root after a member moved away
+  is a plain project again.
+- **New agent** in a project of several repositories asks *Repository*: the
+  home repository first (or, for a folder project, the folder, which reaches
+  every repository), then each other one. The agent starts there and gets
+  the others as `--add-dir` (ADR-055, unchanged). A copy (worktree) of a
+  repository that is not the home one starts from what it has checked out:
+  the branch list is the home repository's.
+- **The sidebar adds no rows.** Each session row names its repository where
+  the branch goes (`ai-notary · fix-login`). Repository rows with sessions
+  under them were asked for, and are the shape the owner turned down twice:
+  the sidebar mirrors the tabs, one row per session (owner, 2026-10-09 and
+  2026-10-14). The project page's Repositories section is the per-repository
+  view.
+- **CI and the Pipeline** list each member repository on GitHub as a row of
+  its own under its project (`GET /v1/repos/ci`); the release plan was
+  already per repository, read from the sessions, and stays so.
+
+**Not chosen.**
+
+- **A new `roots` column or table.** `project_repos` already names a
+  project's repositories; a second list would need a migration and a second
+  attribution rule for the same thing.
+- **A synthetic root** (no path, or a path under Caprock's data folder). The
+  root is where agents start, where the Changes panel reads and what dozens of
+  screens key a project by; a repository the user picked is a real place to
+  start.
+- **Making a folder project of the common parent**, as merge did. It is what
+  led here: an agent in `~/dev` reaches everything, and the folder can hold
+  one such project.
+
+**Revisit if:** someone wants agents to start in a folder holding only the
+picked repositories (that would be a folder Caprock makes, which this
+decision avoids), or the home repository proves the wrong default and a
+*Make home* action is asked for.

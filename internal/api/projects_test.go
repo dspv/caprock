@@ -291,3 +291,39 @@ func TestOneShellReplacesAnExitedSession(t *testing.T) {
 		t.Fatal("an ended shell was handed out again")
 	}
 }
+
+// POST /v1/projects {repos, name} with no path makes one project of
+// repositories picked one by one (ADR-077): rooted at the first, named as
+// asked, every one a member; a phone may do it only under home.
+func TestAProjectOfChosenRepositories(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	s, home, _, controller, _ := projectsServer(t)
+	var repos []string
+	for _, n := range []string{"crm", "notary"} {
+		dir := filepath.Join(home, "dev", n)
+		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repos = append(repos, dir)
+	}
+	j := func(v any) string { b, _ := json.Marshal(v); return string(b) }
+	if w := call(t, s, machine, "", "POST", "/v1/projects", j(map[string]any{"repos": repos[:1]})); w.Code != http.StatusBadRequest {
+		t.Fatalf("one repository: %d %s", w.Code, w.Body.String())
+	}
+	if w := call(t, s, testPhone, controller, "POST", "/v1/projects", j(map[string]any{"repos": []string{repos[0], t.TempDir()}})); w.Code != http.StatusForbidden {
+		t.Fatalf("a phone outside home: %d %s", w.Code, w.Body.String())
+	}
+	w := call(t, s, testPhone, controller, "POST", "/v1/projects", j(map[string]any{"repos": []string{repos[1], repos[0]}, "name": "Back office"}))
+	var got struct {
+		Project projects.View `json:"project"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != 200 {
+		t.Fatalf("add: %d %s", w.Code, w.Body.String())
+	}
+	p := got.Project
+	if p.Name != "Back office" || !strings.EqualFold(filepath.Clean(p.Root), filepath.Clean(repos[1])) || p.Kind != store.ProjectKindRepo || len(p.Repos) != 2 {
+		t.Fatalf("project = %+v; want Back office at notary with two repositories", p)
+	}
+}

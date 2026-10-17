@@ -74,3 +74,52 @@ export function editedRepos(current: readonly string[], found: readonly FoundRep
 export function mergeCandidates(project: Project, all: readonly Project[]): Project[] {
   return all.filter((p) => p.id !== project.id && !p.archived_at && p.kind === 'repo' && !isMultiRepo(p))
 }
+
+/**
+ * The repositories a project holds after *Add a repository…* (ADR-077): its
+ * members, then the ones ticked. A plain project has none yet: the daemon
+ * puts a repository project's own root among them.
+ */
+export function addedRepos(project: Pick<Project, 'repos'>, ticked: readonly string[]): string[] {
+  const out = (project.repos ?? []).map((r) => r.path)
+  for (const p of ticked) if (!out.includes(p)) out.push(p)
+  return out
+}
+
+/** Whether `path` is a project's home repository: its root, when the root is one of its repositories (ADR-077). */
+export function isHomeRepo(project: Pick<Project, 'root' | 'repos'>, path: string): boolean {
+  return path === project.root && (project.repos ?? []).some((r) => r.path === path)
+}
+
+/** One place New agent can start in a project of several repositories. */
+export interface RepoChoice { path: string; label: string }
+
+/**
+ * Where New agent can start in a project of several repositories: a folder
+ * project's own folder first (it reaches every repository below it), then
+ * each repository, the home one first. Empty for any other project.
+ */
+export function repoChoices(project: Pick<Project, 'root' | 'repos'> | undefined): RepoChoice[] {
+  const repos = project?.repos ?? []
+  if (!project || repos.length === 0) return []
+  const out: RepoChoice[] = []
+  const home = repos.find((r) => r.path === project.root)
+  if (home) out.push({ path: home.path, label: `${home.name} · home` })
+  else out.push({ path: project.root, label: 'The folder · reaches every repository' })
+  for (const r of repos) if (r.path !== project.root) out.push({ path: r.path, label: r.name })
+  return out
+}
+
+/**
+ * The repository a session row names in a project of several repositories
+ * (ADR-077): the member holding its folder, '' in any other project or
+ * outside every member.
+ */
+export function rowRepo(project: Pick<Project, 'repos'>, cwd: string | undefined): string {
+  if (!cwd || !project.repos?.length) return ''
+  let best: { path: string; name: string } | undefined
+  for (const r of project.repos) {
+    if ((cwd === r.path || cwd.startsWith(`${r.path}/`) || cwd.startsWith(`${r.path}\\`)) && (!best || r.path.length > best.path.length)) best = r
+  }
+  return best?.name ?? ''
+}

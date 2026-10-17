@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import { errText } from '@/lib/api'
 import { projectsApi, type FoundRepo, type Project } from '@/lib/projects'
-import { editedRepos, foundNote, mergeCandidates, reposLabel } from '@/lib/multirepo'
+import { editedRepos, foundNote, isHomeRepo, mergeCandidates, reposLabel } from '@/lib/multirepo'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 
 export function ProjectEditor({ project, projects, onClose }: { project: Project; projects: readonly Project[]; onClose: () => void }) {
@@ -114,8 +114,10 @@ export function ProjectEditor({ project, projects, onClose }: { project: Project
             {(project.repos ?? []).map((r) => (
               <li key={r.path}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-[6px] px-1.5 py-1 text-[12.5px] hover:bg-[var(--app-row-hover)]" title={r.path}>
-                  <input type="checkbox" checked={ticked.has(r.path)} onChange={() => setTicked((t) => flip(t, r.path))} />
+                  {/* The home repository is the project's root: it leaves only by a split (ADR-077). */}
+                  <input type="checkbox" checked={ticked.has(r.path)} disabled={isHomeRepo(project, r.path)} onChange={() => setTicked((t) => flip(t, r.path))} />
                   <span className="mono min-w-0 truncate text-fg">{r.name}</span>
+                  {isHomeRepo(project, r.path) && <span className="text-[12px] text-fg-faint">home · agents start here</span>}
                   {!r.exists && <span className="ml-auto text-[12px] text-danger">folder missing</span>}
                 </label>
               </li>

@@ -1564,7 +1564,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
 
 On a paired device's read list (counts only). `501` without the projects service.
 
-`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the project's root, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the Pipeline makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms), `read_at` (Unix ms, when GitHub last answered its pull request list; with `error`, the row draws on that older read) and, in the quick answer, `pending`. The answer carries `refresh_error` and `refresh_failed_at` as the deck's do. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
+`GET /v1/repos/ci[?older=1][&hide=owner/name,…]` (2026-10-14) → `ReposCI` `{github_connected, status?, repos[], quiet[], recent_days, fetched_at, refreshing?}`: the Now screen's CI/CD section ([04-ui.md § CI/CD on Now](04-ui.md#cicd-on-now)), asked only while that section is unfolded and the window visible (every 2 minutes). Nothing is sent and `repos` is empty while GitHub is not connected. The rows are the listed projects of kind `repo` whose remote is on GitHub, and each member repository of a multi-repo project on GitHub (2026-10-18, ADR-077: `project_id` its project, `name` "project · repository"), one per GitHub repository, with activity in the last `recent_days` (14: a session's last event in the repository, or the project's `added_at`), those with a session running first, then by `last_active`, at most 6 (`reposCIMax`); with `older=1` the older ones too, marked `older`, at most 12 in all (`reposCIOlderMax`). A repository named in `hide` (this viewer's hidden ones, case-insensitive, at most 200), one without recent activity while `older` is not asked, and one past the bound are listed in `quiet[]` `{project_id, name, repo, last_active?, why: older|hidden|more}` and nothing is sent to GitHub for them. Each row is read through the kept GitHub reads the Pipeline makes — the pull request list (2 min), the runs list (`github.RepoRuns`) and the releases list (`github.RepoReleases`, below) — so a repository costs GitHub at most those three conditional reads per keep. Rows are read at most 3 at once (`reposCIParallel`), each within 12 s (`reposCIRepoTimeout`), the status page beside them, the whole within 30 s; a row GitHub did not answer in time carries `slow: true` beside its `error`. A row also carries `last_active` (Unix ms), `read_at` (Unix ms, when GitHub last answered its pull request list; with `error`, the row draws on that older read) and, in the quick answer, `pending`. The answer carries `refresh_error` and `refresh_failed_at` as the deck's do. The composed answer is kept as the deck's are (`deckcache.go`, key `reposci` with `older` and the sorted `hide`); a key never composed is answered at once with the rows unread (`pending`, `refreshing`) while the composition goes on. Each `top_prs[]` entry adds `shared` (sessions charged only in part) and `tokens_in`, `tokens_out`, `cache_read`, `cache_write` (`store.PRSpend`, below).
 
 - **Row** — `RepoCIRow` `{project_id, name, repo, live, ci?, days?, stuck[], open, merged_7d, top_prs[], authors[], release?, error?}`. `live` counts the sessions not ended under the project's root; `ci` is `github.RunStats` over the runs, 14 days (the `CIStats` of `…/ci/stats`), `days` its local calendar days; `open` and `merged_7d` count the listed pull requests; `release` is the newest published release (`RepoRelease`); a failed list is `error` with the rest absent.
 - **Stuck** — `github.StuckRuns`: `{id, name, branch?, status, url?, since, median_ms?}` for a run `in_progress` longer than twice its workflow's median successful run over the 14 days and at least 10 minutes over it (no median, never), or waiting for a runner (`queued`, `waiting`, `pending`, `requested`) longer than 15 minutes; `since` is `run_started_at`, else `created_at`. The runs list is kept 2 minutes instead of 30 while any run in it is unfinished (`repoRunsActiveKept`), so a stuck run is seen within minutes; a conditional read costs a 304 when nothing changed.
@@ -2975,7 +2975,7 @@ protection).
 
 ```
 GET    /v1/projects                        → {projects: [Project]}; pinned first, then sort, then name
-POST   /v1/projects                        {path, repos?} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
+POST   /v1/projects                        {path, repos?, name?} | {repos, name?} | {create: {parent, name, git_init?}} | {clone: {url, parent, name?}, op_id?}
                                            path, create → 200 {project, created}; clone → 202 {op, existing}
 GET    /v1/projects/ops                    → {ops: [Op]}; clones and template ops running or ended in the last hour, newest first
 GET    /v1/projects/scan?path=             → ScanResult; what adding a folder would add (machine only)
@@ -3018,9 +3018,13 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
   event, and `cost_today` is the non-internal events since local midnight. A
   `project` frame with `removed: true` and only `id` is sent on unlisting.
 - **Multi-repo projects** (2026-10-12, [ADR-055](08-decisions.md);
-  `internal/projects/multirepo.go`, `internal/api/multirepo.go`). A folder
-  project with member repositories (`project_repos`, migration 0050); `repos`
-  is absent for an ordinary project.
+  2026-10-18, [ADR-077](08-decisions.md); `internal/projects/multirepo.go`,
+  `internal/api/multirepo.go`). A project with member repositories
+  (`project_repos`, migration 0050); `repos` is absent for an ordinary
+  project. Its `root` is either a folder holding them (`kind: "folder"`,
+  ADR-055) or one of them, its **home repository** (`kind: "repo"`,
+  ADR-077), which is then a member too: `repos` lists it beside the others.
+  No new column or kind: the home form is a repository project with members.
   - **`ScanResult`** — `{root, repo_root?, repos: [{path, name, project_id?,
     project_name?, member_of?, instruction_files?}], capped?,
     instruction_files?: [{name, text, truncated?}]}`. The top-level
@@ -3040,11 +3044,32 @@ GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running 
     repository) as one project of `repos` — two or more, each a folder inside
     a repository, which names that repository's root; at most 100. A
     repository listed as a project of its own is unlisted (folded in); one
-    that was another project's member moves. `repos` without `path` is `400`.
+    that was another project's member moves. `name`, when set, names it.
+  - **Adding** `{repos, name?}` (no `path`; 2026-10-18, ADR-077) lists one
+    project of `repos` — two or more, at most 100, each a folder inside a
+    repository, anywhere — with no folder of its own: the first is its home
+    repository, the project's `root`, and every one is a member. The home
+    repository's own project, when listed (or unlisted before), is the row
+    used: `created: false`, its settings, history and id kept, renamed to
+    `name` when set. Others listed on their own are folded in as above. One
+    repository is `400`; from a paired controller every path must be
+    absolute and under home (`403`). Nothing on disk is made or moved.
   - **`PATCH` `repos`** replaces the members whole (`[]` makes the project
-    an ordinary folder again); the project's own folder cannot be one. A
-    removed member is neither deleted nor listed. From a paired controller
-    every path must be absolute and under home (`403`).
+    an ordinary one again); a folder project's own folder cannot be one. On a
+    repository project (*Add a repository…*, ADR-077) its own root is kept
+    among the members whenever another is named, and a list naming no other
+    makes it ordinary; a repository project left holding only its own root
+    after a member moved to another project becomes ordinary too. A removed
+    member is neither deleted nor listed. From a paired controller every path
+    must be absolute and under home (`403`).
+  - **Split** (`POST /v1/projects/{id}/split`) lists each member as a project
+    of its own and unlists the project — except a home repository's: that
+    project stays, as the repository alone, under its name. **Merge**
+    (`POST /v1/projects/merge {ids}`) of repository projects only keeps the
+    first, its repository the home one, the others members (until
+    2026-10-18 it listed the folder holding them all, which for two
+    repositories in `~/dev` was `~/dev`); with a multi-repo project among
+    them, that project takes the others' repositories, as before.
   - **`RepoView`** — `{path, name, exists, git: GitStatus | null, sessions:
     {live, waiting, total}, cost_today, last_activity, open_prs?,
     prs_error?}`. `git` is null until git first answers.
@@ -4601,7 +4626,10 @@ CREATE INDEX IF NOT EXISTS idx_project_repos_path ON project_repos(path);
 ```
 
 A multi-repo project's members ([ADR-055](08-decisions.md)). The daemon keeps
-a path in one project's rows at a time. Unlisting the project keeps its rows,
+a path in one project's rows at a time. A project of repositories picked one
+by one ([ADR-077](08-decisions.md)) has its own root among its rows: it is a
+repository project (`kind = 'repo'`) whose root is one of its members, so no
+column, kind or migration was added for it. Unlisting the project keeps its rows,
 so adding its folder again brings it back as it was; a split deletes them.
 
 ### Reclassifying the /clear events already recorded (migration 0021)

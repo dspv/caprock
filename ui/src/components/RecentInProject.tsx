@@ -21,11 +21,14 @@ export const RECENT_LIMIT = 6
  */
 export function RecentInProject({
   root,
+  repos = [],
   permissions,
   onOpen,
   onContinued,
 }: {
   root: string
+  /** A multi-repo project's repositories outside its root (ADR-077): their sessions are the project's too. */
+  repos?: readonly string[]
   permissions: ReadonlySet<string>
   onOpen: (s: SessionSummary) => void
   /** A continued session's new id and its title, for the tab. */
@@ -37,12 +40,19 @@ export function RecentInProject({
   useEffect(() => {
     let live = true
     setList(null)
-    api.sessionsInDir(root).then(
-      (all) => { if (live) setList(recentOf(all)) },
+    const dirs = [root, ...repos.filter((r) => r !== root && !r.startsWith(`${root}/`) && !r.startsWith(`${root}\\`))]
+    Promise.all(dirs.map((d) => api.sessionsInDir(d).catch(() => [] as SessionSummary[]))).then(
+      (lists) => {
+        if (!live) return
+        const seen = new Set<string>()
+        setList(recentOf(lists.flat().filter((s) => s && !seen.has(s.session_id) && !!seen.add(s.session_id))))
+      },
       () => { if (live) setList([]) },
     )
     return () => { live = false }
-  }, [root])
+  // The repositories as one key: a new array each render must not refetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root, repos.join('\n')])
 
   if (!list || list.length === 0) return null
   return (

@@ -551,11 +551,13 @@ describe('attempts', () => {
 })
 
 describe('where it starts and what it is told', () => {
-  it('names a multi-repo project’s repositories under Project, and shows the instructions state', async () => {
+  it('asks which repository in a multi-repo project, and shows the instructions state', async () => {
     const multi = [{ id: '3', root: '/w', name: 'work', kind: 'folder', defaults: { system_prompt: 'a\nb' }, instruction_files: ['api/CLAUDE.md'],
       repos: [{ path: '/w/api', name: 'api' }, { path: '/w/web', name: 'web' }, { path: '/w/infra', name: 'infra' }] }] as unknown as Project[]
     render(<NewAgentSheet projects={multi} projectId="3" onClose={vi.fn()} onStarted={vi.fn()} />)
-    expect(await screen.findByLabelText('Repositories in this project')).toHaveTextContent('3 repos: api, web, infra')
+    const repo = await screen.findByLabelText<HTMLSelectElement>('Repository')
+    expect([...repo.options].map((o) => o.text)).toEqual(['The folder · reaches every repository', 'api', 'web', 'infra'])
+    expect(repo.value).toBe('/w')
     expect(screen.getByLabelText('Project instructions state')).toHaveTextContent('Set · 2 lines')
     expect(screen.getByLabelText('Repository instruction files')).toHaveTextContent('CLAUDE.md in api')
   })

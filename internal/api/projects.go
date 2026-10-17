@@ -101,12 +101,18 @@ func (s *Server) handleTeamSignal(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sig)
 }
 
-// addProjectRequest is POST /v1/projects: exactly one of path, create, clone.
+// addProjectRequest is POST /v1/projects: exactly one of path, repos,
+// create, clone (repos may go with path).
 type addProjectRequest struct {
 	Path string `json:"path,omitempty"`
 	// Repos, with path, lists path as one multi-repo project of these
-	// repositories (ADR-055).
-	Repos  []string `json:"repos,omitempty"`
+	// repositories (ADR-055). Without path, one project of these
+	// repositories with no folder of its own: the first is its home
+	// repository, where agents start (ADR-077).
+	Repos []string `json:"repos,omitempty"`
+	// Name names a project of several repositories; the folder's or the
+	// home repository's name otherwise.
+	Name   string `json:"name,omitempty"`
 	Create *struct {
 		Parent  string `json:"parent"`
 		Name    string `json:"name"`
@@ -130,13 +136,13 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := 0
-	for _, set := range []bool{req.Path != "", req.Create != nil, req.Clone != nil} {
+	for _, set := range []bool{req.Path != "" || len(req.Repos) > 0, req.Create != nil, req.Clone != nil} {
 		if set {
 			n++
 		}
 	}
 	if n != 1 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `send one of {"path"}, {"create":{parent,name,git_init}} or {"clone":{url,parent}}`})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `send one of {"path"}, {"repos":[…]}, {"create":{parent,name,git_init}} or {"clone":{url,parent}}`})
 		return
 	}
 	if phoneLimited(r) {
@@ -147,7 +153,7 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		case req.Clone != nil:
 			dir = req.Clone.Parent
 		}
-		if !filepath.IsAbs(dir) || !underHome(filepath.Clean(dir), false) || !allUnderHome(req.Repos) {
+		if (dir != "" || len(req.Repos) == 0) && (!filepath.IsAbs(dir) || !underHome(filepath.Clean(dir), false)) || !allUnderHome(req.Repos) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a phone adds, creates and clones projects in folders under your home directory"})
 			return
 		}
@@ -159,13 +165,24 @@ func (s *Server) handleAddProject(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	ctx := context.WithoutCancel(r.Context())
-	if len(req.Repos) > 0 && req.Path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": `repos goes with {"path"}: the folder that holds them`})
+	if len(req.Repos) > projects.MaxRepos {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a project holds at most 100 repositories"})
 		return
 	}
 	switch {
+	case req.Path == "" && len(req.Repos) > 0:
+		v, created, err := s.d.Projects.AddRepos(ctx, req.Repos, req.Name)
+		if err != nil {
+			projectErr(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"project": v, "created": created})
 	case req.Path != "" && len(req.Repos) > 0:
 		v, created, err := s.d.Projects.AddMulti(ctx, filepath.Clean(req.Path), req.Repos)
+		if err == nil && strings.TrimSpace(req.Name) != "" {
+			name := req.Name
+			v, err = s.d.Projects.Update(ctx, v.ID, projects.Patch{Name: &name})
+		}
 		if err != nil {
 			projectErr(w, err)
 			return

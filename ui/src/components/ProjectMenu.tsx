@@ -2,8 +2,9 @@
  * A project's menu in the app's sidebar: its row's ⋯ button, a right-click
  * on the row, or Shift+F10 / the context-menu key on it. Hide it from the
  * list (which closes its tabs: every open tab has a row in the sidebar), or
- * show it again, close every tab of it, open its folder in an
- * editor, clean up its copies (worktrees), or remove it from Caprock.
+ * show it again, close every tab of it, add a repository to it (ADR-077),
+ * open its folder in an editor, clean up its copies (worktrees), or remove
+ * it from Caprock.
  *
  * Closing tabs never stops anything: the sessions and shells in them keep
  * running, as with ⌘W (rule 7: nothing here signals a process). Removing
@@ -15,7 +16,7 @@
  */
 import { useState } from 'react'
 import { errText, type EditorList } from '@/lib/api'
-import { BranchIcon, CloseIcon, ExternalIcon, EyeIcon, EyeOffIcon, TrashIcon } from './AppIcons'
+import { BranchIcon, CloseIcon, ExternalIcon, EyeIcon, EyeOffIcon, PlusIcon, TrashIcon } from './AppIcons'
 import { MenuBox, MenuItem as Item, MenuSeparator as Separator } from './RowMenu'
 
 export interface ProjectMenuAt {
@@ -36,6 +37,10 @@ export interface ProjectMenuProps {
   onHide?: (hide: boolean) => void
   onCloseTabs: () => void
   onOpenInEditor?: (editorId: string) => void
+  /** Opens Add a repository (components/AddRepoSheet, ADR-077); absent where none can be added. */
+  onAddRepo?: () => void
+  /** Repositories it holds now, for the hint beside Add a repository; 0 for a plain project. */
+  repos?: number
   /** Opens Clean up copies (components/CopiesSheet); absent for a folder that is not a repository. */
   onCopies?: () => void
   /** Linked worktrees it has, for the hint beside Clean up copies. */
@@ -102,6 +107,14 @@ export function ProjectMenu(props: ProjectMenuProps) {
             disabled={tabs === 0}
             onClick={pick(props.onCloseTabs)}
           />
+          {props.onAddRepo && (
+            <Item
+              icon={<PlusIcon size={14} />}
+              label="Add a repository…"
+              hint={props.repos ? `${props.repos} in it` : 'several in one'}
+              onClick={pick(props.onAddRepo)}
+            />
+          )}
           {props.onCopies && (
             <Item
               icon={<BranchIcon size={14} />}

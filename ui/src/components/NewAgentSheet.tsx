@@ -53,7 +53,7 @@ import { BranchPicker } from './BranchPicker'
 import type { Candidate } from '@/lib/projectSearch'
 import { ProjectSetupCommand } from './ProjectSetupCommand'
 import { ProjectInstructions } from './ProjectInstructions'
-import { membersLine } from '@/lib/projectWizard'
+import { repoChoices } from '@/lib/multirepo'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
@@ -134,10 +134,20 @@ export function NewAgentSheet({
   const [adding, setAdding] = useState(false)
   const allProjects = useMemo(() => [...projects, ...added.filter((a) => !projects.some((p) => p.id === a.id))], [projects, added])
   const project = allProjects.find((p) => p.id === pid)
-  const worktrees = useMemo(() => (project?.worktrees ?? []).filter((w) => w.path !== project?.root), [project])
+  // A project of several repositories asks which one (ADR-077): the home
+  // repository (or a folder project's folder) first, or the one the sheet
+  // was opened from.
+  const choices = useMemo(() => repoChoices(project), [project])
+  const [repoPick, setRepoPick] = useState(initialCwd && choices.some((c) => c.path === initialCwd) ? initialCwd : '')
+  const repoDir = choices.some((c) => c.path === repoPick) ? repoPick : choices[0]?.path ?? ''
+  // Copies and branches are the project's root checkout's: a member's own
+  // are not listed, and a new copy of it starts from its checked-out commit.
+  const atRoot = !repoDir || repoDir === project?.root
+  const repoBranch = atRoot ? project?.branch : project?.repos?.find((r) => r.path === repoDir)?.branch
+  const worktrees = useMemo(() => (atRoot ? (project?.worktrees ?? []).filter((w) => w.path !== project?.root) : []), [project, atRoot])
   // A new copy is remembered as the way to start: someone who starts every
   // agent from a fresh main should not pick it every time (owner, 2026-10-10).
-  const [where, setWhereRaw] = useState(initialWorktree ? NEW_WORKTREE : initialCwd && initialCwd !== project?.root ? initialCwd : here && initialCwd ? '' : readWhere())
+  const [where, setWhereRaw] = useState(initialWorktree ? NEW_WORKTREE : initialCwd && initialCwd !== project?.root && !choices.some((c) => c.path === initialCwd) ? initialCwd : here && initialCwd ? '' : readWhere())
   const setWhere = (v: string) => { setWhereRaw(v); writeWhere(v === NEW_WORKTREE ? NEW_WORKTREE : '') }
   const [branches, setBranches] = useState<BranchInfo[]>([])
   const [branchesLoading, setBranchesLoading] = useState(false)
@@ -145,7 +155,7 @@ export function NewAgentSheet({
   const [pull, setPullRaw] = useState(readPull)
   const setPull = (v: boolean) => { setPullRaw(v); writePull(v) }
   useEffect(() => {
-    if (where !== NEW_WORKTREE || !project) return
+    if (where !== NEW_WORKTREE || !project || !atRoot) return
     let alive = true
     setBranchesLoading(true)
     projectsApi.branches(project.id).then((list) => {
@@ -154,7 +164,7 @@ export function NewAgentSheet({
       setBase((b) => (b && list.some((x) => x.name === b) ? b : list.find((x) => x.default)?.name ?? list[0]?.name ?? ''))
     }).catch(() => { if (alive) setBranches([]) }).finally(() => { if (alive) setBranchesLoading(false) })
     return () => { alive = false }
-  }, [where, project?.id])
+  }, [where, project?.id, atRoot])
   const [newBranch, setNewBranch] = useState(initialWorktree ?? '')
   // From GitHub: the picked issue or pull request, and whether the picker is open.
   const github = useGitHubStatus()
@@ -215,7 +225,7 @@ export function NewAgentSheet({
     setError('')
     try {
       if (consent.needed) await consent.accept()
-      const req: Parameters<typeof api.spawn>[0] = { cwd: where && where !== NEW_WORKTREE ? where : project.root }
+      const req: Parameters<typeof api.spawn>[0] = { cwd: where && where !== NEW_WORKTREE && atRoot ? where : repoDir || project.root }
       if (agent !== 'claude') req.agent = agent
       // Named whenever there is a choice: "default" is the own sign-in, and
       // leaving it out would mean the one made the default.
@@ -227,7 +237,7 @@ export function NewAgentSheet({
       if (where === NEW_WORKTREE) {
         req.worktree = worktreeName
         if (fromPR) req.worktree_pr = fromPR
-        else if (base) { req.worktree_base = base; req.worktree_pull = pull }
+        else if (base && atRoot) { req.worktree_base = base; req.worktree_pull = pull }
       }
       if (prompt.trim()) req.prompt = prompt.trim()
       if (several) req.attempts = attempts
@@ -315,16 +325,18 @@ export function NewAgentSheet({
                 )}
               </span>
               <ProjectCombobox projects={allProjects} value={pid} busy={adding} autoFocus onPick={(c) => void pickProject(c)} onSubmit={() => startRef.current()} onNewProject={onNewProject && (() => onNewProject(prompt))} />
-              {project?.repos?.length ? (
-                <span aria-label="Repositories in this project" className="mono truncate text-[12px] text-fg-muted" title={project.repos.map((r) => r.path).join('\n')}>{membersLine(project.repos)}</span>
+              {choices.length > 0 ? (
+                <select aria-label="Repository" className="input mono" title={choices.map((c) => c.path).join('\n')} value={repoDir} onChange={(e) => { setRepoPick(e.target.value); if (where && where !== NEW_WORKTREE) setWhereRaw('') }}>
+                  {choices.map((c) => <option key={c.path} value={c.path}>{c.label}</option>)}
+                </select>
               ) : null}
             </div>
             <SheetField label="Where">
               <select className="input" title={WHERE_TOOLTIP} value={where} onChange={(e) => setWhere(e.target.value)}>
                 <option value={NEW_WORKTREE}>New copy from a branch</option>
-                <option value="">{project?.branch ? `This folder · ${project.branch}` : 'This folder'}</option>
+                <option value="">{repoBranch ? `This folder · ${repoBranch}` : 'This folder'}</option>
                 {worktrees.map((w) => <option key={w.path} value={w.path}>Existing copy · {w.branch || w.name}</option>)}
-                {initialCwd && initialCwd !== project?.root && !worktrees.some((w) => w.path === initialCwd) && <option value={initialCwd}>Existing copy · {baseName(initialCwd)}</option>}
+                {atRoot && initialCwd && initialCwd !== project?.root && !choices.some((c) => c.path === initialCwd) && !worktrees.some((w) => w.path === initialCwd) && <option value={initialCwd}>Existing copy · {baseName(initialCwd)}</option>}
               </select>
             </SheetField>
           </div>
@@ -351,6 +363,11 @@ export function NewAgentSheet({
                     <span className="text-[12px] font-medium text-fg-muted">From</span>
                     <span className="input truncate text-fg-muted" title="The pull request's head commit, fetched from the remote when it starts">pull request <span className="mono">#{fromPR}</span>, its head</span>
                   </div>
+                ) : !atRoot ? (
+                  <div className="grid min-w-0 gap-1.5">
+                    <span className="text-[12px] font-medium text-fg-muted">From</span>
+                    <span className="input truncate text-fg-muted" title="A copy of this repository from the commit it has checked out">{repoBranch ? <span className="mono">{repoBranch}</span> : 'its checkout'}, as it is now</span>
+                  </div>
                 ) : (
                   <div className="grid min-w-0 gap-1.5">
                     <span className="text-[12px] font-medium text-fg-muted">From branch</span>
@@ -364,7 +381,7 @@ export function NewAgentSheet({
                   <input className="input" aria-invalid={nameBad || undefined} placeholder={worktreeName} value={newBranch} onChange={(e) => setNewBranch(e.target.value)} spellCheck={false} />
                 </SheetField>
               </div>
-              {!fromPR && base && branches.find((b) => b.name === base)?.remote && (
+              {!fromPR && atRoot && base && branches.find((b) => b.name === base)?.remote && (
                 <label className="flex items-center gap-2 text-[13px] text-fg">
                   <input type="checkbox" checked={pull} onChange={(e) => setPull(e.target.checked)} />
                   Pull the latest <span className="mono">{base}</span> from {branches.find((b) => b.name === base)?.remote} first

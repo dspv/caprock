@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -246,34 +247,54 @@ func (s *Server) planReposCI(ctx context.Context, connected bool, ask reposCIAsk
 	var cands []cand
 	seen := map[string]bool{}
 	for _, p := range ps {
-		if p.Kind != store.ProjectKindRepo {
-			continue
+		// A project's repositories: its root when it is one, and each
+		// member of a multi-repo project (ADR-055, ADR-077), each a row
+		// of its own under the project.
+		var roots []string
+		if p.Kind == store.ProjectKindRepo {
+			roots = append(roots, p.Root)
 		}
-		remote := p.RemoteURL
-		if rc, ok := s.repos.get(ctx, p.Root); ok && rc.URL != "" {
-			remote = rc.URL
-		}
-		repo, ok := github.ParseRemote(remote)
-		if !ok || seen[repo.FullName()] {
-			continue
-		}
-		seen[repo.FullName()] = true
-		c := cand{row: RepoCIRow{ProjectID: p.ID, Name: p.Name, Repo: repo.FullName(), LastActive: p.AddedAt}, read: reposCIRead{repo: repo, root: p.Root}}
-		for _, x := range sess {
-			dir := x.RepoRoot
-			if dir == "" {
-				dir = x.Cwd
-			}
-			if dir != "" && store.DirWithin(dir, p.Root) {
-				c.row.Live++
+		if s.d.Projects != nil {
+			for _, m := range s.d.Projects.Repos(p.ID) {
+				if m != p.Root {
+					roots = append(roots, m)
+				}
 			}
 		}
-		for _, d := range dirs {
-			if d.LastEventAt > c.row.LastActive && store.DirWithin(d.Dir, p.Root) {
-				c.row.LastActive = d.LastEventAt
+		for _, root := range roots {
+			remote := ""
+			if root == p.Root {
+				remote = p.RemoteURL
 			}
+			if rc, ok := s.repos.get(ctx, root); ok && rc.URL != "" {
+				remote = rc.URL
+			}
+			repo, ok := github.ParseRemote(remote)
+			if !ok || seen[repo.FullName()] {
+				continue
+			}
+			seen[repo.FullName()] = true
+			name := p.Name
+			if root != p.Root {
+				name = p.Name + " · " + path.Base(root)
+			}
+			c := cand{row: RepoCIRow{ProjectID: p.ID, Name: name, Repo: repo.FullName(), LastActive: p.AddedAt}, read: reposCIRead{repo: repo, root: root}}
+			for _, x := range sess {
+				dir := x.RepoRoot
+				if dir == "" {
+					dir = x.Cwd
+				}
+				if dir != "" && store.DirWithin(dir, root) {
+					c.row.Live++
+				}
+			}
+			for _, d := range dirs {
+				if d.LastEventAt > c.row.LastActive && store.DirWithin(d.Dir, root) {
+					c.row.LastActive = d.LastEventAt
+				}
+			}
+			cands = append(cands, c)
 		}
-		cands = append(cands, c)
 	}
 	sort.SliceStable(cands, func(a, b int) bool {
 		x, y := cands[a].row, cands[b].row

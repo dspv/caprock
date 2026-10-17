@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, instructionsState, instructionsSummary, lineCount, listedAt,
-  membersLine, parentOf, placeChips, repoFilesLabel, splitMemberFile, splitTyped,
+  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, homeOf, instructionsState, instructionsSummary, lineCount, listedAt,
+  membersLine, parentOf, pickedLabel, placeChips, repoFilesLabel, splitMemberFile, splitTyped, suggestedName, togglePick, wholeFolder, type Found,
 } from './projectWizard'
 import type { Project } from './projects'
 
@@ -43,13 +43,40 @@ describe('what a scan found', () => {
     expect(f.kind).toBe('multi')
     expect(foundHeadline(f, 3)).toBe('3 repositories')
     expect(foundHeadline(f, 2)).toBe('3 repositories · 2 picked')
-    expect(createRequests(f, ['/w/api', '/w/web'], 'one')).toEqual([{ path: '/w', repos: ['/w/api', '/w/web'] }])
+    // Some of a folder's repositories: no folder of its own, the first picked is home (ADR-077).
+    expect(createRequests(f, ['/w/api', '/w/web'], 'one')).toEqual([{ repos: ['/w/api', '/w/web'] }])
+    expect(createRequests(f, ['/w/api', '/w/web'], 'one', ' Suite ')).toEqual([{ repos: ['/w/api', '/w/web'], name: 'Suite' }])
+    expect(homeOf(f, ['/w/web', '/w/api'])).toBe('/w/web')
+    expect(suggestedName(f, ['/w/web', '/w/api'])).toBe('web')
+    // All of them: the folder is the project (ADR-055).
+    expect(createRequests(f, ['/w/api', '/w/web', '/w/infra'], 'one')).toEqual([{ path: '/w', repos: ['/w/api', '/w/web', '/w/infra'] }])
+    expect(homeOf(f, ['/w/api', '/w/web', '/w/infra'])).toBe('/w')
     expect(createRequests(f, ['/w/api', '/w/web'], 'separate')).toEqual([{ path: '/w/api' }, { path: '/w/web' }])
     expect(createRequests(f, ['/w/web'], 'one')).toEqual([{ path: '/w/web' }])
     expect(createRequests(f, [], 'one')).toBe('Pick at least one repository.')
     expect(createLabel(f, 3, 'one', false)).toBe('Create project of 3 repos')
     expect(createLabel(f, 3, 'separate', false)).toBe('Create 3 projects')
     expect(createLabel(f, 1, 'one', false)).toBe('Create project')
+  })
+
+  it('a repository already in another project does not stop the folder being the project', () => {
+    const f = foundOf({ root: '/w', repos: [{ path: '/w/api', name: 'api' }, { path: '/w/web', name: 'web' }, { path: '/w/old', name: 'old', member_of: 9 }] })
+    expect(wholeFolder(f, ['/w/api', '/w/web'])).toBe(true)
+    expect(createRequests(f, ['/w/api', '/w/web'], 'one')).toEqual([{ path: '/w', repos: ['/w/api', '/w/web'] }])
+  })
+
+  it('repositories ticked one by one, from anywhere, are one project with the first as home', () => {
+    let picks = togglePick(new Map(), 'C:\\dev\\ai-crm', 'ai-crm')
+    expect(pickedLabel(picks.size)).toBe('1 selected · tick one more')
+    picks = togglePick(picks, 'D:\\work\\ai-notary', 'ai-notary')
+    expect(pickedLabel(picks.size)).toBe('2 selected · Continue')
+    expect(pickedLabel(togglePick(picks, 'C:\\dev\\ai-crm', 'ai-crm').size)).toBe('1 selected · tick one more')
+    expect(pickedLabel(0)).toBe('Tick two or more')
+    const f: Found = { kind: 'chosen', repos: [...picks].map(([path, name]) => ({ path, name })) }
+    expect(foundHeadline(f, 2)).toBe('2 repositories, one project')
+    expect(createRequests(f, [...picks.keys()], 'one')).toEqual([{ repos: ['C:\\dev\\ai-crm', 'D:\\work\\ai-notary'] }])
+    expect(createLabel(f, 2, 'one', false)).toBe('Create project of 2 repos')
+    expect(suggestedName(f, [...picks.keys()])).toBe('ai-crm')
   })
 
   it('one repository below the folder is looked at itself; none is a plain folder', () => {

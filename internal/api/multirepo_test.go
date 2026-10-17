@@ -41,8 +41,10 @@ func TestAFolderOfRepositories(t *testing.T) {
 	if w := call(t, s, testPhone, controller, "GET", "/v1/projects/scan?path="+filepath.ToSlash(base), ""); w.Code != 403 {
 		t.Fatalf("a phone scanned: %d", w.Code)
 	}
-	if w := call(t, s, machine, "", "POST", "/v1/projects", j(map[string]any{"repos": repos})); w.Code != 400 {
-		t.Fatalf("repos without path: %d", w.Code)
+	// repos without path is a project of chosen repositories (ADR-077,
+	// TestAProjectOfChosenRepositories); one repository is not one.
+	if w := call(t, s, machine, "", "POST", "/v1/projects", j(map[string]any{"repos": repos[:1]})); w.Code != 400 {
+		t.Fatalf("one repository without path: %d", w.Code)
 	}
 	w = call(t, s, machine, "", "POST", "/v1/projects", j(map[string]any{"path": base, "repos": repos[:2]}))
 	var added struct {

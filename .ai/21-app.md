@@ -390,6 +390,21 @@ One window, three regions:
     after the last key): a click on a row picks it, › looks inside one that is
     not a repository. In the desktop app *Choose…* opens the system's folder
     chooser (`pick_folder`, app/README.md).
+    **Several repositories in one project** (owner, 2026-10-18, translated:
+    "I still can't understand how to make multi-repo projects";
+    [ADR-077](08-decisions.md)). Under the title, a pill switch *Put several
+    repositories in one project* (`aria-pressed`) and, while on, one line:
+    "Tick them here or in other folders. No folder is made: agents start in
+    the first one ticked and reach the rest." The rows then carry a checkbox:
+    a click on a repository ticks or unticks it, a click on a folder that is
+    not one goes inside it (the list says *Inside ~/dev — tick the
+    repositories, › goes inside a folder*). The picks outlive moving between
+    folders and are listed under the rows as chips (*Ticked: ai-crm home ×
+    ai-notary ×*, the first marked *home*). The footer's button counts them —
+    *Tick two or more*, *1 selected · tick one more* (both disabled), *2
+    selected · Continue* — and Enter does what it says. Continue goes to the
+    second step with the picks as cards (`kind: 'chosen'`, `togglePick`,
+    `pickedLabel` in `lib/projectWizard.ts`).
     **A name typed after the last separator searches the folder before it**
     (owner, 2026-10-15, translated: "typing the first letters should search
     these folders in this directory"; until then `~/dev/cap` emptied the
@@ -412,7 +427,16 @@ One window, three regions:
     ticked but one in another multi-repo project, each naming its own
     CLAUDE.md / AGENTS.md (*Create project of N repos*, or *Or add them as N
     separate projects*; a single pick adds that repository alone), or *A plain
-    folder*. One repository below the folder is scanned itself. A folder
+    folder*. With every card ticked the folder is the project (ADR-055:
+    "Agents start in ~/work and reach every repository"); untick some and it
+    is a project of the ones left with no folder of its own (ADR-077: "One
+    project of the repositories picked; no folder is made. Agents start in api
+    and reach the others"), the first ticked marked *home* on its card
+    (`wholeFolder`, `homeOf`, `createRequests`). For two or more as one
+    project a *Name* field follows (its placeholder the folder's or the home
+    repository's name; empty sends none). The picks from *Several
+    repositories* arrive here the same way, headed *2 repositories, one
+    project*, and are created with `POST /v1/projects {repos, name?}`. One repository below the folder is scanned itself. A folder
     already listed says so and *Open project* adds nothing. On the same
     screen: *Already has CLAUDE.md — agents read it* with *Show* (the scan
     returns the text), and an optional *Instructions for every agent here*
@@ -1752,6 +1776,27 @@ there, and worktrees as first-class places to work.
   the folder; one started inside a member gets the others as `--add-dir`.
   Members are not watched (contract in 03-contracts.md § Projects and
   shells). A monorepo stays one repository with its per-directory split.
+  **Repositories picked one by one** (2026-10-18, [ADR-077](08-decisions.md))
+  are one project with no folder of its own: its root is the first picked,
+  its *home repository* (marked *home* on its page and in the editor, where
+  it cannot be unticked: it leaves by a split), and every one is a member.
+  Made from the wizard (above), from the project menu's *Add a repository…*
+  or the page's *Add…* (`AddRepoSheet.tsx`: a folder field starting at the
+  parent of the project's root, the folders inside it with each repository
+  a checkbox — those already in the project ticked and greyed, *in this
+  project* — › going inside the others, *Add repository* / *Add N
+  repositories*; `PATCH repos` with the project's and the ticked ones,
+  `addedRepos` in `lib/multirepo.ts`), or by merging repository projects
+  (the first is kept, its repository home). New agent in such a project
+  asks *Repository* in place of the members line: the home repository (or a
+  folder project's folder, *The folder · reaches every repository*) first,
+  then each other one (`repoChoices`); the agent starts there with the
+  others as `--add-dir`. *Where* then offers *This folder* with that
+  repository's branch and *New copy*; a copy of a repository that is not the
+  home one starts from its checkout (*From: main, as it is now*), the branch
+  list being the home repository's. The sidebar gets no repository rows
+  (the tabs model, owner 2026-10-14): each session row names its repository
+  before its branch, *ai-notary · fix-login* (`rowRepo`).
 
 ## Composer
 

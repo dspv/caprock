@@ -214,7 +214,7 @@ func TestEditSplitAndMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(merged.Repos) != 2 || !sameDir(merged.Root, base) {
+	if len(merged.Repos) != 2 || merged.ID != list[0].ID || !sameDir(merged.Root, list[0].Root) {
 		t.Fatalf("merged = %+v", merged)
 	}
 	merged, err = s.Merge(ctx, []int64{merged.ID, list[2].ID})
@@ -226,19 +226,75 @@ func TestEditSplitAndMerge(t *testing.T) {
 	}
 }
 
-func TestCommonDir(t *testing.T) {
-	for _, c := range []struct {
-		in   []string
-		want string
-	}{
-		{[]string{"/home/u/work/api", "/home/u/work/web"}, "/home/u/work"},
-		{[]string{"/home/u/work/api", "/home/u/other/web"}, "/home/u"},
-		{[]string{"/a", "/b"}, "/"},
-		{[]string{"C:/work/api", "C:/work/web"}, "C:/work"},
-	} {
-		if got := commonDir(c.in); got != c.want {
-			t.Errorf("commonDir(%v) = %q; want %q", c.in, got, c.want)
-		}
+// Repositories picked one by one make one project with no folder of its own
+// (ADR-077): the first is its home repository — the root, where agents start
+// — and a member like the rest; two such projects can come from one folder;
+// the project menu adds a repository to a plain repository project; a split
+// keeps the home repository's project.
+func TestProjectOfChosenRepositories(t *testing.T) {
+	base, repos := threeRepos(t)
+	s, st, _ := newService(t)
+	start(t, s)
+	ctx := context.Background()
+
+	if _, _, err := s.AddRepos(ctx, repos[:1], ""); err == nil {
+		t.Fatal("one repository made a project of several")
+	}
+	web, _, err := s.Add(ctx, repos[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	// api is listed on its own too: it is folded in.
+	if _, _, err := s.Add(ctx, repos[0]); err != nil {
+		t.Fatal(err)
+	}
+	v, created, err := s.AddRepos(ctx, []string{repos[1], repos[0]}, "Suite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created || v.ID != web.ID || !sameDir(v.Root, repos[1]) || v.Kind != store.ProjectKindRepo || v.Name != "Suite" {
+		t.Fatalf("project = %+v created=%v; want web's own project, renamed, rooted at web", v, created)
+	}
+	if len(v.Repos) != 2 || v.Repos[0].Name != "api" || v.Repos[1].Name != "web" {
+		t.Fatalf("repos = %+v; want api and web, the home repository among them", v.Repos)
+	}
+	// infra, from the same folder, is free for another project: no folder
+	// was listed.
+	other, _, err := s.Add(ctx, repos[2])
+	if err != nil || other.ID == v.ID {
+		t.Fatalf("infra: %+v %v", other, err)
+	}
+	if list, _ := s.List(ctx); len(list) != 2 {
+		t.Fatalf("list = %+v; want Suite and infra", list)
+	}
+	session(t, st, "in-api", repos[0])
+	session(t, st, "in-web", filepath.Join(repos[1], "src"))
+	session(t, st, "outside", base)
+	got, _ := s.Get(ctx, v.ID)
+	if got.Sessions.Total != 2 {
+		t.Fatalf("sessions = %+v; want the two repositories', not the folder's", got.Sessions)
+	}
+	if o := s.OtherRepos(store.NormalizeDir(repos[1])); len(o) != 1 || !sameDir(o[0], repos[0]) {
+		t.Fatalf("OtherRepos(home) = %v; want api", o)
+	}
+
+	// Add a repository to a plain repository project: its own root joins.
+	added, err := s.Update(ctx, other.ID, Patch{Repos: &[]string{repos[0]}})
+	if err != nil || len(added.Repos) != 2 {
+		t.Fatalf("add a repository: %+v %v", added.Repos, err)
+	}
+	if g, _ := s.Get(ctx, v.ID); len(g.Repos) != 0 {
+		t.Fatalf("api moved to infra's project, so Suite is web alone, a plain project again: %+v", g.Repos)
+	}
+	split, err := s.Split(ctx, other.ID)
+	if err != nil || len(split) != 2 {
+		t.Fatalf("split: %+v %v", split, err)
+	}
+	if p, ok := s.Project(other.ID); !ok || !sameDir(filepath.FromSlash(p.Root), repos[2]) {
+		t.Fatalf("the home repository's project left the list: %+v %v", p, ok)
+	}
+	if list, _ := s.List(ctx); len(list) != 3 {
+		t.Fatalf("after split, list = %+v", list)
 	}
 }
 

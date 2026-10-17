@@ -1,8 +1,11 @@
 package projects
 
-// Multi-repo projects (ADR-055): a folder holding several git repositories,
-// listed as one project whose member repositories are named in
-// project_repos (migration 0050).
+// Multi-repo projects (ADR-055, ADR-077): one project of several git
+// repositories, its members named in project_repos (migration 0050). Its
+// root is either the folder that holds them all (ADR-055: every repository
+// found there was picked) or one of the repositories, its home repository,
+// where agents start (ADR-077: repositories picked one by one, which may
+// live anywhere). A home repository is a member of its own project.
 //
 // Kept light on purpose. Member repositories are never watched: a folder of
 // twelve repositories would otherwise be twelve more fsnotify trees for a
@@ -281,9 +284,58 @@ func (s *Service) AddMulti(ctx context.Context, root string, repos []string) (Vi
 	return v, created, err
 }
 
+// AddRepos lists one project of the repositories repos (at least two),
+// chosen one by one, with no folder of its own (ADR-077): its root is the
+// first of them, the home repository agents start in, and every one of them
+// is a member. The home repository's own project, if listed, becomes this
+// project (its settings and history kept); the others are folded in. name,
+// when set, names it. Nothing on disk is touched.
+func (s *Service) AddRepos(ctx context.Context, repos []string, name string) (View, bool, error) {
+	members, err := checkRepos(repos)
+	if err != nil {
+		return View{}, false, err
+	}
+	if len(members) < 2 {
+		return View{}, false, errors.New("a project of several repositories has at least two; add one repository as a project of its own")
+	}
+	home, err := checkRepos(repos[:1])
+	if err != nil {
+		return View{}, false, err
+	}
+	v, created, err := s.insert(ctx, filepath.FromSlash(home[0]), store.ProjectKindRepo, store.ProjectSourceFolder)
+	if err != nil {
+		return View{}, false, err
+	}
+	if v, err = s.setRepos(ctx, v.ID, members); err != nil {
+		return View{}, false, err
+	}
+	if name = strings.TrimSpace(name); name != "" {
+		v, err = s.Update(ctx, v.ID, Patch{Name: &name})
+	}
+	return v, created, err
+}
+
+// withHome is a repository project's member list: its own root among them
+// once it has another member, none when it has none.
+func withHome(root string, members []string) []string {
+	var others []string
+	for _, m := range members {
+		if m != root {
+			others = append(others, m)
+		}
+	}
+	if len(others) == 0 {
+		return nil
+	}
+	return store.CleanRepoPaths(append(others, root))
+}
+
 // SetRepos replaces a project's member repositories (the editor's add and
-// remove, and Rescan's additions). An empty list makes it an ordinary
-// project again; a removed member is neither listed nor deleted.
+// remove, Rescan's additions, and the project menu's Add a repository). An
+// empty list makes it an ordinary project again; a removed member is neither
+// listed nor deleted. A repository project keeps its own root among its
+// members while it has another (ADR-077); a folder project's own folder is
+// never one.
 func (s *Service) SetRepos(ctx context.Context, id int64, repos []string) (View, error) {
 	members, err := checkRepos(repos)
 	if err != nil {
@@ -292,6 +344,10 @@ func (s *Service) SetRepos(ctx context.Context, id int64, repos []string) (View,
 	p, err := store.GetProject(ctx, s.Store.DB(), id)
 	if err != nil {
 		return View{}, err
+	}
+	members = s.canonRepos(ctx, members)
+	if p.Kind == store.ProjectKindRepo {
+		return s.setRepos(ctx, id, withHome(p.Root, members))
 	}
 	for _, m := range members {
 		if m == p.Root {
@@ -304,6 +360,7 @@ func (s *Service) SetRepos(ctx context.Context, id int64, repos []string) (View,
 // setRepos stores members, absorbs the listed projects whose root is a
 // member, and asks git about each member once.
 func (s *Service) setRepos(ctx context.Context, id int64, members []string) (View, error) {
+	members = s.canonRepos(ctx, members)
 	var stored []string
 	err := s.Store.WithTx(ctx, func(q store.Querier) error {
 		var err error
@@ -314,6 +371,9 @@ func (s *Service) setRepos(ctx context.Context, id int64, members []string) (Vie
 		return View{}, err
 	}
 	s.mu.Lock()
+	// A repository project left holding only its own root after a move is
+	// a plain project again (ADR-077).
+	var plain []int64
 	for pid, ms := range s.members {
 		if pid == id {
 			continue
@@ -323,6 +383,10 @@ func (s *Service) setRepos(ctx context.Context, id int64, members []string) (Vie
 			if !containsString(stored, m) {
 				kept = append(kept, m)
 			}
+		}
+		if p, ok := s.projects[pid]; ok && len(kept) == 1 && kept[0] == p.Root && len(kept) < len(ms) {
+			plain = append(plain, pid)
+			kept = nil
 		}
 		if len(kept) == 0 {
 			delete(s.members, pid)
@@ -340,6 +404,14 @@ func (s *Service) setRepos(ctx context.Context, id int64, members []string) (Vie
 		s.known[m] = true
 	}
 	s.mu.Unlock()
+	for _, pid := range plain {
+		if _, err := store.SetProjectRepos(ctx, s.Store.DB(), pid, nil, s.Now().UnixMilli()); err != nil {
+			s.Log.Warn("could not clear a project left with its own repository alone", "component", "projects", "id", pid, "err", err)
+		}
+		if s.Bus != nil {
+			s.publish(pid)
+		}
+	}
 	// The member's own project row, if listed, is folded in.
 	all, err := store.ListProjects(ctx, s.Store.DB(), false)
 	if err == nil {
@@ -361,24 +433,73 @@ func (s *Service) setRepos(ctx context.Context, id int64, members []string) (Vie
 	return v, err
 }
 
+// canonRepos spells each member as the project row for the same folder
+// does, when there is one (a symlink: macOS's /var is /private/var, and the
+// folder list may name a repository one way while its project was added the
+// other). Without it a listed repository would not be folded in, and a home
+// repository would not match its own project's root.
+func (s *Service) canonRepos(ctx context.Context, members []string) []string {
+	if len(members) == 0 {
+		return members
+	}
+	all, err := store.ListProjects(ctx, s.Store.DB(), true)
+	if err != nil {
+		return members
+	}
+	out := make([]string, 0, len(members))
+	for _, m := range members {
+		spelled := m
+		for _, p := range all {
+			if p.Root == m {
+				break
+			}
+			if sameFolder(filepath.FromSlash(p.Root), filepath.FromSlash(m)) {
+				spelled = p.Root
+				break
+			}
+		}
+		out = append(out, spelled)
+	}
+	return store.CleanRepoPaths(out)
+}
+
 // Split lists each member of a multi-repo project as a project of its own
 // (one that was listed before comes back with its old name and settings) and
-// takes the multi-repo project off the list. Nothing on disk is touched.
+// takes the multi-repo project off the list — unless its root is one of the
+// members (ADR-077): then the project stays, as that repository alone, with
+// its name. Nothing on disk is touched.
 func (s *Service) Split(ctx context.Context, id int64) ([]View, error) {
 	members := s.Repos(id)
 	if len(members) == 0 {
 		return nil, store.ErrNotMultiRepo
 	}
+	p, err := store.GetProject(ctx, s.Store.DB(), id)
+	if err != nil {
+		return nil, err
+	}
 	if _, err := s.setRepos(ctx, id, nil); err != nil {
 		return nil, err
 	}
 	out := make([]View, 0, len(members))
+	keep := false
 	for _, m := range members {
+		if m == p.Root {
+			keep = true
+			v, err := s.Get(ctx, id)
+			if err != nil {
+				return out, err
+			}
+			out = append(out, v)
+			continue
+		}
 		v, _, err := s.insert(ctx, filepath.FromSlash(m), store.ProjectKindRepo, store.ProjectSourceFolder)
 		if err != nil {
 			return out, err
 		}
 		out = append(out, v)
+	}
+	if keep {
+		return out, nil
 	}
 	if err := s.Unlist(ctx, id); err != nil {
 		return out, err
@@ -389,8 +510,10 @@ func (s *Service) Split(ctx context.Context, id int64) ([]View, error) {
 // Merge makes one multi-repo project of several projects: their
 // repositories (a repository project's root, a multi-repo project's members)
 // become the members of one of them — the multi-repo project among them, or
-// else a project at the folder that holds them all, which may be neither the
-// home folder nor a filesystem root. The others are taken off the list.
+// else the first repository project, whose repository becomes the home one
+// (ADR-077; until then a new project at the folder holding them all, which
+// for two repositories in ~/dev was ~/dev). The others are taken off the
+// list.
 func (s *Service) Merge(ctx context.Context, ids []int64) (View, error) {
 	if len(ids) < 2 {
 		return View{}, errors.New("merge needs two projects or more")
@@ -420,54 +543,12 @@ func (s *Service) Merge(ctx context.Context, ids []int64) (View, error) {
 		}
 		repos = append(repos, p.Root)
 	}
-	repos = store.CleanRepoPaths(repos)
 	if target == 0 {
-		parent := commonDir(repos)
-		if parent == "" || isHomeOrRoot(parent) {
-			return View{}, errors.New("these repositories share no folder below your home folder; add the folder that holds them as a project instead")
-		}
-		v, _, err := s.AddMulti(ctx, filepath.FromSlash(parent), osPaths(repos))
+		// In the order given: the first project is the one kept.
+		v, _, err := s.AddRepos(ctx, osPaths(repos), "")
 		return v, err
 	}
-	return s.setRepos(ctx, target, repos)
-}
-
-// commonDir is the deepest folder holding every path (normalised form), or "".
-func commonDir(paths []string) string {
-	if len(paths) == 0 {
-		return ""
-	}
-	parts := strings.Split(paths[0], "/")
-	n := len(parts) - 1 // a repository's own folder is not its parent
-	for _, p := range paths[1:] {
-		ps := strings.Split(p, "/")
-		i := 0
-		for i < n && i < len(ps)-1 && ps[i] == parts[i] {
-			i++
-		}
-		n = i
-	}
-	if n <= 0 {
-		return ""
-	}
-	d := strings.Join(parts[:n], "/")
-	if d == "" {
-		return "/"
-	}
-	return d
-}
-
-// isHomeOrRoot reports a folder an agent should never be started in for a
-// merge: the home folder, a filesystem root or a drive.
-func isHomeOrRoot(dir string) bool {
-	d := store.NormalizeDir(dir)
-	if d == "" || d == "/" || (len(d) <= 3 && strings.HasSuffix(strings.TrimSuffix(d, "/"), ":")) {
-		return true
-	}
-	if home, err := os.UserHomeDir(); err == nil && store.NormalizeDir(home) == d {
-		return true
-	}
-	return false
+	return s.setRepos(ctx, target, store.CleanRepoPaths(repos))
 }
 
 func osPaths(ps []string) []string {

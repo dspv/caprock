@@ -125,6 +125,7 @@ import { KeysHint } from '@/components/KeysHint'
 import { loadAgentClose } from '@/lib/agentClose'
 import { useSidebarMode } from '@/lib/sidebarMode'
 import { CopiesSheet } from '@/components/CopiesSheet'
+import { AddRepoSheet } from '@/components/AddRepoSheet'
 import { CleanupLine } from '@/components/CleanupLine'
 import { worktreeSlug } from '@/lib/slug'
 import { openPhoneSettings, openSettingsAt, openSettingsSection } from '@/components/Pairing'
@@ -217,6 +218,8 @@ type SheetState =
   | { kind: 'files'; projectId: string; worktree: string; title: string }
   /** *Clean up copies…*: a project's worktrees, their state and size (components/CopiesSheet). */
   | { kind: 'copies'; projectId: string; name: string; preselect?: string[] }
+  /** *Add a repository…*: more repositories in one project (components/AddRepoSheet, ADR-077). */
+  | { kind: 'add-repo'; projectId: string }
   | null
 
 
@@ -1315,6 +1318,10 @@ export function AppShell() {
     const p = projectsById.get(projectId)
     if (p?.kind === 'repo') setSheet({ kind: 'copies', projectId, name: p.name })
   }, [projectsById])
+  /** *Add a repository…* from a project's menu (ADR-077). */
+  const onAddRepo = useCallback((projectId: string) => {
+    if (projectsById.get(projectId)?.root) setSheet({ kind: 'add-repo', projectId })
+  }, [projectsById])
   /** *Review* on the cleanup line: the copies sheet with the finished ones ticked. */
   const onReviewCopies = useCallback((projectId: string, preselect: string[]) => {
     const p = projectsById.get(projectId)
@@ -1878,6 +1885,7 @@ export function AppShell() {
               onOpenInEditor={editors ? onOpenProjectInEditor : undefined}
               onRemoveProject={onRemoveProject}
               onCleanCopies={source === 'api' ? onCleanCopies : undefined}
+              onAddRepo={source === 'api' ? onAddRepo : undefined}
               grouped={grouped}
               onGroupedChange={onGroupedChange}
               tabDigits={stripDigits}
@@ -2032,6 +2040,7 @@ export function AppShell() {
                         <RecentInProject
                           key={`${activeProject.root}:${data.sessions.length}`}
                           root={activeProject.root}
+                          repos={activeProject.repos?.map((r) => r.path)}
                           permissions={data.permissions}
                           onOpen={(s) => openSession(s, activeProject.id)}
                           onContinued={(id, title) => { openTab({ kind: 'session', sessionId: id }, activeProject.id, title); data.refresh() }}
@@ -2252,6 +2261,9 @@ export function AppShell() {
       )}
       {folderMenu && <EditorMenu at={folderMenu} editors={editors} onClose={closeFolderMenu} onError={setToast} />}
       {sheet?.kind === 'copies' && <CopiesSheet key={sheet.projectId} projectId={sheet.projectId} name={sheet.name} preselect={sheet.preselect} onClose={closeSheet} onChanged={refresh} />}
+      {sheet?.kind === 'add-repo' && projectsById.get(sheet.projectId) && (
+        <AddRepoSheet key={sheet.projectId} project={projectsById.get(sheet.projectId)!} onClose={closeSheet} onChanged={refresh} />
+      )}
       {sheet?.kind === 'keys' && <ShortcutsSheet isMac={isMac} onClose={closeSheet} />}
       {sheet?.kind === 'share' && <ShareDialog onClose={closeSheet} />}
       {sheet?.kind === 'files' && (

@@ -131,7 +131,12 @@ func (s *Service) noteSession(ctx context.Context, sess store.Session) {
 		for _, m := range s.Repos(p.ID) {
 			if store.DirWithin(store.NormalizeDir(sess.Cwd), m) || store.DirWithin(dir, m) {
 				s.refreshMember(m, editDebounce)
-				return
+				if m != p.Root {
+					return
+				}
+				// The home repository (ADR-077) is the project's own
+				// checkout too: its row is scheduled below.
+				break
 			}
 		}
 	}
