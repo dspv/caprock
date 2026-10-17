@@ -12,9 +12,9 @@ import (
 // hidden folder is not offered; nor is a bundle inside another (a helper),
 // one in the Trash, or one stat says is gone. Of two bundles with the same
 // name (an old copy) the first wins. Every app that registers for https is
-// listed, as macOS's own Default web browser menu lists it: a terminal or a
-// chat app may be among them. Kept free of build tags so its tests run on
-// every OS.
+// returned, as macOS's own Default web browser menu lists it — a terminal or
+// a chat app among them — and the Opener keeps only the web browsers
+// (known.go). Kept free of build tags so its tests run on every OS.
 func FromAppPaths(paths []string, def string, exists func(string) bool) []Browser {
 	var out []Browser
 	names := map[string]bool{}

@@ -65,8 +65,8 @@ describe('opensLink', () => {
   it('hints the platform key', () => {
     expect(linkHint(true)).toBe('⌘-click to open')
     expect(linkHint(false)).toBe('Ctrl+click to open')
-    expect(linkHint(true, true)).toBe('⌘-click to open · ⇧⌘-click to choose a browser')
-    expect(linkHint(false, true)).toBe('Ctrl+click to open · Ctrl+Shift+click to choose a browser')
+    expect(linkHint(true, true)).toBe('⌘-click to open · ⇧⌘-click to choose where it opens')
+    expect(linkHint(false, true)).toBe('Ctrl+click to open · Ctrl+Shift+click to choose where it opens')
   })
 })
 
@@ -207,7 +207,7 @@ describe('attachTerminalLinks', () => {
     const link = (await t.linksOn(1))[0]!
     link.hover?.(click(), link.text)
     const tip = t.host.querySelector('.caprock-link-tip')
-    expect(tip?.textContent).toBe('⌘-click to open · ⇧⌘-click to choose a browser')
+    expect(tip?.textContent).toBe('⌘-click to open · ⇧⌘-click to choose where it opens')
     expect(tip?.classList.contains('xterm-hover')).toBe(true)
     link.leave?.(click(), link.text)
     expect(t.host.querySelector('.caprock-link-tip')).toBeNull()
@@ -226,7 +226,7 @@ describe('attachTerminalLinks', () => {
     const link = found[0]!
     link.hover?.(click(), link.text)
     expect(t.host.querySelector('.caprock-link-tip')?.textContent).toBe(
-      '⌘-click to open · ⇧⌘-click to choose a browser · https://github.com/dspv/caprock/pull/330',
+      '⌘-click to open · ⇧⌘-click to choose where it opens · https://github.com/dspv/caprock/pull/330',
     )
     link.activate(click(), link.text)
     expect(t.opened).toEqual([])

@@ -96,7 +96,8 @@ export function MenuItem({ icon, label, hint, onClick, disabled, tone }: {
   hint?: string
   onClick: () => void
   disabled?: boolean
-  tone?: 'danger'
+  /** `quiet`: a row that is there for the few who need it (the link chooser's *Other browser…*). */
+  tone?: 'danger' | 'quiet'
 }) {
   return (
     <button
@@ -104,7 +105,7 @@ export function MenuItem({ icon, label, hint, onClick, disabled, tone }: {
       role="menuitem"
       disabled={disabled}
       onClick={onClick}
-      className={`app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[6px] px-2 text-left text-[12.5px] disabled:pointer-events-none ${disabled ? 'text-fg-faint' : tone === 'danger' ? 'text-danger' : 'text-fg'}`}
+      className={`app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[6px] px-2 text-left text-[12.5px] disabled:pointer-events-none ${disabled ? 'text-fg-faint' : tone === 'danger' ? 'text-danger' : tone === 'quiet' ? 'text-fg-muted' : 'text-fg'}`}
     >
       <span className={tone === 'danger' ? 'text-danger' : 'text-fg-muted'}>{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>

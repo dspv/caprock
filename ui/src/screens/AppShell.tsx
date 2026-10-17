@@ -85,7 +85,7 @@ import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
 import { BrowserView } from '@/components/BrowserView'
-import { browserAct, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
+import { browserAct, browserOn, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
 import { openLink } from '@/lib/termlinks'
 import { attachable, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
@@ -508,8 +508,8 @@ export function AppShell() {
    */
   const [browserPrefs] = useBrowserPrefs()
   const browserEnabled = isTauri() && browserPrefs.on
-  const pageCtx = useRef({ tabs: ws.tabs, activeProjectId, projects: model.projects, enabled: browserEnabled })
-  pageCtx.current = { tabs: ws.tabs, activeProjectId, projects: model.projects, enabled: browserEnabled }
+  const pageCtx = useRef({ tabs: ws.tabs, activeProjectId, projects: model.projects })
+  pageCtx.current = { tabs: ws.tabs, activeProjectId, projects: model.projects }
   const [armedPages, setArmedPages] = useState<ReadonlySet<string>>(() => new Set())
   const armPage = useCallback((key: string) => {
     setArmedPages((cur) => (cur.has(key) ? cur : new Set(cur).add(key)))
@@ -521,7 +521,10 @@ export function AppShell() {
    * With the in-app browser off, an address goes to your browser instead.
    */
   const openPage = useCallback((raw?: string, sessionId?: string) => {
-    const { tabs, activeProjectId: pid, projects, enabled } = pageCtx.current
+    const { tabs, activeProjectId: pid, projects } = pageCtx.current
+    // Read now, not from the last render: the link chooser turns the setting
+    // on and asks for the tab in the same breath.
+    const enabled = browserOn()
     const url = raw === undefined ? '' : pageUrl(raw)
     if (url === null) { setToast(`“${raw}” is not a web address.`); return }
     if (!enabled) {
@@ -547,6 +550,7 @@ export function AppShell() {
     const on = (e: Event) => {
       const d = (e as CustomEvent<OpenBrowserDetail>).detail
       openPage(d?.url, d?.sessionId)
+      if (d?.notice) setToast(d.notice)
     }
     window.addEventListener(OPEN_BROWSER_EVENT, on)
     return () => window.removeEventListener(OPEN_BROWSER_EVENT, on)

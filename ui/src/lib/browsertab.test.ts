@@ -4,7 +4,6 @@ import {
   BROWSER_ON_KEY,
   browserKey,
   browserOn,
-  caprockEntry,
   isLocalUrl,
   loadBrowserPrefs,
   looksLikeAddress,
@@ -15,10 +14,12 @@ import {
   pageId,
   pageTitle,
   pageUrl,
+  pickCaprock,
   rectOf,
   sameRect,
   saveBrowserPrefs,
   searchUrl,
+  TURNED_ON_NOTICE,
   type BrowserKeyLike,
 } from './browsertab'
 
@@ -79,10 +80,9 @@ describe('the address box', () => {
 describe('the setting', () => {
   afterEach(() => localStorage.clear())
 
-  it('is off until turned on, and then offers Open in Caprock', () => {
+  it('is off until turned on, and then opens a link in Caprock', () => {
     expect(loadBrowserPrefs()).toEqual({ on: false, engine: 'duckduckgo', pause: true })
     expect(browserOn()).toBe(false)
-    expect(caprockEntry()).toBeNull()
     const asked = vi.fn()
     window.addEventListener(OPEN_BROWSER_EVENT, asked)
     expect(openInCaprock('https://example.com/')).toBe(false)
@@ -90,7 +90,6 @@ describe('the setting', () => {
     saveBrowserPrefs({ on: true, engine: 'brave' })
     expect(localStorage.getItem(BROWSER_ON_KEY)).toBe('on')
     expect(loadBrowserPrefs().engine).toBe('brave')
-    expect(caprockEntry()).toEqual({ kind: 'caprock', label: 'Open in Caprock' })
     expect(openInCaprock('example.com', 's1')).toBe(true)
     expect((asked.mock.calls[0]![0] as CustomEvent).detail).toEqual({ url: 'https://example.com/', sessionId: 's1' })
     expect(openInCaprock('file:///etc/hosts')).toBe(false)
@@ -100,7 +99,22 @@ describe('the setting', () => {
   it('needs the desktop app', () => {
     saveBrowserPrefs({ on: true })
     expect(browserOn(false)).toBe(false)
-    expect(caprockEntry(false)).toBeNull()
+    expect(pickCaprock('https://example.com/', false)).toBe(false)
+  })
+
+  it('turns the in-app browser on when the chooser picks it, and says so once', () => {
+    const asked = vi.fn()
+    window.addEventListener(OPEN_BROWSER_EVENT, asked)
+    expect(pickCaprock('https://example.com/a', true)).toBe(true)
+    expect(localStorage.getItem(BROWSER_ON_KEY)).toBe('on')
+    expect((asked.mock.calls[0]![0] as CustomEvent).detail).toEqual({ url: 'https://example.com/a', notice: TURNED_ON_NOTICE })
+    // Already on: it just opens, with no toast.
+    expect(pickCaprock('https://example.com/b', true)).toBe(true)
+    expect((asked.mock.calls[1]![0] as CustomEvent).detail).toEqual({ url: 'https://example.com/b' })
+    // Not a web address: nothing asked for.
+    expect(pickCaprock('file:///etc/hosts', true)).toBe(false)
+    expect(asked).toHaveBeenCalledTimes(2)
+    window.removeEventListener(OPEN_BROWSER_EVENT, asked)
   })
 })
 

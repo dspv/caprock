@@ -71,7 +71,7 @@ export function isWebUrl(url: string): boolean {
  */
 export function linkHint(mac: boolean, choose = false): string {
   const open = `${keys(LINK_OPEN_CLICK, mac)} to open`
-  return choose ? `${open} · ${keys(LINK_CHOOSE_CLICK, mac)} to choose a browser` : open
+  return choose ? `${open} · ${keys(LINK_CHOOSE_CLICK, mac)} to choose where it opens` : open
 }
 
 /** The chooser for `url` at the pointer, loaded on first use (components/LinkChooser.tsx). */
