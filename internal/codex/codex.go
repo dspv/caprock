@@ -392,20 +392,44 @@ type toolCallPayload struct {
 // routinely a partial write, and refusing the whole transcript for it would
 // mean a session is invisible until it ends.
 func ParseFile(path string) (*Session, error) {
+	s, _, err := parseFile(path)
+	return s, err
+}
+
+// parseFile is ParseFile, also saying how much it read.
+func parseFile(path string) (*Session, readCounts, error) {
+	var rc readCounts
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, rc, err
 	}
 	defer f.Close()
+	cr := &countingReader{r: f}
+	var s *Session
 	if !strings.HasSuffix(path, compressedSuffix) {
-		return Parse(f, path)
+		s, rc.records, err = parse(cr, path)
+	} else {
+		dec, derr := zstd.NewReader(cr)
+		if derr != nil {
+			return nil, rc, derr
+		}
+		defer dec.Close()
+		s, rc.records, err = parse(dec, path)
 	}
-	dec, err := zstd.NewReader(f)
-	if err != nil {
-		return nil, err
-	}
-	defer dec.Close()
-	return Parse(dec, path)
+	rc.bytes = cr.n
+	return s, rc, err
+}
+
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(b []byte) (int, error) {
+	n, err := c.r.Read(b)
+	c.n += int64(n)
+	return n, err
 }
 
 // compressedSuffix is what Codex gives a rollout it has compressed. Codex
@@ -431,388 +455,35 @@ func rolloutName(path string) string {
 
 // Parse reads a rollout transcript from r. path is used only for the returned
 // Session's Path field.
+//
+// The record-by-record work lives in parser (parser.go), which a growing file
+// keeps between reads (tail.go); Parse is that parser run once over the whole
+// file, and is the reference every incremental read is tested against.
 func Parse(r io.Reader, path string) (*Session, error) {
-	s := &Session{Path: path}
+	s, _, err := parse(r, path)
+	return s, err
+}
+
+// parse is Parse, also returning how many records it decoded.
+func parse(r io.Reader, path string) (*Session, int64, error) {
+	p := newParser(path)
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64<<10), maxLine)
-
-	// prevTotal tracks the running cumulative token count so each turn can be
-	// stored as a delta. See the package doc for why the transcript's own
-	// per-turn field is not used.
-	var prevTotal *usage
-	var lineNo int64
-	// pending holds assistant prose not yet tied to a turn. Codex writes a
-	// message BEFORE the token_count of the sampling request that produced it,
-	// so the text goes onto the next turn. taskStart is where the current user
-	// request's turns begin, so a message left over when a request ends joins
-	// that request's last turn rather than the next request's first.
-	var pending []string
-	taskStart := 0
-	seenMeta := false
-	// Two records carry a prompt, by version: an `item_completed` UserMessage
-	// (every rollout a person started on the owner's machine) and a
-	// `user_message` event (seen there only beside the item, in imported
-	// threads). Whichever the file has is read — the item when it has both,
-	// so a prompt is never stored twice.
-	var itemPrompts, eventPrompts []Prompt
-	callNames := map[string]string{}
-	// open holds the calls of the current request still waiting for their
-	// output, by call id: the index into s.Tools. A request that ends with a
-	// call still open cut it off (see closeCalls).
-	open := map[string]int{}
-	// closed is the index into s.Results of each call closeCalls marked
-	// interrupted, so a late output record replaces the mark.
-	closed := map[string]int{}
 	for sc.Scan() {
-		line := sc.Bytes()
-		lineNo++
-		if len(line) == 0 {
-			continue
-		}
-		var rec record
-		if err := json.Unmarshal(line, &rec); err != nil {
-			continue // partial or malformed line: skip, do not fail the file
-		}
-		at := parseTime(rec.Timestamp)
-		switch rec.Type {
-		case "session_meta":
-			// Decoded field by field rather than into a struct in one go.
-			//
-			// A single unexpected type anywhere in this payload fails the whole
-			// unmarshal, and losing session_meta means losing the session id,
-			// which makes the entire transcript "not a rollout file" and drops
-			// every turn in it. That is far too much to lose to one field we do
-			// not even own — Codex is free to change any of these between
-			// releases. Each field is taken if it is the shape we expect and
-			// skipped if it is not.
-			var m sessionMeta
-			raw := map[string]json.RawMessage{}
-			if err := json.Unmarshal(rec.Payload, &raw); err != nil {
-				continue
-			}
-			m.SessionID = jsonString(raw["session_id"])
-			m.ID = jsonString(raw["id"])
-			m.Timestamp = jsonString(raw["timestamp"])
-			m.Cwd = jsonString(raw["cwd"])
-			m.CLIVersion = jsonString(raw["cli_version"])
-			m.Originator = jsonString(raw["originator"])
-			m.BaseInstructions = raw["base_instructions"]
-			// A forked subagent's file holds its own session_meta and then a
-			// copy of its parent's, so only the first one says what this
-			// file is.
-			if seenMeta {
-				// The parent's session_meta, copied into a forked
-				// subagent's file. It describes the parent: its session id
-				// is the one the first record already named, and its cwd
-				// and model are not this file's.
-				continue
-			}
-			s.Subagent = isSubagentSource(raw["source"])
-			seenMeta = true
-			s.ID = firstNonEmpty(m.SessionID, m.ID)
-			s.ThreadID = firstNonEmpty(m.ID, m.SessionID)
-			s.Cwd = m.Cwd
-			s.CLIVersion = m.CLIVersion
-			s.Originator = m.Originator
-			// The model, from the one place nearly every transcript records
-			// it. `turn_context` is the obvious source and is present in only
-			// 4 of 100 real transcripts; this is present in 96, and the two
-			// sets barely overlap — together they name a model for every
-			// session that has any tokens at all.
-			//
-			// It is a recorded model id (`{"type":"model","model":"…"}`), not
-			// an inference from the originator or the CLI version, which is
-			// what makes pricing from it honest rather than a guess.
-			if model := provenanceModel(m.BaseInstructions); model != "" {
-				s.Model = model
-			}
-			if t := parseTime(m.Timestamp); !t.IsZero() {
-				s.StartedAt = t
-			} else {
-				s.StartedAt = at
-			}
-		case "turn_context":
-			var tc turnContext
-			if err := json.Unmarshal(rec.Payload, &tc); err != nil {
-				continue
-			}
-			// turn_context wins over the base-instructions provenance when both
-			// are present: provenance describes the prompt the session was
-			// built with, this describes the turn actually being run. They
-			// agreed in every transcript where both appear, and no model
-			// changed mid-session in any of the 100 checked — but if one ever
-			// does, the per-turn value is the truthful one.
-			if tc.Model != "" {
-				s.Model = tc.Model
-			}
-			if s.Cwd == "" {
-				s.Cwd = tc.Cwd
-			}
-		case "event_msg":
-			var k eventKind
-			if err := json.Unmarshal(rec.Payload, &k); err != nil {
-				continue
-			}
-			if strings.HasPrefix(k.TurnID, importedTurnPrefix) {
-				s.Imported = true
-			}
-			switch k.Type {
-			case "task_started":
-				// Prose from a request that produced no turn at all has no
-				// row to sit on and is dropped. Measured: 36 of 2,120
-				// messages on the owner's machine, all in subagent files
-				// replaying their parent's history.
-				pending, taskStart = nil, len(s.Turns)
-				closeCalls(s, open, closed, at)
-				continue
-			case "task_complete", "turn_aborted":
-				closeCalls(s, open, closed, at)
-				if len(pending) > 0 && len(s.Turns) > taskStart {
-					last := &s.Turns[len(s.Turns)-1]
-					last.Text = joinText(append([]string{last.Text}, pending...))
-				}
-				pending = nil
-				continue
-			case "item_completed":
-				var it userItem
-				if json.Unmarshal(k.Item, &it) == nil && it.Type == "UserMessage" {
-					var parts []string
-					for _, c := range it.Content {
-						if c.Type == "text" {
-							parts = append(parts, strings.TrimSpace(c.Text))
-						}
-					}
-					if t := joinText(parts); t != "" {
-						itemPrompts = append(itemPrompts, Prompt{At: at, Key: keyFor(lineNo, "user"), Line: lineNo, Text: t})
-					}
-				}
-				continue
-			case "user_message":
-				var msg string
-				_ = json.Unmarshal(k.Message, &msg)
-				if t := joinText([]string{strings.TrimSpace(msg)}); t != "" {
-					eventPrompts = append(eventPrompts, Prompt{At: at, Key: keyFor(lineNo, "user"), Line: lineNo, Text: t})
-				}
-				continue
-			case "token_count":
-			default:
-				continue
-			}
-			var tc tokenCount
-			if err := json.Unmarshal(rec.Payload, &tc); err != nil {
-				continue
-			}
-			if rl := tc.RateLimits; rl != nil && (rl.LimitID == "" || rl.LimitID == codexLimitID) && !at.IsZero() {
-				l := &Limits{At: at}
-				for _, w := range []*window{rl.Primary, rl.Secondary} {
-					if w == nil || w.WindowMinutes <= 0 {
-						continue
-					}
-					lw := LimitWindow{Minutes: w.WindowMinutes, UsedPercent: w.UsedPercent}
-					if w.ResetsAt != nil {
-						lw.ResetsAt = *w.ResetsAt
-					}
-					l.Windows = append(l.Windows, lw)
-				}
-				// A sample naming no window says nothing about the plan, and
-				// must not replace an earlier one that did.
-				if len(l.Windows) > 0 {
-					s.Limits = l
-				}
-			}
-			if tc.Info == nil || tc.Info.Total == nil {
-				continue
-			}
-			d, ok := delta(prevTotal, tc.Info.Total)
-			cur := *tc.Info.Total
-			prevTotal = &cur
-			if !ok {
-				continue // a repeat of the previous sample: no new tokens
-			}
-			turn := Turn{
-				At:         at,
-				Key:        keyFor(lineNo, "turn"),
-				Line:       lineNo,
-				In:         d.InputTokens,
-				CacheRead:  d.CachedInputTokens,
-				CacheWrite: d.CacheWriteInputTok,
-				Out:        d.OutputTokens,
-				Reasoning:  d.ReasoningOutputToken,
-			}
-			// Some transcripts fill in `total_tokens` and leave every component
-			// at zero — 114 of 233 samples on the machine this was built
-			// against, one of them 4.4M tokens. Reading only the components
-			// drops all of that: a real turn stored as if it had used nothing.
-			//
-			// The total is carried as input, which is the honest reading of a
-			// number that says only "this much was used": input is what the
-			// billing arithmetic treats as unqualified, so nothing is credited
-			// a cache discount it was not reported to have earned. Splitting
-			// the total across kinds by any ratio would be inventing the split
-			// (rule 6); leaving the turn empty would be discarding the usage.
-			if turn.In == 0 && turn.Out == 0 && turn.CacheRead == 0 && turn.CacheWrite == 0 && d.TotalTokens > 0 {
-				turn.In = d.TotalTokens
-				turn.TotalOnly = true
-			}
-			turn.Text = joinText(pending)
-			pending = nil
-			s.Turns = append(s.Turns, turn)
-		case "response_item":
-			var k payloadKind
-			if err := json.Unmarshal(rec.Payload, &k); err != nil {
-				continue
-			}
-			if k.Type == "message" {
-				var m message
-				if json.Unmarshal(rec.Payload, &m) != nil || m.Role != "assistant" {
-					continue
-				}
-				for _, b := range m.Content {
-					if b.Type != "output_text" && b.Type != "text" {
-						continue
-					}
-					t := strings.TrimSpace(b.Text)
-					if t == importedMarker {
-						s.Imported = true
-					}
-					if t != "" {
-						pending = append(pending, t)
-					}
-				}
-				continue
-			}
-			if k.Type == "custom_tool_call_output" || k.Type == "function_call_output" {
-				var op toolOutputPayload
-				if err := json.Unmarshal(rec.Payload, &op); err != nil || op.CallID == "" {
-					continue
-				}
-				r := readOutput(op.Output)
-				r.At, r.Key, r.Line, r.CallID, r.Name = at, keyFor(lineNo, "result"), lineNo, op.CallID, callNames[op.CallID]
-				delete(open, op.CallID)
-				if i, ok := closed[op.CallID]; ok {
-					// The output came after all: the call finished, and the
-					// mark closeCalls left for it is dropped.
-					s.Results = append(s.Results[:i], s.Results[i+1:]...)
-					delete(closed, op.CallID)
-					for id, j := range closed {
-						if j > i {
-							closed[id] = j - 1
-						}
-					}
-				}
-				s.Results = append(s.Results, r)
-				continue
-			}
-			if k.Type != "custom_tool_call" && k.Type != "function_call" {
-				continue
-			}
-			var tp toolCallPayload
-			if err := json.Unmarshal(rec.Payload, &tp); err != nil {
-				continue
-			}
-			in := tp.Input
-			if len(in) == 0 {
-				in = tp.Arguments
-			}
-			if tp.CallID != "" {
-				callNames[tp.CallID] = tp.Name
-				open[tp.CallID] = len(s.Tools)
-			}
-			s.Tools = append(s.Tools, ToolCall{
-				At:     at,
-				Key:    keyFor(lineNo, "tool"),
-				Line:   lineNo,
-				Name:   tp.Name,
-				Input:  string(in),
-				CallID: tp.CallID,
-			})
-		}
+		p.feed(sc.Bytes())
 	}
 	if err := sc.Err(); err != nil && !errors.Is(err, bufio.ErrTooLong) {
 		// ErrTooLong is survivable: one oversized line is dropped, and the rest
 		// of the transcript is still worth having.
-		return nil, err
+		return nil, p.decoded, err
 	}
+	s := p.header()
 	if s.ID == "" {
 		// No session_meta means this is not a rollout file we understand.
-		return nil, ErrNotASession
+		return nil, p.decoded, ErrNotASession
 	}
-	if s.Subagent {
-		// A subagent's file carries its parent's session id, and its line
-		// numbers are the same small integers as the parent's own. Keyed
-		// `codex:turn:<line>` like the parent, each of its records collided
-		// with the parent's on the same line, and whichever file was read
-		// second lost it as a "duplicate" — 885 of 1,864 subagent turns on
-		// the owner's machine. Its keys carry its own thread id instead.
-		if s.ThreadID == s.ID && path != "" {
-			// No id of its own was recorded (never seen): the file name,
-			// which Codex derives from the thread id, still tells two
-			// subagents of one parent apart.
-			s.ThreadID = rolloutName(path)
-		}
-		for i := range s.Turns {
-			s.Turns[i].Key = subagentKey(s.ThreadID, s.Turns[i].Line, "turn")
-		}
-		for i := range s.Tools {
-			s.Tools[i].Key = subagentKey(s.ThreadID, s.Tools[i].Line, "tool")
-		}
-		for i := range s.Results {
-			kind := "result"
-			if s.Results[i].Interrupted {
-				kind = "interrupted"
-			}
-			s.Results[i].Key = subagentKey(s.ThreadID, s.Results[i].Line, kind)
-		}
-	}
-	if !s.Imported && !s.Subagent {
-		s.Prompts = itemPrompts
-		if len(s.Prompts) == 0 {
-			s.Prompts = eventPrompts
-		}
-	}
-	linkToolsToTurns(s)
-	if s.Imported || s.Subagent {
-		// Imported prose is another agent's, already stored from its own
-		// transcript. A subagent's would be hidden from Memory anyway, as
-		// Claude Code's sidechains are.
-		for i := range s.Turns {
-			s.Turns[i].Text = ""
-		}
-	}
-	return s, nil
-}
-
-// closeCalls ends the request's calls that never got an output: each becomes
-// an interrupted result (ToolResult.Interrupted), so the chat stops saying
-// "running" for a call nothing will ever answer.
-//
-// Codex brackets a request with task_started and task_complete or
-// turn_aborted. On the owner's machine (2026-10-09: 16,152 calls in 207
-// rollouts) every call has its output, and none of the 11 turn_aborted
-// records cut a call off mid-flight — but a call that is cut off before its
-// output is written has nothing else that would ever end it, and read as
-// running forever. A request that ends, or a new one that starts, is the
-// point after which nothing more can arrive for it. The key is the call's
-// line under its own kind, `codex:interrupted:<line>`, so it never collides
-// with a result.
-func closeCalls(s *Session, open map[string]int, closed map[string]int, at time.Time) {
-	if len(open) == 0 {
-		return
-	}
-	idx := make([]int, 0, len(open))
-	for _, i := range open {
-		idx = append(idx, i)
-	}
-	sort.Ints(idx)
-	for _, i := range idx {
-		c := s.Tools[i]
-		closed[c.CallID] = len(s.Results)
-		s.Results = append(s.Results, ToolResult{
-			At: at, Key: keyFor(c.Line, "interrupted"), Line: c.Line,
-			CallID: c.CallID, Name: c.Name, Interrupted: true,
-		})
-	}
-	clear(open)
+	p.fill(s, marks{})
+	return s, p.decoded, nil
 }
 
 // readOutput reads a tool call's output: its text, and whether it failed.
@@ -877,20 +548,6 @@ func clipOutput(s string) string {
 		n++
 	}
 	return s
-}
-
-// linkToolsToTurns gives every call the key of the first turn after it (see
-// ToolCall.TurnKey). Both lists are in file order.
-func linkToolsToTurns(s *Session) {
-	j := 0
-	for i := range s.Tools {
-		for j < len(s.Turns) && s.Turns[j].Line < s.Tools[i].Line {
-			j++
-		}
-		if j < len(s.Turns) {
-			s.Tools[i].TurnKey = s.Turns[j].Key
-		}
-	}
 }
 
 // joinText joins a turn's messages the way Claude Code's text blocks are

@@ -205,7 +205,7 @@ func TestTextSyncMatchesKeyAndTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err := h.in.syncText(context.Background(), s)
+	n, err := h.in.syncText(context.Background(), s, false)
 	if err != nil {
 		t.Fatal(err)
 	}
