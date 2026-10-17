@@ -24,9 +24,17 @@
  * confirm sheet, then the polite stop (`end`): SIGTERM, a kill after the grace.
  * Where a live session cannot be ended here, the sheet's first line says why
  * (owner, 2026-10-16: never silently unavailable; components/PhoneEnd).
+ *
+ * **Keys** and the **voice language** live in the ··· menu (owner's variant
+ * D, 2026-10-17): the chat's bar at the bottom is one row, and Esc, Tab, the
+ * arrows, Enter and Ctrl+C are the rare case there. Keys open a panel under
+ * the bar that stays while they are pressed; each goes to the session as the
+ * chat's own input does (rule 7: only a session Caprock started).
  */
 import { useState, type ReactNode } from 'react'
 import { EndSheet } from './PhoneEnd'
+import { KeyGrid, LangList } from './TerminalKeys'
+import { langChip, langName, setSpeechLang, speechLang } from '@/lib/speechlang'
 import { HealthDot } from './ui'
 import { machineSwitch } from '@/lib/machineswitch'
 import type { Health } from '@/lib/api'
@@ -39,7 +47,7 @@ const LABEL: Record<PhoneView, string> = { chat: 'Chat', terminal: 'Terminal', c
 export const PHONE_BAR_PX = 44
 
 export function PhoneSessionBar({
-  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, endWhy, onEnded, children,
+  backHref, title, health, alert, views, active, onPick, overlay = false, hidden = false, onReveal, end, endWhy, onEnded, keys, voiceLang = false, children,
 }: {
   backHref: string
   title: string
@@ -61,16 +69,25 @@ export function PhoneSessionBar({
   endWhy?: string
   /** Told once the end was sent. */
   onEnded?: () => void
+  /** Sends a raw key to the session; absent, no Keys in the ··· menu.
+   *  Resolves false when it was not sent. */
+  keys?: (bytes: string, label: string) => Promise<boolean>
+  /** Offer the dictation language in the ··· menu (the chat's microphone). */
+  voiceLang?: boolean
   /** The sheet: what the bar does not say. */
   children?: ReactNode
 }) {
   const [sheet, setSheet] = useState(false)
   const [menu, setMenu] = useState(false)
+  const [panel, setPanel] = useState<null | 'keys' | 'lang'>(null)
+  const [lang, setLang] = useState(speechLang)
+  const [keyNote, setKeyNote] = useState('')
   const [ending, setEnding] = useState(false)
   const talk = (['chat', 'terminal'] as PhoneView[]).filter((v) => views.includes(v))
   const rest = (['changes', 'timeline', 'notes'] as PhoneView[]).filter((v) => views.includes(v))
   const restActive = rest.includes(active)
-  const away = overlay && hidden && !sheet && !menu
+  const away = overlay && hidden && !sheet && !menu && !panel
+  const extras = !!keys || voiceLang
   const seg = (on: boolean) => `h-8 rounded-[7px] px-2.5 text-[13px] ${on ? 'bg-accent font-medium text-panel' : 'text-fg'}`
   return (
     <>
@@ -102,7 +119,7 @@ export function PhoneSessionBar({
                 {LABEL[v]}
               </button>
             ))}
-            {rest.length > 0 && (
+            {(rest.length > 0 || extras) && (
               <button
                 type="button"
                 role="tab"
@@ -110,7 +127,7 @@ export function PhoneSessionBar({
                 aria-haspopup="menu"
                 aria-expanded={menu}
                 aria-label={restActive ? `${LABEL[active]} — other views` : 'Other views'}
-                onClick={() => { setSheet(false); setMenu((v) => !v) }}
+                onClick={() => { setSheet(false); setPanel(null); setMenu((v) => !v) }}
                 className={seg(restActive)}
               >
                 {restActive ? <>{LABEL[active]} <span aria-hidden className="text-[10px]">▾</span></> : <span aria-hidden className="tracking-[1px]">···</span>}
@@ -134,6 +151,28 @@ export function PhoneSessionBar({
           className="absolute -left-3 -right-3 top-0 z-30 h-5"
         />
       )}
+      {panel && (
+        <>
+          <div aria-hidden className="fixed inset-0 z-20" onClick={() => setPanel(null)} />
+          <div data-phone-panel={panel} role={panel === 'lang' ? 'menu' : 'dialog'} aria-label={panel === 'keys' ? 'Keys' : 'Dictation language'}
+            className="fixed inset-x-2 top-[calc(env(safe-area-inset-top)+3rem)] z-40 max-h-[60dvh] overflow-y-auto rounded-md border border-border-strong bg-panel p-2 shadow-lg">
+            <div className="flex items-center pb-1.5 pl-1">
+              <span className="text-[13px] font-medium text-fg">{panel === 'keys' ? 'Keys' : 'Dictation language'}</span>
+              <button type="button" onClick={() => setPanel(null)} className="ml-auto h-9 px-2 text-[13px] text-fg-muted">Done</button>
+            </div>
+            {panel === 'keys' && keys ? (
+              <>
+                <KeyGrid onKey={(bytes, label) => {
+                  void keys(bytes, label).then((ok) => setKeyNote(ok ? '' : `Not connected — ${label} was not sent. Keys are never queued.`))
+                }} />
+                {keyNote && <p role="alert" className="pt-1.5 text-[13px] text-warn">{keyNote}</p>}
+              </>
+            ) : (
+              <LangList current={lang} onPick={(t) => { setSpeechLang(t); setLang(speechLang()); setPanel(null) }} />
+            )}
+          </div>
+        </>
+      )}
       {(sheet || menu) && (
         <>
           <div aria-hidden className="fixed inset-0 z-20 bg-black/30" onClick={() => { setSheet(false); setMenu(false) }} />
@@ -151,6 +190,21 @@ export function PhoneSessionBar({
                   {LABEL[v]}
                 </button>
               ))}
+              {extras && rest.length > 0 && <div className="my-1 h-px bg-border" />}
+              {keys && (
+                <button type="button" role="menuitem" data-phone-keys onClick={() => { setMenu(false); setKeyNote(''); setPanel('keys') }}
+                  title="Esc, Tab, arrows, Enter and Ctrl+C, for the agent's menus"
+                  className="flex min-h-11 w-full items-center px-3 text-left text-[15px] text-fg hover:bg-panel-2">
+                  Keys
+                </button>
+              )}
+              {voiceLang && (
+                <button type="button" role="menuitem" data-phone-lang onClick={() => { setMenu(false); setLang(speechLang()); setPanel('lang') }}
+                  aria-label={`Dictation language: ${langName(lang)}. Change`}
+                  className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-[15px] text-fg hover:bg-panel-2">
+                  Voice <span className="ml-auto text-[13px] font-medium text-fg-muted">{langChip(lang)}</span>
+                </button>
+              )}
             </div>
           ) : (
             <div data-phone-sheet className="fixed inset-x-0 top-[calc(env(safe-area-inset-top)+2.75rem)] z-40 max-h-[75dvh] overflow-y-auto overflow-x-hidden border-b border-border bg-panel px-3 pb-3 pt-2.5 shadow-lg">

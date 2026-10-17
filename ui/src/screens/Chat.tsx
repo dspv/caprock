@@ -26,6 +26,7 @@ import { ChevronIcon, FileIcon, MoreIcon } from '@/components/AppIcons'
 import { Empty } from '@/components/ui'
 import { EndSheet, endState } from '@/components/PhoneEnd'
 import { RenameField } from './Chats'
+import { KeyGrid } from '@/components/TerminalKeys'
 
 export function ChatScreen({ id }: { id: string }) {
   const phone = useNarrowScreen()
@@ -175,6 +176,13 @@ export function ChatScreen({ id }: { id: string }) {
               </button>
             )}
             </>}
+            {/* The phone's bar is one row: the raw keys are here (rule 7: canType). */}
+            {phone && canType && (
+              <div className="grid gap-1.5 pt-1">
+                <span className="text-[12px] uppercase tracking-wide text-fg-faint">Keys</span>
+                <KeyGrid onKey={(bytes, label) => void api.agentInput(id, bytes).catch((e: unknown) => setError(`${label} not sent — ${errText(e)}`))} />
+              </div>
+            )}
             {error && <p role="alert" className="text-[13px] text-danger">{error}</p>}
           </div>
         </ChatSheet>
