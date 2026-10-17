@@ -77,7 +77,7 @@ func TestWorkBoardSessions(t *testing.T) {
 	}
 
 	// Caprock's own Claude Code session, 30 s into a turn, two messages queued.
-	f.owned["own"] = agents.AgentClaude
+	set(f, f.owned, "own", agents.AgentClaude)
 	workSession(t, d, "own", "claude", "/r", "feat/a", true, now)
 	boundAt(t, d, "own", event.KindTurnUser, now.Add(-30*time.Second), `{"prompt":"go"}`)
 	for _, m := range []string{"second", strings.Repeat("é", 250)} {
@@ -111,7 +111,7 @@ func TestWorkBoardSessions(t *testing.T) {
 	boundAt(t, d, "bg", event.KindAgentStop, now.Add(-4*time.Minute), "")
 	workEvent(t, d, event.Event{SessionID: "bg", Source: event.SourceHook, Kind: event.KindToolPre, Tool: "Read", AgentID: "sub1", Ts: now.Add(-time.Minute)})
 	// Codex, started by Caprock, busy.
-	f.owned["cx"] = agents.AgentCodex
+	set(f, f.owned, "cx", agents.AgentCodex)
 	workSession(t, d, "cx", "codex", "/q", "feat/c", true, now)
 	workEvent(t, d, event.Event{SessionID: "cx", Source: event.SourceTranscript, Kind: event.KindToolPre, Tool: "exec_command", Ts: now.Add(-10 * time.Second)})
 	// A shell is not a session on the board.

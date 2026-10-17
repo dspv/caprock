@@ -39,8 +39,12 @@ const (
 	// to find the newest one the hooks recorded.
 	queueTurnScan = 40
 	// queueTypeGap is the pause between a message and the Enter that sends
-	// it: in one write a TUI reads the pair as a paste.
+	// it: in one write a TUI reads the pair as a paste. A long message gets
+	// more (enterGap).
 	queueTypeGap = 200 * time.Millisecond
+	// queueConfirmAfter is how long after the Enter the screen is read to
+	// see whether the message went (confirmSent).
+	queueConfirmAfter = 1500 * time.Millisecond
 )
 
 // turnKinds are the events that open or close a turn on the main thread.
@@ -52,10 +56,11 @@ var turnKinds = []string{
 }
 
 type msgQueue struct {
-	d      *Daemon
-	sess   queueSessions
-	settle time.Duration
-	gap    time.Duration
+	d       *Daemon
+	sess    queueSessions
+	settle  time.Duration
+	gap     time.Duration
+	confirm time.Duration
 
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -93,7 +98,7 @@ const deliveredKeep = 200
 
 func newMsgQueue(d *Daemon) *msgQueue {
 	q := &msgQueue{
-		d: d, settle: queueSettle, gap: queueTypeGap,
+		d: d, settle: queueSettle, gap: queueTypeGap, confirm: queueConfirmAfter,
 		locks: map[string]*sync.Mutex{}, continued: map[string]bool{}, typed: map[string]time.Time{},
 		inflight: map[string]string{}, est: map[string]estEntry{}, todos: map[string]todoEntry{}, now: time.Now,
 	}
@@ -107,9 +112,17 @@ func newMsgQueue(d *Daemon) *msgQueue {
 type queueSessions interface {
 	Get(id string) (*agents.Agent, bool)
 	IsShell(id string) bool
+	OwnedRunning() []string
+	promptTyper
+}
+
+// promptTyper is what typing a message into a session's prompt needs from
+// the agent manager (typeMessage).
+type promptTyper interface {
 	PendingPermission(id string) (*agents.Permission, bool)
 	Input(id string, data []byte) error
-	OwnedRunning() []string
+	PasteMode(id string) bool
+	PromptHolds(id, text string) bool
 }
 
 // lock serialises everything one session's queue does: a send deciding
@@ -354,25 +367,102 @@ func (q *msgQueue) changed(ctx context.Context, a *agents.Agent) (api.QueueView,
 	return v, nil
 }
 
-// typeLocked types text and then Enter, as the chat field did: control
-// characters out, a tab as two spaces (Tab switches modes in Claude Code),
-// each line break as ESC CR. Caller holds the session's lock.
+// typeLocked types a message and presses Enter (typeMessage), then checks a
+// moment later that it went (confirmSent). Caller holds the session's lock.
 func (q *msgQueue) typeLocked(id, text string) error {
-	body := promptBytes(text)
-	if err := q.sess.Input(id, []byte(body)); err != nil {
+	at, err := typeMessage(q.sess, id, text, q.gap, func(at time.Time) {
+		q.mu.Lock()
+		q.typed[id] = at
+		q.mu.Unlock()
+	})
+	if err != nil {
 		return err
 	}
-	q.mu.Lock()
-	q.typed[id] = time.Now()
-	q.mu.Unlock()
-	time.Sleep(q.gap)
-	return q.sess.Input(id, []byte("\r"))
+	go q.confirmSent(id, text, at)
+	return nil
 }
 
-// promptBytes is text as typed into a TUI's prompt. A message ending in an
-// @file mention gets a space after it: Claude Code's file menu is open
-// there, and the Enter that follows would pick from the menu, not send.
-func promptBytes(text string) string {
+// confirmSent presses Enter once more when the prompt still holds a message
+// Caprock typed q.confirm ago: the first Enter was read as part of the paste
+// (ADR-053, 2026-10-17 amendment). Not when a hook has come from the session
+// since — the turn started — nor after another message went in, nor into a
+// menu (confirmMessage).
+func (q *msgQueue) confirmSent(id, text string, at time.Time) {
+	time.Sleep(q.confirm)
+	unlock := q.lock(id)
+	defer unlock()
+	if _, ok := q.owned(id); !ok {
+		return
+	}
+	q.mu.Lock()
+	typedAt, still := q.typed[id]
+	q.mu.Unlock()
+	if !still || !typedAt.Equal(at) {
+		return
+	}
+	if confirmMessage(q.sess, id, text) && q.d.log != nil {
+		q.d.log.Info("queue: the prompt still held the message; pressed Enter again", "component", "queue", "session_id", id)
+	}
+}
+
+// typeMessage types text into a session's prompt and then presses Enter, as
+// two writes with a pause between them. A session whose output turned
+// bracketed paste on gets the text as a paste (ESC[200~ … ESC[201~), so the
+// Enter after it is a key however the TUI's reads fall; any other gets it
+// typed, each line break as ESC CR. typed, when set, is told the moment the
+// text went in, which is also returned.
+func typeMessage(s promptTyper, id, text string, gap time.Duration, typed func(time.Time)) (time.Time, error) {
+	body := messageBytes(text, s.PasteMode(id))
+	if err := s.Input(id, []byte(body)); err != nil {
+		return time.Time{}, err
+	}
+	at := time.Now()
+	if typed != nil {
+		typed(at)
+	}
+	time.Sleep(enterGap(gap, len(body)))
+	return at, s.Input(id, []byte("\r"))
+}
+
+// confirmMessage presses Enter when the session's prompt still shows text
+// and nothing waits for an answer, and says whether it did.
+func confirmMessage(s promptTyper, id, text string) bool {
+	if _, waiting := s.PendingPermission(id); waiting {
+		return false
+	}
+	if !s.PromptHolds(id, text) {
+		return false
+	}
+	return s.Input(id, []byte("\r")) == nil
+}
+
+// enterGap is the pause before the Enter: gap, plus 25 ms for every quarter
+// KiB of a long message, which a TUI takes longer to read in — at most a
+// second (or gap, if that is longer).
+func enterGap(gap time.Duration, n int) time.Duration {
+	return min(gap+time.Duration(n/256)*25*time.Millisecond, max(gap, time.Second))
+}
+
+// messageBytes is a message as written to a session's prompt: wrapped in
+// bracketed paste, with line breaks as CR as a terminal pastes them, when
+// paste is on; typed, with line breaks as ESC CR, when not.
+func messageBytes(text string, paste bool) string {
+	if paste {
+		return "\x1b[200~" + promptText(text, "\r") + "\x1b[201~"
+	}
+	return promptText(text, "\x1b\r")
+}
+
+// promptBytes is text as typed into a TUI's prompt, without paste.
+func promptBytes(text string) string { return promptText(text, "\x1b\r") }
+
+// promptText is text as written into a TUI's prompt, each line break as nl.
+// Control characters are dropped — an escape sequence in the text would be a
+// key, and an ESC would end a paste early — and a tab is two spaces (Tab
+// switches modes in Claude Code). A message ending in an @file mention gets
+// a space after it: Claude Code's file menu is open there, and the Enter
+// that follows would pick from the menu, not send.
+func promptText(text, nl string) string {
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 	if f := strings.Fields(text); len(f) > 0 && strings.HasPrefix(f[len(f)-1], "@") && !strings.HasSuffix(text, " ") {
 		if i := strings.LastIndexAny(text, " \n\t"); i < 0 || strings.HasPrefix(text[i+1:], "@") {
@@ -383,7 +473,7 @@ func promptBytes(text string) string {
 	for _, r := range text {
 		switch {
 		case r == '\n':
-			b.WriteString("\x1b\r")
+			b.WriteString(nl)
 		case r == '\t':
 			b.WriteString("  ")
 		case r < 0x20, r == 0x7f, r >= 0x80 && r < 0xa0:

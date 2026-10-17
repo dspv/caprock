@@ -14,7 +14,7 @@
  * agent receives and the mute are unit-tested apart from the card.
  */
 import { useSyncExternalStore } from 'react'
-import type { LoopAlert } from './api'
+import type { LoopAlert, QueueWaiting } from './api'
 
 /** The repeated input without the detector's "Tool: " prefix. */
 export function loopInput(a: Pick<LoopAlert, 'tool' | 'sample'>): string {
@@ -116,6 +116,21 @@ export function tellAgentMessage(a: LoopAlert): string {
   return `[Caprock] Heads-up: ${when}you ${verb} ${noun} ${times(a.count)}${input ? `: \`${input.replace(/`/g, "'")}\`` : ''}. `
     + `If you're stuck, step back and try a different approach, or tell me what's blocking. `
     + `(Sent by Caprock's loop alert — not by the user.)`
+}
+
+/**
+ * What the card says once "Send to the agent" went through. Sent means the
+ * daemon typed it in and pressed Enter — and once more if the prompt still
+ * held the text a moment later (ADR-053, 2026-10-17 amendment). Otherwise it
+ * waits in the session's queue, and the card says what for.
+ */
+export function sentLabel(sent: boolean, waiting?: QueueWaiting): string {
+  if (sent) return 'Sent to the agent'
+  switch (waiting) {
+    case 'permission': return 'Will send once the permission prompt is answered'
+    case 'question': return 'Will send once its question is answered'
+    default: return 'Will send when it finishes this turn'
+  }
 }
 
 // --- Dismiss and mute ------------------------------------------------------

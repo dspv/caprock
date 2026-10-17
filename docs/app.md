@@ -620,10 +620,11 @@ others. Installing it: [install-app.md](install-app.md).
   message first, marked *[Caprock]* and signed as sent by Caprock's loop
   alert, not by you; edit it or click **Send to the agent** and it goes
   into that session's queue, typed in when the turn ends like any queued
-  message. It is offered only on sessions Caprock started: one you started
+  message, and the card says *Sent to the agent* or *Will send when it
+  finishes this turn*. It is offered only on sessions Caprock started: one you started
   in your own terminal gets **Open session** instead, because Caprock never
   types into it. **Dismiss** puts the card away until the loop starts
-  again; its ▾ menu has *Don't warn about this command again in this
+  again, and never sends anything; its ▾ menu has *Don't warn about this command again in this
   session* and *Set a spending cap…*.
 - **Claude's faces.** Claude's little character comes in eight looks — the
   hard hat, a beanie, headphones, a crown, a wizard's hat, a tuft of hair,

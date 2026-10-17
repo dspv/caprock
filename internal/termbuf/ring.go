@@ -73,6 +73,17 @@ func (r *Ring) SnapshotAt() ([]byte, uint64) {
 	return append(r.modes.prefix(), r.buf...), r.total
 }
 
+// Mode reports the last value the output set for one of the tracked DEC
+// private modes (1, 25, 1004, 2004), and whether the output has set it at
+// all. The daemon reads 2004 before it types a message into a session: an
+// app that turned bracketed paste on is sent the message as a paste.
+func (r *Ring) Mode(n int) (on, seen bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	on, seen = r.modes.set[n]
+	return on, seen
+}
+
 // Total is the offset one past the newest byte.
 func (r *Ring) Total() uint64 {
 	r.mu.Lock()

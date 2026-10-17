@@ -3136,6 +3136,48 @@ answers a different question — WP-13's rule stands).
 can deliver too), another agent gains a turn-end signal, or people ask to
 reorder the queue.
 
+**Amendment, 2026-10-17 — a message goes as a paste, and its Enter is
+checked.** The owner (translated): "I clicked *Tell agent*, then Dismiss,
+and then I found the message in the chat — typed but not sent." The session
+was a Codex one Caprock started (`codex-cli 0.161.0`); its turn ended at
+21:19:28, and the heads-up reached Codex's transcript as a prompt only at
+21:24:21, five minutes later, with nothing logged by the queue in between —
+it had been typed at once (Codex has no turn-end signal) and sat in the
+composer until an Enter came from somewhere else. The text and its Enter
+were already two writes 200 ms apart, but a pause between writes is not a
+pause between reads: Codex's composer has a paste-burst detector
+(`tui/src/bottom_pane/paste_burst.rs` in its binary, a
+`disable_paste_burst` setting), which keeps an Enter that comes in a fast
+run of characters as a line break, and an agent busy redrawing reads the
+text and the Enter together. Dismiss was not the cause: it only hides the
+card and sends nothing.
+
+- **A paste where the session takes one.** When the session's output has
+  turned bracketed paste on (`ESC[?2004h`, which the terminal ring already
+  tracked for late-attaching tabs), the text is sent wrapped in
+  `ESC[200~` … `ESC[201~`, so the TUI knows where the paste ends whatever
+  the timing, and the `\r` after it is a key. This is how Claude Code itself
+  types a reply into another Claude Code's terminal (2.1.302: the paste,
+  then `\r` 10 ms later). A session that never turned it on is typed into
+  as before (line breaks as ESC CR).
+- **A longer pause for a longer message.** 200 ms plus 25 ms per 256 bytes,
+  at most 1 s.
+- **Checked once.** 1.5 s after the Enter the daemon reads the session's
+  screen; when the prompt still holds the text and nothing else could take
+  an Enter — no hook since (the turn did not start), no permission prompt,
+  no menu on the screen — it presses Enter once more. A wrong guess costs
+  one Enter at an empty prompt, which does nothing.
+- **Every path.** The chat field, the phone, *Tell the agent*, a delivery at
+  the end of a turn, Send now and a Telegram reply all type through the
+  same function.
+
+Not verified on a real Claude Code or Codex TUI from the daemon's side:
+whether either ever loses the Enter after a closed paste, and whether the
+screen check reads their input boxes on every layout. Rejected: retrying
+until the text leaves the prompt (a message the user is editing would be
+sent), and a fixed longer pause alone (no pause survives a TUI that reads
+late).
+
 ## ADR-054 — The permission mode changes in a running session: Shift+Tab typed in, or the same conversation restarted in the new mode
 
 **Date:** 2026-10-11 · **Status:** accepted (owner asked for it, translated:
