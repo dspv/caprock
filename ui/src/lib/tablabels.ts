@@ -11,6 +11,7 @@ import { dotOf, sessionTitle, type Dot } from './sidebar'
 import { branchLabel } from './sessionLabels'
 import { leaves, namingLeaf, type Tab } from './tabs'
 import { isQuickChat, startedChat } from './quickchat'
+import { pageTitle } from './browsertab'
 
 export interface TabLabel {
   /** The agent's title, "Shell 2", or a file's name; "+N" for panes split beside it. */
@@ -19,6 +20,8 @@ export interface TabLabel {
   branch?: string
   /** A file tab: the file's path, for its tooltip. */
   file?: string
+  /** A browser tab (ADR-075): the address it shows, '' for a new one. A page is never an agent, a shell or a file. */
+  page?: string
   isShell: boolean
   /** A shell tab: its name alone, "Shell 2", for the question before closing it. */
   shellName?: string
@@ -50,6 +53,11 @@ export function tabLabels(
     const leaf = namingLeaf(t)
     const panes = leaves(t.root).length
     const more = panes > 1 ? ` +${panes - 1}` : ''
+    if (leaf.target.kind === 'page') {
+      const url = leaf.target.url ?? ''
+      out.set(t.id, { title: pageTitle(url, t.title), page: url, isShell: false, dot: 'idle' })
+      continue
+    }
     if (leaf.target.kind === 'file') {
       const file = leaf.target.path ?? ''
       out.set(t.id, { title: baseName(file), file, isShell: false, dot: 'idle' })

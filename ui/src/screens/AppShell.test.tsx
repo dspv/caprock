@@ -951,6 +951,19 @@ describe('the app workspace', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 
+  // ADR-075: the in-app browser is the desktop app's, and off until Settings
+  // turns it on; until then a link asked for in Caprock opens in the browser.
+  it('sends a page to your browser while the in-app browser is off, and opens no tab', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    await renderApp()
+    act(() => { window.dispatchEvent(new CustomEvent('caprock:open-browser', { detail: { url: 'https://example.com/' } })) })
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener')
+    expect(screen.queryByRole('tab', { name: /^Browser · / })).toBeNull()
+    act(() => { window.dispatchEvent(new CustomEvent('caprock:open-browser', { detail: {} })) })
+    expect(await screen.findByText('Turn on the in-app browser in Settings first.')).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: /^Browser · / })).toBeNull()
+  })
+
   it('text the palette cannot match starts an agent on it, in a worktree named after it', async () => {
     await renderApp()
     await cmd('k')

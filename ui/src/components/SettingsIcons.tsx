@@ -30,6 +30,7 @@ const P: Record<string, string> = {
   alert: 'M12 3l10 18H2zM12 10v4M12 18h.01',
   disk: 'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',
   pause: 'M8 5v14M16 5v14',
+  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z',
   refresh: 'M20 11a8 8 0 0 0-14.9-4M4 4v4h4M4 13a8 8 0 0 0 14.9 4M20 20v-4h-4',
 }
 
@@ -39,6 +40,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/saved prompts/i, 'bookmark'],
   [/project templates/i, 'folder'],
   [/appearance/i, 'palette'],
+  [/browser/i, 'globe'],
   [/phone/i, 'phone'],
   [/telegram/i, 'send'],
   [/terminal|status line/i, 'terminal'],

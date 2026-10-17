@@ -318,7 +318,8 @@ One window, three regions:
   while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
   agent* ⇧⌘N, *Quick chat* ⌥⌘N (at once), *Quick chat with…* (the chooser),
-  *New shell* ⌘T, *Open file…*, *Add project* ⌘O, each with its key; ↑ ↓,
+  *New shell* ⌘T, *Open file…*, *New browser tab* (only while the in-app
+  browser is on, § Browser tabs), *Add project* ⌘O, each with its key; ↑ ↓,
   Enter, Esc. The separate >_ new-shell button is gone: it is the menu's
   third row and ⌘T, and two lone icons side by side read as one ambiguous
   control.
@@ -1879,6 +1880,54 @@ with ⌘W and is restored on relaunch like them
 - **A phone may read** what a paired viewer may already read in a diff; it
   cannot write anything here.
 
+## Browser tabs
+
+The in-app browser, beta, off until Settings → *In-app browser (beta)* turns
+it on; with it off no page window is ever made. Decided in
+[ADR-075](08-decisions.md), which also records why 0.123.0's Page tab
+crashed (ADR-070); what the user sees is in
+[04-ui.md § The app workspace](04-ui.md#the-app-workspace), *Browser tabs*.
+
+- **A tab kind, apart.** `page` in `ui/src/lib/tabs.ts`: after every other
+  tab behind a divider, a globe and the page's title, no ⌘1–⌘9, no sidebar
+  row, never split, never counted as an agent.
+- **A window of its own, never a child webview.** Each page is a top-level
+  `WebviewWindow`, `browser-<id>` (`app/src-tauri/src/browser.rs`),
+  borderless, laid over the tab's content box: a child window of the main
+  one on macOS (moves with it), owned on Windows and transient on Linux
+  (moved by the shell when the main window moves or resizes; Wayland may
+  not let it be placed). The main window keeps its one webview, so
+  `get_webview_window` and the drops (§ Dropping a file) work as without a
+  browser. One command, `browser_tab` (`{id, act}`; app/README.md § What a
+  page may call): open, place, show, hide, close, go, back, forward, reload,
+  focus, pause, retain.
+- **Kept where it was.** Behind, the window is hidden, never reloaded or
+  unloaded. A page is closed only with its tab, when the switch is turned
+  off, or when a reloaded dashboard no longer has its tab (`retain`); a
+  closed page is hidden, sent to `about:blank` and closed 1.5 s later, so
+  its WebContent process is done with it first (the 0.124.0 crash, ADR-075).
+  A dashboard reload hides every page; the tabs that come back show theirs.
+- **Opened from** File → *New Browser Tab* (macOS, a globe), ⌘K and the +
+  menu, an address typed into ⌘K, *Open in Caprock* in the link chooser
+  (`caprockEntry`, `openInCaprock` in `ui/src/lib/browsertab.ts`), and a
+  page's own new window (target=_blank, `window.open`): another tab, never a
+  popup. ⌘-click keeps opening the default browser.
+- **A new tab starts in its address box**; plain words search with the
+  engine chosen in Settings (DuckDuckGo by default).
+- **Keys**: ⌥← ⌥→ step between tabs while a browser tab is in front, outside
+  a text field (Ctrl+PageUp and Ctrl+PageDown off macOS, where Alt+← → are
+  Back and Forward); ⌘L (Ctrl+L) the address box; ⌘W closes the tab. The
+  page reads these through the shell's `KEYS_SCRIPT`, which hands each over
+  as a refused navigation to `caprock-browser:<key>`; every other key is the
+  page's.
+- **A stranger to Caprock**: no capability names `browser-*`; its store is
+  non-persistent and its own; it follows only web schemes; a download goes
+  into Downloads, never opened.
+- **An agent waiting on you** while a browser tab is in front: a strip names
+  it with *Go* and a playing video is paused (Settings; #618's idea).
+- **Not verified in a real run** (ADR-075): the overlay on Windows and Linux,
+  Wayland placement, `navigator.clipboard` and drops inside a page.
+
 ## Feedback screenshots
 
 The feedback box (`.ai/04-ui.md` § Feedback) carries its screenshots to
@@ -2002,7 +2051,10 @@ webview's (`WindowEvent::DragDrop`, `WebviewEvent::DragDrop`): which one
 Tauri sends depends on whether the dashboard is the window's content or a
 child of it. 0.123.0 made it a child (the `unstable` feature, for the Page
 tab) while listening on the window, and no drop arrived; 0.124.1 removed the
-Page tab and listens for both.
+Page tab and listens for both. The in-app browser that came back (ADR-075)
+puts each page in a window of its own, so the main window's drops are what
+they were; a file dropped on a page is the page's (its window's own drop
+handler is off).
 
 ## Notifications
 
@@ -2278,6 +2330,10 @@ guide [docs/app.md § GitHub](../docs/app.md#github).
   grant the command list in [§ Architecture](#architecture) to the daemon's
   exact origin and nothing else; no remote origin, no shell plugin, no
   filesystem plugin. A strict CSP; no remote scripts.
+- **A browser tab's page gets nothing at all** (ADR-075): its window,
+  `browser-<id>`, is named by no capability, so it is refused every command
+  even on `127.0.0.1`; its store is non-persistent and its own; the one
+  script the shell gives it reads the browser keys and can call nothing.
 - **The sidecar runs one binary** — the bundled `caprock`, with fixed
   arguments.
 - **Tokens never in URLs.** The device token stays a header or WebSocket

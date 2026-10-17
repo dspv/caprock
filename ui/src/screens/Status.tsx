@@ -41,6 +41,7 @@ import { useSidebarMode, type SidebarMode } from '@/lib/sidebarMode'
 import { useTodayCard } from '@/lib/todayCard'
 import { UI_SCALES, setUiScale, useUiScale, type UiScale } from '@/lib/uiscale'
 import { TerminalSettings } from '@/components/TerminalSettings'
+import { BrowserSetting } from '@/components/BrowserSetting'
 import { StatuslineSetting } from '@/components/StatuslineSetting'
 import { EditorSetting } from '@/components/EditorSetting'
 import { DefaultFolderSetting } from '@/components/DefaultFolderSetting'
@@ -160,6 +161,7 @@ export function StatusScreen() {
           {owner && <TemplatesSetting />}
           <AppearanceSection />
           <TerminalSettings />
+          {isTauri() && <BrowserSetting />}
           {owner && <StatuslineSetting />}
           {owner && <EditorSetting />}
           {owner && <DefaultFolderSetting />}

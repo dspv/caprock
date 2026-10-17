@@ -44,7 +44,7 @@ vi.mock('@/lib/termv2', () => ({
 }))
 
 import { TerminalPane } from './TerminalPane'
-import { SHORTCUTS, keys, matchAppShortcut } from '@/lib/appkeys'
+import { BROWSER_TAB_KEYS, SHORTCUTS, keys, matchAppShortcut } from '@/lib/appkeys'
 
 const PLATFORMS = [
   { os: 'macOS', platform: 'MacIntel', isMac: true },
@@ -77,9 +77,11 @@ function parse(spelled: string): Press {
   }
 }
 
-/** Every SHORTCUTS row with an arrow, each chord in it, in this platform's words. */
+/** Every SHORTCUTS row with an arrow, each chord in it, in this platform's words.
+ *  A browser tab's ⌥← ⌥→ (BROWSER_TAB_KEYS) act only while a browser tab is in
+ *  front, never in a terminal, where they stay word jumps (the test below). */
 function arrowChords(isMac: boolean): string[] {
-  return SHORTCUTS.filter(([k]) => /[↑↓←→]/.test(k))
+  return SHORTCUTS.filter(([k]) => /[↑↓←→]/.test(k) && k !== BROWSER_TAB_KEYS)
     .flatMap(([k]) => k.split(', '))
     .map((k) => keys(k, isMac))
 }

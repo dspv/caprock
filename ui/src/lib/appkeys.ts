@@ -23,6 +23,8 @@ export const DASHBOARD_KEY = '⌘D'
 export const PIPELINE_KEY = '⌘P'
 export const WORK_KEY = '⇧⌘W'
 export const THEME_KEY = '⇧⌘T'
+/** A browser tab's own keys (lib/browsertab browserKey, ADR-075): only while one is in front, never a terminal's. */
+export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
 
 /**
  * The two clicks on a link in a terminal (lib/termlinks.ts), in macOS
@@ -401,6 +403,10 @@ function offMac(k: string): string {
   // Alt+Shift arrows are the app's there, and Ctrl+Shift arrows reach the
   // terminal only from the terminal, never from a focused sidebar row.
   if (k.includes('⌥') && !k.includes('⌘') && /[↑↓]$/.test(k)) return `Ctrl+Shift+${k.slice(-1)}`
+  // A browser tab's ⌥← ⌥→ (lib/browsertab browserKey): Alt+← → are Back and
+  // Forward in every browser off macOS, so the tab keys are theirs there.
+  if (k === '⌥←') return 'Ctrl+PageUp'
+  if (k === '⌥→') return 'Ctrl+PageDown'
   if (!k.includes('⌘')) return k
   // The arrow chords are Alt+Shift off macOS (arrowCommand).
   if (/[↑↓←→]$/.test(k)) return `Alt+Shift+${k.slice(-1)}`
@@ -457,6 +463,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar or the Live pulse, or a right panel section by its grip'],
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
+  [BROWSER_TAB_KEYS, 'In a browser tab (beta): the tab before and after, outside a text field'],
   ['⌘W', 'Close the tab or pane — the session keeps going'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
   ['⌘[ ]', 'Previous and next pane'],

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
   key,
@@ -403,5 +404,28 @@ describe('every listed shortcut, on every OS', () => {
     expect(keys('⌥⌘N', false)).toBe('Ctrl+Alt+Shift+N')
     expect(matchAppShortcut(event('KeyN', 'n', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'quick-chat' })
     expect(matchAppShortcut(event('KeyN', 'n', { ctrlKey: true, shiftKey: true, altKey: true }), true)).toBeNull()
+  })
+})
+
+// Rule 12, ADR-075: a browser tab's ⌥← ⌥→ are spelled as Windows and Linux
+// press them, and the spelled keys are the ones browserKey answers to there.
+describe("a browser tab's keys, on every OS", () => {
+  it('are listed, and Ctrl+PageUp/PageDown off macOS', () => {
+    expect(SHORTCUTS.some(([key]) => key === '⌥←, ⌥→')).toBe(true)
+    expect(keys('⌥←, ⌥→', true)).toBe('⌥←, ⌥→')
+    expect(keys('⌥←, ⌥→', false)).toBe('Ctrl+PageUp, Ctrl+PageDown')
+  })
+
+  it('reach the browser tab as spelled, and are never an app shortcut a terminal would lose', () => {
+    expect(browserKey(k('ArrowLeft', { altKey: true }), true)).toBe('prev')
+    expect(browserKey(k('ArrowRight', { altKey: true }), true)).toBe('next')
+    expect(browserKey(k('PageUp', { ctrlKey: true }), false)).toBe('prev')
+    expect(browserKey(k('PageDown', { ctrlKey: true }), false)).toBe('next')
+    // In a terminal ⌥← ⌥→ are word jumps, Ctrl+PageUp/PageDown PowerShell's: the app's key map leaves them alone.
+    for (const isMac of [true, false]) {
+      expect(matchAppShortcut(k('ArrowLeft', { altKey: true }), isMac)).toBeNull()
+      expect(matchAppShortcut(k('PageUp', { ctrlKey: true }), isMac)).toBeNull()
+      expect(ownsTerminalKey(k('ArrowRight', { altKey: true }), isMac)).toBe(false)
+    }
   })
 })

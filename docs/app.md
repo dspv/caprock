@@ -825,6 +825,29 @@ others. Installing it: [install-app.md](install-app.md).
   sidebar hidden (`⌘\`) it also shows the 5-hour and 7-day plan windows and
   today's spend, which the sidebar's *Today* carries while it is open.
 
+### The in-app browser (beta)
+
+Off until you turn it on: Settings → *In-app browser (beta)*. Then *New
+browser tab* (File menu on macOS, ⌘K, the + menu) opens a tab after your
+agents' tabs with the cursor in its address box: type an address, or words
+to search with DuckDuckGo (or the engine you pick in the same setting). An
+address typed into ⌘K opens there too, and *Open in Caprock* appears where
+you choose how a link opens. ⌘-click on a link still opens your default
+browser.
+
+A browser tab keeps its page exactly where it was while you work in other
+tabs. ⌥← ⌥→ (Ctrl+PageUp, Ctrl+PageDown on Windows and Linux) step to the
+tab before or after, outside a text field; ⌘L puts the cursor in the
+address box; ⌘W closes the tab. Every other key goes to the page. A link
+that opens a new window opens another browser tab. When an agent starts
+waiting on you, a strip over the page names it with *Go*, and a playing
+video is paused (you can turn the pause off).
+
+Pages share no cookies with Caprock or with each other, keep nothing once
+the app quits (so you are signed out of sites each time), and can call
+nothing of Caprock's. A download goes to your Downloads folder and is never
+opened.
+
 ### Keyboard
 
 On macOS:
@@ -840,6 +863,7 @@ On macOS:
 | ⌥⌘→, ⌥⌘←    | Next and previous project                                                           |
 | ⌥⇧↑, ⌥⇧↓    | Move the focused sidebar or Live pulse row, or right panel section grip, up or down |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                               |
+| ⌥←, ⌥→      | In a browser tab (beta): the tab before and after, outside a text field             |
 | ⌘W          | Close the tab or pane (the session keeps going); on the Dashboard, nothing          |
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
 | ⌘[ ]        | Previous and next pane                                                              |
@@ -872,6 +896,8 @@ Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
+a browser tab's ⌥← ⌥→ are Ctrl+PageUp and Ctrl+PageDown, since Alt+← → are
+a browser's Back and Forward there;
 in a text field the arrow chords stay the field's. Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
