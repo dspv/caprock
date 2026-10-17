@@ -3,6 +3,7 @@ package mail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -110,7 +111,7 @@ func TestOAuthAccountLifecycle(t *testing.T) {
 	if prov.Revocations() != 1 {
 		t.Fatalf("revocations = %d", prov.Revocations())
 	}
-	if _, err := s.sec.Get(id); err != secrets.ErrNotFound {
+	if _, err := s.sec.Get(id); !errors.Is(err, secrets.ErrNotFound) {
 		t.Fatalf("refresh token still stored: %v", err)
 	}
 	if prov.Valid(oauthtest.AccessToken(prov.Issued())) {
@@ -145,7 +146,7 @@ func TestRemoveMicrosoftAccountDoesNotCallOut(t *testing.T) {
 	if prov.Revocations() != 0 {
 		t.Fatal("a revocation was sent")
 	}
-	if _, err := s.sec.Get(id); err != secrets.ErrNotFound {
+	if _, err := s.sec.Get(id); !errors.Is(err, secrets.ErrNotFound) {
 		t.Fatalf("refresh token still stored: %v", err)
 	}
 }
