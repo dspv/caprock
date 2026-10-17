@@ -29,11 +29,25 @@
  *   opened ("19h"), its checks per OS (`card.os`) as dots, its CI time
  *   against the usual (`card.ci_ms`, the flow's median), and the agent spend
  *   recorded on it (`store.SpendByPR`, at list price; "—" when none was).
+ * - **A repository that cuts no releases** (`board.ships_by` merge: none
+ *   published and no version tag in 180 days — a site deployed on every
+ *   merge; owner, 2026-10-18) has no next release: no version, the line
+ *   *No releases here: work ships when it merges*, bars without the
+ *   released step, and its merges, done, under a short *Merged recently*
+ *   (MERGED_RECENT) instead of piling up as waiting for a release.
+ * - **What else heads into it** (owner, 2026-10-18, translated: "it shows
+ *   vaguely what's going on on the way to the release"; agents push
+ *   branches and one batch pull request ships them): where a session is
+ *   known (the right panel), its repository's pushed branches with no pull
+ *   request (`branchRows`) and the session's working subagents
+ *   (`subagentRows`). The rows stand in sections, each with a count:
+ *   *In this release · 2 merged*, *Pull requests · 1 open*, *Ready · 3
+ *   branches*, *In progress · 6 agents* (`planSections`).
  */
-import type { SessionCIStats, Work, WorkRepo, WorkSession } from './api'
-import type { BranchPR } from './branches'
+import type { SessionCIStats, SubagentsNow, Work, WorkRepo, WorkSession } from './api'
+import type { BranchPR, SessionBranches } from './branches'
 import { fmtUSD } from './format'
-import { AGENT_COST_NOTE, asBoard, type BoardFlow, type BoardOS } from './prboard'
+import { AGENT_COST_NOTE, asBoard, type BoardFlow, type BoardOS, type ShipsBy } from './prboard'
 import { spanText, vsMedianText } from './prstats'
 import { buildWork, ciVsUsual, gapText, isIdle, MIN_GAPS, releaseLag, STEPS, todoSteps, type Stage, type WorkItem } from './work'
 
@@ -59,7 +73,10 @@ export interface PlanRow {
   number?: number
   title: string
   url?: string
-  stage: Stage
+  /** The Work board's stage, or `branch`: pushed, with no pull request yet. */
+  stage: Stage | 'branch'
+  /** The section it is listed under (`planSections`). */
+  section: RowSection
   /** Blocks filled, 0–BLOCKS. */
   filled: number
   /** The step it is on failed: its blocks are drawn red. */
@@ -105,8 +122,25 @@ export interface RowContext {
   flow?: Pick<BoardFlow, 'ci_median_ms' | 'days' | 'release_lag_median_ms' | 'release_lag_count'>
 }
 
+/** The sections a plan's rows stand in, in this order. */
+export type RowSection = 'merged' | 'pr' | 'branch' | 'agent'
+export const SECTION_ORDER: readonly RowSection[] = ['merged', 'pr', 'branch', 'agent']
+
+/** How many pushed branches the plan lists, newest first. */
+export const BRANCHES_LISTED = 15
+/** A pushed branch committed longer ago than this is not listed. */
+export const BRANCH_RECENT_MS = 14 * 24 * 60 * 60 * 1000
+/** How many working subagents the plan lists. */
+export const SUBAGENTS_LISTED = 10
+
+/** How many merges a repository that ships on merge lists under *Merged recently*. */
+export const MERGED_RECENT = 3
+
+/** The line said where work ships on merge, in place of the release line. */
+export const SHIPS_ON_MERGE = 'No releases here: work ships when it merges'
+
 export interface PlanGroup {
-  key: 'drafts' | 'idle'
+  key: 'drafts' | 'idle' | 'merged'
   label: string
   rows: PlanRow[]
 }
@@ -119,6 +153,8 @@ export interface ReleasePlanData {
   since?: { text: string; title: string }
   rows: PlanRow[]
   later: PlanGroup[]
+  /** How merged work ships here (`board.ships_by`); absent: not known. */
+  ships?: ShipsBy
 }
 
 /** "v0.119.0" → [0, 119, 0] and its prefix; undefined for a tag that is not x.y.z. */
@@ -308,6 +344,7 @@ export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext
     title: it.title,
     url: it.pr?.url,
     stage: it.stage,
+    section: it.kind === 'pr' ? (it.stage === 'merged' ? 'merged' : 'pr') : 'agent',
     filled: Math.max(0, Math.min(BLOCKS, it.fill * PER_STEP)),
     red: it.red || !!landing?.red,
     warn: !landing?.red && !!landing?.warn,
@@ -333,15 +370,18 @@ const mergedAt = (it: WorkItem) => it.pr?.merged_at ?? 0
  * and later's drafts and idle agents. Released, closed, tasks and queued
  * messages are not the release's.
  */
-export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], root: string, lastTagAt: number | undefined, prs: readonly BranchPR[] = [], ctx: RowContext = {}): { rows: PlanRow[]; later: PlanGroup[]; merged: number } {
+export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], root: string, lastTagAt: number | undefined, prs: readonly BranchPR[] = [], ctx: RowContext = {}, ships?: ShipsBy): { rows: PlanRow[]; later: PlanGroup[]; merged: number } {
   const labels = new Map(prs.map((p) => [p.number, p.labels]))
   const mine = (it: WorkItem) => it.repo?.root === root
   const next: WorkItem[] = []
   const drafts: WorkItem[] = []
+  const done: WorkItem[] = []
   for (const it of items) {
     if (!mine(it)) continue
     if (it.kind === 'session') { next.push(it); continue }
     if (it.kind !== 'pr' || it.stage === 'released' || it.stage === 'planned') continue
+    // Where work ships on merge, a merge is done: no release to wait for.
+    if (it.stage === 'merged' && ships === 'merge') { done.push(it); continue }
     // Merged before the last tag: in that tag, though no GitHub release says so.
     if (it.stage === 'merged' && lastTagAt && mergedAt(it) > 0 && mergedAt(it) <= lastTagAt) continue
     if (it.word === 'draft') drafts.push(it)
@@ -349,6 +389,13 @@ export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], 
   }
   next.sort((a, b) => b.fill - a.fill || (a.stage === 'merged' ? mergedAt(a) - mergedAt(b) : (a.pr?.number ?? Infinity) - (b.pr?.number ?? Infinity)))
   const later: PlanGroup[] = []
+  if (done.length) {
+    const recent = [...done].sort((a, b) => mergedAt(b) - mergedAt(a)).slice(0, MERGED_RECENT)
+    later.push({
+      key: 'merged', label: 'Merged recently · shipped when merged',
+      rows: recent.map((it) => ({ ...rowOf(it, labels.get(it.pr?.number ?? -1), ctx), wait: undefined, wordTitle: 'Merged: the last step here. This repository cuts no releases, so work ships when it merges.' })),
+    })
+  }
   if (drafts.length) later.push({ key: 'drafts', label: 'Later · drafts, not yet ready for review', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)) })
   const sleeping = idle.filter(mine)
   if (sleeping.length) {
@@ -386,27 +433,133 @@ export function sinceLine(last: { name: string; at: number } | undefined, merged
   return { text, title: what + usual }
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * The pushed branches heading for the release: on origin, ahead of the
+ * default branch, committed in the last 14 days, with no pull request (none
+ * in the branch's own read nor in the Pipeline's list by head), and not
+ * already on the default branch by content (`landed`: a squash merge, or
+ * inside a batch). The newest BRANCHES_LISTED; each titled by its last
+ * commit's subject, its word the commits ahead and its age.
+ */
+export function branchRows(br: SessionBranches | undefined, prs: readonly BranchPR[], now: number, repo?: string): PlanRow[] {
+  if (!br?.branches?.length) return []
+  const headed = new Set(prs.map((p) => p.head).filter((h): h is string => !!h))
+  return br.branches
+    .filter((b) => !b.default && b.remote && (b.ahead ?? 0) > 0 && !b.pr && !headed.has(b.name) && !b.landed && b.committed_ms > 0 && now - b.committed_ms <= BRANCH_RECENT_MS)
+    .sort((a, b) => b.committed_ms - a.committed_ms)
+    .slice(0, BRANCHES_LISTED)
+    .map((b): PlanRow => {
+      const n = b.ahead ?? 0
+      const age = ageText(now - b.committed_ms)
+      const base = br.base ?? br.default ?? 'the default branch'
+      return {
+        key: `b:${b.name}`,
+        title: b.subject || b.name,
+        url: repo && br.default ? `https://github.com/${repo}/compare/${encodeURIComponent(br.default)}...${b.name.split('/').map(encodeURIComponent).join('/')}` : undefined,
+        stage: 'branch', section: 'branch', filled: PER_STEP, red: false, warn: false, running: false,
+        word: `+${n} · ${age}`,
+        wordTitle: `${b.name}: pushed, ${plural(n, 'commit')} ahead of ${base}, the last ${spanText(Math.max(0, now - b.committed_ms))} ago; no pull request yet.`,
+        age: { text: age, title: `Last commit ${spanText(Math.max(0, now - b.committed_ms))} ago` },
+        cost: b.sessions > 0
+          ? { text: fmtUSD(b.cost_usd), title: `${fmtUSD(b.cost_usd)} of agent work over ${plural(b.sessions, 'session')} on this branch, at API list price, not a bill.\n${AGENT_COST_NOTE}`, known: true }
+          : { text: '—', title: 'No Caprock session was recorded on this branch, so no agent cost is said.', known: false },
+      }
+    })
+}
+
+/** The session's working subagents, newest first, the first SUBAGENTS_LISTED: what each was asked, and for how long it has worked. */
+export function subagentRows(subs: SubagentsNow | undefined, now: number): PlanRow[] {
+  return [...(subs?.working ?? [])]
+    .sort((a, b) => b.started_at - a.started_at)
+    .slice(0, SUBAGENTS_LISTED)
+    .map((a): PlanRow => {
+      const title = a.description || a.doing || a.agent_type || 'A subagent'
+      const age = ageText(now - a.started_at)
+      return {
+        key: `sa:${a.agent_id}`,
+        title,
+        stage: 'agent', section: 'agent', filled: PER_STEP, red: false, warn: a.asking, running: !a.asking,
+        word: a.asking ? 'asking' : `working · ${age}`,
+        wordTitle: a.asking ? 'This subagent waits on a permission prompt.' : `A subagent of this session${a.agent_type ? ` (${a.agent_type})` : ''}, working for ${spanText(Math.max(0, now - a.started_at))}, ${plural(a.tool_calls, 'call')} so far.`,
+        wait: a.doing && a.doing !== title ? { text: a.doing, title: `Now: ${a.doing}` } : undefined,
+        age: { text: age, title: `Started ${spanText(Math.max(0, now - a.started_at))} ago` },
+        cost: a.cost_usd !== undefined
+          ? { text: fmtUSD(a.cost_usd), title: `${fmtUSD(a.cost_usd)} of this subagent's own calls so far, at API list price, not a bill.`, known: true }
+          : { text: '—', title: 'Its cost is not known yet.', known: false },
+      }
+    })
+}
+
+/** The rows by section, in SECTION_ORDER, each named with its count; empty sections left out. */
+export function planSections(rows: readonly PlanRow[]): { key: RowSection; label: string; rows: PlanRow[] }[] {
+  const label: Record<RowSection, (n: number) => string> = {
+    merged: (n) => `In this release · ${n} merged`,
+    pr: (n) => `Pull requests · ${n} open`,
+    branch: (n) => `Ready · ${plural(n, 'branch', 'branches')}`,
+    agent: (n) => `In progress · ${plural(n, 'agent')}`,
+  }
+  return SECTION_ORDER.map((key) => {
+    const rs = rows.filter((r) => r.section === key)
+    return { key, label: label[key](rs.length), rows: rs }
+  }).filter((s) => s.rows.length > 0)
+}
+
+/** What a session adds to its repository's plan: its pushed branches and its working subagents (the right panel). */
+export interface PlanExtra {
+  branches?: SessionBranches
+  subagents?: SubagentsNow
+}
+
 /** The plan of one repository, from the board's rows and what is read of the repository. */
-export function releasePlan(input: { root: string; name?: string; repo?: WorkRepo; stats?: SessionCIStats; items: readonly WorkItem[]; idle?: readonly WorkItem[]; now: number }): ReleasePlanData {
+export function releasePlan(input: { root: string; name?: string; repo?: WorkRepo; stats?: SessionCIStats; items: readonly WorkItem[]; idle?: readonly WorkItem[]; now: number; extra?: PlanExtra }): ReleasePlanData {
   const { root, repo, stats, now } = input
   const board = asBoard(stats?.board)
   const rel = board?.releases?.[0]
   // The last tag as git has it; else the newest published GitHub release.
   const last = repo?.tags?.last ?? (rel ? { name: rel.tag, at: rel.published_at } : undefined)
-  const { rows, later, merged } = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [], { now, flow: board?.flow })
+  const ships = board?.ships_by
+  const planned = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [], { now, flow: board?.flow }, ships)
+  const { later, merged } = planned
+  const added = [...branchRows(input.extra?.branches, stats?.prs ?? [], now, stats?.repo ?? input.extra?.branches?.repo), ...subagentRows(input.extra?.subagents, now)]
+  const rows = [...planned.rows, ...added].sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section))
+  const name = input.name ?? repo?.name ?? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root
+  if (ships === 'merge') {
+    return {
+      root, name, rows, later, ships,
+      since: { text: SHIPS_ON_MERGE, title: 'No release is published on GitHub and no version tag was made in the last 180 days, so merged is the last step here: there is no next release to wait for.' },
+    }
+  }
+  const next = nextVersion(last?.name, repo?.unreleased)
   return {
     root,
-    name: input.name ?? repo?.name ?? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root,
-    next: nextVersion(last?.name, repo?.unreleased),
+    name,
+    next,
     since: sinceLine(last, merged, repo, stats, now),
-    rows,
+    rows: ships === 'release' ? rows.map((r) => waitsForRelease(r, next?.version)) : rows,
     later,
+    ships,
   }
 }
 
-/** Nothing to say: no rows, nothing later, no version. */
+/**
+ * A merged row where releases are cut says what it waits for: *the next
+ * release (v0.133.0)*, the number when the rule predicts one.
+ */
+export function waitsForRelease(r: PlanRow, version: string | undefined): PlanRow {
+  if (r.stage !== 'merged') return r
+  const what = `the next release${version ? ` (v${version})` : ''}`
+  return {
+    ...r,
+    wordTitle: r.wordTitle ?? `Merged; waits for ${what}`,
+    wait: r.wait && !r.wait.tone ? { ...r.wait, text: what, title: r.wait.title.replace(/^Merged: it ships with the next release/, `Merged: it ships with ${what}`) } : r.wait,
+  }
+}
+
+/** Nothing to say: no rows, nothing later (merges already shipped aside), no version. */
 export function planEmpty(p: ReleasePlanData): boolean {
-  return p.rows.length === 0 && p.later.length === 0 && !p.next
+  return p.rows.length === 0 && p.later.every((g) => g.key === 'merged') && !p.next
 }
 
 const NO_WORK: Work = { now: 0, day_start: 0, sessions: [], hive: 'off', queued: [], repos: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 } }
@@ -417,9 +570,9 @@ const NO_WORK: Work = { now: 0, day_start: 0, sessions: [], hive: 'off', queued:
  * there is one, and that answer alone. Without the Work answer there are no
  * agent rows and no version, only the pull requests.
  */
-export function planForRepo(work: Work | undefined, root: string, stats: SessionCIStats | undefined, now: number): ReleasePlanData {
+export function planForRepo(work: Work | undefined, root: string, stats: SessionCIStats | undefined, now: number, extra?: PlanExtra): ReleasePlanData {
   const w = work ? { ...work, tasks: [], queued: [] } : NO_WORK
   const board = buildWork(w, new Map([[root, stats]]), now)
   const repo = work?.repos?.find((r) => r.root === root)
-  return releasePlan({ root, repo, stats, items: board.items, idle: board.idle, now })
+  return releasePlan({ root, repo, stats, items: board.items, idle: board.idle, now, extra })
 }

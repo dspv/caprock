@@ -49,6 +49,9 @@ type Branch struct {
 	CommittedMS int64  `json:"committed_ms"`
 	Author      string `json:"author,omitempty"`
 	SHA         string `json:"sha,omitempty"`
+	// Subject is its last commit's subject line (the release plan's row
+	// title for a pushed branch with no pull request).
+	Subject string `json:"subject,omitempty"`
 }
 
 // Listing is a repository's branches and what they were compared with.
@@ -68,8 +71,10 @@ type ref struct {
 	sha    string
 	ts     int64
 	author string
-	ahead  *int
-	behind *int
+	// subject is the last commit's subject line.
+	subject string
+	ahead   *int
+	behind  *int
 }
 
 // refFormat is what is asked of for-each-ref; the ahead-behind field only
@@ -79,7 +84,8 @@ func refFormat(base string) string {
 	if base != "" {
 		f += "%09%(ahead-behind:" + base + ")"
 	}
-	return f
+	// The subject last, after a NUL: a subject may hold a tab.
+	return f + "%00%(contents:subject)"
 }
 
 // parseRefs reads for-each-ref's lines in refFormat: local branches, and
@@ -87,7 +93,8 @@ func refFormat(base string) string {
 func parseRefs(out string) []ref {
 	var refs []ref
 	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
-		f := strings.Split(strings.TrimRight(line, "\r"), "\t")
+		line, subject, _ := strings.Cut(strings.TrimRight(line, "\r"), "\x00")
+		f := strings.Split(line, "\t")
 		if len(f) < 4 {
 			continue
 		}
@@ -110,6 +117,7 @@ func parseRefs(out string) []ref {
 		ts, _ := strconv.ParseInt(f[2], 10, 64)
 		r.ts = ts * 1000
 		r.author = f[3]
+		r.subject = strings.TrimSpace(subject)
 		if len(f) > 4 {
 			r.ahead, r.behind = ParseAheadBehind(f[4])
 		}
@@ -154,7 +162,7 @@ func merge(refs []ref) []Branch {
 		} else {
 			b.Local = true
 		}
-		b.SHA, b.CommittedMS, b.Author, b.Ahead, b.Behind = r.sha, r.ts, r.author, r.ahead, r.behind
+		b.SHA, b.CommittedMS, b.Author, b.Ahead, b.Behind, b.Subject = r.sha, r.ts, r.author, r.ahead, r.behind, r.subject
 	}
 	out := make([]Branch, 0, len(order))
 	for _, n := range order {
@@ -281,6 +289,51 @@ func IsStale(b Branch, openPR bool, now time.Time) bool {
 		return false
 	}
 	return now.Sub(time.UnixMilli(b.CommittedMS)) > StaleAfter
+}
+
+// landed keeps Landed's answers: one pair of commits always gives the same.
+var landed = struct {
+	mu sync.Mutex
+	m  map[string]bool
+}{m: map[string]bool{}}
+
+// Landed says whether the commit sha's changes are already on base by
+// content: merging it into base changes nothing (`git merge-tree
+// --write-tree`, git 2.38+, gives base's own tree). It finds a branch whose
+// work reached the default branch by a squash merge or inside another
+// branch's batch, which `git cherry` cannot (the patch ids differ). An error
+// (an older git, a conflict, an unknown commit) is "not known", never
+// "landed". Kept per pair of commits.
+func Landed(ctx context.Context, dir, base, sha string) (bool, error) {
+	baseSHA, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", base+"^{commit}")
+	if err != nil {
+		return false, err
+	}
+	baseSHA = strings.TrimSpace(baseSHA)
+	key := dir + "\x00" + baseSHA + "\x00" + sha
+	landed.mu.Lock()
+	v, ok := landed.m[key]
+	landed.mu.Unlock()
+	if ok {
+		return v, nil
+	}
+	out, err := git(ctx, dir, "merge-tree", "--write-tree", baseSHA, sha)
+	if err != nil {
+		return false, err
+	}
+	tree, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	own, err := git(ctx, dir, "rev-parse", baseSHA+"^{tree}")
+	if err != nil {
+		return false, err
+	}
+	v = strings.TrimSpace(tree) == strings.TrimSpace(own)
+	landed.mu.Lock()
+	if len(landed.m) >= 4096 {
+		landed.m = map[string]bool{}
+	}
+	landed.m[key] = v
+	landed.mu.Unlock()
+	return v, nil
 }
 
 func git(ctx context.Context, dir string, args ...string) (string, error) {

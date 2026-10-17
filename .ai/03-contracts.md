@@ -2188,7 +2188,7 @@ over the 14 local calendar days ending today:
   workflow with the most such time first.
 
 - **Board** (2026-10-14) — `board` `{cards[], releases[], flow,
-  default_branch?}`, the tab's Board view (`internal/api/prboard.go`). Each
+  default_branch?, ships_by?}`, the tab's Board view (`internal/api/prboard.go`). Each
   `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, os[]?, ci_ms?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
   and link are that entry's); closed unmerged ones and merges before the 14
@@ -2237,6 +2237,16 @@ over the 14 local calendar days ending today:
   builds count), drafts and unpublished ones left out, kept 2 minutes (10 before
   2026-10-14: a new release missed the board that long); a failed list
   keeps the last one, and with none is no releases, not an error.
+  `ships_by` (2026-10-18; owner, translated: "why isn't merged the final
+  state — there's one more step after it") is how merged work ships in
+  the repository: `release` when one of those releases was published, or
+  one of the checkout's newest tags (`relplan.Tags`, local, as of the
+  last fetch) naming a version (`v0.132.0`, `1.4`, `app-v2.0.1`) was made,
+  within the last 180 days (`shipsRecentDays`); `merge` when neither was
+  and both the release list and the tags were read — a site deployed on
+  every merge, where merged is the last step; absent when either read
+  failed (or an older daemon), and the dashboard then draws the released
+  step as not known.
 - **The figures day by day** (2026-10-15) — `flow.series` is
   `{flight?, throughput?, ci?, ttm?, lag?, cost?}`, each `[{day, value?, n,
   by_now?}]`: one point per local calendar day of the window (the daemon's
@@ -2380,8 +2390,8 @@ view is shown.
   local one); `current` the checkout's branch. A folder that is no
   repository is `reason` `no_repo` with no rows.
 - **Each branch** — `{name, current?, default?, local, remote, ahead?,
-  behind?, committed_ms, author?, sha?, pr?, live?, cost_usd, sessions,
-  agents[], session_at?, activity_at, stale?}`. A local branch and origin's
+  behind?, committed_ms, author?, sha?, subject?, pr?, live?, cost_usd, sessions,
+  agents[], session_at?, activity_at, stale?, landed?}`. A local branch and origin's
   copy are one row (the local one's commit); other remotes and origin's
   `HEAD` are left out. `ahead` and `behind` are absent when not counted.
 - **Its PR** — `pr` `{number, url, title?, state, draft?, base?,
@@ -2401,6 +2411,16 @@ view is shown.
 - **Order and stale** — the current branch first, then `activity_at` (the
   later of the last commit and the newest session event), newest first.
   `stale`: no commit in 30 days and no open PR; never the default branch.
+- **Subject and landed** (2026-10-18, the release plan's pushed branches) —
+  `subject` is the last commit's subject line (`%(contents:subject)`, read
+  after a NUL so a tab in it is kept). `landed` is true when the branch's
+  changes are already on `base` by content: `git merge-tree --write-tree
+  <base> <sha>` (git 2.38+) gives `base`'s own tree, so a branch shipped by
+  a squash merge or inside another branch's batch — which `git cherry`
+  cannot see, the patch ids differing — is found. Checked only for a branch
+  ahead of `base`, committed in the last 14 days, with no open PR, the
+  newest 40, each pair of commits once (kept in memory); a failed check
+  (an older git, a conflict) leaves it absent, never true.
 
 **`GET /v1/github/actions-usage`** (`?owner=` optional) → `ActionsUsage`
 `{account, org, year, month, available, reason?, needs?, minutes, gross_usd,

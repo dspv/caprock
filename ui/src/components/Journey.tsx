@@ -4,7 +4,9 @@
  * on is coloured — its CI's colour on the CI step — the ones behind it are
  * checked, the ones ahead outlined.
  */
-import { STEP_NAME, type JourneyPillStep, type JourneyStep, type StepKey, type StepTone } from '@/lib/journey'
+import type { CSSProperties } from 'react'
+import { RELEASED_MEANS, STEP_NAME, stepKeys, type JourneyPillStep, type JourneyStep, type StepTone } from '@/lib/journey'
+import type { ShipsBy } from '@/lib/prboard'
 
 const PILL: Record<StepTone, string> = {
   ok: 'border-ok/55 bg-ok/15 text-ok',
@@ -59,7 +61,8 @@ export function JourneyPills({ steps, label }: { steps: readonly JourneyPillStep
  * is on reads as done when it got there whole (CI green, merged, released),
  * as waiting when nothing has happened on it yet (a draft, no checks).
  */
-export function stepStateWord(s: JourneyStep): 'done' | 'running' | 'failed' | 'waiting' | 'stopped' {
+export function stepStateWord(s: JourneyStep): 'done' | 'running' | 'failed' | 'waiting' | 'stopped' | 'not known' {
+  if (s.unknown) return 'not known'
   if (s.state === 'done') return 'done'
   if (s.state === 'todo') return 'waiting'
   if (s.state === 'closed') return 'stopped'
@@ -76,35 +79,40 @@ export function segmentTitle(s: JourneyStep, landing?: string): string {
   return `${name}: ${stepStateWord(s)}${word}${lands}. ${s.title}`
 }
 
+/** A grid of n equal columns: the bar and its legend, three steps or four. */
+const cols = (n: number): CSSProperties => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` })
+
 /**
- * Four thin segments: done ones muted, the current one in its colour, the
- * rest a hairline. Each segment has its own tooltip (`segmentTitle`), and a
- * hover target taller than the 4px it draws, which takes no room.
+ * Thin segments, one per step (three where the repository ships on merge):
+ * done ones muted, the current one in its colour, the rest a hairline, one
+ * nothing read can place dotted. Each segment has its own tooltip
+ * (`segmentTitle`), and a hover target taller than the 4px it draws, which
+ * takes no room.
  */
 export function JourneyBar({ steps, landing, className = '' }: { steps: JourneyStep[]; landing?: string; className?: string }) {
   return (
     <span data-journey-bar role="img" aria-label={steps.map((s) => `${STEP_NAME[s.key]} ${stepStateWord(s)}${s.text !== STEP_NAME[s.key] ? ` (${s.text})` : ''}`).join(', ') + (landing ? `, ${landing}` : '')}
-      className={`grid grid-cols-4 gap-[3px] ${className}`}>
+      className={`grid gap-[3px] ${className}`} style={cols(steps.length)}>
       {steps.map((s) => (
-        <span key={s.key} data-journey-seg={s.key} data-step-state={s.state} title={segmentTitle(s, landing)}
-          className={`relative h-[4px] rounded-full before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-[''] ${s.state === 'current' || s.state === 'closed' ? `${BAR[s.tone]} ${s.tone === 'pending' ? 'animate-pulse motion-reduce:animate-none' : ''}` : s.state === 'done' ? 'bg-fg-faint/70' : 'bg-[var(--app-hairline)]'}`} />
+        <span key={s.key} data-journey-seg={s.key} data-step-state={s.state} data-step-unknown={s.unknown ? '' : undefined} title={segmentTitle(s, landing)}
+          className={`relative h-[4px] rounded-full before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-[''] ${s.state === 'current' || s.state === 'closed' ? `${BAR[s.tone]} ${s.tone === 'pending' ? 'animate-pulse motion-reduce:animate-none' : ''}` : s.state === 'done' ? 'bg-fg-faint/70' : s.unknown ? 'bg-[repeating-linear-gradient(90deg,var(--app-hairline-strong)_0_3px,transparent_3px_6px)]' : 'bg-[var(--app-hairline)]'}`} />
       ))}
     </span>
   )
 }
 
-const LEGEND: StepKey[] = ['open', 'ci', 'merged', 'released']
-
 /**
- * The step names over the bars' four columns, once above the rows (owner,
+ * The step names over the bars' columns, once above the rows (owner,
  * 2026-10-15, translated: "it's not clear what the stages are"): the same
  * grid as JourneyBar, in the faint caption style, so each word sits over its
- * segment and no row grows.
+ * segment and no row grows. No *released* where the repository ships on
+ * merge; where it is, its hover says what it means.
  */
-export function JourneyLegend({ className = '' }: { className?: string }) {
+export function JourneyLegend({ ships, className = '' }: { ships?: ShipsBy; className?: string }) {
+  const keys = stepKeys(ships)
   return (
-    <span data-journey-legend aria-hidden className={`grid grid-cols-4 gap-[3px] text-[10px] leading-[12px] text-fg-faint ${className}`}>
-      {LEGEND.map((k) => <span key={k} className="truncate">{k === 'ci' ? 'CI' : STEP_NAME[k].toLowerCase()}</span>)}
+    <span data-journey-legend aria-hidden className={`grid gap-[3px] text-[10px] leading-[12px] text-fg-faint ${className}`} style={cols(keys.length)}>
+      {keys.map((k) => <span key={k} data-journey-legend-step={k} title={k === 'released' ? RELEASED_MEANS : undefined} className="truncate">{k === 'ci' ? 'CI' : STEP_NAME[k].toLowerCase()}</span>)}
     </span>
   )
 }

@@ -12,6 +12,7 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 import { CockpitRelease, ReleasePlan } from './ReleasePlan'
+import { SessionSubagents } from './Cockpit'
 import { WorkView } from '@/screens/Work'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
@@ -50,7 +51,8 @@ describe('the release plan', () => {
     }
     const merged = rows[0]!
     expect(merged.querySelectorAll('[data-step-state="done"]')).toHaveLength(4)
-    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released: to come\nAgent → PR → CI → Merged → Released')
+    // Owner, 2026-10-18: the empty released step says what it means and what the merge waits for.
+    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released (shipped in a published release): waits for the next release (v0.118.0)\nAgent → PR → CI → Merged → Released')
     expect(within(merged).getByText('merged')).toBeInTheDocument()
     // The landing label is the word, and its step is red.
     const red = rows[1]!
@@ -99,7 +101,7 @@ describe('the release plan', () => {
     // Ready waits for a merge; merged for a release, the usual lag on hover; no dots without OS-named checks.
     expect(row(633).querySelector('[data-release-wait]')).toHaveTextContent('a merge')
     expect(row(633).querySelector('[data-release-ci]')).toBeNull()
-    expect(row(630).querySelector('[data-release-wait]')).toHaveTextContent('a release')
+    expect(row(630).querySelector('[data-release-wait]')).toHaveTextContent('the next release')
     expect(row(630).querySelector('[data-release-wait]')!.getAttribute('title')).toMatch(/usually released in ~2h/)
     // The agent asking for a permission waits on the person.
     const agent = document.querySelector<HTMLElement>('[data-release-row^="s:"]')!
@@ -140,6 +142,42 @@ describe('the release plan', () => {
   it('says Next release without a number when the entries say no kind', () => {
     render(<ReleasePlan plan={planForRepo(workFixture(), '/w/caprock', statsFixture(), NOW)} />)
     expect(screen.getByRole('heading', { name: 'Next release' }).title).toMatch(/No number/)
+  })
+
+  // Owner, 2026-10-18, translated, of caprock-web: eighteen merged pull
+  // requests under Next release, each waiting for a release that never comes.
+  it('has no next release where the repository ships on merge: one line, open work, and a short Merged recently', () => {
+    const stats = statsFixture()
+    stats.board!.ships_by = 'merge'
+    for (const n of [640, 641, 642, 643]) {
+      stats.prs!.push({ number: n, url: `u/${n}`, title: `site page ${n}`, state: 'merged', head: `p/${n}`, created_at: NOW - 900 * 60_000, merged_at: NOW - (700 - n) * 60_000 })
+      stats.board!.cards.push({ number: n, stage: 'merged', stage_at: NOW - (700 - n) * 60_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } })
+    }
+    const p = planForRepo(withKinds(), '/w/caprock', stats, NOW)
+    expect(p.next).toBeUndefined()
+    render(<ReleasePlan plan={p} />)
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(document.querySelector('[data-release-since]')).toHaveTextContent('No releases here: work ships when it merges')
+    expect(document.querySelector('[data-release-plan]')).toHaveAttribute('data-release-ships', 'merge')
+    // The open ones are in flight, their bars without a released step.
+    const open = document.querySelector('[data-release-row="631"]')!
+    expect([...open.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step'))).toEqual(['agent', 'PR', 'CI', 'merged'])
+    // The merges are done: the three newest of six (#630 50m ago, then #643…), under Merged recently, the bar full.
+    expect(document.querySelector('[data-release-later="merged"]')).toHaveTextContent('Merged recently')
+    const merges = [...document.querySelectorAll('[data-release-row][data-stage="merged"]')].map((e) => e.getAttribute('data-release-row'))
+    expect(merges).toEqual(['630', '643', '642'])
+    const full = document.querySelector('[data-release-row="643"]')!
+    expect([...full.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done'])
+    expect(full.querySelector('[data-release-wait]')).toBeNull()
+  })
+
+  it('draws the released step neutral when nothing read says whether releases are cut', () => {
+    const stats = statsFixture()
+    delete stats.board!.ships_by
+    render(<ReleasePlan plan={planForRepo(withKinds(), '/w/caprock', stats, NOW)} />)
+    const step = document.querySelector('[data-release-row="630"] [data-step="released"]')!
+    expect(step).toHaveAttribute('data-step-state', 'unknown')
+    expect(step.getAttribute('title')).toMatch(/^Released \(shipped in a published release\): not known/)
   })
 })
 
@@ -238,6 +276,27 @@ describe('where it is drawn', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // Owner, 2026-10-18, translated: "it shows vaguely what's going on on the
+  // way to the release". The pushed branches and the working subagents, in
+  // sections with counts, compact.
+  it('lists in the right panel the pushed branches with no pull request and the session’s working subagents, in sections', async () => {
+    h.data = withKinds()
+    writeDeck('stats:/w/caprock', statsFixture())
+    writeDeck('branches:/w/caprock', { connected: true, repo: 'dspv/caprock', default: 'master', base: 'origin/master', fetched_at: NOW,
+      branches: [{ name: 'feat/batch-1', local: false, remote: true, ahead: 2, behind: 0, committed_ms: Date.now() - 30 * 60_000, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: 'fix(deck): the ring' }] })
+    const subs = { working: [{ agent_id: 'a1', description: 'Port the ring', tool_calls: 3, started_at: Date.now() - 12 * 60_000, last_at: Date.now(), running: true, asking: false }], finished: 0 }
+    render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: '0.118.0' })
+    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.textContent)
+    expect(sections).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Ready · 1 branch', 'In progress · 2 agents'])
+    const branch = region.querySelector('[data-release-row="b:feat/batch-1"]')!
+    expect(branch).toHaveTextContent('fix(deck): the ring')
+    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('+2 · 30m')
+    expect([...branch.querySelectorAll('[data-step-state]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'off', 'off', 'off', 'off'])
+    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-word]')).toHaveTextContent('working · 12m')
   })
 
   it('draws nothing in the right panel for a session outside a repository', () => {

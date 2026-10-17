@@ -23,14 +23,18 @@
  */
 import { useContext, useMemo, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats } from '@/lib/api'
-import { asBoard } from '@/lib/prboard'
+import { asBoard, type ShipsBy } from '@/lib/prboard'
+import { RELEASED_MEANS } from '@/lib/journey'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
-import { BLOCKS, planEmpty, planForRepo, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { BLOCKS, planEmpty, planForRepo, planSections, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { api } from '@/lib/api'
+import type { SessionBranches } from '@/lib/branches'
+import { CI_IDLE_MS, usePoll } from './SessionDeck'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS } from '@/lib/work'
-import { SectionLabel, useFolded } from './Cockpit'
+import { SectionLabel, SessionSubagents, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
 import { Panel } from './ui'
 import { extTitle } from '@/lib/externalLinks'
@@ -69,12 +73,21 @@ export interface ReleasePlanProps {
 export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, empty, phone = false, status, now = Date.now() }: ReleasePlanProps) {
   const nothing = plan.rows.length === 0 && plan.later.length === 0
   if (nothing && !plan.next && !empty) return null
+  const merge = plan.ships === 'merge'
   // A release pull request names the version; else the rule's prediction.
-  const pre = status?.phase === 'pre' ? status : undefined
+  const pre = !merge && status?.phase === 'pre' ? status : undefined
   const v = pre?.version ?? plan.next?.version
+  const steps = { ships: plan.ships, next: v }
   return (
-    <section data-release-plan={plan.name} aria-label={`${plan.name}: next release`} className="grid min-w-0 gap-1.5">
-      {status?.phase === 'tagged' && <ReleaseInFlight status={status} phone={phone} />}
+    <section data-release-plan={plan.name} data-release-ships={plan.ships ?? ''} aria-label={`${plan.name}: ${merge ? 'work in flight' : 'next release'}`} className="grid min-w-0 gap-1.5">
+      {!merge && status?.phase === 'tagged' && <ReleaseInFlight status={status} phone={phone} />}
+      {merge ? (
+        // No release to wait for: one line in place of the version (owner, 2026-10-18).
+        <header className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+          <span data-release-since title={plan.since?.title} className={`min-w-0 cursor-help text-fg-muted [overflow-wrap:anywhere] ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{plan.since?.text}</span>
+          {showRepo && <span className="min-w-0 truncate text-[13px] font-medium text-fg-muted" title={plan.root}>{plan.name}</span>}
+        </header>
+      ) : (
       <header className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
         <h3 data-release-version={v ?? ''} title={pre?.why?.title ?? plan.next?.title ?? 'No changelog entries read for this repository, so no version is predicted.'}
           className={`num font-semibold text-fg ${phone ? 'text-[17px] tracking-[-0.01em]' : compact ? 'cursor-help text-[13px]' : 'cursor-help text-[16px] tracking-[-0.01em]'}`}>
@@ -87,15 +100,16 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
           <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>
+      )}
       {pre && <ReleaseStages status={pre} />}
       {nothing ? (
-        <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{empty ?? 'Nothing waiting for a release.'}</p>
+        <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{merge ? 'No pull request open and no agent at work here.' : empty ?? 'Nothing waiting for a release.'}</p>
       ) : phone ? (
-        <PhoneRows plan={plan} />
+        <PhoneRows plan={plan} steps={steps} />
       ) : (
-        <Rows plan={plan} compact={compact} onOpen={onOpen} />
+        <Rows plan={plan} compact={compact} onOpen={onOpen} steps={steps} />
       )}
-      {status?.last && <LastRelease last={status.last} now={now} />}
+      {!merge && status?.last && <LastRelease last={status.last} now={now} />}
     </section>
   )
 }
@@ -111,12 +125,12 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
  * gap: each cell after the title carries its own left padding, so a column
  * no row fills is zero wide.
  */
-function Rows({ plan, compact, onOpen }: { plan: ReleasePlanData; compact: boolean; onOpen?: (n: number) => void }) {
+function Rows({ plan, compact, onOpen, steps }: { plan: ReleasePlanData; compact: boolean; onOpen?: (n: number) => void; steps: BarSteps }) {
   const size = compact ? 'text-[11px]' : 'text-[12px]'
   const row = (r: PlanRow) => (
     <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="col-span-full grid min-w-0 grid-cols-subgrid items-center">
       <Title row={r} root={plan.root} compact={compact} onOpen={onOpen} />
-      <span className="min-w-0 pl-3"><Blocks row={r} compact={compact} /></span>
+      <span className="min-w-0 pl-3"><Blocks row={r} compact={compact} {...steps} /></span>
       <Word row={r} className={`whitespace-nowrap pl-3 ${size}`} />
       <span data-release-col="wait" className="hidden min-w-0 @[520px]/plan:block">{r.wait && <WaitFor wait={r.wait} compact={compact} />}</span>
       <span data-release-col="citime" className="hidden @[760px]/plan:block">
@@ -136,7 +150,13 @@ function Rows({ plan, compact, onOpen }: { plan: ReleasePlanData; compact: boole
       <ul data-release-rows className={`grid min-w-0 items-center ${compact
         ? 'grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_auto] gap-y-[3px] text-[12px] @[520px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(6,auto)]'
         : 'grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_auto] gap-y-1 text-[13px] @[520px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(6,auto)]'}`}>
-        {plan.rows.map(row)}
+        {planSections(plan.rows).map((sec, i) => [
+          <li key={`section:${sec.key}`} data-release-section={sec.key}
+            className={`col-span-full font-medium text-fg-faint ${i > 0 ? 'pt-1.5' : ''} ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
+            {sec.label}
+          </li>,
+          ...sec.rows.map(row),
+        ])}
         {plan.later.map((g) => [
           <li key={`later:${g.key}`} data-release-later={g.key}
             className={`col-span-full pt-1.5 font-medium text-fg-faint ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
@@ -176,7 +196,7 @@ function OSDots({ dots }: { dots: OSDot[] }) {
  * and what it waits for (cut) on the second, so the bars stand in one column
  * at the left edge at any width. A pull request row is a link to it on GitHub, the whole row its target; an agent's row, a link into its session's chat.
  */
-function PhoneRows({ plan }: { plan: ReleasePlanData }) {
+function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) {
   const row = (r: PlanRow) => {
     const body = (
       <>
@@ -185,7 +205,7 @@ function PhoneRows({ plan }: { plan: ReleasePlanData }) {
           <span className="min-w-0 truncate text-fg">{r.title}</span>
         </span>
         <span className="flex min-w-0 items-center gap-2.5">
-          <Blocks row={r} phone />
+          <Blocks row={r} phone {...steps} />
           <Word row={r} className="shrink-0 whitespace-nowrap text-[12.5px]" />
           {r.wait && <span data-release-wait title={r.wait.title} className={`min-w-0 truncate text-[12.5px] ${r.wait.tone === 'danger' ? 'text-danger' : r.wait.tone === 'warn' ? 'text-warn' : 'text-fg-faint'}`}>{r.wait.text}</span>}
         </span>
@@ -205,7 +225,13 @@ function PhoneRows({ plan }: { plan: ReleasePlanData }) {
   }
   return (
     <ul data-release-phone className="-mx-3 min-w-0 border-t border-border">
-      {plan.rows.map(row)}
+      {planSections(plan.rows).map((sec) => [
+        <li key={`section:${sec.key}`} data-release-section={sec.key}
+          className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint">
+          {sec.label}
+        </li>,
+        ...sec.rows.map(row),
+      ])}
       {plan.later.map((g) => [
         <li key={`later:${g.key}`} data-release-later={g.key}
           className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint last:border-b-0">
@@ -256,6 +282,8 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
           className={`${cls} rounded-[3px] focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent`}>{text}</button>
       )
     }
+    // A pushed branch opens its comparison with the default branch on GitHub.
+    if (r.url) return <a href={r.url} target="_blank" rel="noopener noreferrer" title={extTitle(r.title)} className={cls}>{text}</a>
     return <span className={`min-w-0 ${wrap}`} title={r.title}>{text}</span>
   }
   const link = onOpen
@@ -274,42 +302,62 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
   )
 }
 
-const STEP_NAME: Record<(typeof STEPS)[number], string> = { agent: 'Agent', PR: 'Pull request', CI: 'CI', merged: 'Merged', released: 'Released' }
-/** The steps in order, said on every segment's hover. */
-const STEP_PATH = 'Agent → PR → CI → Merged → Released'
-const STEP_SAYS: Record<StepState, string> = { done: 'done', now: 'under way', red: 'failed', warn: 'waits on you', off: 'to come' }
-export type StepState = 'done' | 'now' | 'red' | 'warn' | 'off'
+type BarStep = (typeof STEPS)[number]
+const STEP_NAME: Record<BarStep, string> = { agent: 'Agent', PR: 'Pull request', CI: 'CI', merged: 'Merged', released: `Released (${RELEASED_MEANS.toLowerCase()})` }
+const STEP_SAYS: Record<StepState, string> = { done: 'done', now: 'under way', red: 'failed', warn: 'waits on you', off: 'to come', unknown: 'not known — whether this repository cuts releases could not be read' }
+export type StepState = 'done' | 'now' | 'red' | 'warn' | 'off' | 'unknown'
 
-/** Each step's state on a row's bar: done up to the one it is on, that one red, amber or under way when it is. */
-export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running'>): StepState[] {
+/** How a repository's bars are drawn: its steps (no released one where work ships on merge) and the next version a merge waits for. */
+export interface BarSteps {
+  ships?: ShipsBy
+  next?: string
+}
+
+/** The bar's steps for a repository: no released step where work ships on merge. */
+export function barSteps(ships: ShipsBy | undefined): readonly BarStep[] {
+  return ships === 'merge' ? STEPS.filter((s) => s !== 'released') : STEPS
+}
+
+/**
+ * Each step's state on a row's bar: done up to the one it is on, that one
+ * red, amber or under way when it is; the released step still ahead is not
+ * known where nothing read says whether releases are cut.
+ */
+export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running'>, ships?: ShipsBy, known = ships !== undefined): StepState[] {
+  const steps = barSteps(ships)
   const on = Math.round(r.filled / (BLOCKS / STEPS.length))
-  return STEPS.map((_, i) => {
-    if (i >= on) return 'off'
+  return steps.map((step, i) => {
+    if (i >= on) return step === 'released' && !known ? 'unknown' : 'off'
     if (i < on - 1) return 'done'
     return r.red ? 'red' : r.warn ? 'warn' : r.running ? 'now' : 'done'
   })
 }
 
 /**
- * A segment per step (agent, PR, CI, merged, released), each named on hover:
- * filled to the step it is on, that step red when it failed, amber when a
- * landing label waits on the person, pulsing softly while it is under way
- * (CI running, an agent at work); merged rows in the merged colour. On a
- * page it fills its column, so it grows with the row; on the phone it is a
- * fixed width.
+ * A segment per step (agent, PR, CI, merged, released — no released where
+ * the repository ships on merge, so a merge fills the bar), each named on
+ * hover: filled to the step it is on, that step red when it failed, amber
+ * when a landing label waits on the person, pulsing softly while it is under
+ * way (CI running, an agent at work); merged rows in the merged colour; a
+ * released step nothing read can place dotted. On a page it fills its
+ * column, so it grows with the row; on the phone it is a fixed width.
  */
-export function Blocks({ row: r, compact = false, phone = false }: { row: PlanRow; compact?: boolean; phone?: boolean }) {
-  const states = stepStates(r)
+export function Blocks({ row: r, compact = false, phone = false, ships, next }: { row: PlanRow; compact?: boolean; phone?: boolean } & BarSteps) {
+  const steps = barSteps(ships)
+  const states = stepStates(r, ships)
+  const path = steps.map((s) => (s === 'PR' ? 'PR' : s === 'CI' ? 'CI' : s[0]!.toUpperCase() + s.slice(1))).join(' → ')
   const tone = r.stage === 'merged' ? 'bg-merged' : 'bg-accent'
-  const on = states.filter((s) => s !== 'off').length
+  const on = states.filter((s) => s !== 'off' && s !== 'unknown').length
   return (
-    <span data-release-bar role="img" aria-label={`${on} of ${STEPS.length} steps (${STEP_PATH}): ${r.word}`}
+    <span data-release-bar role="img" aria-label={`${on} of ${steps.length} steps (${path}): ${r.word}`}
       className={`flex items-center gap-[3px] ${phone ? 'shrink-0' : 'w-full'}`}>
-      {STEPS.map((step, i) => {
+      {steps.map((step, i) => {
         const s = states[i]!
-        const color = s === 'off' ? 'bg-border-strong' : s === 'red' ? 'bg-danger' : s === 'warn' ? 'bg-warn' : tone
-        const says = step === 'PR' && s === 'off' && !r.number ? 'none yet — the agent has not opened one' : STEP_SAYS[s]
-        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${says}${s === 'off' || s === 'done' ? '' : ` — ${r.word}`}\n${STEP_PATH}`}
+        const color = s === 'unknown' ? 'bg-[repeating-linear-gradient(90deg,var(--color-border-strong)_0_3px,transparent_3px_6px)]' : s === 'off' ? 'bg-border-strong' : s === 'red' ? 'bg-danger' : s === 'warn' ? 'bg-warn' : tone
+        const says = step === 'PR' && s === 'off' && !r.number ? 'none yet — the agent has not opened one'
+          : step === 'released' && s === 'off' && r.stage === 'merged' ? `waits for the next release${next ? ` (v${next})` : ''}`
+            : STEP_SAYS[s]
+        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${says}${s === 'off' || s === 'done' || s === 'unknown' ? '' : ` — ${r.word}`}\n${path}`}
           className={`${phone ? 'h-[10px] w-[16px]' : compact ? 'h-[7px] min-w-[8px] flex-1' : 'h-[9px] min-w-[12px] flex-1'} rounded-[2px] ${color}${s === 'now' ? ' release-step-pulse' : ''}`} />
       })}
     </span>
@@ -335,7 +383,8 @@ export function PipelineRelease({ root, stats, run, visible, now, onOpen }: { ro
     })
   }, [repo, plan.rows, stats, run])
   return (
-    <Panel title="Next release" fold="pipeline-next-release"
+    // Where work ships on merge there is no next release to name the panel after.
+    <Panel title={plan.ships === 'merge' ? 'In flight' : 'Next release'} fold="pipeline-next-release"
       right={<span title="Pull requests from GitHub; agents, tags and changelog entries from this machine, as of your last fetch">{ref ? `changelog on ${ref}` : 'this machine'}</span>}>
       <div data-pipeline-release className="px-3 py-2.5">
         <ReleasePlan plan={plan} onOpen={onOpen} status={status} now={now} empty="Nothing merged since the last tag, no pull request open and no agent at work here." />
@@ -356,8 +405,12 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const folded = useFolded()
   const stats = useDeckAnswer<SessionCIStats>(`stats:${repoRoot || sessionId}`)
   const work = useWork({ on: !folded && !!repoRoot, changes: changesRelease })
+  // The pushed branches with no pull request: the deck's Branches answer
+  // (local git, kept by the daemon), read unfolded, once a minute.
+  const [branches] = usePoll<SessionBranches>(!folded && !!repoRoot, `release-branches:${sessionId}`, () => api.sessionBranches(sessionId), () => false, CI_IDLE_MS, `branches:${repoRoot || sessionId}`)
+  const subagents = useContext(SessionSubagents)
   const now = useNow(60_000)
-  const plan = useMemo(() => (repoRoot ? planForRepo(work.data, repoRoot, stats.d, now) : undefined), [work.data, repoRoot, stats.d, now])
+  const plan = useMemo(() => (repoRoot ? planForRepo(work.data, repoRoot, stats.d, now, { branches, subagents }) : undefined), [work.data, repoRoot, stats.d, now, branches, subagents])
   if (!plan || (!folded && planEmpty(plan))) return null
   const n = plan.rows.length
   return (

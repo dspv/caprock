@@ -31,7 +31,7 @@ import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/useP
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
 import { AGENT_COST_NOTE, asBoard, costText, costTitle, type PRBoard } from '@/lib/prboard'
 import type { BranchPR } from '@/lib/branches'
-import { journey, pipelineRows, stageOf, type PipelineRow } from '@/lib/journey'
+import { journey, pipelineRows, RELEASED_MEANS, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { BUCKET_LABEL, bucketItems, fixedLately, inBucket, noteFixes, readFixSeen, writeFixSeen, type Bucket, type FixSeen } from '@/lib/flowbucket'
 import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
@@ -132,6 +132,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [relCI] = usePoll<SessionRepoCI>(visible, `${sessionId}:${n}`, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${relScope}`,
     (prev, next) => !!next.error && !!prev.release && !next.release)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  const ships = useMemo(() => shipsOf(board), [board])
   // A count tile clicked: the list shows only the pull requests it counts
   // (owner, 2026-10-15, translated: "I see the red 'NEEDS A FIX 4' figure,
   // but I can't see which PRs those are"). From This session it widens to
@@ -267,7 +268,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       {ready && (
         <div className={`grid min-w-0 items-start gap-3 ${p && row ? '@min-[1100px]/pipe:grid-cols-[minmax(0,1fr)_minmax(440px,600px)]' : ''}`}>
           <div ref={listRef} className="min-w-0 scroll-mt-14"><PipelineList rows={rows} scope={scope} onScope={onScopePick} pick={pick} onPick={(num) => setChosen(num === pick ? undefined : num)} now={now}
-            counts={counts} loaded={!!prs || !!stats} dim={unconfirmed} bucket={bucket} onClearBucket={clearBucket} /></div>
+            counts={counts} loaded={!!prs || !!stats} dim={unconfirmed} bucket={bucket} onClearBucket={clearBucket} ships={ships} /></div>
           {/* The chosen pull request beside the list, held in view as the
             * list scrolls; under it on a narrow window. Esc or × closes it. */}
           {p && row && (
@@ -297,7 +298,7 @@ const RELEASED_SHOWN = 10
 /** The list's columns: the pull request, its journey, the time in its step, its agent cost. */
 const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto_64px_88px] items-center gap-x-4 @max-[820px]/list:grid-cols-[minmax(0,1fr)_auto]'
 
-function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim, bucket, onClearBucket }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean; bucket?: Bucket; onClearBucket: () => void }) {
+function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim, bucket, onClearBucket, ships }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean; bucket?: Bucket; onClearBucket: () => void; ships: ShipsContext }) {
   const [allReleased, setAllReleased] = useState(false)
   const released = rows.filter((r) => stageOf(r) === 'released')
   const hidden = allReleased ? 0 : Math.max(0, released.length - RELEASED_SHOWN)
@@ -332,12 +333,14 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
           <>
             <div aria-hidden className={`${ROW_GRID} border-b border-border px-3 py-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-muted @max-[820px]/list:hidden`}>
               <span>Pull request</span>
-              <span className="whitespace-nowrap">Open → CI → Merged → Released</span>
+              {ships.ships === 'merge'
+                ? <span className="whitespace-nowrap" title="No releases here: work ships when it merges">Open → CI → Merged</span>
+                : <span className="whitespace-nowrap">Open → CI → Merged → <span title={RELEASED_MEANS}>Released</span></span>}
               <span className="text-right">In step</span>
               <span className="whitespace-nowrap text-right" title={AGENT_COST_NOTE}>Agent cost</span>
             </div>
             <ul>
-              {shown.map((r) => <PipelineItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} />)}
+              {shown.map((r) => <PipelineItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} ships={ships} />)}
               {hidden > 0 && (
                 <li><button type="button" data-prs-more onClick={() => setAllReleased(true)} className="w-full px-3 py-2.5 text-left text-[13px] text-accent hover:bg-[var(--app-row-hover)]">Show {hidden} more released</button></li>
               )}
@@ -373,8 +376,8 @@ function BucketPreview({ b, board, prs, fixed }: { b: Bucket; board: PRBoard; pr
 }
 
 /** One pull request: number, its whole title, labels, the four steps, the time in its step, agent cost. */
-function PipelineItem({ r, on, onPick, now, dim }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean }) {
-  const steps = journey(r)
+function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean; ships: ShipsContext }) {
+  const steps = journey(r, ships)
   const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const cost = r.card ? costText(r.card.spend) : ''
   return (

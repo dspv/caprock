@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
+	"github.com/dspv/caprock/internal/relplan"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -46,6 +47,22 @@ const (
 // boardReleasesShown is how many releases the Releases panel lists.
 const boardReleasesShown = 6
 
+// How merged work ships in a repository (PRBoard.ShipsBy; owner,
+// 2026-10-18, translated: "why isn't merged the final state — there's one
+// more step after it"). A site deployed on every merge publishes no
+// release, so its merges never wait for one.
+const (
+	ShipsByRelease = "release" // a published release or a version tag within shipsRecentDays
+	ShipsByMerge   = "merge"   // neither, both read: merged is the last step
+)
+
+// shipsRecentDays is how far back a release or a version tag counts as the
+// repository still cutting releases.
+const shipsRecentDays = 180
+
+// versionTag is a tag that names a version: "v0.132.0", "1.4", "app-v2.0.1".
+var versionTag = regexp.MustCompile(`^(?:[A-Za-z][A-Za-z_-]*)?\d+\.\d+`)
+
 // PRBoard is the Board view's answer.
 type PRBoard struct {
 	Cards    []BoardCard    `json:"cards"`
@@ -53,6 +70,11 @@ type PRBoard struct {
 	Flow     BoardFlow      `json:"flow"`
 	// DefaultBranch is the branch a merge must land on to ship in a release.
 	DefaultBranch string `json:"default_branch,omitempty"`
+	// ShipsBy is how merged work ships here: ShipsByRelease when a published
+	// release or a version tag is dated within shipsRecentDays, ShipsByMerge
+	// when the release list and the local tags were both read and neither
+	// is; absent when that cannot be said.
+	ShipsBy string `json:"ships_by,omitempty"`
 }
 
 // BoardCard is one pull request on the board; its title, author and link are
@@ -154,9 +176,15 @@ type boardInput struct {
 	prs  []github.BranchPR
 	live map[int]github.PR
 	// stale are the open pull requests whose live read is an earlier one.
-	stale         map[int]bool
-	runs          []github.CIRun
-	releases      []github.RepoRelease
+	stale    map[int]bool
+	runs     []github.CIRun
+	releases []github.RepoRelease
+	// releasesRead: the release list was read (a failed read is no list).
+	releasesRead bool
+	// tags are the repository's newest local tags, newest first; tagsRead
+	// says they were read (no checkout, or git failing, is not "no tags").
+	tags          []relplan.Tag
+	tagsRead      bool
 	defaultBranch string
 	spend         map[string]store.PRSpend
 	now           time.Time
@@ -169,7 +197,7 @@ type boardInput struct {
 // buildBoard lays the pull requests out by stage. Closed unmerged ones are
 // left out, and so are merges before the window.
 func buildBoard(in boardInput) PRBoard {
-	out := PRBoard{Cards: []BoardCard{}, Releases: []BoardRelease{}, DefaultBranch: in.defaultBranch,
+	out := PRBoard{Cards: []BoardCard{}, Releases: []BoardRelease{}, DefaultBranch: in.defaultBranch, ShipsBy: shipsBy(in),
 		Flow: BoardFlow{Counts: map[string]int{StageDraft: 0, StageOpen: 0, StageFix: 0, StageReady: 0, StageMerged: 0, StageReleased: 0}, Days: in.days}}
 	start := time.Date(in.now.Year(), in.now.Month(), in.now.Day(), 0, 0, 0, 0, in.now.Location()).AddDate(0, 0, -(in.days - 1)).UnixMilli()
 	// Releases oldest first, for "the first published after the merge".
@@ -281,6 +309,27 @@ func buildBoard(in boardInput) PRBoard {
 	out.Flow.Series = flowSeries(seriesInput{in: in, shipped: shipped, workflow: workflow,
 		openNow: c[StageDraft] + c[StageOpen] + c[StageFix] + c[StageReady]})
 	return out
+}
+
+// shipsBy says how merged work ships (PRBoard.ShipsBy), from the releases
+// and tags read: one dated within shipsRecentDays is enough to say
+// releases; saying there are none needs both reads.
+func shipsBy(in boardInput) string {
+	cut := in.now.AddDate(0, 0, -shipsRecentDays).UnixMilli()
+	for _, r := range in.releases {
+		if r.PublishedAt >= cut {
+			return ShipsByRelease
+		}
+	}
+	for _, t := range in.tags {
+		if t.At >= cut && versionTag.MatchString(t.Name) {
+			return ShipsByRelease
+		}
+	}
+	if in.releasesRead && in.tagsRead {
+		return ShipsByMerge
+	}
+	return ""
 }
 
 // openStage is an open pull request's stage and since when, from its
@@ -537,7 +586,12 @@ func prRefs(prs []github.BranchPR) []store.PRRef {
 func (s *Server) composeBoard(ctx, gh context.Context, repo github.Repo, repoRoot, localDefault string, prs []github.BranchPR, runs []github.CIRun, now time.Time) (*PRBoard, error) {
 	in := boardInput{prs: prs, runs: runs, now: now, days: github.StatsDays, live: map[int]github.PR{}, stale: map[int]bool{}, listedAll: len(prs) < 50}
 	if rels, e := s.d.GitHub.RepoReleases(gh, repo); e == nil {
-		in.releases = rels
+		in.releases, in.releasesRead = rels, true
+	}
+	if repoRoot != "" {
+		if tags, e := relplan.Tags(ctx, repoRoot); e == nil {
+			in.tags, in.tagsRead = tags, true
+		}
 	}
 	if def, e := s.defaultBranch(gh, repo, localDefault); e == nil {
 		in.defaultBranch = def

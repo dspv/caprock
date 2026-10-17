@@ -125,7 +125,18 @@ export interface PRBoard {
   releases: BoardRelease[]
   flow: BoardFlow
   default_branch?: string
+  /** How merged work ships here (`ShipsBy`); absent from an older daemon or when a read failed. */
+  ships_by?: ShipsBy
 }
+
+/**
+ * How merged work ships in a repository (internal/api/prboard.go shipsBy):
+ * `release` when a published release or a version tag is dated within the
+ * last 180 days; `merge` when neither is and both were read — a site
+ * deployed on every merge, where merged is the last step. Absent: it cannot
+ * be said, and the released step is drawn neutral with a "?".
+ */
+export type ShipsBy = 'release' | 'merge'
 
 export const STAGES: { key: Stage; label: string; note: string }[] = [
   { key: 'draft', label: 'Draft', note: 'Opened as a draft: not ready for review' },
@@ -155,6 +166,7 @@ export function asBoard(v: unknown): PRBoard | undefined {
   for (const s of STAGES) counts[s.key] = num((f.counts as Record<string, unknown> | undefined)?.[s.key])
   return {
     default_branch: typeof o.default_branch === 'string' ? o.default_branch : undefined,
+    ships_by: o.ships_by === 'release' || o.ships_by === 'merge' ? o.ships_by : undefined,
     cards: o.cards.filter((c) => c && typeof c === 'object' && STAGE_KEYS.has((c as BoardCard).stage)).map((c) => ({ ...c, spend: asSpend(c.spend) })),
     releases: (Array.isArray(o.releases) ? o.releases : []).filter((r) => r && typeof r === 'object' && typeof r.tag === 'string')
       .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), published_at: num(r.published_at), assets: fin(r.assets) })),

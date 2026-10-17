@@ -44,6 +44,8 @@ export interface SessionBranch {
   committed_ms: number
   author?: string
   sha?: string
+  /** Its last commit's subject line; absent from an older daemon. */
+  subject?: string
   pr?: BranchPR
   /** An open PR as the PRs view reads it, with its checks. */
   live?: PullRequest
@@ -53,6 +55,8 @@ export interface SessionBranch {
   session_at?: number
   activity_at: number
   stale?: boolean
+  /** Its changes are already on the default branch by content (a squash merge, a batch); checked only for a branch ahead of it, of the last 14 days, with no open PR. */
+  landed?: boolean
 }
 
 /** GET /v1/sessions/{id}/branches. */

@@ -48,7 +48,7 @@ import { ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runV
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
-import { flightLead, inFlight, journey, pipelineRows, stageOf, type Flight, type PipelineRow } from '@/lib/journey'
+import { flightLead, inFlight, journey, pipelineRows, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { landingOf } from '@/lib/releaseplan'
 import { CheckSummary, StateMark } from './CheckSummary'
 import { SectionLabel, useFolded } from './Cockpit'
@@ -115,6 +115,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
     const f = inFlight(pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []), board)
     return { ...f, rows: f.rows.slice(0, LISTED) }
   }, [stats?.prs, board])
+  const ships = useMemo(() => shipsOf(board), [board])
   const hasStats = !!stats?.connected && (stats.prs?.length ?? 0) > 0
   const prs = useDeckAnswer<SessionPRs>(`prs:${sessionId}`)
   const rows = orderPRs(prs.d?.prs ?? []).filter((p) => !!p.live)
@@ -149,9 +150,9 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
     !hasStats ? faint('Reading the repository’s pull requests…') : (
       <div className="grid gap-1">
       {quiet}
-      {listed.length > 0 && <JourneyLegend className="-mr-1.5 pr-1.5" />}
+      {listed.length > 0 && <JourneyLegend ships={ships.ships} className="-mr-1.5 pr-1.5" />}
       {listed.length > 0 && <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
-        {listed.map((r) => <JourneyRow key={r.number} r={r} now={now} />)}
+        {listed.map((r) => <JourneyRow key={r.number} r={r} now={now} ships={ships} />)}
       </ul>}
       </div>
     )
@@ -199,24 +200,43 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
   )
 }
 
-/** One pull request's row: its number, title, time on its step and the four steps as a bar. */
-function JourneyRow({ r, now }: { r: PipelineRow; now: number }) {
+/**
+ * One pull request's row: its number, title, time on its step and its steps
+ * as a bar; a merge waiting for a release says so in a word ("next release",
+ * "in v0.132.0"), the whole of it on hover.
+ */
+function JourneyRow({ r, now, ships }: { r: PipelineRow; now: number; ships: ShipsContext }) {
   const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
+  const steps = journey(r, ships)
+  const rel = steps.find((s) => s.key === 'released')
+  const said = rel && !rel.unknown && (stageOf(r) === 'merged' || stageOf(r) === 'released') ? rel : undefined
   return (
     <li data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
       <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
         <span className="num shrink-0 text-fg-muted">#{r.number}</span>
         <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
+        {said && <span data-cockpit-ci-released className="num shrink-0 text-[10.5px] text-fg-faint" title={said.title}>{said.text}</span>}
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
       </span>
-      <JourneyBar steps={journey(r)} landing={landingOf(r.labels)?.word} />
+      <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
     </li>
   )
 }
 
-/** Nothing in flight, in one quiet line: *Nothing in flight · last release v0.124.0, 2h ago*. */
+/**
+ * Nothing in flight, in one quiet line: *Nothing in flight · last release
+ * v0.124.0, 2h ago*; where work ships on merge, *Nothing in flight · no
+ * releases here: work ships when it merges*.
+ */
 function Quiet({ f, now }: { f: Flight; now: number }) {
   const rel = f.release
+  if (f.ships === 'merge') {
+    return (
+      <span data-cockpit-ci-quiet="merge" className="truncate text-[11.5px] text-fg-faint" title="No release published and no version tag in the last 180 days: merged is the last step here">
+        Nothing in flight · no releases here: work ships when it merges
+      </span>
+    )
+  }
   return (
     <span data-cockpit-ci-quiet className="truncate text-[11.5px] text-fg-faint" title={rel ? new Date(rel.published_at).toLocaleString() : 'GitHub lists no published release for this repository'}>
       Nothing in flight · {rel ? `last release ${rel.tag}, ${spanText(Math.max(0, now - rel.published_at))} ago` : 'no release published'}
