@@ -4706,6 +4706,10 @@ removes the Page tab and the `unstable` feature. A return needs the crash
 understood first, and links stay in the default browser unless the user
 chooses otherwise.
 
+*Followed by [ADR-075](#adr-075--the-in-app-browser-returns-as-a-window-of-its-own-over-the-tab-off-until-the-user-turns-it-on)
+(2026-10-17): the crash traced, and the browser back as a window of its own,
+off until the user turns it on.*
+
 
 ---
 
@@ -4917,3 +4921,150 @@ sent.
 each is a named line on the sheet the user can untick, as Feedback's
 *Include diagnostics* is, and a new decision); reports arrive that the site
 cannot keep private; or the limits stop fitting real screenshots.
+
+
+---
+
+## ADR-075 — The in-app browser returns as a window of its own over the tab, off until the user turns it on
+
+**Date:** 2026-10-17 · **Status:** accepted (owner's wishlist, 2026-10-16/17) · beta
+
+*Follows [ADR-070](#adr-070-a-page-tab--withdrawn-2026-10-16), which withdrew
+the Page tab after two crashes on macOS 27; that decision asked for the crash
+to be understood first. It is, as far as two crash reports and WebKit's
+source allow, below.*
+
+**Context.** The owner wants a web page inside Caprock again (2026-10-16/17,
+translated): ⌘-click keeps opening the default browser; a chooser of
+installed browsers on another chord offers *Open in Caprock*; *New browser
+tab* in the app's menu, marked as a browser; ⌥← ⌥→ between tabs; a new tab
+starts in an address box, and plain words search DuckDuckGo unless another
+engine is chosen; switching away and back keeps the page exactly where it
+was; a link that opens a new window opens a new Caprock tab; the clipboard
+works in pages and key combinations reach them. 0.123.0's Page tab did most
+of this in a child webview of the main window and was withdrawn in 0.124.1.
+
+**Root cause of the 0.124.0 crashes (evidence).** Two incidents on the
+owner's machine, 2026-10-16 15:09:08 and 15:17:24 (macOS 27.0.1, 26A434;
+`~/Library/Logs/DiagnosticReports/Retired/`, read only). Each is a pair of
+reports from the same second:
+
+- `ExcUserFault_caprock-app-…ips`, a *simulated* fault (`is_simulated: 1`):
+  `EXC_GUARD`, `GUARD_TYPE_USER`, namespace 31 (`WEBKIT`), from
+  `os_fault_with_payload` in `WebPasteboardProxy::determineDataOwner`, called
+  by `WebPasteboardProxy::getPasteboardChangeCount`, a synchronous message
+  from a WebContent process (`WebProcessProxy::didReceiveSyncMessage`).
+- `caprock-app-…ips`, the real one: `EXC_BAD_ACCESS` (`SIGSEGV`) at address
+  0 on the main thread, in a reply handler being cancelled:
+  `WebProcessProxy::didClose` → `processDidTerminateOrFailedToLaunch` →
+  `WebProcessProxy::shutDown` → `AuxiliaryProcessProxy::shutDownProcess` →
+  `IPC::Connection::invalidate` → `cancelAsyncReplyHandlers` → the
+  `sendMessageImpl` reply lambda → a null dereference.
+
+WebKit's `determineDataOwner` (Source/WebKit/UIProcess/Cocoa/
+WebPasteboardProxyCocoa.mm) looks the page id up with
+`WebProcessProxy::webPage(pageID)` and fails a `MESSAGE_CHECK` — which
+terminates the web process — when "the incoming web page ID doesn't
+correspond to any page currently known to the UI process". So the chain is:
+a WebContent process asked about the pasteboard on behalf of a page the UI
+process had already let go of; WebKit killed that process; and the UI
+process — Caprock's own — crashed cancelling a reply still pending for it.
+The first fault is WebKit doing what it is built to do; the second is a
+crash in WebKit's own clean-up path, inside our process.
+
+The page the UI process no longer knew was, by every sign, a Page tab's
+webview being closed: 0.124.0 closed a page five minutes after its tab went
+behind, on its tab's close, and on every dashboard reload, while its
+WebContent process could still be running script (a pasteboard change count
+is asked on focus, selection and editing). The incidents came 12 and 8
+minutes after launch, both past that five-minute timer. This is the most
+likely trigger, not a proven one: the reports carry no Caprock frame (the
+binary is stripped) and the WebKit message ring buffer holds message numbers
+without names. What is certain is the shape — a page closed or replaced
+under a live WebContent process takes the whole app with it, because every
+webview's UI-process side lives in Caprock's process.
+
+The lost drops had their own cause, already fixed in 0.124.1: with a child
+webview the dashboard is a child of the window, and Tauri reports a drop as
+the webview's event, which no one heard (shell.rs `listen_for_drops` now
+hears both).
+
+**Decision.**
+
+- **A window of its own per page, never a child webview.** Each browser tab's
+  page is a separate top-level `WebviewWindow`, `browser-<id>`
+  (`app/src-tauri/src/browser.rs`), borderless, without shadow or taskbar
+  entry, laid over the tab's content box. On macOS it is a child *window* of
+  the main one (`addChildWindow`, through Tauri's `parent`), so it moves with
+  it; on Windows an owned window and on Linux a transient one, which the
+  shell moves when the main window moves or resizes. Tauri's `unstable`
+  feature stays off, the main window keeps exactly one webview (found by
+  `get_webview_window`, its drops heard where they always were), and the
+  dashboard draws the tab, its toolbar and the address box.
+- **Never close a busy page.** A page is closed only with its tab, when the
+  in-app browser is turned off, or when a reloaded dashboard no longer has
+  its tab — never on a timer — and then it is hidden, sent to `about:blank`,
+  and closed 1.5 s later (`DRAIN`), so its WebContent process has finished
+  with the page before the UI process lets go of it. A dashboard reload only
+  hides the pages; the tabs that come back show theirs again, at the same
+  place, and the dashboard's `retain` closes the rest.
+- **Off by default.** Settings → *In-app browser (beta)*. Until it is on, no
+  page window is ever created: *New browser tab* says where to turn it on,
+  and a link asked for in Caprock opens in the default browser.
+- **⌘-click is the default browser's.** Unchanged (ADR-070's amendment). The
+  link chooser (`feat/link-open-chooser`) adds *Open in Caprock* through two
+  names from `ui/src/lib/browsertab.ts`: `caprockEntry()` (null while off)
+  and `openInCaprock(url, sessionId?)`.
+- **Opened from** File → *New Browser Tab* (macOS; a globe, `NativeIcon::
+  Network`, no key — ⌘T is New shell), ⌘K and the + menu (*New browser
+  tab*), an address typed into ⌘K, and a page's own new window (target=_blank,
+  `window.open`), which becomes another browser tab instead of a popup.
+- **A new tab starts in its address box.** Enter goes to an address, or
+  searches anything else with the engine chosen in Settings: DuckDuckGo by
+  default, or Google, Bing, Brave Search, Startpage.
+- **Keys.** While a browser tab is in front, ⌥← ⌥→ step to the tab before
+  or after, outside a text field, where they stay word jumps; off macOS
+  Alt+← → are every browser's Back and Forward, so the keys there are
+  Ctrl+PageUp and Ctrl+PageDown, as in Chrome, Edge and Firefox (rule 12;
+  `keys()` spells them so). ⌘L (Ctrl+L) puts the cursor in the address box,
+  ⌘W closes the tab. Every other key reaches the page while it has the
+  keyboard. The page reads the browser keys through one script of the
+  shell's (`KEYS_SCRIPT`), which hands each over as a navigation to
+  `caprock-browser:<key>` that the shell refuses and passes on; the
+  dashboard reads the same keys (`browserKey`) when it has the keyboard.
+- **The page stays where it was.** Switching tabs hides the window and shows
+  it again; it is never reloaded or unloaded behind.
+- **The clipboard** is the window's own WebKit/WebView2 clipboard with the
+  app's Edit menu (⌘C ⌘V ⌘X ⌘A), and `navigator.clipboard` works as in a
+  browser window, since the page is the key window's only webview.
+- **A stranger to Caprock**, as before: no capability names `browser-*`, so
+  every command is refused to it even on `127.0.0.1` (`cargo test` checks
+  each); its data store is non-persistent and its own (no cookie shared with
+  the dashboard, nothing on disk, so no login survives a quit); it follows
+  only http, https and the documents a page makes for itself; a download
+  goes into Downloads and is never opened.
+- **An agent waiting on you** while a browser tab is in front gets a strip
+  over the page naming it with *Go*, and whatever plays in the page is
+  paused (Settings, on by default). This is #618's *watch YouTube while
+  agents work* idea for any page; the YouTube-only tab is not built.
+
+**Rules out:** child webviews (`Window::add_child`, the `unstable` feature);
+closing a page on a timer; ⌘-click opening anything but the default browser;
+a page reaching any Caprock command; turning the in-app browser on for
+anyone who did not.
+
+**Not verified.** No real Tauri run of a browser tab was made for this
+decision: the app cannot be driven headless here, and the owner's installed
+app is not touched. The Rust and UI tests cover the commands, the ACL, the
+keys and the tab's behaviour; that a child window follows the main window
+on Windows and Linux, that Wayland honours the position (it may not: a
+Wayland client cannot place its windows), and that `navigator.clipboard`
+and drops behave in the page's window are to be checked by hand before the
+beta label goes.
+
+**Revisit if:** a crash with the same shape recurs with the in-app browser
+on (then pages move to a helper process of their own, out of Caprock's UI
+process, and lose the overlay: a window in another process cannot be a
+child of ours); people need to stay signed in to sites (a persistent store
+of the browser's own, kept apart from the dashboard's); or Wayland users
+find the page beside the tab rather than over it.

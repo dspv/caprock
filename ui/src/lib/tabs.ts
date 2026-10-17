@@ -25,14 +25,24 @@
  * as a session does. The Pipeline was a pane too (`prs`) until 2026-10-15; it
  * is a pinned system tab of its own now (`Workspace.pipeline`), and a stored
  * one is read as that tab (parseWorkspace, pipelineInStore).
+ *
+ * A browser tab (`page`, the in-app browser, ADR-075; lib/browsertab.ts,
+ * components/BrowserView.tsx) is a tab of its own too, keyed `page:…`. It is
+ * never an agent: it has no sidebar row and no ⌘1–⌘9, and the strip keeps
+ * every browser tab after every other tab, so pages never sit among the
+ * agents.
  */
 export interface TabTarget {
-  kind: 'session' | 'shell' | 'file' | 'observe'
+  kind: 'session' | 'shell' | 'file' | 'observe' | 'page'
   sessionId: string
   /** A file: its path relative to the worktree. */
   path?: string
   /** A file: the linked worktree's name; '' or absent for the main checkout. */
   worktree?: string
+  /** A page: the address it shows, kept as it navigates so a restart reopens it there; '' for a new tab not yet sent anywhere. */
+  url?: string
+  /** A page: the session whose link opened it, if one did. */
+  of?: string
 }
 
 export interface PaneLeaf {
@@ -108,6 +118,8 @@ export type WorkspaceAction =
   /** Puts the pinned Pipeline tab in the strip, or takes it out. */
   | { type: 'pipeline'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
+  /** A page moved on or named itself: its address and title, as the shell reports them. */
+  | { type: 'page-nav'; sessionId: string; url?: string; title?: string }
   | { type: 'drop-session'; sessionId: string }
   /**
    * Put another session in the place this one holds, keeping the tab, its
@@ -152,6 +164,16 @@ export function focusedLeaf(tab: Tab): PaneLeaf {
  *  shell was split beside it, and two tabs said the same word. */
 export function namingLeaf(tab: Tab): PaneLeaf {
   return leaves(tab.root).find((l) => l.target.kind !== 'shell') ?? focusedLeaf(tab)
+}
+
+/** Whether a tab shows a web page: a browser tab (ADR-075). */
+export function isPageTab(t: Tab): boolean {
+  return t.root.type === 'pane' && t.root.target.kind === 'page'
+}
+
+/** The tabs that take ⌘1–⌘9: every tab but the pages, in strip order. */
+export function numberedTabs(tabs: readonly Tab[]): Tab[] {
+  return tabs.filter((t) => !isPageTab(t))
 }
 
 /** The tabs of one project, in strip order (the strip itself is `ws.tabs`). */
@@ -243,7 +265,10 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       if (existing) return { ...withActive(ws, existing.projectId, existing.id), activeProject: existing.projectId }
       const pane: PaneLeaf = { type: 'pane', id: newId('pane'), target: a.target }
       const tab: Tab = { id: newId('tab'), projectId: a.projectId, root: pane, focusedPaneId: pane.id, title: a.title }
-      return { ...withActive({ ...ws, tabs: [...ws.tabs, tab] }, a.projectId, tab.id), activeProject: a.projectId }
+      // A page goes last; anything else goes last before the pages.
+      const at = a.target.kind === 'page' ? -1 : ws.tabs.findIndex(isPageTab)
+      const tabs = at < 0 ? [...ws.tabs, tab] : [...ws.tabs.slice(0, at), tab, ...ws.tabs.slice(at)]
+      return { ...withActive({ ...ws, tabs }, a.projectId, tab.id), activeProject: a.projectId }
     }
     case 'close': {
       const tab = ws.tabs.find((t) => t.id === a.tabId)
@@ -277,7 +302,7 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       return { ...withActive(ws, tab.projectId, tab.id), activeProject: tab.projectId }
     }
     case 'activate-index': {
-      const list = ws.tabs
+      const list = numberedTabs(ws.tabs)
       // Cmd+9 is the last tab, however many there are, as in a browser.
       const tab = a.index === 8 ? list[list.length - 1] : list[a.index]
       return tab ? { ...withActive(ws, tab.projectId, tab.id), activeProject: tab.projectId } : ws
@@ -295,7 +320,10 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const tab = ws.tabs.find((t) => t.id === a.tabId)
       if (!tab) return ws
       const rest = ws.tabs.filter((t) => t.id !== tab.id)
-      const to = Math.max(0, Math.min(a.toIndex, rest.length))
+      // Within its own group: a page among the pages, any other tab before them.
+      const firstPage = rest.findIndex(isPageTab)
+      const [lo, hi] = isPageTab(tab) ? [firstPage < 0 ? rest.length : firstPage, rest.length] : [0, firstPage < 0 ? rest.length : firstPage]
+      const to = Math.max(lo, Math.min(a.toIndex, hi))
       rest.splice(to, 0, tab)
       return { ...ws, tabs: rest }
     }
@@ -303,7 +331,9 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const byId = new Map(ws.tabs.map((x) => [x.id, x] as const))
       const first = a.ids.map((id) => byId.get(id)).filter((x): x is Tab => !!x)
       const named = new Set(first.map((x) => x.id))
-      const tabs = [...first, ...ws.tabs.filter((x) => !named.has(x.id))]
+      const rest = ws.tabs.filter((x) => !named.has(x.id))
+      // Pages stay after every other tab, whatever the order names.
+      const tabs = [...first.filter((x) => !isPageTab(x)), ...rest.filter((x) => !isPageTab(x)), ...first.filter(isPageTab), ...rest.filter(isPageTab)]
       return tabs.every((x, i) => x === ws.tabs[i]) ? ws : { ...ws, tabs }
     }
     case 'project':
@@ -336,6 +366,18 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
         if (t.title === a.title || focusedLeaf(t).target.sessionId !== a.sessionId) return t
         changed = true
         return { ...t, title: a.title }
+      })
+      return changed ? { ...ws, tabs } : ws
+    }
+    case 'page-nav': {
+      let changed = false
+      const tabs = ws.tabs.map((t) => {
+        if (t.root.type !== 'pane' || t.root.target.kind !== 'page' || t.root.target.sessionId !== a.sessionId) return t
+        const url = a.url !== undefined && pageAddress(a.url) ? a.url : t.root.target.url
+        const title = a.title !== undefined ? a.title : t.title
+        if (url === t.root.target.url && title === t.title) return t
+        changed = true
+        return { ...t, title, root: { ...t.root, target: { ...t.root.target, url } } }
       })
       return changed ? { ...ws, tabs } : ws
     }
@@ -407,12 +449,23 @@ function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
   if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
+  if (t.kind === 'page') return typeof t.url === 'string' && (t.url === '' || pageAddress(t.url)) && (t.of === undefined || typeof t.of === 'string')
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
 
-/** A pane that is a whole tab, never split: a file, or a session watched read-only. */
+/** A pane that is a whole tab, never split: a file, a session watched read-only, or a web page. */
 export function ownTab(t: TabTarget): boolean {
-  return t.kind === 'file' || t.kind === 'observe'
+  return t.kind === 'file' || t.kind === 'observe' || t.kind === 'page'
+}
+
+/** An address a page tab may hold: http or https with a host. A stored one is checked as a typed one is. */
+export function pageAddress(url: string): boolean {
+  try {
+    const u = new URL(url)
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname !== ''
+  } catch {
+    return false
+  }
 }
 
 /** A stored Pipeline tab (before 2026-10-15): the agent session it was opened from. */
@@ -465,6 +518,9 @@ export function parseWorkspace(raw: string | null): Workspace {
     const tabs = v.tabs.filter((t): t is Tab =>
       !!t && typeof t.id === 'string' && typeof t.projectId === 'string' && isPane(t.root) && typeof t.focusedPaneId === 'string',
     ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title : '' }))
+      // A page is a tab of its own: one stored inside a split is not kept.
+      .filter((t) => t.root.type === 'pane' || leaves(t.root).every((l) => l.target.kind !== 'page'))
+      .sort((a, b) => Number(isPageTab(a)) - Number(isPageTab(b)))
     // A Pipeline pane tab (before 2026-10-15) is not restored as a pane: the
     // pinned Pipeline tab takes its place.
     const hadPipeline = v.tabs.some((t) => storedPipeline(t) !== undefined)

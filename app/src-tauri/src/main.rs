@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod badge;
+mod browser;
 mod capture;
 mod commands;
 mod discovery;
@@ -70,7 +71,8 @@ macro_rules! handler {
             capture::clipboard_image,
             capture::capture_webview,
             capture::read_dropped_image,
-            capture::read_dropped_text
+            capture::read_dropped_text,
+            browser::browser_tab
         ]
     };
 }
@@ -88,6 +90,7 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .manage(capture::Dropped::default())
         .manage(sup)
         .manage(shell::Downloads::default())
+        .manage(browser::Pages::default())
         .manage(tray::Tray::default())
         .manage(popover::Popover::default())
         .manage(badge::Badge::default())
@@ -188,7 +191,9 @@ fn main() {
 #[cfg(target_os = "macos")]
 mod menu {
     use super::*;
-    use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem};
+    use tauri::menu::{
+        CheckMenuItem, IconMenuItem, Menu, MenuItem, MenuItemKind, NativeIcon, PredefinedMenuItem,
+    };
     use tauri::Manager;
 
     const BACKGROUND: &str = "background";
@@ -196,6 +201,14 @@ mod menu {
     const CHECK_UPDATES: &str = "check-updates";
     const CLOSE_TAB: &str = "close-tab";
     const CLOSE_WINDOW: &str = "close-window";
+    const NEW_BROWSER_TAB: &str = "new-browser-tab";
+
+    /// What the page does on File -> New Browser Tab: an empty browser tab
+    /// with its address box focused, or, while the in-app browser is off, a
+    /// line saying where to turn it on (`OPEN_BROWSER_EVENT`,
+    /// ui/src/lib/browsertab.ts; ADR-075).
+    const NEW_BROWSER_TAB_JS: &str =
+        "window.dispatchEvent(new CustomEvent('caprock:open-browser', { detail: {} }))";
 
     /// What the page does on File -> Close Tab: the same as ⌘W pressed in it
     /// (`CLOSE_TAB_EVENT`, ui/src/lib/shell.ts).
@@ -213,10 +226,12 @@ mod menu {
     }
 
     /// ⌘W closes the tab in front, never the main window (owner, 2026-10-16,
-    /// translated: "Cmd+W must close tabs").
+    /// translated: "Cmd+W must close tabs"). A browser tab's page has the
+    /// keyboard only while its tab is in front, so there it is that tab.
     pub fn close_target(focused: Option<&str>) -> CloseTarget {
         match focused {
             Some(shell::MAIN) => CloseTarget::Tab,
+            Some(label) if label.starts_with(crate::browser::PREFIX) => CloseTarget::Tab,
             Some(label) => CloseTarget::Window(label.to_string()),
             None => CloseTarget::Nothing,
         }
@@ -249,11 +264,25 @@ mod menu {
         // Close Tab holds ⌘W now; Window -> Close Window stays, with no key.
         let close_tab = MenuItem::with_id(app, CLOSE_TAB, "Close Tab", true, Some("CmdOrCtrl+W"))?;
         let close_win = MenuItem::with_id(app, CLOSE_WINDOW, "Close Window", true, None::<&str>)?;
+        // File -> New Browser Tab, a globe beside it so it reads as a
+        // browser, not an agent (ADR-075). No key: ⌘T is New shell.
+        let browser = IconMenuItem::with_id_and_native_icon(
+            app,
+            NEW_BROWSER_TAB,
+            "New Browser Tab",
+            true,
+            Some(NativeIcon::Network),
+            None::<&str>,
+        )?;
         for kind in menu.items()? {
             if let MenuItemKind::Submenu(sub) = kind {
                 let text = sub.text()?;
                 if text == "View" {
                     sub.insert(&reload, 0)?;
+                    sub.insert(&PredefinedMenuItem::separator(app)?, 1)?;
+                }
+                if text == "File" {
+                    sub.insert(&browser, 0)?;
                     sub.insert(&PredefinedMenuItem::separator(app)?, 1)?;
                 }
                 if text == "File" || text == "Window" {
@@ -319,6 +348,14 @@ mod menu {
                     }
                     CloseTarget::Window(label) => close_window(app, &label),
                     CloseTarget::Nothing => {}
+                }
+                return;
+            }
+            if event.id() == NEW_BROWSER_TAB {
+                if let Some(w) = app.get_webview_window(shell::MAIN) {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                    let _ = w.eval(NEW_BROWSER_TAB_JS);
                 }
                 return;
             }
@@ -389,6 +426,65 @@ mod tests {
     }
 
     const DAEMON: &str = "http://127.0.0.1:4391/?app=1#/app";
+
+    #[test]
+    fn a_browser_tabs_page_gets_no_command_even_on_the_daemons_own_address() {
+        // Its window is `browser-…`, which no capability names (ADR-075):
+        // being on 127.0.0.1, even the daemon's own port, earns it nothing.
+        for url in [DAEMON, "http://127.0.0.1:5173/", "https://example.com/"] {
+            for (cmd, body) in [
+                ("daemon_status", serde_json::json!({})),
+                ("open_external", serde_json::json!({"url": "https://a.b/"})),
+                ("notify", serde_json::json!({"title": "x", "body": ""})),
+                ("set_badge", serde_json::json!({"count": 1})),
+                ("pick_folder", serde_json::json!({"start": null})),
+                ("app_update_install", serde_json::json!({})),
+                (
+                    "read_dropped_text",
+                    serde_json::json!({"path": "/etc/hosts"}),
+                ),
+                (
+                    "browser_tab",
+                    serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
+                ),
+                ("plugin:updater|check", serde_json::json!({})),
+            ] {
+                let err =
+                    invoke_in("browser-t1", url, cmd, body).expect_err(&format!("{url} {cmd}"));
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn only_the_dashboard_drives_its_browser_tabs() {
+        // A page that is not there (closed, or never opened) is no error.
+        invoke(
+            DAEMON,
+            "browser_tab",
+            serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
+        )
+        .expect("allowed");
+        let err = invoke(
+            DAEMON,
+            "browser_tab",
+            serde_json::json!({"id": "../main", "act": {"do": "close"}}),
+        )
+        .expect_err("bad id");
+        assert!(err.to_string().contains("not a page id"), "{err}");
+        let page = serde_json::json!({"id": "t1", "act": {"do": "hide"}});
+        let err = invoke_in("tray", POPOVER, "browser_tab", page.clone()).expect_err("popover");
+        assert!(err.to_string().contains("not allowed"), "{err}");
+        let err = invoke_in("mail", DAEMON, "browser_tab", page.clone()).expect_err("mail");
+        assert!(err.to_string().contains("not allowed"), "{err}");
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            let err = invoke(url, "browser_tab", page.clone()).expect_err(url);
+            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
+        }
+    }
 
     #[test]
     fn the_daemon_page_may_read_the_status() {
@@ -763,6 +859,8 @@ mod tests {
             CloseTarget::Window(popover::POPOVER.into())
         );
         assert_eq!(close_target(None), CloseTarget::Nothing);
+        // A browser tab's page has the keyboard: ⌘W closes its tab.
+        assert_eq!(close_target(Some("browser-lx2a-1")), CloseTarget::Tab);
         // The menu itself cannot be built here (muda makes its items on the
         // main thread only), so what `arrange` puts in it is read from source.
         let src = include_str!("main.rs");
@@ -787,6 +885,14 @@ mod tests {
         assert!(
             menu.contains("caprock:close-tab"),
             "Close Tab no longer tells the page"
+        );
+        assert!(
+            menu.contains(r#""New Browser Tab""#) && menu.contains("NativeIcon::Network"),
+            "File -> New Browser Tab is gone or no longer marked as a browser"
+        );
+        assert!(
+            menu.contains("caprock:open-browser"),
+            "New Browser Tab no longer tells the page"
         );
     }
 }
