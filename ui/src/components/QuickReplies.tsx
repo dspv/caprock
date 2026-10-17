@@ -1,7 +1,10 @@
 /**
  * The row of quick replies under a session Caprock started (lib/quickReplies.ts):
  * one click sends the reply's text, as the composer would. Nothing at all
- * when the list is empty.
+ * when the list is empty. A quiet "Reply to the agent:" leads the row and each
+ * button's hover names the exact message, so a row of words under a terminal
+ * reads as what it is (owner, 2026-10-18, translated: "maybe not very
+ * unambiguous").
  */
 import { useEffect, useRef, useState } from 'react'
 import { errText } from '@/lib/api'
@@ -40,6 +43,7 @@ export function QuickReplies({ sessionId, onSend, chat = false, className = '' }
   return (
     <div role="group" aria-label="Quick replies" data-quick-replies
       className={`flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto px-2 pb-1 pt-1 [scrollbar-width:none] ${className}`}>
+      <span aria-hidden data-quick-lead className="shrink-0 pl-1 pr-1 text-[11.5px] text-fg-faint">Reply to the agent:</span>
       {items.map((q, i) => {
         const mine = state?.i === i ? state : null
         return (
@@ -52,7 +56,7 @@ export function QuickReplies({ sessionId, onSend, chat = false, className = '' }
             // Keep the keyboard where it was: the terminal or the composer.
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => void send(i, q.text)}
-            title={mine?.phase === 'failed' ? `Not sent: ${mine.error}` : `Send: ${q.text}`}
+            title={mine?.phase === 'failed' ? `Not sent: ${mine.error}` : `Sends to the agent: “${q.text}”`}
             className="app-quick"
           >
             {mine?.phase === 'sent' && <span aria-hidden className="text-ok">✓</span>}
