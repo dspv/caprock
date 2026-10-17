@@ -221,7 +221,7 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
       <PipelineCard sessions={sessions} />
       {data.repos.length === 0 && data.quiet.length === 0 ? <p className="px-3 py-3 text-[12.5px] text-fg-muted">No listed repository is on GitHub.</p>
         : data.repos.length === 0 && !older ? <p className="px-3 py-3 text-[12.5px] text-fg-muted">No repository on GitHub had a session in the last {days} days.</p>
-          : blocks.map((r) => r === 'undo' ? undoStrip : <RepoBlock key={r.project_id} r={r} now={now} usage={usage[r.repo.split('/')[0] ?? '']} calm={!!calm} onHide={() => hideRow(r, data.repos.indexOf(r))} />)}
+          : blocks.map((r) => r === 'undo' ? undoStrip : <RepoBlock key={`${r.project_id}:${r.repo}`} r={r} now={now} usage={usage[r.repo.split('/')[0] ?? '']} calm={!!calm} onHide={() => hideRow(r, data.repos.indexOf(r))} />)}
       {data.repos.length === 0 && undoStrip}
       {(quiet || older) && (
         <div data-cicd-quiet className="border-t border-border px-3 py-1.5 text-[12px] text-fg-muted">

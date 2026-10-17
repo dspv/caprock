@@ -80,6 +80,7 @@ import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
 import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
 import { instructionsSummary } from '@/lib/projectWizard'
+import { rowRepo } from '@/lib/multirepo'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -233,7 +234,9 @@ export const ProjectRow = memo(function ProjectRow({
   const [folded, setFolded] = useFolded(id)
   const live = useMemo(() => liveWithoutTab(node, hiddenSessions), [node, hiddenSessions])
   const nodes = useMemo(() => new Map(node.worktrees.flatMap((w) => w.sessions).map((x) => [x.session.session_id, x] as const)), [node])
-  const items = useMemo(() => agentRows(tabs, labels, nodes, live, rowOrder, hiddenSessions).map((it) => ({ ...it, projectId: id, ownBranch: p.branch })), [tabs, labels, nodes, live, rowOrder, hiddenSessions, id, p.branch])
+  // In a project of several repositories each row names its repository
+  // (ADR-077): the list stays one row per session, no repository rows.
+  const items = useMemo(() => agentRows(tabs, labels, nodes, live, rowOrder, hiddenSessions).map((it) => ({ ...it, projectId: id, ownBranch: p.branch, repo: rowRepo(p, (it.node?.session ?? it.label?.session)?.cwd) })), [tabs, labels, nodes, live, rowOrder, hiddenSessions, id, p])
   const open = !folded
   const waitingOnly = folded && node.waiting > 0
   const visible = waitingOnly ? items.filter((it) => !!it.node?.waiting) : items
@@ -381,6 +384,8 @@ export type SidebarRow = LeadItem & {
   ownBranch?: string
   /** The flat list's: not drawn on the row, said in its tooltip and accessible name. */
   projectName?: string
+  /** Its repository, in a project of several (ADR-077): drawn where the branch goes, before it. */
+  repo?: string
 }
 
 /**
@@ -496,6 +501,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
             drag={drag}
             project={proj}
             ownBranch={it.ownBranch}
+            repo={it.repo}
             onOpen={() => onOpenLive?.(x.session, it.projectId)}
             onStop={x.session.owned ? () => setStopping({ sessionId: x.session.session_id, what: 'session' }) : undefined}
             onHide={onHideSession ? () => onHideSession(x.session.session_id, true) : undefined}
@@ -519,6 +525,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
           digit={digit}
           tab={t}
           label={l}
+          repo={it.repo}
           waiting={!!it.node?.waiting}
           asks={!!it.node?.asks}
           active={t.id === activeTabId}
@@ -651,8 +658,10 @@ function dragProps(drag?: RowDrag) {
   }
 }
 
-function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, flat, digit }: {
+function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, flat, digit }: {
   tab: Tab
+  /** Its repository in a project of several (ADR-077). */
+  repo?: string
   /** In the flat list: no indent under a project. */
   flat?: boolean
   /** Double-click names it: an agent's tab only. */
@@ -690,10 +699,10 @@ function TabRow({ tab, label, active, waiting, asks, onOpen, onClose, onMenu, on
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-        title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', label?.branch, project?.name].filter(Boolean).join(' · ')}
+        title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', repo, label?.branch, project?.name].filter(Boolean).join(' · ')}
       >
         {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <RowDot dot={label?.dot ?? 'idle'} asks={asks} />}
-        <TitleAndBranch title={title} branch={project ? undefined : label?.branch} className={active ? 'font-semibold text-fg' : 'text-fg'} />
+        <TitleAndBranch title={title} branch={project ? undefined : [repo, label?.branch].filter(Boolean).join(' · ') || undefined} className={active ? 'font-semibold text-fg' : 'text-fg'} />
         {project && <ProjectName project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
         {word && <StateWord dot={word} asks={asks} front={active} />}
@@ -749,8 +758,10 @@ export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSession
  * × hides it from the list, ■ stops it when Caprock started it, and a hidden
  * one shown on demand has the open eye that brings it back.
  */
-function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project, flat }: {
+function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide, onShow, onMenu, onRename, drag, project, flat }: {
   item: SessionNode
+  /** Its repository in a project of several (ADR-077). */
+  repo?: string
   /** In the flat list: no indent under a project. */
   flat?: boolean
   /** Double-click names it: an agent's session only. */
@@ -769,7 +780,7 @@ function LiveRow({ item, ownBranch, hidden = false, onOpen, onStop, onHide, onSh
   const s = item.session
   const own = branchLabel(ownBranch ?? '')
   const b = branchLabel(s.git_branch ?? '')
-  const branch = b && b !== own ? b : undefined
+  const branch = [repo, b && b !== own ? b : ''].filter(Boolean).join(' · ') || undefined
   const title = item.isShell ? `Shell${s.program ? ` · ${s.program}` : ''}` : item.title
   const canStop = !!onStop && s.owned && s.status !== 'ended'
   const n = (onHide || onShow ? 1 : 0) + (canStop ? 1 : 0)

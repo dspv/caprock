@@ -7,6 +7,12 @@
  *  1. **Folder.** A path field, the places projects already live as chips
  *     (`~/dev`), the folders inside the chosen one as rows — a click on a
  *     row picks it — and, in the desktop app, the system's folder chooser.
+ *     *Put several repositories in one project* turns the rows into
+ *     checkboxes (owner, 2026-10-18, translated: "I still can't understand
+ *     how to make multi-repo projects"): tick repositories in any folder,
+ *     the picks kept while moving between folders, then *2 selected ·
+ *     Continue*. That project has no folder of its own: the first ticked is
+ *     its home repository, where agents start (ADR-077).
  *  2. **What is there.** The folder is scanned (`GET /v1/projects/scan`,
  *     ADR-055) and said in one line: one repository (a single repository or
  *     a monorepo: one project, nothing to choose — a folder inside a
@@ -30,8 +36,8 @@ import { instructionsPatch, projectsApi, type FoundRepo, type InstructionFile, t
 import { tildePath } from '@/lib/projectSearch'
 import { foundNote } from '@/lib/multirepo'
 import {
-  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, instructionsState, lastSegment, lineCount, listedAt,
-  placeChips, splitTyped, trimSlash,
+  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, homeOf, instructionsState, lastSegment, lineCount, listedAt,
+  pickedLabel, placeChips, splitTyped, suggestedName, togglePick, trimSlash, wholeFolder,
   type Found, type Shape,
 } from '@/lib/projectWizard'
 import { Sheet, SheetButton } from './Sheet'
@@ -92,6 +98,11 @@ export function ProjectWizard({
   const [picked, setPicked] = useState<Set<string>>(() => new Set())
   const [shape, setShape] = useState<Shape>('one')
   const [instructions, setInstructions] = useState('')
+  // *Several repositories*: the Folder step's rows are checkboxes, and the
+  // picks (path → name, in the order ticked) outlive moving between folders.
+  const [several, setSeveral] = useState(false)
+  const [picks, setPicks] = useState<Map<string, string>>(() => new Map())
+  const [name, setName] = useState('')
   const [made, setMade] = useState<{ project: Project; count: number; existed: boolean } | null>(null)
   const field = useRef<HTMLInputElement>(null)
   const startButton = useRef<HTMLButtonElement>(null)
@@ -155,7 +166,11 @@ export function ProjectWizard({
     }
   }
 
-  const listed = found ? listedAt(projects, found.kind === 'multi' ? found.root : found.kind === 'one-below' ? found.repo.path : found.path) : undefined
+  // A project of some repositories is new whatever is listed: the home
+  // repository's own project, if any, becomes it (ADR-077).
+  const listed = !found || found.kind === 'chosen' || (shape === 'one' && picked.size >= 2 && !wholeFolder(found, [...picked]))
+    ? undefined
+    : listedAt(projects, found.kind === 'multi' ? found.root : found.kind === 'one-below' ? found.repo.path : found.path)
 
   /** Scan a folder and move to the second step. One repository below the folder is looked at itself. */
   const look = async (folder: string) => {
@@ -174,12 +189,26 @@ export function ProjectWizard({
       setFound(f)
       setPicked(new Set(f.kind === 'multi' ? f.repos.filter((r) => !r.member_of).map((r) => r.path) : []))
       setShape('one')
+      setName('')
       setStep('found')
     } catch (e) {
       setError(errText(e))
     } finally {
       setBusy(false)
     }
+  }
+
+  /** *Several repositories* → Continue: the picks, as the second step's cards. */
+  const lookPicked = () => {
+    if (picks.size < 2) { setError('Tick two repositories or more.'); return }
+    const repos = [...picks].map(([path, n]) => ({ path, name: n }))
+    setError('')
+    setScan({ root: '', repos: [], instruction_files: [] })
+    setFound({ kind: 'chosen', repos })
+    setPicked(new Set(repos.map((r) => r.path)))
+    setShape('one')
+    setName('')
+    setStep('found')
   }
 
   const choose = async () => {
@@ -195,8 +224,8 @@ export function ProjectWizard({
   const create = async () => {
     if (!found) return
     if (listed) { setMade({ project: listed, count: 1, existed: true }); onCreated(listed.id); setStep('done'); return }
-    const order = found.kind === 'multi' ? found.repos.map((r) => r.path).filter((p) => picked.has(p)) : []
-    const reqs = createRequests(found, order, shape)
+    const order = found.kind === 'multi' || found.kind === 'chosen' ? found.repos.map((r) => r.path).filter((p) => picked.has(p)) : []
+    const reqs = createRequests(found, order, shape, name)
     if (typeof reqs === 'string') { setError(reqs); return }
     setError('')
     setBusy(true)
@@ -244,7 +273,12 @@ export function ProjectWizard({
     if (busy) return
     if (step === 'folder') {
       const hit = matches[active]
-      if (hit) pickFolder(hit.entry.path)
+      if (several) {
+        if (hit?.entry.repo) setPicks((m) => togglePick(m, hit.entry.path, hit.entry.name))
+        else if (hit) { setPath(drillPath(hit.entry.path, home)); setPathTouched(true) }
+        else lookPicked()
+      }
+      else if (hit) pickFolder(hit.entry.path)
       else void look(path)
     }
     else if (step === 'found') void create()
@@ -270,7 +304,9 @@ export function ProjectWizard({
   const modEnter = isMac ? '⌘↩' : 'Ctrl+↵'
   const pickedCount = picked.size
   const primary = step === 'folder'
-    ? { label: busy ? 'Looking…' : 'Continue', run: () => void look(path) }
+    ? several
+      ? { label: pickedLabel(picks.size), run: lookPicked, disabled: picks.size < 2 }
+      : { label: busy ? 'Looking…' : 'Continue', run: () => void look(path) }
     : step === 'found' && found
       ? { label: busy ? 'Creating…' : createLabel(found, pickedCount, shape, !!listed), run: () => void create() }
       : null
@@ -296,7 +332,7 @@ export function ProjectWizard({
           ) : <span className="mr-auto" />}
           <SheetButton onClick={onClose} aria-keyshortcuts="Escape" title="Cancel (Esc)" keyHint="Esc">Cancel</SheetButton>
           {primary && (
-            <SheetButton primary disabled={busy} onClick={primary.run} aria-keyshortcuts="Enter" title={`${primary.label} (${enter})`} keyHint={busy ? undefined : enter}>
+            <SheetButton primary disabled={busy || ('disabled' in primary && primary.disabled)} onClick={primary.run} aria-keyshortcuts="Enter" title={`${primary.label} (${enter})`} keyHint={busy ? undefined : enter}>
               {primary.label}
             </SheetButton>
           )}
@@ -308,6 +344,21 @@ export function ProjectWizard({
           <div className="grid gap-1">
             <h3 className="text-[22px] font-semibold leading-tight tracking-[-0.015em] text-fg">Where is it?</h3>
             <p className="text-[14px] text-fg-muted">A repository, a monorepo, or a folder that holds several repositories.</p>
+          </div>
+          <div className="-mt-2 flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+            <button
+              type="button"
+              data-several
+              aria-pressed={several}
+              onClick={() => { setSeveral((v) => !v); setError(''); field.current?.focus() }}
+              className={`flex h-[32px] items-center gap-2 rounded-full border px-3.5 text-[13.5px] ${several ? 'border-[var(--app-hairline-strong)] bg-[var(--app-row-active)] text-fg' : 'border-[var(--app-hairline)] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'}`}
+            >
+              <span aria-hidden="true" className={`flex h-[15px] w-[15px] items-center justify-center rounded-[4px] border text-[11px] leading-none ${several ? 'border-accent bg-accent text-bg' : 'border-[var(--app-hairline-strong)]'}`}>{several ? '✓' : ''}</span>
+              Put several repositories in one project
+            </button>
+            {several && (
+              <span className="min-w-0 text-[13px] text-fg-muted">Tick them here or in other folders. No folder is made: agents start in the first one ticked and reach the rest.</span>
+            )}
           </div>
           <div className="flex min-w-0 gap-2">
             <input
@@ -355,23 +406,37 @@ export function ProjectWizard({
               <p className="text-[12.5px] text-fg-muted">
                 {partial
                   ? <>In <span className="mono">{shownDir}</span>, names with <span className="mono text-fg">{partial}</span> — ↑↓ moves, Tab goes inside, {enter} picks</>
-                  : <>Inside <span className="mono">{shownDir}</span> — a click picks one</>}
+                  : several
+                    ? <>Inside <span className="mono">{shownDir}</span> — tick the repositories, › goes inside a folder</>
+                    : <>Inside <span className="mono">{shownDir}</span> — a click picks one</>}
               </p>
               <ul ref={list} id="wizard-folders" role="listbox" aria-label="Folders" className="app-scroll grid max-h-[300px] grid-cols-[minmax(0,1fr)] gap-px overflow-y-auto rounded-[10px] border border-[var(--app-hairline)] bg-[var(--app-hairline)]">
-                {matches.map(({ entry: e, start, length }, i) => (
+                {matches.map(({ entry: e, start, length }, i) => {
+                  const tick = several && e.repo
+                  const ticked = tick && picks.has(e.path)
+                  return (
                   <li key={e.path} role="presentation" className={`flex min-w-0 ${i === active ? 'bg-[var(--app-row-active)]' : 'bg-panel'}`}>
                     <button
                       type="button"
                       id={`wizard-folder-${i}`}
                       role="option"
                       aria-selected={i === active}
+                      aria-checked={tick ? ticked : undefined}
                       data-folder-index={i}
+                      data-ticked={ticked || undefined}
                       tabIndex={-1}
-                      onClick={() => pickFolder(e.path)}
+                      onClick={() => {
+                        if (tick) { setPicks((m) => togglePick(m, e.path, e.name)); setError('') }
+                        else if (several) { setPath(drillPath(e.path, home)); setPathTouched(true); field.current?.focus() }
+                        else pickFolder(e.path)
+                      }}
                       onMouseMove={() => { if (partial && cursor !== i) setCursor(i) }}
                       className="app-row flex h-[44px] min-w-0 flex-1 items-center gap-3 px-4 text-left"
-                      title={`Make ${e.name} a project`}
+                      title={tick ? (ticked ? `Untick ${e.name}` : `Tick ${e.name}: one of this project's repositories`) : several ? `Look inside ${e.name}` : `Make ${e.name} a project`}
                     >
+                      {several && (
+                        <span aria-hidden="true" className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border text-[12px] leading-none ${ticked ? 'border-accent bg-accent text-bg' : tick ? 'border-[var(--app-hairline-strong)]' : 'border-transparent'}`}>{ticked ? '✓' : ''}</span>
+                      )}
                       <span className="mono min-w-0 flex-1 truncate text-[14px] text-fg">
                         {length > 0 ? (
                           <>
@@ -396,8 +461,20 @@ export function ProjectWizard({
                       </button>
                     )}
                   </li>
-                ))}
+                  )
+                })}
               </ul>
+            </div>
+          )}
+          {several && picks.size > 0 && (
+            <div role="group" aria-label="Ticked repositories" className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <span className="text-[12.5px] text-fg-muted">Ticked:</span>
+              {[...picks].map(([p, n], i) => (
+                <span key={p} className="mono flex h-[28px] items-center gap-1 rounded-full border border-[var(--app-hairline)] pl-3 pr-1 text-[12.5px] text-fg" title={i === 0 ? `${tildePath(p, home)} — the home repository: agents start here` : tildePath(p, home)}>
+                  {n}{i === 0 && <span className="font-sans text-[11px] text-fg-faint">home</span>}
+                  <button type="button" aria-label={`Untick ${n}`} onClick={() => setPicks((m) => togglePick(m, p, n))} className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">×</button>
+                </span>
+              ))}
             </div>
           )}
           {filtering && partial && matches.length === 0 && (
@@ -411,12 +488,14 @@ export function ProjectWizard({
         <FoundStep
           found={found}
           scan={scan}
-          home={home}
+          homeDir={home}
           listed={listed}
           picked={picked}
           onPicked={(n) => { setPicked(n); setError('') }}
           shape={shape}
           onShape={setShape}
+          name={name}
+          onName={setName}
           instructions={instructions}
           onInstructions={setInstructions}
           modEnter={modEnter}
@@ -483,16 +562,18 @@ export function StepsHeader<K extends string>({ title, steps, step }: { title: s
 }
 
 function FoundStep({
-  found, scan, home, listed, picked, onPicked, shape, onShape, instructions, onInstructions, modEnter,
+  found, scan, homeDir, listed, picked, onPicked, shape, onShape, name, onName, instructions, onInstructions, modEnter,
 }: {
   found: Found
   scan: ScanResult
-  home?: string
+  homeDir?: string
   listed?: Project
   picked: ReadonlySet<string>
   onPicked: (n: Set<string>) => void
   shape: Shape
   onShape: (s: Shape) => void
+  name: string
+  onName: (v: string) => void
   instructions: string
   onInstructions: (v: string) => void
   modEnter: string
@@ -503,34 +584,41 @@ function FoundStep({
     else next.add(p)
     onPicked(next)
   }
-  const where = found.kind === 'multi' ? found.root : found.kind === 'one-below' ? found.repo.path : found.path
+  const order = found.kind === 'multi' || found.kind === 'chosen' ? found.repos.map((r) => r.path).filter((p) => picked.has(p)) : []
+  const home = found.kind === 'multi' || found.kind === 'chosen' ? homeOf(found, order) : ''
+  const whole = wholeFolder(found, order)
+  const where = found.kind === 'multi' ? home || found.root : found.kind === 'chosen' ? home : found.kind === 'one-below' ? found.repo.path : found.path
+  const several = (found.kind === 'multi' || found.kind === 'chosen') && order.length >= 2 && shape === 'one'
   const sub = found.kind === 'repo'
     ? found.inside
       ? <>The folder is inside the repository <span className="mono text-fg">{found.name}</span>: the project is that repository.</>
       : <>A single repository or a monorepo: one project. Agents start in it.</>
     : found.kind === 'folder'
       ? <>No git repository here. It becomes a project all the same.</>
-      : found.kind === 'multi'
-        ? shape === 'one'
-          ? <>One project of them. Agents start in <span className="mono text-fg">{tildePath(found.root, home)}</span> and reach every repository.</>
-          : <>One project for each repository picked, as if each were added alone.</>
+      : found.kind === 'multi' || found.kind === 'chosen'
+        ? shape === 'separate'
+          ? <>One project for each repository picked, as if each were added alone.</>
+          : whole
+            ? <>One project of them. Agents start in <span className="mono text-fg">{tildePath(found.root, homeDir)}</span> and reach every repository.</>
+            : <>One project of the repositories picked; no folder is made. Agents start in <span className="mono text-fg">{lastSegment(home)}</span> and reach the others.</>
         : null
   const memberFiles = found.kind === 'multi' ? found.repos.filter((r) => (r.instruction_files?.length ?? 0) > 0) : []
+  const cards = found.kind === 'multi' || found.kind === 'chosen' ? found.repos : []
   return (
     <div className="grid gap-5 px-6 py-6">
       <div className="grid gap-1.5">
         <h3 aria-label="What is there" className="text-[26px] font-semibold leading-tight tracking-[-0.02em] text-fg">{foundHeadline(found, picked.size)}</h3>
-        <p className="mono truncate text-[13px] text-fg-muted" title={where}>{tildePath(where, home)}</p>
+        <p className="mono truncate text-[13px] text-fg-muted" title={where}>{tildePath(where, homeDir)}</p>
         <p className="text-[14.5px] leading-snug text-fg-muted">{sub}</p>
         {listed && <p className="text-[14px] text-fg">Already a project, <span className="font-medium">{listed.name}</span>: nothing is added twice.</p>}
       </div>
-      {found.kind === 'multi' && (
+      {cards.length > 0 && (
         <div className="grid min-w-0 gap-2.5">
           <ul aria-label="Repositories" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {found.repos.map((r) => <RepoCard key={r.path} repo={r} checked={picked.has(r.path)} onToggle={() => toggle(r.path)} />)}
+            {cards.map((r) => <RepoCard key={r.path} repo={r} checked={picked.has(r.path)} home={several && !whole && r.path === home} onToggle={() => toggle(r.path)} />)}
           </ul>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
-            <button type="button" onClick={() => onPicked(new Set(found.repos.map((r) => r.path)))} className="text-fg-muted hover:text-fg">All</button>
+            <button type="button" onClick={() => onPicked(new Set(cards.map((r) => r.path)))} className="text-fg-muted hover:text-fg">All</button>
             <button type="button" onClick={() => onPicked(new Set())} className="text-fg-muted hover:text-fg">None</button>
             {picked.size >= 2 && (
               <button type="button" onClick={() => onShape(shape === 'one' ? 'separate' : 'one')} className="ml-auto text-fg-muted hover:text-fg">
@@ -539,6 +627,21 @@ function FoundStep({
             )}
           </div>
         </div>
+      )}
+      {several && !listed && (
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[14px] font-medium text-fg">Name</span>
+          <input
+            aria-label="Project name"
+            className="input h-[42px]"
+            style={BIG_FIELD}
+            spellCheck={false}
+            autoComplete="off"
+            placeholder={suggestedName(found, order)}
+            value={name}
+            onChange={(e) => onName(e.target.value)}
+          />
+        </label>
       )}
       <AgentsTold files={scan.instruction_files ?? []} memberFiles={memberFiles} />
       {!listed && (
@@ -561,7 +664,7 @@ function FoundStep({
   )
 }
 
-function RepoCard({ repo, checked, onToggle }: { repo: FoundRepo; checked: boolean; onToggle: () => void }) {
+function RepoCard({ repo, checked, home, onToggle }: { repo: FoundRepo; checked: boolean; home?: boolean; onToggle: () => void }) {
   const note = foundNote(repo)
   return (
     <li className="min-w-0">
@@ -571,7 +674,10 @@ function RepoCard({ repo, checked, onToggle }: { repo: FoundRepo; checked: boole
       >
         <input type="checkbox" className="h-[18px] w-[18px] shrink-0" checked={checked} onChange={onToggle} aria-label={repo.name} />
         <span className="grid min-w-0 gap-0.5">
-          <span className="mono truncate text-[15px] text-fg">{repo.name}</span>
+          <span className="mono truncate text-[15px] text-fg">
+            {repo.name}
+            {home && <span className="ml-2 font-sans text-[12px] text-fg-muted" title="The home repository: agents start here and reach the others">home</span>}
+          </span>
           {(note || (repo.instruction_files?.length ?? 0) > 0) && (
             <span className="truncate text-[12px] text-fg-muted">
               {[note, ...(repo.instruction_files ?? [])].filter(Boolean).join(' · ')}

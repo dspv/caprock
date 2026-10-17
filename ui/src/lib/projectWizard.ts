@@ -136,6 +136,8 @@ export type Found =
   | { kind: 'one-below'; repo: FoundRepo }
   /** No repository at all: a plain folder. */
   | { kind: 'folder'; path: string; name: string }
+  /** Repositories picked one by one on the Folder step, from anywhere (ADR-077). */
+  | { kind: 'chosen'; repos: FoundRepo[] }
 
 export function foundOf(scan: ScanResult): Found {
   if (scan.repo_root) {
@@ -153,6 +155,7 @@ export function foundHeadline(f: Found, picked = 0): string {
     case 'folder': return 'A plain folder'
     case 'one-below': return 'One repository'
     case 'multi': return `${f.repos.length} repositories${f.capped ? ' or more' : ''}${picked !== f.repos.length ? ` · ${picked} picked` : ''}`
+    case 'chosen': return picked === f.repos.length ? `${f.repos.length} repositories, one project` : `${f.repos.length} repositories · ${picked} picked`
   }
 }
 
@@ -165,23 +168,70 @@ export function listedAt(projects: readonly Project[], path: string): Project | 
 export type Shape = 'one' | 'separate'
 
 /**
- * What Create sends. A multi-repo folder with two or more picked is one
- * project of them (or one each); a single pick is that repository alone.
+ * What Create sends. Two or more repositories picked are one project of them
+ * (or one each); a single pick is that repository alone. One project of
+ * every repository a folder holds is that folder (ADR-055); of some of them,
+ * or of repositories picked one by one, it has no folder of its own: the
+ * first picked is its home repository, where agents start (ADR-077) — so
+ * ~/dev, holding thirty repositories, is never listed for two of them.
+ * `name` names it; empty, the folder's or the home repository's name.
  */
-export function createRequests(f: Found, picked: readonly string[], shape: Shape): AddProjectRequest[] | string {
+export function createRequests(f: Found, picked: readonly string[], shape: Shape, name = ''): AddProjectRequest[] | string {
   if (f.kind === 'repo') return [{ path: f.path }]
   if (f.kind === 'folder') return [{ path: f.path }]
   if (f.kind === 'one-below') return [{ path: f.repo.path }]
   if (picked.length === 0) return 'Pick at least one repository.'
   if (picked.length === 1) return [{ path: picked[0]! }]
   if (shape === 'separate') return picked.map((path) => ({ path }))
-  return [{ path: f.root, repos: [...picked] }]
+  const named = name.trim() ? { name: name.trim() } : {}
+  if (wholeFolder(f, picked)) return [{ path: f.root, repos: [...picked], ...named }]
+  return [{ repos: [...picked], ...named }]
+}
+
+/**
+ * Whether one project of `picked` is the scanned folder itself (ADR-055):
+ * every repository found there is picked, but those already in another
+ * project, which the wizard leaves unticked.
+ */
+export function wholeFolder(f: Found, picked: readonly string[]): f is Extract<Found, { kind: 'multi' }> {
+  return f.kind === 'multi' && picked.length >= 2 && f.repos.every((r) => picked.includes(r.path) || !!r.member_of)
+}
+
+/** Where agents of one project of `picked` start: the folder when every repository there is picked, else the first picked. */
+export function homeOf(f: Found, picked: readonly string[]): string {
+  if (wholeFolder(f, picked)) return f.root
+  return picked[0] ?? ''
+}
+
+/** The name a project of several repositories gets when none is typed: the folder's, or the home repository's. */
+export function suggestedName(f: Found, picked: readonly string[]): string {
+  const home = homeOf(f, picked)
+  return home ? lastSegment(home) : ''
+}
+
+/**
+ * The Folder step's picks in *several repositories* mode, kept across the
+ * folders looked at: path → name, in the order picked. A click on a
+ * picked repository unpicks it.
+ */
+export function togglePick(picks: ReadonlyMap<string, string>, path: string, name: string): Map<string, string> {
+  const next = new Map(picks)
+  if (next.has(path)) next.delete(path)
+  else next.set(path, name)
+  return next
+}
+
+/** The Folder step's footer in *several repositories* mode: "2 selected · Continue". */
+export function pickedLabel(n: number): string {
+  if (n === 0) return 'Tick two or more'
+  if (n === 1) return '1 selected · tick one more'
+  return `${n} selected · Continue`
 }
 
 /** The Create button's words. */
 export function createLabel(f: Found, picked: number, shape: Shape, listed: boolean): string {
   if (listed) return 'Open project'
-  if (f.kind !== 'multi' || picked < 2) return 'Create project'
+  if ((f.kind !== 'multi' && f.kind !== 'chosen') || picked < 2) return 'Create project'
   return shape === 'separate' ? `Create ${picked} projects` : `Create project of ${picked} repos`
 }
 

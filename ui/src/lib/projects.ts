@@ -249,7 +249,9 @@ export interface OpFrame {
 }
 
 export type AddProjectRequest =
-  | { path: string; repos?: string[] }
+  | { path: string; repos?: string[]; name?: string }
+  /** Repositories picked one by one, no folder of their own: the first is the home repository agents start in (ADR-077). */
+  | { repos: string[]; name?: string }
   | { create: { parent: string; name: string; git_init?: boolean } }
   | { clone: { url: string; parent: string; name?: string }; op_id: string }
 
@@ -620,8 +622,10 @@ export function disambiguate(list: Project[]): Project[] {
 export function worktreeKeyOf(s: Pick<SessionSummary, 'cwd' | 'worktree'>, project: Project): string {
   // In a multi-repo project the row is the member repository the session
   // is in, keyed by its path (ADR-055).
+  // The home repository (ADR-077) is the project's own checkout: its
+  // worktrees and main checkout are keyed as in any repository project.
   const member = memberOf(s.cwd, project)
-  if (member) return `repo:${member.path}`
+  if (member && member.path !== project.root) return `repo:${member.path}`
   const wts = (project.worktrees ?? []).filter((w) => w.path && w.path !== project.root)
   let best: Worktree | undefined
   for (const w of wts) {

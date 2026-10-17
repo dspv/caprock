@@ -49,8 +49,8 @@ const ONE = {
 
 beforeEach(() => {
   m.tauri.on = false
-  m.add.mockReset().mockImplementation(async (req: { path: string; repos?: string[] }) => ({
-    project: { id: req.repos ? '30' : '31', root: req.path, name: req.path.split('/').pop(), kind: req.repos ? 'folder' : 'repo', ...(req.repos ? { repos: req.repos.map((p) => ({ path: p, name: p.split('/').pop() })) } : {}) },
+  m.add.mockReset().mockImplementation(async (req: { path?: string; repos?: string[]; name?: string }) => ({
+    project: { id: req.repos ? '30' : '31', root: req.path ?? req.repos![0], name: req.name ?? (req.path ?? req.repos![0]!).split('/').pop(), kind: req.repos ? 'folder' : 'repo', ...(req.repos ? { repos: req.repos.map((p) => ({ path: p, name: p.split('/').pop() })) } : {}) },
     created: true,
   }))
   m.patch.mockReset().mockImplementation(async (id: string, p: Partial<Project>) => ({ id, root: '/x', name: 'x', kind: 'repo', ...p }))
@@ -81,13 +81,39 @@ describe('new project, tap-tap-tap', () => {
     expect(screen.getByText(/api \(CLAUDE.md\)/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'web' }))
     fireEvent.change(screen.getByRole('textbox', { name: /Instructions for every agent here/ }), { target: { value: 'Answer in English.' } })
+    // Two of the three: no folder of its own, api the home repository (ADR-077).
+    expect(screen.getByText(/no folder is made/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Create project of 2 repos/ }))
-    await waitFor(() => expect(m.add).toHaveBeenCalledWith({ path: '/Users/me/work', repos: ['/Users/me/work/api', '/Users/me/work/infra'] }))
+    await waitFor(() => expect(m.add).toHaveBeenCalledWith({ repos: ['/Users/me/work/api', '/Users/me/work/infra'] }))
     expect(m.patch).toHaveBeenCalledWith('30', { defaults: { system_prompt: 'Answer in English.' } })
     expect(cb.onCreated).toHaveBeenCalledWith('30')
     expect(await screen.findByText(/is ready/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Start an agent here/ }))
     expect(cb.onStartAgent).toHaveBeenCalledWith('30')
+  })
+
+  it('several repositories ticked in the list, from more than one folder, make one named project with no folder of its own', async () => {
+    m.browse.mockImplementation(async (dir: string) => dir.includes('notes')
+      ? { dir: '/Users/me/dev/notes', parent: '/Users/me/dev', root: '/Users/me', entries: [{ name: 'ai-notary', path: '/Users/me/dev/notes/ai-notary', repo: true }] }
+      : { dir: '/Users/me/dev', parent: '/Users/me', root: '/Users/me', entries: [{ name: 'ai-crm', path: '/Users/me/dev/ai-crm', repo: true }, { name: 'site', path: '/Users/me/dev/site', repo: true }, { name: 'notes', path: '/Users/me/dev/notes', repo: false }] })
+    const cb = open()
+    fireEvent.click(await screen.findByRole('button', { name: /Put several repositories in one project/ }))
+    expect(screen.getByRole('button', { name: /Tick two or more/ })).toBeDisabled()
+    fireEvent.click(await screen.findByRole('option', { name: /ai-crm/ }))
+    expect(m.scan).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /1 selected/ })).toBeDisabled()
+    // A folder that is not a repository is gone into, the pick kept.
+    fireEvent.click(screen.getByRole('option', { name: /notes/ }))
+    fireEvent.click(await screen.findByRole('option', { name: /ai-notary/ }))
+    expect(screen.getByRole('group', { name: 'Ticked repositories' })).toHaveTextContent('ai-crmhome')
+    fireEvent.click(screen.getByRole('button', { name: /2 selected · Continue/ }))
+    expect(await screen.findByRole('heading', { name: 'What is there' })).toHaveTextContent('2 repositories, one project')
+    expect(screen.getByText(/no folder is made/)).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Back office' } })
+    fireEvent.click(screen.getByRole('button', { name: /Create project of 2 repos/ }))
+    await waitFor(() => expect(m.add).toHaveBeenCalledWith({ repos: ['/Users/me/dev/ai-crm', '/Users/me/dev/notes/ai-notary'], name: 'Back office' }))
+    expect(cb.onCreated).toHaveBeenCalledWith('30')
+    expect(await screen.findByText('Back office is ready')).toBeInTheDocument()
   })
 
   it('or as separate projects, one each', async () => {
