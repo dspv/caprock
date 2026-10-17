@@ -1592,6 +1592,12 @@ and the points below say where the build settled what this plan left open.
   output (a `uint64`), and the ring knows the offset of its oldest byte. The
   pty-host reports the current offset in its `W` (welcome) frame and the ring's
   start offset with `S`, as new JSON fields (additive, ADR-033's rule).
+- **Ring storage.** The ring is one array of its full size, allocated when
+  it is made and written in a circle: a write copies into it and allocates
+  nothing. `Since` and the snapshot copy the held bytes out in one piece.
+  `Changed()` makes its channel only when a reader asks for one, and the
+  next write (or `Restore`) closes it, so output nobody is watching makes no
+  channel per write (perf audit F2, 2026-10-18).
 - **Resume.** The client connects with `?since=<offset>`. The first frame is
   `{"hello":{"v":2,"offset":N,"reset":bool,"ack":S}}`. If the ring still
   holds that byte, `reset` is false and the server sends exactly the bytes
