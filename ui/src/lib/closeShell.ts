@@ -221,8 +221,25 @@ export const AGENT_SAVED_TOAST = 'Closed. The conversation is saved — reopen i
 /** The one sentence before closing the tab of an agent that is working or waiting. */
 export function agentStillWorking(title: string, many: boolean): string {
   return many
-    ? `“${title}”: its agents are still working. They will keep working in the background — you'll find them in the sidebar. The conversations are saved.`
-    : `“${title}” is still working. It will keep working in the background — you'll find it in the sidebar. The conversation is saved.`
+    ? `“${title}”: its agents are still working. The conversations are saved either way.`
+    : `“${title}” is still working. The conversation is saved either way.`
+}
+
+/**
+ * The two equal choices under that sentence, each with one plain line
+ * saying what it does (owner, 2026-10-17, translated: one button "may be
+ * the wrong choice").
+ */
+export function agentCloseChoices(many: boolean): { keep: { label: string; says: string }; end: { label: string; says: string } } {
+  return many
+    ? {
+        keep: { label: 'Keep them running', says: 'Only the tab closes. They work on in the background, under Running in the sidebar.' },
+        end: { label: 'Stop them', says: 'They stop now and the tab closes. Continue them later from History or the sidebar.' },
+      }
+    : {
+        keep: { label: 'Keep it running', says: 'Only the tab closes. It works on in the background, under Running in the sidebar.' },
+        end: { label: 'Stop it', says: 'It stops now and the tab closes. Continue it later from History or the sidebar.' },
+      }
 }
 
 /** The one question before ending an agent that is still answering. */

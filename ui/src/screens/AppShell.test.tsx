@@ -181,15 +181,20 @@ describe('the app workspace', () => {
     expect(tab).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByTestId('pane-agent-1')).toHaveAttribute('data-active', 'true')
     await cmd('w')
-    // An agent Caprock started, still working: one sentence, one button in
-    // focus, a quiet way to stop it, and no checkbox (owner, 2026-10-15).
+    // An agent Caprock started, still working: one sentence and two equal
+    // buttons, each with a line saying what it does, Keep in focus, and no
+    // checkbox (owner, 2026-10-17: one button may be the wrong choice).
     const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
-    expect(within(sheet).getByText(/^“Fix the login bug” is still working\. It will keep working in the background — you'll find it in the sidebar\. The conversation is saved\.$/)).toBeInTheDocument()
-    const keep = within(sheet).getByRole('button', { name: 'Close tab' })
+    expect(within(sheet).getByText(/^“Fix the login bug” is still working\. The conversation is saved either way\.$/)).toBeInTheDocument()
+    const keep = within(sheet).getByRole('button', { name: 'Keep it running' })
     expect(keep).toHaveFocus()
-    expect(within(sheet).getByRole('button', { name: 'Stop it instead' })).toBeInTheDocument()
+    expect(keep).toHaveAccessibleDescription(/^Only the tab closes\. It works on in the background/)
+    const stop = within(sheet).getByRole('button', { name: 'Stop it' })
+    expect(stop).toHaveAccessibleDescription(/^It stops now and the tab closes\./)
+    // Equal weight: the two are drawn alike.
+    expect(stop.className).toBe(keep.className)
     expect(within(sheet).queryByRole('checkbox')).toBeNull()
-    expect(within(sheet).queryAllByRole('button').map((b) => b.textContent).filter((t) => t !== '')).toEqual(['Close tab', 'Stop it instead'])
+    expect(within(sheet).queryAllByRole('button').map((b) => b.textContent).filter((t) => t !== '')).toEqual(['Keep it running', 'Stop it'])
     fireEvent.click(keep)
     await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
     // An agent's tab is not its process: closing it stops nothing.
@@ -207,7 +212,7 @@ describe('the app workspace', () => {
     await screen.findByRole('tab', { name: /Fix the login bug/ })
     act(() => { window.dispatchEvent(new Event(CLOSE_TAB_EVENT)) })
     const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Close tab' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Keep it running' }))
     await waitFor(() => expect(screen.queryByRole('tab')).not.toBeInTheDocument())
     // No tab left, the Dashboard in front: Close Tab closes nothing and asks nothing.
     const hash = location.hash
@@ -239,13 +244,13 @@ describe('the app workspace', () => {
     }
   })
 
-  it('stops an agent that is still working only from the quiet link, in one step', async () => {
+  it('stops an agent that is still working from its own button, in one step', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
     await cmd('w')
     const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Stop it instead' }))
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Stop it' }))
     await waitFor(() => expect(spawned.signals).toEqual([['agent-1', 'end']]))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
@@ -331,7 +336,7 @@ describe('the app workspace', () => {
     await waitFor(() => expect(active('agent-2')).toBe('true'))
     expect(active('agent-1')).toBe('false')
     await cmd('w')
-    fireEvent.click(within(await screen.findByRole('dialog', { name: "Close an agent's tab" })).getByRole('button', { name: 'Close tab' }))
+    fireEvent.click(within(await screen.findByRole('dialog', { name: "Close an agent's tab" })).getByRole('button', { name: 'Keep it running' }))
     await waitFor(() => expect(screen.queryByTestId('pane-agent-2')).not.toBeInTheDocument())
     expect(active('agent-1')).toBe('true')
   })

@@ -142,7 +142,7 @@ describe('closing an agent Caprock started', () => {
     const sessions = new Map([['w1', s('w1', { activity: { phrase: '', at: '', health: 'waiting-on-you' } })], ['p1', s('p1')]])
     expect(planAgentClose(tab(pane('a', 'session', 'w1')), undefined, sessions, isChat)).toEqual({ all: ['w1'], busy: [], active: ['w1'] })
     expect(planAgentClose(tab(pane('a', 'session', 'p1')), undefined, sessions, isChat, (id) => id === 'p1')).toEqual({ all: ['p1'], busy: [], active: ['p1'] })
-    expect(agentStillWorking('Fix it', false)).toBe("“Fix it” is still working. It will keep working in the background — you'll find it in the sidebar. The conversation is saved.")
+    expect(agentStillWorking('Fix it', false)).toBe('“Fix it” is still working. The conversation is saved either way.')
     expect(AGENT_SAVED_TOAST).toBe('Closed. The conversation is saved — reopen it from History or the sidebar.')
   })
 

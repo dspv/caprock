@@ -6,7 +6,7 @@
  * all its busy shells at once (`project`).
  */
 import { Sheet, SheetButton, SHEET_CLOSE_ROOM } from './Sheet'
-import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
+import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentCloseChoices, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
 
 /**
  * The one question before closing a quick chat that is still answering
@@ -47,12 +47,14 @@ export function CloseChatConfirm({ onStop, onKeep, onCancel, agent = false }: {
 
 /**
  * Closing the tab of an agent Caprock started that is working or waiting on
- * you (lib/agentClose.ts): one sentence and one decision (owner,
- * 2026-10-15, translated: "I never understand whether data is kept and
- * which button to pick — one button"). *Close tab* is the one button, in
- * focus, so ⌘W then Enter closes the tab and the agent works on; *Stop it
- * instead* is a quiet link under it; Escape cancels. An idle agent never
- * gets here: it ends with its tab and a toast says the conversation is saved.
+ * you (lib/agentClose.ts): one sentence and two equal buttons, each with
+ * one plain line under it saying what it does (owner, 2026-10-17,
+ * translated: the dialog had one button, which may be the wrong choice).
+ * From 2026-10-15 it was *Close tab* and a quiet *Stop it instead* link,
+ * and stopping was easy to miss. *Keep it running* is in focus, so ⌘W then
+ * Enter still closes the tab and lets the agent work on; Escape cancels.
+ * An idle agent never gets here: it ends with its tab and a toast says the
+ * conversation is saved.
  */
 export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
   /** The tab's name, for the sentence. */
@@ -63,25 +65,28 @@ export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
   onEnd: () => void
   onCancel: () => void
 }) {
+  const choices = agentCloseChoices(many)
+  // The two are drawn alike on purpose: neither is the "right" one.
+  const rows = [
+    { key: 'keep', c: choices.keep, act: onKeep, focus: true },
+    { key: 'end', c: choices.end, act: onEnd, focus: false },
+  ] as const
   return (
-    <Sheet
-      label="Close an agent's tab"
-      width={480}
-      onClose={onCancel}
-      footer={
-        <div className="flex w-full flex-col items-end gap-1.5">
-          <button type="button" autoFocus onClick={onKeep}
-            className="h-[34px] shrink-0 whitespace-nowrap rounded-[7px] bg-accent px-5 text-[14px] font-medium text-panel hover:brightness-110">
-            Close tab
-          </button>
-          <button type="button" data-stop-instead onClick={onEnd}
-            className="rounded-[4px] px-1 text-[12.5px] text-fg-muted underline decoration-fg-faint underline-offset-2 hover:text-fg">
-            {many ? 'Stop them instead' : 'Stop it instead'}
-          </button>
+    <Sheet label="Close an agent's tab" width={520} onClose={onCancel}>
+      <div className="grid gap-4 px-5 py-4">
+        <p className={`text-[13.5px] leading-[1.5] text-fg ${SHEET_CLOSE_ROOM}`}>{agentStillWorking(title, many)}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {rows.map(({ key, c, act, focus }) => (
+            <div key={key} className="grid content-start gap-1.5">
+              <button type="button" autoFocus={focus} data-agent-close={key} aria-describedby={`agent-close-${key}`} onClick={act}
+                className="h-[34px] w-full whitespace-nowrap rounded-[7px] border border-[var(--app-hairline-strong)] px-4 text-[14px] font-medium text-fg hover:bg-[var(--app-row-hover)]">
+                {c.label}
+              </button>
+              <p id={`agent-close-${key}`} className="text-[12.5px] leading-[1.45] text-fg-muted">{c.says}</p>
+            </div>
+          ))}
         </div>
-      }
-    >
-      <p className={`py-4 pl-5 text-[13.5px] leading-[1.5] text-fg ${SHEET_CLOSE_ROOM}`}>{agentStillWorking(title, many)}</p>
+      </div>
     </Sheet>
   )
 }

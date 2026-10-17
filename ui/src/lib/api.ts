@@ -246,6 +246,14 @@ export interface EditorList {
   preferred: string
 }
 
+/** A web browser installed on the machine the daemon runs on. */
+export interface InstalledBrowser {
+  id: string
+  name: string
+  /** The system's default browser. */
+  default: boolean
+}
+
 /** Whether a session can be carried on from here, and if not, why. */
 export interface ResumeInfo {
   ok: boolean
@@ -2215,6 +2223,10 @@ export const api = {
   editors: () => get<EditorList>('/v1/editors'),
   /** Open a folder, or a file at a line, in an editor. Refused off this machine. */
   openInEditor: (req: { path: string; line?: number; editor?: string }) => post<{ editor: Editor }>('/v1/editors/open', req),
+  /** Web browsers installed here, the default first (the terminal link chooser). Refused off this machine. */
+  browsers: () => get<{ browsers: InstalledBrowser[] }>('/v1/browsers'),
+  /** Open an http(s) link in one of them. Refused off this machine. */
+  openInBrowser: (req: { browser: string; url: string }) => post<{ browser: InstalledBrowser }>('/v1/browsers/open', req),
   /** Remove sessions from Caprock for good — the machine only (ADR-037). */
   removeSessions: (req: { ids?: string[]; cwd_prefix?: string; dry_run?: boolean }) => post<RemoveResult>('/v1/sessions/remove', req),
   spawn: (req: SpawnRequest) => post<SpawnResult>('/v1/agents', req),

@@ -992,9 +992,9 @@ export function AppShell() {
    * translated: "I never understand whether data is kept and which button
    * to pick — one button"): an agent Caprock started that is idle ends with
    * its tab, no question, and a toast says the conversation is saved; one
-   * working or waiting on you gets one sentence and *Close tab* (it keeps
-   * working) or *Stop it instead*. Settings → Closing a tab can make it
-   * always keep or always end. An agent another terminal started only
+   * working or waiting on you gets one sentence and two equal buttons,
+   * *Keep it running* (focused) and *Stop it* (owner, 2026-10-17).
+   * Settings → Closing a tab can make it always keep or always end. An agent another terminal started only
    * loses its tab (rule 7).
    */
   const closeAgents = useCallback(async (tabId: string, paneId: string | undefined, chats: readonly string[]) => {

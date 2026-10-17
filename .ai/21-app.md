@@ -297,9 +297,11 @@ One window, three regions:
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
   already exited is not signalled. Closing the tab of any other agent
   Caprock started ends it when it is idle, with a toast that the
-  conversation is saved; one working or waiting asks one sentence with
-  *Close tab* (focused; the agent runs on) and a quiet *Stop it instead*
-  (since 2026-10-15; `lib/agentClose.ts`, .ai/04-ui.md). Ending is the
+  conversation is saved; one working or waiting asks one sentence with two
+  equal buttons, each with a line saying what it does: *Keep it running*
+  (focused; only the tab closes) and *Stop it* (since 2026-10-17; before,
+  *Close tab* and a quiet *Stop it instead*; `lib/agentClose.ts`,
+  .ai/04-ui.md). Escape cancels. Ending is the
   `end` signal — SIGTERM, then SIGKILL after 5 s — so the transcript is
   written and the session can be continued; an agent another terminal started
   only loses its tab. The tab's × says *the chat ends* on a chat, *keep
@@ -1837,6 +1839,18 @@ replies to a running session: Continue, Shorter and the like"). Built in
   Shell 2 is running npm. Stop them and close?* — with **Stop and close**,
   **Keep them running, close tabs** and **Cancel**. Its agents are never
   stopped. The project's ⋯ menu *Close tabs* still only closes tabs.
+- **Links in a terminal** (`ui/src/lib/termlinks.ts`, .ai/04-ui.md § Session
+  Detail). ⌘-click (Ctrl+click off macOS) opens a link in the default
+  browser, through the shell's `open_external`. ⇧⌘-click (Ctrl+Shift+click)
+  on an http(s) link opens a chooser at the pointer: the browsers installed
+  here, the default first and marked, then *Copy link* (owner, 2026-10-17).
+  The daemon finds them (`internal/browser`, `GET /v1/browsers`: LaunchServices
+  on macOS, the registry's StartMenuInternet on Windows, `.desktop` entries
+  for `x-scheme-handler/http(s)` on Linux) and opens a picked one
+  (`POST /v1/browsers/open`), a process Caprock starts (rule 7). The in-app
+  browser stays withdrawn (ADR-070); the chooser's rows are entry kinds
+  (`lib/linkchooser.ts`), so *Open in Caprock* is one more the day it comes
+  back.
 
 ## File tabs
 

@@ -82,10 +82,11 @@ others. Installing it: [install-app.md](install-app.md).
   exactly as ⌘W and the tab strip's × do. An agent Caprock started that is
   idle ends with its tab, without a question, and Caprock says so: the
   conversation is saved, and you reopen it from History or the sidebar.
-  One that is still working or waiting on you gets one sentence and one
-  button: **Close tab** (in focus, so ⌘W then Enter) leaves it working in
-  the background — it moves to the muted rows, under *Running, no tab* in
-  the Tabs list — and the quiet link **Stop it instead** under it ends it;
+  One that is still working or waiting on you gets one sentence and two
+  equal buttons, each with a line under it saying what it does: **Keep it
+  running** (in focus, so ⌘W then Enter) closes only the tab and leaves it
+  working in the background — it moves to the muted rows, under *Running,
+  no tab* in the Tabs list — and **Stop it** ends it and closes the tab;
   Escape cancels. Either way the conversation is saved and can be
   continued. Settings → *Closing a tab* can make it always keep the agent
   running or always end it. An agent you started in your own terminal is never ended from
@@ -845,6 +846,8 @@ On macOS:
 | ⌘J          | Next session waiting on you                                                         |
 | ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
 | ⌘F          | Find in the terminal or the file                                                    |
+| ⌘-click     | A link in the terminal: open it in your default browser                             |
+| ⇧⌘-click    | A link in the terminal: choose the browser to open it in, or copy it                |
 | ⌘K          | Command palette                                                                     |
 | ⌘,          | Settings                                                                            |
 | ⇧⌘F         | Send feedback                                                                       |
@@ -864,7 +867,8 @@ On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 Ctrl+Alt+Shift+W and the theme Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
 are Find, Close and New shell; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are
-Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H). The arrow
+Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H; a link opens on
+Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;

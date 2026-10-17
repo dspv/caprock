@@ -4,8 +4,9 @@
  * tab closed and its agent ran on, a muted row under "Running, no tab".
  * **ask** (the default, 2026-10-15): an idle agent ends with its tab, no
  * question, and a toast says the conversation is saved; one working or
- * waiting on you gets one sentence, *Close tab* (focused: ⌘W then Enter; it
- * works on) and a quiet *Stop it instead*. **keep** and **end**, set in
+ * waiting on you gets one sentence and two equal buttons, each with a line
+ * saying what it does: *Keep it running* (focused: ⌘W then Enter; it works
+ * on) and *Stop it* (2026-10-17). **keep** and **end**, set in
  * Settings → Closing a tab, never ask. Kept per viewer, in this browser's storage. An
  * agent another terminal started is never asked about and never signalled
  * (rule 7; lib/closeShell planAgentClose).

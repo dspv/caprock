@@ -206,7 +206,11 @@ the last drop the same way, for the brief of New project from a template.
 app on the machine is registered for it (`open` on macOS, the registry on
 Windows, `xdg-mime` on Linux), else it refuses so the page falls back to
 t.me (the share sheet's *Send to someone in Telegram*); a Cmd/Ctrl+click on
-a link in a terminal goes through it (`ui/src/lib/termlinks.ts`).
+a link in a terminal goes through it (`ui/src/lib/termlinks.ts`), and so
+does the default browser picked in the chooser a ⇧⌘-click (Ctrl+Shift+click)
+opens. Another browser picked there is opened by the daemon
+(`POST /v1/browsers/open`), not by the shell: the shell has no command that
+names a browser.
 `open_mail_app` and `open_mail_window` open Mail in a window of its own, never
 as a tab in the workspace (`src-tauri/src/mail.rs`, `ui/src/lib/mailwindow.ts`).
 The page asks `open_mail_app` first: on macOS it launches or brings forward
