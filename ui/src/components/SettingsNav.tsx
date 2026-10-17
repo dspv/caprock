@@ -8,6 +8,9 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { SectionIcon } from './SettingsIcons'
 
+/** About how many characters fit the 224px menu before it cuts a title. */
+const TITLE_FITS = 26
+
 interface Item { id: string; title: string }
 
 export function SettingsNav({ root }: { root: RefObject<HTMLElement | null> }) {
@@ -45,12 +48,14 @@ export function SettingsNav({ root }: { root: RefObject<HTMLElement | null> }) {
   }, [items, root])
 
   if (items.length < 4) return null
+  // A tooltip only where the menu cuts the title: one on every row covered
+  // the row above it while it said nothing new (owner, 2026-10-17).
   return (
     <nav aria-label="Settings sections" className="sticky top-4 hidden max-h-[calc(100vh-6rem)] w-[224px] shrink-0 self-start overflow-y-auto xl:block">
       <ul className="grid gap-0.5">
         {items.map((i) => (
           <li key={i.id}>
-            <button type="button" title={i.title} aria-current={active === i.id ? 'true' : undefined}
+            <button type="button" title={i.title.length > TITLE_FITS ? i.title : undefined} aria-current={active === i.id ? 'true' : undefined}
               onClick={() => { document.getElementById(i.id)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); setActive(i.id) }}
               className={`flex w-full items-center gap-2 truncate rounded-[7px] px-3 py-1.5 text-left text-[13.5px] ${active === i.id ? 'bg-[var(--app-row-active,var(--color-panel-2))] font-medium text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover,var(--color-panel-2))] hover:text-fg'}`}>
               <SectionIcon title={i.title} size={14} />
