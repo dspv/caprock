@@ -20,7 +20,7 @@ describe('the words for each problem', () => {
     expect(explain('machine-offline', 'Mac mini', 'wss://relay.caprock.dev').title).toBe('Connected to the relay — your computer is offline')
     expect(explain('relay-unreachable', 'Mac mini', 'wss://relay.caprock.dev').body).toContain('relay.caprock.dev')
     expect(explain('removed', 'Mac mini', '').title).toBe('Paired device removed: pair again')
-    expect(explain('removed', 'Mac mini', '').body).toContain('Settings → Use on your phone → Show a code')
+    expect(explain('removed', 'Mac mini', '').body).toContain('Settings → Use on your phone → Connect a phone')
     expect(explain('no-answer', 'Mac mini', '').body).toContain('asleep')
   })
   it('keeps the bar short, and says "Connecting…" only while an attempt is under way', () => {
@@ -124,7 +124,7 @@ describe('the page, opened again', () => {
     render(<RemoteRoot />)
     const note = screen.getByTestId('not-paired-here')
     expect(note.textContent).toContain('This browser isn’t paired')
-    expect(note.textContent).toContain('Caprock → Settings → Use on your phone → Show a code')
+    expect(note.textContent).toContain('Caprock → Settings → Use on your phone → Connect a phone')
   })
 
   it('knowing the machine but holding no token, says exactly that instead of an error', async () => {
@@ -134,7 +134,7 @@ describe('the page, opened again', () => {
     render(<Root />)
     const box = screen.getByTestId('not-paired-here')
     expect(box.textContent).toContain('This browser isn’t paired')
-    expect(box.textContent).toContain('Settings → Use on your phone → Show a code')
+    expect(box.textContent).toContain('Settings → Use on your phone → Connect a phone')
     expect(screen.queryByTestId('connection-problem')).toBeNull()
   })
 

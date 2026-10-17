@@ -1968,7 +1968,7 @@ export interface PairedDevice {
   last_seen: number
   /** A viewer reads; a controller may also start, type into and stop
    *  sessions (ADR-034). Decided on the machine: by the tick beside Show a
-   *  code, which the code carries, or by Let it control sessions afterwards. */
+   *  code, which the code carries, or by Allow control afterwards. */
   role: 'viewer' | 'controller'
   /** How it last reached the machine: `relay` (anywhere, ADR-058),
    *  `tailscale` (the network listener over Tailscale), `lan` (the network

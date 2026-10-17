@@ -48,7 +48,7 @@ describe('ReadyCard', () => {
     expect(screen.getByRole('heading').textContent).toBe('Connected, view only')
     const row = screen.getByTestId('ready-type')
     expect(row.dataset.ok).toBe('0')
-    expect(row.textContent).toContain('View only. To type, on the computer: Caprock app → Settings → Use on your phone → Let it control sessions next to this phone')
+    expect(row.textContent).toContain('View only. To type, on the computer: Caprock app → Settings → Use on your phone → Allow control next to this phone')
   })
 })
 

@@ -60,7 +60,7 @@ describe('endState', () => {
     expect(endState({ owned: false, status: 'active' }, true)).toEqual({ can: false, why: WHY_NOT_OURS })
     expect(endState({ owned: false, status: 'active' }, false)).toEqual({ can: false, why: WHY_NOT_OURS })
     expect(WHY_NOT_OURS).toBe('Started in your own terminal — Caprock never stops it (rule 7).')
-    expect(WHY_WATCH).toContain('Settings → Use on your phone → Let it control sessions')
+    expect(WHY_WATCH).toContain('Settings → Use on your phone → Allow control')
   })
 })
 

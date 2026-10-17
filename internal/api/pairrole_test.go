@@ -2,7 +2,7 @@
 // 2026-10-14). The owner's phone (translated): "I scan it with the phone,
 // install the app, go in — and I can't do anything, and say I've already left
 // the house." A newly paired phone was a viewer until a second click on the
-// machine; now the tick beside Show a code is that click, made first.
+// machine; now the tick beside Connect a phone is that click, made first.
 package api
 
 import (

@@ -16,7 +16,7 @@ describe('LanOnlyNotice — a phone on the Wi-Fi link (owner, 2026-10-14)', () =
     render(<LanOnlyNotice />)
     const note = await screen.findByTestId('lan-only-notice')
     expect(note.textContent).toMatch(
-      /^This is the old Wi-Fi link: it works only on your home Wi-Fi\. Use the Caprock app from m\.caprock\.dev instead: in the Caprock app on your computer, Settings → Use on your phone → Show a code, and scan it\. Then remove this one from your home screen\./,
+      /^This is the old Wi-Fi link: it works only on your home Wi-Fi\. Use the Caprock app from m\.caprock\.dev instead: in the Caprock app on your computer, Settings → Use on your phone → Connect a phone, and scan it\. Then remove this one from your home screen\./,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
     expect(screen.queryByTestId('lan-only-notice')).toBeNull()
@@ -27,7 +27,7 @@ describe('LanOnlyNotice — a phone on the Wi-Fi link (owner, 2026-10-14)', () =
     vi.spyOn(api, 'pairMe').mockResolvedValue({ role: 'viewer', via: 'lan' })
     render(<LanOnlyNotice />)
     const note = await screen.findByTestId('lan-only-notice')
-    expect(note.textContent).toMatch(/^This link works only on your home Wi-Fi\. To use Caprock anywhere: in the Caprock app on your computer, Settings → Use on your phone → Show a code, and scan it\./)
+    expect(note.textContent).toMatch(/^This link works only on your home Wi-Fi\. To use Caprock anywhere: in the Caprock app on your computer, Settings → Use on your phone → Connect a phone, and scan it\./)
   })
 
   it('is silent through the relay, over Tailscale, and on the machine itself', async () => {

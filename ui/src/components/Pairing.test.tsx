@@ -1,31 +1,56 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
-import { ALLOW_TYPE_KEY, Pairing, pairChecklist, needsRepair, offersOpenAgain, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phonePage, phoneStatus, takeCodeOnArrival } from './Pairing'
+import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
+import { ALLOW_TYPE_KEY, Pairing, isOldDevice, needsRepair, offersOpenAgain, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phonePage, phoneSummary, seenAgo, takeCodeOnArrival } from './Pairing'
 import { Section } from './SettingsParts'
 import { PairScreen, codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
 
-const phone = { id: 'a', name: 'iPhone', paired_at: 1, last_seen: 1, role: 'viewer' as const }
-const tablet = { id: 'b', name: 'iPad', paired_at: 2, last_seen: 2, role: 'viewer' as const }
+const T = Date.now()
+const MIN = 60_000
+const DAY = 86_400_000
+const phone = { id: 'a', name: 'iPhone', paired_at: T - DAY, last_seen: T - 2 * MIN, role: 'viewer' as const }
+const tablet = { id: 'b', name: 'iPad', paired_at: T - 2 * DAY, last_seen: T - DAY, role: 'viewer' as const }
 
-describe('phoneStatus — the state at a glance', () => {
-  it('says Off when nothing listens', () => {
-    expect(phoneStatus({ enabled: false, devices: [] }).label).toBe('Off')
-    expect(phoneStatus({ enabled: false, devices: [phone] }).label).toBe('Off · 1 phone paired')
+describe('phoneSummary — one sentence: is my phone connected?', () => {
+  const on = { enabled: true, status: 'online' as const, phones: 0, relay: '', app: '' }
+  it('says no phone is connected when there is none, or only old ones and computers', () => {
+    expect(phoneSummary({ devices: [] }, T)).toMatchObject({ tone: 'none', text: 'No phone connected yet.' })
+    const mac = { ...phone, id: 'm', name: 'Mac', last_seen: T - 44 * DAY, paired_at: T - 45 * DAY }
+    const computer = { ...phone, id: 'c', name: 'Mac mini', kind: 'machine' as const }
+    expect(phoneSummary({ devices: [mac, computer], remote: on }, T).text).toBe('No phone connected yet.')
   })
-  it('says it is waiting while a code is out', () => {
-    expect(phoneStatus({ enabled: true, code: '123456', devices: [] })).toEqual({
-      tone: 'waiting',
-      label: 'Waiting for your phone…',
-    })
+  it('names the phone, what it can do and when it was seen', () => {
+    const s = phoneSummary({ devices: [{ ...phone, role: 'controller' }, tablet], remote: on }, T)
+    expect(s).toMatchObject({ tone: 'ok', text: 'is connected and can control sessions', meta: 'seen 2 min ago · 1 more device' })
+    expect(s.device?.name).toBe('iPhone')
+    expect(s.fix).toBeUndefined()
   })
-  it('is on while access from anywhere is, with the network listener off', () => {
-    const remote = { enabled: true, status: 'online' as const, phones: 0, relay: '', app: '' }
-    expect(phoneStatus({ enabled: false, devices: [phone], remote }).label).toBe('1 phone connected')
+  it('a phone not seen for a while is set up, not connected; a viewer gets Allow control', () => {
+    const s = phoneSummary({ devices: [tablet], remote: on }, T)
+    expect(s).toMatchObject({ tone: 'idle', text: 'is set up and can only view', meta: 'last seen 24 hours ago', fix: 'allow' })
   })
-  it('counts what is connected, and calls a tablet a device', () => {
-    expect(phoneStatus({ enabled: true, devices: [phone] }).label).toBe('1 phone connected')
-    expect(phoneStatus({ enabled: true, devices: [phone, tablet] }).label).toBe('2 devices connected')
+  it('says what is in the way: access from anywhere off, or offline', () => {
+    expect(phoneSummary({ devices: [phone], remote: { ...on, enabled: false, status: 'off' } }, T)).toMatchObject({ tone: 'warn', fix: 'turn-on' })
+    expect(phoneSummary({ devices: [phone], remote: { ...on, status: 'offline', error: 'no route' } }, T).text).toMatch(/can't get online right now \(no route\)/)
+  })
+  it('waits while a code is out, and puts the phone that just joined first', () => {
+    expect(phoneSummary({ code: '123456', devices: [phone] }, T).text).toBe('Waiting for your phone to scan the code…')
+    expect(phoneSummary({ devices: [phone, tablet] }, T, 'b').device?.id).toBe('b')
+  })
+})
+
+describe('old devices and plain ages', () => {
+  it('a device not seen for 30 days is old; one never seen counts from pairing; a waiting computer never is', () => {
+    expect(isOldDevice({ last_seen: T - 31 * DAY, paired_at: T - 90 * DAY }, T)).toBe(true)
+    expect(isOldDevice({ last_seen: T - 29 * DAY, paired_at: T - 90 * DAY }, T)).toBe(false)
+    expect(isOldDevice({ last_seen: 0, paired_at: T - 40 * DAY }, T)).toBe(true)
+    expect(isOldDevice({ last_seen: 0, paired_at: T - 40 * DAY, pending: true }, T)).toBe(false)
+  })
+  it('says ages as a person would', () => {
+    expect(seenAgo(T - 10_000, T)).toBe('just now')
+    expect(seenAgo(T - 2 * MIN, T)).toBe('2 min ago')
+    expect(seenAgo(T - 60 * MIN, T)).toBe('1 hour ago')
+    expect(seenAgo(T - 3 * DAY, T)).toBe('3 days ago')
   })
 })
 
@@ -50,18 +75,31 @@ const remoteOn = {
   link: 'https://m.example/#/pair?c=482913&h=h&k=k&r=wss%3A%2F%2Frelay.example',
 }
 
-describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
+function stubState(states: PairState[]) {
+  let i = 0
+  return vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i++, states.length - 1)]!)
+}
+
+describe('Pairing panel (owner, 2026-10-18: "not one clear piece of info")', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    localStorage.clear()
   })
 
-  function stubState(states: PairState[]) {
-    let i = 0
-    return vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i++, states.length - 1)]!)
-  }
+  it('opens with one sentence and one button, and nothing else in view', async () => {
+    stubState([{ enabled: false, devices: [], remote: remoteOn }])
+    render(<Pairing />)
+    expect((await screen.findByTestId('phone-status')).textContent).toBe('No phone connected yet.')
+    expect(screen.getByRole('button', { name: 'Connect a phone' })).toBeTruthy()
+    // No checklist, no numbered steps, no QR before the press.
+    expect(screen.queryByTestId('pair-checklist')).toBeNull()
+    expect(screen.queryByRole('img')).toBeNull()
+    // The how is folded away.
+    expect((screen.getByTestId('phone-how') as HTMLDetailsElement).open).toBe(false)
+  })
 
-  it('says that Show a code turns on access from anywhere, and does it in the same press', async () => {
+  it('Connect a phone turns on access from anywhere, says so first, and shows the QR with one line', async () => {
     stubState([
       { enabled: false, devices: [], remote: remoteOff },
       { enabled: false, code: '482913', expires_in_sec: 300, devices: [], remote: remoteOn },
@@ -70,30 +108,41 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     const setLAN = vi.spyOn(api, 'setLAN')
     const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', expires_in_sec: 300, url: '' })
     render(<Pairing />)
-    expect((await screen.findByTestId('anywhere-consent')).textContent).toMatch(/Showing a code turns on access from anywhere/)
-    // No choice of networks, no Wi-Fi switch, no Tailscale.
+    expect((await screen.findByTestId('anywhere-consent')).textContent).toMatch(/turns on access from anywhere/)
     expect(screen.queryByRole('radio')).toBeNull()
     expect(screen.queryByText(/Tailscale/)).toBeNull()
-    expect(screen.queryByText('Keep on after Caprock restarts')).toBeNull()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show a code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect a phone' }))
     await waitFor(() => expect(pairCode).toHaveBeenCalled())
     expect(setRemote).toHaveBeenCalledWith(true)
     expect(setLAN).not.toHaveBeenCalled()
-    expect((await screen.findByTestId('pair-reach')).textContent).toMatch(/^Anywhere — Wi-Fi or mobile data/)
-    expect(screen.getByRole('img', { name: /m\.example/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Copy link' })).toBeTruthy()
-    expect(screen.queryByRole('radio')).toBeNull()
+    const qr = await screen.findByTestId('pair-code')
+    expect(qr.textContent).toMatch(/^Scan with your phone's camera\. Works once, [45]:\d\d left\.New codeCancel$/)
+    expect(within(qr).getByRole('img', { name: /m\.example/ })).toBeTruthy()
+    expect(screen.getByTestId('phone-status').textContent).toBe('Waiting for your phone to scan the code…')
+    // The home-screen link lives in How it works.
+    expect(within(screen.getByTestId('phone-how')).getByRole('button', { name: 'Copy link' })).toBeTruthy()
   })
 
-  it('with access from anywhere on, says it is online and offers to turn it off', async () => {
+  it('access from anywhere: on, said inside How it works with its off switch', async () => {
     stubState([{ enabled: false, devices: [phone], remote: remoteOn }])
     const setRemote = vi.spyOn(api, 'setRemote').mockResolvedValue(remoteOff)
     render(<Pairing />)
-    expect(await screen.findByText('Anywhere · online')).toBeTruthy()
+    const how = await screen.findByTestId('phone-how')
+    expect(within(how).getByTestId('relay-state').textContent).toMatch(/Access from anywhere is on/)
     expect(screen.queryByTestId('anywhere-consent')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Turn off' }))
+    fireEvent.click(within(how).getByRole('button', { name: 'Turn off' }))
     await waitFor(() => expect(setRemote).toHaveBeenCalledWith(false))
+  })
+
+  it('a paired phone with access from anywhere off: the sentence says so, with Turn it on', async () => {
+    stubState([{ enabled: false, devices: [phone], remote: remoteOff }])
+    const setRemote = vi.spyOn(api, 'setRemote').mockResolvedValue(remoteOn)
+    render(<Pairing />)
+    const st = await screen.findByTestId('phone-status')
+    expect(st.textContent).toMatch(/^iPhone is set up, but access from anywhere is off/)
+    fireEvent.click(within(st).getByRole('button', { name: 'Turn it on' }))
+    await waitFor(() => expect(setRemote).toHaveBeenCalledWith(true))
   })
 
   it('withdraws the code on the daemon when cancelled', async () => {
@@ -107,12 +156,13 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     await waitFor(() => expect(cancel).toHaveBeenCalled())
   })
 
-  it('lists paired devices with a Remove button', async () => {
+  it('one row per device: name, one capability word, last seen, Remove', async () => {
     stubState([{ enabled: false, devices: [phone], remote: remoteOn }])
     const revoke = vi.spyOn(api, 'pairRevoke').mockResolvedValue({ revoked: 1 })
     render(<Pairing />)
-    expect(await screen.findByText('1 phone connected')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    const row = await screen.findByTestId('device-row')
+    expect(row.textContent).toBe('iPhoneView only · seen 2 min agoAllow controlRemove')
+    fireEvent.click(within(row).getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('a'))
   })
 
@@ -120,12 +170,22 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     stubState([{ enabled: false, devices: [phone, { ...tablet, role: 'controller' }], remote: remoteOn }])
     const setRole = vi.spyOn(api, 'pairSetRole').mockResolvedValue({ id: 'a', role: 'controller' })
     render(<Pairing />)
-    expect(await screen.findByText('view only', { exact: false })).toBeTruthy()
-    expect(screen.getByText('can control sessions')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Let it control sessions' }))
+    const rows = await screen.findAllByTestId('device-row')
+    expect(rows.map((r) => within(r).getByTestId('device-can').textContent)).toEqual(['View only', 'Can control'])
+    fireEvent.click(within(rows[0]!).getByRole('button', { name: 'Allow control' }))
     await waitFor(() => expect(setRole).toHaveBeenCalledWith('a', 'controller'))
-    fireEvent.click(screen.getByRole('button', { name: 'Take control away' }))
+    fireEvent.click(within(rows[1]!).getByRole('button', { name: 'Take control away' }))
     await waitFor(() => expect(setRole).toHaveBeenCalledWith('b', 'viewer'))
+  })
+
+  it('a view-only phone that just paired is fixed from the sentence at the top', async () => {
+    stubState([{ enabled: false, devices: [phone], remote: remoteOn }])
+    const setRole = vi.spyOn(api, 'pairSetRole').mockResolvedValue({ id: 'a', role: 'controller' })
+    render(<Pairing />)
+    const st = await screen.findByTestId('phone-status')
+    expect(st.textContent).toMatch(/^iPhone is connected and can only view · seen 2 min ago/)
+    fireEvent.click(within(st).getByRole('button', { name: 'Allow control' }))
+    await waitFor(() => expect(setRole).toHaveBeenCalledWith('a', 'controller'))
   })
 
   it('lists another computer as one, waiting or allowed, with Remove and no role buttons (ADR-067)', async () => {
@@ -133,14 +193,44 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     const allowed = { ...tablet, id: 'm2', name: 'Mac mini', role: 'controller' as const, kind: 'machine' as const }
     stubState([{ enabled: false, devices: [waiting, allowed], remote: remoteOn }])
     render(<Pairing />)
-    const rows = (await screen.findAllByTestId('device-computer')).map((e) => e.textContent)
-    expect(rows).toEqual(['a computer, waiting for Allow', 'a computer that controls this one'])
+    const rows = (await screen.findAllByTestId('device-can')).map((e) => e.textContent)
+    expect(rows).toEqual(['Computer · waiting for Allow', 'Computer · controls this one'])
     expect(screen.queryByRole('button', { name: 'Take control away' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Let it control sessions' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Allow control' })).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(2)
   })
 
-  it('marks a phone on the Wi-Fi link and shows the code that moves it, which turns access from anywhere on', async () => {
+  it('folds devices not seen for 30 days, and removes them all after one confirmation', async () => {
+    const stale = { ...phone, id: '39e0', name: 'Mac', last_seen: T - 44 * DAY, paired_at: T - 45 * DAY }
+    const older = { ...tablet, id: '77aa', last_seen: T - 61 * DAY, paired_at: T - 90 * DAY }
+    stubState([{ enabled: false, devices: [phone, stale, older], remote: remoteOn }])
+    const revoke = vi.spyOn(api, 'pairRevoke').mockResolvedValue({ revoked: 1 })
+    render(<Pairing />)
+    const old = await screen.findByTestId('old-devices')
+    expect(old.textContent).toMatch(/^›2 old devices · not seen for 30\+ days/)
+    expect(screen.getAllByTestId('device-row')).toHaveLength(1)
+    fireEvent.click(within(old).getByRole('button', { name: 'Remove all' }))
+    // Unfolded to show what goes, and asked once.
+    expect(within(old).getAllByTestId('device-row')).toHaveLength(2)
+    expect(revoke).not.toHaveBeenCalled()
+    fireEvent.click(within(old).getByRole('button', { name: 'Remove 2' }))
+    await waitFor(() => expect(revoke).toHaveBeenCalledTimes(2))
+    expect(revoke.mock.calls.map((c) => c[0]).sort()).toEqual(['39e0', '77aa'])
+  })
+
+  it('Keep withdraws the confirmation and removes nothing', async () => {
+    const stale = { ...phone, id: '39e0', name: 'Mac', last_seen: T - 44 * DAY, paired_at: T - 45 * DAY }
+    stubState([{ enabled: false, devices: [stale], remote: remoteOn }])
+    const revoke = vi.spyOn(api, 'pairRevoke').mockResolvedValue({ revoked: 1 })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(screen.queryByTestId('old-confirm')).toBeNull()
+    expect(revoke).not.toHaveBeenCalled()
+    expect(screen.getByTestId('phone-status').textContent).toBe('No phone connected yet.')
+  })
+
+  it('marks a phone on the Wi-Fi link with Reconnect, which turns access from anywhere on', async () => {
     const wifiPhone = { ...phone, name: 'Android phone · Chrome', via: 'lan' as const }
     stubState([
       { enabled: true, url: 'http://10.100.102.7:4173', devices: [wifiPhone, { ...tablet, via: 'relay' as const }], remote: remoteOff },
@@ -149,33 +239,23 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     const setRemote = vi.spyOn(api, 'setRemote').mockResolvedValue(remoteOn)
     const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', expires_in_sec: 300, url: '' })
     render(<Pairing />)
-    const vias = (await screen.findAllByTestId('device-via')).map((e) => e.textContent)
-    expect(vias).toEqual(['Wi-Fi link', 'anywhere'])
-    const repair = screen.getByTestId('device-repair')
-    expect(repair.textContent).toMatch(/Works on this Wi-Fi only\. Pair it once more to use it anywhere/)
-    expect(screen.getAllByTestId('device-repair')).toHaveLength(1)
+    expect((await screen.findAllByTestId('device-repair')).map((e) => e.textContent)).toEqual(['Works on your home Wi-Fi only.Reconnect'])
     // The Wi-Fi listener that is on is said, with its off switch.
     expect(screen.getByTestId('wifi-listener').textContent).toMatch(/works only on the same network/)
-    fireEvent.click(screen.getByRole('button', { name: 'Show the code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }))
     await waitFor(() => expect(pairCode).toHaveBeenCalled())
     expect(setRemote).toHaveBeenCalledWith(true)
-    expect(await screen.findByRole('button', { name: 'Copy link' })).toBeTruthy()
+    expect(await screen.findByTestId('pair-code')).toBeTruthy()
   })
 
-  it('stops asking a Wi-Fi phone to re-pair once its twin comes through the relay', async () => {
-    const lanTwin = { ...phone, id: 'old', via: 'lan' as const }
-    const relayTwin = { ...phone, id: 'new', paired_at: 5, via: 'relay' as const }
+  it('stops asking a Wi-Fi phone to reconnect once its twin comes through the relay, and tells the twins apart by id', async () => {
+    const lanTwin = { ...phone, id: 'old1', via: 'lan' as const }
+    const relayTwin = { ...phone, id: 'new1', via: 'relay' as const }
     stubState([{ enabled: false, devices: [lanTwin, relayTwin], remote: remoteOn }])
     render(<Pairing />)
-    expect((await screen.findAllByTestId('device-via')).map((e) => e.textContent)).toEqual(['Wi-Fi link', 'anywhere'])
+    expect(await screen.findByText('#old1')).toBeTruthy()
+    expect(screen.getByText('#new1')).toBeTruthy()
     expect(screen.queryByTestId('device-repair')).toBeNull()
-  })
-
-  it('says nothing about the route of a device not seen since it was recorded', async () => {
-    stubState([{ enabled: false, devices: [phone], remote: remoteOn }])
-    render(<Pairing />)
-    expect(await screen.findByText('1 phone connected')).toBeTruthy()
-    expect(screen.queryByTestId('device-via')).toBeNull()
   })
 
   it('falls back to the network listener in a build without the relay', async () => {
@@ -186,8 +266,7 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
     const setLAN = vi.spyOn(api, 'setLAN').mockResolvedValue({ enabled: true, url: 'http://192.168.1.10:22776' })
     vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', expires_in_sec: 300, url: 'http://192.168.1.10:22776' })
     render(<Pairing />)
-    expect(await screen.findByText('Off')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Show a code' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect a phone' }))
     await waitFor(() => expect(screen.getByRole('img', { name: /QR code/ })).toBeTruthy())
     expect(setLAN).toHaveBeenCalledWith(true)
     expect(screen.getByLabelText('pairing code 4 8 2 9 1 3')).toBeTruthy()
@@ -195,6 +274,115 @@ describe('Pairing panel: one way in, from anywhere (owner, 2026-10-14)', () => {
   })
 })
 
+// The owner, 2026-10-14 (translated): "I scan it with the phone, install the
+// app, go in — and I can't do anything, and say I've already left the house."
+describe('control is chosen with the code', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+
+  it('is ticked by default, and the code it shows pairs a controller', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [], remote: remoteOn })
+    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', role: 'controller', expires_in_sec: 300, url: '' })
+    render(<Pairing />)
+    const box = (await screen.findByTestId('allow-type')) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect a phone' }))
+    await waitFor(() => expect(pairCode).toHaveBeenCalledWith('controller'))
+  })
+
+  it('unticked, pairs to view only, and remembers that on this computer', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [], remote: remoteOn })
+    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', role: 'viewer', expires_in_sec: 300, url: '' })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByTestId('allow-type'))
+    expect(screen.getByText(/View only: it can read, not type/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Connect a phone' }))
+    await waitFor(() => expect(pairCode).toHaveBeenCalledWith('viewer'))
+    expect(localStorage.getItem(ALLOW_TYPE_KEY)).toBe('0')
+    cleanup()
+    render(<Pairing />)
+    expect(((await screen.findByTestId('allow-type')) as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('the sentence turns from waiting to the phone that joined, as it pairs', async () => {
+    const joined = { id: 'p1', name: 'Android phone · Chrome', paired_at: Date.now(), last_seen: Date.now(), role: 'controller' as const }
+    const states: PairState[] = [
+      { enabled: false, devices: [tablet], remote: remoteOn },
+      { enabled: false, code: '482913', code_role: 'controller', expires_in_sec: 300, devices: [tablet], remote: remoteOn },
+      { enabled: false, devices: [tablet, joined], remote: remoteOn },
+    ]
+    let i = 0
+    vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i, states.length - 1)]!)
+    vi.spyOn(api, 'pairCode').mockImplementation(async () => {
+      i = 1
+      return { code: '482913', role: 'controller', expires_in_sec: 300, url: '' }
+    })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Connect another phone' }))
+    await waitFor(() => expect(screen.getByTestId('phone-status').dataset.tone).toBe('waiting'))
+    i = 2
+    await waitFor(() => expect(screen.getByTestId('phone-status').textContent).toMatch(/^Android phone · Chrome is connected and can control sessions · seen just now/), { timeout: 4000 })
+  }, 10000)
+})
+
+// Vova, 2026-10-15 (translated): "yesterday I opened the phone app, then
+// closed the tab; in Caprock the device shows as paired; today I want to
+// open the app again but I don't remember the link — and that's it".
+describe('a paired phone finds its way back', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('the address, as typed and as the QR opens it, carries nothing after the page', () => {
+    expect(phonePage('https://m.caprock.dev')).toEqual({ host: 'm.caprock.dev', url: 'https://m.caprock.dev/' })
+    expect(phonePage('https://m.caprock.dev/')).toEqual({ host: 'm.caprock.dev', url: 'https://m.caprock.dev/' })
+    expect(phonePage('https://example.org/caprock/')).toEqual({ host: 'example.org/caprock', url: 'https://example.org/caprock/' })
+  })
+
+  it('is offered for a phone through the relay, not for a Wi-Fi link or the machine itself', () => {
+    expect(offersOpenAgain({ name: 'iPhone', via: 'relay' })).toBe(true)
+    expect(offersOpenAgain({ name: 'iPhone' })).toBe(true)
+    expect(offersOpenAgain({ name: 'iPhone', via: 'lan' })).toBe(false)
+    expect(offersOpenAgain({ name: 'This computer · Safari' })).toBe(false)
+  })
+
+  it('How it works says to just open the address, and shows a QR of the address alone', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'relay' }], remote: { ...remoteOn, app: 'https://m.caprock.dev' } })
+    render(<Pairing />)
+    const how = await screen.findByTestId('phone-how')
+    expect(how.textContent).toContain('Closed the page on a phone you already connected? Just open m.caprock.dev on it again.')
+    fireEvent.click(within(how).getByRole('button', { name: 'Show the address as a code' }))
+    const block = screen.getByTestId('open-again')
+    const qr = block.querySelector('svg')!
+    expect(qr.getAttribute('data-qr-text')).toBe('https://m.caprock.dev/')
+    expect(qr.getAttribute('aria-label')).toBe('QR code that opens m.caprock.dev')
+    expect(block.textContent).toContain('Share → Add to Home Screen')
+    expect(screen.queryByTestId('send-link')).toBeNull()
+    expect(screen.queryByTestId('open-again-off')).toBeNull()
+  })
+
+  it('sends the link to Telegram when a bot is set up, saying what it sends', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, telegram: true, devices: [{ ...phone, via: 'relay' }], remote: { ...remoteOn, app: 'https://m.caprock.dev' } })
+    const send = vi.spyOn(api, 'pairSendLink').mockResolvedValue({ sent: 'telegram', link: 'https://m.caprock.dev' })
+    render(<Pairing />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the address as a code' }))
+    expect(screen.getByTestId('open-again').textContent).toContain('no code and no key')
+    fireEvent.click(screen.getByTestId('send-link'))
+    await waitFor(() => expect(send).toHaveBeenCalled())
+    expect(await screen.findByText('Sent to Telegram ✓')).toBeTruthy()
+  })
+
+  it('is not offered when the only phone is on a Wi-Fi link, which has its own way to move', async () => {
+    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'lan' }], remote: remoteOn })
+    render(<Pairing />)
+    expect(await screen.findByTestId('device-repair')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show the address as a code' })).toBeNull()
+  })
+})
 describe('needsRepair', () => {
   it('is a Wi-Fi link with no twin through the relay', () => {
     const a = { ...phone, via: 'lan' as const }
@@ -243,38 +431,6 @@ describe('pairing from the home screen', () => {
     expect(screen.queryByText(/keeps its own sign-in/)).toBeNull()
   })
 })
-
-describe('Paired devices list', () => {
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-  })
-  it('tells two devices with one name apart by id and pairing time', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: true, url: 'http://192.168.1.10:22776', devices: [
-      { ...phone, id: 'ab12cd', paired_at: Date.UTC(2026, 9, 4, 9, 0) },
-      { ...phone, id: 'ef34gh', paired_at: Date.UTC(2026, 9, 4, 10, 0) },
-    ] })
-    render(<Pairing />)
-    expect(await screen.findByText('#ab12')).toBeTruthy()
-    expect(screen.getByText('#ef34')).toBeTruthy()
-    expect(screen.getAllByText(/paired 4 Oct/)).toHaveLength(2)
-  })
-})
-
-describe('a computer in the list', () => {
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-  })
-  it('says no phone is paired yet when the only device is a computer', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ id: '39e0aa', name: 'Mac', paired_at: 1, last_seen: 1, role: 'viewer' }] })
-    render(<Pairing />)
-    expect(await screen.findByText('No phone paired yet.')).toBeTruthy()
-    expect(screen.getAllByRole('button', { name: 'Show a code' }).length).toBeGreaterThan(0)
-    expect(screen.queryByRole('button', { name: 'Show a code for another phone' })).toBeNull()
-  })
-})
-
 describe('landing on the phone or Telegram (owner, 2026-10-13)', () => {
   afterEach(() => {
     cleanup()
@@ -328,197 +484,4 @@ describe('landing on the phone or Telegram (owner, 2026-10-13)', () => {
     expect(pairCode).not.toHaveBeenCalled()
   })
 
-  it('numbers the steps, one line each, the tick first', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [] })
-    render(<Pairing />)
-    expect(await screen.findByText('Use on your phone')).toBeTruthy()
-    const steps = [...screen.getByTestId('pair-steps').querySelectorAll('li')].map((li) => li.textContent)
-    expect(steps).toEqual([
-      "1.Tick This phone can type and start agents (on by default)",
-      "2.Press Show a code and scan it with the phone's camera",
-      '3.Open the link; the phone pairs',
-      '4.Optional: Install the app when the phone offers it',
-    ])
-  })
-})
-
-// The owner, 2026-10-14 (translated): "I scan it with the phone, install the
-// app, go in — and I can't do anything, and say I've already left the house."
-describe('control is chosen with the code', () => {
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-    localStorage.clear()
-  })
-
-  it('is ticked by default, and the code it shows pairs a controller', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [], remote: remoteOn })
-    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', role: 'controller', expires_in_sec: 300, url: '' })
-    render(<Pairing />)
-    const box = (await screen.findByTestId('allow-type')) as HTMLInputElement
-    expect(box.checked).toBe(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Show a code' }))
-    await waitFor(() => expect(pairCode).toHaveBeenCalledWith('controller'))
-  })
-
-  it('unticked, pairs to view only, and remembers that on this computer', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [], remote: remoteOn })
-    const pairCode = vi.spyOn(api, 'pairCode').mockResolvedValue({ code: '482913', role: 'viewer', expires_in_sec: 300, url: '' })
-    render(<Pairing />)
-    fireEvent.click(await screen.findByTestId('allow-type'))
-    expect(screen.getByText(/Unticked, the phone can only look/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Show a code' }))
-    await waitFor(() => expect(pairCode).toHaveBeenCalledWith('viewer'))
-    expect(localStorage.getItem(ALLOW_TYPE_KEY)).toBe('0')
-    cleanup()
-    render(<Pairing />)
-    expect(((await screen.findByTestId('allow-type')) as HTMLInputElement).checked).toBe(false)
-  })
-
-  it('shows the checklist while the code is out, then ticks the phone off as it pairs', async () => {
-    const joined = { id: 'p1', name: 'Android phone · Chrome', paired_at: 5, last_seen: 5, role: 'controller' as const }
-    const states: PairState[] = [
-      { enabled: false, devices: [], remote: remoteOn },
-      { enabled: false, code: '482913', code_role: 'controller', expires_in_sec: 300, devices: [], remote: remoteOn },
-      { enabled: false, devices: [joined], remote: remoteOn },
-      { enabled: false, devices: [{ ...joined, app: true }], remote: remoteOn },
-    ]
-    let i = 0
-    const stub = vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i, states.length - 1)]!)
-    vi.spyOn(api, 'pairCode').mockImplementation(async () => {
-      i = 1
-      return { code: '482913', role: 'controller', expires_in_sec: 300, url: '' }
-    })
-    render(<Pairing />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Show a code' }))
-    await waitFor(() => expect(screen.getByTestId('check-paired').dataset.state).toBe('waiting'))
-    expect(screen.getByTestId('check-anywhere').dataset.state).toBe('done')
-    expect(screen.getByTestId('check-type').textContent).toMatch(/Yes, once it pairs/)
-    i = 2
-    await waitFor(() => expect(screen.getByTestId('check-paired').textContent).toMatch(/Android phone · Chrome/), { timeout: 4000 })
-    expect(screen.getByTestId('check-paired').dataset.state).toBe('done')
-    expect(screen.getByTestId('check-type').dataset.state).toBe('done')
-    expect(screen.getByTestId('check-app').dataset.state).toBe('optional')
-    i = 3
-    await waitFor(() => expect(screen.getByTestId('check-app').dataset.state).toBe('done'), { timeout: 7000 })
-    expect(stub).toHaveBeenCalled()
-  }, 15000)
-})
-
-describe('pairChecklist — what is done and what is left', () => {
-  const viewerPhone = { id: 'p', name: 'Android phone · Chrome', paired_at: 1, last_seen: 1, role: 'viewer' as const }
-  it('waits for the phone, and says what the code will give it', () => {
-    const rows = pairChecklist({ enabled: false, remote: remoteOn, code_role: 'viewer' }, null, true)
-    expect(rows.map((r) => r.state)).toEqual(['done', 'waiting', 'missing', 'optional'])
-    expect(rows[2]!.detail).toMatch(/view only/)
-  })
-  it('a view-only phone is the one thing missing', () => {
-    const rows = pairChecklist({ enabled: false, remote: remoteOn }, viewerPhone, true)
-    expect(rows.find((r) => r.key === 'type')).toMatchObject({ state: 'missing', detail: 'No: view only' })
-  })
-  it('the relay offline is missing, connecting is waiting', () => {
-    expect(pairChecklist({ enabled: false, remote: { ...remoteOn, status: 'offline' } }, null, true)[0]!.state).toBe('missing')
-    expect(pairChecklist({ enabled: false, remote: { ...remoteOn, status: 'connecting' } }, null, true)[0]!.state).toBe('waiting')
-  })
-})
-
-describe('the checklist button fixes a view-only phone', () => {
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-    localStorage.clear()
-  })
-  it('offers Let it control sessions in the checklist once a view-only phone pairs', async () => {
-    const joined = { id: 'p1', name: 'Android phone · Chrome', paired_at: 5, last_seen: 5, role: 'viewer' as const }
-    let i = 0
-    const states: PairState[] = [
-      { enabled: false, devices: [], remote: remoteOn },
-      { enabled: false, code: '482913', code_role: 'viewer', expires_in_sec: 300, devices: [], remote: remoteOn },
-      { enabled: false, devices: [joined], remote: remoteOn },
-    ]
-    vi.spyOn(api, 'pairState').mockImplementation(async () => states[Math.min(i, 2)]!)
-    vi.spyOn(api, 'pairCode').mockImplementation(async () => {
-      i = 1
-      return { code: '482913', role: 'viewer', expires_in_sec: 300, url: '' }
-    })
-    const setRole = vi.spyOn(api, 'pairSetRole').mockResolvedValue({ id: 'p1', role: 'controller' })
-    localStorage.setItem(ALLOW_TYPE_KEY, '0')
-    render(<Pairing />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Show a code' }))
-    await waitFor(() => expect(screen.getByTestId('check-type').dataset.state).toBe('missing'))
-    i = 2
-    await waitFor(() => expect(screen.getByTestId('check-paired').dataset.state).toBe('done'), { timeout: 4000 })
-    const fix = screen.getByTestId('check-type').querySelector('button')!
-    expect(fix.textContent).toBe('Let it control sessions')
-    fireEvent.click(fix)
-    await waitFor(() => expect(setRole).toHaveBeenCalledWith('p1', 'controller'))
-  }, 10000)
-})
-
-// Vova, 2026-10-15 (translated): "yesterday I opened the phone app, then
-// closed the tab; in Caprock the device shows as paired; today I want to
-// open the app again but I don't remember the link — and that's it".
-describe('a paired phone finds its way back', () => {
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-  })
-
-  it('the address, as typed and as the QR opens it, carries nothing after the page', () => {
-    expect(phonePage('https://m.caprock.dev')).toEqual({ host: 'm.caprock.dev', url: 'https://m.caprock.dev/' })
-    expect(phonePage('https://m.caprock.dev/')).toEqual({ host: 'm.caprock.dev', url: 'https://m.caprock.dev/' })
-    expect(phonePage('https://example.org/caprock/')).toEqual({ host: 'example.org/caprock', url: 'https://example.org/caprock/' })
-  })
-
-  it('is offered for a phone through the relay, not for a Wi-Fi link or the machine itself', () => {
-    expect(offersOpenAgain({ name: 'iPhone', via: 'relay' })).toBe(true)
-    expect(offersOpenAgain({ name: 'iPhone' })).toBe(true)
-    expect(offersOpenAgain({ name: 'iPhone', via: 'lan' })).toBe(false)
-    expect(offersOpenAgain({ name: 'This computer · Safari' })).toBe(false)
-  })
-
-  it('every paired device says to just open the address, and opens a QR of the address alone', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'relay' }, { ...tablet, via: 'relay' }], remote: { ...remoteOn, app: 'https://m.caprock.dev' } })
-    render(<Pairing />)
-    const lines = await screen.findAllByTestId('device-open-again')
-    expect(lines).toHaveLength(2)
-    expect(lines[0]!.textContent).toContain('Already paired — just open m.caprock.dev on that phone.')
-    fireEvent.click(screen.getAllByRole('button', { name: 'Open on the phone again' })[0]!)
-    const block = screen.getByTestId('open-again')
-    const qr = block.querySelector('svg')!
-    expect(qr.getAttribute('data-qr-text')).toBe('https://m.caprock.dev/')
-    expect(qr.getAttribute('aria-label')).toBe('QR code that opens m.caprock.dev')
-    expect(block.textContent).toContain('Share → Add to Home Screen')
-    // No Telegram bot: no button that would have nowhere to go.
-    expect(screen.queryByTestId('send-link')).toBeNull()
-    expect(screen.queryByTestId('open-again-off')).toBeNull()
-  })
-
-  it('sends the link to Telegram when a bot is set up, saying what it sends', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, telegram: true, devices: [{ ...phone, via: 'relay' }], remote: { ...remoteOn, app: 'https://m.caprock.dev' } })
-    const send = vi.spyOn(api, 'pairSendLink').mockResolvedValue({ sent: 'telegram', link: 'https://m.caprock.dev' })
-    render(<Pairing />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open on the phone again' }))
-    expect(screen.getByTestId('open-again').textContent).toContain('no code and no key')
-    fireEvent.click(screen.getByTestId('send-link'))
-    await waitFor(() => expect(send).toHaveBeenCalled())
-    expect(await screen.findByText('Sent to Telegram ✓')).toBeTruthy()
-  })
-
-  it('with access from anywhere off, says the page cannot reach the computer and turns it on', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'relay' }], remote: remoteOff })
-    const setRemote = vi.spyOn(api, 'setRemote').mockResolvedValue(remoteOn)
-    render(<Pairing />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open on the phone again' }))
-    expect(screen.getByTestId('open-again-off').textContent).toContain('Access from anywhere is off')
-    fireEvent.click(screen.getByRole('button', { name: 'Turn it on' }))
-    await waitFor(() => expect(setRemote).toHaveBeenCalledWith(true))
-  })
-
-  it('is not offered on a Wi-Fi link row, which has its own way to move', async () => {
-    vi.spyOn(api, 'pairState').mockResolvedValue({ enabled: false, devices: [{ ...phone, via: 'lan' }], remote: remoteOn })
-    render(<Pairing />)
-    expect(await screen.findByTestId('device-repair')).toBeTruthy()
-    expect(screen.queryByTestId('device-open-again')).toBeNull()
-  })
 })

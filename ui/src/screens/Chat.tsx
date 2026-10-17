@@ -93,7 +93,7 @@ export function ChatScreen({ id }: { id: string }) {
     source ? (
       <>Imported from {source}. A copy to read and search here; carry the conversation on in {source} itself.</>
     ) : !canControl ? (
-      <>This device can read Caprock. To write here, open Caprock on your computer: Settings → <b className="font-medium text-fg">Use on your phone</b>, then <b className="font-medium text-fg">Let it control sessions</b>.</>
+      <>This device can read Caprock. To write here, open Caprock on your computer: Settings → <b className="font-medium text-fg">Use on your phone</b>, then <b className="font-medium text-fg">Allow control</b>.</>
     ) : ended ? (
       <div className="grid gap-2">
         <span>This chat has ended. Its conversation and its files are kept.</span>

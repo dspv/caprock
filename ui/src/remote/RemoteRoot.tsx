@@ -232,12 +232,12 @@ export function explain(problem: Problem, name: string, relay: string, page = ty
     case 'wrong-machine':
       return {
         title: 'This isn’t the computer this phone paired with',
-        body: `The computer answering as ${name} turned this phone away three times in a row: its keys are not the ones this phone paired with. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Show a code. This page keeps checking, and reconnects by itself if it can.`,
+        body: `The computer answering as ${name} turned this phone away three times in a row: its keys are not the ones this phone paired with. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Connect a phone. This page keeps checking, and reconnects by itself if it can.`,
       }
     case 'removed':
       return {
         title: 'Paired device removed: pair again',
-        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Show a code, and scan it. This page keeps checking, and comes back by itself if it was a mistake.`,
+        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Connect a phone, and scan it. This page keeps checking, and comes back by itself if it was a mistake.`,
       }
     case 'lost':
       return { title: 'Connection lost', body: `Reconnecting to ${name}.` }
@@ -342,7 +342,7 @@ function NotPairedHere({ name, onPair }: { name: string; onPair: () => void }) {
       <h1 className="text-[22px] font-semibold leading-tight text-fg">This browser isn’t paired</h1>
       <p className="mt-2 text-[16px] leading-snug text-fg-muted">
         It knows {name}, but holds no pairing for it: its storage was cleared, or pairing did not finish. On your computer:{' '}
-        <b className="font-semibold text-fg">Caprock → Settings → Use on your phone → Show a code</b>, and scan it with this phone.
+        <b className="font-semibold text-fg">Caprock → Settings → Use on your phone → Connect a phone</b>, and scan it with this phone.
       </p>
       <button type="button" onClick={onPair} className="mt-6 min-h-12 w-full rounded-xl bg-accent text-[17px] font-semibold text-bg">
         Pair this browser
@@ -492,7 +492,7 @@ function SettingsSketch() {
         </div>
         <div className="min-w-0">
           <p className="text-[13px] font-medium text-fg">Use on your phone</p>
-          <span className="mt-1 inline-block rounded-md bg-accent px-2.5 py-1 text-[12px] font-semibold text-bg">Show a code</span>
+          <span className="mt-1 inline-block rounded-md bg-accent px-2.5 py-1 text-[12px] font-semibold text-bg">Connect a phone</span>
         </div>
       </div>
     </div>
@@ -546,7 +546,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
           <div role="note" data-testid="not-paired-here" className="mt-6 rounded-xl border border-warn/40 bg-warn/10 px-4 py-3 text-[15px] leading-snug text-fg">
             <b className="font-semibold">This browser isn’t paired.</b> Paired this phone before? Its storage was cleared, or this is another
             browser{standalone() ? ' — a Home Screen app keeps storage of its own' : ''}. On your computer:{' '}
-            <b className="font-semibold">Caprock → Settings → Use on your phone → Show a code</b>.
+            <b className="font-semibold">Caprock → Settings → Use on your phone → Connect a phone</b>.
           </div>
           <h1 className="mt-8 text-[32px] font-semibold leading-tight text-fg">Your computer, on your phone</h1>
           <p className="mt-2 text-[17px] text-fg-muted">Every session of the Caprock app on your computer, from anywhere. No app store needed.</p>
@@ -573,7 +573,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
         </Step>
         <Step n={2}>
           Leave <b className="font-semibold text-fg">This phone can type and start agents</b> ticked, and press{' '}
-          <b className="font-semibold text-fg">Show a code</b>
+          <b className="font-semibold text-fg">Connect a phone</b>
         </Step>
         <Step n={3}>
           Scan the code with this phone&apos;s camera and open the link; the phone pairs
