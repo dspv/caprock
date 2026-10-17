@@ -7,6 +7,7 @@
 import { useMemo } from 'react'
 import { Choice, Section, Toggle } from './SettingsParts'
 import { useComposerEnabled } from '@/lib/composer'
+import { INPUT_HIGHLIGHT_KEY, keys } from '@/lib/appkeys'
 import { QuickRepliesSetting } from './QuickRepliesSetting'
 import {
   DEFAULT_PREFS,
@@ -16,6 +17,7 @@ import {
   fontStack,
   useTerminalPrefs,
   type CursorStyle,
+  type HighlightStrength,
   type TerminalPrefs,
 } from '@/lib/termprefs'
 import { TERMINAL_CHOICES, terminalTheme } from '@/lib/termthemes'
@@ -59,6 +61,23 @@ export function TerminalSettings() {
         onChange={(cursor) => set({ cursor })}
       />
       <TerminalPreview prefs={prefs} />
+      <Toggle
+        checked={prefs.highlightInput}
+        onChange={(highlightInput) => set({ highlightInput })}
+        label={`Highlight where you type (${keys(INPUT_HIGHLIGHT_KEY)})`}
+        hint={`A faint band behind Claude Code's input box in the terminal, and a hint of the accent in the chat field. ${keys(INPUT_HIGHLIGHT_KEY)} turns it off or on from anywhere, in every open terminal.`}
+      />
+      {prefs.highlightInput && (
+        <Choice<HighlightStrength>
+          label="Highlight"
+          value={prefs.highlightStrength}
+          options={[
+            { value: 'subtle', label: 'Subtle' },
+            { value: 'stronger', label: 'Stronger' },
+          ]}
+          onChange={(highlightStrength) => set({ highlightStrength })}
+        />
+      )}
       <Toggle
         checked={composer}
         onChange={setComposer}

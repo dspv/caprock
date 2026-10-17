@@ -16,7 +16,7 @@ import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
-import { DASHBOARD_KEY, FIND_EVENT, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -108,7 +108,7 @@ import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, Ext
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
-import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs } from '@/lib/termprefs'
+import { applyTerminalChrome, getTerminalPrefs, subscribeTerminalPrefs, toggleInputHighlight } from '@/lib/termprefs'
 import { warmTerminal } from '@/lib/termwarm'
 import { StatusDot, fmtCostShort, leadKey, projectRows, type SidebarRow } from '@/components/ProjectRow'
 import { fmtAgo } from '@/lib/format'
@@ -1209,6 +1209,13 @@ export function AppShell() {
       case 'feedback': setFeedbackAt(currentScreen(location.hash, true)); break
       case 'mail': onMail(); break
       case 'zoom': stepUiScale(c.step); break
+      // Every open terminal and chat field at once, and remembered (lib/termprefs).
+      case 'input-highlight': {
+        const on = toggleInputHighlight()
+        const k = keys(INPUT_HIGHLIGHT_KEY)
+        setToast(on ? `Input highlight on · ${k} hides it` : `Input highlight off · ${k} to turn back on`)
+        break
+      }
     }
   }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar])
 
@@ -1380,6 +1387,7 @@ export function AppShell() {
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
       { id: 'a-theme-pick', group: 'Actions', label: 'Choose a theme…', detail: 'the eight palettes: hover one to try it', hint: keys(THEME_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'theme' }) },
+      { id: 'a-input-highlight', group: 'Actions', label: 'Toggle input highlight', detail: 'the band where you type in the terminal and the chat field’s tint, on or off', hint: keys(INPUT_HIGHLIGHT_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'input-highlight' }) },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),
       { id: 'a-share', group: 'Actions', label: 'Share my numbers', detail: 'a card of your figures: copy, save or post to X', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'share' }) },
       ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, ...(route === 'work' ? { hint: keys(WORK_KEY) } : {}), icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),

@@ -809,6 +809,12 @@ others. Installing it: [install-app.md](install-app.md).
   own terminal colours on the window's own colour, so the terminal reads as
   part of the window; a palette you pick stays whatever the app shows. The font defaults match the JetBrains IDE terminal: JetBrains
   Mono, 13 px, line height 1.2, no ligatures.
+- **Highlight where you type.** Claude Code's input box sits on a faint band
+  in the terminal, and the chat field carries a hint of the accent. Settings
+  → *Terminal* → *Highlight where you type* turns both off or on, *Subtle*
+  (the default) or *Stronger*; ⌥⌘G (Ctrl+Alt+Shift+G on Windows and Linux)
+  does the same from anywhere, in every open terminal at once, and is
+  remembered. Point at the input box and the key shows on its top edge.
 - **Permission mode.** A new install starts sessions in *Accept edits · asks
   first*: the agent edits files on its own and asks before running a command.
   *Bypass · never asks* is one pick away in the New agent sheet, and the mode
@@ -870,6 +876,7 @@ On macOS:
 | ⌘J          | Next session waiting on you                                                         |
 | ⇧⌘H         | Add to Second Brain: keep a line of your own                                        |
 | ⌘F          | Find in the terminal or the file                                                    |
+| ⌥⌘G         | Highlight where you type: on or off, in every terminal                              |
 | ⌘-click     | A link in the terminal: open it in your default browser                             |
 | ⇧⌘-click    | A link in the terminal: choose the browser to open it in, or copy it                |
 | ⌘K          | Command palette                                                                     |
@@ -887,7 +894,7 @@ On macOS:
 | ⌘R          | Reload the window (View → Reload)                                                   |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
-(Quick chat is Ctrl+Alt+Shift+N; Send feedback Ctrl+Alt+Shift+F, Work
+(Quick chat is Ctrl+Alt+Shift+N and the input highlight Ctrl+Alt+Shift+G; Send feedback Ctrl+Alt+Shift+F, Work
 Ctrl+Alt+Shift+W and the theme Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
 are Find, Close and New shell; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are

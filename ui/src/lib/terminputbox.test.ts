@@ -65,6 +65,9 @@ describe('boxColor', () => {
     expect(boxColor('#ffffff', '#000000')).toBe('#f2f2f2')
     expect(boxColor('rgba(0,0,0,0)', '#ffffff')).toBe('')
     expect(boxColor(undefined, '#ffffff')).toBe('')
+    // Stronger: 12% dark, 9% light.
+    expect(boxColor('#000000', '#ffffff', 'stronger')).toBe('#1f1f1f')
+    expect(boxColor('#ffffff', '#000000', 'stronger')).toBe('#e8e8e8')
   })
 })
 
@@ -127,5 +130,25 @@ describe('attachInputBoxBand', () => {
     expect([...bands(t)]).toHaveLength(1)
     band.setEnabled(false)
     expect([...bands(t)]).toHaveLength(0)
+  })
+
+  it('hides with the user\'s switch, still knows where the box is, and redraws stronger', async () => {
+    const t = make()
+    const band = attachInputBoxBand(t)
+    band.setEnabled(true)
+    await write(t, `out\r\n${rule}\r\n❯ hi\r\n${rule}\r\n`)
+    band.update()
+    expect([...bands(t)]).toHaveLength(1)
+    band.setLook({ shown: false, strength: 'subtle' })
+    expect([...bands(t)]).toHaveLength(0)
+    expect(band.boxRows()).toEqual({ first: 2, last: 2 })
+    band.update()
+    expect([...bands(t)]).toHaveLength(0)
+    band.setLook({ shown: true, strength: 'stronger' })
+    const d = [...bands(t)]
+    expect(d).toHaveLength(1)
+    expect(d[0]!.options.backgroundColor).toBe(boxColor('#1a1a1a', '#e0e0e0', 'stronger'))
+    band.setEnabled(false)
+    expect(band.boxRows()).toBeNull()
   })
 })

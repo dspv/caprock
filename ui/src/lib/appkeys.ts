@@ -27,6 +27,22 @@ export const THEME_KEY = '⇧⌘T'
 export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
 
 /**
+ * ⌥⌘G (Ctrl+Alt+Shift+G off macOS): the highlight where you type — the band
+ * on Claude Code's input box and the chat field's resting tint — on or off
+ * (owner, 2026-10-17, translated: "a toggle to turn the input field
+ * highlight on/off … some simple key combination"). Not ⌥⌘I, the first
+ * thought: in every Mac browser that is the web inspector, which takes it
+ * before the page, so in the dashboard in a browser it would never arrive.
+ * ⌥⌘G is bound by no Mac browser, terminal or macOS menu (⌥⌘H is Hide
+ * Others, ⌥⌘D the Dock, ⌥⌘L and ⌥⌘B the browsers' downloads and bookmarks),
+ * and it reaches no shell: ⌘ is never typed. Off macOS it takes Ctrl+Alt+
+ * Shift, as Quick chat does: Ctrl+Shift+G is Changes, and Ctrl+Alt+Shift+G
+ * is bound by no shell, readline, PSReadLine, Windows Terminal or GNOME
+ * default.
+ */
+export const INPUT_HIGHLIGHT_KEY = '⌥⌘G'
+
+/**
  * The two clicks on a link in a terminal (lib/termlinks.ts), in macOS
  * spelling; `keys()` writes them Ctrl+click and Ctrl+Shift+click off macOS.
  * ⌘-click opens the default browser, as in every Mac terminal. ⇧⌘-click
@@ -81,6 +97,8 @@ export type AppCommand =
   /** ⇧⌘M: Mail, in a window of its own (lib/mailwindow.ts). */
   | { kind: 'mail' }
   | { kind: 'zoom'; step: 1 | -1 | 0 }
+  /** ⌥⌘G: the highlight where you type, on or off in every terminal (INPUT_HIGHLIGHT_KEY). */
+  | { kind: 'input-highlight' }
 
 /** The subset of a KeyboardEvent the map reads. */
 export interface KeyLike {
@@ -222,11 +240,13 @@ export function ownsTerminalKey(e: KeyLike, isMac: boolean): boolean {
 
 /** Which app command a key press is, or null when it belongs to the page or the terminal. */
 export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null {
-  // ⌥⌘N (Ctrl+Alt+Shift+N off macOS) is Quick chat: the one chord with
-  // Option, which is otherwise the terminal's Meta and never the app's.
+  // ⌥⌘N (Ctrl+Alt+Shift+N off macOS) is Quick chat and ⌥⌘G the input
+  // highlight: the letter chords with Option, which is otherwise the
+  // terminal's Meta and never the app's.
   if (e.altKey) {
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
     if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
+    if (quick && baseKey(e) === 'g') return { kind: 'input-highlight' }
     if (isMac && quick) return arrowCommand(baseKey(e))
     // Off macOS the arrow chords are Alt+Shift (arrowCommand).
     if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e))
@@ -468,6 +488,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
   ['⌘[ ]', 'Previous and next pane'],
   ['⌘F', 'Find in the terminal'],
+  [INPUT_HIGHLIGHT_KEY, 'Highlight where you type: on or off, in every terminal'],
   [LINK_OPEN_CLICK, 'A link in the terminal: open it in your default browser'],
   [LINK_CHOOSE_CLICK, 'A link in the terminal: choose the browser to open it in, or copy it'],
   ['⌘I', 'Inspector'],

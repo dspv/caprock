@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
+import { INPUT_HIGHLIGHT_KEY, matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey } from './appkeys'
 import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -427,5 +427,26 @@ describe("a browser tab's keys, on every OS", () => {
       expect(matchAppShortcut(k('PageUp', { ctrlKey: true }), isMac)).toBeNull()
       expect(ownsTerminalKey(k('ArrowRight', { altKey: true }), isMac)).toBe(false)
     }
+  })
+})
+
+// Owner, 2026-10-17 (translated): "a toggle to turn the input field
+// highlight on/off ... some simple key combination". ⌥⌘I was the first
+// thought and is every Mac browser's inspector, so it is ⌥⌘G.
+describe('the input highlight key', () => {
+  it('is ⌥⌘G on macOS and Ctrl+Alt+Shift+G elsewhere, listed, and never typed into a terminal', () => {
+    expect(SHORTCUTS.some(([key]) => key === INPUT_HIGHLIGHT_KEY)).toBe(true)
+    expect(INPUT_HIGHLIGHT_KEY).toBe('⌥⌘G')
+    expect(keys(INPUT_HIGHLIGHT_KEY, false)).toBe('Ctrl+Alt+Shift+G')
+    // Option is Meta on macOS: ⌥G (Option alone) and ⌥⌘I are not ours.
+    expect(matchAppShortcut(k('g', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'input-highlight' })
+    expect(ownsTerminalKey(k('g', { metaKey: true, altKey: true }), true)).toBe(true)
+    expect(matchAppShortcut(k('g', { altKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(k('i', { metaKey: true, altKey: true }), true)).toBeNull()
+    // Off macOS: Ctrl+Shift+G stays Changes; Ctrl+Alt+G (AltGr+G) and Ctrl+G stay typing.
+    expect(matchAppShortcut(k('G', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'input-highlight' })
+    expect(matchAppShortcut(k('G', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'changes' })
+    expect(matchAppShortcut(k('g', { ctrlKey: true, altKey: true }), false)).toBeNull()
+    expect(ownsTerminalKey(k('g', { ctrlKey: true }), false)).toBe(false)
   })
 })

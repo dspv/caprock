@@ -20,6 +20,11 @@
  *   text and the selection, on cells with the default background only: a
  *   cell Claude Code coloured itself or drew in inverse (its cursor) keeps
  *   its colours. Anchored to buffer lines, the band scrolls with the box.
+ * - **Yours to switch off.** Settings → Terminal → *Highlight where you
+ *   type*, or ⌥⌘G from anywhere (owner, 2026-10-17, translated: "a toggle to
+ *   turn the input field highlight on/off"): hidden, the box is still found,
+ *   so pointing at it can say which key brings the band back (`boxRows`).
+ *   *Stronger* lifts the ground further (BOX_LIFT).
  */
 import type { IBufferCell, IBufferLine, IDecoration, IMarker, Terminal } from '@xterm/xterm'
 import { mixHex } from './termthemes'
@@ -30,8 +35,13 @@ export const BOX_SCAN_ROWS = 40
 /** A box taller than this (rows between the rules) is not taken for one. */
 export const BOX_MAX_ROWS = 30
 
-/** How far the band lifts the terminal's background toward its ink, on a light and a dark palette. */
-export const BOX_LIFT = { light: 0.05, dark: 0.07 } as const
+/** How far the band lifts the terminal's background toward its ink, on a light and a dark palette, at each strength. */
+export const BOX_LIFT = {
+  subtle: { light: 0.05, dark: 0.07 },
+  stronger: { light: 0.09, dark: 0.12 },
+} as const
+
+export type BoxStrength = keyof typeof BOX_LIFT
 
 const RULE = '─'
 const PROMPT = /^ {0,2}[❯>!#](?: |$)/
@@ -104,12 +114,13 @@ export function boxRuns(lineAt: (y: number) => IBufferLine | undefined, first: n
 }
 
 /** The band's colour on a theme, or '' when the theme's colours are not #rrggbb. */
-export function boxColor(background?: string, foreground?: string): string {
+export function boxColor(background?: string, foreground?: string, strength: BoxStrength = 'subtle'): string {
   const hex = /^#[0-9a-f]{6}$/i
   if (!background || !foreground || !hex.test(background) || !hex.test(foreground)) return ''
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(background.slice(i, i + 2), 16))
   const light = 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 128
-  return mixHex(background, foreground, light ? BOX_LIFT.light : BOX_LIFT.dark)
+  const lift = BOX_LIFT[strength]
+  return mixHex(background, foreground, light ? lift.light : lift.dark)
 }
 
 export interface InputBoxBand {
@@ -117,12 +128,19 @@ export interface InputBoxBand {
   update: () => void
   /** On for a Claude Code session, off (and cleared) for anything else. */
   setEnabled: (on: boolean) => void
+  /** The user's switch: drawn or not (the box is still looked for), and how strong. */
+  setLook: (look: { shown: boolean; strength: BoxStrength }) => void
+  /** The box's rows as buffer lines (first, last), while enabled and found; null otherwise. */
+  boxRows: () => { first: number; last: number } | null
   dispose: () => void
 }
 
 /** Keeps the band on `term`'s input box. Starts off; setEnabled(true) turns it on. */
 export function attachInputBoxBand(term: Terminal): InputBoxBand {
   let enabled = false
+  let shown = true
+  let strength: BoxStrength = 'subtle'
+  let found: { first: number; last: number } | null = null
   let key = ''
   let drawn: { marker: IMarker; deco?: IDecoration }[] = []
 
@@ -138,13 +156,15 @@ export function attachInputBoxBand(term: Terminal): InputBoxBand {
   const update = () => {
     if (!enabled) return
     const b = term.buffer.active
-    if (b.type !== 'normal') { clear(); return }
+    if (b.type !== 'normal') { found = null; clear(); return }
     const cols = term.cols
     const end = b.length
     const from = Math.max(0, end - BOX_SCAN_ROWS)
     const box = findInputBox((i) => b.getLine(from + i)?.translateToString(true) ?? '', end - from, cols)
+    found = box ? { first: from + box.first, last: from + box.last } : null
+    if (!shown) { if (key) clear(); return }
     const theme = term.options.theme
-    const color = boxColor(theme?.background, theme?.foreground)
+    const color = boxColor(theme?.background, theme?.foreground, strength)
     if (!box || !color) { if (key) clear(); return }
     const runs = boxRuns((y) => b.getLine(y), from + box.first, from + box.last, cols)
     const next = `${color}|${runs.map((r) => `${r.y},${r.x},${r.width},${r.height}`).join(';')}`
@@ -169,10 +189,19 @@ export function attachInputBoxBand(term: Terminal): InputBoxBand {
       if (on === enabled) return
       enabled = on
       if (on) update()
-      else clear()
+      else { found = null; clear() }
     },
+    setLook: (look) => {
+      if (look.shown === shown && look.strength === strength) return
+      shown = look.shown
+      strength = look.strength
+      if (!shown) clear()
+      update()
+    },
+    boxRows: () => (enabled ? found : null),
     dispose: () => {
       enabled = false
+      found = null
       clear()
     },
   }

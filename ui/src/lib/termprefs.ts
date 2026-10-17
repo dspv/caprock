@@ -9,12 +9,21 @@ import { appLook, isTerminalChoice, terminalTheme, DEFAULT_TERMINAL_THEME, MATCH
 
 export type CursorStyle = 'bar' | 'block' | 'underline'
 
+/** How strong the highlight where you type is (lib/terminputbox, `.composer-field`). */
+export type HighlightStrength = 'subtle' | 'stronger'
+
 export interface TerminalPrefs {
   theme: string
   font: string
   fontSize: number
   lineHeight: number
   cursor: CursorStyle
+  /**
+   * The highlight where you type: the band on Claude Code's input box and
+   * the chat field's resting accent tint. On by default; ⌥⌘G flips it.
+   */
+  highlightInput: boolean
+  highlightStrength: HighlightStrength
 }
 
 const KEY = 'caprock.app.terminal'
@@ -24,7 +33,7 @@ const KEY = 'caprock.app.terminal'
  * line height 1.2, Regular and Bold (set in xtermOptions), no ligatures (xterm
  * draws one cell at a time and has no ligature addon loaded).
  */
-export const DEFAULT_PREFS: TerminalPrefs = { theme: DEFAULT_TERMINAL_THEME, font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar' }
+export const DEFAULT_PREFS: TerminalPrefs = { theme: DEFAULT_TERMINAL_THEME, font: 'jetbrains', fontSize: 13, lineHeight: 1.2, cursor: 'bar', highlightInput: true, highlightStrength: 'subtle' }
 
 export const FONT_SIZE_RANGE = { min: 10, max: 20 } as const
 export const LINE_HEIGHT_RANGE = { min: 1, max: 1.6 } as const
@@ -64,6 +73,8 @@ export function normalizePrefs(raw: unknown): TerminalPrefs {
     fontSize: Math.round(clamp(v.fontSize, FONT_SIZE_RANGE.min, FONT_SIZE_RANGE.max, DEFAULT_PREFS.fontSize)),
     lineHeight: Math.round(clamp(v.lineHeight, LINE_HEIGHT_RANGE.min, LINE_HEIGHT_RANGE.max, DEFAULT_PREFS.lineHeight) * 100) / 100,
     cursor: v.cursor === 'block' || v.cursor === 'underline' || v.cursor === 'bar' ? v.cursor : DEFAULT_PREFS.cursor,
+    highlightInput: typeof v.highlightInput === 'boolean' ? v.highlightInput : DEFAULT_PREFS.highlightInput,
+    highlightStrength: v.highlightStrength === 'stronger' ? 'stronger' : 'subtle',
   }
 }
 
@@ -99,7 +110,15 @@ export function getTerminalPrefs(): TerminalPrefs {
 export function setTerminalPrefs(patch: Partial<TerminalPrefs>): void {
   current = normalizePrefs({ ...getTerminalPrefs(), ...patch })
   try { localStorage.setItem(KEY, JSON.stringify({ ...current, v: STORED_VERSION })) } catch { /* kept for this page only */ }
+  if (typeof document !== 'undefined') applyInputHighlight(current)
   for (const f of listeners) f(current)
+}
+
+/** ⌥⌘G: the highlight where you type, flipped in every pane and window. Returns whether it is now on. */
+export function toggleInputHighlight(): boolean {
+  const on = !getTerminalPrefs().highlightInput
+  setTerminalPrefs({ highlightInput: on })
+  return on
 }
 
 /**
@@ -139,8 +158,11 @@ if (typeof window !== 'undefined') {
     if (e.key !== KEY) return
     current = null
     const p = getTerminalPrefs()
+    applyInputHighlight(p)
     for (const f of listeners) f(p)
   })
+  // Every page that shows a chat field, the phone's included, not only the app's shell.
+  applyInputHighlight(getTerminalPrefs())
 }
 
 export function useTerminalPrefs(): [TerminalPrefs, (patch: Partial<TerminalPrefs>) => void] {
@@ -201,6 +223,17 @@ function canvasMeasure(): (font: string) => number {
     ctx.font = font
     return ctx.measureText('mmmmmmmmmmlli10OO@#WwQq').width
   }
+}
+
+/**
+ * The chat field's resting tint follows the same switch (`.composer-field`,
+ * tokens.css): `data-input-hl` on <html> is `off` or `stronger`, absent for
+ * the default.
+ */
+export function applyInputHighlight(p: TerminalPrefs, root: HTMLElement = document.documentElement): void {
+  if (!p.highlightInput) root.setAttribute('data-input-hl', 'off')
+  else if (p.highlightStrength === 'stronger') root.setAttribute('data-input-hl', 'stronger')
+  else root.removeAttribute('data-input-hl')
 }
 
 /**
