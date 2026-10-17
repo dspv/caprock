@@ -611,11 +611,15 @@ export interface RepoActivity {
   project_id: number
   root: string
   name: string
+  /** The branch checked out at the root; absent when detached or not read. */
+  branch?: string
   /** Local calendar days, oldest first; the arrays below are per day. */
   days: string[]
   commits: number[]
   added: number[]
   deleted: number[]
+  /** Some commits' lines are not counted yet; the next read goes on. */
+  lines_partial?: boolean
   last_commit_at?: number
   /** Files the working tree has changed or new. */
   dirty: number
@@ -626,7 +630,11 @@ export interface RepoActivity {
   github?: {
     repo: string
     pulls?: { open: number; merged_7d: number; ttm_median_ms?: number; listed: number }
-    ci?: { runs: number; red: number; workflow?: string; median_ms?: number }
+    ci?: {
+      runs: number; red: number; workflow?: string; median_ms?: number
+      /** The newest run of the kept list. */
+      last?: { name: string; branch?: string; status: string; conclusion?: string; at?: number; url?: string }
+    }
     release?: { tag?: string; state: string; at?: number }
   }
 }
