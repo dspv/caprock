@@ -238,6 +238,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-17 — 0.129.0: hide a CI/CD repo, choose a browser for a link, import chats
+
+A minor release because it carries features, landed as one batch PR (#731). CI/CD repositories hide in one click with Undo, and Repos rows open for more. "git could not be read" on busy repositories is gone: commits are listed without diffs and lines are diffed in kept batches under a budget. Shift-cmd-click on a terminal link chooses the browser it opens in. Closing a working agent's tab offers two equal, explained choices. Claude.ai and ChatGPT data exports import as read-only chats, on the machine only (ADR-074).
+
 ### 2026-10-17 — 0.128.1: 0.128.0, published
 
 A patch release carrying 0.128.0 (#729). The v0.128.0 release run failed in its UI check on a phone Releases test that read a line before the data under it had arrived, so v0.128.0 was tagged but never published. The test now waits; the tag stays where it is.

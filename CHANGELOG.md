@@ -12,6 +12,58 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.129.0] - 2026-10-17
+
+### Added
+
+- **chats:** import your Claude.ai and ChatGPT conversations into Chats. Ask
+  the service for your data (Claude.ai: Settings → Privacy → Export data;
+  ChatGPT: Settings → Data controls → Export data), then choose the .zip it
+  emails you under *Import from Claude.ai or ChatGPT…* on the Chats screen.
+  Each conversation becomes a read-only chat marked with its service,
+  searchable, archivable and deletable, and readable from a paired phone.
+  The file is read on your computer and nothing is sent anywhere. Importing
+  a newer export adds only what is new, and a chat you deleted stays
+  deleted. Neither service offers a way for another program to read your
+  history, so this is an import from the export, not a live sync (ADR-074).
+- **app:** choose the browser a terminal link opens in. ⌘-click (Ctrl+click
+  on Windows and Linux) still opens the default browser; ⇧⌘-click
+  (Ctrl+Shift+click) opens a small chooser at the pointer with the browsers
+  installed on this machine, the default first, and *Copy link*. Arrows move,
+  Enter picks, Esc closes. The link's hover hint names both clicks, and both
+  are in the shortcuts list. The daemon finds the browsers from what the OS
+  says handles web links (LaunchServices on macOS, the registry on Windows,
+  desktop entries on Linux) and answers only this machine
+  (`GET /v1/browsers`, `POST /v1/browsers/open`).
+- **ui:** each repository in the CI/CD section has its own *Hide* button beside
+  *active 10d ago*, with an *Undo* in its place for ten seconds, and the
+  section's last line says *N hidden · Show* to list them and bring them back,
+  one at a time or all at once. The ⋯ menu that held the only Hide is gone.
+- **ui:** a row of the Repos section opens under itself (its chevron, or
+  *More* for every row): the branch checked out, the newest CI run with its
+  result, open and merged pull requests, red runs, the release, the lines of 7
+  days, the folder, and git's own error in full when it could not be read.
+
+### Changed
+
+- **app:** closing the tab of an agent that is still working asks with two
+  equal buttons, each with a line saying what it does: **Keep it running**
+  (only the tab closes; in focus, so ⌘W then Enter still keeps it) and
+  **Stop it** (it stops now; continue it later from History or the
+  sidebar). Stopping was a quiet link under one button before. Escape
+  still cancels.
+
+### Fixed
+
+- **projects:** the Repos section no longer says "git could not be read" for a
+  busy repository. Its one `git log --all --shortstat` over 14 days took 12 s
+  on a checkout with 961 refs and 1,048 recent commits (measured 2026-10-17),
+  past the 5 s git timeout, and the failure was kept for 10 minutes. Commits are
+  now listed without diffs, which stays fast, and each commit's lines are
+  counted once, kept, and diffed in batches under their own budget; when it
+  runs out the row keeps its commits, marks the lines `…` and goes on counting
+  a minute later.
+
 ## [0.128.1] - 2026-10-17
 
 ### Fixed
