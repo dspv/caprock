@@ -33,16 +33,24 @@ Telegram — Wi-Fi, mobile data, another country.
 
 Settings → **Telegram**.
 
-1. **Make a bot.** Press **Open @BotFather** (or open `@BotFather` in
-   Telegram), send `/newbot`, give it a name and a username ending in `bot`.
-2. **Paste its token.** BotFather answers with a token that looks like
-   `123456789:AAH…`. Paste it into the token field and press **Connect**.
-   Caprock asks Telegram whether the token is real before keeping it; a wrong one is refused with Telegram's own reason and nothing is saved.
-3. **Send it a code.** Caprock shows a six-digit code and a button, **Open
-   @yourbot and send it**. On your phone, that button (or opening the bot and
-   typing `/start 123456`) sends the code. The section turns into *Connected to
-   <your name>* within a couple of seconds. The code works for ten minutes,
-   only from a private chat, and only once.
+The section shows one card with three numbered steps; each turns into a tick
+when it is done.
+
+1. **Copy the token.** Press **Open @BotFather** (or open `@BotFather` in
+   Telegram), send `/mybots` and pick your bot — or `/newbot` for a new one,
+   with a username ending in `bot` — then **API Token** → **Copy**.
+2. **Paste it here.** Press **Paste** (it reads the clipboard; a whole token
+   connects at once), or paste into the field and press **Connect**. The
+   token looks like `123456789:AAH…`. Caprock asks Telegram whether it is
+   real before keeping it; a wrong one is refused with Telegram's own reason
+   and nothing is saved.
+3. **Send this code to your bot.** Caprock shows a six-digit code and a
+   button, **Open @yourbot**. On your phone, that button (or opening the bot
+   and typing `/start 123456`) sends the code. Within a couple of seconds the
+   card becomes one line, *Connected to @yourbot · alerts to <your name>*,
+   with **Change bot**, **Pair again** and **Disconnect**. The code works for
+   ten minutes, only from a private chat, and only once. Where the token is
+   kept and what it is sent to is behind the **i** beside them.
 4. **Choose what to hear.** Tick *When a session is waiting for approval*
    and/or *When a session has finished*, then **Send a test alert**.
 5. **Talk back (Premium).** With a licence, tick *Let my paired chat talk to
@@ -50,7 +58,7 @@ Settings → **Telegram**.
    until you turn it on, licence or not.
 
 Already used phone alerts with a chat id typed in by hand? It keeps working;
-Settings says *Sends to a chat id typed in by hand*. Press **Pair again** to
+Settings says *alerts to a chat id typed in by hand*. Press **Pair again** to
 switch to a paired chat.
 
 ## What you can do from Telegram

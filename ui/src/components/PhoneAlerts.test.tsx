@@ -33,14 +33,15 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 describe('PhoneAlerts', () => {
-  it('says plainly what to do when Telegram refuses the bot token, with the bot fields open', async () => {
+  it('says plainly what to do when Telegram refuses the bot token: the setup card again, with the paste field', async () => {
     settings.value = { report_bot_set: true, report_chat_id: '42', alert_approval: true, alert_last_error: 'telegram: Unauthorized' } as Settings
     render(<PhoneAlerts />)
     expect(await screen.findByText("Telegram no longer accepts this bot's token")).toBeInTheDocument()
     expect(screen.getByRole('alert').textContent).toMatch(/API Token/)
     expect(screen.getByRole('button', { name: 'Open @BotFather' })).toBeInTheDocument()
-    // The bot's fields are open, not folded under "Telegram bot".
-    expect(screen.queryByText('Telegram bot', { selector: 'summary' })).toBeNull()
+    expect(screen.getByLabelText('Bot token')).toBeInTheDocument()
+    // Not a second copy of Telegram's words under the card.
+    expect(screen.queryByText(/Last alert failed/)).toBeNull()
   })
 
   it('leads with the three setup steps when there is no bot, and holds the switches until there is', async () => {
@@ -48,7 +49,9 @@ describe('PhoneAlerts', () => {
     render(<PhoneAlerts />)
     await waitFor(() => expect(screen.getByText('needs a Telegram bot')).toBeInTheDocument())
     expect(await screen.findByPlaceholderText('Paste the bot token')).toBeInTheDocument()
-    expect(screen.getByText('Make a bot')).toBeInTheDocument()
+    expect(screen.getByText('Connect your Telegram bot')).toBeInTheDocument()
+    expect(screen.getByText('Paste it here')).toBeInTheDocument()
+    expect(screen.getByText('The code shows here once the token is in.')).toBeInTheDocument()
     expect(screen.getByText('Open @BotFather')).toBeInTheDocument()
     expect(screen.queryByLabelText(/waiting for approval/)).toBeNull()
     expect(screen.queryByText('Send a test alert')).toBeNull()
