@@ -214,8 +214,11 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
   const add = files.reduce((n, f) => n + (f.additions ?? 0), 0)
   const del = files.reduce((n, f) => n + (f.deletions ?? 0), 0)
   const folded = useFolded()
+  // One shrinkable column: an auto grid column took the longest path's
+  // width and pushed the counts, the bar and Review and commit past the
+  // panel's edge (owner, 2026-10-17).
   return (
-    <section aria-label="Changes" className="grid gap-2">
+    <section aria-label="Changes" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <SectionLabel right={(
         <>
           {/* Folded, the section's one line: how much is uncommitted. */}
@@ -231,7 +234,7 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
         <p className="text-[11.5px] text-fg-faint">No uncommitted changes{diff.branch ? ` on ${diff.branch}` : ''}.</p>
       ) : (
         <>
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
             <span className="num text-[13px] font-medium text-fg">{files.length} {files.length === 1 ? 'file' : 'files'}</span>
             <span className="num text-[12px] text-ok">+{add}</span>
             <span className="num text-[12px] text-danger">−{del}</span>
@@ -242,9 +245,9 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
               </span>
             )}
           </div>
-          <ul className="grid gap-px">
+          <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-px">
             {files.slice(0, DIFF_FILES_SHOWN).map((f) => (
-              <li key={f.path} className="flex items-center gap-2 text-[11.5px]" title={f.path}>
+              <li key={f.path} className="flex min-w-0 items-center gap-2 text-[11.5px]" title={f.path}>
                 <span className={`mono w-3 text-center ${f.status === 'deleted' ? 'text-danger' : f.status === 'added' || f.status === 'untracked' ? 'text-ok' : 'text-fg-faint'}`}>{STATUS[f.status] ?? '·'}</span>
                 {onOpenFile && f.status !== 'deleted' ? (
                   <button type="button" onClick={() => onOpenFile(f.path)} className="mono min-w-0 flex-1 truncate text-left text-fg hover:text-accent hover:underline" title={`Open ${f.path}`}>
