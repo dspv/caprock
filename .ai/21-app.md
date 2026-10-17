@@ -1848,10 +1848,10 @@ replies to a running session: Continue, Shorter and the like"). Built in
   The daemon finds them (`internal/browser`, `GET /v1/browsers`: LaunchServices
   on macOS, the registry's StartMenuInternet on Windows, `.desktop` entries
   for `x-scheme-handler/http(s)` on Linux) and opens a picked one
-  (`POST /v1/browsers/open`), a process Caprock starts (rule 7). The in-app
-  browser stays withdrawn (ADR-070); the chooser's rows are entry kinds
-  (`lib/linkchooser.ts`), so *Open in Caprock* is one more the day it comes
-  back.
+  (`POST /v1/browsers/open`), a process Caprock starts (rule 7). The
+  chooser's rows are entry kinds (`lib/linkchooser.ts`); *Open in Caprock*
+  follows the browsers while the in-app browser (beta, ADR-075) is on, and
+  is not listed while it is off.
 
 ## File tabs
 

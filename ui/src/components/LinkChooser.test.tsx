@@ -40,9 +40,22 @@ describe('chooserEntries', () => {
     expect(chooserEntries(null).map((e) => e.kind)).toEqual(['system', 'copy'])
     expect(chooserEntries([{ id: 'x', name: 'X', default: false }]).map((e) => e.kind)).toEqual(['system', 'browser', 'copy'])
   })
+  it('lists Open in Caprock after the browsers only while the in-app browser is on', () => {
+    expect(chooserEntries(LIST, true).map((e) => e.kind)).toEqual(['browser', 'browser', 'browser', 'caprock', 'copy'])
+    expect(chooserEntries(LIST, false).some((e) => e.kind === 'caprock')).toBe(false)
+  })
 })
 
 describe('LinkChooser', () => {
+  it('offers Open in Caprock while the in-app browser is on, and says how to turn it on when it is not', async () => {
+    const calls = setup({ inCaprock: true })
+    await waitFor(() => expect(names()).toEqual(['Google Chromedefault', 'Firefox', 'Safari', 'Open in Caprocktab', 'Copy link']))
+    // The test page has no in-app browser behind it: the pick says so and stays open.
+    fireEvent.click(screen.getByRole('menuitem', { name: /Open in Caprock/ }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/In-app browser \(beta\)/))
+    expect(calls.closed).toBe(0)
+  })
+
   it('lists the browsers, the default first and marked, then Copy link; the first takes focus', async () => {
     setup()
     await waitFor(() => expect(names()).toEqual(['Google Chromedefault', 'Firefox', 'Safari', 'Copy link']))

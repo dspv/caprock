@@ -10,12 +10,13 @@
  * picks, Esc or Tab closes and gives focus back (RowMenu's MenuBox). A click
  * outside, the window losing focus or a resize closes it too.
  *
- * The rows are `ChooserEntry`s (lib/linkchooser.ts): "Open in Caprock" is a
- * kind to add there and a case to add here, once an in-app browser is back.
+ * The rows are `ChooserEntry`s (lib/linkchooser.ts); *Open in Caprock*
+ * shows while the in-app browser is on (ADR-075) and opens a Caprock tab.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { api, errText, type InstalledBrowser } from '@/lib/api'
+import { caprockEntry, openInCaprock } from '@/lib/browsertab'
 import { chooserEntries, loadBrowsers, type ChooserEntry } from '@/lib/linkchooser'
 import { copyText } from '@/lib/mdreader'
 import { openLink } from '@/lib/termlinks'
@@ -26,8 +27,9 @@ export interface LinkChooserProps {
   url: string
   at: MenuAt
   onClose: () => void
-  /** For tests: the list, how a browser opens it, the default opener and the clipboard. */
+  /** For tests: the list, whether Caprock's own browser is on, how a browser opens it, the default opener and the clipboard. */
   load?: () => Promise<InstalledBrowser[] | null>
+  inCaprock?: boolean
   openIn?: (browser: string, url: string) => Promise<unknown>
   openDefault?: (url: string) => void
   copy?: (text: string) => Promise<boolean>
@@ -35,16 +37,16 @@ export interface LinkChooserProps {
 
 const WIDTH = 288
 
-export function LinkChooser({ url, at, onClose, load = loadBrowsers, openIn, openDefault = openLink, copy = copyText }: LinkChooserProps) {
+export function LinkChooser({ url, at, onClose, load = loadBrowsers, inCaprock = caprockEntry() !== null, openIn, openDefault = openLink, copy = copyText }: LinkChooserProps) {
   const [entries, setEntries] = useState<ChooserEntry[] | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     let live = true
-    load().then((l) => { if (live) setEntries(chooserEntries(l)) }, () => { if (live) setEntries(chooserEntries(null)) })
+    load().then((l) => { if (live) setEntries(chooserEntries(l, inCaprock)) }, () => { if (live) setEntries(chooserEntries(null, inCaprock)) })
     return () => { live = false }
-  }, [load])
+  }, [load, inCaprock])
 
   const pick = useCallback(async (e: ChooserEntry) => {
     setError('')
@@ -65,6 +67,10 @@ export function LinkChooser({ url, at, onClose, load = loadBrowsers, openIn, ope
           setBusy(false)
         }
         return
+      case 'caprock':
+        if (openInCaprock(url)) onClose()
+        else setError('The in-app browser is off: Settings → In-app browser (beta).')
+        return
       case 'copy':
         if (await copy(url)) onClose()
         else setError('The clipboard refused the link.')
@@ -83,6 +89,8 @@ export function LinkChooser({ url, at, onClose, load = loadBrowsers, openIn, ope
             return <MenuItem key={`b:${e.id}`} icon={<ExternalIcon size={14} />} label={e.name} hint={e.isDefault ? 'default' : undefined} disabled={busy} onClick={() => void pick(e)} />
           case 'system':
             return <MenuItem key="system" icon={<ExternalIcon size={14} />} label="Default browser" hint="default" disabled={busy} onClick={() => void pick(e)} />
+          case 'caprock':
+            return <MenuItem key="caprock" icon={<ExternalIcon size={14} />} label="Open in Caprock" hint="tab" disabled={busy} onClick={() => void pick(e)} />
           case 'copy':
             return (
               <div key="copy" className="contents">
