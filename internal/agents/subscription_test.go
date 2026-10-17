@@ -76,3 +76,64 @@ func envWith(env []string, prefix string) []string {
 	}
 	return out
 }
+
+// A session on an added subscription runs on that subscription's sign-in: a
+// credential the login shell exports would outrank it (Claude Code's
+// "Authentication precedence"; Codex's CODEX_API_KEY and CODEX_ACCESS_TOKEN),
+// and CLAUDE_SECURESTORAGE_CONFIG_DIR would key the Keychain entry to another
+// directory, so they are left out of its environment. A session on the user's
+// own sign-in keeps the credentials, as their own terminal does. A fake
+// binary proves only the environment handed over, not what the real agent
+// does with it; that is from its docs and source (ADR-048). The pure
+// functions are tested: the login-shell environment is cached per process.
+func TestASubscriptionsEnvironmentLeavesCredentialOverridesOut(t *testing.T) {
+	shell := []string{
+		"PATH=/bin",
+		"ANTHROPIC_API_KEY=sk-ant-shell",
+		"ANTHROPIC_AUTH_TOKEN=bearer-shell",
+		"CLAUDE_CODE_OAUTH_TOKEN=oauth-shell",
+		"CLAUDE_CODE_USE_BEDROCK=1",
+		"ANTHROPIC_PROFILE=work",
+		"CLAUDE_SECURESTORAGE_CONFIG_DIR=/elsewhere",
+		"CLAUDE_CONFIG_DIR=/Users/me/.claude-own",
+		"CODEX_API_KEY=codex-shell",
+		"CODEX_ACCESS_TOKEN=codex-token",
+		"OPENAI_API_KEY=sk-openai",
+	}
+	has := func(env []string, name string) bool { return len(envWith(env, name+"=")) > 0 }
+
+	claude := onSubscription(childEnv(shell), AgentClaude, "/data/profiles/ab12")
+	for _, name := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "ANTHROPIC_PROFILE", "CLAUDE_SECURESTORAGE_CONFIG_DIR"} {
+		if has(claude, name) {
+			t.Errorf("a subscription's Claude Code session got %s", name)
+		}
+	}
+	if got := envWith(claude, "CLAUDE_CONFIG_DIR="); len(got) != 1 || got[0] != "CLAUDE_CONFIG_DIR=/data/profiles/ab12" {
+		t.Errorf("config dir: %v", got)
+	}
+	if !has(claude, "PATH") {
+		t.Error("PATH was lost")
+	}
+
+	codex := onSubscription(childEnv(shell), AgentCodex, "/data/profiles/cd34")
+	if has(codex, "CODEX_API_KEY") || has(codex, "CODEX_ACCESS_TOKEN") {
+		t.Errorf("a subscription's Codex session got an env credential: %v", envWith(codex, "CODEX_"))
+	}
+	if !has(codex, "OPENAI_API_KEY") {
+		t.Error("OPENAI_API_KEY was dropped; Codex does not sign in with it and a session's tools may want it")
+	}
+	if !slices.Contains(codex, "CODEX_HOME=/data/profiles/cd34") {
+		t.Errorf("codex home: %v", envWith(codex, "CODEX_HOME"))
+	}
+
+	// The user's own sign-in keeps the shell's credentials, as their own
+	// terminal does; the Keychain redirect is a nesting marker and goes from
+	// every session and shell tab.
+	own := childEnv(shell)
+	if !has(own, "ANTHROPIC_API_KEY") || !has(own, "CODEX_API_KEY") {
+		t.Error("the own sign-in's environment lost the shell's credentials")
+	}
+	if has(own, "CLAUDE_SECURESTORAGE_CONFIG_DIR") {
+		t.Error("CLAUDE_SECURESTORAGE_CONFIG_DIR reached a session")
+	}
+}

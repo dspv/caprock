@@ -31,6 +31,7 @@ package subs
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -45,6 +46,7 @@ import (
 
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/hooks"
+	"golang.org/x/text/unicode/norm"
 )
 
 // Agents that have subscriptions: the two whose sign-in lives in a directory
@@ -85,6 +87,68 @@ func EnvVar(agent string) string {
 		return "CODEX_HOME"
 	}
 	return "CLAUDE_CONFIG_DIR"
+}
+
+// CredentialEnv is what, in a session's environment, makes the agent use a
+// credential other than the sign-in its configuration directory holds. A
+// session Caprock starts on a subscription runs without these, so it runs on
+// the sign-in the user picked and not on whatever the login shell exports
+// (ADR-048, amended 2026-10-18). A session on the user's own sign-in keeps
+// them: that is how their own terminal runs too.
+//
+//   - Claude Code ranks ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY,
+//     CLAUDE_CODE_OAUTH_TOKEN, a named ANTHROPIC_PROFILE, the federation
+//     variables and a cloud provider switch above the directory's /login
+//     (code.claude.com/docs/en/authentication, "Authentication precedence",
+//     read 2026-10-18). CLAUDE_SECURESTORAGE_CONFIG_DIR, which Claude Code
+//     sets for the teammates it starts, replaces the directory its Keychain
+//     entry and .credentials.json are keyed to (the 2.1.302 bundle: the
+//     service is "Claude Code-credentials-" plus the first eight hex digits
+//     of SHA-256 of that directory instead of CLAUDE_CONFIG_DIR's).
+//   - Codex takes CODEX_API_KEY and CODEX_ACCESS_TOKEN over its stored
+//     credentials (github.com/openai/codex codex-rs/login/src/auth/manager.rs,
+//     read 2026-10-18). OPENAI_API_KEY is not read there, so it stays: tools a
+//     session runs may want it.
+func CredentialEnv(agent string) []string {
+	if agent == AgentCodex {
+		return []string{"CODEX_API_KEY", "CODEX_ACCESS_TOKEN"}
+	}
+	return []string{
+		"CLAUDE_SECURESTORAGE_CONFIG_DIR",
+		"ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_API_KEY",
+		"CLAUDE_CODE_OAUTH_TOKEN",
+		"ANTHROPIC_PROFILE",
+		"ANTHROPIC_FEDERATION_RULE_ID",
+		"CLAUDE_CODE_USE_BEDROCK",
+		"CLAUDE_CODE_USE_VERTEX",
+		"CLAUDE_CODE_USE_FOUNDRY",
+		"CLAUDE_CODE_USE_ANTHROPIC_AWS",
+	}
+}
+
+// CredentialEnvSet names the CredentialEnv variables env sets to something
+// other than blank, in CredentialEnv's order: what Settings tells the user a
+// session on a subscription runs without. Names only; a value never leaves.
+func CredentialEnvSet(agent string, env []string) []string {
+	var out []string
+	for _, name := range CredentialEnv(agent) {
+		if name == "CLAUDE_SECURESTORAGE_CONFIG_DIR" {
+			// A nesting marker, dropped from every session and shell tab
+			// (agents.childEnv), the own sign-in's too: not news to report.
+			continue
+		}
+		for i := len(env) - 1; i >= 0; i-- {
+			k, v, ok := strings.Cut(env[i], "=")
+			if ok && strings.EqualFold(k, name) {
+				if strings.TrimSpace(v) != "" {
+					out = append(out, name)
+				}
+				break
+			}
+		}
+	}
+	return out
 }
 
 // ProfilesDir is where every subscription's directory lives.
@@ -158,21 +222,56 @@ func Count(list []config.Subscription, agent string) int {
 // (code.claude.com/docs/en/cli-reference, developers.openai.com/codex/auth,
 // read 2026-10-10).
 func LoginCommand(agent, dir, goos string) string {
-	login := "claude auth login"
 	if agent == AgentCodex {
-		login = "codex login"
+		return pointedAt(agent, dir, goos, "codex login")
 	}
+	return pointedAt(agent, dir, goos, "claude auth login")
+}
+
+// LogoutCommand is the agent's own sign-out, pointed at dir, typed into a
+// shell tab like LoginCommand. It is how a subscription's credential leaves
+// the macOS Keychain or the OS keyring, which Caprock never touches itself:
+// removing a subscription deletes its folder, and a Keychain entry is not in
+// it. `claude auth logout` and `codex logout` are each agent's own
+// (`claude auth --help`, `codex logout --help`, read 2026-10-18).
+func LogoutCommand(agent, dir, goos string) string {
+	if agent == AgentCodex {
+		return pointedAt(agent, dir, goos, "codex logout")
+	}
+	return pointedAt(agent, dir, goos, "claude auth logout")
+}
+
+func pointedAt(agent, dir, goos, command string) string {
 	if dir == "" {
-		return login
+		return command
 	}
 	if goos == "windows" {
-		return "$env:" + EnvVar(agent) + "=" + psQuote(dir) + "; " + login
+		return "$env:" + EnvVar(agent) + "=" + psQuote(dir) + "; " + command
 	}
-	return EnvVar(agent) + "=" + shQuote(dir) + " " + login
+	return EnvVar(agent) + "=" + shQuote(dir) + " " + command
 }
 
 // LoginCommandHere is LoginCommand for this machine.
 func LoginCommandHere(agent, dir string) string { return LoginCommand(agent, dir, runtime.GOOS) }
+
+// LogoutCommandHere is LogoutCommand for this machine.
+func LogoutCommandHere(agent, dir string) string { return LogoutCommand(agent, dir, runtime.GOOS) }
+
+// KeychainService is the macOS Keychain item Claude Code keeps a sign-in in
+// when it runs with CLAUDE_CONFIG_DIR=dir ("" is the user's own sign-in):
+// "Claude Code-credentials", and with the variable set, "-" and the first
+// eight hex digits of SHA-256 of the directory, normalised to NFC, after it.
+// Read from the Claude Code 2.1.302 bundle on 2026-10-18; the docs say only
+// that the entry is keyed to the directory (code.claude.com/docs/en/
+// authentication). Caprock names it so the user can find it in Keychain
+// Access; it never reads, writes or deletes it.
+func KeychainService(dir string) string {
+	if dir == "" {
+		return "Claude Code-credentials"
+	}
+	sum := sha256.Sum256([]byte(norm.NFC.String(dir)))
+	return "Claude Code-credentials-" + hex.EncodeToString(sum[:])[:8]
+}
 
 // shQuote quotes s for a POSIX shell: single quotes, each embedded one closed,
 // escaped and reopened. The data dir on macOS has a space in it.

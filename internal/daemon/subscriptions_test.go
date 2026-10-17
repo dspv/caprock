@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -54,6 +55,14 @@ func TestSubscriptionsAddRenameRemove(t *testing.T) {
 		t.Fatalf("added: %+v", work)
 	}
 	dir := subs.Dir(d.opt.DataDir, work.ID)
+	// Its sign-out is pointed at the same folder as its sign-in, and on macOS
+	// the Keychain item named is the one Claude Code keys to that folder.
+	if work.LogoutCommand != subs.LogoutCommandHere("claude", dir) {
+		t.Fatalf("logout: %q", work.LogoutCommand)
+	}
+	if wantItem := map[bool]string{true: subs.KeychainService(dir)}[runtime.GOOS == "darwin"]; work.KeychainItem != wantItem {
+		t.Fatalf("keychain item %q, want %q", work.KeychainItem, wantItem)
+	}
 	if st, err := hooks.Inspect(filepath.Join(dir, "settings.json"), hooks.ShimCommand(d.opt.DataDir)); err != nil || len(st.Missing) != 0 {
 		t.Fatalf("hooks in the new directory: %+v %v", st, err)
 	}

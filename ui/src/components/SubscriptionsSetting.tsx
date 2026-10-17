@@ -49,33 +49,43 @@ export function SubscriptionsSetting() {
 function SubscriptionsBody({ data, refresh }: { data: SubscriptionsResponse; refresh: () => void }) {
   const setupShell = useSetupShell()
   // The sign-in command waiting to be run, for a browser with no tabs to put it in.
-  const [toRun, setToRun] = useState<{ label: string; command: string } | null>(null)
-  const signIn = (s: Subscription) => {
-    if (setupShell) setupShell(s.login_command, data.home)
-    else setToRun({ label: s.label, command: s.login_command })
+  const [toRun, setToRun] = useState<{ what: string; command: string } | null>(null)
+  // The agent's own sign-in or sign-out, typed into a shell tab, never run.
+  const run = (what: string, command: string) => {
+    if (setupShell) setupShell(command, data.home)
+    else setToRun({ what, command })
   }
+  const signIn = (s: Subscription) => run(`sign ${s.label} in`, s.login_command)
+  const signOut = (s: Subscription) => { if (s.logout_command) run(`sign ${s.label} out`, s.logout_command) }
   const groups = data.agents.filter((g) => g.installed || signIns(g.subscriptions).length > 1)
   return (
     <div className="grid gap-4">
       {groups.length === 0 && <p className="text-[12px] text-fg-faint">Neither Claude Code nor Codex is installed here.</p>}
       {groups.map((g) => (
-        <AgentGroup key={g.agent} agent={g.agent} list={signIns(g.subscriptions)} onSignIn={signIn} refresh={refresh}>
+        <AgentGroup key={g.agent} agent={g.agent} list={signIns(g.subscriptions)} ignoredEnv={g.ignored_env ?? []} onSignIn={signIn} onSignOut={signOut} refresh={refresh}>
           {g.agent === 'claude' && <DeepSeekKey entry={g.subscriptions.find((s) => s.id === DEEPSEEK_ID)} refresh={refresh} />}
         </AgentGroup>
       ))}
-      {toRun && <CommandToRun label={toRun.label} command={toRun.command} onClose={() => setToRun(null)} />}
+      {toRun && <CommandToRun what={toRun.what} command={toRun.command} onClose={() => setToRun(null)} />}
       <AddSubscription data={data} onAdded={(s) => { refresh(); signIn(s) }} />
       <p className="text-[11.5px] leading-snug text-fg-faint">
-        {data.free_per_agent} per agent are free, your own sign-in included{data.licensed ? '; Premium adds more.' : '.'} A new subscription starts with the agent’s own defaults: your settings, plugins and servers in <span className="mono">~/.claude</span> or <span className="mono">~/.codex</span> are not copied.
+        {data.free_per_agent} per agent are free, your own sign-in included{data.licensed ? '; Premium adds more.' : '.'} A new subscription starts with the agent’s own defaults: your settings, plugins and servers in <span className="mono">~/.claude</span> or <span className="mono">~/.codex</span> are not copied. You choose which subscription each session uses; Caprock never switches one for you.
+      </p>
+      {/* Claude Code's docs: a Console sign-in without an API key is stored
+          outside the configuration directory, so folders do not separate two. */}
+      <p className="text-[11.5px] leading-snug text-fg-faint">
+        Claude Code keeps each claude.ai sign-in, and each Console sign-in that made an API key, in its own folder. A Console sign-in without an API key is kept outside the folders, so two of those are not kept apart.
       </p>
     </div>
   )
 }
 
-function AgentGroup({ agent, list, onSignIn, refresh, children }: {
+function AgentGroup({ agent, list, ignoredEnv, onSignIn, onSignOut, refresh, children }: {
   agent: SubscriptionAgentId
   list: Subscription[]
+  ignoredEnv: string[]
   onSignIn: (s: Subscription) => void
+  onSignOut: (s: Subscription) => void
   refresh: () => void
   children?: ReactNode
 }) {
@@ -83,8 +93,13 @@ function AgentGroup({ agent, list, onSignIn, refresh, children }: {
     <div className="grid gap-1.5">
       <h3 className="text-[12px] font-medium text-fg-muted">{AGENT_LABEL[agent]}</h3>
       <ul className="grid gap-1.5" aria-label={`${AGENT_LABEL[agent]} subscriptions`}>
-        {list.map((s) => <SubscriptionRow key={s.id} sub={s} onSignIn={() => onSignIn(s)} refresh={refresh} choice={list.length > 1} />)}
+        {list.map((s) => <SubscriptionRow key={s.id} sub={s} onSignIn={() => onSignIn(s)} onSignOut={() => onSignOut(s)} refresh={refresh} choice={list.length > 1} />)}
       </ul>
+      {ignoredEnv.length > 0 && (
+        <p role="note" className="text-[12px] leading-snug text-fg-muted">
+          Your shell sets {ignoredEnv.map((n, i) => <span key={n}>{i > 0 && ', '}<span className="mono text-fg">{n}</span></span>)}. {AGENT_LABEL[agent]} would use {ignoredEnv.length === 1 ? 'it' : 'them'} instead of a folder’s sign-in, so a session on a subscription added here starts without {ignoredEnv.length === 1 ? 'it' : 'them'}; sessions on your own sign-in keep {ignoredEnv.length === 1 ? 'it' : 'them'}.
+        </p>
+      )}
       {children}
     </div>
   )
@@ -151,7 +166,7 @@ export function DeepSeekKey({ entry, refresh }: { entry?: Subscription; refresh:
   )
 }
 
-function SubscriptionRow({ sub, onSignIn, refresh, choice }: { sub: Subscription; onSignIn: () => void; refresh: () => void; choice: boolean }) {
+function SubscriptionRow({ sub, onSignIn, onSignOut, refresh, choice }: { sub: Subscription; onSignIn: () => void; onSignOut: () => void; refresh: () => void; choice: boolean }) {
   const [mode, setMode] = useState<'' | 'rename' | 'remove'>('')
   const [name, setName] = useState(sub.label)
   const [busy, setBusy] = useState(false)
@@ -243,6 +258,17 @@ function SubscriptionRow({ sub, onSignIn, refresh, choice }: { sub: Subscription
       {mode === 'remove' && (
         <p className="text-[12px] leading-snug text-fg">
           Remove {sub.label}? Its folder is deleted, with the sign-in, history and settings {sub.agent === 'codex' ? 'Codex' : 'Claude Code'} kept there. Sessions already recorded stay in Caprock.
+        </p>
+      )}
+      {/* The Keychain or keyring is outside the folder, and Caprock never
+          touches it: the agent's own sign-out removes what it put there. */}
+      {mode === 'remove' && sub.signed_in && sub.logout_command && (sub.keychain_item || sub.agent === 'codex') && (
+        <p className="text-[12px] leading-snug text-fg-muted">
+          {sub.keychain_item
+            ? <>On this Mac the sign-in itself is in the Keychain as <span className="mono text-fg">{sub.keychain_item}</span>, outside the folder.</>
+            : <>If Codex keeps this sign-in in the system keyring, it is outside the folder.</>}
+          {' '}Sign out first and {AGENT_LABEL[sub.agent]} removes it; Caprock does not touch it.{' '}
+          <button type="button" onClick={onSignOut} className="text-accent hover:underline">Sign out first</button>
         </p>
       )}
       <div className="flex flex-wrap items-center gap-3 text-[12px]">
@@ -346,11 +372,11 @@ function AddSubscription({ data, onAdded }: { data: SubscriptionsResponse; onAdd
 }
 
 /** In a browser: the sign-in to run in a terminal, with a copy button. */
-function CommandToRun({ label, command, onClose }: { label: string; command: string; onClose: () => void }) {
+function CommandToRun({ what, command, onClose }: { what: string; command: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   return (
     <div role="note" className="grid gap-1.5 rounded-[8px] border border-border p-3">
-      <p className="text-[12px] text-fg">Run this in a terminal to sign {label} in:</p>
+      <p className="text-[12px] text-fg">Run this in a terminal to {what}:</p>
       <code className="mono block overflow-x-auto whitespace-pre rounded-[6px] bg-panel-2 px-2 py-1.5 text-[12px] text-fg">{command}</code>
       <div className="flex gap-3 text-[12px]">
         <button type="button" onClick={() => { void navigator.clipboard?.writeText(command).then(() => setCopied(true)) }} className="text-accent hover:underline">

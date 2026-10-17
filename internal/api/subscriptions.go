@@ -57,7 +57,16 @@ type Subscription struct {
 	Account  string `json:"account,omitempty"`
 	// LoginCommand is the agent's own sign-in for this directory, to be typed
 	// into a shell tab and run by the user.
-	LoginCommand string               `json:"login_command"`
+	LoginCommand string `json:"login_command"`
+	// LogoutCommand is the agent's own sign-out for this directory, typed
+	// into a shell tab the same way: how an added subscription's credential
+	// leaves the Keychain or keyring before it is removed. "" for the own
+	// sign-in and for a provider.
+	LogoutCommand string `json:"logout_command,omitempty"`
+	// KeychainItem names the macOS Keychain item an added Claude Code
+	// subscription's sign-in is kept in (subs.KeychainService), so the user
+	// can find it; Caprock never opens it. "" elsewhere.
+	KeychainItem string               `json:"keychain_item,omitempty"`
 	Windows      []SubscriptionWindow `json:"windows"`
 	// Sessions7d and Cost7dUSD are the last seven days of priced work on it.
 	Sessions7d int64   `json:"sessions_7d"`
@@ -98,6 +107,10 @@ type SubscriptionAgent struct {
 	Label         string         `json:"label"`
 	Installed     bool           `json:"installed"`
 	Subscriptions []Subscription `json:"subscriptions"`
+	// IgnoredEnv names the credential variables the user's login shell sets
+	// that a session on an added subscription runs without, so it runs on
+	// that subscription's own sign-in (subs.CredentialEnv). Names only.
+	IgnoredEnv []string `json:"ignored_env,omitempty"`
 }
 
 // SubscriptionsResponse is GET /v1/subscriptions.

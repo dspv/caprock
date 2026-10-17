@@ -1705,6 +1705,12 @@ export interface Subscription {
   account?: string
   /** The agent's own sign-in for this directory, typed into a shell tab, never run by Caprock. */
   login_command: string
+  /** The agent's own sign-out for an added one's directory, typed the same
+   *  way: how its credential leaves the Keychain or keyring before removal. */
+  logout_command?: string
+  /** macOS: the Keychain item an added Claude Code one's sign-in is kept in.
+   *  Named so the user can find it; Caprock never opens it. */
+  keychain_item?: string
   windows: SubscriptionWindow[]
   sessions_7d: number
   cost_7d_usd: number
@@ -1718,7 +1724,12 @@ export interface Subscription {
 }
 
 export interface SubscriptionsResponse {
-  agents: { agent: SubscriptionAgentId; label: string; installed: boolean; subscriptions: Subscription[] }[]
+  agents: {
+    agent: SubscriptionAgentId; label: string; installed: boolean; subscriptions: Subscription[]
+    /** Credential variables the login shell sets that a session on an added
+     *  subscription runs without, so it runs on its own sign-in. Names only. */
+    ignored_env?: string[]
+  }[]
   licensed: boolean
   free_per_agent: number
   home?: string
