@@ -364,3 +364,17 @@ func TestBuildInputKeepsTheNewestWhenTooLong(t *testing.T) {
 		t.Error("topics and numbering")
 	}
 }
+
+func TestAModelCannotCreateAnImportedNote(t *testing.T) {
+	e := newEnv(t, func(Request) (Result, error) {
+		return Result{Memories: []Memory{{Kind: "note", Title: "A session finding", Summary: "This came from a session, not a vault."}}}, nil
+	})
+	e.session(t, "s1", "acme-api", 20*time.Minute, [2]string{"Explain it", long})
+	if n, err := e.eng.Wake(context.Background()); err != nil || n != 1 {
+		t.Fatalf("wake: %d %v", n, err)
+	}
+	var kind string
+	if err := e.st.DB().QueryRow(`SELECT kind FROM brain_nodes WHERE title = 'A session finding'`).Scan(&kind); err != nil || kind != store.BrainIdea {
+		t.Fatalf("kind: %s %v", kind, err)
+	}
+}

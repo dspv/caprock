@@ -38,6 +38,7 @@ export interface SectionMatch {
 const SYNONYMS: [words: string[], title: RegExp][] = [
   [['token', 'bot', 'botfather', 'telegram', 'alert', 'alerts', 'message'], /^telegram$/i],
   [['chat', 'reply', 'telegram'], /talk to your agents/i],
+  [['mcp', 'agents', 'agent', 'tools', 'tool', 'claude', 'codex', 'server', 'integration'], /from your agents/i],
   [['phone', 'mobile', 'iphone', 'android', 'tablet', 'qr', 'pair', 'pairing', 'remote', 'anywhere', 'tailscale'], /use on your phone/i],
   [['theme', 'dark', 'light', 'colour', 'color', 'palette', 'mode', 'sidebar', 'zoom', 'scale', 'size'], /appearance/i],
   [['font', 'shell', 'cursor', 'scrollback'], /^terminal$/i],

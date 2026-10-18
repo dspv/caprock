@@ -85,6 +85,23 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
    - Evidence: the owner, 2026-10-16 (translated): plain stored chats on mobile, file results that can be opened; Quick chat as one button with at most a model choice; chats stored separately, marked, counted, hideable and searchable. Before this a phone could not start a chat without a project, and a chat was a terminal tab mixed in with the work.
    - Feature: **Chats** — a session kind started in one tap on the remembered model, listed apart (search, rename, archive, delete), read as a conversation, with its folder's files in a sandboxed viewer ([ADR-071](08-decisions.md), [04-ui.md § Chats](04-ui.md#chats)). Conversations from a Claude.ai or ChatGPT export the user downloaded are imported as read-only chats, on the machine, sending nothing ([ADR-074](08-decisions.md)); a live sync is an open question ([OQ-22](12-risks.md)).
 
+11. **An agent cannot ask what earlier sessions learned.**
+   - Evidence: the owner's 2026-10-18 decision to expose Caprock through MCP
+     ([ADR-078](08-decisions.md)); the SessionStart handoff supplies context
+     once, while later questions otherwise require copying from the dashboard.
+   - Feature: **Use Caprock from your agents (MCP)** — free, read-only tools
+     for Second Brain, session history and prose, costs, CI and loop alerts.
+     The user adds the stdio server to their agent; returned text enters that
+     agent's conversation and reaches its model. Setup and boundaries live in
+     [docs/mcp.md](../docs/mcp.md).
+
+12. **Existing Obsidian notes should join the agents' memory graph.**
+   - Evidence: the owner's 2026-10-18 handoff for the paused Obsidian import,
+     explicitly requiring a switch for whether agents may use the notes.
+   - Feature: **Import from Obsidian** in Second Brain, preserving source
+     files, refreshing notes and links, and keeping agent sharing off until
+     chosen per vault ([ADR-079](08-decisions.md), [user guide](../docs/obsidian.md)).
+
 ## Product principles
 
 1. **Every pixel earns its place** — each screen answers "what's happening / what does it cost / where do I need to act."

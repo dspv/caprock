@@ -973,7 +973,7 @@ Added during T6 (same conventions; not in the spec's list):
 
 ```
 GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
-GET  /v1/status                        → daemon status: version, api_level, pid, uptime, data dir, pricing, ingest, hooks
+GET  /v1/status                        → daemon status: version, api_level, pid, uptime, data dir, executable, pricing, ingest, hooks
 GET  /v1/storage                       → what the data directory holds; see § Storage below
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
@@ -3604,8 +3604,9 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
-  degree?, rank?, close?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
-  `question` (a memory) or `topic`, `person` or `project` (an entity).
+  degree?, rank?, close?, vault?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
+  `question` (a memory), `note` (an Obsidian import; § Obsidian vaults), or
+  `topic`, `person` or `project` (an entity).
   `title` is at most 80 runes and `summary` 400, clipped with `…` on the way
   in. `manual` is true for a node dropped in by hand; `run_id` names the
   automatic extraction's read that made it. `degree` is the number of
@@ -3615,7 +3616,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   `follows`, `contradicts` or `part_of`. One edge per `(from, to, kind)`;
   linking an existing pair again adds its weight, capped at 10. A memory
   hangs off its project and topics with `part_of`.
-- **The graph read** returns the newest memories that pass the filter
+- **The graph read** returns the newest memories and imported notes that pass the filter
   (pinned first, then by `created_at`), at most `limit` (default and ceiling
   5,000), the entities their edges reach, and every edge between returned
   nodes; with no filter and no `limit`, every entity too, linked or not.
@@ -3758,6 +3759,169 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   others named. Fewer than 300 runes of agent prose: recorded `skipped`,
   never sent. A failure is recorded with its error and retried after 15
   minutes, doubling; after four the session waits for new prose.
+
+### Obsidian vaults
+
+Local Markdown imports in Second Brain ([ADR-079](08-decisions.md),
+[docs/obsidian.md](../docs/obsidian.md)). These management routes are
+machine-only; paired devices get `403`, including controllers:
+
+- `GET /v1/brain/vaults` → `{vaults: BrainVault[]}`.
+- `POST /v1/brain/vaults` accepts `{path, agents?: bool}` and synchronously
+  imports a folder. `201` → `{vault, result}`; `agents` defaults false.
+- `PATCH /v1/brain/vaults/{id}` accepts `{agents: bool}` → `{vault}`.
+- `POST /v1/brain/vaults/{id}/refresh` rereads all Markdown files and resolves
+  links again → `{vault, result}`.
+- `DELETE /v1/brain/vaults/{id}` removes the import → `{removed: true}`.
+  No source file is changed or deleted.
+
+`BrainVault` is `{id, name, path, agents, notes, scanned_at?, scan_ms, error?,
+created_at}`. Times are unix ms; `scan_ms` is elapsed scan time. `Result` has
+`notes, read, added, changed, removed, merged, links, linked, unlinked,
+skipped, ms, write_ms`, all counts except elapsed `ms` and `write_ms`. The
+latter includes acquiring, running and committing the write transaction. Bodies are limited to 8 KiB;
+unknown fields are rejected. `400` for invalid JSON, a missing `agents` field
+on PATCH, a relative/non-folder path or more than 50,000 notes; `404` for an
+unknown id; `409` for an already-imported path; `503` without the importer.
+A failed first scan keeps the vault row and its error for Refresh/Remove.
+
+Each Markdown filename supplies a title. Simple frontmatter aliases and tags,
+inline tags and wikilinks are parsed without a model. A matching title/alias
+adds a source to an existing memory or note; otherwise kind `note` is created.
+The oldest source supplies a note node's summary; original session memories
+retain their own summaries. Source aliases and excerpts participate in local
+search. A matching project folder groups notes; otherwise project is Obsidian.
+Only the first 4 MiB per file is read, excerpts at most 400 runes. Dot folders,
+`node_modules`, attachments and symbolic links are excluded; rooted file reads
+refuse a link escaping the vault even if a file changed after discovery.
+A failed walk preserves previous sources; unreadable files keep their old row.
+
+Saved vaults are checked two minutes after daemon startup, then ten minutes
+after the previous pass. Automatic refresh reads changed size/mtime only;
+manual refresh rereads everything. Files are read before the write transaction.
+A `brain` frame `{op: "vault", vault: id}` follows changes and consent updates;
+removal sends `{op: "vault_removed", vault: id}` so an open imported-note
+card closes without rereading a deleted node.
+
+Existing reads gain:
+
+- `BrainNode.kind = "note"` and optional `vault`, the oldest source's vault
+  name, in graph reads and node detail. `GET /v1/brain/nodes/{id}` additionally
+  returns `sources: [{vault_id, vault, path, title, aliases?, excerpt, mtime}]`,
+  with vault-relative paths. Imported notes are edited in Obsidian; title,
+  summary and kind patches and individual deletes are `400`; pins are allowed.
+- `GET /v1/brain/status` gains `notes`, separate from session `memories`.
+  Graph `total` and project counts include notes.
+- `agents=1` on graph, node and status reads applies per-vault consent.
+  MCP always sets it. A node with any non-sharing source is excluded in full
+  from MCP, including mixed-source memories, search and neighbour lists;
+  imported entities from a non-sharing vault are excluded too. Agent node
+  detail omits source rows. Project lists use the same filter.
+- Handoff includes a note only if every contributing vault allows agents.
+  Existing session memories still supply only their original summaries.
+  Extraction excludes topics created by a non-sharing vault. Enabling sharing
+  does not initiate a model call; disabling it affects future reads only.
+
+The schema and ownership rules are below (§ Obsidian vaults DDL). Removing an
+import preserves other sources and independent edges, including a manual or
+extracted link added after the import first claimed it.
+
+### MCP server
+
+`caprock mcp` ([ADR-078](08-decisions.md)) is a Model Context Protocol
+server for the user's own agents: JSON-RPC 2.0 on stdin/stdout, one message
+per line, `\n` on every OS (a trailing `\r` on input is ignored). It opens no
+listener. Stdout carries the protocol and nothing else. Code:
+`internal/mcp` (`server.go` the protocol, `client.go` the daemon reads,
+`tools.go` the tools, `redact.go`), `cmd/caprock/mcp.go`.
+
+- **Methods.** `initialize` (answers the client's `protocolVersion` when it
+  is one of `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, else the
+  first; `capabilities: {tools: {listChanged: false}}`, `serverInfo`
+  `{name: "caprock", title, version}`, `instructions`), `ping`,
+  `tools/list`, `tools/call`; `resources/list` and `prompts/list` answer
+  empty lists. A notification (no `id`) is never answered; an unknown
+  method is `-32601`, an unknown tool `-32602`, a line that is not JSON
+  `-32700` with `id: null`, a line over 4 MiB a parse error, and the session
+  goes on after each.
+- **The daemon.** Found on every call from `<data_dir>/runtime.json`
+  (`$CAPROCK_DATA_DIR` honoured) as `http://127.0.0.1:<port>`; only `GET`
+  is ever sent. No daemon, or none answering: the tool's result is
+  `isError: true` with *caprock is not running on this computer: start it
+  with `caprock up`, or open the Caprock app, then ask again*.
+- **Results.** One `text` content block of compact JSON, rebuilt from named
+  fields only (never `transcript_path`, `spawn_command`, `pid` or a token),
+  times as RFC 3339 in local time, money rounded to cents. Lists default to
+  10 and stop at 50; memory summaries are clipped to 600 runes (1,500 in
+  `get_memory`), prose to 1,500. The whole text is capped at 48 KiB on a rune
+  boundary, with `[cut at N bytes: ask for fewer items]` appended when cut.
+  Credential-shaped runs (`sk-…`, `ghp_…`/`github_pat_…`, `xox?-…`,
+  `AKIA…`/`ASIA…`, `AIza…`, Telegram bot tokens, Stripe `sk_/rk_/pk_live|test_…`,
+  JWTs, `Bearer …`, PEM private keys) are replaced with `[redacted]`. A
+  tool's failure — the daemon's 4xx message, a bad argument — is a result
+  with `isError: true`, never a protocol error.
+- **Repository.** `repo` is a directory inside it; absent, the directory
+  the server was started in. It resolves as sessions group
+  (`store.RepoFromCwd`): the root keys `/v1/sessions?dir=`, the name keys
+  Second Brain's `project` and the daily totals. Outside a repository the
+  directory stands for itself.
+
+Every tool is annotated `readOnlyHint: true, destructiveHint: false,
+idempotentHint: true`; `openWorldHint` is true for `ci_status` alone.
+
+- **`search_memories`** `{query?, project?, limit?}` → `GET /v1/brain?summaries=1&q&project&limit`
+  → `{total, returned, memories: [{id, kind, title, summary, project,
+  session_id, pinned, created_at, topics[]}]}`; entities are left out, a
+  memory's `topics` are the topic entities linked to it.
+- **`get_memory`** `{id}` → `GET /v1/brain/nodes/{id}` → `{memory, links:
+  [{relation, id, kind, title}]}`, at most 30 links; `relation` is the edge
+  kind, `(from)` when the edge points at this memory.
+- **`memory_topics`** `{project?}` → `GET /v1/brain` and `/v1/brain/status`
+  → `{memories, topics: [{title, memories}], projects: [{project, count}]}`,
+  topics by linked memories, at most 60 of each.
+- **`next_session_handoff`** `{repo?}` → `GET /v1/brain/handoff?project=`
+  → `{project, memories[], max_memories, handoff_on, left_off_at,
+  holdout_pct, note}`.
+- **`recent_sessions`** `{repo?, all_repos?, limit?}` →
+  `GET /v1/sessions?dir=<root>&limit=` (or `?chats=exclude&limit=` with
+  `all_repos`) → `{repo, project, sessions: [{id, agent, title,
+  description, status, project, cwd, branch, model, started_at,
+  last_event_at, doing, cost_usd, tokens, turns, tool_calls, files_touched,
+  loop?}]}`; `title` is the user's name for the session, else the agent's.
+- **`session_summary`** `{session_id}` → `GET /v1/sessions/{id}` →
+  `{session, files[] (at most 40, files_not_shown beyond), pull_requests:
+  [{number, title, url}]}`. An id holding `/`, `\`, `?` or `#` is refused
+  before any request.
+- **`session_prose`** `{session_id, limit? (5, at most 20)}` →
+  `GET /v1/sessions/{id}/notes` → `{session_id, notes: [{session_id,
+  project, at, text, fragment?}]}`, newest first.
+- **`search_prose`** `{query, limit?}` → `GET /v1/notes?q=&limit=` →
+  `{notes[]}` as above; an empty query is refused.
+- **`cost`** `{repo?, all_repos?, days? (7, at most 90)}` →
+  `GET /v1/stats/daily?days=` → `{days, project?, total: {cost_usd,
+  tokens}, by_day[], by_model[] (at most 20, by cost), by_project[] (with
+  all_repos, at most 30), note}`; a session count is not summed across
+  models (a session on two models would count twice).
+- **`ci_status`** `{repo?}` → the repository's newest session
+  (`/v1/sessions?dir=&limit=1`), then `GET /v1/sessions/{id}/ci/main` and
+  `/ci` → `{project, repo, github_connected, default_branch: {branch,
+  state, commit, runs: [{workflow, status, conclusion, branch, commit,
+  event, updated_at, url, failed_jobs: [{name, conclusion, failed_step,
+  url}]}], error?}, pull_request?: {number, title, url, state, session_id,
+  checks?, error?}}`, at most 12 runs and 8 failed jobs each. GitHub is read
+  only while it is connected in Caprock, through the kept reads the CI panel
+  makes; not connected, `github_connected: false` and a note. No session in
+  the repository, no remote, or a remote off github.com: an error that says
+  which.
+- **`loop_alerts`** `{}` → `GET /v1/sessions?active=true&limit=500` →
+  `{alerts: [{session_id, title, project, cwd, loop: {tool, count,
+  window_min, sample, since, last, reread_tax_usd}}], running_sessions,
+  note?}`; `reread_tax_usd` is the loop alert's `tax_usd`.
+
+`GET /v1/status` carries `executable` (2026-10-18): the binary the daemon
+runs from, with a Homebrew keg path (`<prefix>/Cellar/caprock/<v>/bin/caprock`)
+given as `<prefix>/bin/caprock`, which survives an upgrade; omitted when the
+path cannot be read. Settings puts it in the MCP command when asked.
 
 ### AI;DR
 
@@ -5185,7 +5349,8 @@ keeps its items, as it keeps its saved prompts.
 ### Second Brain DDL (migrations 0055, 0056)
 
 Second Brain's graph and the automatic extraction's reads (§ Second Brain,
-[ADR-063](08-decisions.md)). Every write goes through `internal/store/brain.go`.
+[ADR-063](08-decisions.md)). This is the initial DDL; migration 0062 extends
+it below (§ Obsidian vaults DDL). Writes go through `internal/store`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS brain_nodes (
@@ -5260,6 +5425,74 @@ topics and people the delete leaves unlinked go too unless dropped in by hand
 or pinned. A session's newest `brain_runs` row says how far the extraction has
 read it (`through_event_id`); `tokens_in` is input, cache read and cache write
 as `claude` reported them, `cost_usd` its own `total_cost_usd`.
+
+### Obsidian vaults DDL (migration 0062)
+
+[0062_brain_obsidian.sql](../internal/store/migrations/0062_brain_obsidian.sql)
+rebuilds `brain_nodes` with `note` in its kind CHECK and nullable `vault_id`,
+restoring all prior columns, indexes and edges. It copies edges before the
+node rebuild so foreign-key cascades cannot destroy the graph. The new
+`idx_brain_nodes_vault` indexes non-NULL ownership. No session or historical
+cost row changes.
+
+`brain_vault_notes` tracks each file's source and metadata independently of
+its shared node. `brain_vault_edges` tracks imported edge claims; `pre = 1`
+means the edge is independent of imports (it existed before, or a manual or
+extracted link subsequently adopted it). It is removed only when no other
+vault needs it and it has no independent owner. Removing a vault settles
+shared nodes from remaining source rows and drops only exclusive material.
+
+```sql
+CREATE TABLE IF NOT EXISTS brain_vaults (
+  id          INTEGER PRIMARY KEY,
+  name        TEXT    NOT NULL,
+  path        TEXT    NOT NULL UNIQUE,
+  agents      INTEGER NOT NULL DEFAULT 0 CHECK (agents IN (0,1)),
+  notes       INTEGER NOT NULL DEFAULT 0,      -- Markdown notes read at the last scan
+  scanned_at  INTEGER NOT NULL DEFAULT 0,      -- unix ms; 0 before the first
+  scan_ms     INTEGER NOT NULL DEFAULT 0,      -- how long the last scan took
+  error       TEXT    NOT NULL DEFAULT '',     -- why the last scan failed; '' when it did not
+  created_at  INTEGER NOT NULL
+);
+
+-- 3. One row per note file: the source mark on its node. Two files with the
+--    same title or alias share a node and keep a row each, with their own
+--    excerpt; nothing is glued together. keys is the note's title and
+--    aliases normalised (store.NormTitle), one per line; links and tags are
+--    what the file says, one per line, so a refresh can resolve them again
+--    without reading unchanged files.
+CREATE TABLE IF NOT EXISTS brain_vault_notes (
+  id          INTEGER PRIMARY KEY,
+  vault_id    INTEGER NOT NULL REFERENCES brain_vaults(id) ON DELETE CASCADE,
+  path        TEXT    NOT NULL,                -- in the vault, slash-separated
+  node_id     INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  title       TEXT    NOT NULL,
+  aliases     TEXT    NOT NULL DEFAULT '',
+  keys        TEXT    NOT NULL DEFAULT '',
+  links       TEXT    NOT NULL DEFAULT '',
+  tags        TEXT    NOT NULL DEFAULT '',
+  project     TEXT    NOT NULL DEFAULT '',
+  excerpt     TEXT    NOT NULL DEFAULT '',
+  mtime       INTEGER NOT NULL DEFAULT 0,      -- the file's, unix ms
+  size        INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (vault_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_brain_vault_notes_node ON brain_vault_notes(node_id);
+
+-- 4. The edges a vault's import made or also wants. An edge is removed only
+--    when no vault wants it any more and it did not exist before an import
+--    first claimed it (pre = 1).
+CREATE TABLE IF NOT EXISTS brain_vault_edges (
+  vault_id    INTEGER NOT NULL REFERENCES brain_vaults(id) ON DELETE CASCADE,
+  src         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  dst         INTEGER NOT NULL REFERENCES brain_nodes(id) ON DELETE CASCADE,
+  kind        TEXT    NOT NULL,
+  pre         INTEGER NOT NULL DEFAULT 0 CHECK (pre IN (0,1)),
+  PRIMARY KEY (vault_id, src, dst, kind)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_edge ON brain_vault_edges(src, dst, kind);
+CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_dst ON brain_vault_edges(dst);
+```
 
 ### Turn bounds DDL (migration 0048)
 

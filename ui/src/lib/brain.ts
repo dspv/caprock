@@ -33,7 +33,7 @@ export const MEMORY_KINDS: { kind: BrainKind; label: string; hint: string }[] = 
 
 /** Each kind's name, for a label. */
 export const KIND_LABEL: Record<BrainKind, string> = {
-  idea: 'Idea', decision: 'Decision', finding: 'Finding', question: 'Question', topic: 'Topic', person: 'Person', project: 'Project',
+  note: 'Obsidian note', idea: 'Idea', decision: 'Decision', finding: 'Finding', question: 'Question', topic: 'Topic', person: 'Person', project: 'Project',
 }
 
 /** Whether a kind is an entity (topic, person, project) rather than a memory. */
@@ -43,6 +43,7 @@ export function isEntity(kind: BrainKind): boolean {
 
 /** Each kind's colour, as a CSS variable the theme defines (design/tokens.css). */
 export const KIND_COLOR: Record<BrainKind, string> = {
+  note: 'var(--brain-finding)',
   idea: 'var(--brain-idea)',
   decision: 'var(--brain-decision)',
   finding: 'var(--brain-finding)',
@@ -67,7 +68,7 @@ export async function dropIntoBrain(d: BrainDrop): Promise<DropResult> {
 
 /** Calls `fn` on every brain change the live socket reports, and after a replay gap; a read's `progress` frames only with `{progress: true}`. */
 /** A `brain` frame's data (03-contracts.md § Second Brain, Live): `session` and `project` only on `added`, when known. */
-export interface BrainFrame { id: number; op: string; title?: string; kind?: string; auto?: boolean; session?: string; project?: string }
+export interface BrainFrame { id?: number; op: string; vault?: number; title?: string; kind?: string; auto?: boolean; session?: string; project?: string }
 
 export function useBrainFrames(fn: (f?: BrainFrame) => void, opts?: { progress?: boolean }) {
   const progress = !!opts?.progress
@@ -208,6 +209,10 @@ export function brainMode(status: BrainStatus | null, today = 0): { mode: string
   const count = `${n} ${n === 1 ? 'memory' : 'memories'}`
   const metric = n > 0 ? (today > 0 ? `${n} · +${today} today` : count) : ''
   const auto = status?.auto
+  const notes = status?.notes ?? 0
+  if (notes > 0 && !auto?.on) return {
+    mode: 'Obsidian', metric: [n > 0 ? count : '', `${notes} ${notes === 1 ? 'note' : 'notes'}`].filter(Boolean).join(' · '), active: false,
+  }
   if (!auto) return { mode: n > 0 ? 'Kept by hand' : 'Not started', metric, active: false }
   if (!auto.on) return { mode: auto.chosen ? 'Paused' : 'Not started', metric, active: false }
   if (!auto.claude_found) return { mode: 'Needs Claude Code', metric, active: false }

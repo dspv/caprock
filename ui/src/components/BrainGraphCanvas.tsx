@@ -6,11 +6,11 @@
  * It looks like a knowledge graph (the owner, 2026-10-15, pointing at
  * Obsidian's graph view: "exactly this"):
  *
- * - **A disc of small dots.** No anchors, no ring of projects: the
- *   many-body push against a linear pull to the middle settles into one
- *   round, evenly filled disc, whose radius grows with the node count; the
- *   view fits it to the panel. A memory's tie to its project is loose (a
- *   project is a region of the disc, not a knot), its ties to its topics
+ * - **Clusters of small dots.** No anchors or ring of projects: a gentle
+ *   pull to the middle keeps islands within reach while the real links
+ *   shape their neighbourhoods. The view fits both axes to the panel. A
+ *   memory's tie to its project is loose (a project is a region, not a
+ *   knot), its ties to its topics
  *   are short, so a topic or a project and its memories read as a little
  *   burst.
  * - **Restrained.** A memory is a tiny dot in the text colour at about
@@ -89,13 +89,13 @@ const LABEL_RAMP = 0.6
 /** A focus names its neighbouring memories only when it has at most this many. */
 const NEAR_NAMED = 12
 /** Edge and memory-dot strength at rest. */
-const EDGE_ALPHA = 0.1
+const EDGE_ALPHA = 0.19
 const DOT_ALPHA = 0.85
 /** Off-screen settling takes at most this many milliseconds of a frame, and this long in all. */
 const SLICE_MS = 12
 const SETTLE_MAX_MS = 1200
-const LABEL_FONT = '11px ui-sans-serif, system-ui, -apple-system, sans-serif'
-const LABEL_FONT_HUB = '500 11.5px ui-sans-serif, system-ui, -apple-system, sans-serif'
+const LABEL_FONT = '12px "Hanken Grotesk Variable", system-ui, sans-serif'
+const LABEL_FONT_HUB = '500 12px "Hanken Grotesk Variable", system-ui, sans-serif'
 
 interface View { k: number; tx: number; ty: number }
 
@@ -158,7 +158,17 @@ export function readColors(el: HTMLElement): Record<string, string> & {
   return res
 }
 
+export interface GraphAppearance {
+  nodeSize: number
+  linkOpacity: number
+  labels: number
+}
+
+export const DEFAULT_GRAPH_APPEARANCE: GraphAppearance = { nodeSize: 1, linkOpacity: 1, labels: 1 }
+
 export interface BrainGraphCanvasProps {
+  /** Display-only changes redraw without moving nodes or resetting the camera. */
+  appearance?: GraphAppearance
   graph: BrainGraph
   selected?: number
   onSelect?: (id: number) => void
@@ -181,7 +191,7 @@ type Gesture =
   | { kind: 'node'; i: number; x: number; y: number; moved: boolean }
   | { kind: 'pinch'; d: number; k: number; mx: number; my: number; tx: number; ty: number }
 
-export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, className = '', ariaLabel, tint, highlight, onHover, restLabels = false }: BrainGraphCanvasProps) {
+export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, className = '', ariaLabel, tint, highlight, onHover, restLabels = false, appearance = DEFAULT_GRAPH_APPEARANCE }: BrainGraphCanvasProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   // Positions outlive a graph read, so a reload or a new memory does not
@@ -199,15 +209,17 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
   const fitNow = useRef<() => void>(() => {})
   /** Redraws the picture as it stands (a tint or a highlight changed). */
   const redraw = useRef<() => void>(() => {})
+  const appearanceRef = useRef(appearance)
   const tintRef = useRef(tint)
   const pickRef = useRef(highlight ?? null)
   const hoverCb = useRef(onHover)
   hoverCb.current = onHover
   useEffect(() => {
+    appearanceRef.current = appearance
     tintRef.current = tint
     pickRef.current = highlight ?? null
     redraw.current()
-  }, [tint, highlight])
+  }, [tint, highlight, appearance])
   const setHover = (i: number) => {
     if (hover.current === i) return
     hover.current = i
@@ -250,9 +262,9 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       touched.current = false
     }
     const nodes = seed(ids, (i) => dotRadius(graph.nodes[i]!), links, places.current)
-    // A little air around every dot, so the disc fills evenly.
+    // Keep adjacent dots apart without imposing a grid or fixed clusters.
     for (const n of nodes) n.cr = n.r + 4.5
-    const opts = mini ? { charge: -14, distance: 14, gravity: 0.08 } : { charge: -48, distance: 20, gravity: 0.36 }
+    const opts = mini ? { charge: -14, distance: 14, gravity: 0.08 } : { charge: -48, distance: 20, gravity: 0.06 }
     const s = new Simulation(nodes, links, opts)
     // A project sits in the middle of its own memories: while a first look
     // settles, after each tick it is put on their centroid. Held only by
@@ -336,9 +348,10 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
     const MAX_K = 3
     const fitted = (): View => {
       const b = bounds(nodes)
-      const pad = mini ? 6 : 28
-      const size = Math.max(b.x1 - b.x0, b.y1 - b.y0, 1)
-      const k = Math.min((Math.min(w, h) - pad * 2) / size, MAX_K)
+      const pad = mini ? 6 : 56
+      const k = Math.max(0.01, Math.min(
+        Math.max(1, w - pad * 2) / Math.max(1, b.x1 - b.x0),
+        Math.max(1, h - pad * 2) / Math.max(1, b.y1 - b.y0), MAX_K))
       return { k, tx: w / 2 - ((b.x0 + b.x1) / 2) * k, ty: h / 2 - ((b.y0 + b.y1) / 2) * k }
     }
     let fitK = 1
@@ -363,7 +376,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
 
     // A dot grows a little as one zooms in, never as fast as the zoom, so
     // zooming spreads the graph rather than inflating it.
-    const grow = (v: View) => Math.min(2.4, Math.max(0.7, Math.sqrt(v.k / fitK)))
+    const grow = (v: View) => appearanceRef.current.nodeSize * Math.min(2.4, Math.max(0.7, Math.sqrt(v.k / fitK)))
     radiusAt.current = (i) => px[i]! * grow(view.current)
 
     // The focus: the hovered node, else the opened one; `lit` fades between
@@ -456,9 +469,9 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       const big = nodes.length > 1500
       // Hairlines; behind a focus, its own links brighter on top.
       c.strokeStyle = colors.web
-      c.lineWidth = big ? 0.5 : 0.65
+      c.lineWidth = big ? 0.5 : 0.75
       const pickedSet = pickRef.current
-      c.globalAlpha = Math.min(1, ((big ? 0.09 : EDGE_ALPHA) / 0.45) * rest * (pickedSet ? 0.45 : 1))
+      c.globalAlpha = Math.min(1, ((big ? 0.12 : EDGE_ALPHA) * appearanceRef.current.linkOpacity / 0.45) * rest * (pickedSet ? 0.45 : 1))
       c.beginPath()
       for (const l of layout.links) {
         const a = nodes[l.s]!
@@ -469,7 +482,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       c.stroke()
       if (pickedSet && pickedSet.size > 0) {
         // The picked-out nodes' own links, brighter.
-        c.globalAlpha = Math.min(1, 0.3 * rest)
+        c.globalAlpha = Math.min(1, 0.3 * rest * appearanceRef.current.linkOpacity)
         c.beginPath()
         for (const l of layout.links) {
           const a = nodes[l.s]!
@@ -481,7 +494,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         c.stroke()
       }
       if (focus !== undefined && lit > 0) {
-        c.globalAlpha = 0.55 * lit
+        c.globalAlpha = Math.min(1, 0.55 * lit * appearanceRef.current.linkOpacity)
         c.strokeStyle = colors.fg
         c.lineWidth = 0.9
         c.beginPath()
@@ -518,8 +531,16 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           const x = sx(n.x, v)
           const y = sy(n.y, v)
           if (x < -r || x > w + r || y < -r || y > h + r) continue
-          c.moveTo(x + r, y)
-          c.arc(x, y, r, 0, Math.PI * 2)
+          if (kinds[i] === 'note') {
+            c.moveTo(x, y - r * 1.3)
+            c.lineTo(x + r, y)
+            c.lineTo(x, y + r * 1.3)
+            c.lineTo(x - r, y)
+            c.closePath()
+          } else {
+            c.moveTo(x + r, y)
+            c.arc(x, y, r, 0, Math.PI * 2)
+          }
         }
         c.fill()
       }
@@ -594,7 +615,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         boxes = []
         c.textAlign = 'center'
         c.textBaseline = 'top'
-        const zr = v.k / fitK
+        const zr = (v.k / fitK) * appearanceRef.current.labels
         const hubA = Math.min(1, Math.max(0, (zr - HUB_LABELS_AT) / LABEL_RAMP))
         const memA = Math.min(1, Math.max(0, (zr - ALL_LABELS_AT) / LABEL_RAMP))
         const done = new Set<number>()
@@ -613,7 +634,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           for (const i of hubs) if (picked.has(nodes[i]!.id)) put(i, 1, kinds[i] === 'project')
           if (few) for (let i = 0; i < nodes.length; i++) if (picked.has(nodes[i]!.id) && !isEntity(kinds[i]!)) put(i, 1)
         }
-        if (restLabels) {
+        if (restLabels && appearanceRef.current.labels > 0) {
           // The projects and the busiest topics, at any zoom.
           let topics = 0
           for (const i of hubs) {
@@ -1091,25 +1112,31 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         <span
           aria-hidden
           data-brain-hint
-          className="pointer-events-none absolute left-2 top-2 rounded-[6px] bg-panel/80 px-1.5 py-0.5 text-[11px] text-fg-muted opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          className="pointer-events-none absolute bottom-3 left-3 rounded-[6px] bg-panel/80 px-1.5 py-0.5 text-[11px] text-fg-muted opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
         >
           Click to zoom and move
         </span>
       )}
       {!mini && (
-        <button
-          type="button"
-          onClick={() => fitNow.current()}
-          title="Fit the graph to the panel (or double-click it)"
-          aria-label="Fit the graph"
-          data-brain-fit
-          className="absolute bottom-2 right-2 inline-flex h-[26px] items-center gap-1 rounded-[6px] border border-border bg-panel/80 px-2 text-[11.5px] text-fg-muted backdrop-blur-sm hover:border-border-strong hover:text-fg"
-        >
-          <svg aria-hidden viewBox="0 0 16 16" className="h-[12px] w-[12px]" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-            <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
-          </svg>
-          Fit
-        </button>
+        <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-[8px] border border-border bg-panel/95 p-1 shadow-panel">
+          <button type="button" aria-label="Zoom out" title="Zoom out" className="h-8 w-8 rounded-[5px] text-fg-muted hover:bg-panel-2 hover:text-fg"
+            onClick={() => zoomAt((canvas.current?.clientWidth ?? 0) / 2, (canvas.current?.clientHeight ?? 0) / 2, view.current.k / 1.3)}>−</button>
+          <button type="button" aria-label="Zoom in" title="Zoom in" className="h-8 w-8 rounded-[5px] text-fg-muted hover:bg-panel-2 hover:text-fg"
+            onClick={() => zoomAt((canvas.current?.clientWidth ?? 0) / 2, (canvas.current?.clientHeight ?? 0) / 2, view.current.k * 1.3)}>+</button>
+          <button
+            type="button"
+            onClick={() => fitNow.current()}
+            title="Fit the graph to the panel (or double-click it)"
+            aria-label="Fit the graph"
+            data-brain-fit
+            className="inline-flex h-8 items-center gap-1 rounded-[5px] px-2 text-[12px] text-fg-muted hover:bg-panel-2 hover:text-fg"
+          >
+            <svg aria-hidden viewBox="0 0 16 16" className="h-[12px] w-[12px]" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+              <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
+            </svg>
+            Fit
+          </button>
+        </div>
       )}
     </div>
   )

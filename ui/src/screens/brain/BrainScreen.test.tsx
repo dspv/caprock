@@ -55,6 +55,16 @@ describe('the Second Brain screen', () => {
     localStorage.clear()
   })
 
+  it('shows imported notes even when automatic extraction is off and no session memories exist', async () => {
+    m.status.mockResolvedValue(status({ notes: 1, auto: off() }))
+    m.brain.mockResolvedValue({ nodes: [node({ kind: 'note', title: 'Vault journal', vault: 'My notes' })], edges: [], total: 1 })
+    m.handoff.mockResolvedValue({ project: '', memories: [], max: 5, budget: 700 })
+    render(<BrainScreen />)
+    expect(await screen.findByRole('heading', { name: 'Memories and notes' })).toBeVisible()
+    expect(screen.getByRole('button', { name: /Vault journal/ })).toHaveTextContent('Obsidian')
+    expect(document.querySelector('[data-brain-phase="memories"]')).not.toBeNull()
+  })
+
   it('not built: one picture, Free, the headline, one button, one line of what happens, Details — and nothing else', async () => {
     m.status.mockResolvedValue(status({ auto: off() }))
     m.brain.mockResolvedValue(empty)
@@ -219,6 +229,21 @@ describe('the Second Brain screen', () => {
     expect(dialog.querySelector('[data-brain-graph="full"]')).not.toBeNull()
     // The memory opened on the screen is opened beside the graph too.
     expect(dialog.querySelector('[data-brain-detail]')).not.toBeNull()
+    // Display controls and the inspector never replace the canvas or lose the selection.
+    const canvas = dialog.querySelector('canvas')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide details' }))
+    expect(dialog.querySelector('[data-brain-detail]')).toBeNull()
+    expect(dialog.querySelector('canvas')).toBe(canvas)
+    fireEvent.click(screen.getByRole('button', { name: 'Show details' }))
+    expect(dialog.querySelector('[data-brain-detail]')).not.toBeNull()
+    const display = dialog.querySelector<HTMLDetailsElement>('[data-brain-display]')!
+    display.open = true
+    const size = screen.getByRole('slider', { name: /Node size/ })
+    fireEvent.change(size, { target: { value: '1.5' } })
+    expect(size).toHaveValue('1.5')
+    expect(dialog.querySelector('canvas')).toBe(canvas)
+    fireEvent.click(screen.getByRole('button', { name: 'Reset display' }))
+    expect(size).toHaveValue('1')
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
     expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
     fireEvent.click(card)

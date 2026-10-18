@@ -335,8 +335,12 @@ type brainEntityDoc struct {
 	name string
 }
 
-func brainEntityDocs(ctx context.Context, q Querier) ([]brainEntityDoc, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, search FROM brain_nodes WHERE kind IN ('topic','person','project')`)
+func brainEntityDocs(ctx context.Context, q Querier, agents bool) ([]brainEntityDoc, error) {
+	cond := ""
+	if agents {
+		cond = " AND " + brainMCPMayRead
+	}
+	rows, err := q.QueryContext(ctx, `SELECT id, search FROM brain_nodes n WHERE kind IN ('topic','person','project')`+cond)
 	if err != nil {
 		return nil, err
 	}
@@ -405,12 +409,12 @@ func brainLinkedTo(ctx context.Context, q Querier, picked []map[int64]bool) ([]m
 // searchBrain finds the memories that pass cond (the graph read's other
 // filters, over brain_nodes n) and match the query, with the words to
 // highlight: the query's own and the close words that matched.
-func searchBrain(ctx context.Context, q Querier, cond string, args []any, query string) ([]brainHit, []string, error) {
+func searchBrain(ctx context.Context, q Querier, cond string, args []any, query string, agents bool) ([]brainHit, []string, error) {
 	words := brainQueryWords(query)
 	if len(words) == 0 {
 		return nil, nil, nil
 	}
-	ents, err := brainEntityDocs(ctx, q)
+	ents, err := brainEntityDocs(ctx, q, agents)
 	if err != nil {
 		return nil, nil, err
 	}

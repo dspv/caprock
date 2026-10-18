@@ -36,6 +36,7 @@ import { isAppMode } from '@/lib/appmode'
 import { useNow } from '@/lib/useNow'
 import { Empty, Skeleton } from '@/components/ui'
 import { BrainGlyph } from '@/components/BrainDrop'
+import { ObsidianVaults } from './ObsidianVaults'
 import { BrainDetail } from './BrainDetail'
 import { BrainStart } from './BrainStart'
 import { BrainStrip } from './BrainStrip'
@@ -65,6 +66,7 @@ const SPANS: [number, string][] = [[0, 'All time'], [7, '7 days'], [30, '30 days
 const PAGE = 40
 
 export function BrainScreen({ node }: { node?: number }) {
+  const [vaultsOpen, setVaultsOpen] = useState(false)
   const [input, setInput] = useState('')
   const [query, setQuery] = useState('')
   const [project, setProject] = useState('')
@@ -110,7 +112,7 @@ export function BrainScreen({ node }: { node?: number }) {
     return m
   }, [graph])
   const auto = status?.auto
-  const kept = status?.memories ?? 0
+  const kept = (status?.memories ?? 0) + (status?.notes ?? 0)
   const phase: 'loading' | 'start' | 'building' | 'memories' = !status
     ? 'loading'
     : kept === 0 && !auto?.on ? 'start'
@@ -141,6 +143,8 @@ export function BrainScreen({ node }: { node?: number }) {
           </h1>
           <p className="text-[13px] text-fg-muted" data-brain-tagline>{BRAIN_TAGLINE}</p>
         </div>
+        {owner && <button type="button" onClick={() => setVaultsOpen(true)}
+          className="h-[30px] rounded-[7px] border border-border px-2.5 text-[12.5px] text-fg-muted hover:text-fg">Import from Obsidian…</button>}
         {phase !== 'start' && phase !== 'loading' && owner && (
           <div className="flex items-center gap-2 pt-1">
             <button type="button" onClick={addNote} title={isAppMode() ? `Add a note (${keys('⇧⌘H')})` : undefined}
@@ -152,13 +156,16 @@ export function BrainScreen({ node }: { node?: number }) {
         )}
       </header>
 
+      {vaultsOpen && <ObsidianVaults onClose={() => setVaultsOpen(false)} />}
       {phase === 'loading' && <Skeleton rows={5} className="rounded-[var(--radius-panel)] border border-border bg-panel" />}
 
       {phase === 'start' && <BrainStart auto={auto} owner={owner} onStarted={reloadStatus} onAddNote={addNote} />}
 
       {(phase === 'building' || phase === 'memories') && (
         <>
-          {auto && <BrainStrip auto={auto} memories={kept} onChanged={reloadStatus} owner={owner} />}
+          {auto && (status?.notes && !auto.on
+            ? <p className="text-[12.5px] text-fg-muted">Obsidian notes refresh automatically. Session extraction is off.</p>
+            : <BrainStrip auto={auto} memories={status?.memories ?? 0} onChanged={reloadStatus} owner={owner} />)}
 
           <div className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]" data-brain-body>
             <main className="grid min-w-0 grid-cols-1 gap-4" aria-label="Second Brain">
@@ -172,10 +179,10 @@ export function BrainScreen({ node }: { node?: number }) {
 
                   <section ref={recent} className="grid min-w-0 grid-cols-1 gap-2 scroll-mt-3" aria-labelledby="brain-recent-title" data-brain-recent-memories>
                     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <h2 id="brain-recent-title" className="text-[16px] font-semibold text-fg">Recent memories</h2>
+                      <h2 id="brain-recent-title" className="text-[16px] font-semibold text-fg">{status?.notes ? 'Memories and notes' : 'Recent memories'}</h2>
                       {graph && (
                         <p className="text-[12px] text-fg-muted" data-brain-count>
-                          {graph.total} {graph.total === 1 ? 'memory' : 'memories'}{filtered ? ' match' : ''}
+                          {graph.total} {graph.total === 1 ? (memories[0]?.kind === 'note' ? 'note' : 'memory') : status?.notes ? 'memories and notes' : 'memories'}{filtered ? ' match' : ''}
                           {graph.total > memories.length ? ` · the ${query ? 'best' : 'newest'} ${memories.length} read` : ''}
                           {graph.close && <span data-brain-close> · including close matches</span>}
                           {!query && ' · pinned first'}
@@ -224,7 +231,7 @@ export function BrainScreen({ node }: { node?: number }) {
                               }`}
                             >
                               <span aria-hidden className="inline-block h-[8px] w-[8px] shrink-0 translate-y-[-1px] rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
-                              <span className="hidden w-[62px] shrink-0 text-[11.5px] text-fg-muted sm:inline">{KIND_LABEL[n.kind]}</span>
+                              <span className="hidden w-[62px] shrink-0 text-[11.5px] text-fg-muted sm:inline">{n.vault ? 'Obsidian' : KIND_LABEL[n.kind]}</span>
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-[13.5px] text-fg">{n.pinned && <span className="mr-1 text-accent" title="Pinned">●</span>}<Marked text={n.title} terms={graph.terms} /></span>
                                 {(topicsOf.get(n.id)?.length ?? 0) > 0 && (

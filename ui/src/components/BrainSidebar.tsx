@@ -107,7 +107,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   const auto = status.auto
   const memories = (graph?.nodes ?? []).filter((n) => !isEntity(n.kind)).sort((a, b) => b.created_at - a.created_at)
   const midnight = new Date(now).setHours(0, 0, 0, 0)
-  const today = memories.filter((n) => n.created_at >= midnight).length
+  const today = memories.filter((n) => n.kind !== 'note' && n.created_at >= midnight).length
   const { mode, metric, active } = brainMode(status, today)
   const building = isBuilding(auto)
   // Actually reading right now, not just with sessions queued: the glyph's pulse.
@@ -115,13 +115,14 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   // The folded row's words: while it builds, *Building · 12 of 48* (the
   // session being read of all in reach) over a thin bar; else the name, the
   // mode and the count.
-  const count = status.memories > 0 ? `${status.memories} ${status.memories === 1 ? 'memory' : 'memories'}` : ''
+  const count = [status.memories > 0 ? `${status.memories} ${status.memories === 1 ? 'memory' : 'memories'}` : '',
+    status.notes ? `${status.notes} ${status.notes === 1 ? 'note' : 'notes'}` : ''].filter(Boolean).join(' · ')
   const state = brainState(auto, now)
   const rowText = active
     ? (state.m > 0 ? `Building · ${state.n} of ${state.m}` : `${mode}…`)
     : ['Second Brain', mode, count].filter(Boolean).join(' · ')
   const rowTitle = active ? `${state.word} · ${state.detail}${auto?.reading?.title ? ` — ${auto.reading.title}` : ''}` : rowText
-  const banner = status.memories === 0 && !auto?.on
+  const banner = status.memories === 0 && !status.notes && !auto?.on
   const go = () => onOpen('#/brain')
   const onKey = (e: KeyboardEvent) => {
     if (e.target !== e.currentTarget) return

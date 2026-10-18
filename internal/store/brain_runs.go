@@ -234,10 +234,11 @@ func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainRead
 }
 
 // BrainProjectMemories returns a project's pinned memories, then its newest,
-// for a new session's handoff.
+// for a new session's handoff. An imported note is among them only when
+// every vault it came from lets its notes reach agents (ADR-079).
 func BrainProjectMemories(ctx context.Context, q Querier, project string, limit int) ([]BrainNode, error) {
 	rows, err := q.QueryContext(ctx, `SELECT `+brainCols+` FROM brain_nodes n
-		WHERE n.project = ? AND n.kind NOT IN ('topic','person','project')
+		WHERE n.project = ? AND n.kind NOT IN ('topic','person','project') AND `+brainAgentsMayRead+`
 		ORDER BY n.pinned DESC, n.created_at DESC LIMIT ?`, project, limit)
 	if err != nil {
 		return nil, err
@@ -313,12 +314,12 @@ func BrainLastRead(ctx context.Context, q Querier) (int64, error) {
 	return n, err
 }
 
-// CountBrainMemoriesSince counts the memories (not entities) added since a
-// moment, by hand or by a read.
+// CountBrainMemoriesSince counts the memories (not entities, not imported
+// notes) added since a moment, by hand or by a read.
 func CountBrainMemoriesSince(ctx context.Context, q Querier, since int64) (int, error) {
 	var n int
 	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM brain_nodes
-		WHERE kind NOT IN ('topic','person','project') AND created_at >= ?`, since).Scan(&n)
+		WHERE kind NOT IN ('topic','person','project','note') AND created_at >= ?`, since).Scan(&n)
 	return n, err
 }
 

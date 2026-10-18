@@ -48,8 +48,8 @@ describe('the doctor in plain words', () => {
   const f = () => JSON.parse(fixture('doctor.json')) as Footprint
 
   it('says one line: all good with the memory, else that Caprock uses more than it should', () => {
-    expect(doctorHeadline(f())).toEqual({ ok: false, text: 'Caprock is using more than it should' })
-    expect(doctorHeadline({ ...f(), verdicts: [{ level: 'ok', code: 'ok', text: 'Nothing here looks wrong.' }] })).toEqual({ ok: true, text: 'All good — Caprock uses 1.1 GB' })
+    expect(doctorHeadline(f())).toEqual({ ok: false, text: 'Needs attention' })
+    expect(doctorHeadline({ ...f(), verdicts: [{ level: 'ok', code: 'ok', text: 'Nothing here looks wrong.' }] })).toEqual({ ok: true, text: 'All good' })
     expect(doctorHeadline({ ...f(), verdicts: [{ level: 'warn', code: 'daemon_not_running', text: 'x' }] }).text).toBe('Caprock is not running')
   })
 
@@ -58,12 +58,12 @@ describe('the doctor in plain words', () => {
     expect(rows.map((r) => [r.key, r.title, r.count, r.warn])).toEqual([
       ['copies', 'Test copies of Caprock', 1, true],
       ['terminals', 'Unused Caprock terminals', 1, true],
-      ['claude', 'Finished Claude sessions still running', 1, true],
-      ['codex', 'Finished Codex sessions still running', 1, true],
+      ['claude', 'Leftover Claude sessions', 1, true],
+      ['codex', 'Leftover Codex sessions', 1, true],
       ['helpers', 'Leftover helpers', 1, true],
       ['reads', 'Disk reads', undefined, true],
     ])
-    expect(rows.find((r) => r.key === 'reads')!.reason).toBe('More than usual for Caprock (over 500 MB an hour).')
+    expect(rows.find((r) => r.key === 'reads')!.reason).toBe('Above the usual 500 MB/hour limit.')
     expect(rows.find((r) => r.key === 'reads')!.value).toBe('1.6 GB / hour')
     // The daemon's own sentence goes to Details, not up front.
     expect(rows[0]!.said).toContain('beside this one')
@@ -101,7 +101,7 @@ describe('the doctor in plain words', () => {
     const old: Orphan = { pid: 34400, started_at: 1, kind: 'caprock_old_holder', label: 'caprock pty-host', exe: '/opt/homebrew/bin/caprock', mem_bytes: 2 ** 20, why: 'x' }
     const rows = doctorRows({ ...base, orphans: { ...base.orphans!, list: [...base.orphans!.list!, old] } })
     const row = rows.find((r) => r.key === 'old-terminals')!
-    expect([row.title, row.count, row.warn, row.stoppable.map((x) => x.pid)]).toEqual(['Terminals from an older Caprock install', 1, false, [34400]])
+    expect([row.title, row.count, row.warn, row.stoppable.map((x) => x.pid)]).toEqual(['Older install sessions', 1, false, [34400]])
     expect(plainName(old)).toBe('Terminal from an older Caprock install')
   })
 

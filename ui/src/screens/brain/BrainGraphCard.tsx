@@ -26,7 +26,7 @@ import type { BrainAutoStatus, BrainGraph } from '@/lib/api'
 import { brainActivity, isEntity, useBrainLanded } from '@/lib/brain'
 import { indexGraph, pickNodes } from '@/lib/brainview'
 import { useNow } from '@/lib/useNow'
-import { BrainGraphCanvas } from '@/components/BrainGraphCanvas'
+import { BrainGraphCanvas, DEFAULT_GRAPH_APPEARANCE } from '@/components/BrainGraphCanvas'
 import { BrainOrb } from '@/components/BrainOrb'
 import { useAgentsUsed } from '@/components/BrainAgents'
 import { CloseButton, DialogBackdrop } from '@/components/Dialog'
@@ -42,7 +42,7 @@ const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 /** What a graph holds, in words: *278 memories · 91 topics*. */
 export function graphCaption(g: BrainGraph): string {
   const topics = g.nodes.filter((n) => n.kind === 'topic').length
-  return `${plural(g.total, 'memory', 'memories')} · ${plural(topics, 'topic', 'topics')}`
+  return `${g.nodes.some((n) => n.kind === 'note') ? g.total === 1 ? '1 note' : `${g.total} memories and notes` : plural(g.total, 'memory', 'memories')} · ${plural(topics, 'topic', 'topics')}`
 }
 
 function reducedMotion(): boolean {
@@ -139,6 +139,8 @@ export function BrainGraphDialog({ graph, selected, onSelect, onClose, editable,
   const ghost = useRef<HTMLImageElement>(null)
   const area = useRef<HTMLDivElement>(null)
   const closing = useRef(false)
+  const [appearance, setAppearance] = useState(DEFAULT_GRAPH_APPEARANCE)
+  const [showDetails, setShowDetails] = useState(true)
   const [query, setQuery] = useState('')
   const [project, setProject] = useState('')
   const [hovered, setHovered] = useState<number | undefined>()
@@ -237,23 +239,43 @@ export function BrainGraphDialog({ graph, selected, onSelect, onClose, editable,
               {idx.projects.map((p) => <option key={p.name} value={p.name}>{p.name} · {p.memories}</option>)}
             </select>
           </span>
+          {graph.nodes.some((n) => n.kind === 'note') && <span className="text-[11.5px] text-fg-muted">◆ Obsidian note</span>}
+          <button type="button" onClick={() => setShowDetails(!showDetails)} aria-expanded={showDetails}
+            aria-controls="brain-graph-details" className="btn text-[12px]">{showDetails ? 'Hide details' : 'Show details'}</button>
           <CloseButton onClick={close} label="Close the graph" />
         </div>
-        <div className="flex min-h-0 flex-1 gap-3 p-3 max-md:flex-col max-md:p-2">
+        <div className="flex min-h-0 flex-1 max-md:flex-col">
           <div ref={area} className="relative flex min-h-0 min-w-0 flex-1 flex-col max-md:min-h-[52%]">
-            <BrainGraphCanvas graph={graph} selected={selected} onSelect={onSelect} tint={idx.colorOf} highlight={picked} onHover={onHover} restLabels
-              className="min-h-0 flex-1 rounded-[10px] border border-border bg-panel" />
+            <BrainGraphCanvas graph={graph} selected={selected} onSelect={(id) => { setShowDetails(true); onSelect(id) }} tint={idx.colorOf} highlight={picked} onHover={onHover} restLabels appearance={appearance}
+              className="min-h-0 flex-1 bg-bg" />
+            <details className="absolute left-3 top-3 z-10 w-[220px] rounded-[8px] border border-border bg-panel/95 text-[12px] shadow-panel" data-brain-display>
+              <summary className="cursor-pointer px-3 py-2 text-fg-muted hover:text-fg">Display</summary>
+              <div className="grid gap-4 border-t border-border p-3">
+                {([
+                  ['nodeSize', 'Node size', 0.5, 2, 0.1],
+                  ['linkOpacity', 'Link visibility', 0, 2, 0.1],
+                  ['labels', 'Label density', 0, 2, 0.1],
+                ] as const).map(([key, label, min, max, step]) => (
+                  <label key={key} className="grid gap-2 text-fg-muted">
+                    <span className="flex justify-between">{label}<span className="num">{Math.round(appearance[key] * 100)}%</span></span>
+                    <input type="range" min={min} max={max} step={step} value={appearance[key]} className="w-full accent-accent"
+                      onChange={(e) => setAppearance((prev) => ({ ...prev, [key]: Number(e.target.value) }))} />
+                  </label>
+                ))}
+                <button type="button" className="text-left text-fg-muted hover:text-fg" onClick={() => setAppearance(DEFAULT_GRAPH_APPEARANCE)}>Reset display</button>
+              </div>
+            </details>
             {filtered && pickedMemories === 0 && (
               <p className="pointer-events-none absolute inset-x-0 top-3 text-center text-[12.5px] text-fg-muted" data-brain-graph-none>Nothing here matches.</p>
             )}
           </div>
-          <div className="flex min-h-0 w-full flex-col md:w-[320px] md:shrink-0 max-md:max-h-[46%]" data-unfold-fade>
+          {showDetails && <div id="brain-graph-details" className="flex min-h-0 w-full flex-col border-l border-border p-3 md:w-[300px] md:shrink-0 max-md:max-h-[46%] max-md:border-l-0 max-md:border-t" data-unfold-fade>
             <BrainGraphPanel graph={graph} idx={idx} focus={focus} selected={selected} project={project} now={now}
               onSelect={(id) => { setHovered(undefined); onSelect(id) }} onProject={setProject}
               onOpenProject={(name) => { onOpenProject?.(name); close() }}
               onOpenTopic={(t) => { onOpenTopic?.(t); close() }}
               editable={editable} />
-          </div>
+          </div>}
         </div>
       </div>
       {from?.image && <img ref={ghost} alt="" aria-hidden src={from.image} className="pointer-events-none fixed z-[51] hidden origin-top-left" data-brain-unfold-ghost />}

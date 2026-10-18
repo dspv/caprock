@@ -112,6 +112,12 @@ without leaving the window.
 - **Runaway agents caught.** Loop alerts on repeated tool calls, and an opt-in
   task runner for Claude Code that calls a task done only when your own test
   commands pass.
+- **Bring your Obsidian notes.** Import a vault into Second Brain without
+  changing its files. Links and tags join the graph; letting agents use the
+  notes is a separate choice, off by default ([guide](docs/obsidian.md)).
+- **Your agents can ask it.** `caprock mcp` lets Claude Code, Codex or any MCP
+  client read Second Brain, past sessions and what they wrote, cost and CI —
+  read-only ([details](#ask-caprock-from-your-agents)).
 - **On your phone, from anywhere.** Pair once with a QR code; an encrypted
   relay carries only ciphertext ([details](#open-it-on-your-phone)).
 - **Local.** One SQLite file on your disk, loopback only. No account, no cloud,
@@ -343,6 +349,23 @@ removes only with `--yes`; a removed session is never read back in:
 caprock sessions rm --cwd-prefix /private/tmp/scratch        # what would go, and its cost
 caprock sessions rm --cwd-prefix /private/tmp/scratch --yes  # remove them
 ```
+
+## Ask Caprock from your agents
+
+`caprock mcp` is a read-only [MCP](https://modelcontextprotocol.io) server, so
+the agent you are working with can look things up instead of you pasting them:
+"did we decide this before?", "which session explained the SSO change?", "what
+has this repository cost this week?", "is CI green?".
+
+```bash
+claude mcp add caprock -- caprock mcp      # Claude Code
+codex mcp add caprock -- caprock mcp       # Codex
+```
+
+It reads the running Caprock over loopback and opens no port; no tool can type
+into a session, start or stop one, or change a setting. The tools, what each
+returns and what is redacted are in [`docs/mcp.md`](docs/mcp.md); Settings →
+*Use Caprock from your agents* has the commands with a copy button.
 
 ## What it is
 

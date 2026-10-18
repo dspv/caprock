@@ -15,8 +15,9 @@ import (
 // off, as a graph. All of its SQL lives here; internal/api and internal/brain
 // decide who may write what.
 
-// Node kinds. The first four are memories; the last three are entities, which
-// exist once per normalized title.
+// Node kinds. The first four are memories, then a note imported from an
+// Obsidian vault (BrainNote, brainvault.go); the last three are entities,
+// which exist once per normalized title.
 const (
 	BrainIdea     = "idea"
 	BrainDecision = "decision"
@@ -41,8 +42,8 @@ const (
 	BrainSummaryRunes = 400
 )
 
-// BrainKinds lists every node kind, memories first.
-var BrainKinds = []string{BrainIdea, BrainDecision, BrainFinding, BrainQuestion, BrainTopic, BrainPerson, BrainProject}
+// BrainKinds lists every node kind, memories and notes first.
+var BrainKinds = []string{BrainIdea, BrainDecision, BrainFinding, BrainQuestion, BrainNote, BrainTopic, BrainPerson, BrainProject}
 
 // BrainEdgeKinds lists every edge kind.
 var BrainEdgeKinds = []string{EdgeRelates, EdgeFollows, EdgeContradicts, EdgePartOf}
@@ -106,6 +107,10 @@ type BrainNode struct {
 	RunID     int64       `json:"run_id,omitempty"`
 	CreatedAt int64       `json:"created_at"`
 	UpdatedAt int64       `json:"updated_at"`
+	// Vault names the Obsidian vault a node was imported from, or gained a
+	// source from (the oldest when several), filled in by the graph read and
+	// a node's own read (ADR-079). Absent for a node with no note source.
+	Vault string `json:"vault,omitempty"`
 	// Degree is how many returned edges touch it, filled in by the graph read.
 	Degree int `json:"degree,omitempty"`
 	// Rank is how well a memory matched a search, higher first (brainsearch.go);
@@ -257,6 +262,12 @@ func LinkBrain(ctx context.Context, q Querier, from, to int64, kind string, weig
 	_, err := q.ExecContext(ctx, `INSERT INTO brain_edges (src, dst, kind, weight, created_at) VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (src, dst, kind) DO UPDATE SET weight = MIN(?, weight + excluded.weight)`,
 		from, to, kind, min(weight, BrainEdgeWeightMax), now, BrainEdgeWeightMax)
+	if err != nil {
+		return err
+	}
+	// A manual or extracted link is independent of any import that also
+	// claims it, even when that independent link was made after the import.
+	_, err = q.ExecContext(ctx, `UPDATE brain_vault_edges SET pre = 1 WHERE src = ? AND dst = ? AND kind = ?`, from, to, kind)
 	return err
 }
 
@@ -280,7 +291,11 @@ func UpdateBrainNode(ctx context.Context, q Querier, id int64, p BrainPatch, now
 	if err != nil {
 		return BrainNode{}, err
 	}
+	importedNote := cur.Kind == BrainNote
 	if p.Kind != nil {
+		if *p.Kind == BrainNote && !importedNote {
+			return BrainNode{}, brainInvalid("notes are imported from an Obsidian vault")
+		}
 		if !IsBrainKind(*p.Kind) {
 			return BrainNode{}, brainInvalid("unknown memory kind")
 		}
@@ -309,8 +324,19 @@ func UpdateBrainNode(ctx context.Context, q Querier, id int64, p BrainPatch, now
 			return BrainNode{}, err
 		}
 	}
+	if importedNote && (p.Kind != nil || p.Title != nil || p.Summary != nil) {
+		return BrainNode{}, brainInvalid("edit the source note in Obsidian")
+	}
+	extra, err := brainSearchExtra(ctx, q, cur)
+	if err != nil {
+		return BrainNode{}, err
+	}
+	summaryDoc := cur.Summary
+	if extra != "" {
+		summaryDoc += "\n" + extra
+	}
 	if _, err := q.ExecContext(ctx, `UPDATE brain_nodes SET kind = ?, title = ?, norm = ?, summary = ?, search = ?, pinned = ?, updated_at = ? WHERE id = ?`,
-		cur.Kind, cur.Title, norm, cur.Summary, BrainSearchDoc(cur.Title, cur.Summary, cur.Source.Project), cur.Pinned, now, id); err != nil {
+		cur.Kind, cur.Title, norm, cur.Summary, BrainSearchDoc(cur.Title, summaryDoc, cur.Source.Project), cur.Pinned, now, id); err != nil {
 		return BrainNode{}, err
 	}
 	return GetBrainNode(ctx, q, id)
@@ -355,11 +381,11 @@ func DeleteBrainNode(ctx context.Context, q Querier, id int64) error {
 	return err
 }
 
-// CountBrainMemories is how many memories (not entities) there are;
-// manualOnly counts those dropped in by hand (the free allowance, ADR-063).
+// CountBrainMemories is how many memories (not entities, not imported
+// notes) there are; manualOnly counts those dropped in by hand.
 func CountBrainMemories(ctx context.Context, q Querier, manualOnly bool) (int, error) {
 	var n int
-	query := `SELECT COUNT(*) FROM brain_nodes WHERE kind NOT IN ('topic','person','project')`
+	query := `SELECT COUNT(*) FROM brain_nodes WHERE kind NOT IN ('topic','person','project','note')`
 	if manualOnly {
 		query += ` AND manual = 1`
 	}
@@ -369,6 +395,8 @@ func CountBrainMemories(ctx context.Context, q Querier, manualOnly bool) (int, e
 
 // BrainFilter narrows the graph read.
 type BrainFilter struct {
+	// Agents excludes vault content the user has not allowed agents to read.
+	Agents bool
 	// Query is words that must each match a memory's title, summary or
 	// project, or the name of an entity it is linked to — in any case, with
 	// or without accents, and, when few memories match exactly, one or two
@@ -416,6 +444,9 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 	}
 	where := []string{`n.kind NOT IN ('topic','person','project')`}
 	args := []any{}
+	if f.Agents {
+		where = append(where, brainMCPMayRead)
+	}
 	if f.Project != "" {
 		where = append(where, `n.project = ?`)
 		args = append(args, f.Project)
@@ -437,7 +468,7 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 	var mems []BrainNode
 	var err error
 	if t := strings.TrimSpace(f.Query); t != "" {
-		hits, terms, err := searchBrain(ctx, q, cond, args, t)
+		hits, terms, err := searchBrain(ctx, q, cond, args, t, f.Agents)
 		if err != nil {
 			return g, err
 		}
@@ -526,6 +557,14 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 			edges = append(edges, extra...)
 		}
 	}
+	if f.Agents {
+		allowed, err := BrainAgentNodes(ctx, q, nodeIDs(ents))
+		if err != nil {
+			return g, err
+		}
+		ents = slices.DeleteFunc(ents, func(n BrainNode) bool { return !allowed[n.ID] })
+	}
+
 	nodes := make([]BrainNode, 0, len(mems)+len(ents))
 	nodes = append(nodes, mems...)
 	nodes = append(nodes, ents...)
@@ -543,8 +582,31 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 		nodes[j].Degree++
 		g.Edges = append(g.Edges, e)
 	}
+	if err := markBrainVaults(ctx, q, nodes[:len(mems)]); err != nil {
+		return g, err
+	}
 	g.Nodes = nodes
 	return g, nil
+}
+
+// markBrainVaults fills Vault on the nodes that have a note source; one read
+// for all of them, none while no vault is imported.
+func markBrainVaults(ctx context.Context, q Querier, nodes []BrainNode) error {
+	if len(nodes) == 0 {
+		return nil
+	}
+	var has int
+	if err := q.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM brain_vault_notes)`).Scan(&has); err != nil || has == 0 {
+		return err
+	}
+	names, err := BrainNodeVaults(ctx, q, nodeIDs(nodes))
+	if err != nil {
+		return err
+	}
+	for i := range nodes {
+		nodes[i].Vault = names[nodes[i].ID]
+	}
+	return nil
 }
 
 // brainHitNodes reads the matched memories, in the hits' order, with their
@@ -701,10 +763,14 @@ type BrainProjectCount struct {
 
 // BrainProjects lists the projects memories belong to, most memories first,
 // for the screen's filter.
-func BrainProjects(ctx context.Context, q Querier) ([]BrainProjectCount, error) {
-	rows, err := q.QueryContext(ctx, `SELECT project, COUNT(*) FROM brain_nodes
-		WHERE project != '' AND kind NOT IN ('topic','person','project')
-		GROUP BY project ORDER BY COUNT(*) DESC, project LIMIT 200`)
+func BrainProjects(ctx context.Context, q Querier, agents ...bool) ([]BrainProjectCount, error) {
+	cond := ""
+	if len(agents) > 0 && agents[0] {
+		cond = " AND " + brainMCPMayRead
+	}
+	rows, err := q.QueryContext(ctx, `SELECT project, COUNT(*) FROM brain_nodes n
+ WHERE project != '' AND kind NOT IN ('topic','person','project')`+cond+`
+ GROUP BY project ORDER BY COUNT(*) DESC, project LIMIT 200`)
 	if err != nil {
 		return nil, err
 	}
@@ -721,10 +787,12 @@ func BrainProjects(ctx context.Context, q Querier) ([]BrainProjectCount, error) 
 }
 
 // BrainEntityTitles returns the titles of the entities of a kind that the most
-// edges reach, for the extraction to link new memories to what exists.
+// edges reach, for the extraction to link new memories to what exists. A
+// topic an import made from a vault whose notes may not reach agents is left
+// out: its name is the user's own tag (ADR-079).
 func BrainEntityTitles(ctx context.Context, q Querier, kind string, limit int) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `SELECT n.title FROM brain_nodes n
-		WHERE n.kind = ?
+		WHERE n.kind = ? AND NOT `+brainEntityHidden+`
 		ORDER BY (SELECT COUNT(*) FROM brain_edges e WHERE e.dst = n.id) DESC, n.updated_at DESC LIMIT ?`, kind, limit)
 	if err != nil {
 		return nil, err

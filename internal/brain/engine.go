@@ -385,7 +385,7 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 	var added []store.BrainNode
 	for i, m := range mems {
 		kind := strings.ToLower(strings.TrimSpace(m.Kind))
-		if !store.IsBrainKind(kind) || store.IsBrainEntity(kind) {
+		if !store.IsBrainKind(kind) || store.IsBrainEntity(kind) || kind == store.BrainNote {
 			kind = store.BrainIdea
 		}
 		// A model asked for plain text still sends Markdown now and then; a

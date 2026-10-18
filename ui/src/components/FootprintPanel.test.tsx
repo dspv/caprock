@@ -89,7 +89,7 @@ describe('the status figure', () => {
     expect(button.querySelector('[data-orphan-figure]')!.textContent).toBe('4 orphans')
     expect(button.getAttribute('title')).toContain('Orphans: 4 · 325 MB')
     fireEvent.click(button)
-    expect(container.querySelector('[data-orphan-summary]')!.textContent).toBe('Orphans: 4 · 325 MB')
+    expect(container.querySelector('[data-orphan-summary]')!.textContent).toBe('4 processes to review · 325 MB')
     // Details: the command line, credentials hidden, and the CPU when there is a rate.
     await waitFor(() => expect(container.querySelector('[data-orphan="48120"]')).not.toBeNull())
     const claude = container.querySelector('[data-orphan="48120"]')!
@@ -134,7 +134,7 @@ describe('the panel', () => {
     expect(container.querySelector('[data-memory]')).toBeNull()
     const toggle = container.querySelector<HTMLButtonElement>('[data-breakdown]')!
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    expect(toggle.textContent).toContain('What the 1.1 GB is spent on')
+    expect(toggle.textContent).toContain('Resource breakdown')
     fireEvent.click(toggle)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     const row = (k: string) => container.querySelector(`[data-row="${k}"]`)?.textContent ?? ''
@@ -156,7 +156,7 @@ describe('the panel', () => {
   it('says one verdict line and a row per problem, the pids and paths under Details', async () => {
     const { button, container } = await strip(warned())
     fireEvent.click(button)
-    expect(container.querySelector('[data-verdict-summary]')!.textContent).toBe('Caprock is using more than it should')
+    expect(container.querySelector('[data-verdict-summary]')!.textContent).toBe('Needs attention')
     await waitFor(() => expect(container.querySelector('[data-doctor-row="claude"]')).not.toBeNull())
     expect([...container.querySelectorAll('[data-doctor-row]')].map((e) => e.getAttribute('data-doctor-row'))).toEqual(['copies', 'terminals', 'claude', 'codex', 'helpers', 'reads'])
     const copies = container.querySelector('[data-doctor-row="copies"]')!
@@ -173,7 +173,7 @@ describe('the panel', () => {
   it('says All good with the memory when nothing warns', async () => {
     const { button, container } = await strip(healthy())
     fireEvent.click(button)
-    expect(container.querySelector('[data-verdict-summary]')!.textContent).toContain('All good — Caprock uses 1.0 GB')
+    expect(container.querySelector('[data-verdict-summary]')!.textContent).toContain('All good')
     expect(container.querySelector('[data-cleanup]')).toBeNull()
   })
 
