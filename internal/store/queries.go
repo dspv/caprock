@@ -1564,6 +1564,37 @@ func GetStats(ctx context.Context, q Querier, sessionID string) (Stats, error) {
 	return s, err
 }
 
+// EventsGen identifies the state of a session's events: equal values mean
+// its events are as they were. Gen is its rewrite generation (migration
+// 0062), which triggers move in the same transaction as every update or delete
+// of its events, whichever code writes them; MaxID is its newest row id, which
+// every insert moves, because a new row takes a rowid above every existing
+// one. Within one Gen only inserts happen and each raises MaxID, so the pair
+// never repeats. Both come from one statement, one snapshot, and one index
+// lookup each (idx_events_session_id is (session_id, id)). Read it before the
+// events it guards, so what is read is never older than it.
+type EventsGen struct {
+	Gen   int64
+	MaxID int64
+}
+
+// Older reports whether g was read before o: Gen only grows, and within one
+// Gen only inserts happen, which only raise MaxID.
+func (g EventsGen) Older(o EventsGen) bool {
+	return g.Gen < o.Gen || (g.Gen == o.Gen && g.MaxID < o.MaxID)
+}
+
+// ReadEventsGen reads a session's EventsGen; zero for a session with no
+// events ever written.
+func ReadEventsGen(ctx context.Context, q Querier, sessionID string) (EventsGen, error) {
+	var g EventsGen
+	err := q.QueryRowContext(ctx, `
+		SELECT COALESCE((SELECT gen FROM session_gen WHERE session_id = ?1), 0),
+		       COALESCE((SELECT MAX(id) FROM events INDEXED BY idx_events_session_id WHERE session_id = ?1), 0)`,
+		sessionID).Scan(&g.Gen, &g.MaxID)
+	return g, err
+}
+
 // MarkDailySession records that a session was seen on a day, and reports
 // whether this was the first time.
 //

@@ -509,6 +509,9 @@ type Server struct {
 	// screen produces, and summ does the same for the wide ranges of
 	// /v1/stats/summary. See answercache.go.
 	hist *answerCache
+	// recent keeps each listed session's reads of its own events between
+	// requests, by events generation (recentcache.go).
+	recent recentCache
 	// localRepos is the last scan for repositories under the default folder
 	// (GET /v1/browse/repos, repos.go).
 	localRepos localRepoCache
@@ -1010,7 +1013,16 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	if err != nil {
 		return SessionSummary{}, nil, err
 	}
-	last, err := store.LastEvents(ctx, q, sess.SessionID, 60)
+	// The reads of the session's events go through the per-session cache,
+	// keyed by the generation read before them (recentcache.go).
+	gen, err := store.ReadEventsGen(ctx, q, sess.SessionID)
+	if err != nil {
+		return SessionSummary{}, nil, err
+	}
+	rec := s.recent.entry(sess.SessionID, gen)
+	last, err := readOnce(&rec.mu, &rec.last, func() ([]event.Event, error) {
+		return store.LastEvents(ctx, q, sess.SessionID, 60)
+	})
 	if err != nil {
 		return SessionSummary{}, nil, err
 	}
@@ -1030,12 +1042,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		if n > 0 && !hasMainEvent(last) {
 			// Subagents filled the window; the main thread's newest event
 			// decides whether the parent's turn has ended.
-			main, err := store.LastEventsFiltered(ctx, q, sess.SessionID, 1, store.EventFilter{MainOnly: true})
+			main, err := readOnce(&rec.mu, &rec.mainLast, func() ([]event.Event, error) {
+				return store.LastEventsFiltered(ctx, q, sess.SessionID, 1, store.EventFilter{MainOnly: true})
+			})
 			if err != nil {
 				return SessionSummary{}, nil, err
 			}
 			if len(main) > 0 {
-				opt.MainLast = &main[0]
+				m := main[0]
+				opt.MainLast = &m
 			}
 		}
 	}
@@ -1052,7 +1067,11 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		act.Phrase = "was " + act.Phrase
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
-	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
+	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
+		return readOnce(&rec.mu, &rec.prompts, func() ([]string, error) {
+			return store.FirstPrompts(ctx, q, sess.SessionID, promptsScanned)
+		})
+	})
 	if sess.Owned && sess.Status != store.StatusEnded && s.d.Agents != nil && !s.d.Agents.Holds(sess.SessionID) {
 		sum.Detached = true
 	}
@@ -1081,12 +1100,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	sum.ContextNote = "no turn yet"
 	turn, ok := lastContextTurn(last)
 	if !ok || turn.Subagent() {
-		main, found, err := store.LastMainTurn(ctx, q, sess.SessionID)
+		main, err := readOnce(&rec.mu, &rec.mainTurn, func() (foundEvent, error) {
+			ev, found, err := store.LastMainTurn(ctx, q, sess.SessionID)
+			return foundEvent{ev: ev, found: found}, err
+		})
 		if err != nil {
 			return SessionSummary{}, nil, err
 		}
-		if found {
-			turn, ok = main, true
+		if main.found {
+			turn, ok = main.ev, true
 		}
 	}
 	if ok {

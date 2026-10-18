@@ -324,7 +324,7 @@ load:
    F13.
 2. **F14 — `/v1/sessions` summarises every listed session per request:**
    18% of CPU before F13 and 22–33% after; 41–42% of allocation before, the
-   largest single cost after F13. Next.
+   largest single cost after F13. Implemented, see F14.
 3. **F7 — per-event transactions:** 7% of CPU while working; 50–55% of CPU
    during a backfill, which took 159–182 s for this history.
 4. **F15 — a goroutine per SQLite statement:** about 8–11 µs of CPU per
@@ -772,6 +772,68 @@ fill and description are identical for every listed session, and a permission
 prompt or a finished turn appears no later than today. Measure allocated bytes
 per request and requests per second with one and two windows.
 
+**Implemented (2026-10-18): the second candidate, per-session cache.** The
+reads of a session's own events that a summary makes (the newest 60 events,
+the main thread's newest event and turn, the first prompts) are kept per
+session ([recentcache.go](../internal/api/recentcache.go)) and read again only
+when the session's events change. Everything else (the session row, stats, live
+subagents, loops, nudges, the clock) is still read on every request, and the
+narration is still computed on every request from those inputs. Requests are
+not shared, so a quiet session is never left a state behind.
+
+- **The key.** A per-session insert counter kept by the recorder would have
+  missed writes that are not inserts: Codex ingest rewrites stored payloads
+  while a session runs, and repairs, price corrections and compaction update
+  events in place. The key is `store.EventsGen`, read in one statement: the
+  session's newest event id, which every insert raises because a new row takes
+  a rowid above every existing one (one seek on `idx_events_session_id`), and
+  a rewrite generation that triggers move with every update or delete of the
+  session's events (migration 0062), whichever code writes them, in the same
+  transaction. The key is read before the events, so a cached value is never
+  older than its key.
+- **No insert trigger.** The first version also counted inserts with a
+  trigger. On a temporary on-disk database, 20,000 events in batches of 500,
+  any trigger on inserts, even one that does nothing, took an insert from
+  58 µs to 129–136 µs: the driver prepares every statement afresh and each
+  prepare compiles the trigger. One single-row update went from 58–83 µs to
+  85–98 µs with the update trigger, in the same probe.
+- **Bound.** 256 sessions, least recently used dropped first; the Now screen
+  lists 200 by default. On the stand that held about 9 MB of heap.
+- **Correctness.** `TestSummaryCacheMatchesFresh` compares the cached summary
+  and events with ones built from an empty cache, field by field (as JSON),
+  after hook and out-of-order transcript inserts, a subagent burst that pushes
+  the main thread out of the window, an in-place payload rewrite, `/clear`
+  (a new session), the session ending, a rename, deleting the newest events
+  and retention. `TestEventsGenMovesOnEveryChange` checks the key moves for
+  inserts (including one older than everything stored), updates, a row moved
+  between sessions and deletes, and only for the session changed; and
+  `TestEventsGenTriggersExist` fails if a later migration rebuilds the events
+  table and drops the triggers.
+
+**Measured.** The harness of the profile above (181k-event history, same live
+work, two viewers), each pair back to back: base is the F13 head (`6240cc10`).
+Shares are of the 150 s load CPU profile and of bytes allocated in the load
+window; per request divides by the `/v1/sessions` requests the viewers made in
+the whole run. A first pair, at load averages of 196–233, never finished its
+backfill before the load window and is left out.
+
+```text
+pair  build  load avg   daemon CPU  sessions CPU         sessions alloc          heap  RSS end/max
+p2    base   7.2–14.4   15.2%       2.73 s 12.6% 3.2 ms  730 MB 19.4% 0.85 MB   12.7  94/153 MiB
+p2    F14    13.5–4.1   11.3%       0.83 s  5.3% 0.8 ms  348 MB  9.4% 0.35 MB   22.5  132/278 MiB
+p3    base   4.1–4.9    13.2%       1.66 s  9.1% 1.8 ms  783 MB 20.7% 0.87 MB   11.3  107/209 MiB
+p3    F14    4.9–79.6   11.6%       1.07 s  6.6% 1.1 ms  353 MB  9.5% 0.36 MB   20.6  85/181 MiB
+```
+
+(`heap` is MB in use after GC at the end of the load window; requests per run:
+base 858 and 902, F14 1,008 and 994.) The list's CPU per request fell by
+39–75% and its allocation by 59%; `LastEvents` went from 4.7–5.0% of the
+daemon's CPU to 1.0–1.5%. What remains is mostly re-reading the live sessions,
+which change every second on this stand. The daemon's total fell from 13–15%
+of a core to 11–12%. The cache holds about 9 MB of heap; RSS moved within the
+run-to-run spread (85–132 MiB at the end against 94–107), so this profile
+cannot say whether it costs RSS. No `SQLITE_BUSY` appeared in either F14 run.
+
 ### F15 — P2: the SQLite driver starts a goroutine for every statement
 
 **Evidence:** `modernc.org/sqlite` (v1.60.1, `interruptOnDone` in its
@@ -833,7 +895,7 @@ on the same history.
    F7/F8; many inactive tabs favors F9; hidden background work favors F10; large
    memory graphs favors F11. F5/F6 depend on payloads and viewer count.
    The first such profile, after 0.134.0, put two dashboard reads first:
-   F13, now implemented, then F14 (see
+   F13 then F14, both now implemented (see
    [Profile 2026-10-18](#profile-2026-10-18-post-01340)).
 5. **Run soak and cross-platform checks.** Repeat open/close, reconnect and
    growth workloads for hours, checking retained-memory plateaus, WAL behavior

@@ -5053,6 +5053,39 @@ A private module's documents ([ADR-076](08-decisions.md), § Private modules):
 `created_at` and `updated_at` are unix ms. Rows stay when a module's files are
 removed, so installing it again finds them.
 
+### Session generation DDL (migration 0062)
+
+```sql
+CREATE TABLE IF NOT EXISTS session_gen (
+  session_id TEXT    NOT NULL PRIMARY KEY,
+  gen        INTEGER NOT NULL
+) WITHOUT ROWID;
+-- events_gen_update, events_gen_delete: AFTER triggers on events that upsert
+-- gen + 1 for NEW.session_id (update; OLD.session_id too when an update moves
+-- a row) and for OLD.session_id (delete). No insert trigger.
+```
+
+A session's rewrite generation. `store.EventsGen` pairs it with the session's
+newest event id, `MAX(id)` by `idx_events_session_id`, read in one statement:
+the triggers move `gen` in the same transaction as every update or delete of
+the session's events, whichever code writes them, and every insert raises the
+newest id, because a new row takes a rowid above every existing one. Equal
+pairs mean the session's events are unchanged. Inserts have no trigger because
+any trigger on `events`, even one that does nothing, is compiled into every
+statement that fires it and the driver prepares each statement afresh: a no-op
+insert trigger took an insert from 58 to 129 µs (2026-10-18, temporary
+on-disk database, 20,000 events in batches of 500).
+
+`GET /v1/sessions` keys its per-session cache on the pair: the newest 60
+events, the main thread's newest event and turn and the first prompts a summary
+reads are read again only when it has moved; the session row, stats, live
+subagents, loops, nudges and the clock are read on every request (F14,
+`docs/resource-usage-audit-2026-10-18.md`). The pair is read before the
+events, so a cached value is never older than its key. Rows are never deleted,
+so a removed session id seen again carries on from its old generation instead
+of reusing one. A migration that rebuilds the events table must recreate the
+triggers; `TestEventsGenTriggersExist` fails otherwise.
+
 ### Worked-at and parent DDL (migration 0027)
 
 ```sql
