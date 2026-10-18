@@ -201,7 +201,7 @@ describe('what else heads into the release', () => {
       br('feat/folder-search', {}), // #631's head in the Pipeline list
     ]), stats.prs!, NOW, 'dspv/caprock')
     expect(rows.map((r) => r.key)).toEqual(['b:feat/b', 'b:feat/a'])
-    expect(rows[1]).toMatchObject({ title: 'work on feat/a', stage: 'branch', section: 'branch', filled: BLOCKS / 5, word: '+3 · 3h', url: 'https://github.com/dspv/caprock/compare/master...feat/a' })
+    expect(rows[1]).toMatchObject({ title: 'work on feat/a', branch: 'feat/a', stage: 'branch', section: 'branch', filled: BLOCKS / 5, word: '3 commits · pushed 3h ago', url: 'https://github.com/dspv/caprock/compare/master...feat/a' })
     expect(rows[1]!.wordTitle).toContain('3 commits ahead of origin/master')
     const many = branchRows(answer(Array.from({ length: 20 }, (_, i) => br(`f/${i}`, { committed_ms: NOW - i * MIN }))), [], NOW)
     expect(many).toHaveLength(BRANCHES_LISTED)
@@ -213,7 +213,7 @@ describe('what else heads into the release', () => {
     const sa = (id: string, p: Partial<Subagent>): Subagent => ({ agent_id: id, tool_calls: 4, started_at: NOW - 12 * MIN, last_at: NOW, running: true, asking: false, ...p })
     const rows = subagentRows({ working: [sa('a1', { description: 'Fix the deck', doing: 'Editing Deck.tsx' }), sa('a2', { description: 'Review', started_at: NOW - 2 * MIN, asking: true })], finished: 0 }, NOW)
     expect(rows.map((r) => r.key)).toEqual(['sa:a2', 'sa:a1'])
-    expect(rows[1]).toMatchObject({ title: 'Fix the deck', stage: 'agent', section: 'agent', word: 'working · 12m', running: true, wait: { text: 'Editing Deck.tsx' } })
+    expect(rows[1]).toMatchObject({ title: 'Agent: Fix the deck', stage: 'agent', section: 'agent', word: 'working 12m', running: true, wait: { text: 'Editing Deck.tsx' } })
     expect(rows[0]).toMatchObject({ word: 'asking', warn: true, running: false })
   })
 
@@ -222,7 +222,7 @@ describe('what else heads into the release', () => {
     const subs = { working: [{ agent_id: 'x', description: 'Batch', tool_calls: 1, started_at: now - MIN, last_at: now, running: true, asking: false }], finished: 0 }
     const p = planForRepo(workFixture(), '/w/caprock', statsFixture(), now, { branches: answer([br('feat/z', {})]), subagents: subs })
     const secs = planSections(p.rows)
-    expect(secs.map((s) => s.label)).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Ready · 1 branch', 'In progress · 2 agents'])
+    expect(secs.map((s) => s.label)).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Branches pushed, no PR yet · 1', 'Agents working now · 2'])
     expect(p.rows.map((r) => r.section)).toEqual(secs.flatMap((s) => s.rows.map((r) => r.section)))
   })
 })
