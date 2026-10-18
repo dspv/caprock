@@ -27,7 +27,7 @@ import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { RELEASED_MEANS } from '@/lib/journey'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
-import { BLOCKS, planEmpty, planForRepo, planSections, type OSDot, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { BLOCKS, planEmpty, planForRepo, planSections, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, usePoll } from './SessionDeck'
@@ -96,7 +96,7 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
         {v && <span className={`text-fg-faint ${compact && !phone ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact && !phone ? 'next' : 'next release'}</span>}
         {pre && <ReleaseWhy status={pre} />}
         {showRepo && <span className="min-w-0 truncate text-[13px] font-medium text-fg-muted" title={plan.root}>{plan.name}</span>}
-        {plan.since && (
+        {plan.line ? <ReleaseLine parts={v ? plan.line.filter((p) => p.key !== 'head') : plan.line} since={plan.since} phone={phone} compact={compact} /> : plan.since && (
           <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>
@@ -111,6 +111,32 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
       )}
       {!merge && status?.last && <LastRelease last={status.last} now={now} />}
     </section>
+  )
+}
+
+/** Scrolls to a section of this plan and marks it for a moment. */
+function showSection(from: HTMLElement, key: string) {
+  const el = from.closest('[data-release-plan]')?.querySelector<HTMLElement>(`[data-release-section="${key}"]`)
+  if (!el) return
+  el.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+  el.classList.add('text-fg')
+  window.setTimeout(() => el.classList.remove('text-fg'), 1500)
+}
+
+/** The one release line: a part per fact, a click on one shows its section. Two lines at most on a phone. */
+function ReleaseLine({ parts, since, phone, compact }: { parts: LinePart[]; since: ReleasePlanData['since']; phone: boolean; compact: boolean }) {
+  return (
+    <span data-release-since title={since?.title} className={`num flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-fg-muted ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>
+      {parts.map((p, i) => (
+        <span key={p.key} className="inline-flex min-w-0 items-baseline gap-x-1.5">
+          {i > 0 && <span aria-hidden className="text-fg-faint">·</span>}
+          {p.target
+            ? <button type="button" data-line-part={p.key} title={p.title} onClick={(e) => showSection(e.currentTarget, p.target!)}
+                className={`min-w-0 cursor-pointer truncate underline decoration-dotted underline-offset-2 hover:text-fg ${p.tone === 'danger' ? 'text-danger' : ''}`}>{p.text}</button>
+            : <span data-line-part={p.key} title={p.title} className={`min-w-0 truncate ${p.key === 'head' ? 'font-medium text-fg' : ''}`}>{p.text}</span>}
+        </span>
+      ))}
+    </span>
   )
 }
 

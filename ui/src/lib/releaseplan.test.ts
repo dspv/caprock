@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import type { PlanRow } from './releaseplan'
 import type { Subagent, WorkRepo } from './api'
 import type { SessionBranch, SessionBranches } from './branches'
-import { ageText, BLOCKS, BRANCHES_LISTED, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releasePlan, rowOf, sinceLine, subagentRows } from './releaseplan'
+import { ageText, BLOCKS, BRANCHES_LISTED, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, sinceLine, subagentRows } from './releaseplan'
 import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
@@ -224,5 +225,29 @@ describe('what else heads into the release', () => {
     const secs = planSections(p.rows)
     expect(secs.map((s) => s.label)).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Branches pushed, no PR yet · 1', 'Agents working now · 2'])
     expect(p.rows.map((r) => r.section)).toEqual(secs.flatMap((s) => s.rows.map((r) => r.section)))
+  })
+})
+
+describe('the release line', () => {
+  const last = { name: 'v0.134.0', at: NOW - 18 * 60 * MIN }
+  const row = (section: PlanRow['section'], o: Partial<PlanRow> = {}): PlanRow => ({ key: `${section}${o.number ?? Math.random()}`, title: 't', stage: 'ci', section, filled: 3, red: false, warn: false, word: 'w', running: false, cost: { text: '—', title: '', known: false }, ...o }) as PlanRow
+  const dots = (...s: ('pass' | 'fail' | 'running')[]) => s.map((state, i) => ({ os: (['macos', 'linux', 'windows'] as const)[i]!, label: 'x', state, title: 'x' }))
+  const text = (p: ReturnType<typeof releaseLine>) => p?.map((x) => x.text).join(' · ')
+  it('says a PR in CI with its passed count, an agent, and the last release', () => {
+    const l = releaseLine([row('merged'), row('pr', { number: 755, ci: dots('pass', 'pass', 'running') }), row('agent')], last, 7, NOW)
+    expect(text(l)).toBe('Next release · 7 merged · PR #755 in CI (2/3 ✓) · 1 agent working · last v0.134.0 18h ago')
+    expect(l?.find((p) => p.key === 'pr')?.target).toBe('pr')
+  })
+  it('turns red when CI failed and counts the other PRs', () => {
+    const l = releaseLine([row('pr', { number: 1, ci: dots('pass') }), row('pr', { number: 2, ci: dots('fail', 'running') })], last, 1, NOW)
+    expect(l?.find((p) => p.key === 'pr')).toMatchObject({ text: 'PR #2 CI failed +1 more', tone: 'danger' })
+  })
+  it('names ready branches only when there are some', () => {
+    expect(text(releaseLine([row('branch')], last, 2, NOW))).toContain('1 branch ready')
+    expect(text(releaseLine([row('agent'), row('agent')], last, 2, NOW))).not.toContain('branch')
+  })
+  it('says a quiet state, and nothing when nothing is merged or under way', () => {
+    expect(text(releaseLine([row('merged')], last, 7, NOW))).toBe('Next release · 7 merged, nothing in progress · last v0.134.0 18h ago')
+    expect(releaseLine([], last, 0, NOW)).toBeUndefined()
   })
 })

@@ -142,6 +142,15 @@ export const MERGED_RECENT = 3
 /** The line said where work ships on merge, in place of the release line. */
 export const SHIPS_ON_MERGE = 'No releases here: work ships when it merges'
 
+/** One part of the release line: its words, the hover, and the section a click scrolls to. */
+export interface LinePart {
+  key: 'head' | 'merged' | 'pr' | 'agent' | 'branch' | 'last'
+  text: string
+  title: string
+  tone?: 'danger' | 'warn'
+  target?: RowSection
+}
+
 export interface PlanGroup {
   key: 'drafts' | 'idle' | 'merged'
   label: string
@@ -154,6 +163,12 @@ export interface ReleasePlanData {
   next?: NextVersion
   /** "3 changes waiting for the next release · last release v0.119.0, 2h 05m ago"; the usual gap on hover. */
   since?: { text: string; title: string }
+  /**
+   * The one line over the rows where releases are cut: where the release
+   * stands, a part per fact, each naming the section it opens. Absent when
+   * `since` alone says it (nothing merged, nothing under way).
+   */
+  line?: LinePart[]
   rows: PlanRow[]
   later: PlanGroup[]
   /** How merged work ships here (`board.ships_by`); absent: not known. */
@@ -436,6 +451,42 @@ export function sinceLine(last: { name: string; at: number } | undefined, merged
   return { text, title: what + usual }
 }
 
+/**
+ * *Next release · 7 merged · PR #755 in CI (2/3 ✓) · 1 agent working · last
+ * v0.134.0 18h ago* (owner, 2026-10-18, translated: the old line "is not
+ * readable, I cannot see the PRs in progress"). Each part opens its section.
+ * The pull request told is the failing one, else the furthest on, else the
+ * newest; "✓" counts the OSes whose checks passed.
+ */
+export function releaseLine(rows: readonly PlanRow[], last: { name: string; at: number } | undefined, merged: number, now: number): LinePart[] | undefined {
+  const prs = rows.filter((r) => r.section === 'pr')
+  const agents = rows.filter((r) => r.section === 'agent').length
+  const branches = rows.filter((r) => r.section === 'branch').length
+  if (merged === 0 && !prs.length && !agents && !branches) return undefined
+  const parts: LinePart[] = [{ key: 'head', text: 'Next release', title: 'Where the next release stands: what is in, what is on its way.' }]
+  if (merged > 0) parts.push({ key: 'merged', text: `${merged} merged`, title: `${plural(merged, 'pull request')} merged since the last tag, not in a release yet. Click to see them.`, target: 'merged' })
+  else parts.push({ key: 'merged', text: 'nothing merged', title: 'No pull request merged since the last tag.' })
+  if (prs.length) {
+    const failed = (r: PlanRow) => r.red || !!r.ci?.some((d) => d.state === 'fail')
+    const pick = [...prs].sort((a, b) => Number(failed(b)) - Number(failed(a)) || b.filled - a.filled || (b.number ?? 0) - (a.number ?? 0))[0]!
+    const n = pick.number ? `PR #${pick.number}` : 'A PR'
+    const dots = pick.ci ?? []
+    const ok = dots.filter((d) => d.state === 'pass').length
+    const text = failed(pick) ? `${n} CI failed` : dots.length && dots.some((d) => d.state === 'running') ? `${n} in CI (${ok}/${dots.length} ✓)` : dots.length ? `${n} CI passed` : `${n} open`
+    const more = prs.length - 1
+    parts.push({
+      key: 'pr', text: more > 0 ? `${text} +${more} more` : text,
+      title: `${plural(prs.length, 'pull request')} open; the one told is ${failed(pick) ? 'the one whose checks failed' : 'the furthest on'}. ✓ counts the operating systems whose checks passed. Click to see them.`,
+      tone: failed(pick) ? 'danger' : undefined, target: 'pr',
+    })
+  }
+  if (agents) parts.push({ key: 'agent', text: `${plural(agents, 'agent')} working`, title: `${plural(agents, 'subagent')} of this session at work now. Click to see them.`, target: 'agent' })
+  if (branches) parts.push({ key: 'branch', text: `${plural(branches, 'branch', 'branches')} ready`, title: `${plural(branches, 'branch', 'branches')} pushed with no pull request yet. Click to see them.`, target: 'branch' })
+  if (!prs.length && !agents && !branches && merged > 0) parts[1] = { ...parts[1]!, text: `${merged} merged, nothing in progress` }
+  if (last) parts.push({ key: 'last', text: `last ${last.name} ${ageText(now - last.at)} ago`, title: `The last release, ${last.name}, ${spanText(Math.max(0, now - last.at))} ago.` })
+  return parts
+}
+
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 /**
@@ -548,6 +599,7 @@ export function releasePlan(input: { root: string; name?: string; repo?: WorkRep
     name,
     next,
     since: sinceLine(last, merged, repo, stats, now),
+    line: releaseLine(rows, last, merged, now),
     rows: ships === 'release' ? rows.map((r) => waitsForRelease(r, next?.version)) : rows,
     later,
     ships,

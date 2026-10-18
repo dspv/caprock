@@ -34,6 +34,17 @@ const plan = (): ReleasePlanData => {
   return planForRepo(withKinds(), '/w/caprock', stats, NOW)
 }
 
+describe('the release line', () => {
+  it('a part scrolls to its section', () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    render(<ReleasePlan plan={plan()} />)
+    fireEvent.click(document.querySelector('[data-line-part="merged"]')!)
+    expect(scroll).toHaveBeenCalled()
+    expect(scroll.mock.instances[0]).toBe(document.querySelector('[data-release-section="merged"]'))
+  })
+})
+
 describe('the release plan', () => {
   it('heads with the next version, its rule on hover, then rows with a named segment per step and the stage word', () => {
     render(<ReleasePlan plan={plan()} />)
@@ -41,7 +52,7 @@ describe('the release plan', () => {
     expect(v.title).toMatch(/^Next version, by the pending changes: a feature \(an Added entry\) makes a minor release/)
     // Plain words; the usual gap on hover only (owner, 2026-10-17).
     const since = document.querySelector('[data-release-since]')!
-    expect(since).toHaveTextContent('1 change waiting for the next release · last release v0.117.4, 2h 05m ago')
+    expect(since.textContent).toMatch(/^1 merged·.*·last v0\.117\.4 2h ago$/)
     expect(since.textContent).not.toContain('median')
     expect(since).toHaveAttribute('title', expect.stringContaining('usually come 2h 40m apart'))
     const rows = [...document.querySelectorAll<HTMLElement>('[data-release-row]')]
