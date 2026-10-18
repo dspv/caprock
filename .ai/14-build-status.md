@@ -85,6 +85,11 @@ members. Archived projects and chats stay out. Navigation performs only
 reads, with explicit retry states. Rotating to phone width no longer lets
 the kept phone home clear the open session's address. See [Projects in the browser](04-ui.md#projects-in-the-browser).
 
+### 2026-10-18 — unreleased: Second Brain graph display
+
+- The graph uses the full canvas with a collapsible inspector, gentler
+  centring, clearer links and display controls that preserve node positions.
+  See [04-ui.md § Second Brain](04-ui.md#second-brain) for the interaction.
 
 ### 2026-10-18 — unreleased: Obsidian vaults in Second Brain (ADR-079)
 
