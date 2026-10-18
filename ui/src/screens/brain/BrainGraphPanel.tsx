@@ -30,7 +30,7 @@ function Swatch({ color, size = 9, ring = false }: { color: string; size?: numbe
 }
 
 function Heading({ children }: { children: string }) {
-  return <p className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-faint">{children}</p>
+  return <p className="text-[12px] font-semibold text-fg-faint">{children}</p>
 }
 
 function MemoryRow({ n, now, onSelect }: { n: BrainNode; now: number; onSelect: (id: number) => void }) {

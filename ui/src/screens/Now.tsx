@@ -9,6 +9,7 @@ import { ContinueSession } from '@/components/ContinueSession'
 import { InterruptedBanner } from '@/components/Interrupted'
 import { Badge, Empty, Panel, Skeleton, StaleNote, Stat } from '@/components/ui'
 import { ProjectsPanel, AGENTS, agentName, type AgentFilter } from '@/components/Projects'
+import { BrowserProjects } from '@/components/BrowserProjects'
 import { AgentGlyph } from '@/components/AgentMarks'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import { LifetimeStrip } from '@/components/Lifetime'
@@ -213,6 +214,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         </div>
       )}
       {/* First on a phone: what someone opens Caprock there for. */}
+      {!inApp && <BrowserProjects />}
       {phone && !inApp && <PhoneSessions sessions={[...working, ...rest]} now={now} canControl={canControl} />}
       {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
       {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} partial={(status.data?.hooks?.installed?.length ?? 0) > 0} />}

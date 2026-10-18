@@ -46,6 +46,14 @@ beforeEach(() => {
 })
 
 describe('PhoneHome', () => {
+  it('preserves a session route when the kept home mounts after a tablet becomes narrow', async () => {
+    stubs()
+    window.history.replaceState(null, '', '/#/session/s1?tab=chat')
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(window.location.hash).toBe('#/session/s1?tab=chat')
+  })
+
   it('lists the sessions to continue and what was saved', async () => {
     stubs([{ id: 7, text: 'an idea for later', files: [], created_at: NOW - 1000 }])
     render(<PhoneHome />)

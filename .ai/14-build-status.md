@@ -83,6 +83,20 @@ owner's request. ChatGPT imports use the existing OpenAI Blossom rather than
 a generic speech bubble, in black or white. The DOM and share-card canvas
 share the Codex stroke path. See [ADR-080](08-decisions.md#adr-080--codex-keeps-its-original-glyph-and-character-chatgpt-uses-the-openai-blossom).
 
+### 2026-10-18 — unreleased: projects on the tablet home
+
+The browser and installed web app expose Projects before Home's figures at
+all widths, including tablets. Saved projects without sessions remain
+visible; expansion opens live and recent sessions, including multi-repo
+members. Archived projects and chats stay out. Navigation performs only
+reads, with explicit retry states. Rotating to phone width no longer lets
+the kept phone home clear the open session's address. See [Projects in the browser](04-ui.md#projects-in-the-browser).
+
+### 2026-10-18 — unreleased: Second Brain graph display
+
+- The graph uses the full canvas with a collapsible inspector, gentler
+  centring, clearer links and display controls that preserve node positions.
+  See [04-ui.md § Second Brain](04-ui.md#second-brain) for the interaction.
 
 ### 2026-10-18 — unreleased: Obsidian vaults in Second Brain (ADR-079)
 

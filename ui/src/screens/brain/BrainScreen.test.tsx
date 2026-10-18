@@ -229,6 +229,21 @@ describe('the Second Brain screen', () => {
     expect(dialog.querySelector('[data-brain-graph="full"]')).not.toBeNull()
     // The memory opened on the screen is opened beside the graph too.
     expect(dialog.querySelector('[data-brain-detail]')).not.toBeNull()
+    // Display controls and the inspector never replace the canvas or lose the selection.
+    const canvas = dialog.querySelector('canvas')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide details' }))
+    expect(dialog.querySelector('[data-brain-detail]')).toBeNull()
+    expect(dialog.querySelector('canvas')).toBe(canvas)
+    fireEvent.click(screen.getByRole('button', { name: 'Show details' }))
+    expect(dialog.querySelector('[data-brain-detail]')).not.toBeNull()
+    const display = dialog.querySelector<HTMLDetailsElement>('[data-brain-display]')!
+    display.open = true
+    const size = screen.getByRole('slider', { name: /Node size/ })
+    fireEvent.change(size, { target: { value: '1.5' } })
+    expect(size).toHaveValue('1.5')
+    expect(dialog.querySelector('canvas')).toBe(canvas)
+    fireEvent.click(screen.getByRole('button', { name: 'Reset display' }))
+    expect(size).toHaveValue('1')
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
     expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
     fireEvent.click(card)
