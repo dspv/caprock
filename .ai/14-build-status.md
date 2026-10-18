@@ -108,6 +108,20 @@ transaction stayed below the five-second handoff gate, so this change keeps
 one transaction. Timings varied with the machine's other work; these are
 synthetic observations on this Mac, not a guarantee for another vault or OS.
 
+### 2026-10-18 — unreleased: readable resource doctor
+
+The resource popover now uses a 420 px layout, a short verdict, labelled
+memory and disk totals, larger row text and values, and shorter explanations.
+Values and Stop actions have a separate line so long titles do not squeeze
+them. Technical details and the full breakdown stay collapsed. Process-stop
+selection, confirmation and force-stop behaviour are unchanged.
+
+Local `make check` passed, including 3,434 UI tests and 20 script tests.
+A synthetic browser preview also passed at desktop and 390 px widths.
+
+Validation also reproduced the unchanged large-diff pagination test timing
+out at its default five seconds. Its three renders of up to 1,000 DOM rows
+now have a per-test 15-second budget; all pagination assertions remain.
 
 ### 2026-10-18 — unreleased: agents can read Caprock through MCP (ADR-078)
 

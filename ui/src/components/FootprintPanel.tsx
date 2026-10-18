@@ -121,9 +121,9 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
 /** How much older than the strip's answer the panel's own may be and still be shown. */
 const FRESH_MS = 30_000
 
-const BUTTON = 'h-[26px] shrink-0 rounded-[7px] border border-[var(--app-hairline-strong)] px-2.5 text-[12px] text-fg hover:border-accent disabled:opacity-50'
-const PRIMARY = 'h-[28px] shrink-0 rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-bg hover:brightness-110 disabled:opacity-50'
-const SMALL = 'h-[22px] shrink-0 rounded-[6px] border border-[var(--app-hairline-strong)] px-2 text-[11.5px] text-fg-muted hover:border-accent hover:text-fg disabled:opacity-50'
+const BUTTON = 'h-[32px] shrink-0 rounded-[7px] border border-[var(--app-hairline-strong)] px-3 text-[14px] text-fg hover:border-accent disabled:opacity-50'
+const PRIMARY = 'min-h-[34px] shrink-0 rounded-[7px] bg-accent px-3 text-[14px] font-medium text-bg hover:brightness-110 disabled:opacity-50'
+const SMALL = 'h-[32px] shrink-0 rounded-[6px] border border-[var(--app-hairline-strong)] px-3 text-[14px] text-fg hover:border-accent hover:text-fg disabled:opacity-50'
 
 /** Where a confirmation is open: under the verdict for Clean up, under a row for its Stop. */
 type Confirming = { at: 'all' | DoctorRowKey; items: Orphan[] }
@@ -132,12 +132,12 @@ type Confirming = { at: 'all' | DoctorRowKey; items: Orphan[] }
  * The panel above the strip: `caprock doctor` in the window, in plain words
  * (owner, 2026-10-15: "nothing is understandable"). One verdict line; when
  * something can be stopped, one Clean up; a row per kind of problem with a
- * line of why, its size and a small Stop; pids, paths and the daemon's own
+ * short line of why, then its size and Stop on a separate line; pids, paths and the daemon's own
  * sentences under each row's Details; the memory and disk breakdown behind
  * *Show breakdown*. Nothing is stopped without the confirmation, which lists
  * every process with its own checkbox (ADR-059).
  */
-export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose, className = 'absolute bottom-[25px] right-0 z-40' }: {
+export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose, className = 'fixed bottom-[30px] right-3 z-40' }: {
   f: Footprint
   owner: boolean
   /** Ask the daemon again now: *Check now*, and after a stop. */
@@ -213,37 +213,41 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   return (
     <ClosePanel.Provider value={onClose}>
       <div role="dialog" aria-label="Caprock on this computer" data-footprint-panel
-        className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[360px] max-w-[calc(100vw-24px)] gap-3 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-3.5 text-[12.5px] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
+        className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[420px] max-w-[calc(100vw-24px)] gap-4 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[15px] leading-[1.45] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
         <div className="flex flex-col gap-0.5">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[14px] font-semibold">Caprock on this computer</span>
+            <span className="text-[16px] font-semibold">Caprock resources</span>
             {onClose && (
-              <button type="button" aria-label="Close" onClick={onClose} className="text-fg-faint hover:text-fg">×</button>
+              <button type="button" aria-label="Close" onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded text-[20px] text-fg-muted hover:bg-panel-2 hover:text-fg">×</button>
             )}
           </div>
-          <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-fg-faint">
+          <div className="flex items-baseline justify-between gap-2 text-[13px] text-fg-muted">
             <span data-checked title="caprock doctor, in the window">{checked}</span>
             <button type="button" data-check-now onClick={check} disabled={checking !== undefined} className="text-fg-muted hover:text-accent disabled:opacity-50">Check now</button>
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
-          <p data-verdict-summary data-ok={head.ok || undefined} className={`flex items-center gap-2 text-[14px] font-medium leading-[18px] ${head.ok ? 'text-ok' : 'text-fg'}`}>
+          <p data-verdict-summary data-ok={head.ok || undefined} className={`flex items-center gap-2 text-[19px] font-semibold leading-[25px] ${head.ok ? 'text-ok' : 'text-fg'}`}>
             {head.ok ? <span aria-hidden>✓</span> : <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-warn" />}
             {head.text}
+          </p>
+          <p data-resource-totals className="flex flex-wrap gap-x-4 gap-y-1 text-[14px] text-fg-muted">
+            <span>Memory <span className="num font-medium text-fg">{fmtMem(f.memory.total_mem_bytes)}</span></span>
+            <span>On disk <span className="num font-medium text-fg">{fmtBytes(f.disk.total_bytes)}</span></span>
           </p>
           {safe.length > 0 && !confirm && (
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" data-cleanup className={PRIMARY} disabled={busy} onClick={() => { setNote(undefined); setConfirm({ at: 'all', items: all }) }}>
                 {busy ? 'Stopping…' : `Clean up (frees ~${fmtBytes(safe.reduce((s, x) => s + x.mem_bytes, 0))})`}
               </button>
-              <span className="text-[11.5px] text-fg-muted">You see the list first.</span>
+              <span className="text-[13px] text-fg-muted">Review before stopping.</span>
             </div>
           )}
-          {looking && <p className="text-[11.5px] text-fg-muted">Looking for what can be stopped…</p>}
+          {looking && <p className="text-[14px] text-fg-muted">Looking for what can be stopped…</p>}
           {orphanFigure(f.orphans) && (
-            <p data-orphan-summary className="num text-[12px] text-fg-muted" title="Processes that look abandoned: Caprock's own, claude and codex sessions that ended, MCP servers whose agent is gone">
-              {orphanFigure(f.orphans)}
+            <p data-orphan-summary className="text-[14px] text-fg-muted" title="Processes that look abandoned: Caprock's own, claude and codex sessions that ended, MCP servers whose agent is gone">
+              {f.orphans!.count} {f.orphans!.count === 1 ? 'process' : 'processes'} to review{f.orphans!.mem_bytes ? ` · ${fmtBytes(f.orphans!.mem_bytes)}` : ''}
             </p>
           )}
           {confirmBox('all')}
@@ -264,15 +268,15 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
           </ul>
         )}
 
-        {note && <p role="status" data-doctor-note className="text-[11.5px] text-fg-muted">{note}</p>}
+        {note && <p role="status" data-doctor-note className="text-[14px] text-fg-muted">{note}</p>}
 
         {breakdown && <Breakdown f={f} now={now} />}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <button type="button" data-breakdown aria-expanded={breakdown} onClick={() => setBreakdown((b) => !b)}
-            className="flex items-center gap-1 text-[12px] text-fg-muted hover:text-accent">
+            className="flex items-center gap-1 text-[14px] text-fg-muted hover:text-accent">
             <span aria-hidden className={`inline-block text-[10px] transition-transform ${breakdown ? 'rotate-90' : ''}`}>›</span>
-            {breakdown ? 'Hide breakdown' : `What the ${fmtMem(f.memory.total_mem_bytes)} is spent on`}
+            {breakdown ? 'Hide breakdown' : 'Resource breakdown'}
           </button>
           <button type="button" data-copy-report className={BUTTON} onClick={copy} title="The same report `caprock doctor` prints, as text">Copy report</button>
         </div>
@@ -281,7 +285,7 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   )
 }
 
-/** One row: what, one line of why, the size, a small Stop; the technical part under Details. */
+/** One row: title and reason, then a larger value and Stop; technical details stay folded. */
 function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
   r: DoctorRow
   at: number
@@ -292,24 +296,28 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
 }) {
   const hasDetails = r.procs.length > 0 || Boolean(r.said)
   return (
-    <li data-doctor-row={r.key} data-warn={r.warn || undefined} className="flex flex-col gap-0.5 py-2">
-      <div className="flex items-center gap-2">
-        <span aria-hidden className={`h-[6px] w-[6px] shrink-0 rounded-full ${r.warn ? 'bg-warn' : 'bg-[var(--app-hairline-strong)]'}`} />
-        <span className="min-w-0 flex-1 text-fg">
-          {r.title}{r.count !== undefined && <span className="num text-fg-faint"> ({r.count})</span>}
-        </span>
-        {r.value && <span className={`num shrink-0 text-right ${r.key === 'reads' && r.warn ? 'text-warn' : 'text-fg-muted'}`}>{r.value}</span>}
-        {canStop && (
-          <button type="button" data-row-stop disabled={busy} onClick={onStop} aria-label={`Stop: ${r.title}`} className={SMALL}>Stop</button>
-        )}
+    <li data-doctor-row={r.key} data-warn={r.warn || undefined} className="flex flex-col gap-2 py-3">
+      <div className="flex items-start gap-2">
+        <span aria-hidden className={`mt-[8px] h-[7px] w-[7px] shrink-0 rounded-full ${r.warn ? 'bg-warn' : 'bg-[var(--app-hairline-strong)]'}`} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-medium leading-[21px] text-fg">
+            {r.title}{r.count !== undefined && <span className="num font-normal text-fg-muted"> ({r.count})</span>}
+          </p>
+          {r.reason && <p className="mt-1 text-[14px] leading-[20px] text-fg-muted">{r.reason}</p>}
+        </div>
       </div>
-      {r.reason && <p className="pl-[14px] text-[11.5px] leading-[15px] text-fg-muted">{r.reason}</p>}
+      {(r.value || canStop) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pl-[15px]">
+          {r.value && <span className={`num text-[18px] font-medium ${r.key === 'reads' && r.warn ? 'text-warn' : 'text-fg'}`}>{r.value}</span>}
+          {canStop && <button type="button" data-row-stop disabled={busy} onClick={onStop} aria-label={`Stop: ${r.title}`} className={`${SMALL} ml-auto`}>Stop…</button>}
+        </div>
+      )}
       {hasDetails && (
         <details data-row-details className="group pl-[14px]">
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[11px] text-fg-faint hover:text-fg-muted [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[13px] text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
             <span aria-hidden className="inline-block text-[9px] transition-transform group-open:rotate-90">›</span>Details
           </summary>
-          <div className="mt-1 flex flex-col gap-1.5 rounded-[6px] bg-[var(--app-hairline)] px-2 py-1.5 font-mono text-[10.5px] leading-[14px] text-fg-muted">
+          <div className="mt-1 flex flex-col gap-1.5 rounded-[6px] bg-[var(--app-hairline)] px-2 py-1.5 font-mono text-[12px] leading-[18px] text-fg-muted">
             {r.procs.map((p) => {
               const from = startedFrom(p.data_dir, p.exe)
               return (
@@ -319,11 +327,11 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
                   {p.cmd && <span data-orphan-cmd className="break-all" title={p.cmd}>$ {p.cmd}</span>}
                   {p.exe && <span className="break-all">{p.exe}</span>}
                   {p.data_dir && <span className="break-all">data {p.data_dir}{p.data_dir_gone ? ' (gone)' : ''}</span>}
-                  {p.why && <span className="font-sans text-[11px]">{p.why}</span>}
+                  {p.why && <span className="font-sans text-[13px]">{p.why}</span>}
                 </div>
               )
             })}
-            {r.said && <p className="font-sans text-[11px]">{r.said}</p>}
+            {r.said && <p className="font-sans text-[13px]">{r.said}</p>}
           </div>
         </details>
       )}
@@ -351,19 +359,19 @@ function StopConfirm({ items, at, busy, onStop, onCancel }: { items: Orphan[]; a
     <div role="alertdialog" aria-label="Stop these processes" data-stop-confirm
       onKeyDown={(e) => { if (e.code === 'Escape') { e.stopPropagation(); onCancel() } }}
       className="mt-1 flex flex-col gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] bg-[var(--app-hairline)] px-2.5 py-2">
-      <p className="text-[12px] text-fg">Stop these? <span className="text-fg-muted">Untick any you want to keep. Anything unsaved in them is lost.</span></p>
+      <p className="text-[14px] text-fg">Stop these? <span className="text-fg-muted">Untick any you want to keep. Anything unsaved in them is lost.</span></p>
       <ul className="flex flex-col gap-1">
         {items.map((x) => {
           const from = startedFrom(x.data_dir, x.exe)
           const careful = !safeToStop(x)
           return (
             <li key={x.pid}>
-              <label className="flex cursor-pointer items-start gap-2 text-[12px]">
+              <label className="flex cursor-pointer items-start gap-2 text-[14px]">
                 <input type="checkbox" data-stop-pick={x.pid} checked={picked.has(x.pid)} onChange={() => toggle(x.pid)} disabled={busy} className="mt-[2px] h-3.5 w-3.5 shrink-0 accent-accent" />
                 <span className="min-w-0 flex-1">
                   <span className="text-fg">{plainName(x)}</span>
                   <span className="text-fg-faint"> · {from ?? `running ${age(at - x.started_at)}`}</span>
-                  {careful && <span className="block text-[11px] text-fg-muted">{carefulWhy(x)}</span>}
+                  {careful && <span className="block text-[13px] text-fg-muted">{carefulWhy(x)}</span>}
                 </span>
                 <span className="num shrink-0 text-fg-muted">{fmtMem(x.mem_bytes)}</span>
               </label>
@@ -390,8 +398,8 @@ function ForceStop({ items, busy, onForce, onDismiss }: { items: Orphan[]; busy:
   return (
     <div role="alertdialog" aria-label="Still running" data-force-stop-box
       className="flex flex-col gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] bg-[var(--app-hairline)] px-2.5 py-2">
-      <p className="text-[12px] text-fg">Still running after a polite stop. <span className="text-fg-muted">Force stop ends {items.length === 1 ? 'it' : 'them'} at once; nothing in {items.length === 1 ? 'it' : 'them'} gets to save.</span></p>
-      <ul className="flex flex-col gap-0.5 text-[12px]">
+      <p className="text-[14px] text-fg">Still running after a polite stop. <span className="text-fg-muted">Force stop ends {items.length === 1 ? 'it' : 'them'} at once; nothing in {items.length === 1 ? 'it' : 'them'} gets to save.</span></p>
+      <ul className="flex flex-col gap-0.5 text-[14px]">
         {items.map((x) => (
           <li key={x.pid} data-still-running={x.pid} className="flex items-baseline gap-2">
             <span className="min-w-0 flex-1 text-fg">{plainName(x)} <span className="text-fg-faint">· pid {x.pid}</span></span>
