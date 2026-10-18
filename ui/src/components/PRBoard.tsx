@@ -23,7 +23,7 @@ import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
 import { fmtRun } from '@/lib/ci'
 import { openExternal } from '@/lib/nudges'
-import { isBucket, type Bucket } from '@/lib/flowbucket'
+import type { Bucket } from '@/lib/flowbucket'
 import { Panel, Stat } from './ui'
 import { TrendLine } from './TodayTrend'
 import { extProps } from '@/lib/externalLinks'
@@ -57,40 +57,111 @@ export function flowFigures(board: PRBoard): FlowFigure[] {
   ]
 }
 
-/**
- * The flow as figure tiles. `compact`: Home's five (in flight, needs a fix,
- * ready, throughput, CI median) in its CI/CD panel.
- */
-export function FlowFigures({ board, compact, extra, bucket, onBucket, preview }: {
-  board: PRBoard; compact?: boolean; extra?: ReactNode
-  /** The count tile whose pull requests the list shows (the Pipeline), and a click on one: In flight, Needs a fix, Ready. */
-  bucket?: Bucket
-  onBucket?: (b: Bucket) => void
-  /** What a count tile's hover lists in place of its sentence: its pull requests. */
-  preview?: (b: Bucket) => ReactNode
-}) {
-  const all = flowFigures(board)
-  const shown = compact ? all.slice(0, 5) : all
+/** The flow as figure tiles: Home's five (in flight, needs a fix, ready, throughput, CI median) in its CI/CD panel. */
+export function FlowFigures({ board }: { board: PRBoard }) {
   // Columns by the panel's own width, not the window's: in the app the
   // sidebar and the tab take a third of it.
   return (
     <div className="@container/flow">
       <div data-board-flow aria-label="How pull requests move"
-        className={`grid grid-cols-2 divide-x divide-border ${compact ? '@min-[520px]/flow:grid-cols-3 @min-[820px]/flow:grid-cols-5'
-          // Ten with the agent figures (the Pipeline): two rows of five, then one.
-          : extra ? '@min-[560px]/flow:grid-cols-5 @min-[1280px]/flow:grid-cols-10' : '@min-[560px]/flow:grid-cols-4 @min-[1180px]/flow:grid-cols-8'}`}>
-        {shown.map((x) => {
+        className="grid grid-cols-2 divide-x divide-border @min-[520px]/flow:grid-cols-3 @min-[820px]/flow:grid-cols-5">
+        {flowFigures(board).slice(0, 5).map((x) => {
           const pts = x.series ? board.flow.series?.[x.series] : undefined
-          const b = onBucket && isBucket(x.key) ? x.key : undefined
           return (
-            <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} size="compact"
-              hint={b && preview ? preview(b) : x.hint} wideHint={!!(b && preview)}
-              onClick={b ? () => onBucket!(b) : undefined} pressed={b !== undefined && bucket === b}
+            <Stat key={x.key} data={x.key} label={x.label} value={x.value} sub={x.sub} tone={x.tone} size="compact" hint={x.hint}
               trend={x.series && pts && pts.length > 1 ? <FlowTrend k={x.series} pts={pts} label={x.label} /> : undefined} />
           )
         })}
-        {extra}
       </div>
+    </div>
+  )
+}
+
+const HINT_CARD = 'pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-[min(340px,90vw)] rounded-lg border border-border-strong bg-panel px-3 py-2 text-left text-[12.5px] font-normal leading-snug text-fg shadow-lg group-hover/stat:block group-focus-visible/stat:block'
+
+/** One count of the Now card: a toggle for the list's filter, its pull requests in a card on hover. */
+function BucketBtn({ k, n, label, big, tone, on, onPick, preview }: {
+  k: Bucket; n: number; label: string; big?: boolean; tone?: string; on: boolean; onPick: (b: Bucket) => void; preview: (b: Bucket) => ReactNode
+}) {
+  return (
+    <span data-stat={k} role="button" tabIndex={0} aria-pressed={on} onClick={() => onPick(k)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(k) } }}
+      className={`group/stat relative inline-flex cursor-pointer items-baseline gap-1 rounded-[4px] outline-none focus-visible:ring-2 focus-visible:ring-accent ${on ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : 'hover:text-fg'}`}>
+      <span className={`num ${big ? 'text-[22px] font-semibold leading-tight' : ''} ${tone ?? ''}`}>{n}</span>
+      <span className={big ? 'text-[13px] text-fg' : ''}>{label}</span>
+      <span role="tooltip" data-stat-hint className={HINT_CARD}>{preview(k)}</span>
+    </span>
+  )
+}
+
+const CLEAR_LABEL: Record<Bucket, string> = { flight: 'in flight', fix: 'red', ready: 'waiting' }
+const BUSY_LABEL: Record<Bucket, string> = { flight: 'in flight', fix: 'needs a fix', ready: 'ready' }
+
+/**
+ * The Pipeline's Flow row: three cards, one main figure each (owner,
+ * 2026-10-18, variant B). Now: All clear, or the most urgent count with the
+ * other two under it, each a filter of the list. Speed: throughput, and CI,
+ * opened to merged and merged to released as a line. Agents: the cost, and
+ * the rest of AgentFigures' line.
+ */
+export function FlowCards({ board, bucket, onBucket, preview, agents }: {
+  board: PRBoard
+  bucket?: Bucket
+  onBucket: (b: Bucket) => void
+  preview: (b: Bucket) => ReactNode
+  /** The Agents card: its line and hover, from AgentFigures. */
+  agents: (trend: ReactNode) => ReactNode
+}) {
+  const f = board.flow
+  const open = f.counts.draft + f.counts.open + f.counts.fix + f.counts.ready
+  const n: Record<Bucket, number> = { flight: open, fix: f.counts.fix, ready: f.counts.ready }
+  const clear = open === 0
+  const main: Bucket = n.fix > 0 ? 'fix' : n.flight > 0 ? 'flight' : 'ready'
+  const rest = (['flight', 'fix', 'ready'] as const).filter((k) => clear || k !== main)
+  const btn = (k: Bucket, big?: boolean) => (
+    <BucketBtn key={k} k={k} n={n[k]} label={(clear ? CLEAR_LABEL : BUSY_LABEL)[k]} big={big} on={bucket === k} onPick={onBucket} preview={preview}
+      tone={big ? (k === 'fix' ? 'text-danger' : k === 'ready' ? 'text-ok' : 'text-fg') : undefined} />
+  )
+  const thin = (k: SeriesKey) => { const pts = f.series?.[k]; return !pts || pts.length < 2 || flowCompare(k, pts)?.kind === 'thin' }
+  const spark = (k: SeriesKey, label: string) => {
+    const pts = f.series?.[k]
+    const c = pts ? flowCompare(k, pts) : undefined
+    return pts && c && c.kind !== 'thin' ? (
+      <div className="mt-1 min-w-0" data-trend={k}>
+        <TrendLine pts={pts.map((p) => p.value)} titles={pts.map((p, i) => flowPointTitle(k, p, i === pts.length - 1))}
+          usual={flowUsualLine(k, c.usual)} dot="bg-fg-muted" label={`${label}, last ${pts.length} days, today last`} isolated />
+      </div>
+    ) : undefined
+  }
+  const flow = flowFigures(board)
+  const hintOf = (key: string) => flow.find((x) => x.key === key)!.hint
+  const lag = f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–'
+  const ci = f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–'
+  const ttm = f.ttm_median_ms ? spanText(f.ttm_median_ms) : '–'
+  const part = (k: string, label: string, v: string) => <span data-flow-part={k} title={hintOf(k)}>{label} {v}</span>
+  // Said once, under the row, instead of on every card.
+  const missing = thin('throughput') || thin('cost')
+  const cell = 'flex min-w-0 flex-col px-3 py-2.5'
+  const cap = 'text-[10px] uppercase tracking-[0.12em] text-fg-faint'
+  return (
+    <div className="@container/flow">
+      <div data-board-flow aria-label="How pull requests move"
+        className="grid grid-cols-1 divide-y divide-border @min-[760px]/flow:grid-cols-3 @min-[760px]/flow:divide-x @min-[760px]/flow:divide-y-0">
+        <div data-flow-card="now" className={cell}>
+          <div className={cap}>Now</div>
+          <div className="mt-1.5 flex min-h-[29px] items-center gap-2">
+            {clear ? <><span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full bg-ok" /><span data-flow-clear className="text-[22px] font-semibold leading-tight text-fg">All clear</span></> : btn(main, true)}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-x-2 text-[11px] leading-snug text-fg-muted">
+            {rest.map((k, i) => <span key={k} className="inline-flex gap-x-2">{i > 0 && <span aria-hidden>·</span>}{btn(k)}</span>)}
+          </div>
+        </div>
+        <Stat data="speed" label={`Speed · ${f.days} days`} size="compact" value={perDay(f.merged, f.days)} trend={spark('throughput', 'Throughput')}
+          hint={<><b>Throughput</b>: {hintOf('throughput')}<br /><b>CI</b>: {hintOf('ci')}<br /><b>PR→merge</b>: {hintOf('ttm')}<br /><b>merge→release</b> (an estimate): {hintOf('lag')}</>}
+          sub={<span className="mono">{part('ci', 'CI', ci)} · {part('ttm', 'PR→merge', ttm)} · {part('lag', 'merge→release', lag)}</span>} />
+        {agents(spark('cost', 'Agent cost'))}
+      </div>
+      {missing && <p data-flow-missing className="px-3 pb-2 text-[11px] text-fg-faint">Trends draw once there are a few days of history.</p>}
     </div>
   )
 }

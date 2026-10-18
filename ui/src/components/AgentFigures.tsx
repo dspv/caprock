@@ -5,12 +5,11 @@
  * Today cells' line, a caption under it), and the team's daily chart that
  * the team tile opens. lib/repoagents says what each figure is.
  */
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { api, type RepoAgents, type TeamDay } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
-import { KIND_NAME, perHour, perWallHour, rateCompare, rateCompareTitle, rateDayTitle, rateTokensText, rateWord, teamDayTitle, teamOf, teamUsual, teamWord } from '@/lib/repoagents'
+import { KIND_NAME, perHour, rateCompare, rateTokensText, rateWord, teamDayTitle, teamOf } from '@/lib/repoagents'
 import { CI_IDLE_MS, usePoll } from './SessionDeck'
-import { TrendLine } from './TodayTrend'
 import { Panel, Stat } from './ui'
 
 /** The repository's agent figures, read while `on`, once a minute. */
@@ -21,67 +20,42 @@ export function useRepoAgents(roots: readonly string[], on: boolean) {
 
 const LIST_PRICE = 'at API list price · estimate'
 
-/** The cost-per-hour tile. */
-export function CostHourStat({ a }: { a: RepoAgents }) {
-  const now = perHour(a.rate.last24)
-  const c = rateCompare(a)
-  const usual = perHour(a.rate.usual)
-  const s = a.rate.series
-  const wall = perWallHour(a.rate.last24)
+/**
+ * The Agents card of the Flow row: the cost on these pull requests big, and
+ * "$13.85/h · 2 now · peak 7" under it. The first part is the last 24 hours'
+ * cost per agent-hour, the second opens the team's daily chart. Everything
+ * the old cost-per-hour and team tiles said is in the hover.
+ */
+export function AgentsCard({ cost, costHint, trend, a, open, onToggle }: {
+  cost: number; costHint: string; trend?: ReactNode; a?: RepoAgents; open: boolean; onToggle: () => void
+}) {
   const hint = (
     <>
-      <b>Cost per agent-hour</b>, the last 24 hours, {LIST_PRICE}. An hour of work is one agent session’s clock hour with five or more priced calls, its subagents included — the rule the session’s burn rate is set against; spend in an hour touched in passing is in the total, not the rate.
-      {' '}Per agent-hour, not per wall-clock hour: four agents at once are four hours of work.
-      {wall !== undefined && <> Per wall-clock hour with any agent at work: {fmtUSD(wall)}/h over {a.rate.last24.wall_hours} h.</>}
-      {' '}Set against the {a.days}×24 hours before, pooled; the line is the last {s.length} days.
+      <b>Agent cost</b>: {costHint}
+      {a && <>
+        <br /><b>Cost per agent-hour</b>, the last 24 hours, {LIST_PRICE}. An hour of work is one agent session’s clock hour with five or more priced calls, its subagents included; per agent-hour, not per wall-clock hour: four agents at once are four hours of work.
+        {' '}{rateTokensText(a)} · {rateWord(rateCompare(a), a.days)}.
+        <br /><b>Agent team</b>: the agents with a turn in the last ten minutes, main sessions and their subagents, and today’s most at once. Press “now” for the chart by day.
+      </>}
     </>
   )
+  const rate = a ? perHour(a.rate.last24) : undefined
+  const t = a?.team
   return (
-    <Stat data="agent-hour" label="Cost / agent-hour" size="compact" hint={hint}
-      value={now === undefined ? '–' : <>{fmtUSD(now)}<span className="text-[13px] font-medium text-fg-muted">/h</span></>}
-      sub={<>{rateTokensText(a)}<br />{LIST_PRICE}</>}
-      trend={s.length > 1 ? (
-        <div className="mt-1 min-w-0" data-trend="agent-hour">
-          <TrendLine pts={s.map((d) => perHour(d))} titles={s.map((d, i) => rateDayTitle(d, i === s.length - 1))} usual={usual} dot="bg-fg-muted"
-            label={`Cost per agent-hour, last ${s.length} days, today last`} isolated />
-          <div className="mt-0.5 h-[15px] truncate text-[11px] leading-[15px] num" data-compare={c.kind} title={rateCompareTitle(c, a)}>
-            <span className={c.kind === 'thin' || c.kind === 'quiet' ? 'text-fg-faint' : 'text-fg-muted'}>{rateWord(c, a.days)}</span>
-          </div>
-        </div>
-      ) : undefined} />
-  )
-}
-
-/** The agent-team tile; a press opens the daily chart. */
-export function TeamStat({ a, open, onToggle }: { a: RepoAgents; open: boolean; onToggle: () => void }) {
-  const t = a.team
-  const nowN = t.now.sessions + t.now.subagents
-  const series = t.series.slice(-(a.days + 1))
-  const u = teamUsual(t.series, a.days)
-  const today = t.series[t.series.length - 1]
-  const hint = (
-    <>
-      <b>Agent team</b>: the agents with a turn in the last ten minutes — main sessions and their subagents, each subagent counted on its own — and today’s most at once, in any five minutes.
-      {' '}The line is distinct agents a day, like contributors; the caption the {a.days}-day average over the days anyone worked, and the busiest day. Press for the chart by day.
-    </>
-  )
-  return (
-    <button type="button" onClick={onToggle} aria-expanded={open} data-team-toggle
-      className={`h-full min-w-0 text-left outline-none transition-colors hover:bg-[var(--app-row-hover)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent motion-reduce:transition-none ${open ? 'bg-[var(--app-row-hover)]' : ''}`}>
-      <Stat data="agent-team" label="Agent team" size="compact" hint={hint}
-        value={<>{nowN}<span className="text-[13px] font-medium text-fg-muted"> now</span></>}
-        sub={<span title={`Now: ${t.now.sessions} session${t.now.sessions === 1 ? '' : 's'} and ${t.now.subagents} subagent${t.now.subagents === 1 ? '' : 's'}. Today: ${today ? teamOf(today) : 0} agents in all, at most ${t.peak_today} at once`}>{t.now.sessions} + {t.now.subagents} sub · peak {t.peak_today} today</span>}
-        trend={series.length > 1 ? (
-          <div className="mt-1 min-w-0" data-trend="agent-team">
-            <TrendLine pts={series.map(teamOf)} titles={series.map((d, i) => teamDayTitle(d, i === series.length - 1))}
-              usual={'thin' in u ? undefined : u.avg} dot="bg-fg-muted" label={`Agents a day, last ${series.length} days, today last`} />
-            <div className="mt-0.5 h-[15px] truncate text-[11px] leading-[15px] num" data-compare={'thin' in u ? 'thin' : 'usual'}
-              title={'thin' in u ? `Not enough history: ${u.days} of the previous ${a.days} days had an agent at work` : `The ${a.days}-day average over the ${u.days} days with an agent at work; the busiest was ${u.peakDay}`}>
-              <span className={'thin' in u ? 'text-fg-faint' : 'text-fg-muted'}>{teamWord(u)}</span>
-            </div>
-          </div>
-        ) : undefined} />
-    </button>
+    <Stat data="agents" label="Agents · 14 days" size="compact" value={fmtUSD(cost)} trend={trend} hint={hint}
+      sub={<span className="mono">
+        {a ? <>
+          <span data-agent-rate title={`Cost per agent-hour, the last 24 hours, ${LIST_PRICE}`}>{rate === undefined ? '–' : `${fmtUSD(rate)}/h`}</span>
+          {t && <>
+            {' · '}
+            <button type="button" onClick={onToggle} aria-expanded={open} data-team-toggle
+              title={`Now: ${t.now.sessions} session${t.now.sessions === 1 ? '' : 's'} and ${t.now.subagents} subagent${t.now.subagents === 1 ? '' : 's'}. Press for the chart by day`}
+              className={`rounded-[3px] outline-none hover:text-fg hover:underline focus-visible:ring-2 focus-visible:ring-accent ${open ? 'text-fg underline' : ''}`}>
+              {t.now.sessions + t.now.subagents} now · peak {t.peak_today}
+            </button>
+          </>}
+        </> : <span title={costHint}>{LIST_PRICE}</span>}
+      </span>} />
   )
 }
 

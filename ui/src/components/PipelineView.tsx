@@ -37,8 +37,8 @@ import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
-import { FlowFigures, Releases } from './PRBoard'
-import { CostHourStat, TeamChart, TeamStat, useRepoAgents } from './AgentFigures'
+import { FlowCards, Releases } from './PRBoard'
+import { AgentsCard, TeamChart, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
 import { PipelineShareButton } from './PipelineShare'
 import { JourneyPills } from './Journey'
@@ -254,8 +254,9 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
       {ready && (
         <Panel title={stats?.repo ? <>Flow · <span className="mono normal-case tracking-normal text-fg">{stats.repo}</span></> : 'Flow'}
           right={<span title="Read from GitHub: the newest pull requests listed, the runs of the last 14 days">GitHub · last {board?.flow.days ?? 14} days</span>}>
-          {board ? <FlowFigures board={board} bucket={bucket} onBucket={pickBucket}
-            preview={(b) => <BucketPreview b={b} board={board} prs={stats?.prs ?? []} fixed={b === 'fix' ? fixedLately(fixSeen, now) : 0} />} extra={agents && <><CostHourStat a={agents} /><TeamStat a={agents} open={teamOpen} onToggle={() => setTeamOpen((o) => !o)} /></>} />
+          {board ? <FlowCards board={board} bucket={bucket} onBucket={pickBucket}
+            preview={(b) => <BucketPreview b={b} board={board} prs={stats?.prs ?? []} fixed={b === 'fix' ? fixedLately(fixSeen, now) : 0} />}
+            agents={(trend) => <AgentsCard cost={board.flow.cost_usd} costHint={AGENT_COST_NOTE} trend={trend} a={agents} open={teamOpen} onToggle={() => setTeamOpen((o) => !o)} />} />
             : !stats ? <div className="px-3 py-2"><DeckSkeleton label="Reading the figures" /></div>
               : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate px-3 py-3 text-[13px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
                 : <p className="px-3 py-3 text-[13px] text-fg-muted">No figures yet.</p>}
