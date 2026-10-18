@@ -39,7 +39,7 @@ export function PipelineCard({ sessions }: { sessions: readonly SessionSummary[]
         <a href={href({ name: 'pipeline', repo: pick.repo.root })} data-pipeline-open
           className="ml-auto shrink-0 text-[12px] font-medium text-accent no-underline hover:underline">Open Pipeline →</a>
       </div>
-      <FlowFigures board={board} compact />
+      <FlowFigures board={board} />
     </section>
   )
 }

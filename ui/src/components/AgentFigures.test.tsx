@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { RateSpan, RepoAgents, TeamDay } from '@/lib/api'
-import { CostHourStat, TeamChart, TeamStat } from './AgentFigures'
+import { AgentsCard, TeamChart } from './AgentFigures'
 
 const span = (p: Partial<RateSpan> = {}): RateSpan => ({ cost_usd: 0, active_hours: 0, active_cost_usd: 0, tokens: 0, active_tokens: 0, wall_hours: 0, ...p })
 const team = (n: number): TeamDay[] => Array.from({ length: n }, (_, i) => ({
@@ -18,30 +18,32 @@ const a: RepoAgents = {
   team: { now: { sessions: 2, subagents: 3 }, peak_today: 7, series: team(31) },
 }
 
-function Both() {
+function Both({ ag = a }: { ag?: RepoAgents }) {
   const [open, setOpen] = useState(false)
-  return <><CostHourStat a={a} /><TeamStat a={a} open={open} onToggle={() => setOpen((o) => !o)} />{open && <TeamChart a={a} onClose={() => setOpen(false)} />}</>
+  return <><AgentsCard cost={465.65} costHint="on these PRs · list price" a={ag} open={open} onToggle={() => setOpen((o) => !o)} />{open && <TeamChart a={ag} onClose={() => setOpen(false)} />}</>
 }
 
-describe('the Pipeline’s agent figures', () => {
-  it('shows the cost of an agent-hour, its caption and the list-price label', () => {
-    render(<CostHourStat a={a} />)
-    expect(screen.getByText('$6.08')).toBeTruthy()
-    expect(screen.getByText('▲ 35% vs 14-day avg')).toBeTruthy()
-    expect(screen.getAllByText(/at API list price · estimate/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/1\.45M tok\/h · 3\.00M in 24h/)).toBeTruthy()
-  })
-  it('opens and closes the team chart from the team tile', () => {
+describe('the Pipeline’s Agents card', () => {
+  it('shows the cost big and the rate, the team now and its peak as one muted line', () => {
     const { container } = render(<Both />)
-    expect(screen.getByText('2 + 3 sub · peak 7 today')).toBeTruthy()
+    expect(container.querySelector('[data-stat="agents"]')).toHaveTextContent('$465.65')
+    expect(container.querySelector('[data-agent-rate]')).toHaveTextContent('$6.08/h')
+    expect(container.querySelector('[data-team-toggle]')).toHaveTextContent('5 now · peak 7')
+    // Hover: the list-price label and the old tiles' explanations stay reachable.
+    expect(container.querySelector('[data-stat-hint]')).toHaveTextContent(/at API list price · estimate/)
+    expect(container.querySelector('[data-stat-hint]')).toHaveTextContent(/1\.45M tok\/h · 3\.00M in 24h/)
+  })
+  it('opens and closes the team chart from “now”', () => {
+    const { container } = render(<Both />)
     expect(container.querySelector('[data-team-chart]')).toBeNull()
     fireEvent.click(container.querySelector('[data-team-toggle]')!)
     expect(container.querySelectorAll('[data-team-day]').length).toBe(31)
     fireEvent.click(screen.getByLabelText('Close the agent team chart'))
     expect(container.querySelector('[data-team-chart]')).toBeNull()
   })
-  it('says not enough history without a usual', () => {
-    render(<CostHourStat a={{ ...a, rate: { ...a.rate, usual: undefined } }} />)
-    expect(screen.getByText('not enough history')).toBeTruthy()
+  it('keeps the cost alone while the agent figures are not read', () => {
+    const { container } = render(<AgentsCard cost={3} costHint="x" open={false} onToggle={() => {}} />)
+    expect(container.querySelector('[data-stat="agents"]')).toHaveTextContent('$3.00')
+    expect(container.querySelector('[data-team-toggle]')).toBeNull()
   })
 })

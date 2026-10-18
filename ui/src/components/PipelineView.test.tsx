@@ -123,8 +123,9 @@ describe('the Pipeline page', () => {
     expect(r20.querySelector('[data-journey-step="released"]')).toHaveTextContent('v1.2.0')
     expect(r20.querySelector('[data-journey-step="released"]')).toHaveAttribute('data-step-state', 'current')
     // The flow strip on top, the releases below; no pull request's CI asked until one is opened.
-    expect(document.querySelector('[data-stat="throughput"]')).toHaveTextContent('0.5/day')
-    expect(document.querySelector('[data-stat="lag"]')).toHaveTextContent('estimate')
+    expect(document.querySelector('[data-stat="speed"]')).toHaveTextContent('0.5/day')
+    expect(document.querySelector('[data-stat="speed"]')).toHaveTextContent('merge→release ~5h')
+    expect(document.querySelector('[data-stat="speed"] [data-stat-hint]')).toHaveTextContent('estimate')
     // The head's Share pill, once the figures are read.
     expect(document.querySelector('[data-pipeline-share]')).toHaveTextContent('Share')
     // The dashboard's figure tiles: needing a fix is red, and each says what
@@ -140,44 +141,54 @@ describe('the Pipeline page', () => {
     expect(document.querySelector('[data-prs-detail]')).toBeNull()
   })
 
+  // Owner, 2026-10-18: the Flow row is three cards; Now says All clear or the most urgent count.
+  it('says All clear when nothing is in flight, red or waiting, and the red count first when a pull request needs a fix', async () => {
+    withBoard()
+    const st = h.stats as { board: { flow: Record<string, unknown> } }
+    st.board.flow = { ...FLOW, counts: { draft: 0, open: 0, fix: 0, ready: 0, merged: 0, released: 1 } }
+    const { unmount } = render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    const now = document.querySelector('[data-flow-card="now"]')!
+    expect(now.querySelector('[data-flow-clear]')).toHaveTextContent('All clear')
+    expect(now.querySelector('[data-stat="flight"]')).toHaveTextContent(/^0in flight/)
+    expect(now.querySelector('[data-stat="fix"]')).toHaveTextContent(/^0red/)
+    expect(now.querySelector('[data-stat="ready"]')).toHaveTextContent(/^0waiting/)
+    unmount()
+    forgetDeckAnswers()
+    withBoard()
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    const busy = document.querySelector('[data-flow-card="now"]')!
+    expect(busy.querySelector('[data-flow-clear]')).toBeNull()
+    expect(busy.querySelector('[data-stat="fix"]')).toHaveTextContent(/^1needs a fix/)
+    expect(busy.querySelector('[data-stat="fix"] > .num')).toHaveClass('text-danger')
+    expect(busy.querySelector('[data-stat="flight"]')).toHaveTextContent(/^2in flight/)
+    expect(busy.querySelector('[data-stat="ready"]')).toHaveTextContent(/^0ready/)
+  })
+
   // Owner, 2026-10-15, translated: "I want the figures in dynamics, like
   // everywhere else in our app — the metric, plus a small chart, and
   // above/below the average indicator".
-  it('draws each figure with a history as its last 14 days and today against them', async () => {
+  it('draws a sparkline only where there is history, and says what is missing once under the row', async () => {
     withBoard()
     const pts = (v: (i: number) => number | undefined, extra: (i: number) => object = () => ({})) =>
       Array.from({ length: 14 }, (_, i) => ({ day: day(i), value: v(i), n: v(i) === undefined ? 0 : 1, ...extra(i) }))
     const st = h.stats as { board: { flow: Record<string, unknown> } }
     st.board.flow = { ...FLOW, series: {
-      flight: pts(() => 2),
       throughput: pts((i) => (i % 2 ? 1 : 0), (i) => ({ n: i % 2, by_now: i === 13 ? 0 : i % 2 })),
-      ci: pts((i) => (i === 13 ? 300_000 : 430_000)),
-      ttm: pts((i) => (i >= 12 ? 3_600_000 : undefined)),
-      lag: pts((i) => (i < 5 ? 3_600_000 : undefined)),
-      cost: pts(() => 0, () => ({ n: 0, by_now: 0 })),
+      cost: pts((i) => (i === 13 ? 1 : undefined), (i) => ({ n: i === 13 ? 1 : 0 })),
     } }
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
-    const word = (k: string) => document.querySelector(`[data-trend="${k}"] [data-compare]`)
-    // A shorter CI run than usual is better: green, and hovering says the basis.
-    expect(word('ci')).toHaveTextContent('below usual −30%')
-    expect(word('ci')).toHaveAttribute('data-tone', 'ok')
-    expect(word('ci')).toHaveAttribute('title', '5m 00s today · vs the median of the daily medians, last 14 days: 7m 10s, on the 13 days with a successful run')
-    expect(document.querySelector('[data-trend="ci"] [role="img"]')).toHaveAttribute('aria-label', 'CI median, last 14 days, today last')
-    // The open count is neither good nor bad.
-    expect(word('flight')).toHaveTextContent('usual')
-    expect(word('flight')).toHaveAttribute('data-tone', 'none')
-    // No merge yet today: fewer merges by this hour, which is worse.
-    expect(word('throughput')).toHaveTextContent('below usual')
-    expect(word('throughput')).toHaveAttribute('data-tone', 'warn')
-    // One earlier day with a merge: no comparison. No release today: said so.
-    expect(word('ttm')).toHaveTextContent('not enough history')
-    expect(word('lag')).toHaveTextContent('no release yet today')
-    // Needing a fix and ready have no history to draw.
-    expect(document.querySelector('[data-stat="fix"] [data-trend]')).toBeNull()
-    expect(document.querySelector('[data-stat="ready"] [data-trend]')).toBeNull()
+    expect(document.querySelector('[data-stat="speed"] [data-trend="throughput"] [role="img"]')).toHaveAttribute('aria-label', 'Throughput, last 14 days, today last')
+    // The agent cost has one day: no line, and no per-card "not enough history".
+    expect(document.querySelector('[data-stat="agents"] [data-trend]')).toBeNull()
+    expect(document.querySelector('[data-flow-missing]')).toHaveTextContent('Trends draw once')
+    expect(document.body).not.toHaveTextContent('not enough history')
+    // CI, opened to merged and merged to released are one line, each with its meaning on hover.
+    expect(document.querySelector('[data-flow-part="ci"]')).toHaveTextContent('CI 7m 10s')
     // Each day says itself on hover.
-    expect([...document.querySelectorAll('[data-trend="ttm"] rect title')].map((t) => t.textContent).at(-1)).toBe('Today · 1h, median of 1 merge')
+    expect(document.querySelectorAll('[data-trend="throughput"] rect title').length).toBeGreaterThan(0)
   })
 
   it('opens a row in detail beside the list, its checks by runner and its log, and closes on Esc', async () => {
