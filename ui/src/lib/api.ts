@@ -2395,6 +2395,9 @@ export const api = {
    */
   paste: (file: { name: string; type: string; data: string }) => post<{ path: string }>('/v1/paste', file),
   agentInput: (id: string, data: string) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { data }),
+  /** Saved files (paste) typed in as the desktop terminal types a dropped one:
+   *  each image its own bracketed paste when the session asked for paste. */
+  agentPaths: (id: string, paths: readonly string[]) => post<void>(`/v1/agents/${encodeURIComponent(id)}/input`, { paths }),
   /** The messages waiting for an owned session's turn to end, and why (ADR-053). */
   queue: (id: string) => get<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue`),
   /** The Queue view: every owned session, what waits in its queue, rough estimates, recent turns. */

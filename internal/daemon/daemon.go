@@ -1983,6 +1983,9 @@ func (a *agentAdapter) Input(id string, data []byte) error     { return a.m.Inpu
 func (a *agentAdapter) Write(id string, data []byte) error     { return a.m.Input(id, data) }
 func (a *agentAdapter) Resize(id string, cols, rows int) error { return a.m.Resize(id, cols, rows) }
 
+// PasteMode reports whether the session turned bracketed paste on (api/pathinput.go).
+func (a *agentAdapter) PasteMode(id string) bool { return a.m.PasteMode(id) }
+
 func (a *agentAdapter) Signal(id, action string) error {
 	var err error
 	if action == "end" {

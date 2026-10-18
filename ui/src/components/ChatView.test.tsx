@@ -36,6 +36,12 @@ vi.mock('@/lib/api', async (orig) => {
         return all.slice(Math.max(0, at - limit), at)
       },
       agentInput: async (_id: string, data: string) => { store.inputs.push(data) },
+      // The daemon types each path as the desktop terminal does (xtermInput
+      // pathInput), in a session that asked for bracketed paste.
+      agentPaths: async (_id: string, paths: readonly string[]) => {
+        const { pathInput } = await import('@/lib/xtermInput')
+        for (const p of paths) store.inputs.push(pathInput(p, true))
+      },
       permission: async () => ({ permission: store.prompt ? { id: 'p', tool: 'Bash', detail: 'ls', since: '' } : null }),
       paste: async (f: { name: string }) => ({ path: `/data/paste/${f.name}` }),
       // The daemon's queue (ADR-053): typed at once at the prompt, held mid-turn
@@ -461,15 +467,17 @@ describe('ChatView', () => {
     expect(screen.queryByLabelText('Type to the session')).toBeNull()
   })
 
-  it('a photo is saved by the daemon and its path goes into the field, sent with the words', async () => {
+  it('a photo is saved by the daemon, shown as a chip, and pasted before the words as the desktop terminal pastes it', async () => {
     render(<ChatView sessionId="s" canType />)
     const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'IMG_0001.png', { type: 'image/png' })] } })
-    await waitFor(() => expect(field.value).toBe('"/data/paste/IMG_0001.png" '))
+    expect(await screen.findByRole('button', { name: 'Remove Image 1' })).toBeInTheDocument()
+    expect(field.value).toBe('')
     expect(store.inputs).toEqual([])
-    fireEvent.change(field, { target: { value: `${field.value}what is wrong here?` } })
+    fireEvent.change(field, { target: { value: 'what is wrong here?' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/IMG_0001.png" what is wrong here?', '\r']), { timeout: 1000 })
+    // The paste the desktop terminal writes for a dropped image, then the words and Enter.
+    await waitFor(() => expect(store.inputs).toEqual(['\x1b[200~"/data/paste/IMG_0001.png"\x1b[201~', 'what is wrong here?', '\r']), { timeout: 1000 })
   })
 
   it('a viewer gets no input', async () => {

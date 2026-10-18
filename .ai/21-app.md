@@ -2346,8 +2346,11 @@ connection and the work survive a bad network.
     and relay on one row; ids, folder, links, activity, Remove and the
     figures under Details or on the other tabs.
   - *Photo.* The keys bar's Photo button saves the picture through
-    `POST /v1/paste` (downscaled first, as in the terminal) and puts its
-    quoted path in the field, sent with the words about it.
+    `POST /v1/paste` (downscaled first, as in the terminal) and shows it as
+    an *Image N* chip over the field, never its path; on Send it is pasted
+    in before the words, as the desktop terminal pastes a dropped image
+    (`POST /v1/agents/{id}/input {paths}`), so Claude Code shows
+    `[Image #N]`.
 - **Start work.** New project, clone and worktree from the phone (see
   [§ Projects](#projects)), then a session in it, with the clone's progress
   surviving a drop.

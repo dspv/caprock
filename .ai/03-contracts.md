@@ -1853,7 +1853,7 @@ GET    /v1/subscriptions             → {agents: [{agent, label, installed, sub
 POST   /v1/subscriptions             {agent: claude|codex, label} → Subscription; 402 at the free number without a licence
 PATCH  /v1/subscriptions/{id}        {label?, make_default?, plan?: {kind, label?, usd_per_month?} | null, agent?} → Subscription
 DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock started runs on it
-POST   /v1/agents/{id}/input         {data}            → 204   (owned PTYs only)
+POST   /v1/agents/{id}/input         {data?, paths?}   → 204   (owned PTYs only); paths are saved files (POST /v1/paste) typed in before data as the terminal types a dropped file: each image its own bracketed paste when the session turned paste on, 150 ms after it; anything else quoted with a space
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
 POST   /v1/agents/{id}/queue         {text} → {sent, queued?, queue: QueueView}; typed in now at the prompt, otherwise queued
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill|end} → 204 (owned PTYs only; end = SIGTERM, SIGKILL after 5s)
