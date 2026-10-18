@@ -369,6 +369,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-18 — 0.135.0: caprock mcp, Obsidian vaults in Second Brain, a lighter daemon on large histories
+
+A minor release because it carries features, landed as one batch PR (#755) on top of the pull requests merged since 0.134.0. Coding agents can query Caprock through a read-only MCP server on stdio (ADR-078); Obsidian vaults are read into Second Brain, shared with agents per vault and off by default (ADR-079); the Second Brain graph gains layout and display controls; Mail gets a reviewed Spam and Trash cleanup; tablet Home shows projects and sessions. The Pipeline's Flow row is three cards (now, speed, agents); the release plan's rows read in plain words; a photo attached on the phone shows as a chip and goes in as the desktop's paste. Performance, from the post-0.134.0 profile: all-time history totals scan once and refresh in proportion to their cost (F13), and each session's summary reads are cached by its newest event and a change counter (F14, migration 0063).
+
 ### 2026-10-18 — 0.134.0: the first three fixes of the resource usage audit
 
 A minor release of its own for performance, landed as one batch PR (#743); findings F1–F3 of [the 2026-10-18 audit](../docs/resource-usage-audit-2026-10-18.md). A Claude transcript record is read in bounded fragments (a 32 MiB record allocated 67 MB, now 17 MB); the terminal scrollback ring is a fixed circular array that allocates nothing per write when no terminal waits; a growing Codex rollout is parsed from its last checkpoint instead of from the start. Allocation figures are the evidence; timings were taken on a loaded Mac and are not claimed. F4–F12 are not started.

@@ -12,6 +12,79 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.135.0] - 2026-10-18
+
+### Added
+
+- **mcp:** let your coding agents ask Caprock what earlier sessions learned.
+  `caprock mcp` is a free, read-only MCP server on stdio: eleven tools for
+  Second Brain, handoff, session history and prose, costs, CI and loop alerts.
+  Settings → Use Caprock from your agents (MCP) has the commands for Claude
+  Code and Codex, including the full binary path for desktop-only installs.
+  Answers enter your agent's conversation and reach its model; credential-shaped
+  text is redacted. No tool starts, stops or types into sessions or changes settings.
+- **brain:** import an Obsidian vault into Second Brain. Markdown notes,
+  links, aliases and tags join the graph, with their vault and source files
+  marked; the original files stay unchanged. Saved vaults refresh every ten
+  minutes while Caprock runs, and can be refreshed or removed from the import
+  sheet. Letting agents use the notes is a separate switch per vault, off by
+  default, covering memory handoffs, MCP reads and model topic lists.
+- **Mail:** clean Spam into Trash and permanently clean Trash by message age or local spam score, with a count and confirmation scoped to the selected account or all accounts.
+
+### Changed
+
+- **Resources:** Larger text, shorter explanations and clearer memory and disk figures make the Caprock doctor easier to read.
+- **Second Brain:** give the graph more room with a collapsible details panel,
+  clearer connections, a more open layout, zoom buttons and controls for node
+  size, link visibility and label density.
+- **agents:** Restore Codex's original glyph and terminal character; show ChatGPT imports with OpenAI's Blossom instead of a generic chat bubble.
+- **perf(api):** the all-time history behind the Now screen and History is no
+  longer counted again on every poll while agents work. It is refreshed at
+  most once per 20 times what counting it took (never past 2 minutes), and
+  its totals reuse the summary's scans instead of making them twice. Today's
+  figures keep their 3-second refresh. Measured 2026-10-18 on an M1 Pro under
+  a synthetic working load (four Claude and two Codex sessions writing, hooks,
+  two dashboard pages): on an 890,000-event history the daemon went from 40%
+  of one core to 11% and the history refresh's allocation from 2,839 MB to
+  182 MB per 150 s; on a 181,000-event history the refresh's own CPU fell 40%
+  and the daemon's total stayed within noise.
+- **perf(api):** the sessions list no longer re-reads every listed session's
+  recent events on every request. Each session's reads are kept until its
+  events change: an insert raises its newest event id, and new database
+  triggers count updates and deletes (migration 0063). Narration, stats, live
+  subagents and the clock are still worked out on every request. Measured
+  2026-10-18 on an M1 Pro under a synthetic working load (181,000-event
+  history, four Claude and two Codex sessions writing, hooks, two dashboard
+  pages): the list's allocation per request fell from 0.85–0.87 MB to
+  0.35–0.36 MB and its CPU per request from 1.8–3.2 ms to 0.8–1.1 ms. The
+  daemon went from 13–15% of one core to 11–12%. The cache holds about 9 MB
+  for at most 256 sessions.
+- **pipeline:** the Flow row is three cards instead of ten equal tiles: Now
+  (All clear, or the most urgent count with the other two beside it, each
+  still a filter of the list), Speed (throughput, with CI, opened to merged
+  and merged to released as one line) and Agents (the cost, the cost per
+  agent-hour and the team now, which still opens the team chart). A
+  sparkline is drawn only where there is history, and what is missing is
+  said once under the row. The cards stack on a narrow window.
+- **ui:** the release plan in the session's right panel reads in plain words.
+  Sections say what they hold, with a one-line hint ("Branches pushed, no PR
+  yet", "Will go into the next batch PR"); a branch row says "3 commits ·
+  pushed 2h ago" with its branch name under the subject and a "branch" chip
+  instead of a lone bar; a subagent row reads "Agent: <task>" with "working
+  12m".
+
+### Fixed
+
+- **web app:** Show projects and their sessions near the top of Home on phones and tablets, including saved projects with no sessions.
+- **navigation:** Keep the open session address intact when a tablet switches to the phone layout.
+- **chat:** a photo attached in the chat — the phone's Photo above all — no
+  longer puts its full saved path in the field. It shows as an *Image 1*,
+  *Image 2* chip with a thumbnail and an × over the field, and your words stay
+  your own. On Send each photo is pasted into the session first, as the
+  desktop terminal pastes a dropped image, so Claude Code shows `[Image #1]`,
+  then the words follow; before, the path went in as text inside the message.
+  A message held while offline keeps its photos.
+
 ## [0.134.0] - 2026-10-18
 
 ### Changed
