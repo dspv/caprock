@@ -276,6 +276,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-18 — 0.134.0: the first three fixes of the resource usage audit
+
+A minor release of its own for performance, landed as one batch PR (#743); findings F1–F3 of [the 2026-10-18 audit](../docs/resource-usage-audit-2026-10-18.md). A Claude transcript record is read in bounded fragments (a 32 MiB record allocated 67 MB, now 17 MB); the terminal scrollback ring is a fixed circular array that allocates nothing per write when no terminal waits; a growing Codex rollout is parsed from its last checkpoint instead of from the start. Allocation figures are the evidence; timings were taken on a loaded Mac and are not claimed. F4–F12 are not started.
+
 ### 2026-10-18 — 0.133.0: other computers in the app, multi-repo projects, settings search, several subscriptions
 
 A minor release because it carries features, landed as one batch PR (#741). Another computer's sessions open and take typing through the relay (ADR-067 Phase 1 PR3); a project can be made of chosen repositories (ADR-077); Settings gains a search and Telegram a three-step setup; several Claude and Codex sign-ins run side by side; the doctor watches Codex and old-install orphans; merged is the last step where a repository cuts no releases, and the release plan lists pushed branches and working subagents; a Codex terminal scrolls again after a reconnect; Codex is drawn with OpenAI's mark.
