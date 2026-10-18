@@ -5623,3 +5623,18 @@ private notes to a model. The importer needs none of these.
 **Revisit if:** measured imports exceed the write-lock budget, title-only link
 resolution proves too ambiguous, or the user asks for two-way sync with an
 explicit conflict policy.
+
+## ADR-080 — Codex keeps its original glyph and character; ChatGPT uses the OpenAI Blossom
+
+**Status:** Accepted (owner, 2026-10-18).
+
+**Context:** The owner rejected ChatGPT's generic speech-bubble icon and
+confirmed that the earlier Codex design was correct. Replacing Codex's own
+identity with OpenAI's company mark made the two products harder to tell apart.
+
+**Decision:** Restore Codex's `C` in a rounded square and its cream terminal
+character. Use the existing, unchanged OpenAI Blossom asset for ChatGPT
+imports, in black or white. DOM and canvas use the same Codex stroke path.
+Other agents and the user's Claude character choices remain as they are.
+
+**Revisit if:** the owner chooses a different identity for either product.

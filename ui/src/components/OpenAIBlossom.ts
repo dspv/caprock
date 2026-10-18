@@ -1,24 +1,21 @@
 /**
- * OpenAI's Blossom, the mark Codex is shown by (AgentMarks, Characters).
+ * OpenAI's Blossom, the mark ChatGPT imports are shown by (AgentMarks).
  *
  * Source: the path of `SVGs/OAI_OpenAI-Blossom_Black.svg` in OpenAI's logo
  * pack, https://cdn.openai.com/brand/openai-logos.zip, linked from
  * https://openai.com/brand/ (read 2026-10-18). Copied unchanged; only the
- * viewBox is cropped to the glyph so a 13px mark is not half margin. OpenAI
- * publishes no Codex-specific mark for third parties: neither the brand page,
- * developers.openai.com/codex nor the openai/codex repository carries one, so
- * the company's mark stands for its product.
+ * viewBox is cropped to the glyph so a 13px mark is not half margin.
+ * Codex keeps its own glyph and terminal character (ADR-080).
  *
  * What the guidelines ask, and how it is kept here (.ai/04-ui.md § Agent marks):
  * - "DON'T add any colors to the Blossom": the pack ships it black and white
- *   only, so it is drawn in pure black or pure white (`--agent-codex`), never
+ *   only, so it is drawn in pure black or pure white (`--agent-chatgpt`), never
  *   tinted like the other marks.
  * - "Use the logo exactly as provided" / "DON'T add any unauthorized
- *   elements": no face, no outline, no effect; the character is the mark on a
- *   plain tile of our own with open space round it.
+ *   elements": no face, no outline, no effect; the glyph has open space round it.
  * - "Do not feature our Marks more prominently than your own" and "Use the
  *   logo only when it directly relates to OpenAI services": it is shown only
- *   to say a session or a figure is Codex's, at the size of the other marks.
+ *   to say an imported conversation is from ChatGPT, at the size of the other marks.
  *
  * The Blossom stays OpenAI's trademark.
  */

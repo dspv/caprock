@@ -76,6 +76,14 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-18 — unreleased: distinct Codex and ChatGPT identities
+
+Restored Codex's original square-C glyph and cream terminal character at the
+owner's request. ChatGPT imports use the existing OpenAI Blossom rather than
+a generic speech bubble, in black or white. The DOM and share-card canvas
+share the Codex stroke path. See [ADR-080](08-decisions.md#adr-080--codex-keeps-its-original-glyph-and-character-chatgpt-uses-the-openai-blossom).
+
+
 ### 2026-10-18 — unreleased: Obsidian vaults in Second Brain (ADR-079)
 
 Completed the paused import: machine-only management endpoints and a sheet on

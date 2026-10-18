@@ -137,7 +137,7 @@ export function agentColour(agent: string, look: CardLook): string {
  * which OpenAI allows in black or white only (OpenAIBlossom.ts).
  */
 export function markColour(agent: string, look: CardLook): string {
-  if (agent === 'codex') return look === 'dark' ? '#ffffff' : '#000000'
+  if (agent === 'chatgpt') return look === 'dark' ? '#ffffff' : '#000000'
   return agentColour(agent, look)
 }
 
@@ -426,7 +426,11 @@ function drawMark(g: CanvasRenderingContext2D, agent: string, x: number, y: numb
   g.fillStyle = colour
   g.strokeStyle = colour
   if (mark && typeof Path2D !== 'undefined') {
-    g.fill(new Path2D(mark.path))
+    if (mark.stroke) {
+      g.lineWidth = 2
+      g.lineCap = 'round'
+      g.stroke(new Path2D(mark.path))
+    } else g.fill(new Path2D(mark.path))
   } else {
     g.beginPath()
     g.arc?.(12, 12, 5, 0, Math.PI * 2)

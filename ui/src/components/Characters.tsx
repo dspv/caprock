@@ -14,7 +14,6 @@
 
 import { useId } from 'react'
 import { isDuck, isPumpkin, type ClaudeFace, type Duck, type Face, type Pumpkin } from '@/lib/faces'
-import { BLOSSOM_PATH } from './OpenAIBlossom'
 
 export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek' | 'hermes'
 
@@ -463,17 +462,17 @@ export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
         </>
       )
     case 'codex':
-      // Codex: OpenAI's Blossom, unchanged and in black, on a plain white
-      // tile of our own with open space round it. No face, no colour, no
-      // added element: OpenAI's guidelines forbid all three on the mark
-      // (OpenAIBlossom.ts), so Codex is the one agent not drawn as a
-      // character. The tile keeps a hairline where no outline is asked for,
-      // so it does not dissolve into a white panel.
+      // Codex: a cream terminal block with a prompt for a face.
       return (
         <>
           <Shadow />
-          <rect x="14" y="18" width="52" height="52" rx="14" fill="#ffffff" stroke="var(--character-outline, rgba(0, 0, 0, .14))" strokeWidth={outline.strokeWidth} />
-          <path d={BLOSSOM_PATH} fill="#000000" transform={`translate(40 44) scale(${30 / 348.5}) translate(-358 -358)`} />
+          <rect x="13" y="20" width="54" height="50" rx="12" fill={CREAM} {...outline} />
+          <path d="M25 20h30a12 12 0 0 1 12 11H13a12 12 0 0 1 12-11z" fill={STONE} />
+          <circle cx="21" cy="25.5" r="1.8" fill="#6a655c" /><circle cx="27" cy="25.5" r="1.8" fill="#6a655c" />
+          <path d="M24 42l7 5-7 5" stroke={INK} strokeWidth="3.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="36" y="51" width="16" height="3.4" rx="1.7" fill={INK} />
+          <path d="M32 61c3 2.5 9 2.5 12 0" stroke="#958e81" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <path d="M58 12c0 4-3 6-6 6M64 9c0 6-5 10-10 10" stroke={AMBER} strokeWidth="2.2" fill="none" strokeLinecap="round" opacity=".9" />
         </>
       )
     case 'opencode':
