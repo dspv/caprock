@@ -41,6 +41,16 @@ func Describe(ctx context.Context, q store.Querier, sess store.Session) string {
 }
 
 func describe(ctx context.Context, q store.Querier, sess store.Session) (text, source string) {
+	return describeWith(sess, func() ([]string, error) {
+		return store.FirstPrompts(ctx, q, sess.SessionID, promptsScanned)
+	})
+}
+
+// describeWith is describe with the session's first prompts read by the
+// caller, and only when no name or title decides it: the sessions list reads
+// them through its per-session cache (recentcache.go). It never changes the
+// slice it is given.
+func describeWith(sess store.Session, firstPrompts func() ([]string, error)) (text, source string) {
 	// A name the user gave it outranks everything the agent said.
 	if n := clipLine(sess.Name); n != "" {
 		return n, DescriptionName
@@ -48,7 +58,7 @@ func describe(ctx context.Context, q store.Querier, sess store.Session) (text, s
 	if t := clipLine(sess.Title); t != "" {
 		return t, DescriptionTitle
 	}
-	prompts, err := store.FirstPrompts(ctx, q, sess.SessionID, promptsScanned)
+	prompts, err := firstPrompts()
 	if err != nil {
 		return "", ""
 	}

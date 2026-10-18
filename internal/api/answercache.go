@@ -54,6 +54,13 @@ const (
 	// enough that a screen whose five components all ask at once computes the
 	// answer once.
 	historyTTL = 3 * time.Second
+	// historyCostScale bounds what keeping a history answer current costs:
+	// one that took d to compute is kept for historyCostScale × d when that
+	// is longer than historyTTL, so its refreshes take at most 1/20 of one
+	// core however large the history grows. historyCostCeiling caps the
+	// wait, so a very slow history is still at most this far behind.
+	historyCostScale   = 20
+	historyCostCeiling = 2 * time.Minute
 	// summaryTTL is the same for the 7d, 30d and all-time summaries. They are
 	// asked for less often and move more slowly than the history strip.
 	summaryTTL = 10 * time.Second
@@ -116,6 +123,9 @@ type answerEntry struct {
 	// waits failBackoff. Guarded by the cache's mutex.
 	failErr error
 	failAt  time.Time
+	// cost is how long computing this answer took (carried over when an
+	// unchanged version renews it), read by costScale.
+	cost time.Duration
 }
 
 // answerCache memoises computed responses by key, makes concurrent callers for
@@ -148,6 +158,12 @@ type answerCache struct {
 	// composition that fails every time (GitHub not answering in time) is
 	// not restarted on every poll.
 	failBackoff time.Duration
+	// costScale, when set, keeps an answer as it is for costScale times what
+	// computing it took, when that is longer than ttl, up to costCeiling:
+	// refreshing it then takes at most 1/costScale of one core however large
+	// the history behind it grows. Zero means ttl alone.
+	costScale   int
+	costCeiling time.Duration
 	// bg tracks background refreshes so tests can wait for them.
 	bg sync.WaitGroup
 }
@@ -184,7 +200,7 @@ func (c *answerCache) getAt(ctx context.Context, key string, fn func() (any, err
 		select {
 		case <-e.done:
 			age := c.now().Sub(e.at)
-			if age < c.ttl {
+			if age < c.fresh(e) {
 				c.mu.Unlock()
 				return e.val, e.at, false, e.err
 			}
@@ -238,8 +254,10 @@ func (c *answerCache) getAt(ctx context.Context, key string, fn func() (any, err
 	c.mu.Unlock()
 
 	e.ver = c.readVersion(ctx)
+	start := c.now()
 	e.val, e.err = fn()
 	e.at = c.now()
+	e.cost = e.at.Sub(start)
 	close(e.done)
 
 	// A failure is not cached: an error is usually transient (a busy database,
@@ -340,7 +358,9 @@ func (c *answerCache) prune() {
 func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, error), next chan struct{}) {
 	defer c.bg.Done()
 	ver := c.readVersion(context.Background())
+	start := c.now()
 	val, err := fn()
+	cost := c.now().Sub(start)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	defer close(next)
@@ -354,7 +374,7 @@ func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, erro
 		// entry wins.
 		return
 	}
-	fresh := &answerEntry{done: make(chan struct{}), val: val, at: c.now(), ver: ver}
+	fresh := &answerEntry{done: make(chan struct{}), val: val, at: c.now(), ver: ver, cost: cost}
 	close(fresh.done)
 	c.m[key] = fresh
 }
@@ -375,7 +395,7 @@ func (c *answerCache) unchanged(ctx context.Context, key string, e *answerEntry)
 	if c.m[key] != e {
 		return true // a newer answer is installed; this one was still right
 	}
-	renewed := &answerEntry{done: make(chan struct{}), val: e.val, err: e.err, at: c.now(), ver: e.ver}
+	renewed := &answerEntry{done: make(chan struct{}), val: e.val, err: e.err, at: c.now(), ver: e.ver, cost: e.cost}
 	close(renewed.done)
 	c.m[key] = renewed
 	return true
@@ -386,6 +406,26 @@ func (c *answerCache) unchanged(ctx context.Context, key string, e *answerEntry)
 func (c *answerCache) versioned(version func(context.Context) (int64, error), recheck time.Duration) *answerCache {
 	c.version, c.recheck = version, recheck
 	return c
+}
+
+// costBound makes c keep each answer for scale times what computing it took
+// when that is longer than its TTL, but never past ceiling. It returns c.
+func (c *answerCache) costBound(scale int, ceiling time.Duration) *answerCache {
+	c.costScale, c.costCeiling = scale, ceiling
+	return c
+}
+
+// fresh is how long e is served as it is, without asking whether its data
+// moved: the TTL, or what costScale makes of e's cost when that is longer.
+func (c *answerCache) fresh(e *answerEntry) time.Duration {
+	if c.costScale <= 0 {
+		return c.ttl
+	}
+	d := time.Duration(c.costScale) * e.cost
+	if c.costCeiling > 0 && d > c.costCeiling {
+		d = c.costCeiling
+	}
+	return max(d, c.ttl)
 }
 
 func (c *answerCache) recheckAfter() time.Duration {

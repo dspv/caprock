@@ -512,6 +512,9 @@ type Server struct {
 	// screen produces, and summ does the same for the wide ranges of
 	// /v1/stats/summary. See answercache.go.
 	hist *answerCache
+	// recent keeps each listed session's reads of its own events between
+	// requests, by events generation (recentcache.go).
+	recent recentCache
 	// localRepos is the last scan for repositories under the default folder
 	// (GET /v1/browse/repos, repos.go).
 	localRepos localRepoCache
@@ -589,6 +592,13 @@ func New(d Deps) *Server {
 	// clock, so those are renewed for a minute at most.
 	version := func(ctx context.Context) (int64, error) { return store.EventsVersion(ctx, d.Store.DB()) }
 	s.hist.versioned(version, answerRecheck)
+	// With agents working the version always moves, so the all-time answer
+	// was counted again on every poll past the TTL — 40% of the daemon's CPU
+	// under a working load on a 181k-event history, more on a larger one
+	// (profile 2026-10-18, resource-usage audit F13). Bounded by its own
+	// cost instead: today's answer (milliseconds) keeps the TTL, an all-time
+	// one is refreshed at most once per historyCostScale times what it took.
+	s.hist.costBound(historyCostScale, historyCostCeiling)
 	s.week.versioned(version, answerRecheck)
 	s.weekLong.versioned(version, answerRecheck)
 	s.summ.versioned(version, time.Minute)
@@ -1011,7 +1021,16 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	if err != nil {
 		return SessionSummary{}, nil, err
 	}
-	last, err := store.LastEvents(ctx, q, sess.SessionID, 60)
+	// The reads of the session's events go through the per-session cache,
+	// keyed by the generation read before them (recentcache.go).
+	gen, err := store.ReadEventsGen(ctx, q, sess.SessionID)
+	if err != nil {
+		return SessionSummary{}, nil, err
+	}
+	rec := s.recent.entry(sess.SessionID, gen)
+	last, err := readOnce(&rec.mu, &rec.last, func() ([]event.Event, error) {
+		return store.LastEvents(ctx, q, sess.SessionID, 60)
+	})
 	if err != nil {
 		return SessionSummary{}, nil, err
 	}
@@ -1031,12 +1050,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		if n > 0 && !hasMainEvent(last) {
 			// Subagents filled the window; the main thread's newest event
 			// decides whether the parent's turn has ended.
-			main, err := store.LastEventsFiltered(ctx, q, sess.SessionID, 1, store.EventFilter{MainOnly: true})
+			main, err := readOnce(&rec.mu, &rec.mainLast, func() ([]event.Event, error) {
+				return store.LastEventsFiltered(ctx, q, sess.SessionID, 1, store.EventFilter{MainOnly: true})
+			})
 			if err != nil {
 				return SessionSummary{}, nil, err
 			}
 			if len(main) > 0 {
-				opt.MainLast = &main[0]
+				m := main[0]
+				opt.MainLast = &m
 			}
 		}
 	}
@@ -1053,7 +1075,11 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		act.Phrase = "was " + act.Phrase
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
-	sum.Description, sum.DescriptionSource = describe(ctx, q, sess)
+	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
+		return readOnce(&rec.mu, &rec.prompts, func() ([]string, error) {
+			return store.FirstPrompts(ctx, q, sess.SessionID, promptsScanned)
+		})
+	})
 	if sess.Owned && sess.Status != store.StatusEnded && s.d.Agents != nil && !s.d.Agents.Holds(sess.SessionID) {
 		sum.Detached = true
 	}
@@ -1082,12 +1108,15 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	sum.ContextNote = "no turn yet"
 	turn, ok := lastContextTurn(last)
 	if !ok || turn.Subagent() {
-		main, found, err := store.LastMainTurn(ctx, q, sess.SessionID)
+		main, err := readOnce(&rec.mu, &rec.mainTurn, func() (foundEvent, error) {
+			ev, found, err := store.LastMainTurn(ctx, q, sess.SessionID)
+			return foundEvent{ev: ev, found: found}, err
+		})
 		if err != nil {
 			return SessionSummary{}, nil, err
 		}
-		if found {
-			turn, ok = main, true
+		if main.found {
+			turn, ok = main.ev, true
 		}
 	}
 	if ok {
@@ -2217,15 +2246,17 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 // an HTTP round trip.
 func (s *Server) buildHistory(ctx context.Context, from int64, label string) (HistoryResponse, error) {
 	q := s.d.Store.DB()
-	tot, err := store.History(ctx, q, from)
+	sum, err := store.Summarize(ctx, q, from)
+	if err != nil {
+		return HistoryResponse{}, err
+	}
+	// The totals reuse the summary's per-kind, unpriced and background scans
+	// rather than making them again (store.HistoryFrom).
+	tot, err := store.HistoryFrom(ctx, q, from, sum)
 	if err != nil {
 		return HistoryResponse{}, err
 	}
 	tools, err := store.ToolDistribution(ctx, q, from, 40)
-	if err != nil {
-		return HistoryResponse{}, err
-	}
-	sum, err := store.Summarize(ctx, q, from)
 	if err != nil {
 		return HistoryResponse{}, err
 	}

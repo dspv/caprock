@@ -230,6 +230,128 @@ endpoint                       minimum ms  maximum ms  response bytes
 An empty daemon is inexpensive in this experiment. It says little about an
 eight-connection database cache after hours of ingestion or a busy WebView.
 
+## Profile 2026-10-18 (post-0.134.0)
+
+F1–F3 shipped in 0.134.0. Before choosing among F4–F12, the daemon was
+profiled under a working load, as decision gate 4 asks. The result reorders the
+list: the largest costs are two dashboard reads that no finding above named,
+recorded below as F13 and F14.
+
+**Stand.** A daemon built from `40b359cb` (0.134.0) in a throwaway directory:
+`env -i` with a temp `HOME` and `TMPDIR`, its own data directory and port,
+`CAPROCK_SECRET_STORE=file`, `CAPROCK_PPROF` on loopback, `--no-hooks
+--no-open`, update checks and notifications off. The stand script is
+`bench/busy-stand.sh` plus those settings and seeded history.
+
+- **History:** 400 synthetic Claude transcripts (100 turns each, three records
+  per turn, across 25 projects) and 120 Codex rollouts (75 turns each), dated
+  over the last 120 days. After ingestion the database held 181,312 events,
+  532 sessions and 235 MB.
+- **Terminals:** the nine tabs of `busy-stand.sh` — six fake `claude`
+  sessions under pty-hosts, one printing 20 lines a second, and three shells.
+- **Live work:** four Claude transcripts each appending a turn (three records)
+  every second, two Codex rollouts each appending a turn every two seconds, and
+  a hook (`PreToolUse`/`PostToolUse`) posted every 200 ms — about 4 a second
+  were accepted, 716–766 per run.
+- **Viewers:** Playwright's headless shell (never the system Chrome) with two
+  pages, each holding its live socket: the app workspace with the printing tab
+  in front, and the dashboard's Now screen.
+
+**Phases.** Backfill (until `/v1/status` reported it done; a 30 s CPU profile
+at its start), idle (terminals only, no viewer, no writes; 110 s CPU profile),
+and load (viewers and live work; 150 s CPU profile, allocation profiles at its
+start and end, heap after GC). `ps` sampled RSS and CPU time of the daemon and
+its pty-hosts every 5 s. The machine was an Apple M1 Pro (10 cores, 16 GB)
+shared with other agents' builds and tests. Load averages are given per run;
+they ranged from 4.7 to 79. Timings are therefore noise, and the shares of the
+CPU profile and allocated bytes are the evidence. Raw profiles stay local.
+
+**What the daemon did.** Two runs of 0.134.0 (load averages 4.7–6.5 and
+7.6–14.1):
+
+```text
+phase     daemon CPU   daemon RSS (end / max)  pty-hosts (9)
+idle      0.3–0.4%     47–96 / 113–124 MiB     0.4–0.6% CPU, 53–80 MiB
+load      18.5–24.5%   90–117 / 179–201 MiB    0.5–0.8% CPU, 54–81 MiB
+backfill  159–182 s to ingest the seeded history
+```
+
+The sampled Go heap in use after GC was 12–13 MB in every phase, so most of
+the RSS is outside the Go heap (SQLite's page caches and mapped database pages,
+runtime overhead); F8 is where that would be split.
+
+**Where the load-phase CPU went.** Share of the daemon's CPU profile, by
+`-focus` on the named function (a sample can fall under two names):
+
+| Area                                         | Finding    | base1 | base2 |
+| -------------------------------------------- | ---------- | ----- | ----- |
+| `/v1/history?range=all` refresh              | F13        | 39.8% | 42.6% |
+| `/v1/sessions` (per-session summaries)       | F14        | 17.7% | 17.8% |
+| `/v1/work`                                   | —          | 3.1%  | 3.2%  |
+| `/v1/stats/summary`                          | —          | 3.3%  | 2.5%  |
+| `Recorder.Record` (live ingest, all sources) | F7         | 7.0%  | 7.0%  |
+| Claude tailer                                | F4         | 5.2%  | 5.1%  |
+| Codex ingester                               | F4         | 1.1%  | 1.4%  |
+| Live socket `writeFrame`                     | F6         | 1.6%  | 1.9%  |
+| Resource sampling                            | F10        | 0.4%  | 0.3%  |
+| GC background marking                        | —          | 2.4%  | 2.4%  |
+| Bus publish, terminal buffer, `passHot`      | F5, F2, F4 | 0     | 0     |
+
+Allocated bytes during the load window, the same split: the history refresh
+596 and 573 MB (31–32% of 1,871 and 1,846 MB), `/v1/sessions` 778 and 767 MB
+(41–42%), `Recorder.Record` 43 and 54 MB, `writeFrame` 28 and 36 MB.
+
+**Requests behind those figures.** The viewer counted every `/v1/` request
+over about 210 s in the second run: `/v1/sessions` 544 times from the app
+page and 385 from the Now screen (4.4 a second together), `/v1/window-stop`
+408, `/v1/work` and today's summary 164 each, `/v1/history?range=all` 24 (one
+every 9 s, the Now screen's `SLOW_LIVE_MS`). Each of those 24 recomputed the
+all-time history, because with agents writing the data version always moves
+and the history TTL is 3 s. On a copy of the stand's database one all-time
+history computation allocated 38.2 MB and took 0.66–1.33 s (best of runs on
+the loaded machine).
+
+**Backfill.** `Recorder.Record` was 50–55% of the backfill profile and its
+commits alone 36–37%; per-event transactions are the cost of a first import
+(F7). A further 27–28% was the scheduler waking threads for new goroutines
+(`runtime.newproc` → `wakep`), which F15 attributes to the SQLite driver.
+
+**Ranking.** By measured share of daemon CPU and allocation under a working
+load:
+
+1. **F13 — all-time history recomputed on every poll:** 40–43% of CPU,
+   31–32% of allocation; 76% of CPU on an 890k-event history. Fixed, see
+   F13.
+2. **F14 — `/v1/sessions` summarises every listed session per request:**
+   18% of CPU before F13 and 22–33% after; 41–42% of allocation before, the
+   largest single cost after F13. Implemented, see F14.
+3. **F7 — per-event transactions:** 7% of CPU while working; 50–55% of CPU
+   during a backfill, which took 159–182 s for this history.
+4. **F15 — a goroutine per SQLite statement:** about 8–11 µs of CPU per
+   statement in a probe; 27–28% of backfill samples, 4% under load.
+5. **F6 — live frames encoded per viewer:** 1.6–1.9% with two viewers.
+   Not justified until there are more viewers.
+6. **F10 — resource sampling:** 0.3–0.4%. Not justified.
+7. **F4 — discovery and `passHot`:** no samples for the Claude tailer's
+   discovery; the Codex sweep's directory listing was 80–100 ms in the 110 s idle
+   profiles (the whole idle daemon was 0.24–0.32% of a core). Not justified at this
+   history size; worth re-measuring on a machine with years of files.
+8. **F5 — replay memory:** no bus samples; the whole sampled heap was 12–13 MB.
+   Not justified.
+9. **F8 — SQLite pool and caches:** RSS of 90–200 MiB against a 12–13 MB Go
+   heap says the database side holds most of the memory, but this profile does
+   not split page cache from mapped pages. It needs the comparison F8 proposes.
+10. **F2 (shipped), F9, F11, F12:** the terminal buffer drew no samples at
+    20 lines a second. Inactive tabs (F9), Second Brain (F11) and large imports
+    and power (F12) were not exercised by this workload; nothing here argues for
+    or against them.
+
+**Reproduction.** The harness lived in a scratch directory and is not
+committed; its parts are `bench/busy-stand.sh` with the settings above, a
+Python generator for the history and the live appends, a CDP script that opens
+the two pages and counts requests, and `go tool pprof -focus` over the saved
+profiles. The probes for F13 and F15 are described in their sections.
+
 ## Findings and implementation proposals
 
 Priorities below are audit recommendations: **P1** first focused changes,
@@ -537,6 +659,204 @@ sleep assertions. No evidence here establishes an existing sleep-assertion bug.
 files are cleaned up, normal large exports still work, and an active long-running
 build is never mistaken for a reason to terminate or interrupt its process.
 
+### F13 — P1: the all-time history is recomputed on every poll while agents work
+
+**Evidence:** [the profile above](#profile-2026-10-18-post-01340). The Now
+screen asks for `/v1/history?range=all` every 10 s (`SLOW_LIVE_MS`).
+[The answer cache](../internal/api/answercache.go) keeps it for `historyTTL`
+(3 s), then renews it without computing only when the events version has not
+moved, and while anything is being written it always has. So every poll
+recomputed an aggregate over the whole events table: 40–43% of the daemon's
+CPU and 31–32% of its allocation under the working load, on a 181k-event
+history. One computation's cost grows with the history; `.ai/03-contracts.md`
+records 1.5 s for it on a 1 GB, 333k-event database and 4.7 s under a live
+dashboard. [buildHistory](../internal/api/api.go) also scanned the same events
+twice: `store.History` repeated `Summarize`'s per-kind aggregate and its
+unpriced and background queries.
+
+**Implemented (2026-10-18).** Two changes, both in the history path only:
+
+- **Scan once.** `store.HistoryFrom` takes turns, tool calls, cost, unpriced
+  and background volume from the `Summary` computed beside it. The per-kind
+  scan is `sumKinds`, with the same filter and the same pinned index, so the
+  figures are identical; `TestHistoryFromMatchesHistory` compares the two forms
+  field by field at four ranges over data with internal turns, unpriced turns
+  and events outside the range. `store.History` keeps its answer for other
+  callers.
+- **Refresh in proportion to cost.** The history cache keeps an answer for 20
+  times what computing it took when that is longer than the 3 s TTL
+  (`historyCostScale`), and never more than 2 minutes (`historyCostCeiling`).
+  Keeping one answer current then takes at most a twentieth of one core,
+  whatever the history's size. Today's history takes milliseconds and keeps
+  the 3 s. An all-time history that takes 0.5 s is refreshed at most every
+  10 s, about the Now screen's own pace, so on a quiet machine with this
+  history the bound changes little; one that takes 4.7 s, the live-dashboard
+  figure above, is refreshed at most every 94 s instead of on every 10 s poll.
+  Stale answers are still served at once while one refresh runs, and an
+  unchanged version still renews without computing. The cost carries over a
+  renewal, and a refresh records its own
+  (`TestAnswerCacheKeepsACostlyAnswerLonger`).
+
+On a copy of the stand's database (181,312 events), one all-time history
+(summary, totals and tool distribution) went from a best of 0.66–1.33 s to
+0.49–0.92 s, in two probe sessions on the loaded machine: ms/op is noise, but
+both show the same ordering. Allocation per computation is unchanged at
+38.2 MB, because the dropped scans return a handful of grouped rows.
+
+On the harness, each pair run back to back with the same request pattern
+(22–25 all-time history requests per load window). Two histories: the
+profile's 181,312 events (235 MB), and 890,000 events (1.1 GB) ingested once
+by the same generator, 2,000 Claude transcripts and 600 Codex rollouts, and
+copied into both stands. CPU is the daemon's share of one core over the load
+window, from `ps`; "history" is the history refresh's samples in the 150 s
+CPU profile and its allocated bytes in the load window:
+
+```text
+history   build    load avg   daemon CPU  history CPU  history alloc  RSS end/max
+181k      0.134.0  13.5–5.2   14.6%       7.55 s       568 MB         87/203 MiB
+181k      F13      5.2–6.1    14.7%       4.50 s       342 MB         93/165 MiB
+890k      0.134.0  3.6–6.0    40.1%       44.76 s      2,839 MB       504/504 MiB
+890k      F13      6.0–14.5   11.0%       2.61 s       182 MB         87/419 MiB
+```
+
+At 181k events the history's own cost fell by 40% (CPU) and its allocation
+by 40%, and the daemon's total did not move beyond noise: one computation
+took about half a second, so the bound let it refresh almost every poll, and
+the saving was the second scan. At 890k events one computation took 5.8–8.9 s
+on the probe, every 10 s poll had started another, and the refresh was 76% of
+the daemon's CPU. Under the bound it refreshes at most every 2 minutes. The
+daemon went from 40% of a core to 11%, the history's allocation fell 94%, and
+RSS at the end of the window from 504 to 87 MiB. Two further F13 runs at
+181k events on a heavily loaded machine (load averages 15.9–79) measured
+2.49 s and 2.54 s of history CPU and 103–105 MB; a slower computation earns a
+longer wait, so those overstate the gain at that size.
+
+The all-time figures on the Now screen and History can now be up to about
+twice the bound behind: an answer is shown until a poll finds it older than
+the bound, and that poll still gets it while one refresh runs. Today's
+figures, the cost meter and everything about live sessions are unaffected.
+
+### F14 — P1: `/v1/sessions` summarises every listed session on every request
+
+**Evidence:** [the profile above](#profile-2026-10-18-post-01340).
+[handleSessions](../internal/api/api.go) calls `summarize` for each session
+it lists. Each call reads the session's stats, `LastEvents(60)` with every
+payload, the live-subagent count, the description's first prompts and the
+newest main-thread turn. The app's workspace asks for `?active=true` on every
+live tick (`useWorkspaceData.ts`, one request in flight at a time), and the
+Now screen asks for its own list: 4.4 requests a second with two pages open
+and 12 live sessions. That was 18% of daemon CPU before F13 and 22–33% after,
+and 767–778 MB per load window, 41–42% of all allocation, most of it decoding
+sixty events per session per request.
+
+**Proposal:** do not cut the narration's inputs blindly; it reads payloads to
+say what a session is doing. Candidates, in order of risk:
+
+- **Share concurrent identical requests.** Requests for the same query that
+  arrive while one is in flight would use its answer, so two windows ticking
+  on the same live frame cost one computation. Measure how often they overlap
+  before relying on it, and only share a computation that started after the
+  write the request was prompted by: a live frame follows its commit, and an
+  answer begun before that commit would miss it, leaving the sidebar a state
+  behind until the next frame, which may never come once the session is
+  quiet.
+- **Cache each session's recent window.** Key it by something that changes on
+  every insert into that session. `last_event_at` does not qualify:
+  transcript lines arrive with timestamps older than the hook events already
+  stored. A per-session insert counter kept by the recorder would.
+- **Slow the workspace's live list** when no session changed state. This is a
+  UI tradeoff and needs the owner's call.
+
+**Acceptance:** narration (health, phrase, background, nudges, loops), context
+fill and description are identical for every listed session, and a permission
+prompt or a finished turn appears no later than today. Measure allocated bytes
+per request and requests per second with one and two windows.
+
+**Implemented (2026-10-18): the second candidate, per-session cache.** The
+reads of a session's own events that a summary makes (the newest 60 events,
+the main thread's newest event and turn, the first prompts) are kept per
+session ([recentcache.go](../internal/api/recentcache.go)) and read again only
+when the session's events change. Everything else (the session row, stats, live
+subagents, loops, nudges, the clock) is still read on every request, and the
+narration is still computed on every request from those inputs. Requests are
+not shared, so a quiet session is never left a state behind.
+
+- **The key.** A per-session insert counter kept by the recorder would have
+  missed writes that are not inserts: Codex ingest rewrites stored payloads
+  while a session runs, and repairs, price corrections and compaction update
+  events in place. The key is `store.EventsGen`, read in one statement: the
+  session's newest event id, which every insert raises because a new row takes
+  a rowid above every existing one (one seek on `idx_events_session_id`), and
+  a rewrite generation that triggers move with every update or delete of the
+  session's events (migration 0063), whichever code writes them, in the same
+  transaction. The key is read before the events, so a cached value is never
+  older than its key.
+- **No insert trigger.** The first version also counted inserts with a
+  trigger. On a temporary on-disk database, 20,000 events in batches of 500,
+  any trigger on inserts, even one that does nothing, took an insert from
+  58 µs to 129–136 µs: the driver prepares every statement afresh and each
+  prepare compiles the trigger. One single-row update went from 58–83 µs to
+  85–98 µs with the update trigger, in the same probe.
+- **Bound.** 256 sessions, least recently used dropped first; the Now screen
+  lists 200 by default. On the stand that held about 9 MB of heap.
+- **Correctness.** `TestSummaryCacheMatchesFresh` compares the cached summary
+  and events with ones built from an empty cache, field by field (as JSON),
+  after hook and out-of-order transcript inserts, a subagent burst that pushes
+  the main thread out of the window, an in-place payload rewrite, `/clear`
+  (a new session), the session ending, a rename, deleting the newest events
+  and retention. `TestEventsGenMovesOnEveryChange` checks the key moves for
+  inserts (including one older than everything stored), updates, a row moved
+  between sessions and deletes, and only for the session changed; and
+  `TestEventsGenTriggersExist` fails if a later migration rebuilds the events
+  table and drops the triggers.
+
+**Measured.** The harness of the profile above (181k-event history, same live
+work, two viewers), each pair back to back: base is the F13 head (`6240cc10`).
+Shares are of the 150 s load CPU profile and of bytes allocated in the load
+window; per request divides by the `/v1/sessions` requests the viewers made in
+the whole run. A first pair, at load averages of 196–233, never finished its
+backfill before the load window and is left out.
+
+```text
+pair  build  load avg   daemon CPU  sessions CPU         sessions alloc          heap  RSS end/max
+p2    base   7.2–14.4   15.2%       2.73 s 12.6% 3.2 ms  730 MB 19.4% 0.85 MB   12.7  94/153 MiB
+p2    F14    13.5–4.1   11.3%       0.83 s  5.3% 0.8 ms  348 MB  9.4% 0.35 MB   22.5  132/278 MiB
+p3    base   4.1–4.9    13.2%       1.66 s  9.1% 1.8 ms  783 MB 20.7% 0.87 MB   11.3  107/209 MiB
+p3    F14    4.9–79.6   11.6%       1.07 s  6.6% 1.1 ms  353 MB  9.5% 0.36 MB   20.6  85/181 MiB
+```
+
+(`heap` is MB in use after GC at the end of the load window; requests per run:
+base 858 and 902, F14 1,008 and 994.) The list's CPU per request fell by
+39–75% and its allocation by 59%; `LastEvents` went from 4.7–5.0% of the
+daemon's CPU to 1.0–1.5%. What remains is mostly re-reading the live sessions,
+which change every second on this stand. The daemon's total fell from 13–15%
+of a core to 11–12%. The cache holds about 9 MB of heap; RSS moved within the
+run-to-run spread (85–132 MiB at the end against 94–107), so this profile
+cannot say whether it costs RSS. No `SQLITE_BUSY` appeared in either F14 run.
+
+### F15 — P2: the SQLite driver starts a goroutine for every statement
+
+**Evidence:** `modernc.org/sqlite` (v1.60.1, `interruptOnDone` in its
+`sqlite.go`) starts a watcher goroutine for every statement whose context can
+be cancelled, so that cancelling can interrupt it; every context in the daemon
+can be. A probe on a temporary database ran 200,000 single-row reads per
+variant: 18.8–22.4 µs of process CPU per statement with a cancellable context,
+10.9–11.3 µs with `context.Background()`. In the backfill profile 27–28% of
+samples were the scheduler waking threads for new goroutines
+(`runtime.newproc` → `wakep`). The profile cannot name their creator; the
+driver is the likely one, since the ingest path starts no goroutines of its
+own. Under the working load it was 4%.
+
+**Proposal:** first count which statements dominate (the recorder's per-event
+transactions do most). A recorder transaction lasts milliseconds and could run
+on a context that cannot be cancelled, after checking the caller's; long reads
+keep their interrupt. A single watcher per connection is a driver change and
+belongs upstream.
+
+**Acceptance:** shutdown still interrupts long reads and waits on nothing
+longer than a short write. Measure backfill CPU and duration before and after
+on the same history.
+
 ## Existing safeguards worth preserving
 
 - Dirty-file fsnotify processing, hot-file fallback and persisted Claude offsets
@@ -574,6 +894,9 @@ build is never mistaken for a reason to terminate or interrupt its process.
 4. **Choose the next change from workload profiles.** Large history favors
    F7/F8; many inactive tabs favors F9; hidden background work favors F10; large
    memory graphs favors F11. F5/F6 depend on payloads and viewer count.
+   The first such profile, after 0.134.0, put two dashboard reads first:
+   F13 then F14, both now implemented (see
+   [Profile 2026-10-18](#profile-2026-10-18-post-01340)).
 5. **Run soak and cross-platform checks.** Repeat open/close, reconnect and
    growth workloads for hours, checking retained-memory plateaus, WAL behavior
    and session continuity. Execute runtime scenarios on macOS, Windows and Linux.
