@@ -12,6 +12,38 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.134.0] - 2026-10-18
+
+### Changed
+
+- **termbuf:** terminal output no longer allocates as it scrolls through the
+  256 KiB scrollback ring, in the daemon and in the pty-host alike: the ring
+  is one fixed array written in a circle, and the wake-up channel is made only
+  when a terminal is waiting. Measured 2026-10-18 on an M1 Pro under load
+  (`BenchmarkRingWrite`, full ring, nobody waiting): a 1 KiB write went from
+  5153 B and 1 allocation to none, a 16 KiB write from 77,938 B and 1
+  allocation to none.
+- **codex:** a live Codex session's transcript is read from where the last
+  poll stopped, and only what the new lines added is offered to the database,
+  instead of parsing the whole file and offering every record again on each
+  append. Measured 2026-10-18 on a synthetic 16,384-record transcript (Apple
+  M1 Pro under load): one poll after a one-record append went from about
+  201 MB allocated and 1.2 million allocations to about 150 KB and 300.
+  A restart, a rewritten file and a compressed rollout are still read in full
+  once.
+- **docs:** document the resource-usage audit, synthetic allocation measurements and prioritized optimization proposals.
+
+### Fixed
+
+- **ingest:** a Claude Code transcript record longer than the 16 MiB line limit
+  is now skipped while it is read, in fragments, instead of being read whole
+  first: one read of a 32 MiB record allocated 67 MB before and 17 MB after,
+  and the same 17 MB for a 64 MiB one. A complete record over the limit is
+  skipped too (before, only an unfinished one was), counted once as a
+  malformed line, and the line after it is read. Skipping an unfinished one no
+  longer leaves the offset inside it, which made the next read start the whole
+  transcript over.
+
 ## [0.133.0] - 2026-10-18
 
 ### Added
