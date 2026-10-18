@@ -121,6 +121,36 @@ accordingly — failure paths first, happy path left to the smoke suite.
   the limits), `op_id` idempotency, and in `api` the phone's `403` and the
   2 MiB body limit.
 
+## Agents reading Caprock over MCP
+
+The MCP tests use temporary directories, an in-memory store and a loopback
+`httptest` server backed by Caprock's real API. They do not query the user's
+running daemon or start a real coding agent.
+
+- **`internal/mcp/server_test.go`:** initialization and protocol-version
+  negotiation, tool listing and annotations, calls and tool errors,
+  notifications without replies, unknown methods, malformed and oversized
+  input, CRLF input and the final line without a newline, bounded output
+  and credential-shaped text redaction.
+- **`internal/mcp/tools_test.go`:** all eleven tools through the real HTTP
+  handlers: memory search and links, topics and handoff, repository-scoped
+  sessions, summaries and prose, search, cost totals, missing CI data and
+  loop alerts. Assertions cover selected output fields, redaction, limits
+  and missing-daemon errors; the HTTP client exposes only GET.
+- **`cmd/caprock/mcp_test.go`:** Cobra command wiring with stdin/stdout,
+  discovery through a temporary `runtime.json`, repository defaults and
+  protocol-only stdout, plus the startup guidance with no daemon.
+- **`ui/src/components/McpSetting.test.tsx`:** setup commands, full-path
+  selection, Windows path quoting in shell commands and TOML, the disclosure
+  of where answers go, all tool names and Settings search.
+- **`internal/daemon/executable_test.go`:** a Homebrew path resolves to the
+  stable binary path, while other installation paths stay unchanged.
+
+These are protocol, API integration and component checks, not a live
+Claude Code or Codex MCP-client compatibility run. Real-client setup,
+including commands pasted into Windows shells, still needs that check.
+The contract is [03-contracts.md § MCP server](03-contracts.md#mcp-server).
+
 ## Reading another agent's database
 
 `internal/opencode` is tested twice over, for a reason peculiar to it: the code

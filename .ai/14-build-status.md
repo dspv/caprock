@@ -76,6 +76,26 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-18 — unreleased: agents can read Caprock through MCP (ADR-078)
+
+Built `caprock mcp`, a free read-only stdio server with eleven tools for
+Second Brain, handoff, recent sessions, summaries and prose, costs, GitHub
+CI and loop alerts. It reads the running daemon's existing loopback API;
+there is no new listener or write tool. Answers contain selected fields,
+bounded text and credential-shape redaction. Settings has copyable Claude
+Code and Codex commands, a full-path option and the disclosure that answers
+enter the agent's conversation and reach its model. Status carries the
+stable executable path. Setup: [docs/mcp.md](../docs/mcp.md); protocol:
+[03-contracts.md](03-contracts.md#mcp-server); coverage and remaining
+real-client checks: [13-testing.md](13-testing.md#agents-reading-caprock-over-mcp).
+
+Local validation on macOS: `golangci-lint run ./...`,
+`GOOS=windows go vet ./...`, `VITEST_MAX_WORKERS=2 make pr-check` and
+`VITEST_MAX_WORKERS=2 make check` passed. The UI suite passed 3,434 tests in
+358 files, and the headless-browser run passed all 12 golden paths. The
+three-OS CI matrix remains for the release pull request; this branch was
+pushed without a pull request.
+
 ### 2026-10-18 — unreleased: Mail's OAuth, ready for a real account
 
 Sign-in with Google and Microsoft (PKCE, loopback redirect, XOAUTH2 for IMAP

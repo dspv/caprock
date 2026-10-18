@@ -172,7 +172,7 @@ func (t *tools) list() []Tool {
 
 func decode(args json.RawMessage, v any) error {
 	if err := json.Unmarshal(args, v); err != nil {
-		return fmt.Errorf("bad arguments: %v", err)
+		return fmt.Errorf("bad arguments: %w", err)
 	}
 	return nil
 }

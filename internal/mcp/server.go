@@ -113,7 +113,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return nil
+			return err
 		}
 		line, err := readLine(r)
 		if len(bytes.TrimSpace(line)) > 0 {
