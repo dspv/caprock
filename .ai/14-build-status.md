@@ -76,6 +76,12 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-18 — unreleased: Second Brain graph display
+
+- The graph uses the full canvas with a collapsible inspector, gentler
+  centring, clearer links and display controls that preserve node positions.
+  See [04-ui.md § Second Brain](04-ui.md#second-brain) for the interaction.
+
 ### 2026-10-18 — unreleased: Obsidian vaults in Second Brain (ADR-079)
 
 Completed the paused import: machine-only management endpoints and a sheet on
