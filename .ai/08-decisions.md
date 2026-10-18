@@ -5488,3 +5488,85 @@ project would have been worse than his intent:
 picked repositories (that would be a folder Caprock makes, which this
 decision avoids), or the home repository proves the wrong default and a
 *Make home* action is asked for.
+
+## ADR-078 — `caprock mcp`: a read-only MCP server on stdio, answered from the daemon's loopback API
+
+**Date:** 2026-10-18 · **Status:** accepted (owner, 2026-10-18, after
+reading how ScreenMind lets agents query it over MCP). Contract:
+[03-contracts.md § MCP server](03-contracts.md#mcp-server); screen:
+[04-ui.md § Settings](04-ui.md#settings), *Use Caprock from your agents
+(MCP)*; user docs: [docs/mcp.md](../docs/mcp.md).
+
+**Context.** Caprock knows what the user's agents did — Second Brain's
+memories, every session and the prose written in it, spend per repository,
+CI, loop alerts — but an agent working in a repository cannot ask. The one
+channel was the SessionStart handoff: a few paragraphs, once, at the start.
+An agent that later wonders "did we decide this before?" or "which session
+explained the SSO change?" has nowhere to look, and the user copies from the
+dashboard into the chat. MCP is how Claude Code, Codex and the other agents
+take tools from outside.
+
+**Decision.**
+
+- **`caprock mcp` is an MCP server on stdin/stdout.** The user's agent
+  starts it (`claude mcp add caprock -- caprock mcp`; Codex's
+  `[mcp_servers.caprock]` in `~/.codex/config.toml`). It opens no listener:
+  each tool call is answered from the running daemon over its loopback API,
+  found through `<data_dir>/runtime.json` on every call, so a daemon started
+  or restarted after the agent is found. With no daemon, every tool answers
+  with an error that says how to start one; the protocol itself never
+  fails.
+- **Read-only, by construction.** The client can only issue `GET`, and only
+  to the endpoints its tools name; nothing it offers can type into a session,
+  start or stop one, or change a setting (rule 7). Each tool is annotated
+  `readOnlyHint: true`.
+- **Eleven tools**: `search_memories`, `get_memory`, `memory_topics`,
+  `next_session_handoff`, `recent_sessions`, `session_summary`,
+  `session_prose`, `search_prose`, `cost`, `ci_status`, `loop_alerts`. A
+  tool that is about "this repository" defaults to the directory the agent
+  started the server in, resolved the way the daemon groups sessions
+  (`store.RepoFromCwd`: a linked worktree counts as its repository).
+- **No new endpoint.** Every tool is an existing read: `/v1/brain`,
+  `/v1/brain/nodes/{id}`, `/v1/brain/status`, `/v1/brain/handoff`,
+  `/v1/sessions`, `/v1/sessions/{id}`, `/v1/sessions/{id}/notes`,
+  `/v1/notes`, `/v1/stats/daily`, `/v1/sessions/{id}/ci` and `/ci/main`.
+  `GET /v1/status` gained `executable`, the binary's path in the form that
+  survives an upgrade, for the Settings command.
+- **Trimmed and redacted.** Answers are rebuilt from a whitelist of fields
+  (no transcript paths, spawn commands, pids or tokens), lists are bounded
+  (10 by default, 50 at most), prose and summaries are clipped, the whole
+  text is capped at 48 KiB, and credential-shaped strings (`sk-…`, GitHub,
+  Slack, AWS, Google, Stripe and Telegram tokens, JWTs, bearer values, PEM
+  private keys) are replaced with `[redacted]` before they leave.
+- **Free.** Second Brain and everything else it reads are free (owner,
+  2026-10-14); a read of them through MCP is too.
+- **Rule 4.** Nothing new leaves the machine on Caprock's account: the
+  server is a child of the user's agent and talks to loopback. What a tool
+  returns enters the agent's conversation, and so reaches the model that
+  agent uses — the user's own choice when they add the server, and the
+  Settings section says so in its first paragraph. `ci_status` reads GitHub
+  only through the connection the user already made in Caprock, as the CI
+  panel does; it is marked `openWorldHint: true`.
+- **A hand-written JSON-RPC server, not the official Go SDK.** go.mod had
+  no MCP dependency. The server needs `initialize`, `ping`, `tools/list` and
+  `tools/call` over newline-delimited JSON; that is under 300 lines in
+  `internal/mcp/server.go` with a protocol test, against a dependency tree
+  (and its release cadence) in a binary whose moat is being small and
+  building on three OSes. It answers protocol versions 2024-11-05 through
+  2025-11-25, echoing the client's when known.
+
+**Not chosen.**
+
+- **An HTTP (streamable) MCP endpoint on the daemon.** It would be a new
+  listener surface — and any local process could read the user's history
+  through it without the user adding anything. Stdio puts the decision in
+  the agent's own config.
+- **Write tools** (drop a memory, start a session). Useful, but they would
+  let a model act on Caprock unprompted; reads first, and a write tool gets
+  its own decision.
+- **Resources and prompts.** Tools cover the questions; `resources/list` and
+  `prompts/list` answer empty so a client that asks is not refused.
+
+**Revisit if:** an agent needs to write into Second Brain from a session
+(a `remember` tool), a client that only speaks HTTP matters, or the SDK
+becomes a dependency for another reason.

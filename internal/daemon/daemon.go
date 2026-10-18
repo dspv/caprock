@@ -1372,14 +1372,19 @@ type Status struct {
 	APILevel int `json:"api_level"`
 	// Platform is GOOS/GOARCH — the first thing a bug report needs and the
 	// last thing anyone remembers to include.
-	Platform  string        `json:"platform"`
-	PID       int           `json:"pid"`
-	StartedAt int64         `json:"started_at"`
-	UptimeS   int64         `json:"uptime_s"`
-	URL       string        `json:"url"`
-	DataDir   string        `json:"data_dir"`
-	Pricing   PricingStatus `json:"pricing"`
-	Ingest    *ingest.Stats `json:"ingest,omitempty"`
+	Platform  string `json:"platform"`
+	PID       int    `json:"pid"`
+	StartedAt int64  `json:"started_at"`
+	UptimeS   int64  `json:"uptime_s"`
+	URL       string `json:"url"`
+	DataDir   string `json:"data_dir"`
+	// Executable is the caprock binary this daemon runs from, in the form
+	// that survives an upgrade (stableExecutable): what Settings → Use
+	// Caprock from your agents puts in the MCP command when `caprock` is not
+	// on the PATH (ADR-078).
+	Executable string        `json:"executable,omitempty"`
+	Pricing    PricingStatus `json:"pricing"`
+	Ingest     *ingest.Stats `json:"ingest,omitempty"`
 	// IngestError is the terminal error that stopped transcript ingest, when
 	// one happened (a read-only ~/.claude, a vanished transcript root). Empty
 	// while ingest is running. Without it the daemon looked healthy while
@@ -1492,7 +1497,7 @@ func (d *Daemon) status(_ context.Context) any {
 	b, _ := d.hiveState()
 	st := Status{
 		Version: d.opt.Version, APILevel: version.APILevel, Platform: runtime.GOOS + "/" + runtime.GOARCH, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
-		URL: d.url, DataDir: d.opt.DataDir, UIBuilt: api.UIBuilt(),
+		URL: d.url, DataDir: d.opt.DataDir, Executable: stableExecutable(), UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
 		Memory:          d.slowStatus().mem,

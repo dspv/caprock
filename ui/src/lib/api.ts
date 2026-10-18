@@ -1293,6 +1293,10 @@ export interface Status {
   uptime_s: number
   url: string
   data_dir: string
+  /** The caprock binary the daemon runs from, as it survives an upgrade
+   *  (a Homebrew keg path is given as its `bin` link): Settings → Use Caprock
+   *  from your agents puts it in the MCP command (ADR-078). */
+  executable?: string
   pricing: { version: string; source: string; fetched_at: string; user_override: boolean; models: number }
   ingest?: { files_known: number; lines_parsed: number; lines_malformed: number; lines_skipped: number; events_stored: number; events_deduped: number; backfill_done: boolean }
   hooks?: HooksStatus

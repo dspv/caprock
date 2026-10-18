@@ -35,6 +35,7 @@ const P: Record<string, string> = {
   chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z',
   monitor: 'M3 4h18v12H3zM8 20h8M12 16v4',
   refresh: 'M20 11a8 8 0 0 0-14.9-4M4 4v4h4M4 13a8 8 0 0 0 14.9 4M20 20v-4h-4',
+  plug: 'M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4',
 }
 
 const BY_TITLE: [RegExp, string][] = [
@@ -48,6 +49,7 @@ const BY_TITLE: [RegExp, string][] = [
   // Telegram's chat is its own section beside the bot's: its own mark, so
   // the menu does not show the same icon twice in a row (owner, 2026-10-17).
   [/talk to your agents/i, 'chat'],
+  [/from your agents/i, 'plug'],
   [/^computers/i, 'monitor'],
   [/telegram/i, 'send'],
   [/closing a tab/i, 'tabClose'],
