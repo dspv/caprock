@@ -102,6 +102,10 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
      files, refreshing notes and links, and keeping agent sharing off until
      chosen per vault ([ADR-079](08-decisions.md), [user guide](../docs/obsidian.md)).
 
+13. **"The tablet app has no project list; I cannot find my sessions."**
+   - Evidence: the owner, 2026-10-18 (translated), after installing the Android web app. Tablet Home showed the figures first; the desktop sidebar was absent and the phone's projects were inside the chat picker.
+   - Feature: **Projects on browser Home** at every width, including projects without sessions; expand a project and open its live or recent sessions ([04-ui.md § Projects in the browser](04-ui.md#projects-in-the-browser)).
+
 ## Product principles
 
 1. **Every pixel earns its place** — each screen answers "what's happening / what does it cost / where do I need to act."

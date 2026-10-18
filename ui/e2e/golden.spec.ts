@@ -229,3 +229,21 @@ test('an Obsidian vault imports privately, consent can be changed, and removing 
   await expect(page.locator('[data-brain-detail]')).toHaveCount(0)
   expect(readFileSync(file, 'utf8')).toBe('A synthetic note. #e2e-topic')
 })
+
+test('browser Home exposes projects and opens their sessions on tablets and phones', async ({ app, page }) => {
+  const s = app.session('alpha')
+  for (const width of [800, 1280, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto(`${app.stand.pageURL}/#/`)
+    const projects = page.getByRole('region', { name: 'Projects', exact: true })
+    await expect(projects.getByRole('heading', { name: 'Projects', exact: true })).toBeInViewport()
+    const project = projects.getByRole('button', { name: new RegExp(s.cwd.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })
+    if (await project.getAttribute('aria-expanded') !== 'true') await project.click()
+    const link = projects.getByRole('link', { name: new RegExp(s.name) })
+    await expect(link).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath(`projects-${width}.png`) })
+    await link.click()
+    await expect(page).toHaveURL(new RegExp(`#/session/${s.id}\\?tab=chat$`))
+    await expect(page.getByRole('log', { name: 'Conversation', exact: true })).toBeVisible()
+  }
+})

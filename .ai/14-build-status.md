@@ -76,6 +76,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-18 — unreleased: projects on the tablet home
+
+The browser and installed web app expose Projects before Home's figures at
+all widths, including tablets. Saved projects without sessions remain
+visible; expansion opens live and recent sessions, including multi-repo
+members. Archived projects and chats stay out. Navigation performs only
+reads, with explicit retry states. Rotating to phone width no longer lets
+the kept phone home clear the open session's address. See [Projects in the browser](04-ui.md#projects-in-the-browser).
+
+
 ### 2026-10-18 — unreleased: Obsidian vaults in Second Brain (ADR-079)
 
 Completed the paused import: machine-only management endpoints and a sheet on

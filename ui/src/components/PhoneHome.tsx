@@ -34,6 +34,7 @@ import {
   continueList, INSTALL_HINT_KEY, installWay, isStandalone, messageWith, openFromHash, sharedFromSearch, waitingOnYou,
   type InstallWay,
 } from '@/lib/phonehome'
+import { BrowserProjects } from './BrowserProjects'
 import { AgentGlyph } from './AgentMarks'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
@@ -199,7 +200,11 @@ export function PhoneHome() {
   })
   useEffect(() => {
     const clean = () => {
-      if (window.location.search || window.location.hash.includes('?')) {
+      const hash = window.location.hash
+      const atHome = !hash || hash === '#' || hash === '#/' || hash.startsWith('#/?')
+      // This kept screen can mount hidden when a tablet becomes narrow.
+      // Only consume its own share or shortcut, never a session's tab query.
+      if (atHome && (sharedFromSearch(window.location.search) || openFromHash(hash))) {
         try { window.history.replaceState(null, '', `${window.location.pathname}#/`) } catch { /* a sandboxed frame */ }
       }
     }
@@ -224,6 +229,7 @@ export function PhoneHome() {
         </div>
       )}
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
+      <BrowserProjects />
       <RecentChats list={chats.data} now={now} canControl={canControl} ended={endedHere} />
       <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} canControl={canControl} ended={endedHere} />
       <PhoneReleases pull={pull} />
