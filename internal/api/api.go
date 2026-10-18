@@ -2720,6 +2720,10 @@ func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Data string `json:"data"`
+		// Paths are saved files (POST /v1/paste), typed in before data the
+		// way the desktop terminal types a dropped file: each image its own
+		// bracketed paste, so Claude Code shows `[Image #N]` (pathinput.go).
+		Paths []string `json:"paths"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -2727,6 +2731,16 @@ func (s *Server) handleAgentInput(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.refuseShellToDevice(w, r, r.PathValue("id")) {
 		return
+	}
+	if len(body.Paths) > 0 {
+		if err := s.inputPaths(r.PathValue("id"), body.Paths); err != nil {
+			s.agentErr(w, err)
+			return
+		}
+		if body.Data == "" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 	}
 	if err := s.d.Agents.Input(r.PathValue("id"), []byte(body.Data)); err != nil {
 		s.agentErr(w, err)

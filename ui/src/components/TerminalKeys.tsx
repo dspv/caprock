@@ -34,6 +34,8 @@ const KEYS: [label: string, bytes: string, title: string][] = [
 interface Held {
   id: number
   text: string
+  /** Photos attached to it: saved files' paths, pasted in before the text. */
+  paths?: string[]
   /** Set once it was not sent on reconnect: why, and it waits for Send now. */
   draft?: string
 }
@@ -56,7 +58,9 @@ function loadHeld(sessionId?: string): Held[] {
   try {
     const raw = sessionStorage.getItem(heldKey(sessionId))
     const list: unknown = raw ? JSON.parse(raw) : []
-    return Array.isArray(list) ? (list as Held[]).filter((h) => typeof h?.text === 'string') : []
+    return Array.isArray(list)
+      ? (list as Held[]).filter((h) => typeof h?.text === 'string').map((h) => (Array.isArray(h.paths) ? { ...h, paths: h.paths.filter((p) => typeof p === 'string') } : h))
+      : []
   } catch {
     return []
   }
@@ -78,10 +82,31 @@ function saveHeld(sessionId: string | undefined, held: readonly Held[]): void {
  * keys are buttons, and the text goes in a field big enough to read what is
  * being sent before sending it, rather than letter by letter into a canvas.
  */
-export function TerminalKeys({ send, attach, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder, walkie = false }: {
+/** A photo attached in the field: the saved file's path, sent as a paste
+ *  (never shown), and a preview while the picked file is at hand. */
+export interface Attached {
+  path: string
+  /** An object URL of the picked file; absent for one restored from a draft. */
+  url?: string
+}
+
+/** A message as it is held or shown: the words, with "Image N" for each photo. */
+export function heldLabel(h: { text: string; paths?: readonly string[] }): string {
+  const n = h.paths?.length ?? 0
+  if (n === 0) return h.text
+  const imgs = Array.from({ length: n }, (_, i) => `[Image ${i + 1}]`).join(' ')
+  return h.text ? `${imgs} ${h.text}` : imgs
+}
+
+export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder, walkie = false }: {
   send: (bytes: string) => void
-  /** Attaches photos; the paths it returns, if any, go into the field (the chat). */
+  /** Attaches photos. Where it returns the saved paths (the chat; one per
+   *  file, '' for one that failed), each shows as an "Image N" chip over the
+   *  field and goes to sendPaths before the words on Send. */
   attach?: (files: File[]) => Promise<void | readonly string[]>
+  /** Pastes the attached photos into the session as the desktop terminal
+   *  pastes a dropped image, so Claude Code shows `[Image #N]`. */
+  sendPaths?: (paths: readonly string[]) => Promise<void>
   initial?: string
   /** The terminal's connection; absent, it is taken as live. */
   state?: TermState
@@ -110,6 +135,24 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   walkie?: boolean
 }) {
   const [text, setText] = useState(initial)
+  // The photos attached in the field: chips, never their paths in the text.
+  const [attached, setAttached] = useState<Attached[]>([])
+  const attachedNow = useRef(attached)
+  attachedNow.current = attached
+  useEffect(() => () => { for (const a of attachedNow.current) if (a.url) URL.revokeObjectURL(a.url) }, [])
+  const dropAttached = (i: number) => setAttached((list) => {
+    const a = list[i]
+    if (a?.url) URL.revokeObjectURL(a.url)
+    return list.filter((_, j) => j !== i)
+  })
+  /** Empties the chips, letting their previews go; returns the paths. */
+  const takeAttached = (): string[] => {
+    const list = attachedNow.current
+    for (const a of list) if (a.url) URL.revokeObjectURL(a.url)
+    attachedNow.current = []
+    setAttached([])
+    return list.map((a) => a.path)
+  }
   // What the field holds now, for a send that runs after the render that
   // set it (the microphone's release, when the last words arrive late).
   const textNow = useRef(text)
@@ -208,7 +251,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
       if (prompt) { toDraft('a permission prompt is waiting'); return }
       for (const h of heldRef.current.filter((m) => !m.draft)) {
         setHeld((list) => list.filter((m) => m.id !== h.id))
-        await deliver(h.text)
+        await deliver(h.text, h.paths)
       }
     })()
     return () => { current = false }
@@ -257,15 +300,23 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
 
   // The picked photos' paths are typed into the session, as a drop's are;
   // what to say about them goes in the field and is sent after. Where attach
-  // returns the paths instead (the chat), they go into the field, quoted.
+  // returns the paths instead (the chat), each becomes an "Image N" chip over
+  // the field — never the path in the text, which on a phone was a line of
+  // "/Users/…/Application Support/caprock/paste/…" (owner, 2026-10-18).
   const onPicked = async (files: File[]) => {
     if (!attach || files.length === 0) return
     setAttaching(true)
     try {
       const paths = await attach(files)
       if (paths && paths.length > 0) {
-        const quoted = paths.map((p) => `"${p}" `).join('')
-        setText((t) => (t && !/\s$/.test(t) ? `${t} ${quoted}` : `${t}${quoted}`))
+        const aligned = paths.length === files.length
+        const next: Attached[] = []
+        paths.forEach((p, i) => {
+          if (!p) return
+          const f = aligned ? files[i] : undefined
+          next.push({ path: p, ...(f && typeof URL.createObjectURL === 'function' ? { url: URL.createObjectURL(f) } : {}) })
+        })
+        setAttached((list) => [...list, ...next])
         field.current?.focus()
       }
     } finally {
@@ -277,7 +328,30 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   // The text, then Enter on its own after a pause. A message ending in an
   // @file mention gets a space first: Claude Code's file menu is open after
   // it, and Enter would pick from the menu rather than send.
-  const deliver = (message: string): Promise<void> => {
+  //
+  // Attached photos go first, each pasted on its own (sendPaths), so Claude
+  // Code shows `[Image #1]` `[Image #2]` and the words follow — what the
+  // desktop terminal does with a dropped image. Where nothing can paste them,
+  // their quoted paths lead the text, as before.
+  const deliver = async (message: string, paths?: readonly string[]): Promise<void> => {
+    const imgs = paths?.filter(Boolean) ?? []
+    if (imgs.length > 0 && !sendPaths) {
+      message = `${imgs.map((p) => `"${p}" `).join('')}${message}`
+    } else if (imgs.length > 0 && sendPaths) {
+      try {
+        await sendPaths(imgs)
+      } catch {
+        // Not pasted: back into the field, words and photos, to send again.
+        setText((t) => (t ? t : message))
+        setAttached((list) => (list.length ? list : imgs.map((path) => ({ path }))))
+        return
+      }
+      if (!message) {
+        // Photos alone: Enter, as after a drop in the terminal.
+        await new Promise<void>((resolve) => window.setTimeout(() => { send('\r'); resolve() }, SUBMIT_DELAY_MS))
+        return
+      }
+    }
     if (submitText) {
       return submitText(message).then((ok) => {
         if (!ok) setText((t) => (t ? t : message))
@@ -298,11 +372,13 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
     const text = said ?? textNow.current
     dictation.current?.stop()
     setVoiceNote('')
-    if (text && !live) {
+    const paths = takeAttached()
+    const some = text || paths.length > 0
+    if (some && !live) {
       // Sent after the end: a draft at once, never "will send".
-      setHeld((list) => [...list, { id: Date.now() + Math.random(), text, ...(finalReason ? { draft: finalReason } : {}) }])
-    } else if (text) {
-      void deliver(text)
+      setHeld((list) => [...list, { id: Date.now() + Math.random(), text, ...(paths.length ? { paths } : {}), ...(finalReason ? { draft: finalReason } : {}) }])
+    } else if (some) {
+      void deliver(text, paths)
     } else {
       sendKey('\r', 'Enter')
     }
@@ -315,12 +391,14 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
   const edit = (h: Held) => {
     setHeld((list) => list.filter((m) => m.id !== h.id))
     setText((t) => (t ? `${t}\n${h.text}` : h.text))
+    const paths = h.paths ?? []
+    if (paths.length) setAttached((list) => [...list, ...paths.map((path) => ({ path }))])
     field.current?.focus()
   }
 
   const sendNow = (h: Held) => {
     setHeld((list) => list.filter((m) => m.id !== h.id))
-    void deliver(h.text)
+    void deliver(h.text, h.paths)
   }
 
   // The phone's hold-to-talk (lib/holdToTalk): hold to record, release to
@@ -352,7 +430,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
     if (!sendOnEnd.current) return
     sendOnEnd.current = false
     const said = textNow.current
-    if (!said.trim()) { flash(speechHint('no-speech')); return }
+    if (!said.trim() && attachedNow.current.length === 0) { flash(speechHint('no-speech')); return }
     submitLatest.current(said)
   }
   const startRec = (): boolean => {
@@ -430,7 +508,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
         <li key={h.id} className="flex min-w-0 items-center gap-2 rounded-sm border border-border-strong bg-panel-2 px-2.5 py-1.5 text-[13px]">
           <span className="min-w-0 flex-1">
             <span className={h.draft ? 'text-warn' : 'text-fg-muted'}>{h.draft ? `Not sent — ${h.draft}` : 'Will send when connected'}</span>
-            <span className="block truncate mono text-fg">{h.text}</span>
+            <span className="block truncate mono text-fg">{heldLabel(h)}</span>
           </span>
           {h.draft && (
             <button
@@ -445,7 +523,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           <button
             type="button"
             onClick={() => edit(h)}
-            aria-label={`Edit the message: ${h.text}`}
+            aria-label={`Edit the message: ${heldLabel(h)}`}
             className="shrink-0 rounded-sm border border-border-strong px-3 py-2 min-h-[44px] text-[13px] text-fg hover:border-accent"
           >
             Edit
@@ -453,6 +531,10 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
         </li>
       ))}
     </ul>
+  )
+
+  const chipRow = attached.length > 0 && (
+    <AttachedChips attached={attached} onRemove={(i) => { dropAttached(i); field.current?.focus() }} />
   )
 
   const photoInput = attach && (
@@ -487,6 +569,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           </div>
         )}
         {attaching && <div role="status" className="px-1 text-[13px] text-fg-muted">Adding the photo…</div>}
+        {chipRow}
         <div className="relative flex items-center gap-1">
           {pickers && <ChatPickerList p={chooser} listId={listId} />}
           <button
@@ -529,7 +612,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
               if (chooser.onKeyDown(e)) return
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                if (text.trim()) submit()
+                if (text.trim() || attached.length > 0) submit()
               }
             }}
             rows={1}
@@ -545,7 +628,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
             autoCorrect="off"
             spellCheck={false}
             enterKeyHint="send"
-            data-filled={text.trim() ? '' : undefined}
+            data-filled={text.trim() || attached.length > 0 ? '' : undefined}
             className={`input composer-field min-w-0 flex-1 resize-none overflow-y-auto rounded-[22px] leading-snug ${recording ? 'border-danger' : ''}`}
             style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, paddingLeft: 16, paddingRight: 16, maxHeight: WALKIE_FIELD_MAX_PX }}
           />
@@ -626,6 +709,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           * .input's own 12px outranked the text-[16px] utility; the padding
           * likewise, and it makes one line a 44px target. */}
         {pickers && <ChatPickerList p={chooser} listId={listId} />}
+        {chipRow}
         <textarea
           ref={field}
           value={text}
@@ -650,7 +734,7 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
-          data-filled={text.trim() ? '' : undefined}
+          data-filled={text.trim() || attached.length > 0 ? '' : undefined}
           title={`${keys(INPUT_HIGHLIGHT_KEY)} turns the highlight off or on`}
           className="input composer-field w-full min-w-0 resize-none overflow-y-auto leading-snug"
           style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, maxHeight: FIELD_MAX_PX }}
@@ -740,6 +824,35 @@ export function TerminalKeys({ send, attach, initial = '', state, isPromptWaitin
         * button edge to edge even at 390px. */}
       {keysOpen && <KeyGrid onKey={sendKey} />}
     </div>
+  )
+}
+
+/**
+ * The photos attached in the field, as Claude Code will show them once sent:
+ * "Image 1", "Image 2", each with its preview and an × to take it out. The
+ * path is the file Caprock saved; it is pasted on Send, never typed here.
+ */
+function AttachedChips({ attached, onRemove }: { attached: readonly Attached[]; onRemove: (i: number) => void }) {
+  return (
+    <ul aria-label="Attached photos" data-attached className="flex flex-wrap gap-1.5 px-0.5">
+      {attached.map((a, i) => (
+        <li key={`${a.path}-${i}`} className="flex h-9 items-center gap-1.5 rounded-[12px] border border-border-strong bg-panel-2 pl-1 pr-0.5 text-[14px] text-fg">
+          {a.url
+            ? <img src={a.url} alt="" className="h-7 w-7 rounded-[8px] object-cover" />
+            : <span className="grid h-7 w-7 place-items-center"><PhotoIcon /></span>}
+          <span>Image {i + 1}</span>
+          <button
+            type="button"
+            aria-label={`Remove Image ${i + 1}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onRemove(i)}
+            className="grid h-8 w-8 place-items-center rounded-full text-fg-muted hover:text-fg active:bg-panel"
+          >
+            <svg {...ICON} width={14} height={14}><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 

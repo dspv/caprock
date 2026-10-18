@@ -392,9 +392,11 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   if (canType && !typable) setTypable(true)
   const showInput = canType || (ended && typable)
 
-  // A photo: made small enough to send, saved by the daemon (the paste path a
-  // dropped file takes), and its path put in the field, where it is read
-  // with the words about it and sent with them.
+  // A photo: made small enough to send and saved by the daemon (the paste
+  // path a dropped file takes). The field shows it as an "Image N" chip, one
+  // path per file ('' for one that failed), and on Send it is pasted in
+  // before the words, as the desktop terminal pastes a dropped image, so
+  // Claude Code shows `[Image #N]` (sendPaths).
   const attachPhotos = useCallback(async (files: File[]): Promise<string[]> => {
     const paths: string[] = []
     for (const f of files) {
@@ -403,11 +405,18 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
         const { path } = await api.paste({ name: photo.name, type: photo.type, data: await base64Of(photo) })
         paths.push(path)
       } catch (e) {
+        paths.push('')
         setSendError(`${f.name ? `${f.name}: ` : ''}not added — ${errText(e)}`)
       }
     }
     return paths
   }, [])
+  // In the input's own order, behind any keys already on their way.
+  const sendPaths = useCallback((paths: readonly string[]): Promise<void> => {
+    const sent = queue.current.then(() => api.agentPaths(sessionId, paths))
+    queue.current = sent.then(() => setSendError(''), (e: unknown) => setSendError(`Not sent: ${errText(e)}`))
+    return sent
+  }, [sessionId])
 
   // Dictation on a phone or a tablet, where typing is the slow part (owner's
   // report, 2026-10-11). The desktop chat is unchanged: its keyboard is fast,
@@ -488,7 +497,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
           {/* On a phone the latest answer's card carries Continue and Stop
             * instead, and the bar below is one row (owner's variant D, 2026-10-17). */}
           {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone ? 'Message…' : undefined} walkie={phone} />
+          <TerminalKeys send={send} attach={attachPhotos} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone ? 'Message…' : undefined} walkie={phone} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
