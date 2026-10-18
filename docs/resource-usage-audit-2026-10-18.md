@@ -788,7 +788,7 @@ not shared, so a quiet session is never left a state behind.
   session's newest event id, which every insert raises because a new row takes
   a rowid above every existing one (one seek on `idx_events_session_id`), and
   a rewrite generation that triggers move with every update or delete of the
-  session's events (migration 0062), whichever code writes them, in the same
+  session's events (migration 0063), whichever code writes them, in the same
   transaction. The key is read before the events, so a cached value is never
   older than its key.
 - **No insert trigger.** The first version also counted inserts with a

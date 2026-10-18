@@ -1566,7 +1566,7 @@ func GetStats(ctx context.Context, q Querier, sessionID string) (Stats, error) {
 
 // EventsGen identifies the state of a session's events: equal values mean
 // its events are as they were. Gen is its rewrite generation (migration
-// 0062), which triggers move in the same transaction as every update or delete
+// 0063), which triggers move in the same transaction as every update or delete
 // of its events, whichever code writes them; MaxID is its newest row id, which
 // every insert moves, because a new row takes a rowid above every existing
 // one. Within one Gen only inserts happen and each raises MaxID, so the pair

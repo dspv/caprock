@@ -4,7 +4,7 @@ kind: Changed
 - **perf(api):** the sessions list no longer re-reads every listed session's
   recent events on every request. Each session's reads are kept until its
   events change: an insert raises its newest event id, and new database
-  triggers count updates and deletes (migration 0062). Narration, stats, live
+  triggers count updates and deletes (migration 0063). Narration, stats, live
   subagents and the clock are still worked out on every request. Measured
   2026-10-18 on an M1 Pro under a synthetic working load (181,000-event
   history, four Claude and two Codex sessions writing, hooks, two dashboard

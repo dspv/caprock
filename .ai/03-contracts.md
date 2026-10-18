@@ -5053,7 +5053,7 @@ A private module's documents ([ADR-076](08-decisions.md), § Private modules):
 `created_at` and `updated_at` are unix ms. Rows stay when a module's files are
 removed, so installing it again finds them.
 
-### Session generation DDL (migration 0062)
+### Session generation DDL (migration 0063)
 
 ```sql
 CREATE TABLE IF NOT EXISTS session_gen (
