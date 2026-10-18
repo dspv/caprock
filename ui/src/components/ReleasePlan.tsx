@@ -153,7 +153,7 @@ function Rows({ plan, compact, onOpen, steps }: { plan: ReleasePlanData; compact
         {planSections(plan.rows).map((sec, i) => [
           <li key={`section:${sec.key}`} data-release-section={sec.key}
             className={`col-span-full font-medium text-fg-faint ${i > 0 ? 'pt-1.5' : ''} ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
-            {sec.label}
+            {sec.label}<span data-release-hint className="block font-normal text-fg-faint/80">{sec.hint}</span>
           </li>,
           ...sec.rows.map(row),
         ])}
@@ -204,6 +204,7 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
           {r.number ? <span className="num mr-1.5 shrink-0 text-fg-muted">#{r.number}</span> : null}
           <span className="min-w-0 truncate text-fg">{r.title}</span>
         </span>
+        {r.branch && <span data-release-branch title={r.branch} className="min-w-0 truncate text-[12px] text-fg-faint">{r.branch}</span>}
         <span className="flex min-w-0 items-center gap-2.5">
           <Blocks row={r} phone {...steps} />
           <Word row={r} className="shrink-0 whitespace-nowrap text-[12.5px]" />
@@ -228,7 +229,7 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
       {planSections(plan.rows).map((sec) => [
         <li key={`section:${sec.key}`} data-release-section={sec.key}
           className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint">
-          {sec.label}
+          {sec.label}<span data-release-hint className="block text-[11.5px] font-normal">{sec.hint}</span>
         </li>,
         ...sec.rows.map(row),
       ])}
@@ -270,6 +271,7 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
     <>
       {r.number ? <span className="num mr-1.5 text-fg-muted">#{r.number}</span> : null}
       <span className="text-fg">{r.title}</span>
+      {r.branch ? <span data-release-branch title={r.branch} className="block max-w-full truncate text-[0.85em] text-fg-faint">{r.branch}</span> : null}
     </>
   )
   const wrap = compact ? 'truncate' : '[overflow-wrap:anywhere]'
@@ -343,6 +345,7 @@ export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running
  * column, so it grows with the row; on the phone it is a fixed width.
  */
 export function Blocks({ row: r, compact = false, phone = false, ships, next }: { row: PlanRow; compact?: boolean; phone?: boolean } & BarSteps) {
+  if (r.stage === 'branch') return <span data-release-chip className={`inline-block rounded-[3px] border border-border px-1.5 text-fg-muted ${compact ? 'text-[10.5px]' : 'text-[11px]'}`}>branch</span>
   const steps = barSteps(ships)
   const states = stepStates(r, ships)
   const path = steps.map((s) => (s === 'PR' ? 'PR' : s === 'CI' ? 'CI' : s[0]!.toUpperCase() + s.slice(1))).join(' → ')

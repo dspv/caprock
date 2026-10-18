@@ -41,8 +41,9 @@
  *   known (the right panel), its repository's pushed branches with no pull
  *   request (`branchRows`) and the session's working subagents
  *   (`subagentRows`). The rows stand in sections, each with a count:
- *   *In this release · 2 merged*, *Pull requests · 1 open*, *Ready · 3
- *   branches*, *In progress · 6 agents* (`planSections`).
+ *   *In this release · 2 merged*, *Pull requests · 1 open*, *Branches
+ *   pushed, no PR yet · 3*, *Agents working now · 6* (`planSections`), each
+ *   with a one-line hint.
  */
 import type { SessionCIStats, SubagentsNow, Work, WorkRepo, WorkSession } from './api'
 import type { BranchPR, SessionBranches } from './branches'
@@ -72,6 +73,8 @@ export interface PlanRow {
   key: string
   number?: number
   title: string
+  /** A pushed branch row: its name, shown under the subject. */
+  branch?: string
   url?: string
   /** The Work board's stage, or `branch`: pushed, with no pull request yet. */
   stage: Stage | 'branch'
@@ -457,9 +460,10 @@ export function branchRows(br: SessionBranches | undefined, prs: readonly Branch
       return {
         key: `b:${b.name}`,
         title: b.subject || b.name,
+        branch: b.name,
         url: repo && br.default ? `https://github.com/${repo}/compare/${encodeURIComponent(br.default)}...${b.name.split('/').map(encodeURIComponent).join('/')}` : undefined,
         stage: 'branch', section: 'branch', filled: PER_STEP, red: false, warn: false, running: false,
-        word: `+${n} · ${age}`,
+        word: `${plural(n, 'commit')} · pushed ${age} ago`,
         wordTitle: `${b.name}: pushed, ${plural(n, 'commit')} ahead of ${base}, the last ${spanText(Math.max(0, now - b.committed_ms))} ago; no pull request yet.`,
         age: { text: age, title: `Last commit ${spanText(Math.max(0, now - b.committed_ms))} ago` },
         cost: b.sessions > 0
@@ -475,15 +479,16 @@ export function subagentRows(subs: SubagentsNow | undefined, now: number): PlanR
     .sort((a, b) => b.started_at - a.started_at)
     .slice(0, SUBAGENTS_LISTED)
     .map((a): PlanRow => {
-      const title = a.description || a.doing || a.agent_type || 'A subagent'
+      const task = a.description || a.doing || a.agent_type || 'A subagent'
+      const title = `Agent: ${task}`
       const age = ageText(now - a.started_at)
       return {
         key: `sa:${a.agent_id}`,
         title,
         stage: 'agent', section: 'agent', filled: PER_STEP, red: false, warn: a.asking, running: !a.asking,
-        word: a.asking ? 'asking' : `working · ${age}`,
+        word: a.asking ? 'asking' : `working ${age}`,
         wordTitle: a.asking ? 'This subagent waits on a permission prompt.' : `A subagent of this session${a.agent_type ? ` (${a.agent_type})` : ''}, working for ${spanText(Math.max(0, now - a.started_at))}, ${plural(a.tool_calls, 'call')} so far.`,
-        wait: a.doing && a.doing !== title ? { text: a.doing, title: `Now: ${a.doing}` } : undefined,
+        wait: a.doing && a.doing !== task ? { text: a.doing, title: `Now: ${a.doing}` } : undefined,
         age: { text: age, title: `Started ${spanText(Math.max(0, now - a.started_at))} ago` },
         cost: a.cost_usd !== undefined
           ? { text: fmtUSD(a.cost_usd), title: `${fmtUSD(a.cost_usd)} of this subagent's own calls so far, at API list price, not a bill.`, known: true }
@@ -493,16 +498,22 @@ export function subagentRows(subs: SubagentsNow | undefined, now: number): PlanR
 }
 
 /** The rows by section, in SECTION_ORDER, each named with its count; empty sections left out. */
-export function planSections(rows: readonly PlanRow[]): { key: RowSection; label: string; rows: PlanRow[] }[] {
+export function planSections(rows: readonly PlanRow[]): { key: RowSection; label: string; hint: string; rows: PlanRow[] }[] {
   const label: Record<RowSection, (n: number) => string> = {
     merged: (n) => `In this release · ${n} merged`,
     pr: (n) => `Pull requests · ${n} open`,
-    branch: (n) => `Ready · ${plural(n, 'branch', 'branches')}`,
-    agent: (n) => `In progress · ${plural(n, 'agent')}`,
+    branch: (n) => `Branches pushed, no PR yet · ${n}`,
+    agent: (n) => `Agents working now · ${n}`,
+  }
+  const hint: Record<RowSection, string> = {
+    merged: 'Already merged: ships with the next release',
+    pr: 'Open pull requests, with how far each has got',
+    branch: 'Will go into the next batch PR',
+    agent: 'Subagents of this session, at work now',
   }
   return SECTION_ORDER.map((key) => {
     const rs = rows.filter((r) => r.section === key)
-    return { key, label: label[key](rs.length), rows: rs }
+    return { key, label: label[key](rs.length), hint: hint[key], rows: rs }
   }).filter((s) => s.rows.length > 0)
 }
 

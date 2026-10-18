@@ -290,13 +290,16 @@ describe('where it is drawn', () => {
     render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
     const region = await screen.findByRole('region', { name: 'Release' })
     await within(region).findByRole('heading', { name: '0.118.0' })
-    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.textContent)
-    expect(sections).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Ready · 1 branch', 'In progress · 2 agents'])
+    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.firstChild?.textContent)
+    expect(sections).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Branches pushed, no PR yet · 1', 'Agents working now · 2'])
     const branch = region.querySelector('[data-release-row="b:feat/batch-1"]')!
     expect(branch).toHaveTextContent('fix(deck): the ring')
-    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('+2 · 30m')
-    expect([...branch.querySelectorAll('[data-step-state]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'off', 'off', 'off', 'off'])
-    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-word]')).toHaveTextContent('working · 12m')
+    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('2 commits · pushed 30m ago')
+    expect(branch.querySelector('[data-release-branch]')).toHaveTextContent('feat/batch-1')
+    expect(branch.querySelector('[data-release-bar]')).toBeNull()
+    expect(branch.querySelector('[data-release-chip]')).toHaveTextContent('branch')
+    expect(region.querySelector('[data-release-section="branch"] [data-release-hint]')).toHaveTextContent('Will go into the next batch PR')
+    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-word]')).toHaveTextContent('working 12m')
   })
 
   it('draws nothing in the right panel for a session outside a repository', () => {
