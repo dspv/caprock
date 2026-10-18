@@ -95,6 +95,13 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
      agent's conversation and reaches its model. Setup and boundaries live in
      [docs/mcp.md](../docs/mcp.md).
 
+12. **Existing Obsidian notes should join the agents' memory graph.**
+   - Evidence: the owner's 2026-10-18 handoff for the paused Obsidian import,
+     explicitly requiring a switch for whether agents may use the notes.
+   - Feature: **Import from Obsidian** in Second Brain, preserving source
+     files, refreshing notes and links, and keeping agent sharing off until
+     chosen per vault ([ADR-079](08-decisions.md), [user guide](../docs/obsidian.md)).
+
 ## Product principles
 
 1. **Every pixel earns its place** — each screen answers "what's happening / what does it cost / where do I need to act."

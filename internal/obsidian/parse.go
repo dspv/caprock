@@ -1,7 +1,8 @@
-// Package obsidian imports an Obsidian vault into Second Brain (ADR-078;
+// Package obsidian imports an Obsidian vault into Second Brain (ADR-079;
 // 03-contracts.md § Obsidian vaults). It reads Markdown files on this
 // machine and never writes into the vault: a note becomes a node, its
-// [[links]] edges, its #tags topics. Nothing it reads leaves the machine.
+// [[links]] edges, its #tags topics. The importer makes no network or model
+// calls; sharing imported content with agents is a separate opt-in.
 package obsidian
 
 import (

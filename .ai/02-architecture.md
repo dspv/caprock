@@ -145,6 +145,19 @@ put a Russian line on the clipboard as Mac Roman garble (user report,
 2026-10-15). A locale the user set is
 left alone; Windows gets nothing, ConPTY being UTF-8 already.
 
+### Imported Obsidian vaults
+
+`internal/obsidian` parses and refreshes user-chosen Markdown folders into
+Second Brain's nodes, source rows and edge claims, through `internal/store`.
+It creates no session or event rows and makes no network/model calls. The
+daemon runs one periodic scanner; file reads happen before its write
+transaction. Rooted reads prevent a replaced file escaping the selected
+vault. Management routes are local-only; agent access is a separate per-vault
+opt-in, enforced by handoff, extraction topic selection and MCP's filtered
+reads. Ownership, limits and refresh semantics are in
+[03-contracts.md § Obsidian vaults](03-contracts.md#obsidian-vaults), rationale
+in [ADR-079](08-decisions.md).
+
 ### Agents reading Caprock over MCP
 
 `caprock mcp` (`cmd/caprock/mcp.go`, `internal/mcp`) is a separate stdio

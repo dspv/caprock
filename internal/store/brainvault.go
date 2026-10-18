@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Obsidian vaults in Second Brain (migration 0062, ADR-078): the vaults the
+// Obsidian vaults in Second Brain (migration 0062, ADR-079): the vaults the
 // user picked, one source row per note file, and the edges each vault's
 // import claims. internal/obsidian decides what a vault says; every write
 // of it goes through here.
@@ -28,7 +28,7 @@ type BrainVault struct {
 	Path string `json:"path"`
 	// Agents is whether its notes may reach an agent: a new session's
 	// handoff, the extraction's list of topics. Off unless the user turns
-	// it on (ADR-078).
+	// it on (ADR-079).
 	Agents    bool   `json:"agents"`
 	Notes     int    `json:"notes"`
 	ScannedAt int64  `json:"scanned_at,omitempty"`
@@ -194,6 +194,10 @@ func EachBrainKey(ctx context.Context, q Querier, fn func(key string, nodeID int
 		}
 		fn(k, id)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
@@ -304,6 +308,10 @@ func SyncBrainNoteNode(ctx context.Context, q Querier, nodeID int64, now int64) 
 			return false, err
 		}
 		src = append(src, n)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return false, err
 	}
 	if err := rows.Close(); err != nil {
 		return false, err
@@ -553,6 +561,10 @@ func RemoveBrainVault(ctx context.Context, q Querier, id int64, now int64) error
 		}
 		keep = append(keep, n)
 	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
 	if err := rows.Close(); err != nil {
 		return err
 	}
@@ -644,7 +656,7 @@ func BrainNodeSources(ctx context.Context, q Querier, nodeID int64) ([]BrainNote
 
 // brainAgentsMayRead is the condition a node n must meet to reach an agent:
 // it is not a note, or every vault it was imported from lets its notes
-// reach agents (ADR-078). Used by the handoff; a server that hands Second
+// reach agents (ADR-079). Used by the handoff; a server that hands Second
 // Brain to agents any other way must use it too.
 const brainAgentsMayRead = `(n.kind != 'note' OR NOT EXISTS (SELECT 1 FROM brain_vault_notes s JOIN brain_vaults v ON v.id = s.vault_id
 	WHERE s.node_id = n.id AND v.agents = 0))`
@@ -750,4 +762,30 @@ func (c *stmtCache) QueryRowContext(ctx context.Context, query string, args ...a
 		return c.p.(Querier).QueryRowContext(ctx, query, args...)
 	}
 	return st.QueryRowContext(ctx, args...)
+}
+
+// brainMCPMayRead excludes a whole node when any source is private, including
+// a source attached to an existing memory: search also holds source excerpts.
+const brainMCPMayRead = `(NOT EXISTS (SELECT 1 FROM brain_vault_notes s JOIN brain_vaults v ON v.id = s.vault_id
+ WHERE s.node_id = n.id AND v.agents = 0) AND NOT ` + brainEntityHidden + `)`
+
+// BrainAgentNodes returns the selected nodes that may reach an MCP client.
+func BrainAgentNodes(ctx context.Context, q Querier, ids []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.QueryContext(ctx, `SELECT n.id FROM brain_nodes n WHERE n.id IN (SELECT value FROM json_each(?)) AND `+brainMCPMayRead, idList(ids))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }

@@ -53,6 +53,7 @@ import (
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/mail"
 	"github.com/dspv/caprock/internal/nativeterm"
+	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/opencode"
 	"github.com/dspv/caprock/internal/orchestrator"
 	"github.com/dspv/caprock/internal/pairing"
@@ -672,6 +673,14 @@ func (d *Daemon) run(ctx context.Context) error {
 	// until the user turns it on.
 	d.brain = d.newBrain()
 	d.brain.Start(ctx)
+	vaults := &obsidian.Service{Store: d.store, Log: d.log, Changed: func(id int64, removed bool) {
+		op := "vault"
+		if removed {
+			op = "vault_removed"
+		}
+		d.bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: map[string]any{"op": op, "vault": id}})
+	}}
+	d.goBg(func() { vaults.Run(ctx) })
 	// New project from a template (ADR-065): the person's own list, and their
 	// own gh, run only on a click.
 	var tpls *templates.Service
@@ -721,7 +730,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines,
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
-		Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
+		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
 		BrainHandoffState: d.brainHandoffState,
 	})

@@ -58,7 +58,7 @@ func SyntheticVault(tb testing.TB, dir string, n int) {
 // TestMeasureFiveThousandNotes measures an import of a 5,000-note vault into
 // an on-disk database, an idle refresh and a refresh after one edit, with
 // the heap the import allocated. Run with CAPROCK_OBSIDIAN_MEASURE=1 (it
-// takes seconds); the figures in ADR-078 come from it.
+// takes seconds); the figures in ADR-079 come from it.
 func TestMeasureFiveThousandNotes(t *testing.T) {
 	if os.Getenv("CAPROCK_OBSIDIAN_MEASURE") == "" {
 		t.Skip("set CAPROCK_OBSIDIAN_MEASURE=1 to measure")
@@ -86,6 +86,7 @@ func TestMeasureFiveThousandNotes(t *testing.T) {
 	runtime.ReadMemStats(&m1)
 	t.Logf("import: %d notes, %d links, %d merged, %v; allocated %.1f MB, heap in use after %.1f MB",
 		r.Notes, r.Links, r.Merged, importDur.Round(time.Millisecond), float64(m1.TotalAlloc-m0.TotalAlloc)/(1<<20), float64(m1.HeapInuse)/(1<<20))
+	t.Logf("write transaction (including begin and commit): %dms", r.WriteMs)
 
 	t0 = time.Now()
 	_, r, err = svc.Refresh(ctx, v.ID, false)

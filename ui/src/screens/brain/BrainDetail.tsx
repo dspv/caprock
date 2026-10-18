@@ -4,7 +4,7 @@
  * means to rename, re-summarise, pin, link to a topic and delete it.
  */
 import { useEffect, useState } from 'react'
-import { api, errText, type BrainKind, type BrainLink, type BrainNode } from '@/lib/api'
+import { api, errText, type BrainKind, type BrainLink, type BrainNode, type BrainNoteSource } from '@/lib/api'
 import { isEntity, KIND_COLOR, KIND_LABEL, MEMORY_KINDS, useBrainFrames } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
 import { href } from '@/lib/router'
@@ -27,7 +27,7 @@ export function BrainDetail({ id, onSelect, onClose, editable, className = 'grid
   /** Its display and width: beside the graph, or a column's whole width. */
   className?: string
 }) {
-  const [data, setData] = useState<{ node: BrainNode; links: BrainLink[] } | null>(null)
+  const [data, setData] = useState<{ node: BrainNode; links: BrainLink[]; sources?: BrainNoteSource[] } | null>(null)
   const [error, setError] = useState('')
   const [gone, setGone] = useState(false)
   const load = () => {
@@ -37,7 +37,14 @@ export function BrainDetail({ id, onSelect, onClose, editable, className = 'grid
     })
   }
   useEffect(load, [id])
-  useBrainFrames((f) => { if (!f || f.id === id || f.op !== 'added') load() })
+  useBrainFrames((f) => {
+    if ((f?.op === 'deleted' && f.id === id) || (f?.op === 'vault_removed' &&
+      (!data || (data.node.kind === 'note' && data.sources?.some((s) => s.vault_id === f.vault))))) {
+      onClose()
+      return
+    }
+    if (!f || f.id === id || f.op !== 'added') load()
+  })
 
   if (gone) return null
   return (
@@ -45,7 +52,7 @@ export function BrainDetail({ id, onSelect, onClose, editable, className = 'grid
       <div className="flex items-start gap-2">
         {data && <span aria-hidden className="mt-[7px] inline-block h-[9px] w-[9px] shrink-0 rounded-full" style={{ background: KIND_COLOR[data.node.kind] }} />}
         <div className="min-w-0 flex-1">
-          {data ? <Editable node={data.node} editable={editable} onSaved={(n) => setData((d) => (d ? { ...d, node: n } : d))} /> : <p className="text-[13px] text-fg-faint">{error || 'loading…'}</p>}
+          {data ? <Editable node={data.node} editable={editable && data.node.kind !== 'note'} onSaved={(n) => setData((d) => (d ? { ...d, node: n } : d))} /> : <p className="text-[13px] text-fg-faint">{error || 'loading…'}</p>}
         </div>
         <CloseButton onClick={onClose} />
       </div>
@@ -101,7 +108,7 @@ function Editable({ node, editable, onSaved }: { node: BrainNode; editable: bool
 }
 
 function Body({ data, editable, onSelect, onChanged, onDeleted }: {
-  data: { node: BrainNode; links: BrainLink[] }
+  data: { node: BrainNode; links: BrainLink[]; sources?: BrainNoteSource[] }
   editable: boolean
   onSelect: (id: number) => void
   onChanged: () => void
@@ -126,6 +133,13 @@ function Body({ data, editable, onSelect, onChanged, onDeleted }: {
   const src = node.source
   return (
     <>
+      {data.sources && data.sources.length > 0 && <section aria-label="Obsidian sources" className="grid gap-2 rounded-[7px] border border-border p-2">
+        <p className="text-[12px] font-medium text-fg">Obsidian · edit the source notes in your vault</p>
+        {data.sources.map((s) => <div key={`${s.vault_id}:${s.path}`} className="grid min-w-0 gap-1">
+          <p className="mono break-all text-[11.5px] text-fg-muted">{s.vault} / {s.path}</p>
+          <p className="whitespace-pre-wrap text-[12px] text-fg-muted [overflow-wrap:anywhere]">{s.excerpt}</p>
+        </div>)}
+      </section>}
       <dl className="grid grid-cols-[72px_1fr] gap-x-2 gap-y-1 text-[12px]">
         <dt className="text-fg-faint">Kind</dt>
         <dd className="text-fg-muted">{KIND_LABEL[node.kind]}{node.pinned ? ' · pinned' : ''}</dd>
@@ -136,10 +150,10 @@ function Body({ data, editable, onSelect, onChanged, onDeleted }: {
             <a className="link" href={href({ name: 'session', id: src.session_id, at: src.ts || undefined })} title="Open the session at this moment">
               the session, {fmtAgo(src.ts || node.created_at)}
             </a>
-          ) : node.manual ? 'typed in by hand' : '—'}
+          ) : node.vault ? `Obsidian · ${node.vault}` : node.manual ? 'typed in by hand' : '—'}
         </dd></>}
         <dt className="text-fg-faint">Kept</dt>
-        <dd className="text-fg-muted">{fmtAgo(node.created_at)} · {node.manual ? 'by hand' : node.run_id ? 'by the automatic extraction' : 'with the first memory linked to it'}</dd>
+        <dd className="text-fg-muted">{fmtAgo(node.created_at)} · {node.kind === 'note' ? 'from Obsidian' : node.manual ? 'by hand' : node.run_id ? 'by the automatic extraction' : 'with the first memory linked to it'}</dd>
       </dl>
 
       {links.length > 0 && (
@@ -177,7 +191,7 @@ function Body({ data, editable, onSelect, onChanged, onDeleted }: {
               className="rounded-[6px] border border-border px-2.5 py-1 text-[12px] text-fg-muted hover:text-fg">
               {node.pinned ? 'Unpin' : 'Pin'}
             </button>
-            {confirm ? (
+            {node.kind === 'note' ? <span className="text-[11.5px] text-fg-faint">Delete the source note in Obsidian, or remove the vault import.</span> : confirm ? (
               <>
                 <button type="button" onClick={() => void act(async () => { await api.removeBrain(node.id); onDeleted() })}
                   className="rounded-[6px] bg-danger px-2.5 py-1 text-[12px] font-medium text-white">Delete it</button>

@@ -63,6 +63,8 @@ type Result struct {
 	Skipped int `json:"skipped"`
 	// Ms is how long the scan took.
 	Ms int64 `json:"ms"`
+	// WriteMs includes acquiring, running and committing the write transaction.
+	WriteMs int64 `json:"write_ms"`
 }
 
 // Service imports and refreshes vaults: one scan at a time.
@@ -70,7 +72,7 @@ type Service struct {
 	Store *store.Store
 	Log   *slog.Logger
 	// Changed is told when a scan changed Second Brain, to publish a frame.
-	Changed func(vaultID int64)
+	Changed func(vaultID int64, removed bool)
 	Now     func() time.Time
 	mu      sync.Mutex
 }
@@ -123,8 +125,8 @@ func (s *Service) Add(ctx context.Context, dir string, agents bool) (store.Brain
 	return v, r, err
 }
 
-// Refresh scans one vault again. force re-resolves every link and tag even
-// when no file changed, so a note that names a memory made since links to it.
+// Refresh scans one vault again. force rereads every note and resolves every
+// link and tag, including edits that kept their previous size and timestamp.
 func (s *Service) Refresh(ctx context.Context, id int64, force bool) (store.BrainVault, Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -164,15 +166,20 @@ func (s *Service) Remove(ctx context.Context, id int64) error {
 		return store.RemoveBrainVault(ctx, q, id, s.now().UnixMilli())
 	})
 	if err == nil && s.Changed != nil {
-		s.Changed(id)
+		s.Changed(id, true)
 	}
 	return err
 }
 
 // SetAgents turns a vault's notes reaching agents on or off.
 func (s *Service) SetAgents(ctx context.Context, id int64, on bool) (store.BrainVault, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := store.SetBrainVaultAgents(ctx, s.Store.DB(), id, on); err != nil {
 		return store.BrainVault{}, err
+	}
+	if s.Changed != nil {
+		s.Changed(id, false)
 	}
 	return store.GetBrainVault(ctx, s.Store.DB(), id)
 }
@@ -204,14 +211,20 @@ type file struct {
 // Walk lists a vault's Markdown notes: every .md file under root, outside
 // folders whose name starts with a dot (.obsidian, .trash, .git) and
 // node_modules, not following links. Attachments are never opened.
-func Walk(root string) ([]file, error) {
+func Walk(ctx context.Context, root string) ([]file, error) {
 	var out []file
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			if p == root {
 				return err
 			}
-			return nil // an unreadable folder inside is passed over
+			return err // keep the previous import if any folder is unreadable
+		}
+		if p == root && !d.IsDir() {
+			return ErrNotFolder
 		}
 		name := d.Name()
 		if d.IsDir() {
@@ -225,11 +238,11 @@ func Walk(root string) ([]file, error) {
 		}
 		info, err := d.Info()
 		if err != nil {
-			return nil
+			return err
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
-			return nil
+			return err
 		}
 		out = append(out, file{rel: filepath.ToSlash(rel), mtime: info.ModTime().UnixMilli(), size: info.Size()})
 		if len(out) > MaxNotes {
@@ -241,7 +254,12 @@ func Walk(root string) ([]file, error) {
 }
 
 func readNote(root, rel string) ([]byte, error) {
-	f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+	vault, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer vault.Close()
+	f, err := vault.Open(filepath.FromSlash(rel))
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +371,7 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 	start := s.now()
 	var r Result
 	db := s.Store.DB()
-	files, err := Walk(v.Path)
+	files, err := Walk(ctx, v.Path)
 	elapsed := func() int64 { return s.now().Sub(start).Milliseconds() }
 	if err != nil {
 		msg := err.Error()
@@ -363,7 +381,7 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 			msg = ErrTooMany.Error()
 		}
 		_ = store.RecordBrainVaultScan(ctx, db, v.ID, 0, elapsed(), msg, s.now().UnixMilli())
-		return r, fmt.Errorf("%s: %s", v.Path, msg)
+		return r, fmt.Errorf("%s: %w", v.Path, err)
 	}
 	r.Notes = len(files)
 	rows, err := store.BrainVaultNotes(ctx, db, v.ID)
@@ -383,8 +401,11 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 	var changed []parsed
 	onDisk := make(map[string]bool, len(files))
 	for _, f := range files {
+		if ctx.Err() != nil {
+			return r, ctx.Err()
+		}
 		onDisk[f.rel] = true
-		if row, ok := byPath[f.rel]; ok && row.Mtime == f.mtime && row.Size == f.size {
+		if row, ok := byPath[f.rel]; !force && ok && row.Mtime == f.mtime && row.Size == f.size {
 			continue
 		}
 		data, err := readNote(v.Path, f.rel)
@@ -418,6 +439,7 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 		}
 	}
 	now := s.now().UnixMilli()
+	writeStart := time.Now()
 	err = s.Store.WithTx(ctx, func(tx store.Querier) error {
 		// Each statement prepared once for the scan: a first import runs the
 		// same few thousands of times.
@@ -461,6 +483,11 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 				continue
 			}
 			if row, ok := byPath[c.f.rel]; ok {
+				if row.Title == vn.Title && row.Excerpt == vn.Excerpt && row.Project == vn.Project &&
+					row.Mtime == vn.Mtime && row.Size == vn.Size && sameStrings(row.Aliases, vn.Aliases) &&
+					sameStrings(row.Keys, vn.Keys) && sameStrings(row.Links, vn.Links) && sameStrings(row.Tags, vn.Tags) {
+					continue
+				}
 				if sameStrings(row.Keys, vn.Keys) {
 					vn.ID, vn.NodeID = row.ID, row.NodeID
 					if err := store.UpdateBrainVaultNote(ctx, q, vn); err != nil {
@@ -525,6 +552,7 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 		}
 		return s.link(ctx, q, v.ID, keys, now, &r)
 	})
+	r.WriteMs = time.Since(writeStart).Milliseconds()
 	if err != nil {
 		return r, err
 	}
@@ -533,7 +561,7 @@ func (s *Service) scan(ctx context.Context, v store.BrainVault, force bool) (Res
 		return r, err
 	}
 	if s.Changed != nil && (r.Added+r.Changed+r.Removed+r.Linked+r.Unlinked > 0) {
-		s.Changed(v.ID)
+		s.Changed(v.ID, false)
 	}
 	return r, nil
 }

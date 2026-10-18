@@ -2,6 +2,7 @@ package obsidian
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -130,7 +131,7 @@ func TestImportMergeRules(t *testing.T) {
 	if r.Notes != 4 || r.Added != 4 || r.Merged != 1 || va.Notes != 4 || va.Name != filepath.Base(a) || va.Agents {
 		t.Fatalf("first import: %+v, vault %+v", r, va)
 	}
-	if _, _, err := f.svc.Add(f.ctx, a, false); err != store.ErrVaultExists {
+	if _, _, err := f.svc.Add(f.ctx, a, false); !errors.Is(err, store.ErrVaultExists) {
 		t.Fatalf("second add of the same folder: %v", err)
 	}
 
@@ -279,7 +280,7 @@ func TestRefreshEditsDeletesRenames(t *testing.T) {
 	if r.Read != 0 || r.Linked != 0 || r.Unlinked != 0 {
 		t.Fatalf("idle refresh: %+v", r)
 	}
-	if _, r, _ = f.svc.Refresh(f.ctx, v.ID, true); r.Read != 0 || r.Linked != 0 || r.Unlinked != 0 {
+	if _, r, _ = f.svc.Refresh(f.ctx, v.ID, true); r.Read != 3 || r.Changed != 0 || r.Linked != 0 || r.Unlinked != 0 {
 		t.Fatalf("forced idle refresh: %+v", r)
 	}
 	var w float64
@@ -384,10 +385,10 @@ func TestDuplicateTitlesInOneVaultAreOneNode(t *testing.T) {
 }
 
 func TestCleanPath(t *testing.T) {
-	if _, err := CleanPath("relative/vault"); err != ErrNotAbsolute {
+	if _, err := CleanPath("relative/vault"); !errors.Is(err, ErrNotAbsolute) {
 		t.Fatalf("relative: %v", err)
 	}
-	if _, err := CleanPath(filepath.Join(t.TempDir(), "nope")); err != ErrNotFolder {
+	if _, err := CleanPath(filepath.Join(t.TempDir(), "nope")); !errors.Is(err, ErrNotFolder) {
 		t.Fatalf("missing: %v", err)
 	}
 	d := t.TempDir()
@@ -403,4 +404,83 @@ func mustRefresh(t *testing.T, f *fixture, id int64) Result {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// A file replaced by a symlink between discovery and reading must not read outside the vault.
+func TestReadNoteCannotEscapeVault(t *testing.T) {
+	vault, outside := t.TempDir(), t.TempDir()
+	target := filepath.Join(outside, "secret.md")
+	if err := os.WriteFile(target, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(vault, "Note.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := readNote(vault, "Note.md"); err == nil {
+		t.Fatal("read outside the vault through a symlink")
+	}
+	if _, err := readNote(vault, filepath.Join("..", filepath.Base(outside), "secret.md")); err == nil {
+		t.Fatal("read a parent path")
+	}
+}
+
+func TestManualRefreshReadsAnEditWithUnchangedMetadata(t *testing.T) {
+	f := newFixture(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "Note.md")
+	if err := os.WriteFile(file, []byte("First text"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _, err := f.svc.Add(f.ctx, dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("Other text"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(file, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.svc.Refresh(f.ctx, v.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.node("Note"); got.Summary != "Other text" {
+		t.Fatalf("manual refresh missed an edit: %+v", got)
+	}
+}
+
+func TestVaultWalkStopsOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := Walk(ctx, t.TempDir()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("walk: %v", err)
+	}
+}
+
+func TestAnIndependentLinkAddedAfterImportSurvivesRemoval(t *testing.T) {
+	f := newFixture(t)
+	node, _, err := store.InsertBrainNode(f.ctx, f.st.DB(), store.BrainNode{Kind: store.BrainDecision, Title: "Existing decision"}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	write(t, dir, "Existing decision.md", "The source. #adopted-topic")
+	v, _, err := f.svc.Add(f.ctx, dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	topic := f.entity(store.BrainTopic, "adopted-topic")
+	if err := f.st.WithTx(f.ctx, func(q store.Querier) error { return store.LinkBrain(f.ctx, q, node.ID, topic, store.EdgePartOf, 1, 2) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.Remove(f.ctx, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !f.edge(node.ID, topic, store.EdgePartOf) {
+		t.Fatal("removing the import removed an independently adopted link")
+	}
 }

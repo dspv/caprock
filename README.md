@@ -112,6 +112,9 @@ without leaving the window.
 - **Runaway agents caught.** Loop alerts on repeated tool calls, and an opt-in
   task runner for Claude Code that calls a task done only when your own test
   commands pass.
+- **Bring your Obsidian notes.** Import a vault into Second Brain without
+  changing its files. Links and tags join the graph; letting agents use the
+  notes is a separate choice, off by default ([guide](docs/obsidian.md)).
 - **Your agents can ask it.** `caprock mcp` lets Claude Code, Codex or any MCP
   client read Second Brain, past sessions and what they wrote, cost and CI —
   read-only ([details](#ask-caprock-from-your-agents)).

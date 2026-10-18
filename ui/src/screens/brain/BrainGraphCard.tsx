@@ -42,7 +42,7 @@ const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
 /** What a graph holds, in words: *278 memories · 91 topics*. */
 export function graphCaption(g: BrainGraph): string {
   const topics = g.nodes.filter((n) => n.kind === 'topic').length
-  return `${plural(g.total, 'memory', 'memories')} · ${plural(topics, 'topic', 'topics')}`
+  return `${g.nodes.some((n) => n.kind === 'note') ? g.total === 1 ? '1 note' : `${g.total} memories and notes` : plural(g.total, 'memory', 'memories')} · ${plural(topics, 'topic', 'topics')}`
 }
 
 function reducedMotion(): boolean {
@@ -237,6 +237,7 @@ export function BrainGraphDialog({ graph, selected, onSelect, onClose, editable,
               {idx.projects.map((p) => <option key={p.name} value={p.name}>{p.name} · {p.memories}</option>)}
             </select>
           </span>
+          {graph.nodes.some((n) => n.kind === 'note') && <span className="text-[11.5px] text-fg-muted">◆ Obsidian note</span>}
           <CloseButton onClick={close} label="Close the graph" />
         </div>
         <div className="flex min-h-0 flex-1 gap-3 p-3 max-md:flex-col max-md:p-2">

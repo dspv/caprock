@@ -5570,3 +5570,56 @@ take tools from outside.
 **Revisit if:** an agent needs to write into Second Brain from a session
 (a `remember` tool), a client that only speaks HTTP matters, or the SDK
 becomes a dependency for another reason.
+
+## ADR-079 — Obsidian vaults are local read-only sources in Second Brain; sharing with agents is per vault and off by default
+
+**Date:** 2026-10-18 · **Status:** accepted (owner's Obsidian import handoff,
+2026-10-18). Supersedes the provisional ADR-078 references in the paused branch;
+ADR-078 belongs to MCP. Contract: [03-contracts.md § Obsidian vaults](03-contracts.md#obsidian-vaults);
+user guide: [docs/obsidian.md](../docs/obsidian.md).
+
+**Context.** The owner wants existing Obsidian notes in the same graph as
+session memories, with an explicit choice about giving them to agents. The
+paused implementation already supplies parsing, source tracking and migration
+0062; the integration must preserve personal notes and avoid a database stall.
+
+**Decision.**
+
+- Import a user-chosen absolute folder on this machine, reading Markdown
+  only. Never write into a vault, follow a symlink out of it, read attachments
+  or call a model to import it. Sources keep their own excerpts.
+- A filename or alias matching an existing memory or note adds a source,
+  preserving the existing memory's summary. Otherwise create kind `note`.
+  Wikilinks are graph links, tags are topics, matching project folders group
+  notes; unmatched folders use the Obsidian cluster. Imported notes are edited
+  in Obsidian, not converted into session memories in the dashboard.
+- Source rows and edge claims track ownership. Refresh and removal release
+  only the import's own material; existing memories, manual edges and other
+  vaults' sources remain. Migration 0062 rebuilds the node-kind CHECK while
+  preserving existing nodes and edges.
+- **Agent sharing defaults off per vault.** Handoff excludes private note
+  nodes; extraction excludes entities created by a private vault. MCP uses
+  `agents=1` reads: it excludes any node with a private source, including an
+  existing memory joined by one, so source excerpts cannot leak through
+  search. Its related nodes and project lists obey the same boundary. A
+  shared note requires consent from every contributing vault. Turning the
+  switch off changes future reads, without retracting previous model context.
+- Management endpoints are machine-only. Paired screens can still read the
+  graph, as the user's own screens did before; the agent switch governs
+  agent access, not the owner's paired devices.
+- Check saved vaults after two minutes, then ten minutes after each pass.
+  Automatic refresh stats files and reads changed metadata only; manual
+  refresh rereads all notes. A failed walk preserves the previous import.
+  Files are read before the write transaction; one scan runs at a time.
+- The existing limits are 50,000 notes and 4 MiB read per note. First measure
+  5,000 synthetic notes on a throwaway disk database; split writes if that
+  import holds the database for more than five seconds. Record measurements
+  with the final validation, not as a universal performance promise.
+
+**Not chosen.** Two-way sync (would write personal files), an always-on file
+watcher per folder, model-based ingestion, or automatic permission to send
+private notes to a model. The importer needs none of these.
+
+**Revisit if:** measured imports exceed the write-lock budget, title-only link
+resolution proves too ambiguous, or the user asks for two-way sync with an
+explicit conflict policy.

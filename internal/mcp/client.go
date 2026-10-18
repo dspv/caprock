@@ -52,6 +52,12 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, v any) erro
 	if err != nil {
 		return err
 	}
+	if strings.HasPrefix(path, "/v1/brain") {
+		if q == nil {
+			q = url.Values{}
+		}
+		q.Set("agents", "1")
+	}
 	u := base + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()

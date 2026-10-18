@@ -235,7 +235,7 @@ func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainRead
 
 // BrainProjectMemories returns a project's pinned memories, then its newest,
 // for a new session's handoff. An imported note is among them only when
-// every vault it came from lets its notes reach agents (ADR-078).
+// every vault it came from lets its notes reach agents (ADR-079).
 func BrainProjectMemories(ctx context.Context, q Querier, project string, limit int) ([]BrainNode, error) {
 	rows, err := q.QueryContext(ctx, `SELECT `+brainCols+` FROM brain_nodes n
 		WHERE n.project = ? AND n.kind NOT IN ('topic','person','project') AND `+brainAgentsMayRead+`

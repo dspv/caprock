@@ -294,6 +294,7 @@ describe('Second Brain', () => {
   it('names each mode in words: paused, needs Claude Code, sessions to read, linking, limit reached', () => {
     const st = (a: Partial<BrainAutoStatus>, memories = 3) => status({ memories, auto: auto(a) }) as BrainStatus
     expect(brainMode(st({ on: false, chosen: true })).mode).toBe('Paused')
+    expect(brainMode({ ...st({ on: false, chosen: false }, 0), notes: 2 })).toEqual({ mode: 'Obsidian', metric: '2 notes', active: false })
     expect(brainMode(st({ on: false, chosen: false }), 0).mode).toBe('Not started')
     expect(brainMode(st({ claude_found: false })).mode).toBe('Needs Claude Code')
     expect(brainMode(st({ pending: 3 })).mode).toBe('3 sessions to read')

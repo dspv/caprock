@@ -17,12 +17,14 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/store"
 )
 
 // fixture is a real daemon API over an in-memory store, seeded with one
 // repository's sessions, prose, memories, daily totals and a loop alert.
 type fixture struct {
+	st      *store.Store
 	srv     *httptest.Server
 	repo    string // a directory inside the repository
 	project string
@@ -119,7 +121,7 @@ func newFixture(t *testing.T) *fixture {
 	}))
 	t.Cleanup(srv.Close)
 	c := &Client{Base: func() (string, error) { return srv.URL, nil }}
-	f := &fixture{srv: srv, repo: sub, project: project, tools: map[string]Tool{}}
+	f := &fixture{st: st, srv: srv, repo: sub, project: project, tools: map[string]Tool{}}
 	for _, tl := range Tools(c, sub) {
 		f.tools[tl.Name] = tl
 	}
@@ -374,5 +376,42 @@ func TestDaemonDownIsAToolError(t *testing.T) {
 		if txt := res["content"].([]map[string]any)[0]["text"].(string); !strings.Contains(txt, "caprock up") {
 			t.Errorf("%s: %q does not say how to start it", tl.Name, txt)
 		}
+	}
+}
+
+func TestMCPRespectsVaultConsent(t *testing.T) {
+	f := newFixture(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Private journal.md"), []byte("Vaultconfidentialword #private-tag"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	svc := &obsidian.Service{Store: f.st}
+	v, _, err := svc.Add(context.Background(), dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	if err := f.st.DB().QueryRow(`SELECT id FROM brain_nodes WHERE kind = 'note'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	out, msg := f.call(t, "search_memories", map[string]any{"query": "Vaultconfidentialword"})
+	if msg != "" || len(out["memories"].([]any)) != 0 {
+		t.Fatalf("private search: %v %s", out, msg)
+	}
+	if _, msg := f.call(t, "get_memory", map[string]any{"id": id}); !strings.Contains(msg, "not found") {
+		t.Fatalf("private id: %s", msg)
+	}
+	if _, err := svc.SetAgents(context.Background(), v.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	out, msg = f.call(t, "get_memory", map[string]any{"id": id})
+	if msg != "" || !strings.Contains(out["memory"].(map[string]any)["summary"].(string), "Vaultconfidentialword") {
+		t.Fatalf("allowed read: %v %s", out, msg)
+	}
+	if _, err := svc.SetAgents(context.Background(), v.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, msg := f.call(t, "get_memory", map[string]any{"id": id}); !strings.Contains(msg, "not found") {
+		t.Fatalf("revoked read: %s", msg)
 	}
 }

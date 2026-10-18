@@ -4,7 +4,7 @@
  * on a fresh page with nothing in its storage; the fixture fails any test
  * that logs a console error, throws, or sends a request off the stand.
  */
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { expect, test } from './fixtures'
 
@@ -188,4 +188,44 @@ test('a chat starts in one tap, opens as a conversation, shows its files, and is
   await page.getByRole('menuitem', { name: /Delete for good/ }).click()
   await expect(page.getByText('No archived chats.')).toBeVisible()
   await expect.poll(async () => (await fetch(`${app.stand.daemonURL}/v1/sessions/${encodeURIComponent(id)}`)).status).toBe(404)
+})
+
+test('an Obsidian vault imports privately, consent can be changed, and removing it keeps the source', async ({ app, page }) => {
+  const vault = path.join(app.stand.dir, 'obsidian-vault')
+  mkdirSync(vault, { recursive: true })
+  const file = path.join(vault, 'Vault journal.md')
+  writeFileSync(file, 'A synthetic note. #e2e-topic')
+  await page.goto(`${app.stand.pageURL}/#/brain`)
+  await page.getByRole('button', { name: 'Import from Obsidian…' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Obsidian vaults' })
+  await expect(sheet.getByRole('checkbox', { name: 'Let agents use these notes' })).not.toBeChecked()
+  await sheet.getByRole('textbox', { name: 'Vault folder' }).fill(vault)
+  await sheet.getByRole('button', { name: 'Import vault' }).click()
+  await expect(sheet.getByRole('heading', { name: 'obsidian-vault' })).toBeVisible()
+  const consent = sheet.getByRole('checkbox', { name: 'Let agents use obsidian-vault' })
+  await expect(consent).not.toBeChecked()
+  await page.screenshot({ path: test.info().outputPath('obsidian-import.png') })
+  await consent.click()
+  await expect(consent).toBeChecked()
+  await expect(consent).toBeEnabled()
+  await consent.click()
+  await expect(consent).not.toBeChecked()
+  await sheet.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByRole('button', { name: /Vault journal/ })).toBeVisible()
+  await page.getByRole('button', { name: /Vault journal/ }).click()
+  await expect(page.getByRole('region', { name: 'Obsidian sources' })).toContainText('Vault journal.md')
+  await page.screenshot({ path: test.info().outputPath('obsidian-source.png') })
+  await page.getByRole('button', { name: /Open the graph/ }).click()
+  const graph = page.getByRole('dialog', { name: 'Second Brain graph' })
+  await expect(graph.getByText('◆ Obsidian note')).toBeVisible()
+  await page.screenshot({ path: test.info().outputPath('obsidian-graph.png') })
+  await graph.getByRole('button', { name: 'Close the graph' }).click()
+  await expect(graph).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Import from Obsidian…' }).click()
+  await sheet.getByRole('button', { name: 'Remove…' }).click()
+  await sheet.getByRole('button', { name: 'Remove import' }).click()
+  await expect(sheet.getByRole('heading', { name: 'obsidian-vault' })).toHaveCount(0)
+  await expect(page.locator('[data-brain-detail]')).toHaveCount(0)
+  expect(readFileSync(file, 'utf8')).toBe('A synthetic note. #e2e-topic')
 })

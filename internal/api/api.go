@@ -41,6 +41,7 @@ import (
 	"github.com/dspv/caprock/internal/modules"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/nativeterm"
+	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/premium"
 	"github.com/dspv/caprock/internal/projects"
@@ -147,6 +148,8 @@ type Deps struct {
 	// BrainAuto is Second Brain's automatic extraction (ADR-063). Nil in
 	// builds or tests without it; the graph and manual drops work either way.
 	BrainAuto BrainAuto
+	// Obsidian imports local Markdown vaults; nil without the importer.
+	Obsidian *obsidian.Service
 	// BrainHandoffState says whether a new session in a repository would be
 	// served a handoff at all — Memory between sessions on, a passage left
 	// recently enough — for GET /v1/brain/handoff. Nil in tests; the
@@ -823,6 +826,11 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/inbox/{id}", s.handleDeleteInbox)
 	m.HandleFunc("GET /v1/inbox/{id}/files/{n}", s.handleInboxFile)
 	// Second Brain (brain.go, ADR-063).
+	m.HandleFunc("GET /v1/brain/vaults", s.handleBrainVaults)
+	m.HandleFunc("POST /v1/brain/vaults", s.handleAddBrainVault)
+	m.HandleFunc("PATCH /v1/brain/vaults/{id}", s.handlePatchBrainVault)
+	m.HandleFunc("POST /v1/brain/vaults/{id}/refresh", s.handleRefreshBrainVault)
+	m.HandleFunc("DELETE /v1/brain/vaults/{id}", s.handleRemoveBrainVault)
 	m.HandleFunc("GET /v1/brain", s.handleBrainGraph)
 	m.HandleFunc("GET /v1/brain/status", s.handleBrainStatus)
 	m.HandleFunc("GET /v1/brain/handoff", s.handleBrainHandoff)

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -34,6 +35,7 @@ const brainTopicsMax = 8
 type BrainStatus struct {
 	// Memories is how many memories there are; Manual how many were dropped
 	// in by hand.
+	Notes    int                       `json:"notes"`
 	Memories int                       `json:"memories"`
 	Manual   int                       `json:"manual"`
 	Projects []store.BrainProjectCount `json:"projects"`
@@ -151,6 +153,7 @@ func (s *Server) handleBrainGraph(w http.ResponseWriter, r *http.Request) {
 		Query:     strings.TrimSpace(qv.Get("q")),
 		Project:   strings.TrimSpace(qv.Get("project")),
 		Summaries: qv.Get("summaries") == "1",
+		Agents:    qv.Get("agents") == "1",
 	}
 	for _, p := range []struct {
 		name string
@@ -194,9 +197,15 @@ func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	if st.Projects, err = store.BrainProjects(ctx, db); err != nil {
+	if st.Projects, err = store.BrainProjects(ctx, db, r.URL.Query().Get("agents") == "1"); err != nil {
 		s.fail(w, err)
 		return
+	}
+	if r.URL.Query().Get("agents") != "1" {
+		if st.Notes, err = store.CountBrainNotes(ctx, db); err != nil {
+			s.fail(w, err)
+			return
+		}
 	}
 	if s.d.BrainAuto != nil {
 		st.Auto = s.d.BrainAuto.Status(ctx)
@@ -291,6 +300,18 @@ func (s *Server) handleBrainNode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	agents := r.URL.Query().Get("agents") == "1"
+	if agents {
+		allowed, err := store.BrainAgentNodes(r.Context(), s.d.Store.DB(), []int64{id})
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if !allowed[id] {
+			s.brainErr(w, store.ErrBrainNotFound)
+			return
+		}
+	}
 	n, err := store.GetBrainNode(r.Context(), s.d.Store.DB(), id)
 	if err != nil {
 		s.brainErr(w, err)
@@ -301,7 +322,29 @@ func (s *Server) handleBrainNode(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"node": n, "links": links})
+	if agents {
+		ids := make([]int64, 0, len(links))
+		for _, l := range links {
+			ids = append(ids, l.Node.ID)
+		}
+		allowed, err := store.BrainAgentNodes(r.Context(), s.d.Store.DB(), ids)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		links = slices.DeleteFunc(links, func(l store.BrainLink) bool { return !allowed[l.Node.ID] })
+		writeJSON(w, http.StatusOK, map[string]any{"node": n, "links": links})
+		return
+	}
+	sources, err := store.BrainNodeSources(r.Context(), s.d.Store.DB(), id)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if len(sources) > 0 {
+		n.Vault = sources[0].Vault
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"node": n, "links": links, "sources": sources})
 }
 
 // brainDrop is POST /v1/brain/nodes.
@@ -344,6 +387,10 @@ func (s *Server) handleBrainDrop(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Kind == "" {
 		b.Kind = store.BrainIdea
+	}
+	if b.Kind == store.BrainNote {
+		bad("notes are imported from an Obsidian vault")
+		return
 	}
 	if !store.IsBrainKind(b.Kind) {
 		bad("kind is one of " + strings.Join(store.BrainKinds, ", "))
@@ -468,6 +515,15 @@ func (s *Server) handleDeleteBrainNode(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	n, err := store.GetBrainNode(r.Context(), s.d.Store.DB(), id)
+	if err != nil {
+		s.brainErr(w, err)
+		return
+	}
+	if n.Kind == store.BrainNote {
+		s.brainErr(w, errors.Join(store.ErrBrainInvalid, errors.New("delete the source note in Obsidian or remove its vault import")))
+		return
+	}
 	if err := store.DeleteBrainNode(r.Context(), s.d.Store.DB(), id); err != nil {
 		s.brainErr(w, err)
 		return
@@ -509,7 +565,9 @@ func (s *Server) handleBrainLink(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err)
 			return
 		}
-	} else if err := store.LinkBrain(ctx, db, b.From, b.To, b.Kind, 1, s.d.Now().UnixMilli()); err != nil {
+	} else if err := s.d.Store.WithTx(ctx, func(q store.Querier) error {
+		return store.LinkBrain(ctx, q, b.From, b.To, b.Kind, 1, s.d.Now().UnixMilli())
+	}); err != nil {
 		s.brainErr(w, err)
 		return
 	}

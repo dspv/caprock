@@ -130,6 +130,16 @@ Rules that hold for every row:
 - **Rollup tables.** `session_stats`, `daily_stats` and the rest are sums of
   these rows; sum them yourself and the totals reconcile.
 
+## Imported Obsidian sources
+
+Migration 0062 adds kind `note` and `vault_id` to `brain_nodes`, preserving
+existing nodes and edges. `brain_vaults` records selected folders and sharing
+consent; `brain_vault_notes` maps each source file to a node and keeps its
+own excerpt and metadata; `brain_vault_edges` records which graph links each
+import owns. Notes are separate from agent-session memories and create no
+session, event or cost records. The full schema and ownership rules live in
+[the Obsidian contract](../.ai/03-contracts.md#obsidian-vaults-ddl-migration-0062).
+
 ## Compatibility
 
 The column sets are a contract. A new column is added at the end of a table; a

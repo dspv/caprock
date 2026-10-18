@@ -121,6 +121,37 @@ accordingly — failure paths first, happy path left to the smoke suite.
   the limits), `op_id` idempotency, and in `api` the phone's `403` and the
   2 MiB body limit.
 
+## Obsidian imports
+
+`internal/obsidian` tests use synthetic vaults in temporary folders and an
+in-memory or throwaway on-disk database. They cover Markdown parsing, merge
+and alias rules, shared sources, edge ownership and removal, automatic
+metadata refresh, forced rereads, renamed/deleted/missing files, cancellation,
+agent handoff/topic consent and rooted reads refusing symlink escapes. The
+extraction test verifies that a model cannot create the reserved imported-note
+kind from a session.
+`internal/store/brainvault_test.go` checks migration 0062 keeps existing nodes,
+edges and weights, accepts the new kind, and retains foreign-key cascades.
+
+`internal/api/obsidian_test.go` covers the full import/refresh/remove lifecycle,
+source-file preservation, default sharing, enabling and revoking it, filtered
+search, known-id and neighbour reads, mixed private sources and machine-only
+configuration. `internal/mcp/tools_test.go` reads through the actual MCP tool
+path with sharing off/on/off; a local graph read alone would not catch a
+client forgetting `agents=1`.
+
+`ObsidianVaults.test.tsx` covers explicit consent, refresh, confirmed removal
+and recoverable errors; `BrainScreen.test.tsx` covers notes without session
+memories or automatic extraction. The headless-browser golden path imports a
+synthetic vault, changes and revokes consent, reads its source marker, removes
+the import and checks that its file stayed unchanged.
+
+`CAPROCK_OBSIDIAN_MEASURE=1 go test ./internal/obsidian -run
+'^TestMeasureFiveThousandNotes$' -count=1 -v` measures a 5,000-note synthetic
+vault on disk, its idle and one-edit refresh and removal. Run it alone after
+other builds/tests finish; record the final result in build-status. It does
+not establish performance on a user's vault or on another OS.
+
 ## Agents reading Caprock over MCP
 
 The MCP tests use temporary directories, an in-memory store and a loopback

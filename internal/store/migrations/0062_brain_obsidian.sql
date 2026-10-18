@@ -1,4 +1,4 @@
--- Obsidian vaults in Second Brain (ADR-078; 03-contracts.md § Obsidian
+-- Obsidian vaults in Second Brain (ADR-079; 03-contracts.md § Obsidian
 -- vaults DDL). A vault the user picked is read on this machine and never
 -- written: each Markdown note becomes a node of the new kind 'note', or a
 -- second source on a node with the same title or alias; its [[links]] are

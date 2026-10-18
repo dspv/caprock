@@ -518,8 +518,16 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           const x = sx(n.x, v)
           const y = sy(n.y, v)
           if (x < -r || x > w + r || y < -r || y > h + r) continue
-          c.moveTo(x + r, y)
-          c.arc(x, y, r, 0, Math.PI * 2)
+          if (kinds[i] === 'note') {
+            c.moveTo(x, y - r * 1.3)
+            c.lineTo(x + r, y)
+            c.lineTo(x, y + r * 1.3)
+            c.lineTo(x - r, y)
+            c.closePath()
+          } else {
+            c.moveTo(x + r, y)
+            c.arc(x, y, r, 0, Math.PI * 2)
+          }
         }
         c.fill()
       }

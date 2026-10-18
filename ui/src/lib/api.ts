@@ -1456,11 +1456,13 @@ export interface SavedPrompt {
 export interface SavedDraft { kind: 'prompt' | 'command'; name: string; text: string; project_id: number }
 
 /** Second Brain's node kinds (03-contracts.md § Second Brain): four memories, then three entities. */
-export type BrainKind = 'idea' | 'decision' | 'finding' | 'question' | 'topic' | 'person' | 'project'
+export type BrainKind = 'note' | 'idea' | 'decision' | 'finding' | 'question' | 'topic' | 'person' | 'project'
 export type BrainEdgeKind = 'relates' | 'follows' | 'contradicts' | 'part_of'
 
 /** One node of Second Brain: a memory, or a topic, person or project it hangs off. */
 export interface BrainNode {
+  /** The oldest imported source's vault, when present. */
+  vault?: string
   id: number
   kind: BrainKind
   title: string
@@ -1515,7 +1517,15 @@ export interface BrainHandoffView {
   }
 }
 
+export interface BrainVault {
+ id: number; name: string; path: string; agents: boolean; notes: number
+ scanned_at?: number; scan_ms: number; error?: string; created_at: number
+}
+export interface BrainNoteSource {
+ vault_id: number; vault: string; path: string; title: string; aliases?: string[]; excerpt: string; mtime: number
+}
 export interface BrainStatus {
+  notes?: number
   memories: number
   manual: number
   projects: { project: string; count: number }[]
@@ -2350,9 +2360,14 @@ export const api = {
     const tail = qs.toString()
     return get<BrainGraph>(`/v1/brain${tail ? `?${tail}` : ''}`)
   },
+  brainVaults: () => get<{ vaults: BrainVault[] }>('/v1/brain/vaults'),
+  addBrainVault: (path: string, agents = false) => post<{ vault: BrainVault }>('/v1/brain/vaults', { path, agents }),
+  patchBrainVault: (id: number, agents: boolean) => post<{ vault: BrainVault }>(`/v1/brain/vaults/${id}`, { agents }, 'PATCH'),
+  refreshBrainVault: (id: number) => post<{ vault: BrainVault }>(`/v1/brain/vaults/${id}/refresh`, {}),
+  removeBrainVault: (id: number) => post<void>(`/v1/brain/vaults/${id}`, {}, 'DELETE'),
   brainStatus: () => get<BrainStatus>('/v1/brain/status'),
   brainHandoff: (project: string) => get<BrainHandoffView>(`/v1/brain/handoff?project=${encodeURIComponent(project)}`),
-  brainNode: (id: number) => get<{ node: BrainNode; links: BrainLink[] }>(`/v1/brain/nodes/${id}`),
+  brainNode: (id: number) => get<{ node: BrainNode; links: BrainLink[]; sources?: BrainNoteSource[] }>(`/v1/brain/nodes/${id}`),
   dropBrain: (d: BrainDrop) => post<{ node: BrainNode; created: boolean }>('/v1/brain/nodes', d),
   patchBrain: (id: number, p: Partial<Pick<BrainNode, 'kind' | 'title' | 'summary' | 'pinned'>>) =>
     post<{ node: BrainNode }>(`/v1/brain/nodes/${id}`, p, 'PATCH'),

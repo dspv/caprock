@@ -162,7 +162,7 @@ function Entity({ graph, idx, node, onSelect, onOpenProject, onOpenTopic, onClos
       <div className="grid gap-1">
         <span className="flex items-center gap-1.5 text-[11.5px] text-fg-muted">
           <Swatch color={color} />
-          {KIND_LABEL[node.kind]}
+          {KIND_LABEL[node.kind]}{node.vault && ` · Obsidian · ${node.vault}`}
           {!project && idx.projectOf.get(node.id) && <span className="truncate">· mostly {idx.projectOf.get(node.id)}</span>}
           {onClose && <button type="button" onClick={onClose} className="ml-auto text-[11.5px] text-fg-faint hover:text-fg" aria-label="Let it go">×</button>}
         </span>
@@ -227,7 +227,7 @@ function Peek({ idx, node, now }: { idx: GraphIndex; node: BrainNode; now: numbe
     <div className="grid gap-1.5">
       <span className="flex items-center gap-1.5 text-[11.5px] text-fg-muted">
         <span aria-hidden className="inline-block h-[8px] w-[8px] rounded-full" style={{ background: KIND_COLOR[node.kind] }} />
-        {KIND_LABEL[node.kind]}
+        {KIND_LABEL[node.kind]}{node.vault && ` · Obsidian · ${node.vault}`}
         {project && <><span>·</span><Swatch color={idx.colorOf.get(node.id) ?? 'var(--color-fg)'} size={7} /><span className="truncate">{project}</span></>}
       </span>
       <h3 className="text-[15px] font-semibold leading-snug text-fg [overflow-wrap:anywhere]" data-brain-panel-title>{node.title}</h3>
