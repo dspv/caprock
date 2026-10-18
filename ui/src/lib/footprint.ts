@@ -475,9 +475,9 @@ export function doctorRows(f: Footprint): DoctorRow[] {
   if (oldHolders.length) {
     rows.push({
       key: 'old-terminals',
-      title: 'Terminals from an older Caprock install',
+      title: 'Older install sessions',
       count: oldHolders.length,
-      reason: 'Sessions started before you switched installs; they still run.',
+      reason: 'Still running from a previous Caprock install.',
       value: fmtBytes(mem(oldHolders)),
       warn: false,
       stoppable: oldHolders,
@@ -488,15 +488,15 @@ export function doctorRows(f: Footprint): DoctorRow[] {
   const strayWarn = isWarn('stray_processes')
   const commands = of('caprock_other')
   if (commands.length) {
-    rows.push({ key: 'commands', title: 'Leftover Caprock commands', count: commands.length, reason: 'Started by a window or script that has closed.', value: fmtBytes(mem(commands)), warn: strayWarn, stoppable: commands, procs: commands })
+    rows.push({ key: 'commands', title: 'Background commands', count: commands.length, reason: 'Their window or script has closed.', value: fmtBytes(mem(commands)), warn: strayWarn, stoppable: commands, procs: commands })
   }
   const claudes = of('claude')
   if (claudes.length) {
-    rows.push({ key: 'claude', title: 'Finished Claude sessions still running', count: claudes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(claudes)), warn: strayWarn, stoppable: claudes, procs: claudes })
+    rows.push({ key: 'claude', title: 'Leftover Claude sessions', count: claudes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(claudes)), warn: strayWarn, stoppable: claudes, procs: claudes })
   }
   const codexes = of('codex')
   if (codexes.length) {
-    rows.push({ key: 'codex', title: 'Finished Codex sessions still running', count: codexes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(codexes)), warn: strayWarn, stoppable: codexes, procs: codexes })
+    rows.push({ key: 'codex', title: 'Leftover Codex sessions', count: codexes.length, reason: 'Their session has ended; the process did not.', value: fmtBytes(mem(codexes)), warn: strayWarn, stoppable: codexes, procs: codexes })
   }
   const helpers = of('mcp_server', 'claude_child')
   if (helpers.length) {
@@ -518,7 +518,7 @@ export function doctorRows(f: Footprint): DoctorRow[] {
     rows.push({
       key: 'reads',
       title: 'Disk reads',
-      reason: high ? `More than usual for Caprock${over ? ` (over ${over} an hour)` : ''}.` : 'Normal for Caprock.',
+      reason: high ? `Above the usual${over ? ` ${over}/hour` : ''} limit.` : 'Normal for Caprock.',
       value: `${fmtBytes(io.read_bytes)} / ${span}`,
       warn: high, stoppable: [], procs: [], said: verdict('disk_reads_high')?.text,
     })
@@ -547,8 +547,8 @@ export function cleanupList(rows: DoctorRow[]): Orphan[] {
 /** The one line at the top. */
 export function doctorHeadline(f: Footprint): { ok: boolean; text: string } {
   if ((f.verdicts ?? []).some((v) => v.code === 'daemon_not_running')) return { ok: false, text: 'Caprock is not running' }
-  if (!warnings(f).length) return { ok: true, text: `All good — Caprock uses ${fmtMem(f.memory.total_mem_bytes)}` }
-  return { ok: false, text: 'Caprock is using more than it should' }
+  if (!warnings(f).length) return { ok: true, text: 'All good' }
+  return { ok: false, text: 'Needs attention' }
 }
 
 /** "3 test copies of Caprock", for the confirmation and the note after a stop. */

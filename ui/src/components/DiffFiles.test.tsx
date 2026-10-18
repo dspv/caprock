@@ -22,6 +22,7 @@ describe('DiffFiles', () => {
     expect(screen.getByText('in b.ts')).toBeInTheDocument()
   })
 
+  // Three renders up to 1,000 DOM rows exercise pagination, not a speed budget.
   it('draws a long patch a page at a time', () => {
     const body = Array.from({ length: 1000 }, (_, i) => `+line ${i}`).join('\n')
     render(<Harness files={[file('big.ts', `@@ -0,0 +1,1000 @@\n${body}`)]} initial={['big.ts']} />)
@@ -31,7 +32,7 @@ describe('DiffFiles', () => {
     expect(screen.getByText('line 500')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Show all 1001'))
     expect(screen.getByText('line 999')).toBeInTheDocument()
-  })
+  }, 15_000)
 
   it('cuts a very long line until asked', () => {
     const long = 'x'.repeat(5000)

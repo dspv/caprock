@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-10-06** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-10-18** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
@@ -75,6 +75,21 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-18 — unreleased: readable resource doctor
+
+The resource popover now uses a 420 px layout, a short verdict, labelled
+memory and disk totals, larger row text and values, and shorter explanations.
+Values and Stop actions have a separate line so long titles do not squeeze
+them. Technical details and the full breakdown stay collapsed. Process-stop
+selection, confirmation and force-stop behaviour are unchanged.
+
+Local `make check` passed, including 3,434 UI tests and 20 script tests.
+A synthetic browser preview also passed at desktop and 390 px widths.
+
+Validation also reproduced the unchanged large-diff pagination test timing
+out at its default five seconds. Its three renders of up to 1,000 DOM rows
+now have a per-test 15-second budget; all pagination assertions remain.
 
 ### 2026-10-18 — unreleased: agents can read Caprock through MCP (ADR-078)
 
