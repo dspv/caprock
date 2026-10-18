@@ -1,0 +1,23 @@
+import { expect, test } from './fixtures'
+
+test('sample spam moves to Trash through a reviewed cleanup', async ({ app, page }, testInfo) => {
+  await page.goto(`${app.stand.pageURL}/#/mail`)
+  const response = await page.request.post(`${app.stand.pageURL}/v1/mail/sample`, { data: { on: true } })
+  expect(response.ok()).toBeTruthy()
+  await page.reload()
+  await page.locator('.cm .side').getByRole('button', { name: /^Spam/ }).first().click()
+  await page.getByRole('button', { name: 'Clean spam → Trash' }).click()
+  const panel = page.getByRole('region', { name: 'Clean spam', exact: true })
+  await expect(panel.getByRole('button', { name: /Move \d+ to Trash/ })).toBeEnabled()
+  await page.screenshot({ path: testInfo.outputPath('spam.png') })
+  await panel.getByRole('button', { name: /Move \d+ to Trash/ }).click()
+  await expect(panel).not.toBeVisible()
+  await page.locator('.cm .side').getByRole('button', { name: /^Trash/ }).first().click()
+  await page.getByRole('button', { name: 'Clean Trash…' }).click()
+  const trash = page.getByRole('region', { name: 'Clean Trash', exact: true })
+  await trash.getByLabel('Message age').selectOption('0')
+  await expect(trash.getByRole('button', { name: /Delete \d+ forever/ })).toBeEnabled()
+  await page.screenshot({ path: testInfo.outputPath('trash.png') })
+  await trash.getByRole('button', { name: 'Cancel' }).click()
+  await page.request.post(`${app.stand.pageURL}/v1/mail/sample`, { data: { on: false } })
+})

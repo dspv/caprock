@@ -361,3 +361,12 @@
 .cm .sumfoot { margin-top: 6px; }
 .cm .sumfoot kbd.k { margin-left: 4px; }
 .cm .aibar .who { white-space: nowrap; }
+
+/* Cleanup is scoped to the open folder/account, with a reviewed snapshot. */
+.cm .cleanup { padding: 0 0 8px; }
+.cm .cleanup-panel { display: grid; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.cm .cleanup-panel p { margin: 0; }
+.cm .cleanup-filters { display: flex; flex-wrap: wrap; gap: 10px; }
+.cm .cleanup-filters label { display: grid; gap: 5px; flex: 1; min-width: 120px; }
+.cm .cleanup-filters select { width: 100%; }
+.cm .cleanup-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }

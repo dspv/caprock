@@ -35,6 +35,8 @@ func (s *Service) Handler() http.Handler {
 	m.HandleFunc("GET /v1/mail/messages/{id}/thread", s.thread)
 	m.HandleFunc("GET /v1/mail/messages/{id}/part/{path}", s.part)
 	m.HandleFunc("POST /v1/mail/actions", s.action)
+	m.HandleFunc("POST /v1/mail/cleanup/preview", s.cleanup)
+	m.HandleFunc("POST /v1/mail/cleanup", s.cleanup)
 	m.HandleFunc("POST /v1/mail/send", s.send)
 	m.HandleFunc("POST /v1/mail/sync", s.sync)
 	m.HandleFunc("GET /v1/mail/contacts", s.contacts)

@@ -4,6 +4,7 @@ import { api, whoText } from './mailApi'
 import type { ComposeInit } from './Composer'
 import { Composer } from './Composer'
 import { Reader } from './Reader'
+import { Cleanup } from './Cleanup'
 import { SettingsPanel } from './Setup'
 import { FirstRun, SampleBanner, type AddChoice, type ProviderId, type Step } from './Onboarding'
 import { hue, initials, quote, replySubject, sender, shortDate } from './format'
@@ -499,6 +500,9 @@ export function MailScreen({ fill = false }: { fill?: boolean } = {}) {
             {!q && <K k="search" />}
           </div>
           <div className="listtitle">{title}</div>
+          {!q && (sel.view === 'junk' || sel.view === 'trash') && <Cleanup key={`${sel.view}:${sel.account ?? 0}`} view={sel.view}
+            account={sel.account} accountName={accounts.find((a) => a.id === sel.account)?.email}
+            onChanged={(message) => { setCur(null); void listRef2.current(false).catch(() => {}); loadState(); if (message) flash(message) }} /> }
         </div>
         {errAcct && <div className="banner warn">{errAcct.email}: {errAcct.last_error}</div>}
         {showCats && (

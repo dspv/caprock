@@ -35,6 +35,19 @@ var ErrBadAction = errors.New("unknown action")
 // Apply performs an action on messages, which may span accounts and folders.
 // targetFolder is used by ActMove.
 func (e *Engine) Apply(ctx context.Context, ids []int64, action string, targetFolder int64) error {
+	return e.apply(ctx, ids, action, targetFolder, "", nil)
+}
+
+// Cleanup is scoped: Spam only moves to Trash; Trash only deletes from Trash.
+// It never falls back to expunging unrelated messages on older IMAP servers.
+func (e *Engine) Cleanup(ctx context.Context, ids []int64, view string, identities map[int64]string) error {
+	if view != "junk" && view != "trash" {
+		return ErrBadAction
+	}
+	return e.apply(ctx, ids, ActTrash, 0, view, identities)
+}
+
+func (e *Engine) apply(ctx context.Context, ids []int64, action string, targetFolder int64, cleanup string, identities map[int64]string) error {
 	if action == ActNotJunk {
 		return e.notJunk(ctx, ids)
 	}
@@ -50,7 +63,7 @@ func (e *Engine) Apply(ctx context.Context, ids []int64, action string, targetFo
 	}
 	var firstErr error
 	for k, ms := range groups {
-		if err := e.applyGroup(ctx, k.account, k.folder, ms, action, targetFolder); err != nil && firstErr == nil {
+		if err := e.applyGroup(ctx, k.account, k.folder, ms, action, targetFolder, cleanup, identities); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -58,7 +71,7 @@ func (e *Engine) Apply(ctx context.Context, ids []int64, action string, targetFo
 	return firstErr
 }
 
-func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms []store.Message, action string, targetFolder int64) error {
+func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms []store.Message, action string, targetFolder int64, cleanup string, identities map[int64]string) error {
 	w, err := e.worker(accountID)
 	if err != nil {
 		return err
@@ -67,9 +80,30 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 	if err != nil {
 		return err
 	}
+	if cleanup != "" {
+		selected := make([]store.Message, 0, len(ms))
+		for _, m := range ms {
+			if identities[m.ID] == store.CleanupIdentity(m.AccountID, m.FolderID, src.UIDValidity, m.UID) {
+				selected = append(selected, m)
+			}
+		}
+		ms = selected
+		if len(ms) == 0 {
+			return nil
+		}
+	}
 	var uids imap.UIDSet
 	for _, m := range ms {
 		uids.AddNum(imap.UID(m.UID))
+	}
+	if cleanup == "trash" {
+		if src.Role != "trash" {
+			return ErrBadAction
+		}
+		return e.expunge(ctx, w, src, ms, uids, true)
+	}
+	if cleanup == "junk" && src.Role != "junk" && src.Role != "inbox" {
+		return ErrBadAction
 	}
 	storeFlags := func(op imap.StoreFlagsOp, flag imap.Flag) error {
 		return w.do(func(c *imapclient.Client, a store.Account) error {
@@ -116,7 +150,10 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 		}
 		if dst.ID == src.ID {
 			if action == ActTrash {
-				return e.expunge(ctx, w, src, ms, uids)
+				if cleanup != "" {
+					return ErrBadAction
+				}
+				return e.expunge(ctx, w, src, ms, uids, false)
 			}
 			return nil
 		}
@@ -133,10 +170,17 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 			}
 		}
 		err = w.do(func(c *imapclient.Client, a store.Account) error {
-			if _, err := c.Select(src.Name, nil).Wait(); err != nil {
+			selected, err := c.Select(src.Name, nil).Wait()
+			if err != nil {
 				return err
 			}
-			_, err := c.Move(uids, dst.Name).Wait()
+			if cleanup != "" && selected.UIDValidity != src.UIDValidity {
+				return errors.New("mailbox changed; refresh before cleanup")
+			}
+			if cleanup != "" && !c.Caps().Has(imap.CapMove) && !c.Caps().Has(imap.CapUIDPlus) {
+				return errors.New("this server cannot safely move only the selected messages; clean Spam in your mail provider instead")
+			}
+			_, err = c.Move(uids, dst.Name).Wait()
 			return err
 		})
 		if err != nil {
@@ -161,10 +205,17 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 }
 
 // expunge deletes for good (trash in the trash).
-func (e *Engine) expunge(ctx context.Context, w *worker, f store.Folder, ms []store.Message, uids imap.UIDSet) error {
+func (e *Engine) expunge(ctx context.Context, w *worker, f store.Folder, ms []store.Message, uids imap.UIDSet, scoped bool) error {
 	err := w.do(func(c *imapclient.Client, a store.Account) error {
-		if _, err := c.Select(f.Name, nil).Wait(); err != nil {
+		selected, err := c.Select(f.Name, nil).Wait()
+		if err != nil {
 			return err
+		}
+		if scoped && selected.UIDValidity != f.UIDValidity {
+			return errors.New("mailbox changed; refresh before cleanup")
+		}
+		if scoped && !c.Caps().Has(imap.CapUIDPlus) && !c.Caps().Has(imap.CapIMAP4rev2) {
+			return errors.New("this server cannot safely delete only the selected messages; empty Trash in your mail provider instead")
 		}
 		if err := c.Store(uids, &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagDeleted}}, nil).Close(); err != nil {
 			return err

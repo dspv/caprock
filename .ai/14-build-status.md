@@ -85,6 +85,10 @@ members. Archived projects and chats stay out. Navigation performs only
 reads, with explicit retry states. Rotating to phone width no longer lets
 the kept phone home clear the open session's address. See [Projects in the browser](04-ui.md#projects-in-the-browser).
 
+### 2026-10-18 — unreleased: Mail folder cleanup
+
+Spam gains a reviewed bulk move to Trash. Trash gains permanent cleanup by message age and local spam score, scoped to an account or all accounts. Preview and execution cover all synced messages and preserve the reviewed ID snapshot; scoped expunge refuses servers that cannot delete individual UIDs safely. Behaviour and API are documented in [04-ui.md](04-ui.md#mail-folder-cleanup) and [03-contracts.md](03-contracts.md).
+
 ### 2026-10-18 — unreleased: Second Brain graph display
 
 - The graph uses the full canvas with a collapsible inspector, gentler

@@ -197,6 +197,8 @@ export type ProviderGuess = {
   username?: string
 }
 
+export type CleanupQuery = { view: 'junk' | 'trash'; account: number; before: number; min_score: number }
+
 export type Settings = Record<string, string>
 
 /** One provider the assistant can ask, as GET /v1/mail/ai/status lists it. */
@@ -281,6 +283,8 @@ export const api = {
   },
   message: (id: number) => req<Message>('GET', `/v1/mail/messages/${id}`),
   thread: (id: number) => req<Message[]>('GET', `/v1/mail/messages/${id}/thread`),
+  cleanupPreview: (q: CleanupQuery) => req<{ ids: number[]; identities: Record<string, string> }>('POST', '/v1/mail/cleanup/preview', q),
+  cleanup: (q: CleanupQuery & { ids: number[]; identities: Record<string, string> }) => req<{ ok: boolean }>('POST', '/v1/mail/cleanup', q),
   action: (ids: number[], action: string, folder = 0) => req('POST', '/v1/mail/actions', { ids, action, folder }),
   send: (d: Draft) => req('POST', '/v1/mail/send', d),
   sync: () => req('POST', '/v1/mail/sync'),
