@@ -586,6 +586,13 @@ func New(d Deps) *Server {
 	// clock, so those are renewed for a minute at most.
 	version := func(ctx context.Context) (int64, error) { return store.EventsVersion(ctx, d.Store.DB()) }
 	s.hist.versioned(version, answerRecheck)
+	// With agents working the version always moves, so the all-time answer
+	// was counted again on every poll past the TTL — 40% of the daemon's CPU
+	// under a working load on a 181k-event history, more on a larger one
+	// (profile 2026-10-18, resource-usage audit F13). Bounded by its own
+	// cost instead: today's answer (milliseconds) keeps the TTL, an all-time
+	// one is refreshed at most once per historyCostScale times what it took.
+	s.hist.costBound(historyCostScale, historyCostCeiling)
 	s.week.versioned(version, answerRecheck)
 	s.weekLong.versioned(version, answerRecheck)
 	s.summ.versioned(version, time.Minute)
@@ -2209,15 +2216,17 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 // an HTTP round trip.
 func (s *Server) buildHistory(ctx context.Context, from int64, label string) (HistoryResponse, error) {
 	q := s.d.Store.DB()
-	tot, err := store.History(ctx, q, from)
+	sum, err := store.Summarize(ctx, q, from)
+	if err != nil {
+		return HistoryResponse{}, err
+	}
+	// The totals reuse the summary's per-kind, unpriced and background scans
+	// rather than making them again (store.HistoryFrom).
+	tot, err := store.HistoryFrom(ctx, q, from, sum)
 	if err != nil {
 		return HistoryResponse{}, err
 	}
 	tools, err := store.ToolDistribution(ctx, q, from, 40)
-	if err != nil {
-		return HistoryResponse{}, err
-	}
-	sum, err := store.Summarize(ctx, q, from)
 	if err != nil {
 		return HistoryResponse{}, err
 	}

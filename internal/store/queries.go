@@ -2785,9 +2785,41 @@ type HistoryTotals struct {
 	Background *BackgroundUsage `json:"background,omitempty"`
 }
 
-// History computes cross-session totals since fromMs.
+// History computes cross-session totals since fromMs. A caller that also
+// needs Summarize for the same fromMs passes its answer to HistoryFrom
+// instead: the per-kind totals, the unpriced and the background volume are the
+// same scans in both, and on an all-time range they are most of the cost.
 func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error) {
-	var h HistoryTotals
+	var sum Summary
+	if err := sumKinds(ctx, q, fromMs, "", nil, &sum); err != nil {
+		return HistoryTotals{}, err
+	}
+	// The history screen carries no agent filter, so these count every
+	// agent — which is what the total they sit under counts too.
+	u, err := queryUnpriced(ctx, q, fromMs, "")
+	if err != nil {
+		return HistoryTotals{}, err
+	}
+	b, err := queryBackgroundUsage(ctx, q, fromMs, "")
+	if err != nil {
+		return HistoryTotals{}, err
+	}
+	sum.Unpriced, sum.Background = u, b
+	return HistoryFrom(ctx, q, fromMs, sum)
+}
+
+// HistoryFrom is History given Summarize's answer for the same fromMs (no
+// agent filter): turns, tool calls, cost, unpriced and background volume are
+// taken from it rather than scanned a second time. The per-kind scan is the
+// one sumKinds makes, with the same filter and the same index, so the figures
+// are identical, not merely close (TestHistoryFromMatchesHistory).
+//
+// It was a second pass over every event in the range: dropping it, with the
+// unpriced and background queries it repeated, took one all-time history from
+// a best of 0.66-1.33s to 0.49-0.92s on a 181k-event database (2026-10-18,
+// loaded machine; resource-usage audit F13).
+func HistoryFrom(ctx context.Context, q Querier, fromMs int64, sum Summary) (HistoryTotals, error) {
+	h := HistoryTotals{Turns: sum.Turns, ToolCalls: sum.ToolCalls, CostUSD: sum.CostUSD, Unpriced: sum.Unpriced, Background: sum.Background}
 	err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(owned),0),
 		       COALESCE(AVG(CASE WHEN last_event_at > started_at THEN (last_event_at - started_at)/1000.0 END),0)
@@ -2817,42 +2849,6 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		Scan(&h.Days); err != nil {
 		return h, err
 	}
-	// Grouping by kind replaced summing CASE expressions (1.17s against 0.27s
-	// on a 184k-event database). Pinned to idx_events_ts_cover for the same reason
-	// as SummarizeSparkFor: left to itself SQLite walked idx_events_kind_id
-	// over every event — 4.8s for today on the owner's 300k-event database,
-	// against 0.02s over the range.
-	rows, err := q.QueryContext(ctx, `
-		SELECT kind, COUNT(*), COALESCE(SUM(cost_usd),0)
-		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+` GROUP BY kind`, fromMs)
-	if err != nil {
-		return h, err
-	}
-	for rows.Next() {
-		var kind string
-		var n int64
-		var cost float64
-		if err := rows.Scan(&kind, &n, &cost); err != nil {
-			_ = rows.Close()
-			return h, err
-		}
-		// Cost accrues on assistant turns, but sum every kind so a future
-		// priced event type is not silently dropped from the total.
-		h.CostUSD += cost
-		switch kind {
-		case string(event.KindTurnAssistant):
-			h.Turns = n
-		case string(event.KindToolPre):
-			h.ToolCalls = n
-		}
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return h, err
-	}
-	if err := rows.Close(); err != nil {
-		return h, err
-	}
 	// Count the files touched *in the window*, not the lifetime totals of the
 	// sessions that were active in it.
 	//
@@ -2870,18 +2866,6 @@ func History(ctx context.Context, q Querier, fromMs int64) (HistoryTotals, error
 		fromMs).Scan(&h.FilesTouched); err != nil {
 		return h, err
 	}
-	// The history screen carries no agent filter, so this counts every agent —
-	// which is what the total it sits under counts too.
-	u, err := queryUnpriced(ctx, q, fromMs, "")
-	if err != nil {
-		return h, err
-	}
-	h.Unpriced = u
-	b, err := queryBackgroundUsage(ctx, q, fromMs, "")
-	if err != nil {
-		return h, err
-	}
-	h.Background = b
 	return h, nil
 }
 
