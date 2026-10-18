@@ -120,6 +120,10 @@ func (r *Recorder) RebuildCodexDaily(ctx context.Context, keepFrom time.Time) (r
 				}
 				projects = append(projects, pr)
 			}
+			if err := dr.Err(); err != nil {
+				_ = dr.Close()
+				return err
+			}
 			_ = dr.Close()
 			for _, pr := range projects {
 				v := codex[key{p.day, pr, p.model}]

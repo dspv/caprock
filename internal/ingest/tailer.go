@@ -387,7 +387,6 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 		f.offset = 0
 		f.skipTo = 0
 	}
-	start := f.offset
 	pos := f.offset // where the reader is in the file
 	if f.skipTo > 0 {
 		pos = f.skipTo
@@ -396,7 +395,46 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 		return
 	}
 	reader := bufio.NewReaderSize(fh, 256<<10)
-	batch := 0
+	// The lines are written in batches (rollup.Batch), each committed with
+	// the offset it reaches, in one transaction: the offset in the database
+	// never runs ahead of the events, and a batch that fails to commit leaves
+	// it on the last batch that did (F7 in the resource audit).
+	b := t.Recorder.Batch(ctx)
+	defer b.Abort()
+	durable := f.offset // the offset the database holds
+	openAt := f.offset  // where the line that opened the batch begins
+	commit := func() bool {
+		wrote := b.Open()
+		if f.offset == durable && !wrote {
+			return true
+		}
+		// Only a record boundary is persisted, never skipTo: after a restart
+		// an oversized record is read from its start and skipped again.
+		off := f.offset
+		err := b.Exec(func(ctx context.Context, q store.Querier) error {
+			return store.SetOffset(ctx, q, f.path, f.sessionID, off)
+		})
+		var stored, deduped int
+		if err == nil {
+			stored, deduped, err = b.Flush()
+		}
+		if err != nil {
+			b.Abort()
+			t.Log.Warn("commit transcript batch; will read it again", "component", "ingest", "err", err, "path", f.path)
+			if wrote {
+				// The batch's events were rolled back: read them again. Lines
+				// that wrote nothing (an oversized record) stay read.
+				f.offset = openAt
+			}
+			return false
+		}
+		durable = off
+		t.mu.Lock()
+		t.stats.EventsStored += int64(stored)
+		t.stats.EventsDeduped += int64(deduped)
+		t.mu.Unlock()
+		return true
+	}
 	stalled := false
 	if f.skipTo > 0 {
 		// Go on dropping the oversized record an earlier read stopped inside.
@@ -429,7 +467,10 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 			// read error: leave the offset before it so the next pass reads it whole.
 			break
 		}
-		if !t.handleLine(ctx, f, line, fi.ModTime()) {
+		if !b.Open() {
+			openAt = f.offset
+		}
+		if !t.handleLine(ctx, b, f, line, fi.ModTime()) {
 			// The line could not be written and is worth trying again: stop
 			// BEFORE it, so the offset stays on it and the next pass reads
 			// it once more. Moving past it was how SQLITE_BUSY turned into
@@ -441,7 +482,13 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 		}
 		pos += n
 		f.offset = pos
-		batch++
+		if b.Due() && !commit() {
+			stalled = true
+			break
+		}
+	}
+	if !commit() {
+		stalled = true
 	}
 	f.lastSize, f.lastMod = fi.Size(), fi.ModTime()
 	if stalled || ctx.Err() != nil {
@@ -450,11 +497,6 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 		// session writing another line, which an ended session never does.
 		// A cancelled read did not reach the end either.
 		f.lastSize, f.lastMod = -1, time.Time{}
-	}
-	if batch > 0 || f.offset != start {
-		// Only a record boundary is persisted, never skipTo: after a restart an
-		// oversized record is read from its start and skipped again.
-		_ = store.SetOffset(ctx, t.Store.DB(), f.path, f.sessionID, f.offset)
 	}
 }
 
@@ -530,7 +572,7 @@ func skipRecord(ctx context.Context, r *bufio.Reader) (n int64, done bool) {
 // daemon is shutting down — and the caller must not move past the line.
 // Any other failure is logged and the line is consumed: an event the store
 // rejects for what it is would be rejected again on every pass.
-func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallbackTs time.Time) bool {
+func (t *Tailer) handleLine(ctx context.Context, b *rollup.Batch, f *fileState, raw []byte, fallbackTs time.Time) bool {
 	l, err := ParseLine(bytes.TrimRight(raw, "\r\n"))
 	t.mu.Lock()
 	t.stats.LinesParsed++
@@ -546,7 +588,9 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 		return true
 	}
 	if l.Type == TypeAITitle {
-		if err := store.SetTitle(ctx, t.Store.DB(), l.SessionID, l.AITitle); err != nil {
+		if err := b.Exec(func(ctx context.Context, q store.Querier) error {
+			return store.SetTitle(ctx, q, l.SessionID, l.AITitle)
+		}); err != nil {
 			if retryable(ctx, err) {
 				return false
 			}
@@ -563,22 +607,14 @@ func (t *Tailer) handleLine(ctx context.Context, f *fileState, raw []byte, fallb
 	}
 	for _, ev := range l.Events(fallbackTs) {
 		ev := ev
-		res, err := t.Recorder.Record(ctx, &ev, info)
+		_, err := b.Record(ctx, &ev, info)
 		if err != nil {
 			if retryable(ctx, err) {
 				t.Log.Warn("record transcript event; will retry the line", "component", "ingest", "err", err, "path", f.path)
 				return false
 			}
 			t.Log.Warn("record transcript event", "component", "ingest", "err", err, "path", f.path)
-			continue
 		}
-		t.mu.Lock()
-		if res.Stored {
-			t.stats.EventsStored++
-		} else {
-			t.stats.EventsDeduped++
-		}
-		t.mu.Unlock()
 	}
 	return true
 }

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dspv/caprock/internal/bus"
@@ -90,6 +91,15 @@ type Recorder struct {
 	// unpricedWarned holds the models already reported as missing from the
 	// pricing table.
 	unpricedWarned sync.Map
+
+	// writeMu serializes the recorder's own writers in the process, so a
+	// hook waiting behind a Batch is handed the lock when the batch commits
+	// rather than racing it in SQLite's busy handler. waiting counts the
+	// writers blocked on it.
+	writeMu sync.Mutex
+	waiting atomic.Int32
+	// batchFreeAt is when the next Batch may take the lock (Batch.begin).
+	batchFreeAt atomic.Int64
 }
 
 // New builds a Recorder with sane defaults.
@@ -101,20 +111,114 @@ func New(st *store.Store, tb *cost.Table, b *bus.Bus, log *slog.Logger) *Recorde
 }
 
 // Record stores one event and updates every rollup. It is safe to call from
-// multiple goroutines; the store serializes writers.
+// multiple goroutines; the recorder serializes its writers.
+//
+// The transaction runs on a context that cannot be cancelled, once ctx has been
+// checked (F15 in docs/resource-usage-audit-2026-10-18.md). The SQLite driver
+// starts a goroutine for every statement whose context can be cancelled, so
+// that cancelling can interrupt it; for a write of a few milliseconds that cost
+// more CPU than the statement, and an interrupted write was only ever a lost
+// one. The wait for the lock is still bounded by busy_timeout.
 func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo) (Result, error) {
-	var res Result
 	if r.OnWrite != nil {
 		r.OnWrite()
 	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	ctx = context.WithoutCancel(ctx)
+	var res Result
+	internalModel, priced := r.prepare(ev, info)
+	res.Priced = priced
+
+	r.lockWrite()
+	err := r.writeTx(ctx, func(q store.Querier) error {
+		return r.apply(ctx, q, ev, info, internalModel, &res)
+	})
+	if errors.Is(err, store.ErrDuplicate) {
+		res.Stored = false
+		err = afterDuplicate(ctx, r.Store.DB(), ev)
+		r.writeMu.Unlock()
+		return res, err
+	}
+	r.writeMu.Unlock()
+	if errors.Is(err, store.ErrRemovedSession) {
+		return Result{}, nil
+	}
+	if err != nil {
+		return res, err
+	}
+	res.Event = *ev
+	if !internalModel {
+		r.publish(res)
+	}
+	// Only when this turn actually cost something: an unpriced event cannot
+	// have moved the day's total, and checking on every hook event would ask
+	// the database for a sum thousands of times an hour to learn nothing.
+	if res.Priced && r.OnPriced != nil {
+		r.OnPriced(ctx)
+	}
+	return res, nil
+}
+
+// writeTx runs fn in one write transaction on a connection of its own, spelled
+// out as BEGIN IMMEDIATE / COMMIT rather than taken from BeginTx: a *sql.Tx
+// carries a context database/sql can cancel, and it starts a goroutine to
+// watch that context for every query run inside the transaction (F15). ctx
+// must not be cancellable either, or the driver starts one per statement.
+func (r *Recorder) writeTx(ctx context.Context, fn func(q store.Querier) error) error {
+	conn, err := r.Store.DB().Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); err != nil {
+		return err
+	}
+	if err := fn(conn); err != nil {
+		_, _ = conn.ExecContext(ctx, `ROLLBACK`)
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
+		_, _ = conn.ExecContext(ctx, `ROLLBACK`)
+		return err
+	}
+	return nil
+}
+
+// lockWrite takes the recorder's write lock, counted as waiting meanwhile so
+// an open Batch knows to commit and step aside (Batch.Due).
+func (r *Recorder) lockWrite() {
+	r.waiting.Add(1)
+	r.writeMu.Lock()
+	r.waiting.Add(-1)
+}
+
+// publish sends the live frames for one committed event.
+func (r *Recorder) publish(res Result) {
+	if r.Bus == nil {
+		return
+	}
+	r.Bus.Publish(busEvent(res.Event))
+	r.Bus.Publish(busSession(res))
+}
+
+func busEvent(ev event.Event) bus.Frame { return bus.Frame{Type: bus.FrameEvent, Data: ev} }
+
+func busSession(res Result) bus.Frame {
+	return bus.Frame{Type: bus.FrameSession, Data: SessionFrame{Session: res.Session, Stats: res.Stats}}
+}
+
+// prepare fills what an event takes from its session and prices it, before
+// any transaction, so a pricing failure never rolls back an event.
+func (r *Recorder) prepare(ev *event.Event, info SessionInfo) (internalModel, priced bool) {
 	if ev.Ts.IsZero() {
 		ev.Ts = r.Now()
 	}
 	if ev.Model == "" && info.Model != "" {
 		ev.Model = info.Model
 	}
-	internalModel := modelclass.IsInternal(ev.Model)
-	// Price before the tx so a pricing failure never rolls back an event.
+	internalModel = modelclass.IsInternal(ev.Model)
 	// OpenCode prices its own turns, so the table is never applied to them.
 	// A turn it has not priced stays unpriced rather than acquiring a figure
 	// from different arithmetic: one column holding two costing methods would
@@ -129,7 +233,7 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		// would restate a month of history nobody was charged (rule 6).
 		if usd, ok := r.Table.PriceAt(ev.Model, *ev.Tokens, ev.Ts); ok {
 			ev.CostUSD = &usd
-			res.Priced = true
+			priced = true
 		} else if _, seen := r.unpricedWarned.LoadOrStore(ev.Model, true); !seen {
 			// Once per model per process. Logged per event, and before the
 			// duplicate check, it repeated for every re-read of every stored
@@ -140,253 +244,241 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		}
 	}
 
-	err := r.Store.WithTx(ctx, func(q store.Querier) error {
-		// The owner removed this session (ADR-037). Its transcript is still on
-		// disk, and every re-read of it would record it again.
-		if removed, err := store.IsRemoved(ctx, q, ev.SessionID); err != nil || removed {
-			if err == nil {
-				err = store.ErrRemovedSession
-			}
-			return err
-		}
-		if ev.Kind == event.KindTurnAssistant && ev.MsgID != "" && ev.Tokens != nil {
-			// A fork's transcript repeats its parent's turns under its own
-			// session id. The row stays — it is the fork's history, prose and
-			// all — but the response was billed once, to the session that
-			// already holds it, so the copy carries no usage and no cost.
-			paid, err := store.TurnPaidElsewhere(ctx, q, ev.MsgID, ev.SessionID)
-			if err != nil {
-				return err
-			}
-			if paid {
-				zero := 0.0
-				ev.Tokens = &event.TokenDelta{}
-				ev.CostUSD = &zero
-			}
-		}
-		if _, err := store.InsertEvent(ctx, q, ev); err != nil {
-			if errors.Is(err, store.ErrDuplicate) {
-				return err
-			}
-			return err
-		}
-		res.Stored = true
+	return internalModel, priced
+}
 
-		// A `gh pr` command this session ran, as Claude Code recorded it: the
-		// session page and the Projects row link to it (migration 0035).
-		if ev.Kind == event.KindToolPost && ev.Tool == "Bash" {
-			if pr, ok := gitremote.FromToolPost(ev.Payload); ok {
-				if err := store.RecordPR(ctx, q, store.PRAction{SessionID: ev.SessionID, URL: pr.URL, Number: pr.Number,
-					Title: pr.Title, Action: pr.Action, Ts: ev.Ts.UnixMilli()}); err != nil {
+// afterDuplicate is what an event already stored still contributes.
+func afterDuplicate(ctx context.Context, q store.Querier, ev *event.Event) error {
+	// A later line of a response already stored: its prose belongs to that
+	// turn, though its usage does not (store.MergeAssistantText).
+	if ev.Kind == event.KindTurnAssistant && ev.Key != "" {
+		if _, err := store.MergeAssistantText(ctx, q, ev.SessionID, ev.Key, ev.Payload); err != nil {
+			return err
+		}
+	}
+	// A tool call the hook stored first, now offered again with the message
+	// id that ties it to its turn (store.LinkToolCall).
+	if ev.Kind == event.KindToolPre && ev.MsgID != "" {
+		if _, err := store.LinkToolCall(ctx, q, ev.SessionID, ev.Key, ev.MsgID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// apply is the body of one event's write: the event, its session, its
+// statistics. It returns store.ErrDuplicate or store.ErrRemovedSession having
+// written nothing.
+func (r *Recorder) apply(ctx context.Context, q store.Querier, ev *event.Event, info SessionInfo, internalModel bool, res *Result) error {
+	// The owner removed this session (ADR-037). Its transcript is still on
+	// disk, and every re-read of it would record it again.
+	if removed, err := store.IsRemoved(ctx, q, ev.SessionID); err != nil || removed {
+		if err == nil {
+			err = store.ErrRemovedSession
+		}
+		return err
+	}
+	if ev.Kind == event.KindTurnAssistant && ev.MsgID != "" && ev.Tokens != nil {
+		// A fork's transcript repeats its parent's turns under its own
+		// session id. The row stays — it is the fork's history, prose and
+		// all — but the response was billed once, to the session that
+		// already holds it, so the copy carries no usage and no cost.
+		paid, err := store.TurnPaidElsewhere(ctx, q, ev.MsgID, ev.SessionID)
+		if err != nil {
+			return err
+		}
+		if paid {
+			zero := 0.0
+			ev.Tokens = &event.TokenDelta{}
+			ev.CostUSD = &zero
+		}
+	}
+	if _, err := store.InsertEvent(ctx, q, ev); err != nil {
+		if errors.Is(err, store.ErrDuplicate) {
+			return err
+		}
+		return err
+	}
+	res.Stored = true
+
+	// A `gh pr` command this session ran, as Claude Code recorded it: the
+	// session page and the Projects row link to it (migration 0035).
+	if ev.Kind == event.KindToolPost && ev.Tool == "Bash" {
+		if pr, ok := gitremote.FromToolPost(ev.Payload); ok {
+			if err := store.RecordPR(ctx, q, store.PRAction{SessionID: ev.SessionID, URL: pr.URL, Number: pr.Number,
+				Title: pr.Title, Action: pr.Action, Ts: ev.Ts.UnixMilli()}); err != nil {
+				return err
+			}
+		}
+	}
+
+	// The daily "sessions" count used to be driven from here, by asking
+	// whether this session had any turn before. It is answered by
+	// MarkDailySession below instead — per day rather than per lifetime —
+	// which also spares this query on every stored event.
+	// Project is derived inside UpsertSession from Cwd, so the repository
+	// grouping is resolved in exactly one place.
+	patch := store.SessionPatch{
+		Cwd:            info.Cwd,
+		TranscriptPath: info.TranscriptPath,
+		GitBranch:      info.GitBranch,
+		Version:        info.Version,
+		StartedAt:      ev.Ts.UnixMilli(),
+		LastEventAt:    ev.Ts.UnixMilli(),
+		FromHook:       ev.Source == event.SourceHook,
+		FromTranscript: ev.Source == event.SourceTranscript,
+
+		Agent: info.Agent,
+		PID:   info.PID,
+		Title: info.Title,
+
+		Subscription: info.Subscription,
+	}
+	if patch.Subscription == "" && r.SubscriptionOf != nil && info.TranscriptPath != "" {
+		patch.Subscription = r.SubscriptionOf(info.TranscriptPath)
+	}
+	switch ev.Kind {
+	case event.KindTurnUser, event.KindTurnAssistant, event.KindToolPre, event.KindToolPost:
+		// Only work dates the session on its card. An end, a /clear or a
+		// shutdown moves last_event_at but is not work (FB-037).
+		patch.WorkedAt = ev.Ts.UnixMilli()
+	}
+	// A review turn must not overwrite the model a session's real work named:
+	// Codex reuses the reviewed session's id, so its review turns arrive
+	// inside a session that is otherwise gpt-5.6-sol. The session's model is
+	// what the card shows and what context pricing looks up; the review model
+	// is not it. An empty Model is a no-op in UpsertSession.
+	//
+	// A subagent's turn must not overwrite it either. Its model is its own —
+	// an Opus session's Explore subagent runs on Haiku — and the turn is
+	// still priced and counted by it below; it only names the session when
+	// nothing from the main thread has. Without this an Opus session read as
+	// Haiku on its card, and its context fill was measured against the
+	// wrong window.
+	// A subagent's cwd and branch are its own — a background agent often
+	// runs in a git worktree on another branch — and must not move the
+	// session it belongs to (store.SessionPatch.FromSubagent).
+	patch.FromSubagent = ev.Subagent()
+	if !internalModel {
+		if ev.Subagent() {
+			patch.SubagentModel = ev.Model
+		} else {
+			patch.Model = ev.Model
+		}
+	}
+	if ev.Kind == event.KindAgentStop && ev.AgentID == "" {
+		// A top-level Stop means the turn ended, not the session; the session
+		// goes idle via the idle sweeper, and 'ended' only on SessionEnd/kill.
+		patch.Status = ""
+	}
+	if ev.Kind == event.KindSessionEnd {
+		// The user left the session, so it is over now rather than whenever
+		// the staleness sweep next runs. An explicit status wins in the
+		// upsert, and a later event on the same id revives it — which is
+		// what should happen if Claude Code reuses the session after all.
+		patch.Status = store.StatusEnded
+	}
+	if info.ReplacesPID && info.PID > 0 {
+		// /clear does not end a session — it replaces it. Claude Code keeps
+		// the process and starts a fresh session id, so the old row is left
+		// active with a live pid, which is precisely what the sweep uses to
+		// decide a session is still running. Nothing would ever close it,
+		// and the dashboard showed one editor as two working sessions.
+		//
+		// The trigger is the new session's `SessionStart`, not the old
+		// one's `SessionEnd`: only the start names the session that must
+		// survive. Keyed off the end event, this retired the wrong one.
+		//
+		// This runs before the upsert so the new session's own row, written
+		// below, cannot be caught by it.
+		// The session being replaced is the one this continues; recorded
+		// so the two cards read as one conversation (FB-039).
+		prev, err := store.PreviousOnPID(ctx, q, info.PID, ev.SessionID)
+		if err != nil {
+			return err
+		}
+		patch.ParentSession = prev
+		n, err := store.EndSupersededSiblings(ctx, q, info.PID, ev.SessionID)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			r.Log.Info("retired sessions superseded by /clear", "component", "rollup", "pid", info.PID, "count", n, "session_id", ev.SessionID)
+		}
+	}
+	if err := store.UpsertSession(ctx, q, ev.SessionID, patch); err != nil {
+		return err
+	}
+
+	delta := store.Stats{SessionID: ev.SessionID}
+	if !internalModel {
+		switch ev.Kind {
+		case event.KindTurnAssistant:
+			delta.Turns = 1
+			if ev.Tokens != nil {
+				delta.TokensIn, delta.TokensOut, delta.CacheRead, delta.CacheWrite = ev.Tokens.In, ev.Tokens.Out, ev.Tokens.CacheRead, ev.Tokens.CacheWrite
+			}
+			if ev.CostUSD != nil {
+				delta.CostUSD = *ev.CostUSD
+			}
+		case event.KindToolPre:
+			delta.ToolCalls = 1
+			if p := touchedPath(ev); p != "" {
+				isNew, err := store.TouchFile(ctx, q, ev.SessionID, p, ev.Ts.UnixMilli())
+				if err != nil {
 					return err
 				}
-			}
-		}
-
-		// The daily "sessions" count used to be driven from here, by asking
-		// whether this session had any turn before. It is answered by
-		// MarkDailySession below instead — per day rather than per lifetime —
-		// which also spares this query on every stored event.
-		// Project is derived inside UpsertSession from Cwd, so the repository
-		// grouping is resolved in exactly one place.
-		patch := store.SessionPatch{
-			Cwd:            info.Cwd,
-			TranscriptPath: info.TranscriptPath,
-			GitBranch:      info.GitBranch,
-			Version:        info.Version,
-			StartedAt:      ev.Ts.UnixMilli(),
-			LastEventAt:    ev.Ts.UnixMilli(),
-			FromHook:       ev.Source == event.SourceHook,
-			FromTranscript: ev.Source == event.SourceTranscript,
-
-			Agent: info.Agent,
-			PID:   info.PID,
-			Title: info.Title,
-
-			Subscription: info.Subscription,
-		}
-		if patch.Subscription == "" && r.SubscriptionOf != nil && info.TranscriptPath != "" {
-			patch.Subscription = r.SubscriptionOf(info.TranscriptPath)
-		}
-		switch ev.Kind {
-		case event.KindTurnUser, event.KindTurnAssistant, event.KindToolPre, event.KindToolPost:
-			// Only work dates the session on its card. An end, a /clear or a
-			// shutdown moves last_event_at but is not work (FB-037).
-			patch.WorkedAt = ev.Ts.UnixMilli()
-		}
-		// A review turn must not overwrite the model a session's real work named:
-		// Codex reuses the reviewed session's id, so its review turns arrive
-		// inside a session that is otherwise gpt-5.6-sol. The session's model is
-		// what the card shows and what context pricing looks up; the review model
-		// is not it. An empty Model is a no-op in UpsertSession.
-		//
-		// A subagent's turn must not overwrite it either. Its model is its own —
-		// an Opus session's Explore subagent runs on Haiku — and the turn is
-		// still priced and counted by it below; it only names the session when
-		// nothing from the main thread has. Without this an Opus session read as
-		// Haiku on its card, and its context fill was measured against the
-		// wrong window.
-		// A subagent's cwd and branch are its own — a background agent often
-		// runs in a git worktree on another branch — and must not move the
-		// session it belongs to (store.SessionPatch.FromSubagent).
-		patch.FromSubagent = ev.Subagent()
-		if !internalModel {
-			if ev.Subagent() {
-				patch.SubagentModel = ev.Model
-			} else {
-				patch.Model = ev.Model
-			}
-		}
-		if ev.Kind == event.KindAgentStop && ev.AgentID == "" {
-			// A top-level Stop means the turn ended, not the session; the session
-			// goes idle via the idle sweeper, and 'ended' only on SessionEnd/kill.
-			patch.Status = ""
-		}
-		if ev.Kind == event.KindSessionEnd {
-			// The user left the session, so it is over now rather than whenever
-			// the staleness sweep next runs. An explicit status wins in the
-			// upsert, and a later event on the same id revives it — which is
-			// what should happen if Claude Code reuses the session after all.
-			patch.Status = store.StatusEnded
-		}
-		if info.ReplacesPID && info.PID > 0 {
-			// /clear does not end a session — it replaces it. Claude Code keeps
-			// the process and starts a fresh session id, so the old row is left
-			// active with a live pid, which is precisely what the sweep uses to
-			// decide a session is still running. Nothing would ever close it,
-			// and the dashboard showed one editor as two working sessions.
-			//
-			// The trigger is the new session's `SessionStart`, not the old
-			// one's `SessionEnd`: only the start names the session that must
-			// survive. Keyed off the end event, this retired the wrong one.
-			//
-			// This runs before the upsert so the new session's own row, written
-			// below, cannot be caught by it.
-			// The session being replaced is the one this continues; recorded
-			// so the two cards read as one conversation (FB-039).
-			prev, err := store.PreviousOnPID(ctx, q, info.PID, ev.SessionID)
-			if err != nil {
-				return err
-			}
-			patch.ParentSession = prev
-			n, err := store.EndSupersededSiblings(ctx, q, info.PID, ev.SessionID)
-			if err != nil {
-				return err
-			}
-			if n > 0 {
-				r.Log.Info("retired sessions superseded by /clear", "component", "rollup", "pid", info.PID, "count", n, "session_id", ev.SessionID)
-			}
-		}
-		if err := store.UpsertSession(ctx, q, ev.SessionID, patch); err != nil {
-			return err
-		}
-
-		delta := store.Stats{SessionID: ev.SessionID}
-		if !internalModel {
-			switch ev.Kind {
-			case event.KindTurnAssistant:
-				delta.Turns = 1
-				if ev.Tokens != nil {
-					delta.TokensIn, delta.TokensOut, delta.CacheRead, delta.CacheWrite = ev.Tokens.In, ev.Tokens.Out, ev.Tokens.CacheRead, ev.Tokens.CacheWrite
-				}
-				if ev.CostUSD != nil {
-					delta.CostUSD = *ev.CostUSD
-				}
-			case event.KindToolPre:
-				delta.ToolCalls = 1
-				if p := touchedPath(ev); p != "" {
-					isNew, err := store.TouchFile(ctx, q, ev.SessionID, p, ev.Ts.UnixMilli())
-					if err != nil {
-						return err
-					}
-					if isNew {
-						delta.FilesTouched = 1
-						res.NewFiles = 1
-					}
+				if isNew {
+					delta.FilesTouched = 1
+					res.NewFiles = 1
 				}
 			}
 		}
-		st, err := store.AddStats(ctx, q, delta)
-		if err != nil {
-			return err
-		}
-		res.Stats = st
-
-		if ev.Kind == event.KindThrottle {
-			// Capture the throttle for the limit forecast (SPEC §8.4); model later.
-			_ = store.RecordThrottle(ctx, q, ev.Ts.UnixMilli(), ev.SessionID, "stop_failure", ev.Payload)
-		}
-
-		if ev.Kind == event.KindTurnAssistant && !internalModel {
-			day := ev.Ts.In(r.Location).Format("2006-01-02")
-			var tokens int64
-			if ev.Tokens != nil {
-				tokens = ev.Tokens.Total()
-			}
-			var usd float64
-			if ev.CostUSD != nil {
-				usd = *ev.CostUSD
-			}
-			project := store.ProjectFromCwd(info.Cwd)
-			if project == "" {
-				if s, err := store.GetSession(ctx, q, ev.SessionID); err == nil {
-					project = s.Project
-				}
-			}
-			// "First turn of this session *today*", not "first turn ever" —
-			// otherwise a session that began yesterday adds nothing to today,
-			// and a day of continuations reads zero sessions beside real spend.
-			firstToday, err := store.MarkDailySession(ctx, q, day, project, ev.SessionID)
-			if err != nil {
-				return err
-			}
-			if err := store.AddDaily(ctx, q, day, project, ev.Model, tokens, usd, firstToday); err != nil {
-				return err
-			}
-		}
-		s, err := store.GetSession(ctx, q, ev.SessionID)
-		if err != nil {
-			return err
-		}
-		res.Session = s
-		return nil
-	})
-	if errors.Is(err, store.ErrRemovedSession) {
-		return Result{}, nil
 	}
-	if errors.Is(err, store.ErrDuplicate) {
-		res.Stored = false
-		// A later line of a response already stored: its prose belongs to that
-		// turn, though its usage does not (store.MergeAssistantText).
-		if ev.Kind == event.KindTurnAssistant && ev.Key != "" {
-			if _, mErr := store.MergeAssistantText(ctx, r.Store.DB(), ev.SessionID, ev.Key, ev.Payload); mErr != nil {
-				return res, mErr
-			}
-		}
-		// A tool call the hook stored first, now offered again with the message
-		// id that ties it to its turn (store.LinkToolCall).
-		if ev.Kind == event.KindToolPre && ev.MsgID != "" {
-			if _, lErr := store.LinkToolCall(ctx, r.Store.DB(), ev.SessionID, ev.Key, ev.MsgID); lErr != nil {
-				return res, lErr
-			}
-		}
-		return res, nil
-	}
+	st, err := store.AddStats(ctx, q, delta)
 	if err != nil {
-		return res, err
+		return err
 	}
-	res.Event = *ev
-	if r.Bus != nil && !internalModel {
-		r.Bus.Publish(bus.Frame{Type: bus.FrameEvent, Data: res.Event})
-		r.Bus.Publish(bus.Frame{Type: bus.FrameSession, Data: SessionFrame{Session: res.Session, Stats: res.Stats}})
+	res.Stats = st
+
+	if ev.Kind == event.KindThrottle {
+		// Capture the throttle for the limit forecast (SPEC §8.4); model later.
+		_ = store.RecordThrottle(ctx, q, ev.Ts.UnixMilli(), ev.SessionID, "stop_failure", ev.Payload)
 	}
-	// Only when this turn actually cost something: an unpriced event cannot
-	// have moved the day's total, and checking on every hook event would ask
-	// the database for a sum thousands of times an hour to learn nothing.
-	if res.Priced && r.OnPriced != nil {
-		r.OnPriced(ctx)
+
+	if ev.Kind == event.KindTurnAssistant && !internalModel {
+		day := ev.Ts.In(r.Location).Format("2006-01-02")
+		var tokens int64
+		if ev.Tokens != nil {
+			tokens = ev.Tokens.Total()
+		}
+		var usd float64
+		if ev.CostUSD != nil {
+			usd = *ev.CostUSD
+		}
+		project := store.ProjectFromCwd(info.Cwd)
+		if project == "" {
+			if s, err := store.GetSession(ctx, q, ev.SessionID); err == nil {
+				project = s.Project
+			}
+		}
+		// "First turn of this session *today*", not "first turn ever" —
+		// otherwise a session that began yesterday adds nothing to today,
+		// and a day of continuations reads zero sessions beside real spend.
+		firstToday, err := store.MarkDailySession(ctx, q, day, project, ev.SessionID)
+		if err != nil {
+			return err
+		}
+		if err := store.AddDaily(ctx, q, day, project, ev.Model, tokens, usd, firstToday); err != nil {
+			return err
+		}
 	}
-	return res, nil
+	s, err := store.GetSession(ctx, q, ev.SessionID)
+	if err != nil {
+		return err
+	}
+	res.Session = s
+	return nil
 }
 
 // SessionFrame is the payload of a "session" live frame.

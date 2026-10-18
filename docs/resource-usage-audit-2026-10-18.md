@@ -326,9 +326,11 @@ load:
    18% of CPU before F13 and 22–33% after; 41–42% of allocation before, the
    largest single cost after F13. Implemented, see F14.
 3. **F7 — per-event transactions:** 7% of CPU while working; 50–55% of CPU
-   during a backfill, which took 159–182 s for this history.
+   during a backfill, which took 159–182 s for this history. Implemented, see
+   F7.
 4. **F15 — a goroutine per SQLite statement:** about 8–11 µs of CPU per
    statement in a probe; 27–28% of backfill samples, 4% under load.
+   Implemented for the recorder, see F15.
 5. **F6 — live frames encoded per viewer:** 1.6–1.9% with two viewers.
    Not justified until there are more viewers.
 6. **F10 — resource sampling:** 0.3–0.4%. Not justified.
@@ -549,6 +551,49 @@ recovery, so maximum ingest throughput alone is the wrong success criterion.
 **Acceptance:** live hook latency, SQLITE_BUSY retry, exact pricing/dedupe,
 restart offsets and crash recovery remain correct under concurrent imports.
 Do not move offsets past events whose transaction failed.
+
+**Implemented (measured 2026-10-18).** The Claude transcript tailer and the
+Codex importer write through `rollup.Batch`: the recorder's per-event work,
+each event under its own savepoint, in one transaction of up to 512 events or
+50 ms. The tailer commits a transcript's offset in that transaction, so it can
+never run ahead of the events; a batch that fails rolls back whole and is read
+again. Frames are published, and the spend cap checked, only after the commit,
+with one session frame per session per batch. Hook events keep their own
+transaction through `Record`; the recorder's writers share an in-process lock,
+and an open batch commits as soon as a `Record` waits for it. OpenCode, Hermes,
+Gemini and DeepSeek still record one event per transaction: none of them drew
+samples in the profile.
+
+Three things only the stand showed. Savepoints spill SQLite's statement journal
+to a temporary file once an event changes more than 64 KiB of pages, and that
+file is not truncated while the transaction lasts: the first batched build spent
+46% of its import CPU writing to it, so a batch's connection runs with
+`temp_store = MEMORY` while it is open. Two importers whose batches each yielded
+to any waiting writer ended each other's batches after every event, which was
+slower than before. And back-to-back batches starved writers outside the
+recorder, which wait in SQLite's busy handler: a project could not be added for
+five seconds and failed. A batch now yields only to `Record`, and leaves the
+lock free for a quarter of the time the previous batch held it.
+
+Same stand, history and settings as the profile above, base (`635b967b`) and
+branch back to back, two pairs (load averages 4.4–7.7, 24.6 at the start of
+one base run):
+
+```text
+                          base          batched
+import wall time          149–150 s     101 s
+import CPU                152–160 s     83–84 s
+backfill: commits         35%           3.5–3.8%
+load: daemon CPU          12.8%         11.6–11.9%
+load: recorder share      6.6–6.9%      2.7–3.0%
+```
+
+The import is the time from the daemon's start to the event count settling
+(178,000 events). Tests cover batch boundaries, a batch that never commits, an
+event failing inside a batch, a read stopped mid-batch resuming with no loss or
+duplicate and the offset matching the rows, SQLITE_BUSY, a hook landing within
+the shim's one-second budget during an import, and another writer landing
+during one.
 
 ### F8 — P2: measure the SQLite pool before reducing caches again
 
@@ -856,6 +901,19 @@ belongs upstream.
 **Acceptance:** shutdown still interrupts long reads and waits on nothing
 longer than a short write. Measure backfill CPU and duration before and after
 on the same history.
+
+**Implemented for the recorder (measured 2026-10-18).** The driver was half of
+it. database/sql gives a `*sql.Tx` a context it can always cancel, and starts a
+goroutine to watch it for every query run inside the transaction. Counted with
+`/sched/goroutines-created`: 5 goroutines per event through `Record`, 4 through
+a batch, 2 per cancellable read outside a transaction, 0 per read on
+`context.Background()`. The recorder now checks the caller's context, writes on
+`context.WithoutCancel`, and spells its transaction out as `BEGIN IMMEDIATE` /
+`COMMIT` on a `*sql.Conn`: 0 goroutines per event, held by a test. On the stand
+of F7, the scheduler's thread wake-ups (`runtime.wakep`) fell from 32–34% of
+the backfill profile to 1.4–1.5%, and from 9.4–9.5% to 6.7–7.8% under the
+working load. Long reads keep their cancellable contexts; the other cancellable
+reads outside the recorder are unchanged.
 
 ## Existing safeguards worth preserving
 
