@@ -59,6 +59,7 @@ import { GitHubSettings } from '@/components/GitHubSettings'
 import { WindowStopSetting } from '@/components/WindowStopSetting'
 import { Locked } from '@/components/Locked'
 import { BrainAutoSetting } from '@/components/BrainAutoSetting'
+import { McpSetting } from '@/components/McpSetting'
 import { UpdatesSetting } from '@/components/UpdatesSetting'
 import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
@@ -217,6 +218,8 @@ export function StatusScreen() {
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
       {owner && <BrainSection />}
+      {/* Second Brain's readers: the user's own agents, over MCP (ADR-078). */}
+      {owner && <McpSetting executable={s.executable} />}
       <StoragePanel />
       <AboutSection s={s} />
     </div>
