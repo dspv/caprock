@@ -474,15 +474,60 @@ export function tabDigit(index: number, count: number): number | null {
   return index < 8 ? index + 1 : null
 }
 
-/** A tab's jump key as the tab itself shows it: short enough for a tab. */
+/** A tab's jump key as the tab itself shows it: ⌘3 on a Mac, the whole
+ *  chord, Ctrl+Shift+3, elsewhere (see `stripKey`). */
 export function tabKey(digit: number, isMac = isMacPlatform()): string {
   return stripKey(String(digit), isMac)
 }
 
-/** A ⌘ chord drawn on the strip (⌘0, ⌘,): the same short spelling as a tab's
- *  ⌘N — Ctrl⇧ off macOS, where the chord is Ctrl+Shift with that key. */
+/**
+ * A ⌘ chord drawn on the strip (⌘0, ⌘,, ⌘3): ⌘ and the key on a Mac; off
+ * macOS the chord as `keys()` writes it, Ctrl+Shift+0. It was `Ctrl⇧0`, and
+ * on Windows that read "Ctrl@0" (a user's screenshot, 2026-10-19): the
+ * bundled JetBrains Mono carries no ⇧ (U+21E7 is in none of its subsets),
+ * Consolas has none either, and the fallback Windows picks drew it at 10px
+ * as a blob that reads as @. A Mac draws ⇧ from Menlo. So no label off
+ * macOS holds a Mac glyph (`isPlainKeyLabel`); its length is handled by
+ * drawing it on demand (`keyChipMode`), never by a glyph the font may lack.
+ */
 export function stripKey(key: string, isMac = isMacPlatform()): string {
-  return isMac ? `⌘${key}` : `Ctrl⇧${key}`
+  return isMac ? `⌘${key}` : keys(`⌘${key}`, false)
+}
+
+/** Whether a label drawn off macOS is free of the Mac's modifier glyphs
+ *  (⇧ ⌘ ⌥ ⌃), which the fonts there may not carry, and of a stray @. */
+export function isPlainKeyLabel(label: string): boolean {
+  return !/[⇧⌘⌥⌃@]/.test(label)
+}
+
+/**
+ * How the key chips beside labels are drawn. On a Mac they are short (⌘D,
+ * ⇧⌘N) and always shown, as before. Off macOS the same keys are
+ * Ctrl+Shift+N and Ctrl+Alt+Shift+T, 80–140px: drawn always they crowded
+ * and cut the labels beside them ("Settings" under its chip, the palette's
+ * name half hidden, "Quick chat" on two lines; a Windows user's
+ * screenshot, 2026-10-19). There a chip is drawn on demand only: over its
+ * row while the pointer or the keyboard focus is on it, and every chip at
+ * once while Ctrl is held alone (lib/keyreveal.ts), the way Windows apps
+ * show their access keys while Alt is held. At rest every label is whole.
+ */
+export function keyChipMode(isMac = isMacPlatform()): 'always' | 'on-demand' {
+  return isMac ? 'always' : 'on-demand'
+}
+
+/** The class a row's chip adds for `keyChipMode`: off macOS shown on hover,
+ *  focus or held Ctrl (`.app-kbd-reveal`, design/tokens.css); none on a Mac. */
+export function revealClass(isMac = isMacPlatform()): string {
+  return keyChipMode(isMac) === 'always' ? '' : 'app-kbd-reveal'
+}
+
+/** The classes a tab's chip adds, with a leading space: off macOS shown only
+ *  while Ctrl is held (`.app-kbd-held`), since hovering a tab puts its ×
+ *  where the key is; `start` anchors it to the tab's left edge, for the
+ *  pinned tabs at the strip's start. None on a Mac. */
+export function heldClass(start = false, isMac = isMacPlatform()): string {
+  if (keyChipMode(isMac) === 'always') return ''
+  return start ? ' app-kbd-held app-kbd-held-start' : ' app-kbd-held'
 }
 
 /** The one line that says how to move around, for the hint after an update. */

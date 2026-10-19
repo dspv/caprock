@@ -14,10 +14,11 @@ import { useApi } from '@/lib/useApi'
 import { APP_ROUTE, isMacPlatform, isTauri, isWorkspaceHash } from '@/lib/appmode'
 import { stepUiScale } from '@/lib/uiscale'
 import { installExternalLinks } from '@/lib/externalLinks'
+import { installKeyReveal } from '@/lib/keyreveal'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
 import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
-import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -281,6 +282,8 @@ export default function AppRoot() {
   useEffect(() => warmTerminal(), [])
   // Links meant for the browser open there, never in the webview.
   useEffect(() => installExternalLinks(), [])
+  // Off macOS the key chips are drawn on demand; holding Ctrl shows them all.
+  useEffect(() => (keyChipMode() === 'on-demand' ? installKeyReveal() : undefined), [])
   useEffect(() => {
     const root = document.documentElement
     root.setAttribute('data-app', '')

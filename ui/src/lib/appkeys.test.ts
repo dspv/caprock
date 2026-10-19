@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { INPUT_HIGHLIGHT_KEY, matchAppShortcut, moveKeysLine, ownsTerminalKey, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, setModuleKeyCount } from './appkeys'
+import { INPUT_HIGHLIGHT_KEY, heldClass, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, setModuleKeyCount } from './appkeys'
 import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -191,19 +191,19 @@ describe('the jump key on a tab', () => {
     expect(tabDigit(11, 12)).toBe(9)
     expect(tabDigit(8, 9)).toBe(9)
   })
-  // The pinned tab's ⌘0 and ⌘, are drawn short as a tab's ⌘N is, and the
-  // short form off macOS is the chord that works there.
-  it('draws the pinned tab\'s keys short, and the short form is the chord off macOS', () => {
+  // The pinned tab's ⌘0 and ⌘, are drawn as a tab's ⌘N is, and the
+  // form off macOS is the chord that works there.
+  it('draws the pinned tab\'s keys as the chord that works off macOS', () => {
     expect(stripKey('0', true)).toBe('⌘0')
-    expect(stripKey(',', false)).toBe('Ctrl⇧,')
+    expect(stripKey(',', false)).toBe('Ctrl+Shift+,')
     for (const [ch, code, kind] of [['0', 'Digit0', 'dashboard'], [',', 'Comma', 'settings']] as const) {
-      expect(stripKey(ch, false).replace('⇧', '+Shift+')).toBe(keys(`⌘${ch}`, false))
+      expect(stripKey(ch, false)).toBe(keys(`⌘${ch}`, false))
       expect(matchAppShortcut({ key: ch, code, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false }, false)).toEqual({ kind })
     }
   })
-  it('is short on every platform', () => {
+  it('is ⌘N on a Mac and the whole chord elsewhere', () => {
     expect(tabKey(3, true)).toBe('⌘3')
-    expect(tabKey(3, false)).toBe('Ctrl⇧3')
+    expect(tabKey(3, false)).toBe('Ctrl+Shift+3')
   })
 })
 
@@ -250,6 +250,32 @@ describe('every listed shortcut, on every OS', () => {
     expect(chords.some((c) => c.startsWith('⌃⌘'))).toBe(false)
   })
 
+  // A Windows user's screenshot, 2026-10-19: the tabs read "Ctrl@0" and
+  // "Ctrl@1". The chip was Ctrl⇧0, and no font Windows draws it with has ⇧.
+  // Off macOS no chip may hold a Mac glyph, or an @ that is not the key.
+  it('draws no chip off macOS with a Mac glyph or an @ that is not the key', () => {
+    const labels = [
+      ...SHORTCUTS.map(([k]) => keys(k, false)),
+      ...Array.from({ length: 9 }, (_, i) => tabKey(i + 1, false)),
+      stripKey('0', false), stripKey(',', false), stripKey('P', false),
+      keys('⇧⌘M', false), moveKeysLine(false),
+    ]
+    for (const label of labels) {
+      expect(isPlainKeyLabel(label), label).toBe(true)
+      expect(label, label).not.toContain('@')
+    }
+    // Each tab's chip is the chord that switches to it there.
+    for (let d = 1; d <= 9; d++) {
+      expect(tabKey(d, false)).toBe(`Ctrl+Shift+${d}`)
+      expect(matchAppShortcut(event(`Digit${d}`, '!@#$%^&*('[d - 1]!, { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'tab', index: d - 1 })
+    }
+    expect(keyChipMode(false)).toBe('on-demand')
+    expect(keyChipMode(true)).toBe('always')
+    expect(revealClass(true)).toBe('')
+    expect(heldClass(false, true)).toBe('')
+    expect(heldClass(true, false)).toBe(' app-kbd-held app-kbd-held-start')
+  })
+
   for (const c of chords) {
     it(`${c} reaches the same command as ${keys(c, false)}`, () => {
       if (c === '⌘R') return // the webview's own reload, not an app command
@@ -286,7 +312,7 @@ describe('every listed shortcut, on every OS', () => {
     expect(SHORTCUTS.find(([k]) => k === '⌘P')?.[1]).toMatch(/^Pipeline, in a tab of its own; there, back to where you were/)
     // The pinned Pipeline tab's chip is the same chord, as the strip spells it.
     expect(stripKey('P', true)).toBe('⌘P')
-    expect(stripKey('P', false).replace('⇧', '+Shift+')).toBe(keys('⌘P', false))
+    expect(stripKey('P', false)).toBe(keys('⌘P', false))
     expect(SHORTCUTS.some(([k]) => k.split(', ').includes('⇧⌘B'))).toBe(false)
     expect(keys('⌘P', false)).toBe('Ctrl+Shift+P')
     expect(matchAppShortcut(event('KeyP', 'p', { metaKey: true }), true)).toEqual({ kind: 'pipeline' })

@@ -68,7 +68,7 @@ import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, S
 import { ModuleRows } from './ModuleRows'
 import { MachineRows } from './MachineRows'
 import { BrainSidebar } from './BrainSidebar'
-import { keys } from '@/lib/appkeys'
+import { keys, revealClass } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
 
 /** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
@@ -455,11 +455,11 @@ export function Sidebar(props: SidebarProps) {
           aria-label="New agent"
           aria-keyshortcuts="Shift+Meta+N"
           title={`Start an agent in the project in front (${keys('⇧⌘N')})`}
-          className="app-primary flex h-[32px] w-full items-center gap-2 rounded-[8px] border pl-2.5 pr-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+          className="app-primary relative flex h-[32px] w-full items-center gap-2 rounded-[8px] border pl-2.5 pr-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
           <PlusIcon size={15} />
           <span className="flex-1">New agent</span>
-          <kbd className="app-kbd">{keys('⇧⌘N')}</kbd>
+          <kbd className={`app-kbd ${revealClass()}`}>{keys('⇧⌘N')}</kbd>
         </button>
         {props.onQuickChat && (
           <button
@@ -468,11 +468,11 @@ export function Sidebar(props: SidebarProps) {
             aria-label="Quick chat"
             aria-keyshortcuts="Alt+Meta+N"
             title={`Ask Claude something without picking a folder (${keys('⌥⌘N')})`}
-            className="mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+            className="relative mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
           >
             <ChatIcon size={14} />
             <span className="flex-1">Quick chat</span>
-            <kbd className="app-kbd">{keys('⌥⌘N')}</kbd>
+            <kbd className={`app-kbd ${revealClass()}`}>{keys('⌥⌘N')}</kbd>
           </button>
         )}
         <button
@@ -481,11 +481,11 @@ export function Sidebar(props: SidebarProps) {
           aria-label="Add project"
           aria-keyshortcuts="Meta+O"
           title={`Add a project — a folder, a new one, or a clone (${keys('⌘O')})`}
-          className="mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+          className="relative mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
         >
           <FolderPlusIcon size={14} />
           <span className="flex-1">Add project</span>
-          <kbd className="app-kbd">{keys('⌘O')}</kbd>
+          <kbd className={`app-kbd ${revealClass()}`}>{keys('⌘O')}</kbd>
         </button>
       </div>
 
