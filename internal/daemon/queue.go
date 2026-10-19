@@ -78,6 +78,13 @@ type msgQueue struct {
 	// onDone is told when a queued message's turn ends (phone and app
 	// notification, queueboard.go); nil sends nothing.
 	onDone func(ev event.Event, text string)
+	// onTyped is told when a queued message is typed in (the Telegram bot
+	// says a held forward went, ADR-081); nil tells no one.
+	onTyped func(m store.QueuedMessage)
+	// via marks the prompt Caprock just typed into a session as one from
+	// elsewhere ("telegram"), until the session's next UserPromptSubmit
+	// carries it into the chat (annotate).
+	via map[string]viaMark
 
 	// The Queue view's estimates, by project (queueboard.go).
 	estMu sync.Mutex
@@ -101,6 +108,7 @@ func newMsgQueue(d *Daemon) *msgQueue {
 		d: d, settle: queueSettle, gap: queueTypeGap, confirm: queueConfirmAfter,
 		locks: map[string]*sync.Mutex{}, continued: map[string]bool{}, typed: map[string]time.Time{},
 		inflight: map[string]string{}, est: map[string]estEntry{}, todos: map[string]todoEntry{}, now: time.Now,
+		via: map[string]viaMark{},
 	}
 	if d.mgr != nil {
 		q.sess = d.mgr
@@ -267,6 +275,12 @@ func (q *msgQueue) View(ctx context.Context, id string) (api.QueueView, error) {
 
 // Send types text in now when nothing waits, or queues it.
 func (q *msgQueue) Send(ctx context.Context, id, text string) (api.SendResult, error) {
+	return q.SendVia(ctx, id, text, "")
+}
+
+// SendVia is Send for a message that came from elsewhere: via ("telegram")
+// is kept on a queued row and put on the prompt's event once it is typed.
+func (q *msgQueue) SendVia(ctx context.Context, id, text, via string) (api.SendResult, error) {
 	unlock := q.lock(id)
 	defer unlock()
 	a, ok := q.owned(id)
@@ -278,7 +292,7 @@ func (q *msgQueue) Send(ctx context.Context, id, text string) (api.SendResult, e
 		return api.SendResult{}, err
 	}
 	if v.Waiting == "" && len(v.Messages) == 0 {
-		if err := q.typeLocked(id, text); err != nil {
+		if err := q.typeLocked(id, text, via); err != nil {
 			return api.SendResult{}, err
 		}
 		v.Waiting = api.WaitingTurn
@@ -288,7 +302,7 @@ func (q *msgQueue) Send(ctx context.Context, id, text string) (api.SendResult, e
 	if len(v.Messages) >= api.QueueMax {
 		return api.SendResult{}, api.ErrQueueFull
 	}
-	m, err := store.AddQueued(ctx, q.d.store.DB(), id, text, time.Now())
+	m, err := store.AddQueuedVia(ctx, q.d.store.DB(), id, text, via, time.Now())
 	if err != nil {
 		return api.SendResult{}, err
 	}
@@ -351,10 +365,11 @@ func (q *msgQueue) SendNow(ctx context.Context, id string, mid int64) (api.Queue
 	if err := store.DeleteQueued(ctx, q.d.store.DB(), id, mid); err != nil {
 		return api.QueueView{}, err
 	}
-	if err := q.typeLocked(id, m.Text); err != nil {
+	if err := q.typeLocked(id, m.Text, m.Via); err != nil {
 		return api.QueueView{}, err
 	}
 	q.markInflight(id, m.Text)
+	q.typedQueued(m)
 	return q.changed(ctx, a)
 }
 
@@ -368,11 +383,15 @@ func (q *msgQueue) changed(ctx context.Context, a *agents.Agent) (api.QueueView,
 }
 
 // typeLocked types a message and presses Enter (typeMessage), then checks a
-// moment later that it went (confirmSent). Caller holds the session's lock.
-func (q *msgQueue) typeLocked(id, text string) error {
+// moment later that it went (confirmSent). via, when set, marks the prompt
+// it becomes. Caller holds the session's lock.
+func (q *msgQueue) typeLocked(id, text, via string) error {
 	at, err := typeMessage(q.sess, id, text, q.gap, func(at time.Time) {
 		q.mu.Lock()
 		q.typed[id] = at
+		if via != "" {
+			q.via[id] = viaMark{via: via, at: at}
+		}
 		q.mu.Unlock()
 	})
 	if err != nil {
@@ -543,10 +562,11 @@ func (q *msgQueue) deliverSoon(id string) {
 		q.d.log.Warn("queue: could not take a message off", "component", "queue", "session_id", id, "err", err)
 		return
 	}
-	if err := q.typeLocked(id, m.Text); err != nil {
+	if err := q.typeLocked(id, m.Text, m.Via); err != nil {
 		q.d.log.Warn("queue: could not type a queued message", "component", "queue", "session_id", id, "err", err)
 	} else {
 		q.markInflight(id, m.Text)
+		q.typedQueued(m)
 		q.d.log.Info("queue: typed a queued message in at the end of a turn", "component", "queue", "session_id", id, "left", len(msgs)-1)
 	}
 	_, _ = q.changed(ctx, a)
@@ -563,7 +583,76 @@ func (q *msgQueue) ended(id string) {
 	delete(q.typed, id)
 	delete(q.continued, id)
 	delete(q.inflight, id)
+	delete(q.via, id)
 	q.mu.Unlock()
+}
+
+// typedQueued tells onTyped a queued message went in.
+func (q *msgQueue) typedQueued(m store.QueuedMessage) {
+	if q.onTyped != nil {
+		go q.onTyped(m)
+	}
+}
+
+// viaMark is a message from elsewhere typed into a session, waiting for its
+// prompt event.
+type viaMark struct {
+	via string
+	at  time.Time
+}
+
+// viaWindow is how long after typing a message its prompt event may come
+// and still be marked: Claude Code's UserPromptSubmit follows the Enter in
+// well under a second, and a prompt the owner typed a minute later is not
+// the forward's.
+const viaWindow = 30 * time.Second
+
+// markVia marks the next prompt of a session Caprock just started with a
+// message from elsewhere (a new chat started from Telegram).
+func (q *msgQueue) markVia(id, via string) {
+	q.mu.Lock()
+	q.via[id] = viaMark{via: via, at: q.now()}
+	q.mu.Unlock()
+}
+
+// annotate puts `via` on the payload of the prompt a message from elsewhere
+// became, before it is recorded (hookd.Handler.Annotate): the chat reads it
+// to mark the message "from Telegram".
+func (q *msgQueue) annotate(ev *event.Event) {
+	if ev.Kind != event.KindTurnUser || ev.SessionID == "" {
+		return
+	}
+	q.mu.Lock()
+	m, ok := q.via[ev.SessionID]
+	if ok {
+		delete(q.via, ev.SessionID)
+	}
+	q.mu.Unlock()
+	if !ok || q.now().Sub(m.at) > viaWindow {
+		return
+	}
+	if p, ok := withVia(ev.Payload, m.via); ok {
+		ev.Payload = p
+	}
+}
+
+// withVia is a JSON object payload with "via" set; false when it is not an
+// object (a payload cut at the size cap stays as it is).
+func withVia(raw json.RawMessage, via string) (json.RawMessage, bool) {
+	var m map[string]json.RawMessage
+	if json.Unmarshal(raw, &m) != nil || m == nil {
+		return raw, false
+	}
+	v, err := json.Marshal(via)
+	if err != nil {
+		return raw, false
+	}
+	m["via"] = v
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw, false
+	}
+	return out, true
 }
 
 // markInflight records a queued message typed into a session.

@@ -15,16 +15,19 @@ type QueuedMessage struct {
 	Text      string `json:"text"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
+	// Via is where the message came from: "telegram" for a forward to the
+	// paired bot (migration 0064, ADR-081), "" for Caprock's own field.
+	Via string `json:"via,omitempty"`
 }
 
 // ErrQueuedNotFound is returned for an id the session's queue does not hold.
 var ErrQueuedNotFound = errors.New("no such queued message")
 
-const queuedCols = `id, session_id, text, created_at, updated_at`
+const queuedCols = `id, session_id, text, created_at, updated_at, via`
 
 func scanQueued(sc interface{ Scan(...any) error }) (QueuedMessage, error) {
 	var m QueuedMessage
-	err := sc.Scan(&m.ID, &m.SessionID, &m.Text, &m.CreatedAt, &m.UpdatedAt)
+	err := sc.Scan(&m.ID, &m.SessionID, &m.Text, &m.CreatedAt, &m.UpdatedAt, &m.Via)
 	return m, err
 }
 
@@ -66,8 +69,14 @@ func QueuedSessions(ctx context.Context, q Querier) ([]string, error) {
 
 // AddQueued puts text at the end of a session's queue.
 func AddQueued(ctx context.Context, q Querier, sessionID, text string, now time.Time) (QueuedMessage, error) {
+	return AddQueuedVia(ctx, q, sessionID, text, "", now)
+}
+
+// AddQueuedVia is AddQueued for a message that came from elsewhere
+// ("telegram").
+func AddQueuedVia(ctx context.Context, q Querier, sessionID, text, via string, now time.Time) (QueuedMessage, error) {
 	ms := now.UnixMilli()
-	res, err := q.ExecContext(ctx, `INSERT INTO queued_messages (session_id, text, created_at, updated_at) VALUES (?, ?, ?, ?)`, sessionID, text, ms, ms)
+	res, err := q.ExecContext(ctx, `INSERT INTO queued_messages (session_id, text, created_at, updated_at, via) VALUES (?, ?, ?, ?, ?)`, sessionID, text, ms, ms, via)
 	if err != nil {
 		return QueuedMessage{}, err
 	}
@@ -75,7 +84,7 @@ func AddQueued(ctx context.Context, q Querier, sessionID, text string, now time.
 	if err != nil {
 		return QueuedMessage{}, err
 	}
-	return QueuedMessage{ID: id, SessionID: sessionID, Text: text, CreatedAt: ms, UpdatedAt: ms}, nil
+	return QueuedMessage{ID: id, SessionID: sessionID, Text: text, CreatedAt: ms, UpdatedAt: ms, Via: via}, nil
 }
 
 // GetQueued returns one message of a session's queue; ErrQueuedNotFound when

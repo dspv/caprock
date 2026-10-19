@@ -57,6 +57,7 @@ function QueuedBubble({ m, n, total, sendNow, onEdit, onCancel, onSendNow }: {
       <div className="grid max-w-[85%] min-w-0 gap-1.5 rounded-[12px] rounded-br-[4px] border border-dashed border-border-strong bg-panel px-3 py-2 text-[14px] leading-relaxed text-fg">
         <div className="text-[11px] text-fg-faint">
           <span className="rounded-full bg-accent/15 px-1.5 py-px font-medium text-fg-muted">Queued{total > 1 ? ` · ${n} of ${total}` : ''}</span>
+          {m.via === 'telegram' && <span className="ml-1.5" data-via="telegram">from Telegram</span>}
         </div>
         {editing ? (
           <textarea

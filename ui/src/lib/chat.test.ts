@@ -225,3 +225,11 @@ describe('toolCommand', () => {
     expect(toolCommand('Read', { file_path: '/a' })).toBe('')
   })
 })
+
+describe('a message forwarded from Telegram (ADR-081)', () => {
+  it('carries the mark the daemon put on its prompt, and only that one', () => {
+    const msgs = toMessages([ev(1, { payload: { prompt: '> Forwarded from Alice', via: 'telegram' } }), ev(2)])
+    expect(msgs[0]).toMatchObject({ kind: 'user', via: 'telegram' })
+    expect(msgs[1]).not.toHaveProperty('via')
+  })
+})

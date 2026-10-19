@@ -1693,6 +1693,30 @@ existed; it keeps working.
   `**bold**` kept, each fenced block replaced by `[<lang>, N lines]` unless
   `telegram_code` is on (then `<pre>`). The rules' own alerts skip it meanwhile.
   With two-way chat active, finished alerts carry the reply the same way.
+- **Forwards** (Premium, [ADR-081](08-decisions.md)). A forwarded message
+  (`forward_origin`), or a photo, document, voice note, audio or video sent
+  in the paired chat, is gathered until the chat has been quiet for 2 s
+  (`media_group_id` albums arrive the same way); plain text typed during
+  that, just before it, or while the question is open is the owner's words,
+  put first. The bot then sends one *Where to? (N messages, N photos…)* with
+  a button per session (`f:<n>`): Caprock's own and running, not chats,
+  waiting first, then working, then the rest by last activity, quiet ones
+  for 48 h only, at most 6, each *● name · waiting | working | 2h ago*; then
+  *+ New chat* (`f:n`; Bypass asks `f:nb` / `f:nd`), *Cancel* (`f:x`) and
+  *Reply here: off|on* (`f:r`, remembered as `forward_reply`). A tap sends
+  one message — the words, then each item as `> Forwarded from <name>` (or
+  `> Forwarded message`) and its text or caption as quoted lines; a photo,
+  file or voice note fetched with `getFile` and `/file/bot<token>/<path>`
+  (10 MB at most) into `<data_dir>/paste/<stamp>-<hex>/` with the paste
+  checks, voice and audio (`ogg`, `oga`, `opus`, `mp3`, `m4a`, `wav`) also
+  allowed, named by its quoted path; a voice note as *Voice message (not
+  transcribed)* — at most 16 KiB — through the message queue with `via:
+  "telegram"`. The question is edited (`editMessageText`) to *✓ Sent to
+  <name>*, or *⏳ <name> is busy — will send when it finishes* and *✓ Sent*
+  when the queue types it in. *+ New chat* starts `{chat: true}` with it as
+  the first message. With *Reply here* on, that turn's Stop sends its reply
+  as a conversation does, and the finished alert about it is held back.
+  A question is good for 10 minutes and one answer.
 - **Pace.** One message per second to the chat; a 429's `retry_after` is
   waited out up to 10 s and holds the queue for longer ones; with more than
   three plain messages waiting they are joined into one; an alert not sent
@@ -1702,7 +1726,7 @@ existed; it keeps working.
 unless turned on; `GET` returns them). `<data_dir>/telegram.json` (`0600`) is
 the bridge's own: `{bot_id, bot_username, chat_id, chat_name, paired_at,
 offset, refs: [{message_id, session_id, prompt_id, kind, at}], muted:
-{session_id: ms}, mute_all, premium_note_at}` — the last 400 messages and the
+{session_id: ms}, mute_all, premium_note_at, forward_reply}` — the last 400 messages and the
 sessions they were about, so a reply finds its session across a restart. The
 token stays in `config.json`.
 
@@ -3981,8 +4005,9 @@ POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or
 ```
 
 - **`QueueView`** — `{session_id, messages: [QueuedMessage], waiting}`;
-  `QueuedMessage` is `{id, session_id, text, created_at, updated_at}` (unix
-  ms), oldest first. `waiting` says what holds a message: `"turn"` (the
+  `QueuedMessage` is `{id, session_id, text, created_at, updated_at, via?}`
+  (unix ms), oldest first; `via` is `"telegram"` for a message forwarded to
+  the paired bot (§ Telegram bridge, migration 0064) and absent otherwise. `waiting` says what holds a message: `"turn"` (the
   agent is working), `"permission"` (a permission prompt is on the screen),
   `"question"` (AskUserQuestion), or `""` (nothing; the session is at its
   prompt).
@@ -4030,6 +4055,12 @@ POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or
 - **Who.** `GET` is open to every paired device; the writes to a
   controller, as `POST /v1/agents/{id}/input` is.
 - **Frames.** Every change publishes a `queue` frame with the QueueView.
+- **From Telegram.** A forward to the paired bot (§ Telegram bridge) is sent
+  through the same path with `via: "telegram"`: kept on its row while held,
+  and, within 30 s of being typed in, put on the payload of the session's
+  next main-thread `UserPromptSubmit` event as `"via": "telegram"` before it
+  is recorded (hookd's `Annotate`). The chat and the queue show *from
+  Telegram* under such a message.
 
 ### Queue
 
@@ -5535,6 +5566,15 @@ CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages(sessio
 Messages waiting for an owned session's turn to end ([ADR-053](08-decisions.md),
 § Queued messages), sent oldest `id` first. No foreign key: a session's rows
 are deleted when its process exits.
+
+Migration 0064 adds where a message came from ([ADR-081](08-decisions.md)):
+
+```sql
+ALTER TABLE queued_messages ADD COLUMN via TEXT NOT NULL DEFAULT '';
+```
+
+`'telegram'` for a message forwarded to the paired bot, `''` for everything
+typed in Caprock.
 
 ### Attempts DDL (migration 0046)
 

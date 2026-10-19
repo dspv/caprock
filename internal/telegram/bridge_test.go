@@ -34,6 +34,15 @@ type host struct {
 	started  []string
 	mode     string
 	projects []telegram.Project
+	// order lists the sessions Sessions returns; empty is own, then ext.
+	order []string
+	// Forwards: what Forward got, the sessions that are busy (their
+	// forwards are queued), the chats started, the files saved.
+	forwards   []string
+	busy       map[string]bool
+	nextQueued int64
+	chats      []string
+	files      map[string][]byte
 }
 
 func newHost() *host {
@@ -56,6 +65,13 @@ func (h *host) AlertsOn() bool          { h.mu.Lock(); defer h.mu.Unlock(); retu
 func (h *host) Sessions(context.Context) ([]telegram.Live, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if len(h.order) > 0 {
+		out := make([]telegram.Live, 0, len(h.order))
+		for _, id := range h.order {
+			out = append(out, h.sessions[id])
+		}
+		return out, nil
+	}
 	return []telegram.Live{h.sessions["own"], h.sessions["ext"]}, nil
 }
 func (h *host) Session(_ context.Context, id string) (telegram.Live, bool) {
@@ -116,7 +132,7 @@ type safeBuf struct {
 func (s *safeBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
 func (s *safeBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
 
-func newStand(t *testing.T, h *host) *stand {
+func newStand(t *testing.T, h *host, opts ...func(*telegram.Bridge)) *stand {
 	t.Helper()
 	bot := telegramtest.New(token, "caprock_test_bot")
 	t.Cleanup(bot.Close)
@@ -125,6 +141,9 @@ func newStand(t *testing.T, h *host) *stand {
 	b.Base = bot.URL()
 	b.PollWait = time.Second
 	b.Out.Gap = 10 * time.Millisecond
+	for _, o := range opts {
+		o(b)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	go b.Run(ctx)
@@ -556,3 +575,8 @@ func (h *photoHost) SpawnMode() string                                    { retu
 func (h *photoHost) Start(context.Context, string, string, string) (string, error) {
 	return "", nil
 }
+func (h *photoHost) Forward(context.Context, string, string) (int64, error) { return 0, nil }
+func (h *photoHost) StartChat(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (h *photoHost) SaveFile(string, string, []byte) (string, error) { return "", nil }

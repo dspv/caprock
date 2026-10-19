@@ -2590,6 +2590,8 @@ export interface QueuedMessage {
   text: string
   created_at: number
   updated_at: number
+  /** Where it came from: 'telegram' for a forward to the paired bot (ADR-081); absent for Caprock's own field. */
+  via?: string
 }
 
 /** What holds a queued message: the turn, a permission prompt, a question; '' nothing. */

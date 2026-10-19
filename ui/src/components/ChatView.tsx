@@ -509,10 +509,11 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
 const Message = memo(function Message({ m, onPath }: { m: ChatMessage; onPath?: (path: string) => void }) {
   if (m.kind === 'user') {
     return (
-      <div data-msg-id={m.id} className="flex justify-end py-1.5">
+      <div data-msg-id={m.id} className="flex flex-col items-end py-1.5">
         <div className="max-w-[85%] min-w-0 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg [overflow-wrap:anywhere]" title={m.ts}>
           {m.text}
         </div>
+        {m.via === 'telegram' && <div className="mt-0.5 text-[11px] text-fg-faint" data-via="telegram">from Telegram</div>}
       </div>
     )
   }

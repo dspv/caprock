@@ -56,6 +56,9 @@ type State struct {
 	// PremiumNoteAt is when a reply or command last got the one line that
 	// says it is a Premium feature, so it is said at most once a day.
 	PremiumNoteAt int64 `json:"premium_note_at,omitempty"`
+	// ForwardReply is the forward picker's *Reply here* switch, as the
+	// owner last left it (ADR-081); off until turned on.
+	ForwardReply bool `json:"forward_reply,omitempty"`
 }
 
 // Store keeps State in memory and on disk. Safe for concurrent use.
