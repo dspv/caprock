@@ -135,3 +135,32 @@ export function coalesce(fn: () => void, ms: number): { ask: () => void; flush: 
     },
   }
 }
+
+/**
+ * A page out of sight this long lets its terminal sockets go
+ * (suspendWhileHidden): a flicker of occlusion or a quick switch of Spaces
+ * keeps them.
+ */
+export const PAGE_HIDDEN_SUSPEND_MS = 2_000
+
+/**
+ * While the page is hidden — the app's window minimised, hidden or covered, a
+ * browser tab behind another — a terminal client lets its socket go after
+ * `ms` (lib/termv2 `suspend`), so nothing is sent to a window that draws
+ * nothing: one hidden stream at 20 lines a second kept WebKit's Networking
+ * process at 0.64% of a core (docs/app-window-footprint-2026-10-19.md). The
+ * daemon keeps what the session prints, and the wake on showing (the
+ * caller's visibility handler) asks from the last byte the client has
+ * (`since`), so nothing is lost and nothing repaints. Returns the stop.
+ */
+export function suspendWhileHidden(client: { suspend(): void }, ms = PAGE_HIDDEN_SUSPEND_MS): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const arm = (hidden: boolean) => {
+    clearTimeout(timer)
+    timer = undefined
+    if (hidden) timer = setTimeout(() => { timer = undefined; client.suspend() }, ms)
+  }
+  const off = onPageVisibility(arm)
+  if (pageHidden()) arm(true)
+  return () => { off(); clearTimeout(timer) }
+}

@@ -241,6 +241,8 @@ type Daemon struct {
 	// actions is what the daemon did about its own footprint on its own
 	// (actions.go).
 	actions *actionLog
+	// pushed is the last footprint sent on /v1/live (livepush.go).
+	pushed livePushed
 	// unlock releases <data_dir>/caprock.lock, the one-daemon-per-data-
 	// directory lock (lock.go).
 	unlock func()

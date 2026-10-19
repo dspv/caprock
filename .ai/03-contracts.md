@@ -987,7 +987,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -1284,6 +1284,15 @@ panel asks so every 10 s): the last scan's while it is younger than 30 s
 (`orphanListTTL`), a new one otherwise. `&fresh=1` takes one now (the
 panel's Check now, `caprock doctor`). Without `orphans` it carries the last
 scan's counts and an empty list.
+
+**On the live socket** (2026-10-19): while a `/v1/live` client is connected
+the daemon builds that same answer every 10 s from the resource meter's last
+sample (taking none of its own, and not counting as asking, so it never
+keeps the meter sampling by itself) and sends it as a `{type:"footprint",
+seq, data}` frame when anything but `at` changed since the last one sent.
+The status strip follows the frames and asks `GET /v1/footprint` on mount
+and once a minute as the fallback for a daemon before them; it asked every
+10 s from every window. Code: `internal/daemon/livepush.go`.
 
 ```json
 {"at": 1791877758573, "daemon_running": true, "data_dir": "…/caprock", "exe": "…/bin/caprock",
@@ -3019,7 +3028,16 @@ POST   /v1/projects/{id}/cleanup           {paths: [path]} → {results: [{path,
 POST   /v1/projects/{id}/cleanup/restore   {ids: [id]} → {results: [{id, path?, restored, error?}], cleanup: CleanupView}
 POST   /v1/shells                          {cwd | project_id, cols?, rows?, replaces?, type?, run?} → {shell: Shell}
 GET    /v1/shells?project=<id>             → {shells: [Shell]}; every running shell without project
+WS     /v1/live "shells" frame             → {shells: [Shell]}: every running shell, after a start and when the list changed
 ```
+
+- **The `shells` frame** (2026-10-19) is `GET /v1/shells`' answer without
+  `project`, sent by `POST /v1/shells` once it has started one and by a check
+  every 10 s while a `/v1/live` client is connected, only when the list
+  (a shell's `program` included) differs from the last one sent. The app
+  follows it and asks `GET /v1/shells` on mount and once a minute as the
+  fallback for a daemon before it; it asked every 10 s. Code:
+  `internal/api/projects.go` (`PublishShells`), `internal/daemon/livepush.go`.
 
 - **`Project`** — `{id, name, root, kind: "repo"|"folder", source:
   "seed"|"session"|"folder"|"new"|"clone", pinned, sort, added_at, archived?,

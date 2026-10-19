@@ -113,6 +113,8 @@ vi.mock('@/lib/termv2', () => ({
 }))
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
+import { DESK_WRITE_MS } from '@/lib/termwrite'
+import { PAGE_HIDDEN_SUSPEND_MS } from '@/lib/visible'
 import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { FIND_EVENT } from '@/lib/appkeys'
@@ -341,12 +343,14 @@ describe('a hidden pane does no terminal work', () => {
       act(() => { write(bytes(5), done); write(bytes(6), done) })
       expect(h.writes).toHaveLength(1)
       expect(done).not.toHaveBeenCalled()
-      // Shown: everything held, in order, before anything newer.
+      // Shown: everything held, in order, before anything newer — the first
+      // chunk at once, the rest joined within DESK_WRITE_MS.
       rerender(<TerminalPane sessionId="a" active />)
-      expect(h.writes.map((w) => (w as Uint8Array).length)).toEqual([10, 5, 6])
-      expect(done).toHaveBeenCalledTimes(2)
       act(() => write(bytes(7), () => {}))
-      expect(h.writes).toHaveLength(4)
+      expect(h.writes.map((w) => (w as Uint8Array).length)).toEqual([10, 5])
+      act(() => { vi.advanceTimersByTime(DESK_WRITE_MS) })
+      expect(h.writes.map((w) => (w as Uint8Array).length)).toEqual([10, 5, 13])
+      expect(done).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }
@@ -371,6 +375,26 @@ describe('a hidden pane does no terminal work', () => {
     }
   })
 
+  it('lets the socket go while the window is out of sight, and wakes it when shown', () => {
+    vi.useFakeTimers()
+    let hidden = false
+    const vis = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => (hidden ? 'hidden' : 'visible'))
+    try {
+      render(<TerminalPane sessionId="a" active />)
+      const wakes = h.wakes
+      hidden = true
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+      act(() => { vi.advanceTimersByTime(PAGE_HIDDEN_SUSPEND_MS) })
+      expect(h.suspends).toBe(1)
+      hidden = false
+      act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+      expect(h.wakes).toBeGreaterThan(wakes)
+    } finally {
+      vis.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('lets the socket go past the hold limit, so the daemon keeps the rest', () => {
     vi.useFakeTimers()
     try {
@@ -387,15 +411,19 @@ describe('a hidden pane does no terminal work', () => {
     }
   })
 
-  it('a pane in front writes at once', () => {
+  it('a pane in front writes at once, and a flood at most once per DESK_WRITE_MS, every byte in order', () => {
     vi.useFakeTimers()
     try {
       render(<TerminalPane sessionId="a" active />)
       const write = h.clients[0]!.callbacks.write
       act(() => { vi.advanceTimersByTime(SETTLE_MS) })
       act(() => write(bytes(3), () => {}))
-      act(() => write(bytes(4), () => {}))
+      expect(h.writes).toHaveLength(1) // an echo is not delayed
+      act(() => { write(new Uint8Array([1]), () => {}); write(new Uint8Array([2]), () => {}) })
+      expect(h.writes).toHaveLength(1)
+      act(() => { vi.advanceTimersByTime(DESK_WRITE_MS) })
       expect(h.writes).toHaveLength(2)
+      expect([...(h.writes[1] as Uint8Array)]).toEqual([1, 2])
     } finally {
       vi.useRealTimers()
     }
@@ -428,6 +456,7 @@ describe('a pane never laid out', () => {
       const t = h.terms[0]!
       expect([t.cols, t.rows]).toEqual([120, 40])
       expect(h.resizes[0]).toEqual([120, 40])
+      act(() => { vi.advanceTimersByTime(DESK_WRITE_MS) })
       expect(h.writes.map((w) => (w as Uint8Array).length)).toEqual([10, 5])
       expect(done).toHaveBeenCalledTimes(2)
     } finally {

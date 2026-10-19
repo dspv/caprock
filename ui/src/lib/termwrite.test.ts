@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { PHONE_WRITE_MS, WRITE_SLICE, coalescedWriter, writeSliced } from './termwrite'
+import { DESK_WRITE_MS, PHONE_WRITE_MS, WRITE_SLICE, coalescedWriter, writeSliced } from './termwrite'
 
 const fakeTerm = () => {
   const writes: { data: Uint8Array | string; done?: () => void }[] = []
@@ -33,6 +33,37 @@ describe('writeSliced', () => {
     const data = 'x'.repeat(WRITE_SLICE + 1)
     writeSliced(term, data)
     expect(writes.map((w) => w.data)).toEqual(['x'.repeat(WRITE_SLICE), 'x'])
+  })
+})
+
+describe('coalescedWriter (a desktop terminal under a flood)', () => {
+  it('writes at most once per DESK_WRITE_MS and keeps every byte in order', () => {
+    vi.useFakeTimers()
+    try {
+      const { writes, term } = fakeTerm()
+      const w = coalescedWriter(term, DESK_WRITE_MS)
+      const want: number[] = []
+      const dones = vi.fn()
+      // 600 chunks over a second, every 1-2 ms, bytes and strings mixed.
+      for (let i = 0; i < 600; i++) {
+        const b = i % 251
+        want.push(b)
+        if (i % 3 === 0) w.write(String.fromCharCode(b % 128 === b ? b : 65), dones)
+        else w.write(new Uint8Array([b]), dones)
+        if (i % 3 === 0 && b >= 128) want[want.length - 1] = 65
+        vi.advanceTimersByTime(1 + (i % 2))
+      }
+      vi.advanceTimersByTime(DESK_WRITE_MS)
+      const got = writes.flatMap((x) => [...(typeof x.data === 'string' ? new TextEncoder().encode(x.data) : x.data)])
+      expect(got).toEqual(want)
+      // About 900 ms of output: no more than one write per interval, plus the first.
+      expect(writes.length).toBeLessThanOrEqual(Math.ceil(900 / DESK_WRITE_MS) + 2)
+      expect(writes.length).toBeGreaterThan(10)
+      for (const x of writes) x.done?.()
+      expect(dones).toHaveBeenCalledTimes(600)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

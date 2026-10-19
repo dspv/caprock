@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CaprockFootprint, openCaprockDoctor } from './FootprintPanel'
-import { footprintText, type Footprint } from '@/lib/footprint'
+import { FOOTPRINT_FALLBACK_MS, FOOTPRINT_POLL_MS, footprintText, type Footprint } from '@/lib/footprint'
+import { live } from '@/lib/live'
 import { resetResourcesForTest } from '@/lib/resources'
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
@@ -104,6 +105,21 @@ describe('the status figure', () => {
     expect(button.querySelector('[data-disk-figure]')).toBeNull()
     expect(button.title).toContain('2.2 GB on disk')
     expect(button.querySelector('[data-warn-dot]')).not.toBeNull()
+  })
+
+  it('follows the footprint frames on the live socket, not a 10 s poll', async () => {
+    const { button } = await strip(healthy())
+    const fetch = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    const asks = () => fetch.mock.calls.filter((c) => String(c[0]).includes('/v1/footprint')).length
+    const before = asks()
+    const pushed = { ...warned(), at: Date.now() + 1 }
+    act(() => { live.handle({ type: 'footprint', data: pushed }) })
+    expect(button).toHaveAttribute('data-warn')
+    // An older frame does not undo a newer answer.
+    act(() => { live.handle({ type: 'footprint', data: { ...healthy(), at: 1 } }) })
+    expect(button).toHaveAttribute('data-warn')
+    expect(asks()).toBe(before)
+    expect(FOOTPRINT_FALLBACK_MS).toBeGreaterThan(FOOTPRINT_POLL_MS)
   })
 
   it('turns the warning colour, with a dot, when a verdict warns', async () => {

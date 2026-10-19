@@ -124,3 +124,15 @@ describe('the live list', () => {
     }
   }, 10_000)
 })
+
+describe('shells on the live socket', () => {
+  it('follows the shells frames: a shell appears and goes without a poll', async () => {
+    const { result } = renderHook(() => useWorkspaceData())
+    await waitFor(() => expect(result.current.sessions.map((x) => x.session_id)).toEqual(['a', 'b']))
+    const shell = { id: 'sh-9', cwd: '/w/alpha', started_at: '2026-10-19T10:00:00Z', program: 'npm' }
+    act(() => live.handle({ type: 'shells', data: { shells: [shell] } as never }))
+    expect(result.current.sessions.find((x) => x.session_id === 'sh-9')?.program).toBe('npm')
+    act(() => live.handle({ type: 'shells', data: { shells: [] } }))
+    expect(result.current.sessions.some((x) => x.session_id === 'sh-9')).toBe(false)
+  })
+})

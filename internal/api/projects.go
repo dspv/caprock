@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/dspv/caprock/internal/agents"
+	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -456,6 +457,7 @@ func (s *Server) handleStartShell(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"shell": s.withProject(sh)})
+	s.PublishShells()
 }
 
 // replacement is the running shell already started in place of session id,
@@ -498,6 +500,33 @@ func (s *Server) handleShells(w http.ResponseWriter, r *http.Request) {
 		out = append(out, sh)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"shells": out})
+}
+
+// PublishShells sends a "shells" frame on /v1/live — every running shell, as
+// GET /v1/shells answers it — when the list differs from the last one sent,
+// so the app's tabs follow it instead of polling. The daemon calls it every
+// 10 s while a live client is connected; a start calls it at once. True when
+// a frame went out.
+func (s *Server) PublishShells() bool {
+	if s.d.Shells == nil || s.d.Bus == nil {
+		return false
+	}
+	out := []ShellInfo{}
+	for _, sh := range s.d.Shells.Shells() {
+		out = append(out, s.withProject(sh))
+	}
+	b, err := json.Marshal(out)
+	if err != nil {
+		return false
+	}
+	s.shellsMu.Lock()
+	defer s.shellsMu.Unlock()
+	if s.shellsSent != nil && string(b) == string(s.shellsSent) {
+		return false
+	}
+	s.shellsSent = b
+	s.d.Bus.Publish(bus.Frame{Type: bus.FrameShells, Data: map[string]any{"shells": json.RawMessage(b)}})
+	return true
 }
 
 // withProject fills in which listed project a shell's folder is in.

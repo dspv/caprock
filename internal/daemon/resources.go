@@ -211,10 +211,14 @@ func (d *Daemon) resourceLoop(ctx context.Context) {
 	defer t.Stop()
 	reap := time.NewTimer(reapFirst)
 	defer reap.Stop()
+	push := time.NewTicker(livePushEvery)
+	defer push.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-push.C:
+			d.pushLive(ctx)
 		case <-reap.C:
 			if res, err := d.reapOrphans(ctx, false); err != nil {
 				d.log.Warn("orphaned pty-host sweep", "component", "resources", "err", err)

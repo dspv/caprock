@@ -139,6 +139,55 @@ before/after.
    once three terminals had been open and stayed there hidden; WebGL
    contexts and scrollback of tabs in the background are the candidates.
 
+## After, 2026-10-19
+
+Wins 1–3 above, built and measured the same evening:
+
+- **Hidden terminals let their socket go.** Hidden for 2 s, every terminal
+  closes its socket; shown, it writes what it held and reconnects from its
+  last byte (`since`).
+- **A flood is written at most every 33 ms.** Chunks that arrive in between
+  go to xterm as one write, in order; the first after a quiet spell goes at
+  once.
+- **Footprint and shells ride the live socket.** The daemon checks both
+  every 10 s while a live client is connected and sends a frame when one
+  changed; the page polls each once a minute as the fallback.
+
+**Method.** The Chromium proxy only (the app bundle was not rebuilt): the
+headless shell against a throwaway daemon (`bench/stand.sh`: `env`-clean
+HOME, data directory, port 41901, the fake `claude`), three sessions in one
+project and a shell, no seeded transcripts. Before is master at `5b411706`,
+after is this branch; each on a fresh stand, 60 s per row, one run, CPU from
+`bench/procs.py` over the browser's process tree and the daemon. Hidden is
+`document.visibilityState` overridden to `hidden` with a `visibilitychange`,
+since the headless shell is never hidden; its timers are not throttled, so
+the hidden rows overstate WebKit's. The 1-minute load average was 2.5–8.8.
+The DOM renderer is drawing (no GPU), as in the proxy rows above.
+
+| 60 s                         | Before | After |
+| ---------------------------- | ------ | ----- |
+| Home: requests               | 28     | 17    |
+| Home: `/v1/footprint`        | 6      | 1     |
+| Home: `/v1/shells`           | 6      | 1     |
+| Home: browser CPU %          | 0.58   | 0.35  |
+| Home: daemon CPU %           | 1.17   | 0.68  |
+| 3 tabs 20 l/s: script s      | 1.39   | 0.78  |
+| 3 tabs 20 l/s: main-thread s | 7.29   | 4.29  |
+| 3 tabs 20 l/s: browser CPU % | 28.4   | 17.9  |
+| Hidden: terminal frames      | 1,218  | 0     |
+| Hidden: terminal KB          | 131    | 0     |
+| Hidden: browser CPU %        | 1.85   | 0.62  |
+
+- **No byte lost.** After 20 s hidden at 20 lines/s and then shown, the
+  front terminal's 26 numbered lines were consecutive and identical to a
+  fresh load's replay.
+- **The footprint frame goes out on most checks** (6 a minute), because its
+  CPU figures move with every sample: the saving is the requests, not the
+  traffic.
+- **Not measured:** the app window itself (WKWebView, WebGL terminals) and
+  typing latency under a flood (`bench/busy.mjs`). The 10.4% busy row and the
+  0.64% hidden Networking figure above are still the app's numbers before.
+
 ## Side findings
 
 - `POST /v1/brain/nodes` returned 500 `database is locked (SQLITE_BUSY)` while

@@ -7,8 +7,9 @@
  * what it is spent on, so a user can tell at a glance whether a slowdown is
  * Caprock or not; and disk.
  *
- * One source for every figure: GET /v1/footprint (lib/footprint.ts), asked
- * every 10 s while the page is visible. Before its first answer, and from a
+ * One source for every figure: GET /v1/footprint (lib/footprint.ts), pushed
+ * as a `footprint` frame when it changes and asked on mount and once a minute
+ * while the page is visible. Before its first answer, and from a
  * daemon without it, the strip falls back to the resource meter's memory.
  */
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'

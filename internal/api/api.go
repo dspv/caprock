@@ -502,8 +502,11 @@ type Server struct {
 	// shell (POST /v1/shells with replaces).
 	replMu   sync.Mutex
 	replaced map[string]string
-	pairing  *pairing.Store
-	lanURL   string
+	// shellsSent is the shell list last sent as a "shells" frame (PublishShells).
+	shellsMu   sync.Mutex
+	shellsSent []byte
+	pairing    *pairing.Store
+	lanURL     string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
 	// and the MagicDNS name (WP-15). Empty when off.
