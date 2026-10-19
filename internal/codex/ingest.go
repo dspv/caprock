@@ -95,6 +95,13 @@ type Ingester struct {
 	// batch is the transaction importSession writes a session's records in
 	// (rollup.Batch); nil outside it. Only Run's goroutine touches it.
 	batch *rollup.Batch
+	// beforeText, when set, runs just before a session's prose is synced and
+	// may fail it. Tests use it to fail a pass between the records and the
+	// prose.
+	beforeText func() error
+	// textFailed is set by importSession when the prose sync failed after the
+	// records were stored; the file is then read again on the next pass.
+	textFailed bool
 	// pend is what the open batch stored, counted once it commits.
 	pend struct{ events, unpriced, stored int }
 
@@ -301,6 +308,7 @@ func (in *Ingester) once(ctx context.Context) error {
 			in.mu.Unlock()
 			continue
 		}
+		in.textFailed = false
 		clean, err := in.importSession(ctx, s, t != nil && !t.fresh)
 		if err != nil {
 			// Nothing is committed: the next pass offers again everything
@@ -314,7 +322,14 @@ func (in *Ingester) once(ctx context.Context) error {
 		readNow[f.Path] = true
 		changed = true
 		in.mu.Lock()
-		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID, imported: s.Imported}
+		st := fileState{mod: f.Modified, size: f.Size, session: s.ID, imported: s.Imported}
+		if in.textFailed {
+			// The prose did not reach the rows the records made. Left
+			// looking changed, the file is offered again next tick, and
+			// the sync then sets the whole text.
+			st.mod, st.size = time.Time{}, -1
+		}
+		in.seen[f.Path] = st
 		// Updated inside the loop, not after it. The first pass over a real
 		// machine's hundred transcripts takes seconds, and `caprock status`
 		// read during it reported "0 transcripts read" beside a rising event
@@ -590,9 +605,17 @@ func (in *Ingester) importSession(ctx context.Context, s *Session, delta bool) (
 	// A turn's text can arrive after its row: a message written after the
 	// request's last token_count joins that turn when the request ends. And
 	// rows imported before prose was read have none. Both are filled here.
-	if _, err := in.syncText(ctx, s, delta); err != nil {
+	var terr error
+	if in.beforeText != nil {
+		terr = in.beforeText()
+	}
+	if terr == nil {
+		_, terr = in.syncText(ctx, s, delta)
+	}
+	if err := terr; err != nil {
 		in.log.Debug("codex text sync failed", "component", "codex", "session_id", s.ID, "err", err)
 		clean = false
+		in.textFailed = true
 	}
 	return clean, nil
 }

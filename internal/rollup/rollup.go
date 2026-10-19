@@ -251,7 +251,11 @@ func (r *Recorder) prepare(ev *event.Event, info SessionInfo) (internalModel, pr
 func afterDuplicate(ctx context.Context, q store.Querier, ev *event.Event) error {
 	// A later line of a response already stored: its prose belongs to that
 	// turn, though its usage does not (store.MergeAssistantText).
-	if ev.Kind == event.KindTurnAssistant && ev.Key != "" {
+	//
+	// Not a Codex turn: it carries its whole prose in one record, which the
+	// importer sets on the row (codex syncText). Folding a grown text onto
+	// the old one doubled it whenever a pass failed between the two.
+	if ev.Kind == event.KindTurnAssistant && ev.Key != "" && ev.Source != event.SourceCodex {
 		if _, err := store.MergeAssistantText(ctx, q, ev.SessionID, ev.Key, ev.Payload); err != nil {
 			return err
 		}
