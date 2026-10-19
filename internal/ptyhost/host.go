@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -44,6 +45,10 @@ type ready struct {
 // stopGrace is how long a child asked to stop by the holder's SIGTERM has
 // before it is killed: the holder is gone within about a second.
 const stopGrace = 750 * time.Millisecond
+
+// stopDrain is how long a holder asked to stop waits for its child's last
+// output once the child has exited.
+const stopDrain = 200 * time.Millisecond
 
 // ringSize matches the daemon's own ring: what a reattached terminal repaints.
 const ringSize = 256 << 10
@@ -130,6 +135,7 @@ type host struct {
 	ring     *termbuf.Ring
 	inputs   *termbuf.Inputs // sequenced input applied so far, per client (J frames)
 	rec      Record
+	stopping atomic.Bool // a SIGTERM asked the holder to stop
 	pumpDone chan struct{}
 	// childDone is closed when the child has exited.
 	childDone chan struct{}
@@ -214,6 +220,7 @@ func (h *host) serve() int {
 		// then SIGTERM, which Claude Code cleans up on; and what is still
 		// running after stopGrace is killed.
 		for range terms {
+			h.stopping.Store(true)
 			_ = h.sess.Signal(ptyman.SignalHangup)
 			_ = h.sess.Signal(ptyman.SignalTerm)
 			go func() {
@@ -232,10 +239,16 @@ func (h *host) serve() int {
 	close(h.childDone)
 	code := exitCode(err)
 	// Let the last output reach the ring and the client before saying the
-	// session is over, so the final screen is not cut short.
+	// session is over, so the final screen is not cut short. Asked to stop,
+	// the holder waits less: on Linux a shell's job that outlives the shell
+	// still holds the terminal open, so the output never ends by itself.
+	drain := 2 * time.Second
+	if h.stopping.Load() {
+		drain = stopDrain
+	}
 	select {
 	case <-h.pumpDone:
-	case <-time.After(2 * time.Second):
+	case <-time.After(drain):
 	}
 	_ = h.ln.Close()
 
