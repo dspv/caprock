@@ -12,6 +12,96 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.136.0] - 2026-10-19
+
+### Changed
+
+- **ui:** the line under the next release now says where it stands in one row: what is merged, the open pull request and its CI, agents working and branches ready, and the last release. Each part jumps to its list.
+- **perf(api):** the all-time history behind the Now screen and History is no
+  longer counted again on every poll while agents work. It is refreshed at
+  most once per 20 times what counting it took (never past 2 minutes), and
+  its totals reuse the summary's scans instead of making them twice. Today's
+  figures keep their 3-second refresh. Measured 2026-10-18 on an M1 Pro under
+  a synthetic working load (four Claude and two Codex sessions writing, hooks,
+  two dashboard pages): on an 890,000-event history the daemon went from 40%
+  of one core to 11% and the history refresh's allocation from 2,839 MB to
+  182 MB per 150 s; on a 181,000-event history the refresh's own CPU fell 40%
+  and the daemon's total stayed within noise.
+- **perf(api):** the sessions list no longer re-reads every listed session's
+  recent events on every request. Each session's reads are kept until its
+  events change: an insert raises its newest event id, and new database
+  triggers count updates and deletes (migration 0063). Narration, stats, live
+  subagents and the clock are still worked out on every request. Measured
+  2026-10-18 on an M1 Pro under a synthetic working load (181,000-event
+  history, four Claude and two Codex sessions writing, hooks, two dashboard
+  pages): the list's allocation per request fell from 0.85–0.87 MB to
+  0.35–0.36 MB and its CPU per request from 1.8–3.2 ms to 0.8–1.1 ms. The
+  daemon went from 13–15% of one core to 11–12%. The cache holds about 9 MB
+  for at most 256 sessions.
+- **perf(rollup):** importing history writes many events per transaction
+  instead of one. The Claude transcript reader and the Codex importer commit
+  up to 512 events or 50 ms at a time, with a transcript's read position saved
+  in the same transaction, so a failed batch is read again and nothing is lost
+  or counted twice. Live hook events keep their own transaction and are let in
+  as soon as they wait. Every recorded event also stopped starting four or five
+  short-lived goroutines inside the database layer. Measured 2026-10-18 on an
+  M1 Pro, importing a synthetic 178,000-event history: 149–150 s and 152–160 s
+  of CPU before, 101 s and 83–84 s after; the daemon under a working load went
+  from 12.8% of one core to 11.6–11.9%.
+- **web app:** The phone Home is back to what 0.134.0 showed: the Projects list added in 0.135.0 now appears only at tablet width and wider, so long-unused projects no longer fill the phone screen. The chat field is no longer docked at the bottom: it lives in a Chats section, folded by default, with the newest chats and All chats.
+- **web app:** The folded Chats row on the phone Home has a **+ New chat** button at its right: one tap opens the chat field with the cursor in it.
+- **ui:** Send just sends, on the phone and on the Mac. A message sent while
+  the agent works was already held and typed in by itself when the turn ended,
+  but it was drawn as a dashed "Queued" bubble with three equal buttons (Edit,
+  Cancel, Send now), which read as a choice you still had to make. It is now an
+  ordinary outgoing bubble with one muted line, "Sends when Claude finishes";
+  Send now, Edit and Cancel are small text links. The box says "Message will
+  send when the agent is free".
+
+### Fixed
+
+- **chat:** a reply now shows the moment it is written. Claude Code writes a
+  reply's thinking first and its words on a later line of the same message;
+  the daemon merged those words into the stored turn without telling the live
+  feed, so a chat showed the turn's cost and no answer until it was opened
+  again. Measured on a preview daemon: never within 30 s before, 108 ms now.
+  The merge is now an `event_update` frame, and the chat replaces the reply in
+  place.
+- **chat:** a chat says when its agent is at work: *Claude is thinking…* with
+  a clock from your message, the call it runs (*Running npm test*, *Reading
+  main.go*), or *Waiting for your permission* with the Yes / No card under
+  the conversation, on the desktop, in the app's chat tab and on the phone.
+  A quick chat runs in the default permission mode, so a web fetch or a
+  command could stall it on a prompt the chat never showed.
+- **chat:** what you send shows at once as your bubble, *Sending…* then
+  *Sent ✓*, until the session's own record of it arrives; one the daemon
+  refused reads *Not sent* with Retry. Before, nothing showed until the
+  transcript caught up, so a message to a busy session looked lost.
+- **chat:** text you pasted shows as a quiet *Pasted · N lines* block, folded
+  past six lines, instead of Claude Code's raw `<pasted_content>` tags; a
+  `<system-reminder>` inside a prompt is left out.
+- **codex:** a reply no longer shows its text twice when the import was interrupted between saving the turn and saving its words; the import is retried on the next tick, and turns already doubled are corrected the next time their session file is read in full.
+- **ui:** AI;DR on a phone reached through access from anywhere no longer
+  answers 403. The relay drops the browser's Origin and fetch metadata, and
+  the tap sent no Content-Type to stand in for them; it now sends an empty
+  JSON body. A 403 on AI;DR says in words that Caprock refused it.
+- **web app:** Keep the phone Home and the permission card inside the screen: a long path, tool name or "always" answer in a waiting prompt no longer widens the page, so cards keep their right margin and the header spans the full width.
+- **ui:** a dictated message is never silently lost on the phone. When the
+  speech service ends by itself mid-recording (Chrome on Android does after a
+  pause), Caprock listens again and keeps every word; interim words with no
+  final are sent rather than wiped; a later, emptier result never erases
+  what is in the field; Send while listening waits for the last words. A
+  pointer cancel keeps recording instead of dropping it, and sliding off the
+  mic sends nothing but leaves the words in the field. A message the daemon
+  does not take becomes a draft with Retry, a message on its way when the
+  tab is discarded comes back as a draft, and the field's text survives a
+  discarded tab.
+- **ui:** the dictation language can be changed from the phone's + sheet,
+  which was the only way on a chat's screen (it was stuck on the phone's own
+  language there), and the recording line names the language it listens in.
+  Speech recognition still hears one language per recording: the browser's
+  API cannot detect a second one, and Caprock has no transcription of its own.
+
 ## [0.135.0] - 2026-10-18
 
 ### Added
