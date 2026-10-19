@@ -115,14 +115,15 @@ export function VersionPanel({ shown, title, status, onStatus }: {
             {st?.enabled === false
               ? 'Release checks are off in Settings → Updates.'
               : st?.checked_at ? `Checked ${fmtAgo(st.checked_at, now)}` : 'Not checked yet'}
-            {/* With What's new as the button, checking again is still one
-              * click away (owner, 2026-10-16: "I can't check"). */}
+            {/* Checking again is the button used most; what is new is a link
+              * here (owner, 2026-10-19: "Check again should be the main
+              * button, I press it far more often than What's new"). */}
             {upToDate && freshCheck && (
               <>
                 {' · '}
-                <button type="button" data-check-again onClick={() => void check()} disabled={checking}
-                  className="text-fg-muted underline decoration-dotted underline-offset-2 hover:text-accent disabled:opacity-50">
-                  {checking ? 'Checking…' : 'Check again'}
+                <button type="button" data-whats-new onClick={() => openExternal('https://caprock.dev/changelog')} {...extProps()}
+                  className="text-fg-muted underline decoration-dotted underline-offset-2 hover:text-accent">
+                  What’s new in {shown}
                 </button>
               </>
             )}
@@ -149,8 +150,7 @@ export function VersionPanel({ shown, title, status, onStatus }: {
           )}
           {error && <p className="break-words text-warn">{error}</p>}
           {/* One button, the useful one (owner, 2026-10-16): an update to
-            * install has its own above; just checked and up to date, what is
-            * new in this version; otherwise, check. */}
+            * install has its own above; otherwise, check (again). */}
           {available && (
             <button type="button" onClick={() => openExternal('https://caprock.dev/changelog')} className="justify-self-start text-fg-muted hover:text-accent" {...extProps()}>
               Release notes
@@ -158,15 +158,10 @@ export function VersionPanel({ shown, title, status, onStatus }: {
           )}
           {!available && (
             <div className="flex items-center gap-3">
-              {upToDate && freshCheck
-                ? <button type="button" data-whats-new onClick={() => openExternal('https://caprock.dev/changelog')} {...extProps()}
-                    className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent">
-                    What’s new in {shown}
-                  </button>
-                : <button type="button" onClick={() => void check()} disabled={checking || st?.enabled === false}
-                    className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">
-                    {checking ? 'Checking…' : 'Check now'}
-                  </button>}
+              <button type="button" data-check-again onClick={() => void check()} disabled={checking || st?.enabled === false}
+                className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">
+                {checking ? 'Checking…' : upToDate && freshCheck ? 'Check again' : 'Check now'}
+              </button>
             </div>
           )}
         </div>

@@ -38,12 +38,13 @@ describe('the version panel', () => {
     render(<VersionPanel shown="0.105.0" title="" onStatus={() => {}} status={{ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() }} />)
     fireEvent.click(screen.getByText('0.105.0'))
     expect(screen.getByRole('dialog').textContent).toMatch(/You’re on the latest version/)
-    // One button, the useful one: just checked, so what is new — no Check now.
-    expect(screen.getByRole('button', { name: /What’s new in 0\.105\.0/ })).toBeTruthy()
+    // The button checks again; what is new is a link on the checked line.
+    expect(screen.getByRole('button', { name: 'Check again' }).className).toMatch(/border/)
+    expect(screen.getByRole('button', { name: /What’s new in 0\.105\.0/ }).closest('[data-checked]')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull()
   })
 
-  it('still checks again from the checked line when just checked', async () => {
+  it('checks again from the button when just checked', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ...base, current: '0.105.0', latest: '0.105.0', checked_at: Date.now() }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
     vi.stubGlobal('fetch', fetchMock)
     const onStatus = vi.fn()
