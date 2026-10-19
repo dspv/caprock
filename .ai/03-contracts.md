@@ -3926,12 +3926,14 @@ path cannot be read. Settings puts it in the MCP command when asked.
 ### AI;DR
 
 One agent answer squeezed into at most two short sentences, on the user's
-tap ([ADR-072](08-decisions.md)). Code: `internal/api/tldr.go`,
+tap ([ADR-072](08-decisions.md)). The phone sends `Content-Type: application/json`
+and body `{}`: over access from anywhere the channel drops Origin and Sec-Fetch-*,
+so that header is the only CSRF proof (`csrf.go`). Code: `internal/api/tldr.go`,
 `internal/brain/tldr.go`, `internal/store/tldr.go`; DDL in § AI;DR DDL
 (migration 0060).
 
 ```
-POST /v1/events/{id}/tldr   (no body) → 200 {tldr: string, cached: bool} | 404 {error} | 502 {error} | 503 {error}
+POST /v1/events/{id}/tldr   (body {}) → 200 {tldr: string, cached: bool} | 404 {error} | 502 {error} | 503 {error}
 ```
 
 - **`{id}`** is the answer's event id, the `event_id` of `/v1/notes`,
