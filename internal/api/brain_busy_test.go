@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"sync"
+	"runtime"
 	"testing"
 	"time"
 
@@ -80,7 +81,13 @@ func TestABrainWriteDuringABackfillSucceeds(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("memory %d: %d %s", i, rr.Code, rr.Body.String())
 		}
-		if d := time.Since(start); d > time.Second {
+		// Windows runners are slower at a write under contention: the first
+		// one took 2.4 s there (2026-10-19) against well under a second here.
+		limit := time.Second
+		if runtime.GOOS == "windows" {
+			limit = 5 * time.Second
+		}
+		if d := time.Since(start); d > limit {
 			t.Fatalf("memory %d waited %v for the database", i, d)
 		}
 	}
