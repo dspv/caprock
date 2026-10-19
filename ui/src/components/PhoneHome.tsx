@@ -4,8 +4,10 @@
  * with quick access — to start new chats, save stuff", translated).
  *
  * Layout B of the two drawn that day, picked by the owner: what waits on you
- * at the top, then the sessions to continue and what was saved, and one field
- * docked at the bottom where the thumb is. Typed words go either way: **Start
+ * at the top, then the sessions to continue and what was saved. The chat
+ * field is no longer docked at the bottom (owner, 2026-10-19: not until voice
+ * input works on the phone in any language, translated): it lives inside the
+ * Chats section, folded by default. Typed words go either way: **Start
  * chat** starts a session on them in the project and agent the chips name;
  * **Save** keeps them, with any photos, in the Inbox the Mac shows in Quick
  * chat. An empty field opens the full sheet instead (New chat, Save), as do
@@ -34,7 +36,6 @@ import {
   continueList, INSTALL_HINT_KEY, installWay, isStandalone, messageWith, openFromHash, sharedFromSearch, waitingOnYou,
   type InstallWay,
 } from '@/lib/phonehome'
-import { BrowserProjects } from './BrowserProjects'
 import { AgentGlyph } from './AgentMarks'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
@@ -152,20 +153,6 @@ function useChatPicks(projects: readonly Project[]) {
   }
 }
 
-/** Keeps the dock above the on-screen keyboard: iOS leaves `fixed; bottom: 0` under it. */
-function useKeyboardInset(): number {
-  const [inset, setInset] = useState(0)
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return
-    const on = () => setInset(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)))
-    vv.addEventListener('resize', on)
-    vv.addEventListener('scroll', on)
-    return () => { vv.removeEventListener('resize', on); vv.removeEventListener('scroll', on) }
-  }, [])
-  return inset
-}
-
 export function PhoneHome() {
   const canControl = useCanControl()
   const sessions = useApi(() => api.sessionsWithTotal(false, '', 60), [], { intervalMs: 5000 })
@@ -221,7 +208,7 @@ export function PhoneHome() {
   }, [])
 
   return (
-    <div className="grid gap-4 pb-[236px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-6">
       {pulled > 0 && (
         <div data-pull-hint aria-hidden style={{ height: Math.min(pulled, PULL_PX) }}
           className="-mb-4 flex items-end justify-center overflow-hidden text-[12px] text-fg-faint">
@@ -229,21 +216,21 @@ export function PhoneHome() {
         </div>
       )}
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
-      <BrowserProjects />
-      <RecentChats list={chats.data} now={now} canControl={canControl} ended={endedHere} />
+      <ChatsSection list={chats.data} now={now} canControl={canControl} ended={endedHere}>
+        <Dock
+          projects={projects}
+          canControl={canControl}
+          saved={saved}
+          onSave={(text, photos) => setSheet({ kind: 'save', text, photos })}
+          onNewChat={() => setSheet({ kind: 'chat' })}
+        />
+      </ChatsSection>
       <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} canControl={canControl} ended={endedHere} />
       <PhoneReleases pull={pull} />
       <Saved items={inbox.items} now={now} canDelete={canControl} />
       <a href="#/home" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
         Full dashboard <ChevronIcon size={14} />
       </a>
-      <Dock
-        projects={projects}
-        canControl={canControl}
-        saved={saved}
-        onSave={(text, photos) => setSheet({ kind: 'save', text, photos })}
-        onNewChat={() => setSheet({ kind: 'chat' })}
-      />
       {sheet?.kind === 'chat' && <NewChatSheet projects={projects} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'save' && (
         <SaveSheet projects={projects} text={sheet.text} photos={sheet.photos} canSave={canControl} onClose={() => setSheet(null)} onSaved={() => { setSheet(null); setSaved((n) => n + 1); inbox.refresh() }} />
@@ -289,11 +276,49 @@ function healthWord(s: SessionSummary): string {
 /** Chats on the home: the newest few, and the way to all of them. */
 const CHATS_SHOWN = 3
 
-function RecentChats({ list, now, canControl, ended }: { list?: ChatList; now: number; canControl: boolean; ended: EndedHere }) {
-  if (!list || list.items.length === 0) return null
+/**
+ * Chats apart from the work, folded by default (owner, 2026-10-19: "chats
+ * separately — a tab or a collapsible list", translated). Unfolded: the
+ * newest few, All chats, and the chat field that used to be docked at the
+ * bottom of the screen.
+ */
+function ChatsSection({ list, now, canControl, ended, children }: { list?: ChatList; now: number; canControl: boolean; ended: EndedHere; children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  // "+ New chat": unfold and put the cursor in the field, one tap from Home.
+  const [focusAsk, setFocusAsk] = useState(0)
+  const root = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (focusAsk) root.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()
+  }, [focusAsk])
+  const items = list?.items ?? []
   return (
-    <section aria-label="Chats">
-      <SectionLabel right={<a href={href({ name: 'chats' })} className="text-accent no-underline">All chats · {list.chats}</a>}>Chats</SectionLabel>
+    <section aria-label="Chats" ref={root}>
+      <div className="flex items-stretch gap-2">
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-[12px] border border-border bg-panel px-3 text-left text-[16px] font-medium text-fg">
+          <ChatIcon size={16} />
+          <span className="min-w-0 flex-1 truncate">Chats{list && list.chats > 0 ? ` · ${list.chats}` : ''}</span>
+          <span aria-hidden="true" className={`text-fg-muted transition-transform ${open ? 'rotate-90' : ''}`}><ChevronIcon size={14} /></span>
+        </button>
+        <button type="button" onClick={() => { setOpen(true); setFocusAsk((n) => n + 1) }}
+          className="min-h-11 min-w-11 shrink-0 rounded-[12px] border border-border-strong bg-bg px-3 text-[15px] font-medium text-accent">
+          + New chat
+        </button>
+      </div>
+      {open && (
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2">
+          {items.length > 0 && <RecentChats list={list!} now={now} canControl={canControl} ended={ended} />}
+          {children}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RecentChats({ list, now, canControl, ended }: { list: ChatList; now: number; canControl: boolean; ended: EndedHere }) {
+  return (
+    <>
+      <div className="flex justify-end text-[14px]"><a href={href({ name: 'chats' })} className="text-accent no-underline">All chats · {list.chats}</a></div>
       <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
         {list.items.slice(0, CHATS_SHOWN).map(ended.view).map((s) => (
           <EndableRow key={s.session_id} s={s} title={chatTitle(s)} canControl={canControl} onEnded={() => ended.mark(s.session_id)}>
@@ -310,7 +335,7 @@ function RecentChats({ list, now, canControl, ended }: { list?: ChatList; now: n
           </EndableRow>
         ))}
       </ul>
-    </section>
+    </>
   )
 }
 
@@ -321,7 +346,7 @@ function Continue({ rows, now, loading, canControl, ended }: { rows: SessionSumm
       <SectionLabel right={<a href="#/home" className="text-accent no-underline">All sessions</a>}>Continue</SectionLabel>
       {rows.length === 0 ? (
         <div className="rounded-[12px] border border-border bg-panel px-3 py-4 text-[14px] text-fg-muted">
-          {loading ? 'Reading your sessions…' : 'Nothing from the last two days. Start a chat below.'}
+          {loading ? 'Reading your sessions…' : 'Nothing from the last two days.'}
         </div>
       ) : (
         <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
@@ -452,7 +477,7 @@ function PhotoRow({ photos, onRemove }: { photos: Picked[]; onRemove: (i: number
 }
 
 /**
- * One field at the bottom: start a chat on it, or Save it (ADR-071). With no
+ * One field, inside the Chats section: start a chat on it, or Save it (ADR-071). With no
  * project picked — the default — the chat is a plain one in Caprock's chats
  * workspace, and an empty field starts one at once: one tap, the remembered
  * vendor and model. Pick a project and it is a session there, as before.
@@ -474,7 +499,6 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
   const [error, setError] = useState('')
   const file = useRef<HTMLInputElement>(null)
   const field = useRef<HTMLTextAreaElement>(null)
-  const inset = useKeyboardInset()
   useEffect(() => { if (saved) setText('') }, [saved])
   // The field grows with what is typed, to five lines.
   useEffect(() => {
@@ -508,10 +532,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
   const pickProject = (v: string) => { setRoot(v); keepDockProject(v) }
 
   return (
-    <div
-      className="fixed inset-x-0 z-30 border-t border-border bg-panel/95 px-3 pt-2.5 shadow-[0_-12px_32px_-18px_rgba(0,0,0,0.5)] backdrop-blur"
-      style={{ bottom: inset, paddingBottom: inset ? 10 : 'max(10px, env(safe-area-inset-bottom))' }}
-    >
+    <div className="rounded-[12px] border border-border bg-panel p-3">
       {!canControl ? (
         <p className="pb-1 text-[14px] leading-[1.4] text-fg-muted">
           This phone can read Caprock. To start chats and save from it, open the Caprock app on your computer: <span className="text-fg">Settings → Use on your phone</span>, then press <span className="text-fg">Allow control</span> next to this phone.

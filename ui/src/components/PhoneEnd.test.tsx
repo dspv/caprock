@@ -198,6 +198,8 @@ describe('the phone home', () => {
     stubs([], [chat('c9')])
     const signal = vi.spyOn(api, 'signal').mockResolvedValue(undefined)
     render(<PhoneHome />)
+    // Chats is folded by default (owner, 2026-10-19).
+    fireEvent.click(await screen.findByRole('button', { name: /^Chats · 1/ }))
     fireEvent.click(await screen.findByRole('button', { name: 'More for Trial c9' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'End session…' }))
     fireEvent.click(screen.getByRole('button', { name: 'End session' }))

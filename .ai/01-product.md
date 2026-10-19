@@ -104,7 +104,7 @@ Every MVP feature must trace to a documented user pain. **Rule: a feature with n
 
 13. **"The tablet app has no project list; I cannot find my sessions."**
    - Evidence: the owner, 2026-10-18 (translated), after installing the Android web app. Tablet Home showed the figures first; the desktop sidebar was absent and the phone's projects were inside the chat picker.
-   - Feature: **Projects on browser Home** at every width, including projects without sessions; expand a project and open its live or recent sessions ([04-ui.md § Projects in the browser](04-ui.md#projects-in-the-browser)).
+   - Feature: **Projects on browser Home** at tablet width and wider (not on the phone since 2026-10-19, owner's request), including projects without sessions; expand a project and open its live or recent sessions ([04-ui.md § Projects in the browser](04-ui.md#projects-in-the-browser)).
 
 ## Product principles
 

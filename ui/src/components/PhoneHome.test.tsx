@@ -45,7 +45,34 @@ beforeEach(() => {
   location.hash = '#/'
 })
 
+const openChats = () => fireEvent.click(screen.getByRole('button', { name: /^Chats/ }))
+
 describe('PhoneHome', () => {
+  // Owner, 2026-10-19 (translated): the phone Home as it was in 0.134.0, no
+  // projects list, and no chat field at the bottom until voice works in any language.
+  it('keeps projects off the phone home and the chat field folded inside Chats', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(screen.queryByRole('region', { name: 'Projects' })).toBeNull()
+    const toggle = screen.getByRole('button', { name: /^Chats/ })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByLabelText('Message or note')).toBeNull()
+    openChats()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByLabelText('Message or note').closest('section')?.getAttribute('aria-label')).toBe('Chats')
+  })
+
+  it('+ New chat unfolds Chats and focuses the field', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(screen.getByRole('button', { name: /^Chats/ }).getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: '+ New chat' }))
+    expect(screen.getByRole('button', { name: /^Chats/ }).getAttribute('aria-expanded')).toBe('true')
+    expect(document.activeElement).toBe(screen.getByLabelText('Message or note'))
+  })
+
   it('preserves a session route when the kept home mounts after a tablet becomes narrow', async () => {
     stubs()
     window.history.replaceState(null, '', '/#/session/s1?tab=chat')
@@ -68,6 +95,7 @@ describe('PhoneHome', () => {
     const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'new1', cwd: '/home/me/beta' })
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
+    openChats()
     // No project, then the two projects.
     await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).options.length).toBe(3))
     fireEvent.change(screen.getByLabelText('Project'), { target: { value: '/home/me/beta' } })
@@ -86,6 +114,7 @@ describe('PhoneHome', () => {
     const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'c1', cwd: '/data/chats/2026-10-16-101010' })
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
+    openChats()
     fireEvent.click(screen.getByText('New chat'))
     await waitFor(() => expect(spawn).toHaveBeenCalled())
     expect(spawn.mock.calls[0]![0]).toEqual({ chat: true, model: 'claude-sonnet-5-5' })
@@ -97,6 +126,7 @@ describe('PhoneHome', () => {
     const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'c2', cwd: '/data/chats/2026-10-16-101011' })
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
+    openChats()
     fireEvent.change(screen.getByLabelText('Message or note'), { target: { value: 'what is a monad' } })
     fireEvent.click(screen.getByText('Start chat'))
     await waitFor(() => expect(spawn).toHaveBeenCalled())
@@ -109,6 +139,7 @@ describe('PhoneHome', () => {
     const spawn = vi.spyOn(api, 'spawn')
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
+    openChats()
     await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).options.length).toBe(3))
     fireEvent.change(screen.getByLabelText('Project'), { target: { value: '/home/me/alpha' } })
     fireEvent.click(screen.getByText('Start chat'))
@@ -122,6 +153,8 @@ describe('PhoneHome', () => {
     vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [session('s1', 'alpha', 'working'), { ...chats[0]!, description: 'chat words' }], total: 2 })
     render(<PhoneHome />)
     const section = await screen.findByRole('region', { name: 'Chats' })
+    await screen.findByText('Chats · 1')
+    openChats()
     expect(section.textContent).toContain('Monads, explained')
     expect(screen.getByText('All chats · 1').closest('a')?.getAttribute('href')).toBe('#/chats')
     expect(screen.getByText('Monads, explained').closest('a')?.getAttribute('href')).toBe('#/chats/c1')
@@ -135,6 +168,7 @@ describe('PhoneHome', () => {
     const add = vi.spyOn(api, 'addInbox').mockResolvedValue({ item: { id: 9, text: 'remember this', files: [], created_at: NOW } })
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
+    openChats()
     fireEvent.change(screen.getByLabelText('Message or note'), { target: { value: 'remember this' } })
     fireEvent.click(screen.getByText('Save'))
     const sheet = await screen.findByRole('dialog', { name: 'Save' })

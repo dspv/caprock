@@ -88,9 +88,12 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
 
   const button = 'min-h-[48px] rounded-sm px-4 py-2 text-[15px] font-medium disabled:opacity-50'
   return (
-    <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+    <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid grid-cols-[minmax(0,1fr)] gap-2 [overflow-wrap:anywhere] border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+      {/* A long tool name, path or "always" answer wraps anywhere rather than
+        * widening the page: on Android one wide line widened the whole layout
+        * viewport, fixed bars included (owner's phone, 2026-10-19). */}
       <div className="flex items-start justify-between gap-2">
-        <div className="grid gap-0.5">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5">
           <p className="text-[13px] text-fg">
             <Asker p={prompt} /> wants to {toolKind(prompt.tool) === 'run' ? 'run' : 'use'} <span className="mono font-medium">{prompt.tool}</span>
           </p>
@@ -154,7 +157,7 @@ function Request({ detail }: { detail: string }) {
   const long = detail.length > 240 || detail.split('\n').length > 4
   const [open, setOpen] = useState(!long)
   return (
-    <div className="grid gap-1">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-1">
       {more && gist && (
         <p className="mono break-words text-[12.5px] font-medium text-fg" title={detail}>{gist}</p>
       )}
@@ -198,19 +201,19 @@ function SeveralPrompts({ card, sessionId, prompts, canControl, busy, onDismiss,
   error: string
 }) {
   return (
-    <div ref={card} role="alertdialog" aria-label="Permission prompts" className="grid gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
-      <div className="grid gap-0.5">
+    <div ref={card} role="alertdialog" aria-label="Permission prompts" className="grid grid-cols-[minmax(0,1fr)] gap-2 [overflow-wrap:anywhere] border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
         <p className="text-[13px] font-medium text-fg">{prompts.length} approvals waiting</p>
         <p className="text-[11.5px] text-fg-muted">
           The terminal shows them one at a time, and Caprock cannot tell which one is in front — answer there.
         </p>
       </div>
-      <ol className="grid gap-1.5">
+      <ol className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
         {prompts.map((p) => {
           const { gist } = commandGist(p.detail)
           return (
             <li key={p.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-sm border border-border bg-panel-2 px-2 py-1.5">
-              <div className="grid min-w-0 gap-0.5">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5">
                 <p className="text-[12.5px] text-fg"><Asker p={p} />: <span className="mono">{p.tool}</span></p>
                 {gist && <p className="mono line-clamp-2 break-all text-[11.5px] text-fg-muted" title={p.detail}>{gist}</p>}
               </div>
