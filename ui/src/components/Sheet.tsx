@@ -9,6 +9,8 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { CloseButton, useBackdropClose, useEscapeToClose } from './Dialog'
 
+const SHEET_TOP = 'min(10vh, 64px)'
+
 export function Sheet({
   title,
   onClose,
@@ -48,15 +50,18 @@ export function Sheet({
     }
   }, [])
   // On document.body, as every dialog's backdrop is (components/Dialog.tsx).
+  // The top gap and the height leave a short window most of its height: at
+  // 10vh down and 78vh tall, New agent's First message sat under the footer
+  // in a 690px window (owner, 2026-10-19).
   return createPortal(
-    <div data-dialog-backdrop="" className="fixed inset-0 z-40 flex items-start justify-center bg-black/25 px-4 pt-[10vh]" {...backdrop}>
+    <div data-dialog-backdrop="" className="fixed inset-0 z-40 flex items-start justify-center bg-black/25 px-4" style={{ paddingTop: SHEET_TOP }} {...backdrop}>
       <div
         ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={label}
-        style={{ maxWidth: width }}
-        className="app-fade-in relative flex max-h-[78vh] w-full flex-col overflow-hidden rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel shadow-[0_24px_64px_-20px_rgba(0,0,0,0.55)]"
+        style={{ maxWidth: width, maxHeight: `calc(100vh - ${SHEET_TOP} - 16px)` }}
+        className="app-fade-in relative flex w-full flex-col overflow-hidden rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel shadow-[0_24px_64px_-20px_rgba(0,0,0,0.55)]"
       >
         {title ? (
           <div className="flex shrink-0 items-center gap-3 border-b border-[var(--app-hairline)] py-2 pl-5 pr-2.5">

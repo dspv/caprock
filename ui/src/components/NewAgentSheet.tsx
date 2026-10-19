@@ -457,6 +457,8 @@ export function NewAgentSheet({
               placeholder="What should it do?"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              // The last field: in a short window it starts below the fold.
+              onFocus={(e) => e.currentTarget.scrollIntoView?.({ block: 'nearest' })}
             />
           </SheetField>
         </div>
