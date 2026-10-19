@@ -3694,7 +3694,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   carries no `licensed`, `free_max` or `free_left` (dropped with the cap).
 - **Errors.** `404` for an unknown node; `409` when a rename would give an
   entity the normalised title of another of its kind; `400` for an unknown
-  kind, an empty title, a self-link.
+  kind, an empty title, a self-link. `503` with `Retry-After: 1` and `{error,
+  detail}` when another writer held the database past busy_timeout: nothing
+  was saved, and the same request lands a moment later (the dashboard tries
+  a drop three more times, a second apart). Every route answers a busy
+  database that way rather than with a bare `500`.
 - **Who.** The four `GET`s are open to every paired device; every write,
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
@@ -6209,7 +6213,7 @@ The holder starts the child, listens on `127.0.0.1:0`, writes its registry entry
 
 **Compatibility rule.** A holder started by one release must work with the daemon of the next. Frame types are never renumbered or repurposed; a side ignores a frame type it does not know. A change that cannot be made additively raises `proto`, and the daemon keeps speaking every older version while a holder of it can still be running. A registry entry with a newer `proto` than the daemon's is left alone (a downgrade).
 
-**Lifecycle.** The daemon reattaches every registry entry at startup — after `OnExit` is wired, before the first liveness sweep and before the API serves. On shutdown it closes its connections and leaves holders running (`ptyman.ErrDetached` is not an exit and is not recorded as one). The session's pid in `sessions.pid` is the **child's**, so liveness ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)) is unchanged. The holder ignores `SIGHUP` and `SIGINT`, passes `SIGTERM` to its child, and exits when the child does. Pause, resume, kill and resize go through the holder.
+**Lifecycle.** The daemon reattaches every registry entry at startup — after `OnExit` is wired, before the first liveness sweep and before the API serves. On shutdown it closes its connections and leaves holders running (`ptyman.ErrDetached` is not an exit and is not recorded as one). The session's pid in `sessions.pid` is the **child's**, so liveness ([ADR-028](08-decisions.md#adr-028--a-session-ends-when-its-process-does)) is unchanged. The holder ignores `SIGHUP` and `SIGINT`. On `SIGTERM` it sends its child's process group `SIGHUP` (what closing a terminal window sends: an interactive shell ignores `SIGTERM` but exits on a hangup and hangs up its jobs) and then `SIGTERM`, kills the group if the child is still running 750 ms later, and exits when the child does — within about a second. Windows is unchanged: there `SIGTERM` already ends the child. Pause, resume, kill and resize go through the holder.
 
 **Orphans** (2026-10-10). A holder exits when its child does, and a daemon
 reattaches whatever its registry lists — but a holder whose registry is gone
@@ -6248,7 +6252,7 @@ stop every `reap` verdict (§ Resources).
 
 A reap re-reads the process table before every signal and acts only when the
 pid still has the start time it was judged with; it sends `SIGTERM` (the holder
-passes it to the child), and `SIGKILL` after 3 s, which closes the PTY and
+hangs its child up and stops it, § Lifecycle), and `SIGKILL` after 3 s, which closes the PTY and
 hangs the shell up the way closing a terminal window does. Windows has no
 `SIGTERM`, so the holder is terminated at once and its pseudoconsole closes
 the shell.

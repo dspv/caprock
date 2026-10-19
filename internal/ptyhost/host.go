@@ -41,6 +41,10 @@ type ready struct {
 	ChildPID int    `json:"child_pid,omitempty"`
 }
 
+// stopGrace is how long a child asked to stop by the holder's SIGTERM has
+// before it is killed: the holder is gone within about a second.
+const stopGrace = 750 * time.Millisecond
+
 // ringSize matches the daemon's own ring: what a reattached terminal repaints.
 const ringSize = 256 << 10
 
@@ -86,7 +90,7 @@ func Main(stdin io.Reader, stdout io.WriteCloser) int {
 	}
 	h := &host{
 		spec: spec, sess: sess, ln: ln, ring: termbuf.NewRing(ringSize), inputs: termbuf.NewInputs(termbuf.InputTTL),
-		pumpDone: make(chan struct{}),
+		pumpDone: make(chan struct{}), childDone: make(chan struct{}),
 		rec: Record{
 			Proto: Proto, SessionID: spec.SessionID, HostPID: os.Getpid(), ChildPID: sess.PID(),
 			Addr: ln.Addr().String(), Token: spec.Token, Cwd: spec.Spec.Dir,
@@ -127,6 +131,8 @@ type host struct {
 	inputs   *termbuf.Inputs // sequenced input applied so far, per client (J frames)
 	rec      Record
 	pumpDone chan struct{}
+	// childDone is closed when the child has exited.
+	childDone chan struct{}
 
 	mu     sync.Mutex // guards client and exited, and orders ring writes against attaches
 	client *client
@@ -200,15 +206,30 @@ func (h *host) serve() int {
 	signal.Notify(terms, syscall.SIGTERM)
 	go func() {
 		// Somebody asked the holder to stop. It passes that on to its own
-		// child — the one process it may signal — and ends when the child does.
+		// child — the one process it may signal, with its process group — and
+		// ends when the child does. SIGTERM alone never ended a shell: an
+		// interactive shell ignores it, so a terminal's holder waited for good
+		// and needed SIGKILL (2026-10-19). A hangup first, as closing a
+		// terminal window does, which a shell obeys and passes to its jobs;
+		// then SIGTERM, which Claude Code cleans up on; and what is still
+		// running after stopGrace is killed.
 		for range terms {
+			_ = h.sess.Signal(ptyman.SignalHangup)
 			_ = h.sess.Signal(ptyman.SignalTerm)
+			go func() {
+				select {
+				case <-h.childDone:
+				case <-time.After(stopGrace):
+					_ = h.sess.Signal(ptyman.SignalKill)
+				}
+			}()
 		}
 	}()
 	go h.pump()
 	go h.accept()
 
 	err := h.sess.Wait()
+	close(h.childDone)
 	code := exitCode(err)
 	// Let the last output reach the ring and the client before saying the
 	// session is over, so the final screen is not cut short.
