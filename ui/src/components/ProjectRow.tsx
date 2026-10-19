@@ -74,7 +74,7 @@ import { renamable } from '@/lib/sessionNames'
 import { sessionAbout } from '@/lib/sidebar'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
-import { keys, tabKey } from '@/lib/appkeys'
+import { heldClass, keys, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
 import { namingLeaf } from '@/lib/tabs'
@@ -707,7 +707,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
         {word && <StateWord dot={word} asks={asks} front={active} />}
         {/* Every tab's key, the one in front included (owner, 2026-10-14), as the footer's readable chip. */}
-        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-key shrink-0 ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
+        {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-key shrink-0${heldClass()} ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
       </button>
       {onClose && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${active ? 'flex' : ACTIONS_ON_HOVER}`}>

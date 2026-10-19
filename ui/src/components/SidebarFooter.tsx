@@ -43,7 +43,7 @@ import type { MouseEvent, ReactNode, RefObject } from 'react'
 import type { SettingsSection } from '@/lib/router'
 import { THEME_MODE_NAME, useThemeMode } from '@/lib/theme'
 import { THEMES } from '@/lib/themes'
-import { DASHBOARD_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, keys } from '@/lib/appkeys'
+import { DASHBOARD_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, keys, revealClass } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { useChipFit, useFoldedChipFit } from '@/lib/keyChipFit'
 import { ThemeMenu } from './ThemePicker'
@@ -170,7 +170,7 @@ export function SidebarFooter(props: SidebarFooterProps) {
 
 /** The class a key chip takes: drawn, or left out unseen but still measurable. */
 function chipClass(fits: boolean): string {
-  return `app-kbd-key shrink-0 ${fits ? '' : 'pointer-events-none invisible absolute right-2'}`
+  return `app-kbd-key shrink-0 ${revealClass()} ${fits ? '' : 'pointer-events-none invisible absolute right-2'}`
 }
 
 /** A labelled 32px row with its key at the end, left out when it does not fit. */

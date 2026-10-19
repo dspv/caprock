@@ -25,7 +25,7 @@ import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { NewMenu, type NewMenuItem } from './NewMenu'
-import { keys, stripKey, tabKey } from '@/lib/appkeys'
+import { heldClass, keyChipMode, keys, revealClass, stripKey, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
 
@@ -47,9 +47,10 @@ export interface SystemTab {
   onClose: () => void
 }
 
-/** The Mail tab's key as the strip draws it: ⇧⌘M, Ctrl⇧M off macOS. */
+/** The Mail tab's key as the strip draws it: ⇧⌘M, Ctrl+Shift+M off macOS
+ *  (no ⇧ glyph there: `stripKey` in lib/appkeys.ts says why). */
 export function mailStripKey(isMac = isMacPlatform()): string {
-  return isMac ? '⇧⌘M' : 'Ctrl⇧M'
+  return keys('⇧⌘M', isMac)
 }
 
 /**
@@ -228,7 +229,7 @@ export function TabStrip(props: TabStripProps) {
             {props.dashboard.label === 'Settings'
               ? <SettingsIcon size={15} className="text-accent" />
               : <DashboardIcon size={15} className="text-accent" />}
-            <kbd data-tab-key aria-hidden className="app-kbd-sm">{stripKey(props.dashboard.label === 'Settings' ? ',' : '0')}</kbd>
+            <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass(true)}`}>{stripKey(props.dashboard.label === 'Settings' ? ',' : '0')}</kbd>
             <button
               type="button"
               aria-label={`Close tab ${props.dashboard.label}`}
@@ -261,7 +262,7 @@ export function TabStrip(props: TabStripProps) {
             }`}
           >
             <PipelineIcon size={15} className="text-accent" />
-            <kbd data-tab-key aria-hidden className="app-kbd-sm">{stripKey('P')}</kbd>
+            <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass(true)}`}>{stripKey('P')}</kbd>
             <button
               type="button"
               aria-label="Close tab Pipeline"
@@ -293,7 +294,7 @@ export function TabStrip(props: TabStripProps) {
             }`}
           >
             <MailIcon size={15} className="text-accent" />
-            <kbd data-tab-key aria-hidden className="app-kbd-sm">{mailStripKey()}</kbd>
+            <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass(true)}`}>{mailStripKey()}</kbd>
             <button
               type="button"
               aria-label="Close tab Mail"
@@ -418,7 +419,7 @@ export function TabStrip(props: TabStripProps) {
                 * shows the key combination"). */}
               <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end gap-0.5">
                 {digit && (
-                  <kbd data-tab-key aria-hidden className={`app-kbd-sm ${active ? '' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
+                  <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass()} ${active ? '' : 'group-hover:invisible group-focus-within:invisible'}`}>{tabKey(digit)}</kbd>
                 )}
                 <button
                   type="button"
@@ -461,12 +462,12 @@ export function TabStrip(props: TabStripProps) {
           // "it is not clear that it exists").
           <button type="button" data-deck-toggle title={`Session deck: live figures under the terminal (${keys('⌘B')})`} aria-label={`Session deck (${keys('⌘B')})`}
             aria-pressed={props.deckOpen} onClick={props.onToggleDeck}
-            className={`flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
+            className={`relative flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
               props.deckOpen ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
             }`}>
             <DeckIcon size={15} />
             <span>Deck</span>
-            <kbd aria-hidden className="app-kbd-key">{keys('⌘B')}</kbd>
+            <kbd aria-hidden className={`app-kbd-key app-kbd-below ${revealClass()}`}>{keys('⌘B')}</kbd>
           </button>
         )}
         {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector} shortcut={keys('⌘I')}><InspectorIcon size={15} /></StripButton>}
@@ -475,7 +476,7 @@ export function TabStrip(props: TabStripProps) {
   )
 }
 
-/** A strip button; one with a `shortcut` draws its key beside the icon, as Deck does. */
+/** A strip button; one with a `shortcut` draws its key beside the icon, as Deck does (off macOS under it, a row below Deck's). */
 function StripButton({ label, onClick, pressed, shortcut, children }: { label: string; onClick: () => void; pressed?: boolean; shortcut?: string; children: ReactNode }) {
   return (
     <button
@@ -484,12 +485,12 @@ function StripButton({ label, onClick, pressed, shortcut, children }: { label: s
       aria-label={label}
       aria-pressed={pressed}
       onClick={onClick}
-      className={`flex h-[28px] items-center justify-center gap-1.5 rounded-[7px] transition-colors duration-100 motion-reduce:transition-none ${shortcut ? 'px-1.5' : 'w-[28px]'} ${
+      className={`relative flex h-[28px] items-center justify-center gap-1.5 rounded-[7px] transition-colors duration-100 motion-reduce:transition-none ${shortcut && keyChipMode() === 'always' ? 'px-1.5' : 'w-[28px]'} ${
         pressed ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
       }`}
     >
       {children}
-      {shortcut && <kbd data-strip-key aria-hidden className="app-kbd-key">{shortcut}</kbd>}
+      {shortcut && <kbd data-strip-key aria-hidden className={`app-kbd-key app-kbd-below app-kbd-below-2 ${revealClass()}`}>{shortcut}</kbd>}
     </button>
   )
 }

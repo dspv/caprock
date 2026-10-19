@@ -317,7 +317,7 @@ describe('a file tab', () => {
     expect(screen.getByRole('button', { name: 'Inspector (⌘I)' }).querySelector('[data-strip-key]')!.textContent).toBe('⌘I')
   })
 
-  it('draws the pinned tab\'s key in front and behind, ⌘, for Settings, and Ctrl⇧ off macOS', () => {
+  it('draws the pinned tab\'s key in front and behind, ⌘, for Settings, and Ctrl+Shift off macOS', () => {
     const strip = (active: boolean, label: string) => render(
       <TabStrip tabs={[]} activeTabId={undefined} sessions={new Map()} permissions={new Set()} inspectorOpen={false} sidebarOpen
         onActivate={() => {}} onDetach={() => {}} onMove={() => {}} onNewAgent={() => {}} onNewShell={() => {}} onToggleInspector={() => {}}
@@ -333,10 +333,10 @@ describe('a file tab', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')
     try {
       const c = strip(false, 'Dashboard')
-      expect(keyOf()).toBe('Ctrl⇧0')
+      expect(keyOf()).toBe('Ctrl+Shift+0')
       c.unmount()
       strip(true, 'Settings')
-      expect(keyOf()).toBe('Ctrl⇧,')
+      expect(keyOf()).toBe('Ctrl+Shift+,')
     } finally {
       platform.mockRestore()
     }
@@ -374,7 +374,7 @@ describe('a file tab', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Linux x86_64')
     try {
       draw(false)
-      expect(document.querySelector('[data-pipeline-tab] [data-tab-key]')!.textContent).toBe('Ctrl⇧P')
+      expect(document.querySelector('[data-pipeline-tab] [data-tab-key]')!.textContent).toBe('Ctrl+Shift+P')
       expect(document.querySelector('[data-pipeline-tab]')).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+P')
       expect(screen.getByRole('button', { name: 'Close tab Pipeline' }).className).toContain('hidden')
     } finally {

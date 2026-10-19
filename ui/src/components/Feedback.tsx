@@ -50,7 +50,7 @@ import { openExternal } from '@/lib/nudges'
 import { extTitle } from '@/lib/externalLinks'
 import { isAppMode, isMacPlatform } from '@/lib/appmode'
 import { context, currentScreen, fromBox, isSendable, issueURL, KINDS, type FeedbackKind } from '@/lib/feedback'
-import { keys } from '@/lib/appkeys'
+import { keys, revealClass } from '@/lib/appkeys'
 import { useChipFit } from '@/lib/keyChipFit'
 import { accept, baseName, copyImage, imageTypeOfPath, imagesIn, MAX_SHOTS, nextShot, stepLine, toPNG, type Shot } from '@/lib/attachments'
 import { captureSupported, shell } from '@/lib/shell'
@@ -87,7 +87,7 @@ function FeedbackRow({ onClick }: { onClick: () => void }) {
       <BugIcon size={15} className="shrink-0 text-accent" />
       <span data-key-label className="shrink-0 whitespace-nowrap">Send feedback</span>
       <span data-key-give className="min-w-0 flex-auto shrink-[100] truncate text-[11px] text-fg-faint">bug, idea, question</span>
-      <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} className={`app-kbd-key shrink-0 ${fits ? '' : 'pointer-events-none invisible absolute'}`}>{keys(KEY)}</kbd>
+      <kbd aria-hidden data-key-chip data-dropped={fits ? undefined : ''} className={`app-kbd-key shrink-0 ${revealClass()} ${fits ? '' : 'pointer-events-none invisible absolute'}`}>{keys(KEY)}</kbd>
     </button>
   )
 }
