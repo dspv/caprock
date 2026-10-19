@@ -1,8 +1,10 @@
 /**
  * Messages waiting for the turn to end (ADR-053), under the conversation as
- * your own bubbles drawn dashed: why they wait, then each with Edit, Cancel
- * and Send now. The daemon types the oldest in when the turn ends; Send now
- * is not offered while a prompt or a question is on the screen.
+ * ordinary outgoing bubbles. Send already did the deciding: the daemon types
+ * the oldest in by itself when the turn ends, so nothing here asks for a
+ * choice. Under each bubble one muted line says what it waits for, with
+ * small text links (Send now, Edit, Cancel) kept secondary; Send now is not
+ * offered while a prompt or a question is on the screen.
  */
 import { useState } from 'react'
 import type { QueuedMessage, QueueWaiting } from '@/lib/api'
@@ -19,21 +21,21 @@ export function QueuedList({ messages, waiting, error, onEdit, onCancel, onSendN
   const prompt = waiting === 'permission' || waiting === 'question'
   return (
     <section aria-label="Queued messages" aria-live="polite" className="grid gap-1.5 py-1.5" data-chat-queue>
-      <div className="text-right text-[11.5px] text-fg-faint">{waitingLabel(waiting)}</div>
       {messages.map((m, i) => (
-        <QueuedBubble key={m.id} m={m} n={i + 1} total={messages.length} sendNow={!prompt} onEdit={onEdit} onCancel={onCancel} onSendNow={onSendNow} />
+        <QueuedBubble key={m.id} m={m} n={i + 1} total={messages.length} waiting={waiting} sendNow={!prompt} onEdit={onEdit} onCancel={onCancel} onSendNow={onSendNow} />
       ))}
       {error && <div role="alert" className="text-right text-[12px] text-danger">{error}</div>}
     </section>
   )
 }
 
-const BTN = 'min-h-[44px] sm:min-h-[30px] rounded-sm border border-border-strong bg-panel-2 px-3 text-[13px] text-fg hover:border-accent disabled:opacity-50'
+const BTN = 'min-h-[32px] px-1 text-[12px] text-fg-muted underline underline-offset-2 hover:text-fg disabled:opacity-50'
 
-function QueuedBubble({ m, n, total, sendNow, onEdit, onCancel, onSendNow }: {
+function QueuedBubble({ m, n, total, waiting, sendNow, onEdit, onCancel, onSendNow }: {
   m: QueuedMessage
   n: number
   total: number
+  waiting: QueueWaiting
   sendNow: boolean
   onEdit: (m: QueuedMessage, text: string) => Promise<boolean>
   onCancel: (m: QueuedMessage) => Promise<boolean>
@@ -54,10 +56,7 @@ function QueuedBubble({ m, n, total, sendNow, onEdit, onCancel, onSendNow }: {
   const discard = () => { setEditing(false); setDraft(m.text) }
   return (
     <div data-queued-id={m.id} className="flex justify-end">
-      <div className="grid max-w-[85%] min-w-0 gap-1.5 rounded-[12px] rounded-br-[4px] border border-dashed border-border-strong bg-panel px-3 py-2 text-[14px] leading-relaxed text-fg">
-        <div className="text-[11px] text-fg-faint">
-          <span className="rounded-full bg-accent/15 px-1.5 py-px font-medium text-fg-muted">Queued{total > 1 ? ` · ${n} of ${total}` : ''}</span>
-        </div>
+      <div className="grid max-w-[85%] min-w-0 gap-1.5 rounded-[12px] rounded-br-[4px] border border-border-strong bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg">
         {editing ? (
           <textarea
             value={draft}
@@ -75,10 +74,11 @@ function QueuedBubble({ m, n, total, sendNow, onEdit, onCancel, onSendNow }: {
         ) : (
           <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.text}</div>
         )}
-        <div className="flex flex-wrap justify-end gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-x-2 text-[11.5px] text-fg-faint">
+          {!editing && <span className="mr-auto">{waitingLabel(waiting)}{total > 1 ? ` · ${n} of ${total}` : ''}</span>}
           {editing ? (
             <>
-              <button type="button" className={BTN} disabled={busy} onClick={discard}>Discard changes</button>
+              <button type="button" className="min-h-[44px] sm:min-h-[30px] rounded-sm border border-border-strong px-3 text-[13px] text-fg disabled:opacity-50" disabled={busy} onClick={discard}>Discard changes</button>
               <button
                 type="button"
                 className="min-h-[44px] sm:min-h-[30px] rounded-sm bg-accent px-3 text-[13px] font-medium text-bg hover:brightness-110 disabled:opacity-50"

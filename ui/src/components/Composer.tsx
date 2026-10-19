@@ -182,7 +182,7 @@ export function Composer({ sessionId, agent, asking, onFiles, onBack }: {
     : error
       ? { tone: 'danger', text: error }
       : queued > 0
-        ? { tone: 'muted', text: `${queued > 1 ? `${queued} ` : ''}queued · sends when the agent is free` }
+        ? { tone: 'muted', text: `${queued > 1 ? `${queued} messages` : 'Message'} will send when the agent is free` }
         : null
 
   return (

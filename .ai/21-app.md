@@ -1832,7 +1832,7 @@ and `ui/src/lib/composer.ts`.
   a pause (`promptBytes`), so several lines arrive as one message — checked
   with the fake agent, which keeps ESC CR in its prompt as `↵`, and received
   `first line of the message↵second line, same message` as one line. While a
-  message waits the box says *queued · sends when the agent is free*.
+  message waits the box says *Message will send when the agent is free*, and the message sits in the chat as a normal outgoing bubble, *Sends when Claude finishes*, with small Send now / Edit / Cancel links (owner, 2026-10-19, translated: "It should just send by default").
 - **Keys.** Enter sends, Shift+Enter is a newline in the box, Esc goes back
   to the terminal (after closing a picker). ↑ and ↓ on an empty box, or one
   still showing a history entry, walk the last 50 messages sent from it to
