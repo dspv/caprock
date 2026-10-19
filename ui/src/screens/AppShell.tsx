@@ -1971,6 +1971,8 @@ export function AppShell() {
                           canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                           foldKeys
                           chat
+                          agent={focusedSession?.agent}
+                          prompt
                           className="absolute inset-0"
                         />
                         {chatPanes.get(focused.sessionId)?.ended && (
@@ -1983,6 +1985,8 @@ export function AppShell() {
                       key={focused.sessionId}
                       sessionId={focused.sessionId}
                       canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
+                      agent={focusedSession?.agent}
+                      prompt
                       className="app-slab absolute inset-0 z-10"
                     />
                   ))}
@@ -2090,7 +2094,7 @@ export function AppShell() {
                   />
                   </ErrorBoundary>
                 )}
-                {promptCard && !prefs.inspector && focused && (
+                {promptCard && !showChat && !prefs.inspector && focused && (
                   <div className="shrink-0 border-t border-[var(--app-hairline)] px-3 empty:hidden [&>*]:mb-2">
                     <PermissionPrompt sessionId={focused.sessionId} />
                   </div>
@@ -2165,7 +2169,7 @@ export function AppShell() {
                   project={focusedProject}
                   sessionId={focusedFile ? undefined : inspectedId}
                   hasPermission={!!inspectedId && data.permissions.has(inspectedId)}
-                  showPrompt={promptCard}
+                  showPrompt={promptCard && !showChat}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
                   editors={editors}

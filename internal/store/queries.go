@@ -314,6 +314,13 @@ func MergeAssistantText(ctx context.Context, q Querier, sessionID, key string, p
 	return true, nil
 }
 
+// EventByKey returns the session's event of kind with key: the row a
+// duplicate line was merged into, as it now stands.
+func EventByKey(ctx context.Context, q Querier, sessionID, key string, kind event.Kind) (event.Event, error) {
+	return scanEvent(q.QueryRowContext(ctx, `SELECT `+eventCols+` FROM events WHERE session_id = ? AND key = ? AND kind = ?`,
+		sessionID, key, string(kind)))
+}
+
 // LinkToolCall writes the message id onto a stored tool call that has none.
 //
 // The same call usually reaches the store twice: from the PreToolUse hook,

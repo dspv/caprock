@@ -37,6 +37,9 @@ import { QuickReplies } from './QuickReplies'
 import { canSpeak, speak, stopSpeaking, useAutoRead, useSpeaking } from '@/lib/readAloud'
 import { fetchTldr } from '@/lib/tldr'
 import { useQuickReplies } from '@/lib/quickReplies'
+import { agentDisplayName, fmtElapsed, openTurn, promptParts, type TurnState } from '@/lib/chatActivity'
+import { useNow } from '@/lib/useNow'
+import { PermissionPrompt, usePermission } from './PermissionPrompt'
 
 /** Events fetched when the view opens, and per page back. */
 export const CHAT_PAGE_EVENTS = 300
@@ -96,8 +99,14 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0 }: {
+export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false }: {
   sessionId: string
+  /** The session's agent (Session.agent), for *Claude is thinking…*. */
+  agent?: string
+  /** Draw the permission card (components/PermissionPrompt) under the
+   *  conversation, where the chat's reader is looking. Off where the page
+   *  already draws it (the session screen, the app's inspector). */
+  prompt?: boolean
   /** The session takes input from here: owned, live, and this device may control. */
   canType: boolean
   /** The session's process is gone: what waits to be sent becomes a draft. */
@@ -144,8 +153,13 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
     if (next === prev) return 0
     eventsRef.current = next
     setEvents(next)
-    const seen = new Set(prev.map((e) => e.id))
-    return incoming.filter((e) => !seen.has(e.id) && isMessageEvent(e)).length
+    // A reply rewritten in place (an `event_update`) counts when it became a
+    // message: its first line had no words, so it was not one before.
+    const held = new Map(prev.map((e) => [e.id, e]))
+    return incoming.filter((e) => {
+      const was = held.get(e.id)
+      return isMessageEvent(e) && (!was || !isMessageEvent(was))
+    }).length
   }, [])
 
   const loadNewest = useCallback(async (first: boolean) => {
@@ -204,7 +218,9 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
     const off = live.onFrame((f) => {
       // The daemon no longer holds the frames this client missed (WP-12).
       if (f.type === 'reset') { void loadNewest(false); return }
-      if (f.type !== 'event' || f.data.session_id !== sessionId) return
+      // An event_update is a reply's words merged into a row already held
+      // (03-contracts.md § Live socket): merged by id, it replaces that row.
+      if ((f.type !== 'event' && f.type !== 'event_update') || f.data.session_id !== sessionId) return
       batch.push(f.data)
       if (!pending) { pending = true; nextFrame(flush) }
     })
@@ -225,6 +241,8 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   }, [conn, loadNewest])
 
   const messages = useMemo(() => toMessages(events, { ended }), [events, ended])
+  const turn = useMemo(() => (loaded ? openTurn(events, ended) : null), [loaded, events, ended])
+  const [permission] = usePermission(sessionId)
   const start = startKey ? indexFrom(messages, startKey) : Math.max(0, messages.length - CHAT_WINDOW)
   const shown = messages.slice(start)
 
@@ -359,11 +377,23 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   const msgQueue = useQueue(sessionId, canType)
   const applyQueue = msgQueue.apply
   const jumpToEnd = stick.jump
-  const submitText = useCallback(async (text: string): Promise<boolean> => {
+  // What you sent, as your bubble at once (*Sending…*, then *Sent ✓*), until
+  // the session's own record of the prompt lands and takes its place. A
+  // message the daemon held is the queue's bubble instead (QueuedList).
+  const [outgoing, setOutgoing] = useState<Outgoing[]>([])
+  const outSeq = useRef(0)
+  const submitText = useCallback(async (text: string, retry?: number): Promise<boolean> => {
     stopSpeaking()
+    const key = retry ?? ++outSeq.current
+    const after = eventsRef.current.reduce((m, e) => Math.max(m, e.id), 0)
+    setOutgoing((list) => [...list.filter((o) => o.key !== key), { key, text, phase: 'sending', at: Date.now(), after }])
+    nextFrame(jumpToEnd)
     try {
       const r = await api.queueSend(sessionId, text)
       applyQueue(r.queue)
+      setOutgoing((list) => (r.sent === false
+        ? list.filter((o) => o.key !== key)
+        : list.map((o) => (o.key === key ? { ...o, phase: 'sent' as const } : o))))
       setSendError('')
       // What you just sent is at the bottom, as in a messenger: a queued
       // bubble lands there while the field shrinks back to one line, and the
@@ -371,10 +401,32 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
       nextFrame(jumpToEnd)
       return true
     } catch (e) {
+      setOutgoing((list) => list.map((o) => (o.key === key ? { ...o, phase: 'failed' as const } : o)))
       setSendError(`Not sent: ${errText(e)}`)
       return false
     }
   }, [sessionId, applyQueue, jumpToEnd])
+  // A sent bubble goes when the session records a prompt with its words, or
+  // after OUTGOING_KEEP_MS (a slash command records none).
+  useEffect(() => {
+    if (!outgoing.some((o) => o.phase === 'sent')) return
+    const prompts = events
+      .filter((e) => e.kind === 'turn.user' && !e.agent_id)
+      .map((e) => {
+        const p = (e.payload ?? {}) as { prompt?: unknown; text?: unknown }
+        return { id: e.id, text: sameText(String(p.prompt ?? p.text ?? '')) }
+      })
+    const now = Date.now()
+    const keep = outgoing.filter((o) => {
+      if (o.phase !== 'sent') return true
+      if (now - o.at > OUTGOING_KEEP_MS) return false
+      const t = sameText(o.text)
+      return !prompts.some((p) => p.id > o.after && p.text.includes(t))
+    })
+    if (keep.length !== outgoing.length) { setOutgoing(keep); return }
+    const t = window.setTimeout(() => setOutgoing((list) => list.filter((o) => o.phase !== 'sent' || Date.now() - o.at <= OUTGOING_KEEP_MS)), OUTGOING_KEEP_MS)
+    return () => window.clearTimeout(t)
+  }, [events, outgoing])
   const [queueError, setQueueError] = useState('')
   const queueAct = useCallback(async (act: () => Promise<QueueView>): Promise<boolean> => {
     try {
@@ -470,6 +522,13 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
               onStop={canType ? () => { stopSpeaking(); send('\x1b'); say('Stopped — Esc sent.') } : undefined}
             />
           ) : <Message key={m.id} m={m} onPath={onPath} />))}
+          {outgoing.map((o) => (
+            <OutgoingBubble key={`out-${o.key}`} o={o} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
+          ))}
+          {!ended && (turn || permission) && (
+            <ChatWorking turn={turn} agent={agentDisplayName(agent)} waiting={!!permission} />
+          )}
+          {prompt && !ended && <div className="py-1.5 empty:hidden" data-chat-permission><PermissionPrompt sessionId={sessionId} keys={false} /></div>}
           {showInput && msgQueue.messages.length > 0 && (
             <QueuedList
               messages={msgQueue.messages}
@@ -510,8 +569,8 @@ const Message = memo(function Message({ m, onPath }: { m: ChatMessage; onPath?: 
   if (m.kind === 'user') {
     return (
       <div data-msg-id={m.id} className="flex justify-end py-1.5">
-        <div className="max-w-[85%] min-w-0 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg [overflow-wrap:anywhere]" title={m.ts}>
-          {m.text}
+        <div className="grid max-w-[85%] min-w-0 gap-1.5 whitespace-pre-wrap rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg [overflow-wrap:anywhere]" title={m.ts}>
+          <PromptText text={m.text} />
         </div>
       </div>
     )
@@ -642,6 +701,99 @@ function ToolLine({ m }: { m: ChatMessage }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The agent at work (.ai/04-ui.md § Chat, *Working*): from the prompt until
+ * its Stop, one line under the conversation says it is working, for how
+ * long, and the call it runs — or that it waits on your permission. Its own
+ * one-second clock, so the conversation does not redraw with it.
+ */
+function ChatWorking({ turn, agent, waiting }: { turn: TurnState | null; agent: string; waiting: boolean }) {
+  const now = useNow(1000)
+  const since = turn ? Date.parse(turn.since) : NaN
+  const clock = Number.isFinite(since) ? fmtElapsed(now - since) : ''
+  const text = waiting ? 'Waiting for your permission' : turn?.step ? turn.step : `${agent} is thinking…`
+  return (
+    <div role="status" aria-live="polite" data-chat-working={waiting ? 'permission' : 'working'} className="flex min-w-0 items-center gap-2 py-2 text-[13px] text-fg-muted">
+      {waiting ? (
+        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-warn" />
+      ) : (
+        <span aria-hidden className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+      )}
+      <span className={`min-w-0 truncate ${waiting ? 'font-medium text-warn' : ''}`}>{text}</span>
+      {clock && <span className="num shrink-0 text-fg-faint">{clock}</span>}
+    </div>
+  )
+}
+
+/** A pasted block longer than this many lines is folded. */
+const PASTE_FOLD_LINES = 6
+
+/** A prompt as typed: the person's words as they are, each paste as a quiet block. */
+function PromptText({ text }: { text: string }) {
+  const parts = promptParts(text)
+  if (parts.length === 0) return <>{text}</>
+  return (
+    <>
+      {parts.map((p, i) => (p.kind === 'text' ? <span key={i}>{p.text}</span> : <PastedBlock key={i} text={p.text} lines={p.lines} />))}
+    </>
+  )
+}
+
+function PastedBlock({ text, lines }: { text: string; lines: number }) {
+  const [open, setOpen] = useState(false)
+  const long = lines > PASTE_FOLD_LINES
+  const shown = long && !open ? text.split('\n').slice(0, PASTE_FOLD_LINES).join('\n') : text
+  return (
+    <div data-pasted className="min-w-0 rounded-[8px] border border-border bg-bg/60 px-2.5 py-1.5 text-[12.5px] leading-snug text-fg-muted">
+      <div className="text-[11px] uppercase tracking-wide text-fg-faint">Pasted{lines ? ` · ${lines} line${lines === 1 ? '' : 's'}` : ''}</div>
+      {text && <div className="mono mt-0.5 whitespace-pre-wrap [overflow-wrap:anywhere]">{shown}</div>}
+      {long && (
+        <button type="button" className="link mt-0.5 text-[12px]" onClick={() => setOpen((v) => !v)}>
+          {open ? 'Show less' : `Show ${lines - PASTE_FOLD_LINES} more lines`}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** How long a sent bubble waits for the session's record of it. */
+const OUTGOING_KEEP_MS = 120_000
+
+/** A message on its way: sending, taken by the daemon, or refused. */
+interface Outgoing {
+  key: number
+  text: string
+  phase: 'sending' | 'sent' | 'failed'
+  at: number
+  /** The newest event id held when it was sent: its record comes after. */
+  after: number
+}
+
+/** Text compared without its spacing: the terminal and the transcript differ there. */
+function sameText(s: string): string {
+  return s.replace(/\s+/g, ' ').trim()
+}
+
+/** Your message the moment you send it, with its state under it. */
+function OutgoingBubble({ o, onRetry, onDismiss }: { o: Outgoing; onRetry: () => void; onDismiss: () => void }) {
+  return (
+    <div data-outgoing={o.phase} className="flex justify-end py-1.5">
+      <div className="grid max-w-[85%] min-w-0 gap-1 rounded-[12px] rounded-br-[4px] bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg">
+        <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">{o.text}</div>
+        <div className={`flex items-center justify-end gap-2 text-[11.5px] ${o.phase === 'failed' ? 'text-danger' : 'text-fg-faint'}`}>
+          {o.phase === 'sending' ? 'Sending…' : o.phase === 'sent' ? 'Sent ✓' : (
+            <>
+              <span>Not sent</span>
+              <button type="button" className="link min-h-[32px] text-[12px]" onClick={onRetry}>Retry</button>
+              <button type="button" className="min-h-[32px] px-1 text-[12px] text-fg-muted underline underline-offset-2" onClick={onDismiss}>Dismiss</button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

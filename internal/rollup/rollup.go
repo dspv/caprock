@@ -359,8 +359,18 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 		// A later line of a response already stored: its prose belongs to that
 		// turn, though its usage does not (store.MergeAssistantText).
 		if ev.Kind == event.KindTurnAssistant && ev.Key != "" {
-			if _, mErr := store.MergeAssistantText(ctx, r.Store.DB(), ev.SessionID, ev.Key, ev.Payload); mErr != nil {
+			changed, mErr := store.MergeAssistantText(ctx, r.Store.DB(), ev.SessionID, ev.Key, ev.Payload)
+			if mErr != nil {
 				return res, mErr
+			}
+			// The reply's words usually come here, not with the stored first
+			// line: with thinking on, that line has none. Without this frame
+			// a chat showed the turn's cost and never its answer until it was
+			// opened again (a user's report, 2026-10-19).
+			if changed && r.Bus != nil && !internalModel {
+				if upd, gErr := store.EventByKey(ctx, r.Store.DB(), ev.SessionID, ev.Key, event.KindTurnAssistant); gErr == nil {
+					r.Bus.Publish(bus.Frame{Type: bus.FrameEventUpdate, Data: upd})
+				}
 			}
 		}
 		// A tool call the hook stored first, now offered again with the message

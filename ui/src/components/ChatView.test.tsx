@@ -485,3 +485,127 @@ describe('ChatView', () => {
     expect(screen.queryByLabelText('Type to the session')).toBeNull()
   })
 })
+
+describe('ChatView: a turn at work', () => {
+  const reply = (id: number, text: string): Event => ({ ...msg(id), source: 'transcript', kind: 'turn.assistant', payload: { text } })
+  const stop = (id: number): Event => ({ ...msg(id), kind: 'agent.stop', payload: {} })
+
+  it('a reply whose words are merged in after its first line shows within a couple of seconds of the update', async () => {
+    store.events = [msg(1, 'what is 6 times 7?')]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1]))
+    // The first transcript line of the reply is its thinking: no words, and
+    // so no message — but it is the row the turn's cost is on.
+    await deliver([reply(2, '')])
+    expect(renderedIds()).toEqual([1])
+    const at = performance.now()
+    act(() => { live.handle({ type: 'event_update', data: reply(2, 'It is 42.') }) })
+    await screen.findByText('It is 42.', undefined, { timeout: 2000 })
+    expect(performance.now() - at).toBeLessThan(2000)
+    expect(renderedIds()).toEqual([1, 2])
+  })
+
+  it('a refetch carries the merged words too', async () => {
+    store.events = [msg(1, 'hi'), reply(2, '')]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1]))
+    store.events = [msg(1, 'hi'), reply(2, 'Hello there.')]
+    await act(async () => { live.handle({ type: 'reset', data: { seq: 1 } }); await new Promise((r) => setTimeout(r, 40)) })
+    expect(await screen.findByText('Hello there.')).toBeInTheDocument()
+  })
+
+  it('says it is thinking from the prompt, names the call it runs, and goes at the Stop', async () => {
+    store.events = [msg(1, 'run the tests')]
+    render(<ChatView sessionId="s" canType={false} agent="claude" />)
+    expect(await screen.findByText('Claude is thinking…')).toBeInTheDocument()
+    expect(document.querySelector('[data-chat-working="working"]')).not.toBeNull()
+    await deliver([{ ...msg(2), kind: 'tool.pre', tool: 'Bash', payload: { tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: 'npm test' } } }])
+    expect(screen.getByRole('status')).toHaveTextContent('Running npm test')
+    await deliver([{ ...msg(3), kind: 'tool.post', tool: 'Bash', payload: { tool_use_id: 't1', tool_response: 'ok' } }])
+    expect(screen.getByText('Claude is thinking…')).toBeInTheDocument()
+    await deliver([reply(4, 'All green.'), stop(5)])
+    expect(document.querySelector('[data-chat-working]')).toBeNull()
+  })
+
+  it('a permission prompt that blocks the turn says so, with its card in the chat', async () => {
+    store.prompt = true
+    store.events = [msg(1, 'delete the build folder')]
+    // The prompt is asked for once the live socket is open (usePermission).
+    act(() => { (live as unknown as { set: (p: object) => void }).set({ conn: 'open' }) })
+    render(<ChatView sessionId="s" canType agent="claude" prompt />)
+    expect(await screen.findByText('Waiting for your permission')).toBeInTheDocument()
+    expect(document.querySelector('[data-chat-working="permission"]')).not.toBeNull()
+    expect(document.querySelector('[data-chat-permission]')).not.toBeNull()
+  })
+
+  it('an ended session shows no working line', async () => {
+    store.events = [msg(1, 'hello')]
+    render(<ChatView sessionId="s" canType={false} ended />)
+    await waitFor(() => expect(renderedIds()).toEqual([1]))
+    expect(document.querySelector('[data-chat-working]')).toBeNull()
+  })
+
+  it('a pasted block is a quiet block, folded when long, between the words around it', async () => {
+    const pasted = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join('\n')
+    store.events = [msg(1, `look at this:\n<pasted_content id="p1">\n${pasted}\n</pasted_content id="p1">\nwhat is wrong?`), stop(2)]
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toEqual([1]))
+    const bubble = log().querySelector('[data-msg-id="1"]')!
+    expect(bubble.textContent).not.toContain('pasted_content')
+    expect(bubble.textContent).toContain('look at this:')
+    expect(bubble.textContent).toContain('what is wrong?')
+    const block = bubble.querySelector('[data-pasted]')!
+    expect(block.textContent).toContain('Pasted · 10 lines')
+    expect(block.textContent).toContain('line 6')
+    expect(block.textContent).not.toContain('line 7')
+    fireEvent.click(screen.getByRole('button', { name: 'Show 4 more lines' }))
+    expect(block.textContent).toContain('line 10')
+  })
+})
+
+describe('ChatView: what you send', () => {
+  it('your bubble is there at once with Sending…, then Sent ✓, and gives way to the session\'s record of it', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    const { api } = await import('@/lib/api')
+    const real = api.queueSend
+    const spy = vi.spyOn(api, 'queueSend').mockImplementation(async (id: string, text: string) => { await gate; return real(id, text) })
+    try {
+      render(<ChatView sessionId="s" canType />)
+      await screen.findByText('No messages yet')
+      fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'are you there?' } })
+      const at = performance.now()
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      const bubble = await screen.findByText('are you there?', { selector: '[data-outgoing] div' }, { timeout: 100, interval: 5 })
+      expect(performance.now() - at).toBeLessThan(100)
+      expect(bubble.closest('[data-outgoing]')!.textContent).toContain('Sending…')
+      await act(async () => { release(); await new Promise((r) => setTimeout(r, 20)) })
+      expect(await screen.findByText('Sent ✓')).toBeInTheDocument()
+      // The session records the prompt: one bubble, the real one.
+      await deliver([msg(1, 'are you there?')])
+      await waitFor(() => expect(document.querySelector('[data-outgoing]')).toBeNull())
+      expect(renderedIds()).toEqual([1])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('a message the daemon refuses says Not sent, and Retry sends it again', async () => {
+    const { api } = await import('@/lib/api')
+    const real = api.queueSend
+    const spy = vi.spyOn(api, 'queueSend').mockRejectedValueOnce(new Error('offline'))
+    try {
+      render(<ChatView sessionId="s" canType />)
+      await screen.findByText('No messages yet')
+      fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'hello' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      expect(await screen.findByText('Not sent')).toBeInTheDocument()
+      spy.mockImplementation(real)
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      expect(await screen.findByText('Sent ✓')).toBeInTheDocument()
+      expect(store.inputs).toEqual(['hello', '\r'])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})

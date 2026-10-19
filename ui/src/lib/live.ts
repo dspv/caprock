@@ -53,6 +53,9 @@ export interface NotifyFrame {
 export type Frame = (
   | { type: 'hello'; data: { server_time: number; reset?: boolean } }
   | { type: 'event'; data: Event }
+  // An event already sent, rewritten in place (same id, new payload): a
+  // reply's words merged into its first transcript line (03-contracts.md).
+  | { type: 'event_update'; data: Event }
   | { type: 'session'; data: { session: Session; stats: Stats } }
   | { type: 'alert'; data: LoopAlert }
   | { type: 'task'; data: TaskFrame }
@@ -416,6 +419,7 @@ class LiveStore {
         this.set({ lastFrameAt: now, tick: this.state.tick + 1, statusTick: this.state.statusTick + 1 })
         break
       case 'session':
+      case 'event_update':
         this.set({ lastFrameAt: now, tick: this.state.tick + 1 })
         break
       case 'reset':

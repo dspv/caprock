@@ -61,22 +61,41 @@ export function compareEvents(a: Pick<Event, 'ts' | 'id'>, b: Pick<Event, 'ts' |
 /**
  * `current` with `incoming` added: each id once, in server order. Returns
  * `current` itself when nothing was new, so a replayed frame renders nothing.
+ *
+ * An incoming reply whose id is held replaces the held one when its payload
+ * differs: the daemon merges a reply's words into its first transcript line,
+ * which has none when the reply opens with thinking, and says so with an
+ * `event_update` frame (a refetch shows it too). Kept as first seen, a chat
+ * showed the turn's cost and never its answer (a user's report, 2026-10-19).
  */
 export function mergeEvents(current: readonly Event[], incoming: readonly Event[]): readonly Event[] {
   if (incoming.length === 0) return current
   const seen = new Set(current.map((e) => e.id))
   const fresh: Event[] = []
+  let index: Map<number, number> | null = null
+  let base: Event[] | null = null
   for (const e of incoming) {
-    if (seen.has(e.id)) continue
+    if (seen.has(e.id)) {
+      if (e.kind !== 'turn.assistant') continue
+      index ??= new Map(current.map((c, i) => [c.id, i]))
+      const i = index.get(e.id)
+      if (i === undefined) continue
+      const held = (base ?? current)[i]!
+      if (held === e || JSON.stringify(held.payload ?? null) === JSON.stringify(e.payload ?? null)) continue
+      base ??= current.slice()
+      base[i] = e
+      continue
+    }
     seen.add(e.id)
     fresh.push(e)
   }
-  if (fresh.length === 0) return current
+  const held: readonly Event[] = base ?? current
+  if (fresh.length === 0) return held
   fresh.sort(compareEvents)
-  const last = current[current.length - 1]
+  const last = held[held.length - 1]
   // The usual case: everything new is newer than everything held.
-  if (!last || compareEvents(fresh[0]!, last) > 0) return [...current, ...fresh]
-  return [...current, ...fresh].sort(compareEvents)
+  if (!last || compareEvents(fresh[0]!, last) > 0) return [...held, ...fresh]
+  return [...held, ...fresh].sort(compareEvents)
 }
 
 /** A subagent's own steps belong to its tool call in the main thread, not to the conversation. */

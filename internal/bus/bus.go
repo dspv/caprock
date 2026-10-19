@@ -26,10 +26,16 @@ const (
 type FrameType string
 
 const (
-	FrameEvent   FrameType = "event"
-	FrameSession FrameType = "session"
-	FrameAlert   FrameType = "alert"
-	FrameStats   FrameType = "stats" // per-session stats snapshot; UI convenience
+	FrameEvent FrameType = "event"
+	// FrameEventUpdate carries an event already sent as "event", rewritten in
+	// place: the same id, a new payload. Today only a reply's prose, which
+	// Claude Code writes as transcript lines after the first line of the same
+	// response (store.MergeAssistantText). A screen holding that id replaces
+	// it; anything counting events ignores this frame.
+	FrameEventUpdate FrameType = "event_update"
+	FrameSession     FrameType = "session"
+	FrameAlert       FrameType = "alert"
+	FrameStats       FrameType = "stats" // per-session stats snapshot; UI convenience
 	// FramePermission says an owned session started or stopped waiting on a
 	// permission prompt: {session_id, permission}, permission null when it
 	// stopped.
