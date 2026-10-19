@@ -19,7 +19,6 @@ import { useCanControl } from '@/lib/useCanControl'
 import { useFillViewport, useNarrowScreen } from '@/lib/phone'
 import { useNow } from '@/lib/useNow'
 import { ChatView } from '@/components/ChatView'
-import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { ChatFileViewer, ChatFilesSheet, useChatFiles } from '@/components/ChatFiles'
 import { ChatSheet } from '@/components/ChatStart'
 import { ChevronIcon, FileIcon, MoreIcon } from '@/components/AppIcons'
@@ -145,7 +144,6 @@ export function ChatScreen({ id }: { id: string }) {
           )}
         </header>
         {error && <p role="alert" className="shrink-0 px-3 py-1.5 text-[13px] text-danger">{error}</p>}
-        {s && s.owned && !ended && <div className="shrink-0 empty:hidden"><PermissionPrompt sessionId={id} keys={false} /></div>}
         <ChatView
           key={id}
           sessionId={id}
@@ -154,6 +152,8 @@ export function ChatScreen({ id }: { id: string }) {
           phone={phone}
           foldKeys
           chat
+          agent={s?.agent}
+          prompt={!!s && s.owned}
           className="min-h-0 flex-1"
           footer={footer}
         />

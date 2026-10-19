@@ -29,6 +29,7 @@ import { setDraft } from '@/lib/draft'
 import { RemoveSession } from '@/components/RemoveSession'
 import { ChatView } from '@/components/ChatView'
 import { toolLine } from '@/lib/chat'
+import { promptPlain } from '@/lib/chatActivity'
 import { isAppMode } from '@/lib/appmode'
 import { MoreMenu } from '@/components/MoreMenu'
 import { SubscriptionTag } from '@/components/SubscriptionPicker'
@@ -377,6 +378,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
             sessionId={id}
             canType={!reader && s.owned && s.status !== 'ended' && !s.detached}
             ended={s.status === 'ended' || !!s.detached}
+            agent={s.agent}
             className={phone ? 'h-[70dvh]' : 'h-[70dvh] min-h-[360px]'}
             phone={phone}
             boxRef={fillChat}
@@ -666,7 +668,7 @@ export function describe(e: Event, p: Record<string, unknown>): string {
       return `${t} ${isErr ? 'failed' : 'done'}${s ? `  ${s.slice(0, 160)}` : ''}`
     }
     case 'turn.user':
-      return `you: ${String(p.prompt ?? p.text ?? '').slice(0, 200)}`
+      return `you: ${promptPlain(String(p.prompt ?? p.text ?? '')).slice(0, 200)}`
     case 'turn.assistant': {
       const text = String(p.text ?? '')
       const tools = Array.isArray(p.tools) ? (p.tools as string[]) : []

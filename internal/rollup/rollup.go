@@ -137,9 +137,10 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		res.Stored = false
-		err = afterDuplicate(ctx, r.Store.DB(), ev)
+		upd, dErr := afterDuplicate(ctx, r.Store.DB(), ev)
 		r.writeMu.Unlock()
-		return res, err
+		r.publishUpdate(upd, internalModel)
+		return res, dErr
 	}
 	r.writeMu.Unlock()
 	if errors.Is(err, store.ErrRemovedSession) {
@@ -247,8 +248,11 @@ func (r *Recorder) prepare(ev *event.Event, info SessionInfo) (internalModel, pr
 	return internalModel, priced
 }
 
-// afterDuplicate is what an event already stored still contributes.
-func afterDuplicate(ctx context.Context, q store.Querier, ev *event.Event) error {
+// afterDuplicate is what an event already stored still contributes. It
+// returns the stored turn when this line changed its prose, for an
+// "event_update" frame once the write commits.
+func afterDuplicate(ctx context.Context, q store.Querier, ev *event.Event) (*event.Event, error) {
+	var updated *event.Event
 	// A later line of a response already stored: its prose belongs to that
 	// turn, though its usage does not (store.MergeAssistantText).
 	//
@@ -256,18 +260,35 @@ func afterDuplicate(ctx context.Context, q store.Querier, ev *event.Event) error
 	// importer sets on the row (codex syncText). Folding a grown text onto
 	// the old one doubled it whenever a pass failed between the two.
 	if ev.Kind == event.KindTurnAssistant && ev.Key != "" && ev.Source != event.SourceCodex {
-		if _, err := store.MergeAssistantText(ctx, q, ev.SessionID, ev.Key, ev.Payload); err != nil {
-			return err
+		changed, err := store.MergeAssistantText(ctx, q, ev.SessionID, ev.Key, ev.Payload)
+		if err != nil {
+			return nil, err
+		}
+		// The reply's words usually come here, not with the stored first
+		// line: with thinking on, that line has none. Without the frame a
+		// chat showed the turn's cost and never its answer until it was
+		// opened again (a user's report, 2026-10-19).
+		if changed {
+			if upd, err := store.EventByKey(ctx, q, ev.SessionID, ev.Key, event.KindTurnAssistant); err == nil {
+				updated = &upd
+			}
 		}
 	}
 	// A tool call the hook stored first, now offered again with the message
 	// id that ties it to its turn (store.LinkToolCall).
 	if ev.Kind == event.KindToolPre && ev.MsgID != "" {
 		if _, err := store.LinkToolCall(ctx, q, ev.SessionID, ev.Key, ev.MsgID); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return updated, nil
+}
+
+// publishUpdate sends a stored event rewritten in place.
+func (r *Recorder) publishUpdate(upd *event.Event, internalModel bool) {
+	if upd != nil && r.Bus != nil && !internalModel {
+		r.Bus.Publish(bus.Frame{Type: bus.FrameEventUpdate, Data: *upd})
+	}
 }
 
 // apply is the body of one event's write: the event, its session, its

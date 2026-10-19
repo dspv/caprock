@@ -71,7 +71,7 @@ function subscribe(id: string, cb: () => void): () => void {
     const entry: Entry = { events: EMPTY, listeners: new Set(), off: () => {}, gen: 0, tell: coalesce(() => tellAll(entry), FRAME_BATCH_MS) }
     entries.set(id, entry)
     entry.off = live.onFrame((f) => {
-      if (f.type === 'event' && f.data.session_id === id) {
+      if ((f.type === 'event' || f.type === 'event_update') && f.data.session_id === id) {
         if (!isMainKind(f.data)) return
         const next = mergeEvents(entry.events, [f.data])
         if (next !== entry.events) publish(entry, next.slice(-EVENTS_HELD))

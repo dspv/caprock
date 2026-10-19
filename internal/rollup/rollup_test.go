@@ -519,3 +519,42 @@ func TestTranscriptLinksAToolCallTheHookStoredFirst(t *testing.T) {
 		t.Fatalf("rows=%d msg_id=%q source=%q, want one hook row linked to msg_1", n, msg, src)
 	}
 }
+
+// A reply whose first transcript line is its thinking is stored with no text;
+// the words arrive on a later line of the same message and are merged into
+// that row. The live feed must carry them, or a chat shows the turn's cost
+// and never its answer (a user's report, 2026-10-19).
+func TestMergedReplyTextIsPublished(t *testing.T) {
+	ctx := context.Background()
+	r, sub := newRecorder(t)
+	mk := func(text string) *event.Event {
+		return &event.Event{
+			SessionID: "s1", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Key: "msg:m1",
+			Ts: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC), Model: "claude-opus-5",
+			Tokens: &event.TokenDelta{In: 10, Out: 5}, Payload: json.RawMessage(fmt.Sprintf(`{"text":%q}`, text)),
+		}
+	}
+	first := mk("")
+	if _, err := r.Record(ctx, first, SessionInfo{Cwd: "/p"}); err != nil {
+		t.Fatal(err)
+	}
+	drain(sub)
+	if _, err := r.Record(ctx, mk("The answer is 42."), SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	frames := drain(sub)
+	if len(frames) != 1 || frames[0].Type != bus.FrameEventUpdate {
+		t.Fatalf("frames: %+v, want one event_update", frames)
+	}
+	got, ok := frames[0].Data.(event.Event)
+	if !ok || got.ID != first.ID || got.SessionID != "s1" || string(got.Payload) != `{"text":"The answer is 42."}` {
+		t.Fatalf("update: %+v", frames[0].Data)
+	}
+	// The same line read again changes nothing and says nothing.
+	if _, err := r.Record(ctx, mk("The answer is 42."), SessionInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if f := drain(sub); len(f) != 0 {
+		t.Fatalf("a re-read published %+v", f)
+	}
+}

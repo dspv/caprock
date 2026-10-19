@@ -44,6 +44,9 @@ type Batch struct {
 	deduped int
 	priced  bool
 	pending []Result
+	// updates are stored turns whose prose a duplicate line grew, announced
+	// after the commit as "event_update" frames.
+	updates []*event.Event
 
 	// MaxEvents and MaxAge override BatchMaxEvents and BatchMaxAge.
 	MaxEvents int
@@ -163,7 +166,11 @@ func (b *Batch) Record(ctx context.Context, ev *event.Event, info SessionInfo) (
 		err := r.apply(b.ctx, q, ev, info, internalModel, &res)
 		if errors.Is(err, store.ErrDuplicate) {
 			dup = true
-			return afterDuplicate(b.ctx, q, ev)
+			upd, err := afterDuplicate(b.ctx, q, ev)
+			if upd != nil && !internalModel {
+				b.updates = append(b.updates, upd)
+			}
+			return err
 		}
 		return err
 	})
@@ -207,13 +214,16 @@ func (b *Batch) Flush() (stored, deduped int, err error) {
 	}
 	b.release(b.conn)
 	b.conn = nil
-	pending, priced := b.pending, b.priced
+	pending, priced, updates := b.pending, b.priced, b.updates
 	stored, deduped = b.stored, b.deduped
 	b.reset()
 	if err != nil {
 		return 0, 0, err
 	}
 	b.r.publishBatch(pending)
+	for _, upd := range updates {
+		b.r.publishUpdate(upd, false)
+	}
 	if priced && b.r.OnPriced != nil {
 		b.r.OnPriced(b.ctx)
 	}
@@ -233,7 +243,7 @@ func (b *Batch) Abort() {
 }
 
 func (b *Batch) reset() {
-	b.n, b.stored, b.deduped, b.priced, b.pending = 0, 0, 0, false, nil
+	b.n, b.stored, b.deduped, b.priced, b.pending, b.updates = 0, 0, 0, false, nil, nil
 }
 
 // publishBatch sends every committed event's frame, in order, and one session
