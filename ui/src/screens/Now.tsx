@@ -213,8 +213,10 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
           </span>
         </div>
       )}
+      {/* Tablets and wider (#752). The phone keeps the Home it had in 0.134.0
+        * (owner, 2026-10-19: the projects list there showed long-unused ones). */}
+      {!inApp && !phone && <BrowserProjects />}
       {/* First on a phone: what someone opens Caprock there for. */}
-      {!inApp && <BrowserProjects />}
       {phone && !inApp && <PhoneSessions sessions={[...working, ...rest]} now={now} canControl={canControl} />}
       {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
       {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} partial={(status.data?.hooks?.installed?.length ?? 0) > 0} />}

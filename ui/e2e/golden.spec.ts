@@ -230,9 +230,15 @@ test('an Obsidian vault imports privately, consent can be changed, and removing 
   expect(readFileSync(file, 'utf8')).toBe('A synthetic note. #e2e-topic')
 })
 
-test('browser Home exposes projects and opens their sessions on tablets and phones', async ({ app, page }) => {
+test('browser Home exposes projects and opens their sessions on tablets, not on the phone home', async ({ app, page }) => {
   const s = app.session('alpha')
-  for (const width of [800, 1280, 390]) {
+  // The phone keeps its 0.134.0 Home: no projects list (owner, 2026-10-19).
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(`${app.stand.pageURL}/#/`)
+  await expect(page.getByRole('region', { name: 'Continue', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Projects', exact: true })).toHaveCount(0)
+  await expect(page.getByLabel('Message or note')).toHaveCount(0)
+  for (const width of [800, 1280]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto(`${app.stand.pageURL}/#/`)
     const projects = page.getByRole('region', { name: 'Projects', exact: true })
@@ -269,7 +275,7 @@ test('browser Home is never wider than the screen: no sideways scroll and no car
   for (const width of [360, 390, 768]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto(`${app.stand.pageURL}/#/`)
-    await expect(page.getByRole('region', { name: 'Projects', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: width < 640 ? 'Continue' : 'Projects', exact: true })).toBeVisible()
     const m = await page.evaluate(() => {
       const w = window.innerWidth
       const cut = [...document.querySelectorAll('main section, main ul, main li')]
