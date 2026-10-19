@@ -8,9 +8,12 @@
 package branches
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -297,12 +300,30 @@ var landed = struct {
 	m  map[string]bool
 }{m: map[string]bool{}}
 
+// landedMaxFiles and landedMaxSteps bound the file-by-file check: a branch
+// changing more files than landedMaxFiles is not checked that way, and each
+// file is looked for in at most landedMaxSteps of base's commits.
+const (
+	landedMaxFiles = 80
+	landedMaxSteps = 20
+)
+
 // Landed says whether the commit sha's changes are already on base by
-// content: merging it into base changes nothing (`git merge-tree
-// --write-tree`, git 2.38+, gives base's own tree). It finds a branch whose
-// work reached the default branch by a squash merge or inside another
-// branch's batch, which `git cherry` cannot (the patch ids differ). An error
-// (an older git, a conflict, an unknown commit) is "not known", never
+// content. Three checks, cheapest first, any one enough:
+//
+//   - every commit base lacks has a patch-equivalent on base (`git cherry`):
+//     a rebase or a cherry-pick;
+//   - merging it into base changes nothing (`git merge-tree --write-tree`,
+//     git 2.38+, gives base's own tree): a plain squash merge;
+//   - file by file, the branch's own diff (merge-base..sha) is already in
+//     that file — on base's tip, or in one of base's commits since the
+//     merge-base that touched it: every hunk's new side (its context and
+//     added lines, in order) stands in the file, as `git apply -R --check`
+//     would want; an added file was there, a deleted one gone. This finds a
+//     branch shipped inside a batch PR whose files base has edited since, or
+//     whose changelog fragment a release has consumed.
+//
+// An error (an older git, an unknown commit) is "not known", never
 // "landed". Kept per pair of commits.
 func Landed(ctx context.Context, dir, base, sha string) (bool, error) {
 	baseSHA, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", base+"^{commit}")
@@ -317,16 +338,10 @@ func Landed(ctx context.Context, dir, base, sha string) (bool, error) {
 	if ok {
 		return v, nil
 	}
-	out, err := git(ctx, dir, "merge-tree", "--write-tree", baseSHA, sha)
+	v, err = landedBy(ctx, dir, baseSHA, sha)
 	if err != nil {
 		return false, err
 	}
-	tree, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
-	own, err := git(ctx, dir, "rev-parse", baseSHA+"^{tree}")
-	if err != nil {
-		return false, err
-	}
-	v = strings.TrimSpace(tree) == strings.TrimSpace(own)
 	landed.mu.Lock()
 	if len(landed.m) >= 4096 {
 		landed.m = map[string]bool{}
@@ -334,6 +349,341 @@ func Landed(ctx context.Context, dir, base, sha string) (bool, error) {
 	landed.m[key] = v
 	landed.mu.Unlock()
 	return v, nil
+}
+
+func landedBy(ctx context.Context, dir, baseSHA, sha string) (bool, error) {
+	if out, err := git(ctx, dir, "cherry", baseSHA, sha); err == nil && !strings.Contains("\n"+out, "\n+") {
+		return true, nil
+	}
+	if out, err := git(ctx, dir, "merge-tree", "--write-tree", baseSHA, sha); err == nil {
+		tree, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+		if own, err := git(ctx, dir, "rev-parse", baseSHA+"^{tree}"); err == nil && strings.TrimSpace(tree) == strings.TrimSpace(own) {
+			return true, nil
+		}
+	}
+	if ok, err := landedBySubjects(ctx, dir, baseSHA, sha); err == nil && ok {
+		return true, nil
+	}
+	return landedByFiles(ctx, dir, baseSHA, sha)
+}
+
+// minSubject is the shortest commit subject landedBySubjects goes by: a
+// "fix" or "wip" names too many commits to say which.
+const minSubject = 16
+
+// landedBySubjects is Landed's squash-message check: every commit the branch
+// has that base lacks (merges aside) is named, by its subject line, in the
+// message of a commit on base since the merge-base — the line itself, its
+// "* subject" in a squashed batch's list, or the subject with the pull
+// request's " (#N)". A batch squash whose later fixes reworked the branch's
+// lines still names them.
+func landedBySubjects(ctx context.Context, dir, baseSHA, sha string) (bool, error) {
+	out, err := git(ctx, dir, "log", "--no-merges", "--format=%s", baseSHA+".."+sha)
+	if err != nil {
+		return false, err
+	}
+	var want []string
+	for _, s := range strings.Split(out, "\n") {
+		if s = strings.TrimSpace(s); s != "" {
+			if len(s) < minSubject {
+				return false, nil
+			}
+			want = append(want, s)
+		}
+	}
+	if len(want) == 0 {
+		return false, nil
+	}
+	mb, err := git(ctx, dir, "merge-base", baseSHA, sha)
+	if err != nil {
+		return false, err
+	}
+	out, err = git(ctx, dir, "log", "--format=%B", baseSHA, "^"+strings.TrimSpace(mb))
+	if err != nil {
+		return false, err
+	}
+	named := map[string]bool{}
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimPrefix(strings.TrimSpace(l), "* ")
+		named[l] = true
+		if i := strings.LastIndex(l, " (#"); i > 0 && strings.HasSuffix(l, ")") {
+			named[l[:i]] = true
+		}
+	}
+	for _, s := range want {
+		if !named[s] {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// filePatch is one file of a branch's diff.
+type filePatch struct {
+	path    string
+	deleted bool
+	// blob is the file's blob on the branch (--full-index), for a change
+	// with no hunks to read (binary, mode only, an empty file).
+	blob string
+	// hunks hold each hunk's new side: its context and added lines.
+	hunks [][]string
+}
+
+// parsePatch reads `git diff --no-renames --full-index` into files. ok is
+// false on anything it cannot place (a quoted path): not known.
+func parsePatch(out string) (files []filePatch, ok bool) {
+	var cur *filePatch
+	var hunk *[]string
+	for _, line := range strings.Split(out, "\n") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			s := strings.TrimPrefix(line, "diff --git ")
+			// "a/P b/P": no renames, so both halves are one path.
+			if strings.HasPrefix(s, `"`) || len(s) < 5 || (len(s)-5)%2 != 0 {
+				return nil, false
+			}
+			files = append(files, filePatch{path: s[2 : 2+(len(s)-5)/2]})
+			cur, hunk = &files[len(files)-1], nil
+		case cur == nil:
+		case hunk == nil && strings.HasPrefix(line, "deleted file mode"):
+			cur.deleted = true
+		case hunk == nil && strings.HasPrefix(line, "index "):
+			f := strings.Fields(line)
+			if len(f) > 1 {
+				if _, nb, ok := strings.Cut(f[1], ".."); ok {
+					cur.blob = nb
+				}
+			}
+		case strings.HasPrefix(line, "@@"):
+			cur.hunks = append(cur.hunks, nil)
+			hunk = &cur.hunks[len(cur.hunks)-1]
+		case hunk == nil:
+		case strings.HasPrefix(line, " "), strings.HasPrefix(line, "+"):
+			*hunk = append(*hunk, line[1:])
+		case line == "":
+			// A blank context line some tools strip to nothing.
+			*hunk = append(*hunk, "")
+		}
+	}
+	return files, true
+}
+
+// holds says whether content (a blob's text) has every hunk's new side, in
+// order, each as one contiguous run of lines.
+func holds(content string, hunks [][]string) bool {
+	lines := strings.Split(content, "\n")
+	at := 0
+	for _, h := range hunks {
+		// Trailing blank entries are the diff's final newline, not lines.
+		for len(h) > 0 && h[len(h)-1] == "" {
+			h = h[:len(h)-1]
+		}
+		if len(h) == 0 {
+			continue
+		}
+		found := -1
+		for i := at; i+len(h) <= len(lines); i++ {
+			if lines[i] != h[0] {
+				continue
+			}
+			match := true
+			for j := 1; j < len(h); j++ {
+				if lines[i+j] != h[j] {
+					match = false
+					break
+				}
+			}
+			if match {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			return false
+		}
+		at = found + len(h)
+	}
+	return true
+}
+
+// Commits lists the commits sha has that base lacks, the newest limit.
+func Commits(ctx context.Context, dir, base, sha string, limit int) ([]string, error) {
+	out, err := git(ctx, dir, "rev-list", "--max-count="+strconv.Itoa(limit), sha, "^"+base)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(out), nil
+}
+
+// landedByFiles is Landed's third check.
+func landedByFiles(ctx context.Context, dir, baseSHA, sha string) (bool, error) {
+	mb, err := git(ctx, dir, "merge-base", baseSHA, sha)
+	if err != nil {
+		return false, err
+	}
+	mb = strings.TrimSpace(mb)
+	// A file whose content on base equals the branch's needs nothing more.
+	out, err := git(ctx, dir, "diff", "--no-renames", "--name-only", "-z", baseSHA, sha, "--")
+	if err != nil {
+		return false, err
+	}
+	differs := map[string]bool{}
+	for _, f := range strings.Split(out, "\x00") {
+		if f != "" {
+			differs[f] = true
+		}
+	}
+	if len(differs) == 0 {
+		return true, nil
+	}
+	out, err = git(ctx, dir, "-c", "core.quotePath=false", "diff", "--no-renames", "--no-ext-diff", "--no-color", "--full-index", mb, sha, "--")
+	if err != nil {
+		return false, err
+	}
+	all, ok := parsePatch(out)
+	if !ok {
+		return false, nil
+	}
+	var todo []filePatch
+	for _, f := range all {
+		if differs[f.path] {
+			todo = append(todo, f)
+		}
+	}
+	if len(todo) == 0 {
+		return true, nil
+	}
+	if len(todo) > landedMaxFiles {
+		return false, nil
+	}
+	// The commits on base since the merge-base that touched each file,
+	// newest first.
+	args := []string{"-c", "core.quotePath=false", "log", "--no-renames", "--format=%x00%H", "--name-only", baseSHA, "^" + mb, "--"}
+	for _, f := range todo {
+		args = append(args, f.path)
+	}
+	out, err = git(ctx, dir, args...)
+	if err != nil {
+		return false, err
+	}
+	steps := map[string][]string{}
+	for _, rec := range strings.Split(out, "\x00") {
+		lines := strings.Split(strings.TrimSpace(rec), "\n")
+		if len(lines) < 2 {
+			continue
+		}
+		for _, p := range lines[1:] {
+			if p = strings.TrimSpace(p); p != "" && len(steps[p]) < landedMaxSteps {
+				steps[p] = append(steps[p], lines[0])
+			}
+		}
+	}
+	cat, err := newCatFile(ctx, dir)
+	if err != nil {
+		return false, err
+	}
+	defer cat.close()
+	for _, f := range todo {
+		ok, err := fileLanded(cat, f, append([]string{baseSHA}, steps[f.path]...))
+		if err != nil || !ok {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// fileLanded looks for one file's change at each commit, in order.
+func fileLanded(cat *catFile, f filePatch, commits []string) (bool, error) {
+	seen := map[string]bool{}
+	for _, c := range commits {
+		blob, body, err := cat.get(c + ":" + f.path)
+		if err != nil {
+			return false, err
+		}
+		if seen[blob] {
+			continue
+		}
+		seen[blob] = true
+		switch {
+		case f.deleted:
+			if blob == "" {
+				return true, nil
+			}
+		case blob == "":
+		case len(f.hunks) == 0:
+			if blob == f.blob {
+				return true, nil
+			}
+		case holds(body, f.hunks):
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// catFile is one `git cat-file --batch`, asked a blob at a time.
+type catFile struct {
+	cmd *exec.Cmd
+	in  io.WriteCloser
+	out *bufio.Reader
+}
+
+func newCatFile(ctx context.Context, dir string) (*catFile, error) {
+	if err := tcc.Check(dir); err != nil {
+		return nil, err
+	}
+	cmd := hidewin.CommandContext(ctx, "git", "-C", dir, "cat-file", "--batch")
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &catFile{cmd: cmd, in: in, out: bufio.NewReader(out)}, nil
+}
+
+// get reads "<commit>:<path>": the blob's name and text, or "" when the
+// commit has no such file.
+func (c *catFile) get(spec string) (string, string, error) {
+	if strings.ContainsAny(spec, "\n") {
+		return "", "", errors.New("a path with a newline")
+	}
+	if _, err := io.WriteString(c.in, spec+"\n"); err != nil {
+		return "", "", err
+	}
+	head, err := c.out.ReadString('\n')
+	if err != nil {
+		return "", "", err
+	}
+	if strings.HasSuffix(head, " missing\n") || strings.HasSuffix(head, " ambiguous\n") {
+		return "", "", nil
+	}
+	f := strings.Fields(head)
+	if len(f) != 3 {
+		return "", "", errors.New("cat-file: " + strings.TrimSpace(head))
+	}
+	n, err := strconv.Atoi(f[2])
+	if err != nil {
+		return "", "", err
+	}
+	buf := make([]byte, n+1)
+	if _, err := io.ReadFull(c.out, buf); err != nil {
+		return "", "", err
+	}
+	if f[1] != "blob" {
+		return "", "", nil
+	}
+	return f[0], string(buf[:n]), nil
+}
+
+func (c *catFile) close() {
+	_ = c.in.Close()
+	_ = c.cmd.Wait()
 }
 
 func git(ctx context.Context, dir string, args ...string) (string, error) {

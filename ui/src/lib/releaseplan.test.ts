@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PlanRow } from './releaseplan'
 import type { Subagent, WorkRepo } from './api'
 import type { SessionBranch, SessionBranches } from './branches'
-import { ageText, BLOCKS, BRANCHES_LISTED, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, sinceLine, subagentRows } from './releaseplan'
+import { ageText, BLOCKS, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
 import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
@@ -199,15 +199,29 @@ describe('what else heads into the release', () => {
       br('feat/local', { remote: false }),
       br('feat/merged', { ahead: 0 }),
       br('feat/with-pr', { pr: { number: 9, url: 'u', state: 'closed' } }),
+      br('feat/in-batch', { in_pr: 760 }),
       br('feat/folder-search', {}), // #631's head in the Pipeline list
     ]), stats.prs!, NOW, 'dspv/caprock')
     expect(rows.map((r) => r.key)).toEqual(['b:feat/b', 'b:feat/a'])
-    expect(rows[1]).toMatchObject({ title: 'work on feat/a', branch: 'feat/a', stage: 'branch', section: 'branch', filled: BLOCKS / 5, word: '3 commits · pushed 3h ago', url: 'https://github.com/dspv/caprock/compare/master...feat/a' })
+    expect(rows[1]).toMatchObject({ title: 'work on feat/a', branch: 'feat/a', stage: 'branch', section: 'branch', filled: BLOCKS / 5, word: '3 commits · 3h ago', older: false, url: 'https://github.com/dspv/caprock/compare/master...feat/a' })
     expect(rows[1]!.wordTitle).toContain('3 commits ahead of origin/master')
     const many = branchRows(answer(Array.from({ length: 20 }, (_, i) => br(`f/${i}`, { committed_ms: NOW - i * MIN }))), [], NOW)
     expect(many).toHaveLength(BRANCHES_LISTED)
     expect(many[0]!.key).toBe('b:f/0')
     expect(branchRows(undefined, [], NOW)).toEqual([])
+    expect(branchRows(answer([br('feat/week', { committed_ms: NOW - 8 * DAY })]), [], NOW)[0]!.older).toBe(true)
+  })
+
+  it('holds a branch section to five at rest, the older ones behind their own link, and counts only the fresh', () => {
+    const rows = branchRows(answer([...Array.from({ length: 7 }, (_, i) => br(`f/${i}`, { committed_ms: NOW - (i + 1) * MIN })), br('f/old', { committed_ms: NOW - 9 * DAY })]), [], NOW)
+    expect(shownRows('branch', rows)).toMatchObject({ total: 7, more: 2, old: 1 })
+    expect(shownRows('branch', rows).rows).toHaveLength(BRANCHES_SHOWN)
+    expect(shownRows('branch', rows, { all: true }).rows).toHaveLength(7)
+    expect(shownRows('branch', rows, { all: true, older: true })).toMatchObject({ total: 8, more: 0, old: 0 })
+    expect(planSections(rows)[0]!.label).toBe('Branches pushed, no PR yet · 7')
+    expect(planSections(rows.slice(7))[0]!.label).toBe('Branches pushed, no PR yet')
+    expect(releaseLine(rows.slice(7), undefined, 0, NOW)).toBeUndefined()
+    expect(shownRows('pr', rows).rows).toHaveLength(8)
   })
 
   it('lists the working subagents, how long each has worked, one asking in amber', () => {

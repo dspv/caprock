@@ -21,13 +21,13 @@
  * page's Release view, and on the phone home (`phone`: components/
  * PhoneReleases). It reads nothing itself.
  */
-import { useContext, useMemo, type ReactNode } from 'react'
+import { useContext, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { RELEASED_MEANS } from '@/lib/journey'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
-import { BLOCKS, planEmpty, planForRepo, planSections, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { BLOCKS, planEmpty, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, usePoll } from './SessionDeck'
@@ -45,7 +45,7 @@ import { TerminalIcon } from './AppIcons'
 
 export interface ReleasePlanProps {
   plan: ReleasePlanData
-  /** The right panel's size: smaller type, titles on one line. */
+  /** The right panel's size: smaller type, titles up to two lines. */
   compact?: boolean
   /** Name the repository beside the version (the Work page lists several). */
   showRepo?: boolean
@@ -153,7 +153,12 @@ function ReleaseLine({ parts, since, phone, compact }: { parts: LinePart[]; sinc
  */
 function Rows({ plan, compact, onOpen, steps }: { plan: ReleasePlanData; compact: boolean; onOpen?: (n: number) => void; steps: BarSteps }) {
   const size = compact ? 'text-[11px]' : 'text-[12px]'
-  const row = (r: PlanRow) => (
+  const [open, setOpen] = useState<{ all?: boolean; older?: boolean }>({})
+  const row = (r: PlanRow) => r.stage === 'branch' ? (
+    <li key={r.key} data-release-row={r.key} data-stage={r.stage} className="col-span-full min-w-0 py-[2px]">
+      <BranchLine row={r} compact={compact} />
+    </li>
+  ) : (
     <li key={r.key} data-release-row={r.number ?? r.key} data-stage={r.stage} className="col-span-full grid min-w-0 grid-cols-subgrid items-center">
       <Title row={r} root={plan.root} compact={compact} onOpen={onOpen} />
       <span className="min-w-0 pl-3"><Blocks row={r} compact={compact} {...steps} /></span>
@@ -176,13 +181,21 @@ function Rows({ plan, compact, onOpen, steps }: { plan: ReleasePlanData; compact
       <ul data-release-rows className={`grid min-w-0 items-center ${compact
         ? 'grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_auto] gap-y-[3px] text-[12px] @[520px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_repeat(6,auto)]'
         : 'grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_auto] gap-y-1 text-[13px] @[520px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(2,auto)] @[600px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(3,auto)] @[680px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(4,auto)] @[760px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(5,auto)] @[840px]/plan:grid-cols-[minmax(0,1.4fr)_minmax(88px,1fr)_repeat(6,auto)]'}`}>
-        {planSections(plan.rows).map((sec, i) => [
-          <li key={`section:${sec.key}`} data-release-section={sec.key}
-            className={`col-span-full font-medium text-fg-faint ${i > 0 ? 'pt-1.5' : ''} ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
-            {sec.label}<span data-release-hint className="block font-normal text-fg-faint/80">{sec.hint}</span>
-          </li>,
-          ...sec.rows.map(row),
-        ])}
+        {planSections(plan.rows).map((sec, i) => {
+          const shown = shownRows(sec.key, sec.rows, open)
+          return [
+            <li key={`section:${sec.key}`} data-release-section={sec.key}
+              className={`col-span-full font-medium text-fg-faint ${i > 0 ? 'pt-1.5' : ''} ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
+              {sec.label}<span data-release-hint className="block font-normal text-fg-faint/80">{sec.hint}</span>
+            </li>,
+            ...shown.rows.map(row),
+            (shown.more > 0 || shown.old > 0) && (
+              <li key={`more:${sec.key}`} className={`col-span-full ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
+                <MoreRows shown={shown} onAll={() => setOpen((o) => ({ ...o, all: true }))} onOlder={() => setOpen((o) => ({ ...o, older: true }))} />
+              </li>
+            ),
+          ]
+        })}
         {plan.later.map((g) => [
           <li key={`later:${g.key}`} data-release-later={g.key}
             className={`col-span-full pt-1.5 font-medium text-fg-faint ${compact ? 'text-[10.5px]' : 'text-[11.5px]'}`}>
@@ -223,7 +236,15 @@ function OSDots({ dots }: { dots: OSDot[] }) {
  * at the left edge at any width. A pull request row is a link to it on GitHub, the whole row its target; an agent's row, a link into its session's chat.
  */
 function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) {
+  const [open, setOpen] = useState<{ all?: boolean; older?: boolean }>({})
   const row = (r: PlanRow) => {
+    if (r.stage === 'branch') {
+      return (
+        <li key={r.key} data-release-row={r.key} data-stage={r.stage} className="min-w-0 border-b border-border px-3 py-2 last:border-b-0">
+          <BranchLine row={r} phone />
+        </li>
+      )
+    }
     const body = (
       <>
         <span className="flex min-w-0 items-baseline text-[14px] leading-[1.3]">
@@ -252,13 +273,21 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
   }
   return (
     <ul data-release-phone className="-mx-3 min-w-0 border-t border-border">
-      {planSections(plan.rows).map((sec) => [
-        <li key={`section:${sec.key}`} data-release-section={sec.key}
-          className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint">
-          {sec.label}<span data-release-hint className="block text-[11.5px] font-normal">{sec.hint}</span>
-        </li>,
-        ...sec.rows.map(row),
-      ])}
+      {planSections(plan.rows).map((sec) => {
+        const shown = shownRows(sec.key, sec.rows, open)
+        return [
+          <li key={`section:${sec.key}`} data-release-section={sec.key}
+            className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint">
+            {sec.label}<span data-release-hint className="block text-[11.5px] font-normal">{sec.hint}</span>
+          </li>,
+          ...shown.rows.map(row),
+          (shown.more > 0 || shown.old > 0) && (
+            <li key={`more:${sec.key}`} className="border-b border-border px-3 py-2 text-[13px]">
+              <MoreRows shown={shown} onAll={() => setOpen((o) => ({ ...o, all: true }))} onOlder={() => setOpen((o) => ({ ...o, older: true }))} />
+            </li>
+          ),
+        ]
+      })}
       {plan.later.map((g) => [
         <li key={`later:${g.key}`} data-release-later={g.key}
           className="border-b border-border px-3 pb-1.5 pt-3 text-[12px] font-medium text-fg-faint last:border-b-0">
@@ -267,6 +296,46 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
         ...g.rows.map(row),
       ])}
     </ul>
+  )
+}
+
+/**
+ * A pushed branch, in two lines that a 360px panel can read (owner,
+ * 2026-10-19, translated: "the information isn't perceivable like this; I
+ * don't even know what to do with it"): its last commit's subject, up to two
+ * lines and never cut to a few letters, then, muted, the branch's name (cut
+ * first), the commits ahead and the age, the agent cost when one is known,
+ * and ↗ at the end of that line — the whole row opens the comparison on
+ * GitHub. No *branch* chip: the section's heading says so.
+ */
+function BranchLine({ row: r, compact = false, phone = false }: { row: PlanRow; compact?: boolean; phone?: boolean }) {
+  const meta = phone ? 'text-[12px]' : compact ? 'text-[10.5px]' : 'text-[11.5px]'
+  const body = (
+    <>
+      <span data-release-title className={`line-clamp-2 text-fg [overflow-wrap:anywhere] ${phone ? 'text-[14px] leading-[1.3]' : ''}`}>{r.title}</span>
+      <span className={`flex min-w-0 items-baseline gap-1 text-fg-faint ${meta}`}>
+        <span data-release-branch title={r.branch} className="min-w-0 truncate">{r.branch}</span>
+        <span aria-hidden className="shrink-0">·</span>
+        <span data-release-word title={r.wordTitle} className="shrink-0 whitespace-nowrap">{r.word}</span>
+        {r.cost.known && <><span aria-hidden className="shrink-0">·</span><span data-release-cost title={r.cost.title} className="num shrink-0 whitespace-nowrap">{r.cost.text}</span></>}
+        {r.url && <span aria-hidden className="shrink-0">↗</span>}
+      </span>
+    </>
+  )
+  const cls = 'grid min-w-0 gap-px text-left no-underline'
+  return r.url
+    ? <a href={r.url} target="_blank" rel="noopener noreferrer" data-ext="none" title={extTitle(`${r.title} — ${r.branch} on GitHub`)} className={`${cls} hover:[&>span:first-child]:text-accent`}>{body}</a>
+    : <div title={r.title} className={cls}>{body}</div>
+}
+
+/** The quiet links under a section that holds rows back: *Show all N*, *+N older*. */
+function MoreRows({ shown, onAll, onOlder }: { shown: { total: number; more: number; old: number }; onAll: () => void; onOlder: () => void }) {
+  const link = 'cursor-pointer underline decoration-dotted underline-offset-2 hover:text-fg'
+  return (
+    <span className="flex flex-wrap gap-x-3 text-fg-faint">
+      {shown.more > 0 && <button type="button" data-release-more onClick={onAll} className={`${link} text-fg-muted`}>Show all {shown.total}</button>}
+      {shown.old > 0 && <button type="button" data-release-older onClick={onOlder} title="Pushed branches with no commit in the last 7 days" className={link}>+{shown.old} older</button>}
+    </span>
   )
 }
 
@@ -300,7 +369,8 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
       {r.branch ? <span data-release-branch title={r.branch} className="block max-w-full truncate text-[0.85em] text-fg-faint">{r.branch}</span> : null}
     </>
   )
-  const wrap = compact ? 'truncate' : '[overflow-wrap:anywhere]'
+  // Two lines in the right panel, never a title cut to a few letters (owner, 2026-10-19).
+  const wrap = compact ? 'line-clamp-2 [overflow-wrap:anywhere]' : '[overflow-wrap:anywhere]'
   const cls = `min-w-0 text-left no-underline hover:[&>span:last-child]:text-accent ${wrap}`
   if (!r.number) {
     if (go) {
@@ -371,7 +441,7 @@ export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running
  * column, so it grows with the row; on the phone it is a fixed width.
  */
 export function Blocks({ row: r, compact = false, phone = false, ships, next }: { row: PlanRow; compact?: boolean; phone?: boolean } & BarSteps) {
-  if (r.stage === 'branch') return <span data-release-chip className={`inline-block rounded-[3px] border border-border px-1.5 text-fg-muted ${compact ? 'text-[10.5px]' : 'text-[11px]'}`}>branch</span>
+  if (r.stage === 'branch') return null
   const steps = barSteps(ships)
   const states = stepStates(r, ships)
   const path = steps.map((s) => (s === 'PR' ? 'PR' : s === 'CI' ? 'CI' : s[0]!.toUpperCase() + s.slice(1))).join(' → ')

@@ -57,6 +57,8 @@ export interface SessionBranch {
   stale?: boolean
   /** Its changes are already on the default branch by content (a squash merge, a batch); checked only for a branch ahead of it, of the last 14 days, with no open PR. */
   landed?: boolean
+  /** The open pull request whose branch already carries this one's last commit (a batch PR); same branches checked as `landed`. */
+  in_pr?: number
 }
 
 /** GET /v1/sessions/{id}/branches. */

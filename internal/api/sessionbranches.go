@@ -23,6 +23,9 @@ const branchLivePRs = 8
 const (
 	branchRecent    = 14 * 24 * time.Hour
 	branchLandedMax = 40
+	// branchPRCommits bounds the commits read of each open pull request's
+	// branch when looking for branches it carries.
+	branchPRCommits = 500
 )
 
 // SessionBranch is one row of the deck's Branches view: what git knows of
@@ -51,6 +54,11 @@ type SessionBranch struct {
 	// branch ahead of it, committed in the last 14 days, with no open pull
 	// request. Absent: not landed, or not checked.
 	Landed bool `json:"landed,omitempty"`
+	// InPR is the open pull request whose branch already carries this
+	// branch's last commit (a batch PR): it has a PR, though not its own.
+	// Checked for the same branches as Landed, against the newest eight
+	// open PRs.
+	InPR int `json:"in_pr,omitempty"`
 }
 
 // SessionBranches is GET /v1/sessions/{id}/branches.
@@ -90,11 +98,31 @@ func OrderBranches(bs []SessionBranch) {
 
 // markLanded sets Landed on the branches the release plan may list: ahead of
 // base, committed within branchRecent, no open pull request, the newest
-// branchLandedMax (bs is ordered newest first). A check that fails leaves the
-// branch not landed: it is listed, never hidden on a guess.
+// branchLandedMax (bs is ordered newest first). A branch whose tip is inside
+// another branch's open pull request (a batch) gets InPR instead. A check
+// that fails leaves the branch not landed: it is listed, never hidden on a
+// guess.
 func markLanded(ctx context.Context, dir, base string, bs []SessionBranch, now time.Time) {
 	if base == "" {
 		return
+	}
+	// The commits each open pull request carries, the newest few PRs.
+	inPR := map[string]int{}
+	open := 0
+	for _, b := range bs {
+		if b.Default || b.PR == nil || b.PR.State != "open" || b.SHA == "" || open >= branchLivePRs {
+			continue
+		}
+		open++
+		cs, err := branches.Commits(ctx, dir, base, b.SHA, branchPRCommits)
+		if err != nil {
+			continue
+		}
+		for _, c := range cs {
+			if _, ok := inPR[c]; !ok {
+				inPR[c] = b.PR.Number
+			}
+		}
 	}
 	n := 0
 	for i := range bs {
@@ -102,8 +130,12 @@ func markLanded(ctx context.Context, dir, base string, bs []SessionBranch, now t
 		if b.Default || b.Ahead == nil || *b.Ahead == 0 || b.SHA == "" || now.Sub(time.UnixMilli(b.CommittedMS)) > branchRecent || (b.PR != nil && b.PR.State == "open") {
 			continue
 		}
+		if pr, ok := inPR[b.SHA]; ok {
+			b.InPR = pr
+			continue
+		}
 		if n >= branchLandedMax {
-			return
+			continue
 		}
 		n++
 		if ok, err := branches.Landed(ctx, dir, base, b.SHA); err == nil {

@@ -75,6 +75,8 @@ export interface PlanRow {
   title: string
   /** A pushed branch row: its name, shown under the subject. */
   branch?: string
+  /** A pushed branch with no commit in BRANCH_FRESH_MS: kept behind *+N older*. */
+  older?: boolean
   url?: string
   /** The Work board's stage, or `branch`: pushed, with no pull request yet. */
   stage: Stage | 'branch'
@@ -133,6 +135,10 @@ export const SECTION_ORDER: readonly RowSection[] = ['merged', 'pr', 'branch', '
 export const BRANCHES_LISTED = 15
 /** A pushed branch committed longer ago than this is not listed. */
 export const BRANCH_RECENT_MS = 14 * 24 * 60 * 60 * 1000
+/** A pushed branch with no commit in this long is listed only behind *+N older*. */
+export const BRANCH_FRESH_MS = 7 * 24 * 60 * 60 * 1000
+/** How many pushed branches show before *Show all N*. */
+export const BRANCHES_SHOWN = 5
 /** How many working subagents the plan lists. */
 export const SUBAGENTS_LISTED = 10
 
@@ -461,7 +467,7 @@ export function sinceLine(last: { name: string; at: number } | undefined, merged
 export function releaseLine(rows: readonly PlanRow[], last: { name: string; at: number } | undefined, merged: number, now: number): LinePart[] | undefined {
   const prs = rows.filter((r) => r.section === 'pr')
   const agents = rows.filter((r) => r.section === 'agent').length
-  const branches = rows.filter((r) => r.section === 'branch').length
+  const branches = rows.filter((r) => r.section === 'branch' && !r.older).length
   if (merged === 0 && !prs.length && !agents && !branches) return undefined
   const parts: LinePart[] = [{ key: 'head', text: 'Next release', title: 'Where the next release stands: what is in, what is on its way.' }]
   if (merged > 0) parts.push({ key: 'merged', text: `${merged} merged`, title: `${plural(merged, 'pull request')} merged since the last tag, not in a release yet. Click to see them.`, target: 'merged' })
@@ -494,14 +500,16 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  * default branch, committed in the last 14 days, with no pull request (none
  * in the branch's own read nor in the Pipeline's list by head), and not
  * already on the default branch by content (`landed`: a squash merge, or
- * inside a batch). The newest BRANCHES_LISTED; each titled by its last
- * commit's subject, its word the commits ahead and its age.
+ * inside a batch) nor carried by another branch's open pull request
+ * (`in_pr`: a batch). The newest BRANCHES_LISTED; each titled by its last
+ * commit's subject, its word the commits ahead and its age; one with no
+ * commit in BRANCH_FRESH_MS is `older`.
  */
 export function branchRows(br: SessionBranches | undefined, prs: readonly BranchPR[], now: number, repo?: string): PlanRow[] {
   if (!br?.branches?.length) return []
   const headed = new Set(prs.map((p) => p.head).filter((h): h is string => !!h))
   return br.branches
-    .filter((b) => !b.default && b.remote && (b.ahead ?? 0) > 0 && !b.pr && !headed.has(b.name) && !b.landed && b.committed_ms > 0 && now - b.committed_ms <= BRANCH_RECENT_MS)
+    .filter((b) => !b.default && b.remote && (b.ahead ?? 0) > 0 && !b.pr && !b.in_pr && !headed.has(b.name) && !b.landed && b.committed_ms > 0 && now - b.committed_ms <= BRANCH_RECENT_MS)
     .sort((a, b) => b.committed_ms - a.committed_ms)
     .slice(0, BRANCHES_LISTED)
     .map((b): PlanRow => {
@@ -512,9 +520,10 @@ export function branchRows(br: SessionBranches | undefined, prs: readonly Branch
         key: `b:${b.name}`,
         title: b.subject || b.name,
         branch: b.name,
+        older: now - b.committed_ms > BRANCH_FRESH_MS,
         url: repo && br.default ? `https://github.com/${repo}/compare/${encodeURIComponent(br.default)}...${b.name.split('/').map(encodeURIComponent).join('/')}` : undefined,
         stage: 'branch', section: 'branch', filled: PER_STEP, red: false, warn: false, running: false,
-        word: `${plural(n, 'commit')} · pushed ${age} ago`,
+        word: `${plural(n, 'commit')} · ${age} ago`,
         wordTitle: `${b.name}: pushed, ${plural(n, 'commit')} ahead of ${base}, the last ${spanText(Math.max(0, now - b.committed_ms))} ago; no pull request yet.`,
         age: { text: age, title: `Last commit ${spanText(Math.max(0, now - b.committed_ms))} ago` },
         cost: b.sessions > 0
@@ -548,12 +557,12 @@ export function subagentRows(subs: SubagentsNow | undefined, now: number): PlanR
     })
 }
 
-/** The rows by section, in SECTION_ORDER, each named with its count; empty sections left out. */
+/** The rows by section, in SECTION_ORDER, each named with its count (a branch section's, the branches not `older`); empty sections left out. */
 export function planSections(rows: readonly PlanRow[]): { key: RowSection; label: string; hint: string; rows: PlanRow[] }[] {
   const label: Record<RowSection, (n: number) => string> = {
     merged: (n) => `In this release · ${n} merged`,
     pr: (n) => `Pull requests · ${n} open`,
-    branch: (n) => `Branches pushed, no PR yet · ${n}`,
+    branch: (n) => (n ? `Branches pushed, no PR yet · ${n}` : 'Branches pushed, no PR yet'),
     agent: (n) => `Agents working now · ${n}`,
   }
   const hint: Record<RowSection, string> = {
@@ -564,8 +573,24 @@ export function planSections(rows: readonly PlanRow[]): { key: RowSection; label
   }
   return SECTION_ORDER.map((key) => {
     const rs = rows.filter((r) => r.section === key)
-    return { key, label: label[key](rs.length), hint: hint[key], rows: rs }
+    return { key, label: label[key](rs.filter((r) => !r.older).length), hint: hint[key], rows: rs }
   }).filter((s) => s.rows.length > 0)
+}
+
+/**
+ * What a section draws at rest: a branch section its branches not `older`,
+ * the first BRANCHES_SHOWN of them unless `all`, and the older ones only once
+ * `older` is asked (owner, 2026-10-19, translated: "the information isn't
+ * perceivable like this"); `more` and `old` count what waits behind *Show
+ * all N* and *+N older*. Other sections draw every row.
+ */
+export function shownRows(key: RowSection, rows: readonly PlanRow[], open: { all?: boolean; older?: boolean } = {}): { rows: PlanRow[]; total: number; more: number; old: number } {
+  if (key !== 'branch') return { rows: [...rows], total: rows.length, more: 0, old: 0 }
+  const fresh = rows.filter((r) => !r.older)
+  const aged = rows.filter((r) => r.older)
+  const list = open.older ? [...fresh, ...aged] : fresh
+  const cut = open.all ? list : list.slice(0, BRANCHES_SHOWN)
+  return { rows: cut, total: list.length, more: list.length - cut.length, old: open.older ? 0 : aged.length }
 }
 
 /** What a session adds to its repository's plan: its pushed branches and its working subagents (the right panel). */
