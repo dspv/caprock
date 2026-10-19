@@ -1832,7 +1832,7 @@ and `ui/src/lib/composer.ts`.
   a pause (`promptBytes`), so several lines arrive as one message — checked
   with the fake agent, which keeps ESC CR in its prompt as `↵`, and received
   `first line of the message↵second line, same message` as one line. While a
-  message waits the box says *queued · sends when the agent is free*.
+  message waits the box says *Message will send when the agent is free*, and the message sits in the chat as a normal outgoing bubble, *Sends when Claude finishes*, with small Send now / Edit / Cancel links (owner, 2026-10-19, translated: "It should just send by default").
 - **Keys.** Enter sends, Shift+Enter is a newline in the box, Esc goes back
   to the terminal (after closing a picker). ↑ and ↓ on an empty box, or one
   still showing a history entry, walk the last 50 messages sent from it to
@@ -2318,7 +2318,12 @@ connection and the work survive a bad network.
   background still has them; each has **Edit**, which puts it back in the
   field. A raw key pressed while not live is not sent and says so for four
   seconds. Typing into the terminal itself (a desktop) keeps protocol v2's
-  4 KiB queue.
+  4 KiB queue. Since 2026-10-19 a message is also kept while it is on its
+  way, until the daemon confirms it: one the daemon does not take becomes a
+  draft with **Retry**, one left on its way when the page went comes back as
+  a draft that says it may have arrived, and the field's own text survives a
+  discarded tab ([04-ui.md § Voice input, *Never lost*](04-ui.md)). Dictation
+  is one language at a time; see the same section.
 - **Chat view.** The conversation as messages (what the agent wrote, tool
   calls collapsed to one line, prompts), built from the events Caprock already
   stores, with the scrolling rule; the input box types into the session.

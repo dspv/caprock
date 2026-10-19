@@ -6,8 +6,11 @@
  * - **Hold** to record; **release** sends.
  * - A **short tap** (under `TAP_MS`) latches: recording goes on, and the next
  *   tap sends.
- * - **Sliding off** the button while holding cancels: nothing is sent. A
- *   latched recording ignores it, since no finger is down.
+ * - **Sliding off** the button while holding cancels: nothing is sent, and
+ *   what was heard stays in the field. A latched recording ignores it, since
+ *   no finger is down.
+ * - A **pointer cancel** (the browser taking the touch) latches: recording
+ *   goes on, and the next tap sends.
  * - The keyboard (Space or Enter on the focused button) starts a latched
  *   recording and the next press sends.
  */
@@ -48,8 +51,12 @@ export function pttStep(s: PttState, i: PttInput): { state: PttState; action: Pt
       if (s.phase === 'holding') return { state: PTT_IDLE, action: 'cancel' }
       return { state: s, action: null }
     case 'cancel':
-      if (s.phase === 'idle') return { state: s, action: null }
-      return { state: PTT_IDLE, action: 'cancel' }
+      // The browser took the touch (a gesture, the keyboard, a system
+      // sheet): the finger did not choose to stop, so the recording goes on
+      // latched and the next tap sends it. Dropping it here lost what was
+      // said (owner, 2026-10-19).
+      if (s.phase === 'holding') return { state: { phase: 'latched' }, action: null }
+      return { state: s, action: null }
     case 'key':
       if (s.phase === 'idle') return { state: { phase: 'latched' }, action: 'start' }
       return { state: PTT_IDLE, action: 'send' }

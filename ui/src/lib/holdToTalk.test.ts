@@ -31,8 +31,10 @@ describe('hold-to-talk', () => {
     expect(run([{ type: 'down', at: 0 }, { type: 'up', at: 50 }, { type: 'leave' }])).toEqual({ state: 'latched', actions: ['start'] })
   })
 
-  it('drops the recording on a pointer cancel, and does nothing when idle', () => {
-    expect(run([{ type: 'down', at: 0 }, { type: 'cancel' }])).toEqual({ state: 'idle', actions: ['start', 'cancel'] })
+  it('keeps recording, latched, on a pointer cancel, and does nothing when idle', () => {
+    expect(run([{ type: 'down', at: 0 }, { type: 'cancel' }])).toEqual({ state: 'latched', actions: ['start'] })
+    expect(run([{ type: 'down', at: 0 }, { type: 'cancel' }, { type: 'down', at: 3000 }, { type: 'up', at: 3100 }])).toEqual({ state: 'idle', actions: ['start', 'send'] })
+    expect(run([{ type: 'key' }, { type: 'cancel' }])).toEqual({ state: 'latched', actions: ['start'] })
     expect(run([{ type: 'cancel' }, { type: 'up', at: 5 }, { type: 'leave' }])).toEqual({ state: 'idle', actions: [] })
   })
 

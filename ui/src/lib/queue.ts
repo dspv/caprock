@@ -20,13 +20,13 @@ function fromView(v: QueueView): QueueState {
   return { messages: v.messages ?? [], waiting: v.waiting ?? '' }
 }
 
-/** Why the bubbles wait, said on them. */
+/** What a waiting bubble waits for, said under it. */
 export function waitingLabel(w: QueueWaiting): string {
   switch (w) {
-    case 'turn': return 'Queued — sends when the agent finishes this turn'
-    case 'permission': return 'Queued — a permission prompt is waiting; answer it first'
-    case 'question': return 'Queued — the agent asked a question; answer it in the terminal'
-    default: return 'Queued — the turn ended without a reply; Send now to send it'
+    case 'turn': return 'Sends when Claude finishes'
+    case 'permission': return 'Waiting: a permission prompt is on the screen; answer it first'
+    case 'question': return 'Waiting: the agent asked a question; answer it in the terminal'
+    default: return 'The turn ended without a reply; use Send now'
   }
 }
 

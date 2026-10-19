@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { joinDictation, speechHint, speechSupport, startDictation } from './speech'
+import { assembleHeard, joinDictation, speechHint, speechSupport, startDictation } from './speech'
 
 type Handler = ((e: unknown) => void) | null
 
@@ -73,9 +73,78 @@ describe('speech', () => {
     FakeRecognition.last!.onend?.()
     expect(onEnd).toHaveBeenCalledWith('not-allowed')
     const onEnd2 = vi.fn()
-    startDictation({ onText: () => {}, onEnd: onEnd2 })
+    const d = startDictation({ onText: () => {}, onEnd: onEnd2 })
     FakeRecognition.last!.onerror?.({ error: 'aborted' })
+    d!.stop()
+    expect(onEnd2).toHaveBeenCalledWith(undefined)
+  })
+
+  // Never lost (.ai/04-ui.md § Voice input): the paths a dictated message
+  // used to vanish by, on Chrome for Android above all.
+  it('listens again when the service ends by itself, keeping the words heard before', () => {
+    w.webkitSpeechRecognition = FakeRecognition
+    const onText = vi.fn()
+    const onEnd = vi.fn()
+    const d = startDictation({ lang: 'ru-RU', onText, onEnd })
+    const first = FakeRecognition.last!
+    // Interim only, then the end, no final: the words stay.
+    first.onresult?.({ results: [result(false, 'καλημέρα')] })
+    first.onend?.()
+    expect(onEnd).not.toHaveBeenCalled()
+    const second = FakeRecognition.last!
+    expect(second).not.toBe(first)
+    expect(second.started && second.lang === 'ru-RU').toBe(true)
+    second.onresult?.({ results: [result(true, 'deploy it')] })
+    expect(onText).toHaveBeenLastCalledWith('καλημέρα deploy it')
+    // A late event from the old recognizer changes nothing.
+    first.onresult?.({ results: [] })
+    expect(onText).toHaveBeenLastCalledWith('καλημέρα deploy it')
+    d!.stop()
+    expect(onEnd).toHaveBeenCalledWith(undefined)
+  })
+
+  it('never lets a later, emptier event wipe the words shown', () => {
+    w.webkitSpeechRecognition = FakeRecognition
+    const onText = vi.fn()
+    startDictation({ onText, onEnd: () => {} })
+    const r = FakeRecognition.last!
+    r.onresult?.({ results: [result(false, 'run the tests')] })
+    r.onresult?.({ results: [] })
+    r.onresult?.({ results: [result(true, '')] })
+    expect(onText).toHaveBeenLastCalledWith('run the tests')
+    expect(onText).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps what a result list held when the list starts over', () => {
+    w.webkitSpeechRecognition = FakeRecognition
+    const onText = vi.fn()
+    startDictation({ onText, onEnd: () => {} })
+    const r = FakeRecognition.last!
+    r.onresult?.({ results: [result(true, 'café first')] })
+    r.onresult?.({ results: [result(false, 'then')] })
+    r.onresult?.({ results: [result(true, 'then this')] })
+    expect(onText).toHaveBeenLastCalledWith('café first then this')
+  })
+
+  it('does not say twice a final that repeats the one before (Chrome on Android)', () => {
+    expect(assembleHeard([result(true, 'turn'), result(true, 'turn on'), result(true, 'turn on the lights')] as never)).toBe('turn on the lights')
+    expect(assembleHeard([result(true, 'go'), result(true, ' golang tests')] as never)).toBe('go golang tests')
+    expect(assembleHeard([result(true, 'clean up'), result(false, 'the')] as never)).toBe('clean up the')
+  })
+
+  it('ends on a fatal error, or after three restarts that heard nothing', () => {
+    w.webkitSpeechRecognition = FakeRecognition
+    const onEnd = vi.fn()
+    startDictation({ onText: () => {}, onEnd })
+    FakeRecognition.last!.onerror?.({ error: 'network' })
     FakeRecognition.last!.onend?.()
+    expect(onEnd).toHaveBeenCalledWith('network')
+    const onEnd2 = vi.fn()
+    startDictation({ onText: () => {}, onEnd: onEnd2 })
+    for (let i = 0; i < 3; i++) {
+      FakeRecognition.last!.onerror?.({ error: 'no-speech' })
+      FakeRecognition.last!.onend?.()
+    }
     expect(onEnd2).toHaveBeenCalledWith(undefined)
   })
 })

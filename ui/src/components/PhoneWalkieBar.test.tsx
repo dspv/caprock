@@ -51,10 +51,28 @@ function fakeRecognition() {
   }
   vi.stubGlobal('isSecureContext', true)
 }
+/** A recognizer that ends only when the test says so (`endNow`), as Chrome
+ *  for Android does: late, or by itself in the middle of a hold. */
+let slow: { onresult?: (e: unknown) => void; onend?: () => void; stopped?: boolean }[] = []
+function slowRecognition() {
+  slow = []
+  ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {
+    onresult?: (e: unknown) => void
+    onend?: () => void
+    stopped = false
+    constructor() { slow.push(this); rec = this }
+    start() {}
+    stop() { this.stopped = true }
+  }
+  vi.stubGlobal('isSecureContext', true)
+}
+const endNow = () => act(() => rec.onend?.())
+const interim = (text: string) => act(() => rec.onresult?.({ results: [{ isFinal: false, 0: { transcript: text } }] }))
 const hear = (text: string) => act(() => rec.onresult?.({ results: [{ isFinal: true, 0: { transcript: text } }] }))
 
 beforeEach(() => {
   localStorage.clear()
+  sessionStorage.clear()
   resetAutoRead()
   resetTldr()
   resetQuickReplies([{ label: 'Continue', text: 'Continue.' }])
@@ -142,7 +160,7 @@ describe('the phone bar', () => {
     vi.restoreAllMocks()
   })
 
-  it('cancels when the finger slides off, putting back what was typed', () => {
+  it('cancels when the finger slides off, sending nothing and keeping what was said in the field', () => {
     fakeRecognition()
     const submitText = vi.fn(async () => true)
     render(<TerminalKeys send={vi.fn()} submitText={submitText} walkie voice />)
@@ -154,9 +172,162 @@ describe('the phone bar', () => {
     hear('never mind')
     expect(field.value).toBe('Also: never mind')
     fireEvent.pointerMove(mic, { pointerId: 1, clientX: 320, clientY: 560 })
-    expect(field.value).toBe('Also:')
-    expect(screen.getByRole('status').textContent).toMatch(/Cancelled — nothing sent/)
+    expect(field.value).toBe('Also: never mind')
+    expect(screen.getByRole('status').textContent).toMatch(/Not sent — what you said is in the field/)
     expect(submitText).not.toHaveBeenCalled()
+  })
+
+  it('keeps recording, latched, when the browser takes the touch, and the next tap sends', async () => {
+    fakeRecognition()
+    const submitText = vi.fn(async () => true)
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} walkie voice />)
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to talk' }), { pointerId: 1 })
+    hear('ship the fix')
+    fireEvent.pointerCancel(screen.getByRole('button', { name: /Recording/ }), { pointerId: 1 })
+    expect(rec.stopped).toBe(false)
+    expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).value).toBe('ship the fix')
+    now += 2000
+    const mic = screen.getByRole('button', { name: 'Recording — tap to send' })
+    fireEvent.pointerDown(mic, { pointerId: 2 })
+    fireEvent.pointerUp(mic, { pointerId: 2 })
+    await waitFor(() => expect(submitText).toHaveBeenCalledWith('ship the fix'))
+    vi.restoreAllMocks()
+  })
+
+  it('sends interim words when the service ends without a final result', async () => {
+    slowRecognition()
+    const submitText = vi.fn(async () => true)
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} walkie voice />)
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to talk' }), { pointerId: 1 })
+    interim('check the relay')
+    now += 1500
+    fireEvent.pointerUp(screen.getByRole('button', { name: /Recording/ }), { pointerId: 1 })
+    expect(submitText).not.toHaveBeenCalled()
+    endNow()
+    await waitFor(() => expect(submitText).toHaveBeenCalledWith('check the relay'))
+    vi.restoreAllMocks()
+  })
+
+  it('listens on when the service ends by itself mid-hold, and the release sends every word', async () => {
+    slowRecognition()
+    const submitText = vi.fn(async () => true)
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} walkie voice />)
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to talk' }), { pointerId: 1 })
+    hear('first part')
+    endNow() // Chrome on Android ends "continuous" listening after a pause
+    expect(slow.length).toBe(2)
+    hear('second part')
+    expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).value).toBe('first part second part')
+    now += 5000
+    fireEvent.pointerUp(screen.getByRole('button', { name: /Recording/ }), { pointerId: 1 })
+    endNow()
+    await waitFor(() => expect(submitText).toHaveBeenCalledWith('first part second part'))
+    vi.restoreAllMocks()
+  })
+
+  it('sends after a wait when the service never says it ended, and late words land in the field', async () => {
+    slowRecognition()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
+    const submitText = vi.fn(async () => true)
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} walkie voice />)
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to talk' }), { pointerId: 1 })
+    hear('merge it')
+    act(() => { vi.advanceTimersByTime(1200) })
+    fireEvent.pointerUp(screen.getByRole('button', { name: /Recording/ }), { pointerId: 1 })
+    act(() => { vi.advanceTimersByTime(2000) })
+    expect(submitText).not.toHaveBeenCalled() // still waiting for the last words
+    await act(async () => { vi.advanceTimersByTime(1100) })
+    expect(submitText).toHaveBeenCalledWith('merge it')
+    act(() => rec.onresult?.({ results: [{ isFinal: true, 0: { transcript: 'merge it' } }, { isFinal: true, 0: { transcript: ' and tag it' } }] }))
+    expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).value).toBe('and tag it')
+    expect(submitText).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a message the daemon did not take as a draft with Retry, even with words in the field', async () => {
+    let ok = false
+    const submitText = vi.fn(async () => ok)
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} sessionId="s1" walkie />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'dictated and lost' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    fireEvent.change(field, { target: { value: 'next thought' } })
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.getByText(/Not sent — Caprock did not confirm it/)).toBeTruthy()
+    expect(screen.getByText('dictated and lost')).toBeTruthy()
+    expect(field.value).toBe('next thought')
+    ok = true
+    fireEvent.click(retry)
+    await waitFor(() => expect(submitText).toHaveBeenLastCalledWith('dictated and lost'))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull())
+  })
+
+  it('keeps a message whose send threw, and photos that did not go, as drafts', async () => {
+    const submitText = vi.fn(async () => { throw new Error('relay closed') })
+    const sendPaths = vi.fn(async () => { throw new Error('offline') })
+    const attach = vi.fn(async () => ['/p/one.jpg'])
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} attach={attach} sendPaths={sendPaths} sessionId="s2" walkie />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'words' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await screen.findByText(/Not sent — Caprock did not confirm it/)
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } })
+    await screen.findByText('Image 1')
+    fireEvent.change(field, { target: { value: 'look' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await screen.findByText(/Not sent — the photos did not reach Caprock/)
+    expect(screen.getByText('[Image 1] look')).toBeTruthy()
+  })
+
+  it('keeps the field and a message on its way across a reload', async () => {
+    let release: (ok: boolean) => void = () => {}
+    const submitText = vi.fn(() => new Promise<boolean>((r) => { release = r }))
+    const { unmount } = render(<TerminalKeys send={vi.fn()} submitText={submitText} sessionId="s3" walkie />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'on its way' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    fireEvent.change(field, { target: { value: 'half a thought' } })
+    await waitFor(() => expect(submitText).toHaveBeenCalled())
+    unmount() // the phone discards the tab mid-send
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} sessionId="s3" walkie />)
+    expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).value).toBe('half a thought')
+    expect(screen.getByText(/may not have arrived/)).toBeTruthy()
+    expect(screen.getByText('on its way')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    release(true)
+  })
+
+  it('changes the dictation language from +, where the Chats screen has no other place for it', () => {
+    let tag = ''
+    ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {
+      lang = ''
+      start() { tag = this.lang }
+      stop() {}
+    }
+    vi.stubGlobal('isSecureContext', true)
+    vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US'])
+    render(<TerminalKeys send={vi.fn()} walkie voice />)
+    fireEvent.click(screen.getByRole('button', { name: /^More: photo/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Dictation language: English/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Russian/ }))
+    expect(localStorage.getItem('caprock.speech.lang')).toBe('ru-RU')
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to talk' }), { pointerId: 1 })
+    expect(tag).toBe('ru-RU')
+    expect(screen.getByRole('status').textContent).toMatch(/Russian/)
+    vi.restoreAllMocks()
+  })
+
+  it('says which language it listens in while recording', () => {
+    fakeRecognition()
+    localStorage.setItem('caprock.speech.lang', 'ru-RU')
+    render(<TerminalKeys send={vi.fn()} walkie voice />)
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Hold to talk' }), { pointerId: 1 })
+    expect(screen.getByRole('status').textContent).toMatch(/Russian/)
   })
 
   it('says how to dictate on an http page instead of recording', () => {

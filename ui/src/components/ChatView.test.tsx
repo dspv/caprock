@@ -379,7 +379,7 @@ describe('ChatView', () => {
     fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'yes do it' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     act(() => { live.handle({ type: 'hello', data: { server_time: Date.now() } }) })
-    expect(await screen.findByText(/a permission prompt is waiting; answer it first/)).toBeInTheDocument()
+    expect(await screen.findByText(/a permission prompt is on the screen; answer it first/)).toBeInTheDocument()
     expect(screen.getByText('yes do it')).toBeInTheDocument()
     // Send now is not offered while the prompt is on the screen.
     expect(screen.queryByRole('button', { name: 'Send now' })).toBeNull()
@@ -396,8 +396,8 @@ describe('ChatView', () => {
       await screen.findByText(text)
     }
     expect(store.inputs).toEqual([])
-    expect(screen.getByText('Queued — sends when the agent finishes this turn')).toBeInTheDocument()
-    expect(screen.getByText('Queued · 1 of 2')).toBeInTheDocument()
+    // No choice is asked: a plain outgoing bubble with a muted status line.
+    expect(screen.getByText('Sends when Claude finishes · 1 of 2')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit the queued message: first' }))
     fireEvent.change(screen.getByLabelText('Edit the queued message'), { target: { value: 'first, better' } })
@@ -408,7 +408,7 @@ describe('ChatView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send now' }))
     await waitFor(() => expect(store.inputs).toEqual(['first, better', '\r']))
     expect(store.calls).toEqual(['edit 100 first, better', 'cancel 101', 'now 100'])
-    await waitFor(() => expect(screen.queryByText(/^Queued/)).toBeNull())
+    await waitFor(() => expect(screen.queryByText(/^Sends when Claude/)).toBeNull())
   })
 
   it('the queue follows the live socket: a frame from the other device redraws it', async () => {

@@ -79,7 +79,7 @@ describe('Composer', () => {
     mount()
     fireEvent.change(box(), { target: { value: 'later' } })
     fireEvent.keyDown(box(), { key: 'Enter' })
-    expect(await screen.findByText('queued · sends when the agent is free')).toBeInTheDocument()
+    expect(await screen.findByText('Message will send when the agent is free')).toBeInTheDocument()
   })
 
   it('keeps the text and says why when the send fails', async () => {
