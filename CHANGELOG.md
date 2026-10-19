@@ -12,6 +12,31 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.137.0] - 2026-10-19
+
+### Added
+
+- **telegram:** forward messages to your paired bot — text, photos, links,
+  files, voice notes, one or several at once — and it asks once *Where to?*:
+  a running session Caprock started (waiting, working, then recent), a new
+  chat, or Cancel. Everything goes to the agent as one message, your own
+  words first, each item quoted with who wrote it; photos and files are
+  saved where pasted files go and named by path, a voice note is saved and
+  marked not transcribed. A busy session gets it when its turn ends, and the
+  bot says when it went. In Caprock it shows with a small *from Telegram*.
+  *Reply here* (off by default, remembered) sends that turn's answer back.
+  Premium, with two-way chat on (ADR-081).
+
+### Fixed
+
+- **app:** on Windows the tab keys read "Ctrl@0" and "Ctrl@1": the chip
+  used the ⇧ glyph, which no font Windows draws it with carries. Off macOS
+  every key now reads as the chord you press, Ctrl+Shift+1. The long
+  Windows and Linux key hints no longer crowd or cut the sidebar's labels
+  ("Settings", the theme's name, "Quick chat") or fill the header: a row
+  shows its key while the pointer is on it, and holding Ctrl shows every
+  key at once. macOS is unchanged.
+
 ## [0.136.0] - 2026-10-19
 
 ### Changed

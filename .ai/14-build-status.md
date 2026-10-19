@@ -369,6 +369,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-19 — 0.137.0: forward Telegram messages to a session; key hints that read on Windows
+
+A minor release, landed as one batch PR (#762). Messages forwarded to the paired Telegram bot go to a session Caprock started, or a new chat, as one message after one question (ADR-081, migration 0064), marked "from Telegram" in the chat; the agent's reply comes back to Telegram only when asked. On Windows and Linux the key hints no longer read "Ctrl@1" (a glyph the fonts lack) and no longer cover labels: a row shows its key on hover, and holding Ctrl shows them all.
+
 ### 2026-10-19 — 0.136.0: the phone fixed — Home as in 0.134, dictation never lost, chats show the agent thinking
 
 A minor release, landed as one batch PR (#760). The phone Home is back to the active sessions (the project list is for tablets), with a Chats row and a one-tap New chat; nothing is wider than the screen. Dictation is never lost (seven paths fixed, a Not sent row with Retry) and its language can be picked; Send always sends, a busy agent's message going in by itself when the turn ends. A chat shows the agent thinking or waiting for permission, each message's Sending / Sent state, pasted text as a quiet block, and a reply whose words come on a later line at once (an "event_update" frame). AI;DR works through the relay. The release plan's status is one line. Performance: transcript and Codex backfills write in batches on the recorder's own connection (F7, F15), and a Codex turn's text no longer doubles after a failed pass.
