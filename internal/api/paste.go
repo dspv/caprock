@@ -257,6 +257,76 @@ func writeUpload(root string, now time.Time, rawName, mimeType, data string) (st
 	if err != nil {
 		return "", &uploadErr{http.StatusBadRequest, "bad request", "data is not valid base64"}
 	}
+	return writeNamed(root, now, name, raw)
+}
+
+// forwardAudio is what a file forwarded to the Telegram bot may also be: a
+// voice note or audio, which no browser paste sends. Only SaveFile takes
+// these; the browser's endpoint keeps its list.
+var forwardAudio = map[string]string{
+	".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/opus", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav",
+}
+
+// SaveFile writes a file that did not come from a browser — one forwarded
+// to the Telegram bot (ADR-081) — into the paste folder with the checks
+// POST /v1/paste makes (the allow-list, plus voice notes and audio; 10 MB;
+// a directory of its own; 0600), and returns its path.
+func SaveFile(dataDir string, now time.Time, rawName, mimeType string, raw []byte) (string, error) {
+	name, ok := pasteName(rawName, mimeType)
+	if !ok {
+		name, ok = audioName(rawName, mimeType)
+	}
+	if !ok {
+		what := strings.ToLower(filepath.Ext(cleanStem(rawName)))
+		if what == "" {
+			what = "a file with no extension"
+		}
+		return "", fmt.Errorf("%s is not a type Caprock keeps", what)
+	}
+	path, uerr := writeNamed(config.PasteDir(dataDir), now, name, raw)
+	if uerr != nil {
+		return "", fmt.Errorf("%s", uerr.msg)
+	}
+	return path, nil
+}
+
+// audioName is pasteName for the audio SaveFile also takes.
+func audioName(rawName, mimeType string) (string, bool) {
+	if i := strings.LastIndexAny(rawName, `/\`); i >= 0 {
+		rawName = rawName[i+1:]
+	}
+	clean := cleanStem(rawName)
+	ext := strings.ToLower(filepath.Ext(clean))
+	stem := strings.TrimSuffix(clean, filepath.Ext(clean))
+	if _, ok := forwardAudio[ext]; !ok {
+		mt := strings.ToLower(strings.TrimSpace(strings.SplitN(mimeType, ";", 2)[0]))
+		ext = ""
+		for e, m := range forwardAudio {
+			if m == mt && (ext == "" || e < ext) {
+				ext = e
+			}
+		}
+		if ext == "" {
+			return "", false
+		}
+		stem = clean
+	}
+	stem = strings.Trim(stem, ". ")
+	if len(stem) > pasteNameMax {
+		stem = strings.TrimRight(stem[:pasteNameMax], ". ")
+	}
+	if stem == "" {
+		stem = "audio"
+	}
+	if isWindowsDevice(stem) {
+		stem = "_" + stem
+	}
+	return stem + ext, true
+}
+
+// writeNamed writes raw under a name already checked, in a directory of its
+// own under root.
+func writeNamed(root string, now time.Time, name string, raw []byte) (string, *uploadErr) {
 	if len(raw) == 0 {
 		return "", &uploadErr{http.StatusBadRequest, "empty file", "there is nothing in it to save"}
 	}

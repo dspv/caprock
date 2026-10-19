@@ -44,6 +44,11 @@ func (h *tgHost) SpawnMode() string { return "" }
 func (h *tgHost) Start(context.Context, string, string, string) (string, error) {
 	return "", nil
 }
+func (h *tgHost) Forward(context.Context, string, string) (int64, error) { return 0, nil }
+func (h *tgHost) StartChat(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (h *tgHost) SaveFile(string, string, []byte) (string, error) { return "", nil }
 
 // The token goes in through PUT, is checked with Telegram, and never comes
 // back out: the status carries a mask and the bot's name.

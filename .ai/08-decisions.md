@@ -2724,6 +2724,10 @@ caprock.dev, only on the user's click, after the card names every field.
 one bug report may go to Caprock support at caprock.dev the same way — on
 the user's click, after the sheet names every field.
 
+*Amended 2026-10-19 by [ADR-081](#adr-081--messages-forwarded-to-the-telegram-bot-go-to-a-session-as-one-message-after-one-question):*
+messages forwarded to the bot are asked about once and go to a session
+Caprock started, or a new chat, as one message through the message queue.
+
 ---
 
 ## ADR-048 — Several sign-ins per agent, each in a config directory of Caprock's; three per agent are free
@@ -5638,3 +5642,76 @@ imports, in black or white. DOM and canvas use the same Codex stroke path.
 Other agents and the user's Claude character choices remain as they are.
 
 **Revisit if:** the owner chooses a different identity for either product.
+
+## ADR-081 — Messages forwarded to the Telegram bot go to a session as one message, after one question
+
+**Date:** 2026-10-19 · **Status:** accepted (owner, 2026-10-19). Builds on
+[ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+(the bridge), [ADR-053](#adr-053--queued-messages-the-daemon-holds-what-the-chat-sends-mid-turn-and-types-it-in-when-the-turn-ends-one-per-turn)
+(the message queue) and [ADR-071](#adr-071--chats-are-a-kind-of-session-marked-listed-apart-started-in-one-tap-read-as-a-conversation)
+(chats). Contract: [03-contracts.md § Telegram bridge](03-contracts.md)
+and § Queued messages.
+
+**Context.** The owner reads things in Telegram — a colleague's message, a
+screenshot, a link, a voice note — that an agent should act on. Copying them
+into Caprock by hand is the friction; forwarding them to the paired bot is
+one gesture he already makes. Asked how several forwards should arrive, he
+answered (translated): "if I forward three, all three go to the agent."
+
+**Decision.**
+
+- **What is gathered.** In the paired chat only, any forwarded message, and
+  any photo, file, voice note, audio or video sent there. Telegram delivers
+  a multi-forward and an album as one update per message, so they are
+  gathered until the chat has been quiet for two seconds; then the bot asks
+  once: *Where to? (3 messages, 1 photo)*. Plain text typed while the burst
+  gathers, just before it (a comment typed with a forward arrives first), or
+  after the question is up, is the owner's own words and goes first. A plain
+  message with no forward after it is answered as before.
+- **The choice.** One button per session, as the phone's Continue list picks
+  them: waiting for you, then working, then the rest, newest first, quiet
+  ones only for two days, at most six; each reads *● name · waiting*,
+  *working* or *2h ago*. Then **+ New chat**, **Cancel**, and **Reply here:
+  off/on**. Only sessions Caprock started and that are running are offered
+  (rule 7); observed sessions and chats are not.
+- **One message.** On a tap the agent gets the words, then each item as a
+  quote block: *Forwarded from <name>* when Telegram says who wrote it
+  (*Forwarded message* when it hides that), then its text or caption. A
+  photo, file or voice note is fetched with `getFile` (10 MB at most) into
+  the paste folder with the paste endpoint's checks — voice notes and audio
+  also allowed here, never through the browser — and named by its quoted
+  path, as the phone names a photo. A voice note says *(not transcribed)*:
+  nothing transcribes it. A file of a type Caprock does not keep is named as
+  not saved.
+- **Through the queue.** The message is sent as the app's chat field sends
+  one: typed in when the session is at its prompt, otherwise held and typed
+  in when the turn ends. The question becomes *✓ Sent to <name>*, or *⏳
+  <name> is busy — will send when it finishes* and then *✓ Sent*. **+ New
+  chat** starts a chat (ADR-071) with the message as its first turn, in the
+  owner's default mode; Bypass asks first, as `/new` does, and still needs
+  ADR-041's consent.
+- **The mark.** A held row keeps `via: "telegram"` (migration 0064), and the
+  prompt the message becomes carries `via` in its event payload, so the
+  queue and the chat show *from Telegram* under it.
+- **Replies.** *Reply here* is off by default and remembered. On, the answer
+  to that one turn goes back to Telegram when its Stop arrives — as a
+  conversation's reply is sent (ADR-047), with *Open on phone* when phone
+  access is on — and the rules' own finished alert about it is held back so
+  it is not said twice. Off, the answer stays in Caprock.
+- **Premium.** Typing into a session from Telegram is the class ADR-047 made
+  Premium with its switch; a forward is no different. Without them the chat
+  hears the once-a-day line and no question is asked.
+
+**What leaves the machine.** Nothing new is sent to Telegram but the
+question, its buttons and the outcome, and — only with *Reply here* on — that
+turn's answer, under the rules ADR-047 set for replies. What is fetched
+comes from Telegram's own file server, the host the bridge already talks to.
+
+**Rules out:** transcribing a voice note (no transcription exists, and one
+would be another outbound call); a session Caprock did not start; one
+message per forward; sending the answer back unless asked; files over 10 MB
+or of types the paste folder refuses.
+
+**Revisit if:** a local transcription is built (then a voice note is
+transcribed before it goes); the owner wants forwards to go somewhere by
+default without asking; or Telegram changes how a multi-forward arrives.

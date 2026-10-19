@@ -112,15 +112,21 @@ func (h *tgHost) Session(ctx context.Context, id string) (telegram.Live, bool) {
 // live describes a session the way every Telegram message heads it.
 func (h *tgHost) live(ctx context.Context, s store.Session) telegram.Live {
 	det := h.d.sessionDetails(ctx, s)
-	l := telegram.Live{ID: s.SessionID, Header: alerts.Header(det), Title: det.Title, Owned: s.Owned}
+	l := telegram.Live{ID: s.SessionID, Header: alerts.Header(det), Title: det.Title, Owned: s.Owned,
+		Chat: s.Chat, LastAt: time.UnixMilli(max(s.WorkedAt, s.LastEventAt))}
 	if l.Title == "" {
 		l.Title = det.Project
 	}
 	if h.d.mgr != nil {
-		if _, ok := h.d.mgr.Get(s.SessionID); ok {
+		if a, ok := h.d.mgr.Get(s.SessionID); ok {
 			l.Owned, l.Alive = true, true
 			if _, waiting := h.d.mgr.PendingPermission(s.SessionID); waiting {
 				l.Waiting = true
+			} else if h.d.queue != nil {
+				// The queue's reading of a turn: what the forward picker
+				// calls working.
+				w, _ := h.d.queue.waiting(ctx, a)
+				l.Working = w == api.WaitingTurn
 			}
 		}
 	}
@@ -218,6 +224,66 @@ func (h *tgHost) Start(ctx context.Context, dir, prompt, mode string) (string, e
 	return id, err
 }
 
+// Forward sends a forward through the message queue, as the app's chat
+// field does, marked as from Telegram (ADR-081). Rule 7 is the queue's: a
+// session Caprock did not start, or that ended, is refused.
+func (h *tgHost) Forward(ctx context.Context, id, text string) (int64, error) {
+	if h.d.queue == nil {
+		return 0, errors.New("this daemon cannot type into sessions")
+	}
+	res, err := h.d.queue.SendVia(ctx, id, text, viaTelegram)
+	if err != nil {
+		return 0, err
+	}
+	h.d.log.Info("telegram: a forward was sent to a session", "component", "telegram", "session_id", id, "queued", !res.Sent)
+	if res.Queued != nil {
+		return res.Queued.ID, nil
+	}
+	return 0, nil
+}
+
+// StartChat starts a new chat (ADR-071) with the forward as its first
+// message, in mode; Bypass still needs the one-time consent of ADR-041.
+func (h *tgHost) StartChat(ctx context.Context, text, mode string) (string, error) {
+	if h.d.api == nil {
+		return "", errors.New("this daemon cannot start sessions")
+	}
+	req := map[string]any{"chat": true, "agent": "claude", "prompt": text}
+	if mode != "" {
+		req["permission_mode"] = mode
+	}
+	id, err := h.d.api.StartSession(ctx, req)
+	if errors.Is(err, api.ErrBypassConsent) {
+		return "", telegram.ErrBypassConsent
+	}
+	if err != nil {
+		return "", err
+	}
+	if h.d.queue != nil {
+		h.d.queue.markVia(id, viaTelegram)
+	}
+	h.d.log.Info("chat started from a Telegram forward", "component", "telegram", "session_id", id)
+	return id, nil
+}
+
+// SaveFile keeps a forwarded photo, file or voice note where pasted files
+// go, with the paste endpoint's checks.
+func (h *tgHost) SaveFile(name, mimeType string, data []byte) (string, error) {
+	return api.SaveFile(h.d.opt.DataDir, time.Now(), name, mimeType, data)
+}
+
+// viaTelegram marks a queued message and its prompt as forwarded from
+// Telegram.
+const viaTelegram = "telegram"
+
+// queuedTyped is the queue typing a held message in: a forward's picker
+// says it went.
+func (d *Daemon) queuedTyped(m store.QueuedMessage) {
+	if m.Via == viaTelegram && d.tg != nil {
+		d.tg.QueuedSent(m.ID)
+	}
+}
+
 // sessionDetails is what a message says about a session: its agent, project,
 // title, folder and branch.
 func (d *Daemon) sessionDetails(ctx context.Context, s store.Session) alerts.Details {
@@ -281,7 +347,7 @@ const conversationFresh = 2 * time.Minute
 // observeConversation sends what a session the owner talks to from Telegram
 // said or asked. Returns true when it handled the event.
 func (d *Daemon) observeConversation(ctx context.Context, ev event.Event) {
-	if d.tg == nil || ev.SessionID == "" || !d.tg.Active() || !d.tg.Conversing(ev.SessionID) || d.tg.Muted(ev.SessionID) {
+	if d.tg == nil || ev.SessionID == "" || !d.tg.Active() || d.tg.Muted(ev.SessionID) {
 		return
 	}
 	now := d.rec.Now()
@@ -295,6 +361,11 @@ func (d *Daemon) observeConversation(ctx context.Context, ev event.Event) {
 	case (ev.Kind == event.KindAgentStop || ev.Kind == event.KindThrottle) && !ev.Subagent():
 		a = alerts.Alert{Kind: alerts.KindFinished, SessionID: ev.SessionID, Trigger: ev}
 	default:
+		return
+	}
+	// A conversation hears everything; a forward sent with Reply here on
+	// hears only the answer to its own turn (ADR-081).
+	if !d.tg.Conversing(ev.SessionID) && (a.Kind != alerts.KindFinished || !d.tg.TakeReplyOnce(ev.SessionID)) {
 		return
 	}
 	if !d.talk.once(string(a.Kind)+"|"+ev.SessionID+"|"+ev.Ts.Format(time.RFC3339Nano), now) {

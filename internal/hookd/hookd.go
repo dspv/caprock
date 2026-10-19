@@ -287,6 +287,10 @@ type Handler struct {
 	// running turn. The message queue (ADR-053) reads a turn's end from it.
 	// It must not block: the shim is waiting for this answer.
 	AfterMain func(ev *event.Event, continued bool)
+	// Annotate may add to a main-thread event before it is recorded: the
+	// message queue marks a prompt that came from Telegram (ADR-081). It
+	// must not block.
+	Annotate func(ev *event.Event)
 }
 
 func (h *Handler) afterMain(ev *event.Event, continued bool) {
@@ -367,6 +371,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// nothing but a log line saying so. The write now finishes whether or not
 	// anyone is still waiting for the answer, bounded so a wedged database
 	// cannot pile handlers up forever.
+	if h.Annotate != nil && ev.AgentID == "" {
+		h.Annotate(ev)
+	}
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), RecordTimeout)
 	defer cancel()
 	res, err := h.Recorder.Record(wctx, ev, info)
