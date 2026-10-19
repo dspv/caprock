@@ -369,6 +369,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-19 — 0.138.0: pick the subagents' model, a quieter app window, release branches that are really pending
+
+A minor release, landed as one batch PR (#764). New agent gains "Subagents run on" (same as the session, Haiku, Sonnet, Opus) through CLAUDE_CODE_SUBAGENT_MODEL, with a Week-screen estimate of what Haiku would have cost (migration 0065). The app window was measured ([docs/app-window-footprint-2026-10-19.md](../docs/app-window-footprint-2026-10-19.md)): a hidden window stops receiving terminal frames, a flooding terminal paints at most every 33 ms with every byte kept, and footprint and shells come over the live socket. The release plan hides branches already on master (squash and batch merges included) and reads in two lines per branch. A brain write during a backfill no longer fails with SQLITE_BUSY, and a terminal holder exits on SIGTERM.
+
 ### 2026-10-19 — 0.137.0: forward Telegram messages to a session; key hints that read on Windows
 
 A minor release, landed as one batch PR (#762). Messages forwarded to the paired Telegram bot go to a session Caprock started, or a new chat, as one message after one question (ADR-081, migration 0064), marked "from Telegram" in the chat; the agent's reply comes back to Telegram only when asked. On Windows and Linux the key hints no longer read "Ctrl@1" (a glyph the fonts lack) and no longer cover labels: a row shows its key on hover, and holding Ctrl shows them all.

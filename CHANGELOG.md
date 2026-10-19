@@ -12,6 +12,60 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.138.0] - 2026-10-19
+
+### Added
+
+- **agents:** New agent (desktop, and the phone's start sheet) asks which
+  model Claude Code's subagents run on: the session's own (default), Haiku,
+  Sonnet or Opus. It sets `CLAUDE_CODE_SUBAGENT_MODEL` for the session, is
+  remembered per project, and shows on the session as *subagents: Haiku*. The
+  Week screen adds a note when subagents ran on a pricier model than Haiku and
+  the difference is a dollar or more: what they cost, and about what the same
+  tokens would cost on Haiku (an estimate at list prices).
+
+### Changed
+
+- **perf:** a hidden window no longer receives terminal output: after 2 s
+  out of sight each terminal lets its socket go and, when shown, resumes from
+  its last byte, so nothing is lost. A flooding terminal is written at most
+  every 33 ms instead of on every chunk. The status strip's footprint and the
+  shell list arrive as live-socket frames instead of a 10 s poll each.
+  Measured in Chromium against a test daemon, 60 s each (2026-10-19,
+  `docs/app-window-footprint-2026-10-19.md`): terminal frames to a hidden page
+  1,218 → 0 and its CPU 1.85% → 0.62%; three tabs with one at 20 lines a
+  second 28.4% → 17.9% browser CPU and 7.3 s → 4.3 s main-thread work; idle
+  Home 28 → 17 requests a minute.
+- **ui:** right after a check, the version panel's button is Check again;
+  What's new is a link on the "Checked" line.
+
+### Fixed
+
+- **brain:** keeping a memory while a backfill imports many transcripts no
+  longer fails with `SQLITE_BUSY`. Each import batch left the database free
+  for a while after it committed, but a batch already waiting was handed the
+  lock at once, so the gap never opened; it now waits the gap out. A write
+  that still finds the database busy is answered `503` with words, and the
+  dashboard tries a drop again rather than showing a bare error.
+- **terminal:** a shell terminal's holder stops on `SIGTERM` within about a
+  second. It passed `SIGTERM` to the shell, which ignores it, and then waited
+  for good; it now hangs the shell up first (as closing a terminal window
+  does, which also ends the shell's jobs), and kills what is still running
+  750 ms later.
+- **release:** the right panel's *Branches pushed, no PR yet* no longer lists
+  branches that already shipped. A branch squashed into a batch pull request
+  was still listed once master edited the same files or the release consumed
+  its changelog fragment; it is now found by its commit subjects in the
+  squash's message, or by its changes still standing in master's history. A
+  branch already inside another open pull request's branch (a batch) is left
+  out too. Each branch reads in two lines at 360px — its commit subject, then
+  the branch, its commits and age with ↗ — five at a time behind *Show all
+  N*, and a branch with no commit in a week waits behind *+N older*. Pull
+  request titles in the right panel take two lines instead of being cut.
+- **ui:** in a short window a sheet uses most of its height, and New agent's
+  First message scrolls into view when focused instead of sitting under the
+  footer.
+
 ## [0.137.0] - 2026-10-19
 
 ### Added
