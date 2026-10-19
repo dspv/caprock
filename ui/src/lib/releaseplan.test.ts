@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PlanRow } from './releaseplan'
 import type { Subagent, WorkRepo } from './api'
 import type { SessionBranch, SessionBranches } from './branches'
-import { ageText, BLOCKS, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
+import { ageText, BLOCKS, carriedBranches, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
 import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
@@ -85,6 +85,28 @@ describe('a row’s bar and word', () => {
     expect(osDots([{ os: 'windows', state: 'fail', checks: 1 }, { os: 'macos', state: 'pass', checks: 2 }])?.map((d) => d.label)).toEqual(['macOS', 'Windows'])
     // A merged row's checks are history: no dots.
     expect(rowOf(pr({ stage: 'merged', fill: 4, word: 'merged', card: { number: 7, stage: 'merged', os: [{ os: 'linux', state: 'pass', checks: 1 }], spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] } } })).ci).toBeUndefined()
+  })
+
+  // Owner, 2026-10-19: plain state words in the right panel, not a bar.
+  it('says a row’s state in plain words, blocked ranked first, a merged row’s age since the merge', () => {
+    const card = (c: Partial<BoardCard>): BoardCard => ({ number: 7, stage: 'open', spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] }, ...c })
+    const st = (p: Partial<WorkItem>, labels?: { name: string }[]) => rowOf(pr(p), labels, { now: NOW }).state
+    const os = [{ os: 'macos' as const, state: 'pass' as const, checks: 1 }, { os: 'linux' as const, state: 'running' as const, checks: 1 }, { os: 'windows' as const, state: 'running' as const, checks: 1 }]
+    expect(st({ running: true, card: card({ ci: 'running', os }) })).toMatchObject({ text: 'CI 1/3', rank: 1 })
+    expect(st({ red: true, card: card({ stage: 'fix', why: 'ci' }) })).toMatchObject({ text: 'CI failed', rank: 0, tone: 'danger' })
+    expect(st({ red: true, card: card({ stage: 'fix', why: 'conflict' }) })).toMatchObject({ text: 'needs a rebase', rank: 0 })
+    expect(st({}, [{ name: 'landing: CI red' }])).toMatchObject({ text: 'CI failed', rank: 0 })
+    expect(st({}, [{ name: 'landing: needs a hand merge' }])).toMatchObject({ rank: 0, tone: 'warn' })
+    expect(st({ card: card({ stage: 'ready', ci: 'pass' }) })).toMatchObject({ text: 'ready', rank: 2 })
+    const merged = st({ stage: 'merged', fill: 4, word: 'merged', pr: { number: 7, url: 'u', merged_at: NOW - 2 * 60 * MIN } })
+    expect(merged).toMatchObject({ text: 'merged · not released', age: { text: '2h' } })
+    expect(st({ stage: 'released', fill: 5, word: 'released' }).text).toBe('released')
+  })
+
+  it('names the pushed branches an open pull request carries, not the landed ones', () => {
+    const b = (name: string, p: object) => ({ name, local: false, remote: true, ahead: 1, behind: 0, committed_ms: NOW, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, ...p })
+    const m = carriedBranches({ connected: true, branches: [b('a', { in_pr: 9 }), b('b', { in_pr: 9 }), b('c', { in_pr: 9, landed: true }), b('d', {})] } as never)
+    expect([...m]).toEqual([[9, ['a', 'b']]])
   })
 
   it('says the CI time against the usual, and the agent cost only where it was recorded', () => {

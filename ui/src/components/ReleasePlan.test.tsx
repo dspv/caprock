@@ -19,8 +19,9 @@ import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
 import { releaseStatus } from '@/lib/releasestatus'
 import { live } from '@/lib/live'
 import { PipelineHostContext } from '@/lib/pipelineHost'
+import { resetPanelFolds } from './ui'
 
-afterEach(() => { h.work = 0; h.data = undefined; forgetDeckAnswers(); localStorage.clear() })
+afterEach(() => { h.work = 0; h.data = undefined; forgetDeckAnswers(); localStorage.clear(); resetPanelFolds() })
 
 function withKinds(): Work {
   const w = workFixture()
@@ -138,9 +139,32 @@ describe('the release plan', () => {
     expect(col('wait')).toHaveClass('hidden', '@[520px]/plan:block')
     expect(r.querySelector('[data-release-bar]')).toHaveClass('w-full')
     unmount()
-    // The cockpit's narrower shares.
-    render(<ReleasePlan plan={plan()} compact />)
-    expect(document.querySelector('[data-release-rows]')!.className).toContain('grid-cols-[minmax(0,2.2fr)_minmax(60px,1fr)_auto]')
+  })
+
+  // Owner, 2026-10-19, translated: the titles were unreadable in the right
+  // panel; only a pull request's title, a branch and when it was pushed matter.
+  it('in the right panel: no bars, the title over the full width, then state · age; blocked pull requests first', () => {
+    render(<ReleasePlan plan={plan()} compact now={NOW} />)
+    expect(document.querySelector('[data-release-bar]')).toBeNull()
+    expect(document.querySelector('[data-release-col]')).toBeNull()
+    // The heading: the version, next, and the last release; the long line is gone.
+    expect(screen.getByRole('heading', { name: '0.118.0' })).toBeInTheDocument()
+    expect(document.querySelector('[data-line-part]')).toBeNull()
+    expect(document.querySelector('[data-release-since]')!.textContent).toMatch(/^·last v0\.117\.4 2h ago$/)
+    const heads = [...document.querySelectorAll('[data-release-section]')].map((e) => e.textContent)
+    expect(heads).toEqual(['Shipping (1 merged, not released)', 'Open PRs (2)', 'Agents working (1)'])
+    const row = (n: number | string) => document.querySelector<HTMLElement>(`[data-release-row="${n}"]`)!
+    // The merged one: plain words, its age since the merge.
+    expect(row(630).querySelector('[data-release-meta]')).toHaveTextContent(/^merged · not released·50m$/)
+    // 631's landing label says CI red: blocked, marked, first; 633 is ready.
+    const prs = [...document.querySelectorAll<HTMLElement>('[data-release-rank]')].filter((e) => e.dataset.stage !== 'merged' && !e.dataset.releaseRow!.startsWith('s:'))
+    expect(prs.map((e) => e.dataset.releaseRow)).toEqual(['631', '633'])
+    expect(row(631).querySelector('[data-release-state]')).toHaveTextContent('CI failed')
+    expect(row(631).querySelector('[data-release-blocked]')).toHaveTextContent('!')
+    expect(row(633).querySelector('[data-release-state]')).toHaveTextContent('ready')
+    expect(row(633).querySelector('[data-release-blocked]')).toBeNull()
+    // The title wraps to two lines at most, never cut to a few letters.
+    expect(within(row(633)).getByRole('link', { name: /input highlight/ })).toHaveClass('line-clamp-2')
   })
 
   it('opens a row in place when the page asks to', () => {
@@ -301,46 +325,54 @@ describe('where it is drawn', () => {
     render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
     const region = await screen.findByRole('region', { name: 'Release' })
     await within(region).findByRole('heading', { name: '0.118.0' })
-    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.firstChild?.textContent)
-    expect(sections).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Branches pushed, no PR yet · 1', 'Agents working now · 2'])
+    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.textContent)
+    expect(sections).toEqual(['Shipping (1 merged, not released)', 'Open PRs (2)', 'Branches without a PR (1)▸', 'Agents working (2)'])
+    // Folded by default; the heading opens it, remembered per viewer.
+    expect(region.querySelector('[data-release-row="b:feat/batch-1"]')).toBeNull()
+    fireEvent.click(region.querySelector('[data-release-section="branch"]')!)
+    expect(region.querySelector('[data-release-section="branch"]')).toHaveAttribute('aria-expanded', 'true')
+    expect(localStorage.getItem('caprock.panel.folds')).toContain('release-branches-shown')
+    // One line: the name and the age; the subject on hover; the row opens the comparison.
     const branch = region.querySelector('[data-release-row="b:feat/batch-1"]')!
-    expect(branch).toHaveTextContent('fix(deck): the ring')
-    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('2 commits · 30m ago')
-    expect(branch.querySelector('[data-release-branch]')).toHaveTextContent('feat/batch-1')
+    expect(branch).toHaveTextContent(/^feat\/batch-130m$/)
     expect(branch.querySelector('[data-release-bar]')).toBeNull()
-    expect(branch.querySelector('[data-release-chip]')).toBeNull()
-    // Two lines: the subject, then the branch, its commits and age with ↗
-    // at that line's end, inside the one link to the comparison.
     const link = branch.querySelector('a')!
     expect(link).toHaveAttribute('href', 'https://github.com/dspv/caprock/compare/master...feat/batch-1')
-    expect(link.querySelector('[data-release-title]')).toHaveTextContent('fix(deck): the ring')
-    expect(link.querySelector('[data-release-word]')!.parentElement).toHaveTextContent(/feat\/batch-1·2 commits · 30m ago↗$/)
-    expect(region.querySelector('[data-release-section="branch"] [data-release-hint]')).toHaveTextContent('Will go into the next batch PR')
-    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-word]')).toHaveTextContent('working 12m')
+    expect(link.title).toContain('fix(deck): the ring')
+    expect(branch).not.toHaveTextContent('↗')
+    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-state]')).toHaveTextContent('working 12m')
+    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-age]')).toBeNull()
   })
 
   // Owner, 2026-10-19, translated: "the information isn't perceivable like
   // this". Five branches at rest, then Show all; a week without a commit
-  // waits behind +N older.
-  it('shows five pushed branches, then Show all N, and the week-old ones behind +N older', async () => {
+  // waits behind +N older; a branch an open pull request carries is that
+  // pull request's +N branches, not a row.
+  it('shows five pushed branches, then Show all N, and the week-old ones behind +N older; carried branches on their pull request', async () => {
     h.data = withKinds()
     writeDeck('stats:/w/caprock', statsFixture())
     const br = (i: number, ago: number) => ({ name: `fix/b-${i}`, local: false, remote: true, ahead: 1, behind: 0, committed_ms: Date.now() - ago, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: `fix(b): change ${i}` })
     const HOUR = 3_600_000
     writeDeck('branches:/w/caprock', { connected: true, repo: 'dspv/caprock', default: 'master', base: 'origin/master', fetched_at: NOW,
       branches: [...Array.from({ length: 7 }, (_, i) => br(i, (i + 1) * HOUR)), br(7, 9 * 24 * HOUR), br(8, 10 * 24 * HOUR),
-        { ...br(9, HOUR), in_pr: 760 }] })
+        { ...br(9, HOUR), in_pr: 631 }, { ...br(10, HOUR), in_pr: 631 }] })
+    localStorage.setItem('caprock.panel.folds', JSON.stringify(['release-branches-shown']))
+    resetPanelFolds()
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
     await within(region).findByRole('heading', { name: '0.118.0' })
     const rows = () => [...region.querySelectorAll('[data-stage="branch"]')].map((e) => e.getAttribute('data-release-row'))
-    expect(region.querySelector('[data-release-section="branch"]')!.firstChild?.textContent).toBe('Branches pushed, no PR yet · 7')
+    expect(region.querySelector('[data-release-section="branch"]')!.textContent).toBe('Branches without a PR (7)▸')
     expect(rows()).toEqual(['b:fix/b-0', 'b:fix/b-1', 'b:fix/b-2', 'b:fix/b-3', 'b:fix/b-4'])
     fireEvent.click(within(region).getByRole('button', { name: 'Show all 7' }))
     expect(rows()).toHaveLength(7)
     fireEvent.click(within(region).getByRole('button', { name: '+2 older' }))
     expect(rows()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `b:fix/b-${i}`))
     expect(region.querySelector('[data-release-older]')).toBeNull()
+    const carried = region.querySelector<HTMLElement>('[data-release-row="631"] [data-release-carried]')!
+    expect(carried).toHaveTextContent('+2 branches')
+    fireEvent.click(carried)
+    expect(region.querySelector('[data-release-row="631"] [data-release-carried-names]')).toHaveTextContent('fix/b-9fix/b-10')
   })
 
   it('draws nothing in the right panel for a session outside a repository', () => {

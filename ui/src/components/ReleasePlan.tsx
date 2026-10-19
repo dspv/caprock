@@ -20,6 +20,12 @@
  * Drawn on the Pipeline page, in the right panel (`compact`), as the Work
  * page's Release view, and on the phone home (`phone`: components/
  * PhoneReleases). It reads nothing itself.
+ *
+ * The right panel (`compact`, ~320px) draws no bars and no columns (owner,
+ * 2026-10-19, translated: the titles were unreadable, and only a pull
+ * request's title, a branch and when it was pushed matter): each row is its
+ * title over the full width, two lines at most, and under it one muted line,
+ * *state · extra · age* (CompactRows).
  */
 import { useContext, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats } from '@/lib/api'
@@ -27,7 +33,7 @@ import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { RELEASED_MEANS } from '@/lib/journey'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
-import { BLOCKS, planEmpty, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { ageText, BLOCKS, planEmpty, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, usePoll } from './SessionDeck'
@@ -36,7 +42,7 @@ import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS } from '@/lib/work'
 import { SectionLabel, SessionSubagents, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
-import { Panel } from './ui'
+import { Panel, usePanelFold } from './ui'
 import { extTitle } from '@/lib/externalLinks'
 import { PipelineHostContext } from '@/lib/pipelineHost'
 import { href } from '@/lib/router'
@@ -96,7 +102,12 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
         {v && <span className={`text-fg-faint ${compact && !phone ? 'text-[10.5px]' : 'text-[11px] uppercase tracking-[0.1em]'}`}>{compact && !phone ? 'next' : 'next release'}</span>}
         {pre && <ReleaseWhy status={pre} />}
         {showRepo && <span className="min-w-0 truncate text-[13px] font-medium text-fg-muted" title={plan.root}>{plan.name}</span>}
-        {plan.line ? <ReleaseLine parts={v ? plan.line.filter((p) => p.key !== 'head') : plan.line} since={plan.since} phone={phone} compact={compact} /> : plan.since && (
+        {compact && !phone ? (plan.last && (
+          // The right panel says only when the last release was; the sections below say the rest.
+          <span data-release-since title={plan.since?.title} className="num min-w-0 truncate text-[11px] text-fg-muted">
+            <span aria-hidden className="mr-1.5 text-fg-faint">·</span>last {plan.last.name} {ageText(now - plan.last.at)} ago
+          </span>
+        )) : plan.line ? <ReleaseLine parts={v ? plan.line.filter((p) => p.key !== 'head') : plan.line} since={plan.since} phone={phone} compact={compact} /> : plan.since && (
           <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>
@@ -106,6 +117,8 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
         <p className={`text-fg-muted ${phone ? 'text-[14px]' : compact ? 'text-[11.5px]' : 'text-[12.5px]'}`}>{merge ? 'No pull request open and no agent at work here.' : empty ?? 'Nothing waiting for a release.'}</p>
       ) : phone ? (
         <PhoneRows plan={plan} steps={steps} />
+      ) : compact ? (
+        <CompactRows plan={plan} onOpen={onOpen} />
       ) : (
         <Rows plan={plan} compact={compact} onOpen={onOpen} steps={steps} />
       )}
@@ -205,6 +218,132 @@ function Rows({ plan, compact, onOpen, steps }: { plan: ReleasePlanData; compact
         ])}
       </ul>
     </div>
+  )
+}
+
+/** The right panel's open pull requests: blocked first, then under way, then ready; the board's order within each. */
+export function byUrgency(rows: readonly PlanRow[]): PlanRow[] {
+  return rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => a.state.rank - b.state.rank || i - j).map(([r]) => r)
+}
+
+/** The right panel's pushed branches, folded until asked for, remembered per viewer. */
+const BRANCHES_FOLD = 'release-branches-shown'
+
+/**
+ * The right panel's rows (owner, 2026-10-19): sections in capitals with
+ * their counts — *Shipping*, *Open PRs*, *Branches without a PR*, *Agents
+ * working* — each row its title over the full width, two lines at most, and
+ * one muted line under it: the state in plain words, what else is said (the
+ * branches a batch PR carries, what an agent does) and the age. A blocked
+ * pull request is marked *!*. The branches fold to their heading until
+ * asked, one line each: the name and the age.
+ */
+function CompactRows({ plan, onOpen }: { plan: ReleasePlanData; onOpen?: (n: number) => void }) {
+  const [open, setOpen] = useState<{ all?: boolean; older?: boolean }>({})
+  // usePanelFold keeps the keys a viewer folded; here the key's presence means shown, so the default is folded.
+  const [folded, toggle] = usePanelFold(BRANCHES_FOLD)
+  const shownBranches = !folded
+  const head = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint'
+  return (
+    <div data-release-rows data-release-compact className="grid min-w-0 gap-2 text-[12px]">
+      {planSections(plan.rows).map((sec) => {
+        if (sec.key === 'branch') {
+          const shown = shownRows(sec.key, sec.rows, open)
+          return (
+            <div key={sec.key} className="grid min-w-0 gap-0.5">
+              <button type="button" data-release-section={sec.key} aria-expanded={shownBranches} onClick={toggle} title={sec.hint}
+                className={`flex min-w-0 cursor-pointer items-center justify-between gap-2 text-left hover:text-fg-muted ${head}`}>
+                <span className="min-w-0 truncate">{sec.short}</span>
+                <span aria-hidden className={`shrink-0 text-[11px] leading-none transition-transform ${shownBranches ? 'rotate-90' : ''}`}>▸</span>
+              </button>
+              {shownBranches && (
+                <ul className="grid min-w-0">
+                  {shown.rows.map((r) => <CompactBranch key={r.key} row={r} />)}
+                  {(shown.more > 0 || shown.old > 0) && (
+                    <li className="text-[10.5px]"><MoreRows shown={shown} onAll={() => setOpen((o) => ({ ...o, all: true }))} onOlder={() => setOpen((o) => ({ ...o, older: true }))} /></li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )
+        }
+        const rows = sec.key === 'pr' ? byUrgency(sec.rows) : sec.rows
+        return (
+          <div key={sec.key} className="grid min-w-0 gap-1">
+            <h5 data-release-section={sec.key} title={sec.hint} className={head}>{sec.short}</h5>
+            <ul className="grid min-w-0 gap-1.5">
+              {rows.map((r) => <CompactRow key={r.key} row={r} root={plan.root} onOpen={onOpen} mark={sec.key === 'pr'} />)}
+            </ul>
+          </div>
+        )
+      })}
+      {plan.later.map((g) => (
+        <div key={g.key} className="grid min-w-0 gap-1">
+          <h5 data-release-later={g.key} className={head}>{g.label}</h5>
+          <ul className="grid min-w-0 gap-1.5">
+            {g.rows.map((r) => <CompactRow key={r.key} row={r} root={plan.root} onOpen={onOpen} />)}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * One right-panel row: a blocked mark where the section has them, the title
+ * (Title, two lines at most), then *state · +N branches · age*. *+N
+ * branches* opens the names of the pushed branches the pull request carries.
+ */
+function CompactRow({ row: r, root, onOpen, mark = false }: { row: PlanRow; root: string; onOpen?: (n: number) => void; mark?: boolean }) {
+  const [names, setNames] = useState(false)
+  const st = r.state
+  const age = st.age ?? r.age
+  // A subagent's word already says how long it has worked.
+  const sayAge = age && !st.text.endsWith(age.text)
+  const extra = !r.number && r.wait && r.wait.text !== st.text ? r.wait : undefined
+  const dot = <span aria-hidden className="shrink-0 text-fg-faint">·</span>
+  return (
+    <li data-release-row={r.number ?? r.key} data-stage={r.stage} data-release-rank={st.rank} className="flex min-w-0 gap-1">
+      {mark && (
+        <span data-release-blocked={st.rank === 0 ? '' : undefined} aria-hidden className={`w-2 shrink-0 text-center font-bold leading-[1.35] ${st.tone === 'warn' ? 'text-warn' : 'text-danger'}`}>{st.rank === 0 ? '!' : ''}</span>
+      )}
+      <div className="grid min-w-0 flex-1 gap-px leading-[1.35]">
+        <Title row={r} root={root} compact onOpen={onOpen} />
+        <span data-release-meta className="flex min-w-0 items-baseline gap-1 text-[10.5px] text-fg-faint">
+          <span data-release-state title={st.title}
+            className={`shrink-0 whitespace-nowrap ${st.tone === 'danger' ? 'font-medium text-danger' : st.tone === 'warn' ? 'font-medium text-warn' : r.stage === 'merged' ? 'text-merged' : 'text-fg-muted'}`}>{st.text}</span>
+          {r.carried?.length ? <>{dot}<button type="button" data-release-carried aria-expanded={names} onClick={() => setNames((v) => !v)}
+            title={`Pushed branches this pull request already carries: ${r.carried.join(', ')}`}
+            className="shrink-0 cursor-pointer whitespace-nowrap underline decoration-dotted underline-offset-2 hover:text-fg">+{r.carried.length} branch{r.carried.length === 1 ? '' : 'es'}</button></> : null}
+          {extra && <>{dot}<span data-release-wait title={extra.title} className={`min-w-0 truncate ${extra.tone === 'warn' ? 'text-warn' : extra.tone === 'danger' ? 'text-danger' : ''}`}>{extra.text}</span></>}
+          {sayAge && <>{dot}<span data-release-age title={age.title} className="num shrink-0 whitespace-nowrap">{age.text}</span></>}
+        </span>
+        {names && r.carried && (
+          <ul data-release-carried-names className="grid min-w-0 text-[10.5px] text-fg-faint">
+            {r.carried.map((n) => <li key={n} className="truncate" title={n}>{n}</li>)}
+          </ul>
+        )}
+      </div>
+    </li>
+  )
+}
+
+/** A pushed branch in the right panel, one line: its name (cut), its age at the right; the row opens the comparison on GitHub. */
+function CompactBranch({ row: r }: { row: PlanRow }) {
+  const body = (
+    <>
+      <span data-release-branch className="min-w-0 truncate">{r.branch}</span>
+      {r.age && <span data-release-age className="num shrink-0 text-[10.5px] text-fg-faint">{r.age.text}</span>}
+    </>
+  )
+  const title = `${r.title !== r.branch ? `${r.title}\n` : ''}${r.wordTitle ?? ''}`
+  const cls = 'flex min-w-0 items-baseline justify-between gap-2 rounded-[3px] py-px text-fg-muted no-underline hover:text-accent'
+  return (
+    <li data-release-row={r.key} data-stage={r.stage} className="min-w-0">
+      {r.url
+        ? <a href={r.url} target="_blank" rel="noopener noreferrer" data-ext="none" title={extTitle(title)} className={cls}>{body}</a>
+        : <div title={title} className={cls}>{body}</div>}
+    </li>
   )
 }
 
@@ -520,7 +659,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
           <span>{n} in work</span>
         </span>
       )}>Release</SectionLabel>
-      <ReleasePlan plan={plan} compact />
+      <ReleasePlan plan={plan} compact now={now} />
     </section>
   )
 }

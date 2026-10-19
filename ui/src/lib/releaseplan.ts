@@ -105,6 +105,26 @@ export interface PlanRow {
   cost: { text: string; title: string; known: boolean }
   /** The agent session it opens (`pickSession`); absent when no live session is on it. */
   session?: { id: string; owned: boolean; name: string }
+  /** The right panel's plain state words in place of the bar (`stateOf`). */
+  state: RowState
+  /** A pull request's: the pushed branches its branch already carries (a batch PR), by name. */
+  carried?: string[]
+}
+
+/**
+ * Where a row stands, in the words the right panel says under its title
+ * (owner, 2026-10-19: a bar of five blocks with "merged" and one empty block
+ * read as broken): *CI 1/3*, *CI failed*, *ready*, *merged · not released*.
+ * `rank` sorts the open pull requests: blocked (0) first, then under way (1),
+ * then the rest (2). `age` is the one said beside it: since the merge for a
+ * merged row, else since it was opened.
+ */
+export interface RowState {
+  text: string
+  title: string
+  tone?: 'danger' | 'warn'
+  rank: 0 | 1 | 2
+  age?: { text: string; title: string }
 }
 
 export interface Wait {
@@ -179,6 +199,8 @@ export interface ReleasePlanData {
   later: PlanGroup[]
   /** How merged work ships here (`board.ships_by`); absent: not known. */
   ships?: ShipsBy
+  /** The last release (the last tag, else the newest GitHub release): the right panel's heading says it. */
+  last?: { name: string; at: number }
 }
 
 /** "v0.119.0" → [0, 119, 0] and its prefix; undefined for a tag that is not x.y.z. */
@@ -357,11 +379,44 @@ export function pickSession(ss: readonly WorkSession[], now?: number): PlanRow['
   return { id: s.session_id, owned: s.owned, name: s.name || s.project || s.session_id.slice(0, 8) }
 }
 
+/**
+ * A row's state words (RowState), from what the board read: a landing label
+ * first, then a merge, a red check or a conflict, the checks still running
+ * (passed OSes over all), ready. An agent's row keeps its stage word.
+ */
+export function stateOf(it: WorkItem, landing: ReturnType<typeof landingOf>, wait: Wait | undefined, dots: OSDot[] | undefined, ctx: RowContext = {}): RowState {
+  const c = it.card
+  const says = (text: string, rank: RowState['rank'], title: string, tone?: RowState['tone']): RowState => ({ text, rank, title, tone })
+  if (it.kind !== 'pr') return says(it.kind === 'session' && it.word === 'agent' ? 'no PR yet' : it.word, 1, wait?.title ?? 'An agent is on it; it has not opened a pull request yet.')
+  if (it.stage === 'released') return says('released', 2, `In ${c?.release ?? 'a release'}.`)
+  if (it.stage === 'merged') {
+    const at = it.pr?.merged_at
+    const st = says('merged · not released', 2, wait?.title ?? 'Merged: it ships with the next release.')
+    return at && ctx.now ? { ...st, age: { text: ageText(ctx.now - at), title: `Merged ${spanText(Math.max(0, ctx.now - at))} ago` } } : st
+  }
+  if (landing?.red) return says('CI failed', 0, wait?.title ?? 'The landing queue says its CI is red.', 'danger')
+  if (landing?.warn) return says('needs your merge', 0, wait?.title ?? 'The landing queue could not merge it.', 'warn')
+  if (landing) return says(landing.word, 1, wait?.title ?? 'Set by the landing queue.')
+  if (it.word === 'draft') return says('draft', 2, 'A draft: it waits to be marked ready for review.')
+  if (c?.why === 'conflict') return says('needs a rebase', 0, wait?.title ?? 'It conflicts with its base branch.', 'danger')
+  if (c?.why === 'changes_requested') return says('changes requested', 0, wait?.title ?? 'A reviewer asked for changes.', 'danger')
+  if (c?.why === 'ci' || it.red || dots?.some((d) => d.state === 'fail')) return says('CI failed', 0, wait?.title ?? 'A check failed.', 'danger')
+  if (c?.ci === 'running' || it.running) {
+    const pass = dots?.filter((d) => d.state === 'pass').length ?? 0
+    const title = `${wait?.title ?? 'Its checks are running.'}${dots?.length ? `\n${dots.map((d) => d.title).join('\n')}` : ''}`
+    return says(dots?.length ? `CI ${pass}/${dots.length}` : 'CI running', 1, title)
+  }
+  if (c?.stage === 'ready') return c.review === 'review_required' ? says('needs a review', 2, wait?.title ?? 'A review is required before it merges.') : says('ready', 2, wait?.title ?? 'Nothing holds it: it can merge.')
+  return says(it.word, 2, wait?.title ?? 'Open.')
+}
+
 /** One board row as a plan row: its blocks, its word, a landing label over the word, what it waits for, its age and CI per OS. */
 export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext = {}): PlanRow {
   const landing = it.kind === 'pr' ? landingOf(labels) : undefined
   // A pull request's age is since it was opened; an agent's, since its first session.
   const started = (it.kind === 'pr' ? it.pr?.created_at : undefined) ?? it.startedAt
+  const wait = waitOf(it, landing, ctx)
+  const ci = it.kind === 'pr' && it.stage !== 'merged' ? osDots(it.card?.os, ctx.now) : undefined
   return {
     key: it.key,
     number: it.pr?.number,
@@ -377,12 +432,13 @@ export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext
     word: landing?.word ?? (it.kind === 'session' && it.word === 'agent' ? 'no PR yet' : it.word),
     wordTitle: landing ? `Set by the landing queue; on the board: ${it.word}` : it.kind === 'session' && it.word === 'agent' ? 'An agent is on it; it has not opened a pull request yet.' : undefined,
     running: it.running || (it.kind === 'session' && it.working),
-    wait: waitOf(it, landing, ctx),
+    wait,
     age: started && ctx.now ? { text: ageText(ctx.now - started), title: `${it.kind === 'pr' ? 'Opened' : 'Started'} ${spanText(Math.max(0, ctx.now - started))} ago` } : undefined,
-    ci: it.kind === 'pr' && it.stage !== 'merged' ? osDots(it.card?.os, ctx.now) : undefined,
+    ci,
     ciTime: ciTimeOf(it, ctx),
     cost: costOf(it),
     session: pickSession(it.sessions, ctx.now),
+    state: stateOf(it, landing, wait, ci, ctx),
   }
 }
 
@@ -417,7 +473,11 @@ export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], 
     const recent = [...done].sort((a, b) => mergedAt(b) - mergedAt(a)).slice(0, MERGED_RECENT)
     later.push({
       key: 'merged', label: 'Merged recently · shipped when merged',
-      rows: recent.map((it) => ({ ...rowOf(it, labels.get(it.pr?.number ?? -1), ctx), wait: undefined, wordTitle: 'Merged: the last step here. This repository cuts no releases, so work ships when it merges.' })),
+      rows: recent.map((it) => {
+        const r = rowOf(it, labels.get(it.pr?.number ?? -1), ctx)
+        const title = 'Merged: the last step here. This repository cuts no releases, so work ships when it merges.'
+        return { ...r, wait: undefined, wordTitle: title, state: { ...r.state, text: 'merged', title } }
+      }),
     })
   }
   if (drafts.length) later.push({ key: 'drafts', label: 'Later · drafts, not yet ready for review', rows: drafts.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)) })
@@ -425,7 +485,11 @@ export function planRows(items: readonly WorkItem[], idle: readonly WorkItem[], 
   if (sleeping.length) {
     later.push({
       key: 'idle', label: 'Not in a release yet · agents waiting for you, idle 30+ min',
-      rows: sleeping.map((it) => ({ ...rowOf(it, undefined, ctx), word: 'idle', wordTitle: 'At its prompt for over 30 minutes, waiting for you; it has not opened a pull request yet.' })),
+      rows: sleeping.map((it) => {
+        const title = 'At its prompt for over 30 minutes, waiting for you; it has not opened a pull request yet.'
+        const r = rowOf(it, undefined, ctx)
+        return { ...r, word: 'idle', wordTitle: title, state: { ...r.state, text: 'idle', title, rank: 2 as const } }
+      }),
     })
   }
   return { rows: next.map((it) => rowOf(it, labels.get(it.pr?.number ?? -1), ctx)), later, merged: next.filter((it) => it.stage === 'merged').length }
@@ -525,6 +589,7 @@ export function branchRows(br: SessionBranches | undefined, prs: readonly Branch
         stage: 'branch', section: 'branch', filled: PER_STEP, red: false, warn: false, running: false,
         word: `${plural(n, 'commit')} · ${age} ago`,
         wordTitle: `${b.name}: pushed, ${plural(n, 'commit')} ahead of ${base}, the last ${spanText(Math.max(0, now - b.committed_ms))} ago; no pull request yet.`,
+        state: { text: 'no PR yet', rank: 2, title: `${b.subject ? `${b.subject}\n` : ''}${b.name}: pushed, ${plural(n, 'commit')} ahead of ${base}; no pull request yet.` },
         age: { text: age, title: `Last commit ${spanText(Math.max(0, now - b.committed_ms))} ago` },
         cost: b.sessions > 0
           ? { text: fmtUSD(b.cost_usd), title: `${fmtUSD(b.cost_usd)} of agent work over ${plural(b.sessions, 'session')} on this branch, at API list price, not a bill.\n${AGENT_COST_NOTE}`, known: true }
@@ -547,6 +612,7 @@ export function subagentRows(subs: SubagentsNow | undefined, now: number): PlanR
         title,
         stage: 'agent', section: 'agent', filled: PER_STEP, red: false, warn: a.asking, running: !a.asking,
         word: a.asking ? 'asking' : `working ${age}`,
+        state: { text: a.asking ? 'asking' : `working ${age}`, rank: a.asking ? 0 : 1, tone: a.asking ? 'warn' : undefined, title: a.doing ? `Now: ${a.doing}` : `A subagent of this session, working for ${spanText(Math.max(0, now - a.started_at))}.` },
         wordTitle: a.asking ? 'This subagent waits on a permission prompt.' : `A subagent of this session${a.agent_type ? ` (${a.agent_type})` : ''}, working for ${spanText(Math.max(0, now - a.started_at))}, ${plural(a.tool_calls, 'call')} so far.`,
         wait: a.doing && a.doing !== task ? { text: a.doing, title: `Now: ${a.doing}` } : undefined,
         age: { text: age, title: `Started ${spanText(Math.max(0, now - a.started_at))} ago` },
@@ -558,12 +624,19 @@ export function subagentRows(subs: SubagentsNow | undefined, now: number): PlanR
 }
 
 /** The rows by section, in SECTION_ORDER, each named with its count (a branch section's, the branches not `older`); empty sections left out. */
-export function planSections(rows: readonly PlanRow[]): { key: RowSection; label: string; hint: string; rows: PlanRow[] }[] {
+export function planSections(rows: readonly PlanRow[]): { key: RowSection; label: string; short: string; hint: string; rows: PlanRow[] }[] {
   const label: Record<RowSection, (n: number) => string> = {
     merged: (n) => `In this release · ${n} merged`,
     pr: (n) => `Pull requests · ${n} open`,
     branch: (n) => (n ? `Branches pushed, no PR yet · ${n}` : 'Branches pushed, no PR yet'),
     agent: (n) => `Agents working now · ${n}`,
+  }
+  // The right panel's headings (owner, 2026-10-19), said in capitals there.
+  const short: Record<RowSection, (n: number) => string> = {
+    merged: (n) => `Shipping (${n} merged, not released)`,
+    pr: (n) => `Open PRs (${n})`,
+    branch: (n) => `Branches without a PR (${n})`,
+    agent: (n) => `Agents working (${n})`,
   }
   const hint: Record<RowSection, string> = {
     merged: 'Already merged: ships with the next release',
@@ -573,7 +646,8 @@ export function planSections(rows: readonly PlanRow[]): { key: RowSection; label
   }
   return SECTION_ORDER.map((key) => {
     const rs = rows.filter((r) => r.section === key)
-    return { key, label: label[key](rs.filter((r) => !r.older).length), hint: hint[key], rows: rs }
+    const n = rs.filter((r) => !r.older).length
+    return { key, label: label[key](n), short: short[key](n), hint: hint[key], rows: rs }
   }).filter((s) => s.rows.length > 0)
 }
 
@@ -610,7 +684,9 @@ export function releasePlan(input: { root: string; name?: string; repo?: WorkRep
   const planned = planRows(input.items, input.idle ?? [], root, last?.at, stats?.prs ?? [], { now, flow: board?.flow }, ships)
   const { later, merged } = planned
   const added = [...branchRows(input.extra?.branches, stats?.prs ?? [], now, stats?.repo ?? input.extra?.branches?.repo), ...subagentRows(input.extra?.subagents, now)]
-  const rows = [...planned.rows, ...added].sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section))
+  const carried = carriedBranches(input.extra?.branches)
+  const rows = [...planned.rows.map((r) => (r.number && carried.has(r.number) ? { ...r, carried: carried.get(r.number) } : r)), ...added]
+    .sort((a, b) => SECTION_ORDER.indexOf(a.section) - SECTION_ORDER.indexOf(b.section))
   const name = input.name ?? repo?.name ?? root.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? root
   if (ships === 'merge') {
     return {
@@ -628,7 +704,23 @@ export function releasePlan(input: { root: string; name?: string; repo?: WorkRep
     rows: ships === 'release' ? rows.map((r) => waitsForRelease(r, next?.version)) : rows,
     later,
     ships,
+    last,
   }
+}
+
+/**
+ * The pushed branches an open pull request already carries (`in_pr`: a batch
+ * PR's branch holds their last commit), by that pull request's number. Not
+ * listed as branches with no pull request; the pull request says *+N
+ * branches* instead.
+ */
+export function carriedBranches(br: SessionBranches | undefined): Map<number, string[]> {
+  const out = new Map<number, string[]>()
+  for (const b of br?.branches ?? []) {
+    if (!b.in_pr || b.landed || b.default) continue
+    out.set(b.in_pr, [...(out.get(b.in_pr) ?? []), b.name])
+  }
+  return out
 }
 
 /**
