@@ -2391,7 +2391,7 @@ view is shown.
   repository is `reason` `no_repo` with no rows.
 - **Each branch** — `{name, current?, default?, local, remote, ahead?,
   behind?, committed_ms, author?, sha?, subject?, pr?, live?, cost_usd, sessions,
-  agents[], session_at?, activity_at, stale?, landed?}`. A local branch and origin's
+  agents[], session_at?, activity_at, stale?, landed?, in_pr?}`. A local branch and origin's
   copy are one row (the local one's commit); other remotes and origin's
   `HEAD` are left out. `ahead` and `behind` are absent when not counted.
 - **Its PR** — `pr` `{number, url, title?, state, draft?, base?,
@@ -2414,13 +2414,28 @@ view is shown.
 - **Subject and landed** (2026-10-18, the release plan's pushed branches) —
   `subject` is the last commit's subject line (`%(contents:subject)`, read
   after a NUL so a tab in it is kept). `landed` is true when the branch's
-  changes are already on `base` by content: `git merge-tree --write-tree
-  <base> <sha>` (git 2.38+) gives `base`'s own tree, so a branch shipped by
-  a squash merge or inside another branch's batch — which `git cherry`
-  cannot see, the patch ids differing — is found. Checked only for a branch
-  ahead of `base`, committed in the last 14 days, with no open PR, the
-  newest 40, each pair of commits once (kept in memory); a failed check
-  (an older git, a conflict) leaves it absent, never true.
+  changes are already on `base` (`branches.Landed`), by any of, cheapest
+  first: every commit `base` lacks has a patch-equivalent there (`git
+  cherry`); merging it changes nothing (`git merge-tree --write-tree <base>
+  <sha>`, git 2.38+, gives `base`'s own tree); every non-merge commit's
+  subject (16 characters or more) is named in a message on `base` since the
+  merge-base — the line itself, a squashed batch's `* subject`, or with
+  ` (#N)`; or file by file the branch's own diff (merge-base..sha) is in
+  that file, on `base`'s tip or in one of `base`'s last 20 commits since the
+  merge-base that touched it: each hunk's new side (context and added
+  lines, in order) stands in the file, an added file was there, a deleted
+  one gone (one `git diff`, one `git log`, one `git cat-file --batch`; a
+  branch of more than 80 changed files is not checked this way). So a
+  branch shipped by a squash or inside a batch is found after `base` edited
+  the same files or a release consumed its changelog fragment (owner,
+  2026-10-19: six shipped branches were listed). `in_pr` is the number of
+  the open PR whose branch already carries the branch's last commit (a
+  batch PR; `git rev-list <base>..<pr head>`, at most 500 commits each, the
+  newest eight open PRs); such a branch is not checked for `landed`. Both
+  are checked only for a branch ahead of `base`, committed in the last 14
+  days, with no open PR of its own, `landed` for the newest 40, each pair
+  of commits once (kept in memory); a failed check (an older git, an
+  unknown commit) leaves it absent, never true.
 
 **`GET /v1/github/actions-usage`** (`?owner=` optional) → `ActionsUsage`
 `{account, org, year, month, available, reason?, needs?, minutes, gross_usd,

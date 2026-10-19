@@ -305,12 +305,42 @@ describe('where it is drawn', () => {
     expect(sections).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Branches pushed, no PR yet · 1', 'Agents working now · 2'])
     const branch = region.querySelector('[data-release-row="b:feat/batch-1"]')!
     expect(branch).toHaveTextContent('fix(deck): the ring')
-    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('2 commits · pushed 30m ago')
+    expect(branch.querySelector('[data-release-word]')).toHaveTextContent('2 commits · 30m ago')
     expect(branch.querySelector('[data-release-branch]')).toHaveTextContent('feat/batch-1')
     expect(branch.querySelector('[data-release-bar]')).toBeNull()
-    expect(branch.querySelector('[data-release-chip]')).toHaveTextContent('branch')
+    expect(branch.querySelector('[data-release-chip]')).toBeNull()
+    // Two lines: the subject, then the branch, its commits and age with ↗
+    // at that line's end, inside the one link to the comparison.
+    const link = branch.querySelector('a')!
+    expect(link).toHaveAttribute('href', 'https://github.com/dspv/caprock/compare/master...feat/batch-1')
+    expect(link.querySelector('[data-release-title]')).toHaveTextContent('fix(deck): the ring')
+    expect(link.querySelector('[data-release-word]')!.parentElement).toHaveTextContent(/feat\/batch-1·2 commits · 30m ago↗$/)
     expect(region.querySelector('[data-release-section="branch"] [data-release-hint]')).toHaveTextContent('Will go into the next batch PR')
     expect(region.querySelector('[data-release-row="sa:a1"] [data-release-word]')).toHaveTextContent('working 12m')
+  })
+
+  // Owner, 2026-10-19, translated: "the information isn't perceivable like
+  // this". Five branches at rest, then Show all; a week without a commit
+  // waits behind +N older.
+  it('shows five pushed branches, then Show all N, and the week-old ones behind +N older', async () => {
+    h.data = withKinds()
+    writeDeck('stats:/w/caprock', statsFixture())
+    const br = (i: number, ago: number) => ({ name: `fix/b-${i}`, local: false, remote: true, ahead: 1, behind: 0, committed_ms: Date.now() - ago, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: `fix(b): change ${i}` })
+    const HOUR = 3_600_000
+    writeDeck('branches:/w/caprock', { connected: true, repo: 'dspv/caprock', default: 'master', base: 'origin/master', fetched_at: NOW,
+      branches: [...Array.from({ length: 7 }, (_, i) => br(i, (i + 1) * HOUR)), br(7, 9 * 24 * HOUR), br(8, 10 * 24 * HOUR),
+        { ...br(9, HOUR), in_pr: 760 }] })
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: '0.118.0' })
+    const rows = () => [...region.querySelectorAll('[data-stage="branch"]')].map((e) => e.getAttribute('data-release-row'))
+    expect(region.querySelector('[data-release-section="branch"]')!.firstChild?.textContent).toBe('Branches pushed, no PR yet · 7')
+    expect(rows()).toEqual(['b:fix/b-0', 'b:fix/b-1', 'b:fix/b-2', 'b:fix/b-3', 'b:fix/b-4'])
+    fireEvent.click(within(region).getByRole('button', { name: 'Show all 7' }))
+    expect(rows()).toHaveLength(7)
+    fireEvent.click(within(region).getByRole('button', { name: '+2 older' }))
+    expect(rows()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `b:fix/b-${i}`))
+    expect(region.querySelector('[data-release-older]')).toBeNull()
   })
 
   it('draws nothing in the right panel for a session outside a repository', () => {
