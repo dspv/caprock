@@ -221,7 +221,7 @@ export function PhoneHome() {
   }, [])
 
   return (
-    <div className="grid gap-4 pb-[236px]">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 pb-[236px]">
       {pulled > 0 && (
         <div data-pull-hint aria-hidden style={{ height: Math.min(pulled, PULL_PX) }}
           className="-mb-4 flex items-end justify-center overflow-hidden text-[12px] text-fg-faint">
