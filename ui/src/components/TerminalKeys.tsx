@@ -38,12 +38,24 @@ interface Held {
   paths?: string[]
   /** Set once it was not sent on reconnect: why, and it waits for Send now. */
   draft?: string
+  /** It failed on its way (the daemon or the relay did not take it): its
+   *  button says Retry rather than Send now. */
+  failed?: boolean
+  /** On its way to the daemon and not yet confirmed: kept in storage so a
+   *  tab discarded mid-send still has it (as a draft) when it comes back. */
+  inflight?: boolean
 }
+
+/** Why a message found on its way after a reload is a draft: it may have arrived. */
+export const MAYBE_SENT = 'it may not have arrived — check the chat before you retry'
 
 /** A message ending in an @file mention, with a space after it (see deliver). */
 export function endMention(message: string): string {
   return /(^|\s)@\S+$/.test(message) ? `${message} ` : message
 }
+
+/** How long a send waits for the speech service's last words after stop(). */
+const END_WAIT_MS = 3000
 
 /** How long a "not sent" notice for a raw key stays up. */
 const NOTICE_MS = 4000
@@ -59,7 +71,12 @@ function loadHeld(sessionId?: string): Held[] {
     const raw = sessionStorage.getItem(heldKey(sessionId))
     const list: unknown = raw ? JSON.parse(raw) : []
     return Array.isArray(list)
-      ? (list as Held[]).filter((h) => typeof h?.text === 'string').map((h) => (Array.isArray(h.paths) ? { ...h, paths: h.paths.filter((p) => typeof p === 'string') } : h))
+      ? (list as Held[]).filter((h) => typeof h?.text === 'string').map((h) => {
+        const m = Array.isArray(h.paths) ? { ...h, paths: h.paths.filter((p) => typeof p === 'string') } : { ...h }
+        // Left on its way when the page went: never sent twice by itself.
+        if (m.inflight) { delete m.inflight; m.draft = MAYBE_SENT; m.failed = true }
+        return m
+      })
       : []
   } catch {
     return []
@@ -72,6 +89,29 @@ function saveHeld(sessionId: string | undefined, held: readonly Held[]): void {
     if (held.length === 0) sessionStorage.removeItem(heldKey(sessionId))
     else sessionStorage.setItem(heldKey(sessionId), JSON.stringify(held))
   } catch { /* storage refused: the list still shows until the page goes */ }
+}
+
+function draftKey(sessionId: string): string {
+  return `caprock.keys.draft.${sessionId}`
+}
+
+/** What was in the field, dictated or typed, when the page went: a phone
+ *  discards a background tab, and a dictated message must not go with it. */
+function loadDraft(sessionId?: string): string {
+  if (!sessionId) return ''
+  try {
+    return sessionStorage.getItem(draftKey(sessionId)) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function saveDraft(sessionId: string | undefined, text: string): void {
+  if (!sessionId) return
+  try {
+    if (text) sessionStorage.setItem(draftKey(sessionId), text)
+    else sessionStorage.removeItem(draftKey(sessionId))
+  } catch { /* storage refused: the field still holds it while the page lives */ }
 }
 
 /**
@@ -134,7 +174,9 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
    *  dictation language move to the session's ··· menu (PhoneSessionBar). */
   walkie?: boolean
 }) {
-  const [text, setText] = useState(initial)
+  // A started message, else what was in the field when the page went.
+  const [text, setText] = useState(() => initial || loadDraft(sessionId))
+  useEffect(() => { saveDraft(sessionId, text) }, [sessionId, text])
   // The photos attached in the field: chips, never their paths in the text.
   const [attached, setAttached] = useState<Attached[]>([])
   const attachedNow = useRef(attached)
@@ -186,6 +228,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   useEffect(() => () => dictation.current?.stop(), [])
   const toggleVoice = () => {
     if (dictation.current) {
+      stopAsked.current = true
       dictation.current.stop()
       return
     }
@@ -194,27 +237,11 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
       setVoiceNote(speechHint(why))
       return
     }
-    beforeVoice.current = text
     if (langIntro) {
       markLangIntroSeen()
       setLangIntro(false)
     }
-    const d = startDictation({
-      lang,
-      onText: (heard) => setText(joinDictation(beforeVoice.current, heard)),
-      onEnd: (err) => {
-        dictation.current = null
-        setListening(false)
-        setVoiceNote(err ? speechHint(err) : '')
-      },
-    })
-    if (!d) {
-      setVoiceNote(speechHint('missing'))
-      return
-    }
-    dictation.current = d
-    setListening(true)
-    setVoiceNote('')
+    startRec()
   }
   const live = state === undefined || state === 'live'
   // The offline queue (.ai/21-app.md § Phone v2): a message sent while the
@@ -226,7 +253,17 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   const heldRef = useRef(held)
   heldRef.current = held
   const [notice, setNotice] = useState('')
-  useEffect(() => { saveHeld(sessionId, held) }, [sessionId, held])
+  // Messages on their way to the daemon, not yet confirmed (see deliver).
+  const inflight = useRef<Held[]>([])
+  const persistHeld = () => saveHeld(sessionId, [...heldRef.current, ...inflight.current])
+  useEffect(() => { saveHeld(sessionId, [...held, ...inflight.current]) }, [sessionId, held])
+  /** A message the daemon did not take: a draft with Retry, never dropped. */
+  const holdFailed = (message: string, paths: readonly string[], why: string) => {
+    const h: Held = { id: Date.now() + Math.random(), text: message, ...(paths.length ? { paths: [...paths] } : {}), draft: why, failed: true }
+    heldRef.current = [...heldRef.current, h]
+    setHeld((list) => [...list, h])
+    persistHeld()
+  }
   useEffect(() => {
     if (!notice) return
     const id = window.setTimeout(() => setNotice(''), NOTICE_MS)
@@ -333,33 +370,53 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   // Code shows `[Image #1]` `[Image #2]` and the words follow — what the
   // desktop terminal does with a dropped image. Where nothing can paste them,
   // their quoted paths lead the text, as before.
-  const deliver = async (message: string, paths?: readonly string[]): Promise<void> => {
+  //
+  // Until the daemon says it has the message, it is kept in storage as on
+  // its way; if the daemon does not take it, it becomes a draft with Retry
+  // (.ai/04-ui.md § Voice input, *Never lost*). Nothing is put back into a
+  // field that holds something else, where it would be dropped.
+  const deliver = async (message: string, paths?: readonly string[]): Promise<boolean> => {
     const imgs = paths?.filter(Boolean) ?? []
+    const entry: Held = { id: Date.now() + Math.random(), text: message, ...(imgs.length ? { paths: imgs } : {}), inflight: true }
+    inflight.current = [...inflight.current, entry]
+    persistHeld()
+    try {
+      return await deliverNow(message, imgs)
+    } finally {
+      inflight.current = inflight.current.filter((h) => h.id !== entry.id)
+      persistHeld()
+    }
+  }
+  const deliverNow = async (message: string, imgs: readonly string[]): Promise<boolean> => {
     if (imgs.length > 0 && !sendPaths) {
       message = `${imgs.map((p) => `"${p}" `).join('')}${message}`
     } else if (imgs.length > 0 && sendPaths) {
       try {
         await sendPaths(imgs)
       } catch {
-        // Not pasted: back into the field, words and photos, to send again.
-        setText((t) => (t ? t : message))
-        setAttached((list) => (list.length ? list : imgs.map((path) => ({ path }))))
-        return
+        holdFailed(message, imgs, 'the photos did not reach Caprock')
+        return false
       }
       if (!message) {
         // Photos alone: Enter, as after a drop in the terminal.
         await new Promise<void>((resolve) => window.setTimeout(() => { send('\r'); resolve() }, SUBMIT_DELAY_MS))
-        return
+        return true
       }
     }
     if (submitText) {
-      return submitText(message).then((ok) => {
-        if (!ok) setText((t) => (t ? t : message))
-      })
+      let ok = false
+      try {
+        ok = await submitText(message)
+      } catch {
+        ok = false
+      }
+      // The photos went in already: only the words wait for Retry.
+      if (!ok) holdFailed(message, [], 'Caprock did not confirm it')
+      return ok
     }
-    return new Promise<void>((resolve) => {
+    return new Promise<boolean>((resolve) => {
       send(endMention(message).replace(/\r?\n/g, NEWLINE))
-      window.setTimeout(() => { send('\r'); resolve() }, SUBMIT_DELAY_MS)
+      window.setTimeout(() => { send('\r'); resolve(true) }, SUBMIT_DELAY_MS)
     })
   }
 
@@ -369,8 +426,24 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   }
 
   const submit = (said?: string) => {
+    if (said === undefined && dictation.current) {
+      // Send while it listens: the last words come after stop(), so it is
+      // sent when the speech service ends (or after END_WAIT_MS), with them.
+      sendOnEnd.current = true
+      stopAsked.current = true
+      window.clearTimeout(endTimer.current)
+      endTimer.current = window.setTimeout(finishSend, END_WAIT_MS)
+      dictation.current.stop()
+      return
+    }
     const text = said ?? textNow.current
-    dictation.current?.stop()
+    if (dictation.current) {
+      // Sent on the timer while the service is still finishing: what it
+      // still hands back is checked against what went (see startRec).
+      sentAs.current = text
+      stopAsked.current = true
+      dictation.current.stop()
+    }
     setVoiceNote('')
     const paths = takeAttached()
     const some = text || paths.length > 0
@@ -410,6 +483,13 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   const [pttPhase, setPttPhase] = useState<PttState['phase']>('idle')
   const sendOnEnd = useRef(false)
   const dropHeard = useRef(false)
+  // Set when Caprock stopped the listening (Send, release, cancel), so an
+  // end the speech service chose itself is told apart.
+  const stopAsked = useRef(false)
+  // What was sent while the service was still finishing; words it hands
+  // back after that go into the field rather than vanish or go twice.
+  const sentAs = useRef<string | null>(null)
+  const [recLang, setRecLang] = useState(lang)
   const endTimer = useRef(0)
   const flashTimer = useRef(0)
   const [recAt, setRecAt] = useState(0)
@@ -431,6 +511,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
     sendOnEnd.current = false
     const said = textNow.current
     if (!said.trim() && attachedNow.current.length === 0) { flash(speechHint('no-speech')); return }
+    if (!dictation.current) sentAs.current = null
     submitLatest.current(said)
   }
   const startRec = (): boolean => {
@@ -438,44 +519,70 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
     beforeVoice.current = textNow.current
     sendOnEnd.current = false
     dropHeard.current = false
+    stopAsked.current = false
+    sentAs.current = null
+    const tag = speechLang()
     const d = startDictation({
-      lang: speechLang(),
+      lang: tag,
       onText: (heard) => {
         if (dropHeard.current) return
         const t = joinDictation(beforeVoice.current, heard)
+        const sent = sentAs.current
+        if (sent !== null) {
+          const rest = t.startsWith(sent) ? t.slice(sent.length).trim() : ''
+          if (rest) {
+            textNow.current = rest
+            setText(rest)
+            flash('More words came after it was sent — they are in the field.')
+          }
+          return
+        }
         textNow.current = t
         setText(t)
       },
       onEnd: (err) => {
         dictation.current = null
         setListening(false)
+        const asked = stopAsked.current
+        stopAsked.current = false
         if (sendOnEnd.current) finishSend()
-        else if (err && !dropHeard.current) setVoiceNote(speechHint(err))
-        if (ptt.current.phase !== 'idle') { ptt.current = PTT_IDLE; setPttPhase('idle') }
+        else if (!asked && ptt.current.phase !== 'idle') {
+          // The speech service stopped by itself while the mic is held or
+          // latched: the words stay, and the release (or the tap) sends them.
+          setVoiceNote(`${err ? `${speechHint(err)} ` : 'Stopped listening. '}What was heard is in the field — ${ptt.current.phase === 'latched' ? 'tap the mic' : 'let go'} to send it.`)
+        } else if (err && !dropHeard.current) setVoiceNote(speechHint(err))
+        else if (!asked && textNow.current.trim()) setVoiceNote('Stopped listening — what was heard is in the field. Send it, or tap the mic to go on.')
+        if (asked && ptt.current.phase !== 'idle') { ptt.current = PTT_IDLE; setPttPhase('idle') }
       },
     })
     if (!d) { setVoiceNote(speechHint('missing')); return false }
     dictation.current = d
     setListening(true)
+    setRecLang(tag)
     setRecAt(Date.now())
     setVoiceNote('')
     return true
   }
   const endRec = (send: boolean) => {
     const d = dictation.current
-    if (!d) return
     if (send) {
       sendOnEnd.current = true
-      // The last words can come after stop(); send on the end, or after a
-      // second and a half if the speech service never says it ended.
+      // Already ended (the speech service stopped by itself): send now.
+      if (!d) { finishSend(); return }
+      // The last words can come after stop(); send on the end, or after
+      // END_WAIT_MS if the speech service never says it ended.
       window.clearTimeout(endTimer.current)
-      endTimer.current = window.setTimeout(finishSend, 1500)
+      endTimer.current = window.setTimeout(finishSend, END_WAIT_MS)
     } else {
+      // Slid off: nothing is sent, and nothing heard is thrown away either —
+      // it stays in the field to send, change or clear.
       dropHeard.current = true
-      textNow.current = beforeVoice.current
-      setText(beforeVoice.current)
-      flash('Cancelled — nothing sent.')
+      flash(textNow.current.trim() !== beforeVoice.current.trim()
+        ? 'Not sent — what you said is in the field.'
+        : 'Cancelled — nothing sent.')
     }
+    if (!d) return
+    stopAsked.current = true
     d.stop()
   }
   const pttInput = (i: PttInput) => {
@@ -499,6 +606,10 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   const autoRead = useAutoRead()
   const reading = useSpeaking() !== null
   const [more, setMore] = useState(false)
+  // The + sheet's dictation-language list: on the Chats screen it is the
+  // only place to change it — that screen's ··· has no Voice row, and
+  // dictation stayed in the phone's own language (owner, 2026-10-19).
+  const [moreLang, setMoreLang] = useState(false)
   const [bug, setBug] = useState(false)
 
   const heldList = (held.length > 0 || notice) && (
@@ -517,7 +628,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
               onClick={() => sendNow(h)}
               className="shrink-0 rounded-sm bg-accent px-3 py-2 min-h-[44px] text-[13px] font-medium text-bg hover:brightness-110 disabled:opacity-50"
             >
-              Send now
+              {h.failed ? 'Retry' : 'Send now'}
             </button>
           )}
           <button
@@ -564,7 +675,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
         {(recording || voiceNote) && (
           <div role="status" aria-live="polite" data-walkie-status className={`px-1 text-[13px] leading-snug ${recording ? 'text-fg' : 'text-fg-muted'}`}>
             {recording
-              ? <><span className="text-danger">●</span> <span className="num">{recClock}</span> · {pttPhase === 'latched' ? 'tap the mic again to send' : 'release to send · slide off to cancel'}. Your browser&apos;s speech service turns it into text.</>
+              ? <><span className="text-danger">●</span> <span className="num">{recClock}</span> · {langName(recLang)} · {pttPhase === 'latched' ? 'tap the mic again to send' : 'release to send · slide off to cancel'}. Your browser&apos;s speech service turns it into text.</>
               : voiceNote}
           </div>
         )}
@@ -596,7 +707,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
             aria-label="More: photo, new chat, report a bug"
             title="Photo, new chat, report a bug"
             data-walkie-more
-            onClick={() => setMore(true)}
+            onClick={() => { setLang(speechLang()); setMore(true) }}
             className="grid h-11 w-10 shrink-0 place-items-center rounded-full text-fg-muted active:bg-panel-2"
           >
             <PlusIcon />
@@ -662,7 +773,14 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
             <MicIcon />
           </button>
         </div>
-        {more && (
+        {more && moreLang && (
+          <ChatSheet title="Dictation language" onClose={() => { setMore(false); setMoreLang(false) }}>
+            <div role="menu" aria-label="Dictation language" className="grid">
+              <LangList current={lang} onPick={(t) => { pickLang(t); setMore(false); setMoreLang(false) }} />
+            </div>
+          </ChatSheet>
+        )}
+        {more && !moreLang && (
           <ChatSheet title="More" onClose={() => setMore(false)}>
             <div className="grid" role="menu" aria-label="More">
               {attach && (
@@ -675,6 +793,14 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
                 onClick={() => { setMore(false); window.location.hash = '#/?open=chat' }}>
                 <NewChatIcon /> New chat
               </button>
+              {voice && (
+                <button type="button" role="menuitem" className={MORE_ROW} data-walkie-lang
+                  aria-label={`Dictation language: ${langName(lang)}. Change`}
+                  onClick={() => { setLang(speechLang()); setMoreLang(true) }}>
+                  <span className="text-fg-muted"><MicIcon /></span> Dictation language
+                  <span className="ml-auto text-[14px] font-medium text-fg-muted">{langChip(lang)}</span>
+                </button>
+              )}
               <div className="my-1 h-px bg-border" />
               <button type="button" role="menuitem" className={MORE_ROW}
                 onClick={() => { setMore(false); setBug(true) }}>
@@ -747,7 +873,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
         {(listening || voiceNote) && (
           <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
             {listening
-              ? <><span className="text-danger">●</span> Listening — tap the mic again to stop, then Send. Your browser&apos;s speech service turns it into text.</>
+              ? <><span className="text-danger">●</span> Listening in {langName(recLang)} — tap the mic again to stop, then Send. Your browser&apos;s speech service turns it into text.</>
               : voiceNote}
           </div>
         )}

@@ -2318,7 +2318,12 @@ connection and the work survive a bad network.
   background still has them; each has **Edit**, which puts it back in the
   field. A raw key pressed while not live is not sent and says so for four
   seconds. Typing into the terminal itself (a desktop) keeps protocol v2's
-  4 KiB queue.
+  4 KiB queue. Since 2026-10-19 a message is also kept while it is on its
+  way, until the daemon confirms it: one the daemon does not take becomes a
+  draft with **Retry**, one left on its way when the page went comes back as
+  a draft that says it may have arrived, and the field's own text survives a
+  discarded tab ([04-ui.md § Voice input, *Never lost*](04-ui.md)). Dictation
+  is one language at a time; see the same section.
 - **Chat view.** The conversation as messages (what the agent wrote, tool
   calls collapsed to one line, prompts), built from the events Caprock already
   stores, with the scrolling rule; the input box types into the session.

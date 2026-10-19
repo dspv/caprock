@@ -322,6 +322,31 @@ describe('TerminalKeys — the phone chat: voice and folded keys', () => {
     expect(submitText).not.toHaveBeenCalled()
   })
 
+  it('Send while it listens waits for the last words, sends them once, and drops none', async () => {
+    let rec: { onresult?: (e: unknown) => void; onend?: () => void } = {}
+    ;(window as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition = class {
+      onresult?: (e: unknown) => void
+      onend?: () => void
+      constructor() { rec = this }
+      start() {}
+      stop() {}
+    }
+    vi.stubGlobal('isSecureContext', true)
+    const submitText = vi.fn(async () => true)
+    render(<TerminalKeys send={vi.fn()} submitText={submitText} voice />)
+    const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
+    fireEvent.click(screen.getByRole('button', { name: 'Dictate' }))
+    act(() => rec.onresult?.({ results: [{ isFinal: false, 0: { transcript: 'rerun the' } }] }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(submitText).not.toHaveBeenCalled()
+    // The final result arrives after stop(), then the end.
+    act(() => rec.onresult?.({ results: [{ isFinal: true, 0: { transcript: 'rerun the failing job' } }] }))
+    act(() => rec.onend?.())
+    await waitFor(() => expect(submitText).toHaveBeenCalledWith('rerun the failing job'))
+    expect(submitText).toHaveBeenCalledTimes(1)
+    expect(field.value).toBe('')
+  })
+
   it('dictates in the language on the chip, and a tap past the browser languages opens the list', () => {
     localStorage.clear()
     vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['en-US'])
