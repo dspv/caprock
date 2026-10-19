@@ -67,6 +67,14 @@ const (
 	// given a role, or a computer waiting to be allowed (ADR-067). It carries
 	// nothing; the machine's own dashboard re-reads GET /v1/pair/state.
 	FrameDevices FrameType = "devices"
+	// FrameFootprint is GET /v1/footprint's answer without the orphan list
+	// (daemon.FootprintReport), sent when it changed, at most every 10 s,
+	// while a /v1/live client is connected (03-contracts.md § Footprint).
+	FrameFootprint FrameType = "footprint"
+	// FrameShells is every running shell, {shells: [Shell]} as GET
+	// /v1/shells answers it, sent when the list changed (03-contracts.md
+	// § Projects and shells).
+	FrameShells FrameType = "shells"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the

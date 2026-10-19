@@ -11,7 +11,7 @@ import { offersManualRetry, onNetworkWake, type LinkStatus } from '@/lib/reconne
 import { ConnectionState } from './ConnectionState'
 import { attachTerminalInput } from '@/lib/xtermInput'
 import { registerBenchTerminal } from '@/lib/benchhook'
-import { coalescedWriter, writeSliced } from '@/lib/termwrite'
+import { coalescedWriter, DESK_WRITE_MS, PHONE_WRITE_MS } from '@/lib/termwrite'
 import { touchScreen } from '@/lib/phone'
 import { attachTerminalLinks } from '@/lib/termlinks'
 import { DASH_GROUND, TERMINAL_MIN_CONTRAST, TERMINAL_THEMES } from '@/lib/termthemes'
@@ -21,7 +21,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges } from '@/lib/termatlas'
-import { blinkWhileVisible } from '@/lib/visible'
+import { blinkWhileVisible, suspendWhileHidden } from '@/lib/visible'
 
 /**
  * The terminal's palette: graphite, in BOTH app themes, fixed at build time.
@@ -275,7 +275,9 @@ export function TerminalView({
       }
     }
     if (!light) webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
-    const out = light ? coalescedWriter(term) : null
+    // At most one write per PHONE_WRITE_MS on a phone, DESK_WRITE_MS
+    // elsewhere; every byte, in order (lib/termwrite).
+    const out = coalescedWriter(term, light ? PHONE_WRITE_MS : DESK_WRITE_MS)
     // Terminal protocol v2 (lib/termv2): output arrives with its offsets and
     // input goes numbered, so a reconnect — Caprock restarting, a dropped
     // network, a phone waking — picks up from the last byte this terminal
@@ -302,8 +304,7 @@ export function TerminalView({
         // Never a scroll to the bottom here: someone scrolled back to read
         // stays where they are while output arrives (the scrolling rule).
         write: (data, done) => {
-          if (out) out.write(data, done)
-          else writeSliced(term, data, done)
+          out.write(data, done)
           if (!gotOutput && data.length > 0) {
             gotOutput = true
             setStart((st) => ({ ...st, phase: 'ready' }))
@@ -313,7 +314,7 @@ export function TerminalView({
             sendSize(term.cols, term.rows)
           }
         },
-        reset: () => { out?.drop(); term.reset() },
+        reset: () => { out.drop(); term.reset() },
         open: () => {
           // The PTY was created before this socket existed, so the first
           // thing it hears has to be the size the window actually is.
@@ -382,6 +383,9 @@ export function TerminalView({
     // Back from sleep, the network, the back/forward cache or a network
     // change: reconnect now rather than at the end of a backoff.
     const unwake = onNetworkWake(() => client.wake())
+    // Out of sight, the socket goes after a moment; the wake above resumes it
+    // from the last byte (lib/termv2 suspendWhileHidden).
+    const unsuspend = suspendWhileHidden(client)
     reconnectRef.current = () => client.reconnectNow()
 
     // Keys, copy, paste and dropped files: lib/xtermInput.ts, shared with the
@@ -439,7 +443,7 @@ export function TerminalView({
       window.removeEventListener('pagehide', gone)
       hostEl.removeEventListener('pointerdown', claim)
       textarea?.removeEventListener('focus', claim)
-      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out?.dispose(); client.dispose(); unbench(); links.dispose(); unfont(); unblink(); themeWatch?.disconnect(); term.dispose()
+      ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out.dispose(); unsuspend(); client.dispose(); unbench(); links.dispose(); unfont(); unblink(); themeWatch?.disconnect(); term.dispose()
     }
   }, [sessionId, owned, attempt, phone])
   if (!owned && detached) {

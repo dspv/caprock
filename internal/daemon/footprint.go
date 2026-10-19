@@ -118,7 +118,11 @@ type FootprintVerdict struct {
 // fresh (&fresh=1: Check now, `caprock doctor`) — instead of the last
 // scan's counts.
 func (d *Daemon) footprint(ctx context.Context, withOrphans, fresh bool) *FootprintReport {
-	rep := d.resources(ctx)
+	return d.footprintFrom(ctx, d.resources(ctx), withOrphans, fresh)
+}
+
+// footprintFrom is the footprint around one resource sample.
+func (d *Daemon) footprintFrom(ctx context.Context, rep *ResourceReport, withOrphans, fresh bool) *FootprintReport {
 	exe, _ := os.Executable()
 	f := &FootprintReport{At: time.Now().UnixMilli(), DaemonRunning: true, DataDir: d.opt.DataDir, Exe: exe, Error: rep.Error}
 	f.Memory.Daemon = &rep.Caprock.Daemon

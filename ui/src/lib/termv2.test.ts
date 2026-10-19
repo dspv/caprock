@@ -9,6 +9,7 @@ import {
   BACKOFF_MAX_MS, BACKOFF_MIN_MS, DEAD_MS, FOCUS_DEBOUNCE_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
   TermClient, backoff, type TermState,
 } from './termv2'
+import { PAGE_HIDDEN_SUSPEND_MS, suspendWhileHidden } from './visible'
 
 class FakeSocket {
   static CONNECTING = 0
@@ -126,6 +127,52 @@ describe('TermClient (protocol v2)', () => {
     s2.bytes(3, 'd')
     expect(t.out.join('')).toBe('abcd')
     expect(t.resets()).toBe(0)
+  })
+
+  it('lets the socket go while the page is hidden and loses no byte across hide and show', () => {
+    let hidden = false
+    const vis = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => (hidden ? 'hidden' : 'visible'))
+    const flip = (h: boolean) => { hidden = h; document.dispatchEvent(new Event('visibilitychange')) }
+    try {
+      const t = mount()
+      const stop = suspendWhileHidden(t.c)
+      const s1 = last()
+      s1.accept()
+      s1.text({ hello: { v: 2, offset: 0, reset: false, ack: 0 } })
+      s1.bytes(0, 'one ')
+      // A blink of occlusion keeps the socket.
+      flip(true)
+      vi.advanceTimersByTime(PAGE_HIDDEN_SUSPEND_MS - 1)
+      flip(false)
+      vi.advanceTimersByTime(PAGE_HIDDEN_SUSPEND_MS)
+      expect(t.c.protocol).toBe('v2')
+      s1.bytes(4, 'two ')
+      // Hidden past the grace: let go, and nothing reconnects while hidden.
+      flip(true)
+      s1.bytes(8, 'three ')
+      vi.advanceTimersByTime(PAGE_HIDDEN_SUSPEND_MS)
+      expect(t.c.protocol).toBeUndefined()
+      vi.advanceTimersByTime(120_000)
+      expect(FakeSocket.all).toHaveLength(1)
+      // Shown: the page's wake asks from the last byte held; the daemon
+      // sends what was printed meanwhile, overlapping by a little.
+      flip(false)
+      t.c.wake()
+      const s2 = last()
+      expect(FakeSocket.all).toHaveLength(2)
+      expect(s2.query.get('since')).toBe('14')
+      s2.accept()
+      s2.text({ hello: { v: 2, offset: 14, reset: false, ack: 0 } })
+      s2.bytes(8, 'three four five')
+      expect(t.out.join('')).toBe('one two three four five')
+      expect(t.resets()).toBe(0)
+      stop()
+      flip(true)
+      vi.advanceTimersByTime(PAGE_HIDDEN_SUSPEND_MS)
+      expect(t.c.protocol).toBe('v2')
+    } finally {
+      vis.mockRestore()
+    }
   })
 
   it('repaints only when the daemon says the offset is gone', () => {

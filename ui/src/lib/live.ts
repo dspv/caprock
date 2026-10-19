@@ -9,7 +9,8 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { Event, LoopAlert, Permission, QueueView, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
-import type { OpFrame, ProjectFrame } from './projects'
+import type { ApiShell, OpFrame, ProjectFrame } from './projects'
+import type { Footprint } from './footprint'
 import type { GitHubFrame } from './github'
 import {
   LIVENESS_CHECK_MS, PING_MS, PROBE_MS, Reconnector, isConnectStuck, isProbeLost, isSuspect, isSilent, onNetworkWake,
@@ -82,6 +83,11 @@ export type Frame = (
   // computer waiting to be allowed (ADR-067). Carries nothing; the machine's
   // own screen re-reads GET /v1/pair/state.
   | { type: 'devices'; data: Record<string, never> }
+  // Caprock's own footprint (GET /v1/footprint without the orphan list) when
+  // it changed, at most every 10 s (03-contracts.md § Footprint).
+  | { type: 'footprint'; data: Footprint }
+  // Every running shell, as GET /v1/shells answers, when the list changed.
+  | { type: 'shells'; data: { shells?: ApiShell[] } }
 ) & { seq?: number }
 
 /**

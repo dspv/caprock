@@ -8,8 +8,9 @@
  * doctor` in the window: *Copy report* builds the same text the command
  * prints, pinned to it by one fixture (testdata/footprint/).
  */
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from './api'
+import { live } from './live'
 import { useApi } from './useApi'
 import { fmtCPU, fmtMem, type ProcGroup, type ProcUsage } from './resources'
 
@@ -121,12 +122,29 @@ export interface Footprint {
   error?: string
 }
 
-/** Asked every 10 s while the page is visible; a hidden window asks nothing (lib/visible.ts). */
+/** The open doctor asks for the orphan list this often while the page is visible; a hidden window asks nothing (lib/visible.ts). */
 export const FOOTPRINT_POLL_MS = 10_000
+/**
+ * The strip's footprint comes as a `footprint` frame on /v1/live when it
+ * changes (03-contracts.md § Footprint); it asks on mount and then this often
+ * as the fallback, for a daemon before the frame. It asked every 10 s
+ * (docs/app-window-footprint-2026-10-19.md).
+ */
+export const FOOTPRINT_FALLBACK_MS = 60_000
+
+/** The newer of an answer and a pushed frame, by the report's own time. */
+export function newerFootprint(asked: Footprint | undefined, pushed: Footprint | undefined): Footprint | undefined {
+  if (!pushed) return asked
+  if (!asked) return pushed
+  return pushed.at >= asked.at ? pushed : asked
+}
 
 /** The latest footprint, or undefined before the first answer and from a daemon without the endpoint. */
 export function useFootprint() {
-  return useApi(() => api.footprint(), [], { live: false, intervalMs: FOOTPRINT_POLL_MS, keepUnchanged: true })
+  const q = useApi(() => api.footprint(), [], { live: false, intervalMs: FOOTPRINT_FALLBACK_MS, keepUnchanged: true })
+  const [pushed, setPushed] = useState<Footprint>()
+  useEffect(() => live.onFrame((f) => { if (f.type === 'footprint' && f.data) setPushed((cur) => newerFootprint(cur, f.data)) }), [])
+  return { ...q, data: newerFootprint(q.data, pushed) }
 }
 
 /**

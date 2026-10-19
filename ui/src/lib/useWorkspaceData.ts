@@ -21,6 +21,7 @@ import {
   projectsApi,
   saveLocalProjects,
   shellAsSession,
+  shellList,
   type ApiShell,
   type LocalProject,
   type OpFrame,
@@ -33,8 +34,13 @@ import { onSessionRenamed } from './sessionNames'
 const FULL_LIST_MS = 60_000
 const SUMMARY_MS = 60_000
 const PROJECTS_MS = 60_000
-/** Shells write no session row, so their list is the only word on one ending. */
-const SHELLS_MS = 10_000
+/**
+ * Shells write no session row, so their list is the only word on one ending.
+ * It comes as a `shells` frame on /v1/live when it changes (03-contracts.md
+ * § Projects and shells); this poll is the fallback, for a daemon before the
+ * frame. It was every 10 s from every window (docs/app-window-footprint-2026-10-19.md).
+ */
+export const SHELLS_MS = 60_000
 /**
  * Session and project frames are applied together at most this often. Each one used to
  * redraw the whole workspace — sidebar, tab strip, inspector — and busy agents
@@ -191,18 +197,19 @@ export function useWorkspaceData(): WorkspaceData {
     return () => { alive = false; stop() }
   }, [nonce])
 
-  // Shells: no session row, no live frame, so their own list.
+  // Shells: no session row, so their own list — pushed as a `shells` frame
+  // when it changes, asked on mount and once a minute as the fallback.
   useEffect(() => {
     let alive = true
+    // The same list again re-renders nothing (WP-16: an idle window's CPU).
+    const take = (list: ApiShell[]) => setShells((cur) => (JSON.stringify(cur) === JSON.stringify(list) ? cur : list))
     const load = () => projectsApi.shells()
-      .then((list) => {
-        // The same list again re-renders nothing (WP-16: an idle window's CPU).
-        if (alive) setShells((cur) => (JSON.stringify(cur) === JSON.stringify(list) ? cur : list))
-      })
+      .then((list) => { if (alive) take(list) })
       .catch(() => { if (alive) setShells([]) })
     void load()
     const stop = everyWhileVisible(load, SHELLS_MS)
-    return () => { alive = false; stop() }
+    const off = live.onFrame((f) => { if (f.type === 'shells') take(shellList(f.data)) })
+    return () => { alive = false; stop(); off() }
   }, [nonce])
 
   // A rename shows in the tab and the sidebar row at once, before the daemon

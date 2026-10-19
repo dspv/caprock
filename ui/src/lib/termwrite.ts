@@ -28,6 +28,14 @@ export function writeSliced(term: Pick<Xterm, 'write'>, data: Uint8Array | strin
 /** How often a phone's terminal is handed what arrived (coalescedWriter). */
 export const PHONE_WRITE_MS = 100
 
+/**
+ * How often a desktop terminal is handed what arrived: about 30 times a
+ * second while output floods, against every chunk before — a session printing
+ * 20 lines a second under a 12 fps spinner cost the app window about 10% of a
+ * core, nearly all of it parsing and painting (docs/app-window-footprint-2026-10-19.md).
+ */
+export const DESK_WRITE_MS = 33
+
 export interface CoalescedWriter {
   write(data: Uint8Array | string, done?: () => void): void
   /** Forgets what is waiting (the terminal is about to be cleared); its callbacks still run. */

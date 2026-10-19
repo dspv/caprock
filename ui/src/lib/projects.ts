@@ -492,9 +492,13 @@ export const projectsApi = {
   },
   /** GET /v1/shells: every running shell. */
   shells: async (): Promise<ApiShell[]> => {
-    const v = await call<{ shells?: ApiShell[] }>('Shell tabs', '/v1/shells')
-    return Array.isArray(v?.shells) ? v.shells.filter((sh) => sh && typeof sh.id === 'string') : []
+    return shellList(await call<{ shells?: ApiShell[] }>('Shell tabs', '/v1/shells'))
   },
+}
+
+/** The shells of a GET /v1/shells answer or a `shells` frame on /v1/live: the well-formed ones. */
+export function shellList(v: { shells?: ApiShell[] } | null | undefined): ApiShell[] {
+  return Array.isArray(v?.shells) ? v.shells.filter((sh) => sh && typeof sh.id === 'string') : []
 }
 
 // ── Folders added in this app, for a daemon without /v1/projects ─────────

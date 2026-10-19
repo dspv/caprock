@@ -18,6 +18,12 @@
  *   terminal on each scroll and re-measures each glyph in a `display: none`
  *   box, so one background tab printing 20 lines a second cost 12% of the
  *   page's main thread while the person typed in another (bench, 2026-10-09).
+ *   The window out of sight for PAGE_HIDDEN_SUSPEND_MS lets every socket go,
+ *   so no output is sent to it at all, and resumes from the last byte held
+ *   when shown (lib/visible suspendWhileHidden).
+ * - **A flood is written ~30 times a second** (DESK_WRITE_MS): chunks that
+ *   arrive meanwhile go to xterm in one write, in order; the first after a
+ *   quiet spell goes at once.
  * - **WebGL, late and recoverable.** Swapped in after the first output once
  *   typing pauses (as in the dashboard), and re-created after a context loss
  *   — a sleep and wake — when the tab is next shown.
@@ -77,7 +83,7 @@ import { attachTerminalInput } from '@/lib/xtermInput'
 import { FIND_EVENT, INPUT_HIGHLIGHT_KEY, keys, ownsTerminalKey, watchChordArrows } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
-import { writeSliced } from '@/lib/termwrite'
+import { coalescedWriter, DESK_WRITE_MS } from '@/lib/termwrite'
 import { attachTerminalLinks } from '@/lib/termlinks'
 import { requestOpenPath } from '@/lib/mdreader'
 import { lineFor, markOf, saveScroll, takeScroll } from '@/lib/termresume'
@@ -91,7 +97,7 @@ import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPr
 import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges, reuploadGlyphs } from '@/lib/termatlas'
-import { blinkWhileVisible, pageHidden } from '@/lib/visible'
+import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible'
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
 import { UpdateNoticeBar } from './UpdateNoticeBar'
@@ -374,16 +380,23 @@ export function TerminalPane({
       // Settled when the output pauses, or SETTLE_MS after it began.
       settleTimer = window.setTimeout(() => { settleTimer = 0; settled = true }, Math.max(0, Math.min(400, settleBy - now)))
     }
+    // Output reaches xterm at most every DESK_WRITE_MS, what came meanwhile
+    // in one write, every byte in order (lib/termwrite coalescedWriter): a
+    // session printing 20 lines a second under a 12 fps spinner was parsed
+    // and painted on every chunk (docs/app-window-footprint-2026-10-19.md).
+    // The first write after a quiet spell goes at once, so an echo is not
+    // delayed.
+    const out = coalescedWriter(term, DESK_WRITE_MS)
     const flushHeld = () => {
       if (!fitted) return
-      const out = held
+      const was = held
       held = []
       heldBytes = 0
-      for (const h of out) {
-        if ('reset' in h) term.reset()
-        else writeSliced(term, h.data, h.done)
+      for (const h of was) {
+        if ('reset' in h) { out.drop(); term.reset() }
+        else out.write(h.data, h.done)
       }
-      if (out.length) scheduleResume()
+      if (was.length) scheduleResume()
     }
     // The window out of sight holds the tab in front's output too (a hidden
     // window does no work): parsed and drawn at once when it is shown.
@@ -443,13 +456,13 @@ export function TerminalPane({
             return
           }
           if (!settled) settle()
-          writeSliced(term, d, done)
+          out.write(d, done)
           scheduleResume()
         },
         // Clears the screen and every mode a dead TUI left on (mouse tracking,
         // bracketed paste, the alternate screen) before a repaint.
         reset: () => {
-          if (!holding()) { term.reset(); return }
+          if (!holding()) { out.drop(); term.reset(); return }
           // What was held is cleared by the reset: let it go, parsed as far
           // as the client's flow control is concerned, and keep the reset.
           for (const h of held) if (!('reset' in h)) h.done()
@@ -616,6 +629,10 @@ export function TerminalPane({
     watchDpr()
 
     connRef.current = conn
+    // The window out of sight for PAGE_HIDDEN_SUSPEND_MS lets the socket go
+    // (lib/termv2 suspendWhileHidden); onWake below resumes it from the last
+    // byte held, after writing what was held.
+    const unsuspend = suspendWhileHidden(conn)
     const onWake = (e: Event) => {
       if (document.visibilityState !== 'visible') return
       // A suspended background tab stays let go until it is shown; a window
@@ -786,6 +803,8 @@ export function TerminalPane({
       unfont()
       resultsSub.dispose()
       if (hideTimer) window.clearTimeout(hideTimer)
+      unsuspend()
+      out.dispose()
       if (raf) cancelAnimationFrame(raf)
       if (fitRaf) cancelAnimationFrame(fitRaf)
       document.removeEventListener('visibilitychange', onWake)
