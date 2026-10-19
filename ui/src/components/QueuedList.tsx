@@ -57,6 +57,7 @@ function QueuedBubble({ m, n, total, waiting, sendNow, onEdit, onCancel, onSendN
   return (
     <div data-queued-id={m.id} className="flex justify-end">
       <div className="grid max-w-[85%] min-w-0 gap-1.5 rounded-[12px] rounded-br-[4px] border border-border-strong bg-panel-2 px-3 py-2 text-[14px] leading-relaxed text-fg">
+        {m.via === 'telegram' && <div className="text-[11px] text-fg-faint" data-via="telegram">from Telegram</div>}
         {editing ? (
           <textarea
             value={draft}

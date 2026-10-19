@@ -6,7 +6,7 @@
  */
 import { useRoute } from '@/lib/router'
 import { useModules } from '@/lib/modules'
-import { keys, moduleKey } from '@/lib/appkeys'
+import { keys, moduleKey, revealClass } from '@/lib/appkeys'
 import { useChipFit } from '@/lib/keyChipFit'
 import { isMacPlatform } from '@/lib/appmode'
 import type { ModuleInfo } from '@/lib/api'
@@ -43,7 +43,7 @@ function ModuleRow({ m, index, active, onOpen }: { m: ModuleInfo; index: number;
     >
       <span aria-hidden className="flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-[4px] bg-accent text-[10px] font-semibold uppercase text-panel">{m.name.slice(0, 1)}</span>
       <span data-key-label className="min-w-0 flex-1 truncate">{m.name}</span>
-      {label && <kbd data-key-chip data-dropped={fits ? undefined : ''} className={`app-kbd-key shrink-0 ${fits ? '' : 'pointer-events-none invisible absolute right-2'}`}>{label}</kbd>}
+      {label && <kbd data-key-chip data-dropped={fits ? undefined : ''} className={`app-kbd-key shrink-0 ${revealClass()} ${fits ? '' : 'pointer-events-none invisible absolute right-2'}`}>{label}</kbd>}
     </button>
   )
 }

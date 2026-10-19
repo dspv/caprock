@@ -52,6 +52,7 @@ type Bot struct {
 	limit            int      // the next limit calls answer 429
 	retry            int      // their retry_after
 	refuseURLButtons bool
+	files            map[string]fakeFile
 	notify           chan struct{}
 	pollWait         time.Duration
 	srv              *httptest.Server
@@ -126,6 +127,31 @@ func (b *Bot) SayIn(chatID int64, chatType, firstName, text string, replyTo int6
 	b.push(telegram.Update{Message: m})
 }
 
+// Send queues a message from a private chat as m describes it — a forward,
+// a photo, a voice note — with its date, sender and chat filled in.
+func (b *Bot) Send(chatID int64, m telegram.Message) {
+	m.Date = time.Now().Unix()
+	m.From = &telegram.User{ID: chatID, FirstName: "Owner"}
+	m.Chat = telegram.Chat{ID: chatID, Type: "private", FirstName: "Owner"}
+	b.push(telegram.Update{Message: &m})
+}
+
+// AddFile makes a file fetchable with getFile under id, served at path on
+// the file server.
+func (b *Bot) AddFile(id, path string, data []byte) {
+	b.mu.Lock()
+	if b.files == nil {
+		b.files = map[string]fakeFile{}
+	}
+	b.files[id] = fakeFile{path: path, data: data}
+	b.mu.Unlock()
+}
+
+type fakeFile struct {
+	path string
+	data []byte
+}
+
 // SayOld queues a message dated age ago, as one sent while nobody read.
 func (b *Bot) SayOld(chatID int64, text string, age time.Duration) {
 	b.push(telegram.Update{Message: &telegram.Message{Date: time.Now().Add(-age).Unix(), Text: text,
@@ -183,6 +209,10 @@ func (b *Bot) Pending() int {
 }
 
 func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/file/bot"); ok {
+		b.download(w, rest)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	rest, ok := strings.CutPrefix(r.URL.Path, "/bot")
 	tok, method, _ := strings.Cut(rest, "/")
@@ -217,7 +247,17 @@ func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
 		ok200(w, telegram.User{ID: 42, IsBot: true, FirstName: "Caprock", Username: b.Username})
 	case "getUpdates":
 		ok200(w, b.poll(r, in))
-	case "sendMessage", "editMessageReplyMarkup", "setMessageReaction":
+	case "getFile":
+		b.mu.Lock()
+		f, ok := b.files[str(in["file_id"])]
+		b.mu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 400, "description": "Bad Request: invalid file_id"})
+			return
+		}
+		ok200(w, map[string]any{"file_id": str(in["file_id"]), "file_path": f.path, "file_size": len(f.data)})
+	case "sendMessage", "editMessageReplyMarkup", "editMessageText", "setMessageReaction":
 		s := Sent{Method: method, ChatID: str(in["chat_id"]), Text: str(in["text"]), ParseMode: str(in["parse_mode"]), At: time.Now()}
 		if mk, ok := in["reply_markup"].(map[string]any); ok {
 			s.ForceReply, _ = mk["force_reply"].(bool)
@@ -271,6 +311,32 @@ func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 404, "description": "Not Found: method not found"})
 	}
+}
+
+// download serves a file's bytes at /file/bot<token>/<file_path>, as
+// Telegram's file server does.
+func (b *Bot) download(w http.ResponseWriter, rest string) {
+	tok, path, _ := strings.Cut(rest, "/")
+	if tok != b.Token {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	b.mu.Lock()
+	b.calls = append(b.calls, "file")
+	var data []byte
+	found := false
+	for _, f := range b.files {
+		if f.path == path {
+			data, found = f.data, true
+			break
+		}
+	}
+	b.mu.Unlock()
+	if !found {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	_, _ = w.Write(data)
 }
 
 // photo takes a sendPhoto upload as Telegram does: multipart, chat_id,

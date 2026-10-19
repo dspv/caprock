@@ -64,6 +64,17 @@ type Host interface {
 	SpawnMode() string
 	// Start starts Claude Code in dir with a first message, in mode.
 	Start(ctx context.Context, dir, prompt, mode string) (string, error)
+
+	// Forward sends a message forwarded from Telegram to a session Caprock
+	// started, through the message queue: typed in now (queued 0) or held
+	// until the turn ends (queued is its id), marked as from Telegram.
+	Forward(ctx context.Context, id, text string) (queued int64, err error)
+	// StartChat starts a new chat (no project, ADR-071) in mode with text
+	// as its first message.
+	StartChat(ctx context.Context, text, mode string) (string, error)
+	// SaveFile writes a file fetched from Telegram where pasted files go
+	// and returns its path; an error when its type is not one Caprock keeps.
+	SaveFile(name, mimeType string, data []byte) (string, error)
 }
 
 // Live is a session as the bridge shows it.
@@ -80,6 +91,12 @@ type Live struct {
 	Waiting bool
 	// State is a word or two: "working", "waiting for approval", "idle".
 	State string
+	// Working says a turn runs; Chat that it is a chat (ADR-071), not
+	// work; LastAt when it last did anything. The forward picker sorts and
+	// labels by them.
+	Working bool
+	Chat    bool
+	LastAt  time.Time
 }
 
 // Project is a folder /new can start in.
@@ -147,6 +164,15 @@ type Bridge struct {
 	lastList   []string
 	pendingNew map[int64]newReq
 	conversing map[string]time.Time
+
+	// Forwards (forward.go): the burst being gathered, the pickers posted,
+	// the newest one, and queued forwards by their queue id.
+	BurstWait  time.Duration
+	burst      *burst
+	pickers    map[int64]*picker
+	lastPicker int64
+	queuedFwd  map[int64]queuedFwd
+	replyOnce  map[string]replyAsk
 }
 
 type pairing struct {
@@ -166,7 +192,8 @@ func New(host Host, dir string, log *slog.Logger) *Bridge {
 		log = slog.Default()
 	}
 	b := &Bridge{Host: host, Store: OpenStore(dir), Log: log, wake: make(chan struct{}, 1),
-		lists: map[int64][]string{}, pendingNew: map[int64]newReq{}, conversing: map[string]time.Time{}}
+		lists: map[int64][]string{}, pendingNew: map[int64]newReq{}, conversing: map[string]time.Time{},
+		pickers: map[int64]*picker{}, queuedFwd: map[int64]queuedFwd{}}
 	b.Out = NewOutbox(func() (*Client, string) {
 		token, chat := host.Bot()
 		if token == "" {
@@ -335,6 +362,7 @@ func (b *Bridge) Disconnect() error {
 	b.setErr("")
 	b.mu.Lock()
 	b.conversing = map[string]time.Time{}
+	b.pickers, b.queuedFwd, b.replyOnce, b.lastPicker = map[int64]*picker{}, map[int64]queuedFwd{}, nil, 0
 	b.mu.Unlock()
 	err := b.Store.Reset()
 	b.Wake()
@@ -518,6 +546,12 @@ func (b *Bridge) handle(ctx context.Context, u Update) {
 		b.Log.Info("telegram: a message sent while Caprock was not reading was skipped", "component", "telegram")
 		return
 	}
+	if forwarded(m) {
+		// A forward, or a photo, file or voice note: gathered with the rest
+		// of its burst, then one picker asks where it goes (forward.go).
+		b.collect(m)
+		return
+	}
 	text := strings.TrimSpace(m.Text)
 	if strings.HasPrefix(text, "/") {
 		b.command(ctx, m, text)
@@ -527,10 +561,19 @@ func (b *Bridge) handle(ctx context.Context, u Update) {
 		b.reply(ctx, m, text)
 		return
 	}
+	if b.words(ctx, m, text) {
+		return
+	}
+	b.hint(m)
+}
+
+// hint answers a plain message that is not a reply, a command or words for
+// a forward.
+func (b *Bridge) hint(m *Message) {
 	if !b.gate(m) {
 		return
 	}
-	b.say(m, "Reply to one of my messages to talk to that session, or send /sessions.")
+	b.say(m, "Reply to one of my messages to talk to that session, or send /sessions. Forward me messages to send them to a session.")
 }
 
 // tryPair reads a message as a pairing attempt while one is open. true when
@@ -612,7 +655,8 @@ func (b *Bridge) helpText() string {
 	s.WriteString("• /sessions — the live ones, numbered.\n")
 	s.WriteString("• <code>/new caprock fix the flaky test</code> — start Claude Code in a project.\n")
 	s.WriteString("• <code>/stop 2</code> — stop one Caprock started.\n")
-	s.WriteString("• Approve and Deny under a question answer it.\n\n")
+	s.WriteString("• Approve and Deny under a question answer it.\n")
+	s.WriteString("• Forward me messages, photos, files or voice notes and pick a session: they go in as one message.\n\n")
 	s.WriteString("Caprock only types into sessions it started itself; the others it watches.")
 	return s.String()
 }
@@ -1084,6 +1128,8 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 			ParseMode:  "HTML",
 			ForceReply: &ForceReply{ForceReply: true, Placeholder: clipRunes("Message to "+s.Title, 64)},
 		}, Ref{SessionID: s.ID, Kind: "reply"}, nil)
+	case strings.HasPrefix(data, "f:"):
+		b.forwardPress(ctx, c, chat, msgID, strings.TrimPrefix(data, "f:"), toast, premium)
 	default:
 		toast("")
 	}

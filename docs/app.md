@@ -682,7 +682,7 @@ others. Installing it: [install-app.md](install-app.md).
   ⌘P, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
   header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
   opens the **Pipeline** in a tab of its own, pinned right after the
-  Dashboard tab and drawn like it — its glyph and ⌘P (Ctrl⇧P on Windows
+  Dashboard tab and drawn like it — its glyph and ⌘P (Ctrl+Shift+P on Windows
   and Linux), its × while it is in front. It stays in the Dashboard too:
   *Pipeline* in its menu beside *Week* and *Open Pipeline →* on Home take
   you to that tab, so it is one page, never two. In a browser it is a page
@@ -920,6 +920,12 @@ and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes
 to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,
 Option as Meta) always reach the terminal.
+
+On Windows and Linux the key hints beside the sidebar's rows, the tabs and
+Deck and Inspector stay out of the way until you want them: a row shows its
+key while the pointer is on it, and holding Ctrl for a moment shows every
+key at once, the tabs' Ctrl+Shift+1–9 among them. On macOS they are always
+shown.
 
 ⌘W closes the tab in front, never the window: the macOS menu's File →
 Close Tab holds it, and asks first about a running agent or shell just as

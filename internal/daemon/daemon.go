@@ -521,6 +521,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.goBg(func() { logcap.Run(ctx, d.log) })
 	d.queue = newMsgQueue(d)
 	d.queue.onDone = d.queuedDone
+	d.queue.onTyped = d.queuedTyped
 	d.mgr.OnExit = func(id string, code int) {
 		d.link.Ended(id)
 		go d.queue.ended(id)
@@ -626,7 +627,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Hook receiver. Decide is wired unconditionally: it is a method that
 	// answers nil while no board exists, so the Stop-loop starts working the
 	// moment the task runner is turned on rather than only on the next restart.
-	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision, Handoff: d.handoff, Observe: d.observeHook, AfterMain: d.queue.afterMain}
+	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision, Handoff: d.handoff, Observe: d.observeHook, AfterMain: d.queue.afterMain, Annotate: d.queue.annotate}
 
 	// API.
 	// LAN access, decided before the API is built so the pairing screen has an

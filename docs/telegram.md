@@ -28,6 +28,7 @@ Telegram — Wi-Fi, mobile data, another country.
 | Reply to a session to type into it     | Premium |
 | Approve / Deny under a question        | Premium |
 | `/sessions`, `/new`, `/stop`           | Premium |
+| Forward messages to a session          | Premium |
 
 ## Set it up
 
@@ -85,6 +86,39 @@ switch to a paired chat.
   `/unmute` undoes it.
 - **`/help`** lists all of this.
 
+## Send a Telegram message to a session
+
+Forward a message to your bot — or several at once: text, a photo, a link,
+a file, a voice note — and it goes to an agent (Premium, with *Let my paired
+chat talk to sessions* on).
+
+1. **Forward.** Select one or more messages anywhere in Telegram, forward
+   them to your bot. A photo, file or voice note you send it yourself counts
+   too. The bot waits until you stop (about two seconds), then asks once:
+   *Where to? (3 messages, 1 photo)*.
+2. **Add your own words (optional).** Type them before you tap — or in the
+   forward's comment field. They go first.
+3. **Pick where.** The buttons list the sessions Caprock started that are
+   running, as the phone's Continue does: waiting for you first, then
+   working, then the rest (*● Fix the cache test · 2h ago*), up to six. Or
+   **+ New chat** to start a new chat with it (it appears in Chats on your
+   phone and computer; in Bypass the bot asks first), or **Cancel**.
+4. **It goes as one message.** Your words, then each forwarded message as a
+   quote with who wrote it (*Forwarded from Alice*, or *Forwarded message*
+   when Telegram hides the sender) and its text. Photos and files are saved
+   where pasted files go (10 MB at most) and named by their path, so the
+   agent can open them. A voice note is saved as an audio file and marked
+   *not transcribed* — Caprock does not transcribe it.
+5. **Busy is fine.** If the agent is working, the message waits in the
+   session's queue and goes in when its turn ends: the bot says *⏳ … is
+   busy — will send when it finishes*, then *✓ Sent*. In Caprock the
+   message shows as yours, with a small *from Telegram* under it.
+
+**Reply here** under the question is off by default. Turn it on and the
+agent's answer to that message comes back to Telegram when it finishes (up
+to 3,000 characters, with *Open on phone* when phone access is on); the
+choice is remembered for next time. Off, the answer stays in Caprock.
+
 **Only sessions Caprock started can be typed into.** A session you started
 in your own terminal is watched — you get its alerts — but Caprock never types
 into a process it did not start. A reply to one answers *I can only watch this
@@ -104,6 +138,10 @@ Telegram can read everything the bot sends. That is:
   characters. Code blocks are replaced by a line like *[go, 12 lines]* unless
   you tick *Send code blocks in replies*. Tool output is never sent.
 - **`/sessions`:** each live session's header and state.
+- **Forwards:** the *Where to?* question with your running sessions' names
+  and states, then what happened (*✓ Sent to …*). The answer to a forward
+  only when you turned *Reply here* on. A forwarded photo, file or voice
+  note is downloaded from Telegram to your computer; nothing is uploaded.
 
 Nothing is sent until you set up a bot and switch something on. Caprock reads
 updates from Telegram only while there is something to answer — during

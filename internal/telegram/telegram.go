@@ -6,8 +6,10 @@
 // check a token, getUpdates (long polling, so nothing listens for inbound
 // connections) to hear the pairing code, replies and button presses,
 // sendMessage, sendPhoto (a share card, only on the user's click),
-// editMessageReplyMarkup, setMessageReaction, setMyCommands and
-// answerCallbackQuery. No webhook, no relay of ours.
+// editMessageReplyMarkup, editMessageText, setMessageReaction,
+// setMyCommands and answerCallbackQuery, and getFile with its download for
+// a photo, file or voice note forwarded to the bot (ADR-081). No webhook,
+// no relay of ours.
 //
 // The token is in every request URL, so it is in every transport error's
 // text. Nothing this package returns carries it: errors are scrubbed before
@@ -256,6 +258,71 @@ type Message struct {
 	// ReplyTo is the message this one answers, when the sender used
 	// Telegram's Reply: how a reply finds its session.
 	ReplyTo *Message `json:"reply_to_message,omitempty"`
+
+	// What a forwarded or shared message carries (ADR-081): who wrote it
+	// first, the caption under a photo or file, the album it belongs to,
+	// and its photo (every size, smallest first), file, voice note, audio or
+	// video.
+	ForwardOrigin *ForwardOrigin `json:"forward_origin,omitempty"`
+	Caption       string         `json:"caption,omitempty"`
+	MediaGroupID  string         `json:"media_group_id,omitempty"`
+	Photo         []PhotoSize    `json:"photo,omitempty"`
+	Document      *FileRef       `json:"document,omitempty"`
+	Voice         *FileRef       `json:"voice,omitempty"`
+	Audio         *FileRef       `json:"audio,omitempty"`
+	Video         *FileRef       `json:"video,omitempty"`
+}
+
+// ForwardOrigin is where a forwarded message came from: a person
+// ("user", or "hidden_user" when they hide their account), a chat or a
+// channel.
+type ForwardOrigin struct {
+	Type           string `json:"type"`
+	Date           int64  `json:"date,omitempty"`
+	SenderUser     *User  `json:"sender_user,omitempty"`
+	SenderUserName string `json:"sender_user_name,omitempty"`
+	SenderChat     *Chat  `json:"sender_chat,omitempty"`
+	Chat           *Chat  `json:"chat,omitempty"`
+}
+
+// Name is the forwarded message's author as Telegram tells it, or "".
+func (o *ForwardOrigin) Name() string {
+	if o == nil {
+		return ""
+	}
+	switch {
+	case o.SenderUser != nil:
+		n := strings.TrimSpace(o.SenderUser.FirstName + " " + o.SenderUser.LastName)
+		if n == "" && o.SenderUser.Username != "" {
+			n = "@" + o.SenderUser.Username
+		}
+		return n
+	case o.SenderUserName != "":
+		return o.SenderUserName
+	case o.SenderChat != nil:
+		return o.SenderChat.Name()
+	case o.Chat != nil:
+		return o.Chat.Name()
+	}
+	return ""
+}
+
+// PhotoSize is one size of a photo; a message carries several.
+type PhotoSize struct {
+	FileID   string `json:"file_id"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+}
+
+// FileRef is a document, voice note, audio or video in a message: what
+// getFile needs to fetch it, and what it says about itself.
+type FileRef struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
+	Duration int    `json:"duration,omitempty"`
 }
 
 // CallbackQuery is a press of an inline button.
@@ -424,6 +491,77 @@ func (c *Client) GetUpdates(ctx context.Context, offset int64, wait time.Duratio
 		"allowed_updates": []string{"message", "callback_query"},
 	}, &out, wait+sendTimeout)
 	return out, err
+}
+
+// EditText replaces a sent message's text and buttons; a nil markup
+// removes the buttons.
+func (c *Client) EditText(ctx context.Context, chatID string, messageID int64, text, parseMode string, markup *Markup) error {
+	if markup == nil {
+		markup = &Markup{InlineKeyboard: [][]InlineButton{}}
+	}
+	params := map[string]any{
+		"chat_id": chatID, "message_id": messageID, "text": text, "reply_markup": markup,
+		"disable_web_page_preview": true,
+	}
+	if parseMode != "" {
+		params["parse_mode"] = parseMode
+	}
+	return c.Call(ctx, "editMessageText", params, nil)
+}
+
+// MaxDownload is the largest file the Bot API lets a bot fetch.
+const MaxDownload = 20 << 20
+
+// downloadTimeout bounds one file fetch.
+const downloadTimeout = 60 * time.Second
+
+// errTooLarge is a file over the limit Download was given.
+var errTooLarge = errors.New("telegram: the file is too large to fetch")
+
+// TooLarge reports whether err is Download refusing a file for its size.
+func TooLarge(err error) bool { return errors.Is(err, errTooLarge) }
+
+// Download fetches a file someone sent the bot: getFile for its path on
+// Telegram's file server, then the bytes, at most limit of them (a larger
+// file is refused, not cut). The token is in the file URL too, so errors
+// are scrubbed as every other call's are.
+func (c *Client) Download(ctx context.Context, fileID string, limit int64) ([]byte, error) {
+	var f struct {
+		FilePath string `json:"file_path"`
+		FileSize int64  `json:"file_size"`
+	}
+	if err := c.Call(ctx, "getFile", map[string]any{"file_id": fileID}, &f); err != nil {
+		return nil, err
+	}
+	if f.FilePath == "" {
+		return nil, errors.New("telegram: the file is not available")
+	}
+	if f.FileSize > limit {
+		return nil, errTooLarge
+	}
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base()+"/file/bot"+c.Token+"/"+f.FilePath, nil)
+	if err != nil {
+		return nil, c.scrub(err)
+	}
+	req.Header.Set("User-Agent", "caprock")
+	res, err := c.http().Do(req)
+	if err != nil {
+		return nil, c.scrub(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("telegram: http %d fetching a file", res.StatusCode)
+	}
+	raw, err := io.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, c.scrub(err)
+	}
+	if int64(len(raw)) > limit {
+		return nil, errTooLarge
+	}
+	return raw, nil
 }
 
 // MaskToken is how a token is ever shown: "••••••" and its last four

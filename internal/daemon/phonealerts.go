@@ -137,12 +137,13 @@ func (d *Daemon) deliverAlert(ctx context.Context, a alerts.Alert) {
 
 // telegramHandles reports whether Telegram hears nothing from the rules about
 // a session: it is muted there, or the owner talks to it from there and the
-// conversation sends its questions and replies itself (ADR-047).
+// conversation sends its questions and replies itself (ADR-047), or a
+// forward asked for this turn's answer there (ADR-081).
 func (d *Daemon) telegramHandles(id string) bool {
 	if d.tg == nil {
 		return false
 	}
-	return d.tg.Muted(id) || (d.tg.Active() && d.tg.Conversing(id))
+	return d.tg.Muted(id) || (d.tg.Active() && (d.tg.Conversing(id) || d.tg.Replying(id)))
 }
 
 // publishNotify puts the alert on /v1/live as a notify frame, numbered and

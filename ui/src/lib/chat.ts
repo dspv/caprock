@@ -37,6 +37,8 @@ export interface ChatMessage {
   interrupted?: boolean
   /** A notice's full text, behind its one line. */
   raw?: string
+  /** Where a user message came from: 'telegram' for a forward to the paired bot (ADR-081). */
+  via?: string
 }
 
 const msCache = new Map<string, number>()
@@ -349,7 +351,10 @@ export function toMessages(events: readonly Event[], opts: { ended?: boolean } =
       const text = textOf(e)
       const notice = e.kind === 'turn.user' ? noticeLine(text) : null
       if (notice !== null) out.push({ id: e.id, kind: 'notice', ts: e.ts, text: notice, raw: text })
-      else out.push({ id: e.id, kind: e.kind === 'turn.user' ? 'user' : 'assistant', ts: e.ts, text })
+      else if (e.kind === 'turn.user') {
+        const via = payloadOf(e).via
+        out.push(typeof via === 'string' && via ? { id: e.id, kind: 'user', ts: e.ts, text, via } : { id: e.id, kind: 'user', ts: e.ts, text })
+      } else out.push({ id: e.id, kind: 'assistant', ts: e.ts, text })
     }
   })
   return out
