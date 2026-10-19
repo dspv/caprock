@@ -590,7 +590,7 @@ describe('ChatView: what you send', () => {
     }
   })
 
-  it('a message the daemon refuses says Not sent, and Retry sends it again', async () => {
+  it('a message the daemon refuses says Not sent once, in the composer, and Retry sends it again', async () => {
     const { api } = await import('@/lib/api')
     const real = api.queueSend
     const spy = vi.spyOn(api, 'queueSend').mockRejectedValueOnce(new Error('offline'))
@@ -599,7 +599,10 @@ describe('ChatView: what you send', () => {
       await screen.findByText('No messages yet')
       fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'hello' } })
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-      expect(await screen.findByText('Not sent')).toBeInTheDocument()
+      expect(await screen.findByText(/^Not sent — /)).toBeInTheDocument()
+      // One place says it, not two: no failed bubble beside the held message.
+      expect(screen.queryByText('Not sent')).toBeNull()
+      expect(screen.getAllByRole('button', { name: 'Retry' })).toHaveLength(1)
       spy.mockImplementation(real)
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
       expect(await screen.findByText('Sent ✓')).toBeInTheDocument()

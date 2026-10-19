@@ -401,7 +401,12 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
       nextFrame(jumpToEnd)
       return true
     } catch (e) {
-      setOutgoing((list) => list.map((o) => (o.key === key ? { ...o, phase: 'failed' as const } : o)))
+      // One place says "Not sent", not two: the composer holds the message
+      // with Retry and Edit (and keeps it across a reload), so the bubble
+      // goes. A bubble's own Retry that fails again stays, marked failed.
+      setOutgoing((list) => (retry === undefined
+        ? list.filter((o) => o.key !== key)
+        : list.map((o) => (o.key === key ? { ...o, phase: 'failed' as const } : o))))
       setSendError(`Not sent: ${errText(e)}`)
       return false
     }
