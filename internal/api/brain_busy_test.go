@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"sync"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
