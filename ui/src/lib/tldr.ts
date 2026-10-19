@@ -3,7 +3,7 @@
  * (`POST /v1/events/{id}/tldr`, .ai/03-contracts.md), shown on the phone's
  * latest answer card (.ai/04-ui.md § From a phone, *AI;DR*).
  *
- * - **No body.** The daemon reads the answer from its own store by the
+ * - **Empty JSON body** (`{}`, with Content-Type: application/json, which the relay needs to pass the CSRF check). The daemon reads the answer from its own store by the
  *   event's id; 200 is `{tldr, cached}`, 404 an unknown event, 503
  *   `{error}` when no agent CLI on the machine can summarise, 502 `{error}`
  *   when the agent ran and failed or timed out. Any non-200 is an error,
@@ -34,7 +34,11 @@ async function ask(eventId: number): Promise<string> {
   try {
     res = await fetch(`/v1/events/${encodeURIComponent(String(eventId))}/tldr`, {
       method: 'POST',
-      headers: t ? { 'X-Caprock-Device': t } : {},
+      // Content-Type is the CSRF proof on the relay: the channel drops the
+      // browser's Sec-Fetch-* and Origin, and a POST with neither it nor a
+      // bearer is a 403 (csrf.go). The body is empty JSON for that reason.
+      headers: t ? { 'Content-Type': 'application/json', 'X-Caprock-Device': t } : { 'Content-Type': 'application/json' },
+      body: '{}',
     })
   } catch (e) {
     throw new TldrError(0, `The summary could not be asked for — ${e instanceof Error ? e.message : String(e)}`)
@@ -45,7 +49,9 @@ async function ask(eventId: number): Promise<string> {
     const said = (body as { error?: unknown } | undefined)?.error
     const msg = typeof said === 'string' && said.trim()
       ? said
-      : res.status === 404 ? 'This answer is not known to Caprock any more.' : `No summary — ${res.status} ${res.statusText}`.trim()
+      : res.status === 404 ? 'This answer is not known to Caprock any more.'
+      : res.status === 403 ? 'Caprock refused to summarise this answer. Allow control for this device in Settings, Use on your phone, on the computer.'
+      : `No summary — ${res.status} ${res.statusText}`.trim()
     throw new TldrError(res.status, msg)
   }
   const tldr = (body as Partial<Tldr> | undefined)?.tldr

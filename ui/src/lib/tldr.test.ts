@@ -9,7 +9,7 @@ describe('AI;DR client', () => {
   beforeEach(() => resetTldr())
   afterEach(() => vi.unstubAllGlobals())
 
-  it('posts with no body and keeps the summary for the page', async () => {
+  it('posts an empty JSON body, the relay CSRF proof, and keeps the summary for the page', async () => {
     const fetch = vi.fn(async () => reply(200, { tldr: ' Fixed; push it? ', cached: false }))
     vi.stubGlobal('fetch', fetch)
     expect(await fetchTldr(42)).toBe('Fixed; push it?')
@@ -18,7 +18,8 @@ describe('AI;DR client', () => {
     const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('/v1/events/42/tldr')
     expect(init.method).toBe('POST')
-    expect(init.body).toBeUndefined()
+    expect(init.body).toBe('{}')
+    expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json')
   })
 
   it('shares one request between two taps in flight', async () => {
@@ -48,6 +49,11 @@ describe('AI;DR client', () => {
       .mockResolvedValueOnce(new Response('', { status: 502 })))
     await expect(fetchTldr(3)).rejects.toThrow('claude timed out')
     await expect(fetchTldr(3)).rejects.toThrow(/502/)
+  })
+
+  it('says in words what a 403 means', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('forbidden origin', { status: 403 })))
+    await expect(fetchTldr(6)).rejects.toThrow(/refused to summarise/)
   })
 
   it('names an unknown answer on a 404 without a body', async () => {

@@ -444,3 +444,21 @@ func TestCSRFMailOAuthCallbackOnlyExemption(t *testing.T) {
 		t.Fatal("callback under a non-loopback Host passed the guard")
 	}
 }
+
+// TestRelayedAIDRPostPassesTheGuard: the relay channel drops Origin and
+// Sec-Fetch-* (internal/remote/proto.go), so a phone's POST reaches the API
+// with only its headers allowlist. AI;DR sent none of the proofs and got 403
+// from this guard, not from its route. Without Content-Type it is refused;
+// as the phone now sends it, it passes.
+func TestRelayedAIDRPostPassesTheGuard(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "/v1/events/7/tldr", nil)
+	r.Host = "127.0.0.1:4173"
+	r.Header.Set("X-Caprock-Device", "tok")
+	if checkOrigin(r) == "" {
+		t.Fatal("a relayed POST with no Content-Type must be refused")
+	}
+	r.Header.Set("Content-Type", "application/json")
+	if why := checkOrigin(r); why != "" {
+		t.Fatalf("a relayed JSON POST was refused: %s", why)
+	}
+}
