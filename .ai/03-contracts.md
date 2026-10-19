@@ -5262,7 +5262,7 @@ A private module's documents ([ADR-076](08-decisions.md), § Private modules):
 `created_at` and `updated_at` are unix ms. Rows stay when a module's files are
 removed, so installing it again finds them.
 
-### Subagent model (migration 0064)
+### Subagent model (migration 0065)
 
 ```sql
 ALTER TABLE sessions ADD COLUMN subagent_model TEXT NOT NULL DEFAULT '';
@@ -5273,7 +5273,7 @@ absent/empty for the session's own model; anything else (another string, a
 non-string) is a 400 with nothing started. For a Claude Code session the
 daemon sets `CLAUDE_CODE_SUBAGENT_MODEL=<value>` in the child's environment,
 the variable Claude Code reads for its subagents' model (the binary lists it
-with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`; checked in 2.1.303 on 2026-10-19). Nothing
+with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`; checked in 2.1.303 on 2026-10-19: the value is lower-cased and resolved by the same alias resolver as `--model`, so `haiku`, `sonnet` and `opus` map to the current full ids, and `inherit` or empty means the lead's model). Nothing
 else from the request reaches the environment, no value is passed through, and
 other agents ignore the field. Absent, the user's own environment is left as it
 is. The choice is recorded once on the session row (`subagent_model`, in the

@@ -65,7 +65,7 @@ type Session struct {
 	// the user's normal sign-in.
 	Subscription string `json:"subscription,omitempty"`
 	// SubagentModel is the model the session's subagents were started to run
-	// on (migration 0064): "haiku", "sonnet" or "opus"; empty when they follow
+	// on (migration 0065): "haiku", "sonnet" or "opus"; empty when they follow
 	// the session.
 	SubagentModel string `json:"subagent_model,omitempty"`
 	// AttemptGroup, Attempt and Attempts say the session is attempt Attempt
