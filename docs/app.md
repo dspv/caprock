@@ -282,6 +282,15 @@ others. Installing it: [install-app.md](install-app.md).
   says so, and *Connect a provider* opens a shell tab with `opencode auth
   login` typed for you to run. The agents that are not installed are named
   underneath, each one click from its install command.
+- **Subagents run on.** For Claude Code, *New agent* asks which model its
+  subagents use: *Same as the session* (the default), *Haiku*, *Sonnet* or
+  *Opus*. A pick starts the session with `CLAUDE_CODE_SUBAGENT_MODEL` set, which
+  is what Claude Code reads for it. The last choice is kept for each project,
+  the phone's *Start in a project* sheet has the same row, and the session's
+  header shows *subagents: Haiku* when one was chosen. On the Week screen, when
+  your subagents ran on a pricier model than Haiku and the difference is a
+  dollar or more, a note puts their cost beside the same tokens on Haiku, as an
+  estimate at list prices.
 - **Agents that are not set up.** In *New agent*, an agent that is not
   installed is listed after the others, marked *not installed*, and never
   picked for you. Choose it and the sheet shows the official install command

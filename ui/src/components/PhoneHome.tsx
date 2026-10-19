@@ -45,6 +45,7 @@ import { ChipSelect, SectionLabel } from './PhoneParts'
 import { PhoneReleases } from './PhoneReleases'
 import { subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, hasSubscriptions, roomText } from '@/lib/subscriptions'
+import { SUBAGENT_MODELS, rememberSubagentModel, rememberedSubagentModel, type SubagentModel } from '@/lib/subagentModel'
 
 /** The last project, agent and sign-in a chat was started on from here. */
 const CHOICE_KEY = 'caprock.phone.choice'
@@ -119,6 +120,9 @@ async function startChat(project: Project, agent: SpawnAgent, subscription: stri
   if (agent !== 'claude') req.agent = agent
   if (model) req.model = model
   if (subscription && hasSubscriptions(agent)) req.subscription = subscription
+  // Where subagents run is remembered per project, so the dock keeps it too.
+  const subagents = agent === 'claude' ? rememberedSubagentModel(project.root) : ''
+  if (subagents) req.subagent_model = subagents
   const prompt = messageWith(text, paths)
   if (prompt) req.prompt = prompt
   const res = await api.spawn(req)
@@ -634,6 +638,11 @@ export function NewChatSheet({ projects, onClose }: { projects: Project[]; onClo
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const list = more ? projects : projects.slice(0, SHEET_PROJECTS)
+  // Per project, kept for the next start (startChat reads it back).
+  const [subPicked, setSubPicked] = useState<Record<string, SubagentModel>>({})
+  const projectRoot = picks.project?.root ?? ''
+  const subagents = subPicked[projectRoot] ?? rememberedSubagentModel(projectRoot)
+  const pickSubagents = (v: SubagentModel) => { rememberSubagentModel(projectRoot, v); setSubPicked((p) => ({ ...p, [projectRoot]: v })) }
   const start = async () => {
     if (!picks.project) return
     setBusy(true)
@@ -710,6 +719,14 @@ export function NewChatSheet({ projects, onClose }: { projects: Project[]; onClo
           {picks.sub === 'deepseek' && (
             <p className="mt-2 text-[13px] leading-[1.4] text-fg-muted">This chat runs on DeepSeek: its prompts, files and tool output go to api.deepseek.com on your DeepSeek key.</p>
           )}
+        </>
+      )}
+      {picks.agent === 'claude' && picks.project && (
+        <>
+          <FieldLabel>Subagents run on</FieldLabel>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Subagents run on">
+            {SUBAGENT_MODELS.map((m) => <Chip key={m.value} on={m.value === subagents} onClick={() => pickSubagents(m.value)}>{m.label}</Chip>)}
+          </div>
         </>
       )}
       <FieldLabel>First message · optional</FieldLabel>

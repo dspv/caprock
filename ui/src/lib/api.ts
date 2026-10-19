@@ -46,6 +46,9 @@ export interface Session {
   /** The sign-in it ran on (ADR-048): a subscription id from Settings →
    *  Subscriptions; absent for the Default sign-in. */
   subscription?: string
+  /** The model its subagents were started to run on: `haiku`, `sonnet` or
+   *  `opus`; absent when they follow the session. */
+  subagent_model?: string
   /** The repository the session's folder belongs to (a linked worktree resolves to its main repository). */
   repo_root?: string
   /** The worktree's name when the session runs in a linked worktree. */
@@ -1164,6 +1167,10 @@ export interface Week {
   loop?: WeekLoop
   biggest?: { agent: string; cost_usd: number; turns: number; active_days: number }
   tax?: ContextTax
+  /** What the window's subagents on a pricier model than Haiku cost, against
+   *  the same tokens on Haiku, at list prices: an estimate, present only when
+   *  the difference is a dollar or more. */
+  subagent_saving?: { models: string[]; cost_usd: number; haiku_usd: number; haiku: string }
   cost_per_merged_pr?: number
   estimates: string[]
   pricing_version?: string
@@ -1762,6 +1769,9 @@ export interface SpawnRequest {
   /** Start the new worktree at GitHub pull request N's head (refs/pull/N/head, fetched from the remote) instead of a branch. */
   worktree_pr?: number
   model?: string; permission_mode?: string; args?: string[]
+  /** The model Claude Code's subagents run on (CLAUDE_CODE_SUBAGENT_MODEL):
+   *  `haiku`, `sonnet` or `opus`; absent to follow the session. Claude Code only. */
+  subagent_model?: string
   /** The sign-in to run on (ADR-048): a subscription id, "default" for the
    *  user's own, or absent for the one made the default in Settings →
    *  Subscriptions. Claude Code and Codex only; a resume keeps its own. */

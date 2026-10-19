@@ -9,6 +9,7 @@
  * Weeks are seven local days, the same days the Cost screen's 7d range uses;
  * the default ends today, and the arrows step a week at a time.
  */
+import { SubagentSavingNote } from '@/components/SubagentSavingNote'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
@@ -164,6 +165,7 @@ export function WeekScreen({ start: initial }: { start?: string } = {}) {
           )}
         </div>
       </Panel>
+      {week?.subagent_saving && <SubagentSavingNote saving={week.subagent_saving} />}
       <p className="text-[11px] text-fg-faint max-w-[80ch]">
         No repository, path, prompt or session title is ever on the card. Merged means a <span className="num">gh pr merge</span> the
         agents ran on this machine, in a call that did not fail — Caprock does not ask GitHub. ≈ marks estimates: lines count a whole file on every Write, and

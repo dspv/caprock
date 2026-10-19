@@ -782,7 +782,7 @@ turn fell on. A `start` that is not `YYYY-MM-DD` is `400`.
 `{start, end, partial, from_ms, to_ms, days[], sessions, active_days, turns,
 cost_usd, unpriced_turns?, models[], prs_opened, prs_merged,
 merges_unresolved, commits, files_edited, lines_added, lines_removed,
-ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, cost_per_merged_pr?,
+ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, subagent_saving?, cost_per_merged_pr?,
 estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
 active}` × 7; `agents[]` is `{agent, subagent, turns, cost_usd, sessions,
 threads?}`; `loop` is `{agent, tool, kind, calls, first_ms, last_ms, tax_usd?,
@@ -828,9 +828,19 @@ own tool calls recorded:
 title.** The card is made to be posted, so the guard is in the shape of the
 payload rather than in the screen that draws it; a store test asserts it.
 
+- **Subagent saving** (`subagent_saving: {models[], cost_usd, haiku_usd,
+  haiku}`): the window's Claude Code subagent tokens (priced turns of
+  non-internal subagent events, `store.SubagentTokensByModel`) on every model
+  that costs more than the newest current Haiku row of the pricing table,
+  priced at that row's rates and then at Haiku's, token type by type. Absent
+  without a pricing table or a Haiku row, when no subagent ran on a pricier
+  model, and when the difference is under a dollar. An estimate at list prices
+  (the same tokens, which Haiku would not necessarily use); the Haiku 5.5 row
+  carries its lower prompt-length tier, so a long prompt is under-priced on it.
+
 `estimates[]` lists the fields a renderer must mark with "≈"
-(`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd`
-when present). Responses are cached for 30 s per `start`.
+(`lines_added`, `lines_removed`, and `cost_per_merged_pr` / `loop.tax_usd` /
+`subagent_saving` when present). Responses are cached for 30 s per `start`.
 
 ### Activity (`GET /v1/activity`)
 
@@ -1867,7 +1877,7 @@ machine, never from a forge's API (rule 4):
   guarded recent folder without checking that it still exists.
 
 ```
-POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, resume?, fork?, command?, args?, attempts?} → {session_id, cwd, session_ids?, attempt_group?, error?}
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, subagent_model?, resume?, fork?, command?, args?, attempts?} → {session_id, cwd, session_ids?, attempt_group?, error?}
 GET    /v1/attempts/{group}          → {group, base?, attempts: [AttemptView]}; 404 for an unknown group
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 GET    /v1/agents/catalog            → {agents: [CatalogEntry], licensed, home?}
@@ -5266,6 +5276,23 @@ A private module's documents ([ADR-076](08-decisions.md), § Private modules):
 `data` is a JSON object as text, which the store never reads into;
 `created_at` and `updated_at` are unix ms. Rows stay when a module's files are
 removed, so installing it again finds them.
+
+### Subagent model (migration 0065)
+
+```sql
+ALTER TABLE sessions ADD COLUMN subagent_model TEXT NOT NULL DEFAULT '';
+```
+
+`POST /v1/agents` takes `subagent_model`: `haiku`, `sonnet` or `opus`, or
+absent/empty for the session's own model; anything else (another string, a
+non-string) is a 400 with nothing started. For a Claude Code session the
+daemon sets `CLAUDE_CODE_SUBAGENT_MODEL=<value>` in the child's environment,
+the variable Claude Code reads for its subagents' model (the binary lists it
+with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`; checked in 2.1.303 on 2026-10-19: the value is lower-cased and resolved by the same alias resolver as `--model`, so `haiku`, `sonnet` and `opus` map to the current full ids, and `inherit` or empty means the lead's model). Nothing
+else from the request reaches the environment, no value is passed through, and
+other agents ignore the field. Absent, the user's own environment is left as it
+is. The choice is recorded once on the session row (`subagent_model`, in the
+`Session` JSON as `subagent_model`, omitted when empty) for the session card.
 
 ### Session generation DDL (migration 0063)
 

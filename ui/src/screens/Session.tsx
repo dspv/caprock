@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { subagentModelLabel } from '@/lib/subagentModel'
 import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail, type SessionSummary } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
@@ -219,6 +220,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         )}
         {s.git_branch && <span className="mono text-[11px] text-fg-muted">{s.git_branch}</span>}
         <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} prefix="on " className="text-[11px] text-fg-muted" />
+        {subagentModelLabel(s.subagent_model) && (
+          <span className="text-[11px] text-fg-muted" title="The model this session's subagents were started to run on">subagents: {subagentModelLabel(s.subagent_model)}</span>
+        )}
         {/* Health and the controls are about now: never from a kept copy. */}
         {!compact && !detail.stale && <Badge health={s.activity.health} />}
         {!compact && controls}

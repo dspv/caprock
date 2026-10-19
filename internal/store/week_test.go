@@ -411,3 +411,38 @@ func TestWeekLoopAcrossScanSlices(t *testing.T) {
 		t.Fatalf("loop %+v, want one episode of 40", w.Loop)
 	}
 }
+
+// Only Claude Code's priced subagent turns inside the window count towards
+// the "on Haiku" estimate: not the main thread, another agent's, or a turn
+// outside [from, to).
+func TestSubagentTokensByModel(t *testing.T) {
+	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
+	from := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	f.session("c", "claude", "")
+	f.session("x", "codex", "")
+	put := func(sess, agentID string, at time.Time, cost float64, model string) {
+		c := cost
+		f.put(event.Event{SessionID: sess, AgentID: agentID, Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+			Ts: at, Model: model, CostUSD: &c, Tokens: &event.TokenDelta{In: 100, Out: 10, CacheRead: 1000, CacheWrite: 50, CacheWrite1h: 20}})
+	}
+	in := from.Add(time.Hour)
+	put("c", "sub1", in, 1, "claude-opus-5-5")
+	put("c", "sub2", in.Add(time.Minute), 1, "claude-opus-5-5")
+	put("c", "", in, 1, "claude-opus-5-5")                       // main thread
+	put("x", "sub1", in, 1, "gpt-5")                             // another agent
+	put("c", "sub1", in, 0, "claude-opus-5-5")                   // unpriced
+	put("c", "sub1", from.Add(-time.Hour), 1, "claude-opus-5-5") // before the window
+	put("c", "sub3", in, 1, "claude-haiku-5-5")
+	got, err := SubagentTokensByModel(context.Background(), f.s.DB(), from.UnixMilli(), from.AddDate(0, 0, 7).UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byModel := map[string]ModelTokens{}
+	for _, m := range got {
+		byModel[m.Model] = m
+	}
+	opus := byModel["claude-opus-5-5"]
+	if len(got) != 2 || opus.In != 200 || opus.Out != 20 || opus.CacheRead != 2000 || opus.CacheWrite != 100 || opus.CacheWrite1h != 40 {
+		t.Fatalf("got %+v", got)
+	}
+}

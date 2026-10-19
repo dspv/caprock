@@ -128,6 +128,33 @@ type ModelTokens struct {
 	CacheWrite1h int64
 }
 
+// SubagentTokensByModel sums, per model, the tokens of Claude Code's subagent
+// turns in [from, to) that were priced: the volume "what if they ran on
+// Haiku" is computed from. Turns with no stored cost are left out (an
+// unpriced model, or a fork's copy of a turn paid elsewhere).
+func SubagentTokensByModel(ctx context.Context, q Querier, from, to int64) ([]ModelTokens, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
+		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0)
+		FROM events INDEXED BY idx_events_turn_agent
+		WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND COALESCE(agent_id,'') <> '' AND cost_usd > 0`+nonInternalEvent+`
+		  AND session_id IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = 'claude')
+		GROUP BY 1`, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ModelTokens
+	for rows.Next() {
+		var m ModelTokens
+		if err := rows.Scan(&m.Model, &m.In, &m.Out, &m.CacheRead, &m.CacheWrite, &m.CacheWrite1h); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
 // TokensByModel sums each model's tokens by type since from.
 func TokensByModel(ctx context.Context, q Querier, from int64) ([]ModelTokens, error) {
 	rows, err := q.QueryContext(ctx, `

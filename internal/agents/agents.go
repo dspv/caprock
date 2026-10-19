@@ -99,10 +99,15 @@ type SpawnRequest struct {
 	// DeepSeekKey is the user's DeepSeek key, for a Claude Code session on
 	// DeepSeek (Subscription subs.DeepSeekID). Like GeminiKey it is never
 	// accepted from the browser: the daemon fills it in from its settings.
-	DeepSeekKey string   `json:"-"`
-	Args        []string `json:"args,omitempty"` // extra args
-	Cols        int      `json:"cols,omitempty"`
-	Rows        int      `json:"rows,omitempty"`
+	DeepSeekKey string `json:"-"`
+	// SubagentModel is the model Claude Code's subagents run on:
+	// "haiku", "sonnet" or "opus" (SubagentModels), or "" to follow the
+	// session. It becomes CLAUDE_CODE_SUBAGENT_MODEL in the child's
+	// environment; nothing else from the request reaches it.
+	SubagentModel string   `json:"subagent_model,omitempty"`
+	Args          []string `json:"args,omitempty"` // extra args
+	Cols          int      `json:"cols,omitempty"`
+	Rows          int      `json:"rows,omitempty"`
 }
 
 // Agent is a live owned session.
@@ -633,6 +638,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 
 	env := childEnv(userenv.Environ(m.log))
 	env = withEnv(env, extraEnv)
+	env = withSubagentModel(env, agent, req.SubagentModel)
 	if req.ConfigDir != "" {
 		env = onSubscription(env, agent, req.ConfigDir)
 	}
@@ -733,6 +739,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		// a new chat, or one carried on there (ADR-071).
 		if m.IsChatDir(cwd) {
 			if err := store.MarkChat(ctx, q, sessionID); err != nil {
+				return err
+			}
+		}
+		if sm := subagentModelFor(agent, req.SubagentModel); sm != "" {
+			if err := store.SetSubagentModel(ctx, q, sessionID, sm); err != nil {
 				return err
 			}
 		}
