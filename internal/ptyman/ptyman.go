@@ -45,6 +45,11 @@ const (
 	// of which happens under SIGKILL — so a daemon restart used to take a
 	// user's running work with it, silently.
 	SignalTerm Signal = "term"
+	// SignalHangup is what closing a terminal window sends: SIGHUP to the
+	// child's process group. An interactive shell ignores SIGTERM but exits
+	// on a hangup, and hangs up its own jobs on the way. Nothing on Windows,
+	// where a console has no hangup and SignalTerm already ends the process.
+	SignalHangup Signal = "hangup"
 )
 
 // ErrDetached is what Wait returns for a session that was let go of rather

@@ -2885,6 +2885,18 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 func (s *Server) fail(w http.ResponseWriter, err error) {
+	// Another writer held the database past busy_timeout: nothing was
+	// written and the same request would succeed in a moment, so say so
+	// rather than answer a bare 500 (the dashboard retries a 503).
+	if store.IsBusy(err) {
+		s.d.Log.Warn("api write found the database busy", "component", "api", "err", err)
+		w.Header().Set("Retry-After", "1")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error":  "the database is busy",
+			"detail": "nothing was saved; try again in a moment",
+		})
+		return
+	}
 	s.d.Log.Error("api error", "component", "api", "err", err)
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 }

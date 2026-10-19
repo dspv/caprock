@@ -5,7 +5,7 @@
  * current from the live socket (a `brain` frame on every change).
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, errText, type BrainAutoStatus, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStage, type BrainStatus } from './api'
+import { api, ApiError, errText, type BrainAutoStatus, type BrainDrop, type BrainFilterQuery, type BrainGraph, type BrainKind, type BrainNode, type BrainStage, type BrainStatus } from './api'
 import { fmtWhen } from './format'
 import { live } from './live'
 import { everyWhileVisible } from './visible'
@@ -57,14 +57,26 @@ export const KIND_COLOR: Record<BrainKind, string> = {
 export type DropResult = { ok: true; node: BrainNode } | { ok: false; message: string }
 
 /** Drops something into the brain. Second Brain has no cap (owner decision, 2026-10-14). */
-export async function dropIntoBrain(d: BrainDrop): Promise<DropResult> {
-  try {
-    const r = await api.dropBrain(d)
-    return { ok: true, node: r.node }
-  } catch (e) {
-    return { ok: false, message: errText(e) }
+export async function dropIntoBrain(d: BrainDrop, retryMs = DROP_RETRY_MS): Promise<DropResult> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await api.dropBrain(d)
+      return { ok: true, node: r.node }
+    } catch (e) {
+      // 503: another writer (an import) held the database and nothing was
+      // saved. The same drop lands a moment later.
+      if (e instanceof ApiError && e.status === 503 && attempt < DROP_RETRIES) {
+        await new Promise((ok) => setTimeout(ok, retryMs))
+        continue
+      }
+      return { ok: false, message: errText(e) }
+    }
   }
 }
+
+/** How many times, and how far apart, a drop is tried again when the database is busy. */
+const DROP_RETRIES = 3
+const DROP_RETRY_MS = 1000
 
 /** Calls `fn` on every brain change the live socket reports, and after a replay gap; a read's `progress` frames only with `{progress: true}`. */
 /** A `brain` frame's data (03-contracts.md § Second Brain, Live): `session` and `project` only on `added`, when known. */

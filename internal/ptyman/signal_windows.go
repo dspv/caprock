@@ -23,6 +23,9 @@ func (s *session) Signal(sig Signal) error {
 			return nil
 		}
 		return s.cmd.Process.Kill()
+	case SignalHangup:
+		// No hangup for a console process; SignalTerm is the stop.
+		return nil
 	case SignalKill:
 		if s.cmd == nil || s.cmd.Process == nil {
 			return nil

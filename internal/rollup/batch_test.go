@@ -330,3 +330,61 @@ func TestAnotherWriterLandsDuringABackfill(t *testing.T) {
 		}
 	}
 }
+
+// A backfill reads many transcripts at once, one batch each. A batch already
+// queued on the lock when the last one committed took it straight away, so
+// the quarter meant to be left free never was, and a write from the dashboard
+// (a memory kept in the Brain) ran out of busy_timeout: POST /v1/brain/nodes
+// answered SQLITE_BUSY for 252 of 300 memories on the measuring stand,
+// 2026-10-19.
+func TestAnotherWriterLandsBesideManyBatches(t *testing.T) {
+	r, _, _ := fileRecorder(t)
+	ctx, stop := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	for g := 0; g < 6; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			b := r.Batch(ctx)
+			defer b.Abort()
+			for i := 0; ctx.Err() == nil; i++ {
+				if _, err := b.Record(ctx, batchTurn(fmt.Sprintf("backfill-%d", g), i), SessionInfo{Cwd: "/p"}); err != nil {
+					return
+				}
+				if b.Due() {
+					if _, _, err := b.Flush(); err != nil {
+						return
+					}
+				}
+			}
+		}(g)
+	}
+	defer func() {
+		stop()
+		wg.Wait()
+	}()
+	time.Sleep(100 * time.Millisecond)
+	var worst time.Duration
+	for i := 0; i < 50; i++ {
+		start := time.Now()
+		err := r.Store.WithTx(context.Background(), func(q store.Querier) error {
+			for j := 0; j < 3; j++ {
+				if _, err := q.ExecContext(context.Background(),
+					`INSERT INTO meta(k, v) VALUES(?, 'x') ON CONFLICT(k) DO UPDATE SET v = excluded.v`, fmt.Sprintf("probe-%d-%d", i, j)); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("write %d beside the import: %v", i, err)
+		}
+		if d := time.Since(start); d > worst {
+			worst = d
+		}
+	}
+	t.Logf("worst wait %v", worst)
+	if worst > time.Second {
+		t.Fatalf("a write waited %v beside the import", worst)
+	}
+}

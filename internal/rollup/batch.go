@@ -81,12 +81,25 @@ func (b *Batch) begin() error {
 	// free moment to land in, and on the measuring stand a project could not
 	// be created for five seconds and failed. So each batch leaves the lock
 	// free for a quarter of the time the previous one held it.
-	if wait := time.Until(time.Unix(0, b.r.batchFreeAt.Load())); wait > 0 {
-		time.Sleep(wait)
+	//
+	// The wait is checked again once the lock is held. A backfill reads many
+	// transcripts at once, a batch each, and a batch already queued on the
+	// lock when the last one committed was handed it at once: the quarter was
+	// never free, and a memory kept in the Brain during a backfill failed
+	// with SQLITE_BUSY after five seconds (2026-10-19).
+	for {
+		if wait := time.Until(time.Unix(0, b.r.batchFreeAt.Load())); wait > 0 {
+			time.Sleep(wait)
+		}
+		// Not lockWrite: only a live writer makes an open batch step aside;
+		// two importers that did would end each other's batches after every
+		// event.
+		b.r.writeMu.Lock()
+		if time.Now().UnixNano() >= b.r.batchFreeAt.Load() {
+			break
+		}
+		b.r.writeMu.Unlock()
 	}
-	// Not lockWrite: only a live writer makes an open batch step aside; two
-	// importers that did would end each other's batches after every event.
-	b.r.writeMu.Lock()
 	conn, err := b.r.Store.DB().Conn(b.ctx)
 	if err != nil {
 		b.r.writeMu.Unlock()

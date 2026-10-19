@@ -29,6 +29,12 @@ func (s *session) Signal(sig Signal) error {
 			return nil
 		}
 		return s.cmd.Process.Signal(syscall.SIGTERM)
+	case SignalHangup:
+		if pgid, err := syscall.Getpgid(s.cmd.Process.Pid); err == nil && pgid == s.cmd.Process.Pid {
+			_ = syscall.Kill(-pgid, syscall.SIGHUP)
+			return nil
+		}
+		return s.cmd.Process.Signal(syscall.SIGHUP)
 	case SignalKill:
 		// Kill the whole process group when we own it; fall back to the process.
 		if pgid, err := syscall.Getpgid(s.cmd.Process.Pid); err == nil && pgid == s.cmd.Process.Pid {
