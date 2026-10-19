@@ -88,9 +88,12 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
 
   const button = 'min-h-[48px] rounded-sm px-4 py-2 text-[15px] font-medium disabled:opacity-50'
   return (
-    <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid grid-cols-[minmax(0,1fr)] gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+    <div ref={card} role="alertdialog" aria-label="Permission prompt" className="grid grid-cols-[minmax(0,1fr)] gap-2 [overflow-wrap:anywhere] border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+      {/* A long tool name, path or "always" answer wraps anywhere rather than
+        * widening the page: on Android one wide line widened the whole layout
+        * viewport, fixed bars included (owner's phone, 2026-10-19). */}
       <div className="flex items-start justify-between gap-2">
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5">
           <p className="text-[13px] text-fg">
             <Asker p={prompt} /> wants to {toolKind(prompt.tool) === 'run' ? 'run' : 'use'} <span className="mono font-medium">{prompt.tool}</span>
           </p>
@@ -198,7 +201,7 @@ function SeveralPrompts({ card, sessionId, prompts, canControl, busy, onDismiss,
   error: string
 }) {
   return (
-    <div ref={card} role="alertdialog" aria-label="Permission prompts" className="grid grid-cols-[minmax(0,1fr)] gap-2 border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
+    <div ref={card} role="alertdialog" aria-label="Permission prompts" className="grid grid-cols-[minmax(0,1fr)] gap-2 [overflow-wrap:anywhere] border border-accent/60 bg-accent/10 rounded-sm px-3 py-3 mt-2">
       <div className="grid grid-cols-[minmax(0,1fr)] gap-0.5">
         <p className="text-[13px] font-medium text-fg">{prompts.length} approvals waiting</p>
         <p className="text-[11.5px] text-fg-muted">

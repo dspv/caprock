@@ -258,13 +258,19 @@ test('browser Home is never wider than the screen: no sideways scroll and no car
   app.session('alpha')
   // A long path with no break is what pushed the cards past the edge.
   const root = '/Users/someone/dev/' + 'bloqblockmaze'.repeat(8) + 'x'
+  // Several projects, as the owner's phone had (2026-10-19), one of them long.
+  const projects = [{ id: 'long', root, name: 'bloq-blockmaze', kind: 'repo', added_at: 1 },
+    ...['ai-crm', 'amarketer', 'bloq', 'caprock-mail', 'caprock-ops'].map((n) => ({ id: n, root: `/Users/someone/dev/${n}`, name: n, kind: 'repo', added_at: 1 }))]
   await page.route('**/v1/projects', (r) => r.request().method() === 'GET'
-    ? r.fulfill({ json: { projects: [{ id: 'long', root, name: 'bloq-blockmaze', kind: 'repo', added_at: 1 }] } })
+    ? r.fulfill({ json: { projects } })
     : r.continue())
-  // Two sessions waiting on a permission whose command is one long unbroken path.
+  // Two sessions waiting on a permission whose command is one long unbroken
+  // path, from a tool with a long name, with a long "always" answer.
   const detail = 'rm -rf /Users/someone/dev/' + 'bloqblockmaze'.repeat(12) + 'x'
+  const always = "Yes, and don't ask again for /Users/someone/dev/" + 'playbookprojects'.repeat(6)
+  const tool = 'mcp__' + 'playbookserver'.repeat(5) + '__computer'
   await page.route('**/v1/agents/*/permission', (r) => r.request().method() === 'GET'
-    ? r.fulfill({ json: { permission: { id: 'p1', tool: 'Bash', detail, since: new Date().toISOString() } } })
+    ? r.fulfill({ json: { permission: { id: 'p1', tool, detail, always, since: new Date().toISOString() } } })
     : r.continue())
   await page.route(/\/v1\/sessions\?/, async (r) => {
     const res = await r.fetch()
@@ -272,19 +278,35 @@ test('browser Home is never wider than the screen: no sideways scroll and no car
     const wait = (x: Record<string, unknown>) => ({ ...x, owned: true, status: 'active', activity: { ...(x.activity as object), health: 'waiting-on-you' } })
     await r.fulfill({ response: res, json: Array.isArray(body) ? body.map(wait) : { ...body, items: (body.items ?? []).map(wait) } })
   })
-  for (const width of [360, 390, 768]) {
+  for (const width of [360, 390, 412, 768]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto(`${app.stand.pageURL}/#/`)
     await expect(page.getByRole('region', { name: width < 640 ? 'Continue' : 'Projects', exact: true })).toBeVisible()
+    if (width < 640) await expect(page.getByRole('alertdialog', { name: 'Permission prompt' })).toBeVisible()
+    if (width < 640) await page.getByRole('button', { name: /^Chats/ }).click()
+    // Every element, not only the cards: one wide descendant widens the
+    // layout viewport on Android, and then even the fixed bars run off.
     const m = await page.evaluate(() => {
       const w = window.innerWidth
-      const cut = [...document.querySelectorAll('main section, main ul, main li')]
+      const cut = [...document.querySelectorAll('body *')]
         .filter((el) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().right > w + 0.5)
-        .map((el) => `${el.tagName} ${el.getAttribute('aria-label') ?? ''} right=${el.getBoundingClientRect().right}`)
-      const wide = [...document.querySelectorAll("body *")].filter((e) => e.getBoundingClientRect().right > w + 0.5).slice(0, 6).map((e) => e.tagName + "." + String(e.className).slice(0, 60) + " " + e.getBoundingClientRect().right); return { scroll: document.scrollingElement!.scrollWidth, w, cut: cut.concat(wide) }
+        .slice(0, 8).map((el) => `${el.tagName}.${String(el.className).slice(0, 60)} ${el.getAttribute('aria-label') ?? ''} right=${el.getBoundingClientRect().right}`)
+      return { scroll: document.scrollingElement!.scrollWidth, w, cut }
     })
     expect(m.cut, `cards past the right edge at ${width}`).toEqual([])
     expect(m.scroll, `scrollWidth at ${width}`).toBeLessThanOrEqual(m.w)
     await page.screenshot({ path: test.info().outputPath(`home-width-${width}.png`) })
+    if (width < 640) {
+      // The phone's full dashboard too.
+      await page.goto(`${app.stand.pageURL}/#/home`)
+      await expect(page.getByText('waiting on you').first()).toBeVisible()
+      const d = await page.evaluate(() => ({
+        w: window.innerWidth, scroll: document.scrollingElement!.scrollWidth,
+        cut: [...document.querySelectorAll('body *')].filter((el) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().right > window.innerWidth + 0.5)
+          .slice(0, 8).map((el) => `${el.tagName}.${String(el.className).slice(0, 60)} right=${el.getBoundingClientRect().right}`),
+      }))
+      expect(d.cut, `dashboard past the right edge at ${width}`).toEqual([])
+      expect(d.scroll, `dashboard scrollWidth at ${width}`).toBeLessThanOrEqual(d.w)
+    }
   }
 })
