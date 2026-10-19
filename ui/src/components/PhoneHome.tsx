@@ -284,15 +284,27 @@ const CHATS_SHOWN = 3
  */
 function ChatsSection({ list, now, canControl, ended, children }: { list?: ChatList; now: number; canControl: boolean; ended: EndedHere; children: ReactNode }) {
   const [open, setOpen] = useState(false)
+  // "+ New chat": unfold and put the cursor in the field, one tap from Home.
+  const [focusAsk, setFocusAsk] = useState(0)
+  const root = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (focusAsk) root.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus()
+  }, [focusAsk])
   const items = list?.items ?? []
   return (
-    <section aria-label="Chats">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-        className="flex min-h-11 w-full items-center gap-2 rounded-[12px] border border-border bg-panel px-3 text-left text-[16px] font-medium text-fg">
-        <ChatIcon size={16} />
-        <span className="min-w-0 flex-1 truncate">Chats{list && list.chats > 0 ? ` · ${list.chats}` : ''}</span>
-        <span aria-hidden="true" className={`text-fg-muted transition-transform ${open ? 'rotate-90' : ''}`}><ChevronIcon size={14} /></span>
-      </button>
+    <section aria-label="Chats" ref={root}>
+      <div className="flex items-stretch gap-2">
+        <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-[12px] border border-border bg-panel px-3 text-left text-[16px] font-medium text-fg">
+          <ChatIcon size={16} />
+          <span className="min-w-0 flex-1 truncate">Chats{list && list.chats > 0 ? ` · ${list.chats}` : ''}</span>
+          <span aria-hidden="true" className={`text-fg-muted transition-transform ${open ? 'rotate-90' : ''}`}><ChevronIcon size={14} /></span>
+        </button>
+        <button type="button" onClick={() => { setOpen(true); setFocusAsk((n) => n + 1) }}
+          className="min-h-11 min-w-11 shrink-0 rounded-[12px] border border-border-strong bg-bg px-3 text-[15px] font-medium text-accent">
+          + New chat
+        </button>
+      </div>
       {open && (
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-2">
           {items.length > 0 && <RecentChats list={list!} now={now} canControl={canControl} ended={ended} />}

@@ -2371,7 +2371,7 @@ connection and the work survive a bad network.
   field that starts a chat in a chosen project or saves a note or photos
   to the Inbox, which the Mac lists in Quick chat
   ([04-ui.md § The phone home](04-ui.md#the-phone-home)). Since 2026-10-19
-  that field sits in the folded Chats section rather than docked at the
+  that field sits in the folded Chats section (with a one-tap *+ New chat* that unfolds and focuses it) rather than docked at the
   bottom, and the projects list 0.135.0 added is gone from the phone again
   (owner, translated: "put it back the way it was"). Manifest
   shortcuts and a share target are declared and need `https` (OQ-12).

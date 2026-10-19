@@ -63,6 +63,16 @@ describe('PhoneHome', () => {
     expect(screen.getByLabelText('Message or note').closest('section')?.getAttribute('aria-label')).toBe('Chats')
   })
 
+  it('+ New chat unfolds Chats and focuses the field', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(screen.getByRole('button', { name: /^Chats/ }).getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(screen.getByRole('button', { name: '+ New chat' }))
+    expect(screen.getByRole('button', { name: /^Chats/ }).getAttribute('aria-expanded')).toBe('true')
+    expect(document.activeElement).toBe(screen.getByLabelText('Message or note'))
+  })
+
   it('preserves a session route when the kept home mounts after a tablet becomes narrow', async () => {
     stubs()
     window.history.replaceState(null, '', '/#/session/s1?tab=chat')
