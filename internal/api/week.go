@@ -36,6 +36,10 @@ type WeekResponse struct {
 	// an estimate (research, docs and sessions that merged nothing are in the
 	// numerator), and absent when nothing was merged.
 	CostPerMergedPR *float64 `json:"cost_per_merged_pr,omitempty"`
+	// SubagentSaving is what the window's subagents on a pricier model than
+	// Haiku cost, against the same tokens on Haiku. An estimate at list
+	// prices; absent unless the difference is a dollar or more.
+	SubagentSaving *SubagentSaving `json:"subagent_saving,omitempty"`
 	// Estimates names the fields that are estimates rather than counts or
 	// sums, so a renderer cannot forget the "≈" on one.
 	Estimates []string `json:"estimates"`
@@ -172,6 +176,13 @@ func (s *Server) buildWeek(ctx context.Context, from, to time.Time) (WeekRespons
 		}
 		lt := contexttax.Sum(models, s.d.Table)
 		resp.Tax = &lt
+		subs, err := store.SubagentTokensByModel(ctx, s.d.Store.DB(), from.UnixMilli(), to.UnixMilli())
+		if err != nil {
+			return WeekResponse{}, err
+		}
+		if resp.SubagentSaving = subagentSaving(subs, s.d.Table); resp.SubagentSaving != nil {
+			resp.Estimates = append(resp.Estimates, "subagent_saving")
+		}
 		if l := resp.Loop; l != nil {
 			calls, _, err := store.LoopTaxCalls(ctx, s.d.Store.DB(), l.SessionID, time.UnixMilli(l.FirstMs), time.UnixMilli(l.LastMs))
 			if err != nil {

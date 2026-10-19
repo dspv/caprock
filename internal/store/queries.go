@@ -64,6 +64,10 @@ type Session struct {
 	// ADR-048): a subscription id from Settings → Subscriptions, or empty for
 	// the user's normal sign-in.
 	Subscription string `json:"subscription,omitempty"`
+	// SubagentModel is the model the session's subagents were started to run
+	// on (migration 0064): "haiku", "sonnet" or "opus"; empty when they follow
+	// the session.
+	SubagentModel string `json:"subagent_model,omitempty"`
 	// AttemptGroup, Attempt and Attempts say the session is attempt Attempt
 	// of Attempts started together on one first message (migration 0046,
 	// ADR-052); empty and zero otherwise.
@@ -828,6 +832,15 @@ func PreviousOnPID(ctx context.Context, q Querier, pid int, id string) (string, 
 	return prev, err
 }
 
+// SetSubagentModel records the model a session's subagents were started on.
+func SetSubagentModel(ctx context.Context, q Querier, id, model string) error {
+	if id == "" || model == "" {
+		return nil
+	}
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET subagent_model = ? WHERE session_id = ?`, model, id)
+	return err
+}
+
 // SetParent records the session id continues. It never replaces one already
 // known.
 func SetParent(ctx context.Context, q Querier, id, parent string) error {
@@ -959,14 +972,14 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned, chat int
 	var exit sql.NullInt64
 	var attempt string
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &attempt)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &attempt)
 	s.setAttempt(attempt)
 	s.HasHooks, s.HasTranscript, s.Owned, s.Chat = hh != 0, ht != 0, owned != 0, chat != 0
 	if exit.Valid {

@@ -2661,6 +2661,14 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	// The model subagents run on is one of three aliases or absent; it
+	// becomes an environment variable of the child, so nothing else passes.
+	if v, ok := req["subagent_model"]; ok {
+		if m, isStr := v.(string); !isStr || !agents.ValidSubagentModel(m) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subagent_model is one of " + strings.Join(agents.SubagentModels, ", ") + ", or absent for the session's own model"})
+			return
+		}
+	}
 	// A resume the detail screen would refuse is refused here too, with the
 	// same reason: otherwise a stale button opens a terminal that prints "No
 	// conversation found" and dies. An id the store has never seen is let

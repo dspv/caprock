@@ -3,7 +3,7 @@
  * change a select in place, ⌘↩ starts from anywhere in the sheet, Esc
  * cancels, and the keys are named in the sheet itself.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
 
@@ -69,6 +69,33 @@ async function pick(mode: string) {
   fireEvent.change(await screen.findByLabelText<HTMLSelectElement>(/^Permissions/), { target: { value: mode } })
 }
 
+describe('the New agent sheet, Subagents run on', () => {
+  it('sends nothing for Same as the session, and the family when one is picked', async () => {
+    open()
+    const sel = await screen.findByLabelText<HTMLSelectElement>('Subagents run on')
+    expect(sel.value).toBe('')
+    expect([...sel.options].map((o) => o.text)).toEqual(['Same as the session', 'Haiku', 'Sonnet', 'Opus'])
+    fireEvent.keyDown(sel, { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(spawn.mock.calls[0]![0]).not.toHaveProperty('subagent_model')
+    cleanup()
+    spawn.mockClear()
+    open()
+    fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Subagents run on'), { target: { value: 'haiku' } })
+    fireEvent.keyDown(await screen.findByLabelText('Model'), { key: 'Enter', metaKey: true })
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ subagent_model: 'haiku' })
+  })
+
+  it('remembers the last choice for the project', async () => {
+    open()
+    fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Subagents run on'), { target: { value: 'sonnet' } })
+    cleanup()
+    open()
+    expect((await screen.findByLabelText<HTMLSelectElement>('Subagents run on')).value).toBe('sonnet')
+  })
+})
+
 describe('the New agent sheet on the keyboard', () => {
   it('names its keys in the sheet', async () => {
     open()
@@ -125,7 +152,7 @@ describe('the New agent sheet on the keyboard', () => {
       // A button's name without its key badge, which is aria-hidden.
       .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.firstChild?.textContent ?? '').trim())
     // The sheet's × comes first, in its header; the project search has the caret.
-    expect(order).toEqual(['Close', 'Project', 'Where', 'Model', 'Permissions', 'Add project instructions', 'First message', 'Cancel', 'Start'])
+    expect(order).toEqual(['Close', 'Project', 'Where', 'Model', 'Permissions', 'Subagents run on', 'Add project instructions', 'First message', 'Cancel', 'Start'])
   })
 })
 

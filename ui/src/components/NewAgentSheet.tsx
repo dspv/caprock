@@ -10,7 +10,7 @@
  * finds a project, a recent folder or a repository under the default folder,
  * and picking one that is not a project yet adds it (ProjectSearch.tsx).
  * Tab and ⇧Tab walk Project, Where, Agent, Model, Subscription (when there
- * is more than one, ADR-048), Permissions,
+ * is more than one, ADR-048), Permissions, Subagents run on (Claude Code),
  * First message, Cancel, Start in that order; ↑ and ↓ change a select in
  * place; ⌘↩ starts from anywhere in the sheet, the buttons included; Esc
  * cancels. The keys are named in the footer and on Start itself.
@@ -61,6 +61,7 @@ import { defaultWorktreeName, WORKTREE_NAME } from '@/lib/slug'
 import { isMacPlatform } from '@/lib/appmode'
 import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, preferredId, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
+import { SUBAGENT_MODELS, isSubagentModel, rememberSubagentModel, rememberedSubagentModel, type SubagentModel } from '@/lib/subagentModel'
 import { useGitHubStatus } from '@/lib/github'
 import { githubRepoOf, itemBranchName, itemPrompt, type GitHubItem } from '@/lib/fromGitHub'
 import { GitHubItemPicker } from './GitHubItemPicker'
@@ -199,6 +200,14 @@ export function NewAgentSheet({
   // Picking the default remembers nothing, so a later Make default reaches this project too.
   const chooseSub = (id: string) => { rememberSubscription(agent, pid, id === preferredId(subList) ? '' : id); setSubPick((p) => ({ ...p, [subKey]: id })) }
   const pickSubOnce = (id: string) => setSubPick((p) => ({ ...p, [subKey]: id }))
+  // The model Claude Code's subagents run on: remembered per project.
+  const [subModelPick, setSubModelPick] = useState<Record<string, SubagentModel>>({})
+  const subModel = subModelPick[pid] ?? rememberedSubagentModel(pid)
+  const chooseSubModel = (v: string) => {
+    if (!isSubagentModel(v)) return
+    rememberSubagentModel(pid, v)
+    setSubModelPick((p) => ({ ...p, [pid]: v }))
+  }
   // The name is optional: left empty, it comes from the first message.
   const worktreeName = newBranch.trim() || defaultWorktreeName(prompt)
   const nameBad = !!newBranch.trim() && !WORKTREE_NAME.test(newBranch.trim())
@@ -234,6 +243,7 @@ export function NewAgentSheet({
       if (model) req.model = model
       // A custom agent's flags are its own; Caprock maps no mode onto them.
       if (mode && !custom) req.permission_mode = mode
+      if (agent === 'claude' && subModel) req.subagent_model = subModel
       if (where === NEW_WORKTREE) {
         req.worktree = worktreeName
         if (fromPR) req.worktree_pr = fromPR
@@ -432,6 +442,13 @@ export function NewAgentSheet({
               ))}
             </select>
           </SheetField>}
+          {canStart && agent === 'claude' && (
+            <SheetField label="Subagents run on" hint="kept for this project">
+              <select className="input" aria-label="Subagents run on" value={subModel} onChange={(e) => chooseSubModel(e.target.value)}>
+                {SUBAGENT_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </SheetField>
+          )}
           {consent.needed && <BypassConsentNote />}
           {project && <ProjectInstructions key={project.id} project={project} agent={agent} />}
           <SheetField label="First message" hint={entry && !entry.prompt ? "not sent: this agent's arguments have no {prompt}" : 'optional'}>
