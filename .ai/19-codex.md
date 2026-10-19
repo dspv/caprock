@@ -490,6 +490,14 @@ and `Parse` is the same parser run once over a whole file.
   commits nothing, and the next pass offers again everything after the last
   commit, as a full re-read would; a repair that fails leaves the import
   uncommitted the same way.
+- **A failed prose sync is retried, never folded.** A Codex turn carries its
+  whole prose in one record, so the recorder does not fold a re-offered turn's
+  text onto the stored one (`store.MergeAssistantText` is for Claude Code's
+  multi-line responses): that doubled a grown turn's text when a pass died
+  between the records and `syncText`. A pass whose prose sync fails leaves the
+  file looking changed, so the next tick offers it again and `syncText` sets
+  the text. Rows already doubled are rewritten by the same sync on the file's
+  next full read, because the parsed text differs from the stored one.
 - **Read in full instead.** A file whose session id, keys or model changed
   under it (a link made since, a subagent or imported thread recognised late,
   a model named after turns were stored, which reprices them), a file that is

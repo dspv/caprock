@@ -92,6 +92,18 @@ type Ingester struct {
 	// work counts what the passes did (see Work); pass is the pass running.
 	work Work
 	pass *Work
+	// batch is the transaction importSession writes a session's records in
+	// (rollup.Batch); nil outside it. Only Run's goroutine touches it.
+	batch *rollup.Batch
+	// beforeText, when set, runs just before a session's prose is synced and
+	// may fail it. Tests use it to fail a pass between the records and the
+	// prose.
+	beforeText func() error
+	// textFailed is set by importSession when the prose sync failed after the
+	// records were stored; the file is then read again on the next pass.
+	textFailed bool
+	// pend is what the open batch stored, counted once it commits.
+	pend struct{ events, unpriced, stored int }
 
 	namesAt time.Time
 	// namesFor is how many transcripts had been imported at that sync. A
@@ -296,6 +308,7 @@ func (in *Ingester) once(ctx context.Context) error {
 			in.mu.Unlock()
 			continue
 		}
+		in.textFailed = false
 		clean, err := in.importSession(ctx, s, t != nil && !t.fresh)
 		if err != nil {
 			// Nothing is committed: the next pass offers again everything
@@ -309,7 +322,14 @@ func (in *Ingester) once(ctx context.Context) error {
 		readNow[f.Path] = true
 		changed = true
 		in.mu.Lock()
-		in.seen[f.Path] = fileState{mod: f.Modified, size: f.Size, session: s.ID, imported: s.Imported}
+		st := fileState{mod: f.Modified, size: f.Size, session: s.ID, imported: s.Imported}
+		if in.textFailed {
+			// The prose did not reach the rows the records made. Left
+			// looking changed, the file is offered again next tick, and
+			// the sync then sets the whole text.
+			st.mod, st.size = time.Time{}, -1
+		}
+		in.seen[f.Path] = st
 		// Updated inside the loop, not after it. The first pass over a real
 		// machine's hundred transcripts takes seconds, and `caprock status`
 		// read during it reported "0 transcripts read" beside a rising event
@@ -529,6 +549,18 @@ func (in *Ingester) importSession(ctx context.Context, s *Session, delta bool) (
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].at.Before(items[j].at) })
 
+	// The records go in batches of a transaction each rather than one per
+	// record (F7 in docs/resource-usage-audit-2026-10-18.md). A batch that
+	// fails is rolled back whole and the error returned, so the session is
+	// not marked read and the next pass offers it again; keyed dedupe absorbs
+	// the part earlier batches committed.
+	b := in.rec.Batch(ctx)
+	in.batch = b
+	defer func() {
+		b.Abort()
+		in.batch = nil
+		in.pend.events, in.pend.unpriced, in.pend.stored = 0, 0, 0
+	}()
 	for _, it := range items {
 		var err error
 		switch {
@@ -544,7 +576,16 @@ func (in *Ingester) importSession(ctx context.Context, s *Session, delta bool) (
 		if err != nil {
 			return false, err
 		}
+		if b.Due() {
+			if err := in.flush(); err != nil {
+				return false, err
+			}
+		}
 	}
+	if err := in.flush(); err != nil {
+		return false, err
+	}
+	in.batch = nil
 	clean = true
 	if !delta {
 		// Calls stored before their call id and normalised input were: given
@@ -564,9 +605,17 @@ func (in *Ingester) importSession(ctx context.Context, s *Session, delta bool) (
 	// A turn's text can arrive after its row: a message written after the
 	// request's last token_count joins that turn when the request ends. And
 	// rows imported before prose was read have none. Both are filled here.
-	if _, err := in.syncText(ctx, s, delta); err != nil {
+	var terr error
+	if in.beforeText != nil {
+		terr = in.beforeText()
+	}
+	if terr == nil {
+		_, terr = in.syncText(ctx, s, delta)
+	}
+	if err := terr; err != nil {
 		in.log.Debug("codex text sync failed", "component", "codex", "session_id", s.ID, "err", err)
 		clean = false
+		in.textFailed = true
 	}
 	return clean, nil
 }
@@ -781,12 +830,7 @@ func (in *Ingester) turn(ctx context.Context, s *Session, t Turn, info rollup.Se
 		return fmt.Errorf("record codex turn: %w", err)
 	}
 	if res.Stored {
-		in.mu.Lock()
-		in.stats.Events++
-		if s.Model == "" {
-			in.stats.Unpriced++
-		}
-		in.mu.Unlock()
+		in.counted(s.Model == "")
 	}
 	return nil
 }
@@ -841,9 +885,7 @@ func (in *Ingester) tool(ctx context.Context, s *Session, c ToolCall, info rollu
 		return fmt.Errorf("record codex tool: %w", err)
 	}
 	if res.Stored {
-		in.mu.Lock()
-		in.stats.Events++
-		in.mu.Unlock()
+		in.counted(false)
 	}
 	return nil
 }
@@ -903,14 +945,60 @@ func (in *Ingester) result(ctx context.Context, s *Session, r ToolResult, info r
 
 // offer hands one event to the recorder, counting it in the running pass.
 func (in *Ingester) offer(ctx context.Context, ev *event.Event, info rollup.SessionInfo) (rollup.Result, error) {
-	res, err := in.rec.Record(ctx, ev, info)
+	var res rollup.Result
+	var err error
+	if in.batch != nil {
+		res, err = in.batch.Record(ctx, ev, info)
+	} else {
+		res, err = in.rec.Record(ctx, ev, info)
+	}
 	if w := in.pass; w != nil {
 		w.Offered++
 		if err == nil && res.Stored {
-			w.Stored++
+			if in.batch != nil {
+				in.pend.stored++
+			} else {
+				w.Stored++
+			}
 		}
 	}
 	return res, err
+}
+
+// counted counts one stored event: at once, or when the open batch commits.
+func (in *Ingester) counted(unpriced bool) {
+	if in.batch != nil {
+		in.pend.events++
+		if unpriced {
+			in.pend.unpriced++
+		}
+		return
+	}
+	in.mu.Lock()
+	in.stats.Events++
+	if unpriced {
+		in.stats.Unpriced++
+	}
+	in.mu.Unlock()
+}
+
+// flush commits the open batch and counts what it stored. A failed commit
+// stored nothing, so nothing is counted.
+func (in *Ingester) flush() error {
+	_, _, err := in.batch.Flush()
+	p := in.pend
+	in.pend.events, in.pend.unpriced, in.pend.stored = 0, 0, 0
+	if err != nil {
+		return fmt.Errorf("commit codex records: %w", err)
+	}
+	in.mu.Lock()
+	in.stats.Events += p.events
+	in.stats.Unpriced += p.unpriced
+	in.mu.Unlock()
+	if w := in.pass; w != nil {
+		w.Stored += int64(p.stored)
+	}
+	return nil
 }
 
 // record stores one event and counts it.
@@ -920,9 +1008,7 @@ func (in *Ingester) record(ctx context.Context, ev *event.Event, info rollup.Ses
 		return fmt.Errorf("record codex %s: %w", what, err)
 	}
 	if res.Stored {
-		in.mu.Lock()
-		in.stats.Events++
-		in.mu.Unlock()
+		in.counted(false)
 	}
 	return nil
 }
