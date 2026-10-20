@@ -105,12 +105,25 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 		live = append(live, s)
 	}
 	ids := make([]string, len(live))
+	evcs := make(map[string]*workEventsEntry, len(live))
+	today := make(map[string]float64, len(live))
 	for i, s := range live {
 		ids[i] = s.SessionID
-	}
-	today, err := store.SpendBySessionSince(ctx, db, ids, day.UnixMilli())
-	if err != nil {
-		return out, err
+		evc, err := w.sessionEvents(ctx, s.SessionID)
+		if err != nil {
+			return out, err
+		}
+		evcs[s.SessionID] = evc
+		usd, err := evc.readToday(day.UnixMilli(), func() (float64, error) {
+			m, err := store.SpendBySessionSince(ctx, db, []string{s.SessionID}, day.UnixMilli())
+			return m[s.SessionID], err
+		})
+		if err != nil {
+			return out, err
+		}
+		if usd > 0 {
+			today[s.SessionID] = usd
+		}
 	}
 	if out.Totals.MachineTodayUSD, err = store.SpendSince(ctx, db, day.UnixMilli()); err != nil {
 		return out, err
@@ -139,7 +152,7 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 	out.Repos = repos
 
 	for _, s := range live {
-		ws, queued, err := w.session(ctx, s, open[s.SessionID], now)
+		ws, queued, err := w.session(ctx, s, evcs[s.SessionID], open[s.SessionID], now)
 		if err != nil {
 			return out, err
 		}
@@ -184,7 +197,7 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 }
 
 // session is one live session's card, and its queued messages.
-func (w *workBoard) session(ctx context.Context, s store.Session, open store.Turn, now time.Time) (api.WorkSession, []api.WorkQueued, error) {
+func (w *workBoard) session(ctx context.Context, s store.Session, evc *workEventsEntry, open store.Turn, now time.Time) (api.WorkSession, []api.WorkQueued, error) {
 	db := w.d.store.DB()
 	kind := agentOr(s.Agent)
 	ws := api.WorkSession{
@@ -209,10 +222,6 @@ func (w *workBoard) session(ctx context.Context, s store.Session, open store.Tur
 		ws.PRs = append(ws.PRs, api.WorkPR{Number: p.Number, URL: p.URL, Title: p.Title, OpenedAt: p.OpenedAt, MergedAt: p.MergedAt})
 	}
 
-	evc, err := w.sessionEvents(ctx, s.SessionID)
-	if err != nil {
-		return ws, nil, err
-	}
 	var queued []api.WorkQueued
 	a, owned := (*agents.Agent)(nil), false
 	if s.Owned {

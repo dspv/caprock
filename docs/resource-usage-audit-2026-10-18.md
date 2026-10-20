@@ -1071,7 +1071,59 @@ answer per live frame; and today's totals could be carried forward from the
 last answer by the events added since, which within one `EventsGen` per
 session is exact. `SessionTodos` still reads a growing session's whole index
 range once per change (174 MB), because no index leads with session, kind and
-tool. The wide histories' per-minute refresh (F16) is unchanged.
+tool (since done, F18). The wide histories' per-minute refresh (F16) is
+unchanged.
+
+### F18 — P2: the Work board's today spend and task lists, and what today's summary still costs
+
+**Stand.** As F17's, on a fresh copy of the owner's database taken 2026-10-21
+(1.88 GB), each build on its own copy of it with four new synthetic sessions
+growing, the Now screen open 180 s, the F17 commit (`8691123e`) against this change.
+
+```text
+180 s, Now screen open           F17 build             F18 build
+SpendBySessionSince              93.6 MB, 157 calls    8.9 MB, 346 calls
+SessionTodos                     9.6 MB, 367 calls     1.6 MB, 191 calls
+today's summary recounts         84                    85
+all-time COUNT(DISTINCT) runs    3 (95.3 MB)           4 (142.9 MB)
+page misses, all statements      1317.9 MB             1485.0 MB
+```
+
+The totals do not compare: one more whole-history refresh fell inside the
+F18 window, and the same statements read more pages per call there (today's
+`turnSpendBySession` 2.5 MB a call against 3.2 MB), the share the page cache
+answered moving with the machine. The two rows this change touches do.
+`SessionTodos` was small on this run because the synthetic sessions were
+new; on the database copy in the `sqlite3` shell, the owner's largest session
+(180k events) took 4,820 page reads for its task list through
+`idx_events_attr_work` and 10 through the new index, and on F17's stand,
+where the synthetic sessions had run for hours, the task lists were 174 MB of
+180 s.
+
+**Implemented (2026-10-21).**
+
+- The Work board's spend today per session is kept with the session's events
+  (`workEventsEntry.readToday`) and summed again, for that session alone, when
+  its `EventsGen` or the day moves: the same statement over the same rows, so
+  the same figure. `TestWorkBoardTodaySpendFollowsTheSession`.
+- `idx_events_todo` (migration 0066), a partial index of the four task tools'
+  calls, which `store.SessionTodos` pins; building it reads the table once
+  (7.7 s on the copy in the `sqlite3` shell; 7 pages of index).
+  `TestTaskListReadsItsPartialIndex`. See 03-contracts.md § Task-list DDL.
+
+**Not done.** Today's summary is now the largest read: 85 recounts in 180 s,
+each of `turnSpendBySession`, the model mix and `sumKinds` over today's rows.
+It is already one answer shared by every reader (single-flight in the answer
+cache) and kept while `MAX(id)` has not moved; it is recounted once it is
+`todayTTL` (2 s) old because agents write every second. Keying it on a write
+counter would not recount it less while they do, and serving it longer would
+make it staler, which this change was not to do. What would remove the cost
+is carrying today's aggregates forward by the events added since the last
+answer, exact within one `EventsGen` per session, which needs every
+aggregate in `Summary` (distinct sessions, projects, the spark) made
+mergeable first. The machine-wide `SpendSince` (58–72 MB) has the same shape;
+summing it from the kept per-session figures would change the order of the
+floating-point additions, so it was left counting.
 
 ## Existing safeguards worth preserving
 

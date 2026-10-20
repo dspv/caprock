@@ -50,6 +50,34 @@ type workEventsEntry struct {
 	// that never kept one.
 	todo     *api.BoardTodo
 	todoRead bool
+	// todayUSD is what the session spent since todayFrom, the start of the
+	// day it was summed for; todayRead says it has been.
+	todayUSD  float64
+	todayFrom int64
+	todayRead bool
+}
+
+// readToday returns the session's spend since from (the start of today),
+// summing it the first time at this generation and day. A sum of the
+// session's own events, it moves only when they do (F18).
+func (e *workEventsEntry) readToday(from int64, load func() (float64, error)) (float64, error) {
+	e.mu.Lock()
+	if e.todayRead && e.todayFrom == from {
+		v := e.todayUSD
+		e.mu.Unlock()
+		return v, nil
+	}
+	e.mu.Unlock()
+	v, err := load()
+	if err != nil {
+		return 0, err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.todayRead || e.todayFrom != from {
+		e.todayUSD, e.todayFrom, e.todayRead = v, from, true
+	}
+	return v, nil
 }
 
 // readTodo returns the entry's task list, reading it the first time.
