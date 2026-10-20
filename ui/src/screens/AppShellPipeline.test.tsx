@@ -1,13 +1,11 @@
 /**
- * The session deck in the app (.ai/21-app.md § What the user sees): closed by
- * default, opened by ⌘B or the strip's button, only under an agent's
- * terminal, kept per viewer — and closed, it holds nothing.
+ * The Pipeline in the app (.ai/21-app.md § What the user sees): its pinned
+ * tab, ⌘P there and back, and the session deck that used to sit under an
+ * agent's terminal, gone since 2026-10-20 — ⌘B does nothing now.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
-import { heldSessions } from '@/lib/sessionEvents'
-import { DECK_KEY } from '@/lib/deck'
 import { AppShell } from './AppShell'
 // The screens AppShell loads lazily, loaded with this file instead. The first
 // ⌘D here transformed the whole dashboard inside its test's 5 s budget, and
@@ -85,43 +83,17 @@ const deck = () => screen.queryByRole('region', { name: 'Session deck' })
 const pipelineButton = () => document.querySelector<HTMLButtonElement>('[data-pipeline-button]')!
 const cmdB = () => act(() => { fireEvent.keyDown(window, { key: 'b', code: 'KeyB', metaKey: true }) })
 
-describe('the session deck in the app', () => {
-  it('is closed by default and opens and closes on ⌘B, kept per viewer', async () => {
+describe('the Pipeline in the app, and no session deck', () => {
+  it('draws no session deck and no Deck button, and ⌘B does nothing', async () => {
     await openAgent()
     expect(deck()).toBeNull()
-    cmdB()
-    expect(deck()).toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem(DECK_KEY) ?? '{}')).toMatchObject({ open: true })
+    expect(document.querySelector('[data-deck-toggle]')).toBeNull()
+    const before = location.hash
     cmdB()
     expect(deck()).toBeNull()
-    expect(JSON.parse(localStorage.getItem(DECK_KEY) ?? '{}')).toMatchObject({ open: false })
-  })
-
-  it('opens and closes from the tab strip’s button', async () => {
-    await openAgent()
-    fireEvent.click(screen.getByRole('button', { name: 'Session deck (⌘B)' }))
-    expect(deck()).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Session deck (⌘B)' }))
-    expect(deck()).toBeNull()
-  })
-
-  it('never holds a session’s events: with the inspector closed, the open deck fetches and follows none', async () => {
-    await openAgent()
-    fireEvent.click(screen.getByRole('button', { name: /^Inspector/ }))
-    await waitFor(() => expect(heldSessions()).toBe(0))
-    const before = h.asked
-    cmdB()
-    expect(deck()).toBeInTheDocument()
-    expect(heldSessions()).toBe(0)
-    expect(h.asked).toBe(before)
-  })
-
-  it('adds no fetch to the cockpit beside it', async () => {
-    await openAgent()
-    await waitFor(() => expect(h.asked).toBe(1))
-    cmdB()
-    expect(deck()).toBeInTheDocument()
-    expect(h.asked).toBe(1)
+    expect(document.querySelector('[data-deck]')).toBeNull()
+    expect(location.hash).toBe(before)
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   // Owner, 2026-10-14, translated: "it feels like quick access to the CI/CD
@@ -138,7 +110,6 @@ describe('the session deck in the app', () => {
   const cmdP = () => act(() => { fireEvent.keyDown(window, { key: 'p', code: 'KeyP', metaKey: true }) })
   it('opens the Pipeline in its own tab on ⌘P and goes back to the tab before on ⌘P or Back', async () => {
     await openAgent()
-    cmdB()
     cmdP()
     expect(location.hash).toBe('#/pipeline?of=agent-1')
     await pipelinePage()
@@ -146,11 +117,9 @@ describe('the session deck in the app', () => {
     // Its own tab, not the Dashboard tab's page.
     expect(screen.queryByRole('tab', { name: /^Dashboard/ })).toBeNull()
     expect(document.querySelector('[data-dashboard-view] [data-prs-tab]')).toBeNull()
-    expect(deck()).toBeNull()
     expect(pipelineButton()).toHaveAttribute('aria-current', 'true')
     cmdP()
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
-    expect(deck()).toBeInTheDocument()
     // The tab stays in the strip, behind; its page is hidden.
     expect(pipelineTab()).toHaveAttribute('aria-selected', 'false')
     expect(document.querySelector('[data-pipeline-view]')).toHaveAttribute('hidden')
@@ -213,7 +182,7 @@ describe('the session deck in the app', () => {
     expect(document.querySelector('[data-mail-view]')).toBeNull()
   })
 
-  it('opens the Pipeline from the sidebar footer’s button and from the bar’s own control, and hides the bar with its ×', async () => {
+  it('opens the Pipeline from the sidebar footer’s button, and goes back on it', async () => {
     await openAgent()
     expect(pipelineButton()).toHaveAccessibleName('Pipeline: every pull request on its way — open, CI, merged, released — in its own tab (⌘P)')
     fireEvent.click(pipelineButton())
@@ -221,15 +190,6 @@ describe('the session deck in the app', () => {
     expect(pipelineTab()).toHaveAttribute('aria-selected', 'true')
     fireEvent.click(pipelineButton())
     await waitFor(() => expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true'))
-    cmdB()
-    expect(deck()).toBeInTheDocument()
-    fireEvent.click(deck()!.querySelector('[data-deck-hide]')!)
-    expect(deck()).toBeNull()
-    expect(JSON.parse(localStorage.getItem(DECK_KEY) ?? '{}')).toMatchObject({ open: false })
-    cmdB()
-    fireEvent.click(deck()!.querySelector('[data-deck-expand]')!)
-    await pipelinePage()
-    expect(location.hash).toBe('#/pipeline?of=agent-1')
   })
 
   // Home's Pipeline card links #/pipeline?repo=… (CICDPanel.test): followed
@@ -274,14 +234,13 @@ describe('the session deck in the app', () => {
     expect(document.querySelector('[data-dashboard-view] [data-prs-tab]')).toBeNull()
   })
 
-  it('is listed in the palette: Open Pipeline, and the bar on or off', async () => {
+  it('is listed in the palette as Open Pipeline, and the bar no longer is', async () => {
     await openAgent()
     act(() => { fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true }) })
     fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'pipeline' } })
     const options = screen.getAllByRole('option').map((o) => o.textContent ?? '')
     expect(options.some((t) => t.startsWith('Open Pipeline') && t.includes('⌘P'))).toBe(true)
-    fireEvent.click(screen.getAllByRole('option').find((o) => o.textContent?.startsWith('Pipeline bar: On'))!)
-    expect(await screen.findByRole('region', { name: 'Session deck' })).toBeInTheDocument()
+    expect(options.some((t) => t.startsWith('Pipeline bar'))).toBe(false)
   })
 
   // ⇧⌘B, the Pipeline's key until 2026-10-15, still works, unlisted.

@@ -26,24 +26,32 @@
  * some CI/CD indicators into the right part — try making the indicator switch
  * between views right away, we'll see what sticks"): the session's pull
  * requests and their checks, in one of three views kept per viewer —
- * each PR's checks in one short group (the default, as the deck's rows
- * say them: "✗ 1 failed ✓ 11", every check on hover), one ring with "10/11 · 4m" and the time
+ * each PR's checks in one short group (the default: "✗ 1 failed ✓ 11", every check on hover), one ring with "10/11 · 4m" and the time
  * against the median, or the newest PR's checks by runner OS (ByOS). A click
  * opens the Pipeline page. Each tab names what it shows on hover. Hovering a
  * PR's checks lists them only after the pointer rests there, beside the
  * panel rather than over it (CheckSummary `beside`).
  *
- * Ring and By OS draw the session's own newest PR when the session deck
- * read it with its checks (lib/deckCache, `prs:<session>` and `ci:<session>:<pr>`, redrawn
- * when the deck is told something new). Without one they draw the newest
+ * Ring and By OS draw the session's own newest PR when it was read with its
+ * checks (lib/deckCache, `prs:<session>` and `ci:<session>:<pr>`, redrawn
+ * when either is told something new). Without one they draw the newest
  * in-flight PR of the same …/ci/stats answer the PRs view reads, asking
  * that PR's checks themselves (…/ci?pr=, kept as `ci:<session>:<pr>`) while
  * the view is shown unfolded (owner, 2026-10-16, translated: "the Ring mode
  * is empty"). With nothing in flight they say so in the same one line;
  * with neither answer kept the block is not drawn.
+ *
+ * A PR row of the session's own carries what the session deck's rows had
+ * until the deck was removed (owner, 2026-10-20): the one most relevant
+ * action — Resolve conflict, Update branch, Fix CI or Re-run — asked once in
+ * the row (lib/usePRForce, the Pipeline page's own), a quiet *Log in
+ * Pipeline →* that opens the Pipeline on that PR (its failed job's log and
+ * Investigate are there), and a grey line with its agent cost and who is on
+ * it. The session's pull requests (`prs:<session>`) are asked here while the
+ * block is unfolded; the Pipeline page asks the same route under the same key.
  */
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, type SessionCI, type SessionCIStats, type SessionPRs } from '@/lib/api'
+import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { api, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
 import type { PRCheck, PullRequest } from '@/lib/github'
 import { ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
@@ -54,7 +62,14 @@ import { landingOf } from '@/lib/releaseplan'
 import { CheckSummary, StateMark } from './CheckSummary'
 import { SectionLabel, useFolded } from './Cockpit'
 import { JourneyBar, JourneyLegend, ReleaseNoteWord } from './Journey'
-import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from './SessionDeck'
+import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePoll'
+import { costText, costTitle } from '@/lib/prboard'
+import { prAgents, quickActions, type DeckWorktree } from '@/lib/prforce'
+import { FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
+import { PipelineHostContext } from '@/lib/pipelineHost'
+import { useCanControl } from '@/lib/useCanControl'
+import { sessionTitle } from '@/lib/sidebar'
+import { keys } from '@/lib/appkeys'
 
 /** The pull request the Ring and By OS views draw, with its checks. */
 type LeadPR = { number: number; live: PullRequest }
@@ -76,7 +91,7 @@ const VIEWS: { v: CockpitCIView; label: string; title: string }[] = [
   { v: 'grid', label: 'By OS', title: 'By OS: the newest pull request’s checks by runner — Linux, macOS, Windows — each with its state and longest time' },
 ]
 
-/** The deck's last answer under key, redrawn when the deck is told a new one. */
+/** The answer last kept under key (lib/deckCache), redrawn when a new one is kept. */
 export function useDeckAnswer<T>(key: string): { d?: T; at?: number } {
   const snap = useSyncExternalStore(
     (cb) => onDeckAnswer((k) => { if (k === key) cb() }),
@@ -103,7 +118,13 @@ export function checkSummary(items: PRCheck[], now: number): { total: number; pa
   return { total: items.length, pass, fail, running, queued, ms: ms || undefined }
 }
 
-export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string; repoScope?: string; onOpen?: () => void }) {
+/** The one action a PR row of the inspector offers, worded short for its narrow column. */
+const ACTION_LABEL: Record<ForceKind, string> = { conflict: 'Resolve conflict', ci: 'Fix CI', rerun: 'Re-run', update: 'Update branch' }
+
+/** A failed read's answer never replaces a list that had live rows (as the Pipeline keeps it). */
+const keepPRs = (prev: SessionPRs, next: SessionPRs) => !!next.refreshing && next.prs.every((p) => !p.live) && prev.prs.some((p) => !!p.live)
+
+export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: string; repoScope?: string; onOpen?: (pr?: number) => void; s?: SessionSummary }) {
   const [view, setViewState] = useState<CockpitCIView>(readCockpitCIView)
   const setView = (v: CockpitCIView) => { setViewState(v); saveCockpitCIView(v) }
   const [tall, setTallState] = useState(readTall)
@@ -118,16 +139,41 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
   }, [stats?.prs, board])
   const ships = useMemo(() => shipsOf(board), [board])
   const hasStats = !!stats?.connected && (stats.prs?.length ?? 0) > 0
-  const prs = useDeckAnswer<SessionPRs>(`prs:${sessionId}`)
+  // The session's own pull requests with what GitHub says of each (`prs:`,
+  // the key the Pipeline page shares): their state, checks and merge state
+  // say which action a row offers. Asked while the block is unfolded.
+  const [n, setN] = useState(0)
+  const [prsPolled, prsAt] = usePoll<SessionPRs>(!folded && !!onOpen, `cockpit-prs:${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`, keepPRs)
+  const prs = { d: prsPolled, at: prsAt || undefined }
   const rows = orderPRs(prs.d?.prs ?? []).filter((p) => !!p.live)
-  // The session's own newest PR when the deck read it with checks, else the newest in flight.
-  const deckLead = prs.d?.connected && (rows[0]?.live?.checks.items.length ?? 0) > 0 ? rows[0] : undefined
-  const flown = deckLead ? undefined : flightLead(flight)
-  const leadNo = deckLead?.number ?? flown?.number ?? 0
+  const mine = useMemo(() => new Map((prs.d?.prs ?? []).map((p) => [p.number, p])), [prs.d])
+  // The force actions the deck had, on the row of the PR they apply to
+  // (lib/usePRForce, shared with the Pipeline page): each asks once, in the row.
+  const host = useContext(PipelineHostContext)
+  const canControl = useCanControl()
+  const worktrees = host.worktreesOf?.(sessionId)
+  const why = !s ? 'The session is not listed.' : !canControl ? 'This device can only watch. To act from it, open the Caprock app on your computer: Settings → Use on your phone, then press Allow control next to this device.'
+    : !s.owned ? 'Caprock did not start this session, so it never types into it.'
+      : s.status === 'ended' || s.detached ? 'This session is no longer running here, so nothing can be queued to it.' : ''
+  const kit = usePRForce({
+    sessionId, s: s ?? ({ session_id: sessionId } as SessionSummary), worktrees, onToast: host.onToast, canControl, connected: prs.d?.connected, why,
+    onStartAgent: host.onStartAgent ? (req, title) => host.onStartAgent!(req, title, sessionId) : undefined,
+    runsOf: (p) => (ciAnswerFor(p.number)),
+    onDone: () => setN((x) => x + 1),
+  })
+  // The session's own newest PR when it was read with checks, else the newest in flight.
+  const ownLead = prs.d?.connected && (rows[0]?.live?.checks.items.length ?? 0) > 0 ? rows[0] : undefined
+  const flown = ownLead ? undefined : flightLead(flight)
+  const leadNo = ownLead?.number ?? flown?.number ?? 0
   const ci = useDeckAnswer<SessionCI>(leadNo ? `ci:${sessionId}:${leadNo}` : '')
-  // That PR's checks, asked only for Ring and By OS shown unfolded, and only when the deck has none.
-  const [, ciAt] = usePoll<SessionCI>(view !== 'dots' && !folded && !!onOpen && !deckLead && leadNo > 0, `cockpit-ci:${sessionId}:${leadNo}`, () => api.sessionCI(sessionId, leadNo), (d) => ciActive(d.ci), CI_RUNNING_MS, leadNo ? `ci:${sessionId}:${leadNo}` : undefined)
-  const lead: LeadPR | undefined = deckLead?.live ? { number: deckLead.number, live: deckLead.live }
+  // A PR's runs, when its CI was read (the Pipeline page or the lead's poll): Fix CI sends the failed job with its log.
+  function ciAnswerFor(num: number) {
+    const c = readDeck<SessionCI>(`ci:${sessionId}:${num}`)?.d
+    return c?.pr?.number === num ? c.ci?.runs : undefined
+  }
+  // That PR's checks, asked only for Ring and By OS shown unfolded, and only when the session has no PR of its own with checks.
+  const [, ciAt] = usePoll<SessionCI>(view !== 'dots' && !folded && !!onOpen && !ownLead && leadNo > 0, `cockpit-ci:${sessionId}:${leadNo}`, () => api.sessionCI(sessionId, leadNo), (d) => ciActive(d.ci), CI_RUNNING_MS, leadNo ? `ci:${sessionId}:${leadNo}` : undefined)
+  const lead: LeadPR | undefined = ownLead?.live ? { number: ownLead.number, live: ownLead.live }
     : flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
   const running = rows.some((p) => p.live?.checks.state === 'pending') || lead?.live.checks.state === 'pending'
   // A clock only while a check runs and the window is shown: the elapsed time moves.
@@ -138,9 +184,9 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
     const t = window.setInterval(() => { if (!document.hidden) setNow(Date.now()) }, 1000)
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
-  if (!hasStats && !deckLead) return null
+  if (!hasStats && !ownLead) return null
   const leadSum = folded && lead ? prChecks(lead, now) : undefined
-  const at = view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : deckLead ? prs.at : (ci.at || ciAt)
+  const at = view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : ownLead ? prs.at : (ci.at || ciAt)
   const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
   const listed = flight.rows.length > 0 ? flight.rows : flight.recent
 
@@ -153,7 +199,15 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
       {quiet}
       {listed.length > 0 && <JourneyLegend className="-mr-1.5 pr-1.5" />}
       {listed.length > 0 && <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
-        {listed.map((r) => <JourneyRow key={r.number} r={r} now={now} ships={ships} />)}
+        {listed.map((r) => {
+          const p = mine.get(r.number)
+          const agents = p ? prAgents(p.live?.branch, worktrees) : []
+          const acts = !!s && !!p && (quickActions(p).length > 0 || kit.confirm?.pr === p.number || !!kit.standing(p, agents, now))
+          return <JourneyRow key={r.number} r={r} now={now} ships={ships}
+            act={acts && p ? <RowAction p={p} kit={kit} worktrees={worktrees} now={now} /> : null}
+            agent={agents[0]}
+            onLog={onOpen ? () => onOpen(r.number) : undefined} />
+        })}
       </ul>}
       </div>
     )
@@ -163,7 +217,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
     <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
       <SectionLabel right={(
         <span className="flex items-center gap-2">
-          <span className="text-[10.5px] text-fg-faint" title={view === 'dots' ? 'When GitHub was last read for the Pipeline' : deckLead ? 'What the session deck last read' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
+          <span className="text-[10.5px] text-fg-faint" title={view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
           {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
           {leadSum && lead && (
             <span data-fold-only className="flex min-w-0 items-center gap-1.5">
@@ -188,11 +242,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
             {listed.length > 4 ? (
               <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
             ) : <span />}
-            {onOpen && <button type="button" data-cockpit-ci-open onClick={onOpen} title="Open the Pipeline: its own tab, beside the Dashboard" className="text-accent hover:underline">Pipeline →</button>}
+            {onOpen && <button type="button" data-cockpit-ci-open onClick={() => onOpen()} title="Open the Pipeline: its own tab, beside the Dashboard" className="text-accent hover:underline">Pipeline →</button>}
           </span>
         </>
       ) : (
-        <button type="button" data-cockpit-ci-open onClick={onOpen} disabled={!onOpen} title="Open the Pipeline page in a tab"
+        <button type="button" data-cockpit-ci-open onClick={() => onOpen?.()} disabled={!onOpen} title="Open the Pipeline page in a tab"
           className="-mx-1.5 rounded-[6px] px-1.5 py-1 text-left hover:bg-[var(--app-row-hover)] disabled:cursor-default disabled:hover:bg-transparent">
           {body}
         </button>
@@ -206,10 +260,14 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
  * as a bar; a merge waiting for a release says so in a word ("next release",
  * "in v0.132.0"), the whole of it on hover.
  */
-function JourneyRow({ r, now, ships }: { r: PipelineRow; now: number; ships: ShipsContext }) {
+function JourneyRow({ r, now, ships, act, agent, onLog }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; onLog?: () => void }) {
   const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const steps = journey(r)
   const said = releaseNote(r, ships)
+  // What its agents cost and who is on it, when Caprock knows: a grey line.
+  const cost = r.card ? costText(r.card.spend) : ''
+  const who = agent ? sessionTitle(agent.session) : r.card?.spend.agents.join(', ') ?? ''
+  const failing = r.card?.stage === 'fix' || r.mine?.live?.checks.state === 'fail'
   return (
     <li data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
       <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
@@ -219,7 +277,58 @@ function JourneyRow({ r, now, ships }: { r: PipelineRow; now: number; ships: Shi
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
       </span>
       <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
+      {(cost || who || act || ((failing || act) && onLog)) && (
+        <span data-cockpit-ci-pr-meta className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-fg-faint">
+          {(cost || who) && (
+            <span className="min-w-0 flex-1 truncate" title={[r.card && cost ? costTitle(r.card.spend) : '', agent ? `${sessionTitle(agent.session)} — ${agent.word}` : ''].filter(Boolean).join('\n')}>
+              {cost && <span data-cockpit-ci-cost className="num">{cost}</span>}{cost && who ? ' · ' : ''}{who && <span data-cockpit-ci-agent>{who}</span>}
+            </span>
+          )}
+          {act}
+          {(failing || act) && onLog && (
+            <button type="button" data-cockpit-ci-log onClick={onLog} title="The failed job, its steps and the end of its log, with Investigate: the Pipeline page, on this pull request"
+              className="ml-auto shrink-0 text-fg-faint hover:text-fg-muted hover:underline">Log in Pipeline →</button>
+          )}
+        </span>
+      )}
     </li>
+  )
+}
+
+type Kit = ReturnType<typeof usePRForce>
+
+/**
+ * The one action a row offers (owner, 2026-10-20: the deck's per-PR actions
+ * moved here when it was removed): Resolve conflict when it conflicts,
+ * Update branch when it is behind, Fix CI when its CI failed — Re-run when
+ * no agent can be reached for a fix. A click asks once in the row, as the
+ * deck did; then the row says what it is doing until GitHub shows it done.
+ */
+function RowAction({ p, kit, worktrees, now }: { p: SessionPRLive; kit: Kit; worktrees?: DeckWorktree[]; now: number }) {
+  const g = kit.standing(p, prAgents(p.live?.branch, worktrees), now)
+  if (g) return <span data-cockpit-ci-progress className="shrink-0 text-accent">{g.text}</span>
+  const c = kit.confirm?.pr === p.number ? kit.confirm : undefined
+  if (c) {
+    return (
+      <span data-cockpit-ci-confirm className="flex w-full min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
+        <span className="min-w-0 flex-1 text-fg">{kit.confirmText(p, c.kind)}</span>
+        <button type="button" data-cockpit-ci-confirm-yes autoFocus onClick={() => void kit.force(p, c.kind)}
+          className="shrink-0 rounded-[4px] border border-accent/60 bg-accent/10 px-1.5 font-medium text-accent hover:bg-accent/20">Confirm</button>
+        <button type="button" onClick={() => kit.setConfirm(undefined)} onKeyDown={(e) => { if (e.key === 'Escape') kit.setConfirm(undefined) }} title={`Cancel (${keys('Esc')})`}
+          className="shrink-0 rounded-[4px] px-1 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">Cancel</button>
+      </span>
+    )
+  }
+  const ks = quickActions(p)
+  if (ks.length === 0) return null
+  const k = ks.find((x) => !kit.forceWhy(p, x)) ?? ks[0]!
+  const no = kit.forceWhy(p, k)
+  return (
+    <button type="button" data-cockpit-ci-action={k} disabled={!!no || kit.forcing === p.number} onClick={() => kit.setConfirm({ pr: p.number, kind: k })}
+      title={no || FORCE_TITLE[k]}
+      className={`shrink-0 rounded-[4px] border px-1.5 text-[10.5px] font-medium leading-[16px] disabled:cursor-not-allowed disabled:border-[var(--app-hairline)] disabled:font-normal disabled:text-fg-faint ${k === 'conflict' ? 'border-danger/50 text-danger hover:bg-danger/10' : 'border-accent/50 text-accent hover:bg-accent/10'}`}>
+      {ACTION_LABEL[k]}
+    </button>
   )
 }
 

@@ -244,7 +244,7 @@ others. Installing it: [install-app.md](install-app.md).
   repository a session runs in: commits a day over two weeks, today's and the
   week's, lines added and removed, files not committed, from the
   repository's own git; with GitHub connected, its open pull requests, red
-  runs, median CI time and newest release, as the session deck last read
+  runs, median CI time and newest release, as the Pipeline last read
   them. Fold it and it reads nothing. **CI/CD**, under Repos, needs GitHub
   connected: GitHub's own status (from githubstatus.com), and for each
   repository the Actions minutes GitHub billed this month (with the token's
@@ -484,7 +484,7 @@ others. Installing it: [install-app.md](install-app.md).
   status dot: it is marked only when it needs you — an amber dot before
   its title while the session waits on you, a red one when it loops or
   failed. Never a bar: that is the tab you are in. The Dashboard tab is its icon
-  and ⌘0, and the inspector's button shows ⌘I beside it, as Deck shows ⌘B.
+  and ⌘0, and the inspector's button shows ⌘I beside it.
   Picking
   another project never takes a tab out of the strip: the project's own
   tabs are listed under it in the sidebar, under the same names, or its
@@ -545,8 +545,7 @@ others. Installing it: [install-app.md](install-app.md).
   a hint, never removed for it.
 - **Finished copies clean themselves up.** When a copy Caprock made is
   merged (or its pull request is), pushed, has no uncommitted or untracked
-  file and nothing runs in it, the project's page and the deck's Branches
-  view say *3 copies done · 2.1 GB · Clean up*. *Clean up* asks once on the
+  file and nothing runs in it, the project's page says *3 copies done · 2.1 GB · Clean up*. *Clean up* asks once on the
   same line and removes exactly those; *Review* opens the copies list with
   them ticked. Settings → Worktrees chooses *Off*, *Ask* (the default) or
   *Auto*, which removes a finished copy a day after it finished. Afterwards
@@ -561,8 +560,10 @@ others. Installing it: [install-app.md](install-app.md).
   terminal; the agent works on that file, not a copy. Drag a tab along the
   strip to reorder it.
 - **Chat.** An agent tab switches between its terminal and its chat with
-  **Chat** in the tab strip (lit while the chat is shown; press it again for
-  the terminal): your prompts, what the agent wrote, and each tool call on
+  one quiet icon at the right of the tab strip: over the terminal it is a
+  chat bubble (*Show as chat*), over the chat a terminal glyph (*Show as
+  terminal*); one click flips the view, and each session keeps its own. The
+  chat: your prompts, what the agent wrote, and each tool call on
   one line that opens. The agent keeps running meanwhile; what it prints in
   the terminal is there, drawn at once, when you go back. The field under it types into the
   session. Send while the agent is still working and the message waits as
@@ -660,39 +661,27 @@ others. Installing it: [install-app.md](install-app.md).
   now and then an idle Claude asks "try a duck?" beside its portrait —
   click it to see them, or × it, and after two ×s it stops asking.
   Remembered in this browser only. Other agents keep their own marks.
-- **Session deck** (⌘B). A band under the terminal of the agent in front,
-  so the prompt sits above the window's edge, nearer the middle of the
-  screen, with what is useful while you work in the room it makes: the CI
-  of the session's pull request, its branch with what is not committed or
-  pushed, and its latest pull requests. *CI* lists every GitHub Actions job
-  of the PR's latest commit with its state, OS and time (ticking while it
-  runs), in as many columns as the deck is wide, and the runner time so far, measured from GitHub's job times and
-  split per OS — never turned into money. Click a job for its steps and
-  their times; click a failed step for the lines around the error in its
-  log, with a link to the job on GitHub. CI needs GitHub connected (one
-  click, through `gh`). Drag its top edge to resize it (up to 60% of the pane), or
-  focus the edge and use ↑ ↓; double-click it for the default height. The
-  deck button beside the inspector's, ⌘B and the palette (*Pipeline bar:
-  On/Off*) open and close it, and the × in its header hides it;
-  the app remembers its height and whether it was open. A shell tab has no
-  deck. It opens on all of the session's pull requests, each title as long
-  as the row allows, with its checks as a circle per check (coloured by
-  state, the running ones pulsing) or, switched in the header (*Checks:
-  circles | summary*), summed up in a few words — *✗ 1 failed ● 1 running ✓
-  10*, or just *✓ all 12 · 6m* once everything passed — and opens one only
-  when you click it; the next time it opens on that one. Hover the checks for
-  every one: its name, OS, state, time and the step a failed one stopped
-  at. The cockpit on the right has a **CI**
+- **Pull requests and CI, on the right.** The session deck that used to sit
+  under the agent's terminal (⌘B) was removed on 2026-10-20; what it showed
+  is in the cockpit and on the Pipeline page. The cockpit on the right has a **CI**
   block. Its *PRs* view is the repository's pull requests as thin progress
   bars toward a release — the four steps Open → CI → Merged → Released, the
   step each one is on coloured (CI in its check colour: red, amber, green)
   — each with its number, title and how long it has been on that step; in
   flight first, then merged, then released. The list scrolls inside the
-  block; *Expand* makes the block taller (remembered), *Pipeline ↗* opens
-  the page. Its other views are one ring with *10/11 · 5m* or the jobs by
-  OS, switched in its label.
-  ⌘P, *Pipeline* at the foot of the sidebar, *Pipeline* in the deck's
-  header, *Open Pipeline* in the palette or *Pipeline ↗* in the cockpit
+  block; *Expand* makes the block taller (remembered), *Pipeline →* opens
+  the page. A row of the session's own pull request also offers the one
+  thing it needs, as a small button — *Resolve conflict* when it conflicts
+  with its base, *Update branch* when it is behind, *Fix CI* when its CI
+  failed (*Re-run* when no agent can be reached to fix it). A click asks
+  once in the row (*Ask … to fix #42's CI and push?* · Confirm · Cancel),
+  then the row says what it is doing until GitHub shows it done. *Log in
+  Pipeline →* beside it opens the Pipeline on that pull request, with its
+  failed job's log and *Investigate*; a grey line says what agents spent on
+  it and who worked on it. Its other views are one ring with *10/11 · 5m*
+  or the jobs by OS, switched in its label.
+  ⌘P, *Pipeline* at the foot of the sidebar, *Open Pipeline* in the palette
+  or *Pipeline →* in the cockpit
   opens the **Pipeline** in a tab of its own, pinned right after the
   Dashboard tab and drawn like it — its glyph and ⌘P (Ctrl+Shift+P on Windows
   and Linux), its × while it is in front. It stays in the Dashboard too:
@@ -732,7 +721,8 @@ others. Installing it: [install-app.md](install-app.md).
   which pull requests are listed. Below, each recent release with the pull
   requests it shipped and what the agents spent on them. Click a row for
   its detail beside the list (under it in a narrow window) — state, review, merge state and
-  diff size, the deck's actions, its jobs by runner OS against each one's
+  diff size, its actions (fix a conflict or CI with an agent, re-run the
+  checks, update the branch), its jobs by runner OS against each one's
   usual time, the jobs on a timeline, and a failed job's steps and log with
   *Investigate*; × or Esc closes it. Its header always says how current
   what you see is: *Updated just now*; *Saved 5 h ago · refreshing…* with a
@@ -741,10 +731,14 @@ others. Installing it: [install-app.md](install-app.md).
   showing data from 15:02 · Retry* when GitHub or the daemon could not be
   read. The CI/CD section on Home says the same in its header, and shows
   the Pipeline's first five figures at its top with *Open Pipeline →*.
+  At the foot of the page, **Default branch**: the newest run of each
+  workflow on it, its jobs as dots, its time and runner cost, what GitHub
+  billed for Actions this month, and a failed job's step and the end of its
+  log with *Investigate*.
   **Back** in its top-right corner, ⌘P again or *Pipeline* in the sidebar
   go back to where you were. It reads GitHub only while it is in front.
-  ⇧⌘B, its key before, still works; ⌘B is the Pipeline bar under the
-  agent's terminal.
+  ⇧⌘B, its key before, still works; ⌘B is no longer the app's (the Add
+  project sheet keeps its own).
 - **Work.** *Work*, second in the Dashboard's menu, or ⇧⌘W, lists every
   piece of work on your machine on its way to a release: a row per branch
   at its furthest step — agent, pull request, CI, merged, released — with
@@ -908,7 +902,6 @@ On macOS:
 | ⇧⌘M         | Mail, in a window of its own                                                        |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                            |
 | ⌘I          | Agent cockpit (the inspector)                                                       |
-| ⌘B          | Pipeline bar under the agent's terminal, shown or hidden                            |
 | ⌘P          | Pipeline, in a tab of its own; there, back to where you were                        |
 | ⇧⌘W         | Work on the dashboard; there, back to where you were                                |
 | ⌘\          | Hide or show the sidebar                                                            |
@@ -935,7 +928,7 @@ to the program running in it. The terminal's own keys (Ctrl+C, Ctrl+W,
 Option as Meta) always reach the terminal.
 
 On Windows and Linux the key hints beside the sidebar's rows, the tabs and
-Deck and Inspector stay out of the way until you want them: a row shows its
+the Inspector stay out of the way until you want them: a row shows its
 key while the pointer is on it, and holding Ctrl for a moment shows every
 key at once, the tabs' Ctrl+Shift+1–9 among them. On macOS they are always
 shown.
@@ -1142,8 +1135,8 @@ no switch for them. See [Premium](../README.md#premium).
 Settings → **GitHub** connects your account. Caprock then talks to
 `api.github.com` from the daemon; the token never reaches the page or your
 phone. Nothing is sent to GitHub until you connect. Besides
-`api.github.com`, and never with your token: when you click a failed CI step
-in the session deck, the job's log is downloaded from the signed address
+`api.github.com`, and never with your token: when you open a failed CI job
+on the Pipeline page, the job's log is downloaded from the signed address
 GitHub points to on its log storage; while Home's CI/CD section is open, the
 daemon reads `www.githubstatus.com`'s public status at most every five
 minutes; when GitHub can't be reached, it reads the same status page to say

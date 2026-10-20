@@ -16,12 +16,13 @@
  * how long in the step, its agent cost — in flight first, then merged, then
  * released (ten, then "Show more"), and the releases below. A row opens the
  * pull request in detail beside the list (under it on a narrow window):
- * state, review, merge state and diff, the deck's actions, its jobs by runner
+ * state, review, merge state and diff, the force actions (lib/usePRForce), its jobs by runner
  * OS against each one's median, the jobs on the run's clock, a job's steps
- * and the end of a failed one's log.
+ * and the end of a failed one's log. Under the releases, the default
+ * branch's workflows and this month's Actions bill (components/PipelineMain).
  *
  * Asked only while the page is in front and the window visible (usePoll),
- * through the deck's own routes and kept answers (lib/deckCache), so opening
+ * through the daemon's CI routes and their kept answers (lib/deckCache), so opening
  * it shows what was last known at once.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -42,10 +43,13 @@ import { FlowCards, Releases } from './PRBoard'
 import { AgentsCard, TeamChart, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
 import { PipelineShareButton } from './PipelineShare'
+import { PipelineMain } from './PipelineMain'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
 import { Panel } from './ui'
-import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandToggle, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
+import { CIMark, DeckSkeleton, ExpandToggle, connectGitHub } from './CIParts'
+import { Freshness } from './Freshness'
+import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePoll'
 import { extTitle } from '@/lib/externalLinks'
 
 export interface PipelineViewProps {
@@ -126,7 +130,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   // The repository's newest release run, for the Next release panel's
-  // stages: the deck's own answer (`release:<repo>`), read while the page is
+  // stages: the kept answer (`release:<repo>`), read while the page is
   // in front, every 12 s while it runs; the daemon keeps it, so an idle
   // poll costs GitHub nothing new.
   const relScope = s.repo_root || s.cwd || sessionId
@@ -203,7 +207,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
 
   const row = rows.find((r) => r.number === pick) ?? pipelineRows(tabRows('repo', sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []).find((r) => r.number === pick)
   const runs: CIRun[] = useMemo(() => ci?.ci?.runs ?? [], [ci?.ci?.runs])
-  // The chosen pull request as the deck's rows carry it, so the deck's words and actions apply.
+  // The chosen pull request as the session's own rows carry it, so the PR words and actions apply.
   const p: SessionPRLive | undefined = row ? {
     ...(row.mine ?? { session_id: sessionId, url: row.url, number: row.number, title: row.title, last_at: 0 }),
     live: ci?.pr?.live ?? row.mine?.live,
@@ -288,6 +292,8 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
         </div>
       )}
       {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
+      {/* The default branch's workflows and this month's Actions bill: the session deck's Main view until 2026-10-20. */}
+      {ready && <PipelineMain sessionId={sessionId} s={s} visible={visible} now={now} why={why} onToast={onToast} />}
     </div>
   )
 }

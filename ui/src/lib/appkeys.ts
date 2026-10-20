@@ -82,7 +82,6 @@ export type AppCommand =
   | { kind: 'detach-tab' }
   | { kind: 'palette' }
   | { kind: 'inspector' }
-  | { kind: 'deck' }
   /** ⌘P (⇧⌘B, its older key): the Pipeline tab, or, from it, back to where it was pressed. */
   | { kind: 'pipeline' }
   /** ⇧⌘W: the Work page on the dashboard, or, from it, back to where it was pressed. */
@@ -430,9 +429,6 @@ function plain(k: string): AppCommand | null {
     case 'w': return { kind: 'detach-tab' }
     case 'k': return { kind: 'palette' }
     case 'i': return { kind: 'inspector' }
-    // B for the band at the bottom. The Add project sheet's own ⌘B (Recent ⇄
-    // Browse) is not reached: a sheet owns the keyboard while it is open.
-    case 'b': return { kind: 'deck' }
     case '\\': return { kind: 'sidebar' }
     case 'e': return { kind: 'split', direction: 'row' }
     case 'j': return { kind: 'next-waiting' }
@@ -480,7 +476,7 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 
 /** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
  *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
- *  the Pipeline's older key beside the deck's own Ctrl+Shift+B, feedback
+ *  the Pipeline's older key, feedback
  *  beside Find's Ctrl+Shift+F, Reopen closed tab beside New shell's
  *  Ctrl+Shift+T, Work beside Close's Ctrl+Shift+W, the modules' ⇧⌘1–9
  *  beside the tabs' Ctrl+Shift+1–9). Ctrl+Alt+Shift+B, F, T, W and the
@@ -614,7 +610,6 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   [LINK_OPEN_CLICK, 'A link in the terminal: open it in your default browser'],
   [LINK_CHOOSE_CLICK, 'A link in the terminal: choose the browser to open it in, or copy it'],
   ['⌘I', 'Inspector'],
-  ['⌘B', 'Pipeline bar under the agent’s terminal, shown or hidden'],
   ['⌘P', 'Pipeline, in a tab of its own; there, back to where you were'],
   ['⇧⌘W', 'Work on the dashboard: every piece of work on its way to a release; there, back'],
   ['⇧⌘G', 'Changes: the diff of the session in front'],
