@@ -155,7 +155,20 @@ click and on ⇧⌘T; a helper session started in a temp folder outside every
 project folds under Background · N, opened and remembered across a reload;
 and an agent ended with its tab comes back from its row — read-only with its
 reason, since the fake claude writes no transcript to `--resume` (it ends
-beta, so it is last). Terminal text is read
+beta, so it is last). `ui/e2e/phone.spec.ts` walks the phone: a
+phone profile (Pixel 7's, `isMobile` and `hasTouch`, so the layout viewport
+widens to fit the widest element as Android Chrome's does) at 360, 390 and
+430 px, over Home and its menus, the full dashboard, Chats, a chat with its
+sheets, file viewer, + menu, bug report, a long line typed and queued, a
+session's chat, views menu, details, End sheet, terminal and timeline,
+Settings, Cost and History, with a transcript written into the stand's
+`~/.claude/projects` that holds a long URL, a long path, a code block with a
+long line, a nine-column table and long tool lines. On every one the page's
+scroll width and layout viewport stay the screen's, no element's right edge
+passes it unless a box inside the screen clips or scrolls it, no box but a
+code block, table or terminal scrolls sideways, and no field's text is under
+16px (iOS zooms in on those, § From a phone in 04-ui.md). It took 3.8 min
+with the machine under heavy load (2026-10-21). Terminal text is read
 from xterm's buffer through the bench hook (`ui/src/lib/benchhook.ts`). The
 whole `make e2e` took 21-22 s of wall time on the owner's Apple Silicon Mac
 (three runs, 2026-10-16; 37 s with the machine under heavy load). `E2E_ARGS` passes flags to

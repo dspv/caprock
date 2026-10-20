@@ -170,8 +170,12 @@ export function Prose({ text, onPath }: { text: string; onPath?: (path: string) 
         }
         if (b.kind === 'table') {
           return (
-            <div key={i} className="overflow-x-auto">
-              <table className="border-collapse text-[12px]">
+            // The table scrolls in its own frame and its cells keep their
+            // words whole: the reply's overflow-wrap:anywhere, inherited,
+            // let a wide table fit a phone by breaking every cell into
+            // two-letter lines (2026-10-21).
+            <div key={i} className="app-scroll min-w-0 max-w-full overflow-x-auto">
+              <table className="w-max min-w-full border-collapse text-[12px] [overflow-wrap:normal]">
                 <tbody>
                   {b.rows.map((cells, r) => (
                     <tr key={r} className="border-b border-border last:border-0">
@@ -461,7 +465,11 @@ export function ProseDoc({ text, blocks: given, link, image }: { text: string; b
   let h = 0
   const inl = (parts: DocInline[]) => renderDocInline(parts, link, image)
   return (
-    <div className="grid min-w-0 gap-4 text-[15px] leading-[1.72] text-fg [overflow-wrap:break-word]">
+    // minmax(0,1fr), not the implicit auto track: a grid item's min-content
+    // is its longest word under break-word, and one long link or path set
+    // the whole document's width — a chat's file viewer scrolled sideways
+    // at 1,512px on a 360px phone (2026-10-21).
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 text-[15px] leading-[1.72] text-fg [overflow-wrap:break-word]">
       {blocks.map((b, i) => {
         switch (b.kind) {
           case 'heading': {
@@ -477,7 +485,7 @@ export function ProseDoc({ text, blocks: given, link, image }: { text: string; b
             return <p key={i} className="m-0 border-l-[3px] border-[var(--app-hairline-strong,var(--color-border))] pl-4 text-fg-muted">{inl(b.parts)}</p>
           case 'item':
             return (
-              <div key={i} className="-mt-3 grid grid-cols-[1.5em_1fr] first:mt-0" style={{ marginLeft: `${b.depth * 1.5}em` }} data-task={b.task}>
+              <div key={i} className="-mt-3 grid grid-cols-[1.5em_minmax(0,1fr)] first:mt-0" style={{ marginLeft: `${b.depth * 1.5}em` }} data-task={b.task}>
                 {b.task ? (
                   <input type="checkbox" checked={b.task === 'done'} readOnly disabled aria-label={b.task === 'done' ? 'Done' : 'Not done'} className="mt-[0.42em] h-[14px] w-[14px] accent-[var(--color-accent)]" />
                 ) : (
