@@ -17,12 +17,22 @@ import (
 // width clears the viewport and draws the frame again (Claude Code 2.1's
 // clearTerminal on resize). The header names the size the PTY had. After
 // `frames` frames it leaves a last frame of two rows and the line
-// `agents-done <frames>` under it.
+// `agents-done <frames>` under it. A second word tags the run: its rows and
+// its done line end with it, so a test tells its own run from an earlier
+// one replayed from the ring when its page attached.
 //
 // A terminal that parsed every byte, in order, at the PTY's size shows
 // exactly one copy of the list; ui/e2e/redraw.spec.ts counts the rows.
 func agents(arg string) {
-	frames, err := strconv.Atoi(strings.TrimSpace(arg))
+	words := strings.Fields(arg)
+	tag := ""
+	if len(words) > 1 {
+		tag = " " + words[1]
+	}
+	frames, err := 0, error(nil)
+	if len(words) > 0 {
+		frames, err = strconv.Atoi(words[0])
+	}
 	if err != nil || frames < 1 {
 		frames = 100
 	}
@@ -49,7 +59,7 @@ func agents(arg string) {
 		}
 		lines := []string{fmt.Sprintf("● Running %d agents… frame %d pty %dx%d", k, f, cols, rows)}
 		for i := 0; i < k; i++ {
-			lines = append(lines, fmt.Sprintf("  ⎿ subagent-%d step %d", i+1, f))
+			lines = append(lines, fmt.Sprintf("  ⎿ subagent-%d step %d%s", i+1, f, tag))
 		}
 		for i, l := range lines {
 			if i > 0 {
@@ -88,7 +98,7 @@ func agents(arg string) {
 			f++
 		}
 	}
-	_, _ = fmt.Fprintf(os.Stdout, "\r\nagents-done %d\r\n", frames)
+	_, _ = fmt.Fprintf(os.Stdout, "\r\nagents-done %d%s\r\n", frames, tag)
 }
 
 // inputBox draws Claude Code's input box: a rule, the `❯` prompt row, a

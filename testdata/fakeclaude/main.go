@@ -3,7 +3,7 @@
 //
 // It is a line REPL: it prints a ready line, answers every line it reads with
 // `you-said:<line>`, draws a permission dialog on `ask[tag]` (its footer ends
-// `asked<tag>`), animates Claude Code's subagent list on `agents [frames]` and
+// `asked<tag>`), animates Claude Code's subagent list on `agents [frames] [tag]` and
 // draws its input box on `box` (agents.go), exits with code 3 on `quit`, and
 // exits cleanly on `/exit` or
 // Ctrl+D, as Claude Code does. Shell scripts do this

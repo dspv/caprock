@@ -18,8 +18,8 @@ type Bench = { __caprockBench: { terms: Map<string, unknown> } }
  * can hold an earlier run's rows replayed from the ring when a page attaches
  * (the ring starts mid-frame).
  */
-async function listRows(page: Page, id: string): Promise<string[]> {
-  return page.evaluate((sid) => {
+async function listRows(page: Page, id: string, tag: string): Promise<string[]> {
+  return page.evaluate(([sid, tag]) => {
     type Line = { translateToString(trim: boolean): string }
     type Term = { rows: number; buffer: { active: { baseY: number; getLine(i: number): Line | undefined } } }
     const t = (window as unknown as Bench).__caprockBench.terms.get(sid) as Term | undefined
@@ -28,14 +28,57 @@ async function listRows(page: Page, id: string): Promise<string[]> {
     const rows: string[] = []
     for (let i = b.baseY; i < b.baseY + t.rows; i++) {
       const s = b.getLine(i)?.translateToString(true) ?? ''
-      if (s.includes('subagent-')) rows.push(s.trim())
+      if (s.includes('subagent-') && s.trimEnd().endsWith(` ${tag}`)) rows.push(s.trim())
     }
     return rows
-  }, id)
+  }, [id, tag] as const)
 }
 
-/** The last frame of `agents n`: two rows, nothing left of the others. */
-const lastFrame = (n: number) => [`⎿ subagent-1 step ${n}`, `⎿ subagent-2 step ${n}`]
+async function dump(page: Page, id: string, tag: string): Promise<void> {
+  if (!process.env.REDRAW_DEBUG) return
+  const v = await page.evaluate((sid) => {
+    type Line = { translateToString(trim: boolean): string }
+    type Term = { cols: number; rows: number; buffer: { active: { baseY: number; viewportY: number; cursorY: number; getLine(i: number): Line | undefined } } }
+    const t = (window as unknown as Bench).__caprockBench.terms.get(sid) as Term
+    const b = t.buffer.active
+    const out: string[] = [`${t.cols}x${t.rows} base=${b.baseY} vp=${b.viewportY} cy=${b.cursorY}`]
+    for (let i = b.baseY; i < b.baseY + t.rows; i++) { const l = b.getLine(i)?.translateToString(true) ?? ''; if (l) out.push(`${i - b.baseY}: ${l.slice(0, 70)}`) }
+    return out.join('\n')
+  }, id)
+  console.log(`--- ${tag}\n${v}`)
+}
+
+// Each scenario runs an animation for several seconds; a slow runner needs room.
+test.describe.configure({ timeout: 90_000 })
+
+test.beforeEach(async ({ page }) => {
+  const rate = Number(process.env.REDRAW_THROTTLE ?? 0)
+  if (rate > 1) await (await page.context().newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate })
+})
+
+/** The last frame of `agents n tag`: two rows, nothing left of the others. */
+const lastFrame = (n: number, tag: string) => [`⎿ subagent-1 step ${n} ${tag}`, `⎿ subagent-2 step ${n} ${tag}`]
+
+/**
+ * Starts `agents n` under a tag of its own and returns the tag. The tag is
+ * what tells this run from an earlier test's on the same session: a page
+ * that attaches is replayed the ring, which starts mid-frame, and the fake
+ * claude idle at its prompt redraws nothing on the attach's repaint (Claude
+ * Code clears its viewport on every resize), so an earlier run's rows,
+ * and its `agents-done` line, can still be on screen. Seen on the CI
+ * runner, and here under a 6x CPU throttle.
+ */
+/** Waits for the run's done line, with room for a slow runner. */
+async function waitDone(app: App, id: string, line: string): Promise<void> {
+  await expect.poll(() => app.termText(id), { message: `terminal shows ${line}`, timeout: 30_000 }).toContain(line)
+}
+
+let runs = 0
+async function runAgents(page: Page, n: number): Promise<string> {
+  const tag = `r${++runs}x${Math.random().toString(36).slice(2, 7)}`
+  await type(page, `agents ${n} ${tag}`)
+  return tag
+}
 
 /**
  * Out of sight and back, as a covered or minimised window is (lib/visible):
@@ -134,30 +177,31 @@ async function type(page: Page, line: string): Promise<void> {
 test('the list is drawn once after the window was out of sight while it ran', async ({ app, page }) => {
   await app.open()
   const s = await openTab(app, page, 'alpha')
-  await type(page, 'agents 300')
+  const tag = await runAgents(page, 300)
   await page.waitForTimeout(1500)
   // Past PAGE_HIDDEN_SUSPEND_MS: the socket goes and resumes from its last byte.
   await setHidden(page, true)
   await page.waitForTimeout(5000)
   await setHidden(page, false)
-  await app.waitTerm(s.id, 'agents-done 300')
+  await waitDone(app, s.id, `agents-done 300 ${tag}`)
   await page.waitForTimeout(500)
-  expect(await listRows(page, s.id)).toEqual(lastFrame(300))
+  await dump(page, s.id, 'after')
+  expect(await listRows(page, s.id, tag)).toEqual(lastFrame(300, tag))
   expect(await paintIsCurrent(page, s.id)).toBe(true)
 })
 
 test('the list is drawn once after its tab was behind another while it ran', async ({ app, page }) => {
   await app.open()
   const s = await openTab(app, page, 'beta')
-  await type(page, 'agents 300')
+  const tag = await runAgents(page, 300)
   await page.waitForTimeout(1500)
   // Past HIDDEN_HOLD_BYTES held: the socket goes and resumes when shown.
   await app.row(app.session('alpha').name).first().click()
   await page.waitForTimeout(5000)
   await app.row(s.name).first().click()
-  await app.waitTerm(s.id, 'agents-done 300')
+  await waitDone(app, s.id, `agents-done 300 ${tag}`)
   await page.waitForTimeout(500)
-  expect(await listRows(page, s.id)).toEqual(lastFrame(300))
+  expect(await listRows(page, s.id, tag)).toEqual(lastFrame(300, tag))
   expect(await paintIsCurrent(page, s.id)).toBe(true)
 })
 
@@ -168,7 +212,8 @@ for (const mode of ['told', 'silent'] as const) {
     await app.open()
     test.skip(!(await hasWebgl(page)), 'no WebGL 2 in this browser')
     const s = await openTab(app, page, mode === 'told' ? 'alpha' : 'beta')
-    await type(page, 'agents 200')
+    await dump(page, s.id, `${mode} before`)
+    const tag = await runAgents(page, 200)
     await expect.poll(() => glState(page, s.id), { timeout: 8000 }).toBe('alive')
     if (mode === 'silent') {
       // WebKit can let a context go without telling the page: nothing on
@@ -176,15 +221,17 @@ for (const mode of ['told', 'silent'] as const) {
       await page.evaluate(() => document.addEventListener('webglcontextlost', (e) => e.stopPropagation(), true))
     }
     expect(await loseContext(page, s.id)).toBe(true)
-    await page.waitForTimeout(600)
-    expect(await glState(page, s.id)).not.toBe('lost')
+    // Off the lost context well inside the addon's own 3 s wait (before: still
+    // on it then, and for good when the loss was silent).
+    await expect.poll(() => glState(page, s.id), { timeout: 2000 }).not.toBe('lost')
     await page.evaluate(() => window.dispatchEvent(new Event('blur')))
     await page.evaluate(() => window.dispatchEvent(new Event('focus')))
     expect(await glState(page, s.id)).not.toBe('lost')
-    await app.waitTerm(s.id, 'agents-done 200')
+    await waitDone(app, s.id, `agents-done 200 ${tag}`)
     // A fresh context after the quiet wait.
     await expect.poll(() => glState(page, s.id), { timeout: 8000 }).toBe('alive')
-    expect(await listRows(page, s.id)).toEqual(lastFrame(200))
+    await dump(page, s.id, `${mode} after`)
+    expect(await listRows(page, s.id, tag)).toEqual(lastFrame(200, tag))
     expect(await paintIsCurrent(page, s.id)).toBe(true)
   })
 }
@@ -195,12 +242,12 @@ test('a WebGL context given back after a loss leaves no errors and a current scr
   await app.open()
   test.skip(!(await hasWebgl(page)), 'no WebGL 2 in this browser')
   const s = await openTab(app, page, 'alpha')
-  await type(page, 'agents 200')
+  const tag = await runAgents(page, 200)
   await expect.poll(() => glState(page, s.id), { timeout: 8000 }).toBe('alive')
   expect(await loseContext(page, s.id, 500)).toBe(true)
-  await app.waitTerm(s.id, 'agents-done 200')
+  await waitDone(app, s.id, `agents-done 200 ${tag}`)
   await expect.poll(() => glState(page, s.id), { timeout: 8000 }).toBe('alive')
-  expect(await listRows(page, s.id)).toEqual(lastFrame(200))
+  expect(await listRows(page, s.id, tag)).toEqual(lastFrame(200, tag))
   expect(await paintIsCurrent(page, s.id)).toBe(true)
 })
 

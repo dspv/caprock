@@ -256,11 +256,19 @@ func (p *ptySizes) apply(st *ptySizeState, c *sizeConn, force bool) {
 // Claude Code — wrote its status rows' labels once and only their numbers
 // since, so a replay that starts after the labels shows a row of bare numbers
 // that never heals (owner, 2026-10-08, after an app restart). Resizing to the
-// size the PTY already has sends no SIGWINCH, so nothing redrew. One row less
-// and back is two real size changes, and a TUI repaints on each.
+// size the PTY already has sends no SIGWINCH, so nothing redrew. One column
+// less and back is two real size changes, and a TUI repaints on each.
+//
+// A column, not a row. It was one row less, and Claude Code (2.1) clears the
+// viewport on a shrink by erasing as many rows as it now thinks it has, from
+// the top: one short of the terminal's, whose size never changed. Growing
+// back clears nothing, so the bottom row kept whatever was drawn there before
+// — a stale subagent row under the list after every resume (users,
+// 2026-10-20; reproduced with the fake claude, which clears the same way). A
+// width change clears all the rows on both steps.
 func (p *ptySizes) repaint(st *ptySizeState, cols, rows int) {
-	if rows > 2 {
-		p.resize(st.id, cols, rows-1)
+	if cols > 2 {
+		p.resize(st.id, cols-1, rows)
 		time.Sleep(p.gap)
 	}
 	p.resize(st.id, cols, rows)

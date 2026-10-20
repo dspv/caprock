@@ -28,6 +28,11 @@ cut; `scripts/changelog.py preview` prints that section now. The format is in
   you come back to the tab or the window. The key hint over Claude Code's
   input box goes when the window loses focus instead of staying over the
   quick replies.
+- **app:** reopening a terminal or coming back to it after its connection
+  was let go no longer leaves a stale line on its bottom row. Caprock makes
+  the program in it redraw by changing the size for a moment; it used to
+  take one row away, and Claude Code then cleared one row too few. It now
+  takes one column away, which makes it clear the whole screen.
 - **app:** a window that goes white comes back by itself instead of staying
   blank until the app is quit. When macOS ends the WebView's content process
   (under memory pressure, or a crash), the app reloads that window, waiting
