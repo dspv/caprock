@@ -600,6 +600,17 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
   width: 100%;
 }
 .input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
+/* A phone's fields are at least 16px. iOS zooms the page in on focusing a
+ * field whose text is smaller and leaves it zoomed, and the zoomed page then
+ * scrolls sideways until pinched back: the Repository and Project pickers on
+ * the phone home (14px), the settings fields (12px) and Cost's cap (12px) all
+ * did it (2026-10-21). Unlayered on purpose, so it beats the text-[12px]
+ * utilities on those fields; only where the phone layout or a touch screen is. */
+@media (max-width: 639.98px), (pointer: coarse) {
+  /* One :is(), so the textarea and select take the input branch's
+   * specificity (0,1,1) and beat `.input`'s 12px as well. */
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]), textarea, select) { font-size: 16px; }
+}
 
 /* The chat composer's field (TerminalKeys): a calm glow while it has the
  * focus, so it is plain where typing goes (owner, 2026-10-14, translated: "a
