@@ -974,6 +974,105 @@ the last answer) would remove the scan, but rows are updated in place
 (repricing, tool-link backfill) and removed (retention, removing a session),
 so it needs a correctness design first.
 
+### F17 — P1: the live dashboard re-reads unchanged sessions and slow figures every poll
+
+**Evidence (2026-10-20 to 21).** The owner's daemon (0.140.1, 1.85 GB
+database, 612k events, WAL 6 MB) reported 626 MB read from disk in its last
+minute and 7.6 GB in its last hour at 23:21, with several agents running and
+the app open; at 00:05 it reported 13.2 GB in the last hour with 11.7 GB of
+the machine's 12 GB of swap in use. Sampled from outside with
+`proc_pid_rusage` over 15 minutes it read 1.13 GB, and its reads came in
+bursts. Its slow-query log named the per-minute status refresh
+(`HandoffCoverage`, often cut off at its 2 s budget, which left the status
+screen's Memory line empty), the wide history and summaries, and
+`SpendBySubscription` (`GET /v1/subscriptions`), uncached, about 500 ms a
+time, every two or three seconds while the window reloaded.
+
+**Stand.** A daemon built from `3ff9c91a` with the owner's database copied
+(`sqlite3 -readonly … .backup`), a temporary HOME, `CAPROCK_SECRET_STORE=file`,
+a spare port and the automatic pty-host sweep compiled out (so the stand could
+not signal the owner's processes). The owner's 13 running sessions counted as
+live, their processes being alive on the same machine; four synthetic Claude
+Code transcripts each got a line a second. The dashboard was a headless shell
+on the Now screen, which asked in 180 s for `/v1/sessions?active=true` about
+445 times, `/v1/window-stop` 225, `/v1/stats/summary?range=today` 165,
+`/v1/work` 160, `/v1/history?range=all` 20 and `/v1/status` 9. Reads were
+counted two ways: the bytes `pread` returned on `caprock.db` (a DYLD
+interposer, the database's `mmap_size` set to 0 in the measuring build so its
+reads are calls), and SQLite's page-cache misses per statement
+(`SQLITE_DBSTATUS_CACHE_MISS` read around every statement in the timed
+connection, a probe never committed).
+
+The shipped build (memory-mapped database) on the owner's swapping Mac read
+548.2 MB from disk in 180 s with the dashboard open and 1.6 MB with it closed:
+the same order as the owner's figure, and all of it the dashboard. A repeat
+of the same build later read 200.1 MB, as did the fixed build; how much of a
+read the page cache answers moved with the machine's memory between runs, so
+disk-read counts cannot compare two builds here, and the comparison below is
+the reads the daemon asked for, which do not depend on it.
+
+```text
+180 s, Now screen open         before (base2)  after (fix3)
+caprock.db pread bytes         2049.5 MB       1230.9 MB
+page misses, all statements    2052.1 MB       1282.8 MB
+  eventsBefore (Work board)     385.8 MB         67.0 MB
+  RateLimitPace                 111.1 MB          0 MB
+  HandoffCoverage                74.8 MB          4.4 MB (fix2)
+  SessionTodos                  202.1 MB        174.2 MB
+```
+
+A first run of the unfixed build counted 2036.9 MB of `pread`. The
+`HandoffCoverage` before figure undercounts: the statement was cancelled at its
+budget every minute, and the `pread` count put a status refresh at about 80 MB.
+On the database copy in the `sqlite3` shell (16 MiB cache, no memory map) the
+old statement took 16,187 page reads (66 MB) and the new one 416, for the same
+answer (13 repositories, the same oldest passage).
+
+**Cause.** Four reads were repeated with nothing new to find:
+
+- **The Work board** read every live session's newest 30 and 40 events,
+  payloads included, and its task list on every `/v1/work`, up to once a
+  second, whether or not the session had written anything.
+- **The plan-window slope** walked every sample of the window's reset and its
+  rows twice per summary, for a table of 0.8 MB.
+- **The handoff coverage** parsed the payload of every assistant turn of the
+  last fortnight once a minute to count 13 repositories, and a second count of
+  the whole events table went with it that nothing read.
+- **`GET /v1/subscriptions`** summed a week of turns joined to sessions on
+  every request.
+
+**Implemented (2026-10-21).**
+
+- The Work board keeps each live session's newest events and task list by
+  `store.EventsGen` (`internal/daemon/workevents.go`), as the sessions list
+  does (F14); the state is worked out from them afresh on every request.
+  `TestWorkBoardKeepsUnchangedSessionsEvents`.
+- The slope is kept per window and reset until a newer sample is recorded
+  (`internal/api/pacecache.go`, keyed by `store.RateLimitHistoryMark`).
+  `TestPaceIsKeptUntilANewSample`.
+- `HandoffCoverage` stops at the first passage that answers each figure: a
+  project counts once one of its sessions holds one, and the oldest is the
+  first in time order. `slowStatus` no longer counts the table; `/v1/status`
+  takes the count from the event counter as it did.
+  `TestHandoffCoverageCountsWhatItCounted`.
+- The week of spend by subscription is kept for a minute
+  (`internal/daemon/subspend.go`, `subSpendTTL`), so those two figures can be
+  up to a minute behind. Not measured on the stand: the Now screen does not
+  ask for it. `TestSubscriptionSpendIsKeptForItsTTL`.
+
+**Not done.** What remains is mostly today's aggregates, asked for on every
+summary and Work read: `SummarizeSparkFor`, `turnSpendBySession`, `sumKinds`,
+`SpendBySessionSince` and `SpendSince` were 629 MB of the 1282.8 MB after the
+fix. A shipped build touches these pages every second, so they stay in memory
+more readily than the payload reads removed here, but under heavy swap they
+are evicted too. Two directions, neither built: the Now screen asks for the
+same live figures several times a second, so its readers could share one
+answer per live frame; and today's totals could be carried forward from the
+last answer by the events added since, which within one `EventsGen` per
+session is exact. `SessionTodos` still reads a growing session's whole index
+range once per change (174 MB), because no index leads with session, kind and
+tool. The wide histories' per-minute refresh (F16) is unchanged.
+
 ## Existing safeguards worth preserving
 
 - Dirty-file fsnotify processing, hot-file fallback and persisted Claude offsets

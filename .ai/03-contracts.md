@@ -2610,6 +2610,9 @@ agent, label, default, preferred, plan?, dir, env_var?, signed_in, account?,
 login_command, logout_command?, keychain_item?, windows: [{window,
 used_percentage, resets_at, observed_at}], sessions_7d, cost_7d_usd, running,
 created_at?, provider?}`. Each agent group may carry `ignored_env: [name]`.
+`sessions_7d` and `cost_7d_usd` come from one sum of the last seven days
+kept for a minute (`subSpendTTL`), so they can be up to a minute behind
+while agents work; every other field is read on each request.
 
 - **`provider: "deepseek"`** marks the one entry that is not a sign-in:
   Claude Code on DeepSeek, `id: "deepseek"`, listed last under `claude`
