@@ -124,13 +124,19 @@ export function shownClosed(list: readonly ClosedTab[], open: ReadonlySet<string
  * - `open`: it still runs (or is listed and cannot be continued): open it as
  *   a click on its row does — its terminal, or its conversation read-only.
  * - `resume`: it ended and can be continued: `--resume` under its own id.
+ *   `checked` is false when nothing said it can be — the list does not
+ *   carry it, or carries it without its `resume` answer yet (the poll right
+ *   after it ended): the session's own page is asked first (`GET
+ *   /v1/sessions/{id}`), and the plan made again from that, so a session
+ *   with no transcript opens read-only rather than a refused start (a 400 on
+ *   Linux CI, 2026-10-21).
  * - `page`: the list no longer carries it and its folder is unknown: its
  *   session page, which has *Continue here*.
  */
 export type ReopenPlan =
   | { do: 'tab' }
   | { do: 'open'; session: SessionSummary }
-  | { do: 'resume'; cwd: string; permissionMode?: string }
+  | { do: 'resume'; cwd: string; permissionMode?: string; checked: boolean }
   | { do: 'page' }
 
 export function reopenPlan(entry: ClosedTab, session: SessionSummary | undefined, hasTab: boolean): ReopenPlan {
@@ -141,7 +147,8 @@ export function reopenPlan(entry: ClosedTab, session: SessionSummary | undefined
   const cwd = session?.cwd || entry.cwd
   if (!cwd) return session ? { do: 'open', session } : { do: 'page' }
   const mode = session?.resume?.permission_mode
-  return mode ? { do: 'resume', cwd, permissionMode: mode } : { do: 'resume', cwd }
+  const checked = !!session?.resume?.ok
+  return mode ? { do: 'resume', cwd, permissionMode: mode, checked } : { do: 'resume', cwd, checked }
 }
 
 /** A quiet age for a row: "now", "2 min", "1 h", "3 d". */

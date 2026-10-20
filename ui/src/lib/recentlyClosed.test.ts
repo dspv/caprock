@@ -97,9 +97,11 @@ describe('bringing one back', () => {
 
   it('an ended one is continued in its folder, in the mode it last ran in', () => {
     expect(reopenPlan(entry('a'), sess({ cwd: '/w/p/x', resume: { ok: true, permission_mode: 'bypassPermissions' } }), false))
-      .toEqual({ do: 'resume', cwd: '/w/p/x', permissionMode: 'bypassPermissions' })
+      .toEqual({ do: 'resume', cwd: '/w/p/x', permissionMode: 'bypassPermissions', checked: true })
     // No longer on the list: its folder from when it closed.
-    expect(reopenPlan(entry('a'), undefined, false)).toEqual({ do: 'resume', cwd: '/w/p' })
+    expect(reopenPlan(entry('a'), undefined, false)).toEqual({ do: 'resume', cwd: '/w/p', checked: false })
+    // Listed as ended before its resume answer came: not checked either, so its page is asked first.
+    expect(reopenPlan(entry('a'), sess({ cwd: '/w/p/x' }), false)).toEqual({ do: 'resume', cwd: '/w/p/x', checked: false })
   })
 
   it('one that cannot be continued here opens read-only; one with nowhere to go, its page', () => {

@@ -1174,15 +1174,27 @@ export function AppShell() {
     const { tabs, sessionsById } = closeCtx.current
     const s = sessionsById.get(entry.sessionId)
     const open = tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === entry.sessionId))
-    const plan = reopenPlan(entry, s, !!open)
     forgetClosed(entry.sessionId)
-    if (plan.do === 'tab') { onActivateTab(open!.id); return }
-    if (plan.do === 'open') { openSession(plan.session, entry.projectId); return }
-    if (plan.do === 'page') { goHash(`#/session/${encodeURIComponent(entry.sessionId)}`); return }
-    const req: SpawnRequest = { cwd: plan.cwd, resume: entry.sessionId, fork: false, ...(plan.permissionMode ? { permission_mode: plan.permissionMode } : {}) }
-    api.spawn(req)
-      .then((res) => { openTab({ kind: 'session', sessionId: res.session_id }, entry.projectId, entry.title); refresh() })
-      .catch((e) => { recordClosed([entry]); setToast(`Could not continue “${entry.title}”: ${errText(e)}`) })
+    const go = (plan: ReturnType<typeof reopenPlan>) => {
+      if (plan.do === 'tab') { onActivateTab(open!.id); return }
+      if (plan.do === 'open') { openSession(plan.session, entry.projectId); return }
+      if (plan.do === 'page') { goHash(`#/session/${encodeURIComponent(entry.sessionId)}`); return }
+      const req: SpawnRequest = { cwd: plan.cwd, resume: entry.sessionId, fork: false, ...(plan.permissionMode ? { permission_mode: plan.permissionMode } : {}) }
+      api.spawn(req)
+        .then((res) => { openTab({ kind: 'session', sessionId: res.session_id }, entry.projectId, entry.title); refresh() })
+        // Refused after all: its conversation, read-only, says why (ObservePane).
+        .catch((e) => { openTab({ kind: 'observe', sessionId: entry.sessionId }, entry.projectId, entry.title); setToast(`Could not continue “${entry.title}”: ${errText(e)}`) })
+    }
+    const plan = reopenPlan(entry, s, !!open)
+    // Nothing yet said it can be continued: ask its page first, so one with
+    // no transcript opens read-only instead of a start the daemon refuses.
+    if (plan.do === 'resume' && !plan.checked) {
+      api.session(entry.sessionId)
+        .then((d) => go(reopenPlan(entry, d, false)))
+        .catch(() => go({ do: 'page' }))
+      return
+    }
+    go(plan)
   }, [onActivateTab, openSession, goHash, openTab, refresh])
   const reopenLastClosed = useCallback(() => {
     const open = new Set(closeCtx.current.tabs.flatMap((t) => leaves(t.root).map((l) => l.target.sessionId)))
