@@ -380,6 +380,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-21 — 0.141.0: Recently closed, one view icon, no deck
+
+A minor release, one batch PR (#777). The sidebar lists the last tabs closed under Recently closed, and ⇧⌘T brings the newest back, continuing an ended conversation where it stopped; the theme picker moves to ⌥⌘P and private modules open with ⇧⌘1–9 on a Mac. Running, no tab keeps the sessions the user started, and scouts, ops runs, temporary-folder and untitled sessions fold under one Background · N row. One quiet icon flips an agent tab between chat and terminal; the session deck and ⌘B are gone, its pull-request action, cost line and Pipeline link now in the inspector and the default branch's CI on the Pipeline page. The daemon reads less with a dashboard open (F17, F18: the Work board, plan pace, the status Memory line, subscription spend and task lists; migration 0066 adds a task-list index). On a phone, fields are 16px and the file viewer and reply tables stay inside the screen. Smoke tests no longer write a test token into the macOS login keychain.
+
 ### 2026-10-20 — 0.140.2: the app comes back by itself
 
 A patch release, one batch PR (#775). After an in-app update on macOS the new version is started through LaunchServices, as a Dock click does, so its window comes to the front instead of waiting behind other apps. A white window recovers on its own: the webview reloads when macOS ends its content process, a page load that never finishes is retried, and a page that drew nothing shows Reconnecting to Caprock with a Reload button; each cause is written to the local app.log. A terminal whose WebGL context is lost falls back to the DOM renderer at once instead of showing a frozen screen, and the input box hint clears when the window loses focus.

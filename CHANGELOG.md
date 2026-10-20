@@ -12,6 +12,79 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.141.0] - 2026-10-21
+
+### Added
+
+- **sidebar:** *Recently closed* lists the last five tabs you closed, newest
+  first, each with a quiet age (*2 min*, *1 h*), above *Running, no tab* in
+  the Tabs list and after the projects in the Projects list. A click brings
+  the conversation back in a tab: its own tab while the agent still runs,
+  continued with `--resume` once it ended. **⇧⌘T** reopens the newest, as in
+  a browser (Ctrl+Alt+Shift+T on Windows and Linux). *Show all in History*
+  opens History; the list is kept across restarts.
+- **sidebar:** *Running, no tab* keeps the sessions you started yourself,
+  titled and active in the last day. Sessions in a temporary folder, ones
+  another tool started with a scripted brief, untitled ones and ones idle for
+  a day fold into one *Background · N* row at the bottom, opened on a click
+  and remembered.
+
+### Changed
+
+- **modules:** a private module's key is ⇧⌘1–⇧⌘9 on a Mac (it was ⌥⌘1–⌥⌘9),
+  so the first module opens with ⇧⌘1. Windows and Linux keep
+  Ctrl+Alt+Shift+1–9. macOS keeps ⇧⌘3, ⇧⌘4 and ⇧⌘5 for screenshots, so on a
+  Mac the third to fifth module's row shows no key and says why in its
+  tooltip; the key still works where those screenshot shortcuts are off.
+- **app:** the theme picker moved from ⇧⌘T to ⌥⌘P (Ctrl+Alt+Shift+P on
+  Windows and Linux), so ⇧⌘T can reopen the last closed tab.
+- **app:** an agent tab's Chat | Terminal pills are one quiet icon at the
+  right of the tab strip. It shows the other view — a chat bubble over the
+  terminal, a terminal glyph over the chat — named *Show as chat* / *Show as
+  terminal*, and one click flips it. Each session keeps its own view, and the
+  terminal stays running under the chat as before.
+
+### Removed
+
+- **app:** the session deck under the agent's terminal (⌘B, the *Deck*
+  button, *Pipeline bar: On/Off* in the palette). What it showed is in the
+  inspector and on the Pipeline page: a session's own pull request in the
+  inspector's CI block now offers the one action it needs — *Resolve
+  conflict*, *Update branch*, *Fix CI* or *Re-run* — asking once in the row,
+  with its agent cost and who is on it, and *Log in Pipeline →* opens the
+  Pipeline on that pull request with its failed job's log and *Investigate*.
+  The Pipeline page gains a *Default branch* panel: each workflow's newest
+  run there, a failed job's log with *Investigate*, and what GitHub billed
+  for Actions this month. The deck's Branches view is gone. ⌘B is free.
+
+### Fixed
+
+- **daemon:** the dashboard reads far less of the database while agents work.
+  The Work board keeps each live session's newest events and task list until
+  the session writes something, the plan-limit pace is counted again only
+  when a new sample arrives, the status screen's Memory line stops at the
+  first passage it needs instead of parsing a fortnight of replies (it often
+  ran out of time and showed nothing), and a week of spend per subscription
+  is summed once a minute instead of on every request. On a copy of a 1.85 GB
+  database with the Now screen open, the database reads the daemon asked for
+  fell from 2,050 MB to 1,231 MB in three minutes.
+  The Work board also keeps each session's spend today until it changes, and
+  task lists are read from their own index (migration 0066) instead of a walk
+  through every event of the session.
+- **ui:** the phone no longer scrolls sideways. On an iPhone, tapping a field
+  smaller than 16px (the phone home's Repository and Project pickers, most
+  Settings fields, Cost's cap) zoomed the page in and left it panning
+  sideways; every field is 16px on a phone or touch screen now. A chat file's
+  Markdown viewer no longer grows to the width of its longest link or path,
+  and a wide table in a reply scrolls in its own frame instead of breaking
+  every cell into two-letter lines. A new e2e test walks every phone screen,
+  sheet and menu at 360, 390 and 430 px in a phone profile and fails on any
+  sideways scroll, anything cut off at the edge or any field under 16px.
+- **smoke:** the end-to-end smoke tests start their daemons with the file
+  secret store, so running them on a Mac never writes a test token into the
+  real login keychain; the Telegram smoke had replaced a developer's real bot
+  token there.
+
 ## [0.140.2] - 2026-10-20
 
 ### Fixed
