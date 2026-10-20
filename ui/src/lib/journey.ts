@@ -1,6 +1,6 @@
 /**
- * A pull request's way to a release, in four steps — Open → CI → Merged →
- * Released — as the Pipeline page's rows and the cockpit's progress bars
+ * A pull request's way to a merge, in three steps — Open → CI → Merged — as
+ * the Pipeline page's rows and the cockpit's progress bars
  * both draw it (owner, 2026-10-14, translated: "PR rows with their statuses,
  * so I understand how things travel, what gets released"; "PRs as progress
  * bars toward release"). One function, so the two never disagree. Pure.
@@ -9,19 +9,20 @@
  * a pull request with no card (closed unmerged, or merged before the
  * board's window) is told from its own state.
  *
- * Whether there is a fourth step is the repository's (`board.ships_by`;
- * owner, 2026-10-18, translated: "why isn't merged the final state — there's
- * one more step after it"): a repository that cuts no releases (a site
- * deployed on every merge) has three steps, merged the last and the bar
- * full; one that does says what a merge waits for ("next release", "v0.133.0
- * next") and what it shipped in ("in v0.132.0"); one nothing read can place
- * keeps the step, neutral, with a "?".
+ * Merged is the last step everywhere, so a merge fills the bar (owner,
+ * 2026-10-20, translated: the final status should be merged — a grey
+ * Released step read as unfinished, or closed). Whether a merge is released
+ * is a quiet word after the steps (`releaseNote`): *in v0.132.0* once it
+ * shipped; *not released* while it waits, where the repository cuts
+ * releases (`board.ships_by` release); nothing where it ships on merge or
+ * nothing read says. A pull request closed unmerged stays distinct: its
+ * Merged step reads *Closed*, the CI step before it never filled.
  */
 import type { BoardCard, PRBoard, ShipsBy, Stage } from './prboard'
 import type { BranchPR } from './branches'
 import type { TabPR } from './prstats'
 
-export type StepKey = 'open' | 'ci' | 'merged' | 'released'
+export type StepKey = 'open' | 'ci' | 'merged'
 /** done: passed; current: where it is now; todo: still ahead; closed: it stopped here. */
 export type StepState = 'done' | 'current' | 'todo' | 'closed'
 export type StepTone = 'ok' | 'fail' | 'pending' | 'muted' | 'merged' | 'accent' | 'faint'
@@ -34,8 +35,16 @@ export interface JourneyStep {
   tone: StepTone
   /** What a hover says. */
   title: string
-  /** Nothing read says whether this repository cuts releases: drawn neutral with a "?". */
+  /** Nothing read says where the step is: drawn neutral with a "?". */
   unknown?: boolean
+}
+
+/** The quiet word after a merged pull request's steps: the release it shipped in, or that it is in none yet. */
+export interface ReleaseNote {
+  text: string
+  title: string
+  /** It shipped: *in v0.132.0*. */
+  released: boolean
 }
 
 /** What a row's steps need of its repository: how it ships, and the releases around it. */
@@ -57,13 +66,8 @@ export function shipsOf(board: PRBoard | undefined, next?: string): ShipsContext
   return { ships: board?.ships_by, lastRelease: last?.tag, next }
 }
 
-/** The step names in order for a repository: no Released step where work ships when it merges. */
-export function stepKeys(ships: ShipsBy | undefined): StepKey[] {
-  return ships === 'merge' ? ['open', 'ci', 'merged'] : ['open', 'ci', 'merged', 'released']
-}
-
-/** What the Released step's name means, on its hover. */
-export const RELEASED_MEANS = 'Shipped in a published release'
+/** The step names in order: merged is the last, however the repository ships. */
+export const STEP_KEYS: readonly StepKey[] = ['open', 'ci', 'merged']
 
 /**
  * A pill as components/Journey JourneyPills draws it, of any step line: a
@@ -79,7 +83,7 @@ export interface JourneyPillStep {
   unknown?: boolean
 }
 
-export const STEP_NAME: Record<StepKey, string> ={ open: 'Open', ci: 'CI', merged: 'Merged', released: 'Released' }
+export const STEP_NAME: Record<StepKey, string> = { open: 'Open', ci: 'CI', merged: 'Merged' }
 
 /** What a row knows: its card, if the board has one, and its own state. */
 export interface JourneyInput {
@@ -116,79 +120,55 @@ function ciStep(card: JourneyInput['card'], stage: Stage | 'closed'): Pick<Journ
   return { text: 'CI', tone: 'faint', title: 'Its checks were not read: only the newest open pull requests’ are' }
 }
 
-/**
- * The steps of one pull request: four, or three where the repository ships
- * on merge (`ctx.ships` merge). Without `ctx.ships` the Released step ahead
- * is neutral, "?" — nothing read says a release will come.
- */
-export function journey(p: JourneyInput, ctx: ShipsContext = {}): JourneyStep[] {
-  const steps = journeySteps(p, ctx)
-  if (ctx.ships === 'merge' && stageOf(p) !== 'released') return steps.filter((s) => s.key !== 'released')
-  if (!ctx.ships) {
-    return steps.map((s) => (s.key === 'released' && s.state === 'todo' && stageOf(p) !== 'closed'
-      ? { ...s, unknown: true, title: 'Not known whether this repository cuts releases: its release list or its tags could not be read' }
-      : s))
-  }
-  return steps
-}
-
-/** What the Released step says while a merge waits for a release. */
-function waitsFor(ctx: ShipsContext): { text: string; title: string } {
-  if (ctx.next) return { text: `v${ctx.next} next`, title: `Waits for the next release (v${ctx.next}, predicted from the changelog entries).` }
-  return { text: 'next release', title: `Waits for the next release${ctx.lastRelease ? `, after ${ctx.lastRelease}` : ''}.` }
-}
-
-function journeySteps(p: JourneyInput, ctx: ShipsContext): JourneyStep[] {
+/** The steps of one pull request: Open → CI → Merged, a merge (released or not) the last and the bar full. */
+export function journey(p: JourneyInput): JourneyStep[] {
   const stage = stageOf(p)
   const ci = ciStep(p.card, stage)
   const step = (key: StepKey, state: StepState, tone: StepTone, text: string, title: string): JourneyStep => ({ key, state, tone, text, title })
-  const tag = p.card?.release
   switch (stage) {
     case 'draft':
       return [
         step('open', 'current', 'muted', 'Draft', 'Opened as a draft: not ready for review'),
         step('ci', p.card?.ci ? 'current' : 'todo', p.card?.ci ? ci.tone : 'faint', p.card?.ci ? ci.text : 'CI', ci.title),
         step('merged', 'todo', 'faint', 'Merged', 'Not merged yet'),
-        step('released', 'todo', 'faint', 'Released', 'In no release yet'),
       ]
     case 'open': case 'fix': case 'ready':
       return [
         step('open', 'done', 'muted', 'Open', 'Opened'),
         step('ci', 'current', ci.tone, ci.text, stage === 'ready' ? `${ci.title}: waiting for a review or a merge` : ci.title),
         step('merged', 'todo', 'faint', 'Merged', 'Not merged yet'),
-        step('released', 'todo', 'faint', 'Released', 'In no release yet'),
       ]
-    case 'merged': {
-      if (ctx.ships === 'merge') {
-        return [
-          step('open', 'done', 'muted', 'Open', 'Opened'),
-          step('ci', 'done', 'ok', 'CI', 'Merged, so its checks were let through'),
-          step('merged', 'current', 'merged', 'Merged', 'Merged: the last step. This repository cuts no releases (none published and no version tag in 180 days), so work ships when it merges'),
-        ]
-      }
-      const w = ctx.ships === 'release' ? waitsFor(ctx) : { text: 'Released', title: 'Not known' }
+    case 'merged': case 'released':
       return [
         step('open', 'done', 'muted', 'Open', 'Opened'),
         step('ci', 'done', 'ok', 'CI', 'Merged, so its checks were let through'),
-        step('merged', 'current', 'merged', 'Merged', ctx.ships === 'release' ? 'Merged, in no published release yet' : 'Merged'),
-        step('released', 'todo', 'faint', w.text, w.title),
-      ]
-    }
-    case 'released':
-      return [
-        step('open', 'done', 'muted', 'Open', 'Opened'),
-        step('ci', 'done', 'ok', 'CI', 'Merged, so its checks were let through'),
-        step('merged', 'done', 'merged', 'Merged', 'Merged'),
-        step('released', 'current', 'accent', tag ? `in ${tag}` : 'Released', tag ? `Shipped in ${tag}: the first release published after the merge (matched by time)` : 'In a published release'),
+        step('merged', 'current', 'merged', 'Merged', 'Merged: the last step'),
       ]
     case 'closed':
       return [
         step('open', 'done', 'muted', 'Open', 'Opened'),
         step('ci', 'todo', 'faint', 'CI', 'Closed before it was merged'),
-        step('merged', 'closed', 'muted', 'Closed', 'Closed without a merge'),
-        step('released', 'todo', 'faint', 'Released', 'Closed: it will not ship'),
+        step('merged', 'closed', 'muted', 'Closed', 'Closed without a merge: it will not ship'),
       ]
   }
+}
+
+/**
+ * What a merged pull request says after its steps about a release: *in
+ * v0.132.0* once a published release holds it; *not released* while it
+ * waits, where the repository cuts releases, the next version on hover when
+ * predicted; nothing where work ships when it merges, where nothing read
+ * says how it ships, or before a merge.
+ */
+export function releaseNote(p: JourneyInput, ctx: ShipsContext = {}): ReleaseNote | undefined {
+  const stage = stageOf(p)
+  if (stage === 'released') {
+    const tag = p.card?.release
+    return { text: tag ? `in ${tag}` : 'released', title: tag ? `Shipped in ${tag}: the first release published after the merge (matched by time)` : 'In a published release', released: true }
+  }
+  if (stage !== 'merged' || ctx.ships !== 'release') return undefined
+  const next = ctx.next ? ` (v${ctx.next}, predicted from the changelog entries)` : ctx.lastRelease ? `, after ${ctx.lastRelease}` : ''
+  return { text: 'not released', title: `Merged, in no published release yet: it ships with the next release${next}.`, released: false }
 }
 
 /**
@@ -209,7 +189,7 @@ export function journeyOrder<T extends JourneyInput & { created_at?: number }>(r
   })
 }
 
-/** How far along it is, 1–4, for the cockpit's bar. */
+/** How far along it is, 1–3, for the cockpit's bar. */
 export function progressOf(steps: JourneyStep[]): number {
   const i = steps.findIndex((s) => s.state === 'current' || s.state === 'closed')
   return i < 0 ? steps.filter((s) => s.state === 'done').length : i + 1

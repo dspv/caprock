@@ -134,7 +134,7 @@ export interface PRBoard {
  * `release` when a published release or a version tag is dated within the
  * last 180 days; `merge` when neither is and both were read — a site
  * deployed on every merge, where merged is the last step. Absent: it cannot
- * be said, and the released step is drawn neutral with a "?".
+ * be said, and a merge claims no release wait (lib/journey releaseNote).
  */
 export type ShipsBy = 'release' | 'merge'
 

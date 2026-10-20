@@ -54,7 +54,7 @@ describe('a row’s bar and word', () => {
     expect(rowOf(pr({ kind: 'session', stage: 'agent', fill: 1, word: 'agent', pr: undefined })).filled).toBe(2)
     expect(rowOf(pr({})).filled).toBe(6)
     expect(rowOf(pr({ stage: 'merged', fill: 4, word: 'merged' })).filled).toBe(8)
-    expect(BLOCKS).toBe(10)
+    expect(BLOCKS).toBe(8)
   })
 
   it('says what a row waits for from what the board read, nothing it did not', () => {
@@ -225,7 +225,7 @@ describe('what else heads into the release', () => {
       br('feat/folder-search', {}), // #631's head in the Pipeline list
     ]), stats.prs!, NOW, 'dspv/caprock')
     expect(rows.map((r) => r.key)).toEqual(['b:feat/b', 'b:feat/a'])
-    expect(rows[1]).toMatchObject({ title: 'work on feat/a', branch: 'feat/a', stage: 'branch', section: 'branch', filled: BLOCKS / 5, word: '3 commits · 3h ago', older: false, url: 'https://github.com/dspv/caprock/compare/master...feat/a' })
+    expect(rows[1]).toMatchObject({ title: 'work on feat/a', branch: 'feat/a', stage: 'branch', section: 'branch', filled: BLOCKS / 4, word: '3 commits · 3h ago', older: false, url: 'https://github.com/dspv/caprock/compare/master...feat/a' })
     expect(rows[1]!.wordTitle).toContain('3 commits ahead of origin/master')
     const many = branchRows(answer(Array.from({ length: 20 }, (_, i) => br(`f/${i}`, { committed_ms: NOW - i * MIN }))), [], NOW)
     expect(many).toHaveLength(BRANCHES_LISTED)

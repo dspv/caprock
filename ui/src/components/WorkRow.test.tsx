@@ -16,10 +16,13 @@ function one(it: WorkItem, p: Partial<Parameters<typeof WorkRow>[0]> = {}) {
 
 describe('the stage bar', () => {
   it('fills the steps up to the stage, its label saying which', () => {
-    render(<StageBar it={{ fill: 4, red: false, running: false, word: 'merged' }} />)
+    render(<StageBar it={{ fill: 4, red: false, running: false, word: 'merged', stage: 'merged' }} />)
     const bar = screen.getByRole('img')
-    expect(bar).toHaveAccessibleName('Step 4 of 5 (merged): merged')
+    // Merged is the last step: a merge fills the bar (owner, 2026-10-20).
+    expect(bar).toHaveAccessibleName('Step 4 of 4 (merged): merged')
+    expect(bar.querySelectorAll('[data-work-step]')).toHaveLength(4)
     expect(bar.querySelectorAll('[data-on]')).toHaveLength(4)
+    expect(bar.querySelector('[data-work-step="merged"]')!.className).toContain('bg-merged')
   })
 
   it('draws the current step red when CI failed, and says when nothing has started', () => {

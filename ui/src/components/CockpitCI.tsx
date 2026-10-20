@@ -4,9 +4,10 @@
  * "roughly the current size, showing PRs as progress bars toward release;
  * scrollable; we see PR statuses and CI statuses; from there you can expand
  * to a bigger block, and open the separate page"): each row its number, its
- * title, the four steps Open → CI → Merged → Released as a thin bar with the
- * step it is on coloured — its CI's colour on the CI step — and how long it
- * has been there; the same steps the Pipeline page's rows draw (lib/journey).
+ * title, the three steps Open → CI → Merged as a thin bar with the step it
+ * is on coloured — its CI's colour on the CI step, a merge filling it — its
+ * release as a quiet word (*in v1.4.0*, *not released*) and how long it has
+ * been there; the same steps the Pipeline page's rows draw (lib/journey).
  * The list scrolls inside the block; *Expand* makes it taller (remembered),
  * *Pipeline →* opens the page (→, not ↗: it stays in Caprock). It reads the Pipeline's own answer
  * (…/ci/stats, kept by the daemon), asked while the block is unfolded and
@@ -48,11 +49,11 @@ import { ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runV
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
-import { flightLead, inFlight, journey, pipelineRows, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
+import { flightLead, inFlight, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { landingOf } from '@/lib/releaseplan'
 import { CheckSummary, StateMark } from './CheckSummary'
 import { SectionLabel, useFolded } from './Cockpit'
-import { JourneyBar, JourneyLegend } from './Journey'
+import { JourneyBar, JourneyLegend, ReleaseNoteWord } from './Journey'
 import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from './SessionDeck'
 
 /** The pull request the Ring and By OS views draw, with its checks. */
@@ -150,7 +151,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
     !hasStats ? faint('Reading the repository’s pull requests…') : (
       <div className="grid gap-1">
       {quiet}
-      {listed.length > 0 && <JourneyLegend ships={ships.ships} className="-mr-1.5 pr-1.5" />}
+      {listed.length > 0 && <JourneyLegend className="-mr-1.5 pr-1.5" />}
       {listed.length > 0 && <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
         {listed.map((r) => <JourneyRow key={r.number} r={r} now={now} ships={ships} />)}
       </ul>}
@@ -207,15 +208,14 @@ export function CockpitCI({ sessionId, repoScope, onOpen }: { sessionId: string;
  */
 function JourneyRow({ r, now, ships }: { r: PipelineRow; now: number; ships: ShipsContext }) {
   const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
-  const steps = journey(r, ships)
-  const rel = steps.find((s) => s.key === 'released')
-  const said = rel && !rel.unknown && (stageOf(r) === 'merged' || stageOf(r) === 'released') ? rel : undefined
+  const steps = journey(r)
+  const said = releaseNote(r, ships)
   return (
     <li data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
       <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
         <span className="num shrink-0 text-fg-muted">#{r.number}</span>
         <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
-        {said && <span data-cockpit-ci-released className="num shrink-0 text-[10.5px] text-fg-faint" title={said.title}>{said.text}</span>}
+        {said && <ReleaseNoteWord note={said} className="shrink-0 text-[10.5px]" />}
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
       </span>
       <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
