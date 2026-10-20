@@ -417,8 +417,9 @@ describe('the app workspace', () => {
     await waitFor(() => expect(spawned.reqs).toHaveLength(1))
     expect(spawned.reqs[0]).toMatchObject({ cwd: '/w/other', resume: 'theirs', fork: true })
     const id = `chat-${spawned.n}`
-    // A loaded CI runner took longer than waitFor's one second (2026-10-19).
-    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'), { timeout: 3000 })
+    // A loaded CI runner took longer than waitFor's one second (2026-10-19),
+    // then longer than three (the v0.140.2 release run, 2026-10-21).
+    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'), { timeout: 10000 })
     // The watched tab stays; nothing was sent to the other terminal's process.
     expect(screen.getByRole('tab', { name: /Started elsewhere/ })).toBeInTheDocument()
     expect(spawned.signals).toEqual([])
