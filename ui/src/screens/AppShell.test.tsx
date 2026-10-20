@@ -297,26 +297,59 @@ describe('the app workspace', () => {
     expect(spawned.signals).toEqual([])
   })
 
-  it('shows an agent tab as its chat, over the terminal that stays mounted', async () => {
+  /** What the page asked the daemon to change: any request but a read. */
+  const writes = () => fetchMock.mock.calls.filter((c) => {
+    const init = (c as unknown[])[1] as RequestInit | undefined
+    return !!init?.method && init.method !== 'GET'
+  })
+
+  it('shows an agent tab as its chat, over the terminal that stays mounted, from its Chat / Terminal switch', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
-    const chat = screen.getByRole('button', { name: 'Chat' })
+    const group = screen.getByRole('group', { name: 'Show the session as' })
+    const chat = within(group).getByRole('button', { name: 'Chat' })
+    const terminal = within(group).getByRole('button', { name: 'Terminal' })
+    // A project session opens on its terminal.
     expect(chat).toHaveAttribute('aria-pressed', 'false')
-    expect(chat).toHaveTextContent('Chat')
+    expect(terminal).toHaveAttribute('aria-pressed', 'true')
     expect(chat.getAttribute('title')).toMatch(/as a chat.*terminal keeps running/)
+    fetchMock.mockClear()
     fireEvent.click(chat)
     expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
     expect(chat).toHaveAttribute('aria-pressed', 'true')
+    expect(terminal).toHaveAttribute('aria-pressed', 'false')
     // Still mounted, but out of view under the cover as on a tab switch, so
     // it comes back the same way (owner, 2026-10-14).
     const pane = screen.getByTestId('pane-agent-1')
     expect(pane).toHaveAttribute('data-active', 'false')
     expect(pane.closest('[data-tab-panel]')).toHaveAttribute('hidden')
-    fireEvent.click(chat)
+    fireEvent.click(terminal)
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
     expect(pane).toHaveAttribute('data-active', 'true')
     expect(pane.closest('[data-tab-panel]')).not.toHaveAttribute('hidden')
+    // The same pane all along: never restarted, signalled or typed into.
+    expect(screen.getByTestId('pane-agent-1')).toBe(pane)
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
+    expect(writes()).toEqual([])
+  })
+
+  it('remembers the view per session: a reopened tab, and a new window, open the way it was left', async () => {
+    const view = await renderApp()
+    await openFromPalette('Fix the login bug')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
+    expect(JSON.parse(localStorage.getItem('caprock.app.session-view') ?? '{}')).toEqual({ 'agent-1': 'chat' })
+    // Another session keeps its own default.
+    fireEvent.click(waitingRow('Waiting one'))
+    await screen.findByRole('tab', { name: /Waiting one/ })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Terminal' })).toHaveAttribute('aria-pressed', 'true'))
+    view.unmount()
+    await renderApp()
+    fireEvent.click(await screen.findByRole('tab', { name: /Fix the login bug/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Chat' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
   })
 
   // Every way a terminal comes back into view is its pane going active
@@ -576,6 +609,18 @@ describe('the app workspace', () => {
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
     expect(spawned.reqs[0]).toMatchObject({ chat: true })
     await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeTruthy())
+    // A chat opens on Chat; its terminal is a switch away, and back.
+    expect(screen.getByRole('button', { name: 'Chat' })).toHaveAttribute('aria-pressed', 'true')
+    fetchMock.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+    await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeNull())
+    expect(screen.getByTestId('pane-chat-1')).toHaveAttribute('data-active', 'true')
+    expect(JSON.parse(localStorage.getItem('caprock.app.session-view') ?? '{}')).toEqual({ 'chat-1': 'terminal' })
+    fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
+    await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeTruthy())
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
+    expect(writes()).toEqual([])
   })
 
   it('starts on ⌥⌘N at once, on the agent and model picked last', async () => {

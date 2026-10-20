@@ -89,7 +89,7 @@ describe('the permission card in the app', () => {
     await openAgent()
     fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
     expect(cards()).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
     expect(cards()).toHaveLength(1)
   })
 

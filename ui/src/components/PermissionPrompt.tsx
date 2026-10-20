@@ -45,7 +45,14 @@ export function usePermission(sessionId: string): [Permission | null, (p: Permis
  * session screen a phone answers from — so the card names no keys it could
  * not take.
  */
-export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string; keys?: boolean }) {
+export function PermissionPrompt({ sessionId, keys = true, onOpenTerminal }: {
+  sessionId: string
+  keys?: boolean
+  /** Brings this session's terminal forward where the page holds one under a
+   *  cover (the app's Chat view); the default finds it on the page or opens
+   *  the session's Terminal tab (openTerminal). */
+  onOpenTerminal?: () => void
+}) {
   const [prompt, setPrompt] = usePermission(sessionId)
   const canControl = useCanControl()
   const [busy, setBusy] = useState(false)
@@ -81,7 +88,7 @@ export function PermissionPrompt({ sessionId, keys = true }: { sessionId: string
   if (!prompt) return null
   if (several) {
     return (
-      <SeveralPrompts card={card} sessionId={sessionId} prompts={prompt.waiting!} canControl={canControl} busy={busy}
+      <SeveralPrompts card={card} onOpenTerminal={onOpenTerminal ?? (() => openTerminal(sessionId))} prompts={prompt.waiting!} canControl={canControl} busy={busy}
         onDismiss={(id) => void answer('dismiss', id)} error={error} />
     )
   }
@@ -191,9 +198,9 @@ export function openTerminal(sessionId: string) {
  * Each is listed with who asks; the answer is given in the terminal. Hiding
  * one types nothing.
  */
-function SeveralPrompts({ card, sessionId, prompts, canControl, busy, onDismiss, error }: {
+function SeveralPrompts({ card, onOpenTerminal, prompts, canControl, busy, onDismiss, error }: {
   card: RefObject<HTMLDivElement | null>
-  sessionId: string
+  onOpenTerminal: () => void
   prompts: Permission[]
   canControl: boolean
   busy: boolean
@@ -229,7 +236,7 @@ function SeveralPrompts({ card, sessionId, prompts, canControl, busy, onDismiss,
       </ol>
       {canControl && (
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => openTerminal(sessionId)} className="min-h-[40px] rounded-sm bg-accent px-4 py-2 text-[14px] font-medium text-bg hover:brightness-110">
+          <button type="button" onClick={onOpenTerminal} className="min-h-[40px] rounded-sm bg-accent px-4 py-2 text-[14px] font-medium text-bg hover:brightness-110">
             Open terminal
           </button>
         </div>

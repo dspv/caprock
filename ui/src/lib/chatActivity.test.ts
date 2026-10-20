@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
 import { mergeEvents } from './chat'
-import { fmtElapsed, openTurn, promptParts, promptPlain, stepPhrase } from './chatActivity'
+import { donePhrase, fmtElapsed, openTurn, promptParts, promptPlain, stepPhrase } from './chatActivity'
 
 const ev = (id: number, kind: string, payload: unknown = {}, extra: Partial<Event> = {}): Event => ({
   id, ts: new Date(Date.UTC(2026, 9, 19, 12, 0, id)).toISOString(), session_id: 's', source: 'hook', kind, payload, ...extra,
@@ -24,6 +24,22 @@ describe('openTurn', () => {
     expect(openTurn([prompt, ev(2, 'agent.stop', {}, { agent_id: 'x' })])).not.toBeNull()
     expect(openTurn([ev(1, 'agent.stop'), ev(2, 'turn.user', { prompt: '<task-notification><summary>done</summary></task-notification>' })])).toBeNull()
     expect(openTurn([])).toBeNull()
+  })
+})
+
+describe('donePhrase', () => {
+  it('says a call in the past tense, in plain words', () => {
+    expect(donePhrase('WebSearch', { query: 'rtx 3060 ti' })).toBe('Searched the web: rtx 3060 ti')
+    expect(donePhrase('WebFetch', { url: 'https://example.com/a' })).toBe('Fetched https://example.com/a')
+    expect(donePhrase('Read', { file_path: '/w/app/main.go' })).toBe('Read main.go')
+    expect(donePhrase('Edit', { file_path: '/w/app/ui.tsx' })).toBe('Edited ui.tsx')
+    expect(donePhrase('Bash', { command: 'npm test\nmore' })).toBe('Ran npm test')
+    expect(donePhrase('Bash', {})).toBe('Ran a command')
+    expect(donePhrase('Grep', { pattern: 'TODO' })).toBe('Searched for TODO')
+    expect(donePhrase('Task', { description: 'review' })).toBe('Delegated: review')
+    expect(donePhrase('TodoWrite', {})).toBe('Updated its plan')
+    expect(donePhrase('mcp__caprock__sessions', {})).toBe('Called sessions')
+    expect(donePhrase('Frobnicate', {})).toBe('Used Frobnicate')
   })
 })
 

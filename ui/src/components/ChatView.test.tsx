@@ -351,6 +351,43 @@ describe('ChatView', () => {
     expect(line(4)).toBe('exec  sleep 60running')
   })
 
+  // The app's Chat view of a tab (owner, 2026-10-20): a call in plain words,
+  // the raw call behind it when opened.
+  it('in the app, a tool call reads in plain words, and opens to the call as it was', async () => {
+    const pre = (id: number, tool: string, input: object, use: string): Event => ({ ...msg(id), kind: 'tool.pre', tool, payload: { tool_name: tool, tool_use_id: use, tool_input: input } })
+    store.events = [
+      msg(1, 'Which GPU?'),
+      pre(2, 'WebSearch', { query: 'rtx 3060 ti local llm' }, 'a'),
+      { ...msg(3), kind: 'tool.post', tool: 'WebSearch', payload: { tool_use_id: 'a', tool_response: '3 results' } },
+      pre(4, 'Bash', { command: 'nvidia-smi' }, 'b'),
+    ]
+    render(<ChatView sessionId="s" canType={false} desk />)
+    await waitFor(() => expect(renderedIds()).toEqual([1, 2, 4]))
+    const line = (id: number) => log().querySelector(`[data-msg-id="${id}"]`)!
+    expect(line(2).textContent).toBe('Searched the web: rtx 3060 ti local llm')
+    expect(line(4).textContent).toBe('Ran nvidia-smirunning')
+    fireEvent.click(line(2).querySelector('button')!)
+    expect(line(2).textContent).toContain('"query": "rtx 3060 ti local llm"')
+  })
+
+  it('a question with options says what is asked, and Open in Terminal is the way to answer it', async () => {
+    store.events = [
+      msg(1, 'Plan it'),
+      { ...msg(2), kind: 'tool.pre', tool: 'AskUserQuestion', payload: { tool_name: 'AskUserQuestion', tool_use_id: 'q', tool_input: { questions: [{ question: 'Which database?', options: [{ label: 'SQLite' }, { label: 'Postgres' }] }] } } },
+    ]
+    const open = vi.fn()
+    render(<ChatView sessionId="s" canType={false} desk onOpenTerminal={open} />)
+    const q = await waitFor(() => { const el = log().querySelector('[data-chat-question]'); expect(el).toBeTruthy(); return el! })
+    expect(q.textContent).toContain('Which database?')
+    expect(q.textContent).toContain('SQLite · Postgres')
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Terminal' }))
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(store.inputs).toEqual([])
+    // Answered: the line goes.
+    await deliver([{ ...msg(3), kind: 'tool.post', tool: 'AskUserQuestion', payload: { tool_use_id: 'q', tool_response: 'SQLite' } }])
+    expect(log().querySelector('[data-chat-question]')).toBeNull()
+  })
+
   it('offline, a message is held as "will send", and goes when the live socket is back', async () => {
     render(<ChatView sessionId="s" canType />)
     setPhase('reconnecting')

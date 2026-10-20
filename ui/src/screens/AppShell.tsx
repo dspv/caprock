@@ -104,6 +104,7 @@ import { SetupShellContext } from '@/lib/setupShell'
 import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
 import { dismissHint, hintDismissed, isQuickChat, quickChatHint, rememberStartedChat, startedChat } from '@/lib/quickchat'
 import { isChat } from '@/lib/chats'
+import { rememberedViews, rememberView, viewOf, type SessionView } from '@/lib/sessionView'
 import { ChatEnded, ChatHint, type ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
@@ -335,9 +336,10 @@ export function AppShell() {
   const [paneStatus, setPaneStatus] = useState<Record<string, PaneStatus>>({})
   // Quick chats whose agent exited in this window: their tab shows that, in place.
   const [endedChats, setEndedChats] = useState<ReadonlySet<string>>(() => new Set())
-  // Sessions whose tab shows the chat over the terminal; the terminal stays
-  // mounted behind it.
-  const [chatOpen, setChatOpen] = useState<ReadonlySet<string>>(() => new Set())
+  // How each agent tab is shown, where it was switched (lib/sessionView):
+  // the chat over the terminal, which stays mounted behind it, or the
+  // terminal. Remembered per session in this window's storage.
+  const [views, setViews] = useState<Readonly<Record<string, SessionView>>>(rememberedViews)
   const [changesView, setChangesView] = useState<ChangesTarget | null>(null)
   // Compare attempts (ADR-052): over the terminals, as the Changes view is.
   const [compare, setCompare] = useState<{ group: string; title: string } | null>(null)
@@ -1567,9 +1569,9 @@ export function AppShell() {
   }, [focused, inspectedId, model.projects])
 
   const focusedIsAgent = frontIsAgent
-  // A chat's tab opens on the conversation (ADR-071): for a chat, being in
-  // chatOpen means its terminal was asked for instead.
-  const showChat = focusedIsAgent && !!focused && chatOpen.has(focused.sessionId) !== (isChat(focusedSession) || !!startedChat(focused.sessionId))
+  // A chat's tab opens on the conversation (ADR-071), a project session's
+  // on its terminal, until the tab's Chat / Terminal switch says otherwise.
+  const showChat = focusedIsAgent && !!focused && viewOf(views[focused.sessionId], isChat(focusedSession) || !!startedChat(focused.sessionId)) === 'chat'
   // The permission card shows for the focused agent whether or not its
   // terminal is in front. 0.78.2 hid it behind the terminal as a duplicate
   // (owner, 2026-10-06); the next day he wanted it back — it names the call
@@ -1579,15 +1581,16 @@ export function AppShell() {
   const promptCard = focusedIsAgent && !!focused
   const toggleDeck = useCallback(() => setDeck((d) => ({ ...d, open: !d.open })), [])
   const onResizeDeck = useCallback((height: number) => setDeck((d) => ({ ...d, height })), [])
-  const toggleChat = useCallback(() => {
+  // Chat / Terminal: which view is in front, and nothing else — the
+  // terminal stays mounted under the chat, so the session is not started,
+  // signalled or typed into by the switch.
+  const setView = useCallback((view: SessionView) => {
     if (!focused) return
     const id = focused.sessionId
-    setChatOpen((cur) => {
-      const next = new Set(cur)
-      if (!next.delete(id)) next.add(id)
-      return next
-    })
+    rememberView(id, view)
+    setViews((cur) => (cur[id] === view ? cur : { ...cur, [id]: view }))
   }, [focused])
+  const openTerminalView = useCallback(() => setView('terminal'), [setView])
 
   /** The folder a worktree's files live in, for "Open in editor". */
   const folderOf = useCallback((projectId: string, worktree: string): string | undefined => {
@@ -1932,8 +1935,8 @@ export function AppShell() {
               onNewShell={() => onNewShell()}
               newItems={newItems}
               onToggleInspector={() => setPrefs((p) => ({ ...p, inspector: !p.inspector }))}
-              chatOpen={showChat}
-              onToggleChat={focusedIsAgent ? toggleChat : undefined}
+              view={showChat ? 'chat' : 'terminal'}
+              onView={focusedIsAgent ? setView : undefined}
               deckOpen={deck.open}
               onToggleDeck={focusedIsAgent ? toggleDeck : undefined}
             />
@@ -1976,6 +1979,8 @@ export function AppShell() {
                           chat
                           agent={focusedSession?.agent}
                           prompt
+                          desk
+                          onOpenTerminal={openTerminalView}
                           className="absolute inset-0"
                         />
                         {chatPanes.get(focused.sessionId)?.ended && (
@@ -1990,6 +1995,11 @@ export function AppShell() {
                       canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                       agent={focusedSession?.agent}
                       prompt
+                      desk
+                      // The raw keys behind a Keys button, as in a chat: a
+                      // menu only the terminal draws is a switch away.
+                      foldKeys
+                      onOpenTerminal={openTerminalView}
                       className="app-slab absolute inset-0 z-10"
                     />
                   ))}
