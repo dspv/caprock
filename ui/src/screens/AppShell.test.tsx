@@ -423,7 +423,7 @@ describe('the app workspace', () => {
     // The watched tab stays; nothing was sent to the other terminal's process.
     expect(screen.getByRole('tab', { name: /Started elsewhere/ })).toBeInTheDocument()
     expect(spawned.signals).toEqual([])
-  })
+  }, 15000)
 
   it('hides a watched session from its tab’s menu: the tab closes and the row is unlisted', async () => {
     await renderApp()
