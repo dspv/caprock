@@ -341,14 +341,18 @@ export function Sidebar(props: SidebarProps) {
     const tabbedRows = flat.filter((r) => r.tab)
     const fg: typeof flat = []
     const bg: typeof flat = []
+    // A tab just closed is listed once, under Recently closed, unless it
+    // waits on the user: then its row here says so.
+    const closedIds = new Set(closed.map((c) => c.sessionId))
     for (const r of flat) {
       if (r.tab) continue
       const x = r.node
+      if (x && closedIds.has(x.session.session_id) && !x.asks && !x.waiting) continue
       if (x && isBackgroundSession(x.session, { now, hasPermission: !!x.asks, inProject: r.projectId !== OTHER_FOLDERS_ID })) bg.push(r)
       else fg.push(r)
     }
     return { tabbedRows, fg, bg, bgWaiting: bg.filter((r) => r.node?.waiting).length }
-  }, [flat, now])
+  }, [flat, now, closed])
   const backgroundOpen = folds.has('background')
   const [menuAt, setMenuAt] = useState<ProjectMenuAt | null>(null)
   const menuFrom = useRef<HTMLElement | null>(null)
