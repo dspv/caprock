@@ -24,6 +24,10 @@ const h = vi.hoisted(() => ({
   blurs: 0,
   webgl: { made: 0, disposed: 0 },
   noInsides: false,
+  /** Each WebGL addon's canvas, where a context loss is heard (lib/termgl). */
+  canvases: [] as HTMLCanvasElement[],
+  /** What the addons' contexts answer to isContextLost(): a context gone without a word. */
+  glLost: false,
   /** Each WebGL addon's page-merge listener (onRemoveTextureAtlasCanvas): firing one is a merge in the shared atlas. */
   merges: [] as (() => void)[],
   resizes: [] as number[][],
@@ -77,7 +81,12 @@ vi.mock('@xterm/addon-webgl', () => ({
   WebglAddon: class {
     constructor() { h.webgl.made++; h.steps.push('webgl') }
     // The addon's insides reuploadGlyphs reaches; null in a test of the fallback.
-    _renderer = h.noInsides ? undefined : { _charAtlas: {}, _glyphRenderer: { value: { setAtlas: () => { h.steps.push('upload') } } } }
+    _renderer = h.noInsides ? undefined : {
+      _charAtlas: {},
+      _glyphRenderer: { value: { setAtlas: () => { h.steps.push('upload') } } },
+      _gl: { isContextLost: () => h.glLost },
+      _canvas: (() => { const c = document.createElement('canvas'); h.canvases.push(c); return c })(),
+    }
     onContextLoss() {}
     onRemoveTextureAtlasCanvas(fn: () => void) { h.merges.push(fn); return { dispose() {} } }
     dispose() { h.webgl.disposed++ }
@@ -136,6 +145,8 @@ beforeEach(() => {
   h.blurs = 0
   h.webgl.made = 0
   h.webgl.disposed = 0
+  h.canvases.length = 0
+  h.glLost = false
   h.merges.length = 0
   h.resizes.length = 0
   h.wakes = 0
@@ -715,6 +726,56 @@ describe('switching tabs shows the terminal as it was', () => {
     await act(async () => { await Promise.resolve() })
     expect(count('refresh')).toBe(2)
     expect(count('atlas')).toBe(0)
+  })
+
+  // Users, 2026-10-20: after switching tabs or apps the terminal kept stale
+  // rows — Claude Code's subagent list at a count it had left — until a
+  // restart. A lost context left the pane drawing on a dead canvas: three
+  // seconds after the event (the addon's wait for a restore), for good
+  // without one (lib/termgl).
+  it('a lost context is dropped at once: the DOM renderer draws in that frame, a fresh context after the quiet wait', () => {
+    working('a')
+    expect(h.webgl).toEqual({ made: 1, disposed: 0 })
+    h.steps.length = 0
+    act(() => { h.canvases[0]!.dispatchEvent(new Event('webglcontextlost')) })
+    expect(h.webgl.disposed).toBe(1)
+    expect(h.steps).toContain('paint')
+    // Heard once, however many times it is said.
+    act(() => { h.canvases[0]!.dispatchEvent(new Event('webglcontextlost')) })
+    expect(h.webgl.disposed).toBe(1)
+    act(() => { vi.advanceTimersByTime(WEBGL_QUIET_MS + 10) })
+    expect(h.webgl.made).toBe(2)
+  })
+
+  it('a context gone without the event is found on the window\'s focus, even after a quick switch of apps', () => {
+    working('a')
+    h.glLost = true
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    act(() => { window.dispatchEvent(new Event('focus')) })
+    expect(h.webgl.disposed).toBe(1)
+    h.glLost = false
+    act(() => { vi.advanceTimersByTime(WEBGL_QUIET_MS + 10) })
+    expect(h.webgl.made).toBe(2)
+  })
+
+  it('a context gone while the tab was behind another is replaced in show(), before the frame it appears in', () => {
+    const { rerender } = working('a')
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    h.glLost = true
+    h.steps.length = 0
+    rerender(<TerminalPane sessionId="a" active />)
+    h.glLost = false
+    expect(h.webgl).toEqual({ made: 2, disposed: 1 })
+    expect(h.steps.lastIndexOf('webgl')).toBeLessThan(h.steps.lastIndexOf('paint'))
+    // Nothing re-sent to the dead context.
+    expect(h.steps.indexOf('upload')).toBe(-1)
+  })
+
+  it('a context gone while the window was out of sight is replaced when it comes back', () => {
+    working('a')
+    h.glLost = true
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    expect(h.webgl.disposed).toBe(1)
   })
 
   it('the window back in front after a while re-sends the atlas of the pane in front; a quick switch of apps does nothing', () => {

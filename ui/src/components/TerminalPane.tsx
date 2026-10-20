@@ -25,8 +25,11 @@
  *   arrive meanwhile go to xterm in one write, in order; the first after a
  *   quiet spell goes at once.
  * - **WebGL, late and recoverable.** Swapped in after the first output once
- *   typing pauses (as in the dashboard), and re-created after a context loss
- *   — a sleep and wake — when the tab is next shown.
+ *   typing pauses (as in the dashboard). A lost context — a sleep and wake,
+ *   a GPU reset, WebKit letting it go with or without the event — is dropped
+ *   the moment it is heard or found (lib/termgl), the DOM renderer drawing
+ *   that frame, and re-created after the quiet wait or when the tab is next
+ *   shown: never a dead canvas holding the last screen.
  * - **Switching tabs shows the terminal as it was.** The owner saw the font
  *   "redrawn from scratch" for a moment on a switch (2026-10-14): a tab
  *   hidden for 30 s had dropped its WebGL renderer, so it came back drawn by
@@ -97,6 +100,7 @@ import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPr
 import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges, reuploadGlyphs } from '@/lib/termatlas'
+import { contextGone, watchContextLoss } from '@/lib/termgl'
 import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible'
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
@@ -356,6 +360,10 @@ export function TerminalPane({
     let gotOutput = false
     let lastInput = 0
     let webgl: WebglAddon | undefined
+    // What drops `webgl` when its context is gone (loadWebgl), and the
+    // listener that hears the loss at once (lib/termgl).
+    let webglLost: (() => void) | undefined
+    let unwatchGl = () => {}
     let webglTimer = 0
     let hideTimer = 0
     // The box last fitted to (refit, below).
@@ -490,15 +498,28 @@ export function TerminalPane({
       }
       try {
         const addon = new WebglAddon()
-        addon.onContextLoss(() => {
-          // A sleep and wake, or a driver reset: back to the DOM renderer now,
-          // and a fresh context the next time this tab is shown.
-          addon.dispose()
-          if (webgl === addon) webgl = undefined
+        let gone = false
+        // A sleep and wake, a driver reset, or WebKit letting the context go:
+        // the DOM renderer draws from this frame on — never a dead canvas
+        // holding the last screen while output goes on (lib/termgl) — and a
+        // fresh context comes after the quiet wait, or the next time this
+        // tab is shown.
+        const lost = () => {
+          if (gone) return
+          gone = true
+          if (webgl === addon) { webgl = undefined; webglLost = undefined; unwatchGl(); unwatchGl = () => {} }
+          try { addon.dispose() } catch { /* already gone */ }
           releaseWebgl(kept)
-          if (visible) scheduleWebgl()
-        })
+          if (disposed || !visible) return
+          lastGeom = ''
+          refit()
+          paintNow(term)
+          scheduleWebgl()
+        }
+        addon.onContextLoss(lost)
         term.loadAddon(addon)
+        unwatchGl = watchContextLoss(addon, lost)
+        webglLost = lost
         // A page merge in the atlas this terminal shares with every other
         // tab left it drawing from a stale texture unit, for good (lib/termatlas).
         healAtlasMerges(addon, term, () => clearGlyphAtlas(term))
@@ -520,8 +541,17 @@ export function TerminalPane({
       webglTimer = 0
       releaseWebgl(kept)
       if (webgl) lastGeom = ''
+      unwatchGl()
+      unwatchGl = () => {}
+      webglLost = undefined
       webgl?.dispose()
       webgl = undefined
+    }
+    // A context gone without a word (lib/termgl contextGone): dropped as a
+    // loss is. Asked wherever the terminal is looked at again or writes —
+    // one boolean, no timer.
+    const checkGl = () => {
+      if (webgl && webglLost && contextGone(webgl)) webglLost()
     }
 
     const dataSub = term.onData((d) => {
@@ -556,6 +586,8 @@ export function TerminalPane({
       lastBase = base
       band.update()
       if (pointerY !== null) queueHint()
+      // Output going to a canvas whose context is gone is output nobody sees.
+      if (visible) checkGl()
     })
     const scrollSub = term.onScroll(() => {
       if (atBottom() && pendingNew !== 0) {
@@ -644,6 +676,7 @@ export function TerminalPane({
       // What the window held while out of sight, before anything newer.
       flushHeld()
       conn.wake()
+      checkGl()
       repaintGlyphs()
     }
     document.addEventListener('visibilitychange', onWake)
@@ -661,11 +694,22 @@ export function TerminalPane({
     // on top, never hidden, so no visibilitychange): the pane in front sends
     // its atlas to the GPU again and redraws — one upload per page, no
     // rasterising, never on a quick ⌘-Tab and never on a timer.
+    //
+    // Going, the input box's key hint goes too: it shows while the pointer is
+    // over the box, and a pointer that leaves with the window (⌘-Tab, a
+    // click in another app) sends no mouseleave, so it stayed over the box
+    // and the quick replies under it until the pointer came back and left.
     let blurredAt = 0
-    const onBlur = () => { blurredAt = Date.now() }
+    const onBlur = () => {
+      blurredAt = Date.now()
+      if (pointerY !== null) { pointerY = null; queueHint() }
+    }
     const onFocusBack = () => {
       const away = blurredAt > 0 ? Date.now() - blurredAt : 0
       blurredAt = 0
+      // Any time: a context that went while the window was behind (one
+      // boolean read; nothing drawn when it is alive).
+      if (visible) checkGl()
       if (!visible || !webgl || away < FOCUS_HEAL_MS) return
       if (!reuploadGlyphs(webgl)) { repaintGlyphs(); return }
       term.refresh(0, term.rows - 1)
@@ -733,6 +777,10 @@ export function TerminalPane({
         // What was held goes to xterm before anything newer the socket brings.
         flushHeld()
         conn.wake()
+        // A context lost while hidden — the addon's own report is held back
+        // three seconds, and WebKit may send none — is replaced below, in
+        // this frame, rather than shown frozen.
+        checkGl()
         // The renderer first, so the fit below measures the cell it draws
         // with. A pane with output never shows the DOM renderer on its way
         // back (the header); one still waiting for its first output takes

@@ -134,7 +134,16 @@ answers `you-said:<line>`); pasted text reaches it line by line; a native drop
 the terminal under the point, and a drop on the sidebar into the terminal
 used last; the command palette
 opens and runs a command; Settings opens and closes; Second Brain and Pipeline
-render; the share dialog draws its card and closes. Terminal text is read
+render; the share dialog draws its card and closes. `ui/e2e/redraw.spec.ts`
+runs after them: the fake claude's `agents [frames]` redraws a subagent list
+in place as Claude Code's renderer does (relative moves in synchronized
+updates, the viewport cleared on a resize; `testdata/fakeclaude/agents.go`),
+and the terminal must show one copy of it, with the pixels xterm would draw
+now, after the window was out of sight (no animation frames, past
+`PAGE_HIDDEN_SUSPEND_MS`), after its tab was behind another past
+`HIDDEN_HOLD_BYTES`, and after its WebGL context was lost, told, silently or
+given back; and `box` draws Claude Code's input box, whose key hint must go
+when the window loses focus. Terminal text is read
 from xterm's buffer through the bench hook (`ui/src/lib/benchhook.ts`). The
 whole `make e2e` took 21-22 s of wall time on the owner's Apple Silicon Mac
 (three runs, 2026-10-16; 37 s with the machine under heavy load). `E2E_ARGS` passes flags to
