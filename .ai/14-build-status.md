@@ -380,6 +380,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-20 — 0.140.2: the app comes back by itself
+
+A patch release, one batch PR (#775). After an in-app update on macOS the new version is started through LaunchServices, as a Dock click does, so its window comes to the front instead of waiting behind other apps. A white window recovers on its own: the webview reloads when macOS ends its content process, a page load that never finishes is retried, and a page that drew nothing shows Reconnecting to Caprock with a Reload button; each cause is written to the local app.log. A terminal whose WebGL context is lost falls back to the DOM renderer at once instead of showing a frozen screen, and the input box hint clears when the window loses focus.
+
 ### 2026-10-20 — 0.140.1: dependency updates
 
 A patch release, one batch PR (#772) folding Dependabot's #757, #758 and #759: Go modules (purego, klauspost/compress, x/text, x/sync), the goreleaser action, and the dashboard's React, Vitest, jsdom and Playwright. No behaviour change.

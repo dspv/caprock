@@ -12,6 +12,33 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.140.2] - 2026-10-20
+
+### Fixed
+
+- **app:** after an in-app update on macOS, Caprock opens again with its
+  window in front. The updated app was started as a child of the old one,
+  which macOS never brought forward, so it waited behind other windows until
+  a click on its Dock icon; it is now launched the way the Dock launches it.
+- **app:** a terminal no longer keeps stale rows after its GPU context is
+  lost (a sleep, a GPU reset, or WebKit letting a background tab's context
+  go): it switches to its plain renderer in that frame instead of drawing on
+  a dead canvas for three seconds, or for good when no loss was reported, and
+  gets a fresh context shortly after. A lost context is also looked for when
+  you come back to the tab or the window. The key hint over Claude Code's
+  input box goes when the window loses focus instead of staying over the
+  quick replies.
+- **app:** a window that goes white comes back by itself instead of staying
+  blank until the app is quit. When macOS ends the WebView's content process
+  (under memory pressure, or a crash), the app reloads that window, waiting
+  longer each time it repeats. A page the app asked for that never finished
+  loading is loaded again while the daemon answers. A page that loaded but
+  drew nothing (a file of it missing while the daemon restarted) shows
+  *Reconnecting to Caprock…* with Reload and reloads once the daemon
+  answers. Each of these, and the crash screen, writes one line to the app's
+  own log on your Mac (`app.log` in Caprock's data folder), so a report can
+  say why; nothing is sent anywhere.
+
 ## [0.140.1] - 2026-10-20
 
 ### Changed
