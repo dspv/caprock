@@ -102,7 +102,7 @@ describe('the Pipeline page', () => {
   // Owner, 2026-10-14, translated: "PR titles are missing … I'd merge it all
   // into one — PR rows with their statuses, so I understand how things
   // travel, what gets released".
-  it('is one list: the flow strip, each pull request with its whole title, labels and four steps, in flight first, and the releases', async () => {
+  it('is one list: the flow strip, each pull request with its whole title, labels and three steps, in flight first, and the releases', async () => {
     withBoard()
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
@@ -120,8 +120,12 @@ describe('the Pipeline page', () => {
     expect(r22).toHaveTextContent('$3.50')
     expect(document.querySelector('[data-prs-row="21"] [data-journey-step="ci"]')).toHaveTextContent('CI red')
     const r20 = document.querySelector('[data-prs-row="20"]')!
-    expect(r20.querySelector('[data-journey-step="released"]')).toHaveTextContent('v1.2.0')
-    expect(r20.querySelector('[data-journey-step="released"]')).toHaveAttribute('data-step-state', 'current')
+    // Owner, 2026-10-20, translated: the final status should be merged; the
+    // release is a quiet word after the steps, never a step of its own.
+    expect(r20.querySelector('[data-journey-step="released"]')).toBeNull()
+    expect(r20.querySelector('[data-journey-step="merged"]')).toHaveAttribute('data-step-state', 'current')
+    expect(r20.querySelector('[data-release-note="released"]')).toHaveTextContent('in v1.2.0')
+    expect(r22.querySelector('[data-release-note]')).toBeNull()
     // The flow strip on top, the releases below; no pull request's CI asked until one is opened.
     expect(document.querySelector('[data-stat="speed"]')).toHaveTextContent('0.5/day')
     expect(document.querySelector('[data-stat="speed"]')).toHaveTextContent('merge→release ~5h')

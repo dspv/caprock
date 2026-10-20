@@ -29,8 +29,12 @@ describe('the Work board’s rows', () => {
   it('fills the bar to the stage, red at CI when it failed or conflicts', () => {
     expect(row(b.items, '631')).toMatchObject({ stage: 'ci', fill: 3, running: true, red: false, word: 'CI running' })
     expect(row(b.items, '633')).toMatchObject({ fill: 3, word: 'ready' })
-    expect(row(b.items, '630')).toMatchObject({ fill: 4, word: 'merged' })
-    expect(row(b.items, '625')).toMatchObject({ fill: 5, word: 'in v0.117.4' })
+    // A merge fills the bar; its release is a word, not a step (owner, 2026-10-20).
+    expect(row(b.items, '630')).toMatchObject({ fill: 4, word: 'merged', note: { text: 'not released' } })
+    expect(row(b.items, '625')).toMatchObject({ fill: 4, word: 'in v0.117.4' })
+    expect(row(b.items, '625')!.note).toBeUndefined()
+    expect(prStage({ stage: 'merged' }, 'merged', false, 'merge').note).toBeUndefined()
+    expect(prStage({ stage: 'merged' }, 'merged').note).toBeUndefined()
     expect(row(b.items, 's:s2')).toMatchObject({ fill: 1, word: 'agent' })
     expect(prStage({ stage: 'fix', why: 'ci' }, 'open')).toMatchObject({ fill: 3, red: true, word: 'CI red' })
     expect(prStage({ stage: 'fix', why: 'conflict' }, 'open')).toMatchObject({ red: true, word: 'conflict' })

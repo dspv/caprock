@@ -39,7 +39,7 @@ describe('PhoneReleases', () => {
     expect(link.target).toBe('_blank')
     // A segment per step, the bar on its own line under the title.
     for (const bar of document.querySelectorAll('[data-release-phone] [data-release-bar]')) {
-      expect(bar.querySelectorAll('[data-step]')).toHaveLength(5)
+      expect(bar.querySelectorAll('[data-step]')).toHaveLength(4)
       expect(bar.parentElement?.previousElementSibling?.textContent).toMatch(/\S/)
     }
     // The read line follows the stats answer, which can land after the rows.

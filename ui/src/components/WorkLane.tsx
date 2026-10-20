@@ -45,7 +45,7 @@ export function WorkLane({ id, label, note, items, now, passed, flowOf, onOpenSe
   )
   return (
     <section data-work-lane={id} aria-label={label} className="min-w-0">
-      <Panel title={title} right={hint ? <span className="hidden sm:inline">agent → PR → CI → merged → released</span> : undefined}>
+      <Panel title={title} right={hint ? <span className="hidden sm:inline">agent → PR → CI → merged</span> : undefined}>
         {open && (
           <div className="@container/work min-w-0">
             {items.length === 0 && empty && <p className="px-3 py-2.5 text-[13px] text-fg-muted">{empty}</p>}

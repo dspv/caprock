@@ -70,13 +70,18 @@ describe('the cockpit’s CI block', () => {
     // One legend over the bars' columns, and every segment says its step and
     // state, the landing label on the step it is on; the rows do not grow.
     const legend = document.querySelector('[data-journey-legend]')!
-    expect([...legend.children].map((e) => e.textContent)).toEqual(['open', 'CI', 'merged', 'released'])
+    // Owner, 2026-10-20, translated: the final status should be merged —
+    // the bar ends there, and a merge fills it; its release is a quiet word.
+    expect([...legend.children].map((e) => e.textContent)).toEqual(['open', 'CI', 'merged'])
     expect(legend).toHaveClass('gap-[3px]')
-    expect(legend).toHaveStyle({ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' })
-    // Owner, 2026-10-18: what released means, and what a merge waits for.
-    expect(legend.querySelector('[data-journey-legend-step="released"]')).toHaveAttribute('title', 'Shipped in a published release')
-    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="released"]')).toHaveAttribute('title', 'Released: waiting — next release. Waits for the next release, after v1.2.0.')
-    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-cockpit-ci-released]')).toHaveTextContent('next release')
+    expect(legend).toHaveStyle({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' })
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="released"]')).toBeNull()
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-bar]')).toHaveAttribute('data-journey-full')
+    expect([...document.querySelectorAll('[data-cockpit-ci-pr="8"] [data-journey-seg]')].every((e) => e.classList.contains('bg-merged'))).toBe(true)
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-bar]')).not.toHaveAttribute('data-journey-full')
+    const note = document.querySelector('[data-cockpit-ci-pr="8"] [data-release-note]')!
+    expect(note).toHaveTextContent('not released')
+    expect(note).toHaveAttribute('title', 'Merged, in no published release yet: it ships with the next release, after v1.2.0.')
     expect(legend.nextElementSibling).toBe(document.querySelector('[data-cockpit-journey]'))
     expect(ci).toHaveAttribute('title', 'CI: failed — CI red · landing: queued. A check on its head commit failed')
     expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="open"]')).toHaveAttribute('title', 'Open: done. Opened')
@@ -126,10 +131,9 @@ describe('the cockpit’s CI block', () => {
     expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['5', '4', '3'])
     expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
     expect(screen.getByRole('button', { name: 'Pipeline →' })).toBeInTheDocument()
-    // An older daemon says nothing of how it ships: the released step is not known, never a wait.
-    const rel = document.querySelector('[data-cockpit-ci-pr="5"] [data-journey-seg="released"]')!
-    expect(rel).toHaveAttribute('data-step-unknown', '')
-    expect(rel.getAttribute('title')).toMatch(/^Released: not known\./)
+    // An older daemon says nothing of how it ships: the bar full, no word of a release, never a wait.
+    expect(document.querySelector('[data-cockpit-ci-pr="5"] [data-journey-bar]')).toHaveAttribute('data-journey-full')
+    expect(document.querySelector('[data-cockpit-ci-pr="5"] [data-release-note]')).toBeNull()
   })
 
   // Owner, 2026-10-18, translated: "why isn't merged the final state". A
@@ -148,7 +152,7 @@ describe('the cockpit’s CI block', () => {
     expect(segs.map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'current'])
     expect(document.querySelector('[data-cockpit-ci-pr="12"] [data-journey-bar]')).toHaveStyle({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' })
     expect(segs[2]!.getAttribute('title')).toContain('Merged: the last step')
-    expect(document.querySelector('[data-cockpit-ci-released]')).toBeNull()
+    expect(document.querySelector('[data-release-note]')).toBeNull()
   })
 
   it('names the last release when everything shipped', async () => {
@@ -157,7 +161,8 @@ describe('the cockpit’s CI block', () => {
       board: { cards: rows.map((r) => r.card), releases: [{ tag: 'v1.4.0', published_at: now - 3_600_000, prs: [3, 2], cost_usd: 0, sessions: 0 }], flow: FLOW } }))
     render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
     await waitFor(() => expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight · last release v1.4.0, 1h ago'))
-    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('Released done (in v1.4.0)'))
+    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-journey-bar]')).toHaveAttribute('data-journey-full')
+    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-release-note="released"]')).toHaveTextContent('in v1.4.0')
   })
 
   // Owner, 2026-10-16, translated: "in CI/CD on the right, the Ring mode is empty".

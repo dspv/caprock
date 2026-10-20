@@ -10,8 +10,9 @@
  * One list (owner, 2026-10-14, translated: "PR titles are missing … I'd
  * merge it all into one — PR rows with their statuses, so I understand how
  * things travel, what gets released"): the figures on top, then every pull
- * request as a row — its number, its whole title, its labels, its four steps
- * Open → CI → Merged → Released (lib/journey, the cockpit draws the same),
+ * request as a row — its number, its whole title, its labels, its three steps
+ * Open → CI → Merged (lib/journey, the cockpit draws the same) and after them
+ * its release in a quiet word (*in v0.132.0*, *not released*),
  * how long in the step, its agent cost — in flight first, then merged, then
  * released (ten, then "Show more"), and the releases below. A row opens the
  * pull request in detail beside the list (under it on a narrow window):
@@ -31,7 +32,7 @@ import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/useP
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
 import { AGENT_COST_NOTE, asBoard, costText, costTitle, type PRBoard } from '@/lib/prboard'
 import type { BranchPR } from '@/lib/branches'
-import { journey, pipelineRows, RELEASED_MEANS, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
+import { journey, pipelineRows, releaseNote, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { BUCKET_LABEL, bucketItems, fixedLately, inBucket, noteFixes, readFixSeen, writeFixSeen, type Bucket, type FixSeen } from '@/lib/flowbucket'
 import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
@@ -334,9 +335,7 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
           <>
             <div aria-hidden className={`${ROW_GRID} border-b border-border px-3 py-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-muted @max-[820px]/list:hidden`}>
               <span>Pull request</span>
-              {ships.ships === 'merge'
-                ? <span className="whitespace-nowrap" title="No releases here: work ships when it merges">Open → CI → Merged</span>
-                : <span className="whitespace-nowrap">Open → CI → Merged → <span title={RELEASED_MEANS}>Released</span></span>}
+              <span className="whitespace-nowrap" title={ships.ships === 'merge' ? 'No releases here: work ships when it merges' : 'Merged is the last step; a merge’s release is said after it'}>Open → CI → Merged</span>
               <span className="text-right">In step</span>
               <span className="whitespace-nowrap text-right" title={AGENT_COST_NOTE}>Agent cost</span>
             </div>
@@ -378,7 +377,7 @@ function BucketPreview({ b, board, prs, fixed }: { b: Bucket; board: PRBoard; pr
 
 /** One pull request: number, its whole title, labels, the four steps, the time in its step, agent cost. */
 function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean; ships: ShipsContext }) {
-  const steps = journey(r, ships)
+  const steps = journey(r)
   const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const cost = r.card ? costText(r.card.spend) : ''
   return (
@@ -399,7 +398,7 @@ function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: 
             )}
           </span>
         </span>
-        <JourneyPills steps={steps} />
+        <JourneyPills steps={steps} note={releaseNote(r, ships)} />
         <span className="num text-right text-[12.5px] text-fg-muted @max-[820px]/list:hidden" title={at ? new Date(at).toLocaleString() : undefined}>{at ? spanText(Math.max(0, now - at)) : '–'}</span>
         <span className="num text-right text-[13px] font-medium text-fg" title={r.card ? costTitle(r.card.spend) : undefined}>
           {cost || <span className="font-normal text-fg-muted">–</span>}
