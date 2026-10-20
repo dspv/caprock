@@ -17,6 +17,9 @@
 //!
 //! Each is written to the app's log (applog.rs), so the next report of a
 //! white window can say which it was.
+// The reload is macOS-only (on_web_content_process_terminate); elsewhere
+// these are built for the tests alone.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use std::collections::HashMap;
 use std::path::PathBuf;
