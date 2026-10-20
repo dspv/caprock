@@ -2650,6 +2650,17 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   the disk image or a translocated path), the NSIS install and the AppImage.
   A `.deb` or `.rpm` install, a development build or an unknown bundle keep
   F12's notice, with the reason in its panel.
+- **The relaunch.** On macOS the updated bundle is started again through
+  LaunchServices, `open -n <bundle>` (`updater::open_args`), as a click in
+  the Dock does, and this copy exits; the new app comes up activated with
+  its window in front. Tauri's `app.restart()` ran the new executable as
+  this process's child instead: not a launch, so never activated (macOS 14
+  turns down the app's own activation while another app is in front), and
+  the window stayed behind everything until a click on the Dock tile
+  (reported 2026-10-20). An app started with a `CAPROCK_` variable in its
+  environment (a custom data directory, `bench/update.mjs`'s background
+  run) keeps `app.restart()`, which hands the variables on; so do Linux
+  and a failed `open`.
 - **The daemon after an update.** The relaunched app finds its own daemon
   (`<data_dir>/bin`) different from the bundled one and moves it over once
   per launch (`Supervisor::should_adopt`, ADR-040's amendment: the

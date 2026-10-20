@@ -18,6 +18,9 @@
 //!   relaunched app moves its own daemon onto it with a clean shutdown
 //!   (`Supervisor::should_adopt`, ADR-040), and sessions live on in their
 //!   pty-hosts (ADR-033).
+//! - **The window comes back in front.** On macOS the new bundle is
+//!   started through LaunchServices (`open -n`, [`open_args`]), not as this
+//!   process's child, which macOS never activated.
 //! - **Where it cannot update itself** (a development build, a .deb or .rpm
 //!   install, a macOS app run from the disk image or a translocated copy)
 //!   it says what to do instead and never tries.
@@ -451,7 +454,68 @@ pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
     // macOS and Linux: the new bundle is in place; start it. The daemon
     // runs from <data_dir>/bin, outside the bundle, and is moved onto the
     // new one by the relaunched app.
+    #[cfg(target_os = "macos")]
+    if let Some(args) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| open_args(&exe, &app.env().args_os, std::env::vars_os()))
+    {
+        use std::process::{Command, Stdio};
+        let opened = Command::new("/usr/bin/open")
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        if opened.is_ok() {
+            app.exit(0);
+            return info(&app);
+        }
+    }
     app.restart();
+}
+
+/// macOS: the arguments for `/usr/bin/open` that start the updated bundle
+/// again, or `None` to fall back to Tauri's `app.restart()`.
+///
+/// `app.restart()` runs the new executable as a child of this process and
+/// exits. On macOS that child is not a launch: LaunchServices never starts
+/// it, so it is not activated, and since macOS 14 its own
+/// `activateIgnoringOtherApps` is only a request that is turned down when
+/// another app is in front — which, by the time this process has gone, one
+/// is. The update ran, the new app was running, and its window stayed behind
+/// everything until a click on the Dock tile (reported 2026-10-20). `open -n`
+/// launches the bundle as a click in the Dock or Finder does, activated with
+/// its window in front; `-n` because this copy is still running when it
+/// asks, and a plain `open` would only bring this copy forward.
+///
+/// An app started with a `CAPROCK_` variable in its environment (a custom
+/// data directory, the automated update check that runs in the background)
+/// keeps `app.restart()`, which hands the variables on; a launch through
+/// LaunchServices would drop them. `args` is the process's arguments with
+/// the executable first, as `Env::args_os` holds them.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn open_args<I>(
+    exe: &Path,
+    args: &[std::ffi::OsString],
+    env: I,
+) -> Option<Vec<std::ffi::OsString>>
+where
+    I: IntoIterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+{
+    let bundle = crate::dock_icon::bundle_of(exe)?;
+    if env
+        .into_iter()
+        .any(|(k, _)| k.to_string_lossy().starts_with("CAPROCK_"))
+    {
+        return None;
+    }
+    let mut out: Vec<std::ffi::OsString> = vec!["-n".into(), bundle.into_os_string()];
+    let rest = args.iter().skip(1);
+    if rest.len() > 0 {
+        out.push("--args".into());
+        out.extend(rest.cloned());
+    }
+    Some(out)
 }
 
 /// A check from a menu item: bring the window up so the answer is seen.
@@ -562,6 +626,38 @@ mod tests {
         let v = serde_json::to_value(u.info("0.78.1", None)).unwrap();
         assert_eq!(v["phase"], "ready");
         assert_eq!(v["next"], "0.79.0");
+    }
+
+    #[test]
+    fn a_mac_bundle_is_relaunched_through_launch_services() {
+        let root = dir("relaunch");
+        let bundle = root.join("Caprock.app");
+        let macos = bundle.join("Contents").join("MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(bundle.join("Contents").join("Info.plist"), "<plist/>").unwrap();
+        let exe = macos.join("caprock-app");
+        let none: Vec<(std::ffi::OsString, std::ffi::OsString)> = vec![];
+        let home = vec![("HOME".into(), "/Users/me".into())];
+
+        // A new instance of the bundle, not this copy brought forward.
+        let a = open_args(&exe, &[exe.clone().into()], home.clone()).unwrap();
+        assert_eq!(
+            a,
+            vec![std::ffi::OsString::from("-n"), bundle.clone().into()]
+        );
+        // Arguments after the executable are handed on.
+        let a = open_args(&exe, &[exe.clone().into(), "--x".into()], none.clone()).unwrap();
+        assert_eq!(a[2], "--args");
+        assert_eq!(a[3], "--x");
+        // A Caprock variable keeps the in-process restart, which keeps it.
+        for k in ["CAPROCK_DATA_DIR", "CAPROCK_APP_BACKGROUND"] {
+            let env = vec![(k.into(), "1".into())];
+            assert_eq!(open_args(&exe, &[], env), None, "{k}");
+        }
+        // cargo run: no bundle to open.
+        let loose = root.join("target").join("debug").join("caprock-app");
+        assert_eq!(open_args(&loose, &[], none), None);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
