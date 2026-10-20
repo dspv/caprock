@@ -380,6 +380,14 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-20 — 0.140.1: dependency updates
+
+A patch release, one batch PR (#772) folding Dependabot's #757, #758 and #759: Go modules (purego, klauspost/compress, x/text, x/sync), the goreleaser action, and the dashboard's React, Vitest, jsdom and Playwright. No behaviour change.
+
+### 2026-10-20 — 0.140.0: a chat that looks like a chat, Computers in three steps
+
+A minor release, one batch PR (#770). An agent tab has a Chat | Terminal switch: quick chats open as a chat (bubbles, readable replies, one quiet line per tool call), project sessions on the terminal, the choice kept per session. Settings → Computers lists the connected computers first, asks what this computer is, and adds one in three numbered steps, the relay explanation behind (i). Closing a project's tabs ends its quick chats as ⌘W does, a tabless chat leaves the sidebar ten minutes after its last answer, and a chat's row carries its title and start time. On Windows and Linux a sidebar row shows one tooltip, not a key chip and a tooltip. PR progress bars end at merged, a release a quiet word after them. With a dashboard open, the 7-day, 30-day and all-time histories are counted at most once a minute instead of on every poll, which cut the database reads on a test stand by 63%. Lifetime's daily cost is drawn on a calendar (#769, thanks @SergeAx).
+
 ### 2026-10-19 — 0.139.0: a compact Release panel
 
 A minor release, one PR (#766). The sidebar's Release panel gives a pull request's title the full width on up to two lines, says where it stands in words (CI 1/3, CI failed, ready, merged · not released) instead of five blocks, puts a blocked PR first, folds the branches that already sit inside a PR into its "+N branches", and lists only the branches without a PR, collapsed (owner, 2026-10-19: the titles were cut to a few letters).
