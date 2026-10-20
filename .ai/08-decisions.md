@@ -4525,7 +4525,10 @@ and travels in its pairing link, so two machines may use different relays.
 1. On the target: *Let another computer in* (or `caprock pair --computer`)
    turns access from anywhere on if it is off — pressing it is that decision
    on the machine (ADR-058, amended 2026-10-14) — and shows the link, valid
-   five minutes, once.
+   five minutes, once. Since 2026-10-20 the screen calls the target
+   *Connects to another* and the button *Show the link*; the controller is
+   *The main one* ([04-ui.md § Other computers](04-ui.md)). A label on the
+   screen only: the daemon has no such mode.
 2. On the controller: Settings → Computers → *Add a computer*, paste.
    Its daemon parses the link, dials the target's relay, runs Noise NK
    against the pinned key, and redeems the code through the channel with
