@@ -143,7 +143,13 @@ now, after the window was out of sight (no animation frames, past
 `PAGE_HIDDEN_SUSPEND_MS`), after its tab was behind another past
 `HIDDEN_HOLD_BYTES`, and after its WebGL context was lost, told, silently or
 given back; and `box` draws Claude Code's input box, whose key hint must go
-when the window loses focus. Terminal text is read
+when the window loses focus. `ui/e2e/sidebar-recent.spec.ts` runs last: a
+closed tab is listed under the sidebar's Recently closed and comes back on a
+click and on ⇧⌘T; a helper session started in a temp folder outside every
+project folds under Background · N, opened and remembered across a reload;
+and an agent ended with its tab comes back from its row — read-only with its
+reason, since the fake claude writes no transcript to `--resume` (it ends
+beta, so it is last). Terminal text is read
 from xterm's buffer through the bench hook (`ui/src/lib/benchhook.ts`). The
 whole `make e2e` took 21-22 s of wall time on the owner's Apple Silicon Mac
 (three runs, 2026-10-16; 37 s with the machine under heavy load). `E2E_ARGS` passes flags to

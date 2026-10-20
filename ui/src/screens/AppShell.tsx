@@ -18,7 +18,7 @@ import { installKeyReveal } from '@/lib/keyreveal'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
 import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
-import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, REOPEN_TAB_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -44,6 +44,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
+import { closedEntries, forgetClosed, loadRecentlyClosed, recordClosed, reopenPlan, shownClosed, type ClosedTab } from '@/lib/recentlyClosed'
 import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, planTabsChatClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
@@ -1056,11 +1057,18 @@ export function AppShell() {
     void Promise.all(ids.map((id) => api.signal(id, 'end').catch((e) => setToast(`Could not stop the session: ${errText(e)}`))))
       .then(() => refresh())
   }, [refresh])
+  /** Puts the agent conversations a closing tab or pane shows on the sidebar's Recently closed (lib/recentlyClosed.ts). */
+  const noteClosed = useCallback((tabId: string, paneId?: string) => {
+    const { tabs, sessionsById, labels } = closeCtx.current
+    const tab = tabs.find((t) => t.id === tabId)
+    if (tab) recordClosed(closedEntries(tab, paneId, sessionsById, labels.get(tabId)?.title ?? tab.title, sessionTitle))
+  }, [])
   const finishClose = useCallback((tabId: string, paneId: string | undefined, stop: readonly ClosingShell[], chats: readonly string[] = []) => {
+    noteClosed(tabId, paneId)
     dispatch(paneId ? { type: 'close-pane', tabId, paneId } : { type: 'close', tabId })
     stopShells(stop)
     stopChats(chats)
-  }, [stopShells, stopChats])
+  }, [noteClosed, stopShells, stopChats])
   // What requestClose reads, kept current without making it, and so every
   // close button, a new function on each poll.
   const closeCtx = useRef({ tabs: ws.tabs, sessionsById, sessions: data.sessions, labels, model, endedChats, permissions: data.permissions })
@@ -1160,6 +1168,33 @@ export function AppShell() {
   const onClosePane = useCallback((tabId: string, paneId: string) => { void requestClose(tabId, paneId) }, [requestClose])
   /** A tab's ×, in the strip and in the sidebar alike. */
   const onCloseTab = useCallback((tabId: string) => { void requestClose(tabId) }, [requestClose])
+  /**
+   * A Recently closed row, or ⇧⌘T for the newest (lib/recentlyClosed.ts
+   * reopenPlan): its tab again while its process runs — read-only when
+   * another terminal started it (rule 7) — else the conversation continued
+   * with --resume under its own id, as *Continue here* does. Dropped from the
+   * list once reopened; put back if continuing fails.
+   */
+  const reopenClosed = useCallback((entry: ClosedTab) => {
+    const { tabs, sessionsById } = closeCtx.current
+    const s = sessionsById.get(entry.sessionId)
+    const open = tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === entry.sessionId))
+    const plan = reopenPlan(entry, s, !!open)
+    forgetClosed(entry.sessionId)
+    if (plan.do === 'tab') { onActivateTab(open!.id); return }
+    if (plan.do === 'open') { openSession(plan.session, entry.projectId); return }
+    if (plan.do === 'page') { goHash(`#/session/${encodeURIComponent(entry.sessionId)}`); return }
+    const req: SpawnRequest = { cwd: plan.cwd, resume: entry.sessionId, fork: false, ...(plan.permissionMode ? { permission_mode: plan.permissionMode } : {}) }
+    api.spawn(req)
+      .then((res) => { openTab({ kind: 'session', sessionId: res.session_id }, entry.projectId, entry.title); refresh() })
+      .catch((e) => { recordClosed([entry]); setToast(`Could not continue “${entry.title}”: ${errText(e)}`) })
+  }, [onActivateTab, openSession, goHash, openTab, refresh])
+  const reopenLastClosed = useCallback(() => {
+    const open = new Set(closeCtx.current.tabs.flatMap((t) => leaves(t.root).map((l) => l.target.sessionId)))
+    const last = shownClosed(loadRecentlyClosed(), open, 1)[0]
+    if (last) reopenClosed(last)
+    else setToast('No closed tab to reopen.')
+  }, [reopenClosed])
   const onResizePanes = useCallback((tabId: string, splitId: string, sizes: number[]) => dispatch({ type: 'resize', tabId, splitId, sizes }), [])
 
   // ⌘W closes the focused pane of a split tab, else the tab.
@@ -1214,6 +1249,7 @@ export function AppShell() {
           window.setTimeout(() => window.dispatchEvent(new Event(THEME_MENU_EVENT)), 0)
         } else window.dispatchEvent(new Event(THEME_MENU_EVENT))
         break
+      case 'reopen-tab': reopenLastClosed(); break
       case 'changes':
         if (openChangesRef.current) openChangesRef.current()
         else setToast('Changes shows a git project’s diff: bring a session in one to the front.')
@@ -1253,7 +1289,7 @@ export function AppShell() {
         break
       }
     }
-  }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar])
+  }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar, reopenLastClosed])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -1436,6 +1472,7 @@ export function AppShell() {
       { id: 'a-bug', group: 'Actions', label: 'Report a bug…', detail: 'to Caprock support at caprock.dev, not GitHub: your words, screenshots, an email for a reply', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'bug' }) },
       { id: 'a-keys', group: 'Actions', label: 'Keyboard shortcuts', detail: 'every key the app answers to', icon: <SearchIcon size={14} />, run: () => setSheet({ kind: 'keys' }) },
       { id: 'a-theme', group: 'Actions', label: 'Switch theme', icon: <SparkIcon size={14} />, run: toggleTheme },
+      { id: 'a-reopen-tab', group: 'Actions', label: 'Reopen closed tab', detail: 'the last tab you closed: its conversation back in a tab', hint: keys(REOPEN_TAB_KEY), icon: <PlusIcon size={14} />, run: () => run({ kind: 'reopen-tab' }) },
       { id: 'a-theme-pick', group: 'Actions', label: 'Choose a theme…', detail: 'the eight palettes: hover one to try it', hint: keys(THEME_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'theme' }) },
       { id: 'a-input-highlight', group: 'Actions', label: 'Toggle input highlight', detail: 'the band where you type in the terminal and the chat field’s tint, on or off', hint: keys(INPUT_HIGHLIGHT_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'input-highlight' }) },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),
@@ -1748,10 +1785,10 @@ export function AppShell() {
         }}
         onOpenDashboard={() => { location.hash = `#/session/${encodeURIComponent(id)}` }}
         onHide={() => { dispatch({ type: 'close', tabId: tab.id }); hideSessionRow(id) }}
-        onClose={() => dispatch({ type: 'close', tabId: tab.id })}
+        onClose={() => { noteClosed(tab.id); dispatch({ type: 'close', tabId: tab.id }) }}
       />
     )
-  }, [sessionsById, data.permissions, openTab, refresh])
+  }, [sessionsById, data.permissions, openTab, refresh, noteClosed])
 
   // The Pipeline (screens/Pipeline.tsx, .ai/04-ui.md § Pipeline): a pinned
   // system tab of its own, right after the Dashboard tab, at #/pipeline. The
@@ -1926,6 +1963,7 @@ export function AppShell() {
               onGroupedChange={onGroupedChange}
               tabDigits={stripDigits}
               onOrderTabs={onOrderTabs}
+              onReopenClosed={reopenClosed}
               onPipeline={onPipelineButton}
               pipelineActive={pipelineShown}
             />

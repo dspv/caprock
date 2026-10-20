@@ -1119,12 +1119,14 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   1–9, new session, new shell, dashboard, find. Keys named after what they
   open (owner, 2026-10-15, translated: "bind shortcuts to the names"): ⌘D
   the Dashboard (⌘0 stays), ⌘P the Pipeline (⇧⌘B before, kept as a silent
-  alias), ⇧⌘W Work, ⇧⌘T the theme picker at the foot of the sidebar,
+  alias), ⇧⌘W Work, ⌥⌘P the theme picker at the foot of the sidebar
+  (⇧⌘T until 2026-10-20), ⇧⌘T Reopen closed tab, as in a browser,
   ⇧⌘F Send feedback; ⌘F stays Find and ⌘T New shell, a terminal's keys.
   Off macOS: Ctrl+Shift+D (never bare Ctrl+D, a shell's end of input),
-  Ctrl+Shift+P, Ctrl+Alt+Shift+W, Ctrl+Alt+Shift+T, Ctrl+Alt+Shift+F — the
-  three ⇧⌘ chords take Alt because their ⌘ twin (⌘W Close, ⌘T New shell,
-  ⌘F Find) is Ctrl+Shift there (`OFF_MAC_ALT`). None is an item of Tauri's
+  Ctrl+Shift+P, Ctrl+Alt+Shift+W, Ctrl+Alt+Shift+T, Ctrl+Alt+Shift+F,
+  Ctrl+Alt+Shift+P — the three ⇧⌘ chords take Alt because their ⌘ twin
+  (⌘W Close, ⌘T New shell, ⌘F Find) is Ctrl+Shift there (`OFF_MAC_ALT`),
+  and ⌥⌘ is Ctrl+Alt+Shift there as for every ⌥⌘ chord. None is an item of Tauri's
   default macOS menu (there is no Print). **⌘W closes the tab, not the
   window** (owner, 2026-10-16, translated: "Cmd+W must close tabs"). Tauri's
   default menu put Close Window on ⌘W in File and in Window, and a menu's
