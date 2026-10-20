@@ -76,6 +76,9 @@ type workBoard struct {
 
 	mu    sync.Mutex
 	repos map[string]repoGitEntry
+	// events keeps each live session's newest events by generation
+	// (workevents.go).
+	events workEvents
 }
 
 func newWorkBoard(d *Daemon, q *msgQueue) *workBoard {
@@ -88,6 +91,7 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 	day := startOfDay(now, w.d.location())
 	out := api.Work{Now: now.UnixMilli(), DayStart: day.UnixMilli(), Sessions: []api.WorkSession{}, Queued: []api.WorkQueued{}, Repos: []api.WorkRepo{}, Hive: "off"}
 	db := w.d.store.DB()
+	w.events.sweep()
 
 	all, err := store.ListSessions(ctx, db, true, workSessionMax)
 	if err != nil {
@@ -101,12 +105,25 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 		live = append(live, s)
 	}
 	ids := make([]string, len(live))
+	evcs := make(map[string]*workEventsEntry, len(live))
+	today := make(map[string]float64, len(live))
 	for i, s := range live {
 		ids[i] = s.SessionID
-	}
-	today, err := store.SpendBySessionSince(ctx, db, ids, day.UnixMilli())
-	if err != nil {
-		return out, err
+		evc, err := w.sessionEvents(ctx, s.SessionID)
+		if err != nil {
+			return out, err
+		}
+		evcs[s.SessionID] = evc
+		usd, err := evc.readToday(day.UnixMilli(), func() (float64, error) {
+			m, err := store.SpendBySessionSince(ctx, db, []string{s.SessionID}, day.UnixMilli())
+			return m[s.SessionID], err
+		})
+		if err != nil {
+			return out, err
+		}
+		if usd > 0 {
+			today[s.SessionID] = usd
+		}
 	}
 	if out.Totals.MachineTodayUSD, err = store.SpendSince(ctx, db, day.UnixMilli()); err != nil {
 		return out, err
@@ -135,7 +152,7 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 	out.Repos = repos
 
 	for _, s := range live {
-		ws, queued, err := w.session(ctx, s, open[s.SessionID], now)
+		ws, queued, err := w.session(ctx, s, evcs[s.SessionID], open[s.SessionID], now)
 		if err != nil {
 			return out, err
 		}
@@ -180,7 +197,7 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 }
 
 // session is one live session's card, and its queued messages.
-func (w *workBoard) session(ctx context.Context, s store.Session, open store.Turn, now time.Time) (api.WorkSession, []api.WorkQueued, error) {
+func (w *workBoard) session(ctx context.Context, s store.Session, evc *workEventsEntry, open store.Turn, now time.Time) (api.WorkSession, []api.WorkQueued, error) {
 	db := w.d.store.DB()
 	kind := agentOr(s.Agent)
 	ws := api.WorkSession{
@@ -223,7 +240,7 @@ func (w *workBoard) session(ctx context.Context, s store.Session, open store.Tur
 			queued = append(queued, api.WorkQueued{SessionID: s.SessionID, Position: it.Position, Text: clipRunes(it.Text, boardPromptRunes), Start: it.Start, Finish: it.Finish})
 		}
 	} else {
-		if ws.Todo, err = w.q.todo(ctx, s.SessionID, s.LastEventAt); err != nil {
+		if ws.Todo, err = evc.readTodo(func() (*api.BoardTodo, error) { return todoOf(ctx, db, s.SessionID) }); err != nil {
 			return ws, nil, err
 		}
 		if owned {
@@ -238,7 +255,9 @@ func (w *workBoard) session(ctx context.Context, s store.Session, open store.Tur
 			}
 		}
 		if kind == agents.AgentClaude {
-			evs, err := store.LastEventsFiltered(ctx, db, s.SessionID, queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
+			evs, err := evc.read(&evc.turns, func() ([]event.Event, error) {
+				return store.LastEventsFiltered(ctx, db, s.SessionID, queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
+			})
 			if err != nil {
 				return ws, nil, err
 			}
@@ -250,7 +269,7 @@ func (w *workBoard) session(ctx context.Context, s store.Session, open store.Tur
 	case hooked:
 		ws.State = stateOf(waiting)
 	default:
-		if ws.State, err = w.narratedState(ctx, s.SessionID, now); err != nil {
+		if ws.State, err = w.narratedState(ctx, evc, s.SessionID, now); err != nil {
 			return ws, nil, err
 		}
 	}
@@ -352,8 +371,10 @@ func stateOf(waiting string) string {
 // narratedState is the state of a session whose hooks do not say when its
 // turn ends (another agent, or Claude Code without hooks): the Now screen's
 // reading of its newest main-thread events.
-func (w *workBoard) narratedState(ctx context.Context, id string, now time.Time) (string, error) {
-	evs, err := store.LastEventsFiltered(ctx, w.d.store.DB(), id, workStateScan, store.EventFilter{MainOnly: true})
+func (w *workBoard) narratedState(ctx context.Context, evc *workEventsEntry, id string, now time.Time) (string, error) {
+	evs, err := evc.read(&evc.state, func() ([]event.Event, error) {
+		return store.LastEventsFiltered(ctx, w.d.store.DB(), id, workStateScan, store.EventFilter{MainOnly: true})
+	})
 	if err != nil {
 		return "", err
 	}

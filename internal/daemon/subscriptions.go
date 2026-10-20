@@ -245,7 +245,7 @@ func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, erro
 		return ""
 	}
 	spend := map[string]store.SubscriptionSpend{}
-	if rows, err := store.SpendBySubscription(ctx, d.store.DB(), time.Now().Add(-7*24*time.Hour).UnixMilli()); err == nil {
+	if rows, err := d.subSpend.get(ctx, d.store, time.Now()); err == nil {
 		for _, r := range rows {
 			spend[r.Agent+"|"+r.Subscription] = r
 		}

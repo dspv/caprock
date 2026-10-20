@@ -521,6 +521,9 @@ type Server struct {
 	// recent keeps each listed session's reads of its own events between
 	// requests, by events generation (recentcache.go).
 	recent recentCache
+	// pace keeps each plan window's measured slope by the newest sample it
+	// was computed from (pacecache.go).
+	pace paceCache
 	// localRepos is the last scan for repositories under the default folder
 	// (GET /v1/browse/repos, repos.go).
 	localRepos localRepoCache
@@ -2173,7 +2176,7 @@ func (s *Server) paceForecast(ctx context.Context, window string, snap store.Rat
 	if snap.UsedPercentage >= 100 {
 		return "", 0
 	}
-	pctPerHour, ok, err := store.RateLimitPace(ctx, s.d.Store.DB(), window, snap.ResetsAt)
+	pctPerHour, ok, err := s.pace.get(ctx, s.d.Store.DB(), window, snap.ResetsAt)
 	if err != nil || !ok || pctPerHour <= 0 {
 		return "", 0
 	}
