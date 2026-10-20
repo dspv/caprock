@@ -61,6 +61,13 @@ test('a failing pull request of the session offers Fix CI in the inspector, asks
   await page.route(`**/v1/sessions/${s.id}/prs`, (r) => r.fulfill(json({ connected: true, prs: [{ session_id: s.id, number: 9, url: live.url, title: live.title, last_at: now, live }] })))
   await page.route(`**/v1/sessions/${s.id}/ci/stats`, (r) => r.fulfill(json(stats)))
   await page.route(`**/v1/sessions/${s.id}/ci?pr=9`, (r) => r.fulfill(json({ connected: true, pr: { number: 9, live }, ci: null })))
+  // The stand's repositories have no remote, so the Pipeline would list none
+  // ("No repository yet"; on macOS the daemon reports the temp folder as one
+  // it does not read, which kept it listed): say each is on GitHub.
+  await page.route('**/v1/repos/remotes?*', (r) => {
+    const dirs = new URL(r.request().url()).searchParams.getAll('dir')
+    return r.fulfill(json({ repos: dirs.map((dir) => ({ dir, root: dir, repo: `a/${dir.split(/[\\/]/).pop()}` })) }))
+  })
   await page.route(`**/v1/sessions/${s.id}/ci/main`, (r) => r.fulfill(json({ connected: false })))
   await page.route(`**/v1/sessions/${s.id}/ci/release`, (r) => r.fulfill(json({ connected: false })))
   await page.route(`**/v1/agents/${s.id}/queue`, (r) => {
