@@ -12,6 +12,15 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.140.1] - 2026-10-20
+
+### Changed
+
+- **deps:** routine dependency updates: purego 0.11.2, klauspost/compress
+  1.20.3, golang.org/x/text 0.43.0 and x/sync 0.24.0; React 19.3.1, Vitest
+  5.0.5, jsdom 30.1.3 and Playwright 1.64.1 for the dashboard's tests; the
+  goreleaser action 7.3.0 for release builds.
+
 ## [0.140.0] - 2026-10-20
 
 ### Added
