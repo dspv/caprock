@@ -5,18 +5,18 @@ go 1.26.0
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/coder/websocket v1.8.15
-	github.com/ebitengine/purego v0.11.1
+	github.com/ebitengine/purego v0.11.2
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.25.0
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.3
 	github.com/shirou/gopsutil/v4 v4.26.9
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.49.0
-	golang.org/x/text v0.37.0
+	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.60.1
 )
 
