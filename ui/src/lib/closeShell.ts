@@ -167,8 +167,36 @@ export function planChatClose(
   return plan
 }
 
+/**
+ * The quick chats a bulk close ends — a project's *Close tabs*, its ×,
+ * Hide, Remove from list (AppShell onCloseProjectTabs): planChatClose over
+ * each closing tab, merged. A chat ends with its tab however the tab is
+ * closed (owner, 2026-10-20: tabs closed from a project's menu left their
+ * chats running with no tab, listed forever). Agents and shells are not
+ * here: those keep the rules of their own close.
+ */
+export function planTabsChatClose(
+  tabs: readonly Tab[],
+  sessions: ReadonlyMap<string, SessionSummary>,
+  isChat: (s: SessionSummary) => boolean,
+  startedHere: (id: string) => boolean = () => false,
+): ChatClosePlan {
+  const plan: ChatClosePlan = { stop: [], busy: [] }
+  for (const t of tabs) {
+    const p = planChatClose(t, undefined, sessions, isChat, startedHere)
+    for (const id of p.stop) if (!plan.stop.includes(id) && !plan.busy.includes(id)) plan.stop.push(id)
+    for (const id of p.busy) if (!plan.stop.includes(id) && !plan.busy.includes(id)) plan.busy.push(id)
+  }
+  return plan
+}
+
 /** The one question before ending a chat that is still answering. */
 export const CHAT_CLOSE_QUESTION = 'Stop the chat? It is still answering.'
+
+/** The same question when several closing tabs hold chats still answering. */
+export function chatsCloseQuestion(n: number): string {
+  return n > 1 ? `Stop ${n} chats? They are still answering.` : CHAT_CLOSE_QUESTION
+}
 
 /**
  * The agents a closing tab or pane shows that Caprock started: `all` of

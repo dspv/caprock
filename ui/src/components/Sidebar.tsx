@@ -626,6 +626,7 @@ export function Sidebar(props: SidebarProps) {
           root={menuNode.project.root}
           hidden={hidden.has(menuNode.project.id)}
           tabs={props.tabCounts?.get(menuNode.project.id) ?? 0}
+          chats={(allTabs ?? []).filter((t) => t.projectId === menuNode.project.id && props.tabLabels?.get(t.id)?.chat).length}
           editors={props.editors ?? null}
           onHide={(hide) => onHide(menuNode.project.id, hide)}
           onCloseTabs={() => props.onCloseProjectTabs?.(menuNode.project.id)}

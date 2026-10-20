@@ -270,15 +270,25 @@ One window, three regions:
   its conversation (ChatView), so there is no terminal to get lost in — the
   2026-10-12 complaint. The chooser stays as *Quick chat with…* in the +
   menu and the palette.
-- **A quick chat's tab** (owner, 2026-10-12, same report). It is named
+- **A quick chat's tab** (owner, 2026-10-12, same report). Until it has a
+  title of its own it is named
   *Quick chat · Opus 5.5* — the pricing table's model name once it has
   answered, before that the model it was started on, which the window that
   started it keeps (`caprock.quickchat.started`), else the agent's name — in
   the strip, the sidebar row and the inspector's header (`lib/quickchat.ts`;
   a chat is known by its folder, `<data_dir>/chats/<stamp>`, as the daemon's
-  `chatLabel` knows it; since ADR-071 the session row also says `chat`). The
-  sidebar groups it under *Outside projects* only while it has a tab or waits
-  on you (every chat is on the Chats screen); the tab no longer wears that
+  `chatLabel` knows it; since ADR-071 the session row also says `chat`).
+  Once it has a title (the agent's, or a few words of its first prompt) it is
+  called that, as every other session is, and its sidebar row carries the
+  model as a quiet suffix and, with no tab, its start time — *09:40* today,
+  else *19 Oct 09:40* (`chatRowSuffix`; owner, 2026-10-20: two rows both
+  said *Quick chat · …* and could not be told apart). The
+  sidebar groups it under *Outside projects* while it has a tab, and with no
+  tab only while it works or asks for something (a permission prompt, a
+  question), or for 10 minutes after its last answer (`chatListed`,
+  `CHAT_LINGER_MS`; owner, 2026-10-20: every chat waits on you once it has
+  answered, so a chat whose tab was lost stayed listed for as long as it
+  ran). Every chat is on the Chats screen and in the palette; the tab no longer wears that
   group as its chip, and opens on the conversation. A line above it says *Quick chat with Claude · Opus 5.5 — ⌘W or /exit
   ends it* (keys through `keys()`; Gemini's is /quit), with a × that hides it
   for good (`caprock.quickchat.hint`). **When the agent exits** the tab stays,
@@ -291,12 +301,18 @@ One window, three regions:
   terminal, and reloaded the window to leave.
 - **Closing a quick chat ends it** (owner, 2026-10-12: closed chats piled
   up as idle sessions under *Outside projects*). ⌘W, the tab's ×, the
-  sidebar's × and *Close tab* stop a quick chat's process with the tab — the
+  sidebar's × and *Close tab* stop a quick chat's process with the tab, and
+  so does every bulk close — a project's *Close tabs*, its ×, *Hide*,
+  *Remove from list* (`planTabsChatClose` in `onCloseProjectTabs`; owner,
+  2026-10-20) — the
   same `kill` as the cockpit's *Stop the session…*; the conversation is
   kept and can be continued. An idle chat ends with no question; one still
   answering (activity `working` or `looping`) asks once — *Stop the chat? It
   is still answering.* — with **Stop and close**, **Keep it running, close
-  tab** and **Cancel** (`CloseChatConfirm`). Only a chat Caprock started and
+  tab** and **Cancel** (`CloseChatConfirm`). After a bulk close the tabs
+  are gone already: the same question (*Stop 2 chats? They are still
+  answering.* for several) comes with **Stop** and **Keep running**, and
+  Escape keeps them running. Only a chat Caprock started and
   still running is stopped (`owned`, not ended; rule 7): known by its
   folder, or one this window spawned a moment ago that the session list
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent

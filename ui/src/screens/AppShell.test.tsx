@@ -112,6 +112,8 @@ beforeEach(() => {
   // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
+  // A test may give the daemon a project list (daemonProjects); the rest have none.
+  fetchMock.mockImplementation(async () => new Response('', { status: 404 }))
   vi.stubGlobal('fetch', fetchMock)
   location.hash = '#/app'
   vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
@@ -705,6 +707,53 @@ describe('the app workspace', () => {
     fireEvent.click(within(ask).getByRole('button', { name: 'Keep it running, close tab' }))
     await waitFor(() => expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull())
     expect(spawned.signals).toEqual([])
+  })
+
+  // Owner, 2026-10-20: a chat whose tab was closed from its project's menu
+  // kept running with no tab, listed under "Running, no tab" for good.
+  // Outside projects, where a chat's tab sits, closes its tabs by Hide. It
+  // is there once the daemon keeps a project list (the chat is in none).
+  async function closeOutsideTabs() {
+    fireEvent.click(await screen.findByRole('button', { name: /^Hide Outside projects/ }))
+  }
+
+  const daemonProjects = () => fetchMock.mockImplementation(async (url: unknown) => String(url).endsWith('/v1/projects')
+    ? new Response(JSON.stringify({ projects: [{ id: 1, name: 'app', root: '/w/app', kind: 'folder' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    : new Response('', { status: 404 }))
+
+  it('ends an idle quick chat when its group’s tabs are closed in bulk, as ⌘W does', async () => {
+    daemonProjects()
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await closeOutsideTabs()
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'end']]))
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+  })
+
+  it('asks once before a bulk close ends a quick chat still answering; Keep running leaves it be', async () => {
+    daemonProjects()
+    spawned.health = 'working'
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await waitFor(() => expect(screen.getAllByText('Working').length).toBeGreaterThan(0))
+    await closeOutsideTabs()
+    const ask = await screen.findByRole('dialog', { name: 'Stop chats that are answering' })
+    expect(ask).toHaveTextContent('Stop the chat? It is still answering.')
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+    fireEvent.click(within(ask).getByRole('button', { name: 'Keep running' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Stop chats that are answering' })).toBeNull())
+    expect(spawned.signals).toEqual([])
+  })
+
+  it('stops a quick chat still answering when a bulk close is told to', async () => {
+    daemonProjects()
+    spawned.health = 'working'
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await waitFor(() => expect(screen.getAllByText('Working').length).toBeGreaterThan(0))
+    await closeOutsideTabs()
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Stop chats that are answering' })).getByRole('button', { name: 'Stop' }))
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'end']]))
   })
 
   // Owner, 2026-10-14 (translated): "I just want to switch between them
