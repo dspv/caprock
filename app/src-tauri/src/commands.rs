@@ -233,3 +233,11 @@ pub fn set_zoom<R: Runtime>(scale: f64, webview: Webview<R>) -> Result<(), Strin
         .set_zoom(scale.clamp(0.8, 1.6))
         .map_err(|e| e.to_string())
 }
+
+/// One line in the app's own log (`<data dir>/app.log`, applog.rs) from the
+/// dashboard: its crash screen, or its watchdog for a page that never
+/// started. On this machine only; at most `PAGE_LINES_PER_RUN` lines a run.
+#[tauri::command]
+pub fn app_log<R: Runtime>(webview: Webview<R>, message: String, sup: tauri::State<'_, Sup>) {
+    crate::applog::page_line(&sup.data_dir, webview.label(), &message);
+}

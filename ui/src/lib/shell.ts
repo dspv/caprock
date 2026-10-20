@@ -99,6 +99,8 @@ export const shell = {
   openMailWindow: () => shellInvoke<boolean>('open_mail_window'),
   /** A browser tab's page: a window of its own the shell lays over the tab (ADR-075, app/src-tauri/src/browser.rs). */
   browserTab: (id: string, act: BrowserAct) => shellInvoke<void>('browser_tab', { id, act }),
+  /** One line in the app's own log on this machine (`app.log` in the data directory), never sent anywhere: why the window had to recover. */
+  appLog: (message: string) => shellInvoke<void>('app_log', { message }),
 }
 
 /**

@@ -7,7 +7,7 @@ use crate::discovery;
 use crate::supervisor::{State, Supervisor};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -20,6 +20,31 @@ pub const MAIN: &str = "main";
 
 /// The main window has finished loading a page at least once.
 static MAIN_LOADED: AtomicBool = AtomicBool::new(false);
+
+/// Pages the main window has finished loading, for the load watch.
+static LOADS: AtomicU64 = AtomicU64::new(0);
+
+/// Whether the last page the shell asked the main window for finished
+/// loading (recover.rs).
+static WATCH: Mutex<crate::recover::LoadWatch> = Mutex::new(crate::recover::LoadWatch::new());
+
+/// The shell is about to ask the main window for a page: it must finish
+/// loading within the watch's grace, or the monitor asks again.
+pub fn expect_load() {
+    WATCH
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .asked(Instant::now(), LOADS.load(Ordering::Relaxed));
+}
+
+/// Whether the page the shell asked for is overdue (`LoadWatch::overdue`):
+/// the retry's number and the grace that ran out.
+fn load_overdue() -> Option<(u32, Duration)> {
+    let mut w = WATCH.lock().unwrap_or_else(|e| e.into_inner());
+    let grace = w.grace();
+    w.overdue(Instant::now(), LOADS.load(Ordering::Relaxed))
+        .then(|| (w.tries(), grace))
+}
 
 /// The dashboard's app entry point: the UI turns its app layout on for the
 /// `?app=1` flag and opens the workspace at `#/app` (`ui/src/lib/appmode.ts`).
@@ -158,6 +183,7 @@ pub fn build(
             #[cfg(all(feature = "snapshot", target_os = "macos"))]
             crate::snapshot::loaded(p.url());
             MAIN_LOADED.store(true, Ordering::Relaxed);
+            LOADS.fetch_add(1, Ordering::Relaxed);
             // Shown once, when the first page is ready (no white flash); a
             // later reload must not pull the window forward.
             if !shown.swap(true, Ordering::Relaxed) {
@@ -429,6 +455,8 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
         let mut full_at = Instant::now();
         // The shell replaced the daemon under a page it had served.
         let mut swapped_under_page = false;
+        // The window's first page is one the shell asked for, too.
+        expect_load();
         loop {
             // `/v1/status` every FULL_CHECK; `/healthz` alone in between.
             let found = if full_at.elapsed() < FULL_CHECK {
@@ -489,6 +517,9 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
             let main = app.get_webview_window(MAIN);
             if let Some(w) = &main {
                 follow(w, &sup, &state, &mut resume);
+                if let State::Connected { port, .. } = &state {
+                    retry_overdue_load(w, &sup, *port);
+                }
             }
             let fast = matches!(state, State::Searching | State::Starting { .. });
             let visible = || main.as_ref().is_none_or(|w| w.is_visible().unwrap_or(true));
@@ -526,6 +557,7 @@ const HIDDEN_CHECK: Duration = Duration::from_secs(5);
 fn reload_after_swap(app: &AppHandle, port: u16) {
     if let Some(w) = app.get_webview_window(MAIN) {
         if w.url().is_ok_and(|u| reloads_after_swap(&u, port)) {
+            expect_load();
             let _ = w.reload();
         }
     }
@@ -540,8 +572,45 @@ fn reload_after_swap(app: &AppHandle, port: u16) {
 #[cfg(target_os = "macos")]
 pub fn reload_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN) {
+        expect_load();
         let _ = w.reload();
     }
+}
+
+/// A page the shell asked for (the launch's, a move to the dashboard, a
+/// reload) never finished loading while the daemon answers: a navigation cut
+/// off before anything arrived fires no event, and the window would keep an
+/// address on the daemon and draw nothing. Load it again, from the daemon:
+/// its route when the address is the daemon's, else the workspace.
+fn retry_overdue_load(w: &WebviewWindow, sup: &Supervisor, port: u16) {
+    let Some((retry, grace)) = load_overdue() else {
+        return;
+    };
+    let url = w
+        .url()
+        .ok()
+        .filter(|u| is_daemon(u, Some(port)))
+        .unwrap_or_else(|| dashboard_url(port));
+    crate::applog::line(
+        &sup.data_dir,
+        &format!(
+            "main window: no page finished loading within {} s; loading {} again (retry {retry})",
+            grace.as_secs(),
+            log_url(&url)
+        ),
+    );
+    let _ = w.navigate(url);
+}
+
+/// An address for the app's log: scheme, host, port and path; never the
+/// query or the route, which may name a session.
+pub fn log_url(u: &Url) -> String {
+    let mut s = format!("{}://{}", u.scheme(), u.host_str().unwrap_or(""));
+    if let Some(p) = u.port() {
+        s.push_str(&format!(":{p}"));
+    }
+    s.push_str(u.path());
+    s
 }
 
 fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut Option<Url>) {
@@ -549,6 +618,15 @@ fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut 
     match state {
         State::Connected { port, .. } => {
             if let Some(url) = page_for(&current, resume.take(), *port) {
+                if !is_daemon(&current, None) {
+                    crate::applog::line(
+                        &sup.data_dir,
+                        &format!(
+                            "main window: the daemon answers on port {port}; back to the dashboard"
+                        ),
+                    );
+                }
+                expect_load();
                 let _ = w.navigate(url);
             }
         }
@@ -560,7 +638,19 @@ fn follow(w: &WebviewWindow, sup: &Arc<Supervisor>, state: &State, resume: &mut 
             if matches!(state, State::Stopped) && sup.page_polls() {
                 return; // the page shows its own banner and reconnects
             }
+            let why = if matches!(state, State::Stopped) {
+                "gone"
+            } else {
+                "too old"
+            };
+            crate::applog::line(
+                &sup.data_dir,
+                &format!(
+                    "main window: the daemon is {why}; showing the app's own page until it is back"
+                ),
+            );
             *resume = Some(current);
+            expect_load();
             let _ = w.navigate(fallback_url());
         }
         _ => {}
@@ -694,6 +784,15 @@ mod tests {
             4174
         ));
         assert!(!reloads_after_swap(&fallback_url(), 4173));
+    }
+
+    #[test]
+    fn the_log_names_where_a_page_was_but_never_the_route() {
+        assert_eq!(
+            log_url(&url("http://127.0.0.1:4173/?app=1#/session/abc")),
+            "http://127.0.0.1:4173/"
+        );
+        assert!(log_url(&fallback_url()).ends_with("/index.html"));
     }
 
     #[test]

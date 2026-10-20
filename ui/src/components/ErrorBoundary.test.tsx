@@ -24,6 +24,24 @@ describe('ErrorBoundary', () => {
     expect(opened[1]).toMatch(/^mailto:hi@caprock\.dev\?/)
   })
 
+  it('full, in the app: the crash is written to the app’s own log, an inline one is not', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const invoke = vi.fn(() => Promise.resolve())
+    const w = window as unknown as { __TAURI_INTERNALS__?: unknown }
+    w.__TAURI_INTERNALS__ = { invoke }
+    try {
+      render(<div><ErrorBoundary label="The deck"><Boom /></ErrorBoundary></div>)
+      expect(invoke).not.toHaveBeenCalled()
+      render(<ErrorBoundary full><Boom /></ErrorBoundary>)
+      expect(invoke).toHaveBeenCalledTimes(1)
+      const [cmd, args] = invoke.mock.calls[0] as unknown as [string, { message: string }]
+      expect(cmd).toBe('app_log')
+      expect(args.message).toMatch(/^crash screen: TypeError: Cannot read properties of null/)
+    } finally {
+      delete w.__TAURI_INTERNALS__
+    }
+  })
+
   it('inline: one panel fails, with retry and the same report', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     render(<div><p>terminal</p><ErrorBoundary label="The deck"><Boom /></ErrorBoundary></div>)

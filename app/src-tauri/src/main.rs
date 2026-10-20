@@ -4,6 +4,7 @@
 //! in the Go daemon and the React UI it serves.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod applog;
 mod badge;
 mod browser;
 mod capture;
@@ -27,6 +28,7 @@ mod notify_linux;
 mod notify_macos;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod popover;
+mod recover;
 mod shell;
 #[cfg(unix)]
 mod sigterm;
@@ -72,7 +74,8 @@ macro_rules! handler {
             capture::capture_webview,
             capture::read_dropped_image,
             capture::read_dropped_text,
-            browser::browser_tab
+            browser::browser_tab,
+            commands::app_log
         ]
     };
 }
@@ -88,6 +91,8 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(capture::Dropped::default())
+        .manage(recover::Crashes::default())
+        .manage(recover::LogDir(sup.data_dir.clone()))
         .manage(sup)
         .manage(shell::Downloads::default())
         .manage(browser::Pages::default())
@@ -123,6 +128,11 @@ fn main() {
     let b = configure(tauri::Builder::default(), sup);
     #[cfg(target_os = "macos")]
     let b = b.activate_ignoring_other_apps(!quiet);
+    // macOS ends a WebView's content process under memory pressure, and
+    // Tauri leaves the view blank (white) until it is reloaded: reload it,
+    // and say so in the app's log (recover.rs).
+    #[cfg(target_os = "macos")]
+    let b = b.on_web_content_process_terminate(recover::on_terminated);
     b.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(|app, _, event| {
@@ -490,6 +500,20 @@ mod tests {
     fn the_daemon_page_may_read_the_status() {
         let state = invoke(DAEMON, "daemon_status", serde_json::json!({})).expect("allowed");
         assert_eq!(state["state"], "searching");
+    }
+
+    #[test]
+    fn only_the_dashboard_may_write_to_the_apps_log() {
+        let line = serde_json::json!({"message": "crash screen: TypeError: x"});
+        invoke(DAEMON, "app_log", line.clone()).expect("allowed");
+        let err = invoke_in("tray", POPOVER, "app_log", line.clone()).expect_err("popover");
+        assert!(err.to_string().contains("not allowed"), "{err}");
+        let err = invoke_in("mail", DAEMON, "app_log", line.clone()).expect_err("mail");
+        assert!(err.to_string().contains("not allowed"), "{err}");
+        for url in ["https://example.com/", "http://localhost:4391/"] {
+            let err = invoke(url, "app_log", line.clone()).expect_err(url);
+            assert!(err.to_string().contains("not allowed"), "{url}: {err}");
+        }
     }
 
     #[test]

@@ -31,6 +31,7 @@ fn main() {
             "open_mail_app",
             "open_mail_window",
             "browser_tab",
+            "app_log",
         ]),
     ))
     .expect("tauri build");

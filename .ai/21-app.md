@@ -1656,6 +1656,50 @@ app had no reload command.
   have no menu; F5 reloads there, unless a focused terminal took the key for
   its program. Ctrl+R is not used: it is the shell's history search.
 
+## A blank window recovers by itself
+
+A user reported the window "sometimes turns completely white", with nothing
+to press, until she quit and reopened the app (2026-10-20). Reading the shell
+and wry 0.57 found three ways to that, none of which told the shell anything
+(`app/src-tauri/src/recover.rs`, `app/README.md` § When the window goes
+blank):
+
+- **The WebContent process ended.** macOS ends a WebView's content process
+  under memory pressure (WebKit too, past its own limit), and it can crash.
+  wry hands `webViewWebContentProcessDidTerminate` to Tauri, and Tauri does
+  nothing unless the app sets `Builder::on_web_content_process_terminate`;
+  the window then draws nothing until a reload. The workspace keeps every
+  terminal mounted with 10,000 lines of scrollback and a WebGL atlas each,
+  so its process is a large one to end. The app now reloads the webview —
+  the main window, Mail, the popover or a browser tab's page — at once the
+  first time, then after 2 s, 10 s and a minute when it repeats within ten
+  minutes, so a page that dies on every load does not spin.
+- **A navigation failed before anything arrived.** wry implements no
+  `didFailProvisionalNavigation`: a load cut off by a daemon restarting at
+  that moment fires no event. The window can keep an address on the
+  daemon's origin and draw nothing, and the monitor, seeing it "already
+  there" (`page_for`), left it so. Every load the shell asks for (the
+  launch's first page, a move to the dashboard or the fallback page, a
+  reload after a swap, View → Reload) is now watched: with no load finished
+  10 s later and the daemon answering, the monitor loads it again, the
+  grace doubling to a minute.
+- **The page loaded and drew nothing.** `index.html` arrived but a file of it
+  did not (the daemon stopped mid-load), or something threw before React
+  drew: an empty `#root`, outside every error boundary. A plain inline
+  script in `ui/index.html`, which runs when the bundle could not, shows
+  *Reconnecting to Caprock…* with **Reload** after 10 s (1.5 s after a file
+  failed), asks `/healthz` with a growing pause, and reloads when it
+  answers — at once after a failure, after 30 s for a page merely empty —
+  five times in ten minutes at most (`caprock.boot.reloads` in
+  sessionStorage). A root that empties after React drew gets the same.
+
+Which one happened is written to the app's own log, `<data_dir>/app.log`,
+one UTC line each, with the crash screen's error beside them and the
+monitor's moves to and from the fallback page. It is a local file (rule 4):
+an address in it keeps port and path, never the route or the query. Which
+of the three the reported window was is not known; the log is how the next
+report answers it.
+
 ## Terminal protocol v2
 
 The terminal socket today replays a snapshot on every connect and carries no
