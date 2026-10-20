@@ -93,10 +93,10 @@ export interface TabStripProps {
   onToggleInspector: () => void
   /** Each tab's ⌘1–⌘9, by its place: 1–8, and 9 on the last. */
   digits?: ReadonlyMap<string, number>
-  /** The tab in front shows its chat instead of its terminal (WP-14). */
-  chatOpen?: boolean
-  /** Absent when the tab in front has no conversation: a shell. */
-  onToggleChat?: () => void
+  /** How the tab in front shows its session: its chat over the terminal, or the terminal (lib/sessionView). */
+  view?: 'chat' | 'terminal'
+  /** The Chat / Terminal switch; absent when the tab in front has no conversation: a shell. */
+  onView?: (view: 'chat' | 'terminal') => void
   /** The session deck under the agent's terminal is open. */
   deckOpen?: boolean
   /** Absent when the tab in front is not an agent's: a shell has no deck. */
@@ -442,20 +442,28 @@ export function TabStrip(props: TabStripProps) {
         </div>
       </div>
       <div className="mb-1 flex shrink-0 items-center gap-0.5">
-        {props.paneTools !== false && props.onToggleChat && (
-          // Worded, as Deck is: the bare bubble said nothing (owner,
-          // 2026-10-14, translated: "it opens who knows what"). The word
-          // stays *Chat* in both states; pressed is the way back.
-          <button type="button" data-chat-toggle aria-label="Chat" aria-pressed={!!props.chatOpen} onClick={props.onToggleChat}
-            title={props.chatOpen
-              ? 'Back to the terminal'
-              : 'Read this session as a chat: your prompts, the agent\'s replies, one line per tool call, and a field that types into it. The terminal keeps running.'}
-            className={`flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.chatOpen ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
-            }`}>
-            <ChatIcon size={15} />
-            <span>Chat</span>
-          </button>
+        {props.paneTools !== false && props.onView && (
+          // Chat / Terminal, both worded (owner, 2026-10-20, translated: "a
+          // chat should look like a chat, not like an ugly terminal"). Two
+          // views of one session: the terminal stays mounted under the chat,
+          // and switching types nothing into it.
+          <div role="group" aria-label="Show the session as" data-view-switch className="mr-1 flex h-[26px] items-stretch overflow-hidden rounded-[7px] border border-border text-[12px]">
+            {(['chat', 'terminal'] as const).map((v) => {
+              const on = (props.view ?? 'terminal') === v
+              return (
+                <button key={v} type="button" data-view={v} aria-pressed={on} onClick={() => { if (!on) props.onView!(v) }}
+                  title={v === 'chat'
+                    ? 'Read this session as a chat: your messages, the agent\'s replies, one line per tool call, and a field that types into it. The terminal keeps running.'
+                    : 'The session\'s terminal, as Claude Code draws it'}
+                  className={`flex items-center gap-1.5 px-2 transition-colors duration-100 motion-reduce:transition-none ${
+                    on ? 'bg-[var(--app-row-active)] font-medium text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+                  }`}>
+                  {v === 'chat' ? <ChatIcon size={14} /> : <TerminalIcon size={14} />}
+                  <span>{v === 'chat' ? 'Chat' : 'Terminal'}</span>
+                </button>
+              )
+            })}
+          </div>
         )}
         {props.paneTools !== false && props.onToggleDeck && (
           // Labelled, with its key, so the deck is found (owner, 2026-10-11:

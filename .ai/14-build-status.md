@@ -76,6 +76,17 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-20 — unreleased: Chat or Terminal in an agent tab
+
+An agent tab in the app has a **Chat | Terminal** switch in the strip in
+place of the single Chat button. Quick chats and other chats open on Chat,
+project sessions on Terminal; a switch is remembered per session in this
+window's storage. Chat is the existing `ChatView` (no second renderer) with
+a reading column, plain-words tool lines and the raw keys folded; a question
+with options and several prompts at once point to **Open in Terminal**. The
+terminal stays mounted and hidden under the chat, so switching restarts and
+types nothing. See [Chat or Terminal](04-ui.md) under § Chat.
+
 ### 2026-10-18 — unreleased: distinct Codex and ChatGPT identities
 
 Restored Codex's original square-C glyph and cream terminal character at the

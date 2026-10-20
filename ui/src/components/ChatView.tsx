@@ -37,7 +37,7 @@ import { QuickReplies } from './QuickReplies'
 import { canSpeak, speak, stopSpeaking, useAutoRead, useSpeaking } from '@/lib/readAloud'
 import { fetchTldr } from '@/lib/tldr'
 import { useQuickReplies } from '@/lib/quickReplies'
-import { agentDisplayName, fmtElapsed, openTurn, promptParts, type TurnState } from '@/lib/chatActivity'
+import { agentDisplayName, donePhrase, fmtElapsed, openTurn, promptParts, type TurnState } from '@/lib/chatActivity'
 import { useNow } from '@/lib/useNow'
 import { PermissionPrompt, usePermission } from './PermissionPrompt'
 
@@ -99,7 +99,7 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false }: {
+export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal }: {
   sessionId: string
   /** The session's agent (Session.agent), for *Claude is thinking…*. */
   agent?: string
@@ -131,6 +131,13 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   /** Space kept at the top of the log, in px, for a bar drawn over it: the
    *  first message starts below the bar and scrolls under it. */
   topInset?: number
+  /** The app's Chat view of a tab (.ai/04-ui.md § Chat, *Chat or Terminal*):
+   *  a reading column on a wide window, each tool call in plain words
+   *  (*Searched the web: …*), and a messenger's field. */
+  desk?: boolean
+  /** Brings this session's terminal forward in place of the chat, for what
+   *  only the terminal answers (a question with options, several prompts). */
+  onOpenTerminal?: () => void
 }) {
   const [events, setEvents] = useState<readonly Event[]>([])
   const eventsRef = useRef<readonly Event[]>([])
@@ -245,6 +252,17 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
   const [permission] = usePermission(sessionId)
   const start = startKey ? indexFrom(messages, startKey) : Math.max(0, messages.length - CHAT_WINDOW)
   const shown = messages.slice(start)
+  // A question the agent asks with options (AskUserQuestion) still open: the
+  // daemon draws no card for it (its answers are not Yes and No), so the
+  // chat says what is asked and where it is answered.
+  const question = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!
+      if (m.kind === 'tool' && m.tool === 'AskUserQuestion') return m.result === undefined && !m.interrupted ? m : null
+      if (m.kind === 'user') return null
+    }
+    return null
+  }, [messages])
 
   // The phone's latest answer (.ai/04-ui.md § From a phone, *The latest
   // answer*): the last thing the agent wrote, and whether its turn has ended
@@ -495,7 +513,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
           onScroll={onScroll}
           role="log"
           aria-label="Conversation"
-          className="absolute inset-0 flex flex-col overflow-y-auto [&>*]:shrink-0 overscroll-contain px-3 pt-9 pb-2"
+          className={`absolute inset-0 flex flex-col overflow-y-auto [&>*]:shrink-0 overscroll-contain pt-9 pb-2 ${desk ? DESK_COLUMN : 'px-3'}`}
           style={topInset ? { paddingTop: 36 + topInset } : undefined}
         >
           {/* No height of its own, drawn in the padding above the first
@@ -526,14 +544,15 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
               onContinue={canType ? () => void submitText(continueText) : undefined}
               onStop={canType ? () => { stopSpeaking(); send('\x1b'); say('Stopped — Esc sent.') } : undefined}
             />
-          ) : <Message key={m.id} m={m} onPath={onPath} />))}
+          ) : <Message key={m.id} m={m} onPath={onPath} plain={desk} />))}
           {outgoing.map((o) => (
             <OutgoingBubble key={`out-${o.key}`} o={o} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
           ))}
           {!ended && (turn || permission) && (
             <ChatWorking turn={turn} agent={agentDisplayName(agent)} waiting={!!permission} />
           )}
-          {prompt && !ended && <div className="py-1.5 empty:hidden" data-chat-permission><PermissionPrompt sessionId={sessionId} keys={false} /></div>}
+          {!ended && question && <QuestionLine m={question} onOpenTerminal={onOpenTerminal} />}
+          {prompt && !ended && <div className="py-1.5 empty:hidden" data-chat-permission><PermissionPrompt sessionId={sessionId} keys={false} onOpenTerminal={onOpenTerminal} /></div>}
           {showInput && msgQueue.messages.length > 0 && (
             <QueuedList
               messages={msgQueue.messages}
@@ -555,13 +574,13 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
         )}
       </div>
       {showInput && (
-        <div className="shrink-0">
+        <div className={`shrink-0 ${desk ? DESK_COLUMN : ''}`}>
           {sendError && <div role="alert" className="px-3 pt-1.5 text-[12px] text-danger">{sendError}</div>}
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
           {/* On a phone the latest answer's card carries Continue and Stop
             * instead, and the bar below is one row (owner's variant D, 2026-10-17). */}
           {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone ? 'Message…' : undefined} walkie={phone} />
+          <TerminalKeys send={send} attach={attachPhotos} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone || desk ? 'Message…' : undefined} walkie={phone} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
@@ -570,7 +589,7 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
 }
 
 /** A finished message never changes, so it renders once. */
-const Message = memo(function Message({ m, onPath }: { m: ChatMessage; onPath?: (path: string) => void }) {
+const Message = memo(function Message({ m, onPath, plain = false }: { m: ChatMessage; onPath?: (path: string) => void; plain?: boolean }) {
   if (m.kind === 'user') {
     return (
       <div data-msg-id={m.id} className="flex flex-col items-end py-1.5">
@@ -593,8 +612,8 @@ const Message = memo(function Message({ m, onPath }: { m: ChatMessage; onPath?: 
     )
   }
   if (m.kind === 'notice') return <NoticeLine m={m} />
-  return <ToolLine m={m} />
-}, (a, b) => a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
+  return <ToolLine m={m} plain={plain} />
+}, (a, b) => a.plain === b.plain && a.m.id === b.m.id && a.m.text === b.m.text && a.m.result === b.m.result && a.m.failed === b.m.failed && a.m.exitCode === b.m.exitCode)
 
 /**
  * The phone's latest answer, as a card with its four actions in the footer:
@@ -678,7 +697,7 @@ function NoticeLine({ m }: { m: ChatMessage }) {
   )
 }
 
-function ToolLine({ m }: { m: ChatMessage }) {
+function ToolLine({ m, plain = false }: { m: ChatMessage; plain?: boolean }) {
   const [open, setOpen] = useState(false)
   const shownInput = toolInputText(m.tool ?? '', m.input)
   const result = m.result ?? ''
@@ -691,7 +710,9 @@ function ToolLine({ m }: { m: ChatMessage }) {
         className={`flex w-full min-w-0 items-center gap-1.5 rounded-[6px] px-1.5 py-1 max-sm:min-h-11 text-left text-[12.5px] hover:bg-panel-2 ${m.failed ? 'text-danger' : 'text-fg-muted'}`}
       >
         <ChevronIcon size={12} className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
-        <span className="mono min-w-0 flex-1 truncate">{m.text}</span>
+        {plain
+          ? <span className="min-w-0 flex-1 truncate" title={m.text}>{donePhrase(m.tool ?? '', m.input)}</span>
+          : <span className="mono min-w-0 flex-1 truncate">{m.text}</span>}
         {m.interrupted ? (
           <span className="shrink-0 text-[11px] text-fg-faint">interrupted</span>
         ) : m.result === undefined && <span className="shrink-0 text-[11px] text-fg-faint">running</span>}
@@ -731,6 +752,50 @@ function ChatWorking({ turn, agent, waiting }: { turn: TurnState | null; agent: 
       )}
       <span className={`min-w-0 truncate ${waiting ? 'font-medium text-warn' : ''}`}>{text}</span>
       {clock && <span className="num shrink-0 text-fg-faint">{clock}</span>}
+    </div>
+  )
+}
+
+/**
+ * The app's chat as a reading column: no wider than a comfortable line on a
+ * wide window, centred by its padding so the scrollbar stays at the edge.
+ */
+const DESK_COLUMN = 'px-[max(12px,calc((100%-780px)/2))]'
+
+/** What AskUserQuestion asks, as its input carries it: each question and its options. */
+function questionsOf(input: unknown): { question: string; options: string[] }[] {
+  const qs = (input && typeof input === 'object' ? (input as { questions?: unknown }).questions : undefined)
+  if (!Array.isArray(qs)) return []
+  return qs.flatMap((q: unknown) => {
+    if (!q || typeof q !== 'object') return []
+    const { question, options } = q as { question?: unknown; options?: unknown }
+    if (typeof question !== 'string' || !question.trim()) return []
+    const opts = Array.isArray(options)
+      ? options.map((o: unknown) => (typeof o === 'string' ? o : o && typeof o === 'object' ? String((o as { label?: unknown }).label ?? '') : '')).filter(Boolean)
+      : []
+    return [{ question: question.trim(), options: opts }]
+  })
+}
+
+/**
+ * A question the agent asks with options (AskUserQuestion), while it waits:
+ * what it asks and its options, read-only — they are picked in the terminal's
+ * menu, which the chat cannot drive safely — and the one way there.
+ */
+function QuestionLine({ m, onOpenTerminal }: { m: ChatMessage; onOpenTerminal?: () => void }) {
+  const qs = questionsOf(m.input)
+  return (
+    <div data-chat-question className="my-1.5 grid gap-1 rounded-[10px] border border-accent/50 bg-accent/10 px-3 py-2 text-[13px] text-fg">
+      {qs.length ? qs.map((q, i) => (
+        <div key={i} className="grid gap-0.5">
+          <p className="font-medium">{q.question}</p>
+          {q.options.length > 0 && <p className="text-[12.5px] text-fg-muted">{q.options.join(' · ')}</p>}
+        </div>
+      )) : <p className="font-medium">The agent asks you a question.</p>}
+      <p className="text-[12px] text-fg-muted">
+        Answered in the terminal{onOpenTerminal ? ' · ' : '.'}
+        {onOpenTerminal && <button type="button" className="link" onClick={onOpenTerminal}>Open in Terminal</button>}
+      </p>
     </div>
   )
 }

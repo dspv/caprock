@@ -53,6 +53,42 @@ export function stepPhrase(tool: string, input: unknown): string {
   return `${runVerb(kind)} ${what}`
 }
 
+/** A call's subject, as stepPhrase reads it: the command, the file's name, the pattern, query or URL. */
+function subject(tool: string, input: unknown): string {
+  const i = normalInput(input)
+  const str = (v: unknown) => (typeof v === 'string' ? v.split('\n')[0]!.trim() : '')
+  let what = ''
+  switch (toolKind(tool)) {
+    case 'run': what = str(toolCommand(tool, input)); break
+    case 'read': case 'edit': what = baseName(str(i.file_path ?? i.notebook_path ?? i.path)); break
+    case 'search': what = str(i.pattern ?? i.query ?? i.path); break
+    case 'web': what = str(i.query ?? i.url); break
+    case 'agent': what = str(i.description); break
+    case 'mcp': what = tool.split('__').slice(2).join(' ') || tool; break
+    default: what = ''
+  }
+  return what.length > 120 ? `${what.slice(0, 119)}…` : what
+}
+
+/**
+ * A call in the past tense, in plain words, for the app's chat (.ai/04-ui.md
+ * § Chat, *Chat or Terminal*): *Searched the web: rtx 3060 ti*, *Read
+ * main.go*, *Ran npm test*. The open line keeps the call's input in full.
+ */
+export function donePhrase(tool: string, input: unknown): string {
+  const kind = toolKind(tool)
+  const what = subject(tool, input)
+  const web = /search/i.test(tool) ? 'Searched the web' : 'Fetched'
+  const verb = {
+    edit: 'Edited', read: 'Read', run: 'Ran', search: 'Searched for', web, agent: 'Delegated',
+    plan: 'Updated its plan', ask: 'Asked you', mcp: 'Called', other: `Used ${tool}`,
+  }[kind]
+  if (!what) return kind === 'web' && web === 'Fetched' ? 'Fetched a page' : kind === 'agent' ? 'Delegated to a subagent' : kind === 'run' ? 'Ran a command' : verb
+  if (kind === 'web' && web === 'Searched the web') return `${verb}: ${what}`
+  if (kind === 'agent') return `${verb}: ${what}`
+  return `${verb} ${what}`
+}
+
 /**
  * The open turn in `events` (server order), or null when there is none: no
  * prompt yet, the main thread's Stop after the last prompt, or the session
