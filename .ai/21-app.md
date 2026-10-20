@@ -2501,9 +2501,19 @@ the fallback since the Developer ID; see *With a Developer ID*):
   Gatekeeper opens the app without "Open Anyway". The entitlements stay
   `audio-input` alone: the hardened runtime was already on, and nothing
   needs JIT or a library-validation exception.
-  - **The switch asks once more.** The first Developer ID release
-    satisfies no stored self-signed requirement, so every user answers the
-    microphone and folder prompts once more on it, and not after.
+  - **The switch asks once more.** TCC stores each answer with the
+    requester's designated requirement (`csreq`) and asks again when the
+    running binary does not satisfy it. The self-signed requirement
+    (`certificate leaf = H"…"`) and the Developer ID one (`anchor apple
+    generic … leaf[subject.OU] = <team>`) cannot both hold, so the first
+    Developer ID release asks every user once more for the microphone and
+    each folder the app or its daemon was allowed, and not after. Not
+    affected: answers held by `claude` or `codex` (sessions ask in their own
+    name, ADR-044); notifications (keyed by the bundle id); the keychain
+    items in `internal/secret` (written and read through
+    `/usr/bin/security`, so their ACL names that tool, not Caprock).
+    Unmeasured: whether macOS shows its "Background Items Added" notice
+    again for the daemon's LaunchAgent under the new signer.
   - **Not done yet:** the daemon as an `SMAppService` helper of the app, so
     the prompts carry the app's name and icon — to measure on a signed
     build. Drop `macos-selfsign-keychain.sh` and its secrets once a

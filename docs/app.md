@@ -1366,11 +1366,16 @@ or Photos library, cloud storage or a volume in the background.
   end.
 - **Asking again after an update.** The app is signed with Caprock's Apple
   Developer ID, which stays the same from release to release, so updates
-  keep your microphone and folder answers. The first release signed this
-  way is a new signer to macOS and asks one last time (as the switch to
-  Caprock's own certificate did earlier; the oldest releases asked after
-  every update). The `caprock` Homebrew formula's daemon, when it is the one
-  running, still asks once per release.
+  keep your microphone and folder answers. macOS stores each answer with the
+  signature of the program that got it, and the first release signed this
+  way does not match the self-signed certificate earlier releases used: on
+  its first launch Caprock asks one last time for the microphone and for
+  each folder it was allowed before (as the switch to Caprock's own
+  certificate did earlier; the oldest releases asked after every update).
+  Answers you gave `claude` or `codex` are theirs and stay; notifications
+  and the passwords Caprock keeps in your keychain are not affected. The
+  `caprock` Homebrew formula's daemon, when it is the one running, still
+  asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and
