@@ -181,10 +181,26 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      # The stable self-signed identity, when its secrets are set: signed with
-      # one certificate, the app and daemon keep their designated requirement
-      # across releases, so macOS keeps the microphone and folder answers
-      # after an update. Without the secrets the build stays ad-hoc.
+      # Developer ID signing and notarization, when the Apple secrets are set
+      # (docs/RELEASING.md § The desktop app): exports APPLE_SIGNING_IDENTITY
+      # and, with the App Store Connect key, APPLE_API_KEY_PATH (the .p8
+      # written under RUNNER_TEMP). Without APPLE_CERTIFICATE it does nothing.
+      - name: Developer ID
+        run: bash scripts/macos-developer-id.sh
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || '' }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY || '' }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 || '' }}
+      # The fallback until a notarized release has shipped: the stable
+      # self-signed identity, when its secrets are set and the step above set
+      # no Developer ID. Signed with one certificate, the app and daemon keep
+      # their designated requirement across releases, so macOS keeps the
+      # microphone and folder answers after an update. Without either the
+      # build stays ad-hoc.
       - name: stable signing identity
         run: bash scripts/macos-selfsign-keychain.sh
         env:
@@ -194,11 +210,20 @@ jobs:
       # both architectures, bundle id, the daemon's version) and
       # renders the cask; --no-upload leaves the release to app-macos below.
       # With the updater key, also the signed Caprock_<v>_universal.app.tar.gz
-      # and its .sig (F20, ADR-042). The `|| ''` keeps a missing secret a
-      # warning in the script, not a failed release.
+      # and its .sig (F20, ADR-042). With the Developer ID, `tauri build`
+      # imports the certificate into a temporary keychain itself and, with
+      # the API key, notarizes and staples the .app; the script then
+      # notarizes and staples the .dmg. APPLE_SIGNING_IDENTITY,
+      # APPLE_TEAM_ID and APPLE_API_KEY_PATH come from the steps above
+      # through GITHUB_ENV. The `|| ''` keeps a missing secret a warning in
+      # the script, not a failed release (it unsets what is empty).
       - name: universal .dmg
         run: scripts/app-release.sh "${GITHUB_REF_NAME}" --no-upload
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY || '' }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           # The bundled daemon gets Mail's sign-in client IDs as goreleaser's does.

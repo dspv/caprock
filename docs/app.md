@@ -1358,14 +1358,13 @@ or Photos library, cloud storage or a volume in the background.
   just cannot read that folder.
 - **Sessions started before this change** still ask as "caprock" until they
   end.
-- **Asking again after an update.** Caprock is not yet signed with an
-  Apple Developer ID. Older releases were signed in a way that made each
-  release a new program to macOS, so the microphone and folder questions
-  came back after every update. The app is now signed with one Caprock
-  certificate that stays the same from release to release: the first update
-  to such a release asks one last time, and later updates keep your answers.
-  The `caprock` Homebrew formula's daemon, when it is the one running, still
-  asks once per release.
+- **Asking again after an update.** The app is signed with Caprock's Apple
+  Developer ID, which stays the same from release to release, so updates
+  keep your microphone and folder answers. The first release signed this
+  way is a new signer to macOS and asks one last time (as the switch to
+  Caprock's own certificate did earlier; the oldest releases asked after
+  every update). The `caprock` Homebrew formula's daemon, when it is the one
+  running, still asks once per release.
 - **Why there are several "caprock" entries without an icon.** Each entry
   is a `caprock` binary at a different place: older Homebrew releases
   (Homebrew keeps each version at its own path), the app's daemon, and
@@ -1374,9 +1373,6 @@ or Photos library, cloud storage or a volume in the background.
   its entry instead of adding one. Old entries do no harm; to tidy them,
   select one and press **−** under the list. If a session asks again, allow
   it.
-- **With a signed release** (Developer ID, once Caprock has an Apple
-  developer account): one entry, with Caprock's icon, and no new question
-  after an update.
 
 ### Voice mode and the microphone
 

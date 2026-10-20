@@ -77,7 +77,30 @@ that cannot run everywhere is a gate people learn to skip.
   certificate, so macOS keeps the microphone and folder answers across
   updates; without them the app is ad-hoc signed and asks again after each
   update. **Never replace it casually:** a new certificate makes every user
-  answer once more. It gives way to the Developer ID when that exists.
+  answer once more. Since the Developer ID it is the fallback only, used when
+  `APPLE_CERTIFICATE` is unset; remove the script and both secrets once a
+  notarized release has shipped.
+- ⚠️ **The Apple Developer ID and notarization** (account since 2026-10-20,
+  an Organization): seven secrets on `dspv/caprock`, read by
+  `scripts/macos-developer-id.sh` and `tauri build` in `app-macos-build`:
+  - **`APPLE_CERTIFICATE`**: the `.p12` holding the *Developer ID
+    Application* certificate and its private key, base64 on one line.
+  - **`APPLE_CERTIFICATE_PASSWORD`**: the `.p12`'s password.
+  - **`APPLE_SIGNING_IDENTITY`**: the certificate's full name, `Developer ID
+    Application: <Company> (<TEAMID>)`.
+  - **`APPLE_TEAM_ID`**: the ten-character team id; the build checks the
+    identity and every binary's signature against it.
+  - **`APPLE_API_KEY`**, **`APPLE_API_ISSUER`** and **`APPLE_API_KEY_P8`**: an
+    App Store Connect API key (Users and Access → Integrations, role
+    *Developer*): its key id, the issuer id, and the `.p8` file's text (or the
+    file base64-encoded).
+
+  With the first four the app is Developer ID signed; with all seven it is
+  notarized too. Without `APPLE_CERTIFICATE` the release signs as before
+  (self-signed, or ad-hoc). The `.p8` exists once, at download: keep it with
+  the maintainer. A new Developer ID certificate from the same team keeps
+  the designated requirement (it names the team, not the certificate), so
+  renewing it asks no user again.
 
 - **Mail's sign-in client IDs** (optional): secrets
   **`CAPROCK_MAIL_GOOGLE_CLIENT_ID`**, **`CAPROCK_MAIL_GOOGLE_CLIENT_SECRET`**
@@ -206,11 +229,14 @@ nothing) and attaches the files after goreleaser has published the release
 
 - **`app-macos`** gets what `app-macos-build` made with
   `scripts/app-release.sh <tag> --no-upload`:
-  `Caprock_<version>_universal.dmg` (arm64 + x86_64, signed with the
-  self-signed identity when its secrets are set, else ad-hoc), checked
-  before upload (`hdiutil verify`, `scripts/check-app-signature.sh`: the
-  signature verifies and every binary's designated requirement is the
-  certificate's leaf, or ad-hoc without it; `lipo` on the app and
+  `Caprock_<version>_universal.dmg` (arm64 + x86_64; Developer ID signed and
+  notarized when the Apple secrets are set, else signed with the self-signed
+  identity when its secrets are set, else ad-hoc), checked before upload
+  (`hdiutil verify`; `scripts/check-app-signature.sh`: the signature
+  verifies, every binary has the hardened runtime and its designated
+  requirement is `anchor apple generic` with the team (Developer ID, plus a
+  secure timestamp, a stapled ticket and Gatekeeper's `Notarized Developer
+  ID`), or the self-signed certificate's leaf, or ad-hoc; `lipo` on the app and
   the bundled daemon, bundle id `dev.caprock.app`, `caprock version` of the
   bundled daemon, and `scripts/check-app-mic.sh`: both binaries carry the
   microphone entitlement and the Info.plist its usage string, ADR-045). It
@@ -286,26 +312,50 @@ unless given `--clobber`. The `.dmg` and the rendered `caprock-app.rb` land in
 through Finder; with `CI=true` in the environment it skips that and the window
 keeps Finder's default arrangement.
 
-**Signing.** No Apple Developer ID yet (decision 2). `tauri.conf.json` says
-`signingIdentity: "-"` (ad-hoc); in Actions, with the `MACOS_SELFSIGN_P12_*`
-secrets, `scripts/macos-selfsign-keychain.sh` sets `APPLE_SIGNING_IDENTITY` to
-the stable self-signed certificate instead, so macOS keeps the microphone and
-folder answers across updates. A `.dmg` built by hand is ad-hoc unless that
-identity is in a keychain on the search list and `APPLE_SIGNING_IDENTITY`
-names its SHA-1; an ad-hoc release makes everyone answer again once, so
-prefer Actions. To Gatekeeper both are from an unidentified developer: the
-cask clears the quarantine flag after Homebrew's sha256 check, and
-[docs/install-app.md](install-app.md) tells `.dmg` users how to open it.
-When the account exists: put the Developer ID
-certificate (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`) and an App
-Store Connect API key in the release secrets, set `APPLE_SIGNING_IDENTITY` and
-`APPLE_API_KEY`/`APPLE_API_ISSUER`/`APPLE_API_KEY_PATH` for `tauri build` (Tauri signs and notarizes when they are present), change
-`scripts/check-app-signature.sh` to expect `Authority=Developer ID Application`
-and an `anchor apple generic` requirement, drop the self-signed step and its
-secrets, and delete the cask's `postflight_steps`. The update tarball is made from the
-same signed `.app`, so it is notarized with it; the minisign signature stays as
-the updater's own check. Windows stays unsigned until a certificate
-is chosen (decision 3).
+**Signing.** Developer ID and notarization (decision 2, the account since
+2026-10-20). `tauri.conf.json` says `signingIdentity: "-"` (ad-hoc); in
+Actions, `app-macos-build` picks the first of these that has its secrets:
+
+- **Developer ID** (`APPLE_*`, see the secrets above).
+  `scripts/macos-developer-id.sh` exports `APPLE_SIGNING_IDENTITY` and writes
+  the `.p8` to a `0600` file under `RUNNER_TEMP` as `APPLE_API_KEY_PATH`.
+  `tauri build` imports `APPLE_CERTIFICATE` into a temporary keychain of its
+  own, signs the app and both daemon binaries (`externalBin`) with the
+  hardened runtime and `Entitlements.plist`, notarizes the `.app` with the
+  API key and staples it. `scripts/app-release.sh` then notarizes and
+  staples the `.dmg` (`xcrun notarytool submit --wait`, then `stapler
+  staple`; a rejection prints Apple's log and fails the build) before the
+  sha256 the cask pins, checks the `.app` with `--notarized`, and checks
+  that the update tarball's `.app` carries the ticket. The update tarball is
+  made from the same notarized `.app`; the minisign signature stays as the
+  updater's own check. With the certificate but no API key the build is
+  Developer ID signed, not notarized, with a warning.
+- **The self-signed fallback** (`MACOS_SELFSIGN_P12_*`):
+  `scripts/macos-selfsign-keychain.sh` sets `APPLE_SIGNING_IDENTITY` to its
+  SHA-1, as before, and stands aside when a Developer ID is set. It keeps a
+  release working while the Apple secrets are missing; remove it once a
+  notarized release has shipped.
+- **Ad-hoc** with neither.
+
+The entitlements need nothing new for notarization: the hardened runtime has
+been on since the self-signed certificate, and the daemon (static Go) needs
+no JIT or library-validation exception. `app-release.sh` unsets an empty
+`APPLE_*` variable, since the bundler treats an empty `APPLE_CERTIFICATE` as
+a certificate to import.
+
+The cask follows the build: `app/packaging/caprock-app.rb.tmpl` holds a
+`notarized` and an `unnotarized` variant of its quarantine step and caveats,
+and `app-release.sh` keeps the one that matches. A notarized build installs
+with no `postflight_steps` and no "Open Anyway"; a build that is not keeps
+clearing the quarantine flag after Homebrew's sha256 check.
+
+By hand (`make app-release`): put the Developer ID in your login keychain,
+export `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_API_KEY`,
+`APPLE_API_ISSUER` and `APPLE_API_KEY_PATH`, and leave `APPLE_CERTIFICATE`
+unset (with it the bundler would add a keychain of its own to your search
+list). Without them a hand-built `.dmg` is ad-hoc, which makes everyone
+answer the privacy prompts again once, so prefer Actions. Windows stays
+unsigned until a certificate is chosen (decision 3).
 
 ## Never move a tag that has already run (2026-08-27)
 

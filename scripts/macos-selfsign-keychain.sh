@@ -27,6 +27,14 @@ set -euo pipefail
 
 die() { echo "macos-selfsign-keychain: $*" >&2; exit 1; }
 
+# The fallback since the Developer ID (2026-10-20): release.yml runs
+# scripts/macos-developer-id.sh first, which sets APPLE_SIGNING_IDENTITY when
+# the Apple secrets are there. Remove this script and its secrets once a
+# notarized release has shipped.
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" && "${APPLE_SIGNING_IDENTITY}" != "-" ]]; then
+  echo "  APPLE_SIGNING_IDENTITY already set (Developer ID): the self-signed identity stands aside"
+  exit 0
+fi
 if [[ -z "${MACOS_SELFSIGN_P12_BASE64:-}" || -z "${MACOS_SELFSIGN_P12_PASSWORD:-}" ]]; then
   echo "  MACOS_SELFSIGN_P12_* unset: the app stays ad-hoc signed (macOS asks again after each update)"
   exit 0

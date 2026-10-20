@@ -28,16 +28,18 @@ brew install --cask dspv/tap/caprock-app
 
 Then open **Caprock** from Applications or Spotlight.
 
-The app is not notarized yet (it is ad-hoc signed; Developer ID signing comes
-with an Apple Developer account). The cask clears the download's quarantine
-flag after Homebrew has checked its sha256, so it opens like any other app. If
-macOS still says it cannot verify Caprock, use the steps below.
+The app is signed with Caprock's Apple Developer ID and notarized by Apple,
+so it opens like any other app, from the cask or the `.dmg`.
 
 **From the `.dmg`.** Download [Caprock-macOS.dmg](https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg)
 (the newest release; `Caprock_<version>_universal.dmg` on
 [Releases](https://github.com/dspv/caprock/releases) is the same file), open it and drag
-Caprock to Applications. The first time you open it, macOS refuses an app from
-an unidentified developer:
+Caprock to Applications. macOS checks the notarization the first time you
+open it and asks once whether to open an app downloaded from the internet;
+click **Open**.
+
+**Older releases** were not notarized. If macOS refuses one as being from an
+unidentified developer:
 
 - **macOS 15 and newer:** click **Done**, open **System Settings → Privacy &
   Security**, scroll to *"Caprock" was blocked*, click **Open Anyway** and

@@ -142,10 +142,10 @@ Or download the newest build directly: [macOS .dmg](https://github.com/dspv/capr
 [Windows installer](https://github.com/dspv/caprock/releases/latest/download/Caprock-Windows-setup.exe), Linux
 [.AppImage](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.AppImage), [.deb](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.deb) or
 [.rpm](https://github.com/dspv/caprock/releases/latest/download/Caprock-Linux.rpm) — every version is on
-[Releases](https://github.com/dspv/caprock/releases). The app is
-not notarized or code-signed yet; [docs/install-app.md](docs/install-app.md)
-has the one-time "Open Anyway" step for the `.dmg` and SmartScreen's "Run
-anyway". What is in the window, the shortcuts and the phone:
+[Releases](https://github.com/dspv/caprock/releases). The Mac app
+is signed with a Developer ID and notarized; the Windows installer is not
+code-signed yet, and [docs/install-app.md](docs/install-app.md) has
+SmartScreen's one-time "Run anyway". What is in the window, the shortcuts and the phone:
 [docs/app.md](docs/app.md).
 
 **Or the daemon and its browser dashboard** on their own:

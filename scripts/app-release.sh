@@ -22,6 +22,15 @@
 #   --clobber    replace a .dmg already attached to the release
 #   --cask-pr    open a pull request on dspv/homebrew-tap with the cask
 #
+# Signing (docs/RELEASING.md § The desktop app): with APPLE_SIGNING_IDENTITY
+# set to "Developer ID Application: …" the app and its daemon are Developer ID
+# signed; with APPLE_API_KEY, APPLE_API_ISSUER and APPLE_API_KEY_PATH as well,
+# `tauri build` notarizes and staples the .app and this script notarizes and
+# staples the .dmg, and the cask drops its quarantine step. release.yml sets
+# them from the Apple secrets (scripts/macos-developer-id.sh); by hand, put
+# the Developer ID in a keychain and export the same variables. Otherwise the
+# self-signed identity's SHA-1, or nothing (ad-hoc).
+#
 # Output: app/src-tauri/target/app-release/ (the .dmg and caprock-app.rb, and
 # with the updater key in the environment the signed
 # Caprock_<v>_universal.app.tar.gz and its .sig, attached beside the .dmg).
@@ -101,6 +110,23 @@ else
   echo "  warning: TAURI_SIGNING_PRIVATE_KEY unset: no signed app update for $TAG"
 fi
 
+# An empty variable is not an absent one to the bundler: an empty
+# APPLE_CERTIFICATE makes it try to import a certificate of no bytes. Unset
+# whatever is empty, so a release without the Apple secrets signs as before.
+for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_TEAM_ID \
+  APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH; do
+  [[ -n "${!v:-}" ]] || unset "$v"
+done
+NOTARIZE=0
+if [[ "${APPLE_SIGNING_IDENTITY:-}" == "Developer ID Application: "* ]]; then
+  if [[ -n "${APPLE_API_KEY:-}" && -n "${APPLE_API_ISSUER:-}" && -f "${APPLE_API_KEY_PATH:-}" ]]; then
+    NOTARIZE=1
+    echo "  Developer ID signing, notarized"
+  else
+    echo "  warning: Developer ID signing without the App Store Connect key: NOT notarized"
+  fi
+fi
+
 echo "→ Caprock.app and .dmg"
 (cd app && { [[ -d node_modules ]] || npm ci; } && npx tauri build \
   --target universal-apple-darwin --bundles app,dmg \
@@ -111,6 +137,27 @@ BUILT="app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/$DMG_NAME"
 [[ -f "$BUILT" ]] || die "tauri did not produce $BUILT"
 cp "$BUILT" "$OUT/$DMG_NAME"
 DMG="$OUT/$DMG_NAME"
+
+# Tauri notarizes and staples the .app inside; the .dmg around it is
+# notarized and stapled here, so the first open of a downloaded .dmg is
+# checked offline too. Stapling changes the file, so it comes before the
+# sha256 the cask pins.
+if [[ "$NOTARIZE" == 1 ]]; then
+  echo "→ notarizing $DMG_NAME"
+  notary=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
+  # notarytool may exit non-zero on a rejection too; the status decides.
+  result="$(xcrun notarytool submit "$DMG" "${notary[@]}" --wait --timeout 1h --output-format json)" || true
+  status="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))' <<<"$result" 2>/dev/null)" ||
+    die "notarytool submit failed: $result"
+  if [[ "$status" != Accepted ]]; then
+    id="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("id", ""))' <<<"$result")"
+    [[ -n "$id" ]] && xcrun notarytool log "$id" "${notary[@]}" >&2 || true
+    die "notarization of $DMG_NAME ended $status"
+  fi
+  xcrun stapler staple -q "$DMG"
+  xcrun stapler validate -q "$DMG" || die "no ticket stapled to $DMG_NAME"
+  echo "  ok: $DMG_NAME notarized and stapled"
+fi
 
 echo "→ checking $DMG_NAME"
 hdiutil verify "$DMG" >/dev/null
@@ -126,10 +173,14 @@ ls "$MNT/.background/"*.png >/dev/null 2>&1 || die "no background picture in the
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
 [[ "$(plist CFBundleIdentifier)" == dev.caprock.app ]] || die "bundle id is $(plist CFBundleIdentifier)"
 [[ "$(plist CFBundleShortVersionString)" == "$VERSION" ]] || die "app version is $(plist CFBundleShortVersionString)"
-# Ad-hoc, or, with APPLE_SIGNING_IDENTITY (release.yml's stable self-signed
-# identity, scripts/macos-selfsign-keychain.sh), signed with it so macOS
-# keeps the microphone and folder answers across updates.
-bash scripts/check-app-signature.sh "$APP"
+# Developer ID (notarized and stapled when NOTARIZE), the self-signed
+# fallback, or ad-hoc, after APPLE_SIGNING_IDENTITY; signed with one identity,
+# macOS keeps the microphone and folder answers across updates.
+if [[ "$NOTARIZE" == 1 ]]; then
+  bash scripts/check-app-signature.sh "$APP" --notarized
+else
+  bash scripts/check-app-signature.sh "$APP"
+fi
 for bin in caprock-app caprock caprock-pty-host; do
   archs="$(lipo -archs "$APP/Contents/MacOS/$bin")"
   [[ "$archs" == *x86_64* && "$archs" == *arm64* ]] || die "$bin is $archs, not universal"
@@ -154,11 +205,29 @@ if [[ ${#UPDATER[@]} -gt 0 ]]; then
     die "$UPD_NAME.sig does not name $VERSION"
   tar -tzf "$UPD" | grep -q '^Caprock.app/Contents/MacOS/caprock$' ||
     die "$UPD_NAME does not carry the daemon"
+  # The update is the same notarized .app: its ticket must travel with it.
+  if [[ "$NOTARIZE" == 1 ]]; then
+    UNPACK="$(mktemp -d)"
+    tar -xzf "$UPD" -C "$UNPACK"
+    xcrun stapler validate -q "$UNPACK/Caprock.app" || die "$UPD_NAME carries an app without a stapled ticket"
+    rm -rf "$UNPACK"
+  fi
   echo "  ok: signed updater bundle $UPD_NAME"
 fi
 
 SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
-sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA/" app/packaging/caprock-app.rb.tmpl > "$OUT/caprock-app.rb"
+# The template holds a `notarized` and an `unnotarized` variant of the parts
+# that differ (the quarantine step and the caveats); keep one, drop the other.
+if [[ "$NOTARIZE" == 1 ]]; then keep=notarized drop=unnotarized; else keep=unnotarized drop=notarized; fi
+sed -e "s/@VERSION@/$VERSION/" -e "s/@SHA256@/$SHA/" \
+  -e "/^ *# >>> $drop\$/,/^ *# <<< $drop\$/d" -e "/^ *# [<>][<>][<>] $keep\$/d" \
+  app/packaging/caprock-app.rb.tmpl > "$OUT/caprock-app.rb"
+! grep -qE '@[A-Z0-9]+@|# (>>>|<<<) ' "$OUT/caprock-app.rb" || die "the cask has an unrendered placeholder or marker"
+if [[ "$NOTARIZE" == 1 ]]; then
+  ! grep -q quarantine "$OUT/caprock-app.rb" || die "a notarized cask still clears the quarantine flag"
+else
+  grep -q com.apple.quarantine "$OUT/caprock-app.rb" || die "the cask lost its quarantine step"
+fi
 echo "  ok: universal, dev.caprock.app $VERSION, bundles $daemon, signed ${APPLE_SIGNING_IDENTITY:-ad-hoc}"
 echo "  $(du -h "$DMG" | cut -f1)  sha256 $SHA"
 
