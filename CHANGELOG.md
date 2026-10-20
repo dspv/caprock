@@ -12,6 +12,66 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.140.0] - 2026-10-20
+
+### Added
+
+- **app:** an agent tab shows its session as a **Chat** or as its
+  **Terminal**, from a switch in the tab strip. Quick chats open on Chat and
+  project sessions on Terminal; the choice is remembered for each session.
+  The chat reads like one: your messages as bubbles, the agent's replies as
+  text, each tool call as one plain line (*Searched the web: …*), and a
+  question that only the terminal can answer links to **Open in Terminal**.
+  Switching never restarts the session or types into it, and the hidden
+  terminal does not draw.
+
+### Changed
+
+- **perf(api):** with the dashboard open and agents working, the daemon no
+  longer counts the whole history again on every 10-second poll. A history
+  that reaches before today (7 days, 30 days, all time) is kept for a minute
+  however fast it was to count; today's keeps its 3-second refresh. A quick
+  count was quick only because the page cache answered it, and on a machine
+  short of memory every count went to disk: one user's daemon read 8.8 GB in
+  an hour. On a preview stand with a 103 MB database and the Now screen open,
+  database reads fell from 193 MB to 71 MB per 3 minutes (2026-10-20). The
+  lifetime and weekly figures can now be up to about two minutes behind.
+- **ui:** Settings → Computers says what to do. Connected computers come
+  first — this one, the ones it reaches and the ones that reach it, each with
+  **Disconnect** — then *What is this computer?* (**The main one** or
+  **Connects to another**) and three numbered steps for that side that tick
+  as they are done: access from anywhere, the other computer's choice, and
+  the link to paste with how long it lasts and **Copy**. What the relay is,
+  where access from anywhere is switched on and what it sends sit behind the
+  (i) beside *Add a computer*. Pairing and what it sends are unchanged.
+- **ui:** the pull request progress bars end at merged. A merged pull request's
+  bar is now completely filled on Work, the Pipeline, the release plan, the
+  phone's Releases and the right panel's CI block, instead of leaving a grey
+  *released* block that read as unfinished or closed. Whether it shipped is a
+  quiet word after the bar: *in v0.140.0* once released, a muted *not
+  released* while a repository that cuts releases waits for the next one. A
+  pull request closed without a merge still reads *Closed*.
+
+### Fixed
+
+- **ui:** Lifetime's Daily cost chart draws every calendar day through
+  today, a day without work as an empty bar, instead of closing the gap
+  and putting a quiet week next to a busy day. Its 30d, 90d and 180d now
+  cover the same days as the range buttons, in local time.
+- **ui:** quick chats no longer pile up in the sidebar with no tab. Closing
+  tabs in bulk — a project's *Close tabs*, its ×, *Hide*, *Remove from list* —
+  ends the quick chats in them as ⌘W does (one question for a chat still
+  answering). A quick chat with no tab is listed under *Running, no tab* only
+  while it works or asks for something, or for 10 minutes after its last
+  answer; it stays on the Chats screen and in the palette. Its row now says
+  what the chat is about, when it started and its model, instead of only
+  *Quick chat · <model>*, so two chats can be told apart.
+- **ui:** on Windows and Linux, hovering a sidebar row (Dashboard, Mail,
+  Settings, New agent and the rest) or a folded footer icon shows one hint,
+  its tooltip with the key in it, instead of a key chip at once and the
+  tooltip a second later. The chips still show under keyboard focus and all
+  together while Ctrl is held; macOS is unchanged.
+
 ## [0.139.0] - 2026-10-19
 
 ### Changed
