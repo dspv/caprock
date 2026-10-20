@@ -59,8 +59,6 @@ import { HIDDEN_PROJECTS_EVENT, hideSessionRow, loadHiddenProjects, loadHiddenSe
 import { TabStrip, TerminalStack } from '@/components/TerminalTabs'
 import { Inspector } from '@/components/Inspector'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { SessionDeck } from '@/components/SessionDeck'
-import { readDeck, saveDeck, type DeckPrefs } from '@/lib/deck'
 import { FeedbackDialog } from '@/components/Feedback'
 import { BugReportSheet } from '@/components/BugReportSheet'
 import { currentScreen } from '@/lib/feedback'
@@ -329,9 +327,6 @@ export function AppShell() {
   const data = useWorkspaceData()
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
-  // The session deck under an agent's terminal: open or not, and its height (lib/deck.ts).
-  const [deck, setDeck] = useState<DeckPrefs>(readDeck)
-  useEffect(() => { saveDeck(deck) }, [deck])
   const [sheet, setSheet] = useState<SheetState>(null)
   // Offer answers live on the daemon so the app and a browser tab agree.
   usePromptSync()
@@ -416,7 +411,7 @@ export function AppShell() {
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
   const inspectedId = focused?.sessionId
   const inspectedSession = focusedSession
-  // An agent's session is in front: what the session deck and the chat apply to.
+  // An agent's session is in front: what the chat applies to.
   const frontIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const activeProject = projectsById.get(activeProjectId)
   const shownRoute = parseHash(hash)
@@ -1228,12 +1223,6 @@ export function AppShell() {
       case 'palette': onPalette(); break
       case 'inspector': setPrefs((p) => ({ ...p, inspector: !p.inspector })); showWorkspace(); break
       case 'sidebar': setPrefs((p) => ({ ...p, sidebar: !p.sidebar })); break
-      case 'deck':
-        // A shell has no deck: say so rather than flip a setting that shows nothing.
-        if (workspaceShown && !frontIsAgent && !deck.open) { setToast('The Pipeline bar shows under an agent’s terminal: bring an agent’s tab to the front.'); break }
-        setDeck((d) => ({ ...d, open: !d.open }))
-        showWorkspace()
-        break
       case 'pipeline':
         expandRef.current?.()
         break
@@ -1289,7 +1278,7 @@ export function AppShell() {
         break
       }
     }
-  }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, deck.open, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar, reopenLastClosed])
+  }, [onNewShell, onNewAgent, onQuickChatNow, onAddProject, workspaceShown, detach, onPalette, showWorkspace, onDashboard, splitShell, jumpToWaiting, current, focusedSession?.cwd, onSettings, frontIsAgent, focusTab, stepProject, stepSession, onMail, dashboardShown, goHash, prefs.sidebar, reopenLastClosed])
 
   // The app's keys, before anything else on the page sees them. The terminal
   // already lets them through (xtermInput), and they are never its keys.
@@ -1455,7 +1444,6 @@ export function AppShell() {
         : []),
       { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
       { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'in its own tab: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
-      { id: 'a-deck', group: 'Actions', label: deck.open ? 'Pipeline bar: Off' : 'Pipeline bar: On', detail: deck.open ? 'hide the bar under the agent’s terminal' : 'show the bar under the agent’s terminal', hint: keys('⌘B'), icon: <DeckIcon size={14} />, run: () => run({ kind: 'deck' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(browserEnabled ? [{ id: 'a-browser', group: 'Actions' as const, label: 'New browser tab', detail: 'an address or a search, in a tab after your agents (beta)', icon: <GlobeIcon size={14} />, run: () => openPage() }] : []),
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
@@ -1550,7 +1538,7 @@ export function AppShell() {
       }
     }
     return items
-  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, deck.open, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
+  }, [data.sessions, onCompare, savedItems, manageSaved, ws.tabs, model.projects, model.inbox, sessionsById, projectsById, openSessions, prefs.inspector, current, onNewAgent, onNewShell, onQuickChatNow, onQuickChatChooser, goHash, onAddProject, onDashboard, onMail, toggleTheme, onSettings, run, showWorkspace, openSession, openSplit, onSelectProject, onOpenInbox, jumpToWaiting, splitShell, detach, editors, focusedSession?.cwd, openInEditor, source, onOpenChanges, fileScope, focused?.kind, activeProject, activeProjectId, onCleanCopies, onFromTemplate])
 
   // Every session the daemon knows, by what it was about; one that is open or
   // live is already in the list above under its own id.
@@ -1606,21 +1594,6 @@ export function AppShell() {
       : undefined
   }, [focusedWorktree, onOpenChanges])
 
-  // The deck's PR rows: the focused session's project's checkouts and the
-  // live agents in each, so a row says who is on its branch.
-  const deckWorktrees = useMemo(() => {
-    if (!focused) return undefined
-    const n = model.projects.find((x) => x.worktrees.some((w) => w.sessions.some((y) => y.session.session_id === focused.sessionId)))
-    return n?.worktrees.map((w) => ({ branch: w.branch, path: w.path, agents: w.sessions.filter((y) => !y.isShell).map((y) => ({ session: y.session, dot: y.dot })) }))
-  }, [focused, model.projects])
-  const deckProjectId = focusedWorktree?.projectId ?? activeProjectId
-  const onDeckOpenSession = useCallback((s: SessionSummary) => openSession(s, deckProjectId), [openSession, deckProjectId])
-  const onDeckStartAgent = useCallback(async (req: SpawnRequest, title: string) => {
-    const { session_id } = await api.spawn(req)
-    openTab({ kind: 'session', sessionId: session_id }, deckProjectId, title)
-    data.refresh()
-  }, [openTab, deckProjectId, data])
-
   // The project the focused session is listed under, named as the sidebar names it.
   const focusedProject = useMemo(() => {
     if (!focused) return undefined
@@ -1640,8 +1613,6 @@ export function AppShell() {
   // surface with a working "don't ask again" by key. Other tabs are reached
   // through their badge, the Inbox, the menu bar and the notification.
   const promptCard = focusedIsAgent && !!focused
-  const toggleDeck = useCallback(() => setDeck((d) => ({ ...d, open: !d.open })), [])
-  const onResizeDeck = useCallback((height: number) => setDeck((d) => ({ ...d, height })), [])
   // Chat / Terminal: which view is in front, and nothing else — the
   // terminal stays mounted under the chat, so the session is not started,
   // signalled or typed into by the switch.
@@ -1834,9 +1805,10 @@ export function AppShell() {
     if (pipelineShown && !ws.pipeline) dispatch({ type: 'pipeline', open: true })
   }, [pipelineShown, ws.pipeline])
   const pipelineRoute = parseHash(pipelineShown ? hash : lastPipeline.current)
-  const openPipeline = useCallback((of?: SessionSummary) => {
+  // `pr`: opened on that pull request's detail (the inspector's *Log in Pipeline →*).
+  const openPipeline = useCallback((of?: SessionSummary, pr?: number) => {
     const target = of ?? (workspaceShown && frontIsAgent ? focusedSession : undefined)
-    goHash(target ? href({ name: 'pipeline', of: target.session_id }) : lastPipeline.current || '#/pipeline')
+    goHash(target ? href({ name: 'pipeline', of: target.session_id, ...(pr ? { pr } : {}) }) : lastPipeline.current || '#/pipeline')
   }, [workspaceShown, frontIsAgent, focusedSession, goHash])
   // Back from the Pipeline: the tab or screen before it, else the terminals
   // (Home when no tab is open).
@@ -1999,8 +1971,6 @@ export function AppShell() {
               onToggleInspector={() => setPrefs((p) => ({ ...p, inspector: !p.inspector }))}
               view={showChat ? 'chat' : 'terminal'}
               onView={focusedIsAgent ? setView : undefined}
-              deckOpen={deck.open}
-              onToggleDeck={focusedIsAgent ? toggleDeck : undefined}
             />
           <div className="flex min-h-0 flex-1">
             <div className="relative min-w-0 flex-1">
@@ -2134,41 +2104,6 @@ export function AppShell() {
                     />
                   )}
                 </div>
-                {/* Under the terminal, never over it: opening it lifts the
-                  * terminal's bottom, and the prompt with it, off the
-                  * window's edge. Not mounted while closed or while the
-                  * dashboard is in front. */}
-                {deck.open && workspaceShown && focusedIsAgent && focused && focusedSession && (
-                  <ErrorBoundary key={focused.sessionId} label="The deck">
-                  <SessionDeck
-                    s={focusedSession}
-                    sessionId={focused.sessionId}
-                    hasPermission={data.permissions.has(focused.sessionId)}
-                    summary={data.summary}
-                    changed={focusedWorktree?.w.changed}
-                    branch={focusedWorktree?.w.branch}
-                    ahead={focusedWorktree?.w.ahead}
-                    onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
-                    height={deck.height}
-                    onResize={onResizeDeck}
-                    onToast={setToast}
-                    onOpenPipeline={() => openPipeline(focusedSession)}
-                    onHide={() => setDeck((d) => ({ ...d, open: false }))}
-                    worktrees={deckWorktrees}
-                    onOpenSession={onDeckOpenSession}
-                    onStartAgent={onDeckStartAgent}
-                    cleanup={focusedWorktree?.repo && projectsById.get(focusedWorktree.projectId) ? (
-                      <CleanupLine
-                        projectId={focusedWorktree.projectId}
-                        refreshKey={worktreesKey(projectsById.get(focusedWorktree.projectId))}
-                        onReview={(paths) => onReviewCopies(focusedWorktree.projectId, paths)}
-                        onRemoved={onCopiesRemoved}
-                        compact
-                      />
-                    ) : undefined}
-                  />
-                  </ErrorBoundary>
-                )}
                 {promptCard && !showChat && !prefs.inspector && focused && (
                   <div className="shrink-0 border-t border-[var(--app-hairline)] px-3 empty:hidden [&>*]:mb-2">
                     <PermissionPrompt sessionId={focused.sessionId} />
@@ -2253,7 +2188,7 @@ export function AppShell() {
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
                   onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
-                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? () => openPipeline(inspectedSession) : undefined}
+                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? (pr?: number) => openPipeline(inspectedSession, pr) : undefined}
                 />
                 </PipelineHostContext.Provider>
               </div>

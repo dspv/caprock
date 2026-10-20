@@ -4,6 +4,7 @@ import { CockpitCI, checkSummary } from './CockpitCI'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { prChecks } from '@/lib/ci'
 import { CheckSummary } from './CheckSummary'
+import { forgetPRProgress } from '@/lib/usePRForce'
 
 const now = Date.now()
 const live = (n: number, checks: object, p: object = {}) => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state: 'open', draft: false,
@@ -21,7 +22,7 @@ const PASSED = { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name
 // the first test here started more than a second later, so "4m 00s" read
 // "4m 01s". Only Date is faked; timers stay real.
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now }) })
-afterEach(() => { forgetDeckAnswers(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
+afterEach(() => { forgetDeckAnswers(); forgetPRProgress(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('the cockpit’s CI block', () => {
   it('counts a PR’s checks and the time since the first started', () => {
@@ -269,5 +270,68 @@ describe('the cockpit’s CI block', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // Owner, 2026-10-20: the session deck is gone; its per-PR actions are on
+  // the inspector's PR rows, one at a time, asking first as the deck did.
+  it('offers the one action a session PR needs in its row, asks once, does it, and opens its log in the Pipeline', async () => {
+    const stats = {
+      connected: true, repo: 'a/b', fetched_at: now, read_at: now,
+      prs: [{ number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 }],
+      board: {
+        cards: [{ number: 9, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 600_000, spend: { cost_usd: 1.25, sessions: 2, live: 0, agents: ['claude'] } }],
+        releases: [], flow: { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 1.25 }, ships_by: 'release',
+      },
+    }
+    const FAILED = { state: 'fail', passed: 1, failed: 1, pending: 0, items: [{ name: 'lint', state: 'pass' }, { name: 'go', state: 'fail' }] }
+    const prs = { connected: true, prs: [row(9, live(9, FAILED, { title: 'Fix the login', mergeable: true, merge_state: 'clean' }))] }
+    const posts: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (init?.method === 'POST') { posts.push(url); return json({ sent: false, queued: 1 }) }
+      if (url.endsWith('/ci/stats')) return json(stats)
+      if (url.endsWith('/prs')) return json(prs)
+      return new Response('', { status: 404 })
+    }))
+    const onOpen = vi.fn()
+    const s = { session_id: 's1', owned: true, status: 'active', title: 'Login agent', cwd: '/w', repo_root: '/w' }
+    render(<CockpitCI sessionId="s1" s={s as never} repoScope="/w" onOpen={onOpen} />)
+    const act1 = await waitFor(() => {
+      const b = document.querySelector<HTMLButtonElement>('[data-cockpit-ci-pr="9"] [data-cockpit-ci-action]')
+      if (!b) throw new Error('no action')
+      return b
+    })
+    expect(act1).toHaveAttribute('data-cockpit-ci-action', 'ci')
+    expect(act1).toHaveTextContent('Fix CI')
+    expect(document.querySelectorAll('[data-cockpit-ci-pr="9"] [data-cockpit-ci-action]')).toHaveLength(1)
+    // Its agent cost and who worked on it, in a grey line.
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-cost]')).toHaveTextContent('$1.25')
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-agent]')).toHaveTextContent('claude')
+    // The log is the Pipeline's, on that PR.
+    fireEvent.click(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-log]')!)
+    expect(onOpen).toHaveBeenCalledWith(9)
+    fireEvent.click(act1)
+    expect(document.querySelector('[data-cockpit-ci-confirm]')).toHaveTextContent('Ask Login agent to fix #9’s CI and push?')
+    expect(posts).toEqual([])
+    await act(async () => { fireEvent.click(document.querySelector('[data-cockpit-ci-confirm-yes]')!) })
+    await waitFor(() => expect(posts).toEqual(['/v1/agents/s1/queue']))
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-progress]')).toHaveTextContent('agent fixing…'))
+  })
+
+  it('offers no action without the session, and none on a PR that needs none', async () => {
+    const stats = { connected: true, repo: 'a/b', fetched_at: now, read_at: now,
+      prs: [{ number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fine', state: 'open', created_at: now - 3_600_000 }],
+      board: { cards: [], releases: [], flow: { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 }, ships_by: 'release' } }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.endsWith('/ci/stats')) return json(stats)
+      if (url.endsWith('/prs')) return json({ connected: true, prs: [row(9, live(9, PASSED, { mergeable: true }))] })
+      return new Response('', { status: 404 })
+    }))
+    render(<CockpitCI sessionId="s1" s={{ session_id: 's1', owned: true, status: 'active' } as never} repoScope="/w" onOpen={vi.fn()} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull())
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
+    expect(document.querySelector('[data-cockpit-ci-action]')).toBeNull()
+    expect(document.querySelector('[data-cockpit-ci-log]')).toBeNull()
   })
 })

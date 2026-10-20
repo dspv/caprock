@@ -19,7 +19,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, GlobeIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
@@ -97,10 +97,6 @@ export interface TabStripProps {
   view?: 'chat' | 'terminal'
   /** The Chat / Terminal switch; absent when the tab in front has no conversation: a shell. */
   onView?: (view: 'chat' | 'terminal') => void
-  /** The session deck under the agent's terminal is open. */
-  deckOpen?: boolean
-  /** Absent when the tab in front is not an agent's: a shell has no deck. */
-  onToggleDeck?: () => void
 }
 
 /** What a tab's dot says, in its tooltip: the only states a tab shows. */
@@ -442,49 +438,28 @@ export function TabStrip(props: TabStripProps) {
         </div>
       </div>
       <div className="mb-1 flex shrink-0 items-center gap-0.5">
-        {props.paneTools !== false && props.onView && (
-          // Chat / Terminal, both worded (owner, 2026-10-20, translated: "a
-          // chat should look like a chat, not like an ugly terminal"). Two
-          // views of one session: the terminal stays mounted under the chat,
-          // and switching types nothing into it.
-          <div role="group" aria-label="Show the session as" data-view-switch className="mr-1 flex h-[26px] items-stretch overflow-hidden rounded-[7px] border border-border text-[12px]">
-            {(['chat', 'terminal'] as const).map((v) => {
-              const on = (props.view ?? 'terminal') === v
-              return (
-                <button key={v} type="button" data-view={v} aria-pressed={on} onClick={() => { if (!on) props.onView!(v) }}
-                  title={v === 'chat'
-                    ? 'Read this session as a chat: your messages, the agent\'s replies, one line per tool call, and a field that types into it. The terminal keeps running.'
-                    : 'The session\'s terminal, as Claude Code draws it'}
-                  className={`flex items-center gap-1.5 px-2 transition-colors duration-100 motion-reduce:transition-none ${
-                    on ? 'bg-[var(--app-row-active)] font-medium text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
-                  }`}>
-                  {v === 'chat' ? <ChatIcon size={14} /> : <TerminalIcon size={14} />}
-                  <span>{v === 'chat' ? 'Chat' : 'Terminal'}</span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-        {props.paneTools !== false && props.onToggleDeck && (
-          // Labelled, with its key, so the deck is found (owner, 2026-10-11:
-          // "it is not clear that it exists").
-          <button type="button" data-deck-toggle title={`Session deck: live figures under the terminal (${keys('⌘B')})`} aria-label={`Session deck (${keys('⌘B')})`}
-            aria-pressed={props.deckOpen} onClick={props.onToggleDeck}
-            className={`relative flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.deckOpen ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
-            }`}>
-            <DeckIcon size={15} />
-            <span>Deck</span>
-            <kbd aria-hidden className={`app-kbd-key app-kbd-below ${revealClass()}`}>{keys('⌘B')}</kbd>
-          </button>
-        )}
+        {props.paneTools !== false && props.onView && (() => {
+          // One quiet icon, no words (owner, 2026-10-20, variant A): it shows
+          // the other view — a terminal glyph over the chat, a chat bubble
+          // over the terminal — and one click flips to it. Two views of one
+          // session: the terminal stays mounted under the chat, and
+          // switching types nothing into it.
+          const other = (props.view ?? 'terminal') === 'chat' ? 'terminal' : 'chat'
+          const label = other === 'terminal' ? 'Show as terminal' : 'Show as chat'
+          return (
+            <button type="button" data-view-switch data-view={other} title={label} aria-label={label} onClick={() => props.onView!(other)}
+              className="flex h-[28px] w-[28px] items-center justify-center rounded-[7px] text-fg-muted transition-colors duration-100 hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none">
+              {other === 'terminal' ? <TerminalIcon size={15} /> : <ChatIcon size={15} />}
+            </button>
+          )
+        })()}
         {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector} shortcut={keys('⌘I')}><InspectorIcon size={15} /></StripButton>}
       </div>
     </div>
   )
 }
 
-/** A strip button; one with a `shortcut` draws its key beside the icon, as Deck does (off macOS under it, a row below Deck's). */
+/** A strip button; one with a `shortcut` draws its key beside the icon (off macOS under it). */
 function StripButton({ label, onClick, pressed, shortcut, children }: { label: string; onClick: () => void; pressed?: boolean; shortcut?: string; children: ReactNode }) {
   return (
     <button
@@ -498,7 +473,7 @@ function StripButton({ label, onClick, pressed, shortcut, children }: { label: s
       }`}
     >
       {children}
-      {shortcut && <kbd data-strip-key aria-hidden className={`app-kbd-key app-kbd-below app-kbd-below-2 ${revealClass()}`}>{shortcut}</kbd>}
+      {shortcut && <kbd data-strip-key aria-hidden className={`app-kbd-key app-kbd-below ${revealClass()}`}>{shortcut}</kbd>}
     </button>
   )
 }

@@ -37,7 +37,7 @@ import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './Relea
 import { ageText, BLOCKS, planEmpty, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
-import { CI_IDLE_MS, usePoll } from './SessionDeck'
+import { CI_IDLE_MS, usePoll } from '@/lib/usePoll'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS } from '@/lib/work'

@@ -94,9 +94,12 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
-  it('opens and closes the session deck on ⌘B, Ctrl+Shift+B elsewhere, and on no Ctrl or Option B', () => {
-    expect(matchAppShortcut(k('b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
-    expect(matchAppShortcut(k('B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
+  // The session deck was removed on 2026-10-20 (owner: "not needed any
+  // more"); its ⌘B is free on every OS and listed nowhere.
+  it('leaves ⌘B, Ctrl+Shift+B elsewhere, and Ctrl or Option B to the page and the terminal', () => {
+    expect(matchAppShortcut(k('b', { metaKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(k('B', { ctrlKey: true, shiftKey: true }), false)).toBeNull()
+    expect(SHORTCUTS.some(([key]) => key.split(', ').includes('⌘B'))).toBe(false)
     // Ctrl+B and Option+B are the terminal's (tmux prefix, Meta-b word back).
     expect(matchAppShortcut(k('b', { ctrlKey: true }), true)).toBeNull()
     expect(matchAppShortcut(k('b', { ctrlKey: true }), false)).toBeNull()
@@ -306,8 +309,8 @@ describe('every listed shortcut, on every OS', () => {
   // Owner, 2026-10-12: ⌥⌘N started a chat "without asking with whom"
   // (translated). The chord is unchanged on every OS; what the list says it
   // does changed with it.
-  // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
-  // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
+  // Owner, 2026-10-14: Expand needs a key. ⌘B was the deck then, so off
+  // macOS the older ⇧⌘B takes Alt as well; it still does.
   it('makes ⌘P the Pipeline tab and back, Ctrl+Shift+P off macOS, and keeps ⇧⌘B as a silent alias', () => {
     expect(SHORTCUTS.find(([k]) => k === '⌘P')?.[1]).toMatch(/^Pipeline, in a tab of its own; there, back to where you were/)
     // The pinned Pipeline tab's chip is the same chord, as the strip spells it.
@@ -321,8 +324,8 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'pipeline' })
     expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'pipeline' })
     expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
-    expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
-    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
+    expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toBeNull()
     // Ctrl+P and Ctrl+B alone stay the terminal's (previous line; tmux's prefix, back-char).
     expect(matchAppShortcut(event('KeyP', 'p', { ctrlKey: true }), false)).toBeNull()
     expect(matchAppShortcut(event('KeyB', 'b', { ctrlKey: true }), false)).toBeNull()
