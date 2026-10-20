@@ -13,7 +13,9 @@ import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, fmtTool } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { groupDays } from './Cost'
-import { BarChart, BarReadout } from '@/components/BarChart'
+import { BarChart, BarReadout, type Bar } from '@/components/BarChart'
+import { localDay } from '@/components/Nudges'
+import { addDays } from '@/lib/week'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { usePlan } from '@/components/PlanPicker'
 import { PremiumBanner } from '@/components/PremiumBanner'
@@ -83,6 +85,26 @@ const DAILY_SPANS = ['30d', '90d', '180d', 'all'] as const
 type DailySpan = (typeof DAILY_SPANS)[number]
 const DAILY_SPAN_KEY = 'caprock-daily-span'
 const DAILY_TALL_KEY = 'caprock-daily-tall'
+const spanDays = (s: string) => (s === 'all' ? Infinity : s === 'today' ? 1 : Number(s.replace('d', '')))
+
+/**
+ * One bar per calendar day of the last `window` days through today, so the
+ * spacing of the bars is time: a day without work is an empty bar, not a
+ * missing one. An unbounded window starts at the first day with work.
+ */
+export function calendarDays(days: Bar[], window: number, now = Date.now()): Bar[] {
+  const today = localDay(now)
+  const from = Number.isFinite(window) ? addDays(today, 1 - window) : days[0]?.day
+  const shown = from ? days.filter((x) => x.day >= from) : []
+  if (!from || shown.length === 0) return []
+  const last = shown[shown.length - 1]!.day
+  const byDay = new Map(shown.map((x) => [x.day, x]))
+  const out: Bar[] = []
+  for (let day = from; day <= (last > today ? last : today); day = addDays(day, 1)) {
+    out.push(byDay.get(day) ?? { day, cost: 0, tokens: 0 })
+  }
+  return out
+}
 
 /** A per-viewer choice kept in localStorage; the default when storage is out of reach. */
 function useStored<T>(key: string, fallback: T, ok: (x: unknown) => x is T): [T, (v: T) => void] {
@@ -115,13 +137,10 @@ export function HistoryScreen() {
   const d = h.data
   // "Measured, not estimated" sat above an all-zero board on a fresh install.
   const measured = !!d && d.totals.turns > 0
-  const days = groupDays(d?.daily ?? [])
   const [dailySpan, setDailySpan] = useStored<DailySpan>(DAILY_SPAN_KEY, 'all', (x): x is DailySpan => (DAILY_SPANS as readonly string[]).includes(x as string))
   const [dailyTall, setDailyTall] = useStored<boolean>(DAILY_TALL_KEY, false, (x): x is boolean => typeof x === 'boolean')
-  // Calendar days back from today, not the last N rows: days with no spend
-  // have no row.
-  const since = dailySpan === 'all' ? '' : new Date(Date.now() - Number(dailySpan.replace('d', '')) * 86_400_000).toISOString().slice(0, 10)
-  const shownDays = since ? days.filter((x) => x.day >= since) : days
+  // Bounded by the range the response covers too: past it a day is unknown, not zero.
+  const shownDays = calendarDays(groupDays(d?.daily ?? []), Math.min(spanDays(dailySpan), spanDays(d?.range ?? 'all')))
   const f = lifetimeFigures(d)
   const projectColors = sliceColors(f.projects)
   const modelColors = sliceColors(f.models)
