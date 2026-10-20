@@ -90,8 +90,8 @@ const GLYPH = 18
  * ⌘,) or 40px (⇧⌘F, ⇧⌘M, ⇧⌘T), so on a Mac a column widens to its chip;
  * where the six do not fit, the widest is left out first
  * (useFoldedChipFit). Off macOS the same keys are Ctrl+Shift+M and
- * Ctrl+Alt+Shift+F, 63–141px, three columns wide: there a key shows on hover
- * and keyboard focus only.
+ * Ctrl+Alt+Shift+F, 63–141px, three columns wide: there a key shows under
+ * keyboard focus or while Ctrl is held, and on hover only in the tooltip.
  */
 export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'hover' {
   return isMac ? 'shown' : 'hover'
@@ -260,8 +260,10 @@ function FoldedFooter(props: SidebarFooterProps) {
 /**
  * One column of the folded row: the key's chip, then the icon. `shown`: the
  * chip sits above the icon, and a column with no key keeps an empty slot of
- * the same height. `hover`: the chip floats above the column under the
- * pointer or focus, held to the `edge` side so it stays inside the sidebar.
+ * the same height. `hover`: the chip floats above the column under keyboard
+ * focus or while Ctrl is held (`.app-kbd-float`, design/tokens.css), held to
+ * the `edge` side so it stays inside the sidebar; under the pointer only the
+ * icon's tooltip shows, which names the key (a Windows tester, 2026-10-20).
  *
  * The chip is part of the button below it (owner, 2026-10-15, translated: "I
  * wanted to click the key combo with the mouse and it doesn't click"): a
@@ -294,7 +296,7 @@ function KeySlot({ keyLabel, chips, edge, fits, line, children }: { keyLabel?: s
           <kbd aria-hidden className="app-kbd-key invisible mb-[3px]">·</kbd>
         ) : null
       ) : keyLabel ? (
-        <kbd aria-hidden data-key-chip title={title} onClick={press} className={`app-kbd-key app-kbd-float app-kbd-press invisible absolute bottom-[calc(100%+3px)] z-10 group-hover:visible group-focus-within:visible ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
+        <kbd aria-hidden data-key-chip title={title} onClick={press} className={`app-kbd-key app-kbd-float app-kbd-press invisible absolute bottom-[calc(100%+3px)] z-10 ${edge === 'left' ? 'left-0' : 'right-0'}`}>{keyLabel}</kbd>
       ) : null}
       {children}
     </div>

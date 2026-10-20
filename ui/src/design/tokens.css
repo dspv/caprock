@@ -820,11 +820,13 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * keys there are Ctrl+Shift+N and Ctrl+Alt+Shift+T, and drawn always they
  * cut the labels beside them (a Windows user's screenshot, 2026-10-19).
  * `.app-kbd-reveal` is a row's chip: out of the flow, so its label keeps the
- * whole row, and shown while the pointer or the keyboard focus is on the
- * row, or while Ctrl is held alone (`data-show-keys`, lib/keyreveal.ts). It
- * floats just above the row's right end, as the folded footer's keys do, so
- * it covers none of the row's own words or links ("phone, Telegram" on the
- * Settings row are clicked under the very pointer that reveals it).
+ * whole row, and shown while the keyboard focus is on the row, or while Ctrl
+ * is held alone (`data-show-keys`, lib/keyreveal.ts). Never on hover: the
+ * row's own tooltip names the key there, and the chip beside it was a second
+ * tooltip saying less (a Windows tester, 2026-10-20, translated: "showing
+ * both makes no sense — one is enough, the fuller one"). It floats just
+ * above the row's right end, as the folded footer's keys do, so it covers
+ * none of the row's own words or links.
  * `.app-kbd-held` is a tab's: only while Ctrl is held, since hovering a tab
  * puts its × in the key's place; it sits over the tab's end. Both are on
  * the panel, opaque; a row's is a step smaller than a resting chip. On a Mac neither
@@ -846,18 +848,20 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .app-kbd-reveal.app-kbd-below { bottom: auto; top: calc(100% + 4px); right: 0; }
 [data-app] .app-kbd-reveal.app-kbd-below-2 { top: calc(100% + 28px); }
 [data-app] .app-primary .app-kbd.app-kbd-reveal { background: var(--color-panel); }
-[data-app] :hover > .app-kbd-reveal,
 [data-app] :focus-visible > .app-kbd-reveal,
 [data-app] :has(> :focus-visible) > .app-kbd-reveal,
 [data-app][data-show-keys] .app-kbd-reveal,
-[data-app][data-show-keys] .app-kbd-held { visibility: visible; }
+[data-app][data-show-keys] .app-kbd-held,
+[data-app] [data-key-slot]:has(:focus-visible) > .app-kbd-float,
+[data-app][data-show-keys] .app-kbd-float { visibility: visible; }
 /* The key over an icon in the folded sidebar footer (components/SidebarFooter
  * KeySlot) is the same .app-kbd-key as everywhere else: a small faint one
  * (.app-kbd-faint, 10px) could not be read (owner, 2026-10-15, translated:
  * "the shortcuts there are tiny, you can't see a damn thing"), so a key that
  * has no room is left out and kept in the tooltip. `.app-kbd-float` is the
- * off-macOS form, shown over the icon under the pointer: on the panel, above
- * the list. */
+ * off-macOS form, shown over the icon under keyboard focus or while Ctrl is
+ * held (above), never on hover, where the icon's tooltip already names the
+ * key (2026-10-20): on the panel, above the list. */
 [data-app] .app-kbd-float {
   background: var(--color-panel);
   box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.4);

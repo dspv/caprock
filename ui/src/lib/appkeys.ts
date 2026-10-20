@@ -507,16 +507,18 @@ export function isPlainKeyLabel(label: string): boolean {
  * and cut the labels beside them ("Settings" under its chip, the palette's
  * name half hidden, "Quick chat" on two lines; a Windows user's
  * screenshot, 2026-10-19). There a chip is drawn on demand only: over its
- * row while the pointer or the keyboard focus is on it, and every chip at
- * once while Ctrl is held alone (lib/keyreveal.ts), the way Windows apps
- * show their access keys while Alt is held. At rest every label is whole.
+ * row while the keyboard focus is on it, and every chip at once while Ctrl
+ * is held alone (lib/keyreveal.ts), the way Windows apps show their access
+ * keys while Alt is held. Not on hover: there the row's tooltip, which
+ * names the key, is the one hint (a Windows tester, 2026-10-20, saw both).
+ * At rest every label is whole.
  */
 export function keyChipMode(isMac = isMacPlatform()): 'always' | 'on-demand' {
   return isMac ? 'always' : 'on-demand'
 }
 
-/** The class a row's chip adds for `keyChipMode`: off macOS shown on hover,
- *  focus or held Ctrl (`.app-kbd-reveal`, design/tokens.css); none on a Mac. */
+/** The class a row's chip adds for `keyChipMode`: off macOS shown on keyboard
+ *  focus or held Ctrl, never on hover (`.app-kbd-reveal`, design/tokens.css); none on a Mac. */
 export function revealClass(isMac = isMacPlatform()): string {
   return keyChipMode(isMac) === 'always' ? '' : 'app-kbd-reveal'
 }
