@@ -21,6 +21,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges } from '@/lib/termatlas'
+import { contextGone, watchContextLoss } from '@/lib/termgl'
 import { blinkWhileVisible, suspendWhileHidden } from '@/lib/visible'
 
 /**
@@ -250,22 +251,37 @@ export function TerminalView({
     let disposed = false
     let lastInput = 0
     let webglTimer = 0
+    // The addon in use and what drops it (lib/termgl).
+    let gl: { addon: WebglAddon; lost: () => void } | undefined
+    const checkGl = () => { if (gl && contextGone(gl.addon)) gl.lost() }
     const inputSub = term.onData(() => { lastInput = Date.now() })
     const loadWebgl = () => {
-      if (disposed || light) return
+      webglTimer = 0
+      if (disposed || light || gl) return
       if (!gotOutput || Date.now() - lastInput < WEBGL_QUIET_MS) {
         webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
         return
       }
       try {
         const webgl = new WebglAddon()
-        webgl.onContextLoss(() => {
-          // The GPU dropped the context — a sleep/wake or a driver reset.
-          // Disposing the addon returns xterm to its canvas renderer rather
-          // than leaving a terminal that has stopped painting.
-          webgl.dispose()
-        })
+        let unwatch = () => {}
+        const lost = () => {
+          // The GPU dropped the context — a sleep/wake, a driver reset, or
+          // WebKit letting it go, with or without telling (lib/termgl).
+          // Disposing the addon returns xterm to its DOM renderer in this
+          // frame rather than leaving a canvas that has stopped painting,
+          // and a fresh context follows after the quiet wait.
+          if (gl?.addon !== webgl) return
+          gl = undefined
+          unwatch()
+          try { webgl.dispose() } catch { /* already gone */ }
+          term.refresh(0, term.rows - 1)
+          if (!disposed && !webglTimer) webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
+        }
+        webgl.onContextLoss(lost)
         term.loadAddon(webgl)
+        gl = { addon: webgl, lost }
+        unwatch = watchContextLoss(webgl, lost)
         // The atlas is shared with every other terminal: a page merge must
         // not leave this one drawing from a stale texture (lib/termatlas).
         healAtlasMerges(webgl, term, () => clearGlyphAtlas(term))
@@ -305,6 +321,8 @@ export function TerminalView({
         // stays where they are while output arrives (the scrolling rule).
         write: (data, done) => {
           out.write(data, done)
+          // Output to a canvas whose context is gone is output nobody sees.
+          checkGl()
           if (!gotOutput && data.length > 0) {
             gotOutput = true
             setStart((st) => ({ ...st, phase: 'ready' }))
@@ -371,6 +389,11 @@ export function TerminalView({
     const textarea = term.textarea
     document.addEventListener('visibilitychange', away)
     window.addEventListener('pagehide', gone)
+    // Back in view or in front: a WebGL context lost meanwhile is replaced
+    // now, not drawn on (lib/termgl).
+    const look = () => { if (document.visibilityState === 'visible') checkGl() }
+    window.addEventListener('focus', look)
+    document.addEventListener('visibilitychange', look)
     if (!light) {
       window.addEventListener('focus', claim)
       document.addEventListener('visibilitychange', claim)
@@ -441,6 +464,8 @@ export function TerminalView({
       document.removeEventListener('visibilitychange', claim)
       document.removeEventListener('visibilitychange', away)
       window.removeEventListener('pagehide', gone)
+      window.removeEventListener('focus', look)
+      document.removeEventListener('visibilitychange', look)
       hostEl.removeEventListener('pointerdown', claim)
       textarea?.removeEventListener('focus', claim)
       ro.disconnect(); dataSub.dispose(); sizeSub.dispose(); out.dispose(); unsuspend(); client.dispose(); unbench(); links.dispose(); unfont(); unblink(); themeWatch?.disconnect(); term.dispose()

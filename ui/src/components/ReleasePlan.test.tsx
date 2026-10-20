@@ -59,21 +59,23 @@ describe('the release plan', () => {
     const rows = [...document.querySelectorAll<HTMLElement>('[data-release-row]')]
     expect(rows.map((r) => r.getAttribute('data-release-row'))).toEqual(['630', '631', '633', expect.stringMatching(/^s:/)])
     for (const r of rows) {
-      expect([...r.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step'))).toEqual(['agent', 'PR', 'CI', 'merged', 'released'])
+      expect([...r.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step'))).toEqual(['agent', 'PR', 'CI', 'merged'])
     }
     const merged = rows[0]!
+    // Owner, 2026-10-20, translated: the final status should be merged — a
+    // merge fills the bar, and its hover says it is not released yet.
     expect(merged.querySelectorAll('[data-step-state="done"]')).toHaveLength(4)
-    // Owner, 2026-10-18: the empty released step says what it means and what the merge waits for.
-    expect(merged.querySelector('[data-step="released"]')).toHaveAttribute('title', 'Released (shipped in a published release): waits for the next release (v0.118.0)\nAgent → PR → CI → Merged → Released')
+    expect([...merged.querySelectorAll('[data-step]')].every((e) => e.classList.contains('bg-merged'))).toBe(true)
+    expect(merged.querySelector('[data-step="merged"]')).toHaveAttribute('title', 'Merged: done — not released yet, it ships with the next release (v0.118.0)\nAgent → PR → CI → Merged')
     expect(within(merged).getByText('merged')).toBeInTheDocument()
     // The landing label is the word, and its step is red.
     const red = rows[1]!
     expect(red.querySelector('[data-release-word]')).toHaveTextContent('landing: CI red')
     expect(red.querySelector('[data-step="CI"]')).toHaveAttribute('data-step-state', 'red')
-    expect(red.querySelector('[data-step="CI"]')).toHaveAttribute('title', 'CI: failed — landing: CI red\nAgent → PR → CI → Merged → Released')
+    expect(red.querySelector('[data-step="CI"]')).toHaveAttribute('title', 'CI: failed — landing: CI red\nAgent → PR → CI → Merged')
     expect(rows[3]!.querySelector('[data-release-word]')).toHaveTextContent('no PR yet')
-    expect(rows[3]!.querySelector('[data-step="PR"]')).toHaveAttribute('title', 'Pull request: none yet — the agent has not opened one\nAgent → PR → CI → Merged → Released')
-    expect([...rows[3]!.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'off', 'off', 'off', 'off'])
+    expect(rows[3]!.querySelector('[data-step="PR"]')).toHaveAttribute('title', 'Pull request: none yet — the agent has not opened one\nAgent → PR → CI → Merged')
+    expect([...rows[3]!.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'off', 'off', 'off'])
     // A pull request row goes to its detail on the Pipeline.
     expect(within(merged).getByRole('link')).toHaveAttribute('href', expect.stringContaining('pipeline'))
   })
@@ -94,7 +96,7 @@ describe('the release plan', () => {
     const ci = row(631).querySelector('[data-step="CI"]')!
     expect(ci).toHaveAttribute('data-step-state', 'now')
     expect(ci).toHaveClass('release-step-pulse')
-    expect(ci).toHaveAttribute('title', 'CI: under way — CI running\nAgent → PR → CI → Merged → Released')
+    expect(ci).toHaveAttribute('title', 'CI: under way — CI running\nAgent → PR → CI → Merged')
     // A dot per OS, macOS · Linux · Windows, each named.
     const dots = [...row(631).querySelectorAll('[data-os]')]
     expect(dots.map((d) => [d.getAttribute('data-os'), d.getAttribute('data-os-state')])).toEqual([['macos', 'running'], ['linux', 'pass'], ['windows', 'running']])
@@ -194,7 +196,7 @@ describe('the release plan', () => {
     expect(screen.queryByRole('heading')).toBeNull()
     expect(document.querySelector('[data-release-since]')).toHaveTextContent('No releases here: work ships when it merges')
     expect(document.querySelector('[data-release-plan]')).toHaveAttribute('data-release-ships', 'merge')
-    // The open ones are in flight, their bars without a released step.
+    // The open ones are in flight, their bars ending at merged as everywhere.
     const open = document.querySelector('[data-release-row="631"]')!
     expect([...open.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step'))).toEqual(['agent', 'PR', 'CI', 'merged'])
     // The merges are done: the three newest of six (#630 50m ago, then #643…), under Merged recently, the bar full.
@@ -206,13 +208,14 @@ describe('the release plan', () => {
     expect(full.querySelector('[data-release-wait]')).toBeNull()
   })
 
-  it('draws the released step neutral when nothing read says whether releases are cut', () => {
+  it('fills a merge’s bar and claims no release wait when nothing read says whether releases are cut', () => {
     const stats = statsFixture()
     delete stats.board!.ships_by
     render(<ReleasePlan plan={planForRepo(withKinds(), '/w/caprock', stats, NOW)} />)
-    const step = document.querySelector('[data-release-row="630"] [data-step="released"]')!
-    expect(step).toHaveAttribute('data-step-state', 'unknown')
-    expect(step.getAttribute('title')).toMatch(/^Released \(shipped in a published release\): not known/)
+    const row = document.querySelector('[data-release-row="630"]')!
+    expect(row.querySelector('[data-step="released"]')).toBeNull()
+    expect([...row.querySelectorAll('[data-step]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done'])
+    expect(row.querySelector('[data-step="merged"]')).toHaveAttribute('title', 'Merged: done\nAgent → PR → CI → Merged')
   })
 })
 

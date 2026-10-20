@@ -156,8 +156,10 @@ type Daemon struct {
 	// slow holds the status figures that read the event table in bulk.
 	slowMu sync.Mutex
 	slow   slowStatus
-	log    *slog.Logger
-	store  *store.Store
+	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
+	subSpend subSpendCache
+	log      *slog.Logger
+	store    *store.Store
 	// roll replaces the handoff holdout's random draw in tests.
 	roll  func() int
 	bus   *bus.Bus
@@ -1567,18 +1569,18 @@ func (d *Daemon) status(_ context.Context) any {
 	return st
 }
 
-// statusSlowTTL is how long the two status figures that read the event table
-// in bulk are reused. Both are polled every 30 s and both move slowly: the
-// prose a handoff can reach and the size of the table. On the owner's 1 GB
+// statusSlowTTL is how long the status figures that read the event table in
+// bulk are reused: the prose a handoff can reach, polled every 30 s and slow
+// to move (the size of the table has its own counter, eventcount.go). On the
+// owner's 1 GB
 // database they were most of /v1/status — 0.26 s to count 330k events and
 // 0.64 s to find a fortnight's handoff passages, cold, measured 2026-10-04 on
 // a copy — and the Now screen waited on them for its figures.
 const statusSlowTTL = time.Minute
 
 type slowStatus struct {
-	at     time.Time
-	mem    MemoryStatus
-	events int64
+	at  time.Time
+	mem MemoryStatus
 }
 
 // slowStatus answers the bulk-read status figures, refreshing them at most once
@@ -1589,12 +1591,11 @@ func (d *Daemon) slowStatus() slowStatus {
 	if !d.slow.at.IsZero() && time.Since(d.slow.at) < statusSlowTTL {
 		return d.slow
 	}
+	// The event count is not taken here: /v1/status reads it from
+	// d.events (eventcount.go), and a second count of the whole table each
+	// minute that nothing read was 9.4 MB of index pages on the owner's
+	// 1.85 GB database (docs/resource-usage-audit-2026-10-18.md, F17).
 	v := slowStatus{at: time.Now(), mem: d.memoryStatus()}
-	if d.store != nil {
-		if n, err := store.CountEvents(context.Background(), d.store.DB()); err == nil {
-			v.events = n
-		}
-	}
 	d.slow = v
 	return v
 }

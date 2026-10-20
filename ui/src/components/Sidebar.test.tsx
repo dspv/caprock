@@ -3,6 +3,9 @@
  * project at the top, quiet projects folded at the bottom, and a project
  * hidden by hand moving to Hidden and back, remembered across a reload.
  */
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
@@ -480,10 +483,10 @@ describe('the sidebar', () => {
       expect(chip).toHaveClass('invisible', 'absolute')
       expect(bar.title).toContain('⌘P')
       expect(chip.textContent).toBe('⌘P')
-      // The theme's half carries ⇧⌘T the same way, its key in its name too.
-      expect(theme.textContent).toMatch(/^(Dark|Light|Book).*⇧⌘T$/)
+      // The theme's half carries ⌥⌘P the same way, its key in its name too.
+      expect(theme.textContent).toMatch(/^(Dark|Light|Book).*⌥⌘P$/)
       expect(theme.querySelector('[data-key-chip]')).toHaveClass('app-kbd-key')
-      expect(theme).toHaveAccessibleName(/\(⇧⌘T\)$/)
+      expect(theme).toHaveAccessibleName(/\(⌥⌘P\)$/)
       for (const b of [dash, bar, theme]) expect(b).toHaveClass('h-[32px]')
       // The theme on the right, so its picker stays inside the sidebar.
       expect(row.lastElementChild!.contains(theme)).toBe(true)
@@ -500,7 +503,7 @@ describe('the sidebar', () => {
       const row = document.querySelector('[data-mode-row]') as HTMLElement
       expect(row).not.toHaveClass('grid-cols-2')
       expect(within(row).getByRole('button', { name: /^Pipeline: every pull request/ }).textContent).toBe('PipelineCtrl+Shift+P')
-      expect(within(row).getByRole('button', { name: /^Theme:/ }).textContent).toMatch(/Ctrl\+Alt\+Shift\+T$/)
+      expect(within(row).getByRole('button', { name: /^Theme:/ }).textContent).toMatch(/Ctrl\+Alt\+Shift\+P$/)
     } finally { platform.mockRestore() }
     expect(splitModeRow(true)).toBe(true)
     expect(splitModeRow(false)).toBe(false)
@@ -516,7 +519,7 @@ describe('the sidebar', () => {
       const footer = document.querySelector('[data-sidebar-footer]')!
       expect(footer.getAttribute('data-folded-keys')).toBe('shown')
       const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
-      expect(chips.map((k) => k.textContent)).toEqual(['⇧⌘F', '⇧⌘M', '⌘D', '⌘,', '⌘P', '⇧⌘T'])
+      expect(chips.map((k) => k.textContent)).toEqual(['⇧⌘F', '⇧⌘M', '⌘D', '⌘,', '⌘P', '⌥⌘P'])
       for (const k of chips) expect(k).not.toHaveClass('invisible')
       // The New agent chip's size, never the small faint one (owner,
       // 2026-10-15, translated: "the shortcuts there are tiny").
@@ -545,7 +548,7 @@ describe('the sidebar', () => {
       expect(onSettingsSection).toHaveBeenCalledWith('phone')
       fireEvent.click(chip('⌘P'))
       expect(onPipeline).toHaveBeenCalledTimes(1)
-      fireEvent.click(chip('⇧⌘T'))
+      fireEvent.click(chip('⌥⌘P'))
       expect(document.querySelector('[data-theme-menu]')).not.toBeNull()
       // Each chip carries its button's tooltip, and the column stays one
       // control: one tab stop and one name, the icon's.
@@ -583,7 +586,7 @@ describe('the sidebar', () => {
     }
   })
 
-  it('spells the folded keys for Windows and Linux and shows them on hover there', () => {
+  it('spells the folded keys for Windows and Linux, shows them on focus or held Ctrl, and on hover leaves the key to the tooltip', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Linux x86_64')
     try {
       localStorage.setItem(FOLDS_KEY, JSON.stringify(['footer']))
@@ -591,8 +594,14 @@ describe('the sidebar', () => {
       const footer = document.querySelector('[data-sidebar-footer]')!
       expect(footer.getAttribute('data-folded-keys')).toBe('hover')
       const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
-      expect(chips.map((k) => k.textContent)).toEqual(['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,', 'Ctrl+Shift+P', 'Ctrl+Alt+Shift+T'])
-      for (const k of chips) expect(k).toHaveClass('app-kbd-key', 'invisible', 'group-hover:visible', 'group-focus-within:visible')
+      expect(chips.map((k) => k.textContent)).toEqual(['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,', 'Ctrl+Shift+P', 'Ctrl+Alt+Shift+P'])
+      for (const k of chips) {
+        expect(k).toHaveClass('app-kbd-key', 'app-kbd-float', 'invisible')
+        // A chip on hover was a second tooltip beside the icon's (a Windows tester, 2026-10-20).
+        expect(k.className).not.toMatch(/group-hover|group-focus-within/)
+        const button = k.parentElement!.querySelector('button')!
+        expect(button.getAttribute('title') ?? button.getAttribute('aria-label')).toContain(k.textContent!)
+      }
     } finally { platform.mockRestore() }
     expect(foldedKeys(true)).toBe('shown')
     expect(foldedKeys(false)).toBe('hover')
@@ -661,7 +670,7 @@ describe('the sidebar', () => {
         'kbd[data-key-chip]': { width: 40 },
       })
       const dropped = () => [...footer.querySelectorAll('[data-key-chip]')].filter((k) => k.hasAttribute('data-dropped')).map((k) => k.textContent)
-      // 6 keys of 40px, the theme's ⇧⌘T among them, and the 22px arrow:
+      // 6 keys of 40px, the theme's ⌥⌘P among them, and the 22px arrow:
       // 262px (jsdom draws no padding or gaps), so all fit a 270px row.
       let undo = layout(270)
       try { act(() => ro.fire()) } finally { undo() }
@@ -669,7 +678,7 @@ describe('the sidebar', () => {
       // At 240px, 22px are missing: three keys go, the rightmost of a tie first.
       undo = layout(240)
       try { act(() => ro.fire()) } finally { undo() }
-      expect(dropped()).toEqual(['⌘,', '⌘P', '⇧⌘T'])
+      expect(dropped()).toEqual(['⌘,', '⌘P', '⌥⌘P'])
       for (const k of footer.querySelectorAll('[data-key-chip]')) expect(k).toHaveClass('app-kbd-key')
       // Each dropped key is still in its icon's tooltip.
       expect(screen.getByRole('button', { name: /^Settings: phone, Telegram \(⌘,\)$/ })).toBeTruthy()
@@ -680,6 +689,31 @@ describe('the sidebar', () => {
       expect([...footer.querySelectorAll('[data-key-slot] > kbd')].filter((k) => !k.hasAttribute('data-key-chip'))).toHaveLength(0)
     } finally { platform.mockRestore(); ro.restore() }
   })
+
+  // A Windows tester, 2026-10-20, translated: hovering Dashboard showed the
+  // Ctrl+Shift+D chip at once and the title a second later, "showing both
+  // makes no sense — one is enough, the fuller one". Off macOS a hover shows
+  // only the title, so every revealed chip's key must be in it.
+  for (const platformName of ['Win32', 'Linux x86_64']) {
+    it(`leaves the key to the row's tooltip on hover on ${platformName}, the chip on focus or held Ctrl only`, () => {
+      const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platformName)
+      try {
+        localStorage.removeItem(FOLDS_KEY)
+        renderSidebar({ onSettings: vi.fn(), onMail: vi.fn(), onPipeline: vi.fn(), onQuickChat: vi.fn() })
+        const chips = [...document.querySelectorAll<HTMLElement>('.app-kbd-reveal')]
+        expect(chips.length).toBeGreaterThanOrEqual(8)
+        for (const k of chips) {
+          const titled = k.closest('[title]') ?? k.parentElement!.querySelector('[title]')
+          expect(titled?.getAttribute('title'), k.textContent!).toContain(k.textContent!)
+        }
+        expect(chips.map((k) => k.textContent)).toContain('Ctrl+Shift+D')
+      } finally { platform.mockRestore() }
+      const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'design', 'tokens.css'), 'utf8')
+      expect(css).not.toMatch(/:hover\s*>\s*\.app-kbd-reveal/)
+      expect(css).toMatch(/\[data-show-keys\] \.app-kbd-reveal/)
+      expect(css).toMatch(/\[data-show-keys\] \.app-kbd-float/)
+    })
+  }
 
   it('drops a row’s key rather than cut its words, and brings it back when there is room', () => {
     const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue('Win32')

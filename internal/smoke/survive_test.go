@@ -221,7 +221,7 @@ func daemonEnv(bin, home, data string) []string {
 	for _, kv := range os.Environ() {
 		k := strings.ToUpper(strings.SplitN(kv, "=", 2)[0])
 		switch k {
-		case "HOME", "USERPROFILE", "CAPROCK_DATA_DIR", "PATH", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR":
+		case "HOME", "USERPROFILE", "CAPROCK_DATA_DIR", "PATH", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "CAPROCK_SECRET_STORE":
 			continue
 		}
 		env = append(env, kv)
@@ -230,7 +230,10 @@ func daemonEnv(bin, home, data string) []string {
 	if runtime.GOOS == "windows" {
 		path = bin + string(os.PathListSeparator) + os.Getenv("PATH")
 	}
-	return append(env, "HOME="+home, "USERPROFILE="+home, "CAPROCK_DATA_DIR="+data, "PATH="+path)
+	// The file store, never the OS one: a new HOME does not move the macOS
+	// login keychain, so the Telegram smoke's test token once replaced the
+	// real bot token there (2026-10-20).
+	return append(env, "HOME="+home, "USERPROFILE="+home, "CAPROCK_DATA_DIR="+data, "PATH="+path, "CAPROCK_SECRET_STORE=file")
 }
 
 type proc struct {

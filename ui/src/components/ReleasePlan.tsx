@@ -8,9 +8,11 @@
  * asked to see as a view (2026-10-15):
  *
  *   0.120.0
- *     #656 brain: agents → shared brain   ▓▓▓▓░  merged  a release         5h
- *     #659 sidebar footer edge            ▓▓▓░░  CI      CI on Windows · 6m  19h  ● ● ●
- *     Second Brain live build             ▓░░░░  agent   the agent · 3 of 7  40m
+ *     #656 brain: agents → shared brain   ▓▓▓▓  merged  a release         5h
+ *     #659 sidebar footer edge            ▓▓▓░  CI      CI on Windows · 6m  19h  ● ● ●
+ *     Second Brain live build             ▓░░░  agent   the agent · 3 of 7  40m
+ *
+ * The bar ends at merged: a merge fills it (owner, 2026-10-20).
  *
  * The bar grows with the row (owner, 2026-10-16, translated: "a lot of empty
  * space wasted — make it bigger, or add some indicator"); the extra columns
@@ -30,13 +32,12 @@
 import { useContext, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { RELEASED_MEANS } from '@/lib/journey'
 import { releaseStatus, type ReleaseStatus } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseWhy } from './ReleaseStatus'
 import { ageText, BLOCKS, planEmpty, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
-import { CI_IDLE_MS, usePoll } from './SessionDeck'
+import { CI_IDLE_MS, usePoll } from '@/lib/usePoll'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS } from '@/lib/work'
@@ -540,63 +541,57 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
 }
 
 type BarStep = (typeof STEPS)[number]
-const STEP_NAME: Record<BarStep, string> = { agent: 'Agent', PR: 'Pull request', CI: 'CI', merged: 'Merged', released: `Released (${RELEASED_MEANS.toLowerCase()})` }
-const STEP_SAYS: Record<StepState, string> = { done: 'done', now: 'under way', red: 'failed', warn: 'waits on you', off: 'to come', unknown: 'not known — whether this repository cuts releases could not be read' }
-export type StepState = 'done' | 'now' | 'red' | 'warn' | 'off' | 'unknown'
+const STEP_NAME: Record<BarStep, string> = { agent: 'Agent', PR: 'Pull request', CI: 'CI', merged: 'Merged' }
+const STEP_SAYS: Record<StepState, string> = { done: 'done', now: 'under way', red: 'failed', warn: 'waits on you', off: 'to come' }
+export type StepState = 'done' | 'now' | 'red' | 'warn' | 'off'
 
-/** How a repository's bars are drawn: its steps (no released one where work ships on merge) and the next version a merge waits for. */
+/** How a repository's bars are told on hover: how it ships, and the next version a merge waits for. */
 export interface BarSteps {
   ships?: ShipsBy
   next?: string
 }
 
-/** The bar's steps for a repository: no released step where work ships on merge. */
-export function barSteps(ships: ShipsBy | undefined): readonly BarStep[] {
-  return ships === 'merge' ? STEPS.filter((s) => s !== 'released') : STEPS
-}
-
 /**
  * Each step's state on a row's bar: done up to the one it is on, that one
- * red, amber or under way when it is; the released step still ahead is not
- * known where nothing read says whether releases are cut.
+ * red, amber or under way when it is. A merge is the last step, so a merged
+ * row's bar is full.
  */
-export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running'>, ships?: ShipsBy, known = ships !== undefined): StepState[] {
-  const steps = barSteps(ships)
+export function stepStates(r: Pick<PlanRow, 'filled' | 'red' | 'warn' | 'running'>): StepState[] {
   const on = Math.round(r.filled / (BLOCKS / STEPS.length))
-  return steps.map((step, i) => {
-    if (i >= on) return step === 'released' && !known ? 'unknown' : 'off'
+  return STEPS.map((_, i) => {
+    if (i >= on) return 'off'
     if (i < on - 1) return 'done'
     return r.red ? 'red' : r.warn ? 'warn' : r.running ? 'now' : 'done'
   })
 }
 
 /**
- * A segment per step (agent, PR, CI, merged, released — no released where
- * the repository ships on merge, so a merge fills the bar), each named on
- * hover: filled to the step it is on, that step red when it failed, amber
- * when a landing label waits on the person, pulsing softly while it is under
- * way (CI running, an agent at work); merged rows in the merged colour; a
- * released step nothing read can place dotted. On a page it fills its
- * column, so it grows with the row; on the phone it is a fixed width.
+ * A segment per step (agent, PR, CI, merged), each named on hover: filled to
+ * the step it is on, that step red when it failed, amber when a landing
+ * label waits on the person, pulsing softly while it is under way (CI
+ * running, an agent at work); merged rows full, in the merged colour. The
+ * bar ends at merged (owner, 2026-10-20, translated: the final status should
+ * be merged — a grey released block read as unfinished, or closed); whether
+ * a merge is released is a word after it, never a block. On a page it fills
+ * its column, so it grows with the row; on the phone it is a fixed width.
  */
 export function Blocks({ row: r, compact = false, phone = false, ships, next }: { row: PlanRow; compact?: boolean; phone?: boolean } & BarSteps) {
   if (r.stage === 'branch') return null
-  const steps = barSteps(ships)
-  const states = stepStates(r, ships)
-  const path = steps.map((s) => (s === 'PR' ? 'PR' : s === 'CI' ? 'CI' : s[0]!.toUpperCase() + s.slice(1))).join(' → ')
-  const tone = r.stage === 'merged' ? 'bg-merged' : 'bg-accent'
-  const on = states.filter((s) => s !== 'off' && s !== 'unknown').length
+  const states = stepStates(r)
+  const path = STEPS.map((s) => (s === 'PR' ? 'PR' : s === 'CI' ? 'CI' : s[0]!.toUpperCase() + s.slice(1))).join(' → ')
+  const tone = r.stage === 'merged' || r.stage === 'released' ? 'bg-merged' : 'bg-accent'
+  const on = states.filter((s) => s !== 'off').length
   return (
-    <span data-release-bar role="img" aria-label={`${on} of ${steps.length} steps (${path}): ${r.word}`}
+    <span data-release-bar role="img" aria-label={`${on} of ${STEPS.length} steps (${path}): ${r.word}`}
       className={`flex items-center gap-[3px] ${phone ? 'shrink-0' : 'w-full'}`}>
-      {steps.map((step, i) => {
+      {STEPS.map((step, i) => {
         const s = states[i]!
-        const color = s === 'unknown' ? 'bg-[repeating-linear-gradient(90deg,var(--color-border-strong)_0_3px,transparent_3px_6px)]' : s === 'off' ? 'bg-border-strong' : s === 'red' ? 'bg-danger' : s === 'warn' ? 'bg-warn' : tone
+        const color = s === 'off' ? 'bg-border-strong' : s === 'red' ? 'bg-danger' : s === 'warn' ? 'bg-warn' : tone
         const says = step === 'PR' && s === 'off' && !r.number ? 'none yet — the agent has not opened one'
-          : step === 'released' && s === 'off' && r.stage === 'merged' ? `waits for the next release${next ? ` (v${next})` : ''}`
+          : step === 'merged' && s === 'done' && r.stage === 'merged' && ships === 'release' ? `done — not released yet, it ships with the next release${next ? ` (v${next})` : ''}`
             : STEP_SAYS[s]
-        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${says}${s === 'off' || s === 'done' || s === 'unknown' ? '' : ` — ${r.word}`}\n${path}`}
-          className={`${phone ? 'h-[10px] w-[16px]' : compact ? 'h-[7px] min-w-[8px] flex-1' : 'h-[9px] min-w-[12px] flex-1'} rounded-[2px] ${color}${s === 'now' ? ' release-step-pulse' : ''}`} />
+        return <span key={step} data-step={step} data-step-state={s} title={`${STEP_NAME[step]}: ${says}${s === 'off' || s === 'done' ? '' : ` — ${r.word}`}\n${path}`}
+          className={`${phone ? 'h-[10px] w-[20px]' : compact ? 'h-[7px] min-w-[8px] flex-1' : 'h-[9px] min-w-[12px] flex-1'} rounded-[2px] ${color}${s === 'now' ? ' release-step-pulse' : ''}`} />
       })}
     </span>
   )

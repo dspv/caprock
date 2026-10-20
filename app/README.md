@@ -157,6 +157,37 @@ leaves the running daemon alone.
 SIGTERM quits the app as Cmd+Q does (`src-tauri/src/sigterm.rs`): the window's
 size and place are saved and the daemon keeps running.
 
+## When the window goes blank
+
+A white (or empty) window comes back by itself; nobody has to quit the app
+(`src-tauri/src/recover.rs`, `.ai/21-app.md` § A blank window recovers by
+itself):
+
+- **The WebView's content process ended.** macOS ends it under memory
+  pressure, and Tauri leaves the view blank. On macOS the app reloads that
+  webview — the main window, Mail, the popover or a browser tab's page — at
+  once the first time, then after 2 s, 10 s and a minute when it keeps
+  happening within ten minutes.
+- **A load the shell asked for never finished** (the launch's first page, a
+  move back to the dashboard, a reload after a daemon swap): a navigation cut
+  off before anything arrived fires no event. While the daemon answers, the
+  monitor loads the page again after 10 s, then 20 s, 40 s and every minute.
+- **The page loaded but drew nothing** (a file of it did not load, or a throw
+  before React drew): the page's own watchdog in `ui/index.html` shows
+  *Reconnecting to Caprock…* with **Reload**, and reloads once `/healthz`
+  answers, five times in ten minutes at most.
+
+Each of these, and the dashboard's crash screen, writes one line to
+`<data_dir>/app.log` (`src-tauri/src/applog.rs`; `app.log.1` keeps the
+previous 256 KiB): the time in UTC, the window, and what happened. It is a
+local file and nothing reads it but the user; an address in it keeps its
+port and path, never the route or the query. Asked why a window went white,
+read the lines around that time:
+
+```bash
+tail -n 50 ~/Library/Application\ Support/caprock/app.log
+```
+
 ## What a page may call
 
 Commands are granted per origin (`src-tauri/capabilities/`):
@@ -190,6 +221,7 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 | `open_mail_app`          | yes         | no           | no      | no          |
 | `open_mail_window`       | yes         | no           | no      | no          |
 | `browser_tab`            | yes         | no           | no      | no          |
+| `app_log`                | yes         | no           | no      | no          |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 A browser tab's page (`browser-<id>`, the in-app browser, ADR-075) is a
@@ -206,6 +238,10 @@ updater plugin's own commands are granted to no page. `clipboard_image`,
 screenshots (`src-tauri/src/capture.rs`): a PNG onto the OS clipboard, the
 app's own page as a PNG, and an image file from the last drop on the window;
 the clipboard manager plugin's own commands are granted to no page.
+`app_log` (`{message}`) adds one line to the app's own log on this machine
+(`<data_dir>/app.log`, § When the window goes blank): the crash screen and
+the page's start-up watchdog say why they showed. A message is one line of
+at most 600 characters, and a run takes 200 at most.
 `read_dropped_text` reads a `.md` or `.txt` file (at most 1 MiB, UTF-8) from
 the last drop the same way, for the brief of New project from a template.
 `open_external` opens `http`, `https` and `mailto`, plus `tg:` only when an

@@ -89,10 +89,10 @@ you hit the limit.
 
 ## Pull requests and CI next to the agent
 
-The deck shows the repository's pull requests with every check per job and OS,
+The Pipeline shows the repository's pull requests with every check per job and OS,
 how long they took and what the agents spent on them. A red run, a conflict or
 a branch behind master gets *Fix CI with agent*, *Fix conflict with agent* or
-*Update branch* from the row; the Changes view stages, commits and pushes
+*Update branch* from the pull request, or from its row beside the agent; the Changes view stages, commits and pushes
 without leaving the window.
 
 <picture>

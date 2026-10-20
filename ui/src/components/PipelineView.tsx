@@ -10,17 +10,19 @@
  * One list (owner, 2026-10-14, translated: "PR titles are missing … I'd
  * merge it all into one — PR rows with their statuses, so I understand how
  * things travel, what gets released"): the figures on top, then every pull
- * request as a row — its number, its whole title, its labels, its four steps
- * Open → CI → Merged → Released (lib/journey, the cockpit draws the same),
+ * request as a row — its number, its whole title, its labels, its three steps
+ * Open → CI → Merged (lib/journey, the cockpit draws the same) and after them
+ * its release in a quiet word (*in v0.132.0*, *not released*),
  * how long in the step, its agent cost — in flight first, then merged, then
  * released (ten, then "Show more"), and the releases below. A row opens the
  * pull request in detail beside the list (under it on a narrow window):
- * state, review, merge state and diff, the deck's actions, its jobs by runner
+ * state, review, merge state and diff, the force actions (lib/usePRForce), its jobs by runner
  * OS against each one's median, the jobs on the run's clock, a job's steps
- * and the end of a failed one's log.
+ * and the end of a failed one's log. Under the releases, the default
+ * branch's workflows and this month's Actions bill (components/PipelineMain).
  *
  * Asked only while the page is in front and the window visible (usePoll),
- * through the deck's own routes and kept answers (lib/deckCache), so opening
+ * through the daemon's CI routes and their kept answers (lib/deckCache), so opening
  * it shows what was last known at once.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -31,7 +33,7 @@ import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/useP
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
 import { AGENT_COST_NOTE, asBoard, costText, costTitle, type PRBoard } from '@/lib/prboard'
 import type { BranchPR } from '@/lib/branches'
-import { journey, pipelineRows, RELEASED_MEANS, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
+import { journey, pipelineRows, releaseNote, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { BUCKET_LABEL, bucketItems, fixedLately, inBucket, noteFixes, readFixSeen, writeFixSeen, type Bucket, type FixSeen } from '@/lib/flowbucket'
 import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
@@ -41,10 +43,13 @@ import { FlowCards, Releases } from './PRBoard'
 import { AgentsCard, TeamChart, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
 import { PipelineShareButton } from './PipelineShare'
+import { PipelineMain } from './PipelineMain'
 import { JourneyPills } from './Journey'
 import { GitHubPerson } from './GitHubAvatar'
 import { Panel } from './ui'
-import { CI_IDLE_MS, CI_RUNNING_MS, CIMark, DeckSkeleton, ExpandToggle, Freshness, PRS_PENDING_MS, connectGitHub, usePoll } from './SessionDeck'
+import { CIMark, DeckSkeleton, ExpandToggle, connectGitHub } from './CIParts'
+import { Freshness } from './Freshness'
+import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePoll'
 import { extTitle } from '@/lib/externalLinks'
 
 export interface PipelineViewProps {
@@ -125,7 +130,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [prs] = usePoll<SessionPRs>(visible, `${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`)
   const sessionPRs = useMemo(() => prs?.prs ?? [], [prs])
   // The repository's newest release run, for the Next release panel's
-  // stages: the deck's own answer (`release:<repo>`), read while the page is
+  // stages: the kept answer (`release:<repo>`), read while the page is
   // in front, every 12 s while it runs; the daemon keeps it, so an idle
   // poll costs GitHub nothing new.
   const relScope = s.repo_root || s.cwd || sessionId
@@ -202,7 +207,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
 
   const row = rows.find((r) => r.number === pick) ?? pipelineRows(tabRows('repo', sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []).find((r) => r.number === pick)
   const runs: CIRun[] = useMemo(() => ci?.ci?.runs ?? [], [ci?.ci?.runs])
-  // The chosen pull request as the deck's rows carry it, so the deck's words and actions apply.
+  // The chosen pull request as the session's own rows carry it, so the PR words and actions apply.
   const p: SessionPRLive | undefined = row ? {
     ...(row.mine ?? { session_id: sessionId, url: row.url, number: row.number, title: row.title, last_at: 0 }),
     live: ci?.pr?.live ?? row.mine?.live,
@@ -287,6 +292,8 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
         </div>
       )}
       {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
+      {/* The default branch's workflows and this month's Actions bill: the session deck's Main view until 2026-10-20. */}
+      {ready && <PipelineMain sessionId={sessionId} s={s} visible={visible} now={now} why={why} onToast={onToast} />}
     </div>
   )
 }
@@ -334,9 +341,7 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
           <>
             <div aria-hidden className={`${ROW_GRID} border-b border-border px-3 py-1.5 text-[10.5px] uppercase tracking-[0.12em] text-fg-muted @max-[820px]/list:hidden`}>
               <span>Pull request</span>
-              {ships.ships === 'merge'
-                ? <span className="whitespace-nowrap" title="No releases here: work ships when it merges">Open → CI → Merged</span>
-                : <span className="whitespace-nowrap">Open → CI → Merged → <span title={RELEASED_MEANS}>Released</span></span>}
+              <span className="whitespace-nowrap" title={ships.ships === 'merge' ? 'No releases here: work ships when it merges' : 'Merged is the last step; a merge’s release is said after it'}>Open → CI → Merged</span>
               <span className="text-right">In step</span>
               <span className="whitespace-nowrap text-right" title={AGENT_COST_NOTE}>Agent cost</span>
             </div>
@@ -378,7 +383,7 @@ function BucketPreview({ b, board, prs, fixed }: { b: Bucket; board: PRBoard; pr
 
 /** One pull request: number, its whole title, labels, the four steps, the time in its step, agent cost. */
 function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean; ships: ShipsContext }) {
-  const steps = journey(r, ships)
+  const steps = journey(r)
   const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const cost = r.card ? costText(r.card.spend) : ''
   return (
@@ -399,7 +404,7 @@ function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: 
             )}
           </span>
         </span>
-        <JourneyPills steps={steps} />
+        <JourneyPills steps={steps} note={releaseNote(r, ships)} />
         <span className="num text-right text-[12.5px] text-fg-muted @max-[820px]/list:hidden" title={at ? new Date(at).toLocaleString() : undefined}>{at ? spanText(Math.max(0, now - at)) : '–'}</span>
         <span className="num text-right text-[13px] font-medium text-fg" title={r.card ? costTitle(r.card.spend) : undefined}>
           {cost || <span className="font-normal text-fg-muted">–</span>}

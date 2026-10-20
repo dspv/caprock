@@ -81,6 +81,7 @@ import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
 import { instructionsSummary } from '@/lib/projectWizard'
 import { rowRepo } from '@/lib/multirepo'
+import { chatRowSuffix, isQuickChat } from '@/lib/quickchat'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -328,7 +329,7 @@ export const ProjectRow = memo(function ProjectRow({
           <span className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex group-focus-within:flex pointer-coarse:flex">
             {hidden
               ? <RowAction label={`Show ${p.name} in the list again`} onClick={() => onHide(id, false)}><EyeIcon size={14} /></RowAction>
-              : <RowAction label={`Hide ${p.name}: it moves under Hidden; what runs there keeps running`} onClick={() => onHide(id, true)}><EyeOffIcon size={14} /></RowAction>}
+              : <RowAction label={`Hide ${p.name}: it moves under Hidden; a quick chat ends with its tab, the rest keeps running`} onClick={() => onHide(id, true)}><EyeOffIcon size={14} /></RowAction>}
           </span>
         )}
         {/* Actions on hover or focus, where the figures sit: the row stays one line. */}
@@ -680,6 +681,8 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
 }) {
   const title = label?.title ?? tab.title
   const isFile = label?.file !== undefined
+  // A quick chat's tab: its model after the title, when the title does not say it.
+  const chatModelName = label?.chat && label.session ? chatRowSuffix(label.session, title, false).model : undefined
   const word = !isFile && !label?.isShell && label?.session ? label.dot : undefined
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
@@ -702,7 +705,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
         title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', repo, label?.branch, project?.name].filter(Boolean).join(' · ')}
       >
         {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <RowDot dot={label?.dot ?? 'idle'} asks={asks} />}
-        <TitleAndBranch title={title} branch={project ? undefined : [repo, label?.branch].filter(Boolean).join(' · ') || undefined} className={active ? 'font-semibold text-fg' : 'text-fg'} />
+        <TitleAndBranch title={title} branch={project ? chatModelName : [repo, label?.branch, chatModelName].filter(Boolean).join(' · ') || undefined} className={active ? 'font-semibold text-fg' : 'text-fg'} />
         {project && <ProjectName project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
         {word && <StateWord dot={word} asks={asks} front={active} />}
@@ -782,6 +785,8 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
   const b = branchLabel(s.git_branch ?? '')
   const branch = [repo, b && b !== own ? b : ''].filter(Boolean).join(' · ') || undefined
   const title = item.isShell ? `Shell${s.program ? ` · ${s.program}` : ''}` : item.title
+  // A quick chat: its model and start time after the title (lib/quickchat chatRowSuffix).
+  const chat = !item.isShell && isQuickChat(s) ? chatRowSuffix(s, title, true) : undefined
   const canStop = !!onStop && s.owned && s.status !== 'ended'
   const n = (onHide || onShow ? 1 : 0) + (canStop ? 1 : 0)
   return (
@@ -798,11 +803,11 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${hidden ? 'opacity-55' : ''} ${PAD_ON_HOVER[n]}`}
-        title={`${[title, agentGlyphLabel(s.agent, item.isShell), branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
+        title={`${[title, agentGlyphLabel(s.agent, item.isShell), chat?.model, chat?.when ? `started ${chat.when}` : '', branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
       >
         <RowDot dot={item.dot} asks={item.asks} />
         {/* No tab: muted, so it reads as not open; while it waits, as plain as a tab's. */}
-        <TitleAndBranch title={title} branch={project ? undefined : branch} className={item.waiting ? 'text-fg' : 'text-fg-muted'} />
+        <TitleAndBranch title={title} branch={chat ? chat.model : project ? undefined : branch} when={chat?.when} className={item.waiting ? 'text-fg' : 'text-fg-muted'} />
         {project && <ProjectName project={project} />}
         <HotMark sessionId={s.session_id} />
         {!item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
@@ -837,10 +842,12 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
  * nothing first. The title is cut only once the branch is gone. The full
  * text of both is in the row's tooltip.
  */
-export function TitleAndBranch({ title, branch, className }: { title: string; branch?: string; className: string }) {
+export function TitleAndBranch({ title, branch, when, className }: { title: string; branch?: string; when?: string; className: string }) {
   return (
     <span className="flex min-w-0 flex-1 items-center overflow-hidden">
-      <span data-row-title className={`max-w-full shrink-0 truncate text-[14px] font-medium ${className}`}>{title}</span>
+      {/* With a start time (a quick chat with no tab), the title gives way to it: the time is what tells two chats apart. */}
+      <span data-row-title className={`max-w-full truncate text-[14px] font-medium ${when ? 'min-w-0 shrink' : 'shrink-0'} ${className}`}>{title}</span>
+      {when && <span data-row-when className="mono ml-2 shrink-0 text-[11px] text-fg-faint">{when}</span>}
       {branch && <span data-row-branch className="mono ml-2 min-w-0 max-w-[10ch] shrink truncate text-[11px] text-fg-faint">{branch}</span>}
     </span>
   )

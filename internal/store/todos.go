@@ -38,17 +38,20 @@ var todoTools = []string{"TodoWrite", "TaskCreate", "TaskUpdate", "update_plan"}
 // thread counts: a subagent keeps its own list. A call recorded on both the
 // hook and the transcript plane is folded once, by tool_use_id.
 //
-// The query pins idx_events_attr_work, which holds session_id, ts, kind and
-// tool, so only the matching rows are read from the table. On a copy of the
-// owner's database (2026-10-11, sqlite3) the largest session, 56k events,
-// answered in 10 ms against 37 ms on idx_events_session_id; SQLite's own
-// choice, idx_events_kind_id, walks every tool.pre in the database.
+// The query pins idx_events_todo (migration 0066), a partial index of these
+// calls alone, so only they are read. Through idx_events_attr_work, which
+// holds session_id, ts, kind and tool, it walked the session's whole index
+// range: 4,820 page reads for the owner's largest session (180k events, no
+// task calls) against 10 (F18, docs/resource-usage-audit-2026-10-18.md). The
+// tool names are written into the statement, not bound: SQLite uses a
+// partial index only when it can see the query's WHERE implies the index's.
 func SessionTodos(ctx context.Context, q Querier, sessionID string) (TodoList, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT ts, tool, COALESCE(agent_id, ''), payload
-		  FROM events INDEXED BY idx_events_attr_work
-		 WHERE session_id = ? AND kind = 'tool.pre' AND tool IN (?, ?, ?, ?)
-		 ORDER BY ts, id`, sessionID, todoTools[0], todoTools[1], todoTools[2], todoTools[3])
+		  FROM events INDEXED BY idx_events_todo
+		 WHERE session_id = ? AND kind = 'tool.pre'
+		   AND tool IN ('TodoWrite', 'TaskCreate', 'TaskUpdate', 'update_plan')
+		 ORDER BY ts, id`, sessionID)
 	if err != nil {
 		return TodoList{}, err
 	}

@@ -49,8 +49,8 @@ describe('the sidebar rows', () => {
     const onOpen = vi.fn()
     render(<ModuleRows onOpen={onOpen} dashboardActive />)
     const row = await screen.findByRole('button', { name: /Alpha/ })
-    // Its key is drawn on the row: ⌥⌘1 on a Mac, Ctrl+Alt+Shift+1 elsewhere.
-    expect(row.querySelector('[data-key-chip]')?.textContent).toMatch(/^(⌥⌘1|Ctrl\+Alt\+Shift\+1)$/)
+    // Its key is drawn on the row: ⇧⌘1 on a Mac, Ctrl+Alt+Shift+1 elsewhere.
+    expect(row.querySelector('[data-key-chip]')?.textContent).toMatch(/^(⇧⌘1|Ctrl\+Alt\+Shift\+1)$/)
     fireEvent.click(row)
     expect(onOpen).toHaveBeenCalledWith('#/x/alpha')
   })

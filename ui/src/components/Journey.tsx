@@ -1,12 +1,12 @@
 /**
- * A pull request's four steps, drawn two ways from lib/journey: pills on the
- * Pipeline page's rows, a thin four-part bar in the cockpit. The step it is
- * on is coloured — its CI's colour on the CI step — the ones behind it are
- * checked, the ones ahead outlined.
+ * A pull request's three steps, drawn two ways from lib/journey: pills on
+ * the Pipeline page's rows, a thin three-part bar in the cockpit. The step it
+ * is on is coloured — its CI's colour on the CI step — the ones behind it are
+ * checked, the ones ahead outlined; a merge fills the bar. Whether a merge is
+ * released is a quiet word after them (`ReleaseNoteWord`), never a step.
  */
 import type { CSSProperties } from 'react'
-import { RELEASED_MEANS, STEP_NAME, stepKeys, type JourneyPillStep, type JourneyStep, type StepTone } from '@/lib/journey'
-import type { ShipsBy } from '@/lib/prboard'
+import { STEP_KEYS, STEP_NAME, type JourneyPillStep, type JourneyStep, type ReleaseNote, type StepTone } from '@/lib/journey'
 
 const PILL: Record<StepTone, string> = {
   ok: 'border-ok/55 bg-ok/15 text-ok',
@@ -31,7 +31,7 @@ const BAR: Record<StepTone, string> = {
  * nothing read can place (`unknown`) a dotted outline with a "?". Also draws
  * a release's stages (components/ReleaseStatus), with `label` naming the list.
  */
-export function JourneyPills({ steps, label }: { steps: readonly JourneyPillStep[]; label?: string }) {
+export function JourneyPills({ steps, label, note }: { steps: readonly JourneyPillStep[]; label?: string; note?: ReleaseNote }) {
   return (
     <span data-journey role={label ? 'list' : undefined} aria-label={label} className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1 text-[12px]">
       {steps.map((s, i) => {
@@ -51,7 +51,16 @@ export function JourneyPills({ steps, label }: { steps: readonly JourneyPillStep
           </span>
         )
       })}
+      {note && <ReleaseNoteWord note={note} className="ml-1 text-[12px]" />}
     </span>
+  )
+}
+
+/** The quiet word after a merge's steps: *in v0.132.0*, or a muted *not released* (lib/journey releaseNote). */
+export function ReleaseNoteWord({ note, className = '' }: { note: ReleaseNote; className?: string }) {
+  return (
+    <span data-release-note={note.released ? 'released' : 'waiting'} title={note.title}
+      className={`num whitespace-nowrap ${note.released ? 'text-fg-muted' : 'text-fg-faint'} ${className}`}>{note.text}</span>
   )
 }
 
@@ -79,23 +88,25 @@ export function segmentTitle(s: JourneyStep, landing?: string): string {
   return `${name}: ${stepStateWord(s)}${word}${lands}. ${s.title}`
 }
 
-/** A grid of n equal columns: the bar and its legend, three steps or four. */
+/** A grid of n equal columns: the bar and its legend. */
 const cols = (n: number): CSSProperties => ({ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` })
 
 /**
- * Thin segments, one per step (three where the repository ships on merge):
- * done ones muted, the current one in its colour, the rest a hairline, one
- * nothing read can place dotted. Each segment has its own tooltip
+ * Thin segments, one per step: done ones muted, the current one in its
+ * colour, the rest a hairline; a merge, the last step, fills every segment
+ * in the merged colour, and a pull request closed unmerged keeps its CI
+ * segment empty and its last one muted. Each segment has its own tooltip
  * (`segmentTitle`), and a hover target taller than the 4px it draws, which
  * takes no room.
  */
 export function JourneyBar({ steps, landing, className = '' }: { steps: JourneyStep[]; landing?: string; className?: string }) {
+  const full = steps.at(-1)?.key === 'merged' && steps.at(-1)?.state === 'current'
   return (
-    <span data-journey-bar role="img" aria-label={steps.map((s) => `${STEP_NAME[s.key]} ${stepStateWord(s)}${s.text !== STEP_NAME[s.key] ? ` (${s.text})` : ''}`).join(', ') + (landing ? `, ${landing}` : '')}
+    <span data-journey-bar data-journey-full={full ? '' : undefined} role="img" aria-label={steps.map((s) => `${STEP_NAME[s.key]} ${stepStateWord(s)}${s.text !== STEP_NAME[s.key] ? ` (${s.text})` : ''}`).join(', ') + (landing ? `, ${landing}` : '')}
       className={`grid gap-[3px] ${className}`} style={cols(steps.length)}>
       {steps.map((s) => (
         <span key={s.key} data-journey-seg={s.key} data-step-state={s.state} data-step-unknown={s.unknown ? '' : undefined} title={segmentTitle(s, landing)}
-          className={`relative h-[4px] rounded-full before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-[''] ${s.state === 'current' || s.state === 'closed' ? `${BAR[s.tone]} ${s.tone === 'pending' ? 'animate-pulse motion-reduce:animate-none' : ''}` : s.state === 'done' ? 'bg-fg-faint/70' : s.unknown ? 'bg-[repeating-linear-gradient(90deg,var(--app-hairline-strong)_0_3px,transparent_3px_6px)]' : 'bg-[var(--app-hairline)]'}`} />
+          className={`relative h-[4px] rounded-full before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-[''] ${full ? BAR.merged : s.state === 'current' || s.state === 'closed' ? `${BAR[s.tone]} ${s.tone === 'pending' ? 'animate-pulse motion-reduce:animate-none' : ''}` : s.state === 'done' ? 'bg-fg-faint/70' : s.unknown ? 'bg-[repeating-linear-gradient(90deg,var(--app-hairline-strong)_0_3px,transparent_3px_6px)]' : 'bg-[var(--app-hairline)]'}`} />
       ))}
     </span>
   )
@@ -105,14 +116,12 @@ export function JourneyBar({ steps, landing, className = '' }: { steps: JourneyS
  * The step names over the bars' columns, once above the rows (owner,
  * 2026-10-15, translated: "it's not clear what the stages are"): the same
  * grid as JourneyBar, in the faint caption style, so each word sits over its
- * segment and no row grows. No *released* where the repository ships on
- * merge; where it is, its hover says what it means.
+ * segment and no row grows. Merged is the last: a release is no step.
  */
-export function JourneyLegend({ ships, className = '' }: { ships?: ShipsBy; className?: string }) {
-  const keys = stepKeys(ships)
+export function JourneyLegend({ className = '' }: { className?: string }) {
   return (
-    <span data-journey-legend aria-hidden className={`grid gap-[3px] text-[10px] leading-[12px] text-fg-faint ${className}`} style={cols(keys.length)}>
-      {keys.map((k) => <span key={k} data-journey-legend-step={k} title={k === 'released' ? RELEASED_MEANS : undefined} className="truncate">{k === 'ci' ? 'CI' : STEP_NAME[k].toLowerCase()}</span>)}
+    <span data-journey-legend aria-hidden className={`grid gap-[3px] text-[10px] leading-[12px] text-fg-faint ${className}`} style={cols(STEP_KEYS.length)}>
+      {STEP_KEYS.map((k) => <span key={k} data-journey-legend-step={k} className="truncate">{k === 'ci' ? 'CI' : STEP_NAME[k].toLowerCase()}</span>)}
     </span>
   )
 }

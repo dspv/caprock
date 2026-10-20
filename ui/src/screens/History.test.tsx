@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { History } from '@/lib/api'
-import { HistoryScreen, lifetimeFigures } from './History'
+import { calendarDays, HistoryScreen, lifetimeFigures } from './History'
 
 const data = vi.hoisted(() => ({ value: undefined as unknown }))
 
@@ -34,6 +34,30 @@ const hist = (): History =>
       ],
     },
   }) as unknown as History
+
+describe('calendar days', () => {
+  const now = new Date(2026, 9, 20, 15).getTime()
+  const bar = (day: string, cost: number) => ({ day, cost, tokens: 10 })
+
+  it('draws a day without work as an empty bar, through today', () => {
+    const out = calendarDays([bar('2026-09-29', 1), bar('2026-10-02', 2), bar('2026-10-17', 3)], Infinity, now)
+    expect(out[0]!.day).toBe('2026-09-29')
+    expect(out.slice(-1)[0]!.day).toBe('2026-10-20')
+    expect(out).toHaveLength(22)
+    expect(out[1]).toEqual({ day: '2026-09-30', cost: 0, tokens: 0 })
+    expect(out.filter((b) => b.cost > 0).map((b) => b.day)).toEqual(['2026-09-29', '2026-10-02', '2026-10-17'])
+  })
+
+  it('covers the whole window and only it', () => {
+    const out = calendarDays([bar('2026-09-01', 1), bar('2026-10-15', 2)], 7, now)
+    expect(out.map((b) => b.day)).toEqual(['2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19', '2026-10-20'])
+  })
+
+  it('is empty when the window holds no work', () => {
+    expect(calendarDays([], Infinity, now)).toEqual([])
+    expect(calendarDays([bar('2026-09-01', 1)], 30, now)).toEqual([])
+  })
+})
 
 describe('lifetime figures', () => {
   it('derives per day and per session exactly, and groups the tail as other', () => {

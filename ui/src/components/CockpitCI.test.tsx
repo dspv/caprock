@@ -4,6 +4,7 @@ import { CockpitCI, checkSummary } from './CockpitCI'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { prChecks } from '@/lib/ci'
 import { CheckSummary } from './CheckSummary'
+import { forgetPRProgress } from '@/lib/usePRForce'
 
 const now = Date.now()
 const live = (n: number, checks: object, p: object = {}) => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state: 'open', draft: false,
@@ -21,7 +22,7 @@ const PASSED = { state: 'pass', passed: 1, failed: 0, pending: 0, items: [{ name
 // the first test here started more than a second later, so "4m 00s" read
 // "4m 01s". Only Date is faked; timers stay real.
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now }) })
-afterEach(() => { forgetDeckAnswers(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
+afterEach(() => { forgetDeckAnswers(); forgetPRProgress(); localStorage.clear(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('the cockpit’s CI block', () => {
   it('counts a PR’s checks and the time since the first started', () => {
@@ -70,13 +71,18 @@ describe('the cockpit’s CI block', () => {
     // One legend over the bars' columns, and every segment says its step and
     // state, the landing label on the step it is on; the rows do not grow.
     const legend = document.querySelector('[data-journey-legend]')!
-    expect([...legend.children].map((e) => e.textContent)).toEqual(['open', 'CI', 'merged', 'released'])
+    // Owner, 2026-10-20, translated: the final status should be merged —
+    // the bar ends there, and a merge fills it; its release is a quiet word.
+    expect([...legend.children].map((e) => e.textContent)).toEqual(['open', 'CI', 'merged'])
     expect(legend).toHaveClass('gap-[3px]')
-    expect(legend).toHaveStyle({ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' })
-    // Owner, 2026-10-18: what released means, and what a merge waits for.
-    expect(legend.querySelector('[data-journey-legend-step="released"]')).toHaveAttribute('title', 'Shipped in a published release')
-    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="released"]')).toHaveAttribute('title', 'Released: waiting — next release. Waits for the next release, after v1.2.0.')
-    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-cockpit-ci-released]')).toHaveTextContent('next release')
+    expect(legend).toHaveStyle({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' })
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-seg="released"]')).toBeNull()
+    expect(document.querySelector('[data-cockpit-ci-pr="8"] [data-journey-bar]')).toHaveAttribute('data-journey-full')
+    expect([...document.querySelectorAll('[data-cockpit-ci-pr="8"] [data-journey-seg]')].every((e) => e.classList.contains('bg-merged'))).toBe(true)
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-bar]')).not.toHaveAttribute('data-journey-full')
+    const note = document.querySelector('[data-cockpit-ci-pr="8"] [data-release-note]')!
+    expect(note).toHaveTextContent('not released')
+    expect(note).toHaveAttribute('title', 'Merged, in no published release yet: it ships with the next release, after v1.2.0.')
     expect(legend.nextElementSibling).toBe(document.querySelector('[data-cockpit-journey]'))
     expect(ci).toHaveAttribute('title', 'CI: failed — CI red · landing: queued. A check on its head commit failed')
     expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="open"]')).toHaveAttribute('title', 'Open: done. Opened')
@@ -126,10 +132,9 @@ describe('the cockpit’s CI block', () => {
     expect([...document.querySelectorAll('[data-cockpit-ci-pr]')].map((e) => e.getAttribute('data-cockpit-ci-pr'))).toEqual(['5', '4', '3'])
     expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
     expect(screen.getByRole('button', { name: 'Pipeline →' })).toBeInTheDocument()
-    // An older daemon says nothing of how it ships: the released step is not known, never a wait.
-    const rel = document.querySelector('[data-cockpit-ci-pr="5"] [data-journey-seg="released"]')!
-    expect(rel).toHaveAttribute('data-step-unknown', '')
-    expect(rel.getAttribute('title')).toMatch(/^Released: not known\./)
+    // An older daemon says nothing of how it ships: the bar full, no word of a release, never a wait.
+    expect(document.querySelector('[data-cockpit-ci-pr="5"] [data-journey-bar]')).toHaveAttribute('data-journey-full')
+    expect(document.querySelector('[data-cockpit-ci-pr="5"] [data-release-note]')).toBeNull()
   })
 
   // Owner, 2026-10-18, translated: "why isn't merged the final state". A
@@ -148,7 +153,7 @@ describe('the cockpit’s CI block', () => {
     expect(segs.map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'current'])
     expect(document.querySelector('[data-cockpit-ci-pr="12"] [data-journey-bar]')).toHaveStyle({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' })
     expect(segs[2]!.getAttribute('title')).toContain('Merged: the last step')
-    expect(document.querySelector('[data-cockpit-ci-released]')).toBeNull()
+    expect(document.querySelector('[data-release-note]')).toBeNull()
   })
 
   it('names the last release when everything shipped', async () => {
@@ -157,7 +162,8 @@ describe('the cockpit’s CI block', () => {
       board: { cards: rows.map((r) => r.card), releases: [{ tag: 'v1.4.0', published_at: now - 3_600_000, prs: [3, 2], cost_usd: 0, sessions: 0 }], flow: FLOW } }))
     render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
     await waitFor(() => expect(document.querySelector('[data-cockpit-ci-quiet]')).toHaveTextContent('Nothing in flight · last release v1.4.0, 1h ago'))
-    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-journey-bar]')).toHaveAttribute('aria-label', expect.stringContaining('Released done (in v1.4.0)'))
+    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-journey-bar]')).toHaveAttribute('data-journey-full')
+    expect(document.querySelector('[data-cockpit-ci-pr="3"] [data-release-note="released"]')).toHaveTextContent('in v1.4.0')
   })
 
   // Owner, 2026-10-16, translated: "in CI/CD on the right, the Ring mode is empty".
@@ -264,5 +270,68 @@ describe('the cockpit’s CI block', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // Owner, 2026-10-20: the session deck is gone; its per-PR actions are on
+  // the inspector's PR rows, one at a time, asking first as the deck did.
+  it('offers the one action a session PR needs in its row, asks once, does it, and opens its log in the Pipeline', async () => {
+    const stats = {
+      connected: true, repo: 'a/b', fetched_at: now, read_at: now,
+      prs: [{ number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 }],
+      board: {
+        cards: [{ number: 9, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 600_000, spend: { cost_usd: 1.25, sessions: 2, live: 0, agents: ['claude'] } }],
+        releases: [], flow: { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 1.25 }, ships_by: 'release',
+      },
+    }
+    const FAILED = { state: 'fail', passed: 1, failed: 1, pending: 0, items: [{ name: 'lint', state: 'pass' }, { name: 'go', state: 'fail' }] }
+    const prs = { connected: true, prs: [row(9, live(9, FAILED, { title: 'Fix the login', mergeable: true, merge_state: 'clean' }))] }
+    const posts: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (init?.method === 'POST') { posts.push(url); return json({ sent: false, queued: 1 }) }
+      if (url.endsWith('/ci/stats')) return json(stats)
+      if (url.endsWith('/prs')) return json(prs)
+      return new Response('', { status: 404 })
+    }))
+    const onOpen = vi.fn()
+    const s = { session_id: 's1', owned: true, status: 'active', title: 'Login agent', cwd: '/w', repo_root: '/w' }
+    render(<CockpitCI sessionId="s1" s={s as never} repoScope="/w" onOpen={onOpen} />)
+    const act1 = await waitFor(() => {
+      const b = document.querySelector<HTMLButtonElement>('[data-cockpit-ci-pr="9"] [data-cockpit-ci-action]')
+      if (!b) throw new Error('no action')
+      return b
+    })
+    expect(act1).toHaveAttribute('data-cockpit-ci-action', 'ci')
+    expect(act1).toHaveTextContent('Fix CI')
+    expect(document.querySelectorAll('[data-cockpit-ci-pr="9"] [data-cockpit-ci-action]')).toHaveLength(1)
+    // Its agent cost and who worked on it, in a grey line.
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-cost]')).toHaveTextContent('$1.25')
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-agent]')).toHaveTextContent('claude')
+    // The log is the Pipeline's, on that PR.
+    fireEvent.click(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-log]')!)
+    expect(onOpen).toHaveBeenCalledWith(9)
+    fireEvent.click(act1)
+    expect(document.querySelector('[data-cockpit-ci-confirm]')).toHaveTextContent('Ask Login agent to fix #9’s CI and push?')
+    expect(posts).toEqual([])
+    await act(async () => { fireEvent.click(document.querySelector('[data-cockpit-ci-confirm-yes]')!) })
+    await waitFor(() => expect(posts).toEqual(['/v1/agents/s1/queue']))
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-progress]')).toHaveTextContent('agent fixing…'))
+  })
+
+  it('offers no action without the session, and none on a PR that needs none', async () => {
+    const stats = { connected: true, repo: 'a/b', fetched_at: now, read_at: now,
+      prs: [{ number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fine', state: 'open', created_at: now - 3_600_000 }],
+      board: { cards: [], releases: [], flow: { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 }, ships_by: 'release' } }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.endsWith('/ci/stats')) return json(stats)
+      if (url.endsWith('/prs')) return json({ connected: true, prs: [row(9, live(9, PASSED, { mergeable: true }))] })
+      return new Response('', { status: 404 })
+    }))
+    render(<CockpitCI sessionId="s1" s={{ session_id: 's1', owned: true, status: 'active' } as never} repoScope="/w" onOpen={vi.fn()} />)
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull())
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
+    expect(document.querySelector('[data-cockpit-ci-action]')).toBeNull()
+    expect(document.querySelector('[data-cockpit-ci-log]')).toBeNull()
   })
 })

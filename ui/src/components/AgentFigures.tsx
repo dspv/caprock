@@ -9,7 +9,7 @@ import { useState, type ReactNode } from 'react'
 import { api, type RepoAgents, type TeamDay } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
 import { KIND_NAME, perHour, rateCompare, rateTokensText, rateWord, teamDayTitle, teamOf } from '@/lib/repoagents'
-import { CI_IDLE_MS, usePoll } from './SessionDeck'
+import { CI_IDLE_MS, usePoll } from '@/lib/usePoll'
 import { Panel, Stat } from './ui'
 
 /** The repository's agent figures, read while `on`, once a minute. */

@@ -2,7 +2,7 @@
  * The phone home's *Releases* section (.ai/04-ui.md § The phone home; owner,
  * 2026-10-15, translated: "In the mobile app I want to see my releases'
  * progress bars, to understand what's going on"): one repository's next
- * version and its rows, each with a ten-block bar and its stage word — the
+ * version and its rows, each with a four-step bar and its stage word — the
  * release plan the Pipeline, the right panel and Work → Release draw
  * (components/ReleasePlan, `phone`), not a copy of it. A row opens its pull
  * request on GitHub, an agent's row its session's chat; a chip picks the repository when there are several.

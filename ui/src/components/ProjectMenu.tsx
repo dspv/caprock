@@ -6,8 +6,9 @@
  * open its folder in an editor, clean up its copies (worktrees), or remove
  * it from Caprock.
  *
- * Closing tabs never stops anything: the sessions and shells in them keep
- * running, as with ⌘W (rule 7: nothing here signals a process). Removing
+ * Closing tabs leaves the agents and shells in them running, as with ⌘W
+ * (rule 7); a quick chat Caprock started ends with its tab, as with ⌘W too
+ * (AppShell onCloseProjectTabs, owner 2026-10-20). Removing
  * unlists the project — `DELETE /v1/projects/{id}`, or this page's own list
  * when the daemon keeps none — after a confirmation, and never touches the
  * folder or its sessions.
@@ -33,6 +34,8 @@ export interface ProjectMenuProps {
   hidden: boolean
   /** Tabs open for it, splits counted as one tab. */
   tabs: number
+  /** Of those, tabs showing a quick chat: closing them ends the chat. */
+  chats?: number
   editors: EditorList | null
   onHide?: (hide: boolean) => void
   onCloseTabs: () => void
@@ -103,7 +106,7 @@ export function ProjectMenu(props: ProjectMenuProps) {
           <Item
             icon={<CloseIcon size={14} />}
             label={tabs > 1 ? `Close its ${tabs} tabs` : 'Close its tab'}
-            hint={tabs === 0 ? 'none open' : 'they keep running'}
+            hint={tabs === 0 ? 'none open' : props.chats ? (props.chats === tabs ? (tabs > 1 ? 'the chats end' : 'the chat ends') : 'chats end, agents run on') : 'they keep running'}
             disabled={tabs === 0}
             onClick={pick(props.onCloseTabs)}
           />

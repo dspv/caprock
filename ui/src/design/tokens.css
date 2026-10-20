@@ -600,6 +600,17 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
   width: 100%;
 }
 .input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
+/* A phone's fields are at least 16px. iOS zooms the page in on focusing a
+ * field whose text is smaller and leaves it zoomed, and the zoomed page then
+ * scrolls sideways until pinched back: the Repository and Project pickers on
+ * the phone home (14px), the settings fields (12px) and Cost's cap (12px) all
+ * did it (2026-10-21). Unlayered on purpose, so it beats the text-[12px]
+ * utilities on those fields; only where the phone layout or a touch screen is. */
+@media (max-width: 639.98px), (pointer: coarse) {
+  /* One :is(), so the textarea and select take the input branch's
+   * specificity (0,1,1) and beat `.input`'s 12px as well. */
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]), textarea, select) { font-size: 16px; }
+}
 
 /* The chat composer's field (TerminalKeys): a calm glow while it has the
  * focus, so it is plain where typing goes (owner, 2026-10-14, translated: "a
@@ -820,11 +831,13 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * keys there are Ctrl+Shift+N and Ctrl+Alt+Shift+T, and drawn always they
  * cut the labels beside them (a Windows user's screenshot, 2026-10-19).
  * `.app-kbd-reveal` is a row's chip: out of the flow, so its label keeps the
- * whole row, and shown while the pointer or the keyboard focus is on the
- * row, or while Ctrl is held alone (`data-show-keys`, lib/keyreveal.ts). It
- * floats just above the row's right end, as the folded footer's keys do, so
- * it covers none of the row's own words or links ("phone, Telegram" on the
- * Settings row are clicked under the very pointer that reveals it).
+ * whole row, and shown while the keyboard focus is on the row, or while Ctrl
+ * is held alone (`data-show-keys`, lib/keyreveal.ts). Never on hover: the
+ * row's own tooltip names the key there, and the chip beside it was a second
+ * tooltip saying less (a Windows tester, 2026-10-20, translated: "showing
+ * both makes no sense — one is enough, the fuller one"). It floats just
+ * above the row's right end, as the folded footer's keys do, so it covers
+ * none of the row's own words or links.
  * `.app-kbd-held` is a tab's: only while Ctrl is held, since hovering a tab
  * puts its × in the key's place; it sits over the tab's end. Both are on
  * the panel, opaque; a row's is a step smaller than a resting chip. On a Mac neither
@@ -841,23 +854,23 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .app-kbd-reveal { bottom: calc(100% + 2px); right: 4px; font-size: 11.5px; padding: 2px 5px; }
 [data-app] .app-kbd-held { top: 50%; right: 2px; transform: translateY(-50%); }
 [data-app] .app-kbd-held.app-kbd-held-start { left: 2px; right: auto; }
-/* A header button's chip (Deck, Inspector) hangs under the button, over the
- * pane; the second a row lower, so the two never overlap. */
+/* A header button's chip (Inspector) hangs under the button, over the pane. */
 [data-app] .app-kbd-reveal.app-kbd-below { bottom: auto; top: calc(100% + 4px); right: 0; }
-[data-app] .app-kbd-reveal.app-kbd-below-2 { top: calc(100% + 28px); }
 [data-app] .app-primary .app-kbd.app-kbd-reveal { background: var(--color-panel); }
-[data-app] :hover > .app-kbd-reveal,
 [data-app] :focus-visible > .app-kbd-reveal,
 [data-app] :has(> :focus-visible) > .app-kbd-reveal,
 [data-app][data-show-keys] .app-kbd-reveal,
-[data-app][data-show-keys] .app-kbd-held { visibility: visible; }
+[data-app][data-show-keys] .app-kbd-held,
+[data-app] [data-key-slot]:has(:focus-visible) > .app-kbd-float,
+[data-app][data-show-keys] .app-kbd-float { visibility: visible; }
 /* The key over an icon in the folded sidebar footer (components/SidebarFooter
  * KeySlot) is the same .app-kbd-key as everywhere else: a small faint one
  * (.app-kbd-faint, 10px) could not be read (owner, 2026-10-15, translated:
  * "the shortcuts there are tiny, you can't see a damn thing"), so a key that
  * has no room is left out and kept in the tooltip. `.app-kbd-float` is the
- * off-macOS form, shown over the icon under the pointer: on the panel, above
- * the list. */
+ * off-macOS form, shown over the icon under keyboard focus or while Ctrl is
+ * held (above), never on hover, where the icon's tooltip already names the
+ * key (2026-10-20): on the panel, above the list. */
 [data-app] .app-kbd-float {
   background: var(--color-panel);
   box-shadow: 0 4px 12px -6px rgba(0, 0, 0, 0.4);
@@ -1027,21 +1040,7 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   100% { transform: scale(2.7); opacity: 0; }
 }
 [data-app] .cockpit-track { background: color-mix(in srgb, var(--color-fg) 8%, transparent); }
-/* The session deck's divider (components/SessionDeck.tsx): a faint grip on
- * its top edge that turns accent under the pointer, on focus and while it is
- * dragged; the whole page keeps the resize cursor through a drag. */
-/* The deck's top edge: a faint accent rule with a low glow upward. It sets
-   the deck apart without catching the eye (owner, 2026-10-11, of 0.107.3:
-   "divides it visually, does not jump out"); a brighter one distracted and
-   a plain grey hairline lost the division. */
-[data-app] .deck-band {
-  border-top: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
-  box-shadow: 0 -14px 24px -22px color-mix(in srgb, var(--color-accent) 35%, transparent);
-}
-[data-app] .deck-grip { background: color-mix(in srgb, var(--color-accent) 30%, var(--app-hairline-strong)); transition: background-color 120ms var(--app-ease); }
-[data-app] .deck-divider:hover .deck-grip, [data-app] .deck-divider:focus-visible .deck-grip, [data-app] .deck-divider[data-dragging] .deck-grip { background: var(--color-accent); }
-html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; user-select: none !important; }
-/* The deck's CI cell: a job or step that is running turns a small amber
+/* CI rows (the Pipeline page, the cockpit): a job or step that is running turns a small amber
    ring (a state, not a load: it stops when the job does; still under
    reduced motion); a failed step is tinted, and its error line in the log
    tail is marked. */
@@ -1053,14 +1052,14 @@ html[data-deck-drag], html[data-deck-drag] * { cursor: row-resize !important; us
 .pipe-node[data-tone="fail"] { background: var(--color-danger); }
 .pipe-node[data-tone="queued"] { border: 1.5px solid var(--color-fg-faint); }
 .pipe-node[data-tone="skipped"] { border: 1.5px solid var(--color-fg-faint); background: linear-gradient(135deg, transparent 43%, var(--color-fg-faint) 43%, var(--color-fg-faint) 57%, transparent 57%); }
-/* A pull request's state in the deck: open green, merged violet, closed
+/* A pull request's state: open green, merged violet, closed
    grey, a draft a hollow ring. */
 .pr-dot { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 9999px; }
 .pr-dot[data-state="open"] { background: var(--color-ok); }
 .pr-dot[data-state="merged"] { background: var(--color-merged); }
 .pr-dot[data-state="closed"] { background: var(--color-fg-faint); }
 .pr-dot[data-state="draft"] { border: 1.5px solid var(--color-fg-faint); }
-/* The deck's rows and the cockpit draw the circles small: a filled circle per
+/* The cockpit draws the circles small: a filled circle per
    check, coloured by its state, a running one pulsing (owner, 2026-10-13). */
 .pipe-node[data-size="sm"] { width: 8px; height: 8px; }
 .pipe-node[data-tone="running"] { background: var(--color-warn); animation: pipePulse 1200ms ease-in-out infinite; }

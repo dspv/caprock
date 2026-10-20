@@ -915,6 +915,216 @@ the backfill profile to 1.4–1.5%, and from 9.4–9.5% to 6.7–7.8% under the
 working load. Long reads keep their cancellable contexts; the other cancellable
 reads outside the recorder are unchanged.
 
+### F16 — P1: a fast all-time history still reads the whole database on every poll
+
+**Evidence (2026-10-20).** A user's footprint report (macOS, Caprock version
+not known) showed the daemon reading 8.8 GB from disk in an hour and 22.1 GB
+in 5 h 58 min, while writing 27 MB and 84 MB, with the dashboard open, several
+long sessions running and a 287 MB database. The counter is
+`ri_diskio_bytesread` from `proc_pid_rusage` (`/proc/self/io` `read_bytes` on
+Linux, `internal/procstat`): reads that reached storage, not ones the page
+cache answered. The owner's own daemon read 714 MB in its last hour against a
+1.8 GB database the same day.
+
+A preview stand reproduced the pattern with logical reads. The daemon ran
+under a `DYLD_INSERT_LIBRARIES` shim counting the bytes every `read`, `pread`,
+`readv` and `preadv` returned, per path; the database's `mmap_size` was set to
+0 in that build so its page reads went through `pread` too and could be
+counted (the shipped build maps the database, so the same reads are page
+faults there). The stand held four of the owner's transcripts and 286 subagent
+transcripts (714 MB), one line a second appended to four of them, and a 103 MB
+database; the dashboard was a headless browser on the Now screen. Over 180 s:
+
+```text
+build       dashboard  database reads  WAL reads
+0.139.0     open       193.0 MB        8.4 MB
+0.139.0     closed     1.8 MB          2.6 MB
+F16         open       70.7 MB         8.2 MB
+F16         closed     1.4 MB          2.3 MB
+```
+
+Each growing transcript was read for 0.37–0.64 MB per window, the bytes
+appended to it: the tailer, subagent files included, reads from its offset
+(F1 holds). Everything else was the database,
+and only while the dashboard was open. A CPU profile focused on `pread` put
+the all-time history refresh (`buildHistory` → `Summarize`, chiefly
+`turnSpendBySession` and `sumKinds`) at about 80% of those reads. One refresh
+read 12.6 MB of the 103 MB database; `/v1/stats/summary?range=all` read 11.5
+MB, `/v1/glance` 2.6 MB, every other endpoint the Now screen polls under
+0.4 MB. The Now screen asked for `/v1/history?range=all` 11 times in 120 s.
+
+**Cause.** F13 keeps an all-time answer for 20 times what counting it took.
+That bounds CPU, but the count was fast because the page cache answered it, so
+the answer kept the 3 s TTL and every 10 s live poll counted all of history
+again. Each count reads every event in the range; on a machine short of memory
+the pages are evicted between polls and every count is disk I/O.
+
+**Implemented (2026-10-20).** Histories that reach before today (7d, 30d, all)
+have a cache of their own whose TTL is `historyWideTTL`, one minute, with the
+same version renewal and cost bound; today's history keeps 3 s. Database reads
+with the dashboard open fell from 193.0 MB to 70.7 MB per 180 s (63%) on the
+stand; closed, they were within noise. The lifetime and weekly figures can be
+up to about two minutes behind while agents work (one TTL, plus the poll that
+finds it expired and gets the stale answer while one refresh runs).
+`TestWideHistoryIsKeptForAMinuteWhileTodayMoves` holds it.
+
+**Not done.** The history refresh is still about half of what remains. Making
+the all-time aggregates incremental (adding the events past a watermark id to
+the last answer) would remove the scan, but rows are updated in place
+(repricing, tool-link backfill) and removed (retention, removing a session),
+so it needs a correctness design first.
+
+### F17 — P1: the live dashboard re-reads unchanged sessions and slow figures every poll
+
+**Evidence (2026-10-20 to 21).** The owner's daemon (0.140.1, 1.85 GB
+database, 612k events, WAL 6 MB) reported 626 MB read from disk in its last
+minute and 7.6 GB in its last hour at 23:21, with several agents running and
+the app open; at 00:05 it reported 13.2 GB in the last hour with 11.7 GB of
+the machine's 12 GB of swap in use. Sampled from outside with
+`proc_pid_rusage` over 15 minutes it read 1.13 GB, and its reads came in
+bursts. Its slow-query log named the per-minute status refresh
+(`HandoffCoverage`, often cut off at its 2 s budget, which left the status
+screen's Memory line empty), the wide history and summaries, and
+`SpendBySubscription` (`GET /v1/subscriptions`), uncached, about 500 ms a
+time, every two or three seconds while the window reloaded.
+
+**Stand.** A daemon built from `3ff9c91a` with the owner's database copied
+(`sqlite3 -readonly … .backup`), a temporary HOME, `CAPROCK_SECRET_STORE=file`,
+a spare port and the automatic pty-host sweep compiled out (so the stand could
+not signal the owner's processes). The owner's 13 running sessions counted as
+live, their processes being alive on the same machine; four synthetic Claude
+Code transcripts each got a line a second. The dashboard was a headless shell
+on the Now screen, which asked in 180 s for `/v1/sessions?active=true` about
+445 times, `/v1/window-stop` 225, `/v1/stats/summary?range=today` 165,
+`/v1/work` 160, `/v1/history?range=all` 20 and `/v1/status` 9. Reads were
+counted two ways: the bytes `pread` returned on `caprock.db` (a DYLD
+interposer, the database's `mmap_size` set to 0 in the measuring build so its
+reads are calls), and SQLite's page-cache misses per statement
+(`SQLITE_DBSTATUS_CACHE_MISS` read around every statement in the timed
+connection, a probe never committed).
+
+The shipped build (memory-mapped database) on the owner's swapping Mac read
+548.2 MB from disk in 180 s with the dashboard open and 1.6 MB with it closed:
+the same order as the owner's figure, and all of it the dashboard. A repeat
+of the same build later read 200.1 MB, as did the fixed build; how much of a
+read the page cache answers moved with the machine's memory between runs, so
+disk-read counts cannot compare two builds here, and the comparison below is
+the reads the daemon asked for, which do not depend on it.
+
+```text
+180 s, Now screen open         before (base2)  after (fix3)
+caprock.db pread bytes         2049.5 MB       1230.9 MB
+page misses, all statements    2052.1 MB       1282.8 MB
+  eventsBefore (Work board)     385.8 MB         67.0 MB
+  RateLimitPace                 111.1 MB          0 MB
+  HandoffCoverage                74.8 MB          4.4 MB (fix2)
+  SessionTodos                  202.1 MB        174.2 MB
+```
+
+A first run of the unfixed build counted 2036.9 MB of `pread`. The
+`HandoffCoverage` before figure undercounts: the statement was cancelled at its
+budget every minute, and the `pread` count put a status refresh at about 80 MB.
+On the database copy in the `sqlite3` shell (16 MiB cache, no memory map) the
+old statement took 16,187 page reads (66 MB) and the new one 416, for the same
+answer (13 repositories, the same oldest passage).
+
+**Cause.** Four reads were repeated with nothing new to find:
+
+- **The Work board** read every live session's newest 30 and 40 events,
+  payloads included, and its task list on every `/v1/work`, up to once a
+  second, whether or not the session had written anything.
+- **The plan-window slope** walked every sample of the window's reset and its
+  rows twice per summary, for a table of 0.8 MB.
+- **The handoff coverage** parsed the payload of every assistant turn of the
+  last fortnight once a minute to count 13 repositories, and a second count of
+  the whole events table went with it that nothing read.
+- **`GET /v1/subscriptions`** summed a week of turns joined to sessions on
+  every request.
+
+**Implemented (2026-10-21).**
+
+- The Work board keeps each live session's newest events and task list by
+  `store.EventsGen` (`internal/daemon/workevents.go`), as the sessions list
+  does (F14); the state is worked out from them afresh on every request.
+  `TestWorkBoardKeepsUnchangedSessionsEvents`.
+- The slope is kept per window and reset until a newer sample is recorded
+  (`internal/api/pacecache.go`, keyed by `store.RateLimitHistoryMark`).
+  `TestPaceIsKeptUntilANewSample`.
+- `HandoffCoverage` stops at the first passage that answers each figure: a
+  project counts once one of its sessions holds one, and the oldest is the
+  first in time order. `slowStatus` no longer counts the table; `/v1/status`
+  takes the count from the event counter as it did.
+  `TestHandoffCoverageCountsWhatItCounted`.
+- The week of spend by subscription is kept for a minute
+  (`internal/daemon/subspend.go`, `subSpendTTL`), so those two figures can be
+  up to a minute behind. Not measured on the stand: the Now screen does not
+  ask for it. `TestSubscriptionSpendIsKeptForItsTTL`.
+
+**Not done.** What remains is mostly today's aggregates, asked for on every
+summary and Work read: `SummarizeSparkFor`, `turnSpendBySession`, `sumKinds`,
+`SpendBySessionSince` and `SpendSince` were 629 MB of the 1282.8 MB after the
+fix. A shipped build touches these pages every second, so they stay in memory
+more readily than the payload reads removed here, but under heavy swap they
+are evicted too. Two directions, neither built: the Now screen asks for the
+same live figures several times a second, so its readers could share one
+answer per live frame; and today's totals could be carried forward from the
+last answer by the events added since, which within one `EventsGen` per
+session is exact. `SessionTodos` still reads a growing session's whole index
+range once per change (174 MB), because no index leads with session, kind and
+tool (since done, F18). The wide histories' per-minute refresh (F16) is
+unchanged.
+
+### F18 — P2: the Work board's today spend and task lists, and what today's summary still costs
+
+**Stand.** As F17's, on a fresh copy of the owner's database taken 2026-10-21
+(1.88 GB), each build on its own copy of it with four new synthetic sessions
+growing, the Now screen open 180 s, the F17 commit (`8691123e`) against this change.
+
+```text
+180 s, Now screen open           F17 build             F18 build
+SpendBySessionSince              93.6 MB, 157 calls    8.9 MB, 346 calls
+SessionTodos                     9.6 MB, 367 calls     1.6 MB, 191 calls
+today's summary recounts         84                    85
+all-time COUNT(DISTINCT) runs    3 (95.3 MB)           4 (142.9 MB)
+page misses, all statements      1317.9 MB             1485.0 MB
+```
+
+The totals do not compare: one more whole-history refresh fell inside the
+F18 window, and the same statements read more pages per call there (today's
+`turnSpendBySession` 2.5 MB a call against 3.2 MB), the share the page cache
+answered moving with the machine. The two rows this change touches do.
+`SessionTodos` was small on this run because the synthetic sessions were
+new; on the database copy in the `sqlite3` shell, the owner's largest session
+(180k events) took 4,820 page reads for its task list through
+`idx_events_attr_work` and 10 through the new index, and on F17's stand,
+where the synthetic sessions had run for hours, the task lists were 174 MB of
+180 s.
+
+**Implemented (2026-10-21).**
+
+- The Work board's spend today per session is kept with the session's events
+  (`workEventsEntry.readToday`) and summed again, for that session alone, when
+  its `EventsGen` or the day moves: the same statement over the same rows, so
+  the same figure. `TestWorkBoardTodaySpendFollowsTheSession`.
+- `idx_events_todo` (migration 0066), a partial index of the four task tools'
+  calls, which `store.SessionTodos` pins; building it reads the table once
+  (7.7 s on the copy in the `sqlite3` shell; 7 pages of index).
+  `TestTaskListReadsItsPartialIndex`. See 03-contracts.md § Task-list DDL.
+
+**Not done.** Today's summary is now the largest read: 85 recounts in 180 s,
+each of `turnSpendBySession`, the model mix and `sumKinds` over today's rows.
+It is already one answer shared by every reader (single-flight in the answer
+cache) and kept while `MAX(id)` has not moved; it is recounted once it is
+`todayTTL` (2 s) old because agents write every second. Keying it on a write
+counter would not recount it less while they do, and serving it longer would
+make it staler, which this change was not to do. What would remove the cost
+is carrying today's aggregates forward by the events added since the last
+answer, exact within one `EventsGen` per session, which needs every
+aggregate in `Summary` (distinct sessions, projects, the spark) made
+mergeable first. The machine-wide `SpendSince` (58–72 MB) has the same shape;
+summing it from the kept per-session figures would change the order of the
+floating-point additions, so it was left counting.
+
 ## Existing safeguards worth preserving
 
 - Dirty-file fsnotify processing, hot-file fallback and persisted Claude offsets

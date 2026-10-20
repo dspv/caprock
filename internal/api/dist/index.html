@@ -59,10 +59,110 @@
         } catch (e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-DThRx9Rh.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-6qOqHVZJ.js">
-    <link rel="modulepreload" crossorigin href="/assets/appkeys-CeZUQ2wz.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-N5QvYjz6.css">
+    <script>
+      // The start-up watchdog (.ai/04-ui.md § A page that never starts): a
+      // page whose root stays empty — a file of it did not load while the
+      // daemon restarted, or a throw before React drew anything — is a
+      // blank window with nothing to press. After a grace this shows a
+      // small "Reconnecting to Caprock" panel with Reload, asks /healthz with
+      // a growing pause, and reloads once it answers (five times in ten
+      // minutes at most), telling the app's own log why. A root that empties
+      // after it was drawn gets the same panel. Plain script, no module:
+      // it must run when the bundle could not. Tested in boot.test.ts.
+      (function () {
+        var GRACE = 10000, LONG = 30000, KEY = 'caprock.boot.reloads', MAX = 5, SPAN = 600000;
+        var why = '', panel = null, timer = 0, probing = false, pause = 1000, since = Date.now(), logged = false, watched = false;
+        function root() { return document.getElementById('root') }
+        function drawn() { var r = root(); return !!r && r.childElementCount > 0 }
+        function note(m) { if (!why && !drawn()) why = String(m).slice(0, 200) }
+        function tell(m) {
+          if (logged) return;
+          logged = true;
+          try { window.__TAURI_INTERNALS__.invoke('app_log', { message: m }).catch(function () {}) } catch (e) {}
+        }
+        function reloads() {
+          try {
+            var now = Date.now(), list = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+            return list.filter(function (t) { return now - t < SPAN });
+          } catch (e) { return [] }
+        }
+        function reload() {
+          var list = reloads();
+          if (list.length >= MAX) return false;
+          list.push(Date.now());
+          try { sessionStorage.setItem(KEY, JSON.stringify(list)) } catch (e) { return false }
+          location.reload();
+          return true;
+        }
+        function say(title, text) {
+          if (!panel) {
+            panel = document.createElement('div');
+            panel.id = 'caprock-boot';
+            panel.setAttribute('role', 'alert');
+            panel.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;' +
+              'background:Canvas;color:CanvasText;font:13px/1.5 -apple-system,system-ui,sans-serif;padding:24px';
+            panel.innerHTML = '<div style="max-width:420px"><h1 style="font-size:15px;font-weight:500;margin:0"></h1>' +
+              '<p style="margin:8px 0 16px;opacity:.7"></p><button type="button" style="font:inherit;padding:4px 12px;cursor:pointer">Reload</button></div>';
+            panel.querySelector('button').addEventListener('click', function () { location.reload() });
+            document.body.appendChild(panel);
+          }
+          panel.querySelector('h1').textContent = title;
+          panel.querySelector('p').textContent = text;
+        }
+        function clear() {
+          clearTimeout(timer);
+          probing = false;
+          pause = 1000;
+          // The reload count is not reset here: a page that draws and then
+          // empties again would otherwise reload for ever.
+          if (panel) { panel.remove(); panel = null }
+        }
+        function probe() {
+          if (drawn()) { clear(); return }
+          fetch('/healthz', { cache: 'no-store' }).then(function (r) { return r.ok }, function () { return false }).then(function (up) {
+            if (drawn()) { clear(); return }
+            // Up, and the page failed or has been empty a long while: load it again.
+            if (up && (why || Date.now() - since >= LONG) && reload()) return;
+            if (up) say('This window did not finish loading', 'Your sessions keep running. Reload to try again.');
+            else say('Reconnecting to Caprock…', 'The Caprock service is not answering yet. This window reloads by itself when it is back; your sessions keep running.');
+            pause = Math.min(pause * 2, 30000);
+            timer = setTimeout(probe, pause);
+          });
+        }
+        function check() {
+          if (drawn()) { clear(); watch(); return }
+          tell('the page drew nothing within ' + Math.round((Date.now() - since) / 1000) + ' s' + (why ? ' (' + why + ')' : '') +
+            '; showing Reconnecting and retrying');
+          if (!probing) { probing = true; probe() }
+        }
+        function arm(ms) { clearTimeout(timer); timer = setTimeout(check, ms) }
+        // Once drawn, a root that empties again (a throw past every boundary) gets the panel too.
+        function watch() {
+          var r = root();
+          if (watched || !r || typeof MutationObserver === 'undefined') return;
+          watched = true;
+          new MutationObserver(function () {
+            if (drawn()) { clear(); return }
+            since = Date.now();
+            note('the page emptied after it was drawn');
+            arm(3000);
+          }).observe(r, { childList: true });
+        }
+        addEventListener('error', function (e) {
+          var t = e.target;
+          if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+            note('a file did not load: ' + String(t.src || t.href || '').replace(location.origin, ''));
+            if (!drawn()) arm(1500);
+          } else note(e.message || 'an error');
+        }, true);
+        addEventListener('unhandledrejection', function (e) { note((e.reason && e.reason.message) || 'a rejected promise') });
+        arm(GRACE);
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-DadqVkl0.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-BAWasTHQ.js">
+    <link rel="modulepreload" crossorigin href="/assets/appkeys-bIUhIRR5.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-C6s05iaW.css">
   </head>
   <body>
     <div id="root"></div>

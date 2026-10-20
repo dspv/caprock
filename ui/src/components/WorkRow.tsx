@@ -1,8 +1,9 @@
 /**
  * One row of the Work board (.ai/04-ui.md § Work): its title, a bar along
- * agent → PR → CI → merged → released filled to the stage it is in (red at CI
- * when a check failed, it conflicts or changes were asked for), the stage in
- * a word, who works on it, how long since it started, its agent cost, and an
+ * agent → PR → CI → merged filled to the stage it is in (red at CI when a
+ * check failed, it conflicts or changes were asked for; full on a merge), the
+ * stage in a word — *in v0.140.0* once released, a muted *not released* after
+ * *merged* while it waits for one — who works on it, how long since it started, its agent cost, and an
  * estimate only where a measured basis exists — each saying its basis on
  * hover (lib/work.ts).
  *
@@ -33,9 +34,10 @@ export interface WorkRowProps {
   showRepo?: boolean
 }
 
-/** The stage bar: five steps, filled to the stage. */
-export function StageBar({ it, compact = false }: { it: Pick<WorkItem, 'fill' | 'red' | 'running' | 'word'>; compact?: boolean }) {
-  const label = it.fill === 0 ? `Not started: ${it.word}` : `Step ${it.fill} of 5 (${STEPS[it.fill - 1]}): ${it.word}`
+/** The stage bar: four steps, filled to the stage; a merge fills it, in the merged colour. */
+export function StageBar({ it, compact = false }: { it: Pick<WorkItem, 'fill' | 'red' | 'running' | 'word'> & Partial<Pick<WorkItem, 'stage'>>; compact?: boolean }) {
+  const label = it.fill === 0 ? `Not started: ${it.word}` : `Step ${it.fill} of ${STEPS.length} (${STEPS[it.fill - 1]}): ${it.word}`
+  const merged = it.stage === 'merged' || it.stage === 'released'
   return (
     <span role="img" aria-label={label} title={`${STEPS.join(' → ')}\n${label}`} data-work-bar={it.fill} className="inline-flex shrink-0 items-center gap-[3px]">
       {STEPS.map((s, i) => {
@@ -44,7 +46,7 @@ export function StageBar({ it, compact = false }: { it: Pick<WorkItem, 'fill' | 
         const tone = !filled ? 'bg-fg-faint/30'
           : at && it.red ? 'bg-danger'
           : at && it.running ? 'bg-warn motion-safe:animate-pulse'
-          : 'bg-accent'
+          : merged ? 'bg-merged' : 'bg-accent'
         return <span key={s} data-work-step={s} data-on={filled || undefined} className={`block ${compact ? 'h-[5px] w-[12px]' : 'h-[6px] w-[16px]'} rounded-[2px] ${tone}`} />
       })}
     </span>
@@ -56,9 +58,16 @@ function wordTone(it: WorkItem): string {
   if (it.red) return 'text-danger'
   if (it.running) return 'text-warn'
   if (it.stage === 'merged') return 'text-merged'
-  if (it.stage === 'released') return 'text-accent'
+  // Released: the bar is full; the release it shipped in is a quiet word.
+  if (it.stage === 'released') return 'text-fg-muted'
   if (it.stage === 'planned') return 'text-fg-muted'
   return 'text-fg'
+}
+
+/** The quiet word after the stage word: *not released* on a merge waiting for a release. */
+export function NoteWord({ it, className = '' }: { it: Pick<WorkItem, 'note'>; className?: string }) {
+  if (!it.note) return null
+  return <span data-work-release-note title={it.note.title} className={`whitespace-nowrap font-normal text-fg-muted ${className}`}>· {it.note.text}</span>
 }
 
 /** A session's name as a link. */
@@ -155,6 +164,7 @@ export function WorkRow({ it, now, passed, flow, onOpenSession, showRepo = true 
         <div className="flex min-w-0 items-center gap-2 pt-[3px] @max-[720px]/work:col-span-1">
           <StageBar it={it} />
           <span data-work-word className={`whitespace-nowrap text-[12.5px] font-medium ${wordTone(it)}`}>{it.word}</span>
+          <NoteWord it={it} className="text-[12px]" />
         </div>
         <span className="num pt-[1px] text-right text-[12.5px] text-fg-muted" title={it.startedAt ? `Started ${new Date(it.startedAt).toLocaleString()}` : undefined}>{elapsed || '–'}</span>
         <span className="num pt-[1px] text-right text-[13px] font-medium text-fg"><CostCell it={it} /></span>

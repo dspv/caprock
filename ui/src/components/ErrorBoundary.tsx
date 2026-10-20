@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { crashIssueURL, crashMailURL, crashText, describeCrash, resetViewState, type Crash } from '@/lib/crashreport'
 import { openExternal } from '@/lib/nudges'
 import { extProps } from '@/lib/externalLinks'
+import { shell } from '@/lib/shell'
 
 interface Props {
   children: ReactNode
@@ -22,7 +23,11 @@ export class ErrorBoundary extends Component<Props, State> {
   static getDerivedStateFromError(error: Error): Partial<State> { return { error, crash: describeCrash(error) } }
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[caprock ui]', error, info.componentStack)
-    this.setState({ crash: describeCrash(error, info.componentStack) })
+    const crash = describeCrash(error, info.componentStack)
+    this.setState({ crash })
+    // The whole window fell to the crash screen: say why in the app's own
+    // log on this machine, so the next report can be answered from it.
+    if (this.props.full) shell.appLog(`crash screen: ${crash.message} on ${crash.lines[1] ?? ''}`).catch(() => {})
   }
 
   private copy = () => {

@@ -176,6 +176,11 @@ func TestForwardPickerOrdersSessions(t *testing.T) {
 	}
 	s.bot.Press(owner, p.MessageID, "f:3")
 	s.edited(p.MessageID, "Idle two")
+	// The picker's edit can land before the forward does (CI, 2026-10-20).
+	eventually(t, "button 3 sent to the newest idle session", func() bool {
+		got := s.h.forwarded()
+		return len(got) == 1 && strings.HasPrefix(got[0], "recent2|")
+	})
 	if got := s.h.forwarded(); len(got) != 1 || !strings.HasPrefix(got[0], "recent2|") {
 		t.Fatalf("button 3 sent to %q; want the newest idle session after waiting and working", got)
 	}

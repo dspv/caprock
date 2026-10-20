@@ -4,7 +4,8 @@
  * waiting on you. A pure function, so 50 projects and 30 live sessions cost
  * one pass and can be tested without a screen.
  */
-import { isQuickChat, quickChatTitle } from './quickchat'
+import { CHAT_LINGER_MS, isQuickChat, quickChatTitle } from './quickchat'
+import { atPrompt } from './sessionJump'
 import type { SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
 import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
@@ -125,8 +126,9 @@ export function sessionTitle(s: SessionSummary): string {
   const branch = branchLabel(s.git_branch)
   if (s.kind === 'shell') return branch ? `shell · ${branch}` : 'shell'
   const name = s.name?.trim()
-  // A quick chat is named as one, not by its dated folder (lib/quickchat.ts).
-  if (!name && isQuickChat(s)) return quickChatTitle(s)
+  // A quick chat is named by what it is about, else as one — never by its
+  // dated folder (lib/quickchat.ts).
+  if (!name && isQuickChat(s)) return sessionAbout(s) || quickChatTitle(s)
   const title = name || sessionAbout(s) || (branch ? `on ${branch}` : 'new session')
   return attemptLabel(s) ? `${attemptLabel(s)} · ${title}` : title
 }
@@ -148,6 +150,22 @@ function ms(v: string | number | undefined): number {
   if (typeof v === 'number') return v
   const t = v ? Date.parse(v) : NaN
   return Number.isFinite(t) ? t : 0
+}
+
+/**
+ * Whether a chat with no tab is listed in the sidebar (under "Running, no
+ * tab"): while it works, while it asks for something (a permission prompt, a
+ * question), and for CHAT_LINGER_MS after its last answer. Every chat waits
+ * on you once it has answered, so "waits on you" alone kept a chat whose tab
+ * was lost listed for as long as its process ran (owner, 2026-10-20). An
+ * ended one is not listed. Past the window it is still on the Chats screen
+ * and in the palette.
+ */
+export function chatListed(s: SessionSummary, hasPermission: boolean, now = Date.now()): boolean {
+  if (s.status === 'ended') return false
+  if (hasPermission || !atPrompt(s)) return true
+  const answered = ms(s.activity?.at) || s.last_event_at || 0
+  return now - answered < CHAT_LINGER_MS
 }
 
 export function buildSidebar({ projects, sessions, permissions, costs, openSessions, now = Date.now(), activity }: SidebarInput): SidebarModel {
@@ -175,8 +193,9 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
   for (const s of sessions) {
     if (!s) continue
     // A chat (ADR-071) is listed on the Chats screen, not with the work:
-    // here only while it has a tab, or waits on you.
-    if ((s.chat || isQuickChat(s)) && !openSessions.has(s.session_id) && !permissions.has(s.session_id) && s.activity?.health !== 'waiting-on-you') continue
+    // here only while it has a tab, or is still at work or asks you
+    // something, or answered within CHAT_LINGER_MS (chatListed).
+    if ((s.chat || isQuickChat(s)) && !openSessions.has(s.session_id) && !chatListed(s, permissions.has(s.session_id), now)) continue
     const shown = s.status !== 'ended' || openSessions.has(s.session_id)
     const listed = closest(s)
     // Only what is live or open goes to Other folders: it is not a history.
@@ -435,4 +454,65 @@ export function rowHidden(x: Pick<SessionNode, 'session' | 'asks' | 'waiting' | 
   if (at === undefined) return false
   if (x.asks || x.open) return false
   return !(x.waiting && (x.waitingSince ?? 0) > at)
+}
+
+/** How long a session with no tab may sit untouched before it counts as background: a day. */
+export const BACKGROUND_IDLE_MS = 24 * 60 * 60 * 1000
+/** How long a session just started may go without a title before that makes it background. */
+export const UNTITLED_GRACE_MS = 15 * 60 * 1000
+/** A first prompt this long, or of this many lines, was written by a script, not typed. */
+const SCRIPTED_CHARS = 400
+const SCRIPTED_LINES = 4
+
+/**
+ * Whether a folder is a temporary one: macOS's per-user $TMPDIR
+ * (/var/folders/…/T/, /private/var/folders/…), /tmp, /var/tmp and their
+ * /private twins, and Windows' %TEMP% (…\AppData\Local\Temp). The page
+ * cannot read $TMPDIR, so the usual places are named.
+ */
+export function inTempDir(cwd: string | undefined): boolean {
+  if (!cwd) return false
+  const p = cwd.replace(/\\/g, '/')
+  return /^(\/private)?\/(var\/folders|tmp|var\/tmp)(\/|$)/.test(p) || /\/AppData\/Local\/Temp(\/|$)/i.test(p)
+}
+
+/** Whether a first prompt reads as a script's brief: very long, or many lines. */
+function scriptedPrompt(text: string | undefined): boolean {
+  const t = (text ?? '').trim()
+  return t.length > SCRIPTED_CHARS || t.split('\n').length >= SCRIPTED_LINES
+}
+
+/**
+ * Whether a session with no tab belongs under the Flat list's one folded
+ * *Background · N* row rather than under *Running, no tab* (owner,
+ * 2026-10-20: that list filled with scouts, ops runs and helpers nobody
+ * started by hand). *Running, no tab* keeps what the user started himself —
+ * from Caprock or his own terminal — that has a title and was active in the
+ * last day. Background is, in this order:
+ *
+ * - never a session that asks for a permission (`hasPermission`): that
+ *   needs you, wherever it runs;
+ * - one in a temporary folder ($TMPDIR, /tmp; `inTempDir`) that no listed
+ *   project holds (`inProject`): automation makes those, a person works in
+ *   a project — and the daemon never lists a temp folder by itself
+ *   (03-contracts.md § Seeding), so one listed there was added by hand;
+ * - one another tool started with a scripted brief: not started from
+ *   Caprock, no name given, and named only by its first prompt, which is
+ *   longer than SCRIPTED_CHARS or has SCRIPTED_LINES lines or more;
+ * - one with no title at all — no name, no agent's title, no prompt words —
+ *   once UNTITLED_GRACE_MS have passed since it started (a session just
+ *   started has no title for its first turn);
+ * - one not working that nothing happened in for BACKGROUND_IDLE_MS.
+ *
+ * Pure: the screen reads it, nothing is sent to any session (rule 7).
+ */
+export function isBackgroundSession(s: SessionSummary, { now = Date.now(), hasPermission = false, inProject = false }: { now?: number; hasPermission?: boolean; inProject?: boolean } = {}): boolean {
+  if (hasPermission) return false
+  if (!inProject && inTempDir(s.cwd)) return true
+  const named = !!s.name?.trim()
+  if (!named && !s.owned && s.description_source === 'prompt' && scriptedPrompt(s.description)) return true
+  if (!named && !sessionAbout(s) && now - ms(s.started_at) > UNTITLED_GRACE_MS) return true
+  if (s.activity?.health === 'working') return false
+  const last = Math.max(ms(s.worked_at), ms(s.last_event_at), ms(s.activity?.at), ms(s.started_at))
+  return now - last > BACKGROUND_IDLE_MS
 }

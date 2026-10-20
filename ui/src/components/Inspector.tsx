@@ -73,8 +73,8 @@ export function Inspector({
   summary?: Summary
   /** Opens the comparison of the attempts this session is one of (ADR-052). */
   onCompare?: () => void
-  /** Opens the session's Pipeline page: the cockpit's CI block is its door. */
-  onOpenPRs?: () => void
+  /** Opens the session's Pipeline page — on a pull request's detail when given one: the cockpit's CI block is its door. */
+  onOpenPRs?: (pr?: number) => void
 }) {
   const isAgent = !!sessionId && !!session && session.kind !== 'shell'
   return (
@@ -97,7 +97,7 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare, onOpenPRs }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void; onOpenPRs?: () => void }) {
+function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare, onOpenPRs }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void; onOpenPRs?: (pr?: number) => void }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   const chat = !!s && (!!s.chat || isQuickChat(s))
@@ -126,7 +126,7 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           // A chat's folder is Caprock's own, never a repository (ADR-071):
           // no working tree, pull requests or release to read there.
           changes={chat ? undefined : <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
-          ci={chat ? undefined : <CockpitCI sessionId={sessionId} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
+          ci={chat ? undefined : <CockpitCI sessionId={sessionId} s={s} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
           release={chat ? undefined : <CockpitRelease sessionId={sessionId} repoRoot={s?.repo_root || undefined} />}
           processes={<Processes sessionId={sessionId} />}
         />

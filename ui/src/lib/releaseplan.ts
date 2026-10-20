@@ -14,15 +14,16 @@
  *   are patches"). With no tag, no pending entries, or entries whose kind is
  *   not said, no number: "Next release".
  * - **The rows** are the Work board's own (lib/work buildWork), one
- *   repository's: pull requests merged since the last tag (a full bar but
- *   the released step, "merged"), open ones (filled to their step along
- *   agent → PR → CI → merged → released, the CI step red on a red check or a
+ *   repository's: pull requests merged since the last tag (a full bar,
+ *   "merged"), open ones (filled to their step along agent → PR → CI →
+ *   merged, the CI step red on a red check or a
  *   conflict; a landing-queue label, "landing: queued", is the stage word
  *   when it is there), and agents working with no pull request yet
  *   ("agent"). Drafts and agents idle at their prompt come *later*.
  * - **The bar** is the stage's place, a named segment per step (two of the
- *   ten blocks the text report draws): a fact, not a guess at how far the
- *   work is.
+ *   eight blocks the text report draws): a fact, not a guess at how far the
+ *   work is. It ends at merged, so a merge fills it (owner, 2026-10-20,
+ *   translated: the final status should be merged); released is no block.
  * - **Beside the word**, each from what the board already read, never a
  *   guess: what the row waits for now (`waitOf`: "CI on Windows · 6m",
  *   "needs a rebase", "fix: go (windows-latest)", "a release"), its age since
@@ -32,9 +33,9 @@
  * - **A repository that cuts no releases** (`board.ships_by` merge: none
  *   published and no version tag in 180 days — a site deployed on every
  *   merge; owner, 2026-10-18) has no next release: no version, the line
- *   *No releases here: work ships when it merges*, bars without the
- *   released step, and its merges, done, under a short *Merged recently*
- *   (MERGED_RECENT) instead of piling up as waiting for a release.
+ *   *No releases here: work ships when it merges*, and its merges, done,
+ *   under a short *Merged recently* (MERGED_RECENT) instead of piling up as
+ *   waiting for a release.
  * - **What else heads into it** (owner, 2026-10-18, translated: "it shows
  *   vaguely what's going on on the way to the release"; agents push
  *   branches and one batch pull request ships them): where a session is
@@ -53,7 +54,7 @@ import { spanText, vsMedianText } from './prstats'
 import { buildWork, ciVsUsual, gapText, isIdle, MIN_GAPS, releaseLag, STEPS, todoSteps, type Stage, type WorkItem } from './work'
 
 /** Blocks in a bar: two per step. */
-export const BLOCKS = 10
+export const BLOCKS = 8
 const PER_STEP = BLOCKS / STEPS.length
 
 /** A landing-queue label's prefix, as the queue sets it on a pull request. */

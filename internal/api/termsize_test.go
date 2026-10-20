@@ -52,18 +52,18 @@ func TestPTYSizeFollowsTheTerminalInUse(t *testing.T) {
 	p, l := newTestSizes()
 	desk := p.join("s1", "desk")
 	p.size(desk, 150, 40, false)
-	wantSizes(t, l, "the only terminal", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "the only terminal", [2]int{149, 40}, [2]int{150, 40})
 
 	phone := p.join("s1", "phone")
 	p.size(phone, 45, 30, false)
-	wantSizes(t, l, "a phone opening the session repaints at the desktop's size", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "a phone opening the session repaints at the desktop's size", [2]int{149, 40}, [2]int{150, 40})
 
 	// Its box changing while it is a viewer changes nothing.
 	p.size(phone, 46, 30, false)
 	wantSizes(t, l, "a viewer's own resize")
 
 	p.claim(phone) // a key from the phone
-	wantSizes(t, l, "the phone types", [2]int{46, 29}, [2]int{46, 30})
+	wantSizes(t, l, "the phone types", [2]int{45, 30}, [2]int{46, 30})
 	p.claim(phone)
 	wantSizes(t, l, "the next key, at the size already in use")
 
@@ -72,7 +72,7 @@ func TestPTYSizeFollowsTheTerminalInUse(t *testing.T) {
 	wantSizes(t, l, "the desktop's window resized while a viewer")
 
 	p.claim(desk) // focus or a key on the desktop
-	wantSizes(t, l, "back to the desktop", [2]int{160, 39}, [2]int{160, 40})
+	wantSizes(t, l, "back to the desktop", [2]int{159, 40}, [2]int{160, 40})
 
 	// The one in use resizing its own box goes through as sent.
 	p.size(desk, 170, 42, false)
@@ -88,7 +88,7 @@ func TestPTYSizeFocusInTheResizeFrameClaims(t *testing.T) {
 	// comes with focus, and it takes the PTY with one repaint.
 	desk := p.join("s1", "desk")
 	p.size(desk, 150, 40, true)
-	wantSizes(t, l, "first size with focus", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "first size with focus", [2]int{149, 40}, [2]int{150, 40})
 	p.size(phone, 44, 30, false)
 	wantSizes(t, l, "the phone, now a viewer")
 }
@@ -102,7 +102,7 @@ func TestPTYSizeGoesToTheLastUsedWhenTheOneInUseLeaves(t *testing.T) {
 	p.claim(phone)
 	l.take()
 	p.leave(phone)
-	wantSizes(t, l, "the phone closes its terminal", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "the phone closes its terminal", [2]int{149, 40}, [2]int{150, 40})
 	p.size(desk, 151, 40, false)
 	wantSizes(t, l, "the desktop is in use again", [2]int{151, 40})
 }
@@ -118,10 +118,10 @@ func TestPTYSizeTheSameTabReconnectingKeepsThePTY(t *testing.T) {
 	p.size(phone, 45, 30, false)
 	l.take()
 	p.leave(desk)
-	wantSizes(t, l, "the desktop's socket drops", [2]int{45, 29}, [2]int{45, 30})
+	wantSizes(t, l, "the desktop's socket drops", [2]int{44, 30}, [2]int{45, 30})
 	desk2 := p.join("s1", "desk")
 	p.size(desk2, 150, 40, false)
-	wantSizes(t, l, "the desktop reconnects", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "the desktop reconnects", [2]int{149, 40}, [2]int{150, 40})
 	p.size(phone, 44, 30, false)
 	wantSizes(t, l, "the phone is a viewer again")
 }
@@ -135,7 +135,7 @@ func TestPTYSizeAClaimBeforeAnySizeWaitsForIt(t *testing.T) {
 	p.claim(phone) // typed before its first resize arrived
 	wantSizes(t, l, "a claim with no size")
 	p.size(phone, 45, 30, false)
-	wantSizes(t, l, "its first size, as the owner", [2]int{45, 29}, [2]int{45, 30})
+	wantSizes(t, l, "its first size, as the owner", [2]int{44, 30}, [2]int{45, 30})
 }
 
 func TestPTYSizeStartsOverWhenEveryTerminalLeaves(t *testing.T) {
@@ -149,7 +149,7 @@ func TestPTYSizeStartsOverWhenEveryTerminalLeaves(t *testing.T) {
 	}
 	b := p.join("s1", "b")
 	p.size(b, 80, 24, false)
-	wantSizes(t, l, "a fresh attach", [2]int{80, 23}, [2]int{80, 24})
+	wantSizes(t, l, "a fresh attach", [2]int{79, 24}, [2]int{80, 24})
 }
 
 // The same policy over the socket: two clients, the second only watching
@@ -172,19 +172,19 @@ func TestTermV2TwoClientsTheOneInUseSizesThePTY(t *testing.T) {
 	mustFrame(ctx, t, phone)
 	_ = phone.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":45,"rows":30}}`))
 	waitFor(t, func() bool { return len(ag.sized()) == 4 })
-	if got := ag.sized()[2:]; fmt.Sprint(got) != "[[150 39] [150 40]]" {
+	if got := ag.sized()[2:]; fmt.Sprint(got) != "[[149 40] [150 40]]" {
 		t.Fatalf("a phone attaching gave the PTY %v; want a repaint at the desktop's 150x40", got)
 	}
 
 	_ = phone.Write(ctx, websocket.MessageBinary, input(1, "x"))
 	waitFor(t, func() bool { return len(ft.typedNow()) == 1 })
-	if got := ag.sized()[4:]; fmt.Sprint(got) != "[[45 29] [45 30]]" {
+	if got := ag.sized()[4:]; fmt.Sprint(got) != "[[44 30] [45 30]]" {
 		t.Fatalf("after the phone typed the PTY was given %v; want the phone's 45x30", got)
 	}
 
 	_ = desk.Write(ctx, websocket.MessageText, []byte(`{"focus":true}`))
 	waitFor(t, func() bool { return len(ag.sized()) == 8 })
-	if got := ag.sized()[6:]; fmt.Sprint(got) != "[[150 39] [150 40]]" {
+	if got := ag.sized()[6:]; fmt.Sprint(got) != "[[149 40] [150 40]]" {
 		t.Fatalf("after the desktop took focus the PTY was given %v; want the desktop's 150x40", got)
 	}
 	// Focus again at the size in use changes nothing.
@@ -214,7 +214,7 @@ func TestPTYSizeGoesBackWhenTheOneInUseGoesOutOfSight(t *testing.T) {
 	l.take()
 
 	p.release(phone)
-	wantSizes(t, l, "the phone locks", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "the phone locks", [2]int{149, 40}, [2]int{150, 40})
 	p.size(phone, 44, 30, false)
 	wantSizes(t, l, "the phone out of sight is a viewer")
 	p.size(desk, 151, 40, false)
@@ -226,10 +226,10 @@ func TestPTYSizeGoesBackWhenTheOneInUseGoesOutOfSight(t *testing.T) {
 	wantSizes(t, l, "the locked phone's socket is taken for dead")
 	phone2 := p.join("s1", "phone")
 	p.size(phone2, 44, 30, false)
-	wantSizes(t, l, "the phone reconnects, a viewer", [2]int{151, 39}, [2]int{151, 40})
+	wantSizes(t, l, "the phone reconnects, a viewer", [2]int{150, 40}, [2]int{151, 40})
 
 	p.claim(phone2)
-	wantSizes(t, l, "the phone types again", [2]int{44, 29}, [2]int{44, 30})
+	wantSizes(t, l, "the phone types again", [2]int{43, 30}, [2]int{44, 30})
 }
 
 // A viewer going out of sight changes nothing, and neither does the one in
@@ -267,8 +267,8 @@ func TestPTYSizeReleasePrefersATerminalInSight(t *testing.T) {
 	p.claim(tab)
 	p.release(tab)
 	wantSizes(t, l, "the app, then the tab, then the tab hidden",
-		[2]int{150, 39}, [2]int{150, 40}, [2]int{150, 39}, [2]int{150, 40},
-		[2]int{120, 34}, [2]int{120, 35}, [2]int{150, 39}, [2]int{150, 40})
+		[2]int{149, 40}, [2]int{150, 40}, [2]int{149, 40}, [2]int{150, 40},
+		[2]int{119, 35}, [2]int{120, 35}, [2]int{149, 40}, [2]int{150, 40})
 
 	phone := p.join("s1", "phone")
 	p.size(phone, 45, 30, false)
@@ -276,7 +276,7 @@ func TestPTYSizeReleasePrefersATerminalInSight(t *testing.T) {
 	l.take()
 	// The phone's socket closes: the app is in sight, the tab is not.
 	p.leave(phone)
-	wantSizes(t, l, "the phone leaves", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "the phone leaves", [2]int{149, 40}, [2]int{150, 40})
 
 	// With nobody in sight, a socket closing still hands the PTY on.
 	p.release(app)
@@ -284,7 +284,7 @@ func TestPTYSizeReleasePrefersATerminalInSight(t *testing.T) {
 	p.release(tab)
 	l.take()
 	p.leave(tab)
-	wantSizes(t, l, "the tab leaves, only the hidden app is left", [2]int{150, 39}, [2]int{150, 40})
+	wantSizes(t, l, "the tab leaves, only the hidden app is left", [2]int{149, 40}, [2]int{150, 40})
 }
 
 // Over the socket: a blur frame from the phone in use gives the desktop its
@@ -310,7 +310,7 @@ func TestTermV2BlurGivesThePTYBack(t *testing.T) {
 
 	_ = phone.Write(ctx, websocket.MessageText, []byte(`{"blur":true}`))
 	waitFor(t, func() bool { return len(ag.sized()) == 6 })
-	if got := ag.sized()[4:]; fmt.Sprint(got) != "[[150 39] [150 40]]" {
+	if got := ag.sized()[4:]; fmt.Sprint(got) != "[[149 40] [150 40]]" {
 		t.Fatalf("after the phone went out of sight the PTY was given %v; want the desktop's 150x40", got)
 	}
 }

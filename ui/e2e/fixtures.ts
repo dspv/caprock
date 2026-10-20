@@ -39,9 +39,9 @@ export class App {
     return s
   }
 
-  /** The sidebar row of a session, by its name. */
+  /** The sidebar row of a session, by its name: under a project, in the Flat list's tabbed rows or under Running, no tab. */
   row(title: string): Locator {
-    return this.sidebar.getByRole('group', { name: 'Sessions' }).getByRole('button', { name: new RegExp(`\\b${title}\\b`) })
+    return this.sidebar.getByRole('group', { name: /sessions|running, no tab/i }).getByRole('button', { name: new RegExp(`\\b${title}\\b`) })
   }
 
   /** Opens a session's tab from its sidebar row and waits for the fake claude. */

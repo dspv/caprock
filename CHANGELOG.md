@@ -12,6 +12,180 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.141.0] - 2026-10-21
+
+### Added
+
+- **sidebar:** *Recently closed* lists the last five tabs you closed, newest
+  first, each with a quiet age (*2 min*, *1 h*), above *Running, no tab* in
+  the Tabs list and after the projects in the Projects list. A click brings
+  the conversation back in a tab: its own tab while the agent still runs,
+  continued with `--resume` once it ended. **⇧⌘T** reopens the newest, as in
+  a browser (Ctrl+Alt+Shift+T on Windows and Linux). *Show all in History*
+  opens History; the list is kept across restarts.
+- **sidebar:** *Running, no tab* keeps the sessions you started yourself,
+  titled and active in the last day. Sessions in a temporary folder, ones
+  another tool started with a scripted brief, untitled ones and ones idle for
+  a day fold into one *Background · N* row at the bottom, opened on a click
+  and remembered.
+
+### Changed
+
+- **modules:** a private module's key is ⇧⌘1–⇧⌘9 on a Mac (it was ⌥⌘1–⌥⌘9),
+  so the first module opens with ⇧⌘1. Windows and Linux keep
+  Ctrl+Alt+Shift+1–9. macOS keeps ⇧⌘3, ⇧⌘4 and ⇧⌘5 for screenshots, so on a
+  Mac the third to fifth module's row shows no key and says why in its
+  tooltip; the key still works where those screenshot shortcuts are off.
+- **app:** the theme picker moved from ⇧⌘T to ⌥⌘P (Ctrl+Alt+Shift+P on
+  Windows and Linux), so ⇧⌘T can reopen the last closed tab.
+- **app:** an agent tab's Chat | Terminal pills are one quiet icon at the
+  right of the tab strip. It shows the other view — a chat bubble over the
+  terminal, a terminal glyph over the chat — named *Show as chat* / *Show as
+  terminal*, and one click flips it. Each session keeps its own view, and the
+  terminal stays running under the chat as before.
+
+### Removed
+
+- **app:** the session deck under the agent's terminal (⌘B, the *Deck*
+  button, *Pipeline bar: On/Off* in the palette). What it showed is in the
+  inspector and on the Pipeline page: a session's own pull request in the
+  inspector's CI block now offers the one action it needs — *Resolve
+  conflict*, *Update branch*, *Fix CI* or *Re-run* — asking once in the row,
+  with its agent cost and who is on it, and *Log in Pipeline →* opens the
+  Pipeline on that pull request with its failed job's log and *Investigate*.
+  The Pipeline page gains a *Default branch* panel: each workflow's newest
+  run there, a failed job's log with *Investigate*, and what GitHub billed
+  for Actions this month. The deck's Branches view is gone. ⌘B is free.
+
+### Fixed
+
+- **daemon:** the dashboard reads far less of the database while agents work.
+  The Work board keeps each live session's newest events and task list until
+  the session writes something, the plan-limit pace is counted again only
+  when a new sample arrives, the status screen's Memory line stops at the
+  first passage it needs instead of parsing a fortnight of replies (it often
+  ran out of time and showed nothing), and a week of spend per subscription
+  is summed once a minute instead of on every request. On a copy of a 1.85 GB
+  database with the Now screen open, the database reads the daemon asked for
+  fell from 2,050 MB to 1,231 MB in three minutes.
+  The Work board also keeps each session's spend today until it changes, and
+  task lists are read from their own index (migration 0066) instead of a walk
+  through every event of the session.
+- **ui:** the phone no longer scrolls sideways. On an iPhone, tapping a field
+  smaller than 16px (the phone home's Repository and Project pickers, most
+  Settings fields, Cost's cap) zoomed the page in and left it panning
+  sideways; every field is 16px on a phone or touch screen now. A chat file's
+  Markdown viewer no longer grows to the width of its longest link or path,
+  and a wide table in a reply scrolls in its own frame instead of breaking
+  every cell into two-letter lines. A new e2e test walks every phone screen,
+  sheet and menu at 360, 390 and 430 px in a phone profile and fails on any
+  sideways scroll, anything cut off at the edge or any field under 16px.
+- **smoke:** the end-to-end smoke tests start their daemons with the file
+  secret store, so running them on a Mac never writes a test token into the
+  real login keychain; the Telegram smoke had replaced a developer's real bot
+  token there.
+
+## [0.140.2] - 2026-10-20
+
+### Fixed
+
+- **app:** after an in-app update on macOS, Caprock opens again with its
+  window in front. The updated app was started as a child of the old one,
+  which macOS never brought forward, so it waited behind other windows until
+  a click on its Dock icon; it is now launched the way the Dock launches it.
+- **app:** a terminal no longer keeps stale rows after its GPU context is
+  lost (a sleep, a GPU reset, or WebKit letting a background tab's context
+  go): it switches to its plain renderer in that frame instead of drawing on
+  a dead canvas for three seconds, or for good when no loss was reported, and
+  gets a fresh context shortly after. A lost context is also looked for when
+  you come back to the tab or the window. The key hint over Claude Code's
+  input box goes when the window loses focus instead of staying over the
+  quick replies.
+- **app:** reopening a terminal or coming back to it after its connection
+  was let go no longer leaves a stale line on its bottom row. Caprock makes
+  the program in it redraw by changing the size for a moment; it used to
+  take one row away, and Claude Code then cleared one row too few. It now
+  takes one column away, which makes it clear the whole screen.
+- **app:** a window that goes white comes back by itself instead of staying
+  blank until the app is quit. When macOS ends the WebView's content process
+  (under memory pressure, or a crash), the app reloads that window, waiting
+  longer each time it repeats. A page the app asked for that never finished
+  loading is loaded again while the daemon answers. A page that loaded but
+  drew nothing (a file of it missing while the daemon restarted) shows
+  *Reconnecting to Caprock…* with Reload and reloads once the daemon
+  answers. Each of these, and the crash screen, writes one line to the app's
+  own log on your Mac (`app.log` in Caprock's data folder), so a report can
+  say why; nothing is sent anywhere.
+
+## [0.140.1] - 2026-10-20
+
+### Changed
+
+- **deps:** routine dependency updates: purego 0.11.2, klauspost/compress
+  1.20.3, golang.org/x/text 0.43.0 and x/sync 0.24.0; React 19.3.1, Vitest
+  5.0.5, jsdom 30.1.3 and Playwright 1.64.1 for the dashboard's tests; the
+  goreleaser action 7.3.0 for release builds.
+
+## [0.140.0] - 2026-10-20
+
+### Added
+
+- **app:** an agent tab shows its session as a **Chat** or as its
+  **Terminal**, from a switch in the tab strip. Quick chats open on Chat and
+  project sessions on Terminal; the choice is remembered for each session.
+  The chat reads like one: your messages as bubbles, the agent's replies as
+  text, each tool call as one plain line (*Searched the web: …*), and a
+  question that only the terminal can answer links to **Open in Terminal**.
+  Switching never restarts the session or types into it, and the hidden
+  terminal does not draw.
+
+### Changed
+
+- **perf(api):** with the dashboard open and agents working, the daemon no
+  longer counts the whole history again on every 10-second poll. A history
+  that reaches before today (7 days, 30 days, all time) is kept for a minute
+  however fast it was to count; today's keeps its 3-second refresh. A quick
+  count was quick only because the page cache answered it, and on a machine
+  short of memory every count went to disk: one user's daemon read 8.8 GB in
+  an hour. On a preview stand with a 103 MB database and the Now screen open,
+  database reads fell from 193 MB to 71 MB per 3 minutes (2026-10-20). The
+  lifetime and weekly figures can now be up to about two minutes behind.
+- **ui:** Settings → Computers says what to do. Connected computers come
+  first — this one, the ones it reaches and the ones that reach it, each with
+  **Disconnect** — then *What is this computer?* (**The main one** or
+  **Connects to another**) and three numbered steps for that side that tick
+  as they are done: access from anywhere, the other computer's choice, and
+  the link to paste with how long it lasts and **Copy**. What the relay is,
+  where access from anywhere is switched on and what it sends sit behind the
+  (i) beside *Add a computer*. Pairing and what it sends are unchanged.
+- **ui:** the pull request progress bars end at merged. A merged pull request's
+  bar is now completely filled on Work, the Pipeline, the release plan, the
+  phone's Releases and the right panel's CI block, instead of leaving a grey
+  *released* block that read as unfinished or closed. Whether it shipped is a
+  quiet word after the bar: *in v0.140.0* once released, a muted *not
+  released* while a repository that cuts releases waits for the next one. A
+  pull request closed without a merge still reads *Closed*.
+
+### Fixed
+
+- **ui:** Lifetime's Daily cost chart draws every calendar day through
+  today, a day without work as an empty bar, instead of closing the gap
+  and putting a quiet week next to a busy day. Its 30d, 90d and 180d now
+  cover the same days as the range buttons, in local time.
+- **ui:** quick chats no longer pile up in the sidebar with no tab. Closing
+  tabs in bulk — a project's *Close tabs*, its ×, *Hide*, *Remove from list* —
+  ends the quick chats in them as ⌘W does (one question for a chat still
+  answering). A quick chat with no tab is listed under *Running, no tab* only
+  while it works or asks for something, or for 10 minutes after its last
+  answer; it stays on the Chats screen and in the palette. Its row now says
+  what the chat is about, when it started and its model, instead of only
+  *Quick chat · <model>*, so two chats can be told apart.
+- **ui:** on Windows and Linux, hovering a sidebar row (Dashboard, Mail,
+  Settings, New agent and the rest) or a folded footer icon shows one hint,
+  its tooltip with the key in it, instead of a key chip at once and the
+  tooltip a second later. The chips still show under keyboard focus and all
+  together while Ctrl is held; macOS is unchanged.
+
 ## [0.139.0] - 2026-10-19
 
 ### Changed

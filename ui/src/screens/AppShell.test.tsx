@@ -99,7 +99,7 @@ vi.mock('@/lib/api', async (orig) => {
   }
 })
 
-const fetchMock = vi.fn(async () => new Response('', { status: 404 }))
+const fetchMock = vi.fn(async (_url?: unknown) => new Response('', { status: 404 }))
 
 beforeEach(() => {
   spawned.n = 0
@@ -112,6 +112,8 @@ beforeEach(() => {
   // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
   sessionStorage.clear()
+  // A test may give the daemon a project list (daemonProjects); the rest have none.
+  fetchMock.mockImplementation(async () => new Response('', { status: 404 }))
   vi.stubGlobal('fetch', fetchMock)
   location.hash = '#/app'
   vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel')
@@ -297,26 +299,61 @@ describe('the app workspace', () => {
     expect(spawned.signals).toEqual([])
   })
 
-  it('shows an agent tab as its chat, over the terminal that stays mounted', async () => {
+  /** What the page asked the daemon to change: any request but a read. */
+  const writes = () => fetchMock.mock.calls.filter((c) => {
+    const init = (c as unknown[])[1] as RequestInit | undefined
+    return !!init?.method && init.method !== 'GET'
+  })
+
+  it('shows an agent tab as its chat, over the terminal that stays mounted, from its one view icon', async () => {
     await renderApp()
     await openFromPalette('Fix the login bug')
     await screen.findByRole('tab', { name: /Fix the login bug/ })
-    const chat = screen.getByRole('button', { name: 'Chat' })
-    expect(chat).toHaveAttribute('aria-pressed', 'false')
-    expect(chat).toHaveTextContent('Chat')
-    expect(chat.getAttribute('title')).toMatch(/as a chat.*terminal keeps running/)
-    fireEvent.click(chat)
+    // A project session opens on its terminal; the icon offers the other view.
+    const toChat = screen.getByRole('button', { name: 'Show as chat' })
+    expect(toChat).toHaveAttribute('data-view-switch')
+    expect(toChat).toHaveAttribute('title', 'Show as chat')
+    expect(toChat.textContent).toBe('')
+    expect(screen.queryByRole('button', { name: 'Show as terminal' })).toBeNull()
+    fetchMock.mockClear()
+    fireEvent.click(toChat)
     expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
-    expect(chat).toHaveAttribute('aria-pressed', 'true')
+    // One icon, flipped: now it offers the terminal.
+    const toTerminal = screen.getByRole('button', { name: 'Show as terminal' })
+    expect(screen.queryByRole('button', { name: 'Show as chat' })).toBeNull()
+    expect(document.querySelectorAll('[data-view-switch]')).toHaveLength(1)
     // Still mounted, but out of view under the cover as on a tab switch, so
     // it comes back the same way (owner, 2026-10-14).
     const pane = screen.getByTestId('pane-agent-1')
     expect(pane).toHaveAttribute('data-active', 'false')
     expect(pane.closest('[data-tab-panel]')).toHaveAttribute('hidden')
-    fireEvent.click(chat)
+    fireEvent.click(toTerminal)
     expect(screen.queryByRole('log')).not.toBeInTheDocument()
     expect(pane).toHaveAttribute('data-active', 'true')
     expect(pane.closest('[data-tab-panel]')).not.toHaveAttribute('hidden')
+    expect(screen.getByRole('button', { name: 'Show as chat' })).toBeInTheDocument()
+    // The same pane all along: never restarted, signalled or typed into.
+    expect(screen.getByTestId('pane-agent-1')).toBe(pane)
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
+    expect(writes()).toEqual([])
+  })
+
+  it('remembers the view per session: a reopened tab, and a new window, open the way it was left', async () => {
+    const view = await renderApp()
+    await openFromPalette('Fix the login bug')
+    await screen.findByRole('tab', { name: /Fix the login bug/ })
+    fireEvent.click(screen.getByRole('button', { name: 'Show as chat' }))
+    expect(JSON.parse(localStorage.getItem('caprock.app.session-view') ?? '{}')).toEqual({ 'agent-1': 'chat' })
+    // Another session keeps its own default.
+    fireEvent.click(waitingRow('Waiting one'))
+    await screen.findByRole('tab', { name: /Waiting one/ })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Show as chat' })).toBeInTheDocument())
+    view.unmount()
+    await renderApp()
+    fireEvent.click(await screen.findByRole('tab', { name: /Fix the login bug/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Show as terminal' })).toBeInTheDocument())
+    expect(await screen.findByText('Fix it, please')).toBeInTheDocument()
   })
 
   // Every way a terminal comes back into view is its pane going active
@@ -380,12 +417,13 @@ describe('the app workspace', () => {
     await waitFor(() => expect(spawned.reqs).toHaveLength(1))
     expect(spawned.reqs[0]).toMatchObject({ cwd: '/w/other', resume: 'theirs', fork: true })
     const id = `chat-${spawned.n}`
-    // A loaded CI runner took longer than waitFor's one second (2026-10-19).
-    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'), { timeout: 3000 })
+    // A loaded CI runner took longer than waitFor's one second (2026-10-19),
+    // then longer than three (the v0.140.2 release run, 2026-10-21).
+    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'), { timeout: 10000 })
     // The watched tab stays; nothing was sent to the other terminal's process.
     expect(screen.getByRole('tab', { name: /Started elsewhere/ })).toBeInTheDocument()
     expect(spawned.signals).toEqual([])
-  })
+  }, 15000)
 
   it('hides a watched session from its tab’s menu: the tab closes and the row is unlisted', async () => {
     await renderApp()
@@ -576,6 +614,18 @@ describe('the app workspace', () => {
     expect(screen.getByTestId('pane-chat-1')).toBeInTheDocument()
     expect(spawned.reqs[0]).toMatchObject({ chat: true })
     await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeTruthy())
+    // A chat opens on Chat; its terminal is a switch away, and back.
+    expect(screen.getByRole('button', { name: 'Show as terminal' })).toBeInTheDocument()
+    fetchMock.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Show as terminal' }))
+    await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeNull())
+    expect(screen.getByTestId('pane-chat-1')).toHaveAttribute('data-active', 'true')
+    expect(JSON.parse(localStorage.getItem('caprock.app.session-view') ?? '{}')).toEqual({ 'chat-1': 'terminal' })
+    fireEvent.click(screen.getByRole('button', { name: 'Show as chat' }))
+    await waitFor(() => expect(document.querySelector('[data-chat-view]')).toBeTruthy())
+    await act(async () => { await Promise.resolve() })
+    expect(spawned.signals).toEqual([])
+    expect(writes()).toEqual([])
   })
 
   it('starts on ⌥⌘N at once, on the agent and model picked last', async () => {
@@ -707,6 +757,53 @@ describe('the app workspace', () => {
     expect(spawned.signals).toEqual([])
   })
 
+  // Owner, 2026-10-20: a chat whose tab was closed from its project's menu
+  // kept running with no tab, listed under "Running, no tab" for good.
+  // Outside projects, where a chat's tab sits, closes its tabs by Hide. It
+  // is there once the daemon keeps a project list (the chat is in none).
+  async function closeOutsideTabs() {
+    fireEvent.click(await screen.findByRole('button', { name: /^Hide Outside projects/ }))
+  }
+
+  const daemonProjects = () => fetchMock.mockImplementation(async (url: unknown) => String(url).endsWith('/v1/projects')
+    ? new Response(JSON.stringify({ projects: [{ id: 1, name: 'app', root: '/w/app', kind: 'folder' }] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    : new Response('', { status: 404 }))
+
+  it('ends an idle quick chat when its group’s tabs are closed in bulk, as ⌘W does', async () => {
+    daemonProjects()
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await closeOutsideTabs()
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'end']]))
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+  })
+
+  it('asks once before a bulk close ends a quick chat still answering; Keep running leaves it be', async () => {
+    daemonProjects()
+    spawned.health = 'working'
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await waitFor(() => expect(screen.getAllByText('Working').length).toBeGreaterThan(0))
+    await closeOutsideTabs()
+    const ask = await screen.findByRole('dialog', { name: 'Stop chats that are answering' })
+    expect(ask).toHaveTextContent('Stop the chat? It is still answering.')
+    expect(screen.queryByRole('tab', { name: /Quick chat/ })).toBeNull()
+    fireEvent.click(within(ask).getByRole('button', { name: 'Keep running' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Stop chats that are answering' })).toBeNull())
+    expect(spawned.signals).toEqual([])
+  })
+
+  it('stops a quick chat still answering when a bulk close is told to', async () => {
+    daemonProjects()
+    spawned.health = 'working'
+    await startChat()
+    await screen.findByRole('heading', { name: 'Quick chat · Opus 5.5' })
+    await waitFor(() => expect(screen.getAllByText('Working').length).toBeGreaterThan(0))
+    await closeOutsideTabs()
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Stop chats that are answering' })).getByRole('button', { name: 'Stop' }))
+    await waitFor(() => expect(spawned.signals).toEqual([['chat-1', 'end']]))
+  })
+
   // Owner, 2026-10-14 (translated): "I just want to switch between them
   // with key combos … not every tab shows the key combination". Tabs are
   // the navigation: ⌘N is the Nth tab in the order the tabs were opened, a
@@ -792,7 +889,7 @@ describe('the app workspace', () => {
   it('lists Flat for a new viewer, Tree once chosen (Settings → Appearance or the Projects | Tabs switch), and a click on a project opens its page', async () => {
     localStorage.clear()
     render(<AppShell />)
-    await screen.findByRole('group', { name: 'Sessions' })
+    await screen.findByRole('heading', { name: 'Sessions' })
     expect(document.querySelector('[data-project-row]')).toBeNull()
     act(() => saveSidebarMode('tree'))
     await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())

@@ -6,20 +6,48 @@
  * all its busy shells at once (`project`).
  */
 import { Sheet, SheetButton, SHEET_CLOSE_ROOM } from './Sheet'
-import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentCloseChoices, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
+import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentCloseChoices, chatsCloseQuestion, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
 
 /**
  * The one question before closing a quick chat that is still answering
  * (.ai/21-app.md § Quick chat). An idle chat never gets here: its tab
  * closes and the chat ends with it.
  */
-export function CloseChatConfirm({ onStop, onKeep, onCancel, agent = false }: {
+export function CloseChatConfirm({ onStop, onKeep, onCancel, agent = false, closed }: {
   onStop: () => void
   onKeep: () => void
   onCancel: () => void
   /** An agent Caprock started, chosen to end with its tab, rather than a quick chat. */
   agent?: boolean
+  /**
+   * A bulk close (a project's *Close tabs*): the tabs are closed already, and
+   * this many of their chats are still answering. No Cancel — Escape keeps
+   * them running, as *Keep running* does.
+   */
+  closed?: number
 }) {
+  if (closed !== undefined) {
+    return (
+      <Sheet
+        label="Stop chats that are answering"
+        width={560}
+        onClose={onKeep}
+        footer={
+          <>
+            <SheetButton onClick={onKeep}>Keep running</SheetButton>
+            <SheetButton danger autoFocus onClick={onStop}>Stop</SheetButton>
+          </>
+        }
+      >
+        <div className={`grid gap-1.5 py-4 pl-5 ${SHEET_CLOSE_ROOM}`}>
+          <p className="text-[13.5px] font-medium text-fg">{chatsCloseQuestion(closed)}</p>
+          <p className="text-[12.5px] text-fg-muted">
+            Their tabs are closed. Stopping ends their processes; the conversations are kept and can be continued. Kept running, each stays in the sidebar under Running, no tab, while it works.
+          </p>
+        </div>
+      </Sheet>
+    )
+  }
   return (
     <Sheet
       label={agent ? 'End an agent that is answering' : 'Close a chat that is answering'}

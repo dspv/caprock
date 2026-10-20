@@ -6,9 +6,12 @@
  * per item). Pure.
  *
  * A row is a repository and branch at its furthest stage — agent → PR → CI →
- * merged → released — with the live sessions working on it attached. Its bar
- * is filled to the stage it is in, a fact read from GitHub and Caprock's own
- * record, never a guess at how far the work is. The only estimates are those
+ * merged — with the live sessions working on it attached. Its bar is filled
+ * to the stage it is in, and a merge fills it: released is not a step but a
+ * quiet word after the bar (owner, 2026-10-20, translated: the final status
+ * should be merged — a grey last block read as unfinished, or closed). The
+ * stage is a fact read from GitHub and Caprock's own record, never a guess
+ * at how far the work is. The only estimates are those
  * with a measured basis, each saying what it is made of (rule 6, RISK-08): a
  * running turn's range from the project's past turns, a CI run against the
  * repository's median, merge → release against the median lag, the gap
@@ -17,15 +20,15 @@
  */
 import type { SessionCIStats, Work, WorkPR, WorkQueued, WorkRepo, WorkSession, WorkTask } from './api'
 import type { BranchPR } from './branches'
-import { asBoard, type BoardCard, type BoardFlow, type PRBoard } from './prboard'
+import { asBoard, type BoardCard, type BoardFlow, type PRBoard, type ShipsBy } from './prboard'
 import { basisLabel, etaRange } from './queueboard'
 import { spanText } from './prstats'
 import { href } from './router'
 
-/** The bar's five steps, in order. */
-export const STEPS = ['agent', 'PR', 'CI', 'merged', 'released'] as const
+/** The bar's four steps, in order: a merge fills the bar. */
+export const STEPS = ['agent', 'PR', 'CI', 'merged'] as const
 
-/** Where a row stands: planned (nothing started), then the five steps. */
+/** Where a row stands: planned (nothing started), the four steps, then released (the bar full, its tag said after it). */
 export type Stage = 'planned' | 'agent' | 'pr' | 'ci' | 'merged' | 'released'
 
 /** The Kanban's columns. */
@@ -75,8 +78,10 @@ export interface WorkItem {
   task?: WorkTask
   queued?: WorkQueued
   stage: Stage
-  /** Steps filled on the bar, 0–5: the stage's place, not a guess at progress. */
+  /** Steps filled on the bar, 0–4: the stage's place, not a guess at progress. A merge, released or not, fills it. */
   fill: number
+  /** A quiet word after the stage word: *not released* on a merge waiting for a release, where the repository cuts them. */
+  note?: { text: string; title: string }
   /** The CI step is red: a failed check, a conflict, changes requested; or a failed task. */
   red: boolean
   /** The CI step is running. */
@@ -109,7 +114,7 @@ function nameOf(root: string): string {
 }
 
 /** The stage, bar, word, lane and group of a pull request, from its board card or its own state. */
-export function prStage(card: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release'> | undefined, state: 'open' | 'merged' | 'closed', draft?: boolean): Pick<WorkItem, 'stage' | 'fill' | 'red' | 'running' | 'word' | 'lane' | 'group'> {
+export function prStage(card: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release'> | undefined, state: 'open' | 'merged' | 'closed', draft?: boolean, ships?: ShipsBy): Pick<WorkItem, 'stage' | 'fill' | 'red' | 'running' | 'word' | 'lane' | 'group' | 'note'> {
   const s = card?.stage ?? (state === 'merged' ? 'merged' : draft ? 'draft' : 'open')
   const base = { red: false, running: false }
   switch (s) {
@@ -122,8 +127,11 @@ export function prStage(card: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release'
       return { ...base, stage: 'ci', fill: 3, red: true, word, lane: 'review', group: 'review' }
     }
     case 'ready': return { ...base, stage: 'ci', fill: 3, word: card?.ci === 'none' ? 'ready · no checks' : 'ready', lane: 'review', group: 'release' }
-    case 'merged': return { ...base, stage: 'merged', fill: 4, word: 'merged', lane: 'merged', group: 'release' }
-    case 'released': return { ...base, stage: 'released', fill: 5, word: card?.release ? `in ${card.release}` : 'released', lane: 'released', group: 'released' }
+    case 'merged': {
+      const note = ships === 'release' ? { note: { text: 'not released', title: 'Merged, in no published release yet: it ships with the next one.' } } : {}
+      return { ...base, stage: 'merged', fill: 4, word: 'merged', lane: 'merged', group: 'release', ...note }
+    }
+    case 'released': return { ...base, stage: 'released', fill: 4, word: card?.release ? `in ${card.release}` : 'released', lane: 'released', group: 'released' }
   }
 }
 
@@ -201,7 +209,7 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
       const card = cards.get(p.number)
       // A merged one the board does not hold is older than its window: done and gone.
       if (p.state === 'merged' && !card) continue
-      const it = prItem(named(root), p, card)
+      const it = prItem(named(root), p, card, board?.ships_by)
       const key = it.key
       const had = items.get(key)
       if (had) { const keep = better(had, it); if (keep === had) continue }
@@ -294,8 +302,8 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
   return { items: sortItems(out), idle, counts: { live: work.totals.live, building, onPRs, needsYou: work.totals.waiting_you } }
 }
 
-function prItem(repo: { root: string; name: string }, p: BranchPR, card: BoardCard | undefined): WorkItem {
-  const st = prStage(card, p.state, p.draft)
+function prItem(repo: { root: string; name: string }, p: BranchPR, card: BoardCard | undefined, ships?: ShipsBy): WorkItem {
+  const st = prStage(card, p.state, p.draft, ships)
   return {
     key: p.head ? `${repo.root}\0${p.head}` : `${repo.root}\0#${p.number}`, kind: 'pr', repo, title: p.title || `#${p.number}`, branch: p.head,
     pr: { number: p.number, url: p.url, title: p.title, created_at: p.created_at, merged_at: p.merged_at }, card,
@@ -315,7 +323,7 @@ export function sortItems(items: WorkItem[]): WorkItem[] {
     if (a.needsYou !== b.needsYou) return a.needsYou ? -1 : 1
     if (a.working !== b.working) return a.working ? -1 : 1
     if (a.group === 'released' && b.group === 'released') return releasedAt(b) - releasedAt(a)
-    if (a.fill !== b.fill) return b.fill - a.fill
+    if (STAGE_RANK[a.stage] !== STAGE_RANK[b.stage]) return STAGE_RANK[b.stage] - STAGE_RANK[a.stage]
     // Planned: what is queued for an agent comes before tasks not started.
     if (!!a.queued !== !!b.queued) return a.queued ? -1 : 1
     if (a.queued && b.queued) return a.queued.position - b.queued.position

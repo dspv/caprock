@@ -3120,6 +3120,16 @@ func RateLimitPace(ctx context.Context, q Querier, window string, resetsAt int64
 	return deltaPct / hours, true, nil
 }
 
+// RateLimitHistoryMark is the newest history sample's time for a window, 0
+// when there is none: one lookup on idx_rate_limit_history_window_ts. Samples
+// are only ever appended later than the newest (RecordRateLimit), so while
+// the mark has not moved RateLimitPace has not either.
+func RateLimitHistoryMark(ctx context.Context, q Querier, window string) (int64, error) {
+	var ts sql.NullInt64
+	err := q.QueryRowContext(ctx, `SELECT MAX(ts) FROM rate_limit_history WHERE window = ?`, window).Scan(&ts)
+	return ts.Int64, err
+}
+
 // CountEvents returns the total number of stored events (for status/metrics).
 func CountEvents(ctx context.Context, q Querier) (int64, error) {
 	var n int64
@@ -3251,14 +3261,30 @@ func ProseSince(ctx context.Context, q Querier) (int64, error) {
 // For the status screen. A feature that acts before anyone types is one nobody
 // can see working — this is how a person checks that it can, without opening a
 // session to find out.
+//
+// Both figures stop at the first passage that answers them. Counted as one
+// COUNT(DISTINCT) over every passage of the fortnight, the statement parsed
+// the payload of every assistant turn in it — 16,187 page reads (66 MB) of
+// the owner's 1.85 GB database, once a minute while the dashboard polled
+// status, and past its 2 s budget on a swapping machine, which left the
+// figure empty (F17, docs/resource-usage-audit-2026-10-18.md). Now a project
+// counts once one of its sessions holds one passage long enough, found
+// session by session on idx_events_attr_work, and the oldest is the first such
+// passage in time order: 416 page reads, the same two numbers.
 func HandoffCoverage(ctx context.Context, q Querier, since int64, minLen int) (repos int, oldest int64, err error) {
+	const passage = assistantTextWhere + `
+		  AND e.ts >= ?1
+		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?2`
 	row := q.QueryRowContext(ctx, `
-		SELECT COUNT(DISTINCT se.project), COALESCE(MIN(e.ts), 0)
-		FROM events e JOIN sessions se ON se.session_id = e.session_id
-		WHERE `+assistantTextWhere+`
-		  AND se.project != ''
-		  AND e.ts >= ?
-		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?`, since, minLen)
+		SELECT
+		  (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE project != '') p
+		    WHERE EXISTS (
+		      SELECT 1 FROM sessions se JOIN events e INDEXED BY idx_events_attr_work ON e.session_id = se.session_id
+		       WHERE se.project = p.project AND `+passage+`)),
+		  COALESCE((
+		    SELECT e.ts FROM events e JOIN sessions se ON se.session_id = e.session_id
+		     WHERE se.project != '' AND `+passage+`
+		     ORDER BY e.ts LIMIT 1), 0)`, since, minLen)
 	err = row.Scan(&repos, &oldest)
 	return repos, oldest, err
 }

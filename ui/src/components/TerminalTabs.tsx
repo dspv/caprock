@@ -19,7 +19,7 @@ import { tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
-import { ChatIcon, CloseIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
+import { ChatIcon, CloseIcon, DashboardIcon, GlobeIcon, MailIcon, PipelineIcon, SettingsIcon, FileIcon, InspectorIcon, PlusIcon, TerminalIcon } from './AppIcons'
 import { sessionHealth } from '@/lib/sessionLabels'
 import { StatusDot } from './ProjectRow'
 import { HotMark } from './ResourceMeter'
@@ -93,14 +93,10 @@ export interface TabStripProps {
   onToggleInspector: () => void
   /** Each tab's ⌘1–⌘9, by its place: 1–8, and 9 on the last. */
   digits?: ReadonlyMap<string, number>
-  /** The tab in front shows its chat instead of its terminal (WP-14). */
-  chatOpen?: boolean
-  /** Absent when the tab in front has no conversation: a shell. */
-  onToggleChat?: () => void
-  /** The session deck under the agent's terminal is open. */
-  deckOpen?: boolean
-  /** Absent when the tab in front is not an agent's: a shell has no deck. */
-  onToggleDeck?: () => void
+  /** How the tab in front shows its session: its chat over the terminal, or the terminal (lib/sessionView). */
+  view?: 'chat' | 'terminal'
+  /** The Chat / Terminal switch; absent when the tab in front has no conversation: a shell. */
+  onView?: (view: 'chat' | 'terminal') => void
 }
 
 /** What a tab's dot says, in its tooltip: the only states a tab shows. */
@@ -442,41 +438,28 @@ export function TabStrip(props: TabStripProps) {
         </div>
       </div>
       <div className="mb-1 flex shrink-0 items-center gap-0.5">
-        {props.paneTools !== false && props.onToggleChat && (
-          // Worded, as Deck is: the bare bubble said nothing (owner,
-          // 2026-10-14, translated: "it opens who knows what"). The word
-          // stays *Chat* in both states; pressed is the way back.
-          <button type="button" data-chat-toggle aria-label="Chat" aria-pressed={!!props.chatOpen} onClick={props.onToggleChat}
-            title={props.chatOpen
-              ? 'Back to the terminal'
-              : 'Read this session as a chat: your prompts, the agent\'s replies, one line per tool call, and a field that types into it. The terminal keeps running.'}
-            className={`flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.chatOpen ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
-            }`}>
-            <ChatIcon size={15} />
-            <span>Chat</span>
-          </button>
-        )}
-        {props.paneTools !== false && props.onToggleDeck && (
-          // Labelled, with its key, so the deck is found (owner, 2026-10-11:
-          // "it is not clear that it exists").
-          <button type="button" data-deck-toggle title={`Session deck: live figures under the terminal (${keys('⌘B')})`} aria-label={`Session deck (${keys('⌘B')})`}
-            aria-pressed={props.deckOpen} onClick={props.onToggleDeck}
-            className={`relative flex h-[28px] items-center gap-1.5 rounded-[7px] px-1.5 text-[12px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.deckOpen ? 'bg-[var(--app-row-active)] text-fg' : 'text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
-            }`}>
-            <DeckIcon size={15} />
-            <span>Deck</span>
-            <kbd aria-hidden className={`app-kbd-key app-kbd-below ${revealClass()}`}>{keys('⌘B')}</kbd>
-          </button>
-        )}
+        {props.paneTools !== false && props.onView && (() => {
+          // One quiet icon, no words (owner, 2026-10-20, variant A): it shows
+          // the other view — a terminal glyph over the chat, a chat bubble
+          // over the terminal — and one click flips to it. Two views of one
+          // session: the terminal stays mounted under the chat, and
+          // switching types nothing into it.
+          const other = (props.view ?? 'terminal') === 'chat' ? 'terminal' : 'chat'
+          const label = other === 'terminal' ? 'Show as terminal' : 'Show as chat'
+          return (
+            <button type="button" data-view-switch data-view={other} title={label} aria-label={label} onClick={() => props.onView!(other)}
+              className="flex h-[28px] w-[28px] items-center justify-center rounded-[7px] text-fg-muted transition-colors duration-100 hover:bg-[var(--app-row-hover)] hover:text-fg motion-reduce:transition-none">
+              {other === 'terminal' ? <TerminalIcon size={15} /> : <ChatIcon size={15} />}
+            </button>
+          )
+        })()}
         {props.paneTools !== false && <StripButton label={`Inspector (${keys('⌘I')})`} pressed={props.inspectorOpen} onClick={props.onToggleInspector} shortcut={keys('⌘I')}><InspectorIcon size={15} /></StripButton>}
       </div>
     </div>
   )
 }
 
-/** A strip button; one with a `shortcut` draws its key beside the icon, as Deck does (off macOS under it, a row below Deck's). */
+/** A strip button; one with a `shortcut` draws its key beside the icon (off macOS under it). */
 function StripButton({ label, onClick, pressed, shortcut, children }: { label: string; onClick: () => void; pressed?: boolean; shortcut?: string; children: ReactNode }) {
   return (
     <button
@@ -490,7 +473,7 @@ function StripButton({ label, onClick, pressed, shortcut, children }: { label: s
       }`}
     >
       {children}
-      {shortcut && <kbd data-strip-key aria-hidden className={`app-kbd-key app-kbd-below app-kbd-below-2 ${revealClass()}`}>{shortcut}</kbd>}
+      {shortcut && <kbd data-strip-key aria-hidden className={`app-kbd-key app-kbd-below ${revealClass()}`}>{shortcut}</kbd>}
     </button>
   )
 }

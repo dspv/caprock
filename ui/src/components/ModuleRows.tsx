@@ -1,12 +1,13 @@
 /**
  * The app sidebar's rows for private modules (ADR-076): one per installed
- * module the admin key opens, above the footer, each with its key (⌥⌘1 for
- * the first, appkeys moduleKey). Without a key there are none and nothing is
+ * module the admin key opens, above the footer, each with its key (⇧⌘1 for
+ * the first, appkeys moduleKey; on a Mac the third to fifth draw none, as
+ * macOS takes ⇧⌘3–5 for screenshots). Without a key there are none and nothing is
  * drawn, not even the band.
  */
 import { useRoute } from '@/lib/router'
 import { useModules } from '@/lib/modules'
-import { keys, moduleKey, revealClass } from '@/lib/appkeys'
+import { keys, macTakenModuleKey, moduleKey, revealClass } from '@/lib/appkeys'
 import { useChipFit } from '@/lib/keyChipFit'
 import { isMacPlatform } from '@/lib/appmode'
 import type { ModuleInfo } from '@/lib/api'
@@ -27,7 +28,9 @@ export function ModuleRows({ onOpen, dashboardActive }: { onOpen: (hash: string)
 /** One row: the module's initial, its name and its key, the key left out whole when it does not fit. */
 function ModuleRow({ m, index, active, onOpen }: { m: ModuleInfo; index: number; active: boolean; onOpen: (hash: string) => void }) {
   const mac = moduleKey(index)
-  const label = mac ? keys(mac) : ''
+  // ⇧⌘3–5 are macOS's screenshot keys: no chip, and the tooltip says why.
+  const taken = !!mac && macTakenModuleKey(index)
+  const label = mac && !taken ? keys(mac) : ''
   const [ref, fits] = useChipFit<HTMLButtonElement>([label, m.name])
   return (
     <button
@@ -36,8 +39,8 @@ function ModuleRow({ m, index, active, onOpen }: { m: ModuleInfo; index: number;
       data-nav-row
       data-module-row={m.id}
       aria-current={active ? 'true' : undefined}
-      aria-keyshortcuts={mac ? (isMacPlatform() ? `Alt+Meta+${index + 1}` : `Control+Alt+Shift+${index + 1}`) : undefined}
-      title={label ? `${m.name} (${label})` : m.name}
+      aria-keyshortcuts={mac && !taken ? (isMacPlatform() ? `Shift+Meta+${index + 1}` : `Control+Alt+Shift+${index + 1}`) : undefined}
+      title={label ? `${m.name} (${label})` : taken ? `${m.name} (${mac} is taken by macOS screenshots; it opens this when those shortcuts are off in System Settings → Keyboard → Keyboard Shortcuts)` : m.name}
       onClick={() => onOpen(`#/x/${m.id}`)}
       className="app-row relative flex h-[32px] min-w-0 items-center gap-2 rounded-[8px] border border-[var(--app-hairline-strong)] px-2 text-left text-[13px] text-fg hover:bg-[var(--app-row-hover)]"
     >

@@ -270,15 +270,25 @@ One window, three regions:
   its conversation (ChatView), so there is no terminal to get lost in — the
   2026-10-12 complaint. The chooser stays as *Quick chat with…* in the +
   menu and the palette.
-- **A quick chat's tab** (owner, 2026-10-12, same report). It is named
+- **A quick chat's tab** (owner, 2026-10-12, same report). Until it has a
+  title of its own it is named
   *Quick chat · Opus 5.5* — the pricing table's model name once it has
   answered, before that the model it was started on, which the window that
   started it keeps (`caprock.quickchat.started`), else the agent's name — in
   the strip, the sidebar row and the inspector's header (`lib/quickchat.ts`;
   a chat is known by its folder, `<data_dir>/chats/<stamp>`, as the daemon's
-  `chatLabel` knows it; since ADR-071 the session row also says `chat`). The
-  sidebar groups it under *Outside projects* only while it has a tab or waits
-  on you (every chat is on the Chats screen); the tab no longer wears that
+  `chatLabel` knows it; since ADR-071 the session row also says `chat`).
+  Once it has a title (the agent's, or a few words of its first prompt) it is
+  called that, as every other session is, and its sidebar row carries the
+  model as a quiet suffix and, with no tab, its start time — *09:40* today,
+  else *19 Oct 09:40* (`chatRowSuffix`; owner, 2026-10-20: two rows both
+  said *Quick chat · …* and could not be told apart). The
+  sidebar groups it under *Outside projects* while it has a tab, and with no
+  tab only while it works or asks for something (a permission prompt, a
+  question), or for 10 minutes after its last answer (`chatListed`,
+  `CHAT_LINGER_MS`; owner, 2026-10-20: every chat waits on you once it has
+  answered, so a chat whose tab was lost stayed listed for as long as it
+  ran). Every chat is on the Chats screen and in the palette; the tab no longer wears that
   group as its chip, and opens on the conversation. A line above it says *Quick chat with Claude · Opus 5.5 — ⌘W or /exit
   ends it* (keys through `keys()`; Gemini's is /quit), with a × that hides it
   for good (`caprock.quickchat.hint`). **When the agent exits** the tab stays,
@@ -291,12 +301,18 @@ One window, three regions:
   terminal, and reloaded the window to leave.
 - **Closing a quick chat ends it** (owner, 2026-10-12: closed chats piled
   up as idle sessions under *Outside projects*). ⌘W, the tab's ×, the
-  sidebar's × and *Close tab* stop a quick chat's process with the tab — the
+  sidebar's × and *Close tab* stop a quick chat's process with the tab, and
+  so does every bulk close — a project's *Close tabs*, its ×, *Hide*,
+  *Remove from list* (`planTabsChatClose` in `onCloseProjectTabs`; owner,
+  2026-10-20) — the
   same `kill` as the cockpit's *Stop the session…*; the conversation is
   kept and can be continued. An idle chat ends with no question; one still
   answering (activity `working` or `looping`) asks once — *Stop the chat? It
   is still answering.* — with **Stop and close**, **Keep it running, close
-  tab** and **Cancel** (`CloseChatConfirm`). Only a chat Caprock started and
+  tab** and **Cancel** (`CloseChatConfirm`). After a bulk close the tabs
+  are gone already: the same question (*Stop 2 chats? They are still
+  answering.* for several) comes with **Stop** and **Keep running**, and
+  Escape keeps them running. Only a chat Caprock started and
   still running is stopped (`owned`, not ended; rule 7): known by its
   folder, or one this window spawned a moment ago that the session list
   does not have yet (`planChatClose`, `lib/closeShell.ts`). One whose agent
@@ -518,7 +534,7 @@ One window, three regions:
   made that is merged (or its pull request is), pushed, clean and has
   nothing running in it is *finished*; Settings → Worktrees says what
   happens to it: *Off*, *Ask* (the default) or *Auto*. Ask puts one quiet
-  line on the project's page and over the deck's Branches view — never the
+  line on the project's page — never the
   sidebar — *3 copies done · 2.1 GB · Clean up · Review*; *Clean up*
   confirms on the same line and removes exactly those, *Review* opens the
   copies sheet with them ticked. Auto removes a copy 24 hours after it
@@ -656,150 +672,69 @@ One window, three regions:
   windows still reach the cockpit; the page recommends it under every other
   choice and never picks it for anyone
   ([03-contracts.md § Statusline](03-contracts.md#statusline)).
-- **Session deck (under the agent's terminal)** (owner, 2026-10-11,
-  translated: "I want to be able to enlarge the bottom area so that I
-  basically type in the centre, a bit below the middle of the screen —
-  that's comfortable — and in this new area show data useful to me while I
-  work"). A full-width terminal puts Claude Code's prompt on the window's
-  bottom edge; the deck is a band under the terminal of the agent in front
-  that lifts it. It holds one cell, **Pull requests & CI** (owner,
-  2026-10-12, translated: "Remove the Branch cell — put it somewhere else …
-  CI/CD and Pull requests should simply be merged properly into one, with
-  all the statuses and so on, plus at least a couple of previous PRs"; it
-  was three cells — CI, Branch, Pull requests — until then). Its header ends
-  in *Pipeline* (the Pipeline tab, ⌘P) and a × that hides the deck (⌘B,
-  or *Pipeline bar: On/Off* in the palette) ([04-ui.md](04-ui.md) § The
-  sidebar footer).
-  - **Header.** The title; the session's branch as a mono chip, *feat/x →
-    main* when the current PR is from it, its tooltip saying what is not
-    committed or pushed and, beside it in amber, *3 not committed · 2 not
-    pushed* (a click opens the Changes view, ⇧⌘G); the release chip
-    *Release v0.109.1 · ~6 min* while a release builds (a click opens
-    Release); in Main the branch and *runner* with its cost; the **PRs |
-    Branches | Release | Main** switch, kept per viewer in `localStorage`. The chips give way below a
-    480px container.
-  - **PRs view.** The session's pull requests from `GET
-    /v1/sessions/{id}/prs` — its latest four (`session_prs`): the open one
-    (the current) first, then the earlier ones newest first, and *No earlier
-    PRs from this session.* when there is one. A row: a state dot (green
-    open, a hollow ring draft, violet merged, grey closed; `.pr-dot`,
-    `--color-merged`), the number and title, the mini pipeline, the CI in
-    words — *✓ 9m 10s · −6%* (the run's time and its delta, below), *✗
-    failed at test (windows)*, *running · 3/5 · 4m 10s* (since the first
-    check started, measured), *CI not started* (muted, for 10 minutes after
-    the PR opened — GitHub often has not registered the checks yet) and *no
-    checks* after that, never "CI no CI" — then the review GitHub returned
-    (*approved*, *changes requested*, *review required*) and *conflict* when
-    GitHub says it cannot merge, both only for an open PR, then the age
-    (*now*, *5m*, *2h*, *3d*; since merged, closed or opened) and ↗ (the
-    PR on GitHub). Columns line up row to row; the pipeline, then the
-    review, give way as the deck narrows. A click on a row opens it in place,
-    one at a time, into its GitHub Actions from `GET
-    /v1/sessions/{id}/ci?pr=N`: *run 9m 10s · −6%* (one workflow), *runner*
-    — the finished jobs' time from GitHub's own stamps plus the running ones
-    on the clock, the minutes per OS beside it and in its tooltip, and its
-    cost (below) — and *checks ↗*; then a row per job with a mark (an amber
-    turning ring while it runs, ✓, ✗, ○ queued, – skipped or cancelled), its
-    name, the step it failed at or is on, its OS (from the runner labels),
-    its time ticking each second while it runs, and its time against its
-    median. A job opens into its steps, and a failed step into the lines
-    around the error in the job's log (monospace, scrolling, the error line
-    marked) with *Investigate* and *Open on GitHub*. The jobs flow into as
-    many columns as the deck's width holds — three at about 1300px, two at
-    about 900px, one when narrow — each a fixed set of tracks after the name
-    (OS, time, against the median, cost) so a column lines up row to row;
-    an open job takes the whole row and its steps flow the same way (owner,
-    2026-10-12, translated, of the 0.109 deck's one tall column with its
-    right half empty: "see how much space is wasted, although the
-    information is important and good — it was just laid out
-    inconveniently"). One job is open at a time: opening one folds the one
-    before and brings it to the top of the CI's scroll area, where its line
-    stays pinned while its steps scroll under it, with *Fold Esc* at its
-    end; the steps are never taller than that area and scroll on their own,
-    so the open job fits a deck of any height. A click on the job, *Fold* or
-    Esc folds it and the job goes back to its row, in view (owner,
-    2026-10-12, translated, of the 0.111 deck: "when you start expanding
-    things, you can't see a damn thing, and then it's impossible to
-    collapse"). Esc folds the innermost open thing — the job, then the open
-    PR — and only while the focus is in the deck, so the terminal keeps its
-    own Esc; with nothing open it is not the deck's. Every PR row carries a
-    chevron (right folded, down open), and the open PR's line stays pinned
-    at the top of the list. The first failed job of each PR opens by itself. No
-    PR opens by itself: the deck opens on the overview, every row on its
-    line with its checks in one short group (*✗ 1 failed ✓ 11*, *✓ all 12 ·
-    6m*; every check on hover); a row opened by hand is opened again the
-    next time, kept per viewer and session, until it is folded (owner,
-    2026-10-13, [04-ui.md](04-ui.md) § CI in the session deck). The same
-    summary, a ring or the jobs by OS sit in the cockpit's CI block, from
-    what the deck read ([04-ui.md](04-ui.md) § CI in the cockpit). Every row keeps its line and the open one's CI takes the
-    height left, scrolling inside, so the earlier PRs stay in view; while a
-    job or an error log is open they fold into one line (*also #13 ✓ #12
-    ✓*) so it has the room. A settled PR's runs are read once while the deck is
-    open, so its row carries its time against the median without being
-    opened. While GitHub is not connected the rows show what the session
-    recorded (open, merged) and *connect GitHub for CI* turns the integration
-    on through the `gh` login in one click (ADR-047: this click is the user
-    turning it on), else opens Settings.
-  - **What stands in a PR's way, and forcing a fix** (owner, 2026-10-12, translated:
-    "From the PRs I want to see, for example, when there's a conflict, or
-    that you (an agent) are looking at it or fixing it — and if needed I want
-    to FORCE a fix or a check"; 2026-10-13: "I understand it could get
-    overloaded"). An open PR's row says at most one problem, the most
-    important: *conflict* (red; `mergeable` false or `mergeable_state`
-    dirty), failed CI, *behind* (amber; GitHub's own `behind`, which it
-    reports when the base must be merged in first), *review* (changes
-    requested), *draft*; GitHub still computing says nothing. It is a chip,
-    except failed CI, which the CI words already say (*✗ failed at …*); the
-    other problems are in the chip's tooltip. Beside it, one accent word that
-    acts: *Fix* for a conflict, *Fix* and *Re-run* for failed CI, *Update*
-    for behind. *approved* and *review required* stay words, giving way below
-    a 1100px deck; the mini pipeline goes below 1000px, before the title
-    gives way, and the CI words column is at most a fifth of the deck, so at
-    860px the title keeps about half the row.
-  - **Whether anything is on it** (owner, 2026-10-13, translated: "I want to
-    see whether it's in the plan or in work"). One word before the chip, the
-    first that holds: *in work* (accent, a small spinner: a live agent whose
-    checkout — the sidebar's worktree row — is on the PR's head branch is
-    working, or an action Caprock started is still running), *waiting* (an
-    agent on the branch waits on you), *queued* (a message queued for an
-    agent on the branch, or one queued elsewhere that names the PR's link, or
-    GitHub's auto-merge on: `auto_merge` on the PR GitHub already returned).
-    Nothing when nobody is on it. The agent's initial in a small tinted
-    square sits beside the word (an idle agent is its initial alone), *+1*
-    for more, the tooltip naming each; a click opens that session's tab. The
-    queues are read per agent (`GET /v1/agents/{id}/queue`) with each PR
-    poll, only for Caprock-started agents on open PRs' branches and the
-    session itself. Tasks-board tasks are not matched: a task is not tied to
-    a repository and only its body would name the PR.
-  - **The actions.** Every open PR has a ⋯ at every deck width (and, while
-    GitHub is not connected, every PR not known merged or closed) that opens
-    its row with the focus on the line of actions under its header: the
-    one-word action opens the same line in its row without opening the CI.
-    *Fix conflict with agent* (with a conflict), *Update branch* (behind and
-    no conflict), *Fix CI with agent* and *Re-run checks* (with checks; the
-    re-run disabled while they still run). Each asks first in that line —
-    the sentence, *Confirm*, *Cancel* (Esc), never a modal — then the row
-    says *in work*, what it does in the word's tooltip (*agent fixing…*,
-    *re-running 5 jobs…*, *updating branch…*), until GitHub shows it done
-    (the checks running again, the head moving) or four minutes pass; the
-    PRs are asked every 20 s meanwhile. Not connected, the four actions are
-    there greyed with *Connect GitHub* beside them. They act on any open PR
-    the cell lists (the session's `session_prs`), from the Mac only: a
-    paired device that may only watch has them disabled with the reason. A fix goes to the
-    Caprock-started agent on the branch as a queued message (ADR-053's
-    queue); Fix CI otherwise goes to the session in front as Investigate
-    does; else a new agent starts in the branch's checkout, or in a new
-    worktree `pr-N-fix` at the PR's head (`worktree_pr`) when there is none
-    or an agent Caprock did not start works in it — rule 7: nothing is typed
-    into a process Caprock did not start, and the confirm says so. The
-    conflict message asks to merge `origin/<base>`, resolve, run the checks
-    and push (to `HEAD:<branch>` from a new worktree, whose local branch is
-    `caprock/pr-N-fix`); Fix CI sends Investigate's message for the first
-    failed job with its log, else one about flaky checks. Re-run and Update
-    branch are GitHub's own (`POST /v1/sessions/{id}/prs/{n}/rerun`,
-    `…/update-branch`; `.ai/03-contracts.md`), with the user's token; a
-    refusal names the permission the token lacks — *Actions (write)*,
-    *Pull requests (write)* — in the toast. Code: `lib/prforce.ts`.
+- **Session deck — removed** (owner, 2026-10-20, translated: "not needed
+  any more"). From 2026-10-11 a band under the agent's terminal (⌘B, a
+  *Deck* button in the tab strip, *Pipeline bar: On/Off* in the palette)
+  lifted Claude Code's prompt off the window's edge and carried one cell,
+  *Pull requests & CI*: the session's PRs with their checks, opening in
+  place into jobs, steps and a failed step's log, behind a *PRs | Branches |
+  Release | Main* switch. The inspector's CI and release blocks and the
+  Pipeline page had come to show the same, so it went, and with it ⌘B
+  (free on every OS; Ctrl+Shift+B off macOS reaches the terminal again),
+  its button, its palette entry, its CSS and its kept state
+  (`caprock.app.deck`, now ignored; *Reset the view* still clears it).
+  Where its parts went:
+  - **Per-PR actions** → the inspector's CI block, on the row of the
+    session's own PR (below, *The actions*).
+  - **A PR's jobs, steps, failed log and Investigate** → the Pipeline page's
+    PR detail; the cockpit row's *Log in Pipeline →* opens the page on that
+    PR (`#/pipeline?of=…&pr=N`).
+  - **Main** (the default branch's workflows and the Actions bill) → the
+    Pipeline page's *Default branch* panel (below, *Main*).
+  - **Release** → the Pipeline page's *Next release* stages and the
+    inspector's release block, which read the same `release:<repo>` answer.
+  - **Cost and agent per PR** → a grey line under the cockpit row: the agent
+    cost the board recorded (`board.cards[].spend`) and the live agent on
+    its branch (else the agents the board names).
+  - **Branches** (ahead/behind, last commit, spend and the finished-copies
+    line) were the deck's alone and were not moved; the copies line stays
+    on the project's page.
+  The shared parts moved out of `components/SessionDeck.tsx`: the poller
+  `usePoll` and its cadences to `lib/usePoll.ts`, `CIMark`, `DeckSkeleton`,
+  `ExpandToggle` and `connectGitHub` to `components/CIParts.tsx`. The kept
+  answers keep their keys (`prs:`, `ci:`, `release:`, `branches:`,
+  `stats:` in `lib/deckCache`): the cockpit's CI block now asks `prs:` itself
+  while it is unfolded, as the Pipeline page does.
+- **CI in the inspector and the Pipeline: what they share.**
+  - **The actions** (owner, 2026-10-12, translated: "if needed I want to
+    FORCE a fix or a check"; moved from the deck's rows to the cockpit's on
+    2026-10-20). A cockpit CI row of a pull request of the session's own
+    offers the one action it needs, as a small button after its bar: *Resolve
+    conflict* (a conflict), *Update branch* (behind and no conflict), *Fix
+    CI* (failed CI) — or *Re-run* when Fix CI cannot be offered (no agent to
+    reach, or none can be started) — chosen by `quickActions` in
+    `lib/prforce.ts`. The Pipeline page's PR detail offers all four. Each
+    asks first, in the row — the sentence, *Confirm*, *Cancel* (Esc), never
+    a modal — then the row says what it does (*agent fixing…*, *re-running
+    5 jobs…*, *updating branch…*) until GitHub shows it done (the checks
+    running again, the head moving) or four minutes pass. From the Mac
+    only: a paired device that may only watch has them disabled with the
+    reason. A fix goes to the Caprock-started agent on the branch as a
+    queued message (ADR-053's queue); Fix CI otherwise goes to the session
+    in front as Investigate does; else a new agent starts in the branch's
+    checkout, or in a new worktree `pr-N-fix` at the PR's head
+    (`worktree_pr`) when there is none or an agent Caprock did not start
+    works in it — rule 7: nothing is typed into a process Caprock did not
+    start, and the confirm says so. The conflict message asks to merge
+    `origin/<base>`, resolve, run the checks and push (to `HEAD:<branch>`
+    from a new worktree, whose local branch is `caprock/pr-N-fix`); Fix CI
+    sends Investigate's message for the first failed job with its log, else
+    one about flaky checks. Re-run and Update branch are GitHub's own (`POST
+    /v1/sessions/{id}/prs/{n}/rerun`, `…/update-branch`;
+    `.ai/03-contracts.md`), with the user's token; a refusal names the
+    permission the token lacks — *Actions (write)*, *Pull requests (write)*
+    — in the toast. Code: `lib/usePRForce.ts`, `lib/prforce.ts`,
+    `components/CockpitCI.tsx`.
   - **Time against the median** (owner, 2026-10-12, translated: "In CI runs
     I want to see the execution time plus an estimate relative to the
     average — plus or minus percent"). A run's wall-clock time (started to
@@ -814,25 +749,16 @@ One window, three regions:
     job has none (it stopped early). Reading the past runs costs one list
     per workflow per 30 minutes and one jobs read per past run, kept for the
     daemon's lifetime since a finished run never changes, and only the
-    deck's routes ask for it.
-  - **Release view** (owner, 2026-10-12, translated: "Can I also see here,
-    in the deck, the status of the release build? And whatever else matters
-    to me"): the repository's newest release build — the newest run started
-    by a tag push or a release, found for any repository without knowing its
-    workflow file (`GET /v1/sessions/{id}/ci/release`): its tag, a mark, the
-    time so far ticking and *about N min left (estimate from the last K
-    runs)*, the median of that workflow's last successful release runs from
-    GitHub's own run times, or nothing when fewer than two exist; once done,
-    *v0.109.1 · published 3 min ago ✓* linking the GitHub release (else
-    *built*, or *failed … ✗*), then its jobs as a PR's, with steps, errors,
-    *Investigate* and each job against its median.
-  - **Main view**: the newest run of each workflow on the default branch, a
-    header per workflow with its mark, mini pipeline and *run 9m 10s · −6% ·
-    $0.10* (`GET /v1/sessions/{id}/ci/main`), so a red default branch shows
-    at once. Above them, what GitHub itself billed for Actions this month,
-    from its billing report (`GET /v1/github/actions-usage`, asked for the
-    repository's owner only while this view is shown, kept 30 minutes by
-    the daemon): *Actions this month: 1,240 min · $7.40* — net of GitHub's
+    CI routes of a PR and the default branch ask for it.
+  - **Main** (the Pipeline page's *Default branch* panel, `components/PipelineMain.tsx`;
+    the deck's Main view until 2026-10-20): the newest run of each workflow
+    on the default branch, a line per workflow with its mark, mini pipeline,
+    time and runner cost (`GET /v1/sessions/{id}/ci/main`), so a red default
+    branch shows at once; a failed job's step and the end of its log with
+    *Investigate* under them. In its header, what GitHub itself billed for
+    Actions this month, from its billing report (`GET
+    /v1/github/actions-usage`, asked for the repository's owner only while
+    the page is in front, kept 30 minutes by the daemon): *Actions this month: 1,240 min · $7.40* — net of GitHub's
     discount, which is how included minutes appear, the gross and the SKUs
     in its tooltip. When the token may not read billing, a muted *Real
     billing: needs the token's Plan (read) permission* (for an
@@ -864,8 +790,8 @@ One window, three regions:
     app `#/pipeline` is the **Pipeline tab**, pinned right after the
     Dashboard tab and before Mail, folded to its glyph and ⌘P like them
     (`Workspace.pipeline`, kept across restarts). ⌘P, the sidebar footer's
-    *Pipeline*, the deck header's *Pipeline*, the palette's *Open Pipeline*
-    or the cockpit's *Pipeline ↗* bring it to the front for the agent in
+    *Pipeline*, the palette's *Open Pipeline* or the cockpit's *Pipeline →*
+    (*Log in Pipeline →* on a row, at that PR) bring it to the front for the agent in
     front's repository, else where it was left (`screens/Pipeline.tsx`,
     `components/PipelineView.tsx`, words in `lib/prstats.ts`, steps in
     `lib/journey.ts`, the repository in `lib/pipeline.ts`); a picker in its
@@ -875,10 +801,10 @@ One window, three regions:
     stored before (`kind: 'prs'`) comes back as the Pipeline tab at that
     Pipeline, never as a dead pane (`pipelineInStore`). From it, *Back ⌘P*
     in its head, ⌘P, the footer's button or its × bring back the tab or
-    screen it was opened from. ⌘B stays the deck. Off macOS the key is Ctrl+Shift+P
+    screen it was opened from. Off macOS the key is Ctrl+Shift+P
     (rule 12). ⇧⌘B, its key until 2026-10-15, still works and is no longer
-    shown (Ctrl+Alt+Shift+B off macOS, where ⌘B's Ctrl+Shift+B is the
-    deck's). `#/pipeline?…&pr=N` opens pull request N's detail as the page
+    shown (Ctrl+Alt+Shift+B off macOS, where Ctrl+Shift+B was the deck's
+    until 2026-10-20). `#/pipeline?…&pr=N` opens pull request N's detail as the page
     opens: a Work row's title links there. It is drawn as the
     dashboard's other pages are ([04-ui.md](04-ui.md) § The Pipeline). It
     shows:
@@ -907,7 +833,7 @@ One window, three regions:
       merge state and review as large pills, branch → base, the diff's size
       (*+181 −59 · 13 files · 2 commits*, from GitHub's answer for the pull
       request), when it was opened and how long it took to merge; the
-      deck's actions (lib/usePRForce, shared with the deck's rows); its jobs
+      four actions (lib/usePRForce, shared with the cockpit's rows); its jobs
       as a grid of job × runner OS (a matrix job's OS taken out of its
       name), each cell its state, time, time against its median and the
       step it failed at or is on; the jobs on the run's clock, each with
@@ -915,36 +841,16 @@ One window, three regions:
       itself — with the end of its log and *Investigate*. Its CI is read
       only while it is open.
     It asks only while it is the page in front and the window is visible,
-    through the deck's routes and kept answers (it opens on what the deck
-    last knew). The Board's six columns and the List's figures strip (red
+    through the CI routes and kept answers (it opens on what was last
+    known). Under the releases, the *Default branch* panel (*Main*, above). The Board's six columns and the List's figures strip (red
     runs, Actions minutes) went with the one list.
-  - **Branches view** (owner, 2026-10-12, translated: "seeing branches with
-    statistics would also be interesting"; `GET
-    /v1/sessions/{id}/branches`, `lib/branches.ts`): the session's
-    repository's branches, the current one first, then by last activity
-    (the later of the last commit and the newest Caprock session on it). A
-    row: the name in mono (*current*, *default*, *origin* for one only on
-    the remote, and a *stale* tag — no commit in 30 days and no open PR),
-    ahead and behind the default branch (*↑3 ↓1*, *even*), its pull request
-    (state dot, number, mini pipeline for an open one), what Caprock's
-    sessions on it cost and how many (*$11.52 · 2 sessions*, at API list
-    price, the agents in the tooltip), and the last commit's age and
-    author (*3h · Ada*). Fifteen rows, then *Show all N*. A click on a
-    branch with a PR opens that PR in the PRs view when it is one of the
-    session's, else on GitHub. Below a 460px container the row keeps the
-    name, the PR and the cost; the session count, the author and the tags
-    give way first above it. The commits are local git (`for-each-ref`, no
-    network); the PRs one cached list of the repository's 50 most recently
-    updated; the cost one indexed query. Asked every minute while shown,
-    every 20 s while an open PR's checks run.
   - **States and cadence.** The repository is the session's directory's
     remote; a folder with none, a remote off GitHub and GitHub not connected
     are one line each, the last with the connect button. No PR, no runs and
     a failed read are one short line each. The PRs are asked every 20 s
-    while a check runs, else every minute (the Branches view too); the open
-    row's CI and Main every
-    12 s while a job runs, else every minute; the release build whatever the
-    view, as often — all only while the deck is open and the window visible.
+    while a check runs, else every minute; a PR's CI and Main every 12 s
+    while a job runs, else every minute — all only while the cockpit's block
+    is unfolded or the Pipeline is the page in front, and the window visible.
     The daemon keeps each PR 20 s while its checks run, 2 min once settled
     and 30 min once merged or closed, and a commit's runs 10 s while one runs
     and 2 min once settled, so a poll inside that costs GitHub nothing.
@@ -960,32 +866,6 @@ One window, three regions:
     a check that is no Actions job opens its own link. A PR row's circles
     come from the checks already read, so they cost no extra request.
 
-  The CI part replaced *Context*, which repeated the status bar (owner,
-  2026-10-11, translated: "sacrifice it for CI/CD"). The minute chart, the plan windows, *Now* and *Spent* left the
-  deck on 2026-10-11 (owner, translated: "we already have charts
-  everywhere", "Spent doesn't help", "Working now is debatable"); the
-  sidebar and the inspector carry them, and the deck holds no session
-  events and no clock. Its top edge is a faint accent rule with a low glow
-  upward (the first, brighter one distracted; a grey hairline lost the
-  division), framing the line above it where the prompt sits. A figure the agent does not report is
-  left out, never drawn as zero. ⌘B (Ctrl+Shift+B off macOS), a strip
-  button beside the inspector's — labelled *Deck* with its key, since an
-  icon alone left the deck unfound — and the palette open and close it; the
-  Add project sheet's own ⌘B is not reached, since a sheet owns the
-  keyboard. Its top edge is a separator: dragged, the band is drawn over
-  the terminal at the new height and the terminal's box changes once, on
-  release, so a drag is one fit and one PTY resize, not one per frame; ↑ ↓,
-  Page Up/Down, Home and End move it and settle after 250 ms the same way;
-  double-click restores the default (176px; a height kept before 0.107.1 is lowered by a third once). Clamped between 72px and 60%
-  of the pane, the CSS height capped at 60% too, so a window made smaller
-  never leaves the terminal a sliver. Closed by default; open and height
-  in `caprock.app.deck` (`lib/deck.ts`). A shell tab has no deck and no
-  button, and ⌘B there says why. Performance: a sibling of the terminals,
-  so nothing in it redraws one; not mounted while closed, while a shell or
-  the Dashboard is in front, so no clock and no subscription then; its
-  events are the cockpit's, held once per session with a reference count
-  (`lib/sessionEvents.ts`) — one fetch and one live listener for both, let
-  go when the last reader closes. Code: `components/SessionDeck.tsx`.
 - **Empty project (main, no tab open).** New agent, New shell, Add a
   project, then the project's six most recent agent sessions (ended ones
   nobody wrote in left out) with cost, age and one button: *Continue* resumes
@@ -1103,12 +983,14 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   1–9, new session, new shell, dashboard, find. Keys named after what they
   open (owner, 2026-10-15, translated: "bind shortcuts to the names"): ⌘D
   the Dashboard (⌘0 stays), ⌘P the Pipeline (⇧⌘B before, kept as a silent
-  alias), ⇧⌘W Work, ⇧⌘T the theme picker at the foot of the sidebar,
+  alias), ⇧⌘W Work, ⌥⌘P the theme picker at the foot of the sidebar
+  (⇧⌘T until 2026-10-20), ⇧⌘T Reopen closed tab, as in a browser,
   ⇧⌘F Send feedback; ⌘F stays Find and ⌘T New shell, a terminal's keys.
   Off macOS: Ctrl+Shift+D (never bare Ctrl+D, a shell's end of input),
-  Ctrl+Shift+P, Ctrl+Alt+Shift+W, Ctrl+Alt+Shift+T, Ctrl+Alt+Shift+F — the
-  three ⇧⌘ chords take Alt because their ⌘ twin (⌘W Close, ⌘T New shell,
-  ⌘F Find) is Ctrl+Shift there (`OFF_MAC_ALT`). None is an item of Tauri's
+  Ctrl+Shift+P, Ctrl+Alt+Shift+W, Ctrl+Alt+Shift+T, Ctrl+Alt+Shift+F,
+  Ctrl+Alt+Shift+P — the three ⇧⌘ chords take Alt because their ⌘ twin
+  (⌘W Close, ⌘T New shell, ⌘F Find) is Ctrl+Shift there (`OFF_MAC_ALT`),
+  and ⌥⌘ is Ctrl+Alt+Shift there as for every ⌥⌘ chord. None is an item of Tauri's
   default macOS menu (there is no Print). **⌘W closes the tab, not the
   window** (owner, 2026-10-16, translated: "Cmd+W must close tabs"). Tauri's
   default menu put Close Window on ⌘W in File and in Window, and a menu's
@@ -1640,6 +1522,50 @@ app had no reload command.
   have no menu; F5 reloads there, unless a focused terminal took the key for
   its program. Ctrl+R is not used: it is the shell's history search.
 
+## A blank window recovers by itself
+
+A user reported the window "sometimes turns completely white", with nothing
+to press, until she quit and reopened the app (2026-10-20). Reading the shell
+and wry 0.57 found three ways to that, none of which told the shell anything
+(`app/src-tauri/src/recover.rs`, `app/README.md` § When the window goes
+blank):
+
+- **The WebContent process ended.** macOS ends a WebView's content process
+  under memory pressure (WebKit too, past its own limit), and it can crash.
+  wry hands `webViewWebContentProcessDidTerminate` to Tauri, and Tauri does
+  nothing unless the app sets `Builder::on_web_content_process_terminate`;
+  the window then draws nothing until a reload. The workspace keeps every
+  terminal mounted with 10,000 lines of scrollback and a WebGL atlas each,
+  so its process is a large one to end. The app now reloads the webview —
+  the main window, Mail, the popover or a browser tab's page — at once the
+  first time, then after 2 s, 10 s and a minute when it repeats within ten
+  minutes, so a page that dies on every load does not spin.
+- **A navigation failed before anything arrived.** wry implements no
+  `didFailProvisionalNavigation`: a load cut off by a daemon restarting at
+  that moment fires no event. The window can keep an address on the
+  daemon's origin and draw nothing, and the monitor, seeing it "already
+  there" (`page_for`), left it so. Every load the shell asks for (the
+  launch's first page, a move to the dashboard or the fallback page, a
+  reload after a swap, View → Reload) is now watched: with no load finished
+  10 s later and the daemon answering, the monitor loads it again, the
+  grace doubling to a minute.
+- **The page loaded and drew nothing.** `index.html` arrived but a file of it
+  did not (the daemon stopped mid-load), or something threw before React
+  drew: an empty `#root`, outside every error boundary. A plain inline
+  script in `ui/index.html`, which runs when the bundle could not, shows
+  *Reconnecting to Caprock…* with **Reload** after 10 s (1.5 s after a file
+  failed), asks `/healthz` with a growing pause, and reloads when it
+  answers — at once after a failure, after 30 s for a page merely empty —
+  five times in ten minutes at most (`caprock.boot.reloads` in
+  sessionStorage). A root that empties after React drew gets the same.
+
+Which one happened is written to the app's own log, `<data_dir>/app.log`,
+one UTC line each, with the crash screen's error beside them and the
+monitor's moves to and from the fallback page. It is a local file (rule 4):
+an address in it keeps port and path, never the route or the query. Which
+of the three the reported window was is not known; the log is how the next
+report answers it.
+
 ## Terminal protocol v2
 
 The terminal socket today replays a snapshot on every connect and carries no
@@ -1778,7 +1704,7 @@ there, and worktrees as first-class places to work.
   (`ProjectEditor.tsx`): rename, tick and untick members, *Rescan* the
   folder, merge repository projects in, split into one project per member.
   Nothing deletes a file. A session in a member is its own row under the
-  project with that member's branch, which the deck shows. Agents start in
+  project with that member's branch. Agents start in
   the folder; one started inside a member gets the others as `--add-dir`.
   Members are not watched (contract in 03-contracts.md § Projects and
   shells). A monorepo stays one repository with its per-directory split.
@@ -2646,6 +2572,17 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   the disk image or a translocated path), the NSIS install and the AppImage.
   A `.deb` or `.rpm` install, a development build or an unknown bundle keep
   F12's notice, with the reason in its panel.
+- **The relaunch.** On macOS the updated bundle is started again through
+  LaunchServices, `open -n <bundle>` (`updater::open_args`), as a click in
+  the Dock does, and this copy exits; the new app comes up activated with
+  its window in front. Tauri's `app.restart()` ran the new executable as
+  this process's child instead: not a launch, so never activated (macOS 14
+  turns down the app's own activation while another app is in front), and
+  the window stayed behind everything until a click on the Dock tile
+  (reported 2026-10-20). An app started with a `CAPROCK_` variable in its
+  environment (a custom data directory, `bench/update.mjs`'s background
+  run) keeps `app.restart()`, which hands the variables on; so do Linux
+  and a failed `open`.
 - **The daemon after an update.** The relaunched app finds its own daemon
   (`<data_dir>/bin`) different from the bundled one and moves it over once
   per launch (`Supervisor::should_adopt`, ADR-040's amendment: the

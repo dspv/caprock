@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { INPUT_HIGHLIGHT_KEY, heldClass, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, setModuleKeyCount } from './appkeys'
+import { INPUT_HIGHLIGHT_KEY, THEME_KEY, heldClass, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, macTakenModuleKey, setModuleKeyCount } from './appkeys'
 import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -94,9 +94,12 @@ describe('the app keyboard map', () => {
     expect(matchAppShortcut(k(',', { metaKey: true }), true)).toEqual({ kind: 'settings' })
   })
 
-  it('opens and closes the session deck on ⌘B, Ctrl+Shift+B elsewhere, and on no Ctrl or Option B', () => {
-    expect(matchAppShortcut(k('b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
-    expect(matchAppShortcut(k('B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
+  // The session deck was removed on 2026-10-20 (owner: "not needed any
+  // more"); its ⌘B is free on every OS and listed nowhere.
+  it('leaves ⌘B, Ctrl+Shift+B elsewhere, and Ctrl or Option B to the page and the terminal', () => {
+    expect(matchAppShortcut(k('b', { metaKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(k('B', { ctrlKey: true, shiftKey: true }), false)).toBeNull()
+    expect(SHORTCUTS.some(([key]) => key.split(', ').includes('⌘B'))).toBe(false)
     // Ctrl+B and Option+B are the terminal's (tmux prefix, Meta-b word back).
     expect(matchAppShortcut(k('b', { ctrlKey: true }), true)).toBeNull()
     expect(matchAppShortcut(k('b', { ctrlKey: true }), false)).toBeNull()
@@ -306,8 +309,8 @@ describe('every listed shortcut, on every OS', () => {
   // Owner, 2026-10-12: ⌥⌘N started a chat "without asking with whom"
   // (translated). The chord is unchanged on every OS; what the list says it
   // does changed with it.
-  // Owner, 2026-10-14: Expand needs a key. ⌘B is the deck, so off macOS
-  // Ctrl+Shift+B is taken by it and Expand takes Alt as well.
+  // Owner, 2026-10-14: Expand needs a key. ⌘B was the deck then, so off
+  // macOS the older ⇧⌘B takes Alt as well; it still does.
   it('makes ⌘P the Pipeline tab and back, Ctrl+Shift+P off macOS, and keeps ⇧⌘B as a silent alias', () => {
     expect(SHORTCUTS.find(([k]) => k === '⌘P')?.[1]).toMatch(/^Pipeline, in a tab of its own; there, back to where you were/)
     // The pinned Pipeline tab's chip is the same chord, as the strip spells it.
@@ -321,8 +324,8 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyB', 'B', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'pipeline' })
     expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'pipeline' })
     expect(keys('⌘B', false)).toBe('Ctrl+Shift+B')
-    expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toEqual({ kind: 'deck' })
-    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'deck' })
+    expect(matchAppShortcut(event('KeyB', 'b', { metaKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(event('KeyB', 'B', { ctrlKey: true, shiftKey: true }), false)).toBeNull()
     // Ctrl+P and Ctrl+B alone stay the terminal's (previous line; tmux's prefix, back-char).
     expect(matchAppShortcut(event('KeyP', 'p', { ctrlKey: true }), false)).toBeNull()
     expect(matchAppShortcut(event('KeyB', 'b', { ctrlKey: true }), false)).toBeNull()
@@ -342,24 +345,40 @@ describe('every listed shortcut, on every OS', () => {
     expect(ownsTerminalKey(event('KeyD', 'd', { ctrlKey: true }), false)).toBe(false)
   })
 
-  // ⌘T stays New shell and ⌘W Close, as in every terminal; the theme and
-  // Work take Shift, and off macOS Alt as well, since Ctrl+Shift+T and
-  // Ctrl+Shift+W are ⌘T's and ⌘W's there.
-  it('makes ⇧⌘T the theme picker and ⇧⌘W Work, Ctrl+Alt+Shift+T and W off macOS, beside New shell and Close', () => {
-    expect(SHORTCUTS.find(([k]) => k === '⇧⌘T')?.[1]).toMatch(/^Theme/)
+  // ⌘T stays New shell and ⌘W Close, as in every terminal; Reopen closed tab
+  // and Work take Shift, and off macOS Alt as well, since Ctrl+Shift+T and
+  // Ctrl+Shift+W are ⌘T's and ⌘W's there. The theme moved off ⇧⌘T to ⌥⌘P
+  // (owner, 2026-10-20: ⇧⌘T reopens, as in a browser).
+  it('makes ⇧⌘T Reopen closed tab and ⇧⌘W Work, Ctrl+Alt+Shift+T and W off macOS, beside New shell and Close', () => {
+    expect(SHORTCUTS.find(([k]) => k === '⇧⌘T')?.[1]).toMatch(/^Reopen the last closed tab/)
     expect(SHORTCUTS.find(([k]) => k === '⇧⌘W')?.[1]).toMatch(/^Work on the dashboard/)
     expect(keys('⇧⌘T', false)).toBe('Ctrl+Alt+Shift+T')
     expect(keys('⇧⌘W', false)).toBe('Ctrl+Alt+Shift+W')
-    expect(matchAppShortcut(event('KeyT', 'T', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'theme' })
+    expect(matchAppShortcut(event('KeyT', 'T', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'reopen-tab' })
     expect(matchAppShortcut(event('KeyW', 'W', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'work' })
     expect(matchAppShortcut(event('KeyT', 't', { metaKey: true }), true)).toEqual({ kind: 'new-shell' })
     expect(matchAppShortcut(event('KeyW', 'w', { metaKey: true }), true)).toEqual({ kind: 'detach-tab' })
-    expect(matchAppShortcut(event('KeyT', 'T', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'theme' })
+    expect(matchAppShortcut(event('KeyT', 'T', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'reopen-tab' })
     expect(matchAppShortcut(event('KeyW', 'W', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'work' })
     expect(matchAppShortcut(event('KeyT', 'T', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'new-shell' })
     expect(matchAppShortcut(event('KeyW', 'W', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'detach-tab' })
     // Ctrl+Alt+T without Shift (GNOME's terminal) is never ours.
     expect(matchAppShortcut(event('KeyT', 't', { ctrlKey: true, altKey: true }), false)).toBeNull()
+  })
+
+  it('makes ⌥⌘P the theme picker, Ctrl+Alt+Shift+P off macOS, apart from the Pipeline\'s ⌘P', () => {
+    expect(THEME_KEY).toBe('⌥⌘P')
+    expect(SHORTCUTS.find(([k]) => k === THEME_KEY)?.[1]).toMatch(/^Theme/)
+    expect(keys(THEME_KEY, false)).toBe('Ctrl+Alt+Shift+P')
+    // Option turns P into π on a Mac: the code is what counts.
+    expect(matchAppShortcut(event('KeyP', 'π', { metaKey: true, altKey: true }), true)).toEqual({ kind: 'theme' })
+    expect(matchAppShortcut(event('KeyP', 'P', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'theme' })
+    // ⌘P and Ctrl+Shift+P stay the Pipeline; Ctrl+Alt+P without Shift (an AltGr letter somewhere) is nobody's.
+    expect(matchAppShortcut(event('KeyP', 'p', { metaKey: true }), true)).toEqual({ kind: 'pipeline' })
+    expect(matchAppShortcut(event('KeyP', 'P', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'pipeline' })
+    expect(matchAppShortcut(event('KeyP', 'p', { ctrlKey: true, altKey: true }), false)).toBeNull()
+    // In a terminal it is the app's, never typed.
+    expect(ownsTerminalKey(event('KeyP', 'P', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toBe(true)
   })
 
   // The two clicks on a terminal link (owner, 2026-10-17). Each row is
@@ -477,37 +496,54 @@ describe('the input highlight key', () => {
   })
 })
 
-// Private modules (ADR-076): ⌥⌘1–9 open the modules in the sidebar's order,
-// and only as many as there are. Without one the chord is nobody's here, so a
+// Private modules (ADR-076): ⇧⌘1–9 on a Mac (owner, 2026-10-20: Ops on ⇧⌘1;
+// ⌥⌘1–9 before), Ctrl+Alt+Shift+1–9 elsewhere, in the sidebar's order, and
+// only as many as there are. Without one the chord is nobody's here, so a
 // layout whose AltGr is Ctrl+Alt still types its characters in a terminal.
 describe('module keys', () => {
-  const ev = (d: number, mods: Partial<KeyLike>): KeyLike => ({ key: String(d), code: `Digit${d}`, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
+  // With Shift held a digit's key is its symbol, and AZERTY's digits are
+  // shifted anyway: the code is what is matched.
+  const ev = (d: number, mods: Partial<KeyLike>): KeyLike => ({ key: '!@#$%^&*('[d - 1]!, code: `Digit${d}`, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
   afterEach(() => setModuleKeyCount(0))
 
   it('are nobody\'s without a module', () => {
     setModuleKeyCount(0)
-    expect(matchAppShortcut(ev(1, { metaKey: true, altKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(ev(1, { metaKey: true, shiftKey: true }), true)).toBeNull()
     expect(matchAppShortcut(ev(1, { ctrlKey: true, altKey: true, shiftKey: true }), false)).toBeNull()
   })
 
   it('open the Nth module on every OS, and only as many as there are', () => {
     setModuleKeyCount(2)
     for (const d of [1, 2]) {
-      const mac = matchAppShortcut(ev(d, { metaKey: true, altKey: true }), true)
+      const mac = matchAppShortcut(ev(d, { metaKey: true, shiftKey: true }), true)
       expect(mac).toEqual({ kind: 'module', index: d - 1 })
+      expect(keys(moduleKey(d - 1)!, true)).toBe(`⇧⌘${d}`)
       expect(keys(moduleKey(d - 1)!, false)).toBe(`Ctrl+Alt+Shift+${d}`)
       expect(matchAppShortcut(ev(d, { ctrlKey: true, altKey: true, shiftKey: true }), false)).toEqual(mac)
     }
-    expect(matchAppShortcut(ev(3, { metaKey: true, altKey: true }), true)).toBeNull()
+    expect(matchAppShortcut(ev(3, { metaKey: true, shiftKey: true }), true)).toBeNull()
+    // ⌥⌘digit is no longer theirs on a Mac.
+    expect(matchAppShortcut(ev(1, { metaKey: true, altKey: true }), true)).toBeNull()
+    // A key with no code (a synthetic event) is not matched by its symbol.
+    expect(matchAppShortcut({ key: '!', metaKey: true, shiftKey: true, altKey: false, ctrlKey: false }, true)).toBeNull()
     // ⌘1 stays the first tab, Ctrl+Shift+1 too.
     expect(matchAppShortcut(ev(1, { metaKey: true }), true)).toEqual({ kind: 'tab', index: 0 })
     expect(matchAppShortcut(ev(1, { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'tab', index: 0 })
+    // ⇧⌘0 stays the interface's default size.
+    expect(matchAppShortcut({ key: ')', code: 'Digit0', metaKey: true, shiftKey: true, altKey: false, ctrlKey: false }, true)).toEqual({ kind: 'zoom', step: 0 })
   })
 
-  it('stop at nine', () => {
-    expect(moduleKey(0)).toBe('⌥⌘1')
-    expect(moduleKey(8)).toBe('⌥⌘9')
+  it('stop at nine, and say which three macOS takes for screenshots', () => {
+    expect(moduleKey(0)).toBe('⇧⌘1')
+    expect(moduleKey(8)).toBe('⇧⌘9')
     expect(moduleKey(9)).toBeUndefined()
+    expect([0, 1, 2, 3, 4, 5, 8].map((i) => macTakenModuleKey(i, true))).toEqual([false, false, true, true, true, false, false])
+    expect(macTakenModuleKey(2, false)).toBe(false)
+    // Every digit spelled off macOS has no Mac glyph and no twin among the tabs.
+    for (let i = 0; i < 9; i++) {
+      expect(isPlainKeyLabel(keys(moduleKey(i)!, false))).toBe(true)
+      expect(keys(moduleKey(i)!, false)).not.toBe(tabKey(i + 1, false))
+    }
   })
 })
 
