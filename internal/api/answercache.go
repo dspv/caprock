@@ -61,6 +61,19 @@ const (
 	// wait, so a very slow history is still at most this far behind.
 	historyCostScale   = 20
 	historyCostCeiling = 2 * time.Minute
+	// historyWideTTL is historyTTL for a history that reaches before today
+	// (7d, 30d, all). The cost bound measures wall time, and a whole-history
+	// scan the page cache answers is fast, so on a warm machine it kept the
+	// 3 s TTL and the Now screen's 10 s live poll counted all of history
+	// again on every poll while agents worked. Each count reads every event
+	// in the range: 12.6 MB of a 103 MB database per refresh, 84 MB of
+	// database reads in two minutes with the dashboard open against 0.4 MB
+	// with it closed (preview stand, 2026-10-20). On a machine short of
+	// memory those pages are evicted between polls and every count is real
+	// disk I/O — the 8.8 GB an hour a user's footprint report flagged. A
+	// lifetime or a week moves by one turn at a time; a minute behind is not
+	// a figure anyone can see move, and today's history keeps historyTTL.
+	historyWideTTL = time.Minute
 	// summaryTTL is the same for the 7d, 30d and all-time summaries. They are
 	// asked for less often and move more slowly than the history strip.
 	summaryTTL = 10 * time.Second

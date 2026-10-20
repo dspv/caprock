@@ -515,6 +515,9 @@ type Server struct {
 	// screen produces, and summ does the same for the wide ranges of
 	// /v1/stats/summary. See answercache.go.
 	hist *answerCache
+	// histWide is hist for the ranges that reach before today, kept for
+	// historyWideTTL rather than historyTTL (answercache.go).
+	histWide *answerCache
 	// recent keeps each listed session's reads of its own events between
 	// requests, by events generation (recentcache.go).
 	recent recentCache
@@ -577,7 +580,7 @@ func New(d Deps) *Server {
 			lanHost = u.Hostname()
 		}
 	}
-	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
+	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), histWide: newAnswerCache(historyWideTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
 		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
@@ -602,6 +605,10 @@ func New(d Deps) *Server {
 	// cost instead: today's answer (milliseconds) keeps the TTL, an all-time
 	// one is refreshed at most once per historyCostScale times what it took.
 	s.hist.costBound(historyCostScale, historyCostCeiling)
+	// The ranges that reach before today are kept for a minute however fast
+	// they were to count: a whole-history scan the page cache answers looks
+	// cheap to the cost bound and still reads every event (historyWideTTL).
+	s.histWide.versioned(version, answerRecheck).costBound(historyCostScale, historyCostCeiling)
 	s.week.versioned(version, answerRecheck)
 	s.weekLong.versioned(version, answerRecheck)
 	s.summ.versioned(version, time.Minute)
@@ -1983,7 +1990,7 @@ func (s *Server) Warm(ctx context.Context) {
 		return
 	}
 	from, label := s.rangeFrom("all")
-	_, _ = s.hist.get(ctx, label+"|"+strconv.FormatInt(from, 10), func() (any, error) {
+	_, _ = s.histFor(from).get(ctx, label+"|"+strconv.FormatInt(from, 10), func() (any, error) {
 		return s.buildHistory(ctx, from, label)
 	})
 	for _, rng := range []string{"7d", "30d", "all"} {
@@ -2234,7 +2241,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	// "?range=" and "?range=today" — the same question spelled two ways —
 	// share one answer; and by its start, so "today" is a new key at midnight.
 	key := label + "|" + strconv.FormatInt(from, 10)
-	v, err := s.hist.get(r.Context(), key, func() (any, error) {
+	v, err := s.histFor(from).get(r.Context(), key, func() (any, error) {
 		return s.buildHistory(context.WithoutCancel(r.Context()), from, label)
 	})
 	if err != nil {
@@ -2242,6 +2249,15 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// histFor is the cache a history starting at from is kept in: today's in
+// hist, anything reaching further back in histWide.
+func (s *Server) histFor(from int64) *answerCache {
+	if today, _ := s.rangeFrom("today"); from < today {
+		return s.histWide
+	}
+	return s.hist
 }
 
 // buildHistory computes one history response. Split out of the handler so the
