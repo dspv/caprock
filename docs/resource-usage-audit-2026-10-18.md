@@ -915,6 +915,65 @@ the backfill profile to 1.4–1.5%, and from 9.4–9.5% to 6.7–7.8% under the
 working load. Long reads keep their cancellable contexts; the other cancellable
 reads outside the recorder are unchanged.
 
+### F16 — P1: a fast all-time history still reads the whole database on every poll
+
+**Evidence (2026-10-20).** A user's footprint report (macOS, Caprock version
+not known) showed the daemon reading 8.8 GB from disk in an hour and 22.1 GB
+in 5 h 58 min, while writing 27 MB and 84 MB, with the dashboard open, several
+long sessions running and a 287 MB database. The counter is
+`ri_diskio_bytesread` from `proc_pid_rusage` (`/proc/self/io` `read_bytes` on
+Linux, `internal/procstat`): reads that reached storage, not ones the page
+cache answered. The owner's own daemon read 714 MB in its last hour against a
+1.8 GB database the same day.
+
+A preview stand reproduced the pattern with logical reads. The daemon ran
+under a `DYLD_INSERT_LIBRARIES` shim counting the bytes every `read`, `pread`,
+`readv` and `preadv` returned, per path; the database's `mmap_size` was set to
+0 in that build so its page reads went through `pread` too and could be
+counted (the shipped build maps the database, so the same reads are page
+faults there). The stand held four of the owner's transcripts and 286 subagent
+transcripts (714 MB), one line a second appended to four of them, and a 103 MB
+database; the dashboard was a headless browser on the Now screen. Over 180 s:
+
+```text
+build       dashboard  database reads  WAL reads
+0.139.0     open       193.0 MB        8.4 MB
+0.139.0     closed     1.8 MB          2.6 MB
+F16         open       70.7 MB         8.2 MB
+F16         closed     1.4 MB          2.3 MB
+```
+
+Each growing transcript was read for 0.37–0.64 MB per window, the bytes
+appended to it: the tailer, subagent files included, reads from its offset
+(F1 holds). Everything else was the database,
+and only while the dashboard was open. A CPU profile focused on `pread` put
+the all-time history refresh (`buildHistory` → `Summarize`, chiefly
+`turnSpendBySession` and `sumKinds`) at about 80% of those reads. One refresh
+read 12.6 MB of the 103 MB database; `/v1/stats/summary?range=all` read 11.5
+MB, `/v1/glance` 2.6 MB, every other endpoint the Now screen polls under
+0.4 MB. The Now screen asked for `/v1/history?range=all` 11 times in 120 s.
+
+**Cause.** F13 keeps an all-time answer for 20 times what counting it took.
+That bounds CPU, but the count was fast because the page cache answered it, so
+the answer kept the 3 s TTL and every 10 s live poll counted all of history
+again. Each count reads every event in the range; on a machine short of memory
+the pages are evicted between polls and every count is disk I/O.
+
+**Implemented (2026-10-20).** Histories that reach before today (7d, 30d, all)
+have a cache of their own whose TTL is `historyWideTTL`, one minute, with the
+same version renewal and cost bound; today's history keeps 3 s. Database reads
+with the dashboard open fell from 193.0 MB to 70.7 MB per 180 s (63%) on the
+stand; closed, they were within noise. The lifetime and weekly figures can be
+up to about two minutes behind while agents work (one TTL, plus the poll that
+finds it expired and gets the stale answer while one refresh runs).
+`TestWideHistoryIsKeptForAMinuteWhileTodayMoves` holds it.
+
+**Not done.** The history refresh is still about half of what remains. Making
+the all-time aggregates incremental (adding the events past a watermark id to
+the last answer) would remove the scan, but rows are updated in place
+(repricing, tool-link backfill) and removed (retention, removing a session),
+so it needs a correctness design first.
+
 ## Existing safeguards worth preserving
 
 - Dirty-file fsnotify processing, hot-file fallback and persisted Claude offsets

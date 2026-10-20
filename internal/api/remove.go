@@ -115,7 +115,7 @@ func (s *Server) stillRunning(c store.RemovalCandidate) string {
 // forgetAnswers drops every cached aggregate, so the totals reflect a removal
 // on the next read instead of up to one refresh later.
 func (s *Server) forgetAnswers() {
-	for _, c := range []*answerCache{s.hist, s.summ, s.week, s.weekLong, s.glance, s.drill} {
+	for _, c := range []*answerCache{s.hist, s.histWide, s.summ, s.week, s.weekLong, s.glance, s.drill} {
 		c.forget()
 	}
 }
