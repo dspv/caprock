@@ -99,7 +99,7 @@ vi.mock('@/lib/api', async (orig) => {
   }
 })
 
-const fetchMock = vi.fn(async () => new Response('', { status: 404 }))
+const fetchMock = vi.fn(async (_url?: unknown) => new Response('', { status: 404 }))
 
 beforeEach(() => {
   spawned.n = 0
