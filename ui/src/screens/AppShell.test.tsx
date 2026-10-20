@@ -886,7 +886,7 @@ describe('the app workspace', () => {
   it('lists Flat for a new viewer, Tree once chosen (Settings → Appearance or the Projects | Tabs switch), and a click on a project opens its page', async () => {
     localStorage.clear()
     render(<AppShell />)
-    await screen.findByRole('group', { name: 'Sessions' })
+    await screen.findByRole('heading', { name: 'Sessions' })
     expect(document.querySelector('[data-project-row]')).toBeNull()
     act(() => saveSidebarMode('tree'))
     await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())

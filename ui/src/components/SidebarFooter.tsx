@@ -22,7 +22,7 @@
  *
  * Its keys are named after what they open (owner, 2026-10-15, translated:
  * "bind shortcuts to the names"): Dashboard ⌘D (⌘0 still works), Pipeline
- * ⌘P (⇧⌘B before), the theme ⇧⌘T, which opens the picker from this button.
+ * ⌘P (⇧⌘B before), the theme ⌥⌘P, which opens the picker from this button.
  *
  * Every key is drawn at the New agent chip's size (owner, 2026-10-15,
  * translated: "these buttons fold down; the shortcuts there are tiny, you
@@ -87,7 +87,7 @@ const GLYPH = 18
 /**
  * How the folded row draws its keys: above every icon, or above the one
  * under the pointer. A macOS chip at the New agent size is 32px (⌘D, ⌘P,
- * ⌘,) or 40px (⇧⌘F, ⇧⌘M, ⇧⌘T), so on a Mac a column widens to its chip;
+ * ⌘,) or 40px (⇧⌘F, ⇧⌘M, ⌥⌘P), so on a Mac a column widens to its chip;
  * where the six do not fit, the widest is left out first
  * (useFoldedChipFit). Off macOS the same keys are Ctrl+Shift+M and
  * Ctrl+Alt+Shift+F, 63–141px, three columns wide: there a key shows under
@@ -100,9 +100,9 @@ export function foldedKeys(isMac = isMacPlatform()): 'shown' | 'hover' {
 /**
  * Whether Pipeline and the theme share a row as two halves. A half is
  * 110–150px (sidebar 240–320): "Pipeline" and its ⌘P chip, or the palette's
- * name and its ⇧⌘T, do not always both fit, so there a half leaves the chip
+ * name and its ⌥⌘P, do not always both fit, so there a half leaves the chip
  * out, measured, and keeps the words; the key stays in its tooltip. Off
- * macOS the chips are Ctrl+Shift+P and Ctrl+Alt+Shift+T, so there each of the
+ * macOS the chips are Ctrl+Shift+P and Ctrl+Alt+Shift+P, so there each of the
  * two takes a row of its own, where its chip has room.
  */
 export function splitModeRow(isMac = isMacPlatform()): boolean {
@@ -242,7 +242,7 @@ function FoldedFooter(props: SidebarFooterProps) {
       node: <IconButton label={`Settings: phone, Telegram (${keys('⌘,')})`} onClick={toPhone}><SettingsIcon size={GLYPH} /></IconButton>,
     }] : []),
     ...(hasBar ? [{ key: keys(PIPELINE_KEY), edge: 'right' as const, node: <PipelineButton active={props.pipelineActive} onClick={props.onPipeline!} className={ICON} /> }] : []),
-    // ⇧⌘T opens its picker. Opening rightwards: from here a leftward picker left the window.
+    // ⌥⌘P opens its picker. Opening rightwards: from here a leftward picker left the window.
     { key: keys(THEME_KEY), edge: 'right', node: <ThemeButton className={ICON} boxClassName="w-full" align="left" /> },
   ]
   const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, chips === 'shown')
@@ -378,7 +378,7 @@ function FooterToggle({ open, onToggle }: { open: boolean; onToggle: () => void 
 }
 
 /** Opens the theme picker: hover a palette to try it, click to keep it;
- *  ⇧⌘T opens it from anywhere (THEME_MENU_EVENT). `labelled`: the palette's
+ *  ⌥⌘P opens it from anywhere (THEME_MENU_EVENT). `labelled`: the palette's
  *  name beside the sun or moon, and its key where it fits whole. */
 function ThemeButton({ className, boxClassName, align, labelled }: { className: string; boxClassName?: string; align?: 'left' | 'right'; labelled?: boolean }) {
   const { mode } = useThemeMode()

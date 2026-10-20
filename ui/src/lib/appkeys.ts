@@ -15,14 +15,28 @@ import { isMacPlatform } from './appmode'
 /** Dispatched on window by ⌘F; the focused pane of the tab in front opens its find bar (F16). */
 export const FIND_EVENT = 'caprock:terminal-find'
 
-/** Dispatched on window by ⇧⌘T; the sidebar footer's theme button opens its picker, or closes it. */
+/** Dispatched on window by ⌥⌘P (THEME_KEY); the sidebar footer's theme button opens its picker, or closes it. */
 export const THEME_MENU_EVENT = 'caprock:theme-menu'
 
 /** Keys named after what they open (owner, 2026-10-15), in macOS spelling; `keys()` writes them for this OS. */
 export const DASHBOARD_KEY = '⌘D'
 export const PIPELINE_KEY = '⌘P'
 export const WORK_KEY = '⇧⌘W'
-export const THEME_KEY = '⇧⌘T'
+/**
+ * The theme picker: ⌥⌘P, P for the palettes it lists (Ctrl+Alt+Shift+P off
+ * macOS). It was ⇧⌘T until 2026-10-20, when ⇧⌘T became Reopen closed tab,
+ * as in every browser (REOPEN_TAB_KEY). Not ⌥⌘T: off macOS that would be
+ * Ctrl+Alt+Shift+T, which is the reopen key there (⇧⌘T takes Alt off macOS,
+ * OFF_MAC_ALT). ⌥⌘P is no item of Tauri's default macOS menu and is bound
+ * by no Mac browser's page-reaching default (⌥⌘I, J, C, U, L, B are the
+ * browsers' tools); ⌘ never reaches a shell. Off macOS Ctrl+Alt+Shift+P is
+ * bound by no shell, readline, PSReadLine, Windows Terminal or GNOME
+ * default, and P is no AltGr letter on Polish, Czech, German or French
+ * layouts (A, C, E, L, N, O, S, Z and Q, M are, so none of those).
+ */
+export const THEME_KEY = '⌥⌘P'
+/** ⇧⌘T: the last closed tab back, as in every browser (lib/recentlyClosed.ts). Ctrl+Alt+Shift+T off macOS, where Ctrl+Shift+T is ⌘T, New shell. */
+export const REOPEN_TAB_KEY = '⇧⌘T'
 /** A browser tab's own keys (lib/browsertab browserKey, ADR-075): only while one is in front, never a terminal's. */
 export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
 
@@ -73,8 +87,10 @@ export type AppCommand =
   | { kind: 'pipeline' }
   /** ⇧⌘W: the Work page on the dashboard, or, from it, back to where it was pressed. */
   | { kind: 'work' }
-  /** ⇧⌘T: the theme picker at the foot of the sidebar, open or closed. */
+  /** ⌥⌘P: the theme picker at the foot of the sidebar, open or closed. */
   | { kind: 'theme' }
+  /** ⇧⌘T: the last closed tab, back in a tab (the sidebar's Recently closed). */
+  | { kind: 'reopen-tab' }
   | { kind: 'changes' }
   | { kind: 'sidebar' }
   | { kind: 'dashboard' }
@@ -99,12 +115,12 @@ export type AppCommand =
   | { kind: 'zoom'; step: 1 | -1 | 0 }
   /** ⌥⌘G: the highlight where you type, on or off in every terminal (INPUT_HIGHLIGHT_KEY). */
   | { kind: 'input-highlight' }
-  /** ⌥⌘1–⌥⌘9: the Nth private module the admin key opens (ADR-076, moduleKey). */
+  /** ⇧⌘1–⇧⌘9: the Nth private module the admin key opens (ADR-076, moduleKey). */
   | { kind: 'module'; index: number }
 
 /**
  * How many private modules have a key (ADR-076): lib/modules sets it from the
- * daemon's answer. With none, ⌥⌘1–9 (Ctrl+Alt+Shift+1–9) belong to nobody
+ * daemon's answer. With none, ⇧⌘1–9 (Ctrl+Alt+Shift+1–9) belong to nobody
  * here and reach the page or the terminal as before: an AltGr layout off
  * macOS types characters with Ctrl+Alt, and nothing about modules may change
  * a key for someone without one.
@@ -116,15 +132,27 @@ export function setModuleKeyCount(n: number): void {
 }
 
 /**
- * A module's key, in macOS spelling, by its place in the sidebar: ⌥⌘1 for the
- * first. ⌥ beside ⌘ because ⌘1–9 are the tabs; ⌥⌘ with a digit is bound by
- * no Mac browser, terminal or macOS menu, and ⌘ never reaches a shell. Off
- * macOS it is Ctrl+Alt+Shift with the digit, as Quick chat is with N:
- * Ctrl+Shift+digit is a tab, and Ctrl+Alt+Shift+digit is bound by no shell,
- * readline, PSReadLine, Windows Terminal or GNOME default.
+ * A module's key, in macOS spelling, by its place in the sidebar: ⇧⌘1 for the
+ * first (owner, 2026-10-20: Ops on ⇧⌘1; it was ⌥⌘1–9 before). ⇧ beside ⌘
+ * because ⌘1–9 are the tabs; ⇧⌘ with a digit is no item of Tauri's default
+ * menu, no WKWebView or Mac browser default, and ⌘ never reaches a shell.
+ * Matched by the key's code (Digit1…), since Shift makes the key "!" and
+ * layouts differ. macOS itself takes three of them before any app sees
+ * them, while its screenshot shortcuts are on (they are by default): ⇧⌘3,
+ * ⇧⌘4 and ⇧⌘5 (`macTakenModuleKey`). Modules three to five keep their key
+ * — it works where those shortcuts are turned off — but their row draws no
+ * chip on a Mac and its tooltip says why. Off macOS it is Ctrl+Alt+Shift
+ * with the digit, as before: Ctrl+Shift+digit is a tab there (OFF_MAC_ALT),
+ * and Ctrl+Alt+Shift+digit is bound by no shell, readline, PSReadLine,
+ * Windows Terminal or GNOME default.
  */
 export function moduleKey(index: number): string | undefined {
-  return index >= 0 && index < 9 ? `⌥⌘${index + 1}` : undefined
+  return index >= 0 && index < 9 ? `⇧⌘${index + 1}` : undefined
+}
+
+/** Whether macOS takes this module's key for itself by default: ⇧⌘3, ⇧⌘4, ⇧⌘5 are its screenshot shortcuts. */
+export function macTakenModuleKey(index: number, isMac = isMacPlatform()): boolean {
+  return isMac && index >= 2 && index <= 4
 }
 
 /** The subset of a KeyboardEvent the map reads. */
@@ -265,16 +293,29 @@ export function ownsTerminalKey(e: KeyLike, isMac: boolean): boolean {
   return matchAppShortcut(e, isMac) !== null || isChordTail(e) || isRowMoveKey(e, isMac)
 }
 
+/**
+ * The module a digit chord opens, 1–9, when there is that many: read from the
+ * key's code only (Digit1…), never its key, which Shift turns into "!" and a
+ * layout into anything (AZERTY's digits are shifted). Undefined otherwise.
+ */
+function moduleDigit(e: KeyLike): number | undefined {
+  const m = /^Digit([1-9])$/.exec(e.code ?? '')
+  const d = m ? Number(m[1]) : 0
+  return d > 0 && d <= moduleKeys ? d : undefined
+}
+
 /** Which app command a key press is, or null when it belongs to the page or the terminal. */
 export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null {
-  // ⌥⌘N (Ctrl+Alt+Shift+N off macOS) is Quick chat and ⌥⌘G the input
-  // highlight: the letter chords with Option, which is otherwise the
-  // terminal's Meta and never the app's.
+  // ⌥⌘N (Ctrl+Alt+Shift+N off macOS) is Quick chat, ⌥⌘G the input
+  // highlight and ⌥⌘P the theme: the letter chords with Option, which is
+  // otherwise the terminal's Meta and never the app's.
   if (e.altKey) {
     const quick = isMac ? e.metaKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.metaKey
     if (quick && baseKey(e) === 'n') return { kind: 'quick-chat' }
     if (quick && baseKey(e) === 'g') return { kind: 'input-highlight' }
-    if (quick && /^[1-9]$/.test(baseKey(e)) && Number(baseKey(e)) <= moduleKeys) return { kind: 'module', index: Number(baseKey(e)) - 1 }
+    if (quick && baseKey(e) === 'p') return { kind: 'theme' }
+    // A module off macOS: Ctrl+Alt+Shift+digit (⇧⌘digit on a Mac, below).
+    if (!isMac && quick && moduleDigit(e)) return { kind: 'module', index: moduleDigit(e)! - 1 }
     if (isMac && quick) return arrowCommand(baseKey(e))
     // Off macOS the arrow chords are Alt+Shift (arrowCommand).
     if (!isMac && e.shiftKey && !e.ctrlKey && !e.metaKey) return arrowCommand(baseKey(e))
@@ -286,7 +327,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case '0': return { kind: 'zoom', step: 0 }
         case 'b': return { kind: 'pipeline' }
         case 'f': return { kind: 'feedback' }
-        case 't': return { kind: 'theme' }
+        case 't': return { kind: 'reopen-tab' }
         case 'w': return { kind: 'work' }
       }
     }
@@ -300,6 +341,9 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     // ⌘+ is ⌘= with or without Shift, as in every browser.
     if (k === '=') return { kind: 'zoom', step: 1 }
     if (e.shiftKey) {
+      // ⇧⌘1–9: a private module (moduleKey); nobody's without one.
+      const mod = moduleDigit(e)
+      if (mod) return { kind: 'module', index: mod - 1 }
       switch (k) {
         case 'n': return { kind: 'new-agent' }
         case 'd': return { kind: 'dashboard' }
@@ -317,13 +361,14 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         // The Pipeline's key until 2026-10-15, when it became ⌘P (P for
         // Pipeline); kept working, no longer shown.
         case 'b': return { kind: 'pipeline' }
-        // T for theme: the picker at the foot of the sidebar (owner,
-        // 2026-10-15, translated: "bind shortcuts to the names"). ⌘T stays
-        // New shell, as in every terminal, so the theme takes Shift; off
-        // macOS Ctrl+Shift+T is ⌘T's, so it takes Alt too (OFF_MAC_ALT).
-        // No Mac terminal binds ⇧⌘T and Tauri's default menu has none; in a
-        // browser it is Reopen closed tab, which the browser keeps.
-        case 't': return { kind: 'theme' }
+        // Reopen the last closed tab, as in every browser (owner,
+        // 2026-10-20; the theme picker held it from 2026-10-15 and moved
+        // to ⌥⌘P, THEME_KEY). ⌘T stays New shell, as in every terminal;
+        // off macOS Ctrl+Shift+T is ⌘T's, so this takes Alt too
+        // (OFF_MAC_ALT). No Mac terminal binds ⇧⌘T and Tauri's default
+        // menu has none; in a browser tab the browser keeps it for its own
+        // reopen, and the sidebar's Recently closed reaches the same.
+        case 't': return { kind: 'reopen-tab' }
         // W for Work, the dashboard's page of work on its way to a release.
         // ⌘W stays Close the tab or pane (the app menu's Close Tab, which
         // hands it to the page as CLOSE_TAB_EVENT); ⇧⌘W is no item of the
@@ -436,11 +481,12 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
 /** ⇧⌘ chords whose ⌘ twin is also a shortcut: off macOS both would read
  *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
  *  the Pipeline's older key beside the deck's own Ctrl+Shift+B, feedback
- *  beside Find's Ctrl+Shift+F, the theme beside New shell's Ctrl+Shift+T,
- *  Work beside Close's Ctrl+Shift+W). Ctrl+Alt+Shift+B, F, T and W are bound
- *  by no shell, PSReadLine, Windows Terminal or GNOME default (GNOME's
- *  terminal key is Ctrl+Alt+T, without Shift). */
-const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F', '⇧⌘T', '⇧⌘W'])
+ *  beside Find's Ctrl+Shift+F, Reopen closed tab beside New shell's
+ *  Ctrl+Shift+T, Work beside Close's Ctrl+Shift+W, the modules' ⇧⌘1–9
+ *  beside the tabs' Ctrl+Shift+1–9). Ctrl+Alt+Shift+B, F, T, W and the
+ *  digits are bound by no shell, PSReadLine, Windows Terminal or GNOME
+ *  default (GNOME's terminal key is Ctrl+Alt+T, without Shift). */
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F', '⇧⌘T', '⇧⌘W', ...Array.from({ length: 9 }, (_, i) => `⇧⌘${i + 1}`)])
 
 function offMac(k: string): string {
   // A click chord (⌘-click, ⇧⌘-click): Ctrl stands for ⌘, Shift stays.
@@ -560,6 +606,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
   [BROWSER_TAB_KEYS, 'In a browser tab (beta): the tab before and after, outside a text field'],
   ['⌘W', 'Close the tab or pane — the session keeps going'],
+  [REOPEN_TAB_KEY, 'Reopen the last closed tab: its conversation back in a tab'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],
   ['⌘[ ]', 'Previous and next pane'],
   ['⌘F', 'Find in the terminal; with Settings in front, search Settings'],
@@ -574,7 +621,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘\\', 'Hide or show the sidebar'],
   ['⌘D, ⌘0', 'Dashboard, where you left it; again: Home, at its top'],
   ['⌘,', 'Settings'],
-  ['⇧⌘T', 'Theme: open the picker'],
+  [THEME_KEY, 'Theme: open the picker'],
   ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
   ['⇧⌘M', 'Mail, in a window of its own'],
   ['⌘+, ⌘−, ⇧⌘0', 'Interface size: bigger, smaller, back to the default'],

@@ -73,10 +73,22 @@ others. Installing it: [install-app.md](install-app.md).
   sessions open in tabs, in the tabs' order, each with its tab's key and
   its project's short name in the project's colour; sessions running with
   no tab come after them under a quiet *Running, no tab* line, without a
-  key. Dragging a row there (or ⌥⇧↑ ↓
+  key. That line keeps the sessions you started yourself, with a title,
+  active in the last day; the rest — sessions in a temporary folder, ones
+  another tool started with a long scripted brief, untitled ones, ones idle
+  for a day — fold into one row at the bottom, *Background · N*, which
+  opens on a click and stays as you left it. Dragging a row there (or ⌥⇧↑ ↓
   on it) moves its tab in the strip. The same choice is in Settings →
   Appearance → *Sidebar*; the app remembers it. If you used Caprock before
   and never chose, you keep Projects; a first visit starts on Tabs.
+- **Recently closed.** The last five tabs you closed, newest first, each
+  with how long ago (*2 min*, *1 h*): in the Tabs list above *Running, no
+  tab*, in the Projects list after the projects. Click one to bring the
+  conversation back in a tab — its own tab again while the agent still
+  runs, or continued where it stopped once it ended. **⇧⌘T** reopens the
+  newest, as in a browser (Ctrl+Alt+Shift+T on Windows and Linux).
+  *Show all in History* opens every session. Shells are not listed: closing
+  a shell's tab ends it. The list is kept across restarts.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
   exactly as ⌘W and the tab strip's × do. An agent Caprock started that is
@@ -147,10 +159,10 @@ others. Installing it: [install-app.md](install-app.md).
   −20%*, or *not enough history* in your first days. It compares with your
   own median by the same time of day; hover it for the figures behind it.
   Under *Dashboard*, one row in two halves: **Pipeline ⌘P** and the theme,
-  named too, with ⇧⌘T, which opens the theme picker from anywhere. A key
+  named too, with ⌥⌘P, which opens the theme picker from anywhere. A key
   shows where it fits beside the name and is in the tooltip either way. On
   Windows and Linux each takes a row: *Pipeline Ctrl+Shift+P*, the theme
-  Ctrl+Alt+Shift+T.
+  Ctrl+Alt+Shift+P.
   A click on *Pipeline* opens the Pipeline in its own tab, right after the
   Dashboard tab; from it, a click goes back to where you were. The button
   is in the accent while the Pipeline is in front.
@@ -881,6 +893,7 @@ On macOS:
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                               |
 | ⌥←, ⌥→      | In a browser tab (beta): the tab before and after, outside a text field             |
 | ⌘W          | Close the tab or pane (the session keeps going); on the Dashboard, nothing          |
+| ⇧⌘T         | Reopen the last closed tab: its conversation back in a tab                          |
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
 | ⌘[ ]        | Previous and next pane                                                              |
 | ⌘J          | Next session waiting on you                                                         |
@@ -900,13 +913,13 @@ On macOS:
 | ⇧⌘W         | Work on the dashboard; there, back to where you were                                |
 | ⌘\          | Hide or show the sidebar                                                            |
 | ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                           |
-| ⇧⌘T         | Theme: open the picker                                                              |
+| ⌥⌘P         | Theme: open the picker                                                              |
 | ⌘R          | Reload the window (View → Reload)                                                   |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 (Quick chat is Ctrl+Alt+Shift+N and the input highlight Ctrl+Alt+Shift+G; Send feedback Ctrl+Alt+Shift+F, Work
-Ctrl+Alt+Shift+W and the theme Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
-are Find, Close and New shell; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
+Ctrl+Alt+Shift+W and Reopen closed tab Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
+are Find, Close and New shell; the theme is Ctrl+Alt+Shift+P; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are
 Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H; a link opens on
 Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow

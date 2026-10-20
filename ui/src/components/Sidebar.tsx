@@ -49,8 +49,10 @@
  * session row can be closed or hidden from its own ×.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { groupProjects, rowHidden, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
-import type { Tab } from '@/lib/tabs'
+import { groupProjects, isBackgroundSession, OTHER_FOLDERS_ID, rowHidden, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
+import { leaves, type Tab } from '@/lib/tabs'
+import { loadRecentlyClosed, RECENTLY_CLOSED_EVENT, shownClosed, type ClosedTab } from '@/lib/recentlyClosed'
+import { RecentlyClosed } from './RecentlyClosed'
 import type { SettingsSection } from '@/lib/router'
 import type { TabLabel } from '@/lib/tablabels'
 import type { ProjectSource } from '@/lib/projects'
@@ -80,8 +82,9 @@ const HIDDEN_SESSIONS_MAX = 300
 /** Which of the folded groups are open, and `footer` when the bottom block is collapsed. */
 export const FOLDS_KEY = 'caprock.app.project-folds'
 
-/** `footer`: the bottom block (feedback, Dashboard, Settings) collapsed to one row of icons. */
-type Fold = 'footer'
+/** `footer`: the bottom block (feedback, Dashboard, Settings) collapsed to one row of icons.
+ *  `background`: the Flat list's Background · N row opened. */
+type Fold = 'footer' | 'background'
 
 function loadIds(key: string): Set<string> {
   try {
@@ -228,6 +231,8 @@ export interface SidebarProps {
   tabDigits?: ReadonlyMap<string, number>
   /** The flat list's tabbed rows, dragged into this order: the strip takes it (AppShell). */
   onOrderTabs?: (tabIds: string[]) => void
+  /** Brings a Recently closed row's conversation back in a tab (AppShell, as ⇧⌘T); absent, the section is not drawn. */
+  onReopenClosed?: (entry: ClosedTab) => void
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -316,6 +321,35 @@ export function Sidebar(props: SidebarProps) {
   const noTabs = useMemo<Tab[]>(() => [], [])
   const now = useNow(30_000)
   const today = useMemo(() => buildToday(model, props.summary, now), [model, props.summary, now])
+  // Recently closed (lib/recentlyClosed.ts): written by AppShell as tabs
+  // close, read again whenever it says the list changed.
+  const [closedList, setClosedList] = useState<ClosedTab[]>(() => loadRecentlyClosed())
+  useEffect(() => {
+    const reload = () => setClosedList(loadRecentlyClosed())
+    window.addEventListener(RECENTLY_CLOSED_EVENT, reload)
+    return () => window.removeEventListener(RECENTLY_CLOSED_EVENT, reload)
+  }, [])
+  const tabSessions = useMemo(() => new Set((allTabs ?? []).flatMap((t) => leaves(t.root).map((l) => l.target.sessionId))), [allTabs])
+  const closed = useMemo(() => (props.onReopenClosed ? shownClosed(closedList, tabSessions) : []), [props.onReopenClosed, closedList, tabSessions])
+  const closedSection = props.onReopenClosed && closed.length > 0 && (
+    <RecentlyClosed items={closed} now={now} flat={!grouped} onReopen={props.onReopenClosed} onShowAll={props.onRoute ? () => props.onRoute!('#/history') : undefined} />
+  )
+  // The Flat list in its three parts: the tabbed rows, then under *Running,
+  // no tab* what the user started by hand, then one folded Background · N
+  // row for scouts, ops runs and helpers (lib/sidebar.ts isBackgroundSession).
+  const flatParts = useMemo(() => {
+    const tabbedRows = flat.filter((r) => r.tab)
+    const fg: typeof flat = []
+    const bg: typeof flat = []
+    for (const r of flat) {
+      if (r.tab) continue
+      const x = r.node
+      if (x && isBackgroundSession(x.session, { now, hasPermission: !!x.asks, inProject: r.projectId !== OTHER_FOLDERS_ID })) bg.push(r)
+      else fg.push(r)
+    }
+    return { tabbedRows, fg, bg, bgWaiting: bg.filter((r) => r.node?.waiting).length }
+  }, [flat, now])
+  const backgroundOpen = folds.has('background')
   const [menuAt, setMenuAt] = useState<ProjectMenuAt | null>(null)
   const menuFrom = useRef<HTMLElement | null>(null)
   const onMenu = useCallback((projectId: string, at: { x: number; y: number }, from: HTMLElement | null) => {
@@ -363,6 +397,16 @@ export function Sidebar(props: SidebarProps) {
     })
   }
   const noop = useCallback(() => {}, [])
+  const flatListProps = {
+    orderId: FLAT_ORDER,
+    digits: props.tabDigits,
+    activeTabId: props.dashboardActive ? undefined : props.activeTabId,
+    onActivateTab: props.onActivateTab ?? noop,
+    onCloseTab: props.onCloseTab,
+    onOpenLive: props.onOpenLive,
+    onHideSession,
+    onReorder: onFlatReorder,
+  }
   /**
    * A project's ×: its tabs close, and it moves under Hidden — unless
    * something still runs or waits in it, which hiding would lose: then it
@@ -540,22 +584,45 @@ export function Sidebar(props: SidebarProps) {
           </div>
         ) : (
           <>
-            {grouped ? <ul className="grid grid-cols-1 gap-px">{listed.map(row)}</ul> : flat.length > 0 ? (
-              <SessionList
-                items={flat}
-                orderId={FLAT_ORDER}
-                ariaLabel="Sessions"
-                untabbedHeading="Running, no tab"
-                digits={props.tabDigits}
-                activeTabId={props.dashboardActive ? undefined : props.activeTabId}
-                onActivateTab={props.onActivateTab ?? noop}
-                onCloseTab={props.onCloseTab}
-                onOpenLive={props.onOpenLive}
-                onHideSession={onHideSession}
-                onReorder={onFlatReorder}
-              />
+            {grouped ? (
+              <>
+                <ul className="grid grid-cols-1 gap-px">{listed.map(row)}</ul>
+                {closedSection}
+              </>
             ) : (
-              <p className="px-2 py-1 text-[12px] text-fg-faint">No agent sessions running.</p>
+              <>
+                {/* Each part is a view of the one flat order (`visible`), so a
+                  * row moved in any of them keeps the whole order. */}
+                {flatParts.tabbedRows.length > 0 && <SessionList items={flat} visible={flatParts.tabbedRows} ariaLabel="Sessions" {...flatListProps} />}
+                {closedSection}
+                {flatParts.fg.length > 0 ? (
+                  <SessionList items={flat} visible={flatParts.fg} ariaLabel="Running, no tab" untabbedHeading="Running, no tab" {...flatListProps} />
+                ) : flatParts.bg.length > 0 && (
+                  <p data-untabbed-heading className="px-2 pb-0.5 pt-2.5 text-[10.5px] font-medium uppercase tracking-[0.06em] text-fg-faint">Running, no tab</p>
+                )}
+                {flatParts.bg.length > 0 && (
+                  <div data-background-fold>
+                    <button
+                      type="button"
+                      data-nav-row
+                      data-background-toggle
+                      aria-expanded={backgroundOpen}
+                      title={`${flatParts.bg.length} running in the background: in a temporary folder, started by another tool with a scripted brief, untitled, or untouched for a day. ${backgroundOpen ? 'Fold them away' : 'Show them'}`}
+                      onClick={() => toggleFold('background')}
+                      className="flex h-[26px] w-full min-w-0 items-center gap-1.5 rounded-[6px] pl-[10px] pr-2 text-left text-[12px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg-muted"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden className={`shrink-0 transition-transform duration-100 motion-reduce:transition-none ${backgroundOpen ? 'rotate-90' : ''}`}>
+                        <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span className="num shrink-0">Background · {flatParts.bg.length}</span>
+                      {flatParts.bgWaiting > 0 && <span aria-label={`${flatParts.bgWaiting} waiting on you`} className="inline-block h-[6px] w-[6px] shrink-0 rounded-full bg-warn" />}
+                      <span className="ml-auto min-w-0 truncate pl-2 text-[11px]">scouts, ops, helpers</span>
+                    </button>
+                    {backgroundOpen && <SessionList items={flat} visible={flatParts.bg} ariaLabel="Background" {...flatListProps} />}
+                  </div>
+                )}
+                {flat.length === 0 && !closedSection && <p className="px-2 py-1 text-[12px] text-fg-faint">No agent sessions running.</p>}
+              </>
             )}
             {/* One quiet line for the rest: other projects, and what was
               * hidden by hand (owner, 2026-10-13). */}

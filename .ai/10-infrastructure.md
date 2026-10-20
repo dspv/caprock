@@ -149,7 +149,13 @@ mid-frame, and the fake idle at its prompt redraws nothing on the attach's
 repaint (Claude Code clears its viewport on every resize), so an earlier
 test's rows and its `agents-done` line can still be on screen — on the CI
 runner, and on a Mac under a 6x CPU throttle (`REDRAW_THROTTLE=6`;
-`REDRAW_DEBUG=1` prints the screen). Terminal text is read
+`REDRAW_DEBUG=1` prints the screen). `ui/e2e/sidebar-recent.spec.ts` runs last: a
+closed tab is listed under the sidebar's Recently closed and comes back on a
+click and on ⇧⌘T; a helper session started in a temp folder outside every
+project folds under Background · N, opened and remembered across a reload;
+and an agent ended with its tab comes back from its row — read-only with its
+reason, since the fake claude writes no transcript to `--resume` (it ends
+beta, so it is last). Terminal text is read
 from xterm's buffer through the bench hook (`ui/src/lib/benchhook.ts`). The
 whole `make e2e` took 21-22 s of wall time on the owner's Apple Silicon Mac
 (three runs, 2026-10-16; 37 s with the machine under heavy load). `E2E_ARGS` passes flags to

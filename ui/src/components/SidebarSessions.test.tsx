@@ -14,12 +14,13 @@ import type { Tab } from '@/lib/tabs'
 import { HIDDEN_KEY, HIDDEN_SESSIONS_KEY, Sidebar, type SidebarProps } from './Sidebar'
 import { flatRows } from './ProjectRow'
 import { saveTodayCard, TODAY_FOLD_KEY, TODAY_SHOWN_KEY } from '@/lib/todayCard'
+import { recordClosed } from '@/lib/recentlyClosed'
 
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
 const proj = (id: string): Project => ({ id, root: `/w/${id}`, name: id, kind: 'folder', last_activity: Date.now(), pinned: true })
 const live = (p: Partial<SessionSummary>) => ({
-  session_id: 's', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: 1, status: 'active',
+  session_id: 's', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: Date.now(), status: 'active',
   git_branch: '', owned: true, activity: { phrase: '', at: '', health: 'working' }, ...p,
 }) as SessionSummary
 const idle = { phrase: '', at: '', health: 'idle' } as const
@@ -140,7 +141,8 @@ describe('group by project, off', () => {
     setup(mix(), [], { grouped: false, onGroupedChange })
     expect(document.querySelector('[data-project-row]')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
-    const list = screen.getByRole('group', { name: 'Sessions' })
+    // No tab open: every row is under Running, no tab.
+    const list = screen.getByRole('group', { name: 'Running, no tab' })
     expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['w1', 'wt', 'i1', 'b1'])
     // ⌘N is a tab's: a row with no tab has no key.
     expect(list.querySelectorAll('[data-row-key-digit]')).toHaveLength(0)
@@ -190,10 +192,12 @@ describe('group by project, off', () => {
   it('heads the sessions with no tab "Running, no tab", once, where the tabbed rows end; Tree has no such line', () => {
     const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
     setup(mix(), tabs, { grouped: false, tabDigits: new Map([['tb', 1]]) })
-    const list = screen.getByRole('group', { name: 'Sessions' })
-    const order = [...list.children].map((li) => li.hasAttribute('data-untabbed-heading') ? 'HEAD' : li.querySelector('[data-tab-row]') ? 'tab' : 'live')
+    // The tabbed rows, then the heading and the rows with no tab: two views of one order.
+    const lists = [screen.getByRole('group', { name: 'Sessions' }), screen.getByRole('group', { name: 'Running, no tab' })]
+    const order = lists.flatMap((list) => [...list.children]).map((li) => li.hasAttribute('data-untabbed-heading') ? 'HEAD' : li.querySelector('[data-tab-row]') ? 'tab' : 'live')
     expect(order).toEqual(['tab', 'HEAD', 'live', 'live', 'live'])
-    expect(list.querySelector('[data-untabbed-heading]')!.textContent).toBe('Running, no tab')
+    expect(document.querySelectorAll('[data-untabbed-heading]')).toHaveLength(1)
+    expect(document.querySelector('[data-untabbed-heading]')!.textContent).toBe('Running, no tab')
     cleanup()
     setup(mix(), tabs, { grouped: true })
     expect(document.querySelector('[data-untabbed-heading]')).toBeNull()
@@ -348,5 +352,96 @@ describe('a quick chat row', () => {
     expect(row.querySelector('[data-row-title]')!.textContent).toBe('Monads, explained')
     expect(row.querySelector('[data-row-when]')).toBeNull()
     expect(row.querySelector('[data-row-branch]')!.textContent).toBe('Opus 5.5')
+  })
+})
+
+// Owner, 2026-10-20: "Running, no tab" keeps what he started himself, titled,
+// active in the last day; scouts, ops runs and helpers fold into one row.
+describe('the Background row', () => {
+  const H = 60 * 60 * 1000
+  const background = () => [
+    live({ session_id: 'mine', title: 'Vibe coding setup', started_at: 1, last_event_at: Date.now() - H, activity: idle }),
+    live({ session_id: 'ops', cwd: '/private/var/folders/7k/x/T/ops-seo-site-66tben_l', project: 'ops', started_at: 2, activity: idle }),
+    live({ session_id: 'scout', agent: 'codex', owned: false, started_at: 3, description_source: 'prompt', description: 'You are a scout.\nFind threads.\nRead only.\nOutput JSON.', activity: idle }),
+    live({ session_id: 'old', title: 'Last week', started_at: 4, last_event_at: Date.now() - 30 * H, activity: { phrase: '', at: new Date(Date.now() - 30 * H).toISOString(), health: 'idle' } }),
+  ]
+
+  it('folds the rest into one closed row at the bottom, opened and remembered on a click', () => {
+    setup(background(), [], { grouped: false })
+    const running = screen.getByRole('group', { name: 'Running, no tab' })
+    expect([...running.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['mine'])
+    const toggle = document.querySelector<HTMLButtonElement>('[data-background-toggle]')!
+    expect(toggle.textContent).toContain('Background · 3')
+    expect(toggle.textContent).toContain('scouts, ops, helpers')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('group', { name: 'Background' })).toBeNull()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const bg = screen.getByRole('group', { name: 'Background' })
+    expect([...bg.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['ops', 'scout', 'old'])
+    // Kept per browser: a new sidebar opens it again.
+    cleanup()
+    setup(background(), [], { grouped: false })
+    expect(document.querySelector('[data-background-toggle]')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('heads the fold with Running, no tab when nothing else runs without a tab; Tree has no fold', () => {
+    setup(background().slice(1), [], { grouped: false })
+    expect(document.querySelector('[data-untabbed-heading]')!.textContent).toBe('Running, no tab')
+    expect(screen.queryByRole('group', { name: 'Running, no tab' })).toBeNull()
+    expect(document.querySelector('[data-background-toggle]')!.textContent).toContain('Background · 3')
+    cleanup()
+    setup(background(), [], { grouped: true })
+    expect(document.querySelector('[data-background-toggle]')).toBeNull()
+  })
+})
+
+describe('Recently closed', () => {
+  const closed = (id: string, title: string, minsAgo: number) => ({ sessionId: id, title, projectId: 'alpha', cwd: '/w/alpha', closedAt: Date.now() - minsAgo * 60_000 })
+  const store = (list: unknown[]) => localStorage.setItem('caprock.app.recently-closed', JSON.stringify(list))
+
+  for (const grouped of [true, false]) {
+    it(`lists the last five closed, newest first, with a quiet age, and reopens one on a click (${grouped ? 'Tree' : 'Flat'})`, () => {
+      store([closed('c1', 'Fix login', 2), closed('c2', 'Docs pass', 61), closed('c3', 'Three', 70), closed('c4', 'Four', 80), closed('c5', 'Five', 90), closed('c6', 'Six', 100)])
+      const onReopenClosed = vi.fn()
+      const onRoute = vi.fn()
+      setup(mix(), [], { grouped, onReopenClosed, onRoute })
+      const section = screen.getByRole('region', { name: 'Recently closed' })
+      const rowsHere = [...section.querySelectorAll('[data-closed-row]')]
+      expect(rowsHere.map((r) => r.getAttribute('data-closed-row'))).toEqual(['c1', 'c2', 'c3', 'c4', 'c5'])
+      expect(rowsHere[0]!.querySelector('[data-closed-ago]')!.textContent).toBe('2 min')
+      expect(rowsHere[1]!.querySelector('[data-closed-ago]')!.textContent).toBe('1 h')
+      // The newest says its key.
+      expect((rowsHere[0] as HTMLElement).title).toContain('⇧⌘T')
+      fireEvent.click(rowsHere[1]!)
+      expect(onReopenClosed).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'c2', title: 'Docs pass' }))
+      fireEvent.click(within(section).getByRole('button', { name: 'Show all in History' }))
+      expect(onRoute).toHaveBeenCalledWith('#/history')
+    })
+  }
+
+  it('sits above Running, no tab in the Flat list, after the tabbed rows', () => {
+    store([closed('c1', 'Fix login', 2)])
+    const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
+    setup(mix(), tabs, { grouped: false, onReopenClosed: vi.fn() })
+    const order = [...document.querySelectorAll('[data-tab-row], [data-recently-closed], [data-untabbed-heading]')]
+      .map((el) => el.hasAttribute('data-tab-row') ? 'tab' : el.hasAttribute('data-recently-closed') ? 'closed' : 'running')
+    expect(order).toEqual(['tab', 'closed', 'running'])
+  })
+
+  it('is hidden when empty, and leaves out a session that has a tab again', () => {
+    setup(mix(), [], { grouped: false, onReopenClosed: vi.fn() })
+    expect(screen.queryByRole('region', { name: 'Recently closed' })).toBeNull()
+    cleanup()
+    store([closed('b1', 'Beta work', 5)])
+    const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
+    setup(mix(), tabs, { grouped: false, onReopenClosed: vi.fn() })
+    expect(screen.queryByRole('region', { name: 'Recently closed' })).toBeNull()
+  })
+
+  it('follows the list as tabs close', () => {
+    setup(mix(), [], { grouped: false, onReopenClosed: vi.fn() })
+    act(() => { recordClosed([closed('c9', 'Just closed', 0)]) })
+    expect(screen.getByRole('region', { name: 'Recently closed' }).textContent).toContain('Just closed')
   })
 })

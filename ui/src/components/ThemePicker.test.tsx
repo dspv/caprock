@@ -120,7 +120,7 @@ describe('where the theme popover opens', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('opens from its key (⇧⌘T) as the same portalled popover, and closes on it again', () => {
+  it('opens from its key (⌥⌘P) as the same portalled popover, and closes on it again', () => {
     localStorage.setItem('caprock-theme', 'dark')
     localStorage.setItem('caprock-theme-mode', 'dark-cold')
     render(<ThemeMenu label="Theme" openOn="caprock:theme-menu-test">T</ThemeMenu>)

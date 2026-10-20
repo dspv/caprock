@@ -298,8 +298,9 @@ describe('the session deck in the app', () => {
 })
 
 // Owner, 2026-10-15, translated: "bind shortcuts to the names: ⌘D Dashboard
-// (keep ⌘0 too) … ⌘T theme". ⌘T stays New shell, so the theme is ⇧⌘T, and
-// Work, the dashboard's page of work on its way, is ⇧⌘W.
+// (keep ⌘0 too) … ⌘T theme". ⌘T stays New shell, so the theme was ⇧⌘T, and
+// Work, the dashboard's page of work on its way, is ⇧⌘W. Since 2026-10-20
+// ⇧⌘T reopens the last closed tab and the theme is ⌥⌘P.
 describe('keys named after what they open', () => {
   const press = (key: string, mods: { shiftKey?: boolean } = {}) =>
     act(() => { fireEvent.keyDown(window, { key: mods.shiftKey ? key.toUpperCase() : key, code: `Key${key.toUpperCase()}`, metaKey: true, ...mods }) })
@@ -333,13 +334,15 @@ describe('keys named after what they open', () => {
     expect(location.hash).not.toBe('#/work')
   })
 
-  it('opens the theme picker on ⇧⌘T, focused on the palette in use, and closes it again', async () => {
+  it('opens the theme picker on ⌥⌘P, focused on the palette in use, and closes it again', async () => {
     await openAgent()
     expect(document.querySelector('[data-theme-menu]')).toBeNull()
-    press('t', { shiftKey: true })
+    // Option makes P a π on a Mac; the code is what is read.
+    const optCmdP = () => act(() => { fireEvent.keyDown(window, { key: 'π', code: 'KeyP', metaKey: true, altKey: true }) })
+    optCmdP()
     await waitFor(() => expect(document.querySelector('[data-theme-menu]')).toBeTruthy())
     expect(document.activeElement).toHaveAttribute('aria-checked', 'true')
-    press('t', { shiftKey: true })
+    optCmdP()
     await waitFor(() => expect(document.querySelector('[data-theme-menu]')).toBeNull())
     // ⌘T is still New shell, never the theme.
     expect(document.querySelector('[data-theme-menu]')).toBeNull()
@@ -351,6 +354,42 @@ describe('keys named after what they open', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'work' } })
     expect(screen.getAllByRole('option').some((o) => o.textContent?.startsWith('Open Work') && o.textContent.includes('⇧⌘W'))).toBe(true)
     fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'theme' } })
-    expect(screen.getAllByRole('option').some((o) => o.textContent?.startsWith('Choose a theme') && o.textContent.includes('⇧⌘T'))).toBe(true)
+    expect(screen.getAllByRole('option').some((o) => o.textContent?.startsWith('Choose a theme') && o.textContent.includes('⌥⌘P'))).toBe(true)
+  })
+})
+
+// Owner, 2026-10-20: a closed tab comes back from the sidebar's Recently
+// closed, or with ⇧⌘T, as in a browser. The agent still runs here, so its
+// own tab comes back; nothing is started.
+describe('reopening a closed tab', () => {
+  const tab = () => screen.queryByRole('tab', { name: /Fix the login bug/ })
+  const closeFront = () => act(() => { fireEvent.keyDown(window, { key: 'w', code: 'KeyW', metaKey: true }) })
+
+  it('lists the closed tab under Recently closed and brings it back on ⇧⌘T, then on a click', async () => {
+    localStorage.setItem('caprock.app.agent-close', 'keep')
+    await openAgent()
+    closeFront()
+    await waitFor(() => expect(tab()).toBeNull())
+    const row = await waitFor(() => {
+      const r = document.querySelector<HTMLElement>('[data-closed-row="agent-1"]')
+      expect(r).toBeTruthy()
+      return r!
+    })
+    expect(row.textContent).toContain('Fix the login bug')
+    act(() => { fireEvent.keyDown(window, { key: 'T', code: 'KeyT', metaKey: true, shiftKey: true }) })
+    await waitFor(() => expect(tab()).toBeTruthy())
+    // Reopened: off the list, and no theme picker opened.
+    await waitFor(() => expect(document.querySelector('[data-closed-row="agent-1"]')).toBeNull())
+    expect(document.querySelector('[data-theme-menu]')).toBeNull()
+    closeFront()
+    await waitFor(() => expect(tab()).toBeNull())
+    fireEvent.click(await waitFor(() => document.querySelector<HTMLElement>('[data-closed-row="agent-1"]')!))
+    await waitFor(() => expect(tab()).toBeTruthy())
+  })
+
+  it('says so on ⇧⌘T with nothing closed', async () => {
+    await openAgent()
+    act(() => { fireEvent.keyDown(window, { key: 'T', code: 'KeyT', metaKey: true, shiftKey: true }) })
+    expect(await screen.findByText('No closed tab to reopen.')).toBeInTheDocument()
   })
 })

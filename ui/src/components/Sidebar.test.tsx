@@ -483,10 +483,10 @@ describe('the sidebar', () => {
       expect(chip).toHaveClass('invisible', 'absolute')
       expect(bar.title).toContain('⌘P')
       expect(chip.textContent).toBe('⌘P')
-      // The theme's half carries ⇧⌘T the same way, its key in its name too.
-      expect(theme.textContent).toMatch(/^(Dark|Light|Book).*⇧⌘T$/)
+      // The theme's half carries ⌥⌘P the same way, its key in its name too.
+      expect(theme.textContent).toMatch(/^(Dark|Light|Book).*⌥⌘P$/)
       expect(theme.querySelector('[data-key-chip]')).toHaveClass('app-kbd-key')
-      expect(theme).toHaveAccessibleName(/\(⇧⌘T\)$/)
+      expect(theme).toHaveAccessibleName(/\(⌥⌘P\)$/)
       for (const b of [dash, bar, theme]) expect(b).toHaveClass('h-[32px]')
       // The theme on the right, so its picker stays inside the sidebar.
       expect(row.lastElementChild!.contains(theme)).toBe(true)
@@ -503,7 +503,7 @@ describe('the sidebar', () => {
       const row = document.querySelector('[data-mode-row]') as HTMLElement
       expect(row).not.toHaveClass('grid-cols-2')
       expect(within(row).getByRole('button', { name: /^Pipeline: every pull request/ }).textContent).toBe('PipelineCtrl+Shift+P')
-      expect(within(row).getByRole('button', { name: /^Theme:/ }).textContent).toMatch(/Ctrl\+Alt\+Shift\+T$/)
+      expect(within(row).getByRole('button', { name: /^Theme:/ }).textContent).toMatch(/Ctrl\+Alt\+Shift\+P$/)
     } finally { platform.mockRestore() }
     expect(splitModeRow(true)).toBe(true)
     expect(splitModeRow(false)).toBe(false)
@@ -519,7 +519,7 @@ describe('the sidebar', () => {
       const footer = document.querySelector('[data-sidebar-footer]')!
       expect(footer.getAttribute('data-folded-keys')).toBe('shown')
       const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
-      expect(chips.map((k) => k.textContent)).toEqual(['⇧⌘F', '⇧⌘M', '⌘D', '⌘,', '⌘P', '⇧⌘T'])
+      expect(chips.map((k) => k.textContent)).toEqual(['⇧⌘F', '⇧⌘M', '⌘D', '⌘,', '⌘P', '⌥⌘P'])
       for (const k of chips) expect(k).not.toHaveClass('invisible')
       // The New agent chip's size, never the small faint one (owner,
       // 2026-10-15, translated: "the shortcuts there are tiny").
@@ -548,7 +548,7 @@ describe('the sidebar', () => {
       expect(onSettingsSection).toHaveBeenCalledWith('phone')
       fireEvent.click(chip('⌘P'))
       expect(onPipeline).toHaveBeenCalledTimes(1)
-      fireEvent.click(chip('⇧⌘T'))
+      fireEvent.click(chip('⌥⌘P'))
       expect(document.querySelector('[data-theme-menu]')).not.toBeNull()
       // Each chip carries its button's tooltip, and the column stays one
       // control: one tab stop and one name, the icon's.
@@ -594,7 +594,7 @@ describe('the sidebar', () => {
       const footer = document.querySelector('[data-sidebar-footer]')!
       expect(footer.getAttribute('data-folded-keys')).toBe('hover')
       const chips = [...footer.querySelectorAll('[data-key-slot] > kbd')]
-      expect(chips.map((k) => k.textContent)).toEqual(['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,', 'Ctrl+Shift+P', 'Ctrl+Alt+Shift+T'])
+      expect(chips.map((k) => k.textContent)).toEqual(['Ctrl+Alt+Shift+F', 'Ctrl+Shift+M', 'Ctrl+Shift+D', 'Ctrl+Shift+,', 'Ctrl+Shift+P', 'Ctrl+Alt+Shift+P'])
       for (const k of chips) {
         expect(k).toHaveClass('app-kbd-key', 'app-kbd-float', 'invisible')
         // A chip on hover was a second tooltip beside the icon's (a Windows tester, 2026-10-20).
@@ -670,7 +670,7 @@ describe('the sidebar', () => {
         'kbd[data-key-chip]': { width: 40 },
       })
       const dropped = () => [...footer.querySelectorAll('[data-key-chip]')].filter((k) => k.hasAttribute('data-dropped')).map((k) => k.textContent)
-      // 6 keys of 40px, the theme's ⇧⌘T among them, and the 22px arrow:
+      // 6 keys of 40px, the theme's ⌥⌘P among them, and the 22px arrow:
       // 262px (jsdom draws no padding or gaps), so all fit a 270px row.
       let undo = layout(270)
       try { act(() => ro.fire()) } finally { undo() }
@@ -678,7 +678,7 @@ describe('the sidebar', () => {
       // At 240px, 22px are missing: three keys go, the rightmost of a tie first.
       undo = layout(240)
       try { act(() => ro.fire()) } finally { undo() }
-      expect(dropped()).toEqual(['⌘,', '⌘P', '⇧⌘T'])
+      expect(dropped()).toEqual(['⌘,', '⌘P', '⌥⌘P'])
       for (const k of footer.querySelectorAll('[data-key-chip]')) expect(k).toHaveClass('app-kbd-key')
       // Each dropped key is still in its icon's tooltip.
       expect(screen.getByRole('button', { name: /^Settings: phone, Telegram \(⌘,\)$/ })).toBeTruthy()
