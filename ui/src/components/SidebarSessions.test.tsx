@@ -317,3 +317,36 @@ describe('the Today card', () => {
     expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
   })
 })
+
+// Owner, 2026-10-20: two rows both said "Quick chat · ..." and could not be
+// told apart. A chat's row says what it is about, its model quietly after,
+// and, with no tab, when it started.
+describe('a quick chat row', () => {
+  const started = new Date(2026, 9, 19, 9, 40).getTime()
+  const chat = (p: Partial<SessionSummary>) => live({ cwd: '/data/chats/2026-10-19-094012', project: 'chat', model_display: 'Opus 5.5', started_at: started, ...p })
+
+  it('with no tab: its title, its start time and its model', () => {
+    setup([chat({ session_id: 'c1', title: 'Monads, explained' })], [])
+    const row = document.querySelector('[data-live-row="c1"]')!
+    expect(row.querySelector('[data-row-title]')!.textContent).toBe('Monads, explained')
+    expect(row.querySelector('[data-row-when]')!.textContent).toBe('19 Oct 09:40')
+    expect(row.querySelector('[data-row-branch]')!.textContent).toBe('Opus 5.5')
+  })
+
+  it('before it has a title: "Quick chat · model" and the time, the model not said twice', () => {
+    setup([chat({ session_id: 'c2' })], [])
+    const row = document.querySelector('[data-live-row="c2"]')!
+    expect(row.querySelector('[data-row-title]')!.textContent).toBe('Quick chat · Opus 5.5')
+    expect(row.querySelector('[data-row-when]')!.textContent).toBe('19 Oct 09:40')
+    expect(row.querySelector('[data-row-branch]')).toBeNull()
+  })
+
+  it('with a tab: its title and model, no time', () => {
+    const t: Tab = { id: 't1', projectId: 'other-folders', title: 'Quick chat', focusedPaneId: 'a', root: pane('a', 'session', 'c3') }
+    setup([chat({ session_id: 'c3', title: 'Monads, explained' })], [t])
+    const row = document.querySelector('[data-tab-row="t1"]')!
+    expect(row.querySelector('[data-row-title]')!.textContent).toBe('Monads, explained')
+    expect(row.querySelector('[data-row-when]')).toBeNull()
+    expect(row.querySelector('[data-row-branch]')!.textContent).toBe('Opus 5.5')
+  })
+})

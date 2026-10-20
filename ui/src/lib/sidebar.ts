@@ -4,7 +4,8 @@
  * waiting on you. A pure function, so 50 projects and 30 live sessions cost
  * one pass and can be tested without a screen.
  */
-import { isQuickChat, quickChatTitle } from './quickchat'
+import { CHAT_LINGER_MS, isQuickChat, quickChatTitle } from './quickchat'
+import { atPrompt } from './sessionJump'
 import type { SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
 import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
@@ -125,8 +126,9 @@ export function sessionTitle(s: SessionSummary): string {
   const branch = branchLabel(s.git_branch)
   if (s.kind === 'shell') return branch ? `shell · ${branch}` : 'shell'
   const name = s.name?.trim()
-  // A quick chat is named as one, not by its dated folder (lib/quickchat.ts).
-  if (!name && isQuickChat(s)) return quickChatTitle(s)
+  // A quick chat is named by what it is about, else as one — never by its
+  // dated folder (lib/quickchat.ts).
+  if (!name && isQuickChat(s)) return sessionAbout(s) || quickChatTitle(s)
   const title = name || sessionAbout(s) || (branch ? `on ${branch}` : 'new session')
   return attemptLabel(s) ? `${attemptLabel(s)} · ${title}` : title
 }
@@ -148,6 +150,22 @@ function ms(v: string | number | undefined): number {
   if (typeof v === 'number') return v
   const t = v ? Date.parse(v) : NaN
   return Number.isFinite(t) ? t : 0
+}
+
+/**
+ * Whether a chat with no tab is listed in the sidebar (under "Running, no
+ * tab"): while it works, while it asks for something (a permission prompt, a
+ * question), and for CHAT_LINGER_MS after its last answer. Every chat waits
+ * on you once it has answered, so "waits on you" alone kept a chat whose tab
+ * was lost listed for as long as its process ran (owner, 2026-10-20). An
+ * ended one is not listed. Past the window it is still on the Chats screen
+ * and in the palette.
+ */
+export function chatListed(s: SessionSummary, hasPermission: boolean, now = Date.now()): boolean {
+  if (s.status === 'ended') return false
+  if (hasPermission || !atPrompt(s)) return true
+  const answered = ms(s.activity?.at) || s.last_event_at || 0
+  return now - answered < CHAT_LINGER_MS
 }
 
 export function buildSidebar({ projects, sessions, permissions, costs, openSessions, now = Date.now(), activity }: SidebarInput): SidebarModel {
@@ -175,8 +193,9 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
   for (const s of sessions) {
     if (!s) continue
     // A chat (ADR-071) is listed on the Chats screen, not with the work:
-    // here only while it has a tab, or waits on you.
-    if ((s.chat || isQuickChat(s)) && !openSessions.has(s.session_id) && !permissions.has(s.session_id) && s.activity?.health !== 'waiting-on-you') continue
+    // here only while it has a tab, or is still at work or asks you
+    // something, or answered within CHAT_LINGER_MS (chatListed).
+    if ((s.chat || isQuickChat(s)) && !openSessions.has(s.session_id) && !chatListed(s, permissions.has(s.session_id), now)) continue
     const shown = s.status !== 'ended' || openSessions.has(s.session_id)
     const listed = closest(s)
     // Only what is live or open goes to Other folders: it is not a history.

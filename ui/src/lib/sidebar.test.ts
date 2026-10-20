@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
 import type { Project } from './projects'
-import { buildSidebar, groupProjects, OTHER_FOLDERS_ID, rowHidden } from './sidebar'
+import { buildSidebar, groupProjects, OTHER_FOLDERS_ID, rowHidden, sessionTitle } from './sidebar'
 
 function sess(p: Partial<SessionSummary>): SessionSummary {
   return {
@@ -197,5 +197,44 @@ describe('a session row: what waits, and hiding it', () => {
     const busy = rows(build()).get('busy')!
     expect(rowHidden({ ...busy, open: true }, new Map([['busy', now]]))).toBe(false)
     expect(rowHidden({ ...busy, open: false }, new Map([['busy', now]]))).toBe(true)
+  })
+})
+
+// Owner, 2026-10-20: a quick chat whose tab was lost stayed under "Running, no
+// tab" for as long as its process ran - every chat "waits on you" once it has
+// answered. Now it is listed while it works or asks, and for CHAT_LINGER_MS after.
+describe('a quick chat with no tab', () => {
+  const chat = (p: Partial<SessionSummary>) => sess({ session_id: 'c', cwd: '/data/chats/2026-10-19-094012', git_branch: '', ...p })
+  const listed = (s: SessionSummary, permissions = new Set<string>(), open = new Set<string>()) =>
+    buildSidebar({ projects: [], sessions: [s], permissions, costs: new Map(), openSessions: open, now })
+      .projects.flatMap((n) => n.worktrees.flatMap((w) => w.sessions)).length > 0
+  const at = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString()
+
+  it('is listed while it works', () => {
+    expect(listed(chat({ activity: { phrase: 'responding', at: at(60), health: 'working' } }))).toBe(true)
+  })
+
+  it('is listed while it asks: a permission prompt or a question', () => {
+    expect(listed(chat({ activity: { phrase: 'waiting for approval', at: at(60), health: 'waiting-on-you', tool: 'Bash' } }))).toBe(true)
+    expect(listed(chat({ activity: { phrase: 'waiting for your answer', at: at(60), health: 'waiting-on-you' } }))).toBe(true)
+    expect(listed(chat({ activity: { phrase: 'waiting for you', at: at(60), health: 'waiting-on-you' } }), new Set(['c']))).toBe(true)
+  })
+
+  it('is listed for ten minutes after its answer, then only on the Chats screen', () => {
+    const answered = (mins: number) => chat({ activity: { phrase: 'waiting for you', at: at(mins), health: 'waiting-on-you' } })
+    expect(listed(answered(3))).toBe(true)
+    expect(listed(answered(11))).toBe(false)
+    expect(listed(chat({ activity: { phrase: '', at: at(30), health: 'idle' }, last_event_at: now - 30 * 60_000 }))).toBe(false)
+  })
+
+  it('is listed, idle or not, while a tab shows it; never once ended', () => {
+    expect(listed(chat({ activity: { phrase: 'waiting for you', at: at(600), health: 'waiting-on-you' } }), new Set(), new Set(['c']))).toBe(true)
+    expect(listed(chat({ status: 'ended', activity: { phrase: '', at: at(1), health: 'ended' } }))).toBe(false)
+  })
+
+  it('is called by what it is about once it has a title, else "Quick chat · model"', () => {
+    expect(sessionTitle(chat({ model_display: 'Opus 5.5' }))).toBe('Quick chat · Opus 5.5')
+    expect(sessionTitle(chat({ model_display: 'Opus 5.5', title: 'Monads, explained' }))).toBe('Monads, explained')
+    expect(sessionTitle(chat({ model_display: 'Opus 5.5', title: 'Monads', name: 'Mine' }))).toBe('Mine')
   })
 })

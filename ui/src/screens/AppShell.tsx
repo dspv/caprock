@@ -44,7 +44,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
-import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
+import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, planTabsChatClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
 import { useWorkspaceData } from '@/lib/useWorkspaceData'
 import { useShellTray } from '@/lib/tray'
@@ -144,6 +144,19 @@ const PairScreen = lazy(() => import('@/screens/Pair').then((m) => ({ default: m
 const UI_KEY = 'caprock.app.ui'
 
 /** A route that is a pinned system tab of its own (Mail, Pipeline), not a dashboard screen. */
+/**
+ * planChatClose's two tests, for any close: a session is a quick chat Caprock
+ * started whose agent has not exited in this window (its folder, or this
+ * window started it); one this window started a moment ago, before the
+ * session list has it, counts too.
+ */
+function chatTests(endedChats: ReadonlySet<string>): [(s: SessionSummary) => boolean, (id: string) => boolean] {
+  return [
+    (s) => !endedChats.has(s.session_id) && (isQuickChat(s) || !!startedChat(s.session_id)),
+    (id) => !endedChats.has(id) && !!startedChat(id),
+  ]
+}
+
 function isSystemTabHash(h: string): boolean {
   const name = parseHash(h).name
   return name === 'mail' || name === 'pipeline'
@@ -330,6 +343,7 @@ export function AppShell() {
     | { kind: 'agent'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan; title: string }
     | { kind: 'agent-busy'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan }
     | { kind: 'project'; name: string; plan: ClosePlan; resolve: (o: ProjectShellsOutcome) => void }
+    | { kind: 'chats'; busy: readonly string[] }
     | null
   >(null)
   const [paneStatus, setPaneStatus] = useState<Record<string, PaneStatus>>({})
@@ -1119,7 +1133,7 @@ export function AppShell() {
     // A browser tab has nothing running to ask about: it goes with its page.
     if (isPageTab(tab)) { dispatch({ type: 'close', tabId }); return }
     // A chat whose agent already exited (its tab says so) has nothing to stop.
-    const chat = planChatClose(tab, paneId, sessionsById, (s) => !endedChats.has(s.session_id) && (isQuickChat(s) || !!startedChat(s.session_id)), (id) => !endedChats.has(id) && !!startedChat(id))
+    const chat = planChatClose(tab, paneId, sessionsById, ...chatTests(endedChats))
     if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
     await closeAgents(tabId, paneId, chat.stop)
   }, [closeAgents])
@@ -1305,11 +1319,21 @@ export function AppShell() {
     for (const t of ws.tabs) m.set(t.projectId, (m.get(t.projectId) ?? 0) + 1)
     return m
   }, [ws.tabs])
-  /** Closes the tabs only: every session and shell in them keeps running (rule 7). */
+  /**
+   * Closes a project's tabs — its menu's *Close tabs*, its ×, Hide, Remove
+   * from list. Agents and shells in them keep running (rule 7; the × ends
+   * the shells first, onStopProjectShells). The quick chats Caprock started
+   * end as with ⌘W (planTabsChatClose, owner 2026-10-20): idle ones at once;
+   * ones still answering after one question, asked once the tabs are gone.
+   */
   const onCloseProjectTabs = useCallback((projectId: string) => {
+    const { tabs, sessionsById, endedChats } = closeCtx.current
+    const chats = planTabsChatClose(tabs.filter((t) => t.projectId === projectId), sessionsById, ...chatTests(endedChats))
     setChangesView((cur) => (cur?.projectId === projectId ? null : cur))
     dispatch({ type: 'close-project', projectId })
-  }, [])
+    stopChats(chats.stop)
+    if (chats.busy.length > 0) setClosing({ kind: 'chats', busy: chats.busy })
+  }, [stopChats])
   const onOpenProjectInEditor = useCallback((path: string, label: string, editorId: string) => openInEditor(path, label, editorId), [openInEditor])
   const { archiveLocal } = data
   /** Unlists a project — the daemon's list, or this page's when it keeps none. Its files are never touched. */
@@ -2319,6 +2343,14 @@ export function AppShell() {
           agent
           onStop={() => { setClosing(null); void closeEnding(closing.tabId, closing.paneId, closing.chats, closing.agents.all) }}
           onKeep={() => { setClosing(null); void closeShells(closing.tabId, closing.paneId, closing.chats) }}
+          onCancel={() => setClosing(null)}
+        />
+      )}
+      {closing?.kind === 'chats' && (
+        <CloseChatConfirm
+          closed={closing.busy.length}
+          onStop={() => { setClosing(null); stopChats(closing.busy) }}
+          onKeep={() => setClosing(null)}
           onCancel={() => setClosing(null)}
         />
       )}

@@ -62,7 +62,7 @@ export function chatAgentName(agent: string | undefined): string {
 }
 
 /** The model's name for a chat: the pricing table's, else the one it was started on; '' when neither is known. */
-function chatModel(s: Pick<SessionSummary, 'session_id' | 'model_display'>): string {
+export function chatModel(s: Pick<SessionSummary, 'session_id' | 'model_display'>): string {
   return s.model_display || startedChat(s.session_id)?.label || ''
 }
 
@@ -70,6 +70,43 @@ function chatModel(s: Pick<SessionSummary, 'session_id' | 'model_display'>): str
 export function quickChatTitle(s: Pick<SessionSummary, 'session_id' | 'model_display' | 'agent'>): string {
   return `Quick chat · ${chatModel(s) || chatAgentName(s.agent ?? startedChat(s.session_id)?.agent)}`
 }
+
+/** When a chat started, as its row says it: "09:40" today, else "19 Oct 09:40". */
+export function chatStartedAt(ms: number | undefined, now = Date.now()): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === new Date(now).toDateString()) return time
+  const sameYear = d.getFullYear() === new Date(now).getFullYear()
+  const date = d.toLocaleDateString('en-GB', sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
+  return `${date} ${time}`
+}
+
+/**
+ * The quiet words after a quick chat's title in a sidebar row: its model,
+ * unless the title already says it ("Quick chat · Opus 5.5"), and, for a
+ * row with no tab, when it started — the one thing that tells two chats
+ * apart once their tabs are gone.
+ */
+export function chatRowSuffix(s: Pick<SessionSummary, 'session_id' | 'model_display' | 'started_at'>, title: string, tabless: boolean, now = Date.now()): { model?: string; when?: string } {
+  const m = chatModel(s)
+  const out: { model?: string; when?: string } = {}
+  if (m && !title.includes(m)) out.model = m
+  if (tabless) {
+    const when = chatStartedAt(s.started_at, now)
+    if (when) out.when = when
+  }
+  return out
+}
+
+/**
+ * How long a quick chat with no tab stays under "Running, no tab" once it
+ * has answered and sits at its prompt (lib/sidebar.ts): ten minutes, long
+ * enough to come back to an answer you walked away from, short enough that
+ * a chat whose tab was lost does not stay there for days (owner, 2026-10-20).
+ * After that it is on the Chats screen and in the palette.
+ */
+export const CHAT_LINGER_MS = 10 * 60 * 1000
 
 /** The agent's command that ends it: Gemini's is /quit, the others take /exit. */
 function exitCommand(agent: string | undefined): string {

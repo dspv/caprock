@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
-import { AGENT_END_QUESTION, AGENT_SAVED_TOAST, CHAT_CLOSE_QUESTION, agentStillWorking, closeQuestion, closeTitle, closeWord, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, projectCloseQuestion, shellNames } from './closeShell'
+import { AGENT_END_QUESTION, AGENT_SAVED_TOAST, CHAT_CLOSE_QUESTION, agentStillWorking, chatsCloseQuestion, planTabsChatClose, closeQuestion, closeTitle, closeWord, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, projectCloseQuestion, shellNames } from './closeShell'
 import type { PaneLeaf, Tab } from './tabs'
 
 // These read the labels in their macOS spelling; lib/appkeys.test.ts covers
@@ -112,6 +112,27 @@ describe('closing a quick chat', () => {
   it('ends a chat this window just started, before the list has it; leaves alone one it knows nothing of', () => {
     expect(planChatClose(tab(pane('a', 'session', 'new1')), undefined, none, isChat, (id) => id === 'new1')).toEqual({ stop: ['new1'], busy: [] })
     expect(planChatClose(tab(pane('a', 'session', 'x')), undefined, none, isChat, (id) => id === 'new1')).toEqual({ stop: [], busy: [] })
+  })
+
+  // Owner, 2026-10-20: a project's Close tabs left its chats running with no tab.
+  it('ends the chats of every tab a bulk close closes, as one tab\'s close does', () => {
+    const sessions = new Map([
+      ['c1', s('c1')],
+      ['c2', s('c2', { activity: { phrase: '', at: '', health: 'working' } })],
+      ['a1', s('a1', { cwd: '/w/app' })],
+      ['c3', s('c3', { owned: false })],
+    ])
+    const tabs: Tab[] = [
+      { ...tab(pane('a', 'session', 'c1')), id: 't1' },
+      { ...tab(pane('b', 'session', 'a1'), pane('c', 'session', 'c2')), id: 't2' },
+      { ...tab(pane('d', 'session', 'c3')), id: 't3' },
+      { ...tab(pane('e', 'session', 'c1')), id: 't4' },
+      { ...tab(pane('f', 'session', 'new1')), id: 't5' },
+    ]
+    expect(planTabsChatClose(tabs, sessions, isChat, (id) => id === 'new1')).toEqual({ stop: ['c1', 'new1'], busy: ['c2'] })
+    expect(planTabsChatClose([], sessions, isChat)).toEqual({ stop: [], busy: [] })
+    expect(chatsCloseQuestion(1)).toBe(CHAT_CLOSE_QUESTION)
+    expect(chatsCloseQuestion(2)).toBe('Stop 2 chats? They are still answering.')
   })
 
   it('closes one pane of a split: only that pane\'s chat', () => {
