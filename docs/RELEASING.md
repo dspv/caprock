@@ -323,13 +323,19 @@ Actions, `app-macos-build` picks the first of these that has its secrets:
   own, signs the app and both daemon binaries (`externalBin`) with the
   hardened runtime and `Entitlements.plist`, notarizes the `.app` with the
   API key and staples it. `scripts/app-release.sh` then notarizes and
-  staples the `.dmg` (`xcrun notarytool submit --wait`, then `stapler
-  staple`; a rejection prints Apple's log and fails the build) before the
+  staples the `.dmg` (`xcrun notarytool submit --wait --timeout 3h`, or
+  `NOTARY_TIMEOUT`, then `stapler staple`; a rejection prints Apple's log
+  and fails the build) before the
   sha256 the cask pins, checks the `.app` with `--notarized`, and checks
   that the update tarball's `.app` carries the ticket. The update tarball is
   made from the same notarized `.app`; the minisign signature stays as the
   updater's own check. With the certificate but no API key the build is
-  Developer ID signed, not notarized, with a warning.
+  Developer ID signed, not notarized, with a warning. Apple usually answers
+  in minutes, but the team's first submission was held for hours: the
+  `.app`'s wait is Tauri's and has no limit of its own, so the job's
+  `timeout-minutes: 360` bounds both. A submission still "In Progress"
+  when the job ends is not lost: `xcrun notarytool history` lists it, and
+  re-running the job submits again.
 - **The self-signed fallback** (`MACOS_SELFSIGN_P12_*`):
   `scripts/macos-selfsign-keychain.sh` sets `APPLE_SIGNING_IDENTITY` to its
   SHA-1, as before, and stands aside when a Developer ID is set. It keeps a

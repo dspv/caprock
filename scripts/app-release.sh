@@ -146,7 +146,12 @@ if [[ "$NOTARIZE" == 1 ]]; then
   echo "→ notarizing $DMG_NAME"
   notary=(--key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER")
   # notarytool may exit non-zero on a rejection too; the status decides.
-  result="$(xcrun notarytool submit "$DMG" "${notary[@]}" --wait --timeout 1h --output-format json)" || true
+  # Apple usually answers in minutes but has held a submission for hours
+  # (a new team's first one sat "In Progress" overnight), so the wait is
+  # long: NOTARY_TIMEOUT, 3h by default. The .app's wait is Tauri's own
+  # `notarytool submit --wait`, which has no limit; release.yml's job
+  # timeout bounds both.
+  result="$(xcrun notarytool submit "$DMG" "${notary[@]}" --wait --timeout "${NOTARY_TIMEOUT:-3h}" --output-format json)" || true
   status="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("status", ""))' <<<"$result" 2>/dev/null)" ||
     die "notarytool submit failed: $result"
   if [[ "$status" != Accepted ]]; then

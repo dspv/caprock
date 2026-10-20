@@ -162,6 +162,10 @@ jobs:
   app-macos-build:
     name: app build (macos-latest)
     runs-on: macos-latest
+    # Notarization waits on Apple: the .app's wait (inside `tauri build`) has
+    # no limit of its own and the .dmg's is 3h (app-release.sh), so the job
+    # gets the hosted runner's maximum rather than the 6h default by accident.
+    timeout-minutes: 360
     env:
       CARGO_TERM_COLOR: always
     steps:
