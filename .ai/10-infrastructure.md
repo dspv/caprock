@@ -159,7 +159,7 @@ beta, so it is last). `ui/e2e/phone.spec.ts` walks the phone: a
 phone profile (Pixel 7's, `isMobile` and `hasTouch`, so the layout viewport
 widens to fit the widest element as Android Chrome's does) at 360, 390 and
 430 px, over Home and its menus, the full dashboard, Chats, a chat with its
-sheets, file viewer, + menu, bug report, a long line typed and queued, a
+sheets, file viewer, its Keys open, a long line typed and queued, a
 session's chat, views menu, details, End sheet, terminal and timeline,
 Settings, Cost and History, with a transcript written into the stand's
 `~/.claude/projects` that holds a long URL, a long path, a code block with a
