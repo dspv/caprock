@@ -90,8 +90,102 @@ func v2Server(t *testing.T, term TermStream) (*httptest.Server, *v2Agents) {
 	t.Helper()
 	e := newEnv(t)
 	ag := &v2Agents{fakeAgents: &fakeAgents{avail: true, snapshot: []byte("V1SNAP"), termCh: make(chan []byte, 4)}, term: term}
-	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: ag})
+	h := New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: ag})
+	// A fakeTerm draws nothing on a resize, so a repaint here would wait
+	// repaintWait for output that never comes; the wait has tests of its own
+	// (TestTermV2RepaintWaitsForTheProgramToDraw).
+	h.sizes.wait = 0
+	e.srv.Config.Handler = h
 	return e.srv, ag
+}
+
+// redrawingAgents is v2Agents whose program draws on every resize, the way
+// Claude Code clears and redraws its screen on a width change, after
+// `delay`: a program whose event loop is busy.
+type redrawingAgents struct {
+	*v2Agents
+	ft    *fakeTerm
+	delay time.Duration
+}
+
+func (a redrawingAgents) Resize(id string, cols, rows int) error {
+	_ = a.v2Agents.Resize(id, cols, rows)
+	go func() {
+		time.Sleep(a.delay)
+		a.ft.ring.Write([]byte(fmt.Sprintf("\x1b[2Jframe %dx%d", cols, rows)))
+	}()
+	return nil
+}
+
+// The second size of an attach's repaint waits for the program to draw at
+// the first: two SIGWINCHes 40 ms apart reach a busy program as one, at the
+// size it already had, and it repaints nothing (owner, 2026-10-21: a status
+// line of lone digits after the repaint that should have healed it).
+func TestTermV2RepaintWaitsForTheProgramToDraw(t *testing.T) {
+	ft := newFakeTerm(1 << 10)
+	e := newEnv(t)
+	ag := &v2Agents{fakeAgents: &fakeAgents{avail: true, snapshot: []byte("V1SNAP"), termCh: make(chan []byte, 4)}, term: ft}
+	const busy = 300 * time.Millisecond
+	h := New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: redrawingAgents{ag, ft, busy}})
+	h.sizes.gap = 0
+	e.srv.Config.Handler = h
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := dialV2(ctx, t, e.srv, "")
+	defer func() { _ = c.CloseNow() }()
+	mustHello(ctx, t, c)
+	mustFrame(ctx, t, c)
+	start := time.Now()
+	_ = c.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":90,"rows":30}}`))
+	waitFor(t, func() bool { return len(ag.sized()) >= 1 })
+	time.Sleep(busy / 3)
+	if got := ag.sized(); len(got) != 1 || got[0] != [2]int{89, 30} {
+		t.Fatalf("sizes before the program drew = %v; want only {89 30}", got)
+	}
+	for len(ag.sized()) < 2 {
+		if time.Since(start) > 5*time.Second {
+			t.Fatalf("the size never came back: %v", ag.sized())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if d := time.Since(start); d < busy {
+		t.Fatalf("the size came back after %v, before the program drew (%v)", d, busy)
+	}
+	if got := ag.sized()[1]; got != [2]int{90, 30} {
+		t.Fatalf("second size = %v; want {90 30}", got)
+	}
+}
+
+// A client sent the snapshot mid-session (it fell further behind than the
+// ring reaches) gets a repaint too: the snapshot is only the last bytes,
+// which for Claude Code are the cells that changed.
+func TestTermV2ResetMidSessionRepaints(t *testing.T) {
+	ft := newFakeTerm(64)
+	srv, ag := v2Server(t, ft)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c := dialV2(ctx, t, srv, "")
+	defer func() { _ = c.CloseNow() }()
+	mustHello(ctx, t, c)
+	mustFrame(ctx, t, c)
+	_ = c.Write(ctx, websocket.MessageText, []byte(`{"resize":{"cols":90,"rows":30}}`))
+	waitFor(t, func() bool { return len(ag.sized()) == 2 })
+	// Far more than the ring holds, faster than the client reads.
+	for i := 0; i < 2000; i++ {
+		ft.ring.Write(bytes.Repeat([]byte("y"), 60))
+	}
+	reset := false
+	for !reset {
+		f, err := readFrame(ctx, c)
+		if err != nil {
+			t.Fatalf("no reset came: %v", err)
+		}
+		_, reset = f.text["reset"]
+	}
+	waitFor(t, func() bool { return len(ag.sized()) >= 4 })
+	if got := ag.sized()[2:4]; got[0] != [2]int{89, 30} || got[1] != [2]int{90, 30} {
+		t.Fatalf("sizes after the reset = %v; want a repaint at 90x30", got)
+	}
 }
 
 // frame is one server frame, decoded.

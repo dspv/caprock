@@ -34,8 +34,12 @@ import (
 type ptySizes struct {
 	// resize sets the PTY's size.
 	resize func(id string, cols, rows int)
-	// gap separates the two sizes of a repaint (repaintGap; tests shorten it).
+	// gap separates the two sizes of a repaint (repaintGap; tests shorten it):
+	// the least time between them, counted from the session's first output
+	// after the narrower size when it has a way to tell (ptySizeState.drew).
 	gap time.Duration
+	// wait is the most a repaint waits for that output (repaintWait).
+	wait time.Duration
 
 	mu sync.Mutex
 	m  map[string]*ptySizeState
@@ -56,6 +60,9 @@ type ptySizeState struct {
 	// socket is in use again without having to type first.
 	owner string
 	conns map[*sizeConn]struct{}
+	// drew hands out a channel closed by the session's next output (its
+	// ring's Changed); nil until a terminal attaches through termv2.
+	drew func() <-chan struct{}
 }
 
 // sizeConn is one attached terminal socket.
@@ -73,7 +80,7 @@ type sizeConn struct {
 }
 
 func newPTYSizes(resize func(id string, cols, rows int)) *ptySizes {
-	return &ptySizes{resize: resize, gap: repaintGap, m: map[string]*ptySizeState{}}
+	return &ptySizes{resize: resize, gap: repaintGap, wait: repaintWait, m: map[string]*ptySizeState{}}
 }
 
 // join registers a terminal attaching to a session.
@@ -90,6 +97,34 @@ func (p *ptySizes) join(id, client string) *sizeConn {
 	st.conns[c] = struct{}{}
 	st.mu.Unlock()
 	return c
+}
+
+// watch gives a session's repaints a way to see its output: changed is its
+// ring's Changed. See repaint.
+func (p *ptySizes) watch(id string, changed func() <-chan struct{}) {
+	st := p.state(id)
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	st.drew = changed
+	st.mu.Unlock()
+}
+
+// redraw repaints the session at the size its PTY has, when it has one: a
+// terminal that was just sent the ring's snapshot mid-session (it fell
+// further behind than the ring reaches) holds only the last bytes written,
+// which for a TUI that redraws by difference are the cells that changed.
+func (p *ptySizes) redraw(c *sizeConn) {
+	st := p.state(c.id)
+	if st == nil {
+		return
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.cols > 0 && st.rows > 0 {
+		p.repaint(st, st.cols, st.rows)
+	}
 }
 
 func (p *ptySizes) state(id string) *ptySizeState {
@@ -266,11 +301,40 @@ func (p *ptySizes) apply(st *ptySizeState, c *sizeConn, force bool) {
 // — a stale subagent row under the list after every resume (users,
 // 2026-10-20; reproduced with the fake claude, which clears the same way). A
 // width change clears all the rows on both steps.
+//
+// And the program has to see the narrower size before the size comes back.
+// Two SIGWINCHes that arrive while a program's event loop is busy are one
+// signal by the time it looks, and the size it then reads is the one it
+// already drew at: no resize event, no repaint, and the terminal keeps the
+// replay's bare changed cells for good — a status line of lone digits, the
+// mode line's words gone, a task row without its labels (owner, 2026-10-21,
+// on a loaded Mac; a Node program blocked 120 ms in every 150 saw two of five
+// 40 ms repaints, the other three not at all). So the size comes back only
+// once the program has drawn something after the narrower one, or after
+// repaintWait for one that does not redraw on a resize (an idle shell), and
+// never sooner than gap after that.
 func (p *ptySizes) repaint(st *ptySizeState, cols, rows int) {
 	if cols > 2 {
+		var drew <-chan struct{}
+		if st.drew != nil {
+			drew = st.drew()
+		}
 		p.resize(st.id, cols-1, rows)
-		time.Sleep(p.gap)
+		p.settle(drew)
 	}
 	p.resize(st.id, cols, rows)
 	st.cols, st.rows = cols, rows
+}
+
+// settle waits for drew (nil: not at all) up to p.wait, then p.gap.
+func (p *ptySizes) settle(drew <-chan struct{}) {
+	if drew != nil && p.wait > 0 {
+		t := time.NewTimer(p.wait)
+		select {
+		case <-drew:
+		case <-t.C:
+		}
+		t.Stop()
+	}
+	time.Sleep(p.gap)
 }

@@ -38,6 +38,37 @@ func newTestSizes() (*ptySizes, *sizeLog) {
 	return p, l
 }
 
+// A repaint gives the size back once the program has drawn at the narrower
+// one, and after the wait when it draws nothing (an idle shell).
+func TestPTYRepaintWaitsForOutput(t *testing.T) {
+	p, l := newTestSizes()
+	p.wait = 5 * time.Second
+	c := p.join("s1", "desk")
+	drew := make(chan struct{})
+	p.watch("s1", func() <-chan struct{} { return drew })
+	done := make(chan struct{})
+	go func() { p.size(c, 120, 40, false); close(done) }()
+	waitFor(t, func() bool { l.mu.Lock(); defer l.mu.Unlock(); return len(l.sizes) == 1 })
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("the size came back before the program drew")
+	default:
+	}
+	close(drew)
+	<-done
+	wantSizes(t, l, "after the program drew", [2]int{119, 40}, [2]int{120, 40})
+
+	p.wait = 30 * time.Millisecond
+	p.watch("s1", func() <-chan struct{} { return make(chan struct{}) })
+	start := time.Now()
+	p.redraw(c)
+	if d := time.Since(start); d < 30*time.Millisecond {
+		t.Fatalf("a program that never draws: the size came back after %v; want the wait", d)
+	}
+	wantSizes(t, l, "a redraw at the size in use", [2]int{119, 40}, [2]int{120, 40})
+}
+
 func wantSizes(t *testing.T, l *sizeLog, step string, want ...[2]int) {
 	t.Helper()
 	got := l.take()
