@@ -128,6 +128,9 @@ type Agent struct {
 	// the daemon can learn the session id it creates; 0 for other agents and
 	// for a resumed OpenCode session, whose id is already known.
 	Port int
+	// current is the session a /clear started in this process, nil before
+	// one has (Current, follow.go).
+	current atomic.Pointer[string]
 	// NativeID is the agent's own id for a new session Caprock named at the
 	// start — an OpenCode 2 session (`--session <id>` creates it) — for the
 	// daemon to link at once; "" otherwise.
@@ -195,6 +198,9 @@ type Manager struct {
 	shellCmd func() (string, []string)
 	mu       sync.Mutex
 	agents   map[string]*Agent
+	// follows files a session a /clear started under the id of the terminal
+	// it runs in (follow.go): new id → spawn id.
+	follows  map[string]string
 	OnExit   func(sessionID string, code int)
 	OnOutput func(sessionID string) // called (throttled by caller) when new bytes arrive
 	// OnPermission is told when an owned session starts or stops waiting on a
@@ -789,8 +795,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 func (m *Manager) Get(sessionID string) (*Agent, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	a, ok := m.agents[sessionID]
-	return a, ok
+	a := m.lookupLocked(sessionID)
+	return a, a != nil
 }
 
 // List returns running agents.
@@ -1097,6 +1103,7 @@ func (a *Agent) wait(m *Manager) {
 		// terminal reads as "reconnect".
 		m.mu.Lock()
 		delete(m.agents, a.SessionID)
+		m.forgetFollowsLocked(a.SessionID)
 		m.mu.Unlock()
 		m.log.Info("owned session left running in its pty-host", "component", "agents", "session_id", a.SessionID, "pid", a.sess.PID())
 		return
@@ -1111,16 +1118,23 @@ func (a *Agent) wait(m *Manager) {
 	a.mu.Unlock()
 	m.mu.Lock()
 	delete(m.agents, a.SessionID)
+	followed := m.forgetFollowsLocked(a.SessionID)
 	m.mu.Unlock()
-	m.clearPermission(a.SessionID)
-	m.forgetMode(a.SessionID)
-	m.forgetNudge(a.SessionID)
-	if a.Kind != KindShell {
-		_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, a.SessionID, code) })
+	// A session a /clear started in the process ends with it.
+	for _, id := range append([]string{a.SessionID}, followed...) {
+		m.clearPermission(id)
+		m.forgetMode(id)
+		m.forgetNudge(id)
+		if a.Kind != KindShell {
+			_ = m.store.WithTx(context.Background(), func(q store.Querier) error { return store.SetExit(context.Background(), q, id, code) })
+		}
 	}
 	m.log.Info("owned session exited", "component", "agents", "session_id", a.SessionID, "code", code, "err", errStr(err))
 	if a.onExit != nil {
 		a.onExit(a.SessionID, code)
+		for _, id := range followed {
+			a.onExit(id, code)
+		}
 	}
 }
 

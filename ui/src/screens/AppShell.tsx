@@ -46,6 +46,7 @@ import {
 import { tabLabels } from '@/lib/tablabels'
 import { idleEnded } from '@/lib/idleEnd'
 import { useReportTabs } from '@/lib/reportTabs'
+import { clearMoves, clearedParts } from '@/lib/clearChain'
 import { closedEntries, forgetClosed, loadRecentlyClosed, recordClosed, reopenPlan, shownClosed, type ClosedTab } from '@/lib/recentlyClosed'
 import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, planTabsChatClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
@@ -431,6 +432,21 @@ export function AppShell() {
       if (s && sessionTitle(s) !== t.title) dispatch({ type: 'retitle', sessionId: s.session_id, title: sessionTitle(s) })
     }
   }, [sessionsById, ws.tabs])
+
+  // A /clear carries the conversation on under a new session id in the same
+  // process: the tab follows it, terminal and all (lib/clearChain.ts). A fork
+  // runs in a process of its own and never takes the tab.
+  useEffect(() => {
+    for (const m of clearMoves(ws.tabs, sessionsById)) {
+      const s = sessionsById.get(m.target.sessionId)
+      dispatch({ type: 'replace-session', sessionId: m.from, target: m.target, title: s ? sessionTitle(s) : '' })
+    }
+  }, [sessionsById, ws.tabs])
+  // Above the chat: what the /clears before it wiped from the model's context.
+  const clearedBefore = useMemo(
+    () => (focused && (focused.kind === 'session' || focused.kind === 'observe') ? clearedParts(focused.sessionId, sessionsById) : []),
+    [focused, sessionsById],
+  )
 
   const showWorkspace = useCallback(() => {
     if (!isWorkspaceHash(location.hash)) location.hash = APP_ROUTE
@@ -2033,6 +2049,7 @@ export function AppShell() {
                         <ChatView
                           key={focused.sessionId}
                           sessionId={focused.sessionId}
+                          earlier={clearedBefore}
                           canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                           foldKeys
                           chat
@@ -2051,6 +2068,7 @@ export function AppShell() {
                     <ChatView
                       key={focused.sessionId}
                       sessionId={focused.sessionId}
+                      earlier={clearedBefore}
                       canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
                       agent={focusedSession?.agent}
                       prompt

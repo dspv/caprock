@@ -188,6 +188,8 @@ export interface SessionSummary extends Session {
   worked_at?: number
   /** The session this one continues: the one a /clear replaced, or the one it was forked from (FB-039). */
   parent_session?: string
+  /** The process it runs in, when known: a /clear's session shares its parent's, a fork has its own (lib/clearChain.ts). */
+  pid?: number
   /** Whether it can be carried on from here. On the list: ended sessions only. */
   resume?: ResumeInfo
   /** Caprock started it and still running, but its terminal is not here (an older release's session, or its pty-host died). */

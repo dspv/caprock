@@ -78,6 +78,15 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 		port, _ := strconv.Atoi(rec.Meta[metaPort])
 		a := m.adopt(rec, at.Session, kind, worktree, port)
 		a.EndWhenDone = rec.Meta[metaEndWhenDone] == "1"
+		// A /clear moved the conversation on to another session in the same
+		// process: that one is what the terminal now serves, and the spawn's
+		// own row stays ended, as the /clear left it.
+		if err == nil && kind == AgentClaude && m.followCleared(ctx, a, at.Session.PID()) != "" {
+			m.restorePermission(ctx, a.Current())
+			m.run(a, rec.Version)
+			out = append(out, a)
+			continue
+		}
 		// The row normally already says all of this. It does not when the
 		// sweep of an older run ended it, or the database is newer than the
 		// session; then the holder is the evidence and the row follows it.
@@ -102,6 +111,7 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 	keep := map[string]bool{}
 	for _, a := range out {
 		keep[a.SessionID] = true
+		keep[a.Current()] = true
 	}
 	_ = m.store.WithTx(ctx, func(q store.Querier) error { return store.PrunePendingPermissions(ctx, q, keep) })
 	return out

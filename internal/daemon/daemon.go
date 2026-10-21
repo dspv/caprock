@@ -639,6 +639,10 @@ func (d *Daemon) run(ctx context.Context) error {
 		// not be cancelled because a hook's HTTP call finished first.
 		d.cap.Check(context.WithoutCancel(ctx))
 	}
+	// A /clear in a session Caprock started: its terminal now serves the
+	// session the /clear started (agents/follow.go), so the tab that follows
+	// it attaches and types through the new id.
+	d.rec.OnClear = func(next, prev string) { d.mgr.Follow(next, prev) }
 
 	// Phase 2 board (opt-in via HiveDir, or turned on later over the API).
 	if d.opt.HiveDir != "" {

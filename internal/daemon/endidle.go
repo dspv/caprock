@@ -121,6 +121,11 @@ func (e *endIdle) sweep(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		// After a /clear the tab is on the session it started, not on the
+		// spawn's id (agents/follow.go).
+		if a, ok := e.sess.Get(id); ok && open[a.Current()] {
+			continue
+		}
 		if open[id] || e.sess.IsShell(id) || (e.worker != nil && e.worker(id)) {
 			continue
 		}
@@ -202,7 +207,7 @@ func (e *endIdle) lastActive(ctx context.Context, a *agents.Agent) (time.Time, e
 	if t := a.LastIO(); t.After(last) {
 		last = t
 	}
-	s, err := store.GetSession(ctx, e.d.store.DB(), a.SessionID)
+	s, err := store.GetSession(ctx, e.d.store.DB(), a.Current())
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -220,11 +225,11 @@ func (e *endIdle) waitingOn(ctx context.Context, a *agents.Agent, now time.Time)
 		// theirs to resume.
 		return "paused", nil
 	}
-	if _, ok := e.sess.PendingPermission(a.SessionID); ok {
+	if _, ok := e.sess.PendingPermission(a.Current()); ok {
 		return "permission", nil
 	}
 	db := e.d.store.DB()
-	if msgs, err := store.ListQueued(ctx, db, a.SessionID); err != nil {
+	if msgs, err := store.ListQueued(ctx, db, a.Current()); err != nil {
 		return "", err
 	} else if len(msgs) > 0 {
 		return "queued", nil
@@ -238,7 +243,7 @@ func (e *endIdle) waitingOn(ctx context.Context, a *agents.Agent, now time.Time)
 	case w == api.WaitingPermission || w == api.WaitingQuestion:
 		return w, nil
 	}
-	n, err := store.LiveSubagents(ctx, db, a.SessionID, now.Add(-store.LiveSubagentWindow).UnixMilli())
+	n, err := store.LiveSubagents(ctx, db, a.Current(), now.Add(-store.LiveSubagentWindow).UnixMilli())
 	if err != nil {
 		return "", err
 	}

@@ -55,6 +55,9 @@ type Result struct {
 	Stats    store.Stats
 	Priced   bool // cost computed for this event
 	NewFiles int  // files touched for the first time by this event
+	// Replaced is the session a /clear in the same process replaced, when
+	// this event is the SessionStart that did it; "" otherwise.
+	Replaced string
 }
 
 // Recorder wires store + pricing + bus.
@@ -87,6 +90,10 @@ type Recorder struct {
 	// and stands down the moment something is to be recorded
 	// (daemon/compact.go). Set once, before the first Record; must not block.
 	OnWrite func()
+	// OnClear is told, after the commit, that session next took over the
+	// process session prev ran in (a /clear): the terminal Caprock holds
+	// for prev now serves next (agents.Manager.Follow). Must not block.
+	OnClear func(next, prev string)
 
 	// unpricedWarned holds the models already reported as missing from the
 	// pricing table.
@@ -158,6 +165,9 @@ func (r *Recorder) Record(ctx context.Context, ev *event.Event, info SessionInfo
 	// the database for a sum thousands of times an hour to learn nothing.
 	if res.Priced && r.OnPriced != nil {
 		r.OnPriced(ctx)
+	}
+	if res.Replaced != "" && r.OnClear != nil {
+		r.OnClear(ev.SessionID, res.Replaced)
 	}
 	return res, nil
 }
@@ -423,6 +433,7 @@ func (r *Recorder) apply(ctx context.Context, q store.Querier, ev *event.Event, 
 			return err
 		}
 		patch.ParentSession = prev
+		res.Replaced = prev
 		n, err := store.EndSupersededSiblings(ctx, q, info.PID, ev.SessionID)
 		if err != nil {
 			return err
@@ -433,6 +444,13 @@ func (r *Recorder) apply(ctx context.Context, q store.Querier, ev *event.Event, 
 	}
 	if err := store.UpsertSession(ctx, q, ev.SessionID, patch); err != nil {
 		return err
+	}
+	if res.Replaced != "" {
+		// The same process, so the same owner: a /clear in a session
+		// Caprock started is still Caprock's to type into.
+		if err := store.InheritOwned(ctx, q, ev.SessionID, res.Replaced); err != nil {
+			return err
+		}
 	}
 
 	delta := store.Stats{SessionID: ev.SessionID}

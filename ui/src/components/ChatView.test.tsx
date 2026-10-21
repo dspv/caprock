@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event } from '@/lib/api'
 import { live } from '@/lib/live'
 import type { LinkPhase } from '@/lib/reconnect'
-import { ChatView, CHAT_GAP_PAGES, CHAT_PAGE_EVENTS, CHAT_WINDOW } from './ChatView'
+import { ChatView, CHAT_GAP_PAGES, CHAT_PAGE_EVENTS, CHAT_WINDOW, CLEARED_DIVIDER } from './ChatView'
 import { resetPickerCache } from './ChatPicker'
 
 const store = vi.hoisted(() => ({
@@ -653,6 +653,27 @@ describe('ChatView: what you send', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
       expect(await screen.findByText('Sent ✓')).toBeInTheDocument()
       expect(store.inputs).toEqual(['hello', '\r'])
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})
+
+describe('ChatView: after /clear', () => {
+  it('shows each earlier part above the session, with the divider a /clear leaves', async () => {
+    const { api } = await import('@/lib/api')
+    const before = (id: number, sid: string): Event => ({ ...msg(id, `before ${id}`), session_id: sid })
+    const parts: Record<string, Event[]> = { a: [before(1, 'a')], b: [before(2, 'b')], s: [msg(3, 'after')] }
+    const spy = vi.spyOn(api, 'recentEvents').mockImplementation(async (id: string) => parts[id] ?? [])
+    try {
+      render(<ChatView sessionId="s" earlier={['a', 'b']} canType={false} />)
+      await waitFor(() => expect(renderedIds()).toEqual([1, 2, 3]))
+      const dividers = log().querySelectorAll('[data-cleared-divider]')
+      expect(dividers).toHaveLength(2)
+      expect(dividers[0]!.textContent).toBe(CLEARED_DIVIDER)
+      // Each divider sits under its own part, above what came after the /clear.
+      expect(log().querySelector('[data-cleared-part="b"]')!.textContent).toContain('before 2')
+      expect(screen.getByText('start of conversation')).toBeInTheDocument()
     } finally {
       spy.mockRestore()
     }

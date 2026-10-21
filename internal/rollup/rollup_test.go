@@ -558,3 +558,39 @@ func TestMergedReplyTextIsPublished(t *testing.T) {
 		t.Fatalf("a re-read published %+v", f)
 	}
 }
+
+// A /clear in a session Caprock started: the session it starts is Caprock's
+// too (the same process), and the daemon is told so it can file the
+// terminal under the new id.
+func TestClearInOwnedSessionInheritsAndTells(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	base := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	const pid = 5151
+	var told [2]string
+	r.OnClear = func(next, prev string) { told = [2]string{next, prev} }
+	if _, err := r.Record(ctx, &event.Event{SessionID: "spawn", Source: event.SourceHook, Kind: event.KindTurnUser, Ts: base}, SessionInfo{PID: pid}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkOwned(ctx, r.Store.DB(), "spawn", "", "claude", pid); err != nil {
+		t.Fatal(err)
+	}
+	res, err := r.Record(ctx, &event.Event{SessionID: "next", Source: event.SourceHook, Kind: event.KindAgentSpawn, Ts: base.Add(time.Minute)}, SessionInfo{PID: pid, ReplacesPID: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if told != [2]string{"next", "spawn"} {
+		t.Errorf("OnClear told %v, want [next spawn]", told)
+	}
+	if !res.Session.Owned {
+		t.Error("the session frame says the /clear's session is not Caprock's")
+	}
+	// A SessionStart that replaces nothing tells nothing.
+	told = [2]string{}
+	if _, err := r.Record(ctx, &event.Event{SessionID: "other", Source: event.SourceHook, Kind: event.KindAgentSpawn, Ts: base.Add(2 * time.Minute)}, SessionInfo{PID: 9999}); err != nil {
+		t.Fatal(err)
+	}
+	if told != [2]string{} {
+		t.Errorf("OnClear told %v for a plain start", told)
+	}
+}

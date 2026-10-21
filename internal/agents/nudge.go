@@ -29,7 +29,7 @@ import (
 func (m *Manager) typedInput(a *Agent, data []byte) {
 	at := m.now()
 	a.TouchIO(time.Now())
-	t := m.typedIntoMenu(a.SessionID, data)
+	t := m.typedIntoMenu(a.Current(), data)
 	switch {
 	case t.interrupted:
 		m.noteNudge(a, narrate.NudgeRejected, at)
@@ -94,18 +94,19 @@ func pickedNo(ring, since []byte, cols, rows int, key byte) bool {
 // key, and Enter typed meanwhile is the newer news.
 func (m *Manager) noteNudge(a *Agent, kind string, at time.Time) {
 	n := narrate.Nudge{At: at, Kind: kind}
+	id := a.Current()
 	m.nudgeMu.Lock()
-	if old, ok := m.nudges[a.SessionID]; ok && old.At.After(at) {
+	if old, ok := m.nudges[id]; ok && old.At.After(at) {
 		m.nudgeMu.Unlock()
 		return
 	}
 	if m.nudges == nil {
 		m.nudges = map[string]narrate.Nudge{}
 	}
-	m.nudges[a.SessionID] = n
+	m.nudges[id] = n
 	m.nudgeMu.Unlock()
 	if m.OnNudge != nil {
-		m.OnNudge(a.SessionID, a.Kind, n)
+		m.OnNudge(id, a.Kind, n)
 	}
 }
 
