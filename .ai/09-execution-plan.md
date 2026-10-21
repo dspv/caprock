@@ -323,6 +323,26 @@ owned by the file linked, which is the home for the details.
   [ADR-038](08-decisions.md); milestones, work packages and the definitions of
   done for each package, the MVP release and phone v2 are owned by
   [22-app-plan.md](22-app-plan.md), which this list does not restate.
+- **The iOS app (owner decision, 2026-10-21).** Decided in
+  [ADR-083](08-decisions.md): the phone remote in a Capacitor shell around
+  `ui/dist-remote`, free, Android later. The push payload is open
+  ([OQ-24](12-risks.md#open-questions)) and must be decided before push
+  ships. Done when:
+  - a workflow on GitHub's macOS runners builds, signs and uploads the app to
+    TestFlight; nothing builds on the owner's Mac;
+  - the app pairs by scanning the computer's QR code with its own camera, and
+    reaches the computer through the relay as `m.caprock.dev` does;
+  - voice input works on the device in English and Russian, and says when a
+    language is not available on the device;
+  - Face ID can lock the app; pairing keys and tokens are in the Keychain;
+  - "Claude is waiting for your answer" and "task done" arrive as push
+    notifications while the app is closed, carrying nothing readable to
+    Apple or Caprock (OQ-24 decided), switched on per phone on the computer;
+  - a demo mode on bundled sample data opens from the first screen;
+  - no purchase, price or buy link anywhere in the app;
+  - `m.caprock.dev` on an iPhone offers **Get the app** and keeps working;
+  - the owner has used the TestFlight build for 3–5 days (an estimate) and
+    submitted it in App Store Connect.
 - **Teams tier.** Specified in [17-teams.md](17-teams.md), not built, gated on
   demand from the `/teams` form. **DoD:** a second mode (or a second binary)
   receives aggregate reports from more than one machine — session identity,

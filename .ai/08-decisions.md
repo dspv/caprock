@@ -1885,7 +1885,10 @@ while opening, memory and focus are.
   alerts. The app is one more client of its API, beside the browser and the
   phone.
 - **Mobile later from the same codebase** (Tauri v2 targets iOS and Android);
-  until then the phone is the web dashboard, made resilient.
+  until then the phone is the web dashboard, made resilient. *Amended
+  2026-10-21 by
+  [ADR-083](#adr-083--a-native-ios-app-the-phone-remote-in-a-capacitor-shell-with-native-pairing-voice-face-id-and-push):
+  the iOS app shares `ui/`, not the shell — it is Capacitor.*
 
 **Alternatives, and why not.**
 
@@ -5891,3 +5894,184 @@ schema-version check that only logs.
 **Revisit if:** migrations become non-sequential (branches, skipped numbers)
 — the single number then stops being enough and the applied set has to be
 recorded.
+
+## ADR-083 — A native iOS app: the phone remote in a Capacitor shell, with native pairing, voice, Face ID and push
+
+**Date:** 2026-10-21 · **Status:** accepted as a direction (owner,
+2026-10-21); the push payload is open (`OQ-24` in
+[12-risks.md](12-risks.md)). Amends the mobile bullet of
+[ADR-038](#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon)
+("mobile later from the same codebase", via Tauri). Builds on
+[ADR-058](#adr-058--a-phone-reaches-the-machine-from-anywhere-through-a-relay-that-carries-only-ciphertext)
+(the relay and the phone's page) and
+[ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+(what an integration that leaves the machine must say).
+
+**Context.** The phone reaches the machine through `m.caprock.dev`, the page
+`vite build --mode remote` makes (`ui/dist-remote`), paired by a QR code the
+phone's camera app opens. The Apple developer account (CYBRIX LLC) is live and
+has signed the Mac app since 2026-10-21, which removes the reason ADR-058
+avoided the App Store. A web page on an iPhone cannot do what the owner uses
+the phone for most: it hears nothing while it is closed (iOS delivers Web Push
+only to a page added to the Home Screen), its speech recognition is Safari's
+and needs the page in front, and it cannot lock behind Face ID. The owner's
+decision (translated): build a native iOS app now; Android later, and Android
+users keep `m.caprock.dev`.
+
+**Decision.**
+
+- **The free iOS app is the phone remote** — what `m.caprock.dev` does, the
+  same React screens built from `ui/` with `--mode remote`, bundled in the app
+  rather than fetched — **plus what only a native app can do**:
+  - **pairing by the camera:** a QR scanner inside the app reads the same
+    pairing link the page reads today, so no step goes through Safari;
+  - **voice in any language, on the device:** Apple's speech recognition with
+    on-device recognition requested, Russian included where the device
+    supports it; when on-device is not available for a language the screen
+    says so before anything is sent to Apple;
+  - **Face ID unlock:** an optional lock in front of the app; the pairing
+    keys and the device token live in the Keychain;
+  - **safe areas and the keyboard handled natively,** so the composer never
+    sits under the keyboard or the home indicator;
+  - **later, widgets and Live Activities** ("Claude is waiting", a running
+    task) — not in the first version.
+- **The first version ships with push notifications:** "Claude is waiting for
+  your answer" and "task done". Push on iOS goes through APNs, so it leaves the
+  machine through Apple and through a Caprock sender that holds the APNs key.
+  Under rule 4 and ADR-047 the payload must carry nothing readable; which of
+  the two ways below satisfies that is **open** (`OQ-24`), with a
+  recommendation:
+  - **(a) content-free text** — every push says only "A session needs you" or
+    "A task finished", and the app fetches the rest over the relay when
+    opened. Simple; still tells Apple and the sender *when* something
+    happened.
+  - **(b) end-to-end ciphertext** — the daemon encrypts the alert (agent,
+    project, session title, the question's first line) with a key agreed with
+    the phone at pairing, inside the Noise channel; the push carries
+    `mutable-content: 1` and ciphertext; a Notification Service Extension on
+    the phone decrypts it with the key from a shared Keychain group and
+    replaces the text. If decryption fails or runs out of time, the phone
+    shows the generic text of (a).
+  - **Recommendation: (b), with (a) as its fallback text.** It is the
+    ADR-058 shape applied to push — the sender and Apple forward bytes they
+    cannot read — and it is what makes a lock-screen alert useful. Either
+    way: push is off until the user allows notifications on the phone **and**
+    turns it on for that phone on the machine; the machine's settings say what
+    each push carries and who forwards it (Apple, and Caprock's sender); the
+    sender keeps no database and logs no payload — only the device token,
+    machine id, time and size pass through it.
+- **No in-app purchase and no buy links.** Premium stays on the Mac with its
+  offline licence
+  ([ADR-022](#adr-022--the-licence-key-is-an-offline-string-with-an-expiry-and-nothing-more));
+  the app neither sells it nor points to where it is sold. A Premium feature
+  the paired machine has unlocked works on the phone as it does on
+  `m.caprock.dev`.
+- **A demo mode with sample data,** reachable from the first screen ("Try it
+  without a Mac"), so Apple's reviewer — and anyone curious — can use every
+  screen without pairing. It answers from a bundled fixture through the same
+  transport interface the relay uses (the site stand's fixture,
+  `scripts/demo-fixture.py`, is the starting point), never from a server, and
+  is marked as sample data on every screen.
+- **Release path:** TestFlight to the owner only for 3–5 days (an estimate,
+  the owner's), then the App Store. `m.caprock.dev` stays; opened on an
+  iPhone it offers **Get the app** once, dismissible, and keeps working.
+- **Accounts and clicks:** CYBRIX LLC's developer account, the one that signs
+  the Mac app. Creating the app record, the agreements, the privacy
+  questionnaire and pressing Submit in App Store Connect are the owner's.
+- **Builds run on GitHub's macOS runners,** never on the owner's Mac: a
+  workflow builds `ui/` in remote mode, syncs it into the iOS project, signs
+  with secrets held in a repository environment, and uploads to TestFlight.
+- **Android later,** from the same project when it is started; until then
+  Android is `m.caprock.dev` as an installed web app.
+
+**Shell: Capacitor, not Tauri v2 (spike, docs read 2026-10-21).** The app is
+a WebView around `ui/dist-remote` with a handful of native features, so the
+choice is about the plugins and the Xcode project, not the UI. Sources: the
+Tauri plugin list (v2.tauri.app/plugin) and its notification plugin page,
+the Capacitor push-notifications and keyboard API pages (capacitorjs.com, v8
+docs), and the plugin repositories named below. Nothing was built.
+
+- **Camera QR scan.** Tauri: official `barcode-scanner` plugin (iOS,
+  Android). Capacitor: official `@capacitor/barcode-scanner`, and
+  Capawesome's ML Kit scanner. Both fine.
+- **On-device speech recognition.** Tauri: no official or maintained plugin
+  found; it would be a Swift plugin of our own around `SFSpeechRecognizer` /
+  `SpeechAnalyzer`. Capacitor: `@capacitor-community/speech-recognition` and
+  its maintained fork `@capgo/capacitor-speech-recognition`, which exposes an
+  on-device path (iOS 26 `SpeechAnalyzer`, falling back to
+  `SFSpeechRecognizer`) and `isOnDeviceRecognitionAvailable()` per locale.
+  Capacitor ahead.
+- **Biometrics.** Tauri: official `biometric` plugin. Capacitor: community
+  (`@aparajita/capacitor-biometric-auth`, Capawesome Biometrics). Both fine;
+  Tauri's is official.
+- **APNs push and a Notification Service Extension.** Tauri: the official
+  `notification` plugin documents local notifications only; remote push is
+  community (`tauri-plugin-mobile-push`, `tauri-plugin-notifications`), which
+  inject handlers into Tauri's AppDelegate at runtime. Capacitor: the
+  official `@capacitor/push-notifications` returns the raw APNs token on iOS
+  (no Firebase there). The extension is an extra Xcode target either way;
+  Capacitor's `ios/` is an ordinary Xcode project kept in the repository,
+  where adding the extension, a Keychain group and later a widget or Live
+  Activity target is routine. Tauri's `gen/apple` project is generated from
+  `project.yml`, so each extra target has to survive regeneration. Capacitor
+  clearly ahead.
+- **Safe areas and the keyboard.** Both run WKWebView, so
+  `env(safe-area-inset-*)` works in either. Capacitor has an official
+  `@capacitor/keyboard` plugin with resize modes (`body`, `native`, `none`)
+  and keyboard events; Tauri has no official keyboard plugin. Capacitor
+  ahead.
+- **Build and CI.** Tauri's iOS build cross-compiles a Rust core for device
+  and simulator on every run, and the phone app has no Rust to run — the
+  engine is the daemon on the machine. Capacitor's build is `xcodebuild` on
+  the synced web assets. Capacitor lighter on the macOS runners.
+
+**Recommendation and decision: Capacitor** for the iOS app, in a directory of
+its own (`mobile/`, `webDir` pointing at `ui/dist-remote`). Push and its
+extension — the one feature the first version cannot ship without — are
+official and plain on Capacitor and community-only on Tauri; speech has a
+maintained plugin; the Xcode project is ours to add targets to. What it costs:
+the phone does not share the desktop shell's Rust, which it would not use,
+and ADR-038's "mobile from the same codebase" now means the same `ui/` code,
+not the same shell. The desktop app stays Tauri.
+
+**Alternatives, and why not.**
+
+- **A wrapper only** (a WebView pointed at `m.caprock.dev`, nothing native).
+  App Store Review Guideline 4.2 (minimum functionality) rejects apps that are
+  a repackaged website, and it would add nothing the page lacks: no push while
+  closed, no on-device voice, no Face ID.
+- **PWA only** (stay on `m.caprock.dev`, add Web Push). iOS delivers Web Push
+  only to a page the user has added to the Home Screen, with no Notification
+  Service Extension to decrypt a payload, no Keychain, no Face ID and no
+  native speech; most users never add the page. It stays the Android path.
+- **Tauri v2 iOS** — weighed above: the right shell on the desktop, behind on
+  push, the extension target and speech on iOS.
+- **A SwiftUI app.** The best native feel, but every screen of the phone
+  remote rewritten and kept equal with the web page by hand, and Android
+  would need a third client.
+
+**Consequences.**
+
+- `ui/` remains the one phone UI; the native features enter through a small
+  bridge in `ui/src/remote/` that does nothing on the web page, so
+  `m.caprock.dev` keeps working unchanged.
+- The daemon gains a push path (a per-device switch, the APNs device token in
+  `devices.json` and, under (b), a per-device push key) and a section in
+  [03-contracts.md](03-contracts.md) when it is built.
+- A push sender is a new Caprock service beside the relay: it holds the APNs
+  key, which cannot ship inside every binary, and must say what it sees, as
+  ADR-058 does for the relay.
+- The App Store privacy questionnaire must match this ADR: no tracking, no
+  data collected by Caprock, speech on device, push tokens used only to
+  deliver the user's own alerts.
+
+**Rules out:** an in-app purchase or a link to buy; a push whose text Apple
+or Caprock's sender can read; building iOS on the owner's Mac; Android in
+this round.
+
+**Revisit if:** Apple rejects the app under 4.2 or 2.1 despite the native
+features and the demo mode (`RISK-11`); the Notification Service Extension
+cannot decrypt reliably within its time budget, which would leave (a) as the
+answer; or Tauri's mobile push becomes official and its iOS project stops
+being regenerated, which would let the phone and the desktop share a shell
+again.

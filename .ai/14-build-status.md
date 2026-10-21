@@ -21,6 +21,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 | Phase 3 — Delight               | 0%       | No plan by design                                                                              |
 | Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                        |
 | Other computers (ADR-067)       | 40%      | Phase 1 built (PR1–PR3): see and type into another computer's sessions; Phases 2–4 not started |
+| iOS app (ADR-083)               | 0%       | Direction decided, Capacitor chosen; push payload open (OQ-24); nothing built                  |
 
 ## Milestone status
 
@@ -79,6 +80,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 ### 2026-10-21 — 0.145.0: phone mode for browser tabs, a clearer phone
 
 A minor release, one batch PR (#785). An in-app browser tab can show its page at a phone's size (iPhone 16, iPhone SE, Pixel 9, Galaxy S24 or custom) with that phone's user agent, rotation, bars and touch, behind Settings → In-app browser. The phone home folds its sections, keeps New chat filled, and shows a Limits line from the new `GET /v1/stats/limits`. A phone that loses its network says so in large type and reconnects by itself; Pair again shows only when the phone was removed. Every http(s) link in a chat is tappable, and a terminal attached at a narrower size waits for the program to redraw before its repaint, so glyphs no longer go missing.
+
+### 2026-10-21 — direction: a native iOS app (ADR-083)
+
+The owner decided to build a native iOS app now; Android stays on
+`m.caprock.dev` for later. The app is the free phone remote (the `ui/` screens
+built with `--mode remote`) in a Capacitor shell, with camera pairing,
+on-device voice, Face ID and push in the first version; no in-app purchase;
+a demo mode on sample data for review; TestFlight to the owner, then the App
+Store; builds on GitHub's macOS runners. A docs-only spike compared Tauri v2
+iOS and Capacitor plugin by plugin and chose Capacitor (push and its
+Notification Service Extension, speech, keyboard). Open: what a push may
+carry (`OQ-24`, recommendation end-to-end ciphertext) and review risk
+(`RISK-11`). Nothing is built yet.
 
 ### 2026-10-21 — unreleased: idle untabbed sessions end by themselves
 
