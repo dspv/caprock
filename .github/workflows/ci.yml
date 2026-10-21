@@ -324,7 +324,9 @@ jobs:
             bundles: app,dmg
           - os: windows-latest
             bundles: nsis
-          - os: ubuntu-latest
+          # 22.04, the image release.yml builds the Linux app on, so the Rust
+          # cache this leg writes on master is the one the release reads.
+          - os: ubuntu-22.04
             bundles: deb
     runs-on: ${{ matrix.os }}
     env:
@@ -367,7 +369,7 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev patchelf
       # Cargo's registry and the compiled dependencies, keyed by OS, rustc and
       # Cargo.lock; the app crate itself always rebuilds. Written from master
-      # only. release.yml's Windows app job reads the same key.
+      # only. release.yml's Windows and Linux app jobs read the same keys.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: app/src-tauri -> target
@@ -421,3 +423,68 @@ jobs:
             app/src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
           retention-days: 3
+
+  # The Rust cache for release.yml's macOS app build, which compiles for
+  # aarch64 and x86_64 (a universal .dmg) where the app job above builds the
+  # host's architecture only. A tag cannot read a cache another tag wrote, so
+  # master writes it: `app-release.sh --warm-cache` makes the release's own
+  # cargo build, unsigned, and keeps nothing but the cache. The lookup makes
+  # this a few seconds on a push that finds the cache already there (one key
+  # per rustc version and Cargo.lock, as for the app job); the build runs
+  # only when one of those changed or the cache was evicted.
+  app-release-cache:
+    if: github.event_name == 'push'
+    name: app release cache (macos universal)
+    runs-on: macos-latest
+    # As release.yml's app-macos-build: rust-cache hashes CARGO_* variables
+    # into its key, so the two jobs' must not differ.
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        id: lookup
+        with:
+          workspaces: app/src-tauri -> target
+          shared-key: app-macos-universal
+          lookup-only: true
+          save-if: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.lookup.outputs.cache-hit != 'true'
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: go cache paths
+        if: steps.lookup.outputs.cache-hit != 'true'
+        id: gocache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.lookup.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.lookup.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # Restores an older key's dependencies when there is one, and saves the
+      # new key when the job ends.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: steps.lookup.outputs.cache-hit != 'true'
+        with:
+          workspaces: app/src-tauri -> target
+          shared-key: app-macos-universal
+      - name: universal app, cache only
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: scripts/app-release.sh v0.0.0 --warm-cache

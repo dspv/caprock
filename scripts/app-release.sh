@@ -21,6 +21,10 @@
 #   --no-upload  build, check and render; do not touch the GitHub release
 #   --clobber    replace a .dmg already attached to the release
 #   --cask-pr    open a pull request on dspv/homebrew-tap with the cask
+#   --warm-cache compile the universal app and stop: no tag needed (TAG is any
+#                vX.Y.Z), no .dmg, no signing, no checks, nothing uploaded.
+#                ci.yml's app-release-cache job runs it on master, so the Rust
+#                cache release.yml reads holds both architectures' dependencies
 #
 # Signing (docs/RELEASING.md § The desktop app): with APPLE_SIGNING_IDENTITY
 # set to "Developer ID Application: …" the app and its daemon are Developer ID
@@ -49,10 +53,11 @@ die() { echo "app-release: $*" >&2; exit 1; }
 TAG="${1:-}"
 [[ -n "$TAG" ]] || die "usage: scripts/app-release.sh vX.Y.Z [--no-upload] [--clobber] [--cask-pr]"
 shift
-UPLOAD=1 CLOBBER="" CASK_PR=0
+UPLOAD=1 CLOBBER="" CASK_PR=0 WARM=0
 for arg in "$@"; do
   case "$arg" in
     --no-upload) UPLOAD=0 ;;
+    --warm-cache) WARM=1 UPLOAD=0 ;;
     --clobber) CLOBBER="--clobber" ;;
     --cask-pr) CASK_PR=1 ;;
     *) die "unknown flag $arg" ;;
@@ -69,9 +74,11 @@ MAIL_OAUTH=github.com/dspv/caprock/internal/mail/oauth
 MAIL_LDFLAGS="-X $MAIL_OAUTH.GoogleClientID=${CAPROCK_MAIL_GOOGLE_CLIENT_ID:-} -X $MAIL_OAUTH.GoogleClientSecret=${CAPROCK_MAIL_GOOGLE_CLIENT_SECRET:-} -X $MAIL_OAUTH.MicrosoftClientID=${CAPROCK_MAIL_MICROSOFT_CLIENT_ID:-}"
 
 # The same tag: the daemon inside the app is built from this checkout.
-TAG_COMMIT="$(git rev-parse -q --verify "$TAG^{commit}")" || die "no tag $TAG here (git fetch --tags)"
-[[ "$(git rev-parse HEAD)" == "$TAG_COMMIT" ]] || die "HEAD is not $TAG: git checkout $TAG first"
-git diff --quiet HEAD -- || die "the checkout has uncommitted changes"
+if [[ "$WARM" == 0 ]]; then
+  TAG_COMMIT="$(git rev-parse -q --verify "$TAG^{commit}")" || die "no tag $TAG here (git fetch --tags)"
+  [[ "$(git rev-parse HEAD)" == "$TAG_COMMIT" ]] || die "HEAD is not $TAG: git checkout $TAG first"
+  git diff --quiet HEAD -- || die "the checkout has uncommitted changes"
+fi
 
 if [[ "$UPLOAD" == 1 ]]; then
   gh release view "$TAG" >/dev/null 2>&1 || die "no GitHub release $TAG yet: publish the daemon release first"
@@ -104,7 +111,11 @@ done
 # ~/.config/caprock-release/ by hand). Without it the release still ships,
 # and the app's Update button says no signed update is published.
 UPDATER=()
-if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+if [[ "$WARM" == 1 ]]; then
+  # Nothing ships from a warm-up: no updater bundle, ad-hoc signing.
+  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD APPLE_CERTIFICATE \
+    APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_TEAM_ID APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
+elif [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
   UPDATER=(--config src-tauri/tauri.updater.conf.json)
 else
   echo "  warning: TAURI_SIGNING_PRIVATE_KEY unset: no signed app update for $TAG"
@@ -127,10 +138,18 @@ if [[ "${APPLE_SIGNING_IDENTITY:-}" == "Developer ID Application: "* ]]; then
   fi
 fi
 
-echo "→ Caprock.app and .dmg"
+# The one cargo build a release makes, shared with --warm-cache so the cache
+# that writes is the one a release needs (same targets, profile and flags).
+BUNDLES=app,dmg
+[[ "$WARM" == 1 ]] && BUNDLES=app
+echo "→ Caprock.app, bundles $BUNDLES"
 (cd app && { [[ -d node_modules ]] || npm ci; } && npx tauri build \
-  --target universal-apple-darwin --bundles app,dmg \
+  --target universal-apple-darwin --bundles "$BUNDLES" \
   --config "{\"version\":\"$VERSION\"}" ${UPDATER[@]+"${UPDATER[@]}"})
+if [[ "$WARM" == 1 ]]; then
+  echo "  ok: compiled for aarch64 and x86_64 (warm-up: nothing kept)"
+  exit 0
+fi
 
 DMG_NAME="Caprock_${VERSION}_universal.dmg"
 BUILT="app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/$DMG_NAME"
