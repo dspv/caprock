@@ -131,6 +131,10 @@ pub fn buttons(session: Option<&str>, prompt: Option<&str>, actions: &[String]) 
 /// `CAPROCK_APP_NOTIFY_LOG` set (automated checks on a machine someone is
 /// using; not a user setting) it is appended to that file instead of shown.
 #[tauri::command]
+// Each argument is a field of the notify frame as the page sends it; a Tauri
+// command takes them by name, so they cannot be folded into one struct
+// without changing every caller.
+#[allow(clippy::too_many_arguments)]
 pub fn notify<R: Runtime>(
     title: String,
     body: String,

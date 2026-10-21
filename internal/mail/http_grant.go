@@ -4,9 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/dspv/caprock/internal/hidewin"
 )
 
 // Full Disk Access for Apple Mail's account list. macOS never prompts for it:
@@ -36,11 +37,11 @@ func daemonProgram() string {
 // openGrant opens the pane and reveals program in Finder. Tests replace it:
 // they must never raise an OS window.
 var openGrant = func(program string) error {
-	if err := exec.Command("/usr/bin/open", fullDiskAccessPane).Run(); err != nil {
+	if err := hidewin.Command("/usr/bin/open", fullDiskAccessPane).Run(); err != nil {
 		return err
 	}
 	if program != "" {
-		_ = exec.Command("/usr/bin/open", "-R", program).Run() //nolint:gosec // the daemon's own executable
+		_ = hidewin.Command("/usr/bin/open", "-R", program).Run() //nolint:gosec // the daemon's own executable
 	}
 	return nil
 }
