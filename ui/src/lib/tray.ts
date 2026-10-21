@@ -15,11 +15,14 @@ import { resetClock } from './limitclock'
 import { shell, type TrayView } from './shell'
 import type { InboxItem } from './sidebar'
 import { useApi } from './useApi'
+import { needWord } from './needs'
 import { readWindow } from '@/components/PlanLimits'
 
 export interface TrayInput {
   summary?: Summary
   inbox: InboxItem[]
+  /** Turns that ended asking nothing: a submenu, never the badge. */
+  done?: InboxItem[]
   conn: ConnState
   now: number
 }
@@ -52,7 +55,14 @@ export function waitingOnYou(inbox: InboxItem[]): InboxItem[] {
   return inbox.filter((i) => !i.stale)
 }
 
-export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayView {
+/** A row's label: "project · title", and why it waits ("permission", "question?"). */
+function rowLabel(i: InboxItem): string {
+  const label = i.projectName ? `${i.projectName} · ${i.title}` : i.title
+  const why = i.reason === 'permission' ? (i.need?.reason === 'plan' ? 'plan' : i.need?.reason === 'question' ? 'question' : 'permission') : needWord(i.need)
+  return why && why !== 'done' ? `${label} · ${why}` : label
+}
+
+export function buildTrayView({ summary, inbox, done = [], conn, now }: TrayInput): TrayView {
   const waiting = waitingOnYou(inbox)
   const lines = [
     ...limitLines('Claude', summary?.rate_limits, now),
@@ -85,15 +95,13 @@ export function buildTrayView({ summary, inbox, conn, now }: TrayInput): TrayVie
     title,
     tooltip,
     lines,
-    waiting: waiting.map((i) => {
-      const label = i.projectName ? `${i.projectName} · ${i.title}` : i.title
-      return { id: i.session.session_id, label: i.reason === 'permission' ? `${label} · approve` : label }
-    }),
+    waiting: waiting.map((i) => ({ id: i.session.session_id, label: rowLabel(i) })),
+    done: done.map((i) => ({ id: i.session.session_id, label: rowLabel(i) })),
   }
 }
 
 /** Keeps the shell's tray and badge in step with the workspace. Does nothing outside the app. */
-export function useShellTray(inbox: InboxItem[]): void {
+export function useShellTray(inbox: InboxItem[], done: InboxItem[] = []): void {
   const inApp = isTauri()
   const conn = useLiveConn()
   // The same question Now asks, on the same live tick: spend and limits move
@@ -101,7 +109,7 @@ export function useShellTray(inbox: InboxItem[]): void {
   // a slow one (WP-16: every poll re-renders the workspace), and slower still
   // with the window hidden, where the menu bar must stay current.
   const summary = useApi(() => (inApp ? api.summary('today') : Promise.resolve(undefined)), [inApp], { intervalMs: 30_000, hiddenIntervalMs: 60_000, keepUnchanged: true })
-  const view = buildTrayView({ summary: summary.data, inbox, conn, now: Date.now() })
+  const view = buildTrayView({ summary: summary.data, inbox, done, conn, now: Date.now() })
   const key = JSON.stringify(view)
   const count = view.waiting.length
   useEffect(() => {

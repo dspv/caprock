@@ -194,6 +194,8 @@ export function trackState(
   switch (health) {
     case 'waiting-on-you':
       return { kind: 'waiting', label: 'waiting on you' }
+    case 'done':
+      return { kind: 'quiet', label: 'done' }
     case 'error':
       return { kind: 'error', label: 'error' }
     case 'looping':

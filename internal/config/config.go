@@ -136,6 +136,11 @@ type Config struct {
 	// finished alert. On unless switched off, like the two above; Telegram
 	// reads it, which the Settings line says.
 	AlertReply *bool `json:"alert_reply,omitempty"`
+	// AlertDone sends a turn that asked nothing (Done, § Needs you and Done)
+	// as a finished alert, like a turn that asked something. On unless
+	// switched off: a "Finished" message is how the owner hears work is over
+	// while away (owner, 2026-10-21). The desktop app never shows one.
+	AlertDone *bool `json:"alert_done,omitempty"`
 	// TelegramChat lets the paired Telegram chat talk back (ADR-047): a reply
 	// types into a session Caprock started, /sessions, /new and /stop work,
 	// and Approve and Deny appear under a question. Premium, and off until
@@ -147,7 +152,9 @@ type Config struct {
 	// NotifyApproval and NotifyFinished switch the desktop app's OS
 	// notifications (WP-09), apart from Telegram's: a notification stays on
 	// the machine. Approval is on unless switched off — a blocked agent is
-	// what the app exists to report; finished is off unless switched on.
+	// what the app exists to report, and since 2026-10-21 it covers every
+	// "Needs you" (NotifyApprovalOn). NotifyFinished no longer decides
+	// anything: a Done turn raises no OS notification (NotifyFinishedOn).
 	NotifyApproval *bool `json:"notify_approval,omitempty"`
 	NotifyFinished *bool `json:"notify_finished,omitempty"`
 	// GeminiAPIKey is the user's Google AI Studio key, entered in the dashboard.
@@ -652,14 +659,24 @@ func (c Config) AlertFinishedOn() bool {
 	return c.AlertFinished != nil && *c.AlertFinished
 }
 
-// NotifyApprovalOn reports whether a session waiting for approval raises an
-// OS notification in the desktop app. On unless switched off.
+// AlertDoneOn reports whether a finished alert is sent for a turn that asked
+// nothing (Done). On unless switched off.
+func (c Config) AlertDoneOn() bool {
+	return c.AlertDone == nil || *c.AlertDone
+}
+
+// NotifyApprovalOn reports whether a session that needs you raises an OS
+// notification in the desktop app: a permission dialog, a question or a plan
+// at once, and a turn that ended on a question or an error after its quiet
+// minute. On unless switched off.
 func (c Config) NotifyApprovalOn() bool {
 	return c.NotifyApproval == nil || *c.NotifyApproval
 }
 
-// NotifyFinishedOn reports whether a finished session raises an OS
-// notification. Off unless switched on.
+// NotifyFinishedOn reports the old "finished" OS notification switch. Since
+// 2026-10-21 it decides nothing: a Done turn raises no OS notification, and
+// a turn that ended needing you is NotifyApprovalOn's. Kept so a config that
+// set it still reads, and GET /v1/settings still answers it.
 func (c Config) NotifyFinishedOn() bool {
 	return c.NotifyFinished != nil && *c.NotifyFinished
 }

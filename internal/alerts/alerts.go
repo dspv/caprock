@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/narrate"
 )
 
 // Kind is what an alert says about a session.
@@ -58,6 +59,28 @@ type Alert struct {
 	// Stop (or StopFailure, recorded as throttle) that ended the turn. The
 	// message reads what it asks about or how the turn ended from it.
 	Trigger event.Event
+}
+
+// Need is what a finished turn asks of its owner, read from its trigger the
+// way the dashboard reads it (narrate, § Needs you and Done):
+// narrate.NeedError for a StopFailure, narrate.NeedAsks when the Stop's last
+// message asks something, narrate.NeedDone otherwise. "" for an approval.
+func (a Alert) Need() string {
+	if a.Kind != KindFinished {
+		return ""
+	}
+	return TurnNeed(a.Trigger)
+}
+
+// TurnNeed reads the event that ended a turn: see Alert.Need.
+func TurnNeed(ev event.Event) string {
+	if ev.Kind == event.KindThrottle {
+		return narrate.NeedError
+	}
+	if ok, _, _ := narrate.AsksSomething(narrate.LastMessage(ev.Payload)); ok {
+		return narrate.NeedAsks
+	}
+	return narrate.NeedDone
 }
 
 type session struct {
@@ -124,6 +147,10 @@ type Rules struct {
 	// Enabled says whether a kind is switched on right now. A switched-off
 	// kind is still tracked, so turning it on later starts from the truth.
 	Enabled func(Kind) bool
+	// EnabledFor, when set, decides instead of Enabled, with what a finished
+	// turn asks (Alert.Need): a Done turn may be wanted by one sender and
+	// not another.
+	EnabledFor func(k Kind, need string) bool
 
 	sessions map[string]*session
 	sent     []time.Time
@@ -157,7 +184,7 @@ func (r *Rules) Observe(ev event.Event, now time.Time) []Alert {
 			return nil // one message per wait
 		}
 		s.waitingSince = ev.Ts
-		out := r.emit(KindApproval, ev.SessionID, now)
+		out := r.emit(KindApproval, "", ev.SessionID, now)
 		for i := range out {
 			out[i].Question = ev.Tool == "AskUserQuestion"
 			out[i].Trigger = ev
@@ -210,7 +237,7 @@ func (r *Rules) QueuedDone(ev event.Event, text string, now time.Time) []Alert {
 	if ev.SessionID == "" || now.Sub(ev.Ts) > freshFor {
 		return nil
 	}
-	out := r.emit(KindFinished, ev.SessionID, now)
+	out := r.emit(KindFinished, TurnNeed(ev), ev.SessionID, now)
 	for i := range out {
 		out[i].Trigger = ev
 		out[i].Queued = text
@@ -225,7 +252,7 @@ func (r *Rules) Due(now time.Time) []Alert {
 	for id, s := range r.sessions {
 		if !s.stoppedAt.IsZero() && now.Sub(s.stoppedAt) >= FinishedAfter && s.working(now) == 0 {
 			s.stoppedAt = time.Time{}
-			for _, a := range r.emit(KindFinished, id, now) {
+			for _, a := range r.emit(KindFinished, TurnNeed(s.stop), id, now) {
 				a.Trigger = s.stop
 				out = append(out, a)
 			}
@@ -247,8 +274,12 @@ func (r *Rules) quiet(s *session, now time.Time) bool {
 }
 
 // emit applies the switch, the per-session cooldown and the hourly cap.
-func (r *Rules) emit(k Kind, id string, now time.Time) []Alert {
-	if r.Enabled != nil && !r.Enabled(k) {
+func (r *Rules) emit(k Kind, need, id string, now time.Time) []Alert {
+	if r.EnabledFor != nil {
+		if !r.EnabledFor(k, need) {
+			return nil
+		}
+	} else if r.Enabled != nil && !r.Enabled(k) {
 		return nil
 	}
 	s := r.state(id)

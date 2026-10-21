@@ -70,7 +70,7 @@ describe('findAttention', () => {
     })
     const items = findAttention({ sessions: [stale], alerts: [], now: NOW })
     expect(items).toHaveLength(1)
-    expect(items[0]!.title).toBe('Waiting for you')
+    expect(items[0]!.title).toBe('Needs you')
     expect(items[0]!.severity).toBe('medium')
   })
 
@@ -293,7 +293,7 @@ describe('the waiting row', () => {
       activity: { health: 'waiting-on-you', phrase: 'waiting for you', at: '2026-08-20T11:40:00Z' },
     } as unknown as SessionSummary
     const [item] = findAttention({ sessions: [s], alerts: [], now: NOW })
-    expect(item!.title).toBe('Waiting for you')
+    expect(item!.title).toBe('Needs you')
     expect(item!.detail).toBe('')
     // Whatever the phrase says, it must not be echoed under a title that
     // already says it.

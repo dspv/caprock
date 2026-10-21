@@ -14,7 +14,7 @@
 import { fmtUSD } from '@/lib/format'
 import { STALE_MS } from '@/lib/sidebar'
 import { countdown, resetClock } from '@/lib/limitclock'
-import type { LoopAlert, RateLimits, SessionSummary, WindowStop } from '@/lib/api'
+import type { LoopAlert, Need, RateLimits, SessionSummary, WindowStop } from '@/lib/api'
 
 export interface AttentionItem {
   id: string
@@ -54,6 +54,8 @@ export interface AttentionItem {
    * what they already have.
    */
   offerWindowStop?: boolean
+  /** A Needs you row: why the session waits (lib/needs.ts), drawn as a chip. */
+  need?: Need
   /**
    * The moment worth looking at, unix ms — where "open" should land.
    *
@@ -179,9 +181,10 @@ export function findAttention({ sessions, alerts, now, limits, windowStop, waiti
       continue
     }
 
-    // 3. Waiting for you, and has been for a while. A session that asked a
-    // question two minutes ago is not a problem; one that asked twenty minutes
-    // ago is time you did not know you were losing.
+    // 3. Needs you, and has for a while. A session that asked a question two
+    // minutes ago is not a problem; one that asked twenty minutes ago is time
+    // you did not know you were losing. A Done turn (health "done") asks
+    // nothing and is never here (§ Needs you and Done).
     // Past half a day it is work put down, not a question waiting: the
     // sidebar folds it under Older (STALE_MS), and two banners about
     // sessions left days ago sat above everything on Now.
@@ -193,7 +196,8 @@ export function findAttention({ sessions, alerts, now, limits, windowStop, waiti
           sessionId: s.session_id,
           project: s.project,
           severity: 'medium',
-          title: 'Waiting for you',
+          title: 'Needs you',
+          need: s.activity.need,
           // No detail. The other rows put the activity phrase here because it
           // carries the evidence — an error row's phrase names what broke. A
           // waiting session's phrase is the fixed string "waiting for you", so
@@ -203,7 +207,10 @@ export function findAttention({ sessions, alerts, now, limits, windowStop, waiti
           //
           // The title says it once, and "what did it ask?" beside it is the
           // part that actually tells you anything.
-          detail: '',
+          //
+          // Since the split into Needs you and Done the detail is the line
+          // the reading rests on — the question it asked — when there is one.
+          detail: s.activity.need?.text ? `“${s.activity.need.text}”` : '',
           since: at,
         })
       }

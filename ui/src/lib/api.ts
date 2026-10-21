@@ -11,7 +11,24 @@ import type { PRBoard } from './prboard'
 import type { ReposCI } from './reposci'
 import type { CreateRequest, GHStatus, Inspection, Template, TemplateInput, TemplateOp } from './templates'
 
-export type Health = 'working' | 'idle' | 'waiting-on-you' | 'looping' | 'error' | 'ended'
+/** `done`: the turn ended and its last message asks nothing (a guess; § Needs you and Done). */
+export type Health = 'working' | 'idle' | 'waiting-on-you' | 'done' | 'looping' | 'error' | 'ended'
+
+/**
+ * Why a session waits (internal/narrate need.go): beside health
+ * `waiting-on-you` one of permission, question, plan, error (certain) or asks
+ * (a guess read from the last message); beside `done`, done (always a guess).
+ */
+export interface Need {
+  reason: 'permission' | 'question' | 'plan' | 'error' | 'asks' | 'done'
+  /** error: why it stopped ("rate limit"); asks: "choice" or "question". */
+  detail?: string
+  /** The line of the last message the reading rests on, clipped. */
+  text?: string
+  guess?: boolean
+  /** Moved by hand ("needs me?" / "not needed") until the next turn. */
+  moved?: boolean
+}
 
 export interface Session {
   session_id: string
@@ -131,6 +148,8 @@ export interface Activity {
    *  working, nothing is wanted from the user, and Claude Code resumes the
    *  parent when they finish. Absent otherwise. */
   background?: number
+  /** Why it waits: with health waiting-on-you or done, absent otherwise. */
+  need?: Need
 }
 
 export interface Savings { billed_with: number; billed_without: number; saved: number; hit_rate: number; cut_pct: number }
@@ -1019,13 +1038,16 @@ export interface Settings {
   alert_finished?: boolean
   /** The first line of the final reply in a finished alert; on unless turned off. */
   alert_reply?: boolean
+  /** A turn that asked nothing (Done) still goes as "Finished"; on unless turned off. */
+  alert_done?: boolean
   /** Two-way Telegram chat (Premium, ADR-047): replies, /sessions, /new,
    *  /stop, Approve and Deny. Off unless turned on, and inert without a licence. */
   telegram_chat?: boolean
   /** Replies sent to Telegram keep their code blocks; off unless turned on. */
   telegram_code?: boolean
   /** The desktop app's OS notifications, apart from Telegram's (WP-09):
-   *  approval on unless turned off, finished off unless turned on. */
+   *  approval (every "Needs you") on unless turned off. finished is no longer
+   *  read: a Done turn raises no OS notification. */
   notify_approval?: boolean
   notify_finished?: boolean
   /** Why the last alert failed, absent when it did not; when one last arrived. */
@@ -2107,6 +2129,8 @@ export const api = {
   /** Send one bug report to Caprock support at caprock.dev, through the daemon (ADR-073). Only on the user's click; lib/support.ts builds the body. */
   sendSupport: (r: { text: string; email?: string; screenshots?: { name: string; type: string; data: string }[] }) => post<{ ok: boolean }>('/v1/support', r),
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
+  /** "needs me?" (true) or "not needed" (false) on the turn that ended last; 409 mid-turn. */
+  setNeeds: (id: string, needs: boolean) => post<{ session_id: string; needs: boolean }>(`/v1/sessions/${encodeURIComponent(id)}/needs`, { needs }, 'PUT'),
   /** Chats (ADR-071, 03-contracts.md § Chats): newest first; `q` searches every prompt. */
   chats: (o: { q?: string; archived?: boolean; limit?: number } = {}) => {
     const qs = new URLSearchParams()

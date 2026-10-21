@@ -32,9 +32,9 @@ describe('buildTrayView', () => {
   it('counts every session that needs you — a prompt or your turn — each with its id for the click', () => {
     const v = buildTrayView({ summary, inbox: [item('a', 'permission'), item('b', 'waiting'), item('c', 'permission', 'deploy')], conn: 'open', now })
     expect(v.waiting).toEqual([
-      { id: 'a', label: 'api · fix login · approve' },
+      { id: 'a', label: 'api · fix login · permission' },
       { id: 'b', label: 'api · fix login' },
-      { id: 'c', label: 'api · deploy · approve' },
+      { id: 'c', label: 'api · deploy · permission' },
     ])
     expect(v.title).toBe('3 waiting')
     expect(v.tooltip).toContain('3 need you')

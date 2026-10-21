@@ -6,11 +6,11 @@
  * while the popover is shown (a hidden window costs nothing but its socket).
  */
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Permission, type RateLimits, type SessionSummary, type Summary } from './api'
+import { api, type Need, type Permission, type RateLimits, type SessionSummary, type Summary } from './api'
 import { live, useLiveTick } from './live'
 import { countdown } from './limitclock'
 import { folderName } from './projects'
-import { dotOf, sessionTitle } from './sidebar'
+import { dotOf, sessionTitle, STALE_MS } from './sidebar'
 import { readWindow } from '@/components/PlanLimits'
 
 /** The event the shell dispatches each time it shows the popover. */
@@ -42,6 +42,8 @@ export interface SessionRow {
   /** Since it started: "12m", "3h 4m". */
   elapsed: string
   cost: number
+  /** Why it waits, for a Needs you or Done row (lib/needs.ts). */
+  need?: Need
 }
 
 export interface LimitRow {
@@ -55,8 +57,10 @@ export interface LimitRow {
 
 export interface PopoverModel {
   approvals: ApprovalRow[]
-  /** Turn ended, waiting for your next message. */
+  /** Turn ended needing you: a question, a failed turn (lib/needs.ts). */
   waiting: SessionRow[]
+  /** Turn ended asking nothing: listed apart, never counted. */
+  done: SessionRow[]
   live: SessionRow[]
   /** Live sessions beyond the ones listed. */
   moreLive: number
@@ -108,6 +112,7 @@ function row(s: SessionSummary, now: number): SessionRow {
     phrase: s.activity?.phrase ?? '',
     elapsed: fmtElapsed(now - (s.started_at || now)),
     cost: s.stats?.cost_usd ?? 0,
+    need: s.activity?.need,
   }
 }
 
@@ -130,6 +135,7 @@ function ms(v: string | number | undefined): number {
 export function buildPopover({ sessions, permissions, summary, now }: PopoverInput): PopoverModel {
   const approvals: ApprovalRow[] = []
   const waiting: SessionRow[] = []
+  const done: SessionRow[] = []
   const running: SessionRow[] = []
   for (const s of sessions) {
     if (!s || s.status === 'ended' || s.kind === 'shell') continue
@@ -138,6 +144,9 @@ export function buildPopover({ sessions, permissions, summary, now }: PopoverInp
       approvals.push({ session: s, project: projectOf(s), title: sessionTitle(s), permission: p, canApprove: canApprove(p) })
     } else if (dotOf(s, false) === 'waiting') {
       waiting.push(row(s, now))
+    } else if (dotOf(s, false) === 'done') {
+      // Half a day on it is work put down, as the sidebar's Older says.
+      if (now - (ms(s.activity?.at) || s.last_event_at) <= STALE_MS) done.push(row(s, now))
     } else {
       running.push(row(s, now))
     }
@@ -145,6 +154,8 @@ export function buildPopover({ sessions, permissions, summary, now }: PopoverInp
   // The one that has waited longest has cost the most time: first.
   approvals.sort((a, b) => ms(a.permission.since) - ms(b.permission.since))
   waiting.sort((a, b) => (ms(a.session.activity?.at) || a.session.last_event_at) - (ms(b.session.activity?.at) || b.session.last_event_at))
+  // Done: the newest first, the one most likely to be what you came for.
+  done.sort((a, b) => (ms(b.session.activity?.at) || b.session.last_event_at) - (ms(a.session.activity?.at) || a.session.last_event_at))
   // Working before idle, then the most recent.
   running.sort((a, b) =>
     Number(dotOf(b.session, false) === 'working') - Number(dotOf(a.session, false) === 'working') ||
@@ -152,6 +163,7 @@ export function buildPopover({ sessions, permissions, summary, now }: PopoverInp
   return {
     approvals,
     waiting,
+    done: done.slice(0, MAX_LIVE),
     live: running.slice(0, MAX_LIVE),
     moreLive: Math.max(0, running.length - MAX_LIVE),
     limits: [...limitRows('Claude', summary?.rate_limits, now), ...limitRows('Codex', summary?.codex_rate_limits, now)],

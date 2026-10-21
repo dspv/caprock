@@ -1708,6 +1708,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		AlertApproval:    c.AlertApprovalOn(),
 		AlertFinished:    c.AlertFinishedOn(),
 		AlertReply:       c.AlertReplyOn(),
+		AlertDone:        c.AlertDoneOn(),
 		TelegramChat:     c.TelegramChatOn(),
 		TelegramCode:     c.TelegramCodeOn(),
 		NotifyApproval:   c.NotifyApprovalOn(),
@@ -1780,10 +1781,11 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.SpawnPermissionMode = in.SpawnMode
 	a.d.opt.Config.ReportChatID = strings.TrimSpace(in.ReportChatID)
 	a.d.opt.Config.GeminiAPIKey = strings.TrimSpace(in.GeminiAPIKey)
-	approval, finished, reply := in.AlertApproval, in.AlertFinished, in.AlertReply
+	approval, finished, reply, done := in.AlertApproval, in.AlertFinished, in.AlertReply, in.AlertDone
 	a.d.opt.Config.AlertApproval = &approval
 	a.d.opt.Config.AlertFinished = &finished
 	a.d.opt.Config.AlertReply = &reply
+	a.d.opt.Config.AlertDone = &done
 	tgChat, tgCode := in.TelegramChat, in.TelegramCode
 	a.d.opt.Config.TelegramChat = &tgChat
 	a.d.opt.Config.TelegramCode = &tgCode

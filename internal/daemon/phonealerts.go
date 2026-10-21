@@ -14,6 +14,7 @@ import (
 	"github.com/dspv/caprock/internal/alerts"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/telegram"
@@ -60,8 +61,10 @@ func (d *Daemon) botConfigured() bool {
 }
 
 // alertEnabled is the switch for one kind, read per event so a change in
-// Settings applies at once.
-func (d *Daemon) alertEnabled(k alerts.Kind) bool {
+// Settings applies at once. need is what a finished turn asks
+// (alerts.Alert.Need): a Done turn goes to Telegram as "Finished" while
+// alert_done is on, which it is unless turned off (owner, 2026-10-21).
+func (d *Daemon) alertEnabled(k alerts.Kind, need string) bool {
 	if !d.botConfigured() {
 		return false
 	}
@@ -69,17 +72,19 @@ func (d *Daemon) alertEnabled(k alerts.Kind) bool {
 	if k == alerts.KindApproval {
 		return cfg.AlertApprovalOn()
 	}
-	return cfg.AlertFinishedOn()
+	return cfg.AlertFinishedOn() && (need != narrate.NeedDone || cfg.AlertDoneOn())
 }
 
 // notifyEnabled is the desktop app's switch for one kind (WP-09), apart from
-// Telegram's and read per event like it.
-func (d *Daemon) notifyEnabled(k alerts.Kind) bool {
-	cfg := d.config()
-	if k == alerts.KindApproval {
-		return cfg.NotifyApprovalOn()
+// Telegram's and read per event like it. Everything that needs you is under
+// the one switch: a dialog at once, a turn that ended on a question or an
+// error after its minute. A Done turn raises no OS notification at all
+// (§ Needs you and Done).
+func (d *Daemon) notifyEnabled(k alerts.Kind, need string) bool {
+	if k == alerts.KindFinished && (need == narrate.NeedDone || need == "") {
+		return false
 	}
-	return cfg.NotifyFinishedOn()
+	return d.config().NotifyApprovalOn()
 }
 
 // alertLoop watches every stored event, from every agent and source, and
@@ -93,7 +98,8 @@ func (d *Daemon) notifyEnabled(k alerts.Kind) bool {
 // § Notifications).
 func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 	defer sub.Unsubscribe()
-	rules := alerts.New(func(k alerts.Kind) bool { return d.alertEnabled(k) || d.notifyEnabled(k) })
+	rules := alerts.New(nil)
+	rules.EnabledFor = func(k alerts.Kind, need string) bool { return d.alertEnabled(k, need) || d.notifyEnabled(k, need) }
 	t := time.NewTicker(alertTick)
 	defer t.Stop()
 	for {
@@ -127,10 +133,11 @@ func (d *Daemon) alertLoop(ctx context.Context, sub *bus.Subscriber) {
 // deliverAlert hands one decision to each sender switched on for its kind:
 // the notify frame first, since it stays on the machine and is quick.
 func (d *Daemon) deliverAlert(ctx context.Context, a alerts.Alert) {
-	if d.notifyEnabled(a.Kind) {
+	need := a.Need()
+	if d.notifyEnabled(a.Kind, need) {
 		d.publishNotify(ctx, a)
 	}
-	if d.alertEnabled(a.Kind) && !d.telegramHandles(a.SessionID) {
+	if d.alertEnabled(a.Kind, need) && !d.telegramHandles(a.SessionID) {
 		d.sendAlert(ctx, a)
 	}
 }

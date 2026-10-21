@@ -165,17 +165,24 @@ func TestTheAppSwitchIsApartFromTelegrams(t *testing.T) {
 	}
 }
 
-// "Finished" is off in the app unless switched on.
-func TestAFinishedNotificationIsOffByDefault(t *testing.T) {
-	stop := event.Event{SessionID: "s1", Kind: event.KindAgentStop, Ts: reportNow}
-	a := alerts.Alert{Kind: alerts.KindFinished, SessionID: "s1", Trigger: stop}
+// A Done turn raises no OS notification, whatever the old "finished" switch
+// says; a turn that ended on a question is "Needs your answer" under the
+// needs-you switch, on by default (§ Needs you and Done).
+func TestOnlyATurnThatNeedsYouNotifies(t *testing.T) {
+	stop := func(msg string) alerts.Alert {
+		b, _ := json.Marshal(map[string]string{"last_assistant_message": msg})
+		return alerts.Alert{Kind: alerts.KindFinished, SessionID: "s1", Trigger: event.Event{SessionID: "s1", Kind: event.KindAgentStop, Ts: reportNow, Payload: b}}
+	}
 	for _, c := range []struct {
 		name string
 		cfg  config.Config
+		a    alerts.Alert
 		want int
 	}{
-		{"default", config.Config{}, 0},
-		{"switched on", config.Config{NotifyFinished: ptr(true)}, 1},
+		{"done, default", config.Config{}, stop("Pushed the branch."), 0},
+		{"done, finished switched on", config.Config{NotifyFinished: ptr(true)}, stop("Pushed the branch."), 0},
+		{"a question, default", config.Config{}, stop("Merge it?"), 1},
+		{"a question, needs-you off", config.Config{NotifyApproval: ptr(false)}, stop("Merge it?"), 0},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			d, _ := reportDaemon(t, "http://127.0.0.1:1", c.cfg)
@@ -184,7 +191,7 @@ func TestAFinishedNotificationIsOffByDefault(t *testing.T) {
 			defer cancel()
 			sink := &notifySink{}
 			sink.watch(ctx, d.bus)
-			d.deliverAlert(ctx, a)
+			d.deliverAlert(ctx, c.a)
 			time.Sleep(50 * time.Millisecond)
 			if got := len(sink.all()); got != c.want {
 				t.Fatalf("published %d, want %d", got, c.want)

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/toolcmd"
 )
 
@@ -115,6 +116,8 @@ func headline(a Alert) string {
 		return "⚠️ <b>Stopped on an error</b>"
 	case a.Kind == KindFinished && a.Queued != "":
 		return "✅ <b>Queued message done</b>"
+	case a.Kind == KindFinished && a.Need() == narrate.NeedAsks:
+		return "❓ <b>Needs your answer</b>"
 	case a.Kind == KindFinished:
 		return "✅ <b>Finished</b>"
 	case a.Question:

@@ -197,6 +197,7 @@ describe('track state follows the daemon, not the bars', () => {
     // track said "working" while Claude sat waiting for the user to type.
     // The bars describe the past hour; health describes this moment.
     expect(trackState(busy, 'waiting-on-you')).toEqual({ kind: 'waiting', label: 'waiting on you' })
+    expect(trackState(busy, 'done')).toEqual({ kind: 'quiet', label: 'done' })
   })
 
   it('reports an error rather than calling it work', () => {

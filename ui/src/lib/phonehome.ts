@@ -5,6 +5,7 @@
  */
 import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary } from './api'
 import { quotePath } from './xtermInput'
+import { isDone, needsYou, oldestFirst } from './needs'
 
 /** How many sessions Continue lists. */
 export const CONTINUE_MAX = 5
@@ -24,21 +25,28 @@ function rank(s: SessionSummary): number {
 }
 
 /**
- * The sessions worth one tap: waiting on you first, then working, then the
- * rest of what is open, then what ended lately — newest first within each,
- * the last two days only, at most CONTINUE_MAX.
+ * The sessions worth one tap: needing you first, then working, then the rest
+ * of what is open, then what ended lately — newest first within each, the
+ * last two days only, at most CONTINUE_MAX. A Done turn is not here: it folds
+ * into its own row below (doneList; § Needs you and Done).
  */
 export function continueList(sessions: readonly SessionSummary[], now: number, max = CONTINUE_MAX): SessionSummary[] {
   return sessions
+    .filter((s) => !isDone(s))
     .filter((s) => rank(s) < 2 || now - at(s) < CONTINUE_WINDOW_MS)
     .slice()
     .sort((a, b) => rank(a) - rank(b) || at(b) - at(a))
     .slice(0, max)
 }
 
-/** Sessions a permission prompt or a question holds, that this screen may answer. */
+/** Sessions whose turn ended asking nothing, the last two days, newest first: the folded Done row. */
+export function doneList(sessions: readonly SessionSummary[], now: number): SessionSummary[] {
+  return sessions.filter((s) => isDone(s) && now - at(s) < CONTINUE_WINDOW_MS).sort((a, b) => at(b) - at(a))
+}
+
+/** Sessions that need you and that this screen may answer, oldest first: the amber card. */
 export function waitingOnYou(sessions: readonly SessionSummary[]): SessionSummary[] {
-  return sessions.filter((s) => s.activity?.health === 'waiting-on-you' && s.owned && s.status !== 'ended' && !s.detached)
+  return oldestFirst(sessions.filter((s) => needsYou(s) && s.owned && !s.detached))
 }
 
 /** What another app shared, read off the share target's GET (manifest.json). */
@@ -123,14 +131,15 @@ export function keepFolds(f: Record<FoldKey, boolean>): void {
   try { localStorage.setItem(FOLDS_KEY, JSON.stringify(f)) } catch { /* this device only; not remembering is fine */ }
 }
 
-/** Continue folded: how many of its rows wait on you, work, and sit idle (ended rows are not counted). */
-export function continueCounts(rows: readonly SessionSummary[]): { waiting: number; working: number; idle: number } {
-  const n = { waiting: 0, working: 0, idle: 0 }
+/** Continue folded: how many of its rows need you, work, are done and sit idle (ended rows are not counted). */
+export function continueCounts(rows: readonly SessionSummary[]): { waiting: number; working: number; done: number; idle: number } {
+  const n = { waiting: 0, working: 0, done: 0, idle: 0 }
   for (const s of rows) {
     if (s.status === 'ended') continue
     const h = s.activity?.health
     if (h === 'waiting-on-you') n.waiting++
     else if (h === 'working' || h === 'looping') n.working++
+    else if (h === 'done') n.done++
     else n.idle++
   }
   return n

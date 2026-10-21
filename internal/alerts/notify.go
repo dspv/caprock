@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/narrate"
 )
 
 // Notification is an alert as the app shows it: the `notify` frame on
@@ -32,8 +33,11 @@ type Notification struct {
 }
 
 // The kinds a notification has beyond the alert's own: a turn that ended on an
-// error rather than a Stop.
-const kindError = "error"
+// error rather than a Stop, and one whose last message asks something.
+const (
+	kindError    = "error"
+	kindQuestion = "question"
+)
 
 // Notify renders an alert for the app. promptID is the owned session's waiting
 // prompt, empty when there is none Caprock can answer; with one, the
@@ -42,6 +46,8 @@ func Notify(a Alert, d Details, promptID string) Notification {
 	kind := string(a.Kind)
 	if a.Kind == KindFinished && a.Trigger.Kind == event.KindThrottle {
 		kind = kindError
+	} else if a.Kind == KindFinished && a.Queued == "" && a.Need() == narrate.NeedAsks {
+		kind = kindQuestion
 	}
 	n := Notification{
 		ID:        fmt.Sprintf("%s-%s-%d", a.Kind, a.SessionID, a.Trigger.Ts.UnixMilli()),
@@ -91,6 +97,10 @@ func plainHeadline(a Alert) string {
 		return "Stopped on an error"
 	case a.Kind == KindFinished && a.Queued != "":
 		return "Queued message done"
+	case a.Kind == KindFinished && a.Need() == narrate.NeedAsks:
+		// The turn ended on a question: what it wants is an answer, and
+		// "Finished" told the owner there was nothing to do (2026-10-21).
+		return "Needs your answer"
 	case a.Kind == KindFinished:
 		return "Finished"
 	case a.Question:

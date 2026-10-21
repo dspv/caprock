@@ -215,7 +215,7 @@ describe('PhoneHome folds, limits and rows', () => {
     // Folding Continue leaves the counts.
     fireEvent.click(header('Continue'))
     expect(screen.queryByText('work in alpha')).toBeNull()
-    expect(screen.getByRole('region', { name: 'Continue' }).querySelector('[data-fold-summary]')?.textContent).toBe('1 waiting · 1 working · 1 idle')
+    expect(screen.getByRole('region', { name: 'Continue' }).querySelector('[data-fold-summary]')?.textContent).toBe('1 need you · 1 working · 1 idle')
     expect(JSON.parse(localStorage.getItem(FOLDS_KEY)!)).toEqual({ continue: true, releases: true, saved: true })
   })
 

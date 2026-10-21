@@ -53,7 +53,10 @@ when it is done.
    ten minutes, only from a private chat, and only once. Where the token is
    kept and what it is sent to is behind the **i** beside them.
 4. **Choose what to hear.** Tick *When a session is waiting for approval*
-   and/or *When a session has finished*, then **Send a test alert**.
+   and/or *When a session has finished*, then **Send a test alert**. A
+   finished turn whose last message asks you something says *Needs your
+   answer*; one that asks nothing says *Finished*, unless you untick *Also
+   when it asked nothing (Done)*.
 5. **Talk back (Premium).** With a licence, tick *Let my paired chat talk to
    sessions* in **Talk to your agents from Telegram**, just under. It is off
    until you turn it on, licence or not.

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ func TestProjectActivity(t *testing.T) {
 	// The day's start is half an hour back, not the calendar midnight: a run
 	// at 00:00:02 put the event a minute before now into yesterday.
 	dayStart := now.Add(-30 * time.Minute)
-	for _, id := range []string{"waits", "asks", "works", "subagent", "background", "ended"} {
+	for _, id := range []string{"waits", "asks", "works", "subagent", "background", "ended", "done"} {
 		if err := UpsertSession(ctx, db, id, SessionPatch{Cwd: "/nowhere/proj"}); err != nil {
 			t.Fatal(err)
 		}
@@ -65,13 +66,15 @@ func TestProjectActivity(t *testing.T) {
 	usd := func(v float64) *float64 { return &v }
 	evs := []event.Event{
 		{SessionID: "waits", Kind: event.KindTurnAssistant, Model: "claude-opus-4-1", CostUSD: usd(1.5), Ts: now.Add(-time.Minute)},
-		{SessionID: "waits", Kind: event.KindAgentStop, Ts: now},
+		{SessionID: "waits", Kind: event.KindAgentStop, Ts: now, Payload: json.RawMessage(`{"last_assistant_message":"Merge it?"}`)},
+		// Its turn ended asking nothing: Done, not waiting on anyone.
+		{SessionID: "done", Kind: event.KindAgentStop, Ts: now, Payload: json.RawMessage(`{"last_assistant_message":"Pushed the branch."}`)},
 		{SessionID: "asks", Kind: event.KindPermissionPrompt, Tool: "Bash", Ts: now},
 		{SessionID: "works", Kind: event.KindToolPre, Tool: "Bash", Ts: now},
 		{SessionID: "subagent", Kind: event.KindAgentStop, AgentID: "a1", Ts: now},
 		// Its turn ended with a subagent still at work: not waiting on anyone.
 		{SessionID: "background", Kind: event.KindToolPre, Tool: "Bash", AgentID: "a2", Ts: now.Add(-2 * time.Second)},
-		{SessionID: "background", Kind: event.KindAgentStop, Ts: now.Add(-time.Second)},
+		{SessionID: "background", Kind: event.KindAgentStop, Ts: now.Add(-time.Second), Payload: json.RawMessage(`{"last_assistant_message":"Which one?"}`)},
 		{SessionID: "works", Kind: event.KindTurnAssistant, Model: "codex-auto-review", CostUSD: usd(9), Ts: now},
 		{SessionID: "ended", Kind: event.KindTurnAssistant, Model: "claude-opus-4-1", CostUSD: usd(0.25), Ts: dayStart.Add(-time.Hour)},
 	}
@@ -91,8 +94,8 @@ func TestProjectActivity(t *testing.T) {
 	if a == nil {
 		t.Fatalf("no activity for the folder: %v", act)
 	}
-	if a.Total != 6 || a.Live != 5 || a.Waiting != 2 {
-		t.Fatalf("total %d live %d waiting %d; want 6, 5, 2", a.Total, a.Live, a.Waiting)
+	if a.Total != 7 || a.Live != 6 || a.Waiting != 2 {
+		t.Fatalf("total %d live %d waiting %d; want 7, 6, 2", a.Total, a.Live, a.Waiting)
 	}
 	if a.CostToday != 1.5 {
 		t.Fatalf("cost today %v; want 1.5 (yesterday's and the internal review's left out)", a.CostToday)

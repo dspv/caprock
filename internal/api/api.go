@@ -353,6 +353,9 @@ type Settings struct {
 	// AlertReply puts the first line of the final reply in a finished alert;
 	// on unless turned off.
 	AlertReply bool `json:"alert_reply"`
+	// AlertDone sends a turn that asked nothing (Done) as a finished alert;
+	// on unless turned off. The desktop app never notifies one.
+	AlertDone bool `json:"alert_done"`
 	// TelegramChat is the two-way Telegram switch (Premium, ADR-047);
 	// TelegramCode keeps code blocks in the replies sent there. Both off
 	// unless turned on.
@@ -530,6 +533,9 @@ type Server struct {
 	// recent keeps each listed session's reads of its own events between
 	// requests, by events generation (recentcache.go).
 	recent recentCache
+	// moves are the owner's "needs me?" / "not needed" over a guessed turn
+	// (needmove.go).
+	moves needMoves
 	// pace keeps each plan window's measured slope by the newest sample it
 	// was computed from (pacecache.go).
 	pace paceCache
@@ -632,6 +638,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions", s.handleSessions)
 	m.HandleFunc("GET /v1/sessions/{id}", s.handleSession)
 	m.HandleFunc("PUT /v1/sessions/{id}/name", s.handleRenameSession)
+	m.HandleFunc("PUT /v1/sessions/{id}/needs", s.handleNeedMove)
 	// Chats (ADR-071): the list, archive, delete, and the files each wrote.
 	m.HandleFunc("GET /v1/chats", s.handleChats)
 	m.HandleFunc("POST /v1/chats/import", s.handleChatImport)
@@ -1092,6 +1099,9 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 				opt.Nudge = &n
 			}
 		}
+	}
+	if m, ok := s.moves.get(sess.SessionID); ok {
+		opt.Move = &m
 	}
 	act := narrate.Summarize(last, opt)
 	if act.Health == narrate.HealthWorking && act.Background == 0 && !act.FromInput && sess.Status == store.StatusIdle {
@@ -1630,6 +1640,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		AlertApproval  *bool   `json:"alert_approval"`
 		AlertFinished  *bool   `json:"alert_finished"`
 		AlertReply     *bool   `json:"alert_reply"`
+		AlertDone      *bool   `json:"alert_done"`
 		TelegramChat   *bool   `json:"telegram_chat"`
 		TelegramCode   *bool   `json:"telegram_code"`
 		NotifyApproval *bool   `json:"notify_approval"`
@@ -1800,6 +1811,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.AlertReply != nil {
 		in.AlertReply = *patch.AlertReply
+	}
+	if patch.AlertDone != nil {
+		in.AlertDone = *patch.AlertDone
 	}
 	if patch.TelegramChat != nil {
 		in.TelegramChat = *patch.TelegramChat

@@ -42,7 +42,7 @@ export function PhoneAlerts() {
   const s: Settings = { ...loaded, ...patch }
   const configured = !!s.report_bot_set && !!s.report_chat_id
 
-  const toggle = (key: 'alert_approval' | 'alert_finished' | 'alert_reply', on: boolean) => {
+  const toggle = (key: 'alert_approval' | 'alert_finished' | 'alert_reply' | 'alert_done', on: boolean) => {
     setPatch((p) => ({ ...p, [key]: on }))
     void api.saveSettings({ [key]: on } as Partial<Settings> as Settings).catch((e) => setError(errText(e)))
   }
@@ -105,7 +105,13 @@ export function PhoneAlerts() {
             checked={s.alert_finished === true}
             onChange={(on) => toggle('alert_finished', on)}
             label="When a session has finished"
-            hint="After a minute with nothing new, so replying straight away sends nothing."
+            hint="After a minute with nothing new, so replying straight away sends nothing. A turn that ended on a question says Needs your answer."
+          />
+          <Toggle
+            checked={s.alert_done !== false}
+            onChange={(on) => toggle('alert_done', on)}
+            label="Also when it asked nothing (Done)"
+            hint="Finished, for a turn whose last message asks nothing. Off: only turns that ended on a question or an error."
           />
           <Toggle
             checked={s.alert_reply !== false}

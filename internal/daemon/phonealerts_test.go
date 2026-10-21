@@ -79,7 +79,7 @@ func TestADialogReachesThePhoneWithoutALicence(t *testing.T) {
 // Without a bot the switches mean nothing and nothing leaves the machine.
 func TestNoBotNoAlerts(t *testing.T) {
 	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{})
-	if d.alertEnabled("approval") || d.alertEnabled("finished") {
+	if d.alertEnabled("approval", "") || d.alertEnabled("finished", "done") {
 		t.Fatal("an alert kind is enabled with no bot configured")
 	}
 	if err := d.SendAlertCheck(context.Background()); err == nil {
@@ -90,8 +90,33 @@ func TestNoBotNoAlerts(t *testing.T) {
 func TestASwitchTurnsOneKindOff(t *testing.T) {
 	on, off := true, false
 	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat", AlertApproval: &on, AlertFinished: &off})
-	if !d.alertEnabled("approval") || d.alertEnabled("finished") {
+	if !d.alertEnabled("approval", "") || d.alertEnabled("finished", "done") {
 		t.Fatal("switches not honoured")
+	}
+}
+
+// A Done turn still goes to Telegram as "Finished" unless alert_done is
+// turned off, and never raises an OS notification; a turn that ended on a
+// question or an error is a "needs you" notification under the approval
+// switch (owner, 2026-10-21).
+func TestDoneGoesToTelegramButNotTheDesktop(t *testing.T) {
+	on, off := true, false
+	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat", AlertFinished: &on, NotifyFinished: &on})
+	if !d.alertEnabled("finished", "done") || !d.alertEnabled("finished", "asks") {
+		t.Fatal("Telegram must hear a Done turn by default")
+	}
+	if d.notifyEnabled("finished", "done") {
+		t.Fatal("a Done turn raised an OS notification")
+	}
+	if !d.notifyEnabled("finished", "asks") || !d.notifyEnabled("finished", "error") || !d.notifyEnabled("approval", "") {
+		t.Fatal("a turn that needs you must notify")
+	}
+	d2, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat", AlertFinished: &on, AlertDone: &off, NotifyApproval: &off})
+	if d2.alertEnabled("finished", "done") || !d2.alertEnabled("finished", "asks") {
+		t.Fatal("alert_done off must hold back only Done turns")
+	}
+	if d2.notifyEnabled("finished", "asks") || d2.notifyEnabled("approval", "") {
+		t.Fatal("notify_approval off must hold back every needs-you notification")
 	}
 }
 
@@ -99,7 +124,7 @@ func TestASwitchTurnsOneKindOff(t *testing.T) {
 // own: both kinds stay off until switched on (owner, 2026-10-05).
 func TestAlertsAreOffUntilSwitchedOn(t *testing.T) {
 	d, _ := reportDaemon(t, "http://127.0.0.1:1", config.Config{ReportBotToken: "tok", ReportChatID: "chat"})
-	if d.alertEnabled("approval") || d.alertEnabled("finished") {
+	if d.alertEnabled("approval", "") || d.alertEnabled("finished", "done") {
 		t.Fatal("an alert kind is on although nobody switched it on")
 	}
 }
