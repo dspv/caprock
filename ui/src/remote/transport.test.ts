@@ -396,3 +396,77 @@ describe('what Details reads', () => {
     ch.close()
   })
 })
+
+// The owner, 2026-10-21 (translated): "When the phone loses network while
+// Caprock is open, I see 'Retry' and 'Pair again'." A phone without a
+// network is said to be one at once, and never sent to pair again.
+describe('a phone that loses its network', () => {
+  it('the browser saying offline hangs up an open channel at once, as no internet', async () => {
+    let online = true
+    const ch = new Channel(machine, FakeSocket as unknown as typeof WebSocket, () => online)
+    const p = ch.connect()
+    last().open()
+    last().answer()
+    await p
+    online = false
+    ch.wentOffline()
+    expect(ch.state).toBe('offline')
+    expect(ch.problem).toBe('no-internet')
+    expect(ch.nextAt).not.toBeNull()
+    online = true
+    ch.wake()
+    last().open()
+    last().answer()
+    expect(ch.state).toBe('open')
+    expect(ch.problem).toBe('')
+    ch.close()
+  })
+
+  it('a channel that drops while the browser is offline is no internet, whatever the socket said', async () => {
+    let online = true
+    const ch = new Channel(machine, FakeSocket as unknown as typeof WebSocket, () => online)
+    const p = ch.connect()
+    last().open()
+    last().answer()
+    await p
+    online = false
+    last().serverClose(1006)
+    expect(ch.problem).toBe('no-internet')
+    ch.close()
+  })
+
+  it('a relay that is down while the page origin answers nothing either is no internet', async () => {
+    const ch = new Channel(machine, FakeSocket as unknown as typeof WebSocket, () => true, () => Promise.resolve(false))
+    const p = ch.connect()
+    last().serverClose(1006)
+    await expect(p).rejects.toThrow()
+    await Promise.resolve()
+    expect(ch.problem).toBe('no-internet')
+    ch.close()
+  })
+
+  it('a relay that is down while the page origin answers stays the relay', async () => {
+    const ch = new Channel(machine, FakeSocket as unknown as typeof WebSocket, () => true, () => Promise.resolve(true))
+    const p = ch.connect()
+    last().serverClose(1006)
+    await expect(p).rejects.toThrow()
+    await Promise.resolve()
+    expect(ch.problem).toBe('relay-unreachable')
+    ch.close()
+  })
+
+  it('offline never touches a refused pairing', async () => {
+    const ch = channel()
+    void ch.connect().catch(() => {})
+    for (let i = 0; i < REFUSALS_FOR_WRONG_MACHINE; i++) {
+      if (i > 0) await vi.advanceTimersByTimeAsync(ch.nextAt! - Date.now())
+      last().open()
+      last().serverClose(1000)
+      await Promise.resolve()
+    }
+    expect(ch.problem).toBe('wrong-machine')
+    ch.wentOffline()
+    expect(ch.problem).toBe('wrong-machine')
+    ch.close()
+  })
+})

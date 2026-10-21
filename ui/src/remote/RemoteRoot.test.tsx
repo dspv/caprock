@@ -6,28 +6,40 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { listenForInstall } from './install'
 import RemoteRoot, { barLabel, detailRows, EXPLAIN_AFTER_MS, explain } from './RemoteRoot'
+import { BACKOFF_MS } from './transport'
 
 afterEach(() => {
   cleanup()
   localStorage.clear()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   vi.resetModules()
 })
 
-describe('the words for each problem', () => {
+describe('the words for each cause', () => {
   it('names the computer, the relay and the next step', () => {
-    expect(explain('machine-offline', 'Mac mini', 'wss://relay.caprock.dev').title).toBe('Connected to the relay — your computer is offline')
-    expect(explain('relay-unreachable', 'Mac mini', 'wss://relay.caprock.dev').body).toContain('relay.caprock.dev')
-    expect(explain('removed', 'Mac mini', '').title).toBe('Paired device removed: pair again')
-    expect(explain('removed', 'Mac mini', '').body).toContain('Settings → Use on your phone → Connect a phone')
-    expect(explain('no-answer', 'Mac mini', '').body).toContain('asleep')
+    expect(explain('computer', 'machine-offline', 'Mac mini', 'wss://relay.caprock.dev').title).toBe('Your computer isn’t answering')
+    expect(explain('computer', 'machine-offline', 'Mac mini', 'wss://relay.caprock.dev').body).toContain('Mac mini is not connected')
+    expect(explain('computer', 'no-answer', 'Mac mini', '').body).toContain('asleep')
+    expect(explain('offline', 'no-internet', 'Mac mini', '').title).toBe('No internet on this phone')
+    expect(explain('offline', 'no-internet', 'Mac mini', '').body).toBe('Reconnects by itself when the network is back.')
+    expect(explain('unpaired', 'removed', 'Mac mini', '').title).toBe('This phone was removed')
+    expect(explain('unpaired', 'removed', 'Mac mini', '').body).toContain('Settings → Use on your phone')
+    expect(explain('unpaired', 'wrong-machine', 'Mac mini', '').title).toBe('Pair this phone again')
+  })
+  it('never says pair again for a network problem', () => {
+    for (const cause of ['offline', 'relay', 'computer', 'reconnecting'] as const) {
+      const e = explain(cause, '', 'Mac mini', 'wss://relay.caprock.dev')
+      expect(`${e.title} ${e.body}`.toLowerCase()).not.toContain('pair')
+    }
   })
   it('keeps the bar short, and says "Connecting…" only while an attempt is under way', () => {
     expect(barLabel('open', '')).toBe('')
     expect(barLabel('connecting', 'machine-offline')).toBe('Connecting…')
     expect(barLabel('offline', 'machine-offline')).toBe('Computer offline')
     expect(barLabel('open', 'removed')).toBe('Removed: pair again')
+    expect(barLabel('connecting', 'lost', false)).toBe('No internet')
   })
 })
 
@@ -46,23 +58,19 @@ describe('the first screen', () => {
 })
 
 // Vova, 2026-10-15 (translated): "the link doesn't load; maybe it's some
-// restrictions, my VPN isn't working well right now". Three failures, three
-// different fixes, each said in so many words.
-describe('the three failures a person can act on', () => {
+// restrictions, my VPN isn't working well right now". Each failure has its
+// own fix, said in so many words.
+describe('the failures a person can act on', () => {
   it('cannot reach the relay: names both addresses and the VPN', () => {
-    const e = explain('relay-unreachable', 'Mac mini', 'wss://relay.caprock.dev', 'm.caprock.dev')
+    const e = explain('relay', 'relay-unreachable', 'Mac mini', 'wss://relay.caprock.dev', 'm.caprock.dev')
     expect(e.title).toBe('Can’t reach the relay')
     expect(e.body).toContain('relay.caprock.dev / m.caprock.dev')
-    expect(e.body).toContain('check your connection or VPN'.replace('check', 'Check'))
+    expect(e.body).toContain('VPN')
   })
   it('the relay answers, the computer is not there', () => {
-    const e = explain('machine-offline', 'Mac mini', 'wss://relay.caprock.dev', 'm.caprock.dev')
-    expect(e.title).toContain('Connected to the relay')
-    expect(e.body).toContain('Mac mini is not connected')
+    const e = explain('computer', 'machine-offline', 'Mac mini', 'wss://relay.caprock.dev', 'm.caprock.dev')
+    expect(e.body).toContain('The relay is reachable')
     expect(e.body).not.toContain('VPN')
-  })
-  it('the computer removed this phone', () => {
-    expect(explain('removed', 'Mac mini', '').title).toContain('Paired device removed')
   })
 })
 
@@ -114,6 +122,11 @@ function storeMachine(token: string) {
   if (token) localStorage.setItem('caprock.device.token', token)
 }
 
+/** The page's own origin answers (a network) or not (none at all). */
+function pageAnswers(ok: boolean) {
+  vi.stubGlobal('fetch', () => (ok ? Promise.resolve(new Response(null)) : Promise.reject(new TypeError('Failed to fetch'))))
+}
+
 async function freshRoot() {
   vi.resetModules()
   return (await import('./RemoteRoot')).default
@@ -138,9 +151,10 @@ describe('the page, opened again', () => {
     expect(screen.queryByTestId('connection-problem')).toBeNull()
   })
 
-  it('a relay it cannot reach is said so, with Details', async () => {
+  it('a relay it cannot reach is said so, with Details, once it has been down a while', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] })
     stubRelay({ code: 1006, open: false })
+    pageAnswers(true)
     storeMachine('tok')
     const Root = await freshRoot()
     render(<Root />)
@@ -148,12 +162,15 @@ describe('the page, opened again', () => {
       vi.advanceTimersByTime(EXPLAIN_AFTER_MS + 1500)
     })
     const card = screen.getByTestId('connection-problem')
+    expect(card.dataset.cause).toBe('relay')
     expect(card.textContent).toContain('Can’t reach the relay')
     expect(card.textContent).toContain('VPN')
     expect(screen.getByTestId('connection-details').textContent).toContain('relay-unreachable')
+    expect(screen.queryByRole('button', { name: 'Pair again' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry now' })).toBeTruthy()
   })
 
-  it('a relay that answers without the computer says the computer is offline', async () => {
+  it('a relay that answers without the computer says the computer is not answering, and never pair again', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] })
     stubRelay({ code: 4404, open: true })
     storeMachine('tok')
@@ -163,7 +180,63 @@ describe('the page, opened again', () => {
       vi.advanceTimersByTime(EXPLAIN_AFTER_MS + 1500)
     })
     const card = screen.getByTestId('connection-problem')
-    expect(card.textContent).toContain('Connected to the relay — your computer is offline')
+    expect(card.dataset.cause).toBe('computer')
+    expect(card.textContent).toContain('Your computer isn’t answering')
+    expect(screen.getByTestId('retry-line').textContent).toMatch(/^(Trying now…|Next try in \d+ s · attempt \d+)$/)
     expect(screen.getByTestId('connection-details').textContent).toContain('code 4404')
+    expect(screen.queryByRole('button', { name: 'Pair again' })).toBeNull()
+  })
+
+  it('a phone with no network says so at once, large, with the next try and no pair again', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] })
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    stubRelay({ code: 1006, open: false })
+    storeMachine('tok')
+    const Root = await freshRoot()
+    render(<Root />)
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    const card = screen.getByTestId('connection-problem')
+    expect(card.dataset.cause).toBe('offline')
+    expect(card.querySelector('h1')?.textContent).toBe('No internet on this phone')
+    expect(card.textContent).toContain('Reconnects by itself when the network is back.')
+    expect(screen.getByTestId('retry-line').textContent).toMatch(/Next try in \d+ s · attempt 2/)
+    expect(screen.queryByRole('button', { name: 'Pair again' })).toBeNull()
+  })
+
+  it('a relay that is down while nothing else answers either is no internet, not the relay', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] })
+    stubRelay({ code: 1006, open: false })
+    pageAnswers(false)
+    storeMachine('tok')
+    const Root = await freshRoot()
+    render(<Root />)
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    expect(screen.getByTestId('connection-problem').dataset.cause).toBe('offline')
+  })
+
+  it('offers Pair again only once the computer has refused this phone, with the reason', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'Date'] })
+    // The machine hangs up on the handshake: a computer whose keys changed.
+    stubRelay({ code: 1000, open: true })
+    storeMachine('tok')
+    const Root = await freshRoot()
+    render(<Root />)
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+    // One refusal is a computer restarting, not a verdict.
+    expect(screen.queryByRole('button', { name: 'Pair again' })).toBeNull()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BACKOFF_MS[0]! + BACKOFF_MS[1]! + 500)
+    })
+    const card = screen.getByTestId('connection-problem')
+    expect(card.dataset.cause).toBe('unpaired')
+    expect(card.textContent).toContain('its keys are not the ones this phone paired with')
+    expect(screen.getByRole('button', { name: 'Pair again' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Retry now' })).toBeNull()
   })
 })

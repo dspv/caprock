@@ -3735,7 +3735,8 @@ reinstalled the app from its own prompt in a browser tab.
 - **The phone gives up an attempt after 10 s and says why**, checks the
   machine itself, not only the relay, while connected, retries on its own
   with backoff, and names the problem after 5 s with **Retry** and **Pair
-  again** (`.ai/04-ui.md` § From anywhere).
+  again** (`.ai/04-ui.md` § From anywhere; Pair again only for a refused
+  pairing since 2026-10-21, below).
 - **Installing is the page's button, once.** Chrome's automatic prompt is
   held for an **Install the Caprock app** button that exists only while
   Chrome says the app is not installed. The manifest `id` stays `/`, so a
@@ -3805,6 +3806,28 @@ m.caprock.dev itself cannot be reached. A cached shell that then reaches
 nothing says little more than the browser's own error, and a stale shell is
 a risk of its own.
 
+
+*Amended 2026-10-21 — a bad network is not a lost pairing.* The owner
+(translated): "When the phone loses network while Caprock is open, I see
+'Retry' and 'Pair again'. I don't think 'Pair again' belongs there — the
+connection is just bad sometimes … Pair again is a pain: it means pairing
+with the computer all over again." The problem screen offered **Pair again**
+under every failure, timeouts included.
+
+- **Pair again only on the computer's own answer.** It shows for `removed`
+  and `wrong-machine` (both confirmed on separate connections, as above) and
+  for nothing else: never for a timeout, a network error, a relay that is
+  down or a computer that is asleep.
+- **No internet is told apart from the relay.** The browser's `offline`
+  hangs the channel up at once; a drop while the browser is offline is
+  `no-internet`; and when the relay does not answer, the page's own origin
+  is asked (a HEAD for its icon) — if that fails too, it is the phone's
+  network, not the relay. Nothing new leaves the phone: the page asks the
+  address it was loaded from.
+- **Large and calm, with the last screen kept.** A full-width notice names
+  the cause, says it reconnects by itself and when the next try is; Retry
+  is small. The dashboard stays under it, dimmed and inert, with how old it
+  is (`.ai/04-ui.md` § From anywhere, *Why it cannot reach the computer*).
 
 ## ADR-059 — The doctor lists processes that look abandoned, and stops one only on a direct, confirmed click (rule 7 amended)
 
