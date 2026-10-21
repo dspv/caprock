@@ -5,10 +5,6 @@ import { useSavedPromptsFor } from '@/lib/saved'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, startDictation, type Dictation } from '@/lib/speech'
 import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
-import { PTT_IDLE, pttStep, slidOff, type PttInput, type PttState } from '@/lib/holdToTalk'
-import { primeSpeech, setAutoRead, stopSpeaking, useAutoRead, useSpeaking } from '@/lib/readAloud'
-import { ChatSheet } from './ChatStart'
-import { BugReportSheet } from './BugReportSheet'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
  *  (see Terminal.tsx — a bare line feed submits once text is typed). */
@@ -138,7 +134,7 @@ export function heldLabel(h: { text: string; paths?: readonly string[] }): strin
   return h.text ? `${imgs} ${h.text}` : imgs
 }
 
-export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder, walkie = false }: {
+export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder }: {
   send: (bytes: string) => void
   /** Attaches photos. Where it returns the saved paths (the chat; one per
    *  file, '' for one that failed), each shows as an "Image N" chip over the
@@ -168,11 +164,6 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   foldKeys?: boolean
   /** The field's hint, in place of the terminal's *Type · / commands · @ files*. */
   placeholder?: string
-  /** The phone's one-row bar (owner's variant D, 2026-10-17): the read-aloud
-   *  switch, a + menu (Photo, New chat, Report a bug), a one-line field that
-   *  Enter sends, and a round hold-to-talk microphone. The raw keys and the
-   *  dictation language move to the session's ··· menu (PhoneSessionBar). */
-  walkie?: boolean
 }) {
   // A started message, else what was in the field when the page went.
   const [text, setText] = useState(() => initial || loadDraft(sessionId))
@@ -474,17 +465,12 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
     void deliver(h.text, h.paths)
   }
 
-  // The phone's hold-to-talk (lib/holdToTalk): hold to record, release to
-  // send; a short tap latches and the next tap sends; sliding off cancels.
-  // What is heard is shown in the field as it comes, after what was typed.
+  // A send while dictation listens waits for the last words (see submit).
   const submitLatest = useRef(submit)
   submitLatest.current = submit
-  const ptt = useRef<PttState>(PTT_IDLE)
-  const [pttPhase, setPttPhase] = useState<PttState['phase']>('idle')
   const sendOnEnd = useRef(false)
-  const dropHeard = useRef(false)
-  // Set when Caprock stopped the listening (Send, release, cancel), so an
-  // end the speech service chose itself is told apart.
+  // Set when Caprock stopped the listening (Send, the mic's second tap), so
+  // an end the speech service chose itself is told apart.
   const stopAsked = useRef(false)
   // What was sent while the service was still finishing; words it hands
   // back after that go into the field rather than vanish or go twice.
@@ -492,13 +478,6 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   const [recLang, setRecLang] = useState(lang)
   const endTimer = useRef(0)
   const flashTimer = useRef(0)
-  const [recAt, setRecAt] = useState(0)
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    if (!listening) return
-    const id = window.setInterval(() => setTick((n) => n + 1), 1000)
-    return () => window.clearInterval(id)
-  }, [listening])
   useEffect(() => () => { window.clearTimeout(endTimer.current); window.clearTimeout(flashTimer.current) }, [])
   const flash = (msg: string) => {
     window.clearTimeout(flashTimer.current)
@@ -515,17 +494,14 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
     submitLatest.current(said)
   }
   const startRec = (): boolean => {
-    stopSpeaking()
     beforeVoice.current = textNow.current
     sendOnEnd.current = false
-    dropHeard.current = false
     stopAsked.current = false
     sentAs.current = null
     const tag = speechLang()
     const d = startDictation({
       lang: tag,
       onText: (heard) => {
-        if (dropHeard.current) return
         const t = joinDictation(beforeVoice.current, heard)
         const sent = sentAs.current
         if (sent !== null) {
@@ -546,72 +522,17 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
         const asked = stopAsked.current
         stopAsked.current = false
         if (sendOnEnd.current) finishSend()
-        else if (!asked && ptt.current.phase !== 'idle') {
-          // The speech service stopped by itself while the mic is held or
-          // latched: the words stay, and the release (or the tap) sends them.
-          setVoiceNote(`${err ? `${speechHint(err)} ` : 'Stopped listening. '}What was heard is in the field — ${ptt.current.phase === 'latched' ? 'tap the mic' : 'let go'} to send it.`)
-        } else if (err && !dropHeard.current) setVoiceNote(speechHint(err))
+        else if (err) setVoiceNote(speechHint(err))
         else if (!asked && textNow.current.trim()) setVoiceNote('Stopped listening — what was heard is in the field. Send it, or tap the mic to go on.')
-        if (asked && ptt.current.phase !== 'idle') { ptt.current = PTT_IDLE; setPttPhase('idle') }
       },
     })
     if (!d) { setVoiceNote(speechHint('missing')); return false }
     dictation.current = d
     setListening(true)
     setRecLang(tag)
-    setRecAt(Date.now())
     setVoiceNote('')
     return true
   }
-  const endRec = (send: boolean) => {
-    const d = dictation.current
-    if (send) {
-      sendOnEnd.current = true
-      // Already ended (the speech service stopped by itself): send now.
-      if (!d) { finishSend(); return }
-      // The last words can come after stop(); send on the end, or after
-      // END_WAIT_MS if the speech service never says it ended.
-      window.clearTimeout(endTimer.current)
-      endTimer.current = window.setTimeout(finishSend, END_WAIT_MS)
-    } else {
-      // Slid off: nothing is sent, and nothing heard is thrown away either —
-      // it stays in the field to send, change or clear.
-      dropHeard.current = true
-      flash(textNow.current.trim() !== beforeVoice.current.trim()
-        ? 'Not sent — what you said is in the field.'
-        : 'Cancelled — nothing sent.')
-    }
-    if (!d) return
-    stopAsked.current = true
-    d.stop()
-  }
-  const pttInput = (i: PttInput) => {
-    const r = pttStep(ptt.current, i)
-    if (r.action === 'start') {
-      const why = speechSupport()
-      // Not here (an http page, no API): one line instead of a dead button.
-      if (why !== 'ok') { setVoiceNote(speechHint(why)); return }
-      if (!startRec()) return
-    }
-    ptt.current = r.state
-    setPttPhase(r.state.phase)
-    if (r.action === 'send') endRec(true)
-    else if (r.action === 'cancel') endRec(false)
-  }
-  const recClock = (() => {
-    void tick
-    const s = recAt ? Math.max(0, Math.floor((Date.now() - recAt) / 1000)) : 0
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-  })()
-  const autoRead = useAutoRead()
-  const reading = useSpeaking() !== null
-  const [more, setMore] = useState(false)
-  // The + sheet's dictation-language list: on the Chats screen it is the
-  // only place to change it — that screen's ··· has no Voice row, and
-  // dictation stayed in the phone's own language (owner, 2026-10-19).
-  const [moreLang, setMoreLang] = useState(false)
-  const [bug, setBug] = useState(false)
-
   const heldList = (held.length > 0 || notice) && (
     <ul aria-live="polite" aria-label="Messages waiting" className="grid gap-1.5">
       {notice && <li className="rounded-sm border border-warn/50 bg-warn/10 px-2.5 py-1.5 text-[13px] text-fg">{notice}</li>}
@@ -663,156 +584,6 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
       onChange={(e) => void onPicked([...(e.target.files ?? [])])}
     />
   )
-
-  if (walkie) {
-    const recording = pttPhase !== 'idle' && listening
-    return (
-      <div className="grid gap-1.5 border-t border-border bg-panel px-2.5 pt-2 pb-[max(8px,env(safe-area-inset-bottom))]" data-walkie-bar>
-        {heldList}
-        {chips && sessionId && (
-          <SavedChips sessionId={sessionId} onPick={(t) => setText((cur) => (cur.trim() ? `${cur.replace(/\s+$/, '')}\n${t}` : t))} />
-        )}
-        {(recording || voiceNote) && (
-          <div role="status" aria-live="polite" data-walkie-status className={`px-1 text-[13px] leading-snug ${recording ? 'text-fg' : 'text-fg-muted'}`}>
-            {recording
-              ? <><span className="text-danger">●</span> <span className="num">{recClock}</span> · {langName(recLang)} · {pttPhase === 'latched' ? 'tap the mic again to send' : 'release to send · slide off to cancel'}. Your browser&apos;s speech service turns it into text.</>
-              : voiceNote}
-          </div>
-        )}
-        {attaching && <div role="status" className="px-1 text-[13px] text-fg-muted">Adding the photo…</div>}
-        {chipRow}
-        <div className="relative flex items-center gap-1">
-          {pickers && <ChatPickerList p={chooser} listId={listId} />}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={autoRead}
-            aria-label="Read answers aloud"
-            title={autoRead ? 'New answers are read aloud — tap to turn off' : 'Read new answers aloud'}
-            data-read-aloud-switch
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              primeSpeech()
-              setAutoRead(!autoRead)
-              flash(autoRead ? 'Read-aloud off — tap Read aloud on an answer.' : 'New answers will be read aloud.')
-            }}
-            className={`grid h-11 w-10 shrink-0 place-items-center rounded-[10px] ${autoRead ? 'text-accent' : 'text-fg-faint'} ${reading ? 'animate-pulse motion-reduce:animate-none' : ''}`}
-          >
-            {autoRead ? <SpeakerIcon /> : <SpeakerOffIcon />}
-          </button>
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={more}
-            aria-label="More: photo, new chat, report a bug"
-            title="Photo, new chat, report a bug"
-            data-walkie-more
-            onClick={() => { setLang(speechLang()); setMore(true) }}
-            className="grid h-11 w-10 shrink-0 place-items-center rounded-full text-fg-muted active:bg-panel-2"
-          >
-            <PlusIcon />
-          </button>
-          {photoInput}
-          {/* 16px: iOS zooms the page into any field set smaller. */}
-          <textarea
-            ref={field}
-            value={text}
-            onChange={(e) => { setText(e.target.value); trackCaret(e.target) }}
-            onSelect={(e) => trackCaret(e.currentTarget)}
-            onKeyDown={(e) => {
-              if (chooser.onKeyDown(e)) return
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                if (text.trim() || attached.length > 0) submit()
-              }
-            }}
-            rows={1}
-            placeholder={placeholder ?? 'Message…'}
-            aria-label="Type to the session"
-            {...(pickers ? {
-              'aria-autocomplete': 'list' as const,
-              'aria-expanded': chooser.open,
-              'aria-controls': listId,
-              'aria-activedescendant': chooser.open && chooser.rows.length > 0 ? `${listId}-${chooser.active}` : undefined,
-            } : {})}
-            autoCapitalize="sentences"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="send"
-            data-filled={text.trim() || attached.length > 0 ? '' : undefined}
-            className={`input composer-field min-w-0 flex-1 resize-none overflow-y-auto rounded-[22px] leading-snug ${recording ? 'border-danger' : ''}`}
-            style={{ fontSize: 16, lineHeight: '22px', paddingTop: 10, paddingBottom: 10, paddingLeft: 16, paddingRight: 16, maxHeight: WALKIE_FIELD_MAX_PX }}
-          />
-          <button
-            type="button"
-            data-ptt
-            aria-label={recording ? (pttPhase === 'latched' ? 'Recording — tap to send' : 'Recording — release to send') : 'Hold to talk'}
-            aria-pressed={recording}
-            title="Hold to talk, release to send · tap to start, tap again to send"
-            onContextMenu={(e) => e.preventDefault()}
-            onPointerDown={(e) => {
-              e.preventDefault()
-              primeSpeech()
-              try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not supported */ }
-              pttInput({ type: 'down', at: Date.now() })
-            }}
-            onPointerUp={() => pttInput({ type: 'up', at: Date.now() })}
-            onPointerMove={(e) => {
-              if (ptt.current.phase !== 'holding') return
-              if (slidOff(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY)) pttInput({ type: 'leave' })
-            }}
-            onPointerCancel={() => pttInput({ type: 'cancel' })}
-            onKeyDown={(e) => {
-              if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
-                e.preventDefault()
-                pttInput({ type: 'key' })
-              }
-            }}
-            className={`ml-0.5 grid h-12 w-12 shrink-0 touch-none select-none place-items-center rounded-full shadow-md [-webkit-user-select:none] ${recording ? 'bg-danger text-bg' : 'bg-accent text-bg'}`}
-          >
-            <MicIcon />
-          </button>
-        </div>
-        {more && moreLang && (
-          <ChatSheet title="Dictation language" onClose={() => { setMore(false); setMoreLang(false) }}>
-            <div role="menu" aria-label="Dictation language" className="grid">
-              <LangList current={lang} onPick={(t) => { pickLang(t); setMore(false); setMoreLang(false) }} />
-            </div>
-          </ChatSheet>
-        )}
-        {more && !moreLang && (
-          <ChatSheet title="More" onClose={() => setMore(false)}>
-            <div className="grid" role="menu" aria-label="More">
-              {attach && (
-                <button type="button" role="menuitem" className={MORE_ROW} disabled={attaching}
-                  onClick={() => { setMore(false); picker.current?.click() }}>
-                  <PhotoIcon /> Photo
-                </button>
-              )}
-              <button type="button" role="menuitem" className={MORE_ROW}
-                onClick={() => { setMore(false); window.location.hash = '#/?open=chat' }}>
-                <NewChatIcon /> New chat
-              </button>
-              {voice && (
-                <button type="button" role="menuitem" className={MORE_ROW} data-walkie-lang
-                  aria-label={`Dictation language: ${langName(lang)}. Change`}
-                  onClick={() => { setLang(speechLang()); setMoreLang(true) }}>
-                  <span className="text-fg-muted"><MicIcon /></span> Dictation language
-                  <span className="ml-auto text-[14px] font-medium text-fg-muted">{langChip(lang)}</span>
-                </button>
-              )}
-              <div className="my-1 h-px bg-border" />
-              <button type="button" role="menuitem" className={MORE_ROW}
-                onClick={() => { setMore(false); setBug(true) }}>
-                <span className="text-accent"><BugIcon /></span> Report a bug
-              </button>
-            </div>
-          </ChatSheet>
-        )}
-        <BugReportSheet open={bug} onClose={() => setBug(false)} />
-      </div>
-    )
-  }
 
   return (
     <div className="grid gap-2 border-t border-border px-2 py-2">
@@ -982,12 +753,6 @@ function AttachedChips({ attached, onRemove }: { attached: readonly Attached[]; 
   )
 }
 
-/** The field's tallest in the phone's bar: three 22px lines, its padding and border. */
-const WALKIE_FIELD_MAX_PX = 3 * 22 + 20 + 2
-
-/** A row of the bar's + sheet. */
-const MORE_ROW = 'flex min-h-[50px] w-full items-center gap-3.5 rounded-[10px] px-1.5 text-left text-[16px] text-fg active:bg-panel-2 disabled:opacity-50'
-
 /**
  * Esc, Tab, the arrows, Enter and Ctrl+C as buttons: what a phone's keyboard
  * does not have and an agent's menus are answered with. Two rows of three
@@ -1060,28 +825,8 @@ function LangMenu({ current, onPick, onClose }: { current: string; onPick: (tag:
 
 const ICON = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
 
-function SpeakerIcon() {
-  return <svg {...ICON}><path d="M4 10v4h4l5 4V6L8 10z" /><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /></svg>
-}
-
-function SpeakerOffIcon() {
-  return <svg {...ICON}><path d="M4 10v4h4l5 4V6L8 10z" /><path d="M17 10l4 4M21 10l-4 4" /></svg>
-}
-
-function PlusIcon() {
-  return <svg {...ICON}><path d="M12 5v14M5 12h14" /></svg>
-}
-
 function PhotoIcon() {
   return <svg {...ICON} className="text-fg-muted"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>
-}
-
-function NewChatIcon() {
-  return <svg {...ICON} className="text-fg-muted"><path d="M4 5h16v11H9l-5 4z" /><path d="M12 8v5M9.5 10.5h5" /></svg>
-}
-
-function BugIcon() {
-  return <svg {...ICON}><rect x="8" y="7" width="8" height="12" rx="4" /><path d="M9.5 7.5L8 5M14.5 7.5L16 5M4 13h4M16 13h4M5 9l3 1.5M19 9l-3 1.5M5 18l3-2M19 18l-3-2" /></svg>
 }
 
 function MicIcon() {

@@ -86,6 +86,18 @@ rollback-journal mode). The one-line refusal names both numbers and reaches
 (`database_newer`). Ships in its own release ahead of PR #768's layout
 migration. See [ADR-082](08-decisions.md) and `RISK-10`.
 
+### 2026-10-21 — unreleased: the phone walkie-talkie bar removed
+
+Owner, 2026-10-21 (translated): "that panel with AI;DR, Stop etc. — we don't
+use them and they only get in the way for now". Removed, unused and in the
+way: the phone chat's one-row bar of 0.128.0 (speaker switch, + sheet,
+hold-to-talk) and the latest answer's card (AI;DR, Read aloud, Continue,
+Stop), with `lib/holdToTalk.ts`, `lib/readAloud.ts`, `lib/tldr.ts` and their
+tests. The phone chat uses the desktop chat's field again (Keys, Photo,
+language chip, microphone, Send). Report a bug is ⌘K only now; New chat is
+on the phone home. The daemon's `POST /v1/events/{id}/tldr` and
+`POST /v1/support` stay. See [04-ui.md](04-ui.md), the phone chat.
+
 ### 2026-10-20 — unreleased: Chat or Terminal in an agent tab
 
 An agent tab in the app has a **Chat | Terminal** switch in the strip in

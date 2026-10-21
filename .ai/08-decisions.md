@@ -5026,6 +5026,10 @@ which would mean Second Brain's runner learning it first; the two-sentence
 form proves too short for the answers people squeeze; or Claude Code's
 `-p` flags change in a way the runner's checks in ADR-063 no longer cover.
 
+**Amended 2026-10-21:** the phone's AI;DR button went with the latest
+answer's card (owner: unused and in the way). The endpoint and its cache
+stay; no screen calls them now.
+
 ---
 
 ## ADR-073 — Report a bug: on a click, to caprock.dev, never GitHub; the sheet names every field
@@ -5077,7 +5081,9 @@ message the user writes to us and sends with a click.
   says the email goes, and leaving it empty sends none.
 - **Offered** from the phone bar's **+** menu and, on a computer, from ⌘K
   *Report a bug…* (no new shortcut). *Send feedback* stays as it is for a
-  public GitHub issue.
+  public GitHub issue. *Amended 2026-10-21:* the phone bar and its **+**
+  menu were removed (owner: unused and in the way); ⌘K is the one entry,
+  and `POST /v1/support` still takes a controller phone's report.
 
 **Rules out:** filing it as a GitHub issue (public, and a report may hold
 personal data); attaching anything the user did not pick — a transcript, a

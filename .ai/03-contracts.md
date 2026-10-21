@@ -4003,7 +4003,8 @@ path cannot be read. Settings puts it in the MCP command when asked.
 ### AI;DR
 
 One agent answer squeezed into at most two short sentences, on the user's
-tap ([ADR-072](08-decisions.md)). The phone sends `Content-Type: application/json`
+tap ([ADR-072](08-decisions.md)). No screen calls it since 2026-10-21, when the
+phone's latest-answer card was removed; it stays for other clients. A caller sends `Content-Type: application/json`
 and body `{}`: over access from anywhere the channel drops Origin and Sec-Fetch-*,
 so that header is the only CSRF proof (`csrf.go`). Code: `internal/api/tldr.go`,
 `internal/brain/tldr.go`, `internal/store/tldr.go`; DDL in § AI;DR DDL

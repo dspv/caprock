@@ -25,9 +25,10 @@
  * Where a live session cannot be ended here, the sheet's first line says why
  * (owner, 2026-10-16: never silently unavailable; components/PhoneEnd).
  *
- * **Keys** and the **voice language** live in the ··· menu (owner's variant
- * D, 2026-10-17): the chat's bar at the bottom is one row, and Esc, Tab, the
- * arrows, Enter and Ctrl+C are the rare case there. Keys open a panel under
+ * **Keys** and the **voice language** are in the ··· menu too (owner's
+ * variant D, 2026-10-17), beside the chat field's own Keys button and
+ * language chip: Esc, Tab, the arrows, Enter and Ctrl+C are the rare case
+ * on a phone. Keys open a panel under
  * the bar that stays while they are pressed; each goes to the session as the
  * chat's own input does (rule 7: only a session Caprock started).
  */

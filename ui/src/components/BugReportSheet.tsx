@@ -13,9 +13,9 @@
  * is sent until **Send to support**; the daemon adds the version and the OS
  * (internal/api/support.go) and nothing else.
  *
- * Opened from the phone bar's + menu, and on a computer from ⌘K *Report a
- * bug…*. The form is kept while the sheet is closed with Cancel, and cleared
- * once a report is sent. The thank-you toast outlives the sheet, so the
+ * Opened from ⌘K *Report a bug…*; the phone chat bar's + menu went with
+ * that bar (owner, 2026-10-21). The form is kept while the sheet is closed
+ * with Cancel, and cleared once a report is sent. The thank-you toast outlives the sheet, so the
  * component renders it after `open` turns false.
  */
 import { useEffect, useId, useRef, useState, type ChangeEvent, type JSX } from 'react'
