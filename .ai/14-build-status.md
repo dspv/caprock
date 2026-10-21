@@ -76,6 +76,19 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-21 — unreleased: `end_when_done` on `POST /v1/agents`
+
+A script on the owner's machine started a Codex session with a prompt every
+30 minutes; each did its job in about 4 minutes and then sat idle, because an
+interactive TUI never exits by itself — 27 sessions, 94 processes, about 2 GB
+in a day, and the Mac swapped. `end_when_done: true` (Claude Code and Codex,
+with a prompt) ends the session the way End does once its turn finishes with
+nothing waiting: Claude Code's Stop hook, Codex's `task_complete` read by the
+importer (`codex.Ingester.OnTurnDone`). Opt-in per request, so no screen
+changes. Not built: an idle limit for sessions the dashboard, the phone or
+Telegram start — nothing ends a chat that no tab holds. See
+[03-contracts.md](03-contracts.md) § `end_when_done`.
+
 ### 2026-10-21 — unreleased: a database from a newer Caprock is refused (ADR-082)
 
 `store.Open` reads `meta.schema_version` read-only before it sets a pragma

@@ -80,6 +80,16 @@ type Ingester struct {
 	// LimitPrefix replaces store.CodexRateLimitPrefix when set.
 	LimitPrefix string
 
+	// OnTurnDone is told, once per finished request, that a thread a
+	// person started (not a subagent's, not an imported one) finished its
+	// request and nothing runs after it (Session.TurnDoneAt), with the
+	// session it is stored under. Called on Run's goroutine; nil tells no
+	// one. The daemon's end_when_done reads it (daemon/enddone.go).
+	OnTurnDone func(sessionID string, at time.Time)
+	// doneTold is the TurnDoneAt last told to OnTurnDone, by path. Only
+	// Run's goroutine touches it.
+	doneTold map[string]time.Time
+
 	// kick asks Run for a pass now rather than at the next tick (Kick).
 	kick chan struct{}
 
@@ -319,6 +329,7 @@ func (in *Ingester) once(ctx context.Context) error {
 			t.commit(s)
 		}
 		in.recordLimits(ctx, s)
+		in.tellTurnDone(f.Path, s)
 		readNow[f.Path] = true
 		changed = true
 		in.mu.Lock()
@@ -475,6 +486,23 @@ func (in *Ingester) storeID(ctx context.Context, threadID string) string {
 		return threadID
 	}
 	return in.Link.Resolve(ctx, Agent, sessionlink.Candidate{NativeID: threadID})
+}
+
+// tellTurnDone tells OnTurnDone about a request the file finished since it
+// was last told. A subagent's file says when the subagent finished, not the
+// session; an imported thread replays another agent's work.
+func (in *Ingester) tellTurnDone(path string, s *Session) {
+	if in.OnTurnDone == nil || s.Subagent || s.Imported || s.TurnDoneAt.IsZero() {
+		return
+	}
+	if in.doneTold == nil {
+		in.doneTold = map[string]time.Time{}
+	}
+	if in.doneTold[path].Equal(s.TurnDoneAt) {
+		return
+	}
+	in.doneTold[path] = s.TurnDoneAt
+	in.OnTurnDone(s.ID, s.TurnDoneAt)
 }
 
 // IsTUI reports whether a rollout was written by the Codex terminal UI — the

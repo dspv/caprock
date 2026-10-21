@@ -87,6 +87,7 @@ func (d *Daemon) startSubIngest(sub config.Subscription) {
 	case subs.AgentCodex:
 		in := codex.NewIngester([]string{filepath.Join(dir, "sessions"), filepath.Join(dir, "archived_sessions")}, d.rec, d.log, 5*time.Second)
 		in.Link = d.link
+		in.OnTurnDone = d.endDone.codexDone
 		in.Subscription = sub.ID
 		in.LimitPrefix = subs.LimitPrefix(sub.ID)
 		if d.subIn.codex == nil {

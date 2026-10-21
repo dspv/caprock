@@ -2691,6 +2691,10 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if msg := endWhenDoneRefusal(req); msg != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+		return
+	}
 	// A resume the detail screen would refuse is refused here too, with the
 	// same reason: otherwise a stale button opens a terminal that prints "No
 	// conversation found" and dies. An id the store has never seen is let

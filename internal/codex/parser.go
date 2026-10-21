@@ -246,9 +246,16 @@ func (p *parser) event(payload json.RawMessage, at time.Time, lineNo int64) {
 		// replaying their parent's history.
 		p.pending, p.taskStart = nil, p.turnsTotal()
 		p.closeCalls(at)
+		s.TurnDoneAt = time.Time{}
 		return
 	case "task_complete", "turn_aborted":
 		p.closeCalls(at)
+		// Only a request Codex completed is a finished turn: an aborted
+		// one was interrupted, which is someone at the keyboard.
+		s.TurnDoneAt = time.Time{}
+		if k.Type == "task_complete" {
+			s.TurnDoneAt = at
+		}
 		if len(p.pending) > 0 && p.turnsTotal() > p.taskStart {
 			// The last turn is never trimmed (trim), so it is here.
 			last := &p.turns[len(p.turns)-1]

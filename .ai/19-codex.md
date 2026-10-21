@@ -391,6 +391,14 @@ as "running" forever: no prompt and no output was stored at all.
   does: a prompt typed into Claude Code while a long tool runs is queued and
   the tool runs on, so a later prompt says nothing about it. Only a call
   still inside its turn says "running".
+- **`task_complete` is Codex's turn end.** The parser keeps when the newest
+  request completed (`Session.TurnDoneAt`, cleared by the next
+  `task_started` and by a `turn_aborted`), and the importer tells
+  `OnTurnDone` once per completed request of a thread a person started — not
+  a subagent's file, not an imported thread. The daemon's `end_when_done`
+  reads it to end a session started with that flag (03-contracts.md §
+  `end_when_done` on `POST /v1/agents`); nothing else does yet, so the Now
+  screen's idle reading of a Codex session is still its quiet time.
 - **History gets both once.** A one-time pass after the importer's first
   (`meta.codex_chat_backfilled`) parses every rollout that pass did not read,
   records its prompts and results under their keys, and gives each stored

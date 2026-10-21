@@ -1889,7 +1889,7 @@ machine, never from a forge's API (rule 4):
   guarded recent folder without checking that it still exists.
 
 ```
-POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, subagent_model?, resume?, fork?, command?, args?, attempts?} → {session_id, cwd, session_ids?, attempt_group?, error?}
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?} → {session_id, cwd, session_ids?, attempt_group?, error?}
 GET    /v1/attempts/{group}          → {group, base?, attempts: [AttemptView]}; 404 for an unknown group
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 GET    /v1/agents/catalog            → {agents: [CatalogEntry], licensed, home?}
@@ -2075,6 +2075,46 @@ defaults to that session's folder. Refused with 400 and a reason: `prompt`
 with `resume` (a continued session has its conversation), `relay_from` with
 `resume`, an unknown `relay_from`, a source folder that no longer exists when
 no `cwd` is given, and a brief over the limit.
+
+**`end_when_done` on `POST /v1/agents`** — end a one-job session once its
+turn finishes (`internal/daemon/enddone.go`, added 2026-10-21). An interactive
+TUI does not exit when its work is done — Codex's never does — so a script
+that starts a session with a prompt every half hour piled up 27 idle Codex
+sessions (94 processes, about 2 GB resident) in a day on the owner's machine.
+`end_when_done: true` asks the daemon to end the session the way
+`POST /v1/agents/{id}/signal {"action":"end"}` does (asked to stop, killed
+after the grace, the plan-window stop released) once its turn finishes and
+nothing waits on anyone.
+
+- **Accepted** only for a new Claude Code or Codex session (`agent` absent,
+  `claude` or `codex`) with a non-blank `prompt`. Refused with 400 and a
+  reason, starting nothing: no prompt, with `resume`, with `command`, for any
+  other agent (theirs is a turn end Caprock does not read), and a value that
+  is not a boolean. `false` or absent is an ordinary start. With `attempts`
+  every attempt carries it. Kept on the manager's own record of the session
+  and in its pty-host's metadata (`end_when_done`), so a restarted daemon
+  still knows; it is not a database column and is not shown anywhere.
+- **The turn finished** is the signal the rest of Caprock reads: Claude
+  Code's main-thread `Stop` hook, not turned back into a running turn by the
+  task runner's Stop-loop; Codex's `task_complete` in the session's rollout
+  (`codex.Ingester.OnTurnDone`; a `turn_aborted` is someone at the keyboard,
+  not done). A Claude Code session reattached after a restart is looked at
+  once: its stored events ending on the main thread's `Stop` count.
+- **Nothing waits** when, 1.5 s after that signal: no permission prompt is
+  pending; for Claude Code the newest main-thread hook event is still that
+  `Stop` (a question, a prompt or a tool call since means the session moved
+  on) and the message queue's own reading is "at the prompt"; no message is
+  queued for the session; and no subagent it started still works
+  (`store.LiveSubagents`). Otherwise the session is left running and the next
+  turn end is looked at the same way. A Codex request that asks for an
+  approval has not written `task_complete` yet.
+- **Rule 7.** Only a session Caprock started with the flag is ever ended; a
+  session started without it, a session Caprock did not start and a shell are
+  never touched.
+- **Not covered:** Claude Code with Caprock's hooks off (no `Stop` reaches the
+  daemon), and a Codex request that finished while the daemon was stopped in
+  a rollout not written to since — both stay running until ended by hand, as
+  without the flag.
 
 **`GET /v1/sessions/{id}/prs`** → `SessionPRs` `{connected, prs, fetched_at,
 refreshing?}`: the session's latest

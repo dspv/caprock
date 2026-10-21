@@ -131,6 +131,11 @@ type Session struct {
 	// of its parent's history and carries the parent's session id, so ID is
 	// the parent's and ThreadID the subagent's own.
 	Subagent bool
+	// TurnDoneAt is when the newest request Codex finished ended — its
+	// `task_complete` — while no request runs after it; zero while one
+	// runs, after a `turn_aborted`, and before any finished. It is Codex's
+	// "the turn ended", read for end_when_done (Ingester.OnTurnDone).
+	TurnDoneAt time.Time
 	// ThreadID is this file's own thread id (`session_meta.id` of its first
 	// record). For a session a person started it equals ID; for a subagent it
 	// names the subagent, and its event keys carry it (see subagentKey).

@@ -104,10 +104,15 @@ type SpawnRequest struct {
 	// "haiku", "sonnet" or "opus" (SubagentModels), or "" to follow the
 	// session. It becomes CLAUDE_CODE_SUBAGENT_MODEL in the child's
 	// environment; nothing else from the request reaches it.
-	SubagentModel string   `json:"subagent_model,omitempty"`
-	Args          []string `json:"args,omitempty"` // extra args
-	Cols          int      `json:"cols,omitempty"`
-	Rows          int      `json:"rows,omitempty"`
+	SubagentModel string `json:"subagent_model,omitempty"`
+	// EndWhenDone asks the daemon to end the session, the way End does,
+	// once its turn finishes with nothing waiting on anyone: a scripted
+	// one-job start that would otherwise sit idle at its prompt for good
+	// (daemon/enddone.go). Claude Code and Codex only, with a prompt.
+	EndWhenDone bool     `json:"end_when_done,omitempty"`
+	Args        []string `json:"args,omitempty"` // extra args
+	Cols        int      `json:"cols,omitempty"`
+	Rows        int      `json:"rows,omitempty"`
 }
 
 // Agent is a live owned session.
@@ -127,6 +132,10 @@ type Agent struct {
 	// start — an OpenCode 2 session (`--session <id>` creates it) — for the
 	// daemon to link at once; "" otherwise.
 	NativeID string
+	// EndWhenDone: the spawn asked for the session to be ended once its
+	// turn finishes (SpawnRequest.EndWhenDone). Kept in the pty-host's
+	// metadata, so a restarted daemon still knows.
+	EndWhenDone bool
 
 	sess ptyman.Session
 	ring *ring
@@ -698,6 +707,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	if port > 0 {
 		spec.Meta[metaPort] = strconv.Itoa(port)
 	}
+	if req.EndWhenDone {
+		spec.Meta[metaEndWhenDone] = "1"
+	}
 	// The PTY process is controlled explicitly via Signal/Close; it must not die
 	// when the caller's context (e.g. an HTTP request) ends.
 	sess, err := m.pty.Spawn(context.WithoutCancel(ctx), spec)
@@ -705,7 +717,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		return nil, fmt.Errorf("spawn %s: %w", command, err)
 	}
 	a := &Agent{
-		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port, NativeID: nativeID,
+		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port, NativeID: nativeID, EndWhenDone: req.EndWhenDone,
 		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
 	}
 	cols, rows := req.Cols, req.Rows

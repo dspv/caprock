@@ -28,6 +28,8 @@ func (m *Manager) UseHosts(exe, version string) {
 const (
 	metaKind = "kind" // which coding agent: claude, codex, opencode, gemini
 	metaPort = "port" // an OpenCode TUI's own server port, for linking its id
+	// metaEndWhenDone is "1" for a session started with end_when_done.
+	metaEndWhenDone = "end_when_done"
 )
 
 // Reattach picks up the sessions a previous daemon left running in their
@@ -75,6 +77,7 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 		}
 		port, _ := strconv.Atoi(rec.Meta[metaPort])
 		a := m.adopt(rec, at.Session, kind, worktree, port)
+		a.EndWhenDone = rec.Meta[metaEndWhenDone] == "1"
 		// The row normally already says all of this. It does not when the
 		// sweep of an older run ended it, or the database is newer than the
 		// session; then the holder is the evidence and the row follows it.
