@@ -66,7 +66,14 @@ export interface Session {
   chat?: boolean
   /** When the chat was archived out of the Chats list (unix ms); absent when it is not. */
   archived_at?: number
+  /** When Caprock ended it for sitting idle with no tab (unix ms), and the idle
+   *  window that did it (ms); absent otherwise, and again once it is continued. */
+  idle_ended_at?: number
+  idle_ended_after_ms?: number
 }
+
+/** Settings' idle window for an untabbed session Caprock started (`end_idle_after`). */
+export type EndIdleAfter = '2h' | '12h' | '24h' | 'never'
 
 /** `GET /v1/chats`: a page of chats, newest first, with how many match and how many there are. */
 export interface ChatList {
@@ -974,6 +981,8 @@ export interface Settings {
   keep_awake?: KeepAwakeMode
   /** What happens to finished copies (lib/copies CleanupMode). The daemon returns "ask" when never chosen. */
   worktree_cleanup?: 'off' | 'ask' | 'auto'
+  /** How long an agent session Caprock started, with no tab, may sit idle before its process is ended. The daemon returns "12h" when never chosen. */
+  end_idle_after?: EndIdleAfter
   /** What the desktop app does when a newer release is found (ADR-042): show the card, or install it once nothing is busy. The daemon returns "ask" when never chosen. */
   app_update?: AppUpdateMode
   /** What Caprock's Claude Code status line shows. The daemon returns "full" when never chosen; "hidden" prints nothing but keeps relaying plan limits; "off" removes Caprock's own statusLine entry. */
@@ -2249,6 +2258,8 @@ export const api = {
   checkUpdateSoon: () => post<UpdateStatus>('/v1/update/check?soon=1', {}),
   updateBusy: () => get<UpdateBusy>('/v1/update/busy'),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
+  /** The sessions this viewer has a tab for, the whole list (PUT /v1/tabs): none of them is ever ended for idling. */
+  putTabs: (viewer: string, sessions: string[]) => post<void>('/v1/tabs', { viewer, sessions }, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),

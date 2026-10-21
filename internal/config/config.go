@@ -236,6 +236,11 @@ type Config struct {
 	// "auto"; empty is "ask" (projects/cleanup.go). Written only once
 	// chosen.
 	WorktreeCleanup string `json:"worktree_cleanup,omitempty"`
+	// EndIdleAfter is how long an agent session Caprock started, with no
+	// tab, may sit idle before Caprock ends its process (daemon/endidle.go):
+	// "2h", "12h", "24h" or "never"; empty is "12h". Written only once
+	// chosen.
+	EndIdleAfter string `json:"end_idle_after,omitempty"`
 	// StatuslineMode is what Caprock's Claude Code status line shows:
 	// "full", "short", "hidden" or "off" (StatuslineModes). Empty is
 	// "full". The status line command reads it at render time
@@ -303,6 +308,46 @@ func NormalizeStatusline(v string) string {
 		return v
 	}
 	return StatuslineFull
+}
+
+// The idle-end choices (config.json "end_idle_after").
+const (
+	EndIdle2h    = "2h"
+	EndIdle12h   = "12h"
+	EndIdle24h   = "24h"
+	EndIdleNever = "never"
+)
+
+// EndIdleModes are the idle windows Settings offers, in its order.
+var EndIdleModes = []string{EndIdle2h, EndIdle12h, EndIdle24h, EndIdleNever}
+
+// ValidEndIdle reports whether v is one of EndIdleModes.
+func ValidEndIdle(v string) bool {
+	return v == EndIdle2h || v == EndIdle12h || v == EndIdle24h || v == EndIdleNever
+}
+
+// NormalizeEndIdle is the effective choice: anything unknown or unset is
+// "12h" (owner, 2026-10-21).
+func NormalizeEndIdle(v string) string {
+	if ValidEndIdle(v) {
+		return v
+	}
+	return EndIdle12h
+}
+
+// EndIdleWindow is how long a session may sit idle under choice v; 0 for
+// "never".
+func EndIdleWindow(v string) time.Duration {
+	switch NormalizeEndIdle(v) {
+	case EndIdle2h:
+		return 2 * time.Hour
+	case EndIdle24h:
+		return 24 * time.Hour
+	case EndIdleNever:
+		return 0
+	default:
+		return 12 * time.Hour
+	}
 }
 
 // StatuslineRegistered reports whether Caprock's statusLine entry belongs in

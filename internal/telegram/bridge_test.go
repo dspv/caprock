@@ -43,6 +43,8 @@ type host struct {
 	nextQueued int64
 	chats      []string
 	files      map[string][]byte
+	// continued is what Continue got: a session ended for idling, replied to.
+	continued []string
 }
 
 func newHost() *host {
@@ -331,6 +333,33 @@ func TestAReplyIsTypedIntoItsSession(t *testing.T) {
 	}
 }
 
+// A reply to a session Caprock ended for sitting idle continues it with the
+// reply as its next message; one that ended otherwise is still refused.
+func TestAReplyToASessionEndedForIdlingContinuesIt(t *testing.T) {
+	s := paired(t, func(h *host) {
+		h.licensed, h.chatOn = true, true
+		h.sessions["idle"] = telegram.Live{ID: "idle", Header: "🟠 Claude Code · chats · Idle", Title: "Idle", Owned: true, IdleEnded: true}
+		h.sessions["gone"] = telegram.Live{ID: "gone", Header: "🟠 Claude Code · chats · Gone", Title: "Gone", Owned: true}
+	})
+	id := s.deliver("idle", "")
+	s.bot.Reply(owner, id, "where were we")
+	eventually(t, "the continue", func() bool { return s.h.get(func(h *host) int { return len(h.continued) }) == 1 })
+	if got := s.h.continued[0]; got != "idle|where were we" {
+		t.Fatalf("continued %q", got)
+	}
+	if m := s.message(2); !strings.Contains(m.Text, "continued it with your message") {
+		t.Fatalf("answer = %+v", m)
+	}
+	gone := s.deliver("gone", "")
+	s.bot.Reply(owner, gone, "hello")
+	if m := s.message(4); !strings.Contains(m.Text, "has ended") {
+		t.Fatalf("answer for an ended session = %+v", m)
+	}
+	if n := s.h.get(func(h *host) int { return len(h.continued) }); n != 1 {
+		t.Fatalf("continued %d sessions, want only the one ended for idling", n)
+	}
+}
+
 // Rule 7: a session Caprock did not start is watched, never typed into.
 func TestAReplyToASessionCaprockDidNotStartIsRefused(t *testing.T) {
 	s := paired(t, func(h *host) { h.licensed, h.chatOn = true, true })
@@ -580,3 +609,4 @@ func (h *photoHost) StartChat(context.Context, string, string) (string, error) {
 	return "", nil
 }
 func (h *photoHost) SaveFile(string, string, []byte) (string, error) { return "", nil }
+func (h *photoHost) Continue(context.Context, string, string) error  { return nil }

@@ -26,6 +26,7 @@ import { Empty } from '@/components/ui'
 import { EndSheet, endState } from '@/components/PhoneEnd'
 import { RenameField } from './Chats'
 import { KeyGrid } from '@/components/TerminalKeys'
+import { idleEndedText } from '@/lib/idleEnd'
 
 export function ChatScreen({ id }: { id: string }) {
   const phone = useNarrowScreen()
@@ -95,7 +96,7 @@ export function ChatScreen({ id }: { id: string }) {
       <>This device can read Caprock. To write here, open Caprock on your computer: Settings → <b className="font-medium text-fg">Use on your phone</b>, then <b className="font-medium text-fg">Allow control</b>.</>
     ) : ended ? (
       <div className="grid gap-2">
-        <span>This chat has ended. Its conversation and its files are kept.</span>
+        <span data-chat-ended>{idleEndedText(s) ? `${idleEndedText(s)}. Its conversation and its files are kept.` : 'This chat has ended. Its conversation and its files are kept.'}</span>
         {s.resume?.ok && (
           <button type="button" disabled={busy} onClick={() => void carryOn()} className="min-h-12 rounded-[12px] bg-accent text-[16px] font-semibold text-bg disabled:opacity-60">
             {busy ? 'Opening…' : 'Continue this chat'}
@@ -125,7 +126,7 @@ export function ChatScreen({ id }: { id: string }) {
             <button type="button" disabled={!canControl || !s} onClick={() => setRenaming(true)} title={canControl ? 'Rename' : undefined} className="min-w-0 flex-1 px-1 text-left">
               <h1 className="truncate text-[16px] font-semibold leading-tight text-fg">{title}</h1>
               <span className="block truncate text-[12.5px] text-fg-faint">
-                {s ? [chatModelLabel(s), ended ? 'ended' : s.activity?.health === 'working' ? 'answering…' : s.activity?.health === 'waiting-on-you' ? 'waiting for you' : ''].filter(Boolean).join(' · ') : ' '}
+                {s ? [chatModelLabel(s), ended ? (idleEndedText(s).toLowerCase() || 'ended') : s.activity?.health === 'working' ? 'answering…' : s.activity?.health === 'waiting-on-you' ? 'waiting for you' : ''].filter(Boolean).join(' · ') : ' '}
               </span>
             </button>
           )}

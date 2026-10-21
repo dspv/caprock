@@ -114,6 +114,10 @@ type Deps struct {
 	// KeepAwake returns whether the computer is being kept awake, for GET
 	// /v1/keepawake (keepawake.Status). Nil ⇒ 501.
 	KeepAwake func() any
+	// OpenTabs keeps which sessions a dashboard has a tab for, for PUT
+	// /v1/tabs: a session with a tab is never ended for idling
+	// (daemon/endidle.go). nil ⇒ 501.
+	OpenTabs func(viewer string, sessions []string) error
 	// WindowStop returns the plan-window stop's state for GET
 	// /v1/window-stop: the share, whether a licence is active, the figures it
 	// acts on and how fresh they are, and the sessions it has paused. nil ⇒ 501.
@@ -400,6 +404,11 @@ type Settings struct {
 	// projects.CleanupModes. GET returns the effective mode, "ask" when
 	// never chosen.
 	WorktreeCleanup string `json:"worktree_cleanup"`
+	// EndIdleAfter is how long an agent session Caprock started, with no
+	// tab, may sit idle before its process is ended: one of
+	// config.EndIdleModes. GET returns the effective choice, "12h" when
+	// never chosen.
+	EndIdleAfter string `json:"end_idle_after"`
 	// StatuslineMode is what Caprock's Claude Code status line shows: one
 	// of config.StatuslineModes. GET returns the effective mode, "full"
 	// when never chosen; "hidden" prints nothing but keeps forwarding the
@@ -692,6 +701,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/window-stop", s.handleWindowStop)
 	m.HandleFunc("GET /v1/keepawake", s.handleKeepAwake)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
+	m.HandleFunc("PUT /v1/tabs", s.handlePutTabs)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
 	m.HandleFunc("POST /v1/alerts/test", s.handleTestAlert)
 	m.HandleFunc("GET /v1/telegram", s.handleTelegram)
@@ -1605,6 +1615,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		SpawnMode       *string  `json:"spawn_permission_mode"`
 		KeepAwake       *string  `json:"keep_awake"`
 		WorktreeCleanup *string  `json:"worktree_cleanup"`
+		EndIdleAfter    *string  `json:"end_idle_after"`
 		StatuslineMode  *string  `json:"statusline_mode"`
 		// The whole list, replaced; absent or null leaves it as it is.
 		QuickReplies *[]config.QuickReply `json:"quick_replies"`
@@ -1733,6 +1744,14 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.WorktreeCleanup = v
+	}
+	if patch.EndIdleAfter != nil {
+		v := strings.TrimSpace(*patch.EndIdleAfter)
+		if !config.ValidEndIdle(v) {
+			s.failCode(w, http.StatusBadRequest, fmt.Errorf("end_idle_after must be one of %s", strings.Join(config.EndIdleModes, ", ")))
+			return
+		}
+		in.EndIdleAfter = v
 	}
 	if patch.StatuslineMode != nil {
 		v := strings.TrimSpace(*patch.StatuslineMode)

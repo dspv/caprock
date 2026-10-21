@@ -107,6 +107,10 @@ func (m *Manager) Reattach(ctx context.Context) []*Agent {
 	return out
 }
 
+// replayQuiet is how long after a reattach the session's output is taken
+// for the holder's replay of its screen rather than new activity.
+const replayQuiet = 3 * time.Second
+
 // adopt registers a session a previous daemon left in its pty-host; run then
 // starts reading it, once the caller has brought its row up to date.
 func (m *Manager) adopt(rec ptyhost.Record, sess ptyman.Session, kind, worktree string, port int) *Agent {
@@ -114,6 +118,9 @@ func (m *Manager) adopt(rec ptyhost.Record, sess ptyman.Session, kind, worktree 
 		SessionID: rec.SessionID, Cwd: rec.Cwd, Worktree: worktree, Command: rec.Command, StartedAt: rec.StartedAt,
 		Kind: kind, Port: port,
 		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
+		// What the holder sends first is its screen as it was: not new
+		// activity (Agent.ioAt).
+		quietUntil: time.Now().Add(replayQuiet).UnixNano(),
 	}
 	m.mu.Lock()
 	m.agents[rec.SessionID] = a

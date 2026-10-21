@@ -32,6 +32,13 @@ func (h *host) StartChat(_ context.Context, text, mode string) (string, error) {
 	return "chat-1", nil
 }
 
+func (h *host) Continue(_ context.Context, id, text string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.continued = append(h.continued, id+"|"+text)
+	return nil
+}
+
 func (h *host) SaveFile(name, _ string, data []byte) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

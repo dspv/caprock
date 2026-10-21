@@ -11,6 +11,7 @@ import { branchLabel, sessionHealth } from './sessionLabels'
 import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
 import { uniqueSuffixes } from './sessionLabels'
 import { promptTitle } from './sessionNames'
+import { idleEndedRecently } from './idleEnd'
 
 /**
  * The group for sessions in folders no listed project holds. The daemon lists
@@ -196,7 +197,9 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     // here only while it has a tab, or is still at work or asks you
     // something, or answered within CHAT_LINGER_MS (chatListed).
     if ((s.chat || isQuickChat(s)) && !openSessions.has(s.session_id) && !chatListed(s, permissions.has(s.session_id), now)) continue
-    const shown = s.status !== 'ended' || openSessions.has(s.session_id)
+    // One Caprock ended for sitting idle with no tab stays a row for a day,
+    // saying so, rather than vanishing (lib/idleEnd.ts).
+    const shown = s.status !== 'ended' || openSessions.has(s.session_id) || idleEndedRecently(s, now)
     const listed = closest(s)
     // Only what is live or open goes to Other folders: it is not a history.
     if (!listed && !shown) continue
@@ -508,6 +511,8 @@ function scriptedPrompt(text: string | undefined): boolean {
  */
 export function isBackgroundSession(s: SessionSummary, { now = Date.now(), hasPermission = false, inProject = false }: { now?: number; hasPermission?: boolean; inProject?: boolean } = {}): boolean {
   if (hasPermission) return false
+  // Ended for idling, it says so where its row was (lib/idleEnd.ts).
+  if (idleEndedRecently(s, now)) return false
   if (!inProject && inTempDir(s.cwd)) return true
   const named = !!s.name?.trim()
   if (!named && !s.owned && s.description_source === 'prompt' && scriptedPrompt(s.description)) return true

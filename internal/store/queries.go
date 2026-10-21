@@ -85,6 +85,12 @@ type Session struct {
 	// from the Chats list; 0 when it is not archived.
 	Chat       bool  `json:"chat,omitempty"`
 	ArchivedAt int64 `json:"archived_at,omitempty"`
+	// IdleEndedAt is when Caprock ended the session because it sat idle
+	// with no tab (unix ms, migration 0067), and IdleEndedAfter the idle
+	// window that did it (ms); both 0 otherwise, and again once the
+	// session is continued.
+	IdleEndedAt    int64 `json:"idle_ended_at,omitempty"`
+	IdleEndedAfter int64 `json:"idle_ended_after_ms,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -610,7 +616,16 @@ func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]strin
 
 // MarkOwned records that Caprock spawned this session (Phase 1).
 func MarkOwned(ctx context.Context, q Querier, id, worktree, spawnCommand string, pid int) error {
-	_, err := q.ExecContext(ctx, `UPDATE sessions SET owned = 1, worktree = COALESCE(NULLIF(?, ''), worktree), spawn_command = ?, pid = ?, status = 'active' WHERE session_id = ?`, worktree, spawnCommand, pid, id)
+	// A session continued is no longer one that was ended for idling.
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET owned = 1, worktree = COALESCE(NULLIF(?, ''), worktree), spawn_command = ?, pid = ?, status = 'active', idle_ended_at = 0, idle_ended_after = 0 WHERE session_id = ?`, worktree, spawnCommand, pid, id)
+	return err
+}
+
+// MarkIdleEnded records that Caprock is ending a session because it sat
+// idle with no tab for after (ms), at at (unix ms); 0, 0 takes it back (the
+// end could not be asked for).
+func MarkIdleEnded(ctx context.Context, q Querier, id string, at, after int64) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET idle_ended_at = ?, idle_ended_after = ? WHERE session_id = ?`, at, after, id)
 	return err
 }
 
@@ -972,14 +987,14 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned, chat int
 	var exit sql.NullInt64
 	var attempt string
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &attempt)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &attempt)
 	s.setAttempt(attempt)
 	s.HasHooks, s.HasTranscript, s.Owned, s.Chat = hh != 0, ht != 0, owned != 0, chat != 0
 	if exit.Valid {

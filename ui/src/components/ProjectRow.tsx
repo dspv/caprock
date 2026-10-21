@@ -82,6 +82,7 @@ import { HotMark } from './ResourceMeter'
 import { instructionsSummary } from '@/lib/projectWizard'
 import { rowRepo } from '@/lib/multirepo'
 import { chatRowSuffix, isQuickChat } from '@/lib/quickchat'
+import { idleEndedRecently, idleEndedText, idleEndedWord } from '@/lib/idleEnd'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -743,7 +744,7 @@ export interface LiveWithoutTab {
 export function liveWithoutTab(node: ProjectNode, hiddenSessions?: HiddenSessions): LiveWithoutTab {
   const all = node.worktrees
     .flatMap((w) => w.sessions)
-    .filter((x) => !x.open && x.session.status !== 'ended')
+    .filter((x) => !x.open && (x.session.status !== 'ended' || idleEndedRecently(x.session)))
     .sort((a, b) => (a.session.started_at ?? 0) - (b.session.started_at ?? 0) || a.session.session_id.localeCompare(b.session.session_id))
   const out: LiveWithoutTab = { own: [], waitingOther: [], other: [], hidden: [] }
   for (const x of all) {
@@ -789,6 +790,8 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
   const chat = !item.isShell && isQuickChat(s) ? chatRowSuffix(s, title, true) : undefined
   const canStop = !!onStop && s.owned && s.status !== 'ended'
   const n = (onHide || onShow ? 1 : 0) + (canStop ? 1 : 0)
+  // Ended by Caprock for sitting idle (lib/idleEnd.ts): one line says so, and a click continues it.
+  const idle = idleEndedText(s)
   return (
     <li className={`@container/srow group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
       <button
@@ -803,14 +806,16 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${hidden ? 'opacity-55' : ''} ${PAD_ON_HOVER[n]}`}
-        title={`${[title, agentGlyphLabel(s.agent, item.isShell), chat?.model, chat?.when ? `started ${chat.when}` : '', branch, project?.name].filter(Boolean).join(' · ')}: ${s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
+        title={`${[title, agentGlyphLabel(s.agent, item.isShell), chat?.model, chat?.when ? `started ${chat.when}` : '', branch, project?.name].filter(Boolean).join(' · ')}: ${idle ? `${idle} — click to continue it.` : s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
       >
         <RowDot dot={item.dot} asks={item.asks} />
         {/* No tab: muted, so it reads as not open; while it waits, as plain as a tab's. */}
         <TitleAndBranch title={title} branch={chat ? chat.model : project ? undefined : branch} when={chat?.when} className={item.waiting ? 'text-fg' : 'text-fg-muted'} />
         {project && <ProjectName project={project} />}
         <HotMark sessionId={s.session_id} />
-        {!item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
+        {idle ? (
+          <span data-idle-ended className="min-w-0 max-w-[55%] shrink truncate text-[12px] text-fg-faint">{idleEndedWord(s)}</span>
+        ) : !item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
       </button>
       {n > 0 && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${ACTIONS_ON_HOVER}`}>

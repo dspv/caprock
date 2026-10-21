@@ -113,7 +113,7 @@ func (h *tgHost) Session(ctx context.Context, id string) (telegram.Live, bool) {
 func (h *tgHost) live(ctx context.Context, s store.Session) telegram.Live {
 	det := h.d.sessionDetails(ctx, s)
 	l := telegram.Live{ID: s.SessionID, Header: alerts.Header(det), Title: det.Title, Owned: s.Owned,
-		Chat: s.Chat, LastAt: time.UnixMilli(max(s.WorkedAt, s.LastEventAt))}
+		Chat: s.Chat, LastAt: time.UnixMilli(max(s.WorkedAt, s.LastEventAt)), IdleEnded: s.IdleEndedAt > 0}
 	if l.Title == "" {
 		l.Title = det.Project
 	}
@@ -264,6 +264,38 @@ func (h *tgHost) StartChat(ctx context.Context, text, mode string) (string, erro
 	}
 	h.d.log.Info("chat started from a Telegram forward", "component", "telegram", "session_id", id)
 	return id, nil
+}
+
+// Continue carries on a session Caprock ended for sitting idle (endidle.go)
+// with text as its next message: --resume under its own id, in the mode it
+// last ran in (the API's default for a continue), as the app's Continue does.
+func (h *tgHost) Continue(ctx context.Context, id, text string) error {
+	if h.d.api == nil {
+		return errors.New("this daemon cannot start sessions")
+	}
+	s, err := store.GetSession(ctx, h.d.store.DB(), id)
+	if err != nil {
+		return err
+	}
+	if s.IdleEndedAt == 0 || s.Status != store.StatusEnded {
+		return errors.New("it was not ended for sitting idle")
+	}
+	req := map[string]any{"cwd": s.Cwd, "resume": id, "fork": false, "prompt": text}
+	if s.Agent != "" {
+		req["agent"] = s.Agent
+	}
+	got, err := h.d.api.StartSession(ctx, req)
+	if errors.Is(err, api.ErrBypassConsent) {
+		return telegram.ErrBypassConsent
+	}
+	if err != nil {
+		return err
+	}
+	if h.d.queue != nil {
+		h.d.queue.markVia(got, viaTelegram)
+	}
+	h.d.log.Info("telegram: continued a session ended for idling", "component", "telegram", "session_id", got)
+	return nil
 }
 
 // SaveFile keeps a forwarded photo, file or voice note where pasted files

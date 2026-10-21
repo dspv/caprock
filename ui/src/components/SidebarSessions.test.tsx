@@ -445,3 +445,35 @@ describe('Recently closed', () => {
     expect(screen.getByRole('region', { name: 'Recently closed' }).textContent).toContain('Just closed')
   })
 })
+
+// Owner, 2026-10-21: an untabbed session Caprock ends for sitting idle says so
+// in one line where its row was, and a click continues it; it does not vanish.
+describe('a session ended for sitting idle', () => {
+  const ended = (p: Partial<SessionSummary>) => live({
+    status: 'ended', activity: { phrase: '', at: '', health: 'ended' }, last_event_at: Date.now() - 13 * 3_600_000,
+    idle_ended_at: Date.now() - 60_000, idle_ended_after_ms: 12 * 3_600_000, ...p,
+  })
+
+  it('stays under Running, no tab for a day, reading "12 h idle · continue", and a click opens it to continue', () => {
+    const sessions = [live({ session_id: 'w1', title: 'Busy' }), ended({ session_id: 'z1', title: 'Old chat', started_at: 2 }),
+      ended({ session_id: 'z2', title: 'Long gone', started_at: 3, idle_ended_at: Date.now() - 25 * 3_600_000 }),
+      live({ session_id: 'e1', title: 'Done one', status: 'ended', started_at: 4, activity: { phrase: '', at: '', health: 'ended' } })]
+    const { props } = setup(sessions, [], { grouped: false })
+    const list = screen.getByRole('group', { name: 'Running, no tab' })
+    expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['w1', 'z1'])
+    const row = list.querySelector<HTMLElement>('[data-live-row="z1"]')!
+    expect(row.querySelector('[data-idle-ended]')!.textContent).toBe('12 h idle · continue')
+    expect(row.title).toContain('Ended after 12 h idle — click to continue it.')
+    // No stop on an ended row; its × still hides it.
+    expect(row.parentElement!.querySelector('[aria-label^="Stop"]')).toBeNull()
+    fireEvent.click(row)
+    expect(props.onOpenLive).toHaveBeenCalledWith(expect.objectContaining({ session_id: 'z1' }), 'alpha')
+  })
+
+  it('is listed under its project in Tree too', () => {
+    setup([ended({ session_id: 'z1', title: 'Old chat' })], [], { grouped: true })
+    const alpha = screen.getByRole('group', { name: 'alpha: sessions' })
+    expect(alpha.querySelector('[data-live-row="z1"] [data-idle-ended]')!.textContent).toBe('12 h idle · continue')
+  })
+})
+

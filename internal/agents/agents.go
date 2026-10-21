@@ -150,6 +150,16 @@ type Agent struct {
 	exited bool
 	onExit func(sessionID string, code int)
 
+	// ioAt is when the session last wrote output or was typed into, unix
+	// ns; 0 before either. Unlike outAt it never counts the screen a
+	// pty-host replays to a daemon that reattaches (quietUntil): that is
+	// the past drawn again, and counting it would make every restart look
+	// like activity to the idle end (daemon/endidle.go).
+	ioAt atomic.Int64
+	// quietUntil is, for a reattached session, the unix ns until which
+	// output is the holder's replay, not new activity; 0 otherwise.
+	quietUntil int64
+
 	// cols and rows are the terminal's size as last set, read when a
 	// permission answer reads the screen.
 	sizeMu     sync.Mutex
@@ -1038,6 +1048,9 @@ func (a *Agent) pump(onOutput func(string)) {
 			} else {
 				a.outAt.Store(time.Now().UnixNano())
 			}
+			if now := time.Now().UnixNano(); now > a.quietUntil {
+				a.ioAt.Store(now)
+			}
 			a.mu.Lock()
 			for ch := range a.subs {
 				select {
@@ -1177,8 +1190,23 @@ func (a *Agent) Exited() (int, bool) {
 	return a.exit, a.exited
 }
 
-// Paused reports the pause state.
-func (a *Agent) Paused() bool { return a.sess.Paused() }
+// Paused reports the pause state; false for an Agent with no process
+// behind it (a caller's fake).
+func (a *Agent) Paused() bool { return a.sess != nil && a.sess.Paused() }
+
+// LastIO is when the session last drew output or was typed into, as this
+// daemon saw it; zero before either. A reattached session's replayed screen
+// does not count (quietUntil), so after a restart this is zero until the
+// session draws something new.
+func (a *Agent) LastIO() time.Time {
+	if ns := a.ioAt.Load(); ns != 0 {
+		return time.Unix(0, ns)
+	}
+	return time.Time{}
+}
+
+// TouchIO records activity at t: input typed into the session.
+func (a *Agent) TouchIO(t time.Time) { a.ioAt.Store(t.UnixNano()) }
 
 // PID is the agent's (or shell's) own process id — the child of its pty-host,
 // not the host. The resource meter starts its process tree here.

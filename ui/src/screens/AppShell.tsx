@@ -44,6 +44,8 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
+import { idleEnded } from '@/lib/idleEnd'
+import { useReportTabs } from '@/lib/reportTabs'
 import { closedEntries, forgetClosed, loadRecentlyClosed, recordClosed, reopenPlan, shownClosed, type ClosedTab } from '@/lib/recentlyClosed'
 import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, planTabsChatClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
@@ -383,6 +385,10 @@ export function AppShell() {
   }, [toast])
 
   const openSessions = useMemo(() => new Set(ws.tabs.flatMap((t) => leaves(t.root).map((l) => l.target.sessionId))), [ws.tabs])
+  // The daemon is told which sessions have a tab here: none of them is ever
+  // ended for sitting idle (lib/reportTabs.ts).
+  const tabbedIds = useMemo(() => [...openSessions].filter((id): id is string => typeof id === 'string' && id !== ''), [openSessions])
+  useReportTabs(tabbedIds)
   // The sidebar's per-project sparkline: one small query a minute, resting
   // while the window is hidden.
   const activity = useApi(() => api.activity(), [], { live: false, intervalMs: 60_000, keepUnchanged: true })
@@ -1196,6 +1202,15 @@ export function AppShell() {
     }
     go(plan)
   }, [onActivateTab, openSession, goHash, openTab, refresh])
+  /**
+   * A row with no tab: opened as a tab (openSession) — unless Caprock ended it
+   * for sitting idle (lib/idleEnd.ts), when the click continues it the way a
+   * Recently closed row does.
+   */
+  const openLiveRow = useCallback((s: SessionSummary, projectId: string) => {
+    if (!idleEnded(s)) { openSession(s, projectId); return }
+    reopenClosed({ sessionId: s.session_id, title: sessionTitle(s), projectId, ...(s.cwd ? { cwd: s.cwd } : {}), closedAt: Date.now() })
+  }, [openSession, reopenClosed])
   const reopenLastClosed = useCallback(() => {
     const open = new Set(closeCtx.current.tabs.flatMap((t) => leaves(t.root).map((l) => l.target.sessionId)))
     const last = shownClosed(loadRecentlyClosed(), open, 1)[0]
@@ -1920,7 +1935,7 @@ export function AppShell() {
               activeTabId={current?.id}
               onActivateTab={onActivateTab}
               onCloseTab={onCloseTab}
-              onOpenLive={openSession}
+              onOpenLive={openLiveRow}
               onSelectProject={onOpenProjectView}
               onOpenInbox={onOpenInbox}
               onNewAgent={onNewAgent}

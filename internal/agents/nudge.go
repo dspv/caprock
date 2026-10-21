@@ -28,6 +28,7 @@ import (
 // permission menu answered or rejected, or a message submitted.
 func (m *Manager) typedInput(a *Agent, data []byte) {
 	at := m.now()
+	a.TouchIO(time.Now())
 	t := m.typedIntoMenu(a.SessionID, data)
 	switch {
 	case t.interrupted:

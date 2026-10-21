@@ -211,4 +211,26 @@ describe('ChatScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Continue this chat' }))
     await waitFor(() => expect(spawn).toHaveBeenCalledWith({ cwd: '/data/chats/2026-10-16-101011', resume: 'c1', fork: false }))
   })
+
+  it('says a chat Caprock ended for sitting idle ended so, and continues it the same way', async () => {
+    stub({ resume: { ok: true }, idle_ended_at: NOW - 1000, idle_ended_after_ms: 12 * 3_600_000 } as Partial<SessionSummary>)
+    const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'c1', cwd: '/data/chats/2026-10-16-101011' })
+    render(<ChatScreen id="c1" />)
+    expect((await screen.findByText(/Ended after 12 h idle\. Its conversation and its files are kept\./)).hasAttribute('data-chat-ended')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue this chat' }))
+    await waitFor(() => expect(spawn).toHaveBeenCalledWith({ cwd: '/data/chats/2026-10-16-101011', resume: 'c1', fork: false }))
+  })
+})
+
+describe('a chat ended for sitting idle, in the list', () => {
+  it('reads "Ended after 12 h idle — continue" on its row; a plain ended one reads "ended"', async () => {
+    vi.spyOn(api, 'chats').mockResolvedValue({
+      items: [chat('c1', { idle_ended_at: NOW - 1000, idle_ended_after_ms: 12 * 3_600_000 }), chat('c2')], total: 2, chats: 2, archived: 0,
+    })
+    render(<ChatsScreen />)
+    const rows = within(await screen.findByRole('list', { name: 'Chats' })).getAllByRole('link')
+    expect(rows[0]!.textContent).toContain('Claude · Opus 5.5 · Ended after 12 h idle — continue')
+    expect(rows[1]!.textContent).toContain('Claude · Opus 5.5 · ended')
+    expect(rows[1]!.textContent).not.toContain('idle')
+  })
 })

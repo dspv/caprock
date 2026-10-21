@@ -72,6 +72,9 @@ type Host interface {
 	// StartChat starts a new chat (no project, ADR-071) in mode with text
 	// as its first message.
 	StartChat(ctx context.Context, text, mode string) (string, error)
+	// Continue carries on a session Caprock ended for sitting idle, with
+	// text as its next message (--resume under its own id).
+	Continue(ctx context.Context, id, text string) error
 	// SaveFile writes a file fetched from Telegram where pasted files go
 	// and returns its path; an error when its type is not one Caprock keeps.
 	SaveFile(name, mimeType string, data []byte) (string, error)
@@ -97,6 +100,9 @@ type Live struct {
 	Working bool
 	Chat    bool
 	LastAt  time.Time
+	// IdleEnded says Caprock ended it for sitting idle with no tab: a reply
+	// continues it rather than being refused.
+	IdleEnded bool
 }
 
 // Project is a folder /new can start in.
@@ -855,6 +861,16 @@ func (b *Bridge) reply(ctx context.Context, m *Message, text string) {
 	switch {
 	case !known || !s.Owned:
 		b.say(m, "I can only watch this one: it was started outside Caprock, and Caprock never types into a session it did not start. Continue it in Caprock to talk to it from here.")
+		return
+	case !s.Alive && s.IdleEnded && text != "":
+		// Ended only because it sat idle: the reply carries it on, from
+		// where it stopped.
+		if err := b.Host.Continue(ctx, ref.SessionID, text); err != nil {
+			b.say(m, "Could not continue it: "+err.Error())
+			return
+		}
+		b.Converse(ref.SessionID)
+		b.say(m, "It had ended after sitting idle; continued it with your message.")
 		return
 	case !s.Alive:
 		b.say(m, "That session has ended. Start another with /new.")
