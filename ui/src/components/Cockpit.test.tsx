@@ -381,9 +381,13 @@ describe('the agent cockpit', () => {
   it('says background agents are working, not waiting on you, after the turn ended', async () => {
     show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
     await screen.findByRole('region', { name: 'Recent tool calls' })
-    // The state line is short so it never wraps; the count sits under it.
-    expect(screen.getByRole('status')).toHaveTextContent('Background agents')
+    // The state line is one word on one line (owner, 2026-10-22: "Background /
+    // agents" wrapped under the portrait); the full phrase is the tooltip and
+    // the accessible name; the count sits under it.
+    expect(screen.getByRole('status')).toHaveTextContent(/^Background$/)
+    expect(screen.getByRole('status')).toHaveClass('whitespace-nowrap')
     expect(screen.getByRole('status')).toHaveAttribute('title', 'Background agents working · 1')
+    expect(screen.getByRole('status')).toHaveAccessibleName('Background agents working · 1')
     expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
     expect(document.querySelector('[data-hero-count]')).toHaveTextContent('1 working')
     const nowCard = screen.getByRole('region', { name: 'Now' })

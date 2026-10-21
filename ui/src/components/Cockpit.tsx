@@ -388,7 +388,10 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const strip = subagentChips(subs, permission, layout.room)
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const model = s.model_display || s.model
-  const label = saysBackground ? 'Background agents' : STATE_LABEL[state]
+  // One word under the portrait: "Background agents" wrapped to two lines in
+  // the narrow column (owner, 2026-10-22). The full phrase is the tooltip and
+  // what a screen reader announces.
+  const label = saysBackground ? 'Background' : STATE_LABEL[state]
   const ago = (state === 'idle' || state === 'ended') && since ? fmtAgo(since, now) : ''
   return (
     <div className="@container min-w-0">
@@ -418,8 +421,8 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
         <div data-hero-lead className="grid min-w-0 content-start justify-items-center gap-[4px] text-center [grid-area:lead]">
           {/* The dot inline with the word, so a label that wraps ("Waiting /
             * on you" in a narrow inspector) keeps it beside its first line. */}
-          <p data-hero-state className={`max-w-full text-[11.5px] font-medium leading-[14px] [text-wrap:balance] ${STATE_TEXT[state]}`} role="status"
-            title={saysBackground ? backgroundLabel(background) : undefined}>
+          <p data-hero-state className={`max-w-full text-[11.5px] font-medium leading-[14px] ${saysBackground ? 'whitespace-nowrap' : '[text-wrap:balance]'} ${STATE_TEXT[state]}`} role="status"
+            title={saysBackground ? backgroundLabel(background) : undefined} aria-label={saysBackground ? backgroundLabel(background) : undefined}>
             <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
             {label}{ago ? <span className="block font-normal text-fg-faint">{ago}</span> : null}
           </p>
