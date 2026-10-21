@@ -250,8 +250,9 @@ describe('the hero’s subagent chips', () => {
     show(agent({ live_subagents: 14, activity: { phrase: 'background agents working · 14', at: new Date().toISOString(), health: 'working', background: 14 } }))
     const chips = await screen.findByRole('group', { name: 'Subagents' })
     const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('Background agents')
+    expect(status).toHaveTextContent(/^Background$/)
     expect(status).toHaveAttribute('title', 'Background agents working · 14')
+    expect(status).toHaveAccessibleName('Background agents working · 14')
     // The state line comes before the chips in reading order.
     expect(status.compareDocumentPosition(chips) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(chips).getAllByRole('button')).toHaveLength(14)
