@@ -21,12 +21,16 @@
  * video when an agent needs me*) — the YouTube tab's idea (#618), for any
  * page.
  */
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { isMacPlatform, isTauri } from '@/lib/appmode'
-import { getUiScale } from '@/lib/uiscale'
+import { getUiScale, useUiScale } from '@/lib/uiscale'
 import { openLink } from '@/lib/termlinks'
+import { keys, PHONE_MODE_KEY } from '@/lib/appkeys'
 import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, engineOf, overlayOpen, pageId, rectOf, sameRect, type BrowserNews, type PageRect } from '@/lib/browsertab'
-import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, ReloadIcon } from './AppIcons'
+import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, type PhonePrefs } from '@/lib/phonemode'
+import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, PhoneIcon, ReloadIcon } from './AppIcons'
+import { DeviceBar } from './DeviceBar'
+import { PhoneFrame } from './PhoneFrame'
 
 /** A session waiting on you, as the nudge names it. */
 export interface WaitingAgent {
@@ -115,6 +119,35 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const [nudge, setNudge] = useState<WaitingAgent | null>(null)
   const urlRef = useRef(url)
   urlRef.current = url
+
+  // Phone mode: on per tab (for the window's life), the device and the rest
+  // this viewer's (lib/phonemode).
+  const [phone, setPhoneState] = useState(() => phoneOn(pageKey))
+  const [phonePrefs, setPhonePrefs] = useState<PhonePrefs>(loadPhonePrefs)
+  const togglePhone = () => setPhoneState((on) => { setPhoneOn(pageKey, !on); return !on })
+  const changePhone = (next: Partial<PhonePrefs>) => setPhonePrefs((p) => { const n = { ...p, ...next }; savePhonePrefs(n); return n })
+  const zoom = useUiScale()
+  const pageEl = useRef<HTMLDivElement>(null)
+  const [boxSize, setBoxSize] = useState<{ w: number; h: number } | null>(null)
+  useEffect(() => {
+    if (!phone) return
+    const el = box.current
+    if (!el) return
+    const read = () => { const r = el.getBoundingClientRect(); setBoxSize((s) => (s && s.w === r.width && s.h === r.height ? s : { w: r.width, h: r.height })) }
+    read()
+    const ro = new ResizeObserver(read)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [phone])
+  const device = deviceOf(phonePrefs)
+  const layout = useMemo(() => layoutOf(device, phonePrefs.bars, phonePrefs.rotate), [device, phonePrefs.bars, phonePrefs.rotate])
+  const fit = fitOf(frameSize(device, layout, phonePrefs.rotate), { w: layout.pageW, h: layout.pageH }, { w: (boxSize?.w ?? 0) * zoom, h: (boxSize?.h ?? 0) * zoom })
+  const spec = phone ? phoneSpec(device, phonePrefs.touch) : undefined
+  const specRef = useRef(spec)
+  specRef.current = spec
+  // What reopens the page's window: a new device, side, bars or fit moves
+  // the page area; a new agent or touch is the shell's to apply.
+  const phoneKey = phone ? `${device.id}|${layout.pageW}x${layout.pageH}|${fit}|${spec?.ua}|${spec?.touch}` : ''
   // The page takes the keyboard when it was just sent somewhere from the address box.
   const focusNext = useRef(false)
   useEffect(() => { if (!editing) setAddress(url) }, [url, editing])
@@ -127,8 +160,8 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   }
 
   // The shell's news about this page.
-  const handlers = useRef({ onNav, onOpenPage, onStep })
-  handlers.current = { onNav, onOpenPage, onStep }
+  const handlers = useRef({ onNav, onOpenPage, onStep, togglePhone })
+  handlers.current = { onNav, onOpenPage, onStep, togglePhone }
   useEffect(() => {
     if (!inApp) return
     const id = pageId(pageKey)
@@ -146,6 +179,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
       if (d.key === 'prev') handlers.current.onStep(-1)
       if (d.key === 'next') handlers.current.onStep(1)
       if (d.key === 'address') focusAddress()
+      if (d.key === 'phone') handlers.current.togglePhone()
     }
     window.addEventListener(BROWSER_EVENT, on)
     return () => window.removeEventListener(BROWSER_EVENT, on)
@@ -161,6 +195,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
       e.preventDefault()
       e.stopPropagation()
       if (k === 'address') focusAddress()
+      else if (k === 'phone') handlers.current.togglePhone()
       else handlers.current.onStep(k === 'prev' ? -1 : 1)
     }
     window.addEventListener('keydown', onKey)
@@ -194,14 +229,16 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     }
     let last: PageRect | null = null
     const measure = (): PageRect | null => {
-      const r = box.current?.getBoundingClientRect()
+      if (specRef.current && !pageEl.current) return null
+      const r = (specRef.current ? pageEl.current : box.current)?.getBoundingClientRect()
       return r && r.width >= 1 && r.height >= 1 ? rectOf(r, getUiScale()) : null
     }
     const open = (rect: PageRect) => {
       const focus = focusNext.current
       focusNext.current = false
       opened.current = true
-      void browserAct(pageKey, { do: 'open', url: urlRef.current, rect, focus }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)))
+      const phoneNow = specRef.current
+      void browserAct(pageKey, { do: 'open', url: urlRef.current, rect, focus, ...(phoneNow ? { phone: phoneNow } : {}) }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)))
     }
     const first = measure()
     if (first) {
@@ -218,6 +255,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     }
     const ro = new ResizeObserver(follow)
     if (box.current) ro.observe(box.current)
+    if (pageEl.current) ro.observe(pageEl.current)
     window.addEventListener('resize', follow)
     // A panel that moves the box without resizing it (a line appearing
     // above the strip): one rectangle read a second, nothing more.
@@ -227,7 +265,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
       window.removeEventListener('resize', follow)
       window.clearInterval(tick)
     }
-  }, [live, showing, pageKey])
+  }, [live, showing, pageKey, phoneKey])
   // A closed tab takes its page with it.
   useEffect(() => () => { if (opened.current) void browserAct(pageKey, { do: 'close' }).catch(() => {}) }, [pageKey])
 
@@ -266,6 +304,15 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const ready = armed && !!url
   const btn = 'flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-[6px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent'
   const searchWith = engineOf(engine).name
+  const content = !inApp ? (
+    <Note url={url} text="The in-app browser is part of the desktop app." />
+  ) : !enabled ? (
+    <Note url={url} text="The in-app browser is off. Turn it on in Settings → In-app browser, or open the page in your browser." />
+  ) : !url ? (
+    <Note text={`Type an address, or words to search with ${searchWith}.`} />
+  ) : !armed ? (
+    <Waiting url={url} onLoad={onArm} />
+  ) : null
   return (
     <div className="flex h-full w-full flex-col bg-bg" data-browser-view={pageKey}>
       <form onSubmit={go} className="flex h-[38px] shrink-0 items-center gap-1 border-b border-[var(--app-hairline)] px-2">
@@ -294,6 +341,16 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
             from {from.title}
           </button>
         )}
+        <button
+          type="button"
+          aria-pressed={phone}
+          title={`Phone mode: the page at a phone’s size (${keys(PHONE_MODE_KEY, isMac)})`}
+          onClick={togglePhone}
+          data-phone-toggle
+          className={`flex h-[26px] shrink-0 items-center gap-1.5 rounded-[6px] border px-2 text-[12px] ${phone ? 'border-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-fg' : 'border-[var(--app-hairline)] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'}`}
+        >
+          <PhoneIcon size={14} />Phone
+        </button>
         <button type="button" className={btn} title="Copy the address" aria-label="Copy the address" disabled={!url} onClick={copy}><CopyIcon size={14} /></button>
         <button type="button" className={btn} title="Open in your browser" aria-label="Open in your browser" disabled={!url} onClick={() => openLink(url)}><ExternalIcon size={14} /></button>
         <button type="button" className={btn} title="Close the tab" aria-label="Close the tab" onClick={onClose}><CloseIcon size={14} /></button>
@@ -311,19 +368,31 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
           <button type="button" className="text-fg-faint hover:text-fg" aria-label="Dismiss" onClick={() => setNote('')}><CloseIcon size={11} /></button>
         </div>
       )}
-      <div ref={box} className="relative min-h-0 flex-1" data-page-box>
-        {!inApp ? (
-          <Note url={url} text="The in-app browser is part of the desktop app." />
-        ) : !enabled ? (
-          <Note url={url} text="The in-app browser is off. Turn it on in Settings → In-app browser, or open the page in your browser." />
-        ) : !url ? (
-          <Note text={`Type an address, or words to search with ${searchWith}.`} />
-        ) : !armed ? (
-          <Waiting url={url} onLoad={onArm} />
-        ) : null}
+      {phone && (
+        <DeviceBar
+          prefs={phonePrefs}
+          onChange={changePhone}
+          device={device}
+          layout={layout}
+          fit={fit}
+        />
+      )}
+      <div ref={box} className={`relative min-h-0 flex-1${phone ? ' overflow-hidden' : ''}`} data-page-box>
+        {phone ? (
+          <div className={`flex h-full w-full ${fit === 'over' ? 'items-start justify-start' : 'items-center justify-center'}`} data-phone-stage>
+            <PhoneFrame device={device} layout={layout} rotate={phonePrefs.rotate} fit={fit} zoom={zoom} host={hostOf(url)} pageRef={pageEl}>
+              {content}
+            </PhoneFrame>
+          </div>
+        ) : content}
       </div>
     </div>
   )
+}
+
+/** The host the drawn phone's address bar shows. */
+function hostOf(url: string): string {
+  try { return new URL(url).host || url } catch { return url }
 }
 
 /** A restored tab: its address and a button, until it is asked for. */

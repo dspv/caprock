@@ -56,6 +56,12 @@ export const BackIcon = (p: P) => <Icon {...p}><path d="M19 12H5M11 18l-6-6 6-6"
 export const ForwardIcon = (p: P) => <Icon {...p}><path d="M5 12h14M13 18l6-6-6-6" /></Icon>
 /** A turning arrow: load the page again. */
 export const ReloadIcon = (p: P) => <Icon {...p}><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></Icon>
+/** A phone upright: a browser tab's phone mode. */
+export const PhoneIcon = (p: P) => <Icon {...p}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M11 18.5h2" /></Icon>
+/** Two arrows turning: rotate the phone. */
+export const RotateIcon = (p: P) => <Icon {...p}><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4" /></Icon>
+/** A fingertip: the mouse acts as a finger. */
+export const TouchIcon = (p: P) => <Icon {...p}><circle cx="12" cy="9" r="4" /><path d="M12 13v8" /></Icon>
 export const ExternalIcon = (p: P) => <Icon {...p}><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" /></Icon>
 /** A megaphone: feedback, set apart from Quick chat's speech bubble. */
 // A bug, drawn in amber where it stands for Feedback: the speech bubble was

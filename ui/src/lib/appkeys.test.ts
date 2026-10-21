@@ -237,12 +237,42 @@ describe('zoom keys', () => {
 // changes, or it is an epic fail"). For each single-key chord in SHORTCUTS,
 // the macOS chord and the text `keys()` shows off macOS must reach the same
 // command.
-import { LINK_CHOOSE_CLICK, LINK_OPEN_CLICK, SHORTCUTS } from './appkeys'
+import { LINK_CHOOSE_CLICK, LINK_OPEN_CLICK, PHONE_MODE_KEY, SHORTCUTS } from './appkeys'
 import { choosesBrowser, opensLink } from './termlinks'
 
 describe('every listed shortcut, on every OS', () => {
-  const chords = SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => /^[⇧⌘⌥⌃]+[A-Z0-9,\\.\-=+[\]↑↓←→]$/.test(c) && c.includes('⌘'))
+  // Phone mode is a browser tab's key, not an app chord: pressed below
+  // through browserKey, as each OS spells it.
+  const chords = SHORTCUTS.flatMap(([k]) => k.split(', ')).filter((c) => /^[⇧⌘⌥⌃]+[A-Z0-9,\\.\-=+[\]↑↓←→]$/.test(c) && c.includes('⌘') && c !== PHONE_MODE_KEY)
   const event = (code: string, key: string, mods: Partial<KeyLike>): KeyLike => ({ key, code, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
+
+  // Owner, 2026-10-21: Phone mode for a front-end developer. ⇧⌘M (Chrome's
+  // device toolbar) is Mail, so it is ⌥⌘R, Safari's Responsive Design Mode;
+  // off macOS Ctrl+Alt+Shift+R is GNOME's screencast, so it is D there.
+  it(`${PHONE_MODE_KEY} toggles phone mode in a browser tab, as ${keys(PHONE_MODE_KEY, false)} on Windows and Linux, and is no app chord`, () => {
+    expect(SHORTCUTS.some(([k]) => k === PHONE_MODE_KEY)).toBe(true)
+    expect(keys(PHONE_MODE_KEY, true)).toBe('⌥⌘R')
+    const off = keys(PHONE_MODE_KEY, false)
+    expect(off).toBe('Ctrl+Alt+Shift+D')
+    expect(isPlainKeyLabel(off)).toBe(true)
+    // macOS: Option makes R into ®; the code is what counts.
+    const mac = event('KeyR', '®', { metaKey: true, altKey: true })
+    expect(browserKey(mac, true)).toBe('phone')
+    expect(matchAppShortcut(mac, true)).toBeNull()
+    // Windows and Linux, pressed as the label spells it.
+    const parts = off.split('+')
+    const win = event(`Key${parts.at(-1)}`, 'D', { ctrlKey: parts.includes('Ctrl'), altKey: parts.includes('Alt'), shiftKey: parts.includes('Shift') })
+    expect(browserKey(win, false)).toBe('phone')
+    expect(matchAppShortcut(win, false)).toBeNull()
+    expect(ownsTerminalKey(win, false)).toBe(false)
+    // Neither spelling is the other OS's, and the near misses are nothing.
+    expect(browserKey(win, true)).toBeNull()
+    expect(browserKey(mac, false)).toBeNull()
+    expect(browserKey(event('KeyR', 'R', { ctrlKey: true, altKey: true, shiftKey: true }), false)).toBeNull()
+    expect(browserKey(event('KeyM', 'M', { metaKey: true, shiftKey: true }), true)).toBeNull()
+    // Neither collides with an app chord: ⇧⌘M stays Mail.
+    expect(matchAppShortcut(event('KeyM', 'm', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'mail' })
+  })
   const codeOf = (ch: string) => (/[A-Z]/.test(ch) ? `Key${ch}` : /[0-9]/.test(ch) ? `Digit${ch}` : ({ ',': 'Comma', '\\': 'Backslash', '.': 'Period', '-': 'Minus', '=': 'Equal', '+': 'Equal', '[': 'BracketLeft', ']': 'BracketRight', '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' } as Record<string, string>)[ch] ?? ch)
   // An arrow's key is its name, as a browser reports it.
   const keyOf = (ch: string) => ({ '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' } as Record<string, string>)[ch] ?? ch.toLowerCase()

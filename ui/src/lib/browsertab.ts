@@ -20,6 +20,7 @@
 import { useEffect, useState } from 'react'
 import { isTauri } from './appmode'
 import { shell } from './shell'
+import type { PhoneSpec } from './phonemode'
 
 // ---------------------------------------------------------------------------
 // The setting
@@ -265,8 +266,8 @@ export function pageId(key: string): string {
 // ---------------------------------------------------------------------------
 // Keys
 
-/** What a key does in a browser tab: the tab before or after, or the address box. */
-export type BrowserKey = 'prev' | 'next' | 'address'
+/** What a key does in a browser tab: the tab before or after, the address box, or phone mode on or off. */
+export type BrowserKey = 'prev' | 'next' | 'address' | 'phone'
 
 /** The subset of a KeyboardEvent read here. */
 export interface BrowserKeyLike {
@@ -288,6 +289,13 @@ export interface BrowserKeyLike {
  * Ctrl+L. They act only while a browser tab is in front: in a terminal ⌥←
  * ⌥→ are word jumps and Ctrl+PageUp/PageDown PowerShell's, and stay so.
  *
+ * Phone mode (lib/phonemode.ts) is ⌥⌘R on macOS, Safari's own key for its
+ * Responsive Design Mode, so a front-end hand already knows it (Chrome's
+ * ⇧⌘M is Mail here). Off macOS it is Ctrl+Alt+Shift+D, D for device:
+ * Ctrl+Alt+Shift+R is GNOME's screencast, and Ctrl+Shift+M is Mail. Matched
+ * by the key's code, since Option turns R into ®. A browser tab's key only,
+ * never an app chord, so a terminal never loses it (appkeys PHONE_MODE_KEY).
+ *
  * The page's own window reads the same keys through the script the shell
  * gives it (browser.rs KEYS_SCRIPT); keep the two in step.
  */
@@ -297,6 +305,7 @@ export function browserKey(e: BrowserKeyLike, isMac: boolean, inField = false): 
       return inField ? null : e.key === 'ArrowLeft' ? 'prev' : 'next'
     }
     if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && (e.code === 'KeyL' || e.key === 'l')) return 'address'
+    if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyR') return 'phone'
     return null
   }
   if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
@@ -304,6 +313,7 @@ export function browserKey(e: BrowserKeyLike, isMac: boolean, inField = false): 
     if (e.key === 'PageDown') return 'next'
     if (e.code === 'KeyL' || e.key === 'l') return 'address'
   }
+  if (e.ctrlKey && e.altKey && e.shiftKey && !e.metaKey && e.code === 'KeyD') return 'phone'
   return null
 }
 
@@ -349,7 +359,8 @@ export function sameRect(a: PageRect | null, b: PageRect | null): boolean {
 
 /** What the dashboard asks of a page (browser.rs `Act`). */
 export type BrowserAct =
-  | { do: 'open'; url: string; rect: PageRect; focus: boolean }
+  /** `phone`: the device's user agent and touch (lib/phonemode); absent, a desktop page. */
+  | { do: 'open'; url: string; rect: PageRect; focus: boolean; phone?: PhoneSpec }
   | { do: 'place'; rect: PageRect }
   | { do: 'show' }
   | { do: 'hide' }

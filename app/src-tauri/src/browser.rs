@@ -22,8 +22,17 @@
 //!
 //! The page is a stranger to Caprock. Its window is labelled `browser-<id>`
 //! and no capability names that label (capabilities/*.json grant by window),
-//! so every command is refused to it. Its one script reads the browser keys
-//! (KEYS_SCRIPT) and has no way to call the shell but a refused navigation.
+//! so every command is refused to it. Its scripts read the browser keys
+//! (KEYS_SCRIPT) and, in phone mode, make a finger of the mouse
+//! (TOUCH_SCRIPT); neither has a way to call the shell but a refused
+//! navigation.
+//!
+//! Phone mode (ADR-075, amended 2026-10-21) is the dashboard's: it places
+//! the page over a device's page area, so the window is that size, and
+//! hands `open` the device's user agent and the touch script's state. The
+//! agent is changed in place (WKWebView `customUserAgent`, WebView2
+//! `Settings.UserAgent`, WebKitGTK `user-agent`) and the page reloaded, so
+//! the page keeps its window, its store and its logins.
 //! It runs in a non-persistent data store of its own, so it shares no cookie
 //! or storage with the dashboard or another page and leaves nothing on disk.
 //! It loads only what the user asked for, follows only the web's schemes,
@@ -72,17 +81,145 @@ pub const KEYS_SCRIPT: &str = r#"(() => {
       if (e.altKey && !e.metaKey && !e.ctrlKey && !e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         if (!field(e.target)) k = e.key === 'ArrowLeft' ? 'prev' : 'next';
       } else if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyL') k = 'address';
+      else if (e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyR') k = 'phone';
     } else if (e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
       if (e.key === 'PageUp') k = 'prev';
       else if (e.key === 'PageDown') k = 'next';
       else if (e.code === 'KeyL') k = 'address';
-    }
+    } else if (e.ctrlKey && e.altKey && e.shiftKey && !e.metaKey && e.code === 'KeyD') k = 'phone';
     if (!k) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     location.href = 'caprock-browser:' + k;
   }, true);
 })();"#;
+
+/// Phone mode's touch (ADR-075, amended 2026-10-21): runs in every page,
+/// in its top frame, dormant until the shell turns it on
+/// (`window.__caprockTouch(true)`, `touch_eval`). On, the mouse acts as one
+/// finger: a press, a drag and a release reach the page as pointer events
+/// of `pointerType: "touch"` aimed at the element first pressed (a finger's
+/// implicit capture), the real mouse events are kept from the page, and a
+/// drag past an 8 px slop over something that scrolls on that axis — and
+/// whose `touch-action` lets it — becomes a scroll with momentum after a
+/// `pointercancel`, as a browser does with a finger. A tap is still a click;
+/// a drag is not. `navigator.maxTouchPoints` reads 5. Approximate by
+/// design: there are no TouchEvents (macOS WebKit has none to make), CSS
+/// :hover still applies, and the momentum is this script's, not the engine's.
+/// A page starts with it on when its user agent is a phone's (` Mobile`, the
+/// one phone mode sets), so a page reading `maxTouchPoints` as it loads
+/// sees the phone; the shell corrects it once the page has loaded when
+/// Touch is off (`touch_eval`).
+pub const TOUCH_SCRIPT: &str = r#"(() => {
+  if (window.top !== window) return;
+  let on = /\bMobile\b/.test(navigator.userAgent);
+  try {
+    const own = Object.getOwnPropertyDescriptor(Navigator.prototype, 'maxTouchPoints');
+    Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { configurable: true, get() { return on ? 5 : (own && own.get ? own.get.call(this) : 0); } });
+  } catch (e) {}
+  let drag = null, raf = 0, eatClick = false;
+  const SLOP = 8;
+  const field = (t) => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''));
+  const fire = (type, src, target) => {
+    const up = type === 'pointerup' || type === 'pointercancel';
+    try {
+      target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: type !== 'pointercancel', composed: true, view: window,
+        pointerId: src.pointerId, pointerType: 'touch', isPrimary: true, width: 20, height: 20, pressure: up ? 0 : 0.5,
+        clientX: src.clientX, clientY: src.clientY, screenX: src.screenX, screenY: src.screenY,
+        button: type === 'pointermove' ? -1 : 0, buttons: up ? 0 : 1 }));
+    } catch (e) {}
+  };
+  const pans = (el, axis) => {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      const ta = getComputedStyle(n).touchAction || 'auto';
+      if (ta === 'none') return false;
+      if (ta.includes('pan-') && !ta.includes('pan-' + axis) && !(axis === 'y' && /pan-(up|down)/.test(ta)) && !(axis === 'x' && /pan-(left|right)/.test(ta))) return false;
+    }
+    return true;
+  };
+  const scroller = (el, axis) => {
+    const root = document.scrollingElement || document.documentElement;
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      if (n === root || n === document.body) break;
+      const s = getComputedStyle(n);
+      const o = axis === 'y' ? s.overflowY : s.overflowX;
+      const room = axis === 'y' ? n.scrollHeight > n.clientHeight : n.scrollWidth > n.clientWidth;
+      if (room && /(auto|scroll|overlay)/.test(o)) return n;
+    }
+    return (axis === 'y' ? root.scrollHeight > root.clientHeight : root.scrollWidth > root.clientWidth) ? root : null;
+  };
+  const stop = (e) => { e.stopImmediatePropagation(); };
+  addEventListener('pointerdown', (e) => {
+    if (!on || e.pointerType !== 'mouse' || e.button !== 0) return;
+    stop(e);
+    cancelAnimationFrame(raf);
+    eatClick = false;
+    drag = { target: e.target, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, t: performance.now(), vx: 0, vy: 0, moved: false, pan: null, axis: null };
+    fire('pointerdown', e, e.target);
+  }, true);
+  addEventListener('pointermove', (e) => {
+    if (!on || e.pointerType !== 'mouse') return;
+    stop(e);
+    if (!drag) return;
+    const now = performance.now(), dt = Math.max(8, now - drag.t);
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.vx = dx / dt * 16; drag.vy = dy / dt * 16;
+    drag.x = e.clientX; drag.y = e.clientY; drag.t = now;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > SLOP) {
+      drag.moved = true;
+      eatClick = true;
+      const axis = Math.abs(e.clientX - drag.x0) > Math.abs(e.clientY - drag.y0) ? 'x' : 'y';
+      const sc = pans(drag.target, axis) ? scroller(drag.target, axis) : null;
+      if (sc) { drag.pan = sc; drag.axis = axis; fire('pointercancel', e, drag.target); }
+    }
+    if (drag.pan) {
+      if (drag.axis === 'y') drag.pan.scrollTop -= dy; else drag.pan.scrollLeft -= dx;
+    } else fire('pointermove', e, drag.target);
+  }, true);
+  const end = (e) => {
+    if (!on || e.pointerType !== 'mouse') return;
+    stop(e);
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    if (!d.pan) { fire(e.type === 'pointercancel' ? 'pointercancel' : 'pointerup', e, d.target); return; }
+    if (performance.now() - d.t > 80) return;
+    let v = Math.max(-60, Math.min(60, d.axis === 'y' ? -d.vy : -d.vx));
+    const step = () => {
+      if (Math.abs(v) < 0.3) return;
+      if (d.axis === 'y') d.pan.scrollTop += v; else d.pan.scrollLeft += v;
+      v *= 0.95;
+      raf = requestAnimationFrame(step);
+    };
+    step();
+  };
+  addEventListener('pointerup', end, true);
+  addEventListener('pointercancel', end, true);
+  for (const t of ['mousedown', 'mousemove', 'mouseup', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave', 'pointerover', 'pointerout', 'pointerenter', 'pointerleave']) {
+    addEventListener(t, (e) => {
+      if (!on || (e.pointerType && e.pointerType !== 'mouse')) return;
+      stop(e);
+      if (t === 'mousedown' && !field(e.target)) e.preventDefault();
+    }, true);
+  }
+  addEventListener('click', (e) => { if (on && eatClick) { eatClick = false; e.preventDefault(); stop(e); } }, true);
+  addEventListener('dragstart', (e) => { if (on) e.preventDefault(); }, true);
+  addEventListener('wheel', () => { cancelAnimationFrame(raf); }, { capture: true, passive: true });
+  Object.defineProperty(window, '__caprockTouch', { value: (v) => { on = !!v; drag = null; eatClick = false; cancelAnimationFrame(raf); } });
+})();"#;
+
+/// What turns a live page's touch on or off (TOUCH_SCRIPT).
+pub fn touch_eval(on: bool) -> String {
+    format!("window.__caprockTouch && window.__caprockTouch({on})")
+}
+
+/// A user agent the dashboard may set for phone mode: printable ASCII, at
+/// most 512 characters, not empty.
+pub fn user_agent(raw: &str) -> Option<String> {
+    let ua = raw.trim();
+    let ok = !ua.is_empty() && ua.len() <= 512 && ua.chars().all(|c| (' '..='~').contains(&c));
+    ok.then(|| ua.to_owned())
+}
 
 /// The tab's content box in the main window, in logical pixels: the
 /// dashboard's CSS rectangle times its zoom.
@@ -104,6 +241,10 @@ pub enum Act {
         rect: Rect,
         #[serde(default)]
         focus: bool,
+        /// Phone mode: the device's user agent and the touch script's
+        /// state. Absent, the page is a desktop page again.
+        #[serde(default)]
+        phone: Option<Phone>,
     },
     /// Move and size it with the tab.
     Place {
@@ -128,6 +269,41 @@ pub enum Act {
     Retain {
         ids: Vec<String>,
     },
+}
+
+/// Phone mode as the dashboard asks for it (ui/src/lib/phonemode.ts
+/// `PhoneSpec`). The size is the `rect`'s: the dashboard places the page
+/// over the device's page area.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Phone {
+    pub ua: String,
+    #[serde(default)]
+    pub touch: bool,
+}
+
+/// What a page window is set to now: the user agent phone mode gave it
+/// (None: the webview's own) and whether its touch script is on.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Mode {
+    pub ua: Option<String>,
+    pub touch: bool,
+}
+
+/// What a page must change to go from `was` to the mode `phone` asks for:
+/// a new user agent (Some(None) back to the webview's own), and the touch
+/// script's new state. A new user agent reloads the page, so what the
+/// server and the page's first scripts read is the phone's.
+pub fn change(was: &Mode, phone: Option<&Phone>) -> (Mode, Option<Option<String>>, Option<bool>) {
+    let next = match phone {
+        Some(p) => Mode {
+            ua: user_agent(&p.ua),
+            touch: p.touch,
+        },
+        None => Mode::default(),
+    };
+    let ua = (next.ua != was.ua).then(|| next.ua.clone());
+    let touch = (next.touch != was.touch).then_some(next.touch);
+    (next, ua, touch)
 }
 
 /// The window label for a tab's page id: letters, digits and dashes only.
@@ -167,6 +343,7 @@ pub fn key_of(url: &Url) -> Option<&'static str> {
         "prev" => Some("prev"),
         "next" => Some("next"),
         "address" => Some("address"),
+        "phone" => Some("phone"),
         _ => None,
     }
 }
@@ -228,6 +405,23 @@ pub struct Pages {
     rects: Mutex<HashMap<String, Rect>>,
     /// Downloads in flight: where each one is written, by URL.
     saving: Mutex<HashMap<String, PathBuf>>,
+    /// Phone mode, by label: the pages a device's user agent or touch was
+    /// given to. Absent, a desktop page.
+    modes: Mutex<HashMap<String, Mode>>,
+    /// Windows: each page's own user agent, read before phone mode first
+    /// replaced it, to give it back (WebView2 has no "reset").
+    own_ua: Mutex<HashMap<String, String>>,
+}
+
+impl Pages {
+    fn mode(&self, label: &str) -> Mode {
+        self.modes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(label)
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 /// The main window's move and resize events are followed once.
@@ -249,10 +443,29 @@ pub async fn browser_tab<R: Runtime>(
     let label = label(&id).ok_or_else(|| format!("not a page id: {id}"))?;
     let page = app.get_webview_window(&label);
     match act {
-        Act::Open { url, rect, focus } => {
+        Act::Open {
+            url,
+            rect,
+            focus,
+            phone,
+        } => {
             let rect = sane(rect).ok_or("not a place in the window")?;
             let page = match page {
-                Some(p) => p,
+                Some(p) => {
+                    set_mode(&app, &label, &p, phone.as_ref(), true);
+                    p
+                }
+                None if phone.is_some() => {
+                    // A phone's first request already carries its user
+                    // agent: the window starts blank, takes the device's
+                    // agent, then goes to the address.
+                    let to = web_url(&url)?;
+                    let blank = "about:blank".parse().map_err(|_| "about:blank")?;
+                    let p = build(&app, &id, &label, blank)?;
+                    set_mode(&app, &label, &p, phone.as_ref(), false);
+                    p.navigate(to).map_err(|e| e.to_string())?;
+                    p
+                }
                 None => build(&app, &id, &label, web_url(&url)?)?,
             };
             follow_main(&app);
@@ -288,6 +501,111 @@ pub async fn browser_tab<R: Runtime>(
                 Act::Open { .. } | Act::Retain { .. } => Ok(()),
             }
         }
+    }
+}
+
+/// Gives the page the mode `phone` asks for: the device's user agent (the
+/// page reloads when `reload`, so the server and its first scripts see the
+/// phone) and its touch on or off. Nothing happens when nothing changed.
+fn set_mode<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+    page: &WebviewWindow<R>,
+    phone: Option<&Phone>,
+    reload: bool,
+) {
+    let Some(pages) = app.try_state::<Pages>() else {
+        return;
+    };
+    let (next, ua, touch) = change(&pages.mode(label), phone);
+    {
+        let mut modes = pages.modes.lock().unwrap_or_else(|e| e.into_inner());
+        if next == Mode::default() {
+            modes.remove(label);
+        } else {
+            modes.insert(label.to_owned(), next);
+        }
+    }
+    if let Some(ua) = ua {
+        set_user_agent(page, ua);
+        if reload {
+            // The touch script's state comes back on the load (`build`).
+            let _ = page.reload();
+            return;
+        }
+    }
+    if let Some(on) = touch {
+        let _ = page.eval(touch_eval(on));
+    }
+}
+
+/// The page's user agent: the device's, or None for the webview's own. On
+/// the main thread (`with_webview`), before anything queued after it.
+fn set_user_agent<R: Runtime>(page: &WebviewWindow<R>, ua: Option<String>) {
+    #[cfg(target_os = "macos")]
+    let _ = page.with_webview(move |pw| {
+        use objc2::msg_send;
+        use objc2::runtime::AnyObject;
+        use objc2_foundation::NSString;
+        let wk = pw.inner() as *mut AnyObject;
+        if wk.is_null() {
+            return;
+        }
+        let s = ua.as_deref().map(NSString::from_str);
+        // SAFETY: `wk` is this window's live WKWebView, on the main thread;
+        // a nil customUserAgent is WebKit's own again.
+        unsafe {
+            let _: () = msg_send![wk, setCustomUserAgent: s.as_deref()];
+        }
+    });
+    #[cfg(windows)]
+    {
+        let app = page.app_handle().clone();
+        let label = page.label().to_owned();
+        let _ = page.with_webview(move |pw| {
+            let _ = win_user_agent(&app, &label, &pw, ua);
+        });
+    }
+    #[cfg(target_os = "linux")]
+    let _ = page.with_webview(move |pw| {
+        use webkit2gtk::{SettingsExt, WebViewExt};
+        if let Some(s) = pw.inner().settings() {
+            // None: WebKitGTK's own user agent again.
+            s.set_user_agent(ua.as_deref());
+        }
+    });
+    #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
+    let _ = (page, ua);
+}
+
+#[cfg(windows)]
+fn win_user_agent<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+    pw: &tauri::webview::PlatformWebview,
+    ua: Option<String>,
+) -> windows::core::Result<()> {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings2;
+    use windows::core::{Interface, HSTRING, PCWSTR, PWSTR};
+    // SAFETY: COM calls on the webview's own thread (with_webview).
+    unsafe {
+        let settings: ICoreWebView2Settings2 =
+            pw.controller().CoreWebView2()?.Settings()?.cast()?;
+        let own = match app.try_state::<Pages>() {
+            Some(pages) => {
+                let mut map = pages.own_ua.lock().unwrap_or_else(|e| e.into_inner());
+                if !map.contains_key(label) {
+                    let mut p = PWSTR::null();
+                    settings.UserAgent(&mut p)?;
+                    map.insert(label.to_owned(), webview2_com::take_pwstr(p));
+                }
+                map.get(label).cloned()
+            }
+            None => None,
+        };
+        let Some(to) = ua.or(own) else { return Ok(()) };
+        let h = HSTRING::from(to);
+        settings.SetUserAgent(PCWSTR(h.as_ptr()))
     }
 }
 
@@ -367,6 +685,14 @@ fn drain<R: Runtime>(app: &AppHandle<R>, label: &str, page: WebviewWindow<R>) {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(label);
+        p.modes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
+        p.own_ua
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
     }
     if let Ok(blank) = "about:blank".parse() {
         let _ = page.navigate(blank);
@@ -433,6 +759,8 @@ fn build<R: Runtime>(
         // dropped on a terminal still types its path there.
         .disable_drag_drop_handler()
         .initialization_script(KEYS_SCRIPT)
+        // Dormant on a desktop page; phone mode's touch (ADR-075, amended).
+        .initialization_script(TOUCH_SCRIPT)
         .on_navigation(move |url| {
             if let Some(k) = key_of(url) {
                 // The keyboard goes back to the dashboard, which acts on the key.
@@ -459,12 +787,22 @@ fn build<R: Runtime>(
         .on_document_title_changed(move |_, t| {
             tell(&title, serde_json::json!({ "id": id3, "title": t }));
         })
-        .on_page_load(move |_, p| {
+        .on_page_load(move |w, p| {
             // The drain's own blank page is nobody's news.
             if p.url().scheme() == "about" {
                 return;
             }
             let loading = matches!(p.event(), PageLoadEvent::Started);
+            // A loaded page in phone mode gets Touch as the user left it
+            // (it starts on with a phone's agent: TOUCH_SCRIPT).
+            if !loading {
+                if let Some(pages) = load.try_state::<Pages>() {
+                    let m = pages.mode(w.label());
+                    if m.ua.is_some() || m.touch {
+                        let _ = w.eval(touch_eval(m.touch));
+                    }
+                }
+            }
             tell(
                 &load,
                 serde_json::json!({ "id": id4, "url": p.url().as_str(), "loading": loading }),
@@ -577,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn the_key_script_speaks_only_three_words() {
+    fn the_key_script_speaks_only_four_words() {
         for (u, k) in [
             ("caprock-browser:prev", Some("prev")),
             ("caprock-browser:next", Some("next")),
@@ -600,6 +938,97 @@ mod tests {
         ] {
             assert!(KEYS_SCRIPT.contains(needle), "{needle}");
         }
+    }
+
+    #[test]
+    fn phone_mode_has_its_key_from_the_page_on_every_os() {
+        assert_eq!(
+            key_of(&"caprock-browser:phone".parse().unwrap()),
+            Some("phone")
+        );
+        // ⌥⌘R on macOS (Safari's Responsive Design Mode key), Ctrl+Alt+Shift+D
+        // elsewhere (GNOME takes Ctrl+Alt+Shift+R for its screencast) —
+        // ui/src/lib/appkeys.ts PHONE_MODE_KEY and keys().
+        assert!(KEYS_SCRIPT
+            .contains("e.metaKey && e.altKey && !e.ctrlKey && !e.shiftKey && e.code === 'KeyR'"));
+        assert!(KEYS_SCRIPT
+            .contains("e.ctrlKey && e.altKey && e.shiftKey && !e.metaKey && e.code === 'KeyD'"));
+    }
+
+    #[test]
+    fn the_touch_script_makes_a_finger_of_the_mouse_and_nothing_else() {
+        for needle in [
+            "window.top !== window",
+            "pointerType: 'touch'",
+            "e.pointerType !== 'mouse'",
+            "'pointercancel'",
+            "touchAction",
+            "maxTouchPoints",
+            "__caprockTouch",
+            "/\\bMobile\\b/.test(navigator.userAgent)",
+        ] {
+            assert!(TOUCH_SCRIPT.contains(needle), "{needle}");
+        }
+        // It talks to nobody: no navigation, no network, no storage.
+        for never in [
+            "location",
+            "fetch(",
+            "XMLHttpRequest",
+            "localStorage",
+            "caprock-browser:",
+        ] {
+            assert!(!TOUCH_SCRIPT.contains(never), "{never}");
+        }
+        assert_eq!(
+            touch_eval(true),
+            "window.__caprockTouch && window.__caprockTouch(true)"
+        );
+    }
+
+    #[test]
+    fn a_user_agent_is_one_printable_line() {
+        let ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
+        assert_eq!(user_agent(ua).as_deref(), Some(ua));
+        assert_eq!(user_agent(&format!(" {ua} ")).as_deref(), Some(ua));
+        for bad in ["", "   ", "a\nb", "a\u{0}b", "caf\u{e9}", &"x".repeat(513)] {
+            assert_eq!(user_agent(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn phone_mode_changes_only_what_differs() {
+        let phone = |ua: &str, touch| Phone {
+            ua: ua.into(),
+            touch,
+        };
+        let desk = Mode::default();
+        // On: the device's agent (a reload) and touch.
+        let (m, ua, touch) = change(&desk, Some(&phone("UA-A", true)));
+        assert_eq!(
+            m,
+            Mode {
+                ua: Some("UA-A".into()),
+                touch: true
+            }
+        );
+        assert_eq!(ua, Some(Some("UA-A".into())));
+        assert_eq!(touch, Some(true));
+        // The same again (a resize, a rotate): nothing.
+        assert_eq!(change(&m, Some(&phone("UA-A", true))).1, None);
+        assert_eq!(change(&m, Some(&phone("UA-A", true))).2, None);
+        // Touch off alone: no reload.
+        let (_, ua, touch) = change(&m, Some(&phone("UA-A", false)));
+        assert_eq!((ua, touch), (None, Some(false)));
+        // Another device: a new agent.
+        assert_eq!(
+            change(&m, Some(&phone("UA-B", true))).1,
+            Some(Some("UA-B".into()))
+        );
+        // Off: the webview's own agent back, touch off.
+        let (m2, ua, touch) = change(&m, None);
+        assert_eq!((m2, ua, touch), (Mode::default(), Some(None), Some(false)));
+        // A desktop page asked to stay one: nothing.
+        assert_eq!(change(&desk, None), (Mode::default(), None, None));
     }
 
     #[test]
@@ -649,7 +1078,18 @@ mod tests {
         let a: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "https://a.b/", "rect": {"x": 1, "y": 2, "width": 3, "height": 4}, "focus": true})).unwrap();
         assert!(matches!(a, Act::Open { focus: true, .. }));
         let a: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "https://a.b/", "rect": {"x": 1, "y": 2, "width": 3, "height": 4}})).unwrap();
-        assert!(matches!(a, Act::Open { focus: false, .. }));
+        assert!(matches!(
+            a,
+            Act::Open {
+                focus: false,
+                phone: None,
+                ..
+            }
+        ));
+        let a: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "https://a.b/", "rect": {"x": 1, "y": 2, "width": 393, "height": 681}, "focus": false, "phone": {"ua": "UA", "touch": true}})).unwrap();
+        assert!(
+            matches!(a, Act::Open { phone: Some(Phone { ref ua, touch: true }), .. } if ua == "UA")
+        );
         let a: Act = serde_json::from_value(serde_json::json!({"do": "hide"})).unwrap();
         assert!(matches!(a, Act::Hide));
         let a: Act =

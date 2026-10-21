@@ -19,6 +19,7 @@ vi.mock('@/lib/termlinks', async (orig) => ({
 
 import { BrowserView } from './BrowserView'
 import { BROWSER_EVENT } from '@/lib/browsertab'
+import { ANDROID_CHROME_UA, IOS_SAFARI_UA, setPhoneOn } from '@/lib/phonemode'
 
 class RO { observe() {} disconnect() {} }
 
@@ -181,6 +182,115 @@ describe('a browser tab in the app', () => {
     render(<BrowserView {...props} visible armed />)
     fireEvent.click(screen.getByRole('button', { name: 'Open in your browser' }))
     expect(opened.list).toEqual(['http://localhost:5173/'])
+  })
+})
+
+describe('phone mode (ADR-075, amended 2026-10-21)', () => {
+  // The tab's box is big enough for the whole phone at the default
+  // interface size (1.1); the page area reports the size it is drawn at.
+  beforeEach(() => {
+    localStorage.clear()
+    setPhoneOn('page:t1', false)
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.phoneSize) {
+        const w = parseFloat(this.style.width)
+        const h = parseFloat(this.style.height)
+        return { left: 400, top: 120, width: w, height: h, right: 400 + w, bottom: 120 + h, x: 400, y: 120, toJSON() {} } as DOMRect
+      }
+      return { left: 200, top: 78, width: 1000, height: 900, right: 1200, bottom: 978, x: 200, y: 78, toJSON() {} } as DOMRect
+    })
+  })
+  const lastOpen = () => acts.list.filter((a) => a.act.do === 'open').at(-1)!.act as Extract<BrowserAct, { do: 'open' }>
+
+  it('is a Phone button on the toolbar with its key named for this OS', () => {
+    const { unmount } = render(<BrowserView {...props} visible armed />)
+    const btn = screen.getByRole('button', { name: 'Phone' })
+    expect(btn.getAttribute('aria-pressed')).toBe('false')
+    expect(btn.getAttribute('title')).toContain('⌥⌘R')
+    unmount()
+    render(<BrowserView {...props} isMac={false} visible armed />)
+    expect(screen.getByRole('button', { name: 'Phone' }).getAttribute('title')).toContain('Ctrl+Alt+Shift+D')
+  })
+
+  it('sizes the page window to the device’s page area and gives it the phone’s agent and touch', () => {
+    render(<BrowserView {...props} visible armed />)
+    expect(lastOpen().phone).toBeUndefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    // iPhone 16, bars shown: 393 × (852 − 54 − 83 − 34), in logical px.
+    expect(lastOpen()).toMatchObject({ rect: { width: 393, height: 681 }, phone: { ua: IOS_SAFARI_UA, touch: true } })
+    expect(screen.getByText('393×681')).toBeTruthy()
+    expect(screen.getByText('est.')).toBeTruthy()
+    expect(document.querySelector('[data-phone-fit="full"]')).toBeTruthy()
+    // Another device: its agent and its size.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Device' }), { target: { value: 'pixel9' } })
+    expect(lastOpen()).toMatchObject({ rect: { width: 412, height: 803 }, phone: { ua: ANDROID_CHROME_UA, touch: true } })
+    // Bars scrolled away: the second size.
+    fireEvent.click(screen.getByRole('button', { name: 'Bars scrolled away' }))
+    expect(lastOpen().rect).toMatchObject({ width: 412, height: 859 })
+    // Rotate: the sides swap.
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate' }))
+    expect(lastOpen().rect).toMatchObject({ width: 923, height: 412 - 16 })
+    // Touch off: the same agent, touch off.
+    fireEvent.click(screen.getByRole('button', { name: 'Touch' }))
+    expect(lastOpen().phone).toEqual({ ua: ANDROID_CHROME_UA, touch: false })
+    // Off: a desktop page over the whole box again.
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    expect(lastOpen().phone).toBeUndefined()
+    expect(lastOpen().rect).toEqual({ x: 220, y: 86, width: 1100, height: 990 })
+    // The device is remembered for the next time.
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    expect(lastOpen()).toMatchObject({ phone: { ua: ANDROID_CHROME_UA, touch: false } })
+  })
+
+  it('takes a custom size exactly, with no estimate', () => {
+    render(<BrowserView {...props} visible armed />)
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Device' }), { target: { value: 'custom' } })
+    const w = screen.getByRole('spinbutton', { name: 'Width' })
+    fireEvent.change(w, { target: { value: '320' } })
+    fireEvent.blur(w)
+    expect(lastOpen().rect).toMatchObject({ width: 320, height: 700 })
+    expect(screen.queryByText('est.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Bars shown' })).toBeNull()
+  })
+
+  it('draws the page area alone when the phone does not fit, never scaled', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.phoneSize) return { left: 0, top: 0, width: parseFloat(this.style.width), height: parseFloat(this.style.height), right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
+      return { left: 200, top: 78, width: 800, height: 700, right: 1000, bottom: 778, x: 200, y: 78, toJSON() {} } as DOMRect
+    })
+    render(<BrowserView {...props} visible armed />)
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    expect(document.querySelector('[data-phone-fit="page"]')).toBeTruthy()
+    expect(lastOpen().rect).toMatchObject({ width: 393, height: 681 })
+    expect(screen.getByText(/does not fit this tab/)).toBeTruthy()
+  })
+
+  it('turns on and off with ⌥⌘R in the dashboard, Ctrl+Alt+Shift+D off macOS, and from the page', () => {
+    const { unmount } = render(<BrowserView {...props} visible armed />)
+    fireEvent.keyDown(window, { key: '®', code: 'KeyR', metaKey: true, altKey: true })
+    expect(screen.getByRole('button', { name: 'Phone' }).getAttribute('aria-pressed')).toBe('true')
+    // From the page's window: the shell's word (browser.rs KEYS_SCRIPT).
+    act(() => { window.dispatchEvent(new CustomEvent(BROWSER_EVENT, { detail: { id: 't1', key: 'phone' } })) })
+    expect(screen.getByRole('button', { name: 'Phone' }).getAttribute('aria-pressed')).toBe('false')
+    unmount()
+    render(<BrowserView {...props} isMac={false} visible armed />)
+    fireEvent.keyDown(window, { key: 'D', code: 'KeyD', ctrlKey: true, altKey: true, shiftKey: true })
+    expect(screen.getByRole('button', { name: 'Phone' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('says how true it is, per OS, behind its ?', () => {
+    render(<BrowserView {...props} visible armed />)
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    fireEvent.click(screen.getByRole('button', { name: 'How true phone mode is' }))
+    const list = screen.getByRole('dialog', { name: 'How true phone mode is' })
+    expect(list.textContent).toContain('Touch')
+    expect(list.querySelector('[data-truth="approx"]')).toBeTruthy()
+    expect(list.querySelector('[data-truth="no"]')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Windows' }))
+    expect(list.textContent).toContain('Chromium wearing an iPhone size')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'How true phone mode is' })).toBeNull()
   })
 })
 

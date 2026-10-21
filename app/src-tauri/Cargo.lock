@@ -444,6 +444,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "webkit2gtk",
  "webview2-com",
  "windows",
  "zbus",

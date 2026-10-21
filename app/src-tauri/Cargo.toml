@@ -36,6 +36,9 @@ tauri-plugin-updater = "2"
 notify-rust = "4.11"
 # CloseNotification by id (src/notify_linux.rs); already in the tree through notify-rust.
 zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
+# A browser tab's user agent in phone mode (src/browser.rs); already in the
+# tree through wry.
+webkit2gtk = { version = "2.0", features = ["v2_40"] }
 
 # SIGTERM quits through Tauri's exit (src/sigterm.rs); already in the tree.
 # The window's page as a PNG through WebView2's CapturePreview

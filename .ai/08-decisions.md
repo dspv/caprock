@@ -5361,6 +5361,52 @@ child of ours); people need to stay signed in to sites (a persistent store
 of the browser's own, kept apart from the dashboard's); or Wayland users
 find the page beside the tab rather than over it.
 
+**Amended 2026-10-21 — Phone mode.** Asked for a front-end developer who
+checks a local site the way a phone shows it (the mockup's variant A,
+approved by the owner; the grid of several devices and *open on my phone*
+are not built). A **Phone** button on the browser tab's toolbar, and ⌥⌘R
+(Safari's own Responsive Design Mode key; Chrome's ⇧⌘M is Mail here) —
+Ctrl+Alt+Shift+D off macOS, since Ctrl+Alt+Shift+R is GNOME's screencast and
+Ctrl+Shift+M is Mail (rule 12; a browser tab's key, never an app chord, so a
+terminal keeps it):
+
+- **The page's own window is the device's page area,** not a scaled
+  picture: the dashboard draws a simple frame (status bar, the browser's
+  bars, the home indicator) and lays the page's window over the area they
+  leave, at the device's size in logical pixels, so media queries,
+  `innerWidth`/`innerHeight` and `100dvh` read the device. When the phone
+  does not fit the tab, the page area alone is drawn in a thin rim; when even
+  that does not fit, it keeps its size and runs past the tab's edge with a
+  line saying so. It is never scaled.
+- **Devices:** iPhone 16 (393×852 @3), iPhone SE 3rd gen (375×667 @2),
+  Pixel 9 (412×923), Galaxy S24 (360×780), and a custom W×H page. The
+  screens are sourced; every bar height is an estimate, marked *est.* in the
+  UI and open in [OQ-23](12-risks.md#open-questions). Rotate swaps the sides;
+  *Bars scrolled away* is a second, hand-picked size.
+- **User agent** per device (iOS Safari's, or Chrome on Android's reduced
+  one), changed in place — WKWebView `customUserAgent`, WebView2
+  `Settings.UserAgent` (its own read first, to give back), WebKitGTK
+  `user-agent` — and the page reloaded. Not a new window: a rebuilt page
+  would lose its non-persistent store, and with it a login.
+- **Touch** (`TOUCH_SCRIPT`, in every page, dormant until a phone's agent or
+  the shell turns it on): the mouse becomes touch-type pointer events aimed
+  at the element pressed, the real mouse events are kept from the page, and
+  a drag over something that scrolls on that axis (and whose `touch-action`
+  lets it) becomes a scroll with momentum after a `pointercancel`; a tap is
+  a click, a drag is not; `maxTouchPoints` reads 5. Approximate on every OS:
+  no TouchEvents, `:hover` still applies, the momentum is the script's. On
+  Windows WebView2's own DevTools emulation would be truer and is not wired
+  yet.
+- **Not emulated, and said so** behind the bar's **?** per OS:
+  `devicePixelRatio`, the engine, meta viewport and pinch zoom, safe-area
+  insets (`env()` reads 0), the on-screen keyboard.
+
+Still beta and off by default. Verified: Rust and UI tests, the frame and
+the rectangle handed to the shell in a headless browser, and the touch
+script driven by a real mouse in headless Chromium and WebKit. Not verified:
+a real Tauri run of the page window at the device size, and the agent change
+on Windows and Linux (compiled in CI only).
+
 ---
 
 ## ADR-076 — Private modules: a slot opened by a signed admin key, holding nothing of its own

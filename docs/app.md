@@ -865,6 +865,18 @@ that opens a new window opens another browser tab. When an agent starts
 waiting on you, a strip over the page names it with *Go*, and a playing
 video is paused (you can turn the pause off).
 
+**Phone mode.** *Phone* on a browser tab's toolbar, or ⌥⌘R
+(Ctrl+Alt+Shift+D on Windows and Linux), shows the page the way a phone
+does: pick iPhone 16, iPhone SE (3rd gen), Pixel 9, Galaxy S24 or your own
+width × height, rotate it, and choose whether the browser's bars are shown
+or scrolled away. The page itself is resized to the phone's page area and
+sent the phone browser's user agent, so media queries, `innerHeight` and
+`100dvh` read the phone's numbers; with *Touch* on, the mouse acts as a
+finger — drag to scroll, swipe, pull a sheet. Page heights marked *est.*
+are estimates of the phone's bars. The **?** beside it lists, for your
+system, what is real, what is approximate and what is not emulated at all
+(the screen's pixel ratio, the browser engine, the on-screen keyboard).
+
 Pages share no cookies with Caprock or with each other, keep nothing once
 the app quits (so you are signed out of sites each time), and can call
 nothing of Caprock's. A download goes to your Downloads folder and is never
@@ -907,6 +919,7 @@ On macOS:
 | ⌘\          | Hide or show the sidebar                                                            |
 | ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                           |
 | ⌥⌘P         | Theme: open the picker                                                              |
+| ⌥⌘R         | In a browser tab (beta): Phone mode on or off                                       |
 | ⌘R          | Reload the window (View → Reload)                                                   |
 
 On Windows and Linux each is Ctrl+Shift with the same letter or arrow
@@ -920,7 +933,8 @@ chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
 a browser tab's ⌥← ⌥→ are Ctrl+PageUp and Ctrl+PageDown, since Alt+← → are
-a browser's Back and Forward there;
+a browser's Back and Forward there, and its Phone mode is Ctrl+Alt+Shift+D,
+since GNOME takes Ctrl+Alt+Shift+R for a screencast;
 in a text field the arrow chords stay the field's. Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes

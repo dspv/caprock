@@ -1952,8 +1952,18 @@ crashed (ADR-070); what the user sees is in
   into Downloads, never opened.
 - **An agent waiting on you** while a browser tab is in front: a strip names
   it with *Go* and a playing video is paused (Settings; #618's idea).
+- **Phone mode** (ADR-075, amended 2026-10-21): `open` may carry
+  `phone: {ua, touch}`; the dashboard places the page over a device's page
+  area, so the window is that size. The shell changes the user agent in
+  place (WKWebView `customUserAgent`, WebView2 `Settings.UserAgent`,
+  WebKitGTK `user-agent`) and reloads, keeping the window and its store;
+  `open` without `phone` gives the webview its own agent back. Touch is
+  `TOUCH_SCRIPT`, a second initialization script in every page, dormant
+  until a phone's agent or `window.__caprockTouch(true)`; the shell re-sends
+  its state when a page has loaded. What the user sees is in 04-ui.md.
 - **Not verified in a real run** (ADR-075): the overlay on Windows and Linux,
-  Wayland placement, `navigator.clipboard` and drops inside a page.
+  Wayland placement, `navigator.clipboard` and drops inside a page; phone
+  mode's window at the device size, and its agent change off macOS.
 
 ## Feedback screenshots
 
