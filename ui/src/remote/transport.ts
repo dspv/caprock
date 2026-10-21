@@ -173,6 +173,13 @@ export class Channel {
     readonly machine: Machine,
     private readonly NativeWebSocket: typeof WebSocket = WebSocket,
     private readonly online: () => boolean = () => typeof navigator === 'undefined' || navigator.onLine !== false,
+    /**
+     * Whether this phone reaches anything at all — the page's own origin —
+     * asked when the relay could not be reached and the browser still says
+     * online: a DNS failure or a dead Wi-Fi reads the same to a WebSocket as
+     * a relay a VPN blocks, and only the second is the relay's fault.
+     */
+    private readonly reachable: () => Promise<boolean> = () => Promise.resolve(true),
   ) {}
 
   onState(fn: (s: ChannelState) => void): () => void {
@@ -229,6 +236,39 @@ export class Channel {
     const ws = this.ws
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     this.probe(ws, WAKE_MS)
+  }
+
+  /**
+   * The browser said `offline`. A socket the network dropped can read as
+   * open for a minute, until the pings notice: hang up now, so the page says
+   * *No internet on this phone* at once, and `online` reconnects it.
+   */
+  wentOffline() {
+    if (this.stopped || needsPairing(this.problem)) return
+    const ws = this.ws
+    if (ws && (this.state === 'open' || this.state === 'connecting')) {
+      this.drop(ws, 'no-internet', 'this phone went offline')
+      return
+    }
+    if (this.state !== 'open' && this.problem !== 'no-internet') {
+      this.problem = 'no-internet'
+      this.reason = 'this phone went offline'
+      for (const fn of this.listeners) fn(this.state)
+    }
+  }
+
+  /** Asks reachable() after a relay-unreachable, and calls it no-internet if nothing answers. */
+  private checkInternet() {
+    void this.reachable().then(
+      (ok) => {
+        if (ok || this.state === 'open' || this.problem !== 'relay-unreachable') return
+        this.problem = 'no-internet'
+        this.reason = 'this phone reaches nothing'
+        if (this.lastError) this.lastError = { ...this.lastError, problem: 'no-internet' }
+        for (const fn of this.listeners) fn(this.state)
+      },
+      () => { /* no verdict */ },
+    )
   }
 
   private probing: WebSocket | null = null
@@ -397,8 +437,9 @@ export class Channel {
       try {
         ws = new this.NativeWebSocket(url)
       } catch (e) {
-        this.lastError = { problem: 'relay-unreachable', reason: String(e), code: 0, at: Date.now() }
-        this.set('offline', String(e), 'relay-unreachable')
+        const problem: Problem = this.online() ? 'relay-unreachable' : 'no-internet'
+        this.lastError = { problem, reason: String(e), code: 0, at: Date.now() }
+        this.set('offline', String(e), problem)
         this.schedule()
         reject(e)
         return
@@ -526,6 +567,9 @@ export class Channel {
           why = closeReason || 'connection lost'
         }
         if (this.problem === 'removed') problem = 'removed'
+        // Whatever the socket said, a browser that knows it is offline is
+        // the phone's own network, never the computer or the pairing.
+        if (!needsPairing(problem) && problem !== 'no-internet' && !this.online()) problem = 'no-internet'
         this.lastError = { problem, reason: why, code, at: Date.now() }
         this.set(needsPairing(problem) ? 'closed' : 'offline', why, problem)
         const streams = [...this.streams.values()]
@@ -533,6 +577,7 @@ export class Channel {
         for (const s of streams) s.onDrop(why)
         fail(why)
         this.schedule()
+        if (problem === 'relay-unreachable') this.checkInternet()
       }
       this.closed = () => onClose(4408, '')
       ws.onclose = (ev) => onClose(ev.code, ev.reason)

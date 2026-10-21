@@ -241,7 +241,14 @@ export function forDaemon(url: string, origin = window.location.origin): boolean
 export function install(m: Machine, w: Window & typeof globalThis = window) {
   const NativeWebSocket = w.WebSocket
   const nativeFetch = w.fetch.bind(w)
-  channel = new Channel(m, NativeWebSocket)
+  // The page's own origin answers whenever this phone has a network at all:
+  // asked when the relay does not, to tell no internet from a blocked relay.
+  const reachable = () =>
+    nativeFetch(`${w.location.origin}/favicon.svg`, { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(4000) }).then(
+      () => true,
+      () => false,
+    )
+  channel = new Channel(m, NativeWebSocket, undefined, reachable)
   const ch = channel
   w.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -262,7 +269,6 @@ export function install(m: Machine, w: Window & typeof globalThis = window) {
     if (w.document.visibilityState === 'visible') wake()
   })
   w.addEventListener('online', wake)
-  w.addEventListener('pageshow', (e) => {
-    if ((e as PageTransitionEvent).persisted) wake()
-  })
+  w.addEventListener('offline', () => ch.wentOffline())
+  w.addEventListener('pageshow', () => wake())
 }

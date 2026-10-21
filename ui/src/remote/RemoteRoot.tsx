@@ -17,6 +17,7 @@ import { useRoute } from '@/lib/router'
 import { useNarrowScreen } from '@/lib/phone'
 import { provideMachineSwitch } from '@/lib/machineswitch'
 import { ReadyGate } from './ReadyCard'
+import { agoText, classify, offersPairing, retryLine, type Cause } from './linkcause'
 import { extTitle } from '@/lib/externalLinks'
 
 const App = lazy(() => import('../App'))
@@ -92,6 +93,14 @@ export default function RemoteRoot() {
   if (notPairedHere(machine) && !pairing) return <NotPairedHere name={machine.name} onPair={() => setPairing(true)} />
   if (pairing && notPairedHere(machine)) return <AddMachine onCancel={() => setPairing(false)} />
   const blocked = needsPairing(link.problem)
+  const cause = classify(link.problem, link.online)
+  const down = link.state !== 'open'
+  // No internet is said at once — the browser knows; the computer and the
+  // relay get EXPLAIN_AFTER_MS, since a reconnect inside it is not news.
+  const notice = blocked || (down && (cause === 'offline' || link.downFor >= EXPLAIN_AFTER_MS))
+  // The last screen stays, dimmed and untouchable, under the notice: what
+  // this phone had is more use than a blank error page.
+  const stale = notice && down && link.everOpen
   return (
     <div className="flex min-h-dvh flex-col">
       {machineBarShown(link, several, narrow && route.name === 'session') && <MachineBar link={link} />}
@@ -99,8 +108,8 @@ export default function RemoteRoot() {
       <div className="min-h-0 flex-1">
         {pairing ? (
           <AddMachine onCancel={() => setPairing(false)} />
-        ) : blocked || (link.state !== 'open' && link.downFor >= EXPLAIN_AFTER_MS) ? (
-          <ConnectionProblem link={link} onPair={() => setPairing(true)} />
+        ) : notice ? (
+          <ConnectionNotice link={link} cause={cause} stale={stale} onPair={() => setPairing(true)} />
         ) : !link.everOpen ? (
           // The dashboard decides once, at start, whether this phone is
           // paired; it asks over an open channel, never a half-made one.
@@ -109,12 +118,14 @@ export default function RemoteRoot() {
         {link.everOpen && !blocked && !pairing && (
           // Once after pairing, and while this phone cannot type: what is
           // done and what is left, before the dashboard (owner, 2026-10-14).
-          <ReadyGate machineId={machine.id} machineName={machine.name}>
-            <InstallStrip />
-            <Suspense fallback={null}>
-              <App />
-            </Suspense>
-          </ReadyGate>
+          <div data-testid="remote-dashboard" data-stale={stale ? '' : undefined} inert={stale} className={stale ? 'select-none opacity-45 grayscale transition-opacity' : undefined}>
+            <ReadyGate machineId={machine.id} machineName={machine.name}>
+              <InstallStrip />
+              <Suspense fallback={null}>
+                <App />
+              </Suspense>
+            </ReadyGate>
+          </div>
         )}
       </div>
     </div>
@@ -137,6 +148,14 @@ export interface Link {
   everOpen: boolean
   /** How long the channel has not been open, in ms; 0 while open. */
   downFor: number
+  /** Whether the browser says it has a network (`navigator.onLine`). */
+  online: boolean
+  /** Automatic tries since the channel was last open. */
+  attempt: number
+}
+
+function browserOnline(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine !== false
 }
 
 /** The channel's state, re-read every second while it is down. */
@@ -148,6 +167,8 @@ function useChannel(): Link {
     nextAt: ch?.nextAt ?? null,
     everOpen: ch?.everOpen ?? false,
     downFor: ch?.state === 'open' ? 0 : Date.now() - since,
+    online: browserOnline(),
+    attempt: ch?.attempt ?? 0,
   })
   const [downSince, setDownSince] = useState(() => Date.now())
   const [link, setLink] = useState<Link>(() => read(downSince))
@@ -166,20 +187,25 @@ function useChannel(): Link {
     const tick = setInterval(() => {
       if (ch.state !== 'open') update()
     }, 1000)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
     update()
     return () => {
       off()
       clearInterval(tick)
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one channel per page
   }, [ch])
   return link
 }
 
-/** A few words for the bar; the full story is ConnectionProblem's. */
-export function barLabel(state: ChannelState, problem: Problem): string {
+/** A few words for the bar; the full story is ConnectionNotice's. */
+export function barLabel(state: ChannelState, problem: Problem, online = true): string {
   if (problem === 'removed') return 'Removed: pair again'
   if (state === 'open') return ''
+  if (!online) return 'No internet'
   if (state === 'connecting') return 'Connecting…'
   switch (problem) {
     case 'machine-offline':
@@ -198,91 +224,105 @@ export function barLabel(state: ChannelState, problem: Problem): string {
 }
 
 /**
- * What went wrong and what to do, for each problem. Three are told apart
- * because each has a different fix (Vova, 2026-10-15, translated: "the link
- * doesn't load; maybe it's some restrictions, my VPN isn't working well right
- * now"): the phone cannot reach the relay (its connection, a VPN); the relay
- * answers but the computer is not there (the computer); the computer
- * removed this phone (pair again).
+ * The headline and the sentence under it, for each cause (linkcause.ts). Each
+ * has a different fix (Vova, 2026-10-15, translated: "the link doesn't load;
+ * maybe it's some restrictions, my VPN isn't working well right now"), and
+ * only a pairing the computer refused asks to pair again (owner, 2026-10-21).
  */
-export function explain(problem: Problem, name: string, relay: string, page = typeof window === 'undefined' ? '' : window.location.host): { title: string; body: string } {
+export function explain(cause: Cause, problem: Problem, name: string, relay: string, page = typeof window === 'undefined' ? '' : window.location.host): { title: string; body: string } {
   let host = relay
   try {
     host = new URL(relay).host
   } catch { /* the address as given */ }
   const hosts = page && page !== host ? `${host} / ${page}` : host
-  switch (problem) {
-    case 'machine-offline':
-      return {
-        title: 'Connected to the relay — your computer is offline',
-        body: `This phone reached the relay at ${host}, but ${name} is not connected to it: asleep, off the internet, or Caprock isn’t running on it. Wake it and open Caprock. This page keeps trying by itself.`,
-      }
-    case 'no-answer':
-      return {
-        title: 'Connected to the relay — your computer isn’t answering',
-        body: `The relay reached ${name}, but it did not reply. It may be asleep, or Caprock on it is restarting. This page keeps trying by itself.`,
-      }
-    case 'relay-unreachable':
+  switch (cause) {
+    case 'offline':
+      return { title: 'No internet on this phone', body: 'Reconnects by itself when the network is back.' }
+    case 'relay':
       return {
         title: 'Can’t reach the relay',
-        body: `This phone cannot reach ${hosts}. Check your connection or VPN: a VPN, or a network that blocks it, is the usual cause. This page keeps trying by itself.`,
+        body: `This phone has a network but cannot reach ${hosts}. A VPN, or a network that blocks it, is the usual cause. Reconnects by itself.`,
       }
-    case 'no-internet':
-      return { title: 'This phone is offline', body: 'Check Wi-Fi or mobile data. This page reconnects as soon as the network is back.' }
-    case 'wrong-machine':
-      return {
-        title: 'This isn’t the computer this phone paired with',
-        body: `The computer answering as ${name} turned this phone away three times in a row: its keys are not the ones this phone paired with. If its keys were reset, pair again: on the computer, Settings → Use on your phone → Connect a phone. This page keeps checking, and reconnects by itself if it can.`,
-      }
-    case 'removed':
-      return {
-        title: 'Paired device removed: pair again',
-        body: `${name} no longer lets this phone in. On the computer, open Caprock: Settings → Use on your phone → Connect a phone, and scan it. This page keeps checking, and comes back by itself if it was a mistake.`,
-      }
-    case 'lost':
-      return { title: 'Connection lost', body: `Reconnecting to ${name}.` }
+    case 'computer':
+      return problem === 'no-answer'
+        ? {
+            title: 'Your computer isn’t answering',
+            body: `The relay reached ${name}, but it did not reply: asleep, or Caprock on it is restarting. Reconnects by itself once it is back.`,
+          }
+        : {
+            title: 'Your computer isn’t answering',
+            body: `The relay is reachable, but ${name} is not connected to it: asleep, off the internet, or Caprock isn’t running on it. Wake it and open Caprock; this page reconnects by itself.`,
+          }
+    case 'unpaired':
+      return problem === 'wrong-machine'
+        ? {
+            title: 'Pair this phone again',
+            body: `${name} turned this phone away three times in a row: its keys are not the ones this phone paired with, so they were reset.`,
+          }
+        : {
+            title: 'This phone was removed',
+            body: `${name} no longer lets this phone in: it was removed on the computer, in Settings → Use on your phone.`,
+          }
     default:
-      return { title: 'Still connecting…', body: `Reaching ${name} through the relay at ${host}.` }
+      return { title: `Reconnecting to ${name}`, body: 'The connection dropped. This page reconnects by itself.' }
   }
 }
 
+const TONE: Record<Cause, string> = {
+  offline: 'bg-fg-faint',
+  relay: 'bg-warn',
+  computer: 'bg-warn',
+  reconnecting: 'bg-warn',
+  unpaired: 'bg-danger',
+}
+
 /**
- * Shown when the channel has been down for EXPLAIN_AFTER_MS, or at once when
- * only pairing again can help: never a "Connecting…" with nothing after it.
+ * What is wrong, large and full width, readable at arm's length: shown at
+ * once for no internet and for a refused pairing, after EXPLAIN_AFTER_MS for
+ * the rest — never a "Connecting…" with nothing after it. Every cause but a
+ * refused pairing says when the next try is and keeps Retry small: the page
+ * reconnects by itself. Only a refused pairing offers Pair again.
  */
-function ConnectionProblem({ link, onPair }: { link: Link; onPair: () => void }) {
+function ConnectionNotice({ link, cause, stale, onPair }: { link: Link; cause: Cause; stale: boolean; onPair: () => void }) {
   const cur = currentMachine()
-  const { title, body } = explain(link.problem, cur?.name ?? 'Your computer', cur?.relay ?? '')
-  const pairOnly = needsPairing(link.problem)
-  const wait = link.nextAt ? Math.max(1, Math.ceil((link.nextAt - Date.now()) / 1000)) : 0
+  const { title, body } = explain(cause, link.problem, cur?.name ?? 'Your computer', cur?.relay ?? '')
+  const pairing = offersPairing(cause)
+  const connecting = link.state === 'connecting'
   return (
-    <div role="alert" data-testid="connection-problem" className="mx-auto max-w-md px-6 pb-10 pt-8">
-      <h1 className="text-[22px] font-semibold leading-tight text-fg">{title}</h1>
-      <p className="mt-2 text-[16px] leading-snug text-fg-muted">{body}</p>
-      {!pairOnly && (
-        <p className="mt-3 text-[14px] text-fg-faint">{link.state === 'connecting' ? 'Trying now…' : wait ? `Next try in ${wait} s` : ''}</p>
-      )}
-      <div className="mt-6 flex gap-3">
-        {!pairOnly && (
+    <section role="alert" data-testid="connection-problem" data-cause={cause} className="w-full border-b border-border bg-panel-2 px-5 pb-7 pt-7">
+      <div className="mx-auto max-w-xl">
+        <div className="flex items-start gap-3">
+          <span aria-hidden className={`mt-[9px] h-3.5 w-3.5 shrink-0 rounded-full ${TONE[cause]} ${!pairing && connecting ? 'animate-pulse' : ''}`} />
+          <h1 className="min-w-0 text-[26px] font-semibold leading-tight text-fg">{title}</h1>
+        </div>
+        <p className="mt-3 text-[18px] leading-snug text-fg-muted">{body}</p>
+        {!pairing && (
+          <p data-testid="retry-line" className="num mt-4 text-[18px] font-medium text-fg">
+            {retryLine(connecting, link.nextAt, link.attempt, Date.now())}
+          </p>
+        )}
+        {stale && (
+          <p data-testid="stale-line" className="mt-2 text-[18px] leading-snug text-fg-muted">
+            Below: what this phone last had, updated {agoText(link.downFor)}.
+          </p>
+        )}
+        {pairing ? (
+          <button type="button" onClick={onPair} className="mt-6 min-h-14 w-full rounded-xl bg-accent text-[18px] font-semibold text-bg">
+            Pair again
+          </button>
+        ) : (
           <button
             type="button"
-            onClick={() => void currentChannel()?.retryNow().catch(() => { /* the card says why */ })}
-            disabled={link.state === 'connecting'}
-            className="min-h-12 flex-1 rounded-xl bg-accent text-[17px] font-semibold text-bg disabled:opacity-50"
+            onClick={() => void currentChannel()?.retryNow().catch(() => { /* the notice says why */ })}
+            disabled={connecting}
+            className="mt-5 min-h-11 rounded-xl border border-border-strong px-5 text-[18px] text-fg disabled:opacity-50"
           >
-            Retry
+            Retry now
           </button>
         )}
-        <button
-          type="button"
-          onClick={onPair}
-          className={`min-h-12 flex-1 rounded-xl text-[17px] ${pairOnly ? 'bg-accent font-semibold text-bg' : 'border border-border-strong text-fg'}`}
-        >
-          Pair again
-        </button>
+        <Details ch={currentChannel()} relay={cur?.relay ?? ''} />
       </div>
-      <Details ch={currentChannel()} relay={cur?.relay ?? ''} />
-    </div>
+    </section>
   )
 }
 
@@ -317,8 +357,8 @@ export function detailRows(ch: Pick<Channel, 'lastError' | 'lastAttemptAt' | 'la
 function Details({ ch, relay }: { ch: Channel | null; relay: string }) {
   const rows = detailRows(ch, relay, window.location.host, LOADED_AT)
   return (
-    <details data-testid="connection-details" className="mt-6 text-[14px] text-fg-muted">
-      <summary className="cursor-pointer select-none text-fg-faint">Details</summary>
+    <details data-testid="connection-details" className="mt-5 text-[15px] text-fg-muted">
+      <summary className="flex min-h-11 cursor-pointer select-none items-center text-[16px] text-fg-faint">Details</summary>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         {rows.map(([k, v]) => (
           <div key={k} className="contents">
@@ -407,7 +447,7 @@ function MachineBar({ link }: { link: Link }) {
   const { state } = link
   const [open, setOpen] = useState(false)
   const cur = currentMachine()
-  const label = barLabel(state, link.problem)
+  const label = barLabel(state, link.problem, link.online)
   return (
     <div data-machine-bar className="sticky top-0 z-50 border-b border-border bg-panel pt-[env(safe-area-inset-top)]">
       <button
