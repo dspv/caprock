@@ -148,6 +148,8 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 	t.sentAck = ack
 
 	ring := ts.Ring()
+	// A repaint waits for the program to draw at the narrower size (termsize.go).
+	s.sizes.watch(id, ring.Changed)
 	changed := ring.Changed()
 	hello := termHello{V: 2, Ack: ack}
 	// Resume from the client's offset when the ring still has it; otherwise
@@ -217,6 +219,9 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 				return
 			}
 			pos = total
+			// The snapshot starts mid-frame; nothing else asks the program
+			// to draw its whole screen again here (termsize.go redraw).
+			go s.sizes.redraw(t.size)
 		case len(data) > 0:
 			if t.binary(outputFrame(pos, data)) != nil {
 				return
@@ -258,8 +263,14 @@ type termConn struct {
 
 // repaintGap separates the two sizes of an attach's repaint, so a TUI that
 // reads its size on each SIGWINCH sees the change rather than one coalesced
-// signal and the size it already had.
-const repaintGap = 40 * time.Millisecond
+// signal and the size it already had. It counts from the program's first
+// output at the narrower size, waited for up to repaintWait (termsize.go
+// repaint): 40 ms alone was too short for a program whose event loop was
+// busy, and the repaint did nothing.
+const (
+	repaintGap  = 40 * time.Millisecond
+	repaintWait = 750 * time.Millisecond
+)
 
 func (t *termConn) text(v any) error {
 	b, err := json.Marshal(v)
