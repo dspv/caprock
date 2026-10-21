@@ -66,7 +66,14 @@ export function PhoneAlerts() {
 
   const rejected = tokenRejected(error) || tokenRejected(s.alert_last_error)
   // The bot first, always: a setup card until it works, then one line.
-  const bot = <TelegramBotFields s={s} rejected={rejected} onSaved={() => settings.refresh?.()} />
+  // A bot or chat saved: the test's last outcome was the old one's, so it
+  // goes with it, and the daemon's is re-read (it forgets its own on save).
+  const botSaved = () => {
+    setError('')
+    setSent(false)
+    settings.refresh?.()
+  }
+  const bot = <TelegramBotFields s={s} rejected={rejected} onSaved={botSaved} />
   return (
     <Section
       id="telegram"
@@ -92,7 +99,9 @@ export function PhoneAlerts() {
         <>
           {!rejected && s.alert_approval !== true && s.alert_finished !== true && (
             <p className="rounded-[8px] border border-accent/50 bg-accent/10 px-3 py-2 text-[13px] text-fg">
-              The bot is connected. Turn on at least one alert below, or nothing is sent.
+              {s.telegram_chat === true
+                ? 'The bot is connected. Turn on at least one alert below, or nothing is sent.'
+                : 'The bot is connected but idle: with no alert on, nothing is sent and Caprock does not read the bot’s messages. Turn on at least one alert below.'}
             </p>
           )}
           <Toggle
@@ -126,6 +135,8 @@ export function PhoneAlerts() {
           </div>
           {!error && s.alert_last_error && !rejected ? (
             <p className="text-[12.5px] text-danger">Last alert failed: {s.alert_last_error}</p>
+          ) : s.alert_untested && !error && !sent ? (
+            <p className="text-[12.5px] text-fg-muted" data-alert-untested="">Saved. Send a test alert to check it reaches you.</p>
           ) : s.alert_last_sent_ms ? (
             <p className="text-[12.5px] text-fg-faint">Last alert sent {fmtAgo(s.alert_last_sent_ms, now)}.</p>
           ) : null}

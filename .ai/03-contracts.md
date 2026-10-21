@@ -1614,7 +1614,10 @@ free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
 `config.json` so "never set" means off) and `alert_reply` (on unless turned off, for the
 first line of the final reply in a finished alert); `GET` returns them with
 `alert_last_error` and `alert_last_sent_ms`, held in memory since the daemon
-started. Nothing is sent until a bot token and chat id are set. The rules, in
+started, and `alert_untested` (read-only): a bot token or a different chat was
+saved — through `PUT /v1/telegram/token`, pairing, or `PUT /v1/settings` —
+since the last alert was tried. Such a save forgets the error and the time,
+which were the old bot's or chat's; the next alert or test ends it. Nothing is sent until a bot token and chat id are set. The rules, in
 `internal/alerts` over every stored event from every source:
 
 - **Waiting for approval** — a `permission.prompt` sends at once, once per

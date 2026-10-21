@@ -53,7 +53,9 @@ when it is done.
    ten minutes, only from a private chat, and only once. Where the token is
    kept and what it is sent to is behind the **i** beside them.
 4. **Choose what to hear.** Tick *When a session is waiting for approval*
-   and/or *When a session has finished*, then **Send a test alert**.
+   and/or *When a session has finished*, then **Send a test alert**. With
+   neither ticked (and two-way chat off) the bot sends nothing and Caprock
+   does not read its messages either; the section says so.
 5. **Talk back (Premium).** With a licence, tick *Let my paired chat talk to
    sessions* in **Talk to your agents from Telegram**, just under. It is off
    until you turn it on, licence or not.
@@ -175,7 +177,9 @@ pairing, or while alerts or two-way chat are on.
   webhook another tool set. Use one bot per computer.
 - **No alerts arrive.** Check the switches, press **Send a test alert**, and
   read the last error under it. A muted session or `/mute all` sends nothing;
-  `/unmute` in the chat.
+  `/unmute` in the chat. Saving a new token, or pairing a new chat, clears
+  the last error — it was about the old one — and the line reads *Saved. Send
+  a test alert to check it reaches you.* until an alert is tried.
 - **A reply got "Two-way chat is off".** Tick *Let my paired chat talk to
   sessions* in Settings.
 - **The Open on phone button is missing.** It appears only when phone access

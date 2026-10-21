@@ -29,15 +29,23 @@ const alertSendTimeout = 30 * time.Second
 // phoneAlertState is what the settings screen shows about phone alerts: the
 // last failure and the last success. In memory only — an alert is a moment,
 // and the panel's test button answers the "does it work" question at once.
+//
+// Both describe one bot and one chat. A new token or a new chat makes them
+// stale, so saving either forgets them (botChanged) and marks the setup
+// untested until the next alert: the screen then says to send a test
+// instead of showing a failure that was the old bot's (owner, 2026-10-22:
+// the old "failed" stayed after a working token was saved).
 type phoneAlertState struct {
 	mu       sync.RWMutex
 	lastErr  string
 	lastSent int64
+	untested bool
 }
 
 func (s *phoneAlertState) record(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.untested = false
 	if err != nil {
 		s.lastErr = err.Error()
 		return
@@ -50,6 +58,20 @@ func (s *phoneAlertState) get() (string, int64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.lastErr, s.lastSent
+}
+
+// botChanged forgets the last outcome: it was the old bot's or chat's.
+func (s *phoneAlertState) botChanged() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastErr, s.lastSent, s.untested = "", 0, true
+}
+
+// isUntested reports a bot or chat saved since the last alert was tried.
+func (s *phoneAlertState) isUntested() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.untested
 }
 
 // botConfigured reports whether the owner has set up a Telegram bot. Shared

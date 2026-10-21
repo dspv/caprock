@@ -59,17 +59,33 @@ func (h *tgHost) saveConfig(f func(*config.Config)) error {
 	return config.Save(h.d.opt.DataDir, cfg)
 }
 
-// SaveBot keeps the token in the secret store, never in config.json.
+// SaveBot keeps the token in the secret store, never in config.json. The
+// bridge saves only a token Telegram's getMe accepted (or "" to disconnect),
+// so the last alert's outcome, which was the old bot's, is forgotten.
 func (h *tgHost) SaveBot(token string) error {
 	token = strings.TrimSpace(token)
 	if err := h.d.putSecret(context.Background(), telegramSecret, token); err != nil {
 		return err
 	}
-	return h.saveConfig(func(c *config.Config) { applySecret(c, telegramSecret, token) })
+	if err := h.saveConfig(func(c *config.Config) { applySecret(c, telegramSecret, token) }); err != nil {
+		return err
+	}
+	h.d.phone.botChanged()
+	return nil
 }
 
+// SaveChat stores the paired chat; a different chat forgets the last
+// alert's outcome, which was about the old one.
 func (h *tgHost) SaveChat(chat string) error {
-	return h.saveConfig(func(c *config.Config) { c.ReportChatID = strings.TrimSpace(chat) })
+	chat = strings.TrimSpace(chat)
+	changed := chat != strings.TrimSpace(h.d.config().ReportChatID)
+	if err := h.saveConfig(func(c *config.Config) { c.ReportChatID = chat }); err != nil {
+		return err
+	}
+	if changed {
+		h.d.phone.botChanged()
+	}
+	return nil
 }
 
 func (h *tgHost) Licensed() bool {

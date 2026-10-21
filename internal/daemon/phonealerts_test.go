@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -113,6 +114,61 @@ func TestTheTestAlertSaysWhyItFailed(t *testing.T) {
 	}
 	if errText, _ := d.phone.get(); errText != "telegram: chat not found" {
 		t.Errorf("last error = %q", errText)
+	}
+}
+
+// A new bot token or chat forgets the last alert's failure: it was the old
+// bot's. The screen reads "untested" until the next alert is tried, never
+// the stale failure (owner, 2026-10-22).
+func TestSavingABotForgetsTheOldFailure(t *testing.T) {
+	d := secretsDaemon(t, t.TempDir(), &fakeSecrets{})
+	a := &settingsAdapter{d: d}
+	h := &tgHost{d: d}
+	failed := func() {
+		t.Helper()
+		d.phone.record(errors.New("telegram: Unauthorized"))
+		if g := a.Get(); g.AlertLastError == "" || g.AlertUntested {
+			t.Fatalf("before the save: err=%q untested=%v", g.AlertLastError, g.AlertUntested)
+		}
+	}
+
+	failed()
+	if err := h.SaveBot(testBotToken); err != nil {
+		t.Fatal(err)
+	}
+	if g := a.Get(); g.AlertLastError != "" || g.AlertLastSentMs != 0 || !g.AlertUntested {
+		t.Fatalf("after a new token: err=%q sent=%d untested=%v", g.AlertLastError, g.AlertLastSentMs, g.AlertUntested)
+	}
+	// The next alert's outcome is the new bot's: untested ends.
+	d.phone.record(nil)
+	if g := a.Get(); g.AlertUntested || g.AlertLastSentMs == 0 {
+		t.Fatalf("after a sent alert: untested=%v sent=%d", g.AlertUntested, g.AlertLastSentMs)
+	}
+
+	failed()
+	if err := h.SaveChat("42"); err != nil {
+		t.Fatal(err)
+	}
+	if g := a.Get(); g.AlertLastError != "" || !g.AlertUntested {
+		t.Fatalf("after a new chat: err=%q untested=%v", g.AlertLastError, g.AlertUntested)
+	}
+	// The same chat saved again is no change: a real failure stays.
+	failed()
+	if err := h.SaveChat("42"); err != nil {
+		t.Fatal(err)
+	}
+	if g := a.Get(); g.AlertLastError == "" {
+		t.Fatal("re-saving the same chat forgot a real failure")
+	}
+
+	// A token put in through PUT /v1/settings counts the same.
+	in := a.Get()
+	in.ReportBotToken = "654321:another-bot-token-value"
+	if err := a.Set(in); err != nil {
+		t.Fatal(err)
+	}
+	if g := a.Get(); g.AlertLastError != "" || !g.AlertUntested {
+		t.Fatalf("after a token through Settings: err=%q untested=%v", g.AlertLastError, g.AlertUntested)
 	}
 }
 
