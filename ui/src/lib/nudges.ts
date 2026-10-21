@@ -23,6 +23,7 @@ import { hydratePrompts, syncPromptsWith } from '@/lib/prompts'
 import { useApi } from '@/lib/useApi'
 import { isTauri } from '@/lib/appmode'
 import { shell } from '@/lib/shell'
+import { sellsHere } from '@/native/platform'
 
 export type NudgeId =
   | 'premium-limit' | 'premium-hint' | 'premium-cap' | 'premium-banner'
@@ -61,6 +62,9 @@ export function pickNudge(entries: { key: string; id: NudgeId; order: number }[]
   return best?.key ?? null
 }
 
+/** The offers that sell something: never in the iOS app. */
+const SELLING: ReadonlySet<NudgeId> = new Set<NudgeId>(['premium-limit', 'premium-hint', 'premium-cap', 'premium-banner', 'teams-nudge', 'offer'])
+
 const slots = new Map<string, { key: string; id: NudgeId; order: number }>()
 const listeners = new Set<() => void>()
 let counter = 0
@@ -83,7 +87,9 @@ function subscribe(l: () => void) {
  * screen. `eligible` is the offer's own rule; while it is false the instance
  * does not compete.
  */
-export function useNudgeSlot(id: NudgeId, eligible: boolean): boolean {
+export function useNudgeSlot(id: NudgeId, offered: boolean): boolean {
+  // The iOS app offers nothing for sale (ADR-083): those never compete there.
+  const eligible = offered && (sellsHere() || !SELLING.has(id))
   const key = useId()
   useEffect(() => {
     if (!eligible) return

@@ -16,6 +16,7 @@
  * (`GET /v1/pair/me?app=`), so the checklist there can tick it.
  */
 import { useEffect, useState } from 'react'
+import { isNativeApp } from '@/native/platform'
 import { api, isPairedDevice, type PairMe } from '@/lib/api'
 import { JUST_PAIRED_KEY } from '@/screens/Pair'
 import { phoneKind, promptInstall, useInstallOffer, type InstallOffer } from './install'
@@ -51,6 +52,8 @@ export function appReport(offer: InstallOffer, standalone: boolean): boolean | u
 }
 
 function isStandalone(): boolean {
+  // The iOS app is the installed app (ADR-083).
+  if (isNativeApp()) return true
   try {
     if (window.matchMedia?.('(display-mode: standalone)').matches) return true
   } catch { /* an old browser */ }

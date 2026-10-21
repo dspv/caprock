@@ -6026,7 +6026,10 @@ docs), and the plugin repositories named below. Nothing was built.
   the synced web assets. Capacitor lighter on the macOS runners.
 
 **Recommendation and decision: Capacitor** for the iOS app, in a directory of
-its own (`mobile/`, `webDir` pointing at `ui/dist-remote`). Push and its
+its own (`mobile/`, `webDir` pointing at `ui/dist-remote`). *Amended
+2026-10-22, at phase 1: the directory is `ios-app/` (owner's brief), with the
+Xcode project in `ios-app/ios/`; Android, when it is started, decides its
+own.* Push and its
 extension — the one feature the first version cannot ship without — are
 official and plain on Capacitor and community-only on Tauri; speech has a
 maintained plugin; the Xcode project is ours to add targets to. What it costs:

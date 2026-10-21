@@ -55,6 +55,8 @@ import { useApi } from '@/lib/useApi'
 import { AgentCharacter } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
 import { extTitle } from '@/lib/externalLinks'
+import { sellsHere } from '@/native/platform'
+import { NotSoldHere } from './NotSoldHere'
 
 export type PaidFeature = 'cap' | 'window' | 'report' | 'gemini' | 'drill' | 'agents' | 'telegram' | 'subscriptions'
 
@@ -479,7 +481,13 @@ function AlsoIn({ opened, shown, onShow, now }: { opened: PaidFeature; shown: Pa
   )
 }
 
-export function PremiumModal({ feature, onClose, now = Date.now() }: { feature: PaidFeature; onClose: () => void; now?: number }) {
+export function PremiumModal(props: { feature: PaidFeature; onClose: () => void; now?: number }) {
+  // The iOS app sells nothing and links to no shop (ADR-083).
+  if (!sellsHere()) return <NotSoldHere title={`${FEATURES[props.feature].title} — Premium`} onClose={props.onClose} />
+  return <PremiumOffer {...props} />
+}
+
+function PremiumOffer({ feature, onClose, now = Date.now() }: { feature: PaidFeature; onClose: () => void; now?: number }) {
   const pricing = useApi(() => api.premium(), [])
   const p = pricing.data
   // The feature on top: the one that was clicked, until a chip swaps it.

@@ -5,6 +5,7 @@
  */
 import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary } from './api'
 import { quotePath } from './xtermInput'
+import { isNativeApp } from '@/native/platform'
 
 /** How many sessions Continue lists. */
 export const CONTINUE_MAX = 5
@@ -92,6 +93,8 @@ export function installWay(ua: string, standalone: boolean, touchPoints: number)
 
 /** Whether this page runs as the home-screen app. */
 export function isStandalone(): boolean {
+  // The iOS app is the installed app (ADR-083).
+  if (isNativeApp()) return true
   try {
     if (window.matchMedia?.('(display-mode: standalone)').matches) return true
   } catch { /* an old browser */ }

@@ -22,9 +22,12 @@
  *   and changing the id would install a second one.
  */
 import { useEffect, useState } from 'react'
+import { isNativeApp } from '@/native/platform'
 
 /** Whether this page runs as the home-screen app (lib/phonehome's, kept here so main.tsx stays small). */
 function isStandalone(): boolean {
+  // The iOS app is the installed app (ADR-083).
+  if (isNativeApp()) return true
   try {
     if (window.matchMedia?.('(display-mode: standalone)').matches) return true
   } catch { /* an old browser */ }

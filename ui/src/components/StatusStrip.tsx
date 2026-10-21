@@ -25,6 +25,7 @@ import { SetupChip } from './SetupStrip'
 import { PremiumChip } from './PremiumChip'
 import { PremiumModal } from './PremiumModal'
 import { useLicensed } from '@/lib/nudges'
+import { sellsHere } from '@/native/platform'
 
 export function StatusStrip({ summary, pane, session, version, figures = true, sessions, onOpenSession }: {
   summary?: Summary
@@ -108,7 +109,7 @@ export const WINDOW_HINT_PCT = 70
 function WindowStopHint() {
   const licensed = useLicensed()
   const [open, setOpen] = useState(false)
-  if (licensed) return null
+  if (licensed || !sellsHere()) return null
   return (
     <>
       <button
