@@ -74,8 +74,9 @@ export type Frame = (
   | { type: 'github'; data: GitHubFrame }
   // The Inbox changed: an item saved or deleted (03-contracts.md § Inbox).
   | { type: 'inbox'; data: { id: number; deleted: boolean } }
-  // Second Brain changed: a memory added, changed or deleted (03-contracts.md § Second Brain).
-  | { type: 'brain'; data: { id: number; op: 'added' | 'changed' | 'deleted'; kind?: string; title?: string; auto?: boolean } }
+  // Second Brain changed: a memory added, changed or deleted; a read began
+  // or ended (progress); a new session was handed memories (03-contracts.md § Second Brain).
+  | { type: 'brain'; data: { id?: number; op: 'added' | 'changed' | 'deleted' | 'progress' | 'handoff' | 'vault'; kind?: string; title?: string; auto?: boolean; run?: number; agent?: string; session?: string; project?: string; phase?: 'start' | 'done'; added?: number; memories?: number } }
   // An owned session's status moved on input it has not answered with an
   // event yet — Enter at its prompt, a permission menu answered (§ Nudges).
   | { type: 'status'; data: { session_id: string; kind: string; at: number } }

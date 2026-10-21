@@ -37,13 +37,41 @@ func TestTheStatusNamesTheSessionBeingRead(t *testing.T) {
 		t.Errorf("still reading after the read: %+v", st.Reading)
 	}
 	ops := []string{}
+	var frames []map[string]any
 	for len(sub.C) > 0 {
 		if f := <-sub.C; f.Type == bus.FrameBrain {
-			ops = append(ops, f.Data.(map[string]any)["op"].(string))
+			d := f.Data.(map[string]any)
+			frames = append(frames, d)
+			op := d["op"].(string)
+			if ph, ok := d["phase"].(string); ok {
+				op += ":" + ph
+			}
+			ops = append(ops, op)
 		}
 	}
-	if strings.Join(ops, ",") != "progress,progress,added,added" {
-		t.Errorf("frames: %v", ops)
+	// The read's start, each memory, then the read's end with the count:
+	// the end comes last, so a screen that waits for it has them all.
+	if strings.Join(ops, ",") != "progress:start,added,added,progress:done" {
+		t.Fatalf("frames: %v", ops)
+	}
+	if s := frames[0]; s["session"] != "s1" || s["project"] != "acme-api" || s["agent"] != "claude" {
+		t.Errorf("start frame: %v", s)
+	}
+	runs, _ := store.LastBrainRuns(ctx, e.st.DB(), 1)
+	if len(runs) != 1 {
+		t.Fatalf("runs: %+v", runs)
+	}
+	for _, a := range frames[1:3] {
+		if a["run"] != runs[0].ID || a["agent"] != "claude" || a["session"] != "s1" {
+			t.Errorf("added frame: %v", a)
+		}
+	}
+	if d := frames[3]; d["run"] != runs[0].ID || d["added"] != 2 || d["session"] != "s1" || d["project"] != "acme-api" || d["agent"] != "claude" {
+		t.Errorf("done frame: %v", d)
+	}
+	// The agent read is on the status's faces, for a day.
+	if a := e.eng.Status(ctx).Agents24h; len(a) != 1 || a[0].Agent != "claude" || a[0].Sessions != 1 || a[0].LastAt != t0.UnixMilli() {
+		t.Errorf("agents_24h: %+v", a)
 	}
 
 	// The session's own name wins over its first prompt.
@@ -58,7 +86,7 @@ func TestTheStatusNamesTheSessionBeingRead(t *testing.T) {
 	if during.Reading == nil || during.Reading.Title != "Flaky cache test" {
 		t.Errorf("titled session: %+v", during.Reading)
 	}
-	runs, _ := store.LastBrainRuns(ctx, e.st.DB(), 1)
+	runs, _ = store.LastBrainRuns(ctx, e.st.DB(), 1)
 	if len(runs) != 1 || runs[0].Title != "Flaky cache test" || runs[0].Agent != "claude" {
 		t.Errorf("a recent read names its session: %+v", runs)
 	}

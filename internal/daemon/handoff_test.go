@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/hookd"
@@ -402,5 +403,52 @@ func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
 	sessions, memories, err := store.BrainHandedSince(ctx, d.store.DB(), now.Add(-time.Hour).UnixMilli())
 	if err != nil || sessions != 1 || memories != strings.Count(tail, "\n- ") {
 		t.Errorf("handed: %d sessions, %d memories (%v); the tail lists %d", sessions, memories, err, strings.Count(tail, "\n- "))
+	}
+}
+
+// A session handed Second Brain memories is said on the live socket, so the
+// sidebar can show them going into its tab; a held-back session, and one
+// handed no memories, gets no frame.
+func TestAHandoffOfMemoriesIsSaidOnTheLiveSocket(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	d.bus = bus.New()
+	sub := d.bus.Subscribe(16)
+	defer sub.Unsubscribe()
+	said(t, d, "caprock", strings.Repeat("We settled on process liveness rather than a timeout. ", 12), now.Add(-2*time.Hour))
+	open := func(id string, roll int) {
+		t.Helper()
+		d.roll = func() int { return roll }
+		d.handoff(ctx, hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock", SessionID: id})
+	}
+	frames := func() []map[string]any {
+		var out []map[string]any
+		for len(sub.C) > 0 {
+			if f := <-sub.C; f.Type == bus.FrameBrain {
+				out = append(out, f.Data.(map[string]any))
+			}
+		}
+		return out
+	}
+	open("bare", 99)
+	if got := frames(); len(got) != 0 {
+		t.Fatalf("no memories handed, yet frames: %v", got)
+	}
+	for i := range 3 {
+		if _, _, err := store.InsertBrainNode(ctx, d.store.DB(), store.BrainNode{Kind: "finding", Title: fmt.Sprintf("Finding %d", i),
+			Source: store.BrainSource{Project: "caprock"}, Manual: true}, int64(10+i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open("served", 99)
+	got := frames()
+	if len(got) != 1 || got[0]["op"] != "handoff" || got[0]["session"] != "served" || got[0]["project"] != "caprock" || got[0]["memories"] != 3 {
+		t.Fatalf("served: %v", got)
+	}
+	d.opt.Config.MemoryHoldoutPct = 25
+	open("held", 10)
+	if got := frames(); len(got) != 0 {
+		t.Errorf("a held-back session was said to be handed memories: %v", got)
 	}
 }

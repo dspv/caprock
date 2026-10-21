@@ -46,7 +46,7 @@
  * wand and laid in the Pensieve"): a memory that arrives while the graph is
  * on screen flies out of its project's hub to its place as a spark, or drops
  * in from above when it has no project, and a faint ring spreads where it
- * lands (Settings → Second Brain, *Animate thoughts arriving*; never under
+ * lands (Settings → Second Brain, *Show memories moving*; never under
  * prefers-reduced-motion).
  *
  * The opened graph (04-ui.md § Second Brain, *The graph opened*) adds three

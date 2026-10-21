@@ -11,12 +11,14 @@
  * What it shows is the daemon's state, not decoration: one point per
  * memory up to a ceiling, drawn in the Graph view's language — tiny dots in
  * the text colour, hairline links, sparks in the one accent; sparks fly while
- * the extraction is working (`activity`), as many as it is busy; each memory
- * added (`landed` going up) sends a spark and lights a point. The sessions at
- * work feed it too (`working`, a count the sidebar already has — nothing more
- * is asked of the daemon): a few slow sparks per working session, which drift
- * in and light nothing, because no memory landed. Idle — nothing extracting,
- * no session working — only the slow turn.
+ * the extraction is working (`activity`), as many as it is busy, from the
+ * face of the agent being read (`lit`), lighting nothing; only a memory
+ * added (`landed` going up) sends a spark that lights a point, so only a
+ * real arrival looks like one. The sessions at work stir it too (`working`,
+ * a count the sidebar already has — nothing more is asked of the daemon):
+ * a few slow sparks per working session drift between points inside the
+ * cloud, never in from a face, because nothing arrived. Idle — nothing
+ * extracting, no session working — only the slow turn.
  *
  * A 3D projection is a few lines of arithmetic: points on a Fibonacci
  * sphere, turned about the Y axis (and tilted), scaled by perspective, their
@@ -58,8 +60,12 @@ const CALM_SPARKS = 0.5
 const BANDS = 3
 
 interface Pt { x: number; y: number; z: number; kind: number; pulse: number }
-/** `slow`: a working session's — slower, and it lights no point (no memory landed). */
-interface Spark { from: number; to: number; at: number; kind: number; slow: boolean }
+/**
+ * `slow`: a working session's — slower, from a point of the cloud
+ * (`fromPt`) rather than a face. `lands`: a memory was added, so the point
+ * it reaches lights up; nothing else lights one.
+ */
+interface Spark { from: number; fromPt: number; to: number; at: number; kind: number; slow: boolean; lands: boolean }
 
 function reducedMotion(): boolean {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
@@ -105,18 +111,21 @@ export interface BrainOrbProps {
   className?: string
   /** Draw the agents' faces at the rim (the sidebar's card and the screen). */
   showAgents?: boolean
+  /** The agent being read now: its face glows and the reading sparks leave from it. */
+  lit?: string
   ariaLabel?: string
 }
 
-export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, calm = false, className = '', showAgents = true, ariaLabel }: BrainOrbProps) {
+export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, calm = false, className = '', showAgents = true, lit, ariaLabel }: BrainOrbProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const claudeFace = useSessionFace(undefined)
   const shown = showAgents ? agents.slice(0, 4) : []
   const rim = seats(shown.length)
   // Live inputs for the running loop, without restarting it.
-  const live = useRef({ activity, landed, rim, kinds, working, calm })
-  live.current = { activity, landed, rim, kinds, working, calm }
+  const litSeat = lit ? shown.indexOf(lit as DrawnAgent) : -1
+  const live = useRef({ activity, landed, rim, kinds, working, calm, litSeat })
+  live.current = { activity, landed, rim, kinds, working, calm, litSeat }
   const n = Math.max(MIN, Math.min(MAX, count))
 
   useEffect(() => {
@@ -253,13 +262,13 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
         const sp = sparks[s]!
         const t = (now - sp.at) / (sp.slow ? SLOW_FLIGHT_MS : FLIGHT_MS)
         if (t >= 1) {
-          if (!sp.slow) pts[sp.to]!.pulse = now
+          if (sp.lands) pts[sp.to]!.pulse = now
           sparks.splice(s, 1)
           continue
         }
-        const seat = seatsNow[sp.from]
-        const sx = seat ? seat[0] * w : cx
-        const sy = seat ? seat[1] * h : cy
+        const seat = sp.fromPt < 0 ? seatsNow[sp.from] : undefined
+        const sx = sp.fromPt >= 0 ? px[sp.fromPt]! : seat ? seat[0] * w : cx
+        const sy = sp.fromPt >= 0 ? py[sp.fromPt]! : seat ? seat[1] * h : cy
         const tx = px[sp.to]!
         const ty = py[sp.to]!
         const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
@@ -282,10 +291,16 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       ctx.globalAlpha = 1
     }
 
-    const spark = (now: number, slow = false) => {
+    // A landing memory's spark comes from a face and lights its point; a
+    // read's comes from the face being read (else any) and lights none; a
+    // working session's drifts between two points of the cloud.
+    const spark = (now: number, how: 'lands' | 'reading' | 'slow') => {
       const seatsN = Math.max(1, live.current.rim.length)
       const to = Math.floor(Math.random() * n)
-      sparks.push({ from: Math.floor(Math.random() * seatsN), to, at: now, kind: to, slow })
+      const ls = live.current.litSeat
+      const from = how === 'reading' && ls >= 0 ? ls : Math.floor(Math.random() * seatsN)
+      const fromPt = how === 'slow' ? (to + 1 + Math.floor(Math.random() * (n - 1))) % n : -1
+      sparks.push({ from, fromPt, to, at: now, kind: to, slow: how === 'slow', lands: how === 'lands' })
     }
 
     if (reducedMotion()) {
@@ -326,10 +341,10 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
       angle += (TURN * (calmNow ? CALM_TURN : 1) * dt) / 1000
       const sparkRate = calmNow ? CALM_SPARKS : 1
       const a = live.current.activity
-      if (a > 0 && now - lastSpark > 900 / (a * sparkRate)) { spark(now); lastSpark = now }
+      if (a > 0 && now - lastSpark > 900 / (a * sparkRate)) { spark(now, 'reading'); lastSpark = now }
       const ws = sessionsNow()
-      if (ws > 0 && now - lastSlow > SESSION_GAP_MS / (ws * sparkRate)) { spark(now, true); lastSlow = now }
-      while (seenLanded < live.current.landed) { seenLanded++; spark(now) }
+      if (ws > 0 && now - lastSlow > SESSION_GAP_MS / (ws * sparkRate)) { spark(now, 'slow'); lastSlow = now }
+      while (seenLanded < live.current.landed) { seenLanded++; spark(now, 'lands') }
       draw(now)
       start()
     }
@@ -374,7 +389,7 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
         const [x, y] = rim[i]!
         return (
           <svg key={a} viewBox="0 0 80 80" aria-hidden className="brain-orb-agent pointer-events-none absolute h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${x * 100}%`, top: `${y * 100}%` }} data-brain-orb-agent={a}>
+            style={{ left: `${x * 100}%`, top: `${y * 100}%` }} data-brain-orb-agent={a} data-lit={a === lit ? '' : undefined}>
             <title>{agentName(a)}</title>
             <circle cx="40" cy="40" r="38" className="brain-hero-seat" />
             <g transform="translate(9 6) scale(0.78)">

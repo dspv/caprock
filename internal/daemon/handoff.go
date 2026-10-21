@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/api"
+	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/hookd"
 	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/store"
@@ -120,6 +121,14 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		// with its memories (migration 0058).
 		if err := store.SetHandoffBrain(ctx, d.store.DB(), p.SessionID, n); err != nil {
 			d.log.Warn("could not record the handoff's memories", "component", "daemon", "err", err)
+		}
+		// Said on the live socket, so the sidebar can show the memories
+		// going into the new session's tab. A held-back session returned
+		// above and gets no frame: nothing was handed to it.
+		if d.bus != nil {
+			d.bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: map[string]any{
+				"op": "handoff", "session": p.SessionID, "project": project, "memories": n,
+			}})
 		}
 	}
 
