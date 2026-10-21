@@ -145,9 +145,11 @@ func fullView(tl *tail) (*Session, error) {
 // After every chunk, the parser a tail keeps holds exactly what Parse finds in
 // the bytes written so far.
 func TestTailParserMatchesParseAtEveryPrefix(t *testing.T) {
+	t.Parallel()
 	for name, data := range tailFixtures(t) {
 		for seed := int64(1); seed <= 8; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", name, seed), func(t *testing.T) {
+				t.Parallel()
 				path := filepath.Join(t.TempDir(), name)
 				if err := os.WriteFile(path, nil, 0o600); err != nil {
 					t.Fatal(err)
@@ -177,9 +179,11 @@ func TestTailParserMatchesParseAtEveryPrefix(t *testing.T) {
 // an interrupted mark a late output later replaced — which a full re-read
 // stores too, whenever a poll falls between the two.
 func TestTailHandsOverEveryItemOnce(t *testing.T) {
+	t.Parallel()
 	for name, data := range tailFixtures(t) {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", name, seed), func(t *testing.T) {
+				t.Parallel()
 				path := filepath.Join(t.TempDir(), name)
 				if err := os.WriteFile(path, nil, 0o600); err != nil {
 					t.Fatal(err)
@@ -253,6 +257,7 @@ func TestTailHandsOverEveryItemOnce(t *testing.T) {
 // A line longer than maxLine stops a tail where it stops Parse, and nothing
 // after it is read on later polls either.
 func TestTailStopsAtAnOversizedLineAsParseDoes(t *testing.T) {
+	t.Parallel()
 	head := growthTranscript(10)
 	huge := append([]byte(`{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"`), bytes.Repeat([]byte("y"), maxLine)...)
 	huge = append(huge, []byte(`"}]}}`+"\n")...)
@@ -441,9 +446,11 @@ func appendFile(t *testing.T, path string, b []byte) {
 // after every poll — and at the end it is what one full import of the
 // finished file builds.
 func TestIncrementalImportMatchesFullReread(t *testing.T) {
+	t.Parallel()
 	for name, data := range tailFixtures(t) {
 		for seed := int64(1); seed <= 2; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", name, seed), func(t *testing.T) {
+				t.Parallel()
 				w := newTwin(t)
 				for i, c := range chunks(data, rand.New(rand.NewSource(seed))) {
 					w.appendTo(name, c)
@@ -507,6 +514,7 @@ func dumpEvents(t *testing.T, db *sql.DB) string {
 // A subagent and its parent grow side by side: the subagent's rows go to the
 // parent's session under its own keys, interleaved polls and all.
 func TestIncrementalImportOfParentAndSubagent(t *testing.T) {
+	t.Parallel()
 	parent, err := os.ReadFile(parentFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -517,6 +525,7 @@ func TestIncrementalImportOfParentAndSubagent(t *testing.T) {
 	}
 	for seed := int64(1); seed <= 4; seed++ {
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
+			t.Parallel()
 			w := newTwin(t)
 			rng := rand.New(rand.NewSource(seed))
 			pc, cc := chunks(parent, rng), chunks(child, rng)
@@ -537,6 +546,7 @@ func TestIncrementalImportOfParentAndSubagent(t *testing.T) {
 // A restart forgets every tail: the next change replays the file once, and
 // the import goes on incrementally from there.
 func TestIncrementalImportAcrossARestart(t *testing.T) {
+	t.Parallel()
 	data := growthTranscript(40)
 	w := newTwin(t)
 	cs := chunks(data, rand.New(rand.NewSource(7)))
@@ -556,9 +566,11 @@ func TestIncrementalImportAcrossARestart(t *testing.T) {
 // A store write that fails mid-pass commits nothing: the next pass offers
 // again everything the failed one did not finish.
 func TestIncrementalImportAfterAFailedWrite(t *testing.T) {
+	t.Parallel()
 	data := growthTranscript(32)
 	for _, failAt := range []int{1, 3, 8} {
 		t.Run(fmt.Sprintf("fail-at=%d", failAt), func(t *testing.T) {
+			t.Parallel()
 			w := newTwin(t)
 			calls := 0
 			var cancel context.CancelFunc
@@ -594,6 +606,7 @@ func TestIncrementalImportAfterAFailedWrite(t *testing.T) {
 // A file rewritten rather than appended to — truncated, replaced by another
 // file, or changed in place — is read again from the start.
 func TestIncrementalImportAfterARewrite(t *testing.T) {
+	t.Parallel()
 	// 31 records end on a request's late prose, still waiting for the
 	// task_complete (record 31) that joins it to the request's last turn.
 	data := growthTranscript(31)
@@ -604,10 +617,10 @@ func TestIncrementalImportAfterARewrite(t *testing.T) {
 			for _, h := range []*harness{w.inc, w.ref} {
 				p := w.path(h, "growth.jsonl")
 				if err := os.WriteFile(p+".new", growthTranscript(40), 0o600); err != nil {
-					t.Fatal(err)
+					w.t.Fatal(err)
 				}
 				if err := os.Rename(p+".new", p); err != nil {
-					t.Fatal(err)
+					w.t.Fatal(err)
 				}
 			}
 		},
@@ -617,7 +630,7 @@ func TestIncrementalImportAfterARewrite(t *testing.T) {
 			b := append([]byte{}, data...)
 			tail := b[len(b)-2000:]
 			if !bytes.Contains(tail, []byte("done 3 ")) {
-				t.Fatal("the late prose is not where the test expects it")
+				w.t.Fatal("the late prose is not where the test expects it")
 			}
 			copy(tail, bytes.ReplaceAll(tail, []byte("done 3 "), []byte("DONE 3 ")))
 			w.rewrite("growth.jsonl", b, at)
@@ -629,6 +642,7 @@ func TestIncrementalImportAfterARewrite(t *testing.T) {
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			w := newTwin(t)
 			w.appendTo("growth.jsonl", data)
 			w.poll("written")
@@ -643,6 +657,7 @@ func TestIncrementalImportAfterARewrite(t *testing.T) {
 // Codex compresses a rollout untouched for a week and deletes the plain file.
 // The tail of the plain file is dropped, and the compressed one is read whole.
 func TestIncrementalImportWhenTheRolloutIsCompressed(t *testing.T) {
+	t.Parallel()
 	data := growthTranscript(40)
 	w := newTwin(t)
 	for i, c := range chunks(data, rand.New(rand.NewSource(3))) {
@@ -677,6 +692,7 @@ func TestIncrementalImportWhenTheRolloutIsCompressed(t *testing.T) {
 // A tail is let go once its file has been quiet for tailIdle; the next change
 // replays the file once.
 func TestIdleTailIsLetGo(t *testing.T) {
+	t.Parallel()
 	w := newTwin(t)
 	w.appendTo("growth.jsonl", growthTranscript(10))
 	w.poll("written")
@@ -701,6 +717,7 @@ func TestIdleTailIsLetGo(t *testing.T) {
 // The counters say what a pass cost: a one-line append reads that line, not
 // the file, and offers what it added rather than the whole history again.
 func TestAnAppendCostsTheAppend(t *testing.T) {
+	t.Parallel()
 	w := newTwin(t)
 	w.appendTo("growth.jsonl", growthTranscript(400))
 	w.poll("written")

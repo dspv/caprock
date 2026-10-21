@@ -12,6 +12,7 @@ import (
 // and in the full one alike: not while a request runs, not again for a file
 // that did not move, and not for a request that was aborted.
 func TestOnTurnDoneHearsEachCompletedRequestOnce(t *testing.T) {
+	t.Parallel()
 	for _, replay := range []bool{false, true} {
 		h := newHarness(t)
 		h.in.replay = replay

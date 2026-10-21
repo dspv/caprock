@@ -67,6 +67,7 @@ func mustTime(t *testing.T, s string) time.Time {
 // A thread the TUI Caprock started is filed under Caprock's session, so the
 // terminal and the cost are one page; the agent's own id is kept for resume.
 func TestASpawnedTUIThreadIsStoredUnderTheSessionThatStartedIt(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.spawned("cap-1", mustTime(t, "2026-09-06T08:32:40Z"))
 	h.putAs("rollout-a.jsonl", "codex-tui", "cli", "2026-09-06T08:32:41.828Z")
@@ -94,6 +95,7 @@ func TestASpawnedTUIThreadIsStoredUnderTheSessionThatStartedIt(t *testing.T) {
 // What makes the match a heuristic, pinned case by case: only the TUI, only
 // the folder, only a thread that started with the spawn.
 func TestOnlyAMatchingThreadIsTaken(t *testing.T) {
+	t.Parallel()
 	for name, tc := range map[string]struct{ originator, source, started string }{
 		"desktop app in the same folder": {"Codex Desktop", "vscode", "2026-09-06T08:32:41.828Z"},
 		"a thread started minutes later": {"codex-tui", "cli", "2026-09-06T08:40:00Z"},
@@ -116,6 +118,7 @@ func TestOnlyAMatchingThreadIsTaken(t *testing.T) {
 
 // With nothing waiting, the importer behaves exactly as it always has.
 func TestNoLinkerChangesNothing(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putAs("rollout-a.jsonl", "codex-tui", "cli", "2026-09-06T08:32:41.828Z")
 	h.poll()

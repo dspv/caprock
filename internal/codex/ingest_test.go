@@ -28,11 +28,7 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	lg := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
-	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "caprock.db"), lg)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st := openStore(t, lg)
 	table, err := cost.Load("")
 	if err != nil {
 		t.Fatalf("pricing: %v", err)
@@ -79,6 +75,7 @@ func count(t *testing.T, db *sql.DB, q string) int {
 }
 
 func TestIngestStoresSessionTurnsAndTools(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -106,6 +103,7 @@ func TestIngestStoresSessionTurnsAndTools(t *testing.T) {
 // Codex reports tokens but no cost of its own, so the pricing table has to do
 // the arithmetic. This is the whole reason pricing.json grew OpenAI rows.
 func TestCostIsComputedFromTheTable(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -128,6 +126,7 @@ func TestCostIsComputedFromTheTable(t *testing.T) {
 // Re-reading a transcript must not duplicate anything: the keys come from the
 // record ordinal, and the file is append-only.
 func TestReimportIsIdempotent(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -149,6 +148,7 @@ func TestReimportIsIdempotent(t *testing.T) {
 // An unchanged file is not parsed again. Without this every tick re-reads every
 // transcript on the machine for no new information.
 func TestUnchangedFilesAreSkipped(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -163,6 +163,7 @@ func TestUnchangedFilesAreSkipped(t *testing.T) {
 // A directory holding something that is not a transcript must not stop the
 // import of the ones that are.
 func TestJunkFileDoesNotStopTheImport(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	sub := filepath.Join(h.dir, "2026", "09", "06")
@@ -177,6 +178,7 @@ func TestJunkFileDoesNotStopTheImport(t *testing.T) {
 
 // A missing Codex directory is the normal case on almost every machine.
 func TestMissingDirectoryIsQuiet(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.in.dirs = []string{filepath.Join(h.dir, "does-not-exist")}
 	h.poll()
@@ -192,6 +194,7 @@ func TestMissingDirectoryIsQuiet(t *testing.T) {
 // that claim to be running and never stop — which is exactly what happened the
 // first time this was tried for OpenCode.
 func TestImportedSessionsAreRetiredByTheClock(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -219,6 +222,7 @@ func TestImportedSessionsAreRetiredByTheClock(t *testing.T) {
 // also recorded in `base_instructions.provenance`, which covers the other 96 —
 // so this test has to strip *both* sources to reach the unpriced path at all.
 func TestTurnWithNoModelIsStoredUnpriced(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	b, err := os.ReadFile(fixture)
 	if err != nil {
@@ -307,6 +311,7 @@ func splitLines(s string) []string {
 // that holds an object — how every function_call carries its arguments — is
 // that object, not a command.
 func TestToolInput(t *testing.T) {
+	t.Parallel()
 	if m := toolInput(ToolCall{Input: `{"cmd":"ls"}`}); m["cmd"] != "ls" {
 		t.Errorf("object input: %#v", m)
 	}
@@ -339,6 +344,7 @@ func TestToolInput(t *testing.T) {
 // transcript on the machine — 1.1GB and 30k duplicate writes on the owner's —
 // while the daemon was at its busiest.
 func TestARestartSkipsFilesAlreadyRead(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -365,6 +371,7 @@ func TestARestartSkipsFilesAlreadyRead(t *testing.T) {
 // (0022 and 0023 did) must find the file unread after the restart, or the
 // re-import silently never happens.
 func TestARestartRereadsASessionWhoseEventsAreGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()

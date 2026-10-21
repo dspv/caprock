@@ -24,6 +24,7 @@ const (
 // A subagent's file names its parent's session id and its own thread id, and
 // a copy of the parent's session_meta must not make it read as the parent.
 func TestSubagentKeysCarryItsOwnThread(t *testing.T) {
+	t.Parallel()
 	s, err := ParseFile(childFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +54,7 @@ func TestSubagentKeysCarryItsOwnThread(t *testing.T) {
 // must be stored whichever file is read first, the subagent's under the
 // parent's session and marked as a sidechain, as a Claude Code subagent's are.
 func TestSubagentTurnsSurviveBesideTheParents(t *testing.T) {
+	t.Parallel()
 	for _, order := range [][2]string{{"a", "b"}, {"b", "a"}} {
 		h := newHarness(t)
 		h.putFile(parentFixture, "rollout-"+order[0]+"-parent.jsonl")
@@ -80,6 +82,7 @@ func TestSubagentTurnsSurviveBesideTheParents(t *testing.T) {
 // A thread Codex imported from Claude Code is that session replayed, token
 // reports included. It is not Codex's work and nothing of it is stored.
 func TestImportedThreadIsNotCounted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putFile(importedFixture, "rollout-imported.jsonl")
 	h.poll()
@@ -105,6 +108,7 @@ func TestImportedThreadIsNotCounted(t *testing.T) {
 // parent's own turns that they blocked come back. The result is exactly what
 // a fresh import of the same files stores.
 func TestRepairUndoesWhatEarlierVersionsStored(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	h := newHarness(t)
 	paths := []string{
