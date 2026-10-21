@@ -402,6 +402,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-21 — 0.142.0: the Mac app signed by Apple
+
+A minor release, one batch PR (#779). The macOS app is signed with the Developer ID of CYBRIX LLC and notarized by Apple, so it opens without the unidentified-developer warning; macOS asks once more for the microphone and folder access the self-signed build had, because those grants follow the signature. A database a newer Caprock migrated is refused before any write (ADR-082), ahead of the storage-layout change in PR #768. The phone chat loses the walkie-talkie bar and the latest answer's AI;DR card and uses the desktop chat's field again.
+
 ### 2026-10-21 — 0.141.0: Recently closed, one view icon, no deck
 
 A minor release, one batch PR (#777). The sidebar lists the last tabs closed under Recently closed, and ⇧⌘T brings the newest back, continuing an ended conversation where it stopped; the theme picker moves to ⌥⌘P and private modules open with ⇧⌘1–9 on a Mac. Running, no tab keeps the sessions the user started, and scouts, ops runs, temporary-folder and untitled sessions fold under one Background · N row. One quiet icon flips an agent tab between chat and terminal; the session deck and ⌘B are gone, its pull-request action, cost line and Pipeline link now in the inspector and the default branch's CI on the Pipeline page. The daemon reads less with a dashboard open (F17, F18: the Work board, plan pace, the status Memory line, subscription spend and task lists; migration 0066 adds a task-list index). On a phone, fields are 16px and the file viewer and reply tables stay inside the screen. Smoke tests no longer write a test token into the macOS login keychain.
