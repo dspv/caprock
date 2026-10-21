@@ -78,21 +78,37 @@ export async function dropIntoBrain(d: BrainDrop, retryMs = DROP_RETRY_MS): Prom
 const DROP_RETRIES = 3
 const DROP_RETRY_MS = 1000
 
-/** Calls `fn` on every brain change the live socket reports, and after a replay gap; a read's `progress` frames only with `{progress: true}`. */
-/** A `brain` frame's data (03-contracts.md § Second Brain, Live): `session` and `project` only on `added`, when known. */
-export interface BrainFrame { id?: number; op: string; vault?: number; title?: string; kind?: string; auto?: boolean; session?: string; project?: string }
+/**
+ * A `brain` frame's data (03-contracts.md § Second Brain, Live). `session`,
+ * `project`, `run` and `agent` on `added` when known; a read's `progress`
+ * carries `phase` (`start`, `done`), its session, project and agent, and on
+ * `done` its `run` and how many memories it kept (`added`); `handoff` says a
+ * new session was handed `memories` of them.
+ */
+export interface BrainFrame {
+  id?: number; op: string; vault?: number; title?: string; kind?: string; auto?: boolean; session?: string; project?: string
+  run?: number; agent?: string; phase?: 'start' | 'done'; added?: number; memories?: number
+}
 
-export function useBrainFrames(fn: (f?: BrainFrame) => void, opts?: { progress?: boolean }) {
+/**
+ * Calls `fn` on every brain change the live socket reports, and after a
+ * replay gap. A read's `progress` frames only with `{progress: true}`, a
+ * handoff's only with `{handoff: true}`: neither changes a memory.
+ */
+export function useBrainFrames(fn: (f?: BrainFrame) => void, opts?: { progress?: boolean; handoff?: boolean }) {
   const progress = !!opts?.progress
+  const handoff = !!opts?.handoff
   const ref = useRef(fn)
   ref.current = fn
   useEffect(() => live.onFrame((f) => {
     if (f.type === 'brain') {
+      const op = (f.data as { op?: string } | undefined)?.op
       // A read beginning or ending changes no memory; only the status cares.
-      if ((f.data as { op?: string } | undefined)?.op === 'progress' && !progress) return
+      if (op === 'progress' && !progress) return
+      if (op === 'handoff' && !handoff) return
       ref.current(f.data as BrainFrame)
     } else if (f.type === 'reset') ref.current()
-  }), [progress])
+  }), [progress, handoff])
 }
 
 /** How often the status is read again while a build is going, on top of the frames. */
@@ -118,7 +134,7 @@ export function useBrainStatus(): { status: BrainStatus | null; reload: () => vo
   useBrainFrames(() => {
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(reload, 150)
-  }, { progress: true })
+  }, { progress: true, handoff: true })
   useEffect(() => () => window.clearTimeout(timer.current), [])
   const building = isBuilding(status?.auto)
   useEffect(() => {
@@ -301,10 +317,15 @@ export const BRAIN_STEPS: { stage: 'find' | 'extracting' | 'linking'; label: str
   { stage: 'linking', label: 'Link into the graph' },
 ]
 
-/** Settings → Second Brain, *Animate thoughts arriving*: kept per browser, on unless turned off. */
+/**
+ * Settings → Second Brain, *Show memories moving* (it was *Animate thoughts
+ * arriving*; the key is kept, so a choice made then still holds): kept per
+ * browser, on unless turned off. One switch for both directions — memories
+ * going in from a read, and handed out to a new session.
+ */
 const ARRIVALS_KEY = 'caprock.brain-arrivals'
 
-/** Whether a memory arriving is animated: the setting, and never under prefers-reduced-motion. */
+/** Whether a memory arriving moves (the graph's spark): the setting, and never under prefers-reduced-motion. */
 export function brainArrivalsOn(): boolean {
   try { if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false } catch { /* no media queries */ }
   return brainArrivalsSetting()

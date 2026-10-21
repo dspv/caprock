@@ -16,12 +16,15 @@
  * Before anything is known — loading, a failure, a new install — it is
  * Claude Code alone.
  *
+ * That is the pitch, shown before anything is built. Once reads happen, the
+ * card's faces are the agents actually read (readFaces, below).
+ *
  * Motion is CSS alone (BrainMark.css): each pulse is a dash of a path
  * normalised to length 1, its offset animated. Under prefers-reduced-motion
  * every pulse holds still halfway along its line.
  */
 import { useEffect, useState } from 'react'
-import { api, type WeekAgent } from '@/lib/api'
+import { api, type BrainAutoStatus, type WeekAgent } from '@/lib/api'
 import { useSessionFace } from '@/lib/faces'
 import { agentName, Body, characterFor } from './Characters'
 import { BrainMark } from './BrainMark'
@@ -68,6 +71,45 @@ export function nameList(names: string[]): string {
 export function agentsLine(agents: string[]): string {
   const names = agents.map(agentName)
   return names.length > 1 ? `${nameList(names)} remember together.` : `${names[0] ?? 'Claude Code'} remembers across sessions.`
+}
+
+/** One agent whose sessions Second Brain read in the last 24 hours, for a face on its card. */
+export interface ReadFace {
+  agent: DrawnAgent
+  /** Distinct sessions read in the last 24 hours. */
+  sessions: number
+  /** One of its sessions is being read right now. */
+  now: boolean
+  /** That session's title, while it is read. */
+  reading?: string
+}
+
+/**
+ * The faces on the Second Brain card: only agents whose sessions a read
+ * went through in the last 24 hours (`auto.agents_24h`, from the reads
+ * themselves — not what the user ran, which once drew Codex though Codex
+ * had never fed it), plus the agent being read now, which glows. Most
+ * sessions first; at most four; none when nothing was read.
+ */
+export function readFaces(auto: BrainAutoStatus | undefined): ReadFace[] {
+  const out: ReadFace[] = []
+  const nowAgent = auto?.reading ? auto.reading.agent || 'claude' : ''
+  for (const r of auto?.agents_24h ?? []) {
+    const a = DRAWN.find((d) => d === r.agent)
+    if (!a || out.some((f) => f.agent === a)) continue
+    out.push({ agent: a, sessions: r.sessions, now: a === nowAgent, reading: a === nowAgent ? auto?.reading?.title : undefined })
+  }
+  const a = DRAWN.find((d) => d === nowAgent)
+  if (a && !out.some((f) => f.agent === a)) out.unshift({ agent: a, sessions: 0, now: true, reading: auto?.reading?.title })
+  return out.slice(0, 4)
+}
+
+/** A face's tooltip, in plain words: *Codex: 2 sessions read in the last 24 hours · reading “Fix login” now*. */
+export function faceWords(f: ReadFace): string {
+  const name = agentName(f.agent)
+  const parts = f.sessions > 0 ? [`${f.sessions} ${f.sessions === 1 ? 'session' : 'sessions'} read in the last 24 hours`] : []
+  if (f.now) parts.push(f.reading ? `reading “${f.reading}” now` : 'reading a session now')
+  return `${name}: ${parts.join(' · ')}`
 }
 
 /** The agents this user ran in the last 30 days (see the header). */

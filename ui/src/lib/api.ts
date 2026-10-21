@@ -1621,7 +1621,12 @@ export interface BrainAutoStatus {
   links?: number
   /** How the memories reach agents: new sessions handed some with the handoff. */
   handoff?: BrainHandoff
+  /** The agents whose sessions a read went through in the last 24 hours, most sessions first: the card's faces. */
+  agents_24h?: BrainAgentRead[]
 }
+
+/** One agent whose sessions Second Brain read: distinct sessions, and when the newest read finished (unix ms). */
+export interface BrainAgentRead { agent: string; sessions: number; last_at: number }
 
 /** Where a build is (03-contracts.md § Second Brain). */
 export type BrainStage = 'off' | 'no_claude' | 'limit' | 'extracting' | 'linking' | 'waiting' | 'up_to_date'

@@ -28,7 +28,7 @@ import { indexGraph, pickNodes } from '@/lib/brainview'
 import { useNow } from '@/lib/useNow'
 import { BrainGraphCanvas, DEFAULT_GRAPH_APPEARANCE } from '@/components/BrainGraphCanvas'
 import { BrainOrb } from '@/components/BrainOrb'
-import { useAgentsUsed } from '@/components/BrainAgents'
+import { readFaces } from '@/components/BrainAgents'
 import { CloseButton, DialogBackdrop } from '@/components/Dialog'
 import { BrainGraphPanel } from './BrainGraphPanel'
 
@@ -61,7 +61,8 @@ export function BrainGraphCard({ graph, auto, kept, onOpen, open = false }: {
   /** The graph is open: the card keeps its place, empty, as the fold's target. */
   open?: boolean
 }) {
-  const agents = useAgentsUsed()
+  // The agents actually read in the last 24 hours, not every agent used.
+  const faces = readFaces(auto)
   const landed = useBrainLanded()
   const button = useRef<HTMLButtonElement>(null)
   const memories = graph?.nodes.filter((n) => !isEntity(n.kind)).length ?? 0
@@ -75,7 +76,7 @@ export function BrainGraphCard({ graph, auto, kept, onOpen, open = false }: {
       </span>
     )
   } else {
-    body = <BrainOrb kinds={(graph?.nodes ?? []).map((n) => n.kind)} count={kept} agents={agents} activity={brainActivity(auto)} landed={landed} className="absolute inset-0" ariaLabel="Second Brain being built" />
+    body = <BrainOrb kinds={(graph?.nodes ?? []).map((n) => n.kind)} count={kept} agents={faces.map((f) => f.agent)} lit={faces.find((f) => f.now)?.agent} activity={brainActivity(auto)} landed={landed} className="absolute inset-0" ariaLabel="Second Brain being built" />
   }
   const caption = graph && drawable ? graphCaption(graph) : 'Memories land here as they are found'
   if (!drawable) {

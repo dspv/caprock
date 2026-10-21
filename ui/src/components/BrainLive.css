@@ -52,29 +52,57 @@
   [data-brain-sidebar-live] .brain-live-bar { animation: none; }
 }
 
-/* A thought arriving (components/BrainArrivals.tsx): a spark that flies from
- * the session's tab to the sidebar's Second Brain card. Moved by the Web
- * Animations API on transform and opacity only; never drawn under
- * prefers-reduced-motion (the script does not start one). */
-.brain-arrival {
+/* Memories moving (components/BrainArrivals.tsx): the silver wisp's canvas,
+ * fixed over the window and only there while an effect plays; the +N by the
+ * Second Brain glyph and the whisper under a tab handed memories, each a
+ * short-lived fixed label faded by the Web Animations API. */
+.brain-wisp-canvas {
   position: fixed;
-  left: 0;
-  top: 0;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 9999px;
-  background: var(--color-accent);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-accent) 28%, transparent),
-    0 0 18px 4px color-mix(in srgb, var(--color-accent) 60%, transparent);
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
   pointer-events: none;
   z-index: 70;
-  will-change: transform, opacity;
 }
-.brain-arrival[data-tail] {
-  width: 6px;
-  height: 6px;
-  margin: -3px 0 0 -3px;
-  box-shadow: none;
+.brain-wisp-plus,
+.brain-wisp-whisper {
+  position: fixed;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 71;
+  opacity: 0;
+  color: var(--color-fg-muted);
+}
+.brain-wisp-plus { font: 600 11px/1 var(--font-mono); }
+.brain-wisp-whisper { font-size: 11.5px; line-height: 1.3; font-style: italic; }
+
+/* The agents read in the last 24 hours, on the folded card (BrainSidebar's
+ * ReadFaces): small seats with the agent's character; the one being read now
+ * breathes a silver ring. Still under reduced motion. */
+.brain-face {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 9999px;
+  background: var(--color-panel-2);
+  border: 1px solid var(--color-border-strong);
+}
+.brain-face[data-lit]::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--wisp-core) 70%, transparent), 0 0 8px var(--wisp-glow);
+  animation: brainFaceBreathe 2.8s ease-in-out infinite;
+}
+@keyframes brainFaceBreathe {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 1; }
+}
+.brain-orb-agent[data-lit] { filter: drop-shadow(0 0 4px var(--wisp-glow)); }
+@media (prefers-reduced-motion: reduce) {
+  .brain-face[data-lit]::after { animation: none; opacity: 0.8; }
 }

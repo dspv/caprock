@@ -267,6 +267,25 @@ describe('Second Brain', () => {
     expect(onOpen).not.toHaveBeenCalled()
   })
 
+  it('shows on the folded row only the agents read in the last 24 hours, each with its count, the one read now lit', async () => {
+    m.status.mockResolvedValue(status({
+      memories: 8, manual: 0,
+      auto: auto({
+        running: true,
+        agents_24h: [{ agent: 'claude', sessions: 6, last_at: 1 }, { agent: 'codex', sessions: 2, last_at: 1 }],
+        reading: { session_id: 's', agent: 'claude', title: 'Mail sign-in recovery', started_at: 1, passages: 3 } as BrainAutoStatus['reading'],
+      }),
+    }))
+    m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })
+    render(<BrainSidebar onOpen={vi.fn()} />)
+    const faces = await waitFor(() => { const f = document.querySelectorAll('[data-brain-face-item]'); expect(f).toHaveLength(2); return [...f] })
+    expect(faces.map((f) => f.querySelector('[data-brain-face-count]')?.textContent)).toEqual(['6', '2'])
+    expect(faces[0]).toHaveAttribute('title', 'Claude Code: 6 sessions read in the last 24 hours · reading “Mail sign-in recovery” now')
+    expect(document.querySelector('[data-brain-face="claude"]')).toHaveAttribute('data-lit')
+    expect(document.querySelector('[data-brain-face="codex"]')).not.toHaveAttribute('data-lit')
+    expect(document.querySelector('[data-brain-face="gemini"]')).toBeNull()
+  })
+
   it('says what it does now while it builds — the session’s project, how far — over a thin bar; folded, the mode keeps the room', async () => {
     m.status.mockResolvedValue(status({
       memories: 8, manual: 0,

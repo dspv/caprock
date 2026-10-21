@@ -346,3 +346,35 @@ func BrainHandedSince(ctx context.Context, q Querier, since int64) (sessions, me
 		WHERE handoff_brain > 0 AND started_at >= ?`, since).Scan(&sessions, &memories)
 	return sessions, memories, err
 }
+
+// BrainAgentRead is one agent whose sessions the extraction read: how many
+// distinct sessions, and when the newest of those reads finished (unix ms).
+type BrainAgentRead struct {
+	Agent    string `json:"agent"`
+	Sessions int    `json:"sessions"`
+	LastAt   int64  `json:"last_at"`
+}
+
+// BrainAgentsSince lists the agents whose sessions a read went through
+// (status ok) since a moment, most sessions first, then the newest read. A
+// session with no agent recorded counts as claude, the default agent.
+func BrainAgentsSince(ctx context.Context, q Querier, since int64) ([]BrainAgentRead, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(s.agent, ''), 'claude') AS a, COUNT(DISTINCT r.session_id), MAX(r.finished_at)
+		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
+		WHERE r.status = 'ok' AND r.finished_at >= ?
+		GROUP BY a ORDER BY 2 DESC, 3 DESC, a`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BrainAgentRead{}
+	for rows.Next() {
+		var a BrainAgentRead
+		if err := rows.Scan(&a.Agent, &a.Sessions, &a.LastAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}

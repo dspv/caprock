@@ -576,7 +576,9 @@ went is recorded on the session (migration 0058: `ALTER TABLE sessions ADD
 COLUMN handoff_brain INTEGER NOT NULL DEFAULT 0` and `CREATE INDEX
 idx_sessions_handoff_brain ON sessions(started_at) WHERE handoff_brain >
 0`), so the Second Brain status can say how often agents start with its
-memories (§ Second Brain, `handoff`).
+memories (§ Second Brain, `handoff`), and said on the live socket as a
+`brain` frame `{op: "handoff", session, project, memories}` (§ Second
+Brain, Live) so the sidebar can show them going into the session's tab.
 
 **Measuring it.** Whenever there is a passage to hand over, the session records
 whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
@@ -1092,7 +1094,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?} after Second Brain changes, or {op: progress} when an automatic read begins or ends (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -3944,17 +3946,28 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **Who.** The four `GET`s are open to every paired device; every write,
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
-  "added" | "changed" | "deleted", kind?, title?, auto?, session?, project?}`
-  (`kind` and `title` absent on a delete; `session` and `project` only on
-  `added`, each when the memory's source has it, so a screen can show the
-  memory arriving from that session's tab). The automatic extraction also publishes `{op:
-  "progress"}` (no id) as each read begins and ends, so a screen showing
-  the build reads the status again; a screen showing memories ignores it.
+  "added" | "changed" | "deleted", kind?, title?, auto?, session?, project?,
+  run?, agent?}` (`kind` and `title` absent on a delete; `session` and
+  `project` only on `added`, each when the memory's source has it, so a
+  screen can show the memory arriving from that session's tab; `run` — the
+  `brain_runs` id — and `agent` — the session's agent — only on a memory an
+  automatic read kept). The automatic extraction also publishes `{op:
+  "progress", phase: "start", session, project, agent}` (no id) as a read
+  begins, and `{op: "progress", phase: "done", run?, session, project,
+  agent, added}` as it ends — after the read's `added` frames, `added`
+  their count (0 when it kept nothing or failed; `run` absent when no run
+  was recorded) — so a screen showing the build reads the status again and
+  the sidebar shows one arrival per read; a screen showing memories ignores
+  both. When a new session's handoff carries Second Brain memories
+  (`sessions.handoff_brain` set above 0, § SessionStart handoff), the
+  daemon publishes `{op: "handoff", session, project, memories}`; a session
+  held back by the holdout, or handed none, gets no frame.
 - **The automatic extraction** (`internal/brain`, free). `auto` in the
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
   links, handoff, running, pending, since?, backfill_since?, last_wake?,
-  next_wake?, last_error?, recent: [BrainRun], reading?, build?}`: `chosen` once
+  next_wake?, last_error?, recent: [BrainRun], reading?, build?,
+  agents_24h}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
@@ -3975,7 +3988,12 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   is on (without it no session is handed anything), then the sessions
   started in the last 24 hours, and in all, that were handed Second Brain
   memories with their handoff and how many (`sessions.handoff_brain`,
-  § SessionStart handoff). `BrainRun` is `{id, session_id, from_event_id,
+  § SessionStart handoff). `agents_24h` is `[{agent, sessions, last_at}]`:
+  the agents whose sessions a read with status `ok` went through in the
+  last 24 hours (`brain_runs` joined to `sessions`; no agent recorded counts
+  as `claude`), `sessions` the distinct sessions, `last_at` when the newest
+  of those reads finished (unix ms), most sessions first; `[]` when none.
+  `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
   tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
   title?, agent?}`; `title` is the session's own name, else its first

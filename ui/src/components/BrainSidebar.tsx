@@ -52,16 +52,23 @@
  * line and Details (rule 4) — the consent in this narrow column was
  * unreadable (owner, 2026-10-15).
  *
- * A memory added flies in from its session's tab as a spark and the card
- * pulses as it lands (BrainArrivals; Settings → Second Brain, *Animate
- * thoughts arriving*).
+ * Memories moving (BrainArrivals; Settings → Second Brain, *Show memories
+ * moving*): a read's memories leave its session as one silver wisp and
+ * settle on the card's glyph with a ripple and *+N*; memories handed to a
+ * new session leave the glyph for its tab.
+ *
+ * The faces on the folded row are the agents whose sessions were read in
+ * the last 24 hours (readFaces); the one being read now glows softly, and
+ * each says so in plain words on hover.
  */
 import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { BrainAutoStatus } from '@/lib/api'
 import { brainActivity, brainMode, brainState, buildFigures, clockOrDay, isBuilding, isEntity, useBrainGraph, useBrainLanded, useBrainStatus } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
-import { agentsLine, BRAIN_HEADLINE, BrainHero, FreePill, useAgentsUsed } from './BrainAgents'
+import { agentsLine, BRAIN_HEADLINE, BrainHero, faceWords, FreePill, readFaces, useAgentsUsed, type ReadFace } from './BrainAgents'
+import { Body, characterFor } from './Characters'
+import { useSessionFace } from '@/lib/faces'
 import { BrainOrb } from './BrainOrb'
 import { ChevronIcon } from './AppIcons'
 import { BrainGlyph } from './BrainDrop'
@@ -95,7 +102,6 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   // Folded unless this viewer unfolded it (owner, 2026-10-15).
   const open = fold ? fold === 'open' : false
   const { graph } = useBrainGraph({ limit: NEWEST }, 600)
-  const agents = useAgentsUsed()
   const landed = useBrainLanded()
   const now = useNow(60_000)
   const toggle = () => {
@@ -105,6 +111,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   }
   if (!status) return null
   const auto = status.auto
+  const faces = readFaces(auto)
   const memories = (graph?.nodes ?? []).filter((n) => !isEntity(n.kind)).sort((a, b) => b.created_at - a.created_at)
   const midnight = new Date(now).setHours(0, 0, 0, 0)
   const today = memories.filter((n) => n.kind !== 'note' && n.created_at >= midnight).length
@@ -175,7 +182,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
         {open ? (
           <div className="flex h-[28px] shrink-0 items-center gap-1.5 px-1.5 pt-1.5">
             <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-muted">
-              <BrainGlyph size={12} className="shrink-0" />
+              <span className="flex shrink-0" data-brain-glyph="still"><BrainGlyph size={12} /></span>
               <span className="truncate">Second Brain</span>
             </h2>
             {chevron}
@@ -187,6 +194,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
             <h2 className="sr-only">Second Brain</h2>
             <span className={`flex shrink-0 text-fg-faint ${reading ? 'brain-glyph-reading' : ''}`} data-brain-glyph={reading ? 'reading' : 'still'}><BrainGlyph size={12} /></span>
             <span className="min-w-0 flex-1 truncate text-[12px] text-fg-muted" data-brain-mode title={rowTitle}>{rowText}</span>
+            {faces.length > 0 && <ReadFaces faces={faces} />}
             {chevron}
             {building && state.share !== null && (
               // A hairline of progress under the row: sessions read of all in reach.
@@ -207,7 +215,8 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
               <BrainOrb
                 kinds={memories.map((n) => n.kind)}
                 count={status.memories}
-                agents={agents}
+                agents={faces.map((f) => f.agent)}
+                lit={faces.find((f) => f.now)?.agent}
                 activity={brainActivity(auto)}
                 landed={landed}
                 working={working}
@@ -223,6 +232,34 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
       {how && <SecondBrainModal onOpen={go} onClose={() => setHow(false)} />}
       <BrainArrivals card={block} />
     </section>
+  )
+}
+
+/**
+ * The agents read in the last 24 hours, as small faces, each with a quiet
+ * count of its sessions read (owner, 2026-10-22: "show the actual current
+ * numbers"); the one read now glows (BrainLive.css).
+ */
+function ReadFaces({ faces }: { faces: ReadFace[] }) {
+  const claudeFace = useSessionFace(undefined)
+  return (
+    <span className="flex shrink-0 items-center gap-[5px]" data-brain-faces>
+      {faces.map((f) => {
+        const words = faceWords(f)
+        return (
+          <span key={f.agent} className="flex items-center gap-[2px]" title={words} aria-label={words} role="img" data-brain-face-item={f.agent}>
+            <span className="brain-face" data-brain-face={f.agent} data-lit={f.now ? '' : undefined}>
+              <svg viewBox="0 0 80 80" aria-hidden className="h-[13px] w-[13px]">
+                <g transform="translate(9 6) scale(0.78)">
+                  <Body who={characterFor(f.agent)} face={f.agent === 'claude' ? claudeFace : undefined} />
+                </g>
+              </svg>
+            </span>
+            {f.sessions > 0 && <span className="num text-[10.5px] leading-none text-fg-faint" aria-hidden data-brain-face-count>{f.sessions}</span>}
+          </span>
+        )
+      })}
+    </span>
   )
 }
 

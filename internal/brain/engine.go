@@ -326,37 +326,50 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	if callErr != nil {
 		// The read ends once it is recorded, so the frame that says so
 		// finds it in the status.
-		defer e.stopReading()
+		var runID int64
+		defer func() { e.publishDone(e.stopReading(), runID, 0) }()
 		if ctx.Err() != nil {
 			return true, ctx.Err()
 		}
 		run.Status, run.Error = store.BrainRunFailed, clip(callErr.Error(), 500)
-		if _, err := store.InsertBrainRun(ctx, db, run); err != nil {
+		id, err := store.InsertBrainRun(ctx, db, run)
+		if err != nil {
 			return true, err
 		}
+		runID = id
 		return true, callErr
 	}
 	run.Status = store.BrainRunOK
 	var added []store.BrainNode
+	var runID int64
 	err = e.Store.WithTx(ctx, func(q store.Querier) error {
 		id, err := store.InsertBrainRun(ctx, q, run)
 		if err != nil {
 			return err
 		}
+		runID = id
 		added, err = keep(ctx, q, id, c, in.Passages, res.Memories, run.FinishedAt)
 		if err != nil {
 			return err
 		}
 		return store.SetBrainRunNodes(ctx, q, id, len(added))
 	})
-	e.stopReading()
+	r := e.stopReading()
 	if err != nil {
+		e.publishDone(r, 0, 0)
 		return true, err
 	}
 	e.setError("")
-	for _, n := range added {
-		e.publish(n)
+	agent := ""
+	if r != nil {
+		agent = r.Agent
 	}
+	for _, n := range added {
+		e.publish(n, agent)
+	}
+	// After the memories, so a screen that waits for the read's end has
+	// every one of them by then.
+	e.publishDone(r, runID, len(added))
 	return true, nil
 }
 
@@ -497,7 +510,11 @@ func (e *Engine) startReading(ctx context.Context, c store.BrainCandidate, passa
 	e.mu.Lock()
 	e.reading = r
 	e.mu.Unlock()
-	e.publishProgress()
+	if e.Bus != nil {
+		e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: map[string]any{
+			"op": "progress", "phase": "start", "session": r.SessionID, "project": r.Project, "agent": r.Agent,
+		}})
+	}
 }
 
 // setPhase moves the read on to its next phase. No frame: linking takes
@@ -510,28 +527,48 @@ func (e *Engine) setPhase(p string) {
 	e.mu.Unlock()
 }
 
-func (e *Engine) stopReading() {
+// stopReading clears the session being read and returns it (nil when none
+// was), for the frame that says the read ended.
+func (e *Engine) stopReading() *Reading {
 	e.mu.Lock()
+	r := e.reading
 	e.reading = nil
 	e.mu.Unlock()
-	e.publishProgress()
+	return r
 }
 
-// publishProgress says a read began or ended: a `brain` frame with op
-// "progress" and no id, so a screen showing the build reads the status
-// again. Screens showing memories ignore it.
-func (e *Engine) publishProgress() {
+// publishDone says a read ended: a `brain` frame with op "progress", phase
+// "done", the read's run (0 when none was recorded), the session, project
+// and agent it read, and how many memories it kept, so a screen showing the
+// build reads the status again and the sidebar can show one arrival for the
+// whole read. Screens showing memories ignore it.
+func (e *Engine) publishDone(r *Reading, runID int64, added int) {
 	if e.Bus == nil {
 		return
 	}
-	e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: map[string]any{"op": "progress"}})
+	data := map[string]any{"op": "progress", "phase": "done", "added": added}
+	if runID > 0 {
+		data["run"] = runID
+	}
+	if r != nil {
+		data["session"], data["project"], data["agent"] = r.SessionID, r.Project, r.Agent
+	}
+	e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: data})
 }
 
-func (e *Engine) publish(n store.BrainNode) {
+// publish says a memory was kept by a read: its run and the agent of the
+// session read ride along, so a screen can tell one read's memories apart.
+func (e *Engine) publish(n store.BrainNode, agent string) {
 	if e.Bus == nil {
 		return
 	}
 	data := map[string]any{"id": n.ID, "op": "added", "kind": n.Kind, "title": n.Title, "auto": true}
+	if n.RunID > 0 {
+		data["run"] = n.RunID
+	}
+	if agent != "" {
+		data["agent"] = agent
+	}
 	n.Source.AddToFrame(data)
 	e.Bus.Publish(bus.Frame{Type: bus.FrameBrain, Data: data})
 }
@@ -579,6 +616,9 @@ type Status struct {
 	LastError string `json:"last_error,omitempty"`
 	// Recent is the newest reads that did something.
 	Recent []store.BrainRun `json:"recent"`
+	// Agents24h is the agents whose sessions a read went through in the
+	// last 24 hours, most sessions first: the faces on the sidebar's card.
+	Agents24h []store.BrainAgentRead `json:"agents_24h"`
 }
 
 // The build's stages, as Status.Stage names them.
@@ -741,6 +781,10 @@ func (e *Engine) measure(ctx context.Context, st *Status) {
 	}
 	st.Handoff.Sessions24h, st.Handoff.Memories24h, _ = store.BrainHandedSince(ctx, db, day)
 	st.Handoff.Sessions, st.Handoff.Memories, _ = store.BrainHandedSince(ctx, db, 0)
+	st.Agents24h = []store.BrainAgentRead{}
+	if a, err := store.BrainAgentsSince(ctx, db, day); err == nil {
+		st.Agents24h = a
+	}
 }
 
 // stage names where the build is, from the status it is part of.

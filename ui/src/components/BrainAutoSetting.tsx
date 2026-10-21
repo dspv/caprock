@@ -75,15 +75,15 @@ export function BrainAutoSetting() {
   )
 }
 
-/** *Animate thoughts arriving*: kept in this browser, on unless turned off (04-ui.md § Second Brain). */
+/** *Show memories moving* (it was *Animate thoughts arriving*; same key): kept in this browser, on unless turned off (04-ui.md § Second Brain). */
 function ArrivalsToggle() {
   const [on, setOn] = useState(brainArrivalsSetting)
   return (
     <Toggle
       checked={on}
       onChange={(v) => { setOn(v); setBrainArrivals(v) }}
-      label="Animate thoughts arriving"
-      hint="A memory just kept flies from its session’s tab into Second Brain, and lands in the graph when it is open. Never with reduced motion."
+      label="Show memories moving"
+      hint="A session’s new memories drift into Second Brain as a silver thread, and the ones a new session is handed drift into its tab. At most one a minute each way, never while you type. With reduced motion only the count shows."
     />
   )
 }

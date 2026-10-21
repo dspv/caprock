@@ -425,6 +425,20 @@
   --brain-project: var(--color-fg);
 }
 
+/* Second Brain's silver wisp (components/BrainArrivals.tsx, *Memories
+ * moving*): the thread's core, its glow and its bright head. Pale silver on
+ * every dark palette; on the light ones a slate that still reads on white. */
+:root {
+  --wisp-core: #e4e9ef;
+  --wisp-glow: rgba(196, 210, 226, 0.55);
+  --wisp-hi: #ffffff;
+}
+:root[data-theme="light"] {
+  --wisp-core: #5d6672;
+  --wisp-glow: rgba(110, 122, 140, 0.6);
+  --wisp-hi: #ffffff;
+}
+
 /* Edge to edge on a phone (viewport-fit=cover in index.html): keep content
  * clear of the notch in landscape and of the home bar. The top inset is the
  * sticky header's own padding (Shell), so its colour runs up under the status
