@@ -85,9 +85,10 @@ func TestEveryEndpointForAComputer(t *testing.T) {
 				t.Errorf("computer: %d, want %d (%s)", got, want, why)
 			}
 			// Waiting: nothing but where it stands, and withdrawing — and
-			// the dashboard's own files, open even before pairing.
+			// the dashboard's own files, open even before pairing (a private
+			// module's pages are not those: ADR-076).
 			want = http.StatusForbidden
-			if open || pattern == "GET /v1/pair/me" || !strings.Contains(pattern, " /v1/") {
+			if open || pattern == "GET /v1/pair/me" || (!strings.Contains(pattern, " /v1/") && !strings.Contains(pattern, " /x/")) {
 				want = 0
 			}
 			if got, why := s.gate(phoneRequest(pattern, waiting.Token)); got != want {

@@ -13,7 +13,7 @@
  * request either.
  */
 import { useEffect, useState } from 'react'
-import { api, errText, type PremiumPricing, type Settings } from '@/lib/api'
+import { api, errText, isPairedDevice, type PremiumPricing, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { extTitle } from '@/lib/externalLinks'
 import { announceAdmin, useAdmin } from '@/lib/modules'
@@ -95,7 +95,8 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Par
         {admin?.admin && (
           <span data-admin-key className="block text-ok">
             Admin key is on{admin.modules?.length ? ` — ${admin.modules.join(', ')}` : ''}.{' '}
-            <button type="button" onClick={clearAdmin} className="link">remove</button>
+            {/* The key is removed on the machine only (ADR-076). */}
+            {!isPairedDevice() && <button type="button" onClick={clearAdmin} className="link">remove</button>}
           </span>
         )}
         {admin?.key_error && <span className="block text-warn">The stored admin key is not valid: {admin.key_error}.</span>}

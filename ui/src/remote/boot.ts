@@ -219,12 +219,16 @@ export function currentChannel(): Channel | null {
   return channel
 }
 
-/** True for a URL the dashboard means for its daemon: same origin, /v1/ or /healthz. */
+/**
+ * True for a URL the dashboard means for its daemon: same origin, /v1/,
+ * /healthz, or a private module's files under /x/ (fetched by the dashboard
+ * for the module's frame, lib/modulebridge.ts).
+ */
 export function forDaemon(url: string, origin = window.location.origin): boolean {
   try {
     const u = new URL(url, origin)
     const same = u.host === new URL(origin).host
-    return same && (u.pathname.startsWith('/v1/') || u.pathname === '/healthz')
+    return same && (u.pathname.startsWith('/v1/') || u.pathname === '/healthz' || u.pathname.startsWith('/x/'))
   } catch {
     return false
   }

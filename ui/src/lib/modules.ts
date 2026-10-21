@@ -3,11 +3,13 @@
  * the app's theme handed to a module's page so it reads as one more screen.
  *
  * Without a valid key the list is empty and nothing anywhere draws a row, a
- * tab or a hint for it. A paired device never asks: modules are the machine's.
+ * tab or a hint for it. A paired device asks only while it is a controller
+ * (ADR-076 amended 2026-10-21); a viewer never sees a module.
  */
 import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type AdminState, type ModuleInfo } from './api'
 import { setModuleKeyCount } from './appkeys'
+import { useCanControl } from './useCanControl'
 
 /** Sent on this window when the admin key changes, so every list asks again. */
 export const ADMIN_EVENT = 'caprock-admin-change'
@@ -39,8 +41,17 @@ export function announceAdmin(st: AdminState): void {
 /** The admin state, asked once and again whenever the key changes. */
 export function useAdmin(): AdminState | undefined {
   const [st, setSt] = useState<AdminState>()
+  // Always on the machine; on a phone only while it holds control, and the
+  // list goes when control is taken away.
+  const may = useCanControl()
   useEffect(() => {
-    if (isPairedDevice()) return
+    if (!may) {
+      if (isPairedDevice()) {
+        remember([])
+        setSt(undefined)
+      }
+      return
+    }
     let live = true
     const ask = () => {
       api.admin().then((a) => {
@@ -56,7 +67,7 @@ export function useAdmin(): AdminState | undefined {
       live = false
       window.removeEventListener(ADMIN_EVENT, on)
     }
-  }, [])
+  }, [may])
   return st
 }
 
@@ -114,8 +125,16 @@ export function moduleTheme(): ModuleTheme {
  * as a custom property on its <html>, so a module written against the same
  * names (var(--color-bg), var(--color-accent)) is drawn in the app's palette
  * without doing anything. It is told too, for one that wants to react.
+ *
+ * A sandboxed frame (a phone's, lib/modulebridge.ts) has an opaque origin: the
+ * page cannot be reached into and its origin cannot be named, so it is only
+ * told, and its bootstrap puts the theme on <html> itself.
  */
-export function applyModuleTheme(frame: HTMLIFrameElement, t: ModuleTheme = moduleTheme()): void {
+export function applyModuleTheme(frame: HTMLIFrameElement, t: ModuleTheme = moduleTheme(), sandboxed = false): void {
+  if (sandboxed) {
+    frame.contentWindow?.postMessage({ type: 'caprock:theme', ...t }, '*')
+    return
+  }
   try {
     const el = frame.contentDocument?.documentElement
     if (el) {

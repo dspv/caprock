@@ -1495,6 +1495,12 @@ failure, and one click removes either.
 a controller may also send a bug report (`POST /v1/support`). It acts on no
 session and changes nothing on the machine; a viewer still cannot.
 
+*Amended 2026-10-21 by [ADR-076](#adr-076--private-modules-a-slot-opened-by-a-signed-admin-key-holding-nothing-of-its-own):*
+a controller may also open the private modules the machine's admin key opens
+— their pages and their own document store — and read whether the key is on.
+The key itself, and installing a module, stay on the machine; a viewer gets
+nothing of modules.
+
 
 ---
 
@@ -5401,11 +5407,64 @@ could use to run private screens of its own.
 
 **Rules out:** a module in the public repository or its releases; downloading
 a module from anywhere; an unsigned admin key; a locked tab or teaser shown
-without a key; a module reachable from a paired device.
+without a key; a module reachable from a paired device (*amended 2026-10-21,
+below: from a controller, it is*).
 
 **Revisit if:** a module must be reachable from the phone (it would get its own
-paired-device decision), a module from someone else's hands needs isolation
-(a sandboxed, cross-origin frame and a scoped token), or keys need to expire.
+paired-device decision — *taken 2026-10-21, below*), a module from someone
+else's hands needs isolation (a sandboxed, cross-origin frame and a scoped
+token), or keys need to expire.
+
+**Amended 2026-10-21: a controller phone works in a module.** The owner's ask
+(2026-10-21, translated): *"I really want my private module to display
+correctly on my phone, so I can do approvals and reviews from the phone
+too."* The decisions:
+
+- **Who.** A paired device the owner made a controller
+  ([ADR-034](#adr-034--a-phone-the-owner-chooses-can-work-on-sessions-and-nothing-else))
+  may read `GET /v1/admin` (the state the machine sees, which never carries
+  the key), load `/x/<id>/…` and use `/v1/x/<id>/docs/…`, for the modules the
+  key opens, over the network listener and through the relay alike. A viewer
+  gets `403` on all of it and is never shown a module; a device that has not
+  paired gets `401` on `/x/` too, which is no longer served to strangers as
+  the dashboard's files. `PUT` and `DELETE /v1/admin` and `caprock module`
+  stay on the machine whatever the role. The gate decides (`controllerRoutes`,
+  and `deviceMay` for `/x/`), and every module handler checks again
+  (`moduleCaller`): the machine, or a controller that is not waiting to be
+  allowed. A request a proxy relays onto loopback is a device, as before.
+- **How the page runs on a phone: built by the dashboard, in a sandboxed
+  frame, through a bridge** (`ui/src/lib/modulebridge.ts`). A frame cannot add
+  the device token to its own loads, and through the relay `/x/<id>/` on the
+  page's origin is the relay page's server, not the machine. So the dashboard
+  fetches the module's files with its own fetch (the token, and the relay
+  channel where there is one) and builds one document: stylesheets and
+  scripts as `data:` URLs, ES modules through an import map with their
+  relative specifiers made whole, the theme on `<html>`, and a bootstrap first
+  in `<head>`. The frame is `sandbox="allow-scripts …"` **without
+  `allow-same-origin`**: its origin is opaque, so the module cannot read the
+  dashboard's storage, where the device token is, or reach into its page.
+  The page's `<base>` is `caprock-module:/x/<id>/`, a scheme nothing loads, so
+  a relative URL still names the module's file and none leaks to the network
+  or the relay page's server. The bootstrap answers the page's `fetch()` and
+  `<img>` sources by `postMessage` to the dashboard, signed with a secret
+  made for that frame; the dashboard forwards only the module's own paths — a
+  `GET` under `/x/<id>/`, and its store — and answers anything else `403`
+  without sending it, the rest of the API included.
+- **Why not smaller.** A frame on `/x/<id>/` with the token in the URL would
+  put a bearer credential in history and logs, and would still not reach the
+  machine through the relay. A frame on the dashboard's origin could read the
+  token. A service worker does not run in an opaque origin. Rewriting nothing
+  and proxying every load is what the bridge is; the build only does once what
+  the browser cannot route by itself (script and stylesheet sources, imports).
+- **What a module gives up on a phone**, in the contract: other API routes
+  (on the machine it may start an agent; on a phone it may not), `?theme=` on
+  its URL (it reads `<html data-theme>` or the `caprock:theme` message),
+  `localStorage`, navigating the dashboard, and import specifiers built at run
+  time.
+
+**Rules out (2026-10-21):** a module on a viewer; the admin key or install
+from a device; a phone frame with the dashboard's origin; forwarding a module's
+request to any route but its own.
 
 ## ADR-077 — A project of chosen repositories: no folder of its own, the first one is home
 

@@ -91,20 +91,29 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/projects/{id}/changes/fetch": true,
 	// Open a pull request, and read its state again now (WP-19).
 	"POST /v1/projects/{id}/github/pr": true, "POST /v1/projects/{id}/github/refresh": true,
+	// A private module (ADR-076, amended 2026-10-21): the admin state, the
+	// module's pages and its store. Setting or clearing the key is not here.
+	"GET /v1/admin": true, "GET /x/{id}": true, "GET /x/{id}/{path...}": true,
+	"GET /v1/x/{id}/docs/{collection}": true, "GET /v1/x/{id}/docs/{collection}/{doc}": true,
+	"PUT /v1/x/{id}/docs/{collection}/{doc}": true, "PATCH /v1/x/{id}/docs/{collection}/{doc}": true,
+	"DELETE /v1/x/{id}/docs/{collection}/{doc}": true,
 }
 
-// registeredRoutes reads every route New registers out of api.go, so a route
-// added next month is in this test without anyone remembering to add it.
+// registeredRoutes reads every route New registers out of api.go, and out of
+// modules.go, whose routeModules it calls, so a route added next month is in
+// this test without anyone remembering to add it.
 func registeredRoutes(t *testing.T) []string {
 	t.Helper()
-	src, err := os.ReadFile("api.go")
-	if err != nil {
-		t.Fatal(err)
-	}
 	re := regexp.MustCompile(`m\.Handle(?:Func)?\("([A-Z]+ /[^"]*)"`)
 	var out []string
-	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
-		out = append(out, m[1])
+	for _, f := range []string{"api.go", "modules.go"} {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+			out = append(out, m[1])
+		}
 	}
 	if len(out) < 50 {
 		t.Fatalf("found only %d routes in api.go; the pattern no longer matches how routes are registered", len(out))
@@ -203,7 +212,7 @@ func TestEveryEndpointForEveryRole(t *testing.T) {
 	for _, table := range []map[string]bool{viewerMay, controllerMayAlso} {
 		for p := range table {
 			if !have[p] {
-				t.Errorf("the test names %q, which api.go does not register", p)
+				t.Errorf("the test names %q, which neither api.go nor modules.go registers", p)
 			}
 		}
 	}

@@ -239,7 +239,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   start work from the phone (2026-10-05, [21-app.md](21-app.md) decision 8) —
   `POST /v1/projects`, `PATCH` and `DELETE /v1/projects/{id}`, and `POST` and
   `DELETE /v1/projects/{id}/worktrees…` (see § Projects and shells for the
-  folder rules), and — to finish the work (2026-10-06) — `POST
+  folder rules), a private module the admin key opens (`GET /v1/admin`, `GET
+  /x/<id>/…` and its document store, § Private modules, 2026-10-21), and — to finish the work (2026-10-06) — `POST
   /v1/projects/{id}/changes/stage`, `unstage`, `discard`, `commit`, `push`,
   `pull` and `fetch`, in a worktree that resolves under home (§ Changes). From a device a clone URL must also begin `https://` or
   `git@` (`400` otherwise, before git runs). Everything
@@ -4729,11 +4730,18 @@ column added this way: `schema.sql` runs before `addedColumns`.
 
 The module slot ([ADR-076](08-decisions.md)). Code: `internal/modules` (key,
 manifest, install), `internal/api/modules.go`, `internal/store/moduledocs.go`,
-`cmd/caprock/module.go`, `ui/src/lib/modules.ts`. Every route is the
-machine's alone: a request that is not `isLocal` gets `{admin:false}`, 404 or
-403, and none is a paired-device route.
+`cmd/caprock/module.go`, `ui/src/lib/modules.ts`, `ui/src/lib/modulebridge.ts`.
+Every route is the machine's and a paired **controller's** (amended
+2026-10-21): `GET /v1/admin`, `GET /x/<id>/…` and the document routes are
+in the gate's controller list (`controllerRoutes`; `deviceMay` for `/x/`) and
+each handler checks again (`moduleCaller`). A viewer gets `403` on all of
+them, a device with no token `401` (`/x/` is not served to unpaired devices
+as the dashboard's files are), and a request relayed onto loopback by a proxy
+is a device, never the machine. `PUT` and `DELETE /v1/admin` are the
+machine's alone (`403` from any device).
 
-- **`GET /v1/admin`** → `{admin: false}` without a valid key; with one,
+- **`GET /v1/admin`** → `{admin: false}` without a valid key (and to any
+  caller that is neither the machine nor a controller); with one,
   `{admin: true, subject, modules: ["<id>", …], installed: [{id, name,
   version?, url: "/x/<id>/"}]}` — `installed` lists only the modules that are
   installed and named in the key. A stored key that does not verify adds
@@ -4764,6 +4772,45 @@ machine's alone: a request that is not `isLocal` gets `{admin:false}`, 404 or
   list`, `caprock module remove <id>` (documents are kept). `caprock license
   set <CRA1 key>` stores the admin key; `caprock license clear --admin`
   clears it.
+- **On a paired phone** (ADR-076 amended 2026-10-21) the dashboard does not
+  frame `/x/<id>/`. It fetches the module's files itself and runs one document
+  built from them in `<iframe sandbox="allow-scripts allow-forms allow-modals
+  allow-popups allow-popups-to-escape-sandbox allow-downloads"
+  allow="clipboard-write" srcdoc>` — never `allow-same-origin`, so the page's
+  origin is opaque. The build: the module's `index.html`; every module-own
+  `<link rel="stylesheet">` and `<script src>` inlined as a `data:` URL
+  (a stylesheet's `url(…)` to a module file as a `data:` URL too; other
+  `<link>`s of the module dropped); every ES module reached by a literal
+  specifier starting `./`, `../` or `/` (`import … from`, `export … from`,
+  `import '…'`, `import('…')`) rewritten to `caprock-module:/x/<id>/<path>`
+  and mapped to its `data:` URL in an import map; the page's own `<base>`
+  removed; `data-theme`, `color-scheme` and the `--color-*`/`--font-*` tokens
+  on `<html>`; then, first in `<head>`, `<base href="caprock-module:/x/<id>/">`,
+  the import map and the bootstrap. At most 500 files and 64 MB. The
+  bootstrap: `fetch()` of a URL that resolves under the base, and every
+  `<img src>` that does (in the markup or added later), goes to the dashboard
+  as `{type: "caprock:bridge", secret, id, method, path, headers, body}` and
+  comes back as `{type: "caprock:bridge-reply", secret, id, status,
+  statusText, headers, body}` (or `{error}`, which rejects the fetch with
+  `TypeError`); images are set as `data:` URLs; `<a href="#…">` sets
+  `location.hash`, and a link to a module file does nothing; a
+  `caprock:theme` message is applied to `<html>`. Other URLs are the
+  browser's. The dashboard answers only a message from that frame carrying
+  its secret, and forwards it only when the path is the module's own: `GET`
+  or `HEAD` under `/x/<id>/`, or `GET`, `HEAD`, `PUT`, `PATCH`, `DELETE`
+  on `/v1/x/<id>/docs/<collection>[/<doc>]` — with no dot, empty or encoded
+  `.`/`/`/`\` segment. Anything else is answered `403` without a request. It
+  passes on `Content-Type` and `Accept` only, adds the device token, and says
+  `application/json` on a write that did not; the reply carries the answer's
+  `Content-Type`.
+- **What a module must do to work on a phone:** reach its files by relative
+  URLs or paths under `/x/<id>/`, its store by `/v1/x/<id>/docs/…`, and
+  nothing else of the API; import its own modules with literal specifiers;
+  read the theme from `<html data-theme>` or the `caprock:theme` message, not
+  `?theme=` (the page's URL is `about:srcdoc`); expect `localStorage` and
+  `window.top` to throw, `import.meta.url` to be a `data:` URL, and
+  `history.pushState` to another path or query to be refused. Hash links (`#tab`) work as on the
+  machine.
 
 ### GitHub
 

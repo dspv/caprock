@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/dspv/caprock/internal/modules"
+	"github.com/dspv/caprock/internal/pairing"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -26,9 +27,13 @@ import (
 // that hosts it. Without a valid key nothing here answers anything but
 // {admin:false}, 404 or 403, and the dashboard draws nothing for it.
 //
-// Every module route is the machine's alone. The pages are outside /v1, which
-// the pairing gate serves to anyone as the dashboard's own files, so each
-// handler checks isLocal itself rather than leaning on the gate.
+// Every module route is the machine's, and a controller's (ADR-076, amended
+// 2026-10-21): a paired device the owner allowed to control may read the
+// admin state, open a keyed module's pages and use its store, so the owner can
+// work in a module from the phone. A viewer gets nothing of it, and setting or
+// clearing the key stays on the machine whatever the role. The gate decides
+// first (lanauth.go: controllerRoutes, and deviceMay for /x/); each handler
+// checks again here (moduleCaller) rather than leaning on the gate alone.
 
 // moduleDocMaxBytes caps one document: a module keeps records, not files.
 const moduleDocMaxBytes = 1 << 20
@@ -48,11 +53,23 @@ func (s *Server) routeModules(m *http.ServeMux) {
 	m.HandleFunc("GET /x/{id}/{path...}", s.handleModulePage)
 }
 
+// moduleCaller reports whether r may use what the admin key opens: a request
+// from this machine, or one the gate let through from a paired controller.
+// A viewer, a device waiting to be allowed, a request relayed onto loopback
+// without a token, and anything with network access off is not.
+func moduleCaller(r *http.Request) bool {
+	if isLocal(r) {
+		return true
+	}
+	d := deviceFrom(r)
+	return d != nil && !d.Pending && d.Role == pairing.RoleController
+}
+
 // adminGrant is what the stored admin key allows, for a request from this
-// machine. Anything else — no key, a key that does not verify, a paired
-// device — is no grant at all.
+// machine or a controller (moduleCaller). Anything else — no key, a key that
+// does not verify, a viewer — is no grant at all.
 func (s *Server) adminGrant(r *http.Request) (modules.Grant, bool) {
-	if s.d.Admin == nil || !isLocal(r) {
+	if s.d.Admin == nil || !moduleCaller(r) {
 		return modules.Grant{}, false
 	}
 	g, err := s.verifyAdmin(s.d.Admin.AdminKey())
@@ -86,7 +103,7 @@ type AdminState struct {
 }
 
 func (s *Server) adminState(r *http.Request) AdminState {
-	if s.d.Admin == nil || !isLocal(r) {
+	if s.d.Admin == nil || !moduleCaller(r) {
 		return AdminState{}
 	}
 	key := s.d.Admin.AdminKey()

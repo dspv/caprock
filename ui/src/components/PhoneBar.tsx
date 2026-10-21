@@ -4,8 +4,10 @@
  * tabs, Share, Get premium, Feedback, the plan chip, the theme, the version,
  * Settings — wrapped to three rows at 390 px. Here it is one row: the mark
  * and the connection's state on the left, one ⋯ on the right holding
- * Dashboard, Settings, Feedback and Get premium. Every other screen keeps the
- * desktop header (components/Shell.tsx).
+ * Dashboard, Settings, Feedback and Get premium — and, on a phone the owner
+ * made a controller, each private module the machine's admin key opens
+ * (ADR-076). Every other screen keeps the desktop header (components/Shell.tsx),
+ * whose nav lists the modules too.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { useLiveLink } from '@/lib/live'
@@ -15,11 +17,13 @@ import { BugIcon, CaprockMark, ChatIcon, DashboardIcon, MoreIcon, SettingsIcon }
 import { ConnectionState } from './ConnectionState'
 import { FeedbackDialog } from './Feedback'
 import { PremiumModal } from './PremiumModal'
+import { useModules } from '@/lib/modules'
 
 export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => number }) {
   const [open, setOpen] = useState(false)
   const [feedback, setFeedback] = useState(false)
   const [premium, setPremium] = useState(false)
+  const mods = useModules()
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -56,6 +60,11 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
             <a role="menuitem" href="#/home" className={item} onClick={() => setOpen(false)}>
               <DashboardIcon size={18} /> Dashboard
             </a>
+            {mods.map((m) => (
+              <a key={m.id} role="menuitem" data-module-item={m.id} href={`#/x/${m.id}`} className={item} onClick={() => setOpen(false)}>
+                <span aria-hidden className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] bg-accent text-[11px] font-semibold uppercase text-panel">{m.name.slice(0, 1)}</span> {m.name}
+              </a>
+            ))}
             <a role="menuitem" href="#/settings" className={item} onClick={() => setOpen(false)}>
               <SettingsIcon size={18} /> Settings
             </a>

@@ -42,6 +42,8 @@ describe('what goes through the channel', () => {
     expect(forDaemon('/v1/sessions', origin)).toBe(true)
     expect(forDaemon('https://m.caprock.dev/v1/live', origin)).toBe(true)
     expect(forDaemon('/healthz', origin)).toBe(true)
+    expect(forDaemon('/x/alpha/index.js', origin)).toBe(true) // a private module's file, for its frame
+    expect(forDaemon('https://example.com/x/alpha/', origin)).toBe(false)
     expect(forDaemon('/assets/index.js', origin)).toBe(false)
     expect(forDaemon('https://example.com/v1/sessions', origin)).toBe(false)
   })

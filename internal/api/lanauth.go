@@ -161,6 +161,10 @@ func openToUnpairedDevices(path string) bool {
 	switch {
 	case path == "/v1/pair":
 		return true
+	case strings.HasPrefix(path, "/x/"):
+		// A private module's pages (ADR-076): the key holder's own files, for
+		// a controller alone (deviceMay), so never to a stranger.
+		return false
 	case strings.HasPrefix(path, "/v1/"):
 		// Every other API path is closed. Listed this way round on purpose: a
 		// new endpoint is private until someone decides otherwise, rather than
@@ -511,6 +515,19 @@ var controllerRoutes = map[string]bool{
 	"POST /v1/projects/{id}/github/pr":      true,
 	"POST /v1/projects/{id}/github/refresh": true,
 
+	// A private module (ADR-076, amended 2026-10-21): whether the machine's
+	// admin key is on and which installed modules it opens (never the key
+	// itself), and each such module's own document store. The pages at
+	// /x/<id>/ are a controller's too (deviceMay). Setting or clearing the
+	// key and installing a module stay on the machine; the handlers check
+	// the key and the role again (modules.go).
+	"GET /v1/admin":                             true,
+	"GET /v1/x/{id}/docs/{collection}":          true,
+	"GET /v1/x/{id}/docs/{collection}/{doc}":    true,
+	"PUT /v1/x/{id}/docs/{collection}/{doc}":    true,
+	"PATCH /v1/x/{id}/docs/{collection}/{doc}":  true,
+	"DELETE /v1/x/{id}/docs/{collection}/{doc}": true,
+
 	// Report a bug (ADR-073): the one outbound call a phone may make, because
 	// the phone is where a bug is often met, and the report is typed or
 	// dictated on its keyboard. It sends only what the user wrote and
@@ -606,6 +623,17 @@ const (
 // deviceMay decides one request from a paired device, by its role and kind.
 func (s *Server) deviceMay(r *http.Request, dev *pairing.Device) deviceVerdict {
 	role := dev.Role
+	if strings.HasPrefix(r.URL.Path, "/x/") {
+		// A private module's pages (ADR-076, amended 2026-10-21): read, and
+		// only by a controller; the handler checks the key and the role again.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			return mayNot
+		}
+		if role == pairing.RoleController {
+			return mayServe
+		}
+		return mayIfController
+	}
 	if !strings.HasPrefix(r.URL.Path, "/v1/") {
 		// The dashboard's own files and /healthz, open even before pairing.
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
