@@ -77,6 +77,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-22 — 0.146.0: needs you or done, memories moving, /clear keeps the tab
+
+A minor release, one batch PR (#788). A session whose turn ended is now Needs you (a permission prompt, a question, a plan to approve, a stop on an error, or a last message that asks, marked as a guess) or Done, and Home, the sidebar, the tray, notifications and the phone follow it; a guess can be corrected with "needs me?". Second Brain shows memories moving: one silver-thread wisp per read and per handoff, throttled and only on real events, and the faces on its card are the agents read in the last 24 hours with their counts. After `/clear` an open tab follows the session that continues it, with the earlier part above a divider. ADR-083 records the native iOS app direction.
+
 ### 2026-10-21 — 0.145.0: phone mode for browser tabs, a clearer phone
 
 A minor release, one batch PR (#785). An in-app browser tab can show its page at a phone's size (iPhone 16, iPhone SE, Pixel 9, Galaxy S24 or custom) with that phone's user agent, rotation, bars and touch, behind Settings → In-app browser. The phone home folds its sections, keeps New chat filled, and shows a Limits line from the new `GET /v1/stats/limits`. A phone that loses its network says so in large type and reconnects by itself; Pair again shows only when the phone was removed. Every http(s) link in a chat is tappable, and a terminal attached at a narrower size waits for the program to redraw before its repaint, so glyphs no longer go missing.

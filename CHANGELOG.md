@@ -12,6 +12,59 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.146.0] - 2026-10-22
+
+### Added
+
+- **docs:** what `/clear` and a fork do in Caprock: the conversation stays one
+  card linked to its earlier parts, while Claude itself starts with an empty
+  context and gets no handoff note.
+
+### Changed
+
+- **brain:** memories moving: when a read keeps memories, one silver thread
+  for the whole read drifts from that session's row (else its tab, its
+  project's row or its agent's face) into the sidebar's Second Brain, which
+  ripples and shows *+N*; when a new session is handed memories, a thread
+  goes the other way into its tab with *N memories handed*. At most one a
+  minute each way, with counts merged, never while you type, nothing in a
+  hidden window; with reduced motion only the count shows. The setting is
+  now *Show memories moving* (same switch, one for both directions). The
+  card's agent faces now show only agents whose sessions were read in the
+  last 24 hours, each with how many, and the one being read glows; the orb's background sparks
+  no longer look like memories arriving. The live `brain` frames gain a
+  read's start and end (`phase`, `run`, `agent`, `added`) and a `handoff`
+  frame, and `GET /v1/brain/status` gains `auto.agents_24h`.
+- **attention:** a session whose turn ended is now either **Needs you** or
+  **Done**. Needs you is a permission prompt, a question, a plan to approve
+  (ExitPlanMode, which now says so), a turn that stopped on an error (a
+  StopFailure such as a rate limit, which used to read "working", then
+  "idle"), or a last message that asks you something (a guess, marked with a
+  dashed GUESS chip). Done is a turn whose last message asks nothing: it stays
+  listed, quieter, and is never counted in the badge, the tray head or the
+  phone's amber card. Home, the sidebar, the tray popover and menu (Done in
+  its own submenu) and the phone home all show it; *needs me?* and *not
+  needed* move a guess until the session's next turn.
+- **notifications:** a turn that ends on a question is *Needs your answer*
+  instead of *Finished*, and a Done turn raises no OS notification. Telegram
+  still sends *Finished* for Done turns, unless the new *Also when it asked
+  nothing (Done)* switch is turned off.
+
+### Fixed
+
+- **ui:** the session's state under its portrait says *Background* on one line
+  while background subagents work, instead of wrapping *Background agents*
+  over two lines in a narrow inspector; the full *Background agents working ·
+  N* stays on hover and is what a screen reader announces.
+- **api:** a shell tab's inspector shows its folder's uncommitted changes, instead of asking for a session that does not exist and logging a 404 on every refresh.
+- **tabs:** after `/clear` in an agent tab, the tab carries on with the
+  conversation instead of freezing on the part before it. The terminal stays
+  attached, the chat shows the earlier part above a *Context cleared — Claude
+  no longer remembers the part above* line with the new part under it, typing
+  works, and the session page no longer says the session has ended while it
+  runs. A fork never takes the original's tab. A Caprock restart finds the
+  newest part of a cleared session again.
+
 ## [0.145.0] - 2026-10-21
 
 ### Added
