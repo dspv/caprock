@@ -327,3 +327,20 @@ func TestAProjectOfChosenRepositories(t *testing.T) {
 		t.Fatalf("project = %+v; want Back office at notary with two repositories", p)
 	}
 }
+
+// A shell tab has no sessions row, but the inspector asks for its folder's
+// changes like any tab's: the diff answers for it instead of a 404.
+func TestSessionDiffAnswersForAShell(t *testing.T) {
+	s, _, viewer, _, _ := projectsServer(t)
+	// The fake shell's folder is a temp home, not a repository: 409, not 404.
+	if w := call(t, s, machine, "", "GET", "/v1/sessions/sh-1/diff", ""); w.Code != http.StatusConflict {
+		t.Fatalf("shell diff: %d, want 409 (%s)", w.Code, w.Body.String())
+	}
+	if w := call(t, s, machine, "", "GET", "/v1/sessions/no-such-tab/diff", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unknown id: %d, want 404", w.Code)
+	}
+	// Shells are the machine's: a phone is refused, as on their terminal.
+	if w := call(t, s, testPhone, viewer, "GET", "/v1/sessions/sh-1/diff", ""); w.Code != http.StatusForbidden {
+		t.Fatalf("phone shell diff: %d, want 403", w.Code)
+	}
+}

@@ -1409,7 +1409,22 @@ func (s *Server) handleEventsFeed(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSessionDiff(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	sess, err := store.GetSession(ctx, s.d.Store.DB(), r.PathValue("id"))
+	id := r.PathValue("id")
+	sess, err := store.GetSession(ctx, s.d.Store.DB(), id)
+	if err != nil && strings.Contains(err.Error(), "no rows") && s.d.Shells != nil && s.d.Shells.IsShell(id) {
+		// A shell tab has no sessions row (agents.KindShell), but the
+		// inspector shows its folder's changes like any tab's. Shells stay
+		// the machine's: a paired device is refused as on their terminal.
+		if s.refuseShellToDevice(w, r, id) {
+			return
+		}
+		for _, sh := range s.d.Shells.Shells() {
+			if sh.ID == id {
+				sess, err = store.Session{SessionID: id, Cwd: sh.Cwd}, nil
+				break
+			}
+		}
+	}
 	if err != nil {
 		s.notFoundOrFail(w, err)
 		return

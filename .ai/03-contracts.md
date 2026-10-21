@@ -754,7 +754,7 @@ GET  /v1/repos/activity                → ReposActivity — Now's Repos section
 GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs, stuck runs, releases, cost per PR and who, GitHub's status
 GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's picker: which folders are git repositories on GitHub
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
-GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
+GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo — a shell tab's id gives its folder's diff (machine only; 403 to a paired device)
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
 GET  /v1/stats/limits                  → {rate_limits?, codex_rate_limits?} — the plan windows alone, as the summary carries them
 GET  /v1/settings                      → user-stated settings (plan, update checks)
