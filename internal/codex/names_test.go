@@ -36,6 +36,7 @@ func writeState(t *testing.T, path string, rows map[string][2]string) {
 // Codex names its threads in its own index; the imported session carries the
 // name, and the first message is kept for when there is no name (FB-035).
 func TestIngestNamesSessionsFromTheThreadIndex(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	home := filepath.Dir(h.dir)
 	// An older schema generation must not be the one read.
@@ -66,6 +67,7 @@ func TestIngestNamesSessionsFromTheThreadIndex(t *testing.T) {
 }
 
 func TestStateDBIsEmptyWithoutCodex(t *testing.T) {
+	t.Parallel()
 	if got := StateDB(filepath.Join(t.TempDir(), "sessions")); got != "" {
 		t.Fatalf("StateDB = %q", got)
 	}
@@ -74,6 +76,7 @@ func TestStateDBIsEmptyWithoutCodex(t *testing.T) {
 // A turn stored before its model could be read is repriced once it can be —
 // and the session and daily totals move with it, rather than the event alone.
 func TestRepriceMovesTheTotalsWithTheEvent(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	ctx := context.Background()
 	at := time.Date(2026, 9, 20, 10, 0, 0, 0, time.Local)

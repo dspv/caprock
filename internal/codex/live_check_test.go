@@ -1,6 +1,10 @@
 package codex
 
 import (
+	"fmt"
+	"runtime"
+	"sort"
+	"sync"
 	"testing"
 )
 
@@ -24,60 +28,34 @@ func TestAgainstLocalTranscripts(t *testing.T) {
 	if len(ts) == 0 {
 		t.Skip("Codex directory exists but holds no transcripts")
 	}
+	// Every transcript is still read, but several at once and beside the
+	// package's other tests. On a working machine they are gigabytes (271
+	// files, 1.5 GB on the owner's, 2026-10-22), and read one at a time this
+	// test alone took 67s, and 463s under -race against the package's 600s
+	// timeout. Each file is checked on its own, so the order changes nothing;
+	// what a file broke is reported in list order, as before.
+	t.Parallel()
 
+	checks := checkAll(ts)
 	var parsed, withTokens, withModel, turns int
-	for _, f := range ts {
-		s, err := ParseFile(f.Path)
-		if err != nil {
+	for _, c := range checks {
+		if !c.parsed {
 			// Not every .jsonl under the root has to be a rollout file.
 			continue
 		}
 		parsed++
-		if s.ID == "" {
-			t.Errorf("%s: parsed with no session id", f.Path)
-		}
-		if len(s.Turns) > 0 {
+		if c.tokens {
 			withTokens++
 		}
-		if s.Model != "" {
+		if c.model {
 			withModel++
 		}
-		turns += len(s.Turns)
-		// Keys must be unique within a session or the store drops the later
-		// turns as duplicates — silently, because rejecting a duplicate key is
-		// exactly what makes re-reading a transcript safe. Keying on the
-		// `ordinal` field did this: it is absent from 99 of 100 transcripts, so
-		// every turn shared `codex:turn:0` and one session kept 1 turn of 55.
-		keys := make(map[string]bool, len(s.Turns)+len(s.Tools))
-		for _, tn := range s.Turns {
-			if keys[tn.Key] {
-				t.Fatalf("%s: duplicate turn key %q — later turns would be dropped", f.Path, tn.Key)
-			}
-			keys[tn.Key] = true
+		turns += c.turns
+		for _, e := range c.errs {
+			t.Error(e)
 		}
-		for _, tl := range s.Tools {
-			if keys[tl.Key] {
-				t.Fatalf("%s: tool key %q collides", f.Path, tl.Key)
-			}
-			keys[tl.Key] = true
-		}
-		for _, tn := range s.Turns {
-			// The arithmetic that decides every cost figure. A negative delta
-			// would mean the cumulative-to-delta conversion is wrong, and would
-			// silently corrupt a total rather than fail.
-			if tn.In < 0 || tn.Out < 0 || tn.CacheRead < 0 || tn.CacheWrite < 0 {
-				t.Fatalf("%s: negative token delta %+v", f.Path, tn)
-			}
-			// Codex counts cached tokens inside its input total, so the cached
-			// part can never exceed it. This held on all 239 samples measured;
-			// if it ever stops holding, `fresh` is billing the wrong number.
-			if tn.CacheRead > tn.In {
-				t.Fatalf("%s: cached (%d) exceeds input (%d) — the fresh-input subtraction is wrong",
-					f.Path, tn.CacheRead, tn.In)
-			}
-			if tn.Key == "" {
-				t.Fatalf("%s: turn with no key would re-import forever", f.Path)
-			}
+		if c.fatal != "" {
+			t.Fatal(c.fatal)
 		}
 	}
 	if parsed == 0 {
@@ -94,4 +72,101 @@ func TestAgainstLocalTranscripts(t *testing.T) {
 	}
 	t.Logf("parsed %d/%d transcripts; %d carry tokens, %d name a model, %d turns total",
 		parsed, len(ts), withTokens, withModel, turns)
+}
+
+// transcriptCheck is what checkTranscript found in one file: errs are
+// reported and the test goes on; fatal stops it.
+type transcriptCheck struct {
+	parsed, tokens, model bool
+	turns                 int
+	errs                  []string
+	fatal                 string
+}
+
+// checkAll runs checkTranscript over every transcript on as many workers as
+// there are CPUs, the largest files first so a big one does not start last.
+// Results come back in the order of ts. Only the counts and messages are kept,
+// never the parsed sessions, so memory stays at a few files' worth.
+func checkAll(ts []Transcript) []transcriptCheck {
+	out := make([]transcriptCheck, len(ts))
+	order := make([]int, len(ts))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return ts[order[a]].Size > ts[order[b]].Size })
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(ts)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				out[i] = checkTranscript(ts[i].Path)
+			}
+		}()
+	}
+	for _, i := range order {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	return out
+}
+
+// checkTranscript parses one real transcript and checks the invariants every
+// real transcript must hold.
+func checkTranscript(path string) (c transcriptCheck) {
+	s, err := ParseFile(path)
+	if err != nil {
+		return c
+	}
+	c.parsed = true
+	if s.ID == "" {
+		c.errs = append(c.errs, fmt.Sprintf("%s: parsed with no session id", path))
+	}
+	c.tokens = len(s.Turns) > 0
+	c.model = s.Model != ""
+	c.turns = len(s.Turns)
+	// Keys must be unique within a session or the store drops the later
+	// turns as duplicates — silently, because rejecting a duplicate key is
+	// exactly what makes re-reading a transcript safe. Keying on the
+	// `ordinal` field did this: it is absent from 99 of 100 transcripts, so
+	// every turn shared `codex:turn:0` and one session kept 1 turn of 55.
+	keys := make(map[string]bool, len(s.Turns)+len(s.Tools))
+	for _, tn := range s.Turns {
+		if keys[tn.Key] {
+			c.fatal = fmt.Sprintf("%s: duplicate turn key %q — later turns would be dropped", path, tn.Key)
+			return c
+		}
+		keys[tn.Key] = true
+	}
+	for _, tl := range s.Tools {
+		if keys[tl.Key] {
+			c.fatal = fmt.Sprintf("%s: tool key %q collides", path, tl.Key)
+			return c
+		}
+		keys[tl.Key] = true
+	}
+	for _, tn := range s.Turns {
+		// The arithmetic that decides every cost figure. A negative delta
+		// would mean the cumulative-to-delta conversion is wrong, and would
+		// silently corrupt a total rather than fail.
+		if tn.In < 0 || tn.Out < 0 || tn.CacheRead < 0 || tn.CacheWrite < 0 {
+			c.fatal = fmt.Sprintf("%s: negative token delta %+v", path, tn)
+			return c
+		}
+		// Codex counts cached tokens inside its input total, so the cached
+		// part can never exceed it. This held on all 239 samples measured;
+		// if it ever stops holding, `fresh` is billing the wrong number.
+		if tn.CacheRead > tn.In {
+			c.fatal = fmt.Sprintf("%s: cached (%d) exceeds input (%d) — the fresh-input subtraction is wrong",
+				path, tn.CacheRead, tn.In)
+			return c
+		}
+		if tn.Key == "" {
+			c.fatal = fmt.Sprintf("%s: turn with no key would re-import forever", path)
+			return c
+		}
+	}
+	return c
 }

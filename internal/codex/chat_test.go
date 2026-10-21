@@ -16,6 +16,7 @@ const chatFixture = "../../testdata/codex/rollout-chat.jsonl"
 // Codex writes its own environment block the same way, and that is not a
 // prompt.
 func TestPromptsAreWhatThePersonTyped(t *testing.T) {
+	t.Parallel()
 	s, err := ParseFile(chatFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -36,6 +37,7 @@ func TestPromptsAreWhatThePersonTyped(t *testing.T) {
 // A file with only the older `user_message` event reads its prompts from
 // there; a file with both reads the item alone, so nothing is stored twice.
 func TestPromptsFromUserMessageEvents(t *testing.T) {
+	t.Parallel()
 	head := `{"timestamp":"2026-09-15T09:25:25.100Z","type":"session_meta","payload":{"id":"s-um","cwd":"/p","source":"cli"}}
 {"timestamp":"2026-09-15T09:25:26.000Z","type":"event_msg","payload":{"type":"user_message","message":"list the files","images":[]}}
 `
@@ -60,6 +62,7 @@ func TestPromptsFromUserMessageEvents(t *testing.T) {
 // A subagent's file replays its parent's history, prompts included; storing
 // them would show the parent's prompts twice.
 func TestSubagentThreadKeepsNoPrompts(t *testing.T) {
+	t.Parallel()
 	src := `{"timestamp":"2026-09-24T09:26:30.191Z","type":"session_meta","payload":{"session_id":"s-parent","id":"s-child","cwd":"/p","source":{"subagent":{"thread_spawn":{"parent_thread_id":"s-parent","depth":1}}}}}
 {"timestamp":"2026-09-24T09:26:31.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","content":[{"type":"text","text":"the parent's prompt"}]}}}
 `
@@ -75,6 +78,7 @@ func TestSubagentThreadKeepsNoPrompts(t *testing.T) {
 // Every output is paired to its call by call_id, and says whether it failed:
 // an exec script that failed, a shell command's non-zero exit code.
 func TestToolResultsPairWithTheirCalls(t *testing.T) {
+	t.Parallel()
 	s, err := ParseFile(chatFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -113,6 +117,7 @@ func TestToolResultsPairWithTheirCalls(t *testing.T) {
 // it running forever. rollout-chat.jsonl's second request is the real shape —
 // an exec call, a token_count, then turn_aborted with no output between.
 func TestAnInterruptedCallIsOverWhenItsRequestIs(t *testing.T) {
+	t.Parallel()
 	s, err := ParseFile(chatFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +143,7 @@ func TestAnInterruptedCallIsOverWhenItsRequestIs(t *testing.T) {
 // Each way a request ends closes its open calls; an output that arrives after
 // all replaces the mark, and a call that was answered is never marked.
 func TestEveryRequestEndClosesItsCalls(t *testing.T) {
+	t.Parallel()
 	head := `{"timestamp":"2026-10-07T17:00:00.000Z","type":"session_meta","payload":{"id":"s-end","cwd":"/p","source":"cli"}}
 {"timestamp":"2026-10-07T17:00:01.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}
 {"timestamp":"2026-10-07T17:00:02.000Z","type":"response_item","payload":{"type":"custom_tool_call","status":"completed","call_id":"a","name":"exec","input":"await tools.exec_command({cmd:'sleep 60'})"}}
@@ -172,6 +178,7 @@ func TestEveryRequestEndClosesItsCalls(t *testing.T) {
 }
 
 func TestToolOutputIsClippedOnRunes(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("ε", MaxToolOutput+10)
 	r := readOutput(json.RawMessage(`"` + long + `"`))
 	if !strings.HasSuffix(r.Output, "…[truncated]") || len([]rune(strings.TrimSuffix(r.Output, "…[truncated]"))) != MaxToolOutput {
@@ -182,6 +189,7 @@ func TestToolOutputIsClippedOnRunes(t *testing.T) {
 // Stored, a prompt is a turn.user in Claude Code's shape and a result a
 // tool.post whose tool_use_id is its call's, so the chat pairs them.
 func TestChatEventsAreStored(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putFile(chatFixture, "rollout-chat.jsonl")
 	h.poll()
@@ -232,6 +240,7 @@ func TestChatEventsAreStored(t *testing.T) {
 // the prompts and results are added, the calls already stored gain their call
 // id and their normalised input, and nothing else changes.
 func TestBackfillGivesOldSessionsTheirChat(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putFile(chatFixture, "rollout-chat.jsonl")
 	h.poll()

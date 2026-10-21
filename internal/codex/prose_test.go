@@ -20,6 +20,7 @@ const proseFixture = "../../testdata/codex/rollout-prose.jsonl"
 // every message must not be read as a second one, and a message written after
 // the request's last token_count joins that turn.
 func TestAssistantProseLandsOnItsTurn(t *testing.T) {
+	t.Parallel()
 	s, err := ParseFile(proseFixture)
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +46,7 @@ func TestAssistantProseLandsOnItsTurn(t *testing.T) {
 // The cap is the one Claude Code's prose is cut with: runes, not bytes, so
 // multi-byte text is never split mid-character.
 func TestAssistantProseIsClippedOnRunes(t *testing.T) {
+	t.Parallel()
 	long := strings.Repeat("δ", ingest.MaxAssistantText+50)
 	src := `{"timestamp":"2026-09-15T09:25:25.100Z","type":"session_meta","payload":{"id":"s-clip","cwd":"/p","source":"cli"}}
 {"timestamp":"2026-09-15T09:25:31.001Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"` + long + `"}]}}
@@ -64,6 +66,7 @@ func TestAssistantProseIsClippedOnRunes(t *testing.T) {
 // tool calls as assistant messages. Caprock already stores the prose from the
 // original transcript, so none of it may appear again as Codex's.
 func TestImportedThreadKeepsNoProse(t *testing.T) {
+	t.Parallel()
 	src := `{"timestamp":"2026-08-27T19:22:47.224Z","type":"session_meta","payload":{"session_id":"s-imp","id":"s-imp","cwd":"/p","originator":"Codex Desktop","source":"vscode"}}
 {"timestamp":"2026-08-27T19:22:47.224Z","type":"event_msg","payload":{"type":"task_started","turn_id":"external-import-turn-1","started_at":1787069222}}
 {"timestamp":"2026-08-27T19:22:47.300Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"[external_agent_tool_call: Bash]\ncommand: ls\n[/external_agent_tool_call]"}]}}
@@ -89,6 +92,7 @@ func TestImportedThreadKeepsNoProse(t *testing.T) {
 // parent's, and carries the parent's session id; only the first meta says
 // what the file is. Its prose is kept out, as Claude Code's sidechains are.
 func TestSubagentThreadKeepsNoProse(t *testing.T) {
+	t.Parallel()
 	src := `{"timestamp":"2026-09-24T09:26:30.191Z","type":"session_meta","payload":{"session_id":"s-parent","id":"s-child","forked_from_id":"s-parent","cwd":"/p","source":{"subagent":{"thread_spawn":{"parent_thread_id":"s-parent","depth":1}}}}}
 {"timestamp":"2026-09-24T09:26:30.192Z","type":"session_meta","payload":{"session_id":"s-parent","id":"s-parent","cwd":"/p","source":"cli"}}
 {"timestamp":"2026-09-24T09:26:40.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Audit finished."}]}}
@@ -125,6 +129,7 @@ func (h *harness) putFile(src, name string) {
 // Imported prose reaches the Memory screen through the same query as Claude
 // Code's: the source-agnostic store.SearchNotes.
 func TestProseIsSearchableInMemory(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putFile(proseFixture, "rollout-prose.jsonl")
 	h.poll()
@@ -148,6 +153,7 @@ func TestProseIsSearchableInMemory(t *testing.T) {
 // re-reads their files. The one-time backfill must reach them, touch only
 // payload.text, and not run again once it has finished.
 func TestBackfillGivesOldTurnsTheirText(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putFile(proseFixture, "rollout-prose.jsonl")
 	h.poll()
@@ -195,6 +201,7 @@ func TestBackfillGivesOldTurnsTheirText(t *testing.T) {
 // subagent's file shares its parent's session id and line-number keys, so a
 // key alone could name a row from another file.
 func TestTextSyncMatchesKeyAndTime(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.putFile(proseFixture, "rollout-prose.jsonl")
 	h.poll()

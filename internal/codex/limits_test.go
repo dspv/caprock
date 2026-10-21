@@ -14,6 +14,7 @@ import (
 // must stay counted once — not lost, not doubled — and the moved file must
 // not be parsed again.
 func TestAnArchivedTranscriptIsNeitherLostNorDoubled(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.put()
 	h.poll()
@@ -52,6 +53,7 @@ func TestAnArchivedTranscriptIsNeitherLostNorDoubled(t *testing.T) {
 // A transcript that only ever lived in archived_sessions/ — archived before
 // Caprock was installed — is imported like any other.
 func TestATranscriptArchivedBeforeInstallIsImported(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	b, err := os.ReadFile(fixture)
 	if err != nil {
@@ -106,6 +108,7 @@ const (
 // Claude Code's rows, and a newer sample replaces the whole set: a plan with
 // no five-hour window must not keep showing the old plan's.
 func TestPlanLimitsAreStoredAsCodexsAndReplacedAsASet(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	ctx := context.Background()
 	if err := store.RecordRateLimit(ctx, h.out, store.RateLimitSnapshot{Window: "five_hour", Ts: 1, UsedPercentage: 77}, "claude-session"); err != nil {
@@ -143,6 +146,7 @@ func TestPlanLimitsAreStoredAsCodexsAndReplacedAsASet(t *testing.T) {
 // Transcripts read by an earlier version are not parsed again, so the first
 // pass after an upgrade reads the newest one for its limits.
 func TestLimitsAreBackfilledFromTranscriptsAlreadyRead(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	h.writeLimits("rollout-1.jsonl", "s-1", "2026-10-01T12:06:17.317Z", proliteLimits)
 	h.poll()
@@ -161,6 +165,7 @@ func TestLimitsAreBackfilledFromTranscriptsAlreadyRead(t *testing.T) {
 
 // An unknown window length or an implausible figure is dropped, not labelled.
 func TestLimitSnapshotsDropWhatTheyCannotName(t *testing.T) {
+	t.Parallel()
 	at := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	got := limitSnapshots(&Limits{At: at, Windows: []LimitWindow{
 		{Minutes: 60, UsedPercent: 10},
@@ -177,6 +182,7 @@ func TestLimitSnapshotsDropWhatTheyCannotName(t *testing.T) {
 // windows under that subscription's prefix, never over the Default sign-in's,
 // and records its sessions as run on it.
 func TestASubscriptionsWindowsAndSessionsAreItsOwn(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t)
 	ctx := context.Background()
 	h.in.Subscription = "ab12"
