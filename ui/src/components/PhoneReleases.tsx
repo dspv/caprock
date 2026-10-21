@@ -20,6 +20,9 @@
  *
  * Both are on a paired device's allowlist (lanauth.go), so the relay's
  * phone reads them through the same end-to-end channel as the rest.
+ *
+ * On the phone home the section folds to one line (`releasesSummary`); the
+ * reads are the same folded or open, so that line is current.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errText, type SessionCIStats, type WorkRepo } from '@/lib/api'
@@ -28,11 +31,11 @@ import { live } from '@/lib/live'
 import { onPageVisibility, pageHidden } from '@/lib/visible'
 import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
-import { planForRepo } from '@/lib/releaseplan'
+import { planForRepo, type ReleasePlanData } from '@/lib/releaseplan'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { keepStats } from './PipelineView'
 import { ReleasePlan } from './ReleasePlan'
-import { ChipSelect, SectionLabel } from './PhoneParts'
+import { ChipSelect, FoldHeader, SectionLabel } from './PhoneParts'
 
 /** The repository last picked here. */
 export const RELEASE_REPO_KEY = 'caprock.phone.releaseRepo'
@@ -104,8 +107,34 @@ export function useReleaseStats(repo: WorkRepo | undefined, pull: number): Stats
   return shown
 }
 
+/** One fact of the folded line; `red` ones are said first, in red. */
+export interface SummaryPart { text: string; red?: boolean }
+
+/**
+ * Releases folded, in one line (owner, 2026-10-21): *0.143.0: 2 merged, 1
+ * PR*, with a pull request whose checks failed said first, in red. The
+ * default branch's CI word the mockup put first is not here: its read
+ * (`GET /v1/sessions/{id}/ci/main`) is a paired computer's, not a phone's
+ * (lanauth.go computerRoutes), so the line says only what the phone reads.
+ */
+export function releasesSummary(plan: ReleasePlanData | undefined): SummaryPart[] {
+  if (!plan) return [{ text: 'Reading your releases…' }]
+  const prs = plan.rows.filter((r) => r.section === 'pr')
+  const failed = prs.filter((r) => r.red || !!r.ci?.some((d) => d.state === 'fail'))
+  const merged = plan.rows.filter((r) => r.section === 'merged').length
+  const agents = plan.rows.filter((r) => r.section === 'agent').length
+  const parts: SummaryPart[] = failed.map((r) => ({ text: `${r.number ? `PR #${r.number}` : 'A PR'} CI failed`, red: true }))
+  const facts = [
+    merged ? `${merged} merged` : '',
+    prs.length ? `${prs.length} PR${prs.length === 1 ? '' : 's'}` : '',
+    agents ? `${agents} agent${agents === 1 ? '' : 's'}` : '',
+  ].filter(Boolean).join(', ') || 'nothing merged'
+  parts.push({ text: plan.next?.version ? `${plan.next.version}: ${facts}` : facts })
+  return parts
+}
+
 /** The section: drawn once the Work answer names a repository; nothing on a daemon that refuses it. */
-export function PhoneReleases({ pull }: { pull: number }) {
+export function PhoneReleases({ pull, folded = false, onToggle }: { pull: number; folded?: boolean; onToggle?: () => void }) {
   const work = useWork({ changes: changesRelease })
   const [tapped, setTapped] = useState(0)
   const asked = pull + tapped
@@ -126,13 +155,24 @@ export function PhoneReleases({ pull }: { pull: number }) {
     try { localStorage.setItem(RELEASE_REPO_KEY, root) } catch { /* this phone only */ }
   }
   const empty = !plan || (plan.rows.length === 0 && plan.later.length === 0)
+  const chip = repos.length > 1 && repo && (
+    <ChipSelect label="Repository" value={repo.root} onChange={pick} className="max-w-[60vw]"
+      options={repos.map((r) => ({ value: r.root, label: r.name }))} />
+  )
+  const summary = (
+    <>
+      {repo && <span className="font-medium text-fg">{repo.name}</span>}
+      {releasesSummary(plan).map((p, i) => (
+        <span key={i} className={p.red ? 'font-medium text-danger' : undefined}>{repo || i > 0 ? ' · ' : ''}{p.text}</span>
+      ))}
+    </>
+  )
   return (
     <section aria-label="Releases" data-phone-releases>
-      <SectionLabel right={repos.length > 1 && repo && (
-        <ChipSelect label="Repository" value={repo.root} onChange={pick} className="max-w-[60vw]"
-          options={repos.map((r) => ({ value: r.root, label: r.name }))} />
-      )}>Releases</SectionLabel>
-      <div className="overflow-hidden rounded-[12px] border border-border bg-panel">
+      {onToggle
+        ? <FoldHeader label="Releases" folded={folded} onToggle={onToggle} summary={summary} right={chip} controls="phone-releases-body" />
+        : <SectionLabel right={chip}>Releases</SectionLabel>}
+      {!folded && <div id="phone-releases-body" className="overflow-hidden rounded-[12px] border border-border bg-panel">
         {!plan ? (
           <div className="px-3 py-4 text-[14px] text-fg-muted">Reading your releases…</div>
         ) : (
@@ -145,7 +185,7 @@ export function PhoneReleases({ pull }: { pull: number }) {
           <span data-release-read className="min-w-0 truncate">{readLine(stats, repo, now)}</span>
           <button type="button" onClick={() => setTapped((n) => n + 1)} className="ml-auto min-h-11 shrink-0 px-3 text-[13px] text-accent">Refresh</button>
         </div>
-      </div>
+      </div>}
     </section>
   )
 }

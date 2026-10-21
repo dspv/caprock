@@ -10,7 +10,8 @@ import { api } from '@/lib/api'
 import { forgetDeckAnswers } from '@/lib/deckCache'
 import { live } from '@/lib/live'
 import { statsFixture, workFixture } from '@/lib/work.fixture'
-import { pickRepo, PhoneReleases, RELEASE_REPO_KEY } from './PhoneReleases'
+import type { PlanRow, ReleasePlanData } from '@/lib/releaseplan'
+import { pickRepo, PhoneReleases, RELEASE_REPO_KEY, releasesSummary } from './PhoneReleases'
 
 function withKinds() {
   const w = workFixture()
@@ -80,6 +81,35 @@ describe('PhoneReleases', () => {
     expect(pickRepo(repos, '/w/site')?.root).toBe('/w/site')
     expect(pickRepo(repos, '/gone')?.root).toBe('/w/caprock')
     expect(pickRepo([], '')).toBeUndefined()
+  })
+
+  // Owner, 2026-10-21: folded by default on the phone home, to one line.
+  it('folds to one line, the repository and the next release, and unfolds on its header', async () => {
+    vi.spyOn(api, 'work').mockResolvedValue(withKinds())
+    vi.spyOn(api, 'sessionCIStats').mockResolvedValue(statsFixture())
+    const onToggle = vi.fn()
+    const { rerender } = render(<PhoneReleases pull={0} folded onToggle={onToggle} />)
+    const head = await screen.findByRole('button', { name: 'Releases' })
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    const line = document.querySelector('[data-phone-releases] [data-fold-summary]')!
+    await waitFor(() => expect(line.textContent).toMatch(/^caprock · .*0\.118\.0: /))
+    expect(document.querySelector('[data-release-row]')).toBeNull()
+    // The chip is the open section's, not the folded line's.
+    expect(screen.queryByLabelText('Repository')).toBeNull()
+    fireEvent.click(head)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+    rerender(<PhoneReleases pull={0} folded={false} onToggle={onToggle} />)
+    await waitFor(() => expect(document.querySelector('[data-release-row="631"]')).toBeTruthy())
+    expect(screen.getByLabelText('Repository')).toBeTruthy()
+  })
+
+  it('says a pull request whose CI failed first, in red', () => {
+    const row = (section: PlanRow['section'], extra: Partial<PlanRow> = {}) => ({ key: `${section}${extra.number ?? ''}`, section, red: false, ...extra }) as PlanRow
+    const plan = { root: '/w/caprock', name: 'caprock', next: { version: '0.143.0', title: '' }, later: [],
+      rows: [row('merged'), row('merged'), row('pr', { number: 783 }), row('pr', { number: 784, red: true })] } as ReleasePlanData
+    expect(releasesSummary(plan)).toEqual([{ text: 'PR #784 CI failed', red: true }, { text: '0.143.0: 2 merged, 2 PRs' }])
+    expect(releasesSummary({ ...plan, rows: [] })).toEqual([{ text: '0.143.0: nothing merged' }])
+    expect(releasesSummary(undefined)).toEqual([{ text: 'Reading your releases…' }])
   })
 
   it('draws nothing when the daemon refuses the board', async () => {

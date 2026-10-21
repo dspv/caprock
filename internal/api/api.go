@@ -665,6 +665,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/browsers", s.handleBrowsers)
 	m.HandleFunc("POST /v1/browsers/open", s.handleOpenBrowser)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
+	m.HandleFunc("GET /v1/stats/limits", s.handleLimits)
 	m.HandleFunc("GET /v1/stats/trends", s.handleTrends)
 	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
 	m.HandleFunc("POST /v1/offer", s.handleOffer)
@@ -1991,6 +1992,23 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	resp.CodexRateLimits = s.codexRateLimits(ctx)
 	resp.Usual = s.usualFor(ctx, agent)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// LimitsResponse is GET /v1/stats/limits: the plan windows alone, as the
+// summary carries them, for a reader that wants nothing else: the phone
+// home's Limits line, which would otherwise pay for the whole summary
+// (projects, sparks, models, the usual) to show two percentages.
+type LimitsResponse struct {
+	RateLimits      *RateLimits `json:"rate_limits,omitempty"`
+	CodexRateLimits *RateLimits `json:"codex_rate_limits,omitempty"`
+}
+
+// handleLimits serves the plan windows: the same reads as the summary's
+// rate_limits and codex_rate_limits (the latest rows and the kept pace),
+// nothing range- or agent-scoped.
+func (s *Server) handleLimits(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	writeJSON(w, http.StatusOK, LimitsResponse{RateLimits: s.rateLimits(ctx), CodexRateLimits: s.codexRateLimits(ctx)})
 }
 
 // Warm computes the whole-history answers the dashboard asks for first — the
