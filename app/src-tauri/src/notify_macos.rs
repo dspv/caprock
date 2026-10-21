@@ -27,6 +27,7 @@ const REVIEW: &str = "dev.caprock.review";
 const SESSION: &str = "session_id";
 const PROMPT: &str = "prompt_id";
 const TITLE: &str = "title";
+const ROUTE: &str = "route";
 
 struct Hooks {
     reply: Box<dyn Fn(Reply, Origin) + Send + Sync>,
@@ -175,7 +176,11 @@ fn add(note: &Note) {
     }
     let mut keys = vec![NSString::from_str(TITLE)];
     let mut values = vec![NSString::from_str(&note.title)];
-    for (k, v) in [(SESSION, &note.session_id), (PROMPT, &note.prompt_id)] {
+    for (k, v) in [
+        (SESSION, &note.session_id),
+        (PROMPT, &note.prompt_id),
+        (ROUTE, &note.route),
+    ] {
         if let Some(v) = v {
             keys.push(NSString::from_str(k));
             values.push(NSString::from_str(v));
@@ -233,6 +238,7 @@ fn received(response: &UNNotificationResponse) {
         session_id: get(SESSION),
         prompt_id: get(PROMPT),
         title: get(TITLE).unwrap_or_default(),
+        route: get(ROUTE),
     };
     (hooks.reply)(reply, origin);
 }

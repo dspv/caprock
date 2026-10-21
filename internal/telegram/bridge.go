@@ -158,6 +158,10 @@ type Bridge struct {
 	// PollWait is one long poll; 0 is 25 seconds.
 	PollWait time.Duration
 	Now      func() time.Time
+	// ModuleAnswer writes an answer to a module's message into that
+	// module's store (collection ModuleCollection, document doc); it refuses
+	// a module the admin key no longer names. nil keeps none (module.go).
+	ModuleAnswer func(ctx context.Context, module, doc string, data map[string]any) error
 
 	mu         sync.Mutex
 	pair       *pairing
@@ -250,7 +254,7 @@ func (b *Bridge) wanted() bool {
 	b.mu.Lock()
 	pairing := b.pair != nil && b.now().Sub(b.pair.started) < PairFor
 	b.mu.Unlock()
-	return pairing || (chat != "" && (b.Host.AlertsOn() || b.Host.ChatOn()))
+	return pairing || (chat != "" && (b.Host.AlertsOn() || b.Host.ChatOn() || b.moduleWaiting()))
 }
 
 // Run polls and sends until ctx ends.
@@ -848,6 +852,12 @@ func (b *Bridge) sessions(ctx context.Context) {
 // reply types a reply into the session its message is about.
 func (b *Bridge) reply(ctx context.Context, m *Message, text string) {
 	ref, ok := b.lookup(ctx, m.ReplyTo.MessageID)
+	if ok && ref.Module != "" {
+		// A module's question: its answer goes to the module, free, never
+		// to a session.
+		b.moduleReply(ctx, m, ref, text)
+		return
+	}
 	if !ok || ref.SessionID == "" {
 		if b.gate(m) {
 			b.say(m, "I don't know which session that message was about. Send /sessions to pick one.")
@@ -1144,6 +1154,8 @@ func (b *Bridge) handleCallback(ctx context.Context, q *CallbackQuery) {
 			ParseMode:  "HTML",
 			ForceReply: &ForceReply{ForceReply: true, Placeholder: clipRunes("Message to "+s.Title, 64)},
 		}, Ref{SessionID: s.ID, Kind: "reply"}, nil)
+	case strings.HasPrefix(data, moduleData):
+		b.modulePress(ctx, c, chat, msgID, ref, strings.TrimPrefix(data, moduleData), toast)
 	case strings.HasPrefix(data, "f:"):
 		b.forwardPress(ctx, c, chat, msgID, strings.TrimPrefix(data, "f:"), toast, premium)
 	default:

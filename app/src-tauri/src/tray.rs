@@ -229,6 +229,22 @@ fn on_menu<R: Runtime>(app: &AppHandle<R>, id: &str) {
     }
 }
 
+/// Brings the window up and asks the page to open a route a notification
+/// named (`caprock:open-route`): a private module's screen. The caller has
+/// checked it with `notify::is_route`.
+pub fn open_route<R: Runtime>(app: &AppHandle<R>, route: &str) {
+    hotkey::show(app);
+    let Some(w) = app.get_webview_window(MAIN) else {
+        return;
+    };
+    let Ok(route) = serde_json::to_string(route) else {
+        return;
+    };
+    let _ = w.eval(format!(
+        "window.dispatchEvent(new CustomEvent('caprock:open-route', {{ detail: {route} }}))"
+    ));
+}
+
 /// Brings the window up and asks the page to open the session (it listens
 /// for `caprock:open-session`; app/README.md).
 pub fn open_session<R: Runtime>(app: &AppHandle<R>, session: &str) {

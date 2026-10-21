@@ -30,6 +30,9 @@ type Notification struct {
 	// Caprock can answer it; Actions are the answers offered for it.
 	PromptID string   `json:"prompt_id,omitempty"`
 	Actions  []string `json:"actions,omitempty"`
+	// Route is the dashboard route a click opens when the notification is
+	// about no session: "#/x/<id>" for a private module's (ADR-076).
+	Route string `json:"route,omitempty"`
 }
 
 // The kinds a notification has beyond the alert's own: a turn that ended on an

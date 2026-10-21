@@ -41,7 +41,7 @@ const URGENT: ReadonlySet<string> = new Set(['notify', 'permission', 'alert', 'h
  */
 export interface NotifyFrame {
   id: string
-  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error' | 'ci' | 'review'
+  kind: 'approval' | 'finished' | 'loop' | 'limit' | 'error' | 'ci' | 'review' | 'window' | 'module'
   /** Empty for a GitHub notification (`ci`, `review`), which is about a pull request. */
   session_id: string
   project?: string
@@ -49,6 +49,8 @@ export interface NotifyFrame {
   body: string
   prompt_id?: string
   actions?: string[]
+  /** The route a click opens when it is about no session: a private module's `#/x/<id>` (ADR-076). */
+  route?: string
 }
 
 export type Frame = (

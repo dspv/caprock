@@ -41,6 +41,17 @@ export interface HotkeyStatus {
 /** The event the shell dispatches when a waiting session is clicked in the tray. */
 export const OPEN_SESSION_EVENT = 'caprock:open-session'
 
+/**
+ * The event the shell dispatches when a notification about no session is
+ * clicked: its detail is the route to open, a private module's `#/x/<id>`.
+ */
+export const OPEN_ROUTE_EVENT = 'caprock:open-route'
+
+/** The routes a notification may open: a private module's screen (ADR-076). */
+export function notifyRoute(route: unknown): string | null {
+  return typeof route === 'string' && /^#\/x\/[a-z][a-z0-9-]{0,31}$/.test(route) ? route : null
+}
+
 /** The event the shell dispatches before it brings the window up from the tray or the hotkey. */
 export const SHOWN_EVENT = 'caprock:shown'
 

@@ -532,6 +532,11 @@ var controllerRoutes = map[string]bool{
 	"PUT /v1/x/{id}/docs/{collection}/{doc}":    true,
 	"PATCH /v1/x/{id}/docs/{collection}/{doc}":  true,
 	"DELETE /v1/x/{id}/docs/{collection}/{doc}": true,
+	// And what such a module says to the owner (amended 2026-10-22): a
+	// message to the owner's own paired Telegram chat, and a desktop
+	// notification on the machine (moduleout.go).
+	"POST /v1/x/{id}/telegram": true,
+	"POST /v1/x/{id}/notify":   true,
 
 	// Report a bug (ADR-073): the one outbound call a phone may make, because
 	// the phone is where a bug is often met, and the report is typed or
