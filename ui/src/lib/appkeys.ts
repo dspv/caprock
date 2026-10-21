@@ -39,6 +39,15 @@ export const THEME_KEY = '⌥⌘P'
 export const REOPEN_TAB_KEY = '⇧⌘T'
 /** A browser tab's own keys (lib/browsertab browserKey, ADR-075): only while one is in front, never a terminal's. */
 export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
+/**
+ * Phone mode in a browser tab (lib/browsertab browserKey, lib/phonemode):
+ * ⌥⌘R on macOS, Safari's Responsive Design Mode key; Ctrl+Alt+Shift+D off
+ * macOS, where Ctrl+Alt+Shift+R is GNOME's screencast and Ctrl+Shift+M
+ * (Chrome's device toolbar) is Mail. Only while a browser tab is in front,
+ * never an app chord: matchAppShortcut leaves it alone, so a terminal keeps
+ * it. `keys()` spells it per OS.
+ */
+export const PHONE_MODE_KEY = '⌥⌘R'
 
 /**
  * ⌥⌘G (Ctrl+Alt+Shift+G off macOS): the highlight where you type — the band
@@ -497,6 +506,8 @@ function offMac(k: string): string {
   // Forward in every browser off macOS, so the tab keys are theirs there.
   if (k === '⌥←') return 'Ctrl+PageUp'
   if (k === '⌥→') return 'Ctrl+PageDown'
+  // Phone mode: its own letter off macOS (PHONE_MODE_KEY).
+  if (k === PHONE_MODE_KEY) return 'Ctrl+Alt+Shift+D'
   if (!k.includes('⌘')) return k
   // The arrow chords are Alt+Shift off macOS (arrowCommand).
   if (/[↑↓←→]$/.test(k)) return `Alt+Shift+${k.slice(-1)}`
@@ -601,6 +612,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar or the Live pulse, or a right panel section by its grip'],
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
   [BROWSER_TAB_KEYS, 'In a browser tab (beta): the tab before and after, outside a text field'],
+  [PHONE_MODE_KEY, 'In a browser tab (beta): Phone mode on or off — the page at a phone’s size'],
   ['⌘W', 'Close the tab or pane — the session keeps going'],
   [REOPEN_TAB_KEY, 'Reopen the last closed tab: its conversation back in a tab'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],

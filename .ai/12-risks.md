@@ -290,6 +290,17 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   whether a ChatGPT export carries Codex cloud tasks is not known. Revisit
   when either company publishes a history API or a documented export
   format.
+- `OQ-23` — **Phone mode's bar heights are estimates.** A browser tab's
+  phone mode (ADR-075, amended 2026-10-21; `ui/src/lib/phonemode.ts`) sizes
+  the page to the screen less the status bar, the browser's bars and the
+  home indicator. The screens are sourced (Apple's published resolutions;
+  the Android panels divided by the usual default DPR, which depends on the
+  phone's display-size setting), but every bar height — 54/83/34 on an
+  iPhone 16, 56 for Chrome's top bar, 32 for Safari's slim strip, the
+  landscape 48 — is a guess from the approved mockup, and the UI marks the
+  page height *est.* until they are measured. Decided by: a test page
+  opened on each real phone reporting `innerHeight`, `visualViewport` and
+  the safe-area insets, bars shown and scrolled away.
 
 ## What would falsify the whole plan
 
