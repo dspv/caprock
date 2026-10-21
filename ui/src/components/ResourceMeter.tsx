@@ -12,6 +12,7 @@ import type { SessionSummary } from '@/lib/api'
 import { api, errText } from '@/lib/api'
 import { fmtCPU, fmtMem, refreshResources, useResources, useSessionHot, useSessionResources, type ReapResult, type SessionResources } from '@/lib/resources'
 import { SectionLabel } from './Cockpit'
+import { FitSummary } from './FitSummary'
 import { ResourcePopover } from './ResourcePopover'
 
 function topLines(r: SessionResources): string {
@@ -126,7 +127,8 @@ export function Processes({ sessionId }: { sessionId: string }) {
   if (!r || r.top.length === 0) return null
   return (
     <section aria-label="Processes" className="grid gap-2" data-processes>
-      <SectionLabel right={<span className="num text-fg-muted" title="Summed over the session's processes; 100% is one core">{fmtCPU(r.cpu_pct, r.warm)} · {fmtMem(r.mem_bytes)}</span>}>
+      <SectionLabel right={<FitSummary className="num text-fg-muted" title="Summed over the session's processes; 100% is one core"
+        variants={[<span key="both">{fmtCPU(r.cpu_pct, r.warm)} · {fmtMem(r.mem_bytes)}</span>, <span key="mem">{fmtMem(r.mem_bytes)}</span>]} />}>
         Processes{r.procs > 1 ? ` · ${r.procs}` : ''}
       </SectionLabel>
       <ul className="grid gap-1">

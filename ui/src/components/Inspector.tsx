@@ -33,6 +33,8 @@ import { keys } from '@/lib/appkeys'
 import { Processes } from './ResourceMeter'
 import { CockpitCI } from './CockpitCI'
 import { CockpitRelease } from './ReleasePlan'
+import { FitSummary } from './FitSummary'
+import { fmtCountShort } from '@/lib/format'
 
 const DIFF_REFRESH_MS = 20_000
 const DIFF_FILES_SHOWN = 5
@@ -219,13 +221,7 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
   // panel's edge (owner, 2026-10-17).
   return (
     <section aria-label="Changes" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      <SectionLabel right={(
-        <>
-          {/* Folded, the section's one line: how much is uncommitted. */}
-          {folded && diff && <span data-fold-only className="num whitespace-nowrap text-fg-muted">{files.length === 0 ? 'none' : <>{files.length} {files.length === 1 ? 'file' : 'files'} <span className="text-ok">+{add}</span> <span className="text-danger">−{del}</span></>}</span>}
-          {onReview && <button type="button" onClick={onReview} className="whitespace-nowrap text-[11.5px] text-accent underline-offset-2 hover:underline">Review and commit</button>}
-        </>
-      )}>Changes</SectionLabel>
+      <SectionLabel right={<ChangesSummary files={folded && diff ? files.length : undefined} add={add} del={del} onReview={onReview} />}>Changes</SectionLabel>
       {error ? (
         <p className="text-[11.5px] text-fg-faint">{error}</p>
       ) : !diff ? (
@@ -284,6 +280,39 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
         </>
       )}
     </section>
+  )
+}
+
+/**
+ * The Changes label's right side. Folded, it is the section's one line: how
+ * much is uncommitted, and Review and commit. Its wordings, widest first, so
+ * a narrow inspector shortens it rather than cutting it at the edge: the
+ * counts compacted (+35.2k), then *Review* for the action, then no action,
+ * then the file count alone (FitSummary).
+ */
+function ChangesSummary({ files, add, del, onReview }: { files?: number; add: number; del: number; onReview?: () => void }) {
+  const review = (label: string) => onReview && (
+    <button type="button" onClick={onReview} title="Review and commit" className="text-[11.5px] text-accent underline-offset-2 hover:underline">{label}</button>
+  )
+  if (files === undefined) return onReview ? <FitSummary variants={[review('Review and commit'), review('Review')]} /> : null
+  const count = <span className="text-fg-muted">{files} {files === 1 ? 'file' : 'files'}</span>
+  if (files === 0) {
+    const none = <span data-fold-only className="text-fg-muted">none</span>
+    return <FitSummary className="num" variants={[<>{none}{review('Review and commit')}</>, <>{none}{review('Review')}</>, none]} />
+  }
+  const lines = (short: boolean) => (
+    <span data-fold-only className="text-fg-muted">
+      {files} {files === 1 ? 'file' : 'files'} <span className="text-ok">+{short ? fmtCountShort(add) : add}</span> <span className="text-danger">−{short ? fmtCountShort(del) : del}</span>
+    </span>
+  )
+  return (
+    <FitSummary className="num" title={`${files} ${files === 1 ? 'file' : 'files'}, +${add} −${del} uncommitted`} variants={[
+      <>{lines(false)}{review('Review and commit')}</>,
+      <>{lines(true)}{review('Review and commit')}</>,
+      <>{lines(true)}{review('Review')}</>,
+      lines(true),
+      count,
+    ]} />
   )
 }
 
