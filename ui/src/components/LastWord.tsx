@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react'
 import { api, type AssistantNote, type SessionSummary } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
 import { href } from '@/lib/router'
+import { LinkedText } from './Prose'
 
 export function LastWord({ session, now, onClose }: {
   session: SessionSummary
@@ -86,7 +87,7 @@ export function LastWord({ session, now, onClose }: {
               </div>
               {/* Whitespace preserved: Claude writes in paragraphs and lists,
                 * and reflowing them makes a plan unreadable. */}
-              <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-fg">{shown.text}</div>
+              <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-fg [overflow-wrap:anywhere]"><LinkedText text={shown.text} /></div>
             </>
           )}
 

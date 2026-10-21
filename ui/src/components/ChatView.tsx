@@ -28,7 +28,7 @@ import { useStickToBottom } from '@/lib/useStickToBottom'
 import { useQueue } from '@/lib/queue'
 import { QueuedList } from './QueuedList'
 import { NewPill } from './NewPill'
-import { Prose } from './Prose'
+import { LinkedText, Prose } from './Prose'
 import { requestOpenPath } from '@/lib/mdreader'
 import { TerminalKeys } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
@@ -657,10 +657,10 @@ const PASTE_FOLD_LINES = 6
 /** A prompt as typed: the person's words as they are, each paste as a quiet block. */
 function PromptText({ text }: { text: string }) {
   const parts = promptParts(text)
-  if (parts.length === 0) return <>{text}</>
+  if (parts.length === 0) return <LinkedText text={text} />
   return (
     <>
-      {parts.map((p, i) => (p.kind === 'text' ? <span key={i}>{p.text}</span> : <PastedBlock key={i} text={p.text} lines={p.lines} />))}
+      {parts.map((p, i) => (p.kind === 'text' ? <span key={i}><LinkedText text={p.text} /></span> : <PastedBlock key={i} text={p.text} lines={p.lines} />))}
     </>
   )
 }

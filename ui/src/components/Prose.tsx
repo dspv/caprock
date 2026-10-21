@@ -14,12 +14,18 @@
  * The answer is not a Markdown library — that would parse arbitrary remote
  * input into HTML, which is the thing worth avoiding. It is to recognise the
  * four shapes our own release notes actually use and turn those into elements.
- * Everything else stays text. Nothing here can produce a link, a script, an
- * image or any attribute: the output is `<h3>`, `<li>`, `<p>` and `<strong>`,
- * built from strings, so remote content cannot become markup no matter what it
- * contains.
+ * Everything else stays text. Nothing here can produce a script, an image or
+ * any attribute but one: the output is `<h3>`, `<li>`, `<p>`, `<strong>` and
+ * `<a>`, built from strings, so remote content cannot become markup no matter
+ * what it contains.
  *
- * One exception, and it is not a link: an agent's reply that names a `.md`
+ * The one attribute is a link's href, and only an http(s) one: a bare
+ * `https://…` in the text and a `[text](https://…)` or `<https://…>` become
+ * a link that opens in a new tab — in the desktop app, the default browser
+ * (lib/externalLinks.ts) — so a reply's links can be tapped on a phone
+ * (2026-10-21). Any other scheme stays text (lib/autolink.ts).
+ *
+ * One more, and it is not a link: an agent's reply that names a `.md`
  * file (`docs/PLAN.md`, `/Users/…/NOTES.md`) gets that path as a button when
  * the caller passes `onPath` — the chat does, and the click opens the file
  * in a file tab of the workspace. It opens nothing on the web.
@@ -27,6 +33,7 @@
 import { Fragment, useState, type ReactNode } from 'react'
 import { mdPathsIn, slugOf, type OutlineItem } from '@/lib/mdreader'
 import { extTitle } from '@/lib/externalLinks'
+import { safeHref, splitLinks, trimUrl } from '@/lib/autolink'
 
 /** One rendered block. */
 type Block =
@@ -36,19 +43,24 @@ type Block =
   | { kind: 'table'; rows: Inline[][][] }
   | { kind: 'quote'; parts: Inline[] }
 
-type Inline = { text: string; bold: boolean; code: boolean }
+type Inline = { text: string; bold: boolean; code: boolean; href?: string }
 
-/** Splits `**bold**` and `` `code` `` out of a line, leaving everything else
- *  as plain text. Unmatched markers are left alone rather than swallowed — a
- *  stray asterisk in prose is text, not a broken tag. */
+/** Splits `**bold**`, `` `code` `` and http(s) links written as
+ *  `[text](url)` or `<url>` out of a line, leaving everything else as plain
+ *  text — a bare address in it is found when it is drawn. Unmatched markers
+ *  are left alone rather than swallowed — a stray asterisk in prose is text,
+ *  not a broken tag — and so is a link to anything but http(s). */
 export function inlines(line: string): Inline[] {
   const out: Inline[] = []
-  const re = /\*\*([^*]+)\*\*|`([^`]+)`/g
+  const re = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)|<(https?:\/\/[^>\s]+)>|\*\*([^*]+)\*\*|`([^`]+)`/gi
   let last = 0
   for (let m = re.exec(line); m; m = re.exec(line)) {
+    const href = m[2] !== undefined || m[3] !== undefined ? safeHref(m[2] ?? m[3] ?? '') : undefined
+    if (href === null) continue
     if (m.index > last) out.push({ text: line.slice(last, m.index), bold: false, code: false })
-    if (m[1] !== undefined) out.push({ text: m[1], bold: true, code: false })
-    else out.push({ text: m[2] ?? '', bold: false, code: true })
+    if (href) out.push({ text: m[1] ?? m[3] ?? '', bold: false, code: false, href })
+    else if (m[4] !== undefined) out.push({ text: m[4], bold: true, code: false })
+    else out.push({ text: m[5] ?? '', bold: false, code: true })
     last = m.index + m[0].length
   }
   if (last < line.length) out.push({ text: line.slice(last), bold: false, code: false })
@@ -218,11 +230,27 @@ export function Prose({ text, onPath }: { text: string; onPath?: (path: string) 
 
 function renderInline(parts: Inline[], onPath?: (path: string) => void) {
   return parts.map((p, i) => {
-    const body = onPath ? withPaths(p.text, onPath) : p.text
+    if (p.href) return <WebLink key={i} href={p.href}>{p.text}</WebLink>
+    if (p.code) return <code key={i} className="mono text-[12px] text-fg">{onPath ? withPaths(p.text, onPath) : p.text}</code>
+    // A bare address is a link, and never a `.md` path inside one.
+    const body = splitLinks(p.text).map((r, n) => (r.href ? <WebLink key={n} href={r.href}>{r.text}</WebLink> : <Fragment key={n}>{onPath ? withPaths(r.text, onPath) : r.text}</Fragment>))
     if (p.bold) return <strong key={i} className="font-medium text-fg">{body}</strong>
-    if (p.code) return <code key={i} className="mono text-[12px] text-fg">{body}</code>
     return <span key={i}>{body}</span>
   })
+}
+
+const LINK_CLASS = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent [overflow-wrap:anywhere]'
+
+/** Plain text with each bare http(s) address in it a link, for text shown as written. */
+export function LinkedText({ text }: { text: string }) {
+  const runs = splitLinks(text)
+  if (runs.length === 1 && !runs[0]!.href) return <>{text}</>
+  return <>{runs.map((r, n) => (r.href ? <WebLink key={n} href={r.href}>{r.text}</WebLink> : <Fragment key={n}>{r.text}</Fragment>))}</>
+}
+
+/** A web address, opened in a new tab (in the desktop app, the default browser). */
+function WebLink({ href, children }: { href: string; children: ReactNode }) {
+  return <a href={href} target="_blank" rel="noreferrer noopener" className={LINK_CLASS} style={{ textDecorationLine: 'underline' }} title={extTitle(href)}>{children}</a>
 }
 
 /** `text` with each `.md` path in it a button that opens the file. */
@@ -266,12 +294,23 @@ export type DocBlock =
   | { kind: 'table'; head?: DocInline[][]; rows: DocInline[][][] }
   | { kind: 'rule' }
 
-/** Links, images, `code`, **bold** and *italic* or _italic_, in one pass. */
+/** Links, images, `code`, **bold** and *italic* or _italic_, in one pass; a
+ *  bare http(s) address in the text is found when it is drawn. */
 export function docInlines(line: string): DocInline[] {
   const out: DocInline[] = []
-  const re = /!\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|(?<![\w*])\*([^*\s][^*]*)\*(?!\w)|(?<!\w)_([^_\s][^_]*)_(?!\w)/g
+  const re = /!\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|(?<![\w*])\*([^*\s][^*]*)\*(?!\w)|(?<!\w)_([^_\s][^_]*)_(?!\w)|\b(https?:\/\/[^\s<>"'`]+)/gi
   let last = 0
   for (let m = re.exec(line); m; m = re.exec(line)) {
+    // A bare address, taken whole before an underscore in it reads as italic.
+    if (m[11] !== undefined) {
+      const url = trimUrl(m[11])
+      if (!safeHref(url)) continue
+      if (m.index > last) out.push({ text: line.slice(last, m.index) })
+      out.push({ text: url, href: url })
+      last = m.index + url.length
+      re.lastIndex = last
+      continue
+    }
     if (m.index > last) out.push({ text: line.slice(last, m.index) })
     if (m[1] !== undefined) out.push({ text: m[1] || 'image', image: true, src: m[2] ?? '' })
     else if (m[3] !== undefined) out.push({ text: m[3], href: m[4] })
@@ -524,6 +563,21 @@ export function ProseDoc({ text, blocks: given, link, image }: { text: string; b
 }
 
 function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage) {
+  const cls = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent'
+  // With no `link` from the caller, a web address still opens: an http(s)
+  // one, in a new tab; anything else stays text.
+  const route = link ?? ((href: string) => { const h = safeHref(href); return h ? { href: h } : null })
+  const anchor = (key: number, href: string, text: string) => {
+    const to = route(href)
+    if (to && 'href' in to) return <a key={key} href={to.href} target="_blank" rel="noreferrer noopener" className={`${cls} [overflow-wrap:anywhere]`} style={{ textDecorationLine: 'underline' }} title={extTitle(to.href)}>{text}</a>
+    if (to) return <button key={key} type="button" onClick={to.onOpen} className={`${cls} cursor-pointer text-left`} title={href}>{text}</button>
+    return <span key={key}>{text}</span>
+  }
+  // A bare address in text, bold or italic is a link too; in `code` it is not.
+  const linked = (text: string) => {
+    const runs = splitLinks(text)
+    return runs.length === 1 && !runs[0]!.href ? text : runs.map((r, n) => (r.href ? anchor(n, r.href, r.text) : <Fragment key={n}>{r.text}</Fragment>))
+  }
   return parts.map((p, i) => {
     if (p.image) {
       const drawn = image?.(p.src ?? '', p.text)
@@ -531,15 +585,9 @@ function renderDocInline(parts: DocInline[], link?: DocLink, image?: DocImage) {
       return <span key={i} className="italic text-fg-muted" title="An image">[{p.text}]</span>
     }
     if (p.code) return <code key={i} className="mono rounded-[4px] bg-[var(--app-row-hover,var(--color-panel-2))] px-1 py-px text-[0.86em]">{p.text}</code>
-    if (p.bold) return <strong key={i} className="font-semibold">{p.text}</strong>
-    if (p.italic) return <em key={i}>{p.text}</em>
-    if (p.href !== undefined) {
-      const to = link?.(p.href)
-      const cls = 'text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent'
-      if (to && 'href' in to) return <a key={i} href={to.href} target="_blank" rel="noreferrer noopener" className={cls} style={{ textDecorationLine: 'underline' }} title={extTitle(to.href)}>{p.text}</a>
-      if (to) return <button key={i} type="button" onClick={to.onOpen} className={`${cls} cursor-pointer text-left`} title={p.href}>{p.text}</button>
-      return <span key={i}>{p.text}</span>
-    }
-    return <span key={i}>{p.text}</span>
+    if (p.bold) return <strong key={i} className="font-semibold">{linked(p.text)}</strong>
+    if (p.italic) return <em key={i}>{linked(p.text)}</em>
+    if (p.href !== undefined) return anchor(i, p.href, p.text)
+    return <span key={i}>{linked(p.text)}</span>
   })
 }

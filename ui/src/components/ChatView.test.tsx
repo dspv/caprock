@@ -542,6 +542,15 @@ describe('ChatView: a turn at work', () => {
     expect(renderedIds()).toEqual([1, 2])
   })
 
+  it('a bare address in a reply is a link that opens in a new tab', async () => {
+    store.events = [msg(1, 'where is it?'), reply(2, 'Here: https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY.')]
+    render(<ChatView sessionId="s" canType={false} />)
+    const a = await screen.findByRole('link', { name: 'https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY' })
+    expect(a).toHaveAttribute('href', 'https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY')
+    expect(a).toHaveAttribute('target', '_blank')
+    expect(a).toHaveAttribute('rel', 'noreferrer noopener')
+  })
+
   it('a refetch carries the merged words too', async () => {
     store.events = [msg(1, 'hi'), reply(2, '')]
     render(<ChatView sessionId="s" canType={false} />)

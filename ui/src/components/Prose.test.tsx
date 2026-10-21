@@ -8,7 +8,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { Prose, parseDoc, parseNotes, inlines } from './Prose'
+import { Prose, ProseDoc, parseDoc, parseNotes, inlines } from './Prose'
 
 describe('a document (the file tab)', () => {
   it('keeps heading levels, numbered and nested items, and a fence verbatim', () => {
@@ -36,9 +36,9 @@ describe('a document (the file tab)', () => {
     expect(blocks.slice(2).map((b) => (b.kind === 'item' ? b.task : null))).toEqual(['done', 'open'])
   })
 
-  it('leaves the chat renderer as it was: a link stays text there', () => {
-    render(<Prose text={'See [the site](https://caprock.dev).'} />)
-    expect(document.querySelector('a')).toBeNull()
+  it('the chat renderer links a web address too, and only that (2026-10-21)', () => {
+    render(<Prose text={'See [the site](https://caprock.dev) and [a file](docs/a.md).'} />)
+    expect([...document.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://caprock.dev/'])
   })
 })
 
@@ -94,9 +94,49 @@ describe('remote text cannot become markup', () => {
     expect(document.body.textContent).toContain('<img src=x onerror=alert(1)>')
   })
 
-  it('never produces a link', () => {
-    render(<Prose text={'[click](https://evil.example) and https://evil.example'} />)
+  it('makes a link only of an http(s) address, in a new tab', () => {
+    render(<Prose text={'[click](javascript:alert(1)) <file:///etc/passwd> javascript:alert(2)'} />)
     expect(document.querySelector('a')).toBeNull()
+  })
+})
+
+describe('a link in a reply can be tapped', () => {
+  it('a bare address, a markdown link and an angle-bracket one all become links', () => {
+    render(<Prose text={'See https://github.com/dspv/caprock/pull/768#issuecomment-6322183824. Also [the artifact](https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY) and <https://example.com/é>.'} />)
+    const as = [...document.querySelectorAll('a')]
+    expect(as.map((a) => a.getAttribute('href'))).toEqual([
+      'https://github.com/dspv/caprock/pull/768#issuecomment-6322183824',
+      'https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY',
+      'https://example.com/%C3%A9',
+    ])
+    expect(as[1]).toHaveTextContent('the artifact')
+    for (const a of as) {
+      expect(a.target).toBe('_blank')
+      expect(a.rel).toBe('noreferrer noopener')
+    }
+    expect(document.body.textContent).toContain('6322183824. Also')
+  })
+
+  it('not inside code, and not as a .md path inside an address', () => {
+    const onPath = vi.fn()
+    render(<Prose text={'Run `curl https://example.com/x` then read https://example.com/docs/PLAN.md and docs/PLAN.md'} onPath={onPath} />)
+    expect([...document.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://example.com/docs/PLAN.md'])
+    expect(document.querySelector('code')?.querySelector('a')).toBeNull()
+    expect(document.querySelectorAll('[data-md-path]')).toHaveLength(1)
+  })
+
+  it('in bold text, a table cell and a document too', () => {
+    render(<Prose text={'**see https://example.com/a**\n\n| a | https://example.com/b |\n| - | - |'} />)
+    expect([...document.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://example.com/a', 'https://example.com/b'])
+  })
+
+  it('a document links a bare address whole, underscores and all, and not in code', () => {
+    const blocks = parseDoc('Go to https://example.com/_a_b_/c_d. Or `https://example.com/code`.')
+    const parts = blocks[0]!.kind === 'para' ? blocks[0]!.parts : []
+    expect(parts.filter((p) => p.href).map((p) => p.href)).toEqual(['https://example.com/_a_b_/c_d'])
+    expect(parts.some((p) => p.italic)).toBe(false)
+    render(<ProseDoc text={'Go to https://example.com/_a_b_/c_d and [rel](docs/a.md).'} />)
+    expect([...document.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['https://example.com/_a_b_/c_d'])
   })
 
   it('leaves a stray asterisk alone', () => {
