@@ -96,8 +96,12 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal }: {
+export function ChatView({ sessionId, earlier = NONE, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal }: {
   sessionId: string
+  /** The sessions this one continues in the same process, oldest first
+   *  (lib/clearChain.ts clearedParts): shown read-only above it once its
+   *  start is reached, each with the divider a /clear leaves. */
+  earlier?: readonly string[]
   /** The session's agent (Session.agent), for *Claude is thinking…*. */
   agent?: string
   /** Draw the permission card (components/PermissionPrompt) under the
@@ -458,10 +462,11 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
               <span className="text-danger">{error} <button type="button" className="link" onClick={() => void (loaded ? revealOlder() : loadNewest(true))}>retry</button></span>
             ) : !loaded ? 'loading…'
               : loadingOlder ? 'loading earlier…'
-              : start === 0 && exhausted ? (messages.length ? 'start of session' : 'No messages yet')
+              : start === 0 && exhausted ? (earlier.length ? 'start of conversation' : messages.length ? 'start of session' : 'No messages yet')
               : <button type="button" className="link" onClick={() => void revealOlder()}>load earlier</button>}
             </div>
           </div>
+          {loaded && start === 0 && exhausted && earlier.length > 0 && <ClearedParts ids={earlier} onPath={onPath} plain={desk} />}
           {shown.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={desk} />)}
           {outgoing.map((o) => (
             <OutgoingBubble key={`out-${o.key}`} o={o} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
@@ -497,6 +502,45 @@ export function ChatView({ sessionId, canType, ended = false, className = '', ph
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
     </div>
+  )
+}
+
+const NONE: readonly string[] = []
+
+/** The words under each part a /clear left behind. */
+export const CLEARED_DIVIDER = 'Context cleared — Claude no longer remembers the part above'
+
+/**
+ * The parts of the conversation before each /clear (.ai/04-ui.md § One card
+ * per conversation): the newest page of each, read-only, with the divider
+ * that says the model no longer has it. Fetched once per set of parts.
+ */
+function ClearedParts({ ids, onPath, plain }: { ids: readonly string[]; onPath?: (path: string) => void; plain?: boolean }) {
+  const key = ids.join('\n')
+  const [parts, setParts] = useState<{ id: string; messages: ChatMessage[] }[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    const list = key ? key.split('\n') : []
+    void Promise.all(list.map((id) => api.recentEvents(id, CHAT_PAGE_EVENTS)
+      .then((evs) => ({ id, messages: toMessages(evs, { ended: true }).slice(-CHAT_WINDOW) }))
+      .catch(() => ({ id, messages: [] as ChatMessage[] }))))
+      .then((p) => { if (alive) setParts(p) })
+    return () => { alive = false }
+  }, [key])
+  if (!parts) return null
+  return (
+    <>
+      {parts.map((p) => (
+        <div key={p.id} data-cleared-part={p.id}>
+          {p.messages.map((m) => <Message key={m.id} m={m} onPath={onPath} plain={plain} />)}
+          <div role="separator" data-cleared-divider className="my-3 flex items-center gap-2 text-[11px] text-fg-faint">
+            <span className="h-px flex-1 bg-border" />
+            <span className="shrink-0">{CLEARED_DIVIDER}</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        </div>
+      ))}
+    </>
   )
 }
 

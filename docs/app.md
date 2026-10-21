@@ -559,6 +559,13 @@ others. Installing it: [install-app.md](install-app.md).
   your file manager and its path is typed at the prompt, quoted, as in any
   terminal; the agent works on that file, not a copy. Drag a tab along the
   strip to reorder it.
+- **A tab after `/clear`.** `/clear` makes Claude Code carry on in the same
+  process under a new session id, and the tab goes with it: the terminal
+  stays attached, the field keeps typing into it, and the chat shows the
+  part before the clear above a line that says *Context cleared — Claude no
+  longer remembers the part above*, the new part under it. The earlier part
+  keeps its own page. A fork is a separate process and never takes the
+  original's tab.
 - **Chat.** An agent tab switches between its terminal and its chat with
   one quiet icon at the right of the tab strip: over the terminal it is a
   chat bubble (*Show as chat*), over the chat a terminal glyph (*Show as

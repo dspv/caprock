@@ -112,6 +112,26 @@ appeared on the dashboard as two working sessions. A process runs one
 conversation at a time, so a sibling on the same pid is finished by definition;
 `pid = 0` means "unknown" and is never matched.
 
+**In a session Caprock started, the replacement is Caprock's and gets the
+terminal.** The process is the one Caprock spawned, so the new row takes
+`owned = 1` with the spawn's `worktree`, `spawn_command`, `subscription` and
+`chat` (`store.InheritOwned`, in the same transaction; a replaced session that
+is not owned passes nothing on). After the commit the recorder tells the daemon
+(`Recorder.OnClear`), and the agent manager files the spawn's terminal under the
+new id as well (`agents.Manager.Follow`): `/v1/agents/{new}/…` — terminal
+socket, input, signal, permission — reaches the same PTY, while the spawn's id
+keeps answering and the process, its pty-host and `OwnedRunning` stay under it.
+What the conversation is doing (pending prompts, the queue, nudges, idle-end's
+last activity, whether a tab is open) is read under the newest id
+(`Agent.Current`). When the process exits, every id filed under it ends with
+the exit code and gets a `session` frame. A daemon that reattaches a pty-host
+finds the newest session of the process from the rows (`store.ClearSuccessor`:
+`parent_session` links whose ends share the pid; a fork runs in another process
+and is never followed), files the terminal under it and leaves the spawn's own
+row ended rather than reviving it. `SessionSummary` carries `pid` (omitted when
+unknown), which is how the dashboard tells a `/clear` from a fork
+([04-ui.md](04-ui.md) § One card per conversation).
+
 **Dedupe keys.** hookd keys events as `pre:<tool_use_id>`, `post:<tool_use_id>`, `prompt:<prompt_id>`; ingest derives the *same* keys from transcript `tool_use` / `tool_result` blocks and `promptId`, and keys assistant turns as `msg:<message.id>`. `(session_id, key)` is unique in the store, so whichever plane arrives first wins and the other is a no-op — this is how "dedupe against hook events by session_id" is implemented, and it also makes re-reading a transcript after restart idempotent. Stop / SubagentStop / SessionStart / SessionEnd / PreCompact are keyless (never deduped).
 
 **A turn is paid once across sessions.** The key is unique per session only, and a fork's transcript repeats its parent's turns under the fork's own session id (see [Transcript JSONL](#transcript-jsonl-observed-shape)). So a `turn.assistant` whose `msg_id` another session already holds *with usage* is stored with zero tokens and `cost_usd = 0` (`store.TurnPaidElsewhere`, migration 0029): the row stays in the fork's timeline with its prose and counts as a turn there, and the response is billed once, to the session that stored it first. A copy with no usage does not count as the payer, so an empty copy stored first cannot stop the original being priced. `rollup.RepairForkedTurns` applied the same rule once to rows stored before it (meta `forked_turns_repaired`): per message id the row with the most tokens pays, ties to the earliest, and `session_stats` / `daily_stats` move by what is taken off.

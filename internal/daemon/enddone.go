@@ -153,11 +153,11 @@ func (e *endWhenDone) check(id string) {
 // waitingOn says what keeps a flagged session from being done, "" when
 // nothing does.
 func (e *endWhenDone) waitingOn(ctx context.Context, a *agents.Agent) (string, error) {
-	if _, ok := e.sess.PendingPermission(a.SessionID); ok {
+	if _, ok := e.sess.PendingPermission(a.Current()); ok {
 		return "permission", nil
 	}
 	db := e.d.store.DB()
-	if msgs, err := store.ListQueued(ctx, db, a.SessionID); err != nil {
+	if msgs, err := store.ListQueued(ctx, db, a.Current()); err != nil {
 		return "", err
 	} else if len(msgs) > 0 {
 		return "queued", nil
@@ -169,7 +169,7 @@ func (e *endWhenDone) waitingOn(ctx context.Context, a *agents.Agent) (string, e
 	}
 	// Claude Code: the newest turn event its hooks recorded must be the
 	// main thread's Stop. A session with none yet has not had its turn.
-	evs, err := store.LastEventsFiltered(ctx, db, a.SessionID, queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
+	evs, err := store.LastEventsFiltered(ctx, db, a.Current(), queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
 	if err != nil {
 		return "", err
 	}
@@ -180,7 +180,7 @@ func (e *endWhenDone) waitingOn(ctx context.Context, a *agents.Agent) (string, e
 	if err != nil || w != "" {
 		return w, err
 	}
-	n, err := store.LiveSubagents(ctx, db, a.SessionID, e.now().Add(-store.LiveSubagentWindow).UnixMilli())
+	n, err := store.LiveSubagents(ctx, db, a.Current(), e.now().Add(-store.LiveSubagentWindow).UnixMilli())
 	if err != nil {
 		return "", err
 	}

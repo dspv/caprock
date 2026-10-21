@@ -168,17 +168,17 @@ func (q *msgQueue) waiting(ctx context.Context, a *agents.Agent) (string, error)
 	if a.Kind != "" && a.Kind != agents.AgentClaude {
 		return "", nil
 	}
-	if _, ok := q.sess.PendingPermission(a.SessionID); ok {
+	if _, ok := q.sess.PendingPermission(a.Current()); ok {
 		return api.WaitingPermission, nil
 	}
 	q.mu.Lock()
-	at, typed := q.typed[a.SessionID]
-	continued := q.continued[a.SessionID]
+	at, typed := q.typed[a.Current()]
+	continued := q.continued[a.Current()]
 	q.mu.Unlock()
 	if typed && time.Since(at) < queueTypedHold {
 		return api.WaitingTurn, nil
 	}
-	evs, err := store.LastEventsFiltered(ctx, q.d.store.DB(), a.SessionID, queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
+	evs, err := store.LastEventsFiltered(ctx, q.d.store.DB(), a.Current(), queueTurnScan, store.EventFilter{MainOnly: true, Kinds: turnKinds})
 	if err != nil {
 		return "", err
 	}
@@ -242,8 +242,8 @@ func payloadString(raw json.RawMessage, key string) string {
 
 // view is the queue as the API and the frame show it. Caller holds the lock.
 func (q *msgQueue) view(ctx context.Context, a *agents.Agent) (api.QueueView, error) {
-	v := api.QueueView{SessionID: a.SessionID}
-	msgs, err := store.ListQueued(ctx, q.d.store.DB(), a.SessionID)
+	v := api.QueueView{SessionID: a.Current()}
+	msgs, err := store.ListQueued(ctx, q.d.store.DB(), a.Current())
 	if err != nil {
 		return v, err
 	}
