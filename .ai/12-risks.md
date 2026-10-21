@@ -79,6 +79,19 @@ that changes the layout; a binary older than that release still opens a newer
 database as before. A user who must go back has to keep the older database
 (no down-migrations exist).
 
+**`RISK-11` — App Store review rejects the iOS app.**
+The iOS app ([ADR-083](08-decisions.md)) wraps the same React screens as
+`m.caprock.dev`, and it is useless without a paired computer. Review can
+reject it under Guideline 4.2 (minimum functionality: a repackaged website)
+or 2.1 (the reviewer cannot use it), and a free app whose paid tier is sold
+elsewhere draws questions under 3.1. Mitigation: native value the page cannot
+have (camera pairing, on-device voice, Face ID, push with an encrypted
+payload); a demo mode on bundled sample data reachable from the first screen,
+named in the review notes; no purchase, price or buy link anywhere in the
+app; TestFlight to the owner first. Residual: review outcomes are not
+predictable, and the time a first review takes is not known — any figure for
+it is an estimate.
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
@@ -301,6 +314,17 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   page height *est.* until they are measured. Decided by: a test page
   opened on each real phone reporting `innerHeight`, `visualViewport` and
   the safe-area insets, bars shown and scrolled away.
+- `OQ-24` — **What may an iOS push carry?** Push on iOS goes through APNs
+  and through a Caprock sender that holds the APNs key (ADR-083), so under
+  rule 4 nothing readable may be in it. Two ways, not yet decided:
+  (a) content-free text ("A session needs you"), or (b) end-to-end
+  ciphertext under a key agreed with the phone at pairing, decrypted by a
+  Notification Service Extension, with (a)'s text as the fallback.
+  **Recommendation: (b).** Not known: whether the extension decrypts
+  reliably within the time iOS gives it, on a cold start, with the key in a
+  shared Keychain group; and what a push still reveals by its timing alone,
+  which (a) and (b) share and the settings screen must say. Decided by: the
+  owner, after a TestFlight build shows (b) working on his iPhone, or failing.
 
 ## What would falsify the whole plan
 
