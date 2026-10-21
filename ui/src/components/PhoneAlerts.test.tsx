@@ -10,6 +10,7 @@ import type { Settings } from '@/lib/api'
 const settings = vi.hoisted(() => ({ value: {} as Settings }))
 const saved = vi.hoisted(() => ({ calls: [] as Partial<Settings>[] }))
 const tested = vi.hoisted(() => ({ n: 0, fail: '' }))
+const tg = vi.hoisted(() => ({ status: { bot_set: false, chat_set: false, polling: false } as Record<string, unknown>, saved: 0 }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -22,7 +23,11 @@ vi.mock('@/lib/api', async (orig) => {
         saved.calls.push(s)
         return s
       },
-      telegram: async () => ({ bot_set: false, chat_set: false, polling: false }),
+      telegram: async () => tg.status,
+      telegramToken: async () => {
+        tg.saved++
+        return tg.status
+      },
       testAlert: async () => {
         tested.n++
         if (tested.fail) throw new Error(tested.fail)
@@ -85,5 +90,37 @@ describe('PhoneAlerts', () => {
     fireEvent.click(await screen.findByText('Send a test alert'))
     await waitFor(() => expect(screen.getByText(/chat not found/)).toBeInTheDocument())
     expect(tested.n).toBe(1)
+  })
+
+  it('says a newly saved bot is untested instead of a failure that was the old bot’s', async () => {
+    settings.value = { report_bot_set: true, report_chat_id: '1', alert_approval: true, alert_untested: true } as Settings
+    render(<PhoneAlerts />)
+    expect(await screen.findByText('Saved. Send a test alert to check it reaches you.')).toBeInTheDocument()
+    expect(screen.queryByText(/Last alert failed/)).toBeNull()
+  })
+
+  it('clears a failed test’s words when a new token is saved', async () => {
+    tested.fail = 'telegram: Forbidden: bot was blocked by the user'
+    tg.status = { bot_set: true, bot_username: 'newbot', chat_set: true, chat_name: 'Me', polling: true }
+    settings.value = { report_bot_set: true, report_chat_id: '1', alert_approval: true } as Settings
+    render(<PhoneAlerts />)
+    fireEvent.click(await screen.findByText('Send a test alert'))
+    await waitFor(() => expect(screen.getByText(/bot was blocked/)).toBeInTheDocument())
+    // The daemon forgot its outcome on save; the screen forgets its own.
+    settings.value = { ...settings.value, alert_untested: true }
+    fireEvent.click(await screen.findByRole('button', { name: 'Change bot' }))
+    fireEvent.change(screen.getByLabelText('Bot token'), { target: { value: '123456:abcdefghijklmnopqrstuvwxyz0123456789' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    await waitFor(() => expect(tg.saved).toBe(1))
+    await waitFor(() => expect(screen.queryByText(/bot was blocked/)).toBeNull())
+    expect(await screen.findByText('Saved. Send a test alert to check it reaches you.')).toBeInTheDocument()
+    tested.fail = ''
+  })
+
+  it('says plainly that an idle bot is not read', async () => {
+    tg.status = { bot_set: false, chat_set: false, polling: false }
+    settings.value = { report_bot_set: true, report_chat_id: '1' } as Settings
+    render(<PhoneAlerts />)
+    expect(await screen.findByText(/connected but idle: with no alert on, nothing is sent and Caprock does not read/)).toBeInTheDocument()
   })
 })

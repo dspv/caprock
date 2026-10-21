@@ -1720,6 +1720,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		Prompts:          maps.Clone(c.Prompts),
 		AlertLastError:   alertErr,
 		AlertLastSentMs:  alertSent,
+		AlertUntested:    alertErr == "" && a.d.phone.isUntested(),
 		KeepAwake:        keepawake.Normalize(c.KeepAwake),
 		WorktreeCleanup:  projects.NormalizeCleanup(c.WorktreeCleanup),
 		EndIdleAfter:     config.NormalizeEndIdle(c.EndIdleAfter),
@@ -1832,8 +1833,13 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	if in.AppUpdate != "" && in.AppUpdate != config.NormalizeAppUpdate(a.d.opt.Config.AppUpdate) {
 		a.d.opt.Config.AppUpdate = in.AppUpdate
 	}
+	chatChanged := strings.TrimSpace(cur.ReportChatID) != a.d.opt.Config.ReportChatID
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
+	if botChanged || chatChanged {
+		// The last alert's outcome was the old bot's or chat's.
+		a.d.phone.botChanged()
+	}
 	if statuslineChanged {
 		a.d.applyStatuslineMode(cfg)
 	}

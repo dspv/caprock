@@ -375,6 +375,10 @@ type Settings struct {
 	// daemon started.
 	AlertLastError  string `json:"alert_last_error,omitempty"`
 	AlertLastSentMs int64  `json:"alert_last_sent_ms,omitempty"`
+	// AlertUntested is a bot token or chat saved since the last alert was
+	// tried: the outcome before it was the old bot's and is forgotten, and
+	// none is known yet. Read-only.
+	AlertUntested bool `json:"alert_untested,omitempty"`
 	// BrowseRoot is the only directory the folder picker may look inside, and
 	// the boundary every path it returns is checked against. Empty means the
 	// user's home directory.

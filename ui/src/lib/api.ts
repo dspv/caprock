@@ -1055,6 +1055,9 @@ export interface Settings {
   /** Why the last alert failed, absent when it did not; when one last arrived. */
   alert_last_error?: string
   alert_last_sent_ms?: number
+  /** A bot token or chat saved since the last alert was tried: the old
+   *  outcome is forgotten and none is known yet. Read-only. */
+  alert_untested?: boolean
   /** Whether a Gemini key is available, from the environment or this field. */
   gemini_key_set?: boolean
   /** True when GEMINI_API_KEY is set, which takes precedence over the field. */
