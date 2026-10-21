@@ -42,6 +42,9 @@ pub struct Note {
     pub session_id: Option<String>,
     pub prompt_id: Option<String>,
     pub buttons: Buttons,
+    /// The dashboard route a click opens when it is about no session: a
+    /// private module's `#/x/<id>` (ADR-076).
+    pub route: Option<String>,
 }
 
 /// What the reader did with a notification.
@@ -58,6 +61,7 @@ pub struct Origin {
     pub session_id: Option<String>,
     pub prompt_id: Option<String>,
     pub title: String,
+    pub route: Option<String>,
 }
 
 /// How an answer from a notification went.
@@ -95,6 +99,19 @@ fn is_id(s: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
+/// A route a notification may open: a private module's screen, `#/x/<id>`
+/// with the dashboard's module id (lowercase, digits, '-', up to 32).
+pub fn is_route(s: &str) -> bool {
+    let Some(id) = s.strip_prefix("#/x/") else {
+        return false;
+    };
+    (1..=32).contains(&id.len())
+        && id.as_bytes()[0].is_ascii_lowercase()
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
 /// The buttons for a frame's `actions`; none without a session and a prompt
 /// to answer.
 pub fn buttons(session: Option<&str>, prompt: Option<&str>, actions: &[String]) -> Buttons {
@@ -121,9 +138,11 @@ pub fn notify<R: Runtime>(
     session_id: Option<String>,
     prompt_id: Option<String>,
     actions: Option<Vec<String>>,
+    route: Option<String>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let (title, body) = prepare(&title, &body)?;
+    let route = route.filter(|r| is_route(r));
     let session_id = session_id.filter(|s| is_id(s));
     let prompt_id = prompt_id.filter(|s| is_id(s));
     let buttons = buttons(
@@ -143,6 +162,7 @@ pub fn notify<R: Runtime>(
             session_id,
             prompt_id,
             buttons,
+            route,
         },
     )
 }
@@ -193,6 +213,7 @@ fn show<R: Runtime>(app: &AppHandle<R>, note: Note) -> Result<(), String> {
             "session_id": note.session_id,
             "prompt_id": note.prompt_id,
             "buttons": format!("{:?}", note.buttons),
+            "route": note.route,
         })
         .to_string();
         return std::fs::OpenOptions::new()
@@ -232,19 +253,21 @@ fn unique() -> u128 {
 
 /// A click or a button on a notification. Approve and Deny answer on the
 /// daemon this app is attached to, off the main thread, and say so only when
-/// the answer did not land; a click opens the session.
+/// the answer did not land; a click opens the session, or a module's route.
 pub fn respond<R: Runtime>(app: &AppHandle<R>, reply: Reply, origin: Origin) {
     let Origin {
         session_id,
         prompt_id,
         title,
+        route,
     } = origin;
     let (Reply::Allow | Reply::Deny, Some(session), Some(prompt)) =
         (reply, session_id.clone(), prompt_id)
     else {
-        match session_id {
-            Some(s) => crate::tray::open_session(app, &s),
-            None => crate::hotkey::show(app),
+        match (session_id, route.filter(|r| is_route(r))) {
+            (Some(s), _) => crate::tray::open_session(app, &s),
+            (None, Some(r)) => crate::tray::open_route(app, &r),
+            (None, None) => crate::hotkey::show(app),
         }
         return;
     };
@@ -263,6 +286,7 @@ pub fn respond<R: Runtime>(app: &AppHandle<R>, reply: Reply, origin: Origin) {
                 session_id: Some(session),
                 prompt_id: None,
                 buttons: Buttons::None,
+                route: None,
             };
             let _ = show(&app, note);
         }
@@ -347,6 +371,25 @@ mod tests {
         assert_eq!(buttons(Some("s"), Some("p"), &[]), Buttons::None);
         assert_eq!(buttons(Some("s"), None, &both), Buttons::None);
         assert_eq!(buttons(None, Some("p"), &both), Buttons::None);
+    }
+
+    #[test]
+    fn only_a_module_screen_is_a_route() {
+        assert!(is_route("#/x/ops"));
+        assert!(is_route("#/x/ops-desk2"));
+        for r in [
+            "",
+            "#/x/",
+            "#/x/Ops",
+            "#/x/2ops",
+            "#/x/ops/../settings",
+            "#/settings",
+            "javascript:alert(1)",
+            "#/x/ops?x=1",
+        ] {
+            assert!(!is_route(r), "{r}");
+        }
+        assert!(!is_route(&format!("#/x/{}", "a".repeat(33))));
     }
 
     #[test]

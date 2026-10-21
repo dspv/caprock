@@ -19,7 +19,8 @@
  * - **The bridge**: the bootstrap replaces the page's fetch() and fills its
  *   <img> sources by asking the dashboard with postMessage; the dashboard
  *   forwards a request only when it is this module's own (bridgePath): a GET
- *   of a file under /x/<id>/, or its store under /v1/x/<id>/docs/. Anything
+ *   of a file under /x/<id>/, its store under /v1/x/<id>/docs/, or a POST
+ *   of /v1/x/<id>/telegram or /v1/x/<id>/notify. Anything
  *   else, other API routes included, is answered 403 without being sent.
  *
  * Why not something smaller: a frame cannot add a header to its loads, a
@@ -72,6 +73,10 @@ export function bridgePath(id: string, method: string, raw: string): string | nu
     if (segs.length > 6) return null
     return ['GET', 'HEAD', 'PUT', 'PATCH', 'DELETE'].includes(m) ? raw : null
   }
+  // What the module says to the owner: a message to the paired Telegram chat
+  // and a desktop notification (ADR-076, amended 2026-10-22). Exactly these.
+  if (m === 'POST' && raw === `/v1/x/${id}/telegram`) return raw
+  if (m === 'POST' && raw === `/v1/x/${id}/notify`) return raw
   return null
 }
 

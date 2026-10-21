@@ -739,8 +739,9 @@ func (d *Daemon) run(ctx context.Context) error {
 		LoopK: d.det.K, LoopWindow: d.det.Window,
 		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d}, Queue: d.queue, Board: d.queue, Work: newWorkBoard(d, d.queue), Catalog: &catalogAdapter{d: d}, Subscriptions: &subsAdapter{d: d},
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Admin: &adminAdapter{d: d}, Update: d.upd,
-		AskGemini: d.askGemini,
-		DataDir:   d.opt.DataDir,
+		ModuleNotify: moduleNotifier{d: d},
+		AskGemini:    d.askGemini,
+		DataDir:      d.opt.DataDir,
 		Terminals: &nativeterm.Opener{
 			DataDir:   d.opt.DataDir,
 			Env:       func() []string { return userenv.Environ(d.log) },

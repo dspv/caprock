@@ -2099,7 +2099,9 @@ handler is off).
   a session (ADR-036). It gains a second sender: a neutral `notify` frame on
   `/v1/live`, `{id, seq, kind, session_id, project, title, body, prompt_id?,
   actions?}`, with `kind` one of `approval`, `finished`, `loop`, `limit`,
-  `error`. Telegram and the app read the same decision; the rules, cooldowns
+  `error` (and, outside these rules, `window`, `ci`, `review`, and `module` —
+  a private module's own notification, whose `route` a click opens:
+  `#/x/<id>`, 03-contracts.md § Notify frame). Telegram and the app read the same decision; the rules, cooldowns
   and hourly cap are the same. A queued message's turn ending is a
   `finished` alert at once, titled *Queued message done*
   ([03-contracts.md § Queue](03-contracts.md#queue)).

@@ -28,6 +28,7 @@ import (
 func (d *Daemon) newTelegram() *telegram.Bridge {
 	b := telegram.New(&tgHost{d: d}, d.opt.DataDir, d.log)
 	b.BaseFrom = d.telegramBase
+	b.ModuleAnswer = d.moduleAnswer
 	return b
 }
 

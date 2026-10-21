@@ -33,6 +33,11 @@ type Ref struct {
 	// confirmation), "new" (a /new waiting for confirmation), "list".
 	Kind string `json:"kind,omitempty"`
 	At   int64  `json:"at"`
+	// Module is the private module a "module" message came from; Buttons
+	// its buttons' labels by id; Answers how many answers it has had.
+	Module  string            `json:"module,omitempty"`
+	Buttons map[string]string `json:"buttons,omitempty"`
+	Answers int               `json:"answers,omitempty"`
 }
 
 // State is the bridge's persisted state.
@@ -153,6 +158,21 @@ func (s *Store) Lookup(messageID int64) (Ref, bool) {
 		}
 	}
 	return Ref{}, false
+}
+
+// NextAnswer counts one more answer to a sent message and returns the count.
+func (s *Store) NextAnswer(messageID int64) int {
+	n := 1
+	_ = s.Update(func(st *State) {
+		for i := len(st.Refs) - 1; i >= 0; i-- {
+			if st.Refs[i].MessageID == messageID {
+				st.Refs[i].Answers++
+				n = st.Refs[i].Answers
+				return
+			}
+		}
+	})
+	return n
 }
 
 // IsMuted reports whether a session sends nothing.

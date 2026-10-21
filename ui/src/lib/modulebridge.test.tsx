@@ -28,6 +28,15 @@ describe('bridgePath: what a module page may ask for', () => {
     expect(bridgePath('alpha', 'GET', '/v1/x/alpha/docs/notes/a/b')).toBeNull()
   })
 
+  it('lets the module message the owner: its own Telegram and notify routes, POST only', () => {
+    expect(bridgePath('alpha', 'POST', '/v1/x/alpha/telegram')).toBe('/v1/x/alpha/telegram')
+    expect(bridgePath('alpha', 'post', '/v1/x/alpha/notify')).toBe('/v1/x/alpha/notify')
+    expect(bridgePath('alpha', 'GET', '/v1/x/alpha/telegram')).toBeNull()
+    expect(bridgePath('alpha', 'POST', '/v1/x/beta/notify')).toBeNull()
+    expect(bridgePath('alpha', 'POST', '/v1/x/alpha/telegram?x=1')).toBeNull()
+    expect(bridgePath('alpha', 'POST', '/v1/telegram/photo')).toBeNull()
+  })
+
   it('refuses everything else: the API, another module, the key, climbing out, tricks', () => {
     for (const [m, p] of [
       ['POST', '/v1/agents'],

@@ -36,7 +36,7 @@ import { api } from './api'
 import { isTauri } from './appmode'
 import { live, type NotifyFrame } from './live'
 import { href } from './router'
-import { SHOWN_EVENT } from './shell'
+import { OPEN_ROUTE_EVENT, SHOWN_EVENT, notifyRoute } from './shell'
 
 /** How long after a notification the app coming forward counts as its click. */
 export const CLICK_WINDOW_MS = 2 * 60_000
@@ -99,6 +99,7 @@ export class Notifier {
     try {
       await this.deps.invoke('notify', {
         title: n.title, body: n.body, id: n.id, sessionId: n.session_id, promptId: n.prompt_id, actions: n.actions,
+        route: notifyRoute(n.route) ?? undefined,
       })
       if (n.prompt_id) this.shownFor.set(n.session_id, [...(this.shownFor.get(n.session_id) ?? []), n.id])
       return true
@@ -122,8 +123,8 @@ export class Notifier {
       if (this.pending !== p) return
       this.pending = null
       // A GitHub notification is about a pull request, not a session: the
-      // app coming forward is all its click does.
-      if (!p.n.session_id) return
+      // app coming forward is all its click does. A module's opens the module.
+      if (!p.n.session_id && !notifyRoute(p.n.route)) return
       if (this.deps.viewing().sessionId === p.n.session_id) return
       this.deps.open(p.n)
     }, SHOWN_GRACE_MS)
@@ -177,7 +178,7 @@ export function useOsNotifications(sessionId: string | undefined): void {
       invoke,
       viewing: () => ({ focused: document.hasFocus(), sessionId: front.current }),
       stillWaiting: promptStillWaits,
-      open: (n) => { location.hash = promptRoute(n) },
+      open: (n) => { location.hash = n.session_id ? promptRoute(n) : (notifyRoute(n.route) ?? location.hash) },
     })
     const off = live.onFrame((f) => {
       if (f.type === 'notify') void notifier.receive(f.data)
@@ -185,12 +186,19 @@ export function useOsNotifications(sessionId: string | undefined): void {
     })
     const onFocus = () => notifier.focused()
     const onShown = () => notifier.shown()
+    // macOS and Linux: the shell opens a module's notification itself.
+    const onRoute = (e: Event) => {
+      const route = notifyRoute((e as CustomEvent<unknown>).detail)
+      if (route) location.hash = route
+    }
     window.addEventListener('focus', onFocus)
     window.addEventListener(SHOWN_EVENT, onShown)
+    window.addEventListener(OPEN_ROUTE_EVENT, onRoute)
     return () => {
       off()
       window.removeEventListener('focus', onFocus)
       window.removeEventListener(SHOWN_EVENT, onShown)
+      window.removeEventListener(OPEN_ROUTE_EVENT, onRoute)
     }
   }, [])
 }

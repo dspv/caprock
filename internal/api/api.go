@@ -233,6 +233,9 @@ type Deps struct {
 	// AdminVerify checks an admin key; nil ⇒ modules.ParseKey, the key
 	// compiled into the build. Tests pass a key pair of their own.
 	AdminVerify func(key string) (modules.Grant, error)
+	// ModuleNotify shows a module's desktop notification (POST
+	// /v1/x/{id}/notify). nil ⇒ the route answers 204 and shows nothing.
+	ModuleNotify ModuleNotifier
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
 	// into the terminal can be written somewhere Claude Code can read it by
 	// path. Empty ⇒ POST /v1/paste returns 501.
@@ -741,6 +744,7 @@ func New(d Deps) *Server {
 	// a price appears.
 	m.HandleFunc("GET /v1/premium", s.handlePremium)
 	s.routeModules(m)
+	s.routeModuleOut(m)
 	m.HandleFunc("GET /v1/gemini", s.handleGeminiStatus)
 	m.HandleFunc("POST /v1/gemini/ask", s.handleGeminiAsk)
 	m.HandleFunc("GET /v1/pricing", s.handlePricing)

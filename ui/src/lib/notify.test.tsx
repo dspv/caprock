@@ -51,6 +51,23 @@ describe('Notifier', () => {
     expect(invoke.mock.calls.filter((c) => (c as unknown[])[0] === 'withdraw_notifications')).toHaveLength(1)
   })
 
+  it('passes a module notification’s route to the shell, and its click opens the module', async () => {
+    const { n, invoke, open } = setup({ focused: false })
+    const mod = approval({ id: 'module-ops-1', kind: 'module', session_id: '', prompt_id: undefined, actions: undefined, title: 'Ops desk · Review ready', body: '3 items', route: '#/x/ops' })
+    expect(await n.receive(mod)).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('notify', expect.objectContaining({ id: 'module-ops-1', route: '#/x/ops', sessionId: '' }))
+    n.focused()
+    expect(open).toHaveBeenCalledWith(mod)
+  })
+
+  it('never hands the shell a route that is not a module’s', async () => {
+    const { n, invoke, open } = setup({ focused: false })
+    await n.receive(approval({ id: 'x', kind: 'module', session_id: '', prompt_id: undefined, actions: undefined, route: '#/settings' }))
+    expect(invoke).toHaveBeenCalledWith('notify', expect.objectContaining({ route: undefined }))
+    n.focused()
+    expect(open).not.toHaveBeenCalled()
+  })
+
   it('is quiet for the session in front of a focused window, and only then', async () => {
     expect(await setup({ focused: true, sessionId: 's1' }).n.receive(approval())).toBe(false)
     expect(await setup({ focused: false, sessionId: 's1' }).n.receive(approval())).toBe(true)

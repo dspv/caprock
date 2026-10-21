@@ -22,6 +22,9 @@ type TelegramController interface {
 	StartPairing() (telegram.Pairing, error)
 	CancelPairing()
 	SendPhoto(ctx context.Context, png []byte, caption string) error
+	// SendModule sends a private module's message to the paired chat
+	// (POST /v1/x/{id}/telegram) and returns its Telegram message id.
+	SendModule(ctx context.Context, m telegram.ModuleMessage) (int64, error)
 }
 
 func (s *Server) requireTelegram(w http.ResponseWriter) bool {
