@@ -161,6 +161,20 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		dsn = fmt.Sprintf("file:memdb%d?mode=memory&cache=shared&_txlock=immediate&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)",
 			memSeq.Add(1))
 	} else {
+		// A database a newer Caprock migrated is refused before this open
+		// sets a pragma, runs a migration or a backfill (ADR-082). It is read
+		// through a separate read-only connection because the DSN below
+		// writes on its own: journal_mode(WAL) rewrites the header of a
+		// database that is not in WAL yet.
+		if err := CheckSchema(ctx, path); err != nil {
+			var newer *SchemaTooNewError
+			if errors.As(err, &newer) {
+				return nil, err
+			}
+			// Anything else (not a database, a lock) is the open's below to
+			// report, as it was before the check existed.
+			log.Debug("schema check before open failed", "component", "store", "err", err)
+		}
 		// _pragma is modernc's DSN syntax. WAL lets the UI read while ingest writes;
 		// busy_timeout avoids SQLITE_BUSY under the (rare) concurrent writer.
 		// cache_size is negative to mean kibibytes rather than pages: 16 MiB,
@@ -260,6 +274,10 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 	s := &Store{db: db, log: log}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
+		var newer *SchemaTooNewError
+		if errors.As(err, &newer) && path != ":memory:" {
+			newer.Path = path
+		}
 		return nil, err
 	}
 	// The database holds prompts and responses in cleartext. Tighten it (and
@@ -591,6 +609,13 @@ func (s *Store) migrate(ctx context.Context) error {
 	current, err := s.SchemaVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("read schema version: %w", err)
+	}
+	// The second line behind CheckSchema: a database migrated past this
+	// binary between that check and this read, or an in-memory one. Before
+	// this, the loop below skipped every migration and Open went on to run
+	// its backfills against tables of an unknown shape.
+	if latest := migs[len(migs)-1].version; current > latest {
+		return &SchemaTooNewError{Database: current, Binary: latest}
 	}
 	for _, m := range migs {
 		if m.version <= current {

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,8 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/procstat"
 	"github.com/dspv/caprock/internal/ptyhost"
+	"github.com/dspv/caprock/internal/store"
 )
 
 // The footprint: what Caprock costs this machine — memory and CPU of every
@@ -50,6 +53,10 @@ type FootprintReport struct {
 	// asked, oldest first: the last 50, since it started. Empty offline.
 	Actions []FootprintAction `json:"actions"`
 	Error   string            `json:"error,omitempty"`
+	// SchemaNewer is set only in `caprock doctor`'s own report: the
+	// database was migrated by a newer Caprock and this one refuses to open
+	// it (store.SchemaTooNewError, ADR-082). The text is that error's.
+	SchemaNewer string `json:"schema_newer,omitempty"`
 }
 
 // FootprintMemory is the memory and CPU of every Caprock process.
@@ -156,6 +163,14 @@ func OfflineFootprint(ctx context.Context, dataDir string, running int32) *Footp
 	exe, _ := os.Executable()
 	f := &FootprintReport{At: time.Now().UnixMilli(), DataDir: dataDir, Exe: exe, DaemonRunning: running > 0, Actions: []FootprintAction{}}
 	f.Disk = diskSplit(dataDirSizes(dataDir))
+	if running == 0 {
+		// The most likely reason no daemon answers after a downgrade. Read
+		// only; the check never writes the database.
+		var newer *store.SchemaTooNewError
+		if err := store.CheckSchema(ctx, config.DBPath(dataDir)); errors.As(err, &newer) {
+			f.SchemaNewer = newer.Error()
+		}
+	}
 	m := newResourceMeter()
 	tab, err := procstat.Read(ctx)
 	if err != nil {
@@ -318,7 +333,11 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 	w := func(code, format string, a ...any) {
 		warn = append(warn, FootprintVerdict{Level: "warn", Code: code, Text: fmt.Sprintf(format, a...)})
 	}
-	if !f.DaemonRunning {
+	if f.SchemaNewer != "" {
+		// Instead of daemon_not_running: `caprock up` would only be refused
+		// again, and this line says why and what to install.
+		w("database_newer", "No Caprock daemon can start here: %s.", f.SchemaNewer)
+	} else if !f.DaemonRunning {
 		w("daemon_not_running", "No Caprock daemon answers for %s. Start it with `caprock up` or the desktop app.", f.DataDir)
 	}
 	// With no daemon answering, one daemon in the table is not a duplicate:

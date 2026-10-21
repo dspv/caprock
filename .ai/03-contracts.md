@@ -1412,7 +1412,10 @@ and once a minute as the fallback for a daemon before them; it asked every
   `caprock_old_holder` ones are left to `other_install_holders`),
   `database_large` (over 2 GiB), `wal_large` (over 256 MiB),
   `disk_reads_high` (the daemon read over 500 MiB in the last hour) and,
-  only in `caprock doctor`'s own report, `daemon_not_running`.
+  only in `caprock doctor`'s own report, `daemon_not_running` — or, in its
+  place, `database_newer` when the database was migrated by a newer Caprock
+  and no daemon of this version can open it (§ SQLite schema; the report's
+  `schema_newer` then carries the refusal's text, absent otherwise).
   `other_install_holders` is said at level `ok`: its orphans are the
   `orphans` warning's, and the rest are sessions that outlived an upgrade.
   One `{level: "ok", code: "ok"}` stands in when nothing warns. The
@@ -5174,6 +5177,28 @@ CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT);  -- schema_version, pricing_vers
 ```
 
 **Migrations:** embedded, sequential, `meta.schema_version` gated.
+
+**A database newer than the binary is refused, untouched** ([ADR-082](08-decisions.md)).
+`meta.schema_version` is the only record of what was applied: the number of
+the last migration, one transaction per migration. Before `store.Open` sets a
+pragma, it reads that value through a separate `mode=ro` connection
+(`store.CheckSchema`); when it is higher than the highest migration embedded
+in the binary, the open fails with `store.SchemaTooNewError` and nothing is
+migrated, written, backfilled or deleted — the file stays byte for byte as it
+was (SQLite may leave an empty `-wal` and its `-shm` index beside it, which
+the newer Caprock reads as nothing). `migrate` checks again before its loop,
+for an in-memory database and for a race past the first check. Equal opens
+as before; older migrates up as before. The daemon returns the error
+unwrapped, so it is the line `caprock up` (from the log), the desktop app's
+*Caprock could not start* and `caprock doctor` (`database_newer`, § Footprint)
+show:
+
+```text
+the database <path> is from a newer Caprock (schema 67; this Caprock knows up to 66): install the newer Caprock to open it — nothing was changed
+```
+
+So a migration may change the storage layout in ways an older binary cannot
+read: no older binary that carries this check will open it.
 
 ### DDL v2 (added in T2, `0002_event_keys.sql`)
 
