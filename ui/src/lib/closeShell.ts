@@ -233,7 +233,7 @@ export function planAgentClose(
     plan.all.push(s.session_id)
     const health = s.activity?.health
     if (health === 'working' || health === 'looping') plan.busy.push(s.session_id)
-    if (health === 'working' || health === 'looping' || health === 'waiting-on-you' || asks(s.session_id)) plan.active.push(s.session_id)
+    if (health === 'working' || health === 'looping' || health === 'waiting-on-you' || health === 'done' || asks(s.session_id)) plan.active.push(s.session_id)
   }
   return plan
 }

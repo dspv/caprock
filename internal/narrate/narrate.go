@@ -16,7 +16,8 @@ import (
 	"github.com/dspv/caprock/internal/toolcmd"
 )
 
-// Health badges (spec: working / idle / waiting-on-you / looping? / error).
+// Health badges (spec: working / idle / waiting-on-you / looping? / error;
+// done is in need.go).
 const (
 	HealthWorking = "working"
 	HealthIdle    = "idle"
@@ -52,6 +53,9 @@ type Activity struct {
 	// waiting prompt reads working for NudgeWindow, and goes back to what
 	// the events say when nothing follows it.
 	Provisional bool `json:"provisional,omitempty"`
+	// Need is why the session waits: set beside Health waiting-on-you
+	// (Needs you) and done (Done), nil otherwise (need.go).
+	Need *Need `json:"need,omitempty"`
 	// FromInput is set when a Nudge decided the status. A caller that would
 	// otherwise judge the session by how long its events have been quiet
 	// (the session row's idle status) leaves it alone.
@@ -346,6 +350,9 @@ type Options struct {
 	// look it up because events holds none (a parent whose subagents logged
 	// more than the window). Nil means "find it in events".
 	MainLast *event.Event
+	// Move is the owner's "needs me?" or "not needed" over a guessed turn;
+	// it applies only to the Stop it names (need.go).
+	Move *Move
 	// Nudge is the newest input Caprock typed into the session (owned
 	// sessions only). It decides the status only when it came after the
 	// newest event, so the next event always wins.
@@ -418,8 +425,20 @@ func Summarize(events []event.Event, opt Options) Activity {
 	switch last.Kind {
 	case event.KindAgentStop:
 		if last.AgentID == "" {
-			act.Phrase = "waiting for you"
-			act.Health = HealthWaiting
+			// The turn ended. Whether that wants anyone is read from what
+			// Claude last wrote: a question is Needs you, a report is Done
+			// (owner, 2026-10-21; .ai/04-ui.md § Needs you and Done).
+			need := StopNeed(events, last)
+			act.Need = &need
+			switch need.Reason {
+			case NeedDone:
+				act.Phrase, act.Health = "done", HealthDone
+			case NeedError:
+				act.Phrase, act.Health = stoppedPhrase(need.Detail), HealthWaiting
+			default:
+				act.Phrase, act.Health = "waiting for you", HealthWaiting
+			}
+			applyMove(&act, last, opt.Move)
 		} else {
 			act.Phrase = "subagent finished"
 			act.Health = HealthWorking
@@ -431,9 +450,14 @@ func Summarize(events []event.Event, opt Options) Activity {
 		// made. A subagent's dialog is drawn in the parent's terminal, so the
 		// phrase says whose it is: unnamed, it read as the parent's request.
 		act.Phrase = "waiting for approval"
+		act.Need = &Need{Reason: PromptNeed(last.Tool)}
 		if last.Tool == "AskUserQuestion" {
 			// Its dialog is a question with answers, not Yes and No.
 			act.Phrase = "waiting for your answer"
+		} else if last.Tool == "ExitPlanMode" {
+			// Its dialog is a plan to read and approve; "waiting for
+			// approval — using ExitPlanMode" said nothing of the kind.
+			act.Phrase = "plan to approve"
 		} else if last.Tool != "" && parseInput(last.Payload).Raw != nil {
 			act.Phrase += " — " + Phrase(last.Tool, last.Payload)
 			act.Tool = last.Tool
@@ -445,6 +469,17 @@ func Summarize(events []event.Event, opt Options) Activity {
 			act.Phrase = by + " " + act.Phrase
 		}
 		act.Health = HealthWaiting
+	case event.KindThrottle:
+		if last.AgentID == "" {
+			// StopFailure: the turn ended on a limit, an overload or a
+			// billing error, and nothing resumes it by itself. It read
+			// "working", then "idle".
+			why := StopFailure(last.Payload)
+			act.Need = &Need{Reason: NeedError, Detail: why}
+			act.Phrase, act.Health = stoppedPhrase(why), HealthWaiting
+		} else {
+			act.Phrase, act.Health = "working", HealthWorking
+		}
 	case event.KindTurnUser:
 		act.Phrase = "reading your prompt"
 		act.Health = HealthWorking
@@ -510,7 +545,7 @@ func Summarize(events []event.Event, opt Options) Activity {
 	// thread's or a subagent's, still waits — that is the one thing that does.
 	if opt.LiveSubagents > 0 && last.Kind != event.KindPermissionPrompt && MainTurnEnded(events, opt.MainLast) {
 		switch act.Health {
-		case HealthWaiting, HealthWorking, HealthIdle:
+		case HealthWaiting, HealthDone, HealthWorking, HealthIdle:
 			act.Health = HealthWorking
 			act.Phrase = BackgroundPhrase(opt.LiveSubagents)
 			act.Tool = ""
@@ -523,6 +558,9 @@ func Summarize(events []event.Event, opt Options) Activity {
 	}
 	if opt.SessionEnded {
 		act.Health = HealthEnded
+	}
+	if act.Health != HealthWaiting && act.Health != HealthDone {
+		act.Need = nil
 	}
 	return act
 }
@@ -563,13 +601,15 @@ func applyNudge(act *Activity, last event.Event, lastTool *event.Event, n *Nudge
 		if last.Kind != event.KindPermissionPrompt || last.Tool == "AskUserQuestion" {
 			return
 		}
-		// Claude Code drops the call and returns to its prompt.
+		// Claude Code drops the call and returns to its prompt, asking what
+		// to do instead.
 		act.Phrase, act.Health, act.Tool = "waiting for you", HealthWaiting, ""
+		act.Need = &Need{Reason: NeedAsks, Detail: "question"}
 	case NudgeSubmit:
 		if now.Sub(n.At) >= NudgeWindow || last.Kind == event.KindPermissionPrompt {
 			return
 		}
-		if act.Health != HealthWaiting && act.Health != HealthIdle {
+		if act.Health != HealthWaiting && act.Health != HealthDone && act.Health != HealthIdle {
 			return
 		}
 		act.Phrase, act.Health, act.Tool, act.Provisional = "starting on your message", HealthWorking, "", true

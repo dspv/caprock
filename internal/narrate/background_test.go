@@ -27,7 +27,7 @@ func TestBackgroundSubagentsAreNotWaitingOnYou(t *testing.T) {
 		phrase string
 		bg     int
 	}{
-		{"stop, no subagent: waiting", []event.Event{stop}, Options{}, HealthWaiting, "waiting for you", 0},
+		{"stop, no subagent: done", []event.Event{stop}, Options{}, HealthDone, "done", 0},
 		{"stop last, one subagent working", []event.Event{subPre, stop}, Options{LiveSubagents: 1}, HealthWorking, "background agents working · 1", 1},
 		{"subagent event after the stop", []event.Event{stop, subLater}, Options{LiveSubagents: 2}, HealthWorking, "background agents working · 2", 2},
 		{"quiet past idle: still background", []event.Event{subPre, stop}, Options{LiveSubagents: 1, Now: now.Add(time.Hour)}, HealthWorking, "background agents working · 1", 1},

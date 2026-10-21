@@ -179,6 +179,7 @@ const healthLabel: Record<Health, string> = {
   working: 'working',
   idle: 'idle',
   'waiting-on-you': 'waiting on you',
+  done: 'done',
   looping: 'looping?',
   error: 'error',
   ended: 'ended',
@@ -189,6 +190,7 @@ function healthTone(h: Health): 'ok' | 'warn' | 'danger' | 'muted' {
     case 'working': return 'ok'
     case 'idle': return 'warn'
     case 'waiting-on-you': return 'warn'
+    case 'done': return 'muted'
     case 'looping': return 'danger'
     case 'error': return 'danger'
     case 'ended': return 'muted'

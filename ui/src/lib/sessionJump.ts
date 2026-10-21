@@ -71,7 +71,11 @@ export function atPrompt(s: Pick<SessionSummary, 'status' | 'activity' | 'live_s
   if (s.status === 'ended') return false
   if ((s.live_subagents ?? 0) > 0 || (s.activity?.background ?? 0) > 0) return false
   const h = s.activity?.health ?? 'idle'
-  if (h === 'idle') return true
+  // Done, or a turn that ended asking something or on an error: the prompt
+  // is up, no dialog is (lib/needs.ts).
+  if (h === 'idle' || h === 'done') return true
+  const reason = s.activity?.need?.reason
+  if (h === 'waiting-on-you' && (reason === 'asks' || reason === 'error')) return true
   return h === 'waiting-on-you' && !s.activity?.tool && s.activity?.phrase === AT_PROMPT
 }
 

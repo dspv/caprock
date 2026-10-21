@@ -73,8 +73,8 @@ func TestSummarizeHealthAndRepeats(t *testing.T) {
 	if a := Summarize(evs, Options{Now: base.Add(10 * time.Minute)}); a.Health != HealthIdle {
 		t.Fatalf("idle: %+v", a)
 	}
-	// Waiting on you after a top-level Stop, even much later.
-	evs2 := append(append([]event.Event(nil), evs...), event.Event{Kind: event.KindAgentStop, Ts: base.Add(4 * time.Second)})
+	// Waiting on you after a top-level Stop that asks, even much later.
+	evs2 := append(append([]event.Event(nil), evs...), event.Event{Kind: event.KindAgentStop, Ts: base.Add(4 * time.Second), Payload: json.RawMessage(`{"last_assistant_message":"Which one?"}`)})
 	if a := Summarize(evs2, Options{Now: base.Add(time.Hour)}); a.Health != HealthWaiting || a.Phrase != "waiting for you" {
 		t.Fatalf("waiting: %+v", a)
 	}

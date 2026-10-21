@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/tcc"
 )
 
@@ -214,8 +215,10 @@ type ProjectActivity struct {
 // The caller attributes each key to the project that contains it.
 //
 // Live is a session not ended; waiting is a live one whose newest event is a
-// permission prompt, or a main-thread Stop with no subagent still working
-// (LiveSubagents) — what narrate calls waiting-on-you. Spend is events at or after sinceMs, internal ones left out
+// permission prompt, a main-thread StopFailure, or a main-thread Stop whose
+// last message asks something with no subagent still working
+// (LiveSubagents) — what narrate calls waiting-on-you. A Stop that asks
+// nothing is Done and is not counted (§ Needs you and Done). Spend is events at or after sinceMs, internal ones left out
 // as every total leaves them out.
 func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[string]*ProjectActivity, error) {
 	out := map[string]*ProjectActivity{}
@@ -255,7 +258,10 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 	}
 	rows, err = q.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd) AS d, s.session_id,
-		       (SELECT e.kind || '|' || COALESCE(e.agent_id, '') FROM events e
+		       (SELECT e.kind || '|' || COALESCE(e.agent_id, '') || '|' ||
+		               CASE WHEN e.kind = 'agent.stop' AND json_valid(e.payload)
+		                    THEN COALESCE(json_extract(e.payload, '$.last_assistant_message'), '') ELSE '' END
+		        FROM events e
 		        WHERE e.session_id = s.session_id ORDER BY e.ts DESC, e.id DESC LIMIT 1)
 		FROM sessions s WHERE s.status != 'ended' AND COALESCE(NULLIF(s.repo_root,''), s.cwd, '') != ''`)
 	if err != nil {
@@ -273,12 +279,15 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 			_ = rows.Close()
 			return nil, err
 		}
-		if strings.HasPrefix(last.String, "permission.prompt|") {
+		kind, rest, _ := strings.Cut(last.String, "|")
+		agent, msg, _ := strings.Cut(rest, "|")
+		switch {
+		case kind == "permission.prompt", kind == "throttle" && agent == "":
 			get(d).Waiting++
-			continue
-		}
-		if last.String == "agent.stop|" {
-			stopped = append(stopped, stoppedSession{dir: d, id: id})
+		case kind == "agent.stop" && agent == "":
+			if asks, _, _ := narrate.AsksSomething(msg); asks {
+				stopped = append(stopped, stoppedSession{dir: d, id: id})
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {

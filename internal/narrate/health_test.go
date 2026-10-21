@@ -78,7 +78,12 @@ func TestSummarizeBadgePerLastEvent(t *testing.T) {
 		// the parent is still running. Badging it "waiting-on-you" would put a
 		// call-to-action on a session that needs nothing.
 		{"a subagent stopped", event.Event{Kind: event.KindAgentStop, AgentID: "sub-1", Ts: base}, HealthWorking, "subagent finished"},
-		{"the session stopped", ev(event.KindAgentStop), HealthWaiting, "waiting for you"},
+		// A Stop whose last message asks nothing is Done, not waiting on you
+		// (owner, 2026-10-21); one that asks is.
+		{"the session stopped", ev(event.KindAgentStop), HealthDone, "done"},
+		{"the session stopped on a question", event.Event{Kind: event.KindAgentStop, Ts: base, Payload: json.RawMessage(`{"last_assistant_message":"Merge it?"}`)}, HealthWaiting, "waiting for you"},
+		{"the turn failed", event.Event{Kind: event.KindThrottle, Ts: base, Payload: json.RawMessage(`{"error":"rate_limit"}`)}, HealthWaiting, "stopped: rate limit"},
+		{"a plan to approve", event.Event{Kind: event.KindPermissionPrompt, Tool: "ExitPlanMode", Ts: base}, HealthWaiting, "plan to approve"},
 		// A permission dialog is the session asking the user something, so it
 		// carries the same call to action as a Stop — and says which.
 		{"a permission dialog", ev(event.KindPermissionPrompt), HealthWaiting, "waiting for approval"},
@@ -105,7 +110,7 @@ func TestSummarizeBadgePerLastEvent(t *testing.T) {
 // that has been waiting an hour is the one most in need of the badge.
 func TestWaitingOnYouIsNotDemotedByStaleness(t *testing.T) {
 	base := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	evs := []event.Event{{Kind: event.KindAgentStop, Ts: base}}
+	evs := []event.Event{{Kind: event.KindAgentStop, Ts: base, Payload: json.RawMessage(`{"last_assistant_message":"Ship it?"}`)}}
 	act := Summarize(evs, Options{Now: base.Add(6 * time.Hour), IdleAfter: time.Minute})
 	if act.Health != HealthWaiting {
 		t.Errorf("health = %q after six hours of waiting; want %q", act.Health, HealthWaiting)

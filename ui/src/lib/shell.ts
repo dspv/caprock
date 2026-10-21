@@ -23,7 +23,10 @@ export interface TrayView {
   title: string
   tooltip: string
   lines: string[]
+  /** Needs you: what the badge and the count beside the icon count. */
   waiting: TrayWaiting[]
+  /** Done, nothing needed: a submenu (a shell that predates it ignores it). */
+  done?: TrayWaiting[]
 }
 
 /** The global hotkey as the shell holds it (app/src-tauri/src/hotkey.rs). */

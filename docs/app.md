@@ -1029,14 +1029,20 @@ it: nothing that updates behind the sheet takes it from the field you are in.
   sessions whose turn ended), then what is running with its cost, today's
   spend, and the Claude and Codex 5-hour and 7-day windows with when they
   reset. Click a session to open it in the window; Escape or a click
-  elsewhere closes the panel. A right click shows the menu: the same figures,
-  the sessions waiting on you, *Show Caprock* and *Quit*. On Windows and
+  elsewhere closes the panel. Sessions whose turn ended asking nothing are
+  listed apart under *Done · nothing needed*. A right click shows the menu:
+  the same figures, the sessions that need you (each with why: *permission*,
+  *question*, *plan*, *error*, or *question?* when Caprock guessed it from
+  the last message), a *Done, nothing needed* submenu, *Show Caprock* and
+  *Quit*. On Windows and
   Linux the menu is the whole tray. On macOS the sessions waiting on you
   are named beside the icon (*2 waiting*), and a plan window joins them,
   named, once it is 80% full (*2 waiting · 5h 86%*).
 - **Badge.** The Dock icon (a dot on the Windows taskbar) counts the sessions
-  waiting on you — a permission prompt, or an agent that finished and waits
-  for your answer: the popover's *Needs you* — and clears when none do.
+  that need you — a permission prompt, a question, a plan to approve, a turn
+  that stopped on an error, or a last message that asks you something: the
+  popover's *Needs you* — and clears when none do. A session that finished
+  and asks nothing is *Done* and is never counted.
 - **Global shortcut.** ⌃⌥⌘C on macOS, Win+Alt+C on Windows and Linux, brings
   the window up from any app, and hides it when it is already in front.
   Change it or turn it off in Settings → *Global shortcut*. Wayland does not
@@ -1117,7 +1123,10 @@ Anthropic under your login, the place the session itself already went.
 When an agent stops on a permission prompt, the app shows a notification
 naming the project, the session and what it wants to do: `Bash: go test
 ./...`, the file an edit would change, or the question it asked. Nothing is
-shown for the session you are already looking at.
+shown for the session you are already looking at. A turn that ended on a
+question reads *Needs your answer*, one that failed *Stopped: rate limit*;
+a turn that ended asking nothing is *Done* and shows no notification. One
+switch in Settings, *When a session needs you*, covers them all.
 
 On macOS the notification carries buttons:
 

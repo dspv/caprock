@@ -1,5 +1,7 @@
 //! The menu bar item (macOS) or tray icon (F08): plan limits, today's spend
-//! and the sessions waiting on you, each a click from its session. The page
+//! and the sessions that need you, each a click from its session, with the
+//! ones whose turn ended asking nothing in a "Done" submenu (.ai/04-ui.md
+//! § Needs you and Done). The page
 //! sends what to show (`set_tray`), formatted by the same code as the
 //! dashboard, so the two never disagree; the shell only draws it. On macOS
 //! a left click opens the popover instead (popover.rs) and this menu is the
@@ -10,7 +12,7 @@ use crate::shell::MAIN;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::image::Image;
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Runtime};
 
@@ -19,6 +21,7 @@ const SHOW: &str = "show";
 const QUIT: &str = "quit";
 const CHECK_UPDATES: &str = "check-updates";
 const OPEN: &str = "open:";
+const DONE_MENU: &str = "done-menu";
 const MAX_LINES: usize = 8;
 const MAX_WAITING: usize = 10;
 const MAX_CHARS: usize = 80;
@@ -41,8 +44,12 @@ pub struct View {
     /// Read-only rows: limits, today's spend, connection.
     #[serde(default)]
     pub lines: Vec<String>,
+    /// Needs you: what the badge counts.
     #[serde(default)]
     pub waiting: Vec<Waiting>,
+    /// Done, nothing needed: one level away in a submenu, never counted.
+    #[serde(default)]
+    pub done: Vec<Waiting>,
 }
 
 impl View {
@@ -63,8 +70,10 @@ impl View {
         };
         self.lines.truncate(MAX_LINES);
         self.waiting.truncate(MAX_WAITING);
+        self.done.truncate(MAX_WAITING);
         self.lines.iter_mut().for_each(cut);
         self.waiting.iter_mut().for_each(|w| cut(&mut w.label));
+        self.done.iter_mut().for_each(|w| cut(&mut w.label));
         cut(&mut self.title);
         cut(&mut self.tooltip);
         self
@@ -155,17 +164,18 @@ fn entries(view: &View) -> Vec<Option<(String, String, bool)>> {
     }
     out.push(None);
     if view.waiting.is_empty() {
-        out.push(Some((
-            "none".into(),
-            "Nothing waiting on you".into(),
-            false,
-        )));
+        out.push(Some(("none".into(), "Nothing needs you".into(), false)));
     } else {
-        let head = format!("Waiting on you ({})", view.waiting.len());
+        let head = format!("Needs you ({})", view.waiting.len());
         out.push(Some(("head".into(), head, false)));
         for w in &view.waiting {
             out.push(Some((format!("{OPEN}{}", w.id), w.label.clone(), true)));
         }
+    }
+    if !view.done.is_empty() {
+        // Drawn as a submenu of view.done by menu().
+        let head = format!("Done, nothing needed ({})", view.done.len());
+        out.push(Some((DONE_MENU.into(), head, true)));
     }
     out.push(None);
     out.push(Some((SHOW.into(), "Show Caprock".into(), true)));
@@ -183,6 +193,20 @@ fn menu<R: Runtime>(app: &AppHandle<R>, view: &View) -> tauri::Result<Menu<R>> {
     for e in entries(view) {
         let item: Box<dyn IsMenuItem<R>> = match e {
             None => Box::new(PredefinedMenuItem::separator(app)?),
+            Some((id, text, _)) if id == DONE_MENU => {
+                let sub = Submenu::with_id(app, DONE_MENU, text, true)?;
+                for w in &view.done {
+                    let row = MenuItem::with_id(
+                        app,
+                        format!("{OPEN}{}", w.id),
+                        &w.label,
+                        true,
+                        None::<&str>,
+                    )?;
+                    sub.append(&row)?;
+                }
+                Box::new(sub)
+            }
             Some((id, text, enabled)) => {
                 Box::new(MenuItem::with_id(app, id, text, enabled, None::<&str>)?)
             }
@@ -242,7 +266,7 @@ mod tests {
         };
         let e: Vec<_> = entries(&v).into_iter().flatten().collect();
         assert!(!e[0].2 && !e[1].2, "figures are read-only");
-        assert_eq!(e[2].1, "Waiting on you (2)");
+        assert_eq!(e[2].1, "Needs you (2)");
         assert_eq!((e[3].0.as_str(), e[3].2), ("open:s0", true));
         assert_eq!(e.last().unwrap().0, QUIT);
     }
@@ -250,7 +274,29 @@ mod tests {
     #[test]
     fn nothing_waiting_says_so() {
         let e = entries(&View::default());
-        assert!(e.iter().flatten().any(|x| x.1 == "Nothing waiting on you"));
+        assert!(e.iter().flatten().any(|x| x.1 == "Nothing needs you"));
+    }
+
+    #[test]
+    fn done_is_a_submenu_and_not_counted() {
+        let v = View {
+            waiting: waiting(1),
+            done: waiting(3),
+            ..Default::default()
+        };
+        let e: Vec<_> = entries(&v).into_iter().flatten().collect();
+        assert!(e.iter().any(|x| x.1 == "Needs you (1)"));
+        let d = e.iter().find(|x| x.0 == DONE_MENU).expect("a Done submenu");
+        assert_eq!(d.1, "Done, nothing needed (3)");
+        // Done rows are only inside the submenu, not beside Needs you.
+        assert_eq!(e.iter().filter(|x| x.0.starts_with(OPEN)).count(), 1);
+        let none = View {
+            done: waiting(2),
+            ..Default::default()
+        };
+        let e: Vec<_> = entries(&none).into_iter().flatten().collect();
+        assert!(e.iter().any(|x| x.1 == "Nothing needs you"));
+        assert!(e.iter().any(|x| x.0 == DONE_MENU));
     }
 
     #[test]

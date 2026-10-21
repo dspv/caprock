@@ -121,7 +121,7 @@ describe('folded lines', () => {
     expect(continueCounts([
       s('a', 'waiting-on-you', NOW), s('b', 'working', NOW), s('c', 'looping', NOW), s('d', 'idle', NOW),
       s('e', 'idle', NOW, { status: 'ended' }),
-    ])).toEqual({ waiting: 1, working: 2, idle: 1 })
+    ])).toEqual({ waiting: 1, working: 2, done: 0, idle: 1 })
   })
   it('says how many were saved and the newest, cut short', () => {
     const items = [

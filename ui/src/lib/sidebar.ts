@@ -6,7 +6,7 @@
  */
 import { CHAT_LINGER_MS, isQuickChat, quickChatTitle } from './quickchat'
 import { atPrompt } from './sessionJump'
-import type { SessionSummary } from './api'
+import type { Need, SessionSummary } from './api'
 import { branchLabel, sessionHealth } from './sessionLabels'
 import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } from './projects'
 import { uniqueSuffixes } from './sessionLabels'
@@ -20,7 +20,8 @@ import { idleEndedRecently } from './idleEnd'
  */
 export const OTHER_FOLDERS_ID = 'other-folders'
 
-export type Dot = 'working' | 'waiting' | 'looping' | 'idle' | 'ended'
+/** done: a live session whose turn ended asking nothing (lib/needs.ts). */
+export type Dot = 'working' | 'waiting' | 'done' | 'looping' | 'idle' | 'ended'
 
 export interface SessionNode {
   session: SessionSummary
@@ -73,7 +74,9 @@ export interface InboxItem {
   session: SessionSummary
   projectId: string
   projectName: string
-  reason: 'permission' | 'waiting'
+  reason: 'permission' | 'waiting' | 'done'
+  /** Why it waits, from the daemon (lib/needs.ts); absent for a prompt seen only here. */
+  need?: Need
   title: string
   since: number
   /** Its turn ended more than STALE_MS ago: put down, not waiting. Folded
@@ -103,6 +106,10 @@ export interface SidebarInput {
 export interface SidebarModel {
   projects: ProjectNode[]
   inbox: InboxItem[]
+  /** Live sessions whose turn ended asking nothing (reason 'done'), newest
+   *  first and fresh only: apart from the inbox, so ⌘J, the badge and the
+   *  counts never see them; the tray lists them in a submenu. */
+  done: InboxItem[]
 }
 
 /** The status dot for a session. A pending prompt outranks everything: it is the one thing only you can do. */
@@ -111,6 +118,7 @@ export function dotOf(s: SessionSummary, hasPermission: boolean): Dot {
   switch (sessionHealth(s)) {
     case 'working': return 'working'
     case 'waiting-on-you': return 'waiting'
+    case 'done': return 'done'
     case 'looping':
     case 'error': return 'looping'
     case 'ended': return 'ended'
@@ -186,6 +194,7 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     return best
   }
   const inbox: InboxItem[] = []
+  const done: InboxItem[] = []
   const other: ProjectNode = {
     project: { id: OTHER_FOLDERS_ID, root: '', name: 'Outside projects', kind: 'folder' },
     costToday: 0, waiting: 0, looping: 0, live: 0, agents: 0, working: 0, lastActive: 0, worktrees: [],
@@ -230,10 +239,17 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
         projectId: node.project.id,
         projectName: node.project.name,
         reason: hasPermission ? 'permission' : 'waiting',
+        need: s.activity?.need,
         title: sessionTitle(s),
         since,
         stale,
       })
+    }
+    if (dot === 'done' && !isShell) {
+      const since = ms(s.activity?.at) || s.last_event_at
+      if (now - since <= STALE_MS) {
+        done.push({ session: s, projectId: node.project.id, projectName: node.project.name, reason: 'done', need: s.activity?.need, title: sessionTitle(s), since, stale: false })
+      }
     }
     if (dot === 'looping') node.looping += 1
     if (node === other) {
@@ -326,7 +342,8 @@ export function buildSidebar({ projects, sessions, permissions, costs, openSessi
     Number(b.reason === 'permission') - Number(a.reason === 'permission') ||
     Number(a.stale) - Number(b.stale) ||
     (a.stale ? b.since - a.since : a.since - b.since))
-  return { projects: nodes, inbox }
+  done.sort((a, b) => b.since - a.since)
+  return { projects: nodes, inbox, done }
 }
 
 export interface ProjectGroups {

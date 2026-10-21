@@ -467,6 +467,10 @@ var controllerRoutes = map[string]bool{
 	// label in Caprock's own database, which runs nothing.
 	"PUT /v1/sessions/{id}/name": true,
 
+	// "needs me?" / "not needed" on a guessed turn: a mark in the daemon's
+	// memory, which runs nothing and types nothing.
+	"PUT /v1/sessions/{id}/needs": true,
+
 	// Archive a chat, and delete one (ADR-071, amending ADR-037 for chats
 	// only): a chat is the user's own conversation, started from the phone
 	// as often as not, and kept or thrown away there too. Its session is

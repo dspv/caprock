@@ -87,6 +87,7 @@ import { idleEndedRecently, idleEndedText, idleEndedWord } from '@/lib/idleEnd'
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
   waiting: 'bg-warn app-ring',
+  done: 'border border-fg-faint bg-transparent',
   looping: 'bg-danger',
   idle: 'bg-fg-faint/70',
   ended: 'border border-fg-faint/70 bg-transparent',
@@ -95,6 +96,7 @@ const DOT_CLASS: Record<Dot, string> = {
 const DOT_LABEL: Record<Dot, string> = {
   working: 'working',
   waiting: 'waiting on you',
+  done: 'done, nothing needed',
   looping: 'looping',
   idle: 'idle',
   ended: 'ended',
@@ -108,6 +110,7 @@ export function StatusDot({ dot }: { dot: Dot }) {
 const ROW_DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok app-dot-working',
   waiting: 'bg-warn app-dot-waiting',
+  done: 'border-[1.5px] border-fg-faint bg-transparent',
   looping: 'bg-danger',
   idle: 'bg-fg-faint/60',
   ended: 'border border-fg-faint/70 bg-transparent',
@@ -121,6 +124,7 @@ function RowDot({ dot, asks }: { dot: Dot; asks?: boolean }) {
 const STATE_WORD: Record<Dot, string> = {
   working: 'working',
   waiting: 'waiting',
+  done: 'done',
   looping: 'looping',
   idle: 'idle',
   ended: 'done',
@@ -129,6 +133,7 @@ const STATE_WORD: Record<Dot, string> = {
 const STATE_CLASS: Record<Dot, string> = {
   working: 'text-ok',
   waiting: 'font-semibold text-warn',
+  done: 'text-fg-faint',
   looping: 'text-danger',
   idle: 'text-fg-faint',
   ended: 'text-fg-faint',

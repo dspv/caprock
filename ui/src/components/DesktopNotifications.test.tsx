@@ -1,6 +1,7 @@
 /**
- * The app's notification switches: approval on and finished off until the
- * owner says otherwise, each saved on its own.
+ * The app's notification switch: everything that needs you, on until the
+ * owner says otherwise. A Done turn never notifies, so there is no "has
+ * finished" switch (§ Needs you and Done).
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -25,15 +26,14 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 describe('DesktopNotifications', () => {
-  it('has approval on and finished off by default, and saves one switch at a time', async () => {
+  it('has needs-you on by default, no finished switch, and saves the switch', async () => {
     render(<DesktopNotifications />)
     await waitFor(() => expect(screen.getByText('Desktop notifications')).toBeInTheDocument())
-    const approval = screen.getByLabelText(/waiting for approval/)
-    const finished = screen.getByLabelText(/has finished/)
-    expect(approval).toBeChecked()
-    expect(finished).not.toBeChecked()
-    fireEvent.click(finished)
-    expect(saved.calls).toEqual([{ notify_finished: true }])
-    expect(finished).toBeChecked()
+    const needs = screen.getByLabelText(/needs you/)
+    expect(needs).toBeChecked()
+    expect(screen.queryByLabelText(/has finished/)).toBeNull()
+    fireEvent.click(needs)
+    expect(saved.calls).toEqual([{ notify_approval: false }])
+    expect(needs).not.toBeChecked()
   })
 })

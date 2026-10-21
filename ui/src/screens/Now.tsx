@@ -44,6 +44,8 @@ import { rememberedQuickChoice } from '@/components/QuickChat'
 import { LivePace, NOW_LIVE_MS, SLOW_LIVE_MS } from '@/lib/refresh'
 import { useNarrowScreen } from '@/lib/phone'
 import { EndableRow, useEndedHere } from '@/components/PhoneEnd'
+import { NeedChip, NeedMove } from '@/components/NeedChip'
+import { isDone, needsYou, oldestFirst } from '@/lib/needs'
 
 /** How recently a session must have spoken to belong on the Now screen.
  *
@@ -170,7 +172,12 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   // A /clear or a fork is a new session id in the same conversation; its
   // earlier parts ride on the latest one instead of each being a card (FB-039).
   const { shown, earlier } = foldChains(list)
-  const working = shown.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error' || s.activity.health === 'waiting-on-you')
+  // Needs you, oldest first, then the work in progress; a Done turn asks
+  // nothing and goes below them, quieter (§ Needs you and Done).
+  const needs = oldestFirst(shown.filter((s) => needsYou(s)))
+  const busy = shown.filter((s) => s.activity.health === 'working' || s.activity.health === 'looping' || s.activity.health === 'error')
+  const working = [...needs, ...busy]
+  const done = shown.filter((s) => isDone(s) && recentEnough(s, now))
   // "Now" is a screen about now. A session that has not made a sound in two
   // days is history, whatever its status column says — and status alone is not
   // enough to tell them apart, because an observed agent's sessions are read
@@ -180,7 +187,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   //
   // Anything working shows regardless of age: a long-running agent that has
   // been quiet while it thinks is exactly what this screen is for.
-  const rest = shown.filter((s) => !working.includes(s) && s.status !== 'ended' && recentEnough(s, now))
+  const rest = shown.filter((s) => !working.includes(s) && !done.includes(s) && s.status !== 'ended' && recentEnough(s, now))
   const ended = shown.filter((s) => s.status === 'ended')
   const [plan, savePlan] = usePlan()
   const attention = findAttention({ sessions: list, alerts, now, limits: summary.data?.rate_limits, windowStop: windowStop.data })
@@ -217,7 +224,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * (owner, 2026-10-19: the projects list there showed long-unused ones). */}
       {!inApp && !phone && <BrowserProjects />}
       {/* First on a phone: what someone opens Caprock there for. */}
-      {phone && !inApp && <PhoneSessions sessions={[...working, ...rest]} now={now} canControl={canControl} />}
+      {phone && !inApp && <PhoneSessions sessions={[...working, ...done, ...rest]} now={now} canControl={canControl} />}
       {/* Installing hooks is done on the machine; on a phone the button would only answer 403. */}
       {status.data?.hooks && !isPairedDevice() && <HooksBanner missing={status.data?.hooks?.missing ?? []} settingsPath={status.data?.hooks?.settings_path ?? ''} partial={(status.data?.hooks?.installed?.length ?? 0) > 0} />}
       {/* Only sessions Caprock spawned end with the daemon; the ones the user
@@ -459,7 +466,9 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       {!inApp && (<>
       <SessionGrid
         groups={[
-          { label: 'Active', items: working },
+          { label: 'Needs you', items: needs },
+          { label: 'Active', items: busy },
+          { label: 'Done · nothing needed', items: done, dim: true },
           { label: 'Idle', items: rest, dim: true },
           ...(showEnded
             ? [{
@@ -468,7 +477,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
                 dim: true,
                 // The cap applies to the whole list, and the ended sessions are
                 // what fills it — the live ones are a handful.
-                total: sessionTotal - working.length - rest.length,
+                total: sessionTotal - working.length - done.length - rest.length,
               }]
             : []),
         ]}
@@ -625,7 +634,7 @@ function PhoneSessions({ sessions, now, canControl }: { sessions: SessionSummary
       <div className="px-0.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">Sessions · tap to chat</div>
       <ul className="grid overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
         {rows.map((s) => {
-          const waiting = s.status !== 'ended' && s.activity?.health === 'waiting-on-you'
+          const waiting = needsYou(s)
           const typable = s.owned && s.status !== 'ended' && !s.detached
           // Go's zero time is what a session with no event yet reports.
           const at = [s.activity.at, s.last_event_at, s.started_at].find((t) => t && !String(t).startsWith('0001-'))
@@ -643,8 +652,9 @@ function PhoneSessions({ sessions, now, canControl }: { sessions: SessionSummary
                     {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} />}
                     {!typable && s.status !== 'ended' && <span className="shrink-0 text-[11px] text-fg-faint">read only</span>}
                   </span>
-                  <span className={`block truncate text-[13px] ${waiting ? 'text-warn' : 'text-fg-muted'}`}>
-                    {waiting ? 'waiting for you' : s.description || s.activity.phrase}
+                  <span className={`flex min-w-0 items-center gap-1.5 truncate text-[13px] ${waiting ? 'text-warn' : 'text-fg-muted'}`}>
+                    {waiting || isDone(s) ? <NeedChip need={s.activity.need} small /> : null}
+                    <span className="min-w-0 truncate">{waiting ? (s.activity.need ? '' : 'waiting for you') : s.description || s.activity.phrase}</span>
                     {at && <span className="ml-2 text-[11px] text-fg-faint num">{fmtAgo(at, now)}</span>}
                   </span>
                 </span>
@@ -726,6 +736,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
   // A session waiting on you is the one case where the terminal is the only
   // place the answer lives — and the text is already here.
   const waiting = s.activity?.health === 'waiting-on-you'
+  const need = s.status !== 'ended' && (waiting || s.activity?.health === 'done') ? s.activity.need : undefined
   return (
     <a href={href({ name: 'session', id: s.session_id })} className="block border border-border bg-panel rounded-[var(--radius-panel)] hover:border-border-strong no-underline hover:no-underline text-fg">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
@@ -734,6 +745,8 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} />}
         {branchLabel(s.git_branch) && <span className="mono text-[11px] text-fg-muted truncate">{branchLabel(s.git_branch)}</span>}
         <span className="ml-auto flex items-center gap-2">
+          {need && <NeedChip need={need} small />}
+          <NeedMove s={s} />
           {waiting && (
             <button
               className="text-[11px] border border-warn/50 text-warn bg-warn/10 px-1.5 py-0.5 rounded-sm hover:bg-warn/20"
@@ -795,8 +808,12 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
           )}
         </div>
       ) : (
-        <div className="px-3 pb-2 text-[13px] truncate" title={s.activity.phrase}>
-          <span className={s.activity.health === 'working' ? 'text-fg' : 'text-fg-muted'}>{s.activity.phrase}</span>
+        <div className="px-3 pb-2 text-[13px] truncate" title={need?.text || s.activity.phrase}>
+          {/* A turn that ended says the line it ended on — the question, or
+            * the last thing it reported — rather than "waiting for you". */}
+          {need?.text
+            ? <span className="italic text-fg-muted">“{need.text}”</span>
+            : <span className={s.activity.health === 'working' ? 'text-fg' : 'text-fg-muted'}>{s.activity.phrase}</span>}
           <span className="text-fg-faint num text-[11px] ml-2">{fmtAgo(s.activity.at || s.last_event_at, now)}</span>
         </div>
       )}

@@ -18,6 +18,7 @@ import { sessionTitle } from '@/lib/sidebar'
 import { PremiumHint } from './PremiumHint'
 import { LoopAlertCard } from './LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
+import { NeedChip } from './NeedChip'
 
 export function Attention({ items, now, onDismiss, sessions }: {
   items: AttentionItem[]
@@ -98,6 +99,7 @@ function Row({ it, now, session }: {
       <span className={`font-medium text-[13px] shrink-0 ${high ? 'text-danger' : 'text-warn'}`}>
         {it.title}
       </span>
+      {it.need && <NeedChip need={it.need} small />}
       <span className="min-w-0 text-[12px] text-fg-muted truncate">
         {/* Not every item is about a session. A plan window is about the whole
           * account, and linking it to `#/session/` with an empty id produced a

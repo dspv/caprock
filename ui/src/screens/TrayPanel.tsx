@@ -19,6 +19,7 @@ import { CaprockMark } from '@/components/AppIcons'
 import { AgentGlyph } from '@/components/AgentMarks'
 import { ConnectionState } from '@/components/ConnectionState'
 import { StatusDot, fmtCostShort } from '@/components/ProjectRow'
+import { NeedChip } from '@/components/NeedChip'
 import { dotOf } from '@/lib/sidebar'
 import { applySavedThemeMode } from '@/lib/theme'
 import { MODE_KEY, THEME_KEY } from '@/lib/themes'
@@ -131,6 +132,14 @@ export function PopoverView() {
           </Section>
         )}
 
+        {/* A turn that ended asking nothing: listed, quieter, never counted
+          * (§ Needs you and Done). */}
+        {model.done.length > 0 && (
+          <Section title="Done · nothing needed" count={model.done.length}>
+            {model.done.map((r) => <SessionLine key={r.session.session_id} row={r} done />)}
+          </Section>
+        )}
+
         {model.live.length > 0 && (
           <Section title="Running" count={model.live.length + model.moreLive}>
             {model.live.map((r) => <SessionLine key={r.session.session_id} row={r} />)}
@@ -208,9 +217,12 @@ function Calm({ working }: { working: number }) {
   )
 }
 
-function SessionLine({ row, waiting = false }: { row: SessionRow; waiting?: boolean }) {
+function SessionLine({ row, waiting = false, done = false }: { row: SessionRow; waiting?: boolean; done?: boolean }) {
   const dot = waiting ? 'waiting' : dotOf(row.session, false)
-  const what = waiting ? 'your turn' : row.phrase || row.title
+  const said = row.need?.text ? `“${row.need.text}”` : ''
+  // What it asked or said last; a dialog without words says what it is
+  // waiting on ("waiting for approval — running …").
+  const what = waiting ? said || (row.need ? row.phrase : '') || 'your turn' : done ? said || 'done' : row.phrase || row.title
   return (
     <button
       type="button"
@@ -222,11 +234,14 @@ function SessionLine({ row, waiting = false }: { row: SessionRow; waiting?: bool
       <StatusDot dot={dot} />
       <AgentGlyph agent={row.session.agent} />
       <span className="min-w-0">
-        <span className="block truncate text-[12.5px] text-fg">
-          <span className="font-medium">{row.project}</span>
-          <span className="text-fg-muted"> · {row.title}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-fg">
+          <span className="min-w-0 truncate">
+            <span className={done ? 'font-medium text-fg-muted' : 'font-medium'}>{row.project}</span>
+            <span className="text-fg-muted"> · {row.title}</span>
+          </span>
+          {waiting && <NeedChip need={row.need} small />}
         </span>
-        <span className={`block truncate text-[11.5px] ${waiting ? 'text-accent' : 'text-fg-muted'}`}>{what}</span>
+        <span className={`block truncate text-[11.5px] ${waiting ? 'text-accent' : done ? 'text-fg-faint' : 'text-fg-muted'}`}>{what}</span>
       </span>
       <span className="num flex flex-col items-end text-[11px] leading-[1.35] text-fg-muted">
         <span>{row.elapsed}</span>

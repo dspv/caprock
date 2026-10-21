@@ -17,7 +17,7 @@ func TestANudgeMovesTheStatusUntilTheNextEvent(t *testing.T) {
 	prompt := event.Event{Ts: at.Add(-time.Minute), Kind: event.KindPermissionPrompt, Tool: "Bash",
 		Payload: json.RawMessage(`{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}`)}
 	question := event.Event{Ts: at.Add(-time.Minute), Kind: event.KindPermissionPrompt, Tool: "AskUserQuestion"}
-	stop := event.Event{Ts: at.Add(-time.Minute), Kind: event.KindAgentStop}
+	stop := event.Event{Ts: at.Add(-time.Minute), Kind: event.KindAgentStop, Payload: json.RawMessage(`{"last_assistant_message":"Merge it?"}`)}
 	cleared := event.Event{Ts: at.Add(-time.Minute), Kind: event.KindContextClear}
 	toolPre := event.Event{Ts: at.Add(-time.Minute), Kind: event.KindToolPre, Tool: "Read"}
 	for _, tc := range []struct {
