@@ -12,6 +12,17 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.144.0] - 2026-10-21
+
+### Added
+
+- **modules:** a private module opens on a paired phone the owner made a
+  controller, over Wi-Fi or from anywhere: listed in the phone's menu and the
+  header, drawn in the app's theme, with its own files and document store.
+  It runs in a sandboxed frame that reaches only that module's files and
+  store; a phone that only views sees no module, and the admin key and
+  installing a module stay on the computer.
+
 ## [0.143.0] - 2026-10-21
 
 ### Added

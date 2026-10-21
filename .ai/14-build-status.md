@@ -427,6 +427,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-21 — 0.144.0: private modules on a paired controller phone
+
+A minor release, one PR (#783). A private module (ADR-076) now opens on a paired phone the owner made a controller, over Wi-Fi or through the relay: the dashboard fetches the module's files itself and runs them in a sandboxed frame whose `fetch()` and images it forwards, only to that module's own files and store. A viewer phone gets nothing of modules; the admin key and installing stay on the machine.
+
 ### 2026-10-21 — 0.143.0: idle chats end, one-job agents end when done
 
 A minor release, one batch PR (#781). An agent session Caprock started that no tab shows is ended after 12 hours with nothing typed, drawn or waiting (Settings → New sessions → End idle chats after: 2 h, 12 h, 24 h or Never); its conversation stays in the lists and continues from where it stopped. `POST /v1/agents` takes `end_when_done`, which ends a one-job Claude Code or Codex session once its turn finishes and nothing waits on it; on the owner's machine a script's Codex runs had left 27 idle sessions holding about 2 GB. The release workflow restores a Rust build cache warmed on master.
