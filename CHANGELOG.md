@@ -12,6 +12,60 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.145.0] - 2026-10-21
+
+### Added
+
+- **app:** Phone mode for a browser tab (beta, with the in-app browser on):
+  *Phone* on the tab's toolbar, or ⌥⌘R (Ctrl+Alt+Shift+D on Windows and
+  Linux), shows the page at iPhone 16, iPhone SE (3rd gen), Pixel 9, Galaxy
+  S24 or a custom size inside a simple device frame. The page itself is
+  resized to the phone's page area, so media queries and `innerHeight` read
+  the phone's numbers, and it gets the phone browser's user agent. Rotate,
+  browser bars shown or scrolled away, and *Touch*, which turns the mouse
+  into a finger (drag to scroll with momentum, swipe, pull a sheet). Page
+  heights marked *est.* are estimates of the bars; the **?** lists per
+  system what is real, approximate or not emulated.
+
+### Changed
+
+- **ui:** The phone home is shorter and says more at a glance. *New chat* is a
+  filled button in the Chats row. Continue, Releases and Saved fold from their
+  headers (Continue open, the other two folded at first), and a folded section
+  keeps one line: how many sessions wait, work and sit idle; the repository and
+  its next release, with a pull request whose CI failed said first in red; how
+  many notes were saved and the newest. The phone remembers the folds. A new
+  *Limits* line shows the 5-hour window with its reset and the weekly one,
+  amber from 80% and red from 95% (Codex's when Claude Code has none), and
+  opens Cost at its plan limits. A live Continue row says its context used and
+  its subagents at work.
+- **api:** `GET /v1/stats/limits` answers the plan windows alone
+  (`rate_limits`, `codex_rate_limits`), as the summary carries them, so the
+  phone reads two percentages without the whole summary. A paired device may
+  read it.
+
+### Fixed
+
+- **ui:** links in a chat can be tapped, on the phone too. A bare
+  `https://…` address in an agent's reply was plain text; now every http(s)
+  address in a reply, a prompt, the Answers tab and the last-word popover is
+  a link that opens in a new tab (in the desktop app, your browser), with a
+  sentence's trailing punctuation left out and a long address wrapping
+  instead of widening the screen. Other schemes stay text.
+- **remote:** a phone that loses its network no longer offers *Pair again*.
+  It says *No internet on this phone* at once, large and full width, with
+  the next try's countdown, and reconnects by itself when the network is
+  back, keeping the last screen dimmed underneath. A relay that cannot be
+  reached and a computer that is not answering each get their own words;
+  *Pair again* shows only when the computer removed the phone or its keys
+  changed.
+- **api:** Claude Code's footer no longer loses characters after you switch
+  tabs or apps or reconnect: no more status line of lone digits or mode line
+  with its words gone. The repaint that redraws a reattached terminal now waits
+  for the session to draw at the narrower size before restoring its width. A
+  busy Claude Code used to get both size changes as one and redraw nothing. A
+  terminal that falls behind mid-session is now repainted too.
+
 ## [0.144.0] - 2026-10-21
 
 ### Added

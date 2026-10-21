@@ -76,6 +76,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-21 — 0.145.0: phone mode for browser tabs, a clearer phone
+
+A minor release, one batch PR (#785). An in-app browser tab can show its page at a phone's size (iPhone 16, iPhone SE, Pixel 9, Galaxy S24 or custom) with that phone's user agent, rotation, bars and touch, behind Settings → In-app browser. The phone home folds its sections, keeps New chat filled, and shows a Limits line from the new `GET /v1/stats/limits`. A phone that loses its network says so in large type and reconnects by itself; Pair again shows only when the phone was removed. Every http(s) link in a chat is tappable, and a terminal attached at a narrower size waits for the program to redraw before its repaint, so glyphs no longer go missing.
+
 ### 2026-10-21 — unreleased: idle untabbed sessions end by themselves
 
 What `end_when_done` left open: nothing ended a session Caprock started that
