@@ -12,6 +12,45 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.147.0] - 2026-10-22
+
+### Added
+
+- **modules:** a private module can message its owner. `POST
+  /v1/x/<id>/telegram` sends to the owner's own paired chat through the
+  existing Caprock bot, its first line naming the module, with optional
+  buttons or a reply field; a press or a reply is written back into the
+  module's store (`telegram/<message_id>-<n>`) and never reaches a session.
+  `POST /v1/x/<id>/notify` shows a desktop notification from the Caprock app,
+  titled with the module's name, that opens the module when clicked.
+
+### Fixed
+
+- **ui:** a folded inspector section no longer runs past the panel's edge.
+  The Changes row read *511 files +35244 −7781 Review and co*, cut mid-word;
+  now each row's summary shortens to fit: the counts compacted (*+35.3k
+  −7.8k*), *Review* for *Review and commit*, then fewer parts, and nothing
+  rather than half a word. The same holds for Subagents and Processes.
+- **ui:** the Subagents cost says *total*: *1 finished $2,549.54* was every
+  subagent's cost over the whole session beside the count of those that
+  finished in the last half hour, and read as one subagent's.
+- **mail:** *Import everything* no longer hides Apple Mail when macOS keeps
+  Caprock out of its account list. iCloud, Google and Exchange accounts in
+  Apple Mail were silently missing because the list sits behind Full Disk
+  Access, which macOS never asks for. The screen now says *Caprock can't read
+  Apple Mail's account list*, with *Open Full Disk Access* (opens that list in
+  System Settings and shows Caprock's program in Finder) and *Add iCloud with
+  an app password instead*. Adding iCloud now walks through getting an
+  app-specific password in three short steps, with a button that opens
+  account.apple.com and one field for the code. An iCloud account found in
+  Apple Mail is marked *Needs an app password*.
+- **telegram:** saving a new bot token, or pairing a new chat, no longer
+  leaves the old *Last alert failed* under Settings → Telegram until a test
+  is sent. The old outcome is forgotten at once and the line reads *Saved.
+  Send a test alert to check it reaches you.* With no alert switched on, the
+  section now says the bot is idle: nothing is sent and its messages are not
+  read.
+
 ## [0.146.0] - 2026-10-22
 
 ### Added

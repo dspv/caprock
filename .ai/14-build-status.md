@@ -77,6 +77,10 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-22 — 0.147.0: modules on Telegram, a clear Telegram status, Apple Mail import
+
+A minor release, one batch PR (#790). A module can send a message through the owner's paired Telegram bot, with buttons and replies written to its own store (`POST /v1/x/<id>/telegram`), and show a Caprock notification that opens it (`POST /v1/x/<id>/notify`); ADR-076 is amended. Saving a bot token clears the last alert failure and says to send a test alert, and an idle bot explains that it reads nothing. Mail's import says plainly when macOS keeps Apple Mail's account list from Caprock (Full Disk Access) and offers iCloud through a guided app-specific password. The inspector's folded rows shorten instead of clipping mid-word, and the Codex race tests no longer time out.
+
 ### 2026-10-22 — 0.146.0: needs you or done, memories moving, /clear keeps the tab
 
 A minor release, one batch PR (#788). A session whose turn ended is now Needs you (a permission prompt, a question, a plan to approve, a stop on an error, or a last message that asks, marked as a guess) or Done, and Home, the sidebar, the tray, notifications and the phone follow it; a guess can be corrected with "needs me?". Second Brain shows memories moving: one silver-thread wisp per read and per handoff, throttled and only on real events, and the faces on its card are the agents read in the last 24 hours with their counts. After `/clear` an open tab follows the session that continues it, with the earlier part above a divider. ADR-083 records the native iOS app direction.
