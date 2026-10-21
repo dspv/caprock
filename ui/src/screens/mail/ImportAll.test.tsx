@@ -6,7 +6,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { day, fresh, ImportAll, notSetUp, STALE_MS } from './ImportAll'
+import { day, FDA_HELP, fresh, ImportAll, notSetUp, STALE_MS } from './ImportAll'
 import { connected, finished, plan, step, type Flow } from './importFlow'
 import { api, type FoundAccount, type ImportScan, type State } from './mailApi'
 
@@ -102,7 +102,7 @@ describe('Import everything', () => {
     expect(await screen.findByText('me@gmail.com')).toBeTruthy()
     expect(screen.getByText('Password saved')).toBeTruthy()
     expect(screen.getByText('Sign in with Google')).toBeTruthy()
-    expect(screen.getByText('App-specific password')).toBeTruthy()
+    expect(screen.getByText('Needs an app password')).toBeTruthy()
     // Each source says where it came from; an account says nothing else.
     expect(screen.getByText(/profile last used 1 Oct 2026/)).toBeTruthy()
     expect(screen.getByText(/account list last changed 2 Oct 2026/)).toBeTruthy()
@@ -124,8 +124,9 @@ describe('Import everything', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1600) })
     expect(flowStatus).toHaveBeenCalledWith('f1')
 
-    // iCloud: an app-specific password, with where to make it.
-    expect(await screen.findByText('appleid.apple.com')).toBeTruthy()
+    // iCloud: an app-specific password, with the three steps and the button to Apple's page.
+    expect(await screen.findByText('Open account.apple.com')).toBeTruthy()
+    expect(screen.getByText(/App-Specific Passwords → \+, and name it Caprock/)).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Password for me@icloud.com'), { target: { value: 'abcd-efgh-ijkl-mnop' } })
     await act(async () => { fireEvent.click(screen.getByText('Connect')) })
     expect(imp).toHaveBeenLastCalledWith('apple_mail', ['me@icloud.com'], { 'me@icloud.com': 'abcd-efgh-ijkl-mnop' })
@@ -180,7 +181,7 @@ describe('Import everything', () => {
     expect(start).not.toHaveBeenCalled()
   })
 
-  it('never shows a source it could not read, and leaves a long-unused profile unticked', async () => {
+  it('lists no account from a source it could not read, and leaves a long-unused profile unticked', async () => {
     const old = Date.now() - STALE_MS - 86400000
     vi.spyOn(api, 'importScan').mockResolvedValue(scan({
       sources: [
@@ -191,8 +192,7 @@ describe('Import everything', () => {
     }))
     render(<ImportAll onDone={() => {}} />)
     expect(await screen.findByText('me@example.org')).toBeTruthy()
-    expect(screen.queryByText(/Apple Mail/)).toBeNull()
-    expect(screen.queryByText(/Full Disk Access/)).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Accounts in Apple Mail' })).toBeNull()
     expect(screen.queryByText('Retry')).toBeNull()
     expect(screen.getByText(new RegExp('profile last used ' + day(old)))).toBeTruthy()
     expect((screen.getByLabelText('Import me@example.org') as HTMLInputElement).checked).toBe(false)
@@ -202,13 +202,30 @@ describe('Import everything', () => {
   })
 
   it('says so when nothing readable was found', async () => {
-    vi.spyOn(api, 'importScan').mockResolvedValue(scan({
-      sources: [{ kind: 'apple_mail', label: 'Apple Mail', accounts: [], needs_permission: 'full_disk_access' }],
-      accounts: [],
-    }))
+    vi.spyOn(api, 'importScan').mockResolvedValue(scan({ sources: [], accounts: [] }))
     render(<ImportAll onDone={() => {}} />)
     expect(await screen.findByText(/No mail app on this computer has accounts Caprock can read/)).toBeTruthy()
-    expect(screen.queryByText(/Apple Mail/)).toBeNull()
+  })
+
+  // Owner, 2026-10-22: his iCloud account in Apple Mail was not listed and
+  // nothing said why — the daemon had no Full Disk Access.
+  it('says plainly when Apple Mail needs Full Disk Access, opens the setting, and offers iCloud by hand', async () => {
+    vi.spyOn(api, 'importScan').mockResolvedValue(scan({
+      sources: [{ kind: 'apple_mail', label: 'Apple Mail', accounts: [], needs_permission: 'full_disk_access', program: '/Apps/caprock' }],
+      accounts: [],
+    }))
+    const grant = vi.spyOn(api, 'importGrant').mockResolvedValue({ program: '/Apps/caprock' })
+    render(<ImportAll onDone={() => {}} />)
+    expect(await screen.findByText(FDA_HELP)).toBeTruthy()
+    expect(FDA_HELP).toBe("Caprock can't read Apple Mail's account list. To allow it: System Settings → Privacy & Security → Full Disk Access → Caprock.")
+    expect(screen.queryByText(/No mail app on this computer/)).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Open Full Disk Access' })) })
+    expect(grant).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('/Apps/caprock')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Add iCloud with an app password instead' }))
+    expect(screen.getByRole('heading', { name: 'iCloud' })).toBeTruthy()
+    expect(screen.getByText('Open account.apple.com')).toBeTruthy()
+    expect(screen.getByText('App-specific password')).toBeTruthy()
   })
 
   it('ticks a profile used in the last 90 days', () => {

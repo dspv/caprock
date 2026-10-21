@@ -65,7 +65,7 @@ describe('mail first run', () => {
     await act(async () => { fireEvent.click(screen.getByText('iCloud')) })
     expect(sample).toHaveBeenLastCalledWith(false)
     // Straight to iCloud's form, not the tiles.
-    expect(await screen.findByText(/Apple has no sign-in for other mail apps/)).toBeTruthy()
+    expect(await screen.findByText(/not your Apple Account password/)).toBeTruthy()
     // Cancel reaches the tiles, every provider on them.
     fireEvent.click(screen.getByText('Cancel'))
     expect(await screen.findByText('Fastmail')).toBeTruthy()
@@ -118,7 +118,7 @@ describe('mail first run', () => {
     render(<AddFlow onDone={() => {}} />)
     await act(async () => {})
     fireEvent.click(screen.getByText('iCloud'))
-    expect(screen.getByText(/Apple has no sign-in for other mail apps/)).toBeTruthy()
+    expect(screen.getByText(/not your Apple Account password/)).toBeTruthy()
     expect(screen.getByText('App-specific password')).toBeTruthy()
   })
 

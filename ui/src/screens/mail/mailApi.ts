@@ -144,6 +144,8 @@ export type ImportSource = {
   label: string
   accounts: ImportAccount[]
   needs_permission?: string
+  /** With needs_permission: the file to allow in Full Disk Access (the daemon's own). */
+  program?: string
   error?: string
   /** The newest last_used of its accounts (unix ms). */
   last_used?: number
@@ -267,6 +269,8 @@ export const api = {
     .then((r) => ({ sources: (r.sources ?? []).map((x) => ({ ...x, accounts: x.accounts ?? [] })) })),
   importAccounts: (source: string, emails: string[], passwords?: Record<string, string>) =>
     req<{ results: ImportResult[] }>('POST', '/v1/mail/import', { source, emails, passwords }),
+  /** macOS: open Full Disk Access in System Settings and show Caprock's file in Finder. */
+  importGrant: () => req<{ program: string }>('POST', '/v1/mail/import/grant'),
   /** The same scan with every account merged across mail apps and the step each needs. */
   importScan: () => req<Partial<ImportScan>>('GET', '/v1/mail/import').then((r): ImportScan => {
     const sources = (r.sources ?? []).map((x) => ({ ...x, accounts: x.accounts ?? [] }))

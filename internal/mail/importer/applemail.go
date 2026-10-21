@@ -39,7 +39,7 @@ func appleMail(home string) *Source {
 		f.Close()
 	case errors.Is(err, fs.ErrPermission):
 		src.NeedsPermission = "full_disk_access"
-		src.Error = "grant Caprock Full Disk Access in System Settings › Privacy & Security, then reopen Mail"
+		src.Error = FullDiskAccessHelp
 		return src
 	case errors.Is(err, fs.ErrNotExist):
 		// Fall through to the legacy plist store below.
@@ -67,6 +67,13 @@ func appleMail(home string) *Source {
 	src.Accounts = accts
 	return src
 }
+
+// FullDiskAccessHelp is what the import screen says when Apple Mail's account
+// list cannot be read. macOS guards ~/Library/Accounts with Full Disk Access,
+// which a launchd daemon does not have until the user ticks it, and the open
+// fails with EPERM; no prompt is ever shown, so without these words the
+// source looked empty (owner, 2026-10-22: his iCloud account was not listed).
+const FullDiskAccessHelp = "Caprock can't read Apple Mail's account list. To allow it: System Settings → Privacy & Security → Full Disk Access → Caprock."
 
 // readAccounts4 reads IMAP accounts (and their paired SMTP settings) from
 // Accounts4.sqlite, and the Google, iCloud and Exchange accounts added in

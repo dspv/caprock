@@ -51,6 +51,10 @@ type Source struct {
 	// NeedsPermission names an OS permission Caprock must be granted before it
 	// can read this source at all (e.g. "full_disk_access" for Apple Mail).
 	NeedsPermission string `json:"needs_permission,omitempty"`
+	// Program is the file to allow in Full Disk Access when NeedsPermission is
+	// set: the daemon's own executable, which is what macOS checks. The HTTP
+	// handler fills it; the importer does not know which binary it runs in.
+	Program string `json:"program,omitempty"`
 	// Error is a human-readable reason this source could not be fully read.
 	Error string `json:"error,omitempty"`
 	// LastUsed is the newest LastUsed of its accounts (unix ms).

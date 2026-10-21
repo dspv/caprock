@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FoundAccount, ImportScan, OAuthProviders, Signin } from './mailApi'
+import type { FoundAccount, ImportScan, ImportSource, OAuthProviders, Signin } from './mailApi'
 import { api } from './mailApi'
 import { connected, finished, plan, step, type Flow, type FlowEvent, type Row } from './importFlow'
 import { Icon } from './icons'
 import { openExternal } from '@/lib/nudges'
 import { extTitle } from '@/lib/externalLinks'
+import { ICloudSteps } from './ICloudSteps'
+import { AddAccount } from './Setup'
+import { PROVIDERS } from './Onboarding'
 
 // "Import everything" (owner, 2026-10-14, translated): Caprock finds every
 // mail account on the computer, the user ticks them and presses Import, and
@@ -34,7 +37,7 @@ const usedLabel = (kind: string) => (kind === 'apple_mail' ? 'account list last 
 /** Where an app password is made, and the one line of how. */
 export const APP_PASSWORD: Record<string, { url: string; label: string; how: string; kind: string }> = {
   icloud: {
-    url: 'https://appleid.apple.com/account/manage', label: 'appleid.apple.com', kind: 'an app-specific password',
+    url: 'https://account.apple.com', label: 'account.apple.com', kind: 'an app-specific password',
     how: 'Sign in, open Sign-In and Security → App-Specific Passwords, press +, name it Caprock and paste the password it shows. Not your Apple Account password.',
   },
   google: {
@@ -65,7 +68,7 @@ export function needLabel(need: Signin, provider: string): string {
   switch (need) {
     case 'ready': return 'Password saved'
     case 'oauth': return `Sign in with ${PROVIDER_NAME[provider] ?? provider}`
-    case 'app_password': return provider === 'icloud' ? 'App-specific password' : 'App password'
+    case 'app_password': return provider === 'icloud' ? 'Needs an app password' : 'App password'
     default: return 'Password'
   }
 }
@@ -83,6 +86,7 @@ export function ImportAll({ onDone, onBack, onBusy }: {
   const [picked, setPicked] = useState<Record<string, boolean>>({})
   const [flow, setFlow] = useState<Flow | null>(null)
   const [err, setErr] = useState('')
+  const [byHand, setByHand] = useState(false)
   const scanning = useRef(false)
   const dispatch = useCallback((e: FlowEvent) => setFlow((f) => (f ? step(f, e) : f)), [])
 
@@ -133,10 +137,17 @@ export function ImportAll({ onDone, onBack, onBusy }: {
   }, [auto, connect])
 
   if (!scan) return <p className="muted"><span className="pulse" /> Looking for mail accounts on this computer…</p>
+  if (byHand) {
+    const icloud = PROVIDERS.find((p) => p.id === 'icloud')
+    return <AddAccount provider={icloud} onDone={onDone} onCancel={() => setByHand(false)} />
+  }
 
-  // Only what can be read is shown: a source with no readable account is
-  // simply not there (owner, 2026-10-14, translated: "don't even show me
-  // this; the Apple integration is unclear, not concrete about what to do").
+  // Only what can be read is listed (owner, 2026-10-14, translated: "don't
+  // even show me this; the Apple integration is unclear, not concrete about
+  // what to do"). The one exception is Apple Mail without Full Disk Access:
+  // hidden, it read as "no iCloud account here" (owner, 2026-10-22), so it
+  // says why, and what to press, in one box.
+  const blocked = scan.sources.find((s) => s.needs_permission === 'full_disk_access' && s.accounts.length === 0)
   const groups = scan.sources
     .map((s) => ({ s, accounts: scan.accounts.filter((a) => a.source === s.kind) }))
     .filter((g) => g.accounts.length > 0)
@@ -152,7 +163,8 @@ export function ImportAll({ onDone, onBack, onBusy }: {
       <>
         <h2>Import everything</h2>
         <p className="muted">Mail accounts found in the mail apps on this computer. Tick the ones to bring over; each then needs at most one sign-in, one at a time.</p>
-        {groups.length === 0 && <div className="hint">No mail app on this computer has accounts Caprock can read. Add one by hand instead.</div>}
+        {blocked && <FullDiskAccess source={blocked} onICloud={() => setByHand(true)} />}
+        {groups.length === 0 && !blocked && <div className="hint">No mail app on this computer has accounts Caprock can read. Add one by hand instead.</div>}
         {groups.map(({ s, accounts }) => (
           <div key={s.kind} className="srcgroup">
             <div className="srchead"><b>{s.label}</b>{s.last_used ? <span className="muted"> · {usedLabel(s.kind)} {day(s.last_used)}</span> : null}</div>
@@ -262,14 +274,15 @@ function ActiveStep({ r, oauth, dispatch, connect, others }: {
     <form className="stepbox" onSubmit={submit}>
       <div className="stephead"><b>{r.email}</b> <span className="muted small">{name || r.imapHost}</span></div>
       {unconfigured && <p className="small">{notSetUp(r.provider)}</p>}
-      {app ? (
+      {r.provider === 'icloud' ? <ICloudSteps /> : app ? (
         <p className="small">Make {app.kind} at <a href={app.url} target="_blank" title={extTitle()} rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(app.url) }}>{app.label}</a>. {app.how}</p>
       ) : (
         <p className="small muted">The password you sign in to {r.imapHost} with. It goes to that server and the system keychain, nowhere else.</p>
       )}
       <label className="field">
         <span>{app ? (r.provider === 'icloud' ? 'App-specific password' : 'App password') : 'Password'}</span>
-        <input type="password" autoFocus aria-label={`Password for ${r.email}`} value={pw} onChange={(e) => setPw(e.target.value)} disabled={busy} />
+        <input type="password" autoFocus aria-label={`Password for ${r.email}`} value={pw}
+          placeholder={r.provider === 'icloud' ? 'abcd-efgh-ijkl-mnop' : undefined} onChange={(e) => setPw(e.target.value)} disabled={busy} />
       </label>
       {r.status === 'failed' && r.error && <div className="error">{r.error}</div>}
       <div className="actions">
@@ -348,3 +361,34 @@ function OAuthStep({ r, dispatch, others, skip }: { r: Row; dispatch: (e: FlowEv
     </div>
   )
 }
+
+/** Apple Mail's account list is behind Full Disk Access: say so, and open the setting. */
+function FullDiskAccess({ source, onICloud }: { source: ImportSource; onICloud: () => void }) {
+  const [opened, setOpened] = useState<string | null>(null)
+  const [err, setErr] = useState('')
+  const open = async () => {
+    setErr('')
+    try { setOpened((await api.importGrant()).program || '') } catch (e) { setErr((e as Error).message) }
+  }
+  return (
+    <div className="hint steps fda" role="note" aria-label="Apple Mail needs Full Disk Access">
+      <b>{source.error || FDA_HELP}</b>
+      {opened === null ? (
+        <span className="muted">Then come back here: the list fills in by itself. Caprock reads only the account list — addresses and servers, never mail or passwords.</span>
+      ) : (
+        <span>
+          In the list, turn on <b>caprock</b>. If it isn't there, press + (or drag in the file Finder just showed{opened ? <> — <code className="small">{opened}</code></> : null}). Then come back here.
+        </span>
+      )}
+      {err && <span className="err small">{err}</span>}
+      <div className="actions">
+        <button type="button" className="btn" onClick={open}>Open Full Disk Access</button>
+        <span className="grow" />
+        <button type="button" className="link small" onClick={onICloud}>Add iCloud with an app password instead</button>
+      </div>
+    </div>
+  )
+}
+
+/** The daemon's line, for a daemon that sends none. */
+export const FDA_HELP = "Caprock can't read Apple Mail's account list. To allow it: System Settings → Privacy & Security → Full Disk Access → Caprock."
