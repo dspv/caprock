@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basename, fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, shortId, fmtTool } from './format'
+import { basename, fmtAgo, fmtCountShort, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, shortId, fmtTool } from './format'
 
 describe('format', () => {
   it('formats USD with more precision for tiny amounts', () => {
@@ -7,6 +7,15 @@ describe('format', () => {
     expect(fmtUSD(0.0042)).toBe('$0.0042')
     expect(fmtUSD(0)).toBe('$0.00')
     expect(fmtUSD(undefined)).toBe('—')
+  })
+  it('shortens a count for a tight row', () => {
+    expect(fmtCountShort(781)).toBe('781')
+    expect(fmtCountShort(7781)).toBe('7.8k')
+    expect(fmtCountShort(35244)).toBe('35.2k')
+    expect(fmtCountShort(2000)).toBe('2k')
+    expect(fmtCountShort(999_999)).toBe('1M')
+    expect(fmtCountShort(1_250_000)).toBe('1.3M')
+    expect(fmtCountShort(undefined)).toBe('—')
   })
   it('formats tokens compactly', () => {
     expect(fmtTokens(999)).toBe('999')

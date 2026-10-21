@@ -39,6 +39,16 @@ export function fmtUSDShort(v: number | undefined | null): string {
   return fmtUSD(v)
 }
 
+/** A count, short where room is tight: 781, 7.8k, 35.2k, 1.2M. */
+export function fmtCountShort(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  v = v as number
+  const abs = Math.abs(v)
+  if (abs >= 999_950) return `${v < 0 ? '-' : ''}${trim(abs / 1_000_000, 1)}M`
+  if (abs >= 1_000) return `${v < 0 ? '-' : ''}${trim(abs / 1000, 1)}k`
+  return String(Math.round(v))
+}
+
 /** Thousands with three decimals ($16.818k) — a panel total; plain below $1,000. */
 export function fmtUSDk(v: number | undefined | null): string {
   if (finite(v) === null) return '—'

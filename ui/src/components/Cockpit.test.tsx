@@ -303,7 +303,9 @@ describe('the agent cockpit', () => {
       show(agent({ live_subagents: 2 }))
       const section = await screen.findByRole('region', { name: 'Subagents' })
       expect(section).toHaveTextContent('Subagents · 2')
-      expect(section).toHaveTextContent('$1.52')
+      // Every subagent's cost over the session, not the finished ones' (owner,
+      // 2026-10-22: "1 finished $2,549.54" read as one subagent's).
+      expect(section.querySelector('[data-subagents-cost]')).toHaveTextContent('$1.52 total')
       expect(section).toHaveTextContent('+1 finished')
       // By start: the finished one started first, so it stands first.
       const [c, a, b] = within(section).getAllByRole('listitem')

@@ -16,7 +16,7 @@ import { api, type Event, type Permission, type RateWindow, type SessionSummary,
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
-import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
+import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDShort } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
@@ -45,6 +45,7 @@ import { sessionTitle } from '@/lib/sidebar'
 import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
 import { SubagentDetail } from './SubagentDetail'
 import { SectionFrames } from './SectionFrames'
+import { FitSummary } from './FitSummary'
 import {
   askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
@@ -1102,15 +1103,22 @@ function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished
   }, [reveal, open])
   const toggle = (id: string) => onOpen(open === id ? null : id)
   const { subagents: look } = useLooks()
-  const cost = typeof subs.cost_usd === 'number' && <span className="num text-fg-muted" title="What every subagent of this session has cost">{fmtUSD(subs.cost_usd)}</span>
+  // The cost is every subagent's over the session's whole life, the count
+  // beside it only those that finished in the last half hour: "1 finished
+  // $2,549.54" read as one subagent's (owner, 2026-10-22), so it says *total*.
+  const costOf = (usd: string) => typeof subs.cost_usd === 'number' && (
+    <span data-subagents-cost className="num text-fg-muted" title={`What every subagent of this session has cost over its whole life: ${fmtUSD(subs.cost_usd)}`}>{usd} total</span>
+  )
+  const cost = typeof subs.cost_usd === 'number' ? costOf(fmtUSD(subs.cost_usd)) : null
+  const finishedNote = subs.finished > 0 && <span title="Subagents that finished in the last 30 minutes">{subs.finished} finished</span>
   if (look === 'compact') {
-    // Folded: the heading and one line of what is in it.
+    // Folded: the heading and one line of what is in it, shortened rather than cut.
+    const short = typeof subs.cost_usd === 'number' ? costOf(fmtUSDShort(subs.cost_usd)) : null
     return (
       <section aria-label="Subagents" data-look="compact" className="flex min-w-0 items-center gap-2">
         <LookLabel name="Subagents" full={false} onToggle={() => setLook('subagents', 'full')}>Subagents · {subs.working.length}</LookLabel>
-        <span data-fold-summary className="num ml-auto flex min-w-0 items-baseline gap-2 truncate whitespace-nowrap text-[11.5px] text-fg-faint">
-          {subs.finished > 0 && <span>{subs.finished} finished</span>}
-          {cost}
+        <span data-fold-summary className="num flex min-w-0 flex-1 text-[11.5px] text-fg-faint">
+          <FitSummary variants={[<>{finishedNote}{cost}</>, <>{finishedNote}{short}</>, short, finishedNote]} />
         </span>
       </section>
     )
