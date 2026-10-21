@@ -17,6 +17,7 @@ import (
 func (s *Service) importRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /v1/mail/import", s.importSources)
 	m.HandleFunc("POST /v1/mail/import", s.importAccounts)
+	m.HandleFunc("POST /v1/mail/import/grant", s.importGrant)
 }
 
 // foundAccount is one row of the "Import everything" screen.
@@ -54,6 +55,11 @@ func signinFor(f importer.Found, oauthOK map[string]bool) string {
 // Passwords are not included: they stay server-side (rule 4).
 func (s *Service) importSources(w http.ResponseWriter, _ *http.Request) {
 	sources := importer.Sources(s.homeDir())
+	for i := range sources {
+		if sources[i].NeedsPermission == "full_disk_access" {
+			sources[i].Program = daemonProgram()
+		}
+	}
 	avail := oauth.Available()
 	accounts := []foundAccount{}
 	for _, f := range importer.Merge(sources) {

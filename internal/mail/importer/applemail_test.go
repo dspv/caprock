@@ -237,6 +237,9 @@ func TestAppleMailNeedsPermission(t *testing.T) {
 	if src.NeedsPermission != "full_disk_access" {
 		t.Fatalf("want needs_permission full_disk_access, got %+v", src)
 	}
+	if src.Error != FullDiskAccessHelp || len(src.Accounts) != 0 {
+		t.Fatalf("want the plain Full Disk Access line and no accounts, got %+v", src)
+	}
 }
 
 func TestAppleMailAbsentWhenNoMailDir(t *testing.T) {

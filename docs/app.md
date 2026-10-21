@@ -182,11 +182,18 @@ others. Installing it: [install-app.md](install-app.md).
   computer — Thunderbird, and Apple Mail (including the Google, iCloud and
   Exchange accounts in System Settings › Internet Accounts) when macOS lets
   Caprock read it — each address once, under the app it came from and when
-  that profile was last used. Accounts from a profile unused for 90 days
+  that profile was last used. macOS keeps Apple Mail's account list behind
+  Full Disk Access and never asks for it, so until you allow it the screen
+  says *Caprock can't read Apple Mail's account list*: *Open Full Disk
+  Access* opens that list in System Settings and shows Caprock's program in
+  Finder — turn on **caprock** (or drag the file in), come back, and the
+  accounts appear. *Add iCloud with an app password instead* skips that. Accounts from a profile unused for 90 days
   start unticked. Tick the ones to bring over and press *Import*: accounts whose password Thunderbird
   saved connect by themselves, then Caprock asks for each other account's
   one sign-in in turn — *Sign in with Google* or *Microsoft* in your browser,
-  an app-specific password for iCloud (made at appleid.apple.com), or the
+  an app-specific password for iCloud (three steps on screen: sign in at
+  account.apple.com, Sign-In and Security → App-Specific Passwords → +,
+  name it Caprock, paste the code), or the
   account's password. A list below shows each account connected, waiting or
   failed with the reason and *Retry*; *Skip for now* moves on and *Come
   back* returns to it. Outlook for Mac's accounts are not read — add them with

@@ -4,6 +4,7 @@ import { api, removeAccountPrompt, whoText } from './mailApi'
 import { Icon } from './icons'
 import type { Provider } from './Onboarding'
 import { AddFlow } from './Onboarding'
+import { ICloudSteps } from './ICloudSteps'
 import { extTitle } from '@/lib/externalLinks'
 
 // Adding an account: address and password; servers are filled in from the
@@ -59,7 +60,7 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
   return (
     <form className="addform" onSubmit={submit}>
       <h2>{provider && provider.id !== 'other' ? provider.name : 'Add a mail account'}</h2>
-      {provider?.steps ? (
+      {provider?.id === 'icloud' ? <ICloudSteps /> : provider?.steps ? (
         <div className="hint steps">
           {provider.why && <div className="muted">{provider.why}</div>}
           <div>{provider.steps} {provider.help && <a href={provider.help} target="_blank" title={extTitle()} rel="noreferrer">Open {provider.helpLabel}</a>}</div>
@@ -69,7 +70,7 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
       )}
       <label className="field"><span>Your name</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Morgan" /></label>
       <label className="field"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value.trim())} placeholder={provider?.placeholder ?? 'you@company.com'} autoFocus required /></label>
-      <label className="field"><span>{provider?.steps ? (provider.id === 'icloud' ? 'App-specific password' : 'App password') : 'Password'}</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+      <label className="field"><span>{provider?.steps ? (provider.id === 'icloud' ? 'App-specific password' : 'App password') : 'Password'}</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={provider?.id === 'icloud' ? 'abcd-efgh-ijkl-mnop' : undefined} required /></label>
       {guess && (
         <div className="hint">
           <b>{guess.provider}</b>{guess.known ? ' — settings found.' : ' — settings guessed; check them below.'}

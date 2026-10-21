@@ -3523,8 +3523,15 @@ dashboard and a desktop app on three OSes.
   nothing for a saved password, the browser sign-in for Google and
   Microsoft (an app password when the build has no client ID), an
   app-specific password for iCloud, the server's password otherwise. A
-  source it cannot read (Apple Mail without Full Disk Access) is not shown
-  at all, and each shown source says when its profile was last used.
+  source it cannot read is not shown at all, and each shown source says
+  when its profile was last used. Apple Mail without Full Disk Access is
+  the exception (amended 2026-10-22): hidden, the owner's iCloud account in
+  Apple Mail was simply missing with no reason given, because the launchd
+  daemon is its own responsible process, has no Full Disk Access, and macOS
+  never prompts for it. It now says *Caprock can't read Apple Mail's account
+  list* with a button that opens the Full Disk Access pane and shows the
+  daemon's file in Finder, and offers iCloud's app-password form in its
+  place.
   Outlook for Mac is not read: its profile is
   in another app's group container, behind an OS prompt Caprock does not
   raise, and its accounts are mostly Microsoft 365, which sign-in covers.
