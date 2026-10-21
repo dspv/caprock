@@ -76,6 +76,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-21 — unreleased: a database from a newer Caprock is refused (ADR-082)
+
+`store.Open` reads `meta.schema_version` read-only before it sets a pragma
+and refuses a database migrated past the binary's last migration: nothing
+migrated, written or deleted, the file byte-identical (tested in WAL and
+rollback-journal mode). The one-line refusal names both numbers and reaches
+`caprock up`, the desktop app's failure screen and `caprock doctor`
+(`database_newer`). Ships in its own release ahead of PR #768's layout
+migration. See [ADR-082](08-decisions.md) and `RISK-10`.
+
 ### 2026-10-20 — unreleased: Chat or Terminal in an agent tab
 
 An agent tab in the app has a **Chat | Terminal** switch in the strip in

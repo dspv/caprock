@@ -15,6 +15,7 @@ import (
 
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/hooks"
+	"github.com/dspv/caprock/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +71,11 @@ func TestLastLogError(t *testing.T) {
 	// A generic error line is returned verbatim.
 	if got := lastLogError(write("line one\nlevel=error something broke\n")); !strings.Contains(got, "something broke") {
 		t.Fatalf("error line not returned: %q", got)
+	}
+	// A database from a newer Caprock is the daemon's own line, verbatim.
+	newer := (&store.SchemaTooNewError{Path: "/d/caprock.db", Database: 67, Binary: 66}).Error()
+	if got := lastLogError(write("time=... msg=\"starting\"\nerror: " + newer + "\n")); got != newer {
+		t.Fatalf("newer-database refusal not surfaced: %q", got)
 	}
 	// A panic is surfaced.
 	if got := lastLogError(write("ok\npanic: boom\n")); !strings.Contains(got, "panic") {

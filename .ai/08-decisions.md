@@ -5718,3 +5718,42 @@ or of types the paste folder refuses.
 **Revisit if:** a local transcription is built (then a voice note is
 transcribed before it goes); the owner wants forwards to go somewhere by
 default without asking; or Telegram changes how a multi-forward arrives.
+
+## ADR-082 — A database a newer Caprock migrated is refused, untouched
+
+**Date:** 2026-10-21 · **Status:** accepted (owner, 2026-10-21). Contract:
+[03-contracts.md § SQLite schema](03-contracts.md); risk: `RISK-10` in
+[12-risks.md](12-risks.md).
+
+**Context.** PR #768 will change the storage layout through a migration.
+Testing it showed that a user who then goes back to an older Caprock loses
+data with no error: the older binary read `meta.schema_version` above its own
+last migration, applied nothing, and went on to run its backfills, retention
+and cleanup against tables it did not know. A guard only protects from the
+binaries that carry it, so it has to be out before the migration is.
+
+**Decision.**
+
+- **Refuse before writing.** `store.Open` reads `meta.schema_version`
+  through a separate read-only connection before it sets a pragma (the
+  normal DSN sets `journal_mode(WAL)`, which rewrites a header). Higher than
+  the highest migration embedded in the binary: no migration, no backfill,
+  no write, no delete, and the open fails with `store.SchemaTooNewError`.
+  `migrate` checks again before its loop. Equal or older opens as before.
+- **One line, both numbers, what to do.** *the database <path> is from a
+  newer Caprock (schema 67; this Caprock knows up to 66): install the newer
+  Caprock to open it — nothing was changed.* The daemon returns it
+  unwrapped; `caprock up` lifts it from the log, the desktop app shows `up`'s
+  error, and `caprock doctor` says it as `database_newer` in place of
+  `daemon_not_running`.
+- **Its own release first.** It ships before any layout-changing migration,
+  so the installs that could downgrade already carry it.
+
+**Rules out:** opening read-only and serving what can be read (an older
+binary cannot tell which tables still mean what they meant); down-migrations
+(they would have to ship in the older binary, which predates them); a
+schema-version check that only logs.
+
+**Revisit if:** migrations become non-sequential (branches, skipped numbers)
+— the single number then stops being enough and the applied set has to be
+recorded.

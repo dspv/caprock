@@ -241,6 +241,11 @@ func lastLogError(logPath string) string {
 			// line names the pid, which is all there is to say.
 			return strings.TrimPrefix(l, "error: ")
 		}
+		if strings.Contains(low, "is from a newer caprock") {
+			// A database a newer Caprock migrated (store.SchemaTooNewError):
+			// the line names both schema numbers and what to install.
+			return strings.TrimPrefix(l, "error: ")
+		}
 		if strings.Contains(low, "address already in use") || strings.Contains(low, "bind:") {
 			return "port 127.0.0.1 is already in use — another caprock may be running (try `caprock status`, or `caprock down`), or pass `--port <n>`"
 		}

@@ -374,8 +374,16 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 			unlock()
 		}
 	}()
+	// Nothing touches the database before this: a database a newer Caprock
+	// migrated is refused inside Open before any write (ADR-082), and its
+	// error is the whole message, unwrapped, because it is what `caprock up`
+	// and the desktop app show.
 	st, err := store.Open(ctx, config.DBPath(opt.DataDir), log)
 	if err != nil {
+		var newer *store.SchemaTooNewError
+		if errors.As(err, &newer) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("open store: %w", err)
 	}
 	table, err := cost.Load(config.PricingPath(opt.DataDir))

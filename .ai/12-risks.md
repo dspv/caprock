@@ -66,6 +66,19 @@ again with another name, or adding the half-made folder by hand, is plain;
 nothing on GitHub is lost. Persisting operations would need a state file and
 a resume path for each step; revisit if users meet this in practice.
 
+**`RISK-10` — A downgrade opens a database a newer Caprock migrated.**
+Before the guard, an older binary read `meta.schema_version` above its last
+migration, applied nothing, and ran its backfills, retention and cleanup
+against tables of a shape it did not know: testing a storage-layout change
+(PR #768) showed data lost this way with no error. Mitigation
+([ADR-082](08-decisions.md)): `store.Open` refuses such a database before any
+write, with a line naming both schema numbers, shown by `caprock up`, the
+desktop app and `caprock doctor`. Residual: it protects only from binaries
+that carry it, so it shipped in a release of its own before any migration
+that changes the layout; a binary older than that release still opens a newer
+database as before. A user who must go back has to keep the older database
+(no down-migrations exist).
+
 ## Open questions
 
 Anything the spec did not answer. Do not resolve these by inventing an answer. "Decided by" is a person, an event, or a task — never "later".
