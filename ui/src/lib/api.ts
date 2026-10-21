@@ -894,6 +894,12 @@ export interface RateLimits {
   seven_day?: RateWindow
 }
 
+/** `GET /v1/stats/limits`: the plan windows, as the summary carries them. */
+export interface LimitsAnswer {
+  rate_limits?: RateLimits
+  codex_rate_limits?: RateLimits
+}
+
 /** One thing Claude said, in prose — not a tool call. */
 export interface AssistantNote {
   event_id: number
@@ -2262,6 +2268,8 @@ export const api = {
   putTabs: (viewer: string, sessions: string[]) => post<void>('/v1/tabs', { viewer, sessions }, 'PUT'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
+  /** The plan windows alone (`GET /v1/stats/limits`): the summary's rate_limits and codex_rate_limits without the rest. */
+  limits: () => get<LimitsAnswer>('/v1/stats/limits'),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
   /** A repository's cost per agent-hour and agent team, for its folders (clones of one repository are several). */
   pipelineAgents: (roots: string[]) => get<RepoAgents>(`/v1/pipeline/agents?${roots.map((r) => `repo=${encodeURIComponent(r)}`).join('&')}`),

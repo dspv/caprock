@@ -3,9 +3,10 @@
  * docked field in the chosen project with the words as its first message, and
  * Save landing in the Inbox.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, type CatalogEntry, type InboxItem, type SessionSummary } from '@/lib/api'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { api, type CatalogEntry, type InboxItem, type LimitsAnswer, type SessionSummary } from '@/lib/api'
+import { FOLDS_KEY } from '@/lib/phonehome'
 import { projectsApi, type Project } from '@/lib/projects'
 import { PhoneHome } from './PhoneHome'
 
@@ -34,13 +35,17 @@ function stubs(inbox: InboxItem[] = []) {
   vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
   vi.spyOn(api, 'subscriptions').mockResolvedValue({ agents: [] } as unknown as Awaited<ReturnType<typeof api.subscriptions>>)
   vi.spyOn(api, 'chats').mockResolvedValue({ items: chats, total: chats.length, chats: chats.length, archived: 0 })
+  vi.spyOn(api, 'limits').mockResolvedValue(limits)
 }
+
+let limits: LimitsAnswer = {}
 
 let chats: SessionSummary[] = []
 
 beforeEach(() => {
   vi.restoreAllMocks()
   chats = []
+  limits = {}
   localStorage.clear()
   location.hash = '#/'
 })
@@ -63,12 +68,12 @@ describe('PhoneHome', () => {
     expect(screen.getByLabelText('Message or note').closest('section')?.getAttribute('aria-label')).toBe('Chats')
   })
 
-  it('+ New chat unfolds Chats and focuses the field', async () => {
+  it('New chat unfolds Chats and focuses the field', async () => {
     stubs()
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
     expect(screen.getByRole('button', { name: /^Chats/ }).getAttribute('aria-expanded')).toBe('false')
-    fireEvent.click(screen.getByRole('button', { name: '+ New chat' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
     expect(screen.getByRole('button', { name: /^Chats/ }).getAttribute('aria-expanded')).toBe('true')
     expect(document.activeElement).toBe(screen.getByLabelText('Message or note'))
   })
@@ -86,6 +91,8 @@ describe('PhoneHome', () => {
     render(<PhoneHome />)
     expect(await screen.findByText('work in alpha')).toBeTruthy()
     expect(screen.getByText('work in beta')).toBeTruthy()
+    // Saved is folded by default: one line, then the rows once unfolded.
+    fireEvent.click(await screen.findByRole('button', { name: 'Saved' }))
     expect(await screen.findByText('an idea for later')).toBeTruthy()
     expect(screen.getByText('Full dashboard').closest('a')?.getAttribute('href')).toBe('#/home')
   })
@@ -115,7 +122,7 @@ describe('PhoneHome', () => {
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
     openChats()
-    fireEvent.click(screen.getByText('New chat'))
+    fireEvent.click(screen.getAllByText('New chat').at(-1)!)
     await waitFor(() => expect(spawn).toHaveBeenCalled())
     expect(spawn.mock.calls[0]![0]).toEqual({ chat: true, model: 'claude-sonnet-5-5' })
     await waitFor(() => expect(location.hash).toBe('#/chats/c1'))
@@ -184,5 +191,109 @@ describe('PhoneHome', () => {
     await screen.findByRole('dialog', { name: 'Save' })
     expect((screen.getByLabelText('What to save') as HTMLTextAreaElement).value).toBe('Issue\nhttps://example.com/1')
     expect(window.location.search).toBe('')
+  })
+})
+
+// Owner, 2026-10-21: the recommended set — New chat filled, Continue,
+// Releases and Saved fold, one Limits line, context and subagents on rows.
+describe('PhoneHome folds, limits and rows', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const header = (name: string) => screen.getByRole('button', { name })
+
+  it('opens with Continue open, Saved folded to one line, and the Waiting card never folds', async () => {
+    stubs([{ id: 7, text: 'an idea for later', files: [], created_at: NOW - 2 * 3600_000 }])
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [
+      session('s1', 'alpha', 'working'), session('s2', 'beta', 'idle'), session('s3', 'gamma', 'waiting-on-you', { owned: false }),
+    ], total: 3 })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(header('Continue').getAttribute('aria-expanded')).toBe('true')
+    const saved = await screen.findByRole('region', { name: 'Saved' })
+    expect(header('Saved').getAttribute('aria-expanded')).toBe('false')
+    expect(saved.querySelector('[data-fold-summary]')?.textContent).toBe('1 · newest 2h ago: “an idea for later”')
+    expect(saved.querySelector('ul')).toBeNull()
+    // Folding Continue leaves the counts.
+    fireEvent.click(header('Continue'))
+    expect(screen.queryByText('work in alpha')).toBeNull()
+    expect(screen.getByRole('region', { name: 'Continue' }).querySelector('[data-fold-summary]')?.textContent).toBe('1 waiting · 1 working · 1 idle')
+    expect(JSON.parse(localStorage.getItem(FOLDS_KEY)!)).toEqual({ continue: true, releases: true, saved: true })
+  })
+
+  it('keeps the folds on this device and falls back to the defaults on a broken entry', async () => {
+    localStorage.setItem(FOLDS_KEY, JSON.stringify({ continue: true, saved: false }))
+    stubs([{ id: 7, text: 'an idea for later', files: [], created_at: NOW - 1000 }])
+    const { unmount } = render(<PhoneHome />)
+    await screen.findByText('an idea for later')
+    expect(screen.queryByText('work in alpha')).toBeNull()
+    unmount()
+    localStorage.setItem(FOLDS_KEY, '{not json')
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(header('Saved').getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('New chat is the filled pill in the Chats row', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    const pill = screen.getByRole('button', { name: 'New chat' })
+    expect(pill.className).toContain('bg-accent')
+    expect(pill.closest('section')?.getAttribute('aria-label')).toBe('Chats')
+  })
+
+  it('draws the Limits line: 5-hour with its reset, the week, amber from 80%, red from 95%, a tap to Cost limits', async () => {
+    const at = Math.floor(NOW / 1000)
+    limits = { rate_limits: { five_hour: { used_percentage: 82, resets_at: at + 80 * 60 }, seven_day: { used_percentage: 96, resets_at: at + 3 * 86400 } } }
+    stubs()
+    render(<PhoneHome />)
+    const line = await waitFor(() => { const el = document.querySelector<HTMLAnchorElement>('[data-phone-limits]'); expect(el).toBeTruthy(); return el! })
+    expect(line.getAttribute('href')).toBe('#/cost?section=limits')
+    expect(line.querySelector('[data-limit-main]')?.textContent).toBe('5h 82%')
+    expect(line.querySelector('[data-limit-main]')?.className).toContain('text-warn')
+    expect(line.textContent).toContain('↻ 1h 20m')
+    expect(line.querySelector('[data-limit-week]')?.textContent).toBe('week 96%')
+    expect(line.querySelector('[data-limit-week]')?.className).toContain('text-danger')
+  })
+
+  it("shows Codex's windows when Claude Code has none", async () => {
+    limits = { codex_rate_limits: { five_hour: { used_percentage: 12, resets_at: Math.floor(NOW / 1000) + 3600 } } }
+    stubs()
+    render(<PhoneHome />)
+    const line = await waitFor(() => { const el = document.querySelector('[data-phone-limits]'); expect(el).toBeTruthy(); return el! })
+    expect(line.textContent).toContain('Codex')
+    expect(line.querySelector('[data-limit-main]')?.className).not.toMatch(/text-(warn|danger)/)
+  })
+
+  it('draws no Limits line when no window is known', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    await waitFor(() => expect(api.limits).toHaveBeenCalled())
+    expect(document.querySelector('[data-phone-limits]')).toBeNull()
+  })
+
+  it('reads the limits on opening only, never on a timer', async () => {
+    stubs()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    expect(api.limits).toHaveBeenCalledTimes(1)
+    await act(async () => { vi.advanceTimersByTime(10 * 60_000) })
+    expect(api.limits).toHaveBeenCalledTimes(1)
+  })
+
+  it('says the context and the subagents on a live Continue row, amber from 80%', async () => {
+    stubs()
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [
+      session('s1', 'alpha', 'working', { context: { tokens: 1, window: 1, pct: 84.2, next_call_usd: 0 }, live_subagents: 3 }),
+      session('s2', 'beta', 'idle', { context: { tokens: 1, window: 1, pct: 38, next_call_usd: 0 } }),
+      session('s3', 'gamma', 'idle', { status: 'ended', context: { tokens: 1, window: 1, pct: 90, next_call_usd: 0 } }),
+    ], total: 3 })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    const metas = [...document.querySelectorAll('[data-row-meta]')]
+    expect(metas.map((m) => m.textContent)).toEqual(['context 84%· 3 subagents', 'context 38%'])
+    expect(metas[0]!.querySelector('.text-warn')).toBeTruthy()
+    expect(metas[1]!.querySelector('.text-warn')).toBeNull()
   })
 })

@@ -304,6 +304,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/sessions/{id}/diff":              true,
 	"GET /v1/notes":                           true,
 	"GET /v1/stats/summary":                   true,
+	"GET /v1/stats/limits":                    true, // the plan windows alone: the phone home's Limits line
 	"GET /v1/stats/daily":                     true,
 	"GET /v1/stats/trends":                    true,
 	"GET /v1/window-stop":                     true,

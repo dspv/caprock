@@ -13,9 +13,11 @@
  * chat. An empty field opens the full sheet instead (New chat, Save), as do
  * the home-screen shortcuts and a share from another app.
  *
- * Light on purpose: the sessions list, the projects, the Inbox — no figures,
- * no charts. The full dashboard is one link down. Spec: .ai/04-ui.md § The
- * phone home.
+ * Light on purpose: the sessions list, the projects, the Inbox, the release
+ * plan and the plan windows — no charts. Continue, Releases and Saved fold to
+ * one line each, kept per device (owner, 2026-10-21); the Limits line is read
+ * on opening and on a pull only. The full dashboard is one link down. Spec:
+ * .ai/04-ui.md § The phone home.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -33,15 +35,16 @@ import { projectsApi, type Project } from '@/lib/projects'
 import { downscalePhoto } from '@/lib/downscale'
 import { isInboxImage, useInbox, useInboxThumb } from '@/lib/inbox'
 import {
-  continueList, INSTALL_HINT_KEY, installWay, isStandalone, messageWith, openFromHash, sharedFromSearch, waitingOnYou,
-  type InstallWay,
+  continueCounts, continueList, INSTALL_HINT_KEY, installWay, isStandalone, keepFolds, limitsGlance, messageWith, openFromHash,
+  readFolds, rowMeta, savedSummary, sharedFromSearch, waitingOnYou,
+  type FoldKey, type InstallWay, type LimitPart, type LimitsGlance, type Tone,
 } from '@/lib/phonehome'
 import { AgentGlyph } from './AgentMarks'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
-import { CaprockMark, ChatIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
+import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
 import { PermissionPrompt } from './PermissionPrompt'
 import { EndableRow, useEndedHere, type EndedHere } from './PhoneEnd'
-import { ChipSelect, SectionLabel } from './PhoneParts'
+import { ChipSelect, FoldHeader } from './PhoneParts'
 import { PhoneReleases } from './PhoneReleases'
 import { subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, hasSubscriptions, roomText } from '@/lib/subscriptions'
@@ -175,7 +178,14 @@ export function PhoneHome() {
   // again (the sessions are read every few seconds anyway).
   const [pull, setPull] = useState(0)
   const reloadInbox = inbox.refresh
-  const pulled = usePullToRefresh(() => { setPull((n) => n + 1); reloadInbox() }, useMemo(isStandalone, []))
+  // The plan windows: read on opening and on a pull, never on a timer or a
+  // live tick (a phone pays for every read); the last answer is kept here.
+  const limits = useApi(() => api.limits(), [], { live: false, cache: 'limits:phone' })
+  const reloadLimits = limits.refresh
+  const pulled = usePullToRefresh(() => { setPull((n) => n + 1); reloadInbox(); reloadLimits() }, useMemo(isStandalone, []))
+  // Continue, Releases and Saved fold; kept on this device (lib/phonehome).
+  const [folds, setFolds] = useState(readFolds)
+  const toggle = (k: FoldKey) => setFolds((f) => { const next = { ...f, [k]: !f[k] }; keepFolds(next); return next })
 
   // A home-screen shortcut (#/?open=…) or another app's share (/?share=1…)
   // opens its sheet once, and the address is put back so a reload does not.
@@ -220,6 +230,7 @@ export function PhoneHome() {
         </div>
       )}
       {waiting[0] && <Waiting session={waiting[0]} more={waiting.length - 1} now={now} />}
+      <LimitsLine glance={limitsGlance(limits.data, now)} />
       <ChatsSection list={chats.data} now={now} canControl={canControl} ended={endedHere}>
         <Dock
           projects={projects}
@@ -229,9 +240,10 @@ export function PhoneHome() {
           onNewChat={() => setSheet({ kind: 'chat' })}
         />
       </ChatsSection>
-      <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} canControl={canControl} ended={endedHere} />
-      <PhoneReleases pull={pull} />
-      <Saved items={inbox.items} now={now} canDelete={canControl} />
+      <Continue rows={rows} now={now} loading={!sessions.data && !sessions.error} canControl={canControl} ended={endedHere}
+        folded={folds.continue} onToggle={() => toggle('continue')} />
+      <PhoneReleases pull={pull} folded={folds.releases} onToggle={() => toggle('releases')} />
+      <Saved items={inbox.items} now={now} canDelete={canControl} folded={folds.saved} onToggle={() => toggle('saved')} />
       <a href="#/home" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
         Full dashboard <ChevronIcon size={14} />
       </a>
@@ -259,6 +271,37 @@ function Waiting({ session, more, now }: { session: SessionSummary; more: number
       {session.description && <div className="mt-0.5 truncate text-[14px] text-fg-muted">{session.description}</div>}
       <div className="mt-2"><PermissionPrompt sessionId={session.session_id} keys={false} /></div>
     </section>
+  )
+}
+
+const toneText = (t: Tone) => (t === 'danger' ? 'text-danger' : t === 'warn' ? 'text-warn' : '')
+const toneBar = (t: Tone) => (t === 'danger' ? 'bg-danger' : t === 'warn' ? 'bg-warn' : 'bg-ok')
+
+/**
+ * One line, *Limits*: the plan's 5-hour window with its reset, and the weekly
+ * one — amber from 80%, red from 95% — Codex's when Claude Code has none. A
+ * tap opens Cost at its plan limits. Nothing is drawn while no window is known.
+ */
+function LimitsLine({ glance }: { glance?: LimitsGlance }) {
+  if (!glance) return null
+  const main: LimitPart = (glance.five ?? glance.week)!
+  const mainLabel = glance.five ? '5h' : 'week'
+  const week = glance.five ? glance.week : undefined
+  return (
+    <a href={href({ name: 'cost', section: 'limits' })} data-phone-limits aria-label="Plan limits: open Cost, limits"
+      className="flex min-h-12 min-w-0 items-center gap-2.5 rounded-[12px] border border-border bg-panel px-3 text-fg no-underline active:bg-panel-2">
+      <span className="shrink-0 text-[12px] font-medium uppercase tracking-[0.08em] text-fg-faint">Limits</span>
+      <span className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden whitespace-nowrap text-[14px]">
+        {glance.agent === 'codex' && <span className="shrink-0 text-fg-muted">Codex</span>}
+        <span aria-hidden="true" className="h-1.5 w-[34px] shrink-0 overflow-hidden rounded-full bg-border-strong">
+          <span className={`block h-full ${toneBar(main.tone)}`} style={{ width: `${Math.min(100, Math.max(0, main.pct))}%` }} />
+        </span>
+        <span data-limit-main className={`num shrink-0 font-medium ${toneText(main.tone)}`}>{mainLabel} {main.pct}%</span>
+        {main.resetIn && <span className="min-w-0 flex-1 truncate text-fg-muted" title={`resets in ${main.resetIn}`}>· ↻ {main.resetIn}</span>}
+        {week && <span data-limit-week className={`num ml-auto shrink-0 ${week.tone ? `font-medium ${toneText(week.tone)}` : 'text-fg-muted'}`}>week {week.pct}%</span>}
+      </span>
+      <span aria-hidden="true" className="shrink-0 text-fg-faint"><ChevronIcon size={14} /></span>
+    </a>
   )
 }
 
@@ -305,8 +348,8 @@ function ChatsSection({ list, now, canControl, ended, children }: { list?: ChatL
           <span aria-hidden="true" className={`text-fg-muted transition-transform ${open ? 'rotate-90' : ''}`}><ChevronIcon size={14} /></span>
         </button>
         <button type="button" onClick={() => { setOpen(true); setFocusAsk((n) => n + 1) }}
-          className="min-h-11 min-w-11 shrink-0 rounded-[12px] border border-border-strong bg-bg px-3 text-[15px] font-medium text-accent">
-          + New chat
+          className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-accent pl-3 pr-4 text-[15px] font-semibold text-bg shadow-[0_6px_16px_-8px_var(--color-accent)]">
+          <ChatPlusIcon size={18} /> New chat
         </button>
       </div>
       {open && (
@@ -343,17 +386,51 @@ function RecentChats({ list, now, canControl, ended }: { list: ChatList; now: nu
   )
 }
 
-function Continue({ rows, now, loading, canControl, ended }: { rows: SessionSummary[]; now: number; loading: boolean; canControl: boolean; ended: EndedHere }) {
+/** Continue folded: *1 waiting · 2 working · 1 idle*, the counts that are not zero. */
+function ContinueSummary({ rows, loading }: { rows: SessionSummary[]; loading: boolean }) {
+  if (rows.length === 0) return <>{loading ? 'Reading your sessions…' : 'Nothing from the last two days'}</>
+  const n = continueCounts(rows)
+  const parts = [
+    n.waiting ? <span key="w" className="font-medium text-fg">{n.waiting} waiting</span> : null,
+    n.working ? <span key="k">{n.working} working</span> : null,
+    n.idle ? <span key="i">{n.idle} idle</span> : null,
+  ].filter(Boolean)
+  if (parts.length === 0) return <>{rows.length} ended</>
+  return <>{parts.map((p, i) => <span key={i}>{i > 0 ? ' · ' : ''}{p}</span>)}</>
+}
+
+/** A live row's context used and subagents at work; the context amber from 80%. */
+function RowMetaLine({ s }: { s: SessionSummary }) {
+  const m = rowMeta(s)
+  if (!m) return null
+  return (
+    <span data-row-meta className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-faint">
+      {m.ctx !== undefined && (
+        <span className={`inline-flex shrink-0 items-center gap-1.5 ${m.hot ? 'text-warn' : ''}`}>
+          <span aria-hidden="true" className="h-[5px] w-7 overflow-hidden rounded-full bg-border-strong">
+            <span className={`block h-full ${m.hot ? 'bg-warn' : 'bg-fg-muted'}`} style={{ width: `${Math.min(100, Math.max(0, m.ctx))}%` }} />
+          </span>
+          context {m.ctx}%
+        </span>
+      )}
+      {m.subagents > 0 && <span className="truncate">{m.ctx !== undefined ? '· ' : ''}{m.subagents} subagent{m.subagents === 1 ? '' : 's'}</span>}
+    </span>
+  )
+}
+
+function Continue({ rows, now, loading, canControl, ended, folded, onToggle }: { rows: SessionSummary[]; now: number; loading: boolean; canControl: boolean; ended: EndedHere; folded: boolean; onToggle: () => void }) {
   const labels = projectLabels(rows)
   return (
     <section aria-label="Continue">
-      <SectionLabel right={<a href="#/home" className="text-accent no-underline">All sessions</a>}>Continue</SectionLabel>
-      {rows.length === 0 ? (
+      <FoldHeader label="Continue" folded={folded} onToggle={onToggle} controls="phone-continue-body"
+        summary={<ContinueSummary rows={rows.map(ended.view)} loading={loading} />}
+        right={<a href="#/home" className="text-accent no-underline">All sessions</a>} />
+      {folded ? null : rows.length === 0 ? (
         <div className="rounded-[12px] border border-border bg-panel px-3 py-4 text-[14px] text-fg-muted">
           {loading ? 'Reading your sessions…' : 'Nothing from the last two days.'}
         </div>
       ) : (
-        <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
+        <ul id="phone-continue-body" className="overflow-hidden rounded-[12px] border border-border bg-panel">
           {rows.map(ended.view).map((s) => {
             const waiting = s.status !== 'ended' && s.activity?.health === 'waiting-on-you'
             const when = s.worked_at || s.last_event_at
@@ -374,6 +451,7 @@ function Continue({ rows, now, loading, canControl, ended }: { rows: SessionSumm
                       </span>
                     </span>
                     <span className="block truncate text-[13px] text-fg-muted">{s.description || s.activity?.phrase || '—'}</span>
+                    <RowMetaLine s={s} />
                   </span>
                   {/* A live row has its ⋯ (End) where the chevron was. */}
                   {s.status === 'ended' && <span className="text-fg-faint"><ChevronIcon size={16} /></span>}
@@ -404,7 +482,7 @@ function ThumbIcon() {
 
 const SAVED_FOLDED = 3
 
-function Saved({ items, now, canDelete }: { items: InboxItem[]; now: number; canDelete: boolean }) {
+function Saved({ items, now, canDelete, folded, onToggle }: { items: InboxItem[]; now: number; canDelete: boolean; folded: boolean; onToggle: () => void }) {
   const [all, setAll] = useState(false)
   const [gone, setGone] = useState<number[]>([])
   const shown = items.filter((i) => !gone.includes(i.id))
@@ -414,12 +492,15 @@ function Saved({ items, now, canDelete }: { items: InboxItem[]; now: number; can
     setGone((g) => [...g, id])
     try { await api.removeInbox(id) } catch { setGone((g) => g.filter((x) => x !== id)) }
   }
+  const sum = savedSummary(shown)
   return (
     <section aria-label="Saved">
-      <SectionLabel right={shown.length > SAVED_FOLDED && (
-        <button type="button" className="text-accent" onClick={() => setAll((v) => !v)}>{all ? 'Fewer' : `All ${shown.length}`}</button>
-      )}>Saved · on your Mac in Quick chat</SectionLabel>
-      <ul className="overflow-hidden rounded-[12px] border border-border bg-panel">
+      <FoldHeader label={folded ? 'Saved' : 'Saved · on your Mac in Quick chat'} folded={folded} onToggle={onToggle} controls="phone-saved-body"
+        summary={<><span className="font-medium text-fg">{sum.count}</span>{sum.newest && <> · newest {fmtAgo(sum.newest.created_at, now)}: “{sum.text}”</>}</>}
+        right={shown.length > SAVED_FOLDED && (
+          <button type="button" className="min-h-11 text-accent" onClick={() => setAll((v) => !v)}>{all ? 'Fewer' : `All ${shown.length}`}</button>
+        )} />
+      {!folded && <ul id="phone-saved-body" className="overflow-hidden rounded-[12px] border border-border bg-panel">
         {rows.map((r) => (
           <li key={r.id} className="flex min-h-[56px] items-center gap-3 border-b border-border px-3 py-2 last:border-b-0">
             <Thumb item={r} />
@@ -434,7 +515,7 @@ function Saved({ items, now, canDelete }: { items: InboxItem[]; now: number; can
             )}
           </li>
         ))}
-      </ul>
+      </ul>}
     </section>
   )
 }

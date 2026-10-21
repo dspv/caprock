@@ -170,7 +170,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   only the reads named in `pairedDeviceRoutes` (`internal/api/lanauth.go`),
   matched on method and route pattern: `GET`/`HEAD` of `/v1/sessions`,
   `/v1/sessions/{id}` and its `events`, `notes`, `todos` and `diff`, `/v1/notes`,
-  `/v1/stats/summary`, `/v1/stats/daily`, `/v1/stats/trends`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
+  `/v1/stats/summary`, `/v1/stats/limits`, `/v1/stats/daily`, `/v1/stats/trends`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
   `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
@@ -733,6 +733,7 @@ GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's p
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
+GET  /v1/stats/limits                  → {rate_limits?, codex_rate_limits?} — the plan windows alone, as the summary carries them
 GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
 PUT  /v1/tabs                          {viewer, sessions} → 204: the sessions this dashboard has a tab for (§ Open tabs)
@@ -6211,6 +6212,17 @@ is free text, and the migration-0005 comment listing two values is history.
 observed_at}` with `observed_at` = that `ts` in unix ms; never `forecast`),
 omitted when there are none. Like `rate_limits` it is current state, not
 range- or agent-scoped.
+
+**`GET /v1/stats/limits`** answers the two alone — `{rate_limits?,
+codex_rate_limits?}`, the same objects from the same reads as the summary's,
+each omitted when unknown — for a reader that wants nothing else: the phone
+home's *Limits* line ([04-ui.md](04-ui.md) § The phone home), which reads it
+on opening and on a pull. A paired device may read it (`pairedDeviceRoutes`).
+Measured on a sandbox daemon over a 1.9 GB copy of the owner's database
+(2026-10-21, median of 15 warm reads): `/v1/stats/summary?range=today` 6.6 ms
+and 22,116 bytes, `/v1/stats/limits` 1.6 ms and 242 bytes. The time is small
+either way; the size is what a phone on mobile data, through the relay, pays
+for.
 
 **A subscription's windows are stored under `sub:<id>:`** —
 `sub:ab12cd34:five_hour` — for either agent ([ADR-048](08-decisions.md)), so

@@ -387,6 +387,20 @@ func TestStatuslineEndpointAndSummary(t *testing.T) {
 	if sum.RateLimits.FiveHour.Forecast != "" {
 		t.Fatalf("forecast from a single snapshot: %q", sum.RateLimits.FiveHour.Forecast)
 	}
+	// The limits-only read carries the same window and nothing else.
+	var lim map[string]json.RawMessage
+	if code := e.get(t, "/v1/stats/limits", &lim); code != 200 {
+		t.Fatalf("limits: %d", code)
+	}
+	var five struct {
+		FiveHour *RateWindow `json:"five_hour"`
+	}
+	if err := json.Unmarshal(lim["rate_limits"], &five); err != nil || five.FiveHour == nil || five.FiveHour.UsedPercentage != 23.5 || five.FiveHour.ResetsAt != 1787227200 {
+		t.Fatalf("limits rate_limits: %s (%v)", lim["rate_limits"], err)
+	}
+	if len(lim) != 1 {
+		t.Fatalf("limits carries more than the plan windows: %v", lim)
+	}
 }
 
 // Codex's windows are served apart from Claude Code's, carry when Codex wrote
@@ -425,6 +439,10 @@ func TestSummaryCarriesCodexRateLimitsSeparately(t *testing.T) {
 	}
 	if c.SevenDay.UsedPercentage != 5 || c.SevenDay.ResetsAt != 1791067416 || c.SevenDay.ObservedAt != 1790000000000 || c.SevenDay.Forecast != "" {
 		t.Fatalf("codex seven_day: %+v", c.SevenDay)
+	}
+	var lim LimitsResponse
+	if code := e.get(t, "/v1/stats/limits", &lim); code != 200 || lim.RateLimits != nil || lim.CodexRateLimits == nil || lim.CodexRateLimits.SevenDay == nil || lim.CodexRateLimits.SevenDay.ObservedAt != 1790000000000 {
+		t.Fatalf("limits: %d %+v", code, lim)
 	}
 }
 

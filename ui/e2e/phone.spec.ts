@@ -7,7 +7,7 @@
  * every phone screen, with content made to be wide: a long URL, a code block
  * with a long line, a wide table, long file paths and long tool lines.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { devices, type Browser, type Page } from '@playwright/test'
 import { expect, test } from './fixtures'
@@ -143,6 +143,51 @@ async function phone(browser: Browser, width: number): Promise<{ page: Page; clo
   const page = await ctx.newPage()
   return { page, close: () => ctx.close() }
 }
+
+// Owner, 2026-10-21: the phone home's folds, the Limits line and the filled
+// New chat, folded and unfolded, at the three common phone widths.
+test('the phone home folds and its Limits line fit at 360, 390 and 412 px', async ({ browser, stand }) => {
+  test.setTimeout(180_000)
+  // Plan windows as Claude Code's status line sends them, with the daemon's own token.
+  const { token } = JSON.parse(readFileSync(path.join(stand.dir, 'data', 'runtime.json'), 'utf8')) as { token: string }
+  const resets = Math.floor(Date.now() / 1000)
+  const sl = await fetch(`${stand.daemonURL}/v1/statusline`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ session_id: 'e2e-limits', five_hour: { used_percentage: 96, resets_at: resets + 80 * 60 }, seven_day: { used_percentage: 83, resets_at: resets + 3 * 86_400 } }),
+  })
+  expect(sl.ok, `statusline ${sl.status}`).toBe(true)
+  const inbox = await fetch(`${stand.daemonURL}/v1/inbox`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: `Saved for later: ${LONG_URL}` }),
+  })
+  expect(inbox.ok).toBe(true)
+  const problems: string[] = []
+  for (const width of [360, 390, 412]) {
+    for (const [name, folds] of [['folded', null], ['unfolded', { continue: false, releases: false, saved: false }]] as const) {
+      const { page, close } = await phone(browser, width)
+      page.setDefaultTimeout(5000)
+      try {
+        await page.addInitScript((f) => {
+          localStorage.setItem('caprock.phone.installHint', '1')
+          if (f) localStorage.setItem('caprock.phone.folds', JSON.stringify(f))
+        }, folds)
+        await page.goto(`${stand.pageURL}/#/`)
+        await expect(page.locator('[data-phone-limits]')).toContainText('5h 96%', { timeout: 15_000 })
+        await expect(page.locator('[data-phone-limits]')).toContainText('week 83%')
+        await expect(page.getByRole('button', { name: 'New chat' })).toBeVisible()
+        await expect(page.getByRole('button', { name: /^Saved/ })).toHaveAttribute('aria-expanded', folds ? 'true' : 'false')
+        await page.waitForTimeout(500)
+        const m = await measure(page, width)
+        await page.screenshot({ path: test.info().outputPath(`home-${name}-${width}.png`), fullPage: true })
+        if (m.scroll > width || m.inner > width || m.client > width || m.cut.length || m.sideways.length || m.zoom.length) {
+          problems.push(`${width} ${name}: scroll=${m.scroll} inner=${m.inner} ${[...m.cut, ...m.sideways, ...m.zoom].join(' | ')}`)
+        }
+      } finally {
+        await close()
+      }
+    }
+  }
+  expect(problems).toEqual([])
+})
 
 test('the phone never scrolls sideways or cuts anything off, at 360, 390 and 430 px', async ({ app, browser, stand }) => {
   test.setTimeout(540_000)
