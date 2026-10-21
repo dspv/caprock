@@ -385,6 +385,16 @@ others. Installing it: [install-app.md](install-app.md).
   (*Branch into a tab* while it still runs elsewhere) and the permission mode
   beside it. Continuing in another agent, opening it in your own terminal and
   copying the resume command are under *More*.
+- **After `/clear` or a fork.** A `/clear` makes Claude Code start a new
+  session id in the same process, and a fork starts one from a copy of the
+  conversation. Caprock links the new id to the one before — only from that
+  fact, never by guessing from the folder or branch — so the conversation stays
+  one card, which says *continues N earlier sessions* with each earlier part as
+  a link. That record is for you, not memory for Claude: after a `/clear` the
+  model does not remember what came before, and Caprock does not hand it a
+  summary — the note on where the last session left off goes only to a
+  session that starts fresh. If Claude needs the earlier part, tell it what
+  matters, or resume that earlier session instead of clearing.
 - **The permission mode, while it runs.** A chip beside the agent's name in
   the inspector, and in the session's header, says the mode a Claude Code
   session is in — *asks first*, *accept edits*, *plan mode*, *bypass*. For a
