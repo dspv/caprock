@@ -95,7 +95,9 @@ describe('PhoneAlerts', () => {
   it('says a newly saved bot is untested instead of a failure that was the old bot’s', async () => {
     settings.value = { report_bot_set: true, report_chat_id: '1', alert_approval: true, alert_untested: true } as Settings
     render(<PhoneAlerts />)
-    expect(await screen.findByText('Saved. Send a test alert to check it reaches you.')).toBeInTheDocument()
+    // A status, not an explanation: Settings hides an unmarked muted <p> while
+    // explanations are off (tokens.css), so it carries data-keep.
+    expect(await screen.findByText('Saved. Send a test alert to check it reaches you.')).toHaveAttribute('data-keep')
     expect(screen.queryByText(/Last alert failed/)).toBeNull()
   })
 

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -44,7 +45,7 @@ func TestAModuleNotificationFollowsTheDesktopSwitches(t *testing.T) {
 // An answer for a module the admin key does not name is not kept.
 func TestAModuleAnswerNeedsTheKey(t *testing.T) {
 	d := &Daemon{log: quietLog(), opt: Options{Config: config.Config{}}}
-	if err := d.moduleAnswer(context.Background(), "ops", "1-1", map[string]any{"button": "yes"}); err != errModuleNotNamed {
+	if err := d.moduleAnswer(context.Background(), "ops", "1-1", map[string]any{"button": "yes"}); !errors.Is(err, errModuleNotNamed) {
 		t.Fatalf("err = %v", err)
 	}
 }

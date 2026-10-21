@@ -142,9 +142,9 @@ export function PhoneAlerts() {
           {!error && s.alert_last_error && !rejected ? (
             <p className="text-[12.5px] text-danger">Last alert failed: {s.alert_last_error}</p>
           ) : s.alert_untested && !error && !sent ? (
-            <p className="text-[12.5px] text-fg-muted" data-alert-untested="">Saved. Send a test alert to check it reaches you.</p>
+            <p className="text-[12.5px] text-fg-muted" data-alert-untested="" data-keep="">Saved. Send a test alert to check it reaches you.</p>
           ) : s.alert_last_sent_ms ? (
-            <p className="text-[12.5px] text-fg-faint">Last alert sent {fmtAgo(s.alert_last_sent_ms, now)}.</p>
+            <p className="text-[12.5px] text-fg-faint" data-keep="">Last alert sent {fmtAgo(s.alert_last_sent_ms, now)}.</p>
           ) : null}
           <p className="text-[12.5px] text-fg-faint">
             Each message has a <span className="text-fg-muted">Mute this session</span> button; <span className="mono">/mute all</span> in
