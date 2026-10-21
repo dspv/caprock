@@ -12,6 +12,40 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.143.0] - 2026-10-21
+
+### Added
+
+- **agents:** `POST /v1/agents` takes `end_when_done: true` for a new Claude
+  Code or Codex session started with a prompt: once its turn finishes (Claude
+  Code's Stop hook, Codex's `task_complete`) with no permission prompt,
+  question, queued message or working subagent left, Caprock ends it the way
+  End does. A script that starts a one-job session every half hour no longer
+  leaves an idle TUI behind each time — Codex's never exits by itself, and 27
+  of them had piled up in a day on one machine. Off unless asked for; never
+  applied to a session started without it or not started by Caprock.
+- **agents:** a chat or agent Caprock started that has no tab is ended once it
+  has sat idle for 12 hours — nothing typed, drawn or recorded, and no
+  permission prompt, question, queued message or working subagent waiting —
+  so idle sessions no longer pile up in memory. Settings → New sessions →
+  *End idle chats after*: 2 h, 12 h, 24 h or Never. The conversation stays
+  listed and says *Ended after 12 h idle — continue*; opening it (or replying
+  to it in Telegram) continues it from where it stopped. Never applied to a
+  session with a tab, a shell, the orchestrator's workers, or a session
+  Caprock did not start. Idle time is measured from the session's own
+  activity, so a daemon restart does not reset it.
+
+### Changed
+
+- **ci:** the release's desktop app builds start from compiled Rust
+  dependencies instead of from scratch. A new master-only CI job keeps a
+  Rust cache of the macOS universal build (both architectures). CI's Linux
+  app build moves to ubuntu-22.04, the image the release builds the AppImage
+  on, so the two share one cache. The release jobs only read master's caches
+  and no longer write Go caches that no later tag could read. A stale or
+  missing cache costs build time only: signing, notarization and the
+  updater signatures are unchanged.
+
 ## [0.142.0] - 2026-10-21
 
 ### Changed

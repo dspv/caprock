@@ -427,6 +427,10 @@ fragments at the default branch too (`relplan.Fragments`, one `ls-tree` and
 one `cat-file --batch`), so Caprock's own repository does not go blank there.
 A process change, not a product decision: recorded here and in
 [06-engineering-rules.md](06-engineering-rules.md), no ADR.
+### 2026-10-21 — 0.143.0: idle chats end, one-job agents end when done
+
+A minor release, one batch PR (#781). An agent session Caprock started that no tab shows is ended after 12 hours with nothing typed, drawn or waiting (Settings → New sessions → End idle chats after: 2 h, 12 h, 24 h or Never); its conversation stays in the lists and continues from where it stopped. `POST /v1/agents` takes `end_when_done`, which ends a one-job Claude Code or Codex session once its turn finishes and nothing waits on it; on the owner's machine a script's Codex runs had left 27 idle sessions holding about 2 GB. The release workflow restores a Rust build cache warmed on master.
+
 ### 2026-10-21 — 0.142.0: the Mac app signed by Apple
 
 A minor release, one batch PR (#779). The macOS app is signed with the Developer ID of CYBRIX LLC and notarized by Apple, so it opens without the unidentified-developer warning; macOS asks once more for the microphone and folder access the self-signed build had, because those grants follow the signature. A database a newer Caprock migrated is refused before any write (ADR-082), ahead of the storage-layout change in PR #768. The phone chat loses the walkie-talkie bar and the latest answer's AI;DR card and uses the desktop chat's field again.
