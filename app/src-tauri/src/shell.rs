@@ -274,25 +274,63 @@ pub fn listen_for_drops<R: tauri::Runtime>(w: &WebviewWindow<R>) {
 /// hands them to the page (DROP_EVENT), which types them into the terminal
 /// under the point or the one used last. A drag that enters, moves or
 /// leaves is not ours.
+///
+/// This runs on the main thread, which also draws every window, so it does
+/// no file I/O there. A drop from Finder (the common case) needs none: its
+/// paths are handed over as they are, at once. Only a drop with a file in a
+/// transient place (`keep_transient`) is copied, and that copy runs on a
+/// worker thread, which then records the paths and evaluates the script
+/// (Tauri queues `eval` to the main thread). With the Mac swapping, a disk
+/// read or write on the main thread can stall for seconds, and the app with
+/// it (a user's report against 0.147.0).
 pub fn on_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent) {
     let tauri::DragDropEvent::Drop { paths, position } = e else {
         return;
     };
     let scale = w.scale_factor().unwrap_or(1.0);
-    let paste = discovery::data_dir().map(|d| d.join("paste"));
-    let paths: Vec<PathBuf> = paths
-        .iter()
-        .map(|p| match &paste {
-            Some(dir) => keep_transient(p, dir),
-            None => p.clone(),
-        })
-        .collect();
-    if let Some(d) = w.try_state::<crate::capture::Dropped>() {
-        d.set(&paths);
+    let at = (position.x, position.y);
+    if !paths.iter().any(|p| is_transient(p)) {
+        deliver_drop(w, paths, at, scale);
+        return;
     }
-    if let Some(js) = drop_script(&paths, (position.x, position.y), scale) {
+    let paste = discovery::data_dir().map(|d| d.join("paste"));
+    let w = w.clone();
+    let paths = paths.clone();
+    // One worker at a time, so two quick drops still land in their order.
+    static ORDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    thread::spawn(move || {
+        let _turn = ORDER.lock().unwrap_or_else(|e| e.into_inner());
+        let paths: Vec<PathBuf> = paths
+            .iter()
+            .map(|p| match &paste {
+                Some(dir) => keep_transient(p, dir),
+                None => p.clone(),
+            })
+            .collect();
+        deliver_drop(&w, &paths, at, scale);
+    });
+}
+
+/// Records a drop's paths and hands them to the page.
+fn deliver_drop<R: tauri::Runtime>(
+    w: &WebviewWindow<R>,
+    paths: &[PathBuf],
+    at: (f64, f64),
+    scale: f64,
+) {
+    if let Some(d) = w.try_state::<crate::capture::Dropped>() {
+        d.set(paths);
+    }
+    if let Some(js) = drop_script(paths, at, scale) {
         let _ = w.eval(js);
     }
+}
+
+/// Whether a dropped path is in one of macOS's temporary hand-over places
+/// (`.../TemporaryItems/...`). Decided from the path alone, without touching
+/// the disk, so the main thread may ask it.
+pub fn is_transient(p: &std::path::Path) -> bool {
+    p.components().any(|c| c.as_os_str() == "TemporaryItems")
 }
 
 /// A file macOS hands over from a temporary place — the screenshot
@@ -303,8 +341,7 @@ pub fn on_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent
 /// the session may read (`--add-dir`), and the copy's path is typed; any
 /// other path, or a copy that fails, is typed as it is.
 pub fn keep_transient(p: &std::path::Path, paste_dir: &std::path::Path) -> PathBuf {
-    let transient = p.components().any(|c| c.as_os_str() == "TemporaryItems");
-    if !transient || !p.is_file() {
+    if !is_transient(p) || !p.is_file() {
         return p.to_path_buf();
     }
     let Some(name) = p.file_name() else {
@@ -851,5 +888,50 @@ mod tests {
         assert_eq!(keep_transient(&folder, &paste), folder);
         assert!(!paste.exists());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn only_a_temporary_hand_over_place_is_transient() {
+        assert!(is_transient(std::path::Path::new(
+            "/var/folders/x/T/TemporaryItems/NSIRD_screencaptureui_1/Screenshot.png"
+        )));
+        assert!(!is_transient(std::path::Path::new(
+            "/Users/a/Desktop/Screenshot.png"
+        )));
+        assert!(!is_transient(std::path::Path::new(
+            "/Users/a/TemporaryItemsNot/x.png"
+        )));
+    }
+
+    // A drop froze the app on a Mac that was swapping (0.147.0): the drop
+    // handler runs on the main thread, which draws every window. A Finder
+    // drop must touch no file there, and a transient copy happens only on
+    // the worker thread.
+    #[test]
+    fn a_drop_does_no_file_io_on_the_main_thread() {
+        let src = include_str!("shell.rs").replace("\r\n", "\n");
+        let body = src
+            .split("pub fn on_drop<")
+            .nth(1)
+            .and_then(|r| r.split("\n}\n").next())
+            .expect("on_drop");
+        let code: String = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (main, worker) = code
+            .split_once("thread::spawn(")
+            .expect("the copy runs on a worker thread");
+        for io in [
+            "keep_transient(",
+            "std::fs",
+            "is_file(",
+            "metadata(",
+            "exists(",
+        ] {
+            assert!(!main.contains(io), "{io} on the main thread: {main}");
+        }
+        assert!(worker.contains("keep_transient("), "{worker}");
     }
 }
