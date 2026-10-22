@@ -104,8 +104,8 @@ chat talk to sessions* on).
 2. **Add your own words (optional).** Type them before you tap — or in the
    forward's comment field. They go first.
 3. **Pick where.** The buttons list the sessions Caprock started that are
-   running, as the phone's Continue does: waiting for you first, then
-   working, then the rest (*● Fix the cache test · 2h ago*), up to six. Or
+   running: waiting for you first, then working, then the rest (*● Fix the
+   cache test · 2h ago*), up to six. Or
    **+ New chat** to start a new chat with it (it appears in Chats on your
    phone and computer; in Bypass the bot asks first), or **Cancel**.
 4. **It goes as one message.** Your words, then each forwarded message as a

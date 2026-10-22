@@ -35,12 +35,13 @@ import { projectsApi, type Project } from '@/lib/projects'
 import { downscalePhoto } from '@/lib/downscale'
 import { isInboxImage, useInbox, useInboxThumb } from '@/lib/inbox'
 import {
-  continueCounts, continueList, doneList, INSTALL_HINT_KEY, installWay, isStandalone, keepFolds, limitsGlance, messageWith, openFromHash,
+  continueCounts, continueRows, INSTALL_HINT_KEY, installWay, isStandalone, keepFolds, limitsGlance, messageWith, openFromHash,
   readFolds, rowMeta, savedSummary, sharedFromSearch, waitingOnYou,
-  type FoldKey, type InstallWay, type LimitPart, type LimitsGlance, type Tone,
+  type ContinueSource, type FoldKey, type InstallWay, type LimitPart, type LimitsGlance, type Tone,
 } from '@/lib/phonehome'
 import { AgentGlyph } from './AgentMarks'
-import { NeedChip, NeedMove } from './NeedChip'
+import { NeedChip } from './NeedChip'
+import { sessionTitle } from '@/lib/sidebar'
 import { needsYou, reasonsSentence } from '@/lib/needs'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
@@ -171,10 +172,16 @@ export function PhoneHome() {
   const list = useMemo(() => sessions.data?.items ?? [], [sessions.data])
   const now = useNow(15000)
   const waiting = waitingOnYou(list)
+  // Continue mirrors the computer's tabs, in their order (GET /v1/tabs, read
+  // as often as the sessions, so a tab opened, closed or dragged on the Mac
+  // follows within seconds); kept in this browser so a reopened page draws
+  // the rows where they were instead of reading them anew.
+  const tabs = useApi(() => api.tabs(), [], { intervalMs: 5000, cache: 'tabs:phone' })
   // Chats have their own section and screen (ADR-071); Continue is the work.
-  const rows = continueList(list.filter((s) => !isChat(s)), now)
-  // Turns that ended asking nothing: one quiet row under Continue.
-  const done = doneList(list.filter((s) => !isChat(s)), now)
+  const cont = useMemo(() => {
+    const t = tabs.data && { ...tabs.data, items: (tabs.data.items ?? []).filter((s) => !isChat(s)) }
+    return continueRows(t, !!tabs.error && !tabs.data, list.filter((s) => !isChat(s)))
+  }, [tabs.data, tabs.error, list])
   const chats = useApi(() => api.chats({ limit: CHATS_SHOWN }), [], { intervalMs: 5000, cache: 'chats:home' })
   // Ended from a row here: shown ended until the next read says so (components/PhoneEnd).
   const endedHere = useEndedHere()
@@ -244,7 +251,7 @@ export function PhoneHome() {
           onNewChat={() => setSheet({ kind: 'chat' })}
         />
       </ChatsSection>
-      <Continue rows={rows} done={done} now={now} loading={!sessions.data && !sessions.error} canControl={canControl} ended={endedHere}
+      <Continue rows={cont.rows} source={cont.source} now={now} loading={cont.source === 'reading' || (cont.source === 'live' && !sessions.data && !sessions.error)} canControl={canControl} ended={endedHere}
         folded={folds.continue} onToggle={() => toggle('continue')} />
       <PhoneReleases pull={pull} folded={folds.releases} onToggle={() => toggle('releases')} />
       <Saved items={inbox.items} now={now} canDelete={canControl} folded={folds.saved} onToggle={() => toggle('saved')} />
@@ -402,13 +409,13 @@ function RecentChats({ list, now, canControl, ended }: { list: ChatList; now: nu
 }
 
 /** Continue's line: *5 need you · 2 working · 3 done · 1 idle*, the counts that are not zero. */
-function ContinueSummary({ rows, done, loading }: { rows: SessionSummary[]; done: number; loading: boolean }) {
-  if (rows.length === 0 && done === 0) return <>{loading ? 'Reading your sessions…' : 'Nothing from the last two days'}</>
+function ContinueSummary({ rows, source, loading }: { rows: SessionSummary[]; source: ContinueSource; loading: boolean }) {
+  if (rows.length === 0) return <>{loading ? 'Reading your sessions…' : emptyContinue(source)}</>
   const n = continueCounts(rows)
   const parts = [
     n.waiting ? <span key="w" className="font-medium text-fg">{n.waiting} need you</span> : null,
     n.working ? <span key="k">{n.working} working</span> : null,
-    n.done + done ? <span key="d">{n.done + done} done</span> : null,
+    n.done ? <span key="d">{n.done} done</span> : null,
     n.idle ? <span key="i">{n.idle} idle</span> : null,
   ].filter(Boolean)
   if (parts.length === 0) return <>{rows.length} ended</>
@@ -434,28 +441,43 @@ function RowMetaLine({ s }: { s: SessionSummary }) {
   )
 }
 
-function Continue({ rows, done, now, loading, canControl, ended, folded, onToggle }: { rows: SessionSummary[]; done: SessionSummary[]; now: number; loading: boolean; canControl: boolean; ended: EndedHere; folded: boolean; onToggle: () => void }) {
-  const labels = projectLabels([...rows, ...done])
-  const [showDone, setShowDone] = useState(false)
+/** What an empty Continue says: no tab open on the computer, or nothing running. */
+function emptyContinue(source: ContinueSource): string {
+  return source === 'tabs' ? 'No sessions open on your computer' : 'Nothing running'
+}
+
+/**
+ * Continue: the computer's tabs in their order, or the live sessions oldest
+ * first (lib/phonehome continueRows). Keyed by session, so a row that
+ * changes state redraws in place and never moves.
+ */
+function Continue({ rows, source, now, loading, canControl, ended, folded, onToggle }: { rows: SessionSummary[]; source: ContinueSource; now: number; loading: boolean; canControl: boolean; ended: EndedHere; folded: boolean; onToggle: () => void }) {
+  const labels = projectLabels(rows)
   return (
-    <section aria-label="Continue">
+    <section aria-label="Continue" data-continue-source={source}>
       <FoldHeader label="Continue" folded={folded} onToggle={onToggle} controls="phone-continue-body"
-        summary={<ContinueSummary rows={rows.map(ended.view)} done={done.length} loading={loading} />}
+        summary={<ContinueSummary rows={rows.map(ended.view)} source={source} loading={loading} />}
         right={<a href="#/home" className="text-accent no-underline">All sessions</a>} />
-      {folded ? null : rows.length === 0 && done.length === 0 ? (
+      {folded ? null : rows.length === 0 ? (
         <div className="rounded-[12px] border border-border bg-panel px-3 py-4 text-[14px] text-fg-muted">
-          {loading ? 'Reading your sessions…' : 'Nothing from the last two days.'}
+          {loading ? 'Reading your sessions…' : `${emptyContinue(source)}.`}
         </div>
       ) : (
         <ul id="phone-continue-body" className="overflow-hidden rounded-[12px] border border-border bg-panel">
           {rows.map(ended.view).map((s) => {
             const waiting = needsYou(s)
             const when = s.worked_at || s.last_event_at
-            const title = labels.get(s.session_id) || s.project || 'unknown project'
+            // The tab's own name on the computer (lib/tablabels), then where it runs.
+            const title = sessionTitle(s)
+            const project = labels.get(s.session_id) || s.project || 'unknown project'
+            // What it is doing, unless that only repeats the word at the right ("idle").
+            const phrase = s.activity?.phrase && s.activity.phrase !== healthWord(s) ? s.activity.phrase : ''
+            const about = phrase || (s.description && s.description !== title ? s.description : '')
             return (
               <EndableRow key={s.session_id} s={s} title={title} canControl={canControl} onEnded={() => ended.mark(s.session_id)}>
                 <a
                   href={href({ name: 'session', id: s.session_id, tab: 'chat' })}
+                  data-continue-row={s.session_id}
                   className={`flex min-h-[60px] items-center gap-3 px-3 py-2 text-fg no-underline active:bg-panel-2 ${s.status === 'ended' ? 'opacity-75' : ''}`}
                 >
                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${healthDot(s)}`} />
@@ -468,7 +490,7 @@ function Continue({ rows, done, now, loading, canControl, ended, folded, onToggl
                       </span>
                     </span>
                     {waiting && s.activity?.need && <span className="mt-0.5 flex min-w-0"><NeedChip need={s.activity.need} small /></span>}
-                    <span className="block truncate text-[13px] text-fg-muted">{s.description || s.activity?.phrase || '—'}</span>
+                    <span className="block truncate text-[13px] text-fg-muted">{project}{about ? ` · ${about}` : ''}</span>
                     <RowMetaLine s={s} />
                   </span>
                   {/* A live row has its ⋯ (End) where the chevron was. */}
@@ -478,34 +500,6 @@ function Continue({ rows, done, now, loading, canControl, ended, folded, onToggl
             )
           })}
         </ul>
-      )}
-      {/* Done folds into one quiet row at the bottom: listed, never counted
-        * in the amber card (§ Needs you and Done). */}
-      {!folded && done.length > 0 && (
-        <div data-phone-done className="mt-2">
-          <button type="button" aria-expanded={showDone} onClick={() => setShowDone(!showDone)}
-            className="flex min-h-11 w-full items-center gap-2 rounded-[12px] border border-border px-3 text-left text-[13px] text-fg-muted">
-            <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full border-[1.5px] border-fg-faint" />
-            <span className="min-w-0 flex-1 truncate">Done · {done.length}</span>
-            <span className="shrink-0">{showDone ? 'hide' : 'show'} <span aria-hidden="true">›</span></span>
-          </button>
-          {showDone && (
-            <ul className="mt-1.5 overflow-hidden rounded-[12px] border border-border bg-panel">
-              {done.map((s) => (
-                <li key={s.session_id} className="flex min-h-[52px] min-w-0 items-center gap-2 border-t border-border px-3 py-1.5 first:border-t-0">
-                  <a href={href({ name: 'session', id: s.session_id, tab: 'chat' })} className="min-w-0 flex-1 text-fg no-underline">
-                    <span className="flex min-w-0 items-baseline gap-2">
-                      <span className="truncate text-[14px] text-fg-muted">{labels.get(s.session_id) || s.project || 'unknown project'}</span>
-                      <span className="ml-auto shrink-0 text-[12px] text-fg-faint">{fmtAgo(s.worked_at || s.last_event_at, now)}</span>
-                    </span>
-                    <span className="block truncate text-[12.5px] text-fg-faint">{s.activity?.need?.text ? `“${s.activity.need.text}”` : s.description || 'done'}</span>
-                  </a>
-                  {canControl && <NeedMove s={s} className="min-h-11" />}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       )}
     </section>
   )

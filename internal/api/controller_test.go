@@ -48,6 +48,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/agents/{id}/queue": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
 	"GET /v1/inbox": true, "GET /v1/inbox/{id}/files/{n}": true, // the Inbox and its thumbnails
+	"GET /v1/tabs":  true,                                                                    // the computer's open tabs, which the phone home's Continue mirrors
 	"GET /v1/chats": true, "GET /v1/chats/{id}/files": true, "GET /v1/chats/{id}/file": true, // Chats and their files (ADR-071)
 	"GET /v1/brain": true, "GET /v1/brain/status": true, "GET /v1/brain/handoff": true, "GET /v1/brain/nodes/{id}": true, // Second Brain, read-only (ADR-063)
 	"GET /v1/projects": true, "GET /v1/projects/ops": true, "GET /v1/projects/{id}/worktrees": true, "GET /v1/projects/{id}/repos": true,

@@ -10,7 +10,7 @@ import { buildPopover } from './traydata'
 import { buildTrayView } from './tray'
 import { buildSidebar, dotOf } from './sidebar'
 import { findAttention } from './attention'
-import { continueList, doneList, waitingOnYou } from './phonehome'
+import { continueRows, waitingOnYou } from './phonehome'
 import { atPrompt } from './sessionJump'
 
 const NOW = Date.parse('2026-10-21T12:00:00Z')
@@ -92,10 +92,10 @@ describe('every screen keeps Done apart', () => {
     expect(calm.calm).toBe(true)
   })
 
-  it('phone: the card counts Needs you; Done folds out of Continue', () => {
+  it('phone: the card counts Needs you; a Done turn keeps its place in Continue', () => {
     expect(waitingOnYou([fin, needs]).map((s) => s.session_id)).toEqual(['needs'])
-    expect(continueList([fin, needs, work], NOW).map((s) => s.session_id)).toEqual(['needs', 'work'])
-    expect(doneList([fin, needs, work], NOW).map((s) => s.session_id)).toEqual(['done'])
+    const tabs = { known: true, at: NOW, sessions: ['done', 'needs', 'work'], items: [fin, needs, work] }
+    expect(continueRows(tabs, false, []).rows.map((s) => s.session_id)).toEqual(['done', 'needs', 'work'])
   })
 
   it('a Done or a guessed turn sits at its prompt; a dialog does not', () => {
