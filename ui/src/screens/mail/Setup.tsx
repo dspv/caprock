@@ -4,7 +4,8 @@ import { api, removeAccountPrompt, whoText } from './mailApi'
 import { Icon } from './icons'
 import type { Provider } from './Onboarding'
 import { AddFlow } from './Onboarding'
-import { ICloudSteps } from './ICloudSteps'
+import { APPLE_ACCOUNT_URL, ICloudSteps } from './ICloudSteps'
+import { openExternal } from '@/lib/nudges'
 import { extTitle } from '@/lib/externalLinks'
 
 // Adding an account: address and password; servers are filled in from the
@@ -18,6 +19,10 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
   const [adv, setAdv] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const icloud = provider?.id === 'icloud' || guess?.imap_host === 'imap.mail.me.com'
+  // A refusal, never a timeout: the server's AUTHENTICATIONFAILED, or the
+  // hint the daemon adds to any iCloud refusal (SMTP's 535 included).
+  const icloudRefused = icloud && /\bauthenticationfailed\b|authentication failed|iCloud needs an app-specific password/i.test(err)
   const [s, setS] = useState({ imap_host: '', imap_port: 993, imap_tls: 'tls', smtp_host: '', smtp_port: 465, smtp_tls: 'tls', username: '' })
 
   useEffect(() => {
@@ -51,7 +56,6 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
       onDone()
     } catch (e) {
       setErr((e as Error).message)
-      setAdv(true)
     } finally {
       setBusy(false)
     }
@@ -60,7 +64,7 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
   return (
     <form className="addform" onSubmit={submit}>
       <h2>{provider && provider.id !== 'other' ? provider.name : 'Add a mail account'}</h2>
-      {provider?.id === 'icloud' ? <ICloudSteps /> : provider?.steps ? (
+      {provider?.id === 'icloud' ? (!icloudRefused && <ICloudSteps />) : provider?.steps ? (
         <div className="hint steps">
           {provider.why && <div className="muted">{provider.why}</div>}
           <div>{provider.steps} {provider.help && <a href={provider.help} target="_blank" title={extTitle()} rel="noreferrer">Open {provider.helpLabel}</a>}</div>
@@ -77,7 +81,7 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
           {guess.note && !provider?.steps && <div>{guess.note} {guess.help_url && <a href={guess.help_url} target="_blank" title={extTitle()} rel="noreferrer">Make one</a>}</div>}
         </div>
       )}
-      {!adv && guess && <button type="button" className="link small" onClick={() => setAdv(true)}>Server settings</button>}
+      {(guess || adv) && <button type="button" className="link small" aria-expanded={adv} onClick={() => setAdv((v) => !v)}>{adv ? 'Hide server settings' : 'Server settings'}</button>}
       {adv && (
         <div className="servers">
           <label className="field"><span>Username</span><input value={s.username} onChange={(e) => setS({ ...s, username: e.target.value })} placeholder={guess?.needs_username ? 'you@icloud.com' : email} /></label>
@@ -93,10 +97,24 @@ export function AddAccount({ onDone, onCancel, provider }: { onDone: () => void;
           </div>
         </div>
       )}
-      {err && <div className="error">{err}</div>}
+      {err && <div className="error" role="alert">
+        {icloudRefused ? <>
+          <strong>iCloud rejected this sign-in</strong>
+          <p>Check the email address and use a new app-specific password from the Apple Account that owns this mailbox.</p>
+          <a className="btn" href={APPLE_ACCOUNT_URL} target="_blank" title={extTitle()} rel="noreferrer"
+            onClick={(e) => { e.preventDefault(); openExternal(APPLE_ACCOUNT_URL) }}>Create a new app-specific password</a>
+          <details className="small"><summary>Why this can happen</summary>
+            <p>Apple did not say whether the email address or password was wrong. Changing your Apple Account password revokes the old app-specific passwords.</p>
+            <div className="error-detail">{err}</div>
+          </details>
+        </> : <>
+          {err}
+          {!provider?.steps && guess?.help_url && <div><a href={guess.help_url} target="_blank" title={extTitle()} rel="noreferrer">{guess.provider} connection help</a></div>}
+        </>}
+      </div>}
       <div className="actions">
         {onCancel && <button type="button" className="btn" onClick={onCancel}>Cancel</button>}
-        <button className="btn primary" disabled={busy || !email || !password}>{busy ? 'Checking…' : 'Add account'}</button>
+        <button className="btn primary" disabled={busy || !email || !password}>{busy ? 'Checking…' : err ? 'Try again' : 'Add account'}</button>
       </div>
     </form>
   )
@@ -124,8 +142,13 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
   onAddAccount?: () => void
 }) {
   const [adding, setAdding] = useState(false)
+  const [reconnecting, setReconnecting] = useState<Account | null>(null)
   const [editing, setEditing] = useState<Account | null>(null)
   const set = (k: string, v: string) => api.putSettings({ [k]: v }).then(onSettings)
+
+  if (reconnecting) return <div className="sheet"><div className="setup onboard"><AddFlow
+    initial={reconnecting.auth === 'oauth2:google' ? 'google' : 'microsoft'} loginHint={reconnecting.email}
+    onDone={() => { setReconnecting(null); onChanged() }} onCancel={() => setReconnecting(null)} /></div></div>
 
   if (adding) return <div className="sheet"><div className="setup onboard"><AddFlow onDone={() => { setAdding(false); onChanged() }} onCancel={() => setAdding(false)} /></div></div>
 
@@ -143,6 +166,8 @@ export function SettingsPanel({ accounts, settings, onSettings, onClose, onChang
             </div>
           </div>
           <div className="grow" />
+          {(a.auth === 'oauth2:google' || a.auth === 'oauth2:microsoft') &&
+            <button className="btn" onClick={() => setReconnecting(a)}>Sign in again</button>}
           <button className="btn" onClick={() => setEditing(a)}>Edit</button>
           <button className="btn danger" onClick={() => {
             if (window.confirm(removeAccountPrompt(a))) api.deleteAccount(a.id).then(onChanged)
@@ -178,8 +203,8 @@ function EditAccount({ a, onDone }: { a: Account; onDone: () => void }) {
     <div className="servers">
       <label className="field"><span>Name</span><input value={x.name} onChange={(e) => setX({ ...x, name: e.target.value })} /></label>
       <label className="field"><span>Signature</span><textarea rows={3} value={x.signature} onChange={(e) => setX({ ...x, signature: e.target.value })} /></label>
-      <label className="field"><span>New password</span><input type="password" placeholder="unchanged" value={x.password} onChange={(e) => setX({ ...x, password: e.target.value })} /></label>
-      {err && <div className="error">{err}</div>}
+      {!a.auth?.startsWith('oauth2:') && <label className="field"><span>New password</span><input type="password" placeholder="unchanged" value={x.password} onChange={(e) => setX({ ...x, password: e.target.value })} /></label>}
+      {err && <div className="error" role="alert">{err}</div>}
       <div className="actions">
         <button className="btn" onClick={onDone}>Cancel</button>
         <button className="btn primary" disabled={busy} onClick={async () => {

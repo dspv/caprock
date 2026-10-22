@@ -146,21 +146,46 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 /** Provider tiles, then that provider's sign-in or password form. */
-export function AddFlow({ initial, onDone, onCancel }: { initial?: ProviderId; onDone: () => void; onCancel?: () => void }) {
+export function AddFlow({ initial, loginHint, onDone, onCancel }: { initial?: ProviderId; loginHint?: string; onDone: () => void; onCancel?: () => void }) {
   const [p, setP] = useState<Provider | null>(() => PROVIDERS.find((x) => x.id === initial) ?? null)
   const [importing, setImporting] = useState(false)
-  const [oauth, setOauth] = useState<OAuthProviders>({})
+  const [oauth, setOauth] = useState<OAuthProviders | null>(null)
+  const [oauthError, setOauthError] = useState('')
+  const [probe, setProbe] = useState(0)
   useEffect(() => {
     let live = true
-    api.oauthProviders().then((o) => live && setOauth(o ?? {})).catch(() => live && setOauth({}))
+    api.oauthProviders().then((o) => live && setOauth(o ?? {})).catch((e) => {
+      if (!live) return
+      if (missingRoute(e)) setOauth({})
+      else setOauthError((e as Error).message)
+    })
     return () => { live = false }
-  }, [])
+  }, [probe])
 
   if (importing) return <ImportAll onDone={onDone} onBack={() => setImporting(false)} />
   if (p) {
     const back = () => setP(null)
-    if (p.oauth && oauth[p.oauth]) return <OAuthSignIn p={p} onDone={onDone} onBack={back} />
-    return <AddAccount provider={p} onDone={onDone} onCancel={back} />
+    // Signing an existing account in again has no tiles to go back to.
+    const leave = loginHint ? (onCancel ?? back) : back
+    const title = <h2><Mark p={p} size={26} /> {p.name}</h2>
+    if (p.oauth && oauthError) return <>
+      {title}
+      <p role="alert" className="error">Could not check sign-in options: {oauthError}</p>
+      <div className="actions">
+        <button type="button" className="btn" onClick={leave}>Back</button>
+        <button type="button" className="btn primary" onClick={() => { setOauthError(''); setProbe((v) => v + 1) }}>Try again</button>
+      </div>
+    </>
+    if (p.oauth && oauth === null) return <>{title}<p role="status" className="muted">Checking sign-in options…</p></>
+    if (p.oauth && oauth?.[p.oauth]) return <OAuthSignIn p={p} loginHint={loginHint} onDone={onDone} onBack={leave} />
+    if (p.oauth && loginHint) return <>
+      {title}
+      <p role="status" className="hint">Sign-in with {p.id === 'google' ? 'Google' : 'Microsoft'} isn't set up in this build, so {loginHint} cannot sign in again here. Use a build with sign-in enabled; the account and its mail stay as they are.</p>
+      <div className="actions"><button type="button" className="btn" onClick={leave}>Back</button></div>
+    </>
+    // Say why there is no sign-in button inside the provider's own steps.
+    const why = p.oauth && oauth ? `Sign-in with ${p.id === 'google' ? 'Google' : 'Microsoft'} isn't set up in this build; your normal account password will not work here.` : undefined
+    return <AddAccount provider={why ? { ...p, why } : p} onDone={onDone} onCancel={back} />
   }
   return (
     <>
@@ -182,32 +207,69 @@ export function AddFlow({ initial, onDone, onCancel }: { initial?: ProviderId; o
 }
 
 /** Sign in at the provider; the account appears here once approved. */
-function OAuthSignIn({ p, onDone, onBack }: { p: Provider; onDone: () => void; onBack: () => void }) {
+function OAuthSignIn({ p, loginHint, onDone, onBack }: { p: Provider; loginHint?: string; onDone: () => void; onBack: () => void }) {
   const [url, setUrl] = useState('')
   const [err, setErr] = useState('')
   const [manual, setManual] = useState(false)
-  const poll = useRef<ReturnType<typeof setInterval> | null>(null)
-  const stop = () => { if (poll.current) clearInterval(poll.current); poll.current = null }
+  const [busy, setBusy] = useState(false)
+  const poll = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const generation = useRef(0)
+  const stop = () => {
+    generation.current++
+    if (poll.current) clearTimeout(poll.current)
+    poll.current = null
+  }
   useEffect(() => stop, [])
 
-  if (manual) return <AddAccount provider={p} onDone={onDone} onCancel={() => setManual(false)} />
+  if (manual) return <AddAccount provider={p} onDone={onDone} onCancel={() => { setBusy(false); setManual(false) }} />
 
   const start = async () => {
+    stop()
+    const attempt = generation.current
+    const live = () => generation.current === attempt
+    setBusy(true)
     setErr('')
     try {
       const before = new Set((await api.state()).accounts.map((a) => a.id))
-      const r = await api.oauthStart(p.oauth!)
+      if (!live()) return
+      const r = await api.oauthStart(p.oauth!, loginHint)
+      if (!live()) return
       setUrl(r.auth_url)
       openExternal(r.auth_url)
-      stop()
-      poll.current = setInterval(() => {
-        api.state().then((s) => {
-          if (s.accounts.some((a) => !before.has(a.id))) { stop(); onDone() }
-        }).catch(() => {})
-      }, 2000)
+      const check = async () => {
+        try {
+          if (r.flow) {
+            const out = await api.oauthFlow(r.flow)
+            if (!live()) return
+            if (out.status === 'ok') { stop(); onDone(); return }
+            if (out.status !== 'pending') {
+              stop()
+              setUrl('')
+              setErr(out.error || 'The sign-in did not finish. Try again.')
+              return
+            }
+          } else {
+            // Older daemons have no flow id; retain their account-list fallback.
+            const s = await api.state()
+            if (!live()) return
+            if (s.accounts.some((a) => !before.has(a.id))) { stop(); onDone(); return }
+          }
+        } catch (e) {
+          if (!live()) return
+          stop()
+          setUrl('')
+          setErr((e as Error).message)
+          return
+        }
+        if (live()) poll.current = setTimeout(() => { void check() }, 1500)
+      }
+      poll.current = setTimeout(() => { void check() }, 1500)
     } catch (e) {
-      if (missingRoute(e)) { setManual(true); return }
+      if (!live()) return
+      if (missingRoute(e) && !loginHint) { setManual(true); return }
       setErr((e as Error).message)
+    } finally {
+      if (live()) setBusy(false)
     }
   }
 
@@ -220,16 +282,18 @@ function OAuthSignIn({ p, onDone, onBack }: { p: Provider; onDone: () => void; o
           <p className="muted small">Approve Caprock on the {p.name} page; your mailbox appears here by itself. <a href={url} target="_blank" title={extTitle()} rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternal(url) }}>Open the page again</a></p>
         </div>
       ) : (
-        <p className="muted">Sign in with {p.name} in your browser and approve Caprock. Caprock gets a token for your mail only, kept in the system keychain; no password is typed here.</p>
+        loginHint
+          ? <p className="muted">Sign in again as {loginHint} in your browser and approve Caprock. The account keeps its mail, name and signature.</p>
+          : <p className="muted">Sign in with {p.name} in your browser and approve Caprock. Caprock gets a token for your mail only, kept in the system keychain; no password is typed here.</p>
       )}
-      {err && <div className="error">{err}</div>}
+      {err && <div className="error" role="alert">{err}</div>}
       <div className="actions">
-        <button type="button" className="link small" onClick={() => { stop(); setManual(true) }}>Use an app password instead</button>
+        {!loginHint && <button type="button" className="link small" onClick={() => { stop(); setManual(true) }}>Use an app password instead</button>}
         <span className="grow" />
         {url
           ? <button type="button" className="btn" onClick={() => { stop(); setUrl('') }}>Cancel</button>
           : <button type="button" className="btn" onClick={onBack}>Back</button>}
-        {!url && <button type="button" className="btn primary" onClick={start}>Sign in with {p.name === 'Outlook' ? 'Microsoft' : p.name}</button>}
+        {!url && <button type="button" className="btn primary" disabled={busy} onClick={start}>Sign in with {p.name === 'Outlook' ? 'Microsoft' : p.name}</button>}
       </div>
     </>
   )

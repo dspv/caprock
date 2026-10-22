@@ -138,7 +138,7 @@ func dialSMTP(a store.Account) (*smtp.Client, *boundedConn, error) {
 	addr := net.JoinHostPort(a.SMTPHost, strconv.Itoa(a.SMTPPort))
 	bc, err := dialBounded(addr)
 	if err != nil {
-		return nil, nil, fmt.Errorf("connect %s: %w", addr, err)
+		return nil, nil, fmt.Errorf("connect: %w", quiet(a.SMTPHost, err))
 	}
 	var c *smtp.Client
 	switch a.SMTPTLS {
@@ -153,7 +153,7 @@ func dialSMTP(a store.Account) (*smtp.Client, *boundedConn, error) {
 		}
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("connect %s: %w", addr, quiet(a.SMTPHost, err))
+		return nil, nil, connectErr(addr, a.SMTPHost, err)
 	}
 	return c, bc, nil
 }

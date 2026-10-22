@@ -38,6 +38,9 @@
 .cm .err { color: var(--danger); }
 .cm .ok { color: var(--ok); }
 .cm .error { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); padding: 8px 10px; border-radius: 6px; margin: 8px 0; white-space: pre-wrap; }
+.cm .error p { margin: 8px 0; }
+.cm .error summary { cursor: pointer; }
+.cm .error-detail { margin-top: 6px; overflow-wrap: anywhere; }
 .cm .btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--line); background: var(--bg); border-radius: 6px;

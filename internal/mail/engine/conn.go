@@ -88,12 +88,36 @@ func silent(err error) bool {
 		(err != nil && strings.Contains(err.Error(), "i/o timeout"))
 }
 
-// quiet turns a timeout into what happened and what to try.
+// serverTimeout keeps the network cause for errors.Is/As without exposing
+// socket addresses or a library's parser trace in a user-facing message.
+type serverTimeout struct {
+	host  string
+	after time.Duration
+	cause error
+}
+
+func (e *serverTimeout) Error() string {
+	return fmt.Sprintf("%s stopped answering after %v. Check the server name, the port and your connection (a VPN included), then try again", e.host, e.after)
+}
+
+func (e *serverTimeout) Unwrap() error { return e.cause }
+
+// quiet describes the observed timeout without guessing whether the server
+// rejected a password, throttled the account, or lost its network connection.
 func quiet(host string, err error) error {
 	if !silent(err) {
 		return err
 	}
-	return fmt.Errorf("%s stopped answering (nothing for %v). Check the server name and port; if they are right, the server may be limiting connections — another mail app open on this account counts — so try again in a minute: %w", host, dialTimeout, err)
+	return &serverTimeout{host: host, after: dialTimeout, cause: err}
+}
+
+// connectErr names the address for a refused handshake; a timeout already
+// names its host, so the address would only repeat it.
+func connectErr(addr, host string, err error) error {
+	if silent(err) {
+		return fmt.Errorf("connect: %w", quiet(host, err))
+	}
+	return fmt.Errorf("connect %s: %w", addr, err)
 }
 
 // TLSConfig is used for every TLS connection; tests replace it to trust a local server.
@@ -120,7 +144,7 @@ func dialIMAP(a store.Account, password string, h *imapclient.UnilateralDataHand
 	}
 	bc, err := dialBounded(addr)
 	if err != nil {
-		return nil, "", fmt.Errorf("connect %s: %w", addr, err)
+		return nil, "", fmt.Errorf("connect: %w", quiet(a.IMAPHost, err))
 	}
 	var c *imapclient.Client
 	switch a.IMAPTLS {
@@ -137,7 +161,7 @@ func dialIMAP(a store.Account, password string, h *imapclient.UnilateralDataHand
 		}
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("connect %s: %w", addr, quiet(a.IMAPHost, err))
+		return nil, "", connectErr(addr, a.IMAPHost, err)
 	}
 	name, err := loginIMAP(c, a, password)
 	if err != nil {

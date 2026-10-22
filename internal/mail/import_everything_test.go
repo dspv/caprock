@@ -123,9 +123,9 @@ func flowStatus(t *testing.T, s *Service, id string) flowAnswer {
 	return out
 }
 
-func startHint(t *testing.T, s *Service, provider, hint string) (authURL, flow string) {
+func startHint(t *testing.T, s *Service, hint string) (authURL, flow string) {
 	t.Helper()
-	r := httptest.NewRequest("POST", "/v1/mail/oauth/start", strings.NewReader(`{"provider":"`+provider+`","login_hint":"`+hint+`"}`))
+	r := httptest.NewRequest("POST", "/v1/mail/oauth/start", strings.NewReader(`{"provider":"google","login_hint":"`+hint+`"}`))
 	r.Host = "127.0.0.1:22776"
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -144,7 +144,7 @@ func startHint(t *testing.T, s *Service, provider, hint string) (authURL, flow s
 // browser is out, then ok with the address, or the reason it failed.
 func TestOAuthFlowStatusFollowsOneSignIn(t *testing.T) {
 	s, prov, _ := oauthFixture(t)
-	authURL, flow := startHint(t, s, "google", "me@fake.test")
+	authURL, flow := startHint(t, s, "me@fake.test")
 	if u, _ := url.Parse(authURL); u.Query().Get("login_hint") != "me@fake.test" {
 		t.Fatalf("login_hint missing: %s", authURL)
 	}
@@ -166,7 +166,7 @@ func TestOAuthFlowStatusFollowsOneSignIn(t *testing.T) {
 	}
 
 	// Refused at the provider: the reason comes back.
-	authURL, flow = startHint(t, s, "google", "")
+	authURL, flow = startHint(t, s, "")
 	if u, _ := url.Parse(authURL); u.Query().Has("login_hint") {
 		t.Fatalf("no hint, no login_hint: %s", authURL)
 	}
