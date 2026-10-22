@@ -164,7 +164,7 @@ func TestRedact(t *testing.T) {
 		"xoxb-1234567890-abcdefghij",
 		"AKIAQ3EGUKZ7FAKEFAKE",
 		"AIzaSyA-abcdefghijklmnopqrstuvwxyz012345",
-		"123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawq",
+		"123456789:AAHdqTcvCH1v" + "GWJxfSeofSAs0K5PALDsawq",
 		"sk_live_abcdefghijklmnop1234",
 		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
 		"Authorization: Bearer abcdefghijklmnopqrstuvwxyz.012345",
