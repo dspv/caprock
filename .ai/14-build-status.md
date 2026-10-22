@@ -77,6 +77,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-22 — unreleased: the machine's memory on the status bar
+
+A user's Mac froze with agents holding all its memory while the status bar
+said only what the agent in front used. The bar now shows the machine's
+memory — green, amber when the OS warns or 85% is used, red when the
+pressure is critical or swap keeps growing — read on each resource sample
+(7.4 µs on an M1 Pro: host_statistics64 and two sysctls; `/proc/meminfo` and
+PSI on Linux; GlobalMemoryStatusEx on Windows). A click lists who holds it
+and offers to end the idle agents Caprock started, through End as a closed
+tab does; agents started elsewhere are never touched, and a paired phone gets
+totals without other apps' names. An agent whose one process passes
+max(3 GiB, a fifth of the machine), or grows steadily for hours, is flagged
+in the popover and its inspector with Restart it fresh (End, then continue
+with --resume). See [03-contracts.md](03-contracts.md)
+§ System memory.
+
 ### 2026-10-22 — 0.147.0: modules on Telegram, a clear Telegram status, Apple Mail import
 
 A minor release, one batch PR (#790). A module can send a message through the owner's paired Telegram bot, with buttons and replies written to its own store (`POST /v1/x/<id>/telegram`), and show a Caprock notification that opens it (`POST /v1/x/<id>/notify`); ADR-076 is amended. Saving a bot token clears the last alert failure and says to send a test alert, and an idle bot explains that it reads nothing. Mail's import says plainly when macOS keeps Apple Mail's account list from Caprock (Full Disk Access) and offers iCloud through a guided app-specific password. The inspector's folded rows shorten instead of clipping mid-word, and the Codex race tests no longer time out.

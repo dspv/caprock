@@ -20,6 +20,8 @@ type idleFake struct {
 	started map[string]time.Time
 	io      map[string]time.Time
 	ended   []string
+	// exits makes End take the session out of the manager, as its exit does.
+	exits bool
 }
 
 func (f *idleFake) Get(id string) (*agents.Agent, bool) {
@@ -43,8 +45,14 @@ func (f *idleFake) IsShell(id string) bool {
 
 func (f *idleFake) End(id string) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.ended = append(f.ended, id)
+	exits := f.exits
+	f.mu.Unlock()
+	if exits {
+		f.fakeSessions.mu.Lock()
+		delete(f.owned, id)
+		f.fakeSessions.mu.Unlock()
+	}
 	return nil
 }
 

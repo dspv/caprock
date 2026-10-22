@@ -10,6 +10,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { api } from './api'
 import { live } from './live'
+import type { MachineMemory } from './memory'
 
 export interface ProcUsage {
   pid: number
@@ -31,6 +32,10 @@ export interface SessionResources {
   hot: boolean
   /** When the tree last went over a limit, unix ms; absent while under both. */
   over_since?: number
+  /** The tree's largest process's own memory (macOS: its physical footprint). */
+  max_proc_bytes?: number
+  /** One process too big, or growing steadily for hours (lib/memory.ts). */
+  heavy?: 'big' | 'growing'
 }
 
 export interface HostVerdict {
@@ -67,6 +72,9 @@ export interface ResourceReport {
    *  through /v1/m/{id}/v1/resources; nothing acts on it until OQ-19 sets
    *  the thresholds. */
   machine?: { cpus: number; load1?: number; mem_total: number; mem_available: number }
+  /** The machine's memory and who holds it, totals only (lib/memory.ts);
+   *  absent from a daemon before it. */
+  memory?: MachineMemory
   error?: string
 }
 
@@ -123,6 +131,12 @@ function useFirstFetch() {
 export function useResources(): ResourceReport | undefined {
   useFirstFetch()
   return useSyncExternalStore(subscribe, () => report)
+}
+
+/** The machine's memory from the latest report, or undefined before one (or from a daemon without it). */
+export function useMachineMemory(): MachineMemory | undefined {
+  useFirstFetch()
+  return useSyncExternalStore(subscribe, () => report?.memory)
 }
 
 /** One session's tree, or undefined while it has none measured. */

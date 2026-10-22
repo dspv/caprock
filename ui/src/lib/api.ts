@@ -1,6 +1,7 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
 import type { ReapResult, ResourceReport } from './resources'
+import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
 import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
 import type { PullRequest } from './github'
@@ -2355,6 +2356,12 @@ export const api = {
   resourceHistory: (since = 0) => get<ResourceHistory>(`/v1/resources/history${since > 0 ? `?since=${since}` : ''}`),
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
+  /** The machine's memory with each agent's state and the other apps (lib/memory.ts). */
+  systemMemory: () => get<MemoryReport>('/v1/system/memory'),
+  /** Ends the named idle agents Caprock started; the daemon checks each again. */
+  endIdleAgents: (sessionIds: string[]) => post<EndIdleResult>('/v1/system/memory/end-idle', { session_ids: sessionIds }),
+  /** Ends a heavy agent Caprock started and answers once it has exited (lib/memory.ts restartFresh). */
+  restartEnd: (sessionId: string) => post<RestartEnd>('/v1/system/memory/restart', { session_id: sessionId }),
   /**
    * What Caprock itself costs this machine: memory, disk, its disk I/O, duplicates (lib/footprint.ts).
    * `orphans` answers with the orphan list (at most 30 s old), for the open doctor; `fresh` takes it now

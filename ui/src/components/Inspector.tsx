@@ -130,7 +130,7 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           changes={chat ? undefined : <Changes sessionId={sessionId} editor={editor} onReview={onReviewChanges} onOpenFile={onOpenFile} />}
           ci={chat ? undefined : <CockpitCI sessionId={sessionId} s={s} repoScope={s?.repo_root || s?.cwd || undefined} onOpen={onOpenPRs} />}
           release={chat ? undefined : <CockpitRelease sessionId={sessionId} repoRoot={s?.repo_root || undefined} />}
-          processes={<Processes sessionId={sessionId} />}
+          processes={<Processes sessionId={sessionId} session={s} />}
         />
         <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
       </div>

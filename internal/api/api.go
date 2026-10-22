@@ -111,6 +111,15 @@ type Deps struct {
 	// outlived SIGTERM) sends SIGKILL. nil ⇒ 501.
 	Footprint   func(ctx context.Context, orphans, fresh bool) any
 	StopOrphans func(ctx context.Context, targets []OrphanTarget, force bool) any
+	// SystemMemory returns the machine's memory with the agents' states and
+	// the other apps for GET /v1/system/memory; paired leaves the apps'
+	// names out. EndIdleAgents ends the named idle agents Caprock started
+	// for POST /v1/system/memory/end-idle. nil => 501.
+	SystemMemory  func(ctx context.Context, paired bool) any
+	EndIdleAgents func(ctx context.Context, sessionIDs []string) any
+	// RestartEnd ends a heavy agent Caprock started and waits for it to exit,
+	// so the dashboard can continue it fresh: POST /v1/system/memory/restart.
+	RestartEnd func(ctx context.Context, sessionID string) any
 	// KeepAwake returns whether the computer is being kept awake, for GET
 	// /v1/keepawake (keepawake.Status). Nil ⇒ 501.
 	KeepAwake func() any
@@ -745,6 +754,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/resources/reap", s.handleReapOrphans)
 	m.HandleFunc("GET /v1/footprint", s.handleFootprint)
 	m.HandleFunc("POST /v1/footprint/orphans/stop", s.handleStopOrphans)
+	m.HandleFunc("GET /v1/system/memory", s.handleSystemMemory)
+	m.HandleFunc("POST /v1/system/memory/end-idle", s.handleEndIdleAgents)
+	m.HandleFunc("POST /v1/system/memory/restart", s.handleRestartEnd)
 	// What the paid plan costs, so the dashboard can say it without guessing
 	// and without an outbound call. Static — it is compiled in — but served
 	// rather than duplicated in the UI, so one edit in Go changes every place
