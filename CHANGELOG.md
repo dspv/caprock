@@ -12,6 +12,143 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.148.0] - 2026-10-22
+
+### Added
+
+- **brain:** Second Brain now goes back and reads what it skipped. Before
+  this release, a read of a long session kept only its newest part, and the
+  older part was never read. Caprock now finds those skipped parts on its
+  own and reads them oldest first. It does this only while automatic
+  reading is on, only when no new session is waiting, and within the same
+  daily token limit. The Second Brain status shows how far it has got and
+  estimates how many days the rest will take.
+- **brain:** Second Brain finds what was decided and knows which decisions
+  still stand. Search matches whole words (*PR* no longer finds *project*
+  and *prompt*: 136 memories instead of 1,097 on the owner's database),
+  any word may match, rarer words and title or keyword hits rank first,
+  and *PR*, *pull request*, *cost*, *price*, *spend*, *decision* and *rule*
+  find each other. Each new memory gets five to eight English keywords,
+  whatever language its title is in, so an English query finds a memory
+  written in another language (older memories get theirs from the
+  re-tag). A read
+  is shown the project's current decisions and recent memories with their
+  ids: it no longer repeats one, can link to one, and can say a new
+  decision supersedes an older one. A superseded memory is ranked last,
+  dimmed and struck through in the graph, and says what replaced it; its
+  *Undo* makes it current again. A new session's handoff now leads with
+  the project's current decisions (up to 15), carries one memory per
+  session, and goes even when no recent passage does. `caprock mcp` gains
+  `current_decisions`, and `search_memories` returns up to 30 ranked
+  candidates with keywords and a short summary for the agent to judge.
+- **brain:** Second Brain gives English keywords to the memories that have
+  none, the ones kept before keywords existed and the ones typed by hand,
+  so an English search finds a memory titled in another language. It runs
+  on its own while automatic reading is on and no session waits to be
+  read, 40 memories a call, within the same daily token limit; its tokens
+  show in the spend like a read's, in a row of their own (*Keywords for
+  older memories*), and the strip's second line says *Adding keywords to
+  older memories: X / Y* while no catch-up is running.
+- **brain:** Second Brain says what it spends. A strip on top of the screen
+  reads *Today 84k of 300k tokens* over a thin bar against the daily limit,
+  with a chip for its share of every Claude token Caprock recorded in the
+  same 24 hours; while a backfill catches up, a second line says *X / Y
+  reads, about N days left*. A click opens the last 14 days: tokens per day
+  against the limit, and reads, tokens and memories per project. Read from
+  the new `GET /v1/brain/spend?days=` (open to paired devices); the status
+  gains a generic `catch_up` field.
+- **mcp:** one-click Connect for `caprock mcp`. Second Brain opens with *Let
+  your agents ask Second Brain* and a button per installed agent; a click runs
+  `claude mcp add -s user caprock -- <path> mcp` or `codex mcp add …` on this
+  machine, *Update path* fixes a registration that points at an old caprock,
+  and *Disconnect* removes it. Settings shows the same status above the copy
+  commands. Only on a click, never from a paired phone, and nothing leaves the
+  computer (`GET /v1/mcp/agents`, `POST /v1/mcp/agents/{agent}/connect|disconnect`).
+- **modules:** a private module can say what waits on you in it, with `PUT
+  /v1/x/<id>/attention` (a count and up to eight items, each a short label and a
+  `#route` inside the module). Its sidebar row shows a small *2 waiting*; a
+  click unfolds the items, and an item opens the module right there. The row and
+  Second Brain above it fold as an accordion. At 0 the row is unchanged, and a
+  report stops showing a day after the module last sent one.
+- **modules:** a module can edit a Telegram message it sent — new text, new buttons, or none (`PATCH /v1/x/<id>/telegram/<message_id>`) — so a batch of approved drafts shows which cards are done, can thread a new message under one of its own with `reply_to_message_id`, and can pin one message at a time with `pin` (silently, replacing only its own previous pin). Presses on edited buttons land in the module's store like the first ones; any message the module did not send is a 404.
+- **tabs:** an empty new shell shows one dim line under its prompt, "Run
+  claude, codex or any command · ⌘W closes this tab" (Ctrl+Shift+W on
+  Windows and Linux). It is drawn over the terminal, never typed into the
+  shell, goes at the first key you type, and never shows in a tab that
+  already has output. The tab strip's + now says "New terminal ⌘T" on hover
+  (Ctrl+Shift+T on Windows and Linux).
+
+### Fixed
+
+- **mcp:** `memory_topics` with a project now counts that project's memories
+  and lists that project alone, instead of the totals for every project
+  beside one project's topics. `session_summary` says how many files a long
+  session touched beyond the 40 it lists (*+N more*), counted from the whole
+  session rather than the daemon's first 100.
+- **brain:** the screens no longer promise every agent what only Claude Code
+  gets. Any agent's sessions add memories, but only a Claude Code session is
+  handed them at start; the tagline, the agents line (*Claude Code and Codex
+  add to it; Claude Code sessions start with it.*) and the third step of
+  *How it works* now say so. *Links* on the Brain screen counts links from
+  one memory to another only, not each memory's link to its topic or
+  project.
+- **brain:** Second Brain reads a long session whole. A read still sends at
+  most 24,000 characters, but a session with more is now read in chunks,
+  oldest first, each read going on where the last one stopped; before, a
+  read kept only the newest part and the older part was never read. A wake
+  still makes at most four calls, so a read costs what it did. The
+  extraction is also told to keep a decision or standing rule you state
+  ("from now on", "rule:") as a decision, and a stretch of mostly your own
+  prompts is read rather than skipped for want of the agent's prose.
+  Machine-made "user" turns (task notifications, reminders, slash-command
+  echoes, messages from other sessions) are no longer read as your words,
+  and a prompt is sent up to 2,000 characters instead of 600.
+- **brain:** A short exchange at the end of a session that is still open is
+  no longer marked read and lost. Second Brain waits and reads it together
+  with what the session says next. When the session has ended, the short
+  tail is marked read, so nothing waits forever.
+- **brain:** a session that ran in a folder under the system's temp directory
+  no longer files its memories under a throwaway project named after that
+  folder (an archive extracted to `ops-seo-site-m143z5ko` made one per run).
+  A checkout there with a remote is named after the remote's repository;
+  anything else keeps its memories with their topics and no project.
+- **docs:** the guides match the app again. Closing a tab ends an idle agent
+  (its conversation kept) and asks about a working one; the sidebar has no
+  worktree rows or ±N; the phone says *No internet on this phone* and counts
+  down to its next try; desktop notifications have the one switch *When a
+  session needs you*; a paired phone starts any agent it lists, not just
+  three; Gemini is read through its telemetry file; and an ended Hermes
+  session is carried on in your own terminal, not in a Caprock tab.
+- **app:** dropping a file on the window no longer touches the disk on the
+  thread that draws the app. A file from Finder is handed to the terminal as
+  it is; a screenshot thumbnail or another temporary file is copied on a
+  background thread first. On a Mac short of memory and swapping, that copy
+  could freeze the window for seconds.
+- **hermes:** an ended Hermes session can be continued in a Caprock tab
+  again (`hermes chat --resume <id>`), as Codex and OpenCode ones are; it was
+  refused with "Caprock continues Claude Code, Codex and OpenCode sessions."
+  It is offered once the session has ended, while its folder and Hermes's
+  `state.db` exist and `hermes` is installed.
+- **ui:** the shortcut list no longer says ⌘W leaves the session running: it
+  closes the tab or pane, an idle agent ends with its conversation kept, and
+  a working one asks Keep it running or Stop it.
+- **phone:** Continue on the phone home now lists the sessions open as tabs
+  on your computer, in the tab strip's order and under the same names, and a
+  row no longer jumps around as sessions start and stop working: its status
+  changes in place. Sessions running in the background without a tab stay
+  under *All sessions*. When the computer's app has not reported its tabs,
+  the live sessions are listed oldest first, in an order activity never
+  changes. The app now reports its tabs in strip order, and the daemon
+  answers `GET /v1/tabs` (a paired phone may read it).
+- **now:** **What happened** is back on Now, after a merge on 2026-10-14
+  dropped it an hour after it shipped and brought back the old feed of one
+  line per command. It shows the moments of your sessions again: files edited
+  (grouped by folder), tests and builds with their result, commits, pushes,
+  pull requests, subagents by their task, turn ends, approvals and failed
+  commands, with reads as a quiet `+N`. *All commands* brings the full feed
+  back; the panel folds and every row is the same height; the end of a turn
+  no longer reads as "session ended".
+
 ## [0.147.0] - 2026-10-22
 
 ### Added

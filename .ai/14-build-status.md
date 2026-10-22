@@ -93,6 +93,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-22 — 0.148.0: the phone mirrors the tabs, Second Brain finds and keeps current decisions
+
+A minor release, one batch PR (#792). The phone's Continue list shows the Mac app's open tabs in tab order (`GET /v1/tabs`) and rows no longer move with activity. Second Brain reads long sessions in chunks instead of keeping only the newest part, catches up on text skipped before, leaves machine-made turns out, adds English keywords (and re-tags older memories), ranks search by whole words with synonyms, marks a decision a newer one supersedes, hands new sessions the current decisions, and shows its own token spend. `caprock mcp` can be connected to Claude Code and Codex with one click. Modules can edit and pin their Telegram messages and show a count in their sidebar chip. "What happened" is back, new shells hint at ⌘T/⌘W, Hermes sessions continue in a tab, and a file dropped from a temporary place is copied off the main thread.
+
 ### 2026-10-22 — 0.147.0: modules on Telegram, a clear Telegram status, Apple Mail import
 
 A minor release, one batch PR (#790). A module can send a message through the owner's paired Telegram bot, with buttons and replies written to its own store (`POST /v1/x/<id>/telegram`), and show a Caprock notification that opens it (`POST /v1/x/<id>/notify`); ADR-076 is amended. Saving a bot token clears the last alert failure and says to send a test alert, and an idle bot explains that it reads nothing. Mail's import says plainly when macOS keeps Apple Mail's account list from Caprock (Full Disk Access) and offers iCloud through a guided app-specific password. The inspector's folded rows shorten instead of clipping mid-word, and the Codex race tests no longer time out.
