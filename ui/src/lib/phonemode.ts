@@ -132,11 +132,22 @@ export function deviceOf(p: Pick<PhonePrefs, 'device' | 'customW' | 'customH'>):
 }
 
 /** Which tabs are in phone mode, by their key: for as long as the window lives. */
-const phoneTabs = new Set<string>()
-export function phoneOn(pageKey: string): boolean { return phoneTabs.has(pageKey) }
+const phoneTabs = new Map<string, boolean>()
+export function phoneOn(pageKey: string): boolean { return phoneTabs.get(pageKey) === true }
+/** On or off as last chosen this window; undefined when never chosen (a phone preview then starts on). */
+export function phoneChosen(pageKey: string): boolean | undefined { return phoneTabs.get(pageKey) }
 export function setPhoneOn(pageKey: string, on: boolean): void {
-  if (on) phoneTabs.add(pageKey)
-  else phoneTabs.delete(pageKey)
+  phoneTabs.set(pageKey, on)
+}
+
+/**
+ * A phone preview (lib/devservers): Phone mode on for `pageKey`, on the
+ * device used last (iPhone 16 the first time), with Touch on.
+ */
+export function startPhonePreview(pageKey: string): void {
+  setPhoneOn(pageKey, true)
+  const p = loadPhonePrefs()
+  if (!p.touch) savePhonePrefs({ ...p, touch: true })
 }
 
 // ---------------------------------------------------------------------------

@@ -612,7 +612,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌥⇧↑, ⌥⇧↓', 'Move the focused session row up or down in the sidebar or the Live pulse, or a right panel section by its grip'],
   ['⌃Tab, ⇧⌘[ ]', 'Next and previous tab'],
   [BROWSER_TAB_KEYS, 'In a browser tab (beta): the tab before and after, outside a text field'],
-  [PHONE_MODE_KEY, 'In a browser tab (beta): Phone mode on or off — the page at a phone’s size'],
+  [PHONE_MODE_KEY, 'In a browser tab (beta) or a phone preview: Phone mode on or off — the page at a phone’s size'],
   ['⌘W', 'Close the tab or pane: an idle agent ends, its conversation kept; a working one asks Keep it running or Stop it'],
   [REOPEN_TAB_KEY, 'Reopen the last closed tab: its conversation back in a tab'],
   ['⌘E, ⇧⌘E', 'Split: a new shell beside, below'],

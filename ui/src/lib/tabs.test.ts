@@ -443,4 +443,52 @@ describe('page tabs', () => {
     const swapped = { ...ws, tabs: [ws.tabs[1], ws.tabs[0]] }
     expect(parseWorkspace(JSON.stringify(swapped)).tabs.map((t) => t.title)).toEqual(['a', 'x'])
   })
+
+  // Owner, 2026-10-22: a phone preview opens beside the terminal that printed the address.
+  describe('a phone preview', () => {
+    const preview = (key: string, url = 'http://localhost:5173/'): WorkspaceAction =>
+      ({ type: 'split', target: { kind: 'page', sessionId: `page:${key}`, url, preview: true }, direction: 'row', projectId: 'p1', title: key })
+    const shell = (id: string): WorkspaceAction => ({ type: 'open', target: { kind: 'shell', sessionId: id }, projectId: 'p1', title: 'Shell 1' })
+
+    it('splits beside the terminal, keeps the tab named after it, and follows its page', () => {
+      let ws = run(shell('sh'), preview('v'))
+      expect(ws.tabs).toHaveLength(1)
+      const t = ws.tabs[0]!
+      expect(isPageTab(t)).toBe(false)
+      expect(leaves(t.root).map((l) => l.target.kind)).toEqual(['shell', 'page'])
+      expect(focusedLeaf(t).target.sessionId).toBe('page:v')
+      expect(namingLeaf(t).target.sessionId).toBe('sh')
+      ws = workspaceReducer(ws, { type: 'page-nav', sessionId: 'page:v', url: 'http://localhost:5173/about', title: 'About' })
+      expect(leaves(ws.tabs[0]!.root)[1]!.target.url).toBe('http://localhost:5173/about')
+      expect(ws.tabs[0]!.title).toBe('Shell 1')
+      // An agent beside it still names the tab.
+      const agent = run(open('a'), preview('w'))
+      expect(namingLeaf(agent.tabs[0]!).target.sessionId).toBe('a')
+    })
+
+    it('is a tab of its own beside a page, or once the tab holds all the panes it can', () => {
+      const besidePage = run(open('a'), { type: 'open', target: { kind: 'page', sessionId: 'page:x', url: 'https://x.example.com/' }, projectId: 'p1', title: 'x' }, preview('v'))
+      expect(besidePage.tabs).toHaveLength(3)
+      let full = run(open('a'))
+      for (let i = 1; i < MAX_PANES; i++) full = workspaceReducer(full, { type: 'split', target: { kind: 'shell', sessionId: `s${i}` }, direction: 'row', projectId: 'p1', title: 's' })
+      full = workspaceReducer(full, preview('v'))
+      expect(full.tabs).toHaveLength(2)
+      expect(isPageTab(full.tabs[1]!)).toBe(true)
+    })
+
+    it('only a preview splits: any other page still opens a tab of its own', () => {
+      const ws = run(open('a'), { type: 'split', target: { kind: 'page', sessionId: 'page:x', url: 'https://x.example.com/' }, direction: 'row', projectId: 'p1', title: 'x' })
+      expect(ws.tabs).toHaveLength(2)
+    })
+
+    it('comes back beside its terminal after a restart; a plain page in a split does not', () => {
+      const ws = run(shell('sh'), preview('v'))
+      const back = parseWorkspace(JSON.stringify(ws))
+      expect(back.tabs).toHaveLength(1)
+      expect(leaves(back.tabs[0]!.root)[1]!.target).toEqual({ kind: 'page', sessionId: 'page:v', url: 'http://localhost:5173/', preview: true })
+      const raw = JSON.parse(JSON.stringify(ws)) as Workspace
+      delete (leaves(raw.tabs[0]!.root)[1]!.target as { preview?: boolean }).preview
+      expect(parseWorkspace(JSON.stringify(raw)).tabs).toHaveLength(0)
+    })
+  })
 })

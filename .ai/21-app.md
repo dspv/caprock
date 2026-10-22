@@ -1980,6 +1980,11 @@ crashed (ADR-070); what the user sees is in
   `TOUCH_SCRIPT`, a second initialization script in every page, dormant
   until a phone's agent or `window.__caprockTouch(true)`; the shell re-sends
   its state when a page has loaded. What the user sees is in 04-ui.md.
+- **Phone preview** (ADR-075, amended 2026-10-22): a page pane split beside
+  a terminal, asked for from a dev server's address in that terminal or ⌘K.
+  Nothing new in the shell: the same `open` with `phone`, laid over the
+  pane's page area; `retain` also runs at load when only previews hold pages
+  (the setting off).
 - **Not verified in a real run** (ADR-075): the overlay on Windows and Linux,
   Wayland placement, `navigator.clipboard` and drops inside a page; phone
   mode's window at the device size, and its agent change off macOS.

@@ -12,6 +12,8 @@ import { saveSidebarMode } from '@/lib/sidebarMode'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
 import { CLOSE_TAB_EVENT } from '@/lib/shell'
+import { forgetDevServers, noteDevServer, requestPhonePreview } from '@/lib/devservers'
+import { PHONE_PREFS_KEY } from '@/lib/phonemode'
 // Imported here rather than inside each test: the first dynamic import
 // transformed the whole app inside the first test's 5 s budget, and on a busy
 // machine that alone timed it out. vi.mock is hoisted above this.
@@ -1062,6 +1064,82 @@ describe('the app workspace', () => {
     act(() => { window.dispatchEvent(new CustomEvent('caprock:open-browser', { detail: {} })) })
     expect(await screen.findByText('Turn on the in-app browser in Settings first.')).toBeTruthy()
     expect(screen.queryByRole('tab', { name: /^Browser · / })).toBeNull()
+  })
+
+  // Owner, 2026-10-22: a dev server's address in a terminal, one click, and
+  // the page is beside it as a phone shows it — with the in-app browser
+  // setting never touched.
+  describe('phone preview, in the desktop app', () => {
+    const acts: { id: string; act: { do: string } }[] = []
+    beforeEach(() => {
+      acts.length = 0
+      forgetDevServers()
+      ;(window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = {
+        invoke: async (c: string, args: { id: string; act: { do: string } }) => {
+          if (c === 'browser_tab') { acts.push(args); return null }
+          throw new Error(c)
+        },
+      }
+    })
+    afterEach(() => { delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ })
+
+    it('opens the page split beside the terminal it was printed in, in Phone mode with Touch on, the setting left off', async () => {
+      localStorage.setItem(PHONE_PREFS_KEY, JSON.stringify({ device: 'pixel9', touch: false }))
+      await renderApp()
+      await openFromPalette('Fix the login bug')
+      await screen.findByRole('tab')
+      act(() => { requestPhonePreview({ url: 'http://localhost:5173/', sessionId: 'agent-1' }) })
+      const view = await waitFor(() => { const v = document.querySelector('[data-browser-view]'); expect(v).toBeTruthy(); return v as HTMLElement })
+      // One tab, two panes: the agent's terminal and the page beside it.
+      expect(screen.getAllByRole('tab')).toHaveLength(1)
+      expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+      expect(view.closest('[data-pane]')).toBeTruthy()
+      expect(within(view).getByRole('button', { name: /Phone/ })).toHaveAttribute('aria-pressed', 'true')
+      expect(view.querySelector('[data-phone-stage]')).toBeTruthy()
+      // The device used last, now with Touch on.
+      expect(within(view).getByRole('combobox', { name: /Device/i })).toHaveValue('pixel9')
+      expect(JSON.parse(localStorage.getItem(PHONE_PREFS_KEY)!)).toMatchObject({ device: 'pixel9', touch: true })
+      expect(localStorage.getItem('caprock.app.in-app-browser')).toBeNull()
+      expect(within(view).queryByText(/The in-app browser is off/)).toBeNull()
+      // The same address again brings it forward rather than opening it twice.
+      act(() => { requestPhonePreview({ url: 'http://localhost:5173/', sessionId: 'agent-1' }) })
+      expect(document.querySelectorAll('[data-browser-view]')).toHaveLength(1)
+      // Its × closes the pane, not the agent's tab.
+      fireEvent.click(within(view).getByRole('button', { name: 'Close the tab' }))
+      await waitFor(() => expect(document.querySelector('[data-browser-view]')).toBeNull())
+      expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+      expect(screen.getAllByRole('tab')).toHaveLength(1)
+    })
+
+    it('⌘K → Preview on phone… lists the servers seen, then asks for an address', async () => {
+      noteDevServer('http://localhost:3000/', 'agent-1', Date.now() - 120_000)
+      noteDevServer('http://localhost:5173/', undefined, Date.now())
+      await renderApp()
+      await cmd('k')
+      fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'preview on phone' } })
+      fireEvent.click(screen.getAllByRole('option').find((o) => o.textContent?.startsWith('Preview on phone…'))!)
+      const sheet = await screen.findByRole('dialog', { name: 'Preview on phone' })
+      const rows = within(sheet).getAllByRole('option').map((o) => o.textContent)
+      expect(rows[0]).toContain('localhost:5173')
+      expect(rows[1]).toContain('localhost:3000')
+      expect(rows[1]).toContain('seen in Fix the login bug · 2 min ago')
+      expect(rows[2]).toContain('Preview a URL on phone…')
+      fireEvent.click(within(sheet).getAllByRole('option')[2]!)
+      const ask = await screen.findByRole('dialog', { name: 'Preview a URL on phone' })
+      expect(within(ask).getByText('Type the address of the page to see on a phone.')).toBeInTheDocument()
+      fireEvent.change(within(ask).getByRole('combobox', { name: 'Search' }), { target: { value: 'localhost:8080' } })
+      expect(within(ask).getByRole('option')).toHaveTextContent('Preview localhost:8080 on phone')
+      fireEvent.keyDown(within(ask).getByRole('combobox', { name: 'Search' }), { key: 'Enter' })
+      const view = await waitFor(() => { const v = document.querySelector('[data-browser-view]'); expect(v).toBeTruthy(); return v as HTMLElement })
+      expect(within(view).getByRole('button', { name: /Phone/ })).toHaveAttribute('aria-pressed', 'true')
+    })
+  })
+
+  it('offers no phone preview outside the desktop app', async () => {
+    await renderApp()
+    await cmd('k')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search' }), { target: { value: 'preview on phone' } })
+    expect(screen.queryAllByRole('option').some((o) => o.textContent?.startsWith('Preview on phone…'))).toBe(false)
   })
 
   it('text the palette cannot match starts an agent on it, in a worktree named after it', async () => {

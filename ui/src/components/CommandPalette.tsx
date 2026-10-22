@@ -12,7 +12,7 @@ import { Sheet, SHEET_CLOSE_ROOM } from './Sheet'
 
 export interface PaletteItem {
   id: string
-  group: 'Waiting' | 'Actions' | 'Saved' | 'Tabs' | 'Sessions' | 'Projects' | 'History'
+  group: 'Waiting' | 'Servers' | 'Actions' | 'Saved' | 'Tabs' | 'Sessions' | 'Projects' | 'History'
   label: string
   detail?: string
   hint?: string
@@ -44,7 +44,7 @@ export function score(query: string, item: Pick<PaletteItem, 'label' | 'detail' 
   return 1
 }
 
-const GROUP_ORDER: PaletteItem['group'][] = ['Waiting', 'Actions', 'Saved', 'Tabs', 'Sessions', 'Projects']
+const GROUP_ORDER: PaletteItem['group'][] = ['Waiting', 'Servers', 'Actions', 'Saved', 'Tabs', 'Sessions', 'Projects']
 
 /** The items shown for a query: by group, the group with the best match first once something is typed. */
 export function rank(items: PaletteItem[], q: string): PaletteItem[] {
@@ -64,12 +64,15 @@ export function CommandPalette({
   search,
   label = 'Command palette',
   placeholder = 'Search projects, sessions, actions…',
+  empty,
 }: {
   items: PaletteItem[]
   onClose: () => void
   /** The sheet's name, for a palette narrowed to one kind of item (Run saved…). */
   label?: string
   placeholder?: string
+  /** What the list says before anything is typed, when it has nothing to show. */
+  empty?: string
   /** What the typed text can do when nothing matches it. */
   fallback?: (q: string) => PaletteItem | undefined
   /** Past sessions matching the text, from the daemon; shown under History. */
@@ -128,7 +131,7 @@ export function CommandPalette({
         />
       </div>
       <ul id="palette-list" role="listbox" className="grid grid-cols-1 max-h-[52vh] gap-px overflow-y-auto p-1.5">
-        {shown.length === 0 && <li className="px-3 py-3 text-[13px] text-fg-muted">Nothing matches “{q}”.</li>}
+        {shown.length === 0 && <li className="px-3 py-3 text-[13px] text-fg-muted">{!q.trim() && empty ? empty : `Nothing matches “${q}”.`}</li>}
         {shown.map((i, n) => {
           const head = i.group !== lastGroup
           lastGroup = i.group

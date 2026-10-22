@@ -27,7 +27,7 @@ import { getUiScale, useUiScale } from '@/lib/uiscale'
 import { openLink } from '@/lib/termlinks'
 import { keys, PHONE_MODE_KEY } from '@/lib/appkeys'
 import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, engineOf, overlayOpen, pageId, rectOf, sameRect, type BrowserNews, type PageRect } from '@/lib/browsertab'
-import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, type PhonePrefs } from '@/lib/phonemode'
+import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, type PhonePrefs } from '@/lib/phonemode'
 import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, PhoneIcon, ReloadIcon } from './AppIcons'
 import { DeviceBar } from './DeviceBar'
 import { PhoneFrame } from './PhoneFrame'
@@ -66,6 +66,10 @@ export interface BrowserViewProps {
   /** The sessions waiting on you now; one that joins while the tab is in front is named. */
   waiting?: readonly WaitingAgent[]
   onGoWaiting?: (id: string) => void
+  /** It has the keyboard: a phone preview in a split leaves the terminal beside it its keys while that pane is focused. */
+  focused?: boolean
+  /** A phone preview (lib/devservers): Phone mode on unless turned off this window. */
+  phoneFirst?: boolean
   /** Tests: the platform and whether this is the desktop app. */
   isMac?: boolean
   inApp?: boolean
@@ -109,7 +113,7 @@ function useWindowShown(): boolean {
   return shown
 }
 
-export function BrowserView({ pageKey, url, visible, enabled = true, armed, onArm, onNav, onOpenPage, onClose, onStep, from, engine, pause, waiting = [], onGoWaiting, isMac = isMacPlatform(), inApp = isTauri() }: BrowserViewProps) {
+export function BrowserView({ pageKey, url, visible, enabled = true, armed, onArm, onNav, onOpenPage, onClose, onStep, from, engine, pause, waiting = [], onGoWaiting, focused = true, phoneFirst = false, isMac = isMacPlatform(), inApp = isTauri() }: BrowserViewProps) {
   const box = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const [address, setAddress] = useState(url)
@@ -122,7 +126,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
 
   // Phone mode: on per tab (for the window's life), the device and the rest
   // this viewer's (lib/phonemode).
-  const [phone, setPhoneState] = useState(() => phoneOn(pageKey))
+  const [phone, setPhoneState] = useState(() => phoneChosen(pageKey) ?? phoneFirst)
   const [phonePrefs, setPhonePrefs] = useState<PhonePrefs>(loadPhonePrefs)
   const togglePhone = () => setPhoneState((on) => { setPhoneOn(pageKey, !on); return !on })
   const changePhone = (next: Partial<PhonePrefs>) => setPhonePrefs((p) => { const n = { ...p, ...next }; savePhonePrefs(n); return n })
@@ -187,7 +191,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
 
   // The same keys pressed in the dashboard while this tab is in front.
   useEffect(() => {
-    if (!visible) return
+    if (!visible || !focused) return
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       const k = browserKey(e, isMac, inTextField(e.target))
@@ -200,7 +204,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [visible, isMac])
+  }, [visible, focused, isMac])
 
   // A new tab: the cursor in the address box as soon as it is in front.
   useEffect(() => {

@@ -43,6 +43,12 @@ export interface TabTarget {
   url?: string
   /** A page: the session whose link opened it, if one did. */
   of?: string
+  /**
+   * A page: a phone preview (lib/devservers). It may sit in a split beside a
+   * terminal, opens in Phone mode, and shows with the in-app browser
+   * setting off — the click that asked for it is the consent.
+   */
+  preview?: boolean
 }
 
 export interface PaneLeaf {
@@ -163,7 +169,12 @@ export function focusedLeaf(tab: Tab): PaneLeaf {
  *  Named after the focused pane, an agent's tab read "shell" the moment a
  *  shell was split beside it, and two tabs said the same word. */
 export function namingLeaf(tab: Tab): PaneLeaf {
-  return leaves(tab.root).find((l) => l.target.kind !== 'shell') ?? focusedLeaf(tab)
+  const all = leaves(tab.root)
+  // A phone preview beside a terminal never names the tab: the terminal does.
+  const named = all.find((l) => l.target.kind !== 'shell' && (l.target.kind !== 'page' || all.length === 1))
+  if (named) return named
+  const f = focusedLeaf(tab)
+  return f.target.kind === 'page' ? all.find((l) => l.target.kind !== 'page') ?? f : f
 }
 
 /** Whether a tab shows a web page: a browser tab (ADR-075). */
@@ -372,7 +383,14 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
     case 'page-nav': {
       let changed = false
       const tabs = ws.tabs.map((t) => {
-        if (t.root.type !== 'pane' || t.root.target.kind !== 'page' || t.root.target.sessionId !== a.sessionId) return t
+        if (t.root.type === 'split') {
+          // A phone preview in a split: its address moves on; the tab keeps the terminal's name.
+          const leaf = leaves(t.root).find((l) => l.target.kind === 'page' && l.target.sessionId === a.sessionId)
+          if (!leaf || a.url === undefined || !pageAddress(a.url) || a.url === leaf.target.url) return t
+          changed = true
+          return { ...t, root: mapLeaf(t.root, leaf.id, (l) => ({ ...l, target: { ...l.target, url: a.url } })) }
+        }
+        if (t.root.target.kind !== 'page' || t.root.target.sessionId !== a.sessionId) return t
         const url = a.url !== undefined && pageAddress(a.url) ? a.url : t.root.target.url
         const title = a.title !== undefined ? a.title : t.title
         if (url === t.root.target.url && title === t.title) return t
@@ -400,10 +418,14 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const tab = activeTab(ws)
       // Already open somewhere: show it where it is rather than twice. A file
       // and a watched session are tabs of their own: neither split nor split beside.
-      if (!tab || findTabBySession(ws, a.target.sessionId) || ownTab(a.target) || ownTab(focusedLeaf(tab).target)) {
+      // A phone preview is the one page that splits beside a terminal.
+      const own = ownTab(a.target) && !(a.target.kind === 'page' && a.target.preview)
+      if (!tab || findTabBySession(ws, a.target.sessionId) || own || ownTab(focusedLeaf(tab).target)) {
         return workspaceReducer(ws, { type: 'open', target: a.target, projectId: a.projectId, title: a.title })
       }
-      if (leaves(tab.root).length >= MAX_PANES) return ws
+      if (leaves(tab.root).length >= MAX_PANES) {
+        return a.target.kind === 'page' ? workspaceReducer(ws, { type: 'open', target: a.target, projectId: a.projectId, title: a.title }) : ws
+      }
       const leaf: PaneLeaf = { type: 'pane', id: newId('pane'), target: a.target }
       const focused = focusedLeaf(tab)
       return replaceTab(ws, { ...tab, root: splitAt(tab.root, focused.id, leaf, a.direction), focusedPaneId: leaf.id })
@@ -449,11 +471,17 @@ function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
   if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
-  if (t.kind === 'page') return typeof t.url === 'string' && (t.url === '' || pageAddress(t.url)) && (t.of === undefined || typeof t.of === 'string')
+  if (t.kind === 'page') return typeof t.url === 'string' && (t.url === '' || pageAddress(t.url)) && (t.of === undefined || typeof t.of === 'string') && (t.preview === undefined || typeof t.preview === 'boolean')
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
 
-/** A pane that is a whole tab, never split: a file, a session watched read-only, or a web page. */
+/** Replaces the leaf `id` under `node` with what `f` makes of it. */
+function mapLeaf(node: PaneNode, id: string, f: (l: PaneLeaf) => PaneLeaf): PaneNode {
+  if (node.type === 'pane') return node.id === id ? f(node) : node
+  return { ...node, children: node.children.map((c) => mapLeaf(c, id, f)) }
+}
+
+/** A pane that is a whole tab, never split: a file, a session watched read-only, or a web page (a phone preview aside). */
 export function ownTab(t: TabTarget): boolean {
   return t.kind === 'file' || t.kind === 'observe' || t.kind === 'page'
 }
@@ -518,8 +546,9 @@ export function parseWorkspace(raw: string | null): Workspace {
     const tabs = v.tabs.filter((t): t is Tab =>
       !!t && typeof t.id === 'string' && typeof t.projectId === 'string' && isPane(t.root) && typeof t.focusedPaneId === 'string',
     ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title : '' }))
-      // A page is a tab of its own: one stored inside a split is not kept.
-      .filter((t) => t.root.type === 'pane' || leaves(t.root).every((l) => l.target.kind !== 'page'))
+      // A page is a tab of its own: one stored inside a split is not kept,
+      // unless it is a phone preview beside its terminal.
+      .filter((t) => t.root.type === 'pane' || leaves(t.root).every((l) => l.target.kind !== 'page' || l.target.preview === true))
       .sort((a, b) => Number(isPageTab(a)) - Number(isPageTab(b)))
     // A Pipeline pane tab (before 2026-10-15) is not restored as a pane: the
     // pinned Pipeline tab takes its place.

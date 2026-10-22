@@ -89,8 +89,11 @@ import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
 import { BrowserView } from '@/components/BrowserView'
-import { browserAct, browserOn, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
+import { browserAct, browserAvailable, browserOn, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
 import { openLink } from '@/lib/termlinks'
+import { PHONE_PREVIEW_EVENT, type PhonePreviewDetail } from '@/lib/devservers'
+import { startPhonePreview } from '@/lib/phonemode'
+import { PhonePreviewPalette } from '@/components/PhonePreviewPalette'
 import { attachable, detachedSession, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
 import { ScreenShown } from '@/lib/refresh'
@@ -111,7 +114,7 @@ import { ChatEnded, ChatHint, type ChatPane } from '@/components/QuickChatPane'
 import { useSpawnableAgents } from '@/components/AgentPicker'
 import { AddProjectSheet } from '@/components/AddProjectSheet'
 import { CommandPalette, type PaletteItem } from '@/components/CommandPalette'
-import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
+import { BranchIcon, ChatIcon, DashboardIcon, DeckIcon, GlobeIcon, MailIcon, ExternalIcon, FileIcon, FolderIcon, FolderPlusIcon, InspectorIcon, PhoneIcon, PlusIcon, SearchIcon, SettingsIcon, SparkIcon, TerminalIcon } from '@/components/AppIcons'
 import type { PaneStatus } from '@/components/TerminalPane'
 import { EditorMenu, type EditorMenuAt } from '@/components/EditorMenu'
 import { joinPath, preferredName, useEditors } from '@/lib/editors'
@@ -232,6 +235,8 @@ type SheetState =
   | { kind: 'quick-chat' }
   /** *Run saved…*: the palette narrowed to the saved prompts and commands (ADR-051). */
   | { kind: 'saved' }
+  /** ⌘K → Preview on phone…: the local servers seen, or (`url`) an address to type. */
+  | { kind: 'preview'; mode: 'list' | 'url' }
   /** The palette's "Open file…": the files of one worktree. */
   | { kind: 'files'; projectId: string; worktree: string; title: string }
   /** *Clean up copies…*: a project's worktrees, their state and size (components/CopiesSheet). */
@@ -596,21 +601,66 @@ export function AppShell() {
     window.addEventListener(OPEN_BROWSER_EVENT, on)
     return () => window.removeEventListener(OPEN_BROWSER_EVENT, on)
   }, [openPage])
+  /**
+   * A phone preview (lib/devservers): `raw` in a browser tab split beside the
+   * terminal it was printed in (else beside the pane in front), in Phone
+   * mode on the device used last, with Touch on. It needs no setting: the
+   * click is the consent, and the in-app browser's switch in Settings still
+   * governs every other page (ADR-075). The same address already previewed
+   * is brought forward rather than opened twice.
+   */
+  const openPreview = useCallback((raw: string, sessionId?: string) => {
+    const url = pageUrl(raw)
+    if (!url) { setToast(`“${raw}” is not a web address.`); return }
+    if (!browserAvailable()) { setToast('Phone preview is part of the desktop app.'); return }
+    const { tabs, activeProjectId: pid } = pageCtx.current
+    for (const t of tabs) {
+      const leaf = leaves(t.root).find((l) => l.target.kind === 'page' && l.target.preview && l.target.url === url)
+      if (!leaf) continue
+      armPage(leaf.target.sessionId)
+      setChangesView(null)
+      setCompare(null)
+      dispatch({ type: 'activate', tabId: t.id })
+      dispatch({ type: 'focus-pane', tabId: t.id, paneId: leaf.id })
+      showWorkspace()
+      return
+    }
+    const key = newPageKey()
+    startPhonePreview(key)
+    armPage(key)
+    const home = sessionId ? tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === sessionId)) : undefined
+    if (home) {
+      const pane = leaves(home.root).find((l) => l.target.sessionId === sessionId)!
+      dispatch({ type: 'activate', tabId: home.id })
+      dispatch({ type: 'focus-pane', tabId: home.id, paneId: pane.id })
+    }
+    openSplit({ kind: 'page', sessionId: key, url, preview: true }, home?.projectId ?? pid, browserTitle(url), 'row')
+  }, [armPage, openSplit, showWorkspace])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<PhonePreviewDetail>).detail
+      if (d?.url) openPreview(d.url, d.sessionId)
+    }
+    window.addEventListener(PHONE_PREVIEW_EVENT, on)
+    return () => window.removeEventListener(PHONE_PREVIEW_EVENT, on)
+  }, [openPreview])
   // The tab in front when the window loaded is the one not armed by coming
   // to the front: everything after that is a click or a key.
   const loadedFront = useRef<string | undefined>(current?.id)
   useEffect(() => {
     if (!current || current.id === loadedFront.current) return
     loadedFront.current = undefined
-    if (isPageTab(current)) armPage(focusedLeaf(current).target.sessionId)
+    for (const l of leaves(current.root)) if (l.target.kind === 'page') armPage(l.target.sessionId)
   }, [current, armPage])
   // After a reload the shell may still hold pages from before: every one
   // whose tab is gone is closed; the others wait, hidden, for their tab.
   const retained = useRef(false)
   useEffect(() => {
-    if (retained.current || !browserEnabled) return
+    const pages = ws.tabs.flatMap((t) => leaves(t.root)).filter((l) => l.target.kind === 'page')
+    // A phone preview shows with the setting off, so its pages are kept the same way.
+    if (retained.current || !(browserEnabled || (isTauri() && pages.some((l) => l.target.preview)))) return
     retained.current = true
-    const ids = ws.tabs.filter(isPageTab).map((t) => pageId(focusedLeaf(t).target.sessionId))
+    const ids = pages.map((l) => pageId(l.target.sessionId))
     void browserAct('page:all', { do: 'retain', ids }).catch(() => {})
   }, [browserEnabled, ws.tabs])
 
@@ -1187,6 +1237,8 @@ export function AppShell() {
     if (!tab) return
     // A browser tab has nothing running to ask about: it goes with its page.
     if (isPageTab(tab)) { dispatch({ type: 'close', tabId }); return }
+    // Nor has a phone preview beside a terminal.
+    if (paneId && leaves(tab.root).some((l) => l.id === paneId && l.target.kind === 'page')) { dispatch({ type: 'close-pane', tabId, paneId }); return }
     // A chat whose agent already exited (its tab says so) has nothing to stop.
     const chat = planChatClose(tab, paneId, sessionsById, ...chatTests(endedChats))
     if (chat.busy.length > 0) { setClosing({ kind: 'chat', tabId, paneId, chat }); return }
@@ -1516,6 +1568,7 @@ export function AppShell() {
       { id: 'a-brain', group: 'Actions', label: 'Add to Second Brain…', detail: 'keep a line of your own', hint: keys('⇧⌘H'), icon: <BrainGlyph size={14} />, run: () => openBrainCapture() },
       { id: 'a-pipeline', group: 'Actions', label: 'Open Pipeline', detail: 'in its own tab: every pull request on its way — open, CI, merged, released', hint: keys(PIPELINE_KEY), icon: <DeckIcon size={14} />, run: () => run({ kind: 'pipeline' }) },
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
+      ...(browserAvailable() ? [{ id: 'a-phone-preview', group: 'Actions' as const, label: 'Preview on phone…', detail: 'a local dev server or an address, beside the terminal as a phone shows it', icon: <PhoneIcon size={14} />, run: () => setSheet({ kind: 'preview', mode: 'list' }) }] : []),
       ...(browserEnabled ? [{ id: 'a-browser', group: 'Actions' as const, label: 'New browser tab', detail: 'an address or a search, in a tab after your agents (beta)', icon: <GlobeIcon size={14} />, run: () => openPage() }] : []),
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       ...(source === 'api' && activeProject?.kind === 'repo'
@@ -1778,17 +1831,21 @@ export function AppShell() {
     const key = leaf.target.sessionId
     const of = leaf.target.of
     const src = of ? sessionsById.get(of) : undefined
+    const preview = !!leaf.target.preview
+    const inSplit = tab.root.type === 'split'
     return (
       <BrowserView
         pageKey={key}
         url={leaf.target.url ?? ''}
         visible={visible}
-        enabled={browserEnabled}
+        enabled={browserEnabled || preview}
+        focused={!inSplit || tab.focusedPaneId === leaf.id}
+        phoneFirst={preview}
         armed={armedPages.has(key)}
         onArm={() => armPage(key)}
         onNav={(url, title) => dispatch({ type: 'page-nav', sessionId: key, ...(url !== undefined ? { url } : {}), ...(title !== undefined ? { title } : {}) })}
         onOpenPage={(url) => openPage(url, of)}
-        onClose={() => dispatch({ type: 'close', tabId: tab.id })}
+        onClose={() => dispatch(inSplit ? { type: 'close-pane', tabId: tab.id, paneId: leaf.id } : { type: 'close', tabId: tab.id })}
         onStep={onStepTab}
         from={src && of ? { title: sessionTitle(src), show: () => openSessionRef.current(of) } : undefined}
         engine={browserPrefs.engine}
@@ -1798,6 +1855,11 @@ export function AppShell() {
       />
     )
   }, [armedPages, armPage, openPage, sessionsById, browserEnabled, browserPrefs.engine, browserPrefs.pause, waitingAgents, onStepTab])
+  /** The session a dev server was seen in, as ⌘K's *Preview on phone…* names it. */
+  const previewSessionName = useCallback((id: string) => {
+    const x = sessionsById.get(id)
+    return x ? sessionTitle(x) : undefined
+  }, [sessionsById])
 
   // A watched session that Caprock now holds a terminal for — continued here
   // under its own id — becomes an ordinary session tab, in the same place.
@@ -2440,6 +2502,16 @@ export function AppShell() {
       )}
       <BugReportSheet open={sheet?.kind === 'bug'} onClose={closeSheet} />
       {sheet?.kind === 'palette' && <CommandPalette items={paletteItems} fallback={paletteFallback} search={paletteSearch} onClose={closeSheet} />}
+      {sheet?.kind === 'preview' && (
+        <PhonePreviewPalette
+          key={sheet.mode}
+          mode={sheet.mode}
+          onPreview={openPreview}
+          onAskUrl={() => setSheet({ kind: 'preview', mode: 'url' })}
+          onClose={closeSheet}
+          sessionName={previewSessionName}
+        />
+      )}
       {sheet?.kind === 'saved' && <CommandPalette label="Run saved" placeholder="Run a saved prompt or command…" items={[...savedItems, { ...manageSaved, group: 'Saved' }]} onClose={closeSheet} />}
     </div>
   )

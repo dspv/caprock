@@ -97,6 +97,8 @@ import { isMacPlatform } from '@/lib/appmode'
 import { registerBenchTerminal } from '@/lib/benchhook'
 import { coalescedWriter, DESK_WRITE_MS } from '@/lib/termwrite'
 import { attachTerminalLinks } from '@/lib/termlinks'
+import { attachDevServerWatch, requestPhonePreview } from '@/lib/devservers'
+import { browserAvailable } from '@/lib/browsertab'
 import { requestOpenPath } from '@/lib/mdreader'
 import { lineFor, markOf, saveScroll, takeScroll } from '@/lib/termresume'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
@@ -349,6 +351,12 @@ export function TerminalPane({
     band.setLook({ shown: prefs.highlightInput, strength: prefs.highlightStrength })
     band.setEnabled(inputBoxRef.current)
     const updates = attachUpdateWatch(term, setUpdate)
+    // A local dev server's address gets *Preview on phone* beside it, where a
+    // page can show (the desktop app); seen anywhere, ⌘K lists it (lib/devservers).
+    const devServers = attachDevServerWatch(term, {
+      sessionId,
+      ...(browserAvailable() ? { onPreview: (url: string) => requestPhonePreview({ url, sessionId }) } : {}),
+    })
     // Pointing at Claude Code's input box shows, on its top rule, the key
     // that hides or brings back its band: where the eye already is.
     let pointerY: number | null = null
@@ -992,6 +1000,7 @@ export function TerminalPane({
       band.dispose()
       bandRef.current = null
       updates.dispose()
+      devServers.dispose()
       term.dispose()
     }
   }, [sessionId])

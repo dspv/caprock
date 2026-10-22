@@ -581,6 +581,7 @@ export const TerminalStack = memo(function TerminalStack({
               onChatRestart: chatRestart,
               onChatHintDismiss: hintDismiss,
               composer,
+              renderPage,
             }}
           />}
         </div>
@@ -609,12 +610,29 @@ interface PaneCtx {
   onChatHintDismiss?: () => void
   /** The composer is switched on (Settings → Terminal). */
   composer?: boolean
+  /** A phone preview in the split: its browser view (lib/devservers, components/BrowserView.tsx). */
+  renderPage?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
 }
 
 /** A Claude Code session (an absent agent is one): its terminal shows the input-box band. */
 const isClaude = (agent?: string) => !agent || agent === 'claude'
 
 function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ctx: PaneCtx }) {
+  if (node.type === 'pane' && node.target.kind === 'page') {
+    // A phone preview beside a terminal: its own toolbar is its header.
+    const focused = ctx.tab.focusedPaneId === node.id
+    return (
+      <div
+        className="flex h-full w-full flex-col bg-bg"
+        data-pane={node.id}
+        data-focused={focused || undefined}
+        onFocusCapture={() => { if (!focused) ctx.onFocusPane?.(node.id) }}
+        onMouseDown={() => { if (!focused) ctx.onFocusPane?.(node.id) }}
+      >
+        {ctx.renderPage?.(ctx.tab, node, visible)}
+      </div>
+    )
+  }
   if (node.type === 'pane') {
     const id = node.target.sessionId
     const focused = ctx.tab.focusedPaneId === node.id || (!ctx.split)

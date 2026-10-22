@@ -2,7 +2,7 @@
  * A browser tab's view (ADR-075): what it asks of the shell's page window
  * as the tab comes and goes, its address box, its keys and its nudge.
  */
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BrowserAct } from '@/lib/browsertab'
 
@@ -277,6 +277,36 @@ describe('phone mode (ADR-075, amended 2026-10-21)', () => {
     render(<BrowserView {...props} isMac={false} visible armed />)
     fireEvent.keyDown(window, { key: 'D', code: 'KeyD', ctrlKey: true, altKey: true, shiftKey: true })
     expect(screen.getByRole('button', { name: 'Phone' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  // A phone preview (lib/devservers) starts in Phone mode, and beside a
+  // terminal in a split it leaves that terminal its keys — Ctrl+L is the
+  // shell's clear off macOS — until the preview's pane is focused.
+  it('starts a phone preview in Phone mode, and leaves the keys to the terminal beside it on every OS', () => {
+    const cases = [
+      { isMac: true, key: 'pv-mac', keys: [{ key: '®', code: 'KeyR', metaKey: true, altKey: true }, { key: 'l', code: 'KeyL', metaKey: true }, { key: 'ArrowLeft', altKey: true }] },
+      { isMac: false, key: 'pv-other', keys: [{ key: 'D', code: 'KeyD', ctrlKey: true, altKey: true, shiftKey: true }, { key: 'l', code: 'KeyL', ctrlKey: true }, { key: 'PageUp', ctrlKey: true }] },
+    ]
+    for (const c of cases) {
+      const steps: number[] = []
+      const el = (focused?: boolean) => <BrowserView {...props} pageKey={`page:${c.key}`} isMac={c.isMac} phoneFirst visible armed {...(focused === undefined ? {} : { focused })} onStep={(d) => steps.push(d)} />
+      const phone = () => screen.getByRole('button', { name: 'Phone' }).getAttribute('aria-pressed')
+      const view = render(el(false))
+      expect(phone()).toBe('true')
+      // The terminal in the split has the keyboard: none of the page's keys is taken.
+      for (const k of c.keys) expect(fireEvent.keyDown(window, k)).toBe(true)
+      expect(steps).toEqual([])
+      expect(phone()).toBe('true')
+      // Its own pane focused, the phone key is the page's again.
+      view.rerender(el(true))
+      expect(fireEvent.keyDown(window, c.keys[0]!)).toBe(false)
+      expect(phone()).toBe('false')
+      // Turned off by hand, it stays off for the window's life.
+      view.unmount()
+      render(el())
+      expect(phone()).toBe('false')
+      cleanup()
+    }
   })
 
   it('says how true it is, per OS, behind its ?', () => {

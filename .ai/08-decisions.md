@@ -5465,6 +5465,22 @@ script driven by a real mouse in headless Chromium and WebKit. Not verified:
 a real Tauri run of the page window at the device size, and the agent change
 on Windows and Linux (compiled in CI only).
 
+**Amended 2026-10-22 — Phone preview in one click.** Phone mode took four
+steps (the setting, a new browser tab, the address, *Phone*), too many for a
+front-end developer who wants her local site as a phone shows it (the owner's
+approved mockup). A local dev server's address printed in a terminal now gets
+*Preview on phone*, and ⌘K has *Preview on phone…*; either opens the page in
+a pane split beside the terminal, in Phone mode with Touch on. Two rules of
+this ADR bend for that pane alone, marked `preview: true`: it **may be
+split** (beside a terminal, never another page), and it **shows with the
+setting off** — the click on a page the user's own terminal printed is the
+consent, as picking *Caprock browser* in the link chooser is. The setting is
+not turned on: every other way to a page still needs it. Only local
+addresses get the button (rule 4: nothing is fetched that the user did not
+point at; nothing is probed or stored). Verified: UI tests, and the button
+and the split in a headless dashboard with the shell stubbed; not verified:
+a real Tauri run of the preview's page window.
+
 ---
 
 ## ADR-076 — Private modules: a slot opened by a signed admin key, holding nothing of its own
