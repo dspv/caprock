@@ -34,6 +34,9 @@ const (
 	EdgeFollows     = "follows"
 	EdgeContradicts = "contradicts"
 	EdgePartOf      = "part_of"
+	// EdgeSupersedes goes from a newer decision to the older one it
+	// replaces (migration 0069): the older one is no longer current.
+	EdgeSupersedes = "supersedes"
 )
 
 // Limits on what one node holds: a title is a line, a summary a paragraph.
@@ -46,7 +49,7 @@ const (
 var BrainKinds = []string{BrainIdea, BrainDecision, BrainFinding, BrainQuestion, BrainNote, BrainTopic, BrainPerson, BrainProject}
 
 // BrainEdgeKinds lists every edge kind.
-var BrainEdgeKinds = []string{EdgeRelates, EdgeFollows, EdgeContradicts, EdgePartOf}
+var BrainEdgeKinds = []string{EdgeRelates, EdgeFollows, EdgeContradicts, EdgePartOf, EdgeSupersedes}
 
 // IsBrainKind reports whether k is a node kind.
 func IsBrainKind(k string) bool {
@@ -118,6 +121,77 @@ type BrainNode struct {
 	// away. Both are absent outside a search.
 	Rank  int  `json:"rank,omitempty"`
 	Close bool `json:"close,omitempty"`
+	// Keywords are the English keywords the extraction gave a memory
+	// (migration 0069); none for one made before them, by hand or imported.
+	Keywords BrainKeywords `json:"keywords,omitempty"`
+	// SupersededBy is the newest memory with a supersedes edge to this one,
+	// filled in by the graph read and a node's own read: the memory is no
+	// longer current. Absent while it is.
+	SupersededBy int64 `json:"superseded_by,omitempty"`
+}
+
+// BrainKeywordsMax caps a memory's keywords, and BrainKeywordRunes each one.
+const (
+	BrainKeywordsMax  = 8
+	BrainKeywordRunes = 40
+)
+
+// BrainKeywords is a memory's keywords, stored in brain_nodes.keywords
+// joined with ", " and sent as a JSON array.
+type BrainKeywords []string
+
+// Scan reads the stored column.
+func (k *BrainKeywords) Scan(v any) error {
+	var s string
+	switch t := v.(type) {
+	case string:
+		s = t
+	case []byte:
+		s = string(t)
+	case nil:
+	default:
+		return errors.New("brain keywords: unexpected column type")
+	}
+	*k = ParseBrainKeywords(s)
+	return nil
+}
+
+// String is the stored form.
+func (k BrainKeywords) String() string { return strings.Join(k, ", ") }
+
+// ParseBrainKeywords splits the stored form.
+func ParseBrainKeywords(s string) BrainKeywords {
+	var out BrainKeywords
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// CleanBrainKeywords trims, de-duplicates (folded) and caps keywords. A comma
+// would split one in two when stored, so it becomes a space.
+func CleanBrainKeywords(in []string) BrainKeywords {
+	var out BrainKeywords
+	seen := map[string]bool{}
+	for _, k := range in {
+		k = strings.Join(strings.Fields(strings.ReplaceAll(k, ",", " ")), " ")
+		k = strings.Trim(k, ".;:")
+		if k == "" || utf8.RuneCountInString(k) > BrainKeywordRunes {
+			continue
+		}
+		f := FoldSearch(k)
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, k)
+		if len(out) == BrainKeywordsMax {
+			break
+		}
+	}
+	return out
 }
 
 // BrainEdge is one edge.
@@ -158,10 +232,10 @@ func ClipRunes(s string, n int) string {
 	return strings.TrimSpace(string(r[:n-1])) + "…"
 }
 
-const brainCols = `n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), n.source_ts, n.project, n.manual, n.pinned, COALESCE(n.run_id, 0), n.created_at, n.updated_at`
+const brainCols = `n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), n.source_ts, n.project, n.manual, n.pinned, COALESCE(n.run_id, 0), n.created_at, n.updated_at, n.keywords`
 
 func brainDest(v *BrainNode) []any {
-	return []any{&v.ID, &v.Kind, &v.Title, &v.Summary, &v.Source.SessionID, &v.Source.EventID, &v.Source.Ts, &v.Source.Project, &v.Manual, &v.Pinned, &v.RunID, &v.CreatedAt, &v.UpdatedAt}
+	return []any{&v.ID, &v.Kind, &v.Title, &v.Summary, &v.Source.SessionID, &v.Source.EventID, &v.Source.Ts, &v.Source.Project, &v.Manual, &v.Pinned, &v.RunID, &v.CreatedAt, &v.UpdatedAt, &v.Keywords}
 }
 
 func scanBrain(sc interface{ Scan(...any) error }) (BrainNode, error) {
@@ -189,6 +263,11 @@ func GetBrainNode(ctx context.Context, q Querier, id int64) (BrainNode, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return BrainNode{}, ErrBrainNotFound
 	}
+	if err != nil {
+		return v, err
+	}
+	by, err := brainSupersededBy(ctx, q, []int64{id})
+	v.SupersededBy = by[id]
 	return v, err
 }
 
@@ -202,6 +281,7 @@ func InsertBrainNode(ctx context.Context, q Querier, v BrainNode, now int64) (Br
 	}
 	v.Title = ClipRunes(strings.Join(strings.Fields(v.Title), " "), BrainTitleRunes)
 	v.Summary = ClipRunes(v.Summary, BrainSummaryRunes)
+	v.Keywords = CleanBrainKeywords(v.Keywords)
 	norm := NormTitle(v.Title)
 	if norm == "" {
 		return BrainNode{}, false, brainInvalid("a memory needs a title")
@@ -218,10 +298,10 @@ func InsertBrainNode(ctx context.Context, q Querier, v BrainNode, now int64) (Br
 		}
 	}
 	res, err := q.ExecContext(ctx, `INSERT INTO brain_nodes
-		(kind, title, norm, summary, search, session_id, event_id, source_ts, project, manual, pinned, run_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		v.Kind, v.Title, norm, v.Summary, BrainSearchDoc(v.Title, v.Summary, v.Source.Project), v.Source.SessionID,
-		nullID(v.Source.EventID), v.Source.Ts, v.Source.Project, v.Manual, v.Pinned, nullID(v.RunID), now, now)
+		(kind, title, norm, summary, search, session_id, event_id, source_ts, project, manual, pinned, run_id, created_at, updated_at, keywords)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		v.Kind, v.Title, norm, v.Summary, BrainSearchDoc(v.Title, v.Summary, v.Source.Project, v.Keywords...), v.Source.SessionID,
+		nullID(v.Source.EventID), v.Source.Ts, v.Source.Project, v.Manual, v.Pinned, nullID(v.RunID), now, now, v.Keywords.String())
 	if err != nil {
 		return BrainNode{}, false, err
 	}
@@ -274,6 +354,17 @@ func LinkBrain(ctx context.Context, q Querier, from, to int64, kind string, weig
 // UnlinkBrain removes every edge between two nodes, in either direction.
 func UnlinkBrain(ctx context.Context, q Querier, a, b int64) error {
 	_, err := q.ExecContext(ctx, `DELETE FROM brain_edges WHERE (src = ? AND dst = ?) OR (src = ? AND dst = ?)`, a, b, b, a)
+	return err
+}
+
+// UnlinkBrainKind removes the one edge of a kind from one node to another,
+// leaving any other edge between them: undoing a wrong supersedes keeps the
+// two memories related.
+func UnlinkBrainKind(ctx context.Context, q Querier, from, to int64, kind string) error {
+	if !IsBrainEdgeKind(kind) {
+		return brainInvalid("unknown link kind")
+	}
+	_, err := q.ExecContext(ctx, `DELETE FROM brain_edges WHERE src = ? AND dst = ? AND kind = ?`, from, to, kind)
 	return err
 }
 
@@ -336,7 +427,7 @@ func UpdateBrainNode(ctx context.Context, q Querier, id int64, p BrainPatch, now
 		summaryDoc += "\n" + extra
 	}
 	if _, err := q.ExecContext(ctx, `UPDATE brain_nodes SET kind = ?, title = ?, norm = ?, summary = ?, search = ?, pinned = ?, updated_at = ? WHERE id = ?`,
-		cur.Kind, cur.Title, norm, cur.Summary, BrainSearchDoc(cur.Title, summaryDoc, cur.Source.Project), cur.Pinned, now, id); err != nil {
+		cur.Kind, cur.Title, norm, cur.Summary, BrainSearchDoc(cur.Title, summaryDoc, cur.Source.Project, cur.Keywords...), cur.Pinned, now, id); err != nil {
 		return BrainNode{}, err
 	}
 	return GetBrainNode(ctx, q, id)
@@ -472,6 +563,9 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 		if err != nil {
 			return g, err
 		}
+		if err := markSuperseded(ctx, q, hits); err != nil {
+			return g, err
+		}
 		sortBrainHits(hits)
 		g.Total, g.Terms = len(hits), terms
 		if mems, err = brainHitNodes(ctx, q, cols, hits[:min(len(hits), f.Limit)]); err != nil {
@@ -492,6 +586,9 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 		if mems, err = scanBrainRows(rows); err != nil {
 			return g, err
 		}
+	}
+	if err := markBrainSuperseded(ctx, q, mems); err != nil {
+		return g, err
 	}
 	in := make(map[int64]bool, len(mems))
 	for _, m := range mems {

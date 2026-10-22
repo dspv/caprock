@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -370,21 +371,21 @@ func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
 		t.Fatalf("handoff: %q", got)
 	}
 	_, tail, _ := strings.Cut(got, "Second Brain")
-	if !strings.Contains(tail, "- decision: Keep SQLite in WAL mode") || strings.Index(tail, "Keep SQLite") > strings.Index(tail, "Finding 7") {
-		t.Errorf("the pinned memory comes first: %q", tail)
+	if !regexp.MustCompile(`\n- #\d+ Keep SQLite in WAL mode`).MatchString(tail) || strings.Index(tail, "Keep SQLite") > strings.Index(tail, "Finding 7") {
+		t.Errorf("the current decision comes first: %q", tail)
 	}
 	if strings.Contains(tail, "Somebody else") || strings.Contains(tail, "Finding 0") {
 		t.Errorf("another repository's, or past the budget: %q", tail)
 	}
-	if n := utf8.RuneCountInString(tail); n > store.BrainHandoffRunes+120 {
+	if n := utf8.RuneCountInString(tail); n > store.BrainHandoffDecisionRunes+store.BrainHandoffRunes+300 {
 		t.Errorf("%d runes", n)
 	}
 
 	// The screen's "What your next session gets" is this pick, and says a
 	// handoff would be served: memory on, a passage two hours old.
-	picked, _, err := store.BrainHandoff(ctx, d.store.DB(), "caprock")
-	if err != nil || len(picked) != strings.Count(tail, "\n- ") {
-		t.Errorf("the endpoint's pick: %d (%v); the handoff carried %d", len(picked), err, strings.Count(tail, "\n- "))
+	pick, err := store.BrainHandoff(ctx, d.store.DB(), "caprock")
+	if err != nil || pick.Count() != strings.Count(tail, "\n- ") {
+		t.Errorf("the endpoint's pick: %d (%v); the handoff carried %d", pick.Count(), err, strings.Count(tail, "\n- "))
 	}
 	if st := d.brainHandoffState(ctx, "caprock"); !st.On || st.LeftOffAt != now.Add(-2*time.Hour).UnixMilli() {
 		t.Errorf("state: %+v", st)
@@ -450,5 +451,52 @@ func TestAHandoffOfMemoriesIsSaidOnTheLiveSocket(t *testing.T) {
 	open("held", 10)
 	if got := frames(); len(got) != 0 {
 		t.Errorf("a held-back session was said to be handed memories: %v", got)
+	}
+}
+
+// With no recent passage the memories go alone: current decisions first,
+// a superseded one left out, then at most one memory per source session.
+// The reply's length is recorded on the session (migration 0069).
+func TestAHandoffCarriesDecisionsWithoutAPassage(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	db := d.store.DB()
+	add := func(kind, title, session string, at int64) store.BrainNode {
+		t.Helper()
+		n, _, err := store.InsertBrainNode(ctx, db, store.BrainNode{Kind: kind, Title: title,
+			Source: store.BrainSource{Project: "caprock", SessionID: session}}, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	old := add("decision", "Premium is five dollars a month", "s-a", 1)
+	cur := add("decision", "Premium is thirty dollars a year", "s-b", 2)
+	if err := store.BrainSupersede(ctx, db, cur.ID, old.ID, 3); err != nil {
+		t.Fatal(err)
+	}
+	add("finding", "Scout stays read-only", "s-c", 4)
+	add("finding", "Scout writes nothing", "s-c", 5)
+	add("finding", "Hero says no account", "s-d", 6)
+	if err := store.UpsertSession(ctx, db, "s-new", store.SessionPatch{Project: "caprock", StartedAt: now.UnixMilli(), LastEventAt: now.UnixMilli(), FromHook: true}); err != nil {
+		t.Fatal(err)
+	}
+	got := contextOf(t, d.handoff(ctx, hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock", SessionID: "s-new"}))
+	if got == "" || strings.Contains(got, "Where this repository was left") {
+		t.Fatalf("memories alone: %q", got)
+	}
+	if !strings.Contains(got, fmt.Sprintf("#%d Premium is thirty dollars a year", cur.ID)) || strings.Contains(got, "five dollars") {
+		t.Errorf("current decisions only: %q", got)
+	}
+	if strings.Index(got, "thirty dollars") > strings.Index(got, "Hero says") {
+		t.Errorf("decisions come first: %q", got)
+	}
+	if strings.Contains(got, "Scout stays read-only") || !strings.Contains(got, "Scout writes nothing") {
+		t.Errorf("one memory per source session, the newest: %q", got)
+	}
+	var runes int
+	if err := db.QueryRowContext(ctx, `SELECT handoff_runes FROM sessions WHERE session_id = 's-new'`).Scan(&runes); err != nil || runes != utf8.RuneCountInString(got) {
+		t.Errorf("handoff_runes %d (%v), the reply is %d", runes, err, utf8.RuneCountInString(got))
 	}
 }

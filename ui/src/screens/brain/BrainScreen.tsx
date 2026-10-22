@@ -196,7 +196,7 @@ export function BrainScreen({ node }: { node?: number }) {
                         onChange={(e) => setInput(e.target.value)}
                         placeholder="Search titles and summaries — typos are fine"
                         aria-label="Search memories"
-                        title="Every word has to match a title, summary, project or topic, in any case or accent; a close spelling counts when little matches exactly."
+                        title="Any whole word may match a title, keyword, summary, project or topic, in any case or accent; memories with more and rarer words come first, and a close spelling counts when little matches exactly."
                       />
                       <select className="input !w-auto max-w-[220px]" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
                         <option value="">Every project</option>

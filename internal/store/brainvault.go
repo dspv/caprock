@@ -335,7 +335,7 @@ func SyncBrainNoteNode(ctx context.Context, q Querier, nodeID int64, now int64) 
 			extra = append(extra, s.Excerpt)
 		}
 	}
-	search := BrainSearchDoc(title, summary+"\n"+strings.Join(extra, "\n"), project)
+	search := BrainSearchDoc(title, summary+"\n"+strings.Join(extra, "\n"), project, node.Keywords...)
 	if node.Kind == BrainNote {
 		_, err = q.ExecContext(ctx, `UPDATE brain_nodes SET title = ?, norm = ?, summary = ?, project = ?, source_ts = ?, vault_id = ?, search = ?,
 			updated_at = CASE WHEN title != ? OR summary != ? OR project != ? THEN ? ELSE updated_at END WHERE id = ?`,

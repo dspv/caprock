@@ -336,6 +336,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/brain":                           true, // Second Brain's graph (ADR-063); writing it is the machine's
 	"GET /v1/brain/status":                    true,
 	"GET /v1/brain/handoff":                   true,
+	"GET /v1/brain/decisions":                 true,
 	"GET /v1/brain/nodes/{id}":                true,
 
 	// The permission prompt an owned session waits on (ADR-035); the live

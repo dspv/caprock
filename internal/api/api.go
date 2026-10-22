@@ -883,6 +883,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/brain", s.handleBrainGraph)
 	m.HandleFunc("GET /v1/brain/status", s.handleBrainStatus)
 	m.HandleFunc("GET /v1/brain/handoff", s.handleBrainHandoff)
+	m.HandleFunc("GET /v1/brain/decisions", s.handleBrainDecisions)
 	m.HandleFunc("POST /v1/brain/nodes", s.handleBrainDrop)
 	m.HandleFunc("GET /v1/brain/nodes/{id}", s.handleBrainNode)
 	m.HandleFunc("PATCH /v1/brain/nodes/{id}", s.handlePatchBrainNode)

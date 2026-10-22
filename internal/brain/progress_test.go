@@ -3,6 +3,7 @@ package brain
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -97,7 +98,17 @@ func TestTheStatusNamesTheSessionBeingRead(t *testing.T) {
 // counted until it goes quiet, and one from before the reach not at all.
 func TestTheBuildCountsWhatIsReadAndWhatWaitsPerProject(t *testing.T) {
 	ctx := context.Background()
-	e := newEnv(t, twoMemories)
+	// Each read keeps two memories of its own: the same titles twice in a
+	// project would be near duplicates, and the second pair left out.
+	reads := 0
+	e := newEnv(t, func(r Request) (Result, error) {
+		reads++
+		res, err := twoMemories(r)
+		for i := range res.Memories {
+			res.Memories[i].Title = fmt.Sprintf("Read %d keeps %s", reads, []string{"alpha", "beta"}[i])
+		}
+		return res, err
+	})
 	e.session(t, "a1", "acme-api", 1*time.Hour, [2]string{"q", long})
 	e.session(t, "a2", "acme-api", 2*time.Hour, [2]string{"q", long})
 	e.session(t, "a3", "acme-api", 3*time.Hour, [2]string{"q", "too short"})

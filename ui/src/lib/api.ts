@@ -1506,7 +1506,8 @@ export interface SavedDraft { kind: 'prompt' | 'command'; name: string; text: st
 
 /** Second Brain's node kinds (03-contracts.md § Second Brain): four memories, then three entities. */
 export type BrainKind = 'note' | 'idea' | 'decision' | 'finding' | 'question' | 'topic' | 'person' | 'project'
-export type BrainEdgeKind = 'relates' | 'follows' | 'contradicts' | 'part_of'
+/** `supersedes` goes from a newer decision to the older one it replaces. */
+export type BrainEdgeKind = 'relates' | 'follows' | 'contradicts' | 'part_of' | 'supersedes'
 
 /** One node of Second Brain: a memory, or a topic, person or project it hangs off. */
 export interface BrainNode {
@@ -1530,6 +1531,10 @@ export interface BrainNode {
   rank?: number
   /** In a search: some word matched only a word a typo or an ending away. */
   close?: boolean
+  /** English search keywords the extraction gave it; none on older memories. */
+  keywords?: string[]
+  /** The newest memory that supersedes it: it is no longer current. */
+  superseded_by?: number
 }
 
 export interface BrainEdge { from: number; to: number; kind: BrainEdgeKind; weight: number }
@@ -1550,11 +1555,16 @@ export interface BrainLink { node: BrainNode; kind: BrainEdgeKind; out: boolean;
 /** What GET /v1/brain/handoff says a new session in a project is handed (03-contracts.md § Second Brain). */
 export interface BrainHandoffView {
   project: string
+  /** The current decisions, newest first, handed before the memories. */
+  decisions?: BrainNode[]
   /** The memories, with summaries, in the order the handoff carries them. */
   memories: BrainNode[]
-  /** How many it may carry, and the runes they share. */
+  /** How many memories it may carry, and the runes they share. */
   max: number
   budget: number
+  /** How many decisions it may carry, and the runes they share. */
+  decisions_max?: number
+  decisions_budget?: number
   /** Whether a session opening there now would be served a handoff at all. */
   served?: {
     /** Settings → Memory between sessions. */
@@ -2436,7 +2446,8 @@ export const api = {
     post<{ node: BrainNode }>(`/v1/brain/nodes/${id}`, p, 'PATCH'),
   removeBrain: (id: number) => post<void>(`/v1/brain/nodes/${id}`, {}, 'DELETE'),
   linkBrain: (from: number, to: number, kind: BrainEdgeKind = 'relates') => post<void>('/v1/brain/links', { from, to, kind }),
-  unlinkBrain: (from: number, to: number) => post<void>('/v1/brain/links', { from, to }, 'DELETE'),
+  /** Every edge between two nodes; with `kind`, only that one edge from → to (undoing a supersedes). */
+  unlinkBrain: (from: number, to: number, kind?: BrainEdgeKind) => post<void>('/v1/brain/links', kind ? { from, to, kind } : { from, to }, 'DELETE'),
   /** The automatic extraction: on or off and its limits (machine only). Turning it on wakes the reader at once. */
   brainSettings: (b: BrainSettings) => post<BrainAutoStatus>('/v1/brain/settings', b, 'PUT'),
   /** What reading the last `days` would take; with run, starts it (needs building on). */

@@ -65,7 +65,7 @@ func TestBrainSearchFindsAnyScriptInAnyCase(t *testing.T) {
 	}
 }
 
-func TestBrainSearchNeedsEveryWordInAnyOrder(t *testing.T) {
+func TestBrainSearchRanksMoreWordsFirstInAnyOrder(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)
 	a := mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Keep WAL mode", Summary: "readers never wait for the writer"})
@@ -75,14 +75,136 @@ func TestBrainSearchNeedsEveryWordInAnyOrder(t *testing.T) {
 	if err := LinkBrain(ctx, s.db, b.ID, topic.ID, EdgePartOf, 1, 1); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := searchTitles(t, s, "writer keep"); len(got) != 1 || got[0] != a.Title {
-		t.Errorf("two words, either order: %q", got)
+	if got, _ := searchTitles(t, s, "writer keep"); len(got) != 2 || got[0] != a.Title {
+		t.Errorf("two words, either order, the memory with both first: %q", got)
 	}
-	if got, _ := searchTitles(t, s, "keep vacuum"); len(got) != 0 {
-		t.Errorf("every word must match one memory: %q", got)
+	if got, _ := searchTitles(t, s, "keep vacuum"); len(got) != 3 || got[0] != b.Title {
+		t.Errorf("any word matches, the rarer word first: %q", got)
 	}
-	if got, _ := searchTitles(t, s, "sqlite night"); len(got) != 1 || got[0] != b.Title {
+	if got, _ := searchTitles(t, s, "sqlite"); len(got) != 1 || got[0] != b.Title {
 		t.Errorf("a linked topic's name counts: %q", got)
+	}
+}
+
+// The measured failure (owner's database, 2026-10-22): "PR" matched 91% of
+// memories through "project" and "prompt". A word matches whole words only.
+func TestBrainSearchMatchesWholeWords(t *testing.T) {
+	s := openTest(t)
+	mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Project layout stays flat", Summary: "the prompt said so"})
+	mustBrain(t, s, BrainNode{Kind: BrainFinding, Title: "Merged the PR after CI", Summary: ""})
+	mustBrain(t, s, BrainNode{Kind: BrainIdea, Title: "Open a draft pr, then ask"})
+	got, _ := searchTitles(t, s, "PR")
+	if len(got) != 2 || slices.Contains(got, "Project layout stays flat") {
+		t.Errorf("PR found %q", got)
+	}
+	// A longer word may be the start of a word: "router" finds "routers".
+	mustBrain(t, s, BrainNode{Kind: BrainIdea, Title: "Routers everywhere"})
+	if got, _ := searchTitles(t, s, "router"); len(got) != 1 {
+		t.Errorf("router found %q", got)
+	}
+	// Punctuation splits words in the query too.
+	if got, _ := searchTitles(t, s, "(pr)"); len(got) != 2 {
+		t.Errorf("(pr) found %q", got)
+	}
+	// A joined piece is a term of its own: the memory with all of it first.
+	mustBrain(t, s, BrainNode{Kind: BrainFinding, Title: "Only read the cache once"})
+	mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "The scout stays read-only"})
+	if got, _ := searchTitles(t, s, "read-only"); len(got) != 2 || got[0] != "The scout stays read-only" {
+		t.Errorf("read-only found %q", got)
+	}
+}
+
+func TestBrainSearchSynonyms(t *testing.T) {
+	s := openTest(t)
+	mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Show the cost of each pull request"})
+	mustBrain(t, s, BrainNode{Kind: BrainFinding, Title: "Spend per PR is mostly cache reads"})
+	mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Rule: never push to master"})
+	mustBrain(t, s, BrainNode{Kind: BrainIdea, Title: "Unrelated"})
+	if got, _ := searchTitles(t, s, "PR"); len(got) != 2 {
+		t.Errorf("pr finds pull request: %q", got)
+	}
+	if got, _ := searchTitles(t, s, "pull request"); len(got) != 2 {
+		t.Errorf("pull request finds pr: %q", got)
+	}
+	if got, _ := searchTitles(t, s, "price"); len(got) != 2 {
+		t.Errorf("price finds cost and spend: %q", got)
+	}
+	if got, _ := searchTitles(t, s, "decision"); len(got) != 1 || got[0] != "Rule: never push to master" {
+		t.Errorf("decision finds rule: %q", got)
+	}
+	got, g := searchTitles(t, s, "cost per pull request")
+	if len(got) < 2 || got[0] != "Show the cost of each pull request" {
+		t.Errorf("cost per pull request: %q", got)
+	}
+	if !slices.Contains(g.Terms, "spend") || !slices.Contains(g.Terms, "pr") {
+		t.Errorf("synonyms are marked too: %q", g.Terms)
+	}
+}
+
+// A rare word outweighs a common one: in "hero cloud", "hero" is in one
+// memory and "cloud" in many, so the one with "hero" comes first even
+// though others have "cloud" in their titles.
+func TestBrainSearchWeighsRareWordsMore(t *testing.T) {
+	s := openTest(t)
+	for i := 0; i < 8; i++ {
+		mustBrain(t, s, BrainNode{Kind: BrainFinding, Title: fmt.Sprintf("Cloud note %d", i)})
+	}
+	mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Landing copy", Summary: "the hero says no account and no cloud"})
+	got, g := searchTitles(t, s, "hero cloud")
+	if len(got) != 9 || got[0] != "Landing copy" {
+		t.Errorf("hero cloud: %q", got)
+	}
+	if g.Nodes[0].Rank <= g.Nodes[1].Rank {
+		t.Errorf("ranks: %d then %d", g.Nodes[0].Rank, g.Nodes[1].Rank)
+	}
+}
+
+// Keywords weigh like the title, so an English query finds a memory whose
+// title is in another language.
+func TestBrainSearchMatchesKeywords(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	n, _, err := InsertBrainNode(ctx, s.db, BrainNode{Kind: BrainDecision, Title: "Η ομάδα πωλείται ως έτοιμο προϊόν",
+		Keywords: []string{"teams", "sold as built", "pricing page"}}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustBrain(t, s, BrainNode{Kind: BrainIdea, Title: "Plain", Summary: "teams of two"})
+	got, g := searchTitles(t, s, "Teams sold as built")
+	if len(got) != 2 || got[0] != n.Title {
+		t.Errorf("keywords: %q", got)
+	}
+	if len(g.Nodes[0].Keywords) != 3 {
+		t.Errorf("keywords are returned: %q", g.Nodes[0].Keywords)
+	}
+	// An edit keeps them in the search.
+	title := "Η ομάδα πωλείται"
+	if _, err := UpdateBrainNode(ctx, s.db, n.ID, BrainPatch{Title: &title}, 2); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := searchTitles(t, s, "pricing"); len(got) != 1 {
+		t.Errorf("keywords after an edit: %q", got)
+	}
+}
+
+// A superseded decision comes after every current match and says what
+// replaced it.
+func TestBrainSearchPutsSupersededLast(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	src := BrainSource{Project: "caprock"}
+	old := mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Price is five dollars a month for Premium", Source: src})
+	mustBrain(t, s, BrainNode{Kind: BrainFinding, Title: "Premium buyers ask about teams", Source: src})
+	cur := mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Premium is 30 a year", Source: src})
+	if err := BrainSupersede(ctx, s.db, cur.ID, old.ID, 5); err != nil {
+		t.Fatal(err)
+	}
+	got, g := searchTitles(t, s, "premium price month")
+	if len(got) != 3 || got[2] != old.Title {
+		t.Errorf("order: %q", got)
+	}
+	if g.Nodes[2].SupersededBy != cur.ID || g.Nodes[0].SupersededBy != 0 {
+		t.Errorf("superseded_by: %d %d", g.Nodes[2].SupersededBy, g.Nodes[0].SupersededBy)
 	}
 }
 

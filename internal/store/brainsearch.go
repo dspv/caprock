@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"math"
 	"slices"
 	"strings"
 	"unicode"
@@ -12,15 +13,21 @@ import (
 
 // Second Brain's search (migration 0056; 03-contracts.md § Second Brain).
 //
-// Every node carries `search`: its title, summary and project folded the
-// same way a query is (FoldSearch), so matching any script in any case, with
-// or without accents, is a plain substring test. A query is split into
-// words, and every word has to match — in the title, the summary, the
-// project, or the name of a topic, person or project the memory is linked
-// to. When that finds few memories, words of four letters or more may also
-// match a word one or two edits away (a typo, or a different ending), and
-// those memories are said to be close matches. Each memory gets a rank:
-// title hits above summary hits above close matches.
+// Every node carries `search`: its title, summary, project and keywords
+// (migration 0069) folded the same way a query is (FoldSearch), one per
+// line, so matching any script in any case, with or without accents, is a
+// string test. A query is split into words at anything that is not a letter,
+// digit or mark; a word and its synonyms (brainSynonyms) make a term. A
+// memory matches when any term is a whole word of its title, keywords,
+// summary or project, or of the name of a topic, person or project it is
+// linked to; a term of four letters or more may also be the start of a
+// longer word ("router" finds "routers"). Each term weighs by how rare it is
+// among the memories searched (an IDF), times where it matched: title and
+// keywords above summary and project above a linked name. When that finds
+// few memories, words of four letters or more may also match a word one or
+// two edits away (a typo, or a different ending), and those memories are
+// said to be close matches. A superseded memory comes after every current
+// one (ReadBrainGraph).
 
 // metaBrainSearchFold is the FoldSearch version the search column was last
 // written with. Changing brainSearchFold re-folds every node on the next
@@ -59,9 +66,24 @@ func foldLine(s string) string {
 }
 
 // BrainSearchDoc is what brain_nodes.search holds for a node: its folded
-// title, summary and project, one per line, the title first.
-func BrainSearchDoc(title, summary, project string) string {
-	return foldLine(title) + "\n" + foldLine(summary) + "\n" + foldLine(project)
+// title, summary and project, one per line, the title first, and its
+// keywords on a fourth line when it has any.
+func BrainSearchDoc(title, summary, project string, keywords ...string) string {
+	doc := foldLine(title) + "\n" + foldLine(summary) + "\n" + foldLine(project)
+	if len(keywords) > 0 {
+		doc += "\n" + foldLine(strings.Join(keywords, ", "))
+	}
+	return doc
+}
+
+// brainDocFields splits a search document into its title and keywords (the
+// heavy fields) and its summary and project.
+func brainDocFields(doc string) (heavy, light [2]string) {
+	parts := strings.SplitN(doc, "\n", 4)
+	for len(parts) < 4 {
+		parts = append(parts, "")
+	}
+	return [2]string{parts[0], parts[3]}, [2]string{parts[1], parts[2]}
 }
 
 // isWordRune reports whether r belongs to a word: a letter, digit or mark.
@@ -103,19 +125,176 @@ func eachToken(s string, fn func(string) bool) {
 // brainQueryWordsMax caps the words of one query.
 const brainQueryWordsMax = 8
 
-// brainQueryWords folds a query and splits it at whitespace, each word once.
-// Punctuation stays part of a word, so "100%" is looked for as written.
-func brainQueryWords(q string) []string {
-	var out []string
-	for _, w := range strings.Fields(FoldSearch(q)) {
-		if !slices.Contains(out, w) {
-			out = append(out, w)
-		}
-		if len(out) == brainQueryWordsMax {
-			break
+// brainSynonyms are the words a search treats as one, folded. A query word
+// or two-word phrase in a set looks for every member of it.
+var brainSynonyms = [][]string{
+	{"pr", "prs", "pull request", "pull requests"},
+	{"cost", "costs", "price", "prices", "pricing", "spend", "spending"},
+	{"decision", "decisions", "rule", "rules"},
+}
+
+// brainSynonymsOf returns the set a folded word or phrase belongs to.
+func brainSynonymsOf(w string) []string {
+	for _, set := range brainSynonyms {
+		if slices.Contains(set, w) {
+			return set
 		}
 	}
+	return nil
+}
+
+// brainTerm is one thing a query looks for: its own word (or two-word
+// phrase), folded, and that with its synonyms.
+type brainTerm struct {
+	word string
+	alts []string
+}
+
+// brainQueryTerms folds a query, splits it into words at anything that is
+// not a letter, digit or mark, and makes each word — or two neighbouring
+// words that are a phrase of brainSynonyms — a term, each once. A
+// whitespace-separated piece that is several words joined by punctuation
+// ("read-only", "project-3") is a term of its own too, first, so a memory
+// with the whole of it ranks above one with only a part.
+func brainQueryTerms(q string) []brainTerm {
+	var words, joined []string
+	for _, f := range strings.Fields(FoldSearch(q)) {
+		n := 0
+		eachToken(f, func(t string) bool {
+			if len(words) < 2*brainQueryWordsMax {
+				words = append(words, t)
+			}
+			n++
+			return true
+		})
+		if n > 1 {
+			if j := strings.TrimFunc(f, func(r rune) bool { return !isWordRune(r) }); j != "" {
+				joined = append(joined, j)
+			}
+		}
+	}
+	allStop := true
+	for _, w := range words {
+		allStop = allStop && brainStopwords[w]
+	}
+	var out []brainTerm
+	add := func(w string, alts []string) {
+		for _, t := range out {
+			if t.word == w {
+				return
+			}
+		}
+		if alts == nil {
+			alts = []string{w}
+		} else if alts[0] != w {
+			alts = append([]string{w}, slices.DeleteFunc(slices.Clone(alts), func(a string) bool { return a == w })...)
+		}
+		out = append(out, brainTerm{word: w, alts: alts})
+	}
+	for _, j := range joined {
+		if len(out) < brainQueryWordsMax/2 {
+			add(j, nil)
+		}
+	}
+	for i := 0; i < len(words) && len(out) < brainQueryWordsMax; i++ {
+		if i+1 < len(words) {
+			if set := brainSynonymsOf(words[i] + " " + words[i+1]); set != nil {
+				add(words[i]+" "+words[i+1], set)
+				i++
+				continue
+			}
+		}
+		if brainStopwords[words[i]] && !allStop {
+			continue
+		}
+		add(words[i], brainSynonymsOf(words[i]))
+	}
 	return out
+}
+
+// brainStopwords are English words too common to say what a query is about
+// ("cost per pull request", "no account no cloud"). They are left out of a
+// query that has any other word.
+var brainStopwords = map[string]bool{
+	"a": true, "an": true, "the": true, "and": true, "or": true, "of": true, "to": true, "in": true,
+	"on": true, "at": true, "by": true, "for": true, "per": true, "as": true, "is": true, "are": true,
+	"was": true, "be": true, "it": true, "its": true, "this": true, "that": true, "with": true,
+	"no": true, "not": true, "from": true, "what": true, "how": true, "why": true, "we": true, "do": true,
+}
+
+// brainSynonymWeight is what a synonym's match weighs against the query's
+// own word: "cost" is found as "spend", a little below "cost" itself.
+const brainSynonymWeight = 0.9
+
+// noWordBreaks reports whether w is in a script written without spaces
+// (Han, Hiragana, Katakana, Thai and the like), where a whole word cannot be
+// told from its neighbours, so a substring is the match.
+func noWordBreaks(w string) bool {
+	for _, r := range w {
+		if r >= 0x2e80 && (unicode.Is(unicode.Han, r) || unicode.Is(unicode.Hiragana, r) ||
+			unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Thai, r) || unicode.Is(unicode.Lao, r) ||
+			unicode.Is(unicode.Khmer, r) || unicode.Is(unicode.Myanmar, r)) {
+			return true
+		}
+	}
+	return false
+}
+
+// brainPrefixRunes is the shortest term that may match the start of a
+// longer word: "router" finds "routers", while "pr" never finds "project".
+const brainPrefixRunes = 4
+
+// Match strengths of wordIn.
+const (
+	matchNone   = 0
+	matchPrefix = 1
+	matchWhole  = 2
+)
+
+// wordIn reports how w occurs in s, both folded: as a whole word, as the
+// start of a longer word (only for a term of brainPrefixRunes or more), or
+// not at all. A word is bounded by anything that is not a letter, digit or
+// mark (isWordRune), so "pr" is not in "project" but is in "the pr, merged".
+func wordIn(s, w string) int {
+	if w == "" {
+		return matchNone
+	}
+	if noWordBreaks(w) {
+		if strings.Contains(s, w) {
+			return matchWhole
+		}
+		return matchNone
+	}
+	prefixOK := utf8.RuneCountInString(w) >= brainPrefixRunes
+	best := matchNone
+	for from := 0; from < len(s); {
+		j := strings.Index(s[from:], w)
+		if j < 0 {
+			break
+		}
+		j += from
+		startOK := true
+		if j > 0 {
+			r, _ := utf8.DecodeLastRuneInString(s[:j])
+			startOK = !isWordRune(r)
+		}
+		if startOK {
+			end := j + len(w)
+			endOK := true
+			if end < len(s) {
+				r, _ := utf8.DecodeRuneInString(s[end:])
+				endOK = !isWordRune(r)
+			}
+			if endOK {
+				return matchWhole
+			}
+			if prefixOK {
+				best = matchPrefix
+			}
+		}
+		from = j + 1
+	}
+	return best
 }
 
 // brainMaxEdits is how many edits a word may be from a close match: one for
@@ -136,16 +315,16 @@ func brainMaxEdits(w string) int {
 	return 0
 }
 
-// Rank points one word earns, by where it matched. A memory's rank is the
-// sum over the query's words.
+// What one term weighs by where it matched; times the term's IDF, summed
+// over the terms, times 100, is a memory's rank.
 const (
-	brainRankTitleWord   = 40 // a word of the title is the word
-	brainRankTitlePrefix = 30 // a word of the title starts with it
-	brainRankTitleIn     = 25 // inside the title elsewhere
-	brainRankSummary     = 20 // in the summary or the project
-	brainRankLinked      = 15 // in a linked topic's, person's or project's name
-	brainRankCloseTitle  = 10 // a close match in the title
-	brainRankClose       = 5  // a close match anywhere else
+	brainWeightTitle         = 3.0 // a whole word of the title or the keywords
+	brainWeightTitlePrefix   = 2.0 // the start of a word there
+	brainWeightSummary       = 1.0 // a whole word of the summary or the project
+	brainWeightSummaryPrefix = 0.7 // the start of a word there
+	brainWeightLinked        = 0.8 // in a linked topic's, person's or project's name
+	brainWeightCloseTitle    = 0.6 // a close match in the title or the keywords
+	brainWeightClose         = 0.3 // a close match anywhere else
 )
 
 // Bounds on the close-match pass, which runs only when the exact one finds
@@ -165,15 +344,20 @@ const (
 
 // brainHit is one memory that matched, with its rank.
 type brainHit struct {
-	id      int64
-	rank    int
-	close   bool
-	pinned  bool
-	created int64
+	id         int64
+	rank       int
+	close      bool
+	pinned     bool
+	superseded bool
+	created    int64
+	// levels is what each term weighed where it matched, before its IDF.
+	levels []float64
 }
 
-// brainMatcher scores a memory's search document against the query's words.
+// brainMatcher scores a memory's search document against the query's terms.
 type brainMatcher struct {
+	terms []brainTerm
+	// words are the terms' own words, for the close pass.
 	words []string
 	// linked[i] holds the memories linked to an entity whose name contains
 	// word i; closeLinked[i] those linked to one with a close match of it.
@@ -287,46 +471,76 @@ func brainPieces(w []rune, d int) []string {
 	return out
 }
 
-// score ranks one document; ok is false when some word does not match.
-func (m *brainMatcher) score(id int64, doc string) (rank int, isClose, ok bool) {
-	title, rest, _ := strings.Cut(doc, "\n")
-	for i, w := range m.words {
-		s := 0
-		switch {
-		case strings.Contains(title, w):
-			s = brainRankTitleIn
-			eachToken(title, func(t string) bool {
-				if t == w {
-					s = brainRankTitleWord
-					return false
-				}
-				if strings.HasPrefix(t, w) {
-					s = brainRankTitlePrefix
-				}
-				return true
-			})
-		case strings.Contains(rest, w):
-			s = brainRankSummary
-		case m.linked[i][id]:
-			s = brainRankLinked
-		case m.edits != nil && m.edits[i] > 0:
-			if t, hit := m.nearIn(i, title); hit {
-				s = brainRankCloseTitle
-				m.used[t] = true
-			} else if t, hit := m.nearIn(i, rest); hit {
-				s = brainRankClose
-				m.used[t] = true
-			} else if m.closeLinked[i][id] {
-				s = brainRankClose
+// match weighs each term where it matches a document exactly, best place
+// first; ok is false when no term matches.
+func (m *brainMatcher) match(id int64, doc string) (levels []float64, ok bool) {
+	heavy, light := brainDocFields(doc)
+	for i, t := range m.terms {
+		best := 0.0
+		for k, a := range t.alts {
+			f := 1.0
+			if k > 0 {
+				f = brainSynonymWeight
 			}
-			isClose = s > 0
+			for _, field := range heavy {
+				switch wordIn(field, a) {
+				case matchWhole:
+					best = max(best, f*brainWeightTitle)
+				case matchPrefix:
+					best = max(best, f*brainWeightTitlePrefix)
+				}
+			}
+			if best >= brainWeightTitle {
+				break
+			}
+			for _, field := range light {
+				switch wordIn(field, a) {
+				case matchWhole:
+					best = max(best, f*brainWeightSummary)
+				case matchPrefix:
+					best = max(best, f*brainWeightSummaryPrefix)
+				}
+			}
 		}
-		if s == 0 {
-			return 0, false, false
+		if best == 0 && m.linked[i][id] {
+			best = brainWeightLinked
 		}
-		rank += s
+		if best > 0 {
+			if levels == nil {
+				levels = make([]float64, len(m.terms))
+			}
+			levels[i] = best
+		}
 	}
-	return rank, isClose, true
+	return levels, levels != nil
+}
+
+// matchClose weighs, for a document no term matched exactly, each term of
+// four letters or more by a close match of its own word.
+func (m *brainMatcher) matchClose(id int64, doc string) (levels []float64, ok bool) {
+	heavy, light := brainDocFields(doc)
+	for i := range m.terms {
+		if m.edits[i] == 0 {
+			continue
+		}
+		s := 0.0
+		if t, hit := m.nearIn(i, heavy[0]+"\n"+heavy[1]); hit {
+			s = brainWeightCloseTitle
+			m.used[t] = true
+		} else if t, hit := m.nearIn(i, light[0]+"\n"+light[1]); hit {
+			s = brainWeightClose
+			m.used[t] = true
+		} else if m.closeLinked[i][id] {
+			s = brainWeightClose
+		}
+		if s > 0 {
+			if levels == nil {
+				levels = make([]float64, len(m.terms))
+			}
+			levels[i] = s
+		}
+	}
+	return levels, levels != nil
 }
 
 // brainEntityDoc is an entity's id and folded name.
@@ -407,29 +621,37 @@ func brainLinkedTo(ctx context.Context, q Querier, picked []map[int64]bool) ([]m
 }
 
 // searchBrain finds the memories that pass cond (the graph read's other
-// filters, over brain_nodes n) and match the query, with the words to
-// highlight: the query's own and the close words that matched.
+// filters, over brain_nodes n) and match the query, each with its rank,
+// and the words to highlight: the query's own, their synonyms and the close
+// words that matched.
 func searchBrain(ctx context.Context, q Querier, cond string, args []any, query string, agents bool) ([]brainHit, []string, error) {
-	words := brainQueryWords(query)
-	if len(words) == 0 {
+	terms := brainQueryTerms(query)
+	if len(terms) == 0 {
 		return nil, nil, nil
+	}
+	words := make([]string, len(terms))
+	for i, t := range terms {
+		words[i] = t.word
 	}
 	ents, err := brainEntityDocs(ctx, q, agents)
 	if err != nil {
 		return nil, nil, err
 	}
-	picked := make([]map[int64]bool, len(words))
-	for i, w := range words {
+	picked := make([]map[int64]bool, len(terms))
+	for i, t := range terms {
 		for _, e := range ents {
-			if strings.Contains(e.name, w) {
-				if picked[i] == nil {
-					picked[i] = map[int64]bool{}
+			for _, a := range t.alts {
+				if wordIn(e.name, a) != matchNone {
+					if picked[i] == nil {
+						picked[i] = map[int64]bool{}
+					}
+					picked[i][e.id] = true
+					break
 				}
-				picked[i][e.id] = true
 			}
 		}
 	}
-	m := &brainMatcher{words: words, used: map[string]bool{}}
+	m := &brainMatcher{terms: terms, words: words, used: map[string]bool{}}
 	if m.linked, err = brainLinkedTo(ctx, q, picked); err != nil {
 		return nil, nil, err
 	}
@@ -444,16 +666,20 @@ func searchBrain(ctx context.Context, q Querier, cond string, args []any, query 
 		return nil, nil, err
 	}
 	var hits []brainHit
+	var hitDocs []string
 	var rest []brainCand
+	searched := 0
 	for rows.Next() {
 		var c brainCand
 		if err := rows.Scan(&c.hit.id, &c.doc, &c.hit.pinned, &c.hit.created); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
-		if rank, _, ok := m.score(c.hit.id, c.doc); ok {
-			c.hit.rank = rank
+		searched++
+		if levels, ok := m.match(c.hit.id, c.doc); ok {
+			c.hit.levels = levels
 			hits = append(hits, c.hit)
+			hitDocs = append(hitDocs, c.doc)
 		} else if len(rest) < brainCloseScan {
 			rest = append(rest, c)
 		}
@@ -463,9 +689,38 @@ func searchBrain(ctx context.Context, q Querier, cond string, args []any, query 
 		return nil, nil, err
 	}
 	rows.Close()
-	terms := slices.Clone(words)
+	// Each term's IDF over the memories searched: a word most memories have
+	// ("project") weighs little, a rare one ("hero") much.
+	idf := make([]float64, len(terms))
+	for i := range terms {
+		df := 0
+		for _, h := range hits {
+			if h.levels[i] > 0 {
+				df++
+			}
+		}
+		idf[i] = math.Log(1 + float64(max(searched, 1))/float64(max(df, 1)))
+	}
+	rank := func(levels []float64) int {
+		s := 0.0
+		for i, l := range levels {
+			s += l * idf[i]
+		}
+		return int(math.Round(s * 100))
+	}
+	for i := range hits {
+		hits[i].rank = rank(hits[i].levels)
+	}
+	var marks []string
+	for _, t := range terms {
+		for _, a := range t.alts {
+			if !slices.Contains(marks, a) && len(marks) < brainTermsMax {
+				marks = append(marks, a)
+			}
+		}
+	}
 	if len(hits) >= brainFewHits {
-		return hits, terms, nil
+		return hits, marks, nil
 	}
 
 	// The close pass: few exact hits, so look in the rest for words a typo
@@ -476,14 +731,16 @@ func searchBrain(ctx context.Context, q Querier, cond string, args []any, query 
 	m.pieces = make([][]string, len(words))
 	anyEligible := false
 	for i, w := range words {
-		m.edits[i] = brainMaxEdits(w)
+		if !strings.Contains(w, " ") {
+			m.edits[i] = brainMaxEdits(w)
+		}
 		m.runes[i] = []rune(w)
 		m.pieces[i] = brainPieces(m.runes[i], m.edits[i])
 		m.seen[i] = map[string]bool{}
 		anyEligible = anyEligible || m.edits[i] > 0
 	}
 	if !anyEligible {
-		return hits, terms, nil
+		return hits, marks, nil
 	}
 	closePicked := make([]map[int64]bool, len(words))
 	for i := range words {
@@ -502,19 +759,63 @@ func searchBrain(ctx context.Context, q Querier, cond string, args []any, query 
 	if m.closeLinked, err = brainLinkedTo(ctx, q, closePicked); err != nil {
 		return nil, nil, err
 	}
+	// A memory that matched some terms exactly may match the others close:
+	// "sqlite postgers" finds the memory about both.
+	for k := range hits {
+		need := false
+		for i, l := range hits[k].levels {
+			need = need || (l == 0 && m.edits[i] > 0)
+		}
+		if !need {
+			continue
+		}
+		levels, ok := m.matchClose(hits[k].id, hitDocs[k])
+		if !ok {
+			continue
+		}
+		for i, l := range levels {
+			if l > 0 && hits[k].levels[i] == 0 {
+				hits[k].levels[i] = l
+				hits[k].close = true
+			}
+		}
+		hits[k].rank = rank(hits[k].levels)
+	}
 	for _, c := range rest {
-		if rank, isClose, ok := m.score(c.hit.id, c.doc); ok {
-			c.hit.rank, c.hit.close = rank, isClose
+		if levels, ok := m.matchClose(c.hit.id, c.doc); ok {
+			c.hit.levels, c.hit.close = levels, true
+			c.hit.rank = rank(levels)
 			hits = append(hits, c.hit)
 		}
 	}
 	extra := make([]string, 0, len(m.used))
 	for t := range m.used {
-		extra = append(extra, t)
+		if !slices.Contains(marks, t) {
+			extra = append(extra, t)
+		}
 	}
 	slices.Sort(extra)
-	terms = append(terms, extra[:min(len(extra), brainTermsMax-len(terms))]...)
-	return hits, terms, nil
+	marks = append(marks, extra[:max(0, min(len(extra), brainTermsMax-len(marks)))]...)
+	return hits, marks, nil
+}
+
+// markSuperseded sets superseded on the hits a supersedes edge points at.
+func markSuperseded(ctx context.Context, q Querier, hits []brainHit) error {
+	if len(hits) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(hits))
+	for i, h := range hits {
+		ids[i] = h.id
+	}
+	got, err := brainSupersededBy(ctx, q, ids)
+	if err != nil {
+		return err
+	}
+	for i := range hits {
+		hits[i].superseded = got[hits[i].id] != 0
+	}
+	return nil
 }
 
 // brainCand is a memory the exact pass did not match, kept for the close one.
@@ -523,10 +824,16 @@ type brainCand struct {
 	doc string
 }
 
-// sortBrainHits orders hits best first: rank, then pinned, then newest.
+// sortBrainHits orders hits best first: current before superseded, then
+// rank, then pinned, then newest.
 func sortBrainHits(hits []brainHit) {
 	slices.SortFunc(hits, func(a, b brainHit) int {
 		switch {
+		case a.superseded != b.superseded:
+			if a.superseded {
+				return 1
+			}
+			return -1
 		case a.rank != b.rank:
 			return b.rank - a.rank
 		case a.pinned != b.pinned:
@@ -628,10 +935,10 @@ func abs(x int) int {
 // search — none, once filled, since every insert and update writes it — which
 // costs one scan of a small table.
 func (s *Store) backfillBrainSearch(ctx context.Context) error {
-	query := `SELECT id, title, summary, project FROM brain_nodes WHERE search = ''`
+	query := `SELECT id, title, summary, project, keywords FROM brain_nodes WHERE search = ''`
 	refold := false
 	if v, err := s.GetMeta(ctx, metaBrainSearchFold); err != nil || v != brainSearchFold {
-		query = `SELECT id, title, summary, project FROM brain_nodes`
+		query = `SELECT id, title, summary, project, keywords FROM brain_nodes`
 		refold = true
 	}
 	rows, err := s.db.QueryContext(ctx, query)
@@ -646,11 +953,12 @@ func (s *Store) backfillBrainSearch(ctx context.Context) error {
 	for rows.Next() {
 		var id int64
 		var title, summary, project string
-		if err := rows.Scan(&id, &title, &summary, &project); err != nil {
+		var kw BrainKeywords
+		if err := rows.Scan(&id, &title, &summary, &project, &kw); err != nil {
 			_ = rows.Close()
 			return err
 		}
-		pending = append(pending, row{id, BrainSearchDoc(title, summary, project)})
+		pending = append(pending, row{id, BrainSearchDoc(title, summary, project, kw...)})
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()

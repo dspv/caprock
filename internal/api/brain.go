@@ -230,15 +230,21 @@ type BrainHandoffState struct {
 	HoldoutPct int `json:"holdout_pct"`
 }
 
-// BrainHandoffView is GET /v1/brain/handoff: the memories a new session in
-// the project is handed, picked by the same code the SessionStart handoff
-// uses (store.BrainHandoff), and whether one would be served now.
+// BrainHandoffView is GET /v1/brain/handoff: the current decisions and the
+// memories a new session in the project is handed, picked by the same code
+// the SessionStart handoff uses (store.BrainHandoff), and whether one would
+// be served now.
 type BrainHandoffView struct {
-	Project  string            `json:"project"`
-	Memories []store.BrainNode `json:"memories"`
-	// Max is how many it may carry; Budget the runes they share.
-	Max    int `json:"max"`
-	Budget int `json:"budget"`
+	Project string `json:"project"`
+	// Decisions are the current decisions, newest first, handed first.
+	Decisions []store.BrainNode `json:"decisions"`
+	Memories  []store.BrainNode `json:"memories"`
+	// Max is how many memories it may carry; Budget the runes they share.
+	// DecisionsMax and DecisionsBudget are the same for the decisions.
+	Max             int `json:"max"`
+	Budget          int `json:"budget"`
+	DecisionsMax    int `json:"decisions_max"`
+	DecisionsBudget int `json:"decisions_budget"`
 	// Served is BrainHandoffState, when the daemon wires it.
 	Served *BrainHandoffState `json:"served,omitempty"`
 }
@@ -251,20 +257,55 @@ func (s *Server) handleBrainHandoff(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, errors.New("project is required"))
 		return
 	}
-	mems, _, err := store.BrainHandoff(r.Context(), s.d.Store.DB(), project)
+	pick, err := store.BrainHandoff(r.Context(), s.d.Store.DB(), project)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	v := BrainHandoffView{Project: project, Memories: mems, Max: store.BrainHandoffMax, Budget: store.BrainHandoffRunes}
+	v := BrainHandoffView{Project: project, Decisions: pick.Decisions, Memories: pick.Memories,
+		Max: store.BrainHandoffMax, Budget: store.BrainHandoffRunes,
+		DecisionsMax: store.BrainHandoffDecisions, DecisionsBudget: store.BrainHandoffDecisionRunes}
 	if v.Memories == nil {
 		v.Memories = []store.BrainNode{}
+	}
+	if v.Decisions == nil {
+		v.Decisions = []store.BrainNode{}
 	}
 	if s.d.BrainHandoffState != nil {
 		st := s.d.BrainHandoffState(r.Context(), project)
 		v.Served = &st
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// BrainDecisionsMax is the most current decisions GET /v1/brain/decisions
+// returns.
+const BrainDecisionsMax = 100
+
+// handleBrainDecisions is GET /v1/brain/decisions: a project's current
+// decisions — the ones no newer memory supersedes — newest first.
+func (s *Server) handleBrainDecisions(w http.ResponseWriter, r *http.Request) {
+	qv := r.URL.Query()
+	project := strings.TrimSpace(qv.Get("project"))
+	if project == "" {
+		s.failCode(w, http.StatusBadRequest, errors.New("project is required"))
+		return
+	}
+	limit := 50
+	if v := qv.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			s.failCode(w, http.StatusBadRequest, errors.New("limit is a positive number"))
+			return
+		}
+		limit = min(n, BrainDecisionsMax)
+	}
+	decs, err := store.BrainCurrentDecisions(r.Context(), s.d.Store.DB(), project, limit, qv.Get("agents") == "1")
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"project": project, "decisions": decs})
 }
 
 // brainID reads {id}; ok is false once it has answered.
@@ -549,6 +590,7 @@ func (s *Server) handleBrainLink(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a memory cannot be linked to itself"})
 		return
 	}
+	explicitKind := b.Kind != ""
 	if b.Kind == "" {
 		b.Kind = store.EdgeRelates
 	}
@@ -560,16 +602,30 @@ func (s *Server) handleBrainLink(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if r.Method == http.MethodDelete {
+	switch {
+	case r.Method == http.MethodDelete && explicitKind:
+		// One edge of one kind, from → to: undoing a wrong supersedes
+		// leaves the two memories otherwise linked.
+		if err := store.UnlinkBrainKind(ctx, db, b.From, b.To, b.Kind); err != nil {
+			s.brainErr(w, err)
+			return
+		}
+		s.publishBrain(store.BrainNode{ID: b.To}, "changed")
+	case r.Method == http.MethodDelete:
 		if err := store.UnlinkBrain(ctx, db, b.From, b.To); err != nil {
 			s.fail(w, err)
 			return
 		}
-	} else if err := s.d.Store.WithTx(ctx, func(q store.Querier) error {
-		return store.LinkBrain(ctx, q, b.From, b.To, b.Kind, 1, s.d.Now().UnixMilli())
-	}); err != nil {
-		s.brainErr(w, err)
-		return
+	default:
+		if err := s.d.Store.WithTx(ctx, func(q store.Querier) error {
+			if b.Kind == store.EdgeSupersedes {
+				return store.BrainSupersede(ctx, q, b.From, b.To, s.d.Now().UnixMilli())
+			}
+			return store.LinkBrain(ctx, q, b.From, b.To, b.Kind, 1, s.d.Now().UnixMilli())
+		}); err != nil {
+			s.brainErr(w, err)
+			return
+		}
 	}
 	s.publishBrain(store.BrainNode{ID: b.From}, "changed")
 	w.WriteHeader(http.StatusNoContent)

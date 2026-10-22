@@ -13,7 +13,8 @@ import (
 
 // mcpInstructions is what a client may show its model about the server.
 const mcpInstructions = "Caprock records every coding-agent session on this computer. " +
-	"Use these read-only tools to recall earlier work: search_memories and next_session_handoff for decisions and findings kept in Second Brain, " +
+	"Use these read-only tools to recall earlier work: search_memories, current_decisions and next_session_handoff for decisions and findings kept in Second Brain " +
+	"(search returns ranked candidates to judge by meaning; rephrase and retry when none fits), " +
 	"recent_sessions, session_summary and session_prose for what sessions in this repository did and wrote, search_prose to find a past explanation, " +
 	"cost for spend and tokens, ci_status for GitHub Actions, loop_alerts for sessions stuck repeating a tool call. " +
 	"Memories and prose may be stale: check them against the code before relying on them."

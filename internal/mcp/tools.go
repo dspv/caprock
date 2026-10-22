@@ -17,17 +17,23 @@ import (
 
 // Bounds on what a tool returns: a page an agent can read in one go.
 const (
-	defaultLimit  = 10
-	maxLimit      = 50
-	noteRunes     = 1500
-	summaryRunes  = 600
-	maxFiles      = 40
-	maxLinks      = 30
-	maxTopics     = 60
-	maxCostDays   = 90
-	sampleRunes   = 200
-	maxCIRuns     = 12
-	maxFailedJobs = 8
+	defaultLimit = 10
+	maxLimit     = 50
+	noteRunes    = 1500
+	summaryRunes = 600
+	// memoryCandidates is how many memories search_memories returns by
+	// default: enough candidates for the calling agent to judge by meaning,
+	// each with a short summary (candidateRunes).
+	memoryCandidates = 30
+	candidateRunes   = 200
+	maxDecisions     = 100
+	maxFiles         = 40
+	maxLinks         = 30
+	maxTopics        = 60
+	maxCostDays      = 90
+	sampleRunes      = 200
+	maxCIRuns        = 12
+	maxFailedJobs    = 8
 )
 
 // Tools is what `caprock mcp` offers. cwd is the directory the agent started
@@ -55,8 +61,9 @@ func obj(props map[string]any, required ...string) map[string]any {
 
 func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 
-func intArg(desc string, lo, hi int) map[string]any {
-	return map[string]any{"type": "integer", "description": desc, "minimum": lo, "maximum": hi}
+// intArg is a count from 1 to hi.
+func intArg(desc string, hi int) map[string]any {
+	return map[string]any{"type": "integer", "description": desc, "minimum": 1, "maximum": hi}
 }
 
 func boolArg(desc string) map[string]any {
@@ -66,19 +73,35 @@ func boolArg(desc string) map[string]any {
 const repoDesc = "A directory inside the repository; defaults to the directory this server was started in (normally the project the agent is working in)."
 
 func (t *tools) list() []Tool {
-	limit := intArg(fmt.Sprintf("How many to return (default %d, at most %d).", defaultLimit, maxLimit), 1, maxLimit)
+	limit := intArg(fmt.Sprintf("How many to return (default %d, at most %d).", defaultLimit, maxLimit), maxLimit)
 	return []Tool{
 		{
 			Name:  "search_memories",
 			Title: "Search Second Brain",
 			Description: "Search the user's Second Brain: decisions, findings and notes kept from earlier coding sessions, across every project or one. " +
-				"Words match titles, summaries, project names and linked topics, tolerant of typos. Best matches first, each with its topics.",
+				"Returns up to 30 ranked candidates (any word matches; rarer words, and hits in a title or its English keywords, rank higher; " +
+				"a few synonyms such as PR/pull request, cost/price/spend and decision/rule are matched; typos are tolerated), " +
+				"each with kind, date, project, keywords and a short summary: judge by meaning which ones answer the question, then read one with get_memory. " +
+				"Titles are often in the user's own language, not English, while keywords are English. If nothing fits, rephrase and search again: " +
+				"other words, fewer words, a synonym, the product or component name, or words in the user's language. " +
+				"A memory marked superseded_by is no longer current: the id named replaces it.",
 			Schema: obj(map[string]any{
 				"query":   str("Words to look for. Empty lists the newest memories."),
 				"project": str("Keep one project's memories (its name, e.g. the repository folder's name). Omit for all."),
-				"limit":   limit,
+				"limit":   intArg(fmt.Sprintf("How many to return (default %d, at most %d).", memoryCandidates, maxLimit), maxLimit),
 			}),
 			Call: t.searchMemories,
+		},
+		{
+			Name:  "current_decisions",
+			Title: "Current decisions",
+			Description: "The decisions in force for a project, newest first: every decision in Second Brain that no newer one supersedes. " +
+				"Read this before changing direction on something the user already decided.",
+			Schema: obj(map[string]any{
+				"project": str("The project's name (the repository folder's name). Omit for the repository this server was started in."),
+				"limit":   intArg(fmt.Sprintf("How many (default 50, at most %d).", maxDecisions), maxDecisions),
+			}),
+			Call: t.currentDecisions,
 		},
 		{
 			Name:        "get_memory",
@@ -127,7 +150,7 @@ func (t *tools) list() []Tool {
 			Description: "The prose the agent wrote in a session (its answers and explanations, not tool output), newest first. Notes marked fragment read as mid-thought.",
 			Schema: obj(map[string]any{
 				"session_id": str("The session's id, from recent_sessions."),
-				"limit":      intArg("How many passages (default 5, at most 20).", 1, 20),
+				"limit":      intArg("How many passages (default 5, at most 20).", 20),
 			}, "session_id"),
 			Call: t.sessionProse,
 		},
@@ -145,7 +168,7 @@ func (t *tools) list() []Tool {
 			Schema: obj(map[string]any{
 				"repo":      str(repoDesc),
 				"all_repos": boolArg("Every repository, with a total per repository."),
-				"days":      intArg("Days back, today included (default 7, at most 90).", 1, maxCostDays),
+				"days":      intArg("Days back, today included (default 7, at most 90).", maxCostDays),
 			}),
 			Call: t.cost,
 		},
@@ -232,9 +255,11 @@ type brainNode struct {
 		SessionID string `json:"session_id"`
 		Project   string `json:"project"`
 	} `json:"source"`
-	Pinned    bool  `json:"pinned"`
-	CreatedAt int64 `json:"created_at"`
-	Degree    int   `json:"degree"`
+	Pinned       bool     `json:"pinned"`
+	CreatedAt    int64    `json:"created_at"`
+	Degree       int      `json:"degree"`
+	Keywords     []string `json:"keywords"`
+	SupersededBy int64    `json:"superseded_by"`
 }
 
 type brainGraph struct {
@@ -256,6 +281,10 @@ type memoryOut struct {
 	Pinned    bool     `json:"pinned,omitempty"`
 	CreatedAt string   `json:"created_at,omitempty"`
 	Topics    []string `json:"topics,omitempty"`
+	Keywords  []string `json:"keywords,omitempty"`
+	// SupersededBy names the memory that replaces this one: it is no
+	// longer current.
+	SupersededBy int64 `json:"superseded_by,omitempty"`
 }
 
 func isEntity(kind string) bool { return kind == "topic" || kind == "person" || kind == "project" }
@@ -264,6 +293,7 @@ func memoryOf(n brainNode) memoryOut {
 	return memoryOut{
 		ID: n.ID, Kind: n.Kind, Title: n.Title, Summary: clipRunes(n.Summary, summaryRunes),
 		Project: n.Source.Project, SessionID: n.Source.SessionID, Pinned: n.Pinned, CreatedAt: when(n.CreatedAt),
+		Keywords: n.Keywords, SupersededBy: n.SupersededBy,
 	}
 }
 
@@ -276,7 +306,7 @@ func (t *tools) searchMemories(ctx context.Context, args json.RawMessage) (any, 
 	if err := decode(args, &a); err != nil {
 		return nil, err
 	}
-	q := url.Values{"summaries": {"1"}, "limit": {strconv.Itoa(clampLimit(a.Limit, defaultLimit, maxLimit))}}
+	q := url.Values{"summaries": {"1"}, "limit": {strconv.Itoa(clampLimit(a.Limit, memoryCandidates, maxLimit))}}
 	if s := strings.TrimSpace(a.Query); s != "" {
 		q.Set("q", s)
 	}
@@ -307,10 +337,47 @@ func (t *tools) searchMemories(ctx context.Context, args json.RawMessage) (any, 
 			continue
 		}
 		m := memoryOf(n)
+		m.Summary = clipRunes(n.Summary, candidateRunes)
 		m.Topics = topics[n.ID]
 		out = append(out, m)
 	}
-	return map[string]any{"total": g.Total, "returned": len(out), "memories": out}, nil
+	res := map[string]any{"total": g.Total, "returned": len(out), "memories": out}
+	if strings.TrimSpace(a.Query) != "" && len(out) == 0 {
+		res["hint"] = "No memory matched. Rephrase and search again: other or fewer words, a synonym, the component's name, or words in the user's language."
+	}
+	return res, nil
+}
+
+func (t *tools) currentDecisions(ctx context.Context, args json.RawMessage) (any, error) {
+	var a struct {
+		Project string `json:"project"`
+		Limit   int    `json:"limit"`
+	}
+	if err := decode(args, &a); err != nil {
+		return nil, err
+	}
+	project := strings.TrimSpace(a.Project)
+	if project == "" {
+		_, p, err := t.repoOf("")
+		if err != nil {
+			return nil, err
+		}
+		project = p
+	}
+	var v struct {
+		Decisions []brainNode `json:"decisions"`
+	}
+	q := url.Values{"project": {project}, "limit": {strconv.Itoa(clampLimit(a.Limit, 50, maxDecisions))}}
+	if err := t.c.get(ctx, "/v1/brain/decisions", q, &v); err != nil {
+		return nil, err
+	}
+	out := make([]memoryOut, 0, len(v.Decisions))
+	for _, n := range v.Decisions {
+		m := memoryOf(n)
+		m.Summary = clipRunes(n.Summary, candidateRunes)
+		out = append(out, m)
+	}
+	return map[string]any{"project": project, "decisions": out}, nil
 }
 
 func (t *tools) getMemory(ctx context.Context, args json.RawMessage) (any, error) {
@@ -413,10 +480,11 @@ func (t *tools) handoff(ctx context.Context, args json.RawMessage) (any, error) 
 		return nil, err
 	}
 	var v struct {
-		Project  string      `json:"project"`
-		Memories []brainNode `json:"memories"`
-		Max      int         `json:"max"`
-		Served   *struct {
+		Project   string      `json:"project"`
+		Decisions []brainNode `json:"decisions"`
+		Memories  []brainNode `json:"memories"`
+		Max       int         `json:"max"`
+		Served    *struct {
 			On         bool  `json:"on"`
 			LeftOffAt  int64 `json:"left_off_at"`
 			HoldoutPct int   `json:"holdout_pct"`
@@ -425,11 +493,15 @@ func (t *tools) handoff(ctx context.Context, args json.RawMessage) (any, error) 
 	if err := t.c.get(ctx, "/v1/brain/handoff", url.Values{"project": {project}}, &v); err != nil {
 		return nil, err
 	}
+	decs := make([]memoryOut, 0, len(v.Decisions))
+	for _, n := range v.Decisions {
+		decs = append(decs, memoryOf(n))
+	}
 	mems := make([]memoryOut, 0, len(v.Memories))
 	for _, n := range v.Memories {
 		mems = append(mems, memoryOf(n))
 	}
-	out := map[string]any{"project": project, "memories": mems, "max_memories": v.Max}
+	out := map[string]any{"project": project, "current_decisions": decs, "memories": mems, "max_memories": v.Max}
 	if v.Served != nil {
 		out["handoff_on"] = v.Served.On
 		out["left_off_at"] = when(v.Served.LeftOffAt)
@@ -438,9 +510,9 @@ func (t *tools) handoff(ctx context.Context, args json.RawMessage) (any, error) 
 		case !v.Served.On:
 			out["note"] = "Memory between sessions is off in Caprock's Settings: a new session is handed nothing."
 		case v.Served.LeftOffAt == 0:
-			out["note"] = "No recent passage to quote; a new session gets the memories alone."
+			out["note"] = "No recent passage to quote; a new session gets the current decisions and memories alone."
 		default:
-			out["note"] = "A new session gets the last passage a session here wrote (see session_prose on the newest session) and these memories."
+			out["note"] = "A new session gets the last passage a session here wrote (see session_prose on the newest session), then the current decisions, then these memories."
 		}
 	}
 	return out, nil

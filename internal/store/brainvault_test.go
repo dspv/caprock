@@ -40,6 +40,9 @@ func TestMigration0062KeepsTheGraph(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// 0062's rebuild leaves brain_nodes and brain_edges as they were before
+	// 0069; 0069's own rebuild, on that graph, keeps it too.
+	applyMigration0069Brain(t, s)
 	got, err := GetBrainNode(ctx, db, a.ID)
 	if err != nil || got.Title != "Use WAL" || !got.Pinned || got.Summary != "Why." {
 		t.Fatalf("node after the rebuild: %+v %v", got, err)
@@ -51,11 +54,40 @@ func TestMigration0062KeepsTheGraph(t *testing.T) {
 	if _, _, err := InsertBrainNode(ctx, db, BrainNode{Kind: BrainNote, Title: "A note"}, 11); err != nil {
 		t.Fatalf("a note after the rebuild: %v", err)
 	}
+	c, _, err := InsertBrainNode(ctx, db, BrainNode{Kind: BrainDecision, Title: "Use WAL2", Keywords: []string{"sqlite", "journal"}, Source: BrainSource{Project: "caprock"}}, 12)
+	if err != nil || c.Keywords.String() != "sqlite, journal" {
+		t.Fatalf("keywords after the rebuild: %+v %v", c, err)
+	}
+	if err := BrainSupersede(ctx, db, c.ID, a.ID, 12); err != nil {
+		t.Fatalf("a supersedes edge after the rebuild: %v", err)
+	}
 	if err := DeleteBrainNode(ctx, db, a.ID); err != nil {
 		t.Fatal(err)
 	}
 	var n int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM brain_edges`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("edges did not go with their node: %d %v", n, err)
+	}
+}
+
+// applyMigration0069Brain runs migration 0069's first two parts — the
+// keywords column and the brain_edges rebuild — on a database whose brain
+// tables are in their pre-0069 shape (sessions already has its column).
+func applyMigration0069Brain(t *testing.T, s *Store) {
+	t.Helper()
+	b, err := os.ReadFile("migrations/0069_brain_find_decisions.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	end := strings.Index(src, "-- 3. ")
+	if end < 0 {
+		t.Fatal("the sessions part is not in the migration")
+	}
+	if err := s.WithTx(context.Background(), func(q Querier) error {
+		_, err := q.ExecContext(context.Background(), src[:end])
+		return err
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
