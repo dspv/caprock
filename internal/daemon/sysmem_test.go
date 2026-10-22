@@ -224,7 +224,68 @@ func BenchmarkOtherApps(b *testing.B) {
 	r := &ResourceReport{}
 	ctx := context.Background()
 	for b.Loop() {
-		_ = d.otherApps(ctx, r)
+		_, _ = d.otherApps(ctx, r)
+	}
+}
+
+// The owner's popover, 2026-10-22: colima's virtual machine listed at
+// 8.2 GB under "Other apps and the system" at 7.6 GB. used counts RAM, the
+// VM's footprint its whole guest, most of it in swap; the group now takes
+// what its members hold when that is more, and the VM is marked as one.
+func TestOtherIsNeverSmallerThanItsApps(t *testing.T) {
+	const gb = 1 << 30
+	gib := func(f float64) uint64 { return uint64(f * gb) }
+	mm := MachineMemory{Total: 16 * gb, Used: gib(14.0), Agents: gib(5.9), Caprock: gib(0.5)}
+	mm.Other = mm.Used - mm.Agents - mm.Caprock
+	if mm.Other != gib(14.0)-gib(5.9)-gib(0.5) || mm.Other > gib(7.61) || mm.Other < gib(7.59) {
+		t.Fatalf("fixture: other %d", mm.Other)
+	}
+	groups := map[string]*MemoryApp{
+		"colima":        {Name: "colima", MemBytes: gib(8.2), Procs: 4, VM: isVMHost("com.apple.Virtua")},
+		"Google Chrome": {Name: "Google Chrome", MemBytes: gib(1.1), Procs: 30},
+		"Slack":         {Name: "Slack", MemBytes: gib(0.4), Procs: 5},
+		"Finder":        {Name: "Finder", MemBytes: gib(0.1), Procs: 1},
+	}
+	top, sum := rankApps(groups)
+	if len(top) != memTopApps || top[0].Name != "colima" || !top[0].VM || top[1].VM {
+		t.Fatalf("top: %+v", top)
+	}
+	if want := gib(8.2) + gib(1.1) + gib(0.4) + gib(0.1); sum != want {
+		t.Fatalf("sum %d, want %d: every app read, not only the listed ones", sum, want)
+	}
+	mm.Other = settleOther(mm.Other, sum)
+	for _, a := range top {
+		if a.MemBytes > mm.Other {
+			t.Fatalf("%s at %d is bigger than its group at %d", a.Name, a.MemBytes, mm.Other)
+		}
+	}
+	if mm.Other != sum {
+		t.Fatalf("other %d, want the apps' %d", mm.Other, sum)
+	}
+	// Where the apps hold less than the rest of used — the system's own
+	// memory, other users' processes — the rest stands.
+	if got := settleOther(gib(7.6), gib(2)); got != gib(7.6) {
+		t.Fatalf("a smaller app sum replaced the remainder: %d", got)
+	}
+}
+
+func TestIsVMHost(t *testing.T) {
+	for name, want := range map[string]bool{
+		"com.apple.Virtua":                        true, // com.apple.Virtualization.VirtualMachine, cut to 16 bytes
+		"com.apple.Virtualization.VirtualMachine": true,
+		"qemu-system-aarc":                        true,
+		"qemu-system-x86":                         true,
+		"vfkit":                                   true,
+		"krunkit":                                 true,
+		"limactl":                                 false,
+		"colima":                                  false,
+		"Google Chrome He":                        false,
+		"com.apple.WebKit":                        false,
+		"":                                        false,
+	} {
+		if got := isVMHost(name); got != want {
+			t.Errorf("isVMHost(%q) = %v, want %v", name, got, want)
+		}
 	}
 }
 

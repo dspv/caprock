@@ -22,7 +22,7 @@ import { api, errText, type SessionSummary } from '@/lib/api'
 import { fmtMem, onResources, useMachineMemory } from '@/lib/resources'
 import { sessionTitle } from '@/lib/sidebar'
 import {
-  agentStateText, endIdleLabel, fmtUsedOf, heavyLine, heavyText, levelReason, memoryHeadline, memoryParts, restartFresh, usedPct,
+  agentStateText, beyondUsedNote, endIdleLabel, fmtUsedOf, heavyLine, heavyText, levelReason, memoryHeadline, memoryParts, partsBeyondUsed, restartFresh, usedPct, VM_NOTE,
   type MachineMemory, type MemoryAgent, type MemoryReport,
 } from '@/lib/memory'
 import { CloseIcon } from './AppIcons'
@@ -188,6 +188,7 @@ export function MemoryPopover({ m: frame, owner, sessions, onOpenSession, onClos
             </div>
           ))}
         </div>
+        {partsBeyondUsed(m) && <p data-memory-beyond className="text-fg-faint">{beyondUsedNote(m)}</p>}
       </section>
 
       {shown.length > 0 && (
@@ -233,9 +234,12 @@ export function MemoryPopover({ m: frame, owner, sessions, onOpenSession, onClos
           <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Other apps</div>
           <ul className="grid gap-px">
             {rep.apps.map((a) => (
-              <li key={a.name} data-memory-app className="grid grid-cols-[minmax(0,1fr)_4rem] items-baseline gap-x-2 px-1 py-[2px]"
-                title={`${a.procs} ${a.procs === 1 ? 'process' : 'processes'}`}>
-                <span className="min-w-0 truncate text-fg">{a.name}</span>
+              <li key={a.name} data-memory-app={a.vm ? 'vm' : ''} className="grid grid-cols-[minmax(0,1fr)_4rem] items-baseline gap-x-2 px-1 py-[2px]"
+                title={`${a.procs} ${a.procs === 1 ? 'process' : 'processes'}${a.vm ? `\n${VM_NOTE}` : ''}`}>
+                <span className="min-w-0 truncate text-fg">
+                  {a.name}
+                  {a.vm && <span className="text-fg-faint"> · virtual machine</span>}
+                </span>
                 <span className="num text-right text-fg-muted">{fmtMem(a.mem_bytes)}</span>
               </li>
             ))}

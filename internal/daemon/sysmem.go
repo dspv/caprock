@@ -298,6 +298,9 @@ type MemoryApp struct {
 	Name     string `json:"name"`
 	MemBytes uint64 `json:"mem_bytes"`
 	Procs    int    `json:"procs"`
+	// VM is an app running a virtual machine (isVMHost): its size is the
+	// guest's memory, most of which may be compressed or in swap.
+	VM bool `json:"vm,omitempty"`
 }
 
 // IdleEndOffer is what the button ends and about how much it frees.
@@ -349,9 +352,29 @@ func (d *Daemon) systemMemory(ctx context.Context, paired bool) *MemoryReport {
 	}
 	sort.SliceStable(rep.Agents, func(i, j int) bool { return rep.Agents[i].MemBytes > rep.Agents[j].MemBytes })
 	if !paired {
-		rep.Apps = d.otherApps(ctx, r)
+		var sum uint64
+		rep.Apps, sum = d.otherApps(ctx, r)
+		rep.Memory.Other = settleOther(rep.Memory.Other, sum)
 	}
 	return rep
+}
+
+// settleOther is the popover's "Other apps and the system": the rest of
+// used, or what the other apps it read hold together if that is more.
+//
+// The two are counted differently. used is RAM: compressed memory at the
+// size it takes in the compressor, swapped-out memory not at all. An app's
+// size is its physical footprint, as Activity Monitor's Memory column
+// shows it, which counts its compressed and swapped-out pages at full size.
+// An app whose memory is mostly compressed or in swap — an idle virtual
+// machine, whose guest RAM is one process — is far bigger by its footprint
+// than its share of used: on the owner's Mac colima's VM had an 8.2 GB
+// footprint with 0.5 GB of it resident and 7.6 GB of swap in use, and the
+// group it was listed under read 7.6 GB (2026-10-22). A group is never
+// smaller than its members, so it takes their sum when that is more; the
+// popover then says why the parts add up past what is in use.
+func settleOther(rest, apps uint64) uint64 {
+	return max(rest, apps)
 }
 
 // otherApps is the apps outside the agents and Caprock using the most memory,
@@ -359,12 +382,13 @@ func (d *Daemon) systemMemory(ctx context.Context, paired bool) *MemoryReport {
 // holds responsible for it (Chrome's renderers under Chrome, a web view's
 // WebKit processes under its app) and named after its outermost .app. Only
 // this user's processes can be read; the rest stay in Other's remainder.
-func (d *Daemon) otherApps(ctx context.Context, r *ResourceReport) []MemoryApp {
+// sum is what every app read holds together, not only the ones returned.
+func (d *Daemon) otherApps(ctx context.Context, r *ResourceReport) (top []MemoryApp, sum uint64) {
 	d.res.mu.Lock()
 	defer d.res.mu.Unlock()
 	tab, err := procstat.Read(ctx)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 	skip := map[int32]bool{int32(os.Getpid()): true}
 	for _, s := range r.Sessions {
@@ -392,10 +416,18 @@ func (d *Daemon) otherApps(ctx context.Context, r *ResourceReport) []MemoryApp {
 		}
 		g.MemBytes += mem
 		g.Procs++
+		g.VM = g.VM || isVMHost(p.Name)
 	}
+	return rankApps(groups)
+}
+
+// rankApps is the memTopApps largest apps, and what all of them hold.
+func rankApps(groups map[string]*MemoryApp) ([]MemoryApp, uint64) {
 	out := make([]MemoryApp, 0, len(groups))
+	var sum uint64
 	for _, g := range groups {
 		out = append(out, *g)
+		sum += g.MemBytes
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].MemBytes != out[j].MemBytes {
@@ -406,7 +438,22 @@ func (d *Daemon) otherApps(ctx context.Context, r *ResourceReport) []MemoryApp {
 	if len(out) > memTopApps {
 		out = out[:memTopApps]
 	}
-	return out
+	return out, sum
+}
+
+// isVMHost is whether a process, by the process table's name, holds a
+// virtual machine's guest memory: Apple's Virtualization framework's
+// com.apple.Virtualization.VirtualMachine (colima, lima, Docker Desktop,
+// UTM; macOS cuts the name to 16 bytes), QEMU's qemu-system-*, vfkit and
+// krunkit. Read from the name alone, so no lookup is added per process.
+func isVMHost(name string) bool {
+	switch {
+	case strings.HasPrefix(name, "com.apple.Virtua"), strings.HasPrefix(name, "qemu-system-"):
+		return true
+	case name == "vfkit", name == "krunkit":
+		return true
+	}
+	return false
 }
 
 // appName is the app a process belongs to. Must be called with m.mu held.

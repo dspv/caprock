@@ -56,6 +56,8 @@ export interface MemoryApp {
   name: string
   mem_bytes: number
   procs: number
+  /** Runs a virtual machine (colima, Docker Desktop, QEMU): its size is the guest's memory. */
+  vm?: boolean
 }
 
 /** GET /v1/system/memory. */
@@ -135,9 +137,36 @@ export function endIdleLabel(count: number, bytes: number): string {
   return `End ${count} idle ${count === 1 ? 'agent' : 'agents'} · frees about ${fmtMem(bytes)}`
 }
 
-/** The stacked bar's parts, as shares of the total: agents, Caprock, other apps, free. */
+/**
+ * Whether the parts come to more than is in use. `used` is RAM, with
+ * compressed memory at its compressed size and swapped-out memory not in it;
+ * each part is its processes' footprints, as Activity Monitor's Memory
+ * column shows them, which count compressed and swapped-out pages at full
+ * size. On a Mac that swaps — an idle virtual machine's guest is mostly in
+ * swap — the parts add up past `used`.
+ */
+export function partsBeyondUsed(m: MachineMemory): boolean {
+  return m.agents + m.caprock + m.other > m.used
+}
+
+/** The note under the parts when they add up past what is in use. */
+export function beyondUsedNote(m: MachineMemory): string {
+  return `Sizes are what each holds, as Activity Monitor shows them: they count memory compressed or moved to swap, so together they come to more than the ${fmtMem(m.used)} in use.`
+}
+
+/** What a virtual machine's size means, for its row's tooltip. */
+export const VM_NOTE = "A virtual machine's size is all the memory its guest has used, including what was compressed or moved to swap; it holds less than that in RAM."
+
+/**
+ * The stacked bar's parts, as shares of the total: agents, Caprock, other
+ * apps, free. Where the parts come to more than is in use
+ * (partsBeyondUsed), they split the used share between them, so the bar
+ * never shows more in use than there is.
+ */
 export function memoryParts(m: MachineMemory): { key: 'agents' | 'caprock' | 'other'; label: string; bytes: number; pct: number }[] {
-  const pct = (b: number) => (m.total > 0 ? Math.max(0, (b / m.total) * 100) : 0)
+  const sum = m.agents + m.caprock + m.other
+  const scale = sum > m.used && sum > 0 ? m.used / sum : 1
+  const pct = (b: number) => (m.total > 0 ? Math.max(0, (b * scale / m.total) * 100) : 0)
   return [
     { key: 'agents', label: m.agent_count === 1 ? '1 agent' : `${m.agent_count} agents`, bytes: m.agents, pct: pct(m.agents) },
     { key: 'caprock', label: 'Caprock', bytes: m.caprock, pct: pct(m.caprock) },
