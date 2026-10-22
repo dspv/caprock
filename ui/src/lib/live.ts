@@ -86,6 +86,9 @@ export type Frame = (
   // computer waiting to be allowed (ADR-067). Carries nothing; the machine's
   // own screen re-reads GET /v1/pair/state.
   | { type: 'devices'; data: Record<string, never> }
+  // The admin state changed without the key changing — a private module's
+  // attention (ADR-076): it carries nothing; GET /v1/admin is read again.
+  | { type: 'admin'; data: Record<string, never> }
   // Caprock's own footprint (GET /v1/footprint without the orphan list) when
   // it changed, at most every 10 s (03-contracts.md § Footprint).
   | { type: 'footprint'; data: Footprint }

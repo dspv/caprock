@@ -524,8 +524,12 @@ type Server struct {
 	// shellsSent is the shell list last sent as a "shells" frame (PublishShells).
 	shellsMu   sync.Mutex
 	shellsSent []byte
-	pairing    *pairing.Store
-	lanURL     string
+	// attn is each private module's attention as last read or set, nil for
+	// one known to have none (moduleattention.go).
+	attnMu  sync.Mutex
+	attn    map[string]*ModuleAttention
+	pairing *pairing.Store
+	lanURL  string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
 	// and the MagicDNS name (WP-15). Empty when off.
@@ -752,6 +756,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/premium", s.handlePremium)
 	s.routeModules(m)
 	s.routeModuleOut(m)
+	s.routeModuleAttention(m)
 	m.HandleFunc("GET /v1/gemini", s.handleGeminiStatus)
 	m.HandleFunc("POST /v1/gemini/ask", s.handleGeminiAsk)
 	m.HandleFunc("GET /v1/pricing", s.handlePricing)

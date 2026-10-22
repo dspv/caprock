@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type AdminState, type ModuleInfo } from './api'
 import { setModuleKeyCount } from './appkeys'
 import { useCanControl } from './useCanControl'
+import { live as liveStore } from './live'
 
 /** Sent on this window when the admin key changes, so every list asks again. */
 export const ADMIN_EVENT = 'caprock-admin-change'
@@ -63,8 +64,12 @@ export function useAdmin(): AdminState | undefined {
     ask()
     const on = (e: Event) => setSt((e as CustomEvent<AdminState>).detail)
     window.addEventListener(ADMIN_EVENT, on)
+    // A module's attention changed (an "admin" frame, which carries
+    // nothing), or the frames since this client's last were lost: ask again.
+    const off = liveStore.onFrame((f) => { if (f.type === 'admin' || f.type === 'reset') ask() })
     return () => {
       live = false
+      off()
       window.removeEventListener(ADMIN_EVENT, on)
     }
   }, [may])

@@ -1945,6 +1945,21 @@ export interface ModuleInfo {
   version?: string
   /** Where the daemon serves its pages: /x/<id>/. */
   url: string
+  /** What the module last said waits on the owner (PUT /v1/x/<id>/attention); absent at 0 or after a day without a report. */
+  attention?: ModuleAttention
+}
+
+/** One thing waiting in a module: a short line, and the route inside its page that shows it. */
+export interface ModuleAttentionItem {
+  label: string
+  href: string
+}
+
+/** A module's attention: how many things wait, up to eight of them named, and when it said so. */
+export interface ModuleAttention {
+  count: number
+  items: ModuleAttentionItem[]
+  updated_at: number
 }
 
 /** GET /v1/admin: whether a valid admin key is stored, and what it opens. */

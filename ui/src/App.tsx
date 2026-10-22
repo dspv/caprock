@@ -144,7 +144,7 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'work': return <WorkScreenHosted />
       case 'chats': return <ChatsScreen key={r.archived ? 'archived' : 'open'} archived={r.archived} />
       case 'chat': return <ChatScreen key={r.id} id={r.id} />
-      case 'module': return <Suspense fallback={null}><ModuleScreen key={r.id} id={r.id} /></Suspense>
+      case 'module': return <Suspense fallback={null}><ModuleScreen key={r.id} id={r.id} to={r.to} /></Suspense>
       case 'machine': return <MachineScreen key={`${r.id}/${r.session ?? ''}`} id={r.id} session={r.session} tab={r.tab} />
     }
   }

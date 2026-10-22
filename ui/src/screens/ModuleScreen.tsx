@@ -12,7 +12,7 @@
  * sandboxed frame of its own origin, reaching only its own files and store
  * through the dashboard (lib/modulebridge.ts).
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isPairedDevice, type ModuleInfo } from '@/lib/api'
 import { applyModuleTheme, moduleTheme, useAdmin } from '@/lib/modules'
 import { answerBridge, buildModulePage, frameSecret, moduleFiles } from '@/lib/modulebridge'
@@ -29,14 +29,20 @@ function useThemeFollow(frame: React.RefObject<HTMLIFrameElement | null>, on: bo
   }, [frame, on, sandboxed])
 }
 
-export function ModuleScreen({ id }: { id: string }) {
+/**
+ * `to` is a route inside the module's page, from an item its sidebar row
+ * lists (ModuleRows): on the machine it is the frame's fragment, so the page
+ * sees a hashchange; in a phone's frame, whose fragment cannot be set, it is
+ * posted as a `caprock:route` message on load and on every change.
+ */
+export function ModuleScreen({ id, to }: { id: string; to?: string }) {
   const admin = useAdmin()
   const mod = admin?.installed?.find((m) => m.id === id)
   if (!mod) return null
-  return isPairedDevice() ? <PhoneModule mod={mod} /> : <MachineModule mod={mod} />
+  return isPairedDevice() ? <PhoneModule mod={mod} to={to} /> : <MachineModule mod={mod} to={to} />
 }
 
-function MachineModule({ mod }: { mod: ModuleInfo }) {
+function MachineModule({ mod, to }: { mod: ModuleInfo; to?: string }) {
   const frame = useRef<HTMLIFrameElement>(null)
   useThemeFollow(frame, true, false)
   const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
@@ -45,7 +51,7 @@ function MachineModule({ mod }: { mod: ModuleInfo }) {
       ref={frame}
       data-module={mod.id}
       title={mod.name}
-      src={`${mod.url}?theme=${theme}`}
+      src={`${mod.url}?theme=${theme}${to ?? ''}`}
       onLoad={(e) => applyModuleTheme(e.currentTarget)}
       className="block w-full rounded-md border border-border bg-bg"
       style={frameStyle}
@@ -58,12 +64,15 @@ function MachineModule({ mod }: { mod: ModuleInfo }) {
  * origin (no allow-same-origin, so it cannot read the device token or the
  * dashboard's page), its requests answered only for its own paths.
  */
-function PhoneModule({ mod }: { mod: ModuleInfo }) {
+function PhoneModule({ mod, to }: { mod: ModuleInfo; to?: string }) {
   const frame = useRef<HTMLIFrameElement>(null)
   const secret = useMemo(() => frameSecret(), [])
   const [page, setPage] = useState<string>()
   const [failed, setFailed] = useState('')
   useThemeFollow(frame, !!page, true)
+  // The frame's origin is opaque, so the message cannot name it.
+  const postRoute = useCallback(() => { if (to) frame.current?.contentWindow?.postMessage({ type: 'caprock:route', hash: to }, '*') }, [to])
+  useEffect(postRoute, [postRoute])
 
   useEffect(() => {
     let live = true
@@ -98,6 +107,7 @@ function PhoneModule({ mod }: { mod: ModuleInfo }) {
       sandbox="allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads"
       allow="clipboard-write"
       srcDoc={page}
+      onLoad={postRoute}
       className="block w-full rounded-md border border-border bg-bg"
       style={frameStyle}
     />

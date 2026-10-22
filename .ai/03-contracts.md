@@ -1094,7 +1094,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -4862,8 +4862,9 @@ machine's alone (`403` from any device).
 - **`GET /v1/admin`** → `{admin: false}` without a valid key (and to any
   caller that is neither the machine nor a controller); with one,
   `{admin: true, subject, modules: ["<id>", …], installed: [{id, name,
-  version?, url: "/x/<id>/"}]}` — `installed` lists only the modules that are
-  installed and named in the key. A stored key that does not verify adds
+  version?, url: "/x/<id>/", attention?}]}` — `installed` lists only the
+  modules that are installed and named in the key; `attention` is the
+  module's current attention (below), absent at 0 or once it is a day old. A stored key that does not verify adds
   `key_error`, and nothing else.
 - **`PUT /v1/admin`** `{key}` verifies the key and stores it trimmed as
   `config.json`'s `admin_key`; 400 with the reason when it does not verify;
@@ -4912,9 +4913,31 @@ machine's alone (`403` from any device).
   shown: both desktop notification switches off, or no desktop app open (a
   browser tab shows none). It stays in Notification Center like the app's
   other notifications.
+- **Attention** (amended 2026-10-22, `internal/api/moduleattention.go`):
+  **`PUT /v1/x/<id>/attention`** `{count, items?: [{label, href}]}` → `200`
+  with what is kept, `{count, items, updated_at}` (ms), replacing what the
+  module said before. `count` is an integer ≥ 0, and `count: 0` clears it
+  (→ `{count: 0, items: []}`); at most 8 items; `label` 1–80 characters on
+  one line, trimmed; `href` a route inside the module's own page — `#` and
+  then 1–511 characters with no space or control character (`#review/42`),
+  never a URL. Unknown fields, or a body that is not that object (16 KB at
+  most), are `400`, like every refusal above; `403` unless the key names
+  `<id>`; `404` when the module is not installed. It is kept in memory and in
+  `module_docs` under the reserved collection `_attention`, document
+  `current` (a collection id the document routes cannot name), so it
+  survives a restart without a migration; it is shown while under a day old
+  (24 h after the last `PUT`, it is as if cleared). Every `PUT` publishes an
+  `admin` frame carrying `{}` (§ Live socket), on which the dashboard reads
+  `GET /v1/admin` again. In the app's sidebar it is the module row's informer
+  ([04-ui.md § Private modules](04-ui.md#private-modules)); an item opens
+  `#/x/<id>?to=<href, encoded>`, the frame loading `/x/<id>/?theme=…<href>`
+  on the machine and, on a phone, getting a `caprock:route` message
+  `{type: "caprock:route", hash: "<href>"}` on load, which the bootstrap
+  applies to `location.hash`.
 - **Who may call them:** the machine and a controller, like the store
   (`controllerRoutes`); on a phone the module bridge forwards a `POST` of
-  exactly `/v1/x/<id>/telegram` or `/v1/x/<id>/notify`.
+  exactly `/v1/x/<id>/telegram` or `/v1/x/<id>/notify`, and a `PUT` of
+  exactly `/v1/x/<id>/attention`.
 - **Install:** `caprock module install <dir>` (hidden) copies a folder with
   `module.json` (`{id, name, version?}`, name 1–40 characters) and
   `index.html` into `<data dir>/modules/<id>/`, whole, through a staging
@@ -4950,7 +4973,7 @@ machine's alone (`403` from any device).
   or `HEAD` under `/x/<id>/`, or `GET`, `HEAD`, `PUT`, `PATCH`, `DELETE`
   on `/v1/x/<id>/docs/<collection>[/<doc>]` — with no dot, empty or encoded
   `.`/`/`/`\` segment — or `POST` of exactly `/v1/x/<id>/telegram` or
-  `/v1/x/<id>/notify`. Anything else is answered `403` without a request. It
+  `/v1/x/<id>/notify`, or `PUT` of exactly `/v1/x/<id>/attention`. Anything else is answered `403` without a request. It
   passes on `Content-Type` and `Accept` only, adds the device token, and says
   `application/json` on a write that did not; the reply carries the answer's
   `Content-Type`.

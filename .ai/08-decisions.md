@@ -5576,10 +5576,27 @@ shows desktop notifications from the app. The decisions:
   button labels the module wrote, to the chat the owner paired, through the
   bot token he gave, as everything else the bridge sends; nothing else.
   The notification never leaves the machine.
+- **What waits on the owner, inside the module's sidebar row and nowhere
+  else.** The owner's ask (2026-10-22, translated): *"Not where the project
+  list is. On the left there is the Ops chip with its keyboard shortcut, and
+  Second Brain sits above it. One expands while the other collapses. Inside
+  the Ops chip, a microscopic informer, and from there I can jump in. Nothing
+  more."* So `PUT /v1/x/<id>/attention` `{count, items}` (at most eight,
+  each a short label and a `#route` inside the module, never a URL) is drawn
+  as *2 waiting* in the warn colour inside that row; a click unfolds the
+  items, and an item opens the module at its route. The row and Second Brain
+  fold as an accordion. Same callers and key as the messages above. It
+  survives a restart (kept under a collection the module's own store cannot
+  name, so no migration) and stops showing a day after the last report, so a
+  module that stopped reporting does not keep a count up. Nothing of it
+  leaves the machine; the live frame that says it changed carries nothing,
+  so a viewer learns nothing of a module.
 
 **Rules out (2026-10-22):** a module choosing a chat or a bot; a module's
 answer reaching a session; a notification route other than the module's own
-screen.
+screen; a module's attention anywhere but its own sidebar row (no badge on
+the project list, Home or the Dock), or an item opening anything but the
+module.
 
 ## ADR-077 — A project of chosen repositories: no folder of its own, the first one is home
 

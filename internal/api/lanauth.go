@@ -537,6 +537,9 @@ var controllerRoutes = map[string]bool{
 	// notification on the machine (moduleout.go).
 	"POST /v1/x/{id}/telegram": true,
 	"POST /v1/x/{id}/notify":   true,
+	// And what waits on the owner in it, for its sidebar row
+	// (moduleattention.go).
+	"PUT /v1/x/{id}/attention": true,
 
 	// Report a bug (ADR-073): the one outbound call a phone may make, because
 	// the phone is where a bug is often met, and the report is typed or

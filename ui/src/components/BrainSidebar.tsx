@@ -12,7 +12,8 @@
  * Folded, it is one row: the glyph and that same mode in words, with the
  * count — what it does now first (owner, 2026-10-15: "what it is doing right
  * now matters more than the numbers"). The chevron folds and unfolds it,
- * remembered in this browser.
+ * remembered in this browser; unfolding it folds a private module's row
+ * below it, and the other way round (lib/sidebarAccordion).
  *
  * It sits under the list, above the sidebar's footer, never inside the
  * list's scroll (owner, 2026-10-15: with a long list of sessions the status
@@ -74,19 +75,10 @@ import { ChevronIcon } from './AppIcons'
 import { BrainGlyph } from './BrainDrop'
 import { SecondBrainModal } from './SecondBrainModal'
 import { BrainArrivals } from './BrainArrivals'
+import { setBrainFold, useBrainFold } from '@/lib/sidebarAccordion'
 import './BrainLive.css'
 
-const FOLD_KEY = 'caprock.app.brain-fold'
 const NEWEST = 30
-
-function readFold(): 'open' | 'closed' | null {
-  try {
-    const v = localStorage.getItem(FOLD_KEY)
-    return v === 'open' || v === 'closed' ? v : null
-  } catch {
-    return null
-  }
-}
 
 /** A click on something inside the card that has a job of its own: do it, and go no further. */
 function own(fn: () => void) {
@@ -95,7 +87,9 @@ function own(fn: () => void) {
 
 export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) => void; working?: number }) {
   const { status } = useBrainStatus()
-  const [fold, setFold] = useState(readFold)
+  // Kept in this browser, and an accordion with a module's row below
+  // (lib/sidebarAccordion): unfolding this folds that.
+  const fold = useBrainFold()
   const [how, setHow] = useState(false)
   // Where a thought arriving lands (BrainArrivals).
   const block = useRef<HTMLDivElement>(null)
@@ -104,11 +98,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   const { graph } = useBrainGraph({ limit: NEWEST }, 600)
   const landed = useBrainLanded()
   const now = useNow(60_000)
-  const toggle = () => {
-    const next = open ? 'closed' : 'open'
-    setFold(next)
-    try { localStorage.setItem(FOLD_KEY, next) } catch { /* private window */ }
-  }
+  const toggle = () => setBrainFold(!open)
   if (!status) return null
   const auto = status.auto
   const faces = readFaces(auto)

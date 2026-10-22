@@ -75,6 +75,12 @@ const (
 	// /v1/shells answers it, sent when the list changed (03-contracts.md
 	// § Projects and shells).
 	FrameShells FrameType = "shells"
+	// FrameAdmin says the admin state changed without the key changing —
+	// today a private module's attention set, cleared or replaced
+	// (03-contracts.md § Private modules). It carries nothing, so a viewer
+	// learns nothing of a module; a dashboard that shows modules re-reads
+	// GET /v1/admin.
+	FrameAdmin FrameType = "admin"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the
