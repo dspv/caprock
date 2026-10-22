@@ -218,6 +218,7 @@ type fakeBrainAuto struct {
 }
 
 func (f *fakeBrainAuto) Status(context.Context) any { return map[string]bool{"on": f.on} }
+func (f *fakeBrainAuto) DailyTokens() int64         { return 300_000 }
 func (f *fakeBrainAuto) Configure(_ context.Context, set BrainSettings) error {
 	f.set = append(f.set, set)
 	if set.Auto != nil {

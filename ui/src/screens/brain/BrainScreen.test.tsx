@@ -9,12 +9,13 @@ const m = vi.hoisted(() => ({
   handoff: vi.fn(),
   node: vi.fn(),
   glance: vi.fn((): Promise<unknown> => Promise.resolve({ agents: [], display: {} })),
+  spend: vi.fn((): Promise<unknown> => new Promise(() => {})),
 }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, brainStatus: m.status, brain: m.brain, brainSettings: m.settings, brainBackfill: m.backfill, brainHandoff: m.handoff, brainNode: m.node, glance: m.glance },
+    api: { ...actual.api, brainStatus: m.status, brain: m.brain, brainSettings: m.settings, brainBackfill: m.backfill, brainHandoff: m.handoff, brainNode: m.node, glance: m.glance, brainSpend: m.spend },
   }
 })
 

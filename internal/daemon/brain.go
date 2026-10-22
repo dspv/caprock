@@ -49,6 +49,8 @@ type brainAdapter struct {
 
 func (b *brainAdapter) Status(ctx context.Context) any { return b.eng.Status(ctx) }
 
+func (b *brainAdapter) DailyTokens() int64 { return b.eng.DailyTokens() }
+
 func (b *brainAdapter) Configure(_ context.Context, set api.BrainSettings) error {
 	d := b.d
 	d.cfgMu.Lock()

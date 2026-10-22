@@ -1626,6 +1626,40 @@ export interface BrainAutoStatus {
   handoff?: BrainHandoff
   /** The agents whose sessions a read went through in the last 24 hours, most sessions first: the card's faces. */
   agents_24h?: BrainAgentRead[]
+  /** A catch-up's progress while one has reads left; absent otherwise. */
+  catch_up?: BrainCatchUp
+}
+
+/** What a catch-up is reading: `backfill` the sessions from before the yes
+ *  a backfill reached back to; `skipped` the text earlier reads skipped. */
+export type BrainCatchUpKind = 'backfill' | 'skipped'
+
+/** A catch-up's progress (03-contracts.md § Second Brain): reads done of
+ *  all, and an estimate of the days left at the daily limit (absent before
+ *  any read was measured). */
+export interface BrainCatchUp {
+  kind: BrainCatchUpKind | string
+  done: number
+  total: number
+  truncated?: boolean
+  days_left?: number
+}
+
+/** One local day of the reads (GET /v1/brain/spend). */
+export interface BrainDaySpend { day: string; start: number; tokens: number; cost_usd: number; reads: number }
+
+/** One project's share of the reads over the window. */
+export interface BrainProjectSpend { project: string; reads: number; tokens: number; cost_usd: number; memories: number }
+
+/** GET /v1/brain/spend: what the reads spent per day and per project, the
+ *  daily limit, and the last 24 hours of the reads and of Claude Code's
+ *  recorded sessions (the reads not among them). */
+export interface BrainSpend {
+  days: BrainDaySpend[]
+  projects: BrainProjectSpend[]
+  daily_tokens: number
+  spent_24h: number
+  claude_tokens_24h: number
 }
 
 /** One agent whose sessions Second Brain read: distinct sessions, and when the newest read finished (unix ms). */
@@ -2429,6 +2463,8 @@ export const api = {
   refreshBrainVault: (id: number) => post<{ vault: BrainVault }>(`/v1/brain/vaults/${id}/refresh`, {}),
   removeBrainVault: (id: number) => post<void>(`/v1/brain/vaults/${id}`, {}, 'DELETE'),
   brainStatus: () => get<BrainStatus>('/v1/brain/status'),
+  /** What the reads spent over the last `days` local days (1–90). */
+  brainSpend: (days = 14) => get<BrainSpend>(`/v1/brain/spend?days=${days}`),
   brainHandoff: (project: string) => get<BrainHandoffView>(`/v1/brain/handoff?project=${encodeURIComponent(project)}`),
   brainNode: (id: number) => get<{ node: BrainNode; links: BrainLink[]; sources?: BrainNoteSource[] }>(`/v1/brain/nodes/${id}`),
   dropBrain: (d: BrainDrop) => post<{ node: BrainNode; created: boolean }>('/v1/brain/nodes', d),

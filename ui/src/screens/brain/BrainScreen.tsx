@@ -12,7 +12,10 @@
  * - **Building** and **With memories** — one layout, value first (owner,
  *   2026-10-16, translated: "it's unclear what to do with it … the ball just
  *   as an element, not the centre"):
- *   - one status line on top (BrainStrip), its details folded under it;
+ *   - on top, what it spends (BrainSpend): today's tokens of the daily
+ *     limit, their share of all Claude tokens, a catch-up's progress, and
+ *     the last 14 days one click away;
+ *   - one status line (BrainStrip), its details folded under it;
  *   - in the middle, **What your next session gets** (BrainNext): the
  *     memories a new session in a repository is handed, then **Recent
  *     memories** — search, a project, a span, the list;
@@ -40,6 +43,7 @@ import { ObsidianVaults } from './ObsidianVaults'
 import { BrainDetail } from './BrainDetail'
 import { BrainStart } from './BrainStart'
 import { BrainStrip } from './BrainStrip'
+import { BrainSpend } from './BrainSpend'
 import { BrainSettings } from './BrainSettings'
 import { BrainNext, defaultProject } from './BrainNext'
 import { BrainGraphCard, BrainGraphDialog, type UnfoldFrom } from './BrainGraphCard'
@@ -163,6 +167,7 @@ export function BrainScreen({ node }: { node?: number }) {
 
       {(phase === 'building' || phase === 'memories') && (
         <>
+          {auto && (auto.on || auto.spent > 0) && <BrainSpend auto={auto} />}
           {auto && (status?.notes && !auto.on
             ? <p className="text-[12.5px] text-fg-muted">Obsidian notes refresh automatically. Session extraction is off.</p>
             : <BrainStrip auto={auto} memories={status?.memories ?? 0} onChanged={reloadStatus} owner={owner} />)}
