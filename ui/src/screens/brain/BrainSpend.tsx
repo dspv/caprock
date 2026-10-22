@@ -38,7 +38,7 @@ export function spendShare(s: Pick<Spend, 'spent_24h' | 'claude_tokens_24h'> | n
 }
 
 /** The catch-up line, or null without one: *Catching up on skipped text: 12 / 40 reads, about 3 days left*. */
-export function catchUpLine(c: BrainCatchUp | undefined): string | null {
+export function catchUpLine(c: BrainCatchUp | null | undefined): string | null {
   if (!c || c.total <= 0 || c.done >= c.total) return null
   const what = c.kind === 'skipped' ? 'Catching up on skipped text' : c.kind === 'backfill' ? 'Catching up on earlier sessions' : 'Catching up'
   const left = c.days_left ? `, about ${c.days_left} ${c.days_left === 1 ? 'day' : 'days'} left` : ''

@@ -1638,8 +1638,9 @@ export interface BrainAutoStatus {
   handoff?: BrainHandoff
   /** The agents whose sessions a read went through in the last 24 hours, most sessions first: the card's faces. */
   agents_24h?: BrainAgentRead[]
-  /** A catch-up's progress while one has reads left; absent otherwise. */
-  catch_up?: BrainCatchUp
+  /** A catch-up's progress while one has reads left (`skipped` first, then
+   *  `backfill`); null (or absent, from an older daemon) otherwise. */
+  catch_up?: BrainCatchUp | null
 }
 
 /** What a catch-up is reading: `backfill` the sessions from before the yes

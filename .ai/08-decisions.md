@@ -4222,15 +4222,16 @@ searching prose.
   many sessions and tokens that is.
 - **How a session is read** (`internal/brain`). A session is read once it
   has ended or been quiet for ten minutes, and again only when it has new
-  prose; at most four per wake, a wake every five minutes and one at once
+  prose; at most four reads per wake, a wake every five minutes and one at once
   when it is turned on, one at a time, off the request path. A wake that
   read a full four is followed by the next three seconds later, so a
   backfill reads straight through within the daily limit instead of four
   sessions per five minutes (2026-10-15: the screen that shows the build
-  as it happens sat still between wakes). A session whose agent wrote fewer than 300
-  characters is recorded as skipped and never sent. The read is the
-  session's prompts and answers (main thread only, the newest 24,000
-  characters when there are more), the project's name and the topics
+  as it happens sat still between wakes). A read with fewer than 300
+  characters of agent prose and fewer than 200 of the user's prompts is
+  recorded as skipped and never sent. The read is the
+  session's prompts and answers (main thread only, at most 24,000
+  characters), the project's name and the topics
   already in the brain, sent on stdin to `claude -p --output-format json
   --tools "" --no-session-persistence --setting-sources local --settings
   <{"disableAllHooks": true}> --model haiku --system-prompt … --json-schema
@@ -4241,6 +4242,53 @@ searching prose.
   fixed cost of a call from 16,637 input tokens to 4,318. A Windows `.cmd`
   shim cannot carry JSON on its command line, so there the instructions and
   schema go on stdin too.
+- **A long session is read in chunks** (2026-10-22). A session with more
+  unread prose than one read sends is read oldest first: each read sends
+  the oldest unread passages that fit in the 24,000 characters (and at
+  most 400 passages), and its `through_event_id` is the last passage it
+  sent, so the next read goes on from there. Until then a read kept the
+  newest 24,000 characters and moved the cursor past the whole session,
+  and the older part was never read: on a copy of the owner's database
+  (2026-10-22), 43 of 1,210 reads were over budget, in 25 sessions, and
+  left about 5.9 million characters of main-thread prose unread — about
+  273 reads at today's budget to recover, which no backfill has done. A
+  session's chunks run back to back within a wake, each one of the wake's
+  four calls; what is left waits for the next wake, three seconds later,
+  so the per-read cost, the calls per wake and the daily limit are
+  unchanged. The instructions also say to keep an explicit decision or
+  standing rule the user states ("from now on", "rule:") as a decision,
+  and a read with little agent prose is still sent when it carries 200
+  runes or more of the user's prompts, where such decisions are mostly
+  said; only a read with neither is skipped. "User" turns that start with
+  a machine tag (a background task's notice, a reminder, a slash
+  command's echo, a message from another session: a known list, or any
+  kebab-case tag) are not the user's words and are left out of the read
+  and of that count; `<pasted_content>` stays. With that room freed, a
+  prompt is clipped at 2,000 characters instead of 600, which cut a
+  third of the prompts in the owner's last 30 days; the 24,000 per read
+  is unchanged.
+- **What was skipped is caught up, for everyone** (2026-10-22). The span a
+  past read never sent is recomputable: re-running the old cut against the
+  stored events gives the oldest passage it sent, and everything after its
+  `from_event_id` before that is the gap. Almost every user who read a long
+  session has one, so the catch-up is automatic, not a button: migration
+  0068 lists the past reads, the first wake measures them, and the gaps are
+  read with the same chunks and prompt, oldest first, only when no session
+  waits and within the same daily limit and four calls per wake, so it
+  never delays a new session or spends more than the user set. On a copy of
+  the owner's database (2026-10-22) the measure found 42 gaps in 24
+  sessions, 5.8 million characters, 245 reads, in 16 seconds once. The
+  prompt says a gap is an earlier part of a session already read, which is
+  all the model needs to avoid repeating its later part. The status says
+  how far it is (`catch_up`), with the days left labelled an estimate.
+- **A short open tail waits** (2026-10-22). A read with too little to say
+  used to be recorded as skipped and move the cursor, so a short exchange
+  at the end of a session was never read even when the session went on: the
+  audit counted 58 such windows, about 5,800 characters, in 56 sessions.
+  Now a short window at the end of a session that has not ended is held:
+  the cursor stays, the session is left alone until it has newer events,
+  and the held prose is read with them. A session that has ended with a
+  short tail has it marked read, so nothing waits forever.
 - **What is kept, and its limits.** Each memory records the read it came
   from (`brain_runs`: model, tokens, cost, status) and the passage it
   cites, so its source link opens the moment it was said; it hangs off the
