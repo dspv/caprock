@@ -16,6 +16,7 @@ import { isTauri } from '@/lib/appmode'
 /** What `caprock mcp` offers, in the order tools/list gives them (internal/mcp/tools.go). */
 export const MCP_TOOLS: [name: string, what: string][] = [
   ['search_memories', 'search Second Brain'],
+  ['current_decisions', 'the decisions in force for a project'],
   ['get_memory', 'one memory and what it links to'],
   ['memory_topics', 'the topics and projects Second Brain knows'],
   ['next_session_handoff', 'what a new session in this repository is handed'],

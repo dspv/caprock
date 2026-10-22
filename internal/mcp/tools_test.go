@@ -164,8 +164,8 @@ func (f *fixture) call(t *testing.T, name string, args any) (map[string]any, str
 
 func TestToolsAreReadOnlyAndDescribed(t *testing.T) {
 	f := newFixture(t)
-	if len(f.tools) != 11 {
-		t.Errorf("%d tools, want 11", len(f.tools))
+	if len(f.tools) != 12 {
+		t.Errorf("%d tools, want 12", len(f.tools))
 	}
 	for name, tl := range f.tools {
 		if tl.Description == "" || tl.Schema["type"] != "object" {
@@ -234,8 +234,51 @@ func TestNextSessionHandoff(t *testing.T) {
 	if out["project"] != f.project {
 		t.Errorf("project %v, want %v", out["project"], f.project)
 	}
-	if mems := out["memories"].([]any); len(mems) != 1 {
+	// The repository's one memory is a decision: it goes first, as a
+	// current decision, and is not repeated among the memories.
+	if decs := out["current_decisions"].([]any); len(decs) != 1 || decs[0].(map[string]any)["title"] != "Refresh SSO tokens early" {
+		t.Errorf("current decisions %v", decs)
+	}
+	if mems := out["memories"].([]any); len(mems) != 0 {
 		t.Errorf("memories %v", mems)
+	}
+}
+
+// current_decisions is the registry: the project's decisions nothing
+// supersedes, newest first; a superseded one is marked in a search and
+// ranked after the current ones.
+func TestCurrentDecisionsAndSupersededInSearch(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	db := f.st.DB()
+	s, _ := f.call(t, "search_memories", map[string]any{"query": "sso"})
+	oldID := s["memories"].([]any)[0].(map[string]any)["id"]
+	newer, _, err := store.InsertBrainNode(ctx, db, store.BrainNode{Kind: store.BrainDecision, Title: "Refresh SSO tokens on every request",
+		Keywords: []string{"sso", "token refresh"}, Source: store.BrainSource{Project: f.project}}, time.Now().UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.BrainSupersede(ctx, db, newer.ID, int64(oldID.(float64)), time.Now().UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	out, errText := f.call(t, "current_decisions", map[string]any{})
+	if errText != "" {
+		t.Fatal(errText)
+	}
+	decs := out["decisions"].([]any)
+	if len(decs) != 1 || decs[0].(map[string]any)["title"] != newer.Title || out["project"] != f.project {
+		t.Errorf("current decisions %v", out)
+	}
+	if kw, _ := decs[0].(map[string]any)["keywords"].([]any); len(kw) != 2 {
+		t.Errorf("keywords %v", decs[0])
+	}
+	s, _ = f.call(t, "search_memories", map[string]any{"query": "sso"})
+	mems := s["memories"].([]any)
+	if len(mems) != 2 || mems[0].(map[string]any)["title"] != newer.Title || mems[1].(map[string]any)["superseded_by"] != float64(newer.ID) {
+		t.Errorf("superseded last and marked: %v", mems)
+	}
+	if out, _ := f.call(t, "search_memories", map[string]any{"query": "zebra"}); out["hint"] == nil {
+		t.Errorf("an empty search says to rephrase: %v", out)
 	}
 }
 

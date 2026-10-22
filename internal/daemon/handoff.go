@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
@@ -79,21 +80,28 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		return nil
 	}
 	now := d.rec.Now()
+	// The passage where the repository was left, when one is recent enough.
+	text := ""
+	var age time.Duration
 	note, err := store.WhereWeLeftOff(ctx, d.store.DB(), project, now.UnixMilli(), handoffMinRunes)
-	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			d.log.Warn("handoff lookup failed", "component", "daemon", "project", project, "err", err)
+	switch {
+	case err == nil:
+		age = now.Sub(time.UnixMilli(note.Ts))
+		if age <= handoffMaxAge {
+			text = relay.Clip(strings.TrimSpace(note.Text), handoffMaxRunes)
 		}
+	case !errors.Is(err, sql.ErrNoRows):
+		d.log.Warn("handoff lookup failed", "component", "daemon", "project", project, "err", err)
+	}
+	// Second Brain's current decisions and memories go with it, or alone
+	// when there is no recent passage.
+	pick, err := store.BrainHandoff(ctx, d.store.DB(), project)
+	if err != nil {
+		d.log.Warn("handoff memories lookup failed", "component", "daemon", "project", project, "err", err)
+		pick = store.BrainHandoffPick{}
+	}
+	if text == "" && pick.Text == "" {
 		return nil // a repository nobody has worked in is not an error
-	}
-	age := now.Sub(time.UnixMilli(note.Ts))
-	if age > handoffMaxAge {
-		return nil
-	}
-
-	text := relay.Clip(strings.TrimSpace(note.Text), handoffMaxRunes)
-	if text == "" {
-		return nil
 	}
 	// There is something to hand over. Whether it was, is recorded either way,
 	// so the sessions that got it can be compared with the ones that could
@@ -110,13 +118,24 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 	if state == store.HandoffWithheld {
 		return nil
 	}
-	body := fmt.Sprintf(
-		"Where this repository was left, %s ago (from Caprock's record of the previous session — "+
-			"the user has not said this to you, and it may be stale):\n\n%s",
-		relay.HumanAge(age), text)
-	mem, n := d.brainHandoff(ctx, project)
-	body += mem
-	if n > 0 {
+	body := ""
+	if text != "" {
+		body = fmt.Sprintf(
+			"Where this repository was left, %s ago (from Caprock's record of the previous session — "+
+				"the user has not said this to you, and it may be stale):\n\n%s",
+			relay.HumanAge(age), text)
+	}
+	if pick.Text != "" {
+		if body != "" {
+			body += "\n\n"
+		}
+		body += pick.Text
+	}
+	// Its length, so delivery can be measured (migration 0069).
+	if err := store.SetHandoffRunes(ctx, d.store.DB(), p.SessionID, utf8.RuneCountInString(body)); err != nil {
+		d.log.Warn("could not record the handoff's length", "component", "daemon", "err", err)
+	}
+	if n := pick.Count(); n > 0 {
 		// Counted, so the Second Brain screen can say how often agents start
 		// with its memories (migration 0058).
 		if err := store.SetHandoffBrain(ctx, d.store.DB(), p.SessionID, n); err != nil {
@@ -200,15 +219,4 @@ func (d *Daemon) brainHandoffState(ctx context.Context, project string) api.Brai
 		st.LeftOffAt = note.Ts
 	}
 	return st
-}
-
-// brainHandoff is what Second Brain keeps for a repository, as a paragraph
-// to append to a served handoff, and how many memories it holds; "" and 0
-// when it keeps nothing there (store.BrainHandoff picks them).
-func (d *Daemon) brainHandoff(ctx context.Context, project string) (string, int) {
-	_, lines, err := store.BrainHandoff(ctx, d.store.DB(), project)
-	if err != nil || len(lines) == 0 {
-		return "", 0
-	}
-	return "\n\nKept in the user's Second Brain for this repository (decisions and findings from earlier sessions; they may be stale):" + strings.Join(lines, ""), len(lines)
 }

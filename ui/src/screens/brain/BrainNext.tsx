@@ -1,16 +1,17 @@
 /**
- * What your next session gets (#/brain): the memories a new session in a
- * repository is handed with its handoff, as GET /v1/brain/handoff names them
- * — picked by the code the SessionStart handoff runs (store.BrainHandoff):
- * pinned first, then newest, up to five in a budget of 700 characters. The
- * owner, 2026-10-16 (translated): "it's unclear what to do with it" — this
- * is what it is for, so the screen leads with it.
+ * What your next session gets (#/brain): what a new session in a repository
+ * is handed with its handoff, as GET /v1/brain/handoff names it — picked by
+ * the code the SessionStart handoff runs (store.BrainHandoff): the current
+ * decisions first (up to 15, newest first), then up to five other memories,
+ * pinned first, then newest, one per session. The owner, 2026-10-16
+ * (translated): "it's unclear what to do with it" — this is what it is for,
+ * so the screen leads with it.
  *
  * Under the list it says whether a session opening there now would be handed
- * them at all — Memory between sessions on, and a passage left in the last
- * 14 days, which is what carries them — the share held back at random to
- * measure it, and how many sessions were handed memories (the status's
- * `handoff`). Nothing here is estimated.
+ * them — Memory between sessions on; with a passage left in the last 14
+ * days, or alone without one — the share held back at random to measure
+ * it, and how many sessions were handed memories (the status's `handoff`).
+ * Nothing here is estimated.
  */
 import { useEffect, useState } from 'react'
 import { api, type BrainHandoff, type BrainHandoffView, type BrainNode } from '@/lib/api'
@@ -60,6 +61,8 @@ export function BrainNext({ projects, initial, selected, onSelect, handoff }: {
   const view = v && v !== 'error' && v.project === project ? v : null
   const served = view?.served
   const off = served && !served.on
+  const decisions = view?.decisions ?? []
+  const handed = view ? [...decisions, ...view.memories] : []
   return (
     <section className="grid min-w-0 grid-cols-1 gap-2.5 rounded-[12px] border border-border bg-panel px-4 py-3.5" aria-labelledby="brain-next-title" data-brain-next>
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -73,19 +76,19 @@ export function BrainNext({ projects, initial, selected, onSelect, handoff }: {
         </label>
       </div>
       <p className="text-[12.5px] leading-snug text-fg-muted">
-        Handed to it at the start, with where the last session there left off — up to {view?.max ?? 5} memories, pinned first, then the newest that fit.
+        Handed to it at the start, with where the last session there left off: the current decisions first, up to {view?.decisions_max ?? 15}, then up to {view?.max ?? 5} memories, pinned first, then the newest, one per session.
       </p>
 
       {v === 'error' && <p className="text-[13px] text-fg-muted">Could not read what a new session would get.</p>}
       {!view && v !== 'error' && <div className="h-[84px] animate-pulse rounded-[8px] bg-panel-2 motion-reduce:animate-none" aria-hidden />}
-      {view && view.memories.length === 0 && (
+      {view && handed.length === 0 && (
         <p className="rounded-[8px] border border-dashed border-border px-3 py-3 text-[13px] text-fg-muted" data-brain-next-empty>
           Nothing kept for {project} yet, so a new session there is handed no memories.
         </p>
       )}
-      {view && view.memories.length > 0 && (
+      {view && handed.length > 0 && (
         <ol className={`grid min-w-0 grid-cols-1 gap-1 ${off ? 'opacity-60' : ''}`} aria-label={`What a new session in ${project} gets`}>
-          {view.memories.map((n, i) => (
+          {handed.map((n, i) => (
             <li key={n.id}>
               <button type="button" onClick={() => onSelect(n.id)} data-brain-next-row={n.id} aria-current={selected === n.id ? 'true' : undefined}
                 className={`grid w-full grid-cols-[18px_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[8px] border px-3 py-2 text-left ${
@@ -94,7 +97,7 @@ export function BrainNext({ projects, initial, selected, onSelect, handoff }: {
                 <span className="min-w-0">
                   <span className="flex min-w-0 items-baseline gap-1.5">
                     <span aria-hidden className="inline-block h-[7px] w-[7px] shrink-0 translate-y-[-1px] rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
-                    <span className="shrink-0 text-[11.5px] text-fg-muted">{KIND_LABEL[n.kind]}</span>
+                    <span className="shrink-0 text-[11.5px] text-fg-muted">{i < decisions.length ? 'Current decision' : KIND_LABEL[n.kind]}</span>
                     <span className="min-w-0 truncate text-[13.5px] font-medium text-fg">{n.title}</span>
                   </span>
                   {n.summary && <span className="mt-0.5 line-clamp-2 block text-[12.5px] leading-snug text-fg-muted">{n.summary}</span>}
@@ -111,7 +114,7 @@ export function BrainNext({ projects, initial, selected, onSelect, handoff }: {
           {off
             ? 'Memory between sessions is off in Settings, so a new session is handed none of these until it is on.'
             : served && !served.left_off_at
-              ? `No session in ${project} left a passage to hand over in the last 14 days, and these ride with that passage — so nothing goes until one does.`
+              ? `No session in ${project} left a passage in the last 14 days, so a session opening there now gets these alone.`
               : served?.left_off_at
                 ? `A session opening there now gets these, with the passage from ${fmtAgo(served.left_off_at, now)}.`
                 : ''}

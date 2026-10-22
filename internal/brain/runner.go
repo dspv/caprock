@@ -34,6 +34,13 @@ type Memory struct {
 	// same answer.
 	Related     []int `json:"related,omitempty"`
 	Contradicts []int `json:"contradicts,omitempty"`
+	// Keywords are English search words, whatever the title's language.
+	Keywords []string `json:"keywords,omitempty"`
+	// Supersedes are ids of shown current decisions this one replaces;
+	// RelatedIDs and ContradictsIDs ids of shown existing memories.
+	Supersedes     []int64 `json:"supersedes,omitempty"`
+	RelatedIDs     []int64 `json:"related_ids,omitempty"`
+	ContradictsIDs []int64 `json:"contradicts_ids,omitempty"`
 }
 
 // Request is one extraction call.

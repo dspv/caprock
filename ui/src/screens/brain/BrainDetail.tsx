@@ -16,6 +16,7 @@ const EDGE_WORD: Record<string, [string, string]> = {
   follows: ['follows', 'followed by'],
   contradicts: ['contradicts', 'contradicted by'],
   part_of: ['part of', 'includes'],
+  supersedes: ['replaces', 'replaced by'],
 }
 
 export function BrainDetail({ id, onSelect, onClose, editable, className = 'grid w-[360px]' }: {
@@ -142,7 +143,8 @@ function Body({ data, editable, onSelect, onChanged, onDeleted }: {
       </section>}
       <dl className="grid grid-cols-[72px_1fr] gap-x-2 gap-y-1 text-[12px]">
         <dt className="text-fg-faint">Kind</dt>
-        <dd className="text-fg-muted">{KIND_LABEL[node.kind]}{node.pinned ? ' · pinned' : ''}</dd>
+        <dd className="text-fg-muted">{KIND_LABEL[node.kind]}{node.pinned ? ' · pinned' : ''}{node.superseded_by ? ' · no longer current' : ''}</dd>
+        {node.keywords && node.keywords.length > 0 && (<><dt className="text-fg-faint">Keywords</dt><dd className="text-fg-muted [overflow-wrap:anywhere]">{node.keywords.join(', ')}</dd></>)}
         {src.project && (<><dt className="text-fg-faint">Project</dt><dd className="truncate text-fg-muted">{src.project}</dd></>)}
         {!isEntity(node.kind) && <><dt className="text-fg-faint">From</dt>
         <dd className="text-fg-muted">
@@ -167,11 +169,17 @@ function Body({ data, editable, onSelect, onChanged, onDeleted }: {
                 <button type="button" onClick={() => onSelect(l.node.id)} className="min-w-0 flex-1 truncate text-left text-[12.5px] text-fg hover:text-accent" title={l.node.title}>
                   {l.node.title}
                 </button>
-                {editable && (
+                {editable && (l.kind === 'supersedes' ? (
+                  // Undo a wrong supersedes: that one edge goes, the older
+                  // decision is current again, any other link stays.
+                  <button type="button" aria-label={`Not replaced: ${l.node.title}`} title={l.out ? 'Undo: that decision is still current' : 'Undo: this decision is still current'}
+                    onClick={() => void act(() => l.out ? api.unlinkBrain(node.id, l.node.id, 'supersedes') : api.unlinkBrain(l.node.id, node.id, 'supersedes'))}
+                    className="text-[11px] text-fg-faint opacity-0 hover:text-fg focus:opacity-100 group-hover:opacity-100" data-brain-unsupersede={l.node.id}>Undo</button>
+                ) : (
                   <button type="button" aria-label={`Unlink ${l.node.title}`} title="Unlink"
                     onClick={() => void act(() => api.unlinkBrain(node.id, l.node.id))}
                     className="text-[11px] text-fg-faint opacity-0 hover:text-danger focus:opacity-100 group-hover:opacity-100">×</button>
-                )}
+                ))}
               </li>
             ))}
           </ul>

@@ -338,6 +338,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/brain/status":                    true,
 	"GET /v1/brain/handoff":                   true,
 	"GET /v1/brain/spend":                     true, // what the reads spent, per day and project
+	"GET /v1/brain/decisions":                 true,
 	"GET /v1/brain/nodes/{id}":                true,
 
 	// The permission prompt an owned session waits on (ADR-035); the live

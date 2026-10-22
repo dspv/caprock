@@ -198,10 +198,11 @@ func TestImportMergeRules(t *testing.T) {
 
 	// The handoff and the extraction's topics leave a vault out until the
 	// user lets its notes reach agents.
-	mems, _, err := store.BrainHandoff(f.ctx, db, "caprock")
+	pick, err := store.BrainHandoff(f.ctx, db, "caprock")
 	if err != nil {
 		t.Fatal(err)
 	}
+	mems := slices.Concat(pick.Decisions, pick.Memories)
 	if slices.ContainsFunc(mems, func(n store.BrainNode) bool { return n.ID == plan.ID }) || !slices.ContainsFunc(mems, func(n store.BrainNode) bool { return n.ID == wal.ID }) {
 		t.Fatalf("handoff with agents off: %+v", mems)
 	}
@@ -212,7 +213,8 @@ func TestImportMergeRules(t *testing.T) {
 	if _, err := f.svc.SetAgents(f.ctx, va.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	mems, _, _ = store.BrainHandoff(f.ctx, db, "caprock")
+	pick, _ = store.BrainHandoff(f.ctx, db, "caprock")
+	mems = slices.Concat(pick.Decisions, pick.Memories)
 	if !slices.ContainsFunc(mems, func(n store.BrainNode) bool { return n.ID == plan.ID }) {
 		t.Fatalf("handoff with agents on: %+v", mems)
 	}

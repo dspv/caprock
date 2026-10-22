@@ -86,7 +86,7 @@ func MeasureGap(ctx context.Context, q store.Querier, g store.BrainGap) (to int6
 	to = first - 1
 	c := store.BrainCandidate{SessionID: g.SessionID, Cursor: g.FromEventID, MaxEventID: to}
 	for {
-		in, through, err := chunk(ctx, q, c, nil)
+		in, through, err := chunk(ctx, q, c, nil, Known{})
 		if err != nil {
 			return 0, 0, err
 		}
@@ -202,7 +202,15 @@ func (e *Engine) readGap(ctx context.Context, g store.BrainGap) (did bool, err e
 	if err != nil {
 		return false, err
 	}
-	in, upTo, err := chunk(ctx, db, c, topics)
+	// Shown the project's recent memories, so it does not repeat them, but
+	// not its current decisions: this prose is older than they are, and a
+	// decision read from it must never supersede a newer one.
+	known, err := knownFor(ctx, db, c.Project)
+	if err != nil {
+		return false, err
+	}
+	known.Decisions = nil
+	in, upTo, err := chunk(ctx, db, c, topics, known)
 	if err != nil {
 		return false, err
 	}

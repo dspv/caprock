@@ -163,8 +163,9 @@ running daemon or start a real coding agent.
   notifications without replies, unknown methods, malformed and oversized
   input, CRLF input and the final line without a newline, bounded output
   and credential-shaped text redaction.
-- **`internal/mcp/tools_test.go`:** all eleven tools through the real HTTP
-  handlers: memory search and links, topics and handoff, repository-scoped
+- **`internal/mcp/tools_test.go`:** all twelve tools through the real HTTP
+  handlers: memory search and links, current decisions and a superseded
+  memory ranked last, topics and handoff, repository-scoped
   sessions, summaries and prose, search, cost totals, missing CI data and
   loop alerts. Assertions cover selected output fields, redaction, limits
   and missing-daemon errors; the HTTP client exposes only GET.

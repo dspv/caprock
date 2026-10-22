@@ -313,12 +313,12 @@ const passagesPerRead = 400
 // passages that fit, and how far the cursor may move once they are read —
 // past the last passage sent when some did not fit, else to the session's
 // newest event.
-func chunk(ctx context.Context, q store.Querier, c store.BrainCandidate, topics []string) (Input, int64, error) {
+func chunk(ctx context.Context, q store.Querier, c store.BrainCandidate, topics []string, known Known) (Input, int64, error) {
 	passages, err := store.BrainPassagesBetween(ctx, q, c.SessionID, c.Cursor, c.MaxEventID, passagesPerRead)
 	if err != nil {
 		return Input{}, 0, err
 	}
-	in := BuildInput(c.Project, topics, passages)
+	in := BuildInputKnown(c.Project, topics, known, passages)
 	through := c.MaxEventID
 	if (in.Cut || len(passages) >= passagesPerRead) && in.Through > c.Cursor && in.Through < c.MaxEventID {
 		through = in.Through
@@ -354,7 +354,11 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	if err != nil {
 		return false, 0, err
 	}
-	in, upTo, err := chunk(ctx, db, c, topics)
+	known, err := knownFor(ctx, db, c.Project)
+	if err != nil {
+		return false, 0, err
+	}
+	in, upTo, err := chunk(ctx, db, c, topics, known)
 	if err != nil {
 		return false, 0, err
 	}
@@ -417,7 +421,7 @@ func (e *Engine) ask(ctx context.Context, c store.BrainCandidate, in Input, run 
 			return err
 		}
 		runID = id
-		added, err = keep(ctx, q, id, c, in.Passages, res.Memories, run.FinishedAt)
+		added, err = keep(ctx, q, id, c, in, res.Memories, run.FinishedAt)
 		if err != nil {
 			return err
 		}
@@ -448,11 +452,50 @@ func (e *Engine) ask(ctx context.Context, c store.BrainCandidate, in Input, run 
 	return nil
 }
 
+// knownFor is what a read of a session in project is shown of the brain.
+// A session with no project is shown nothing: its memories hang off topics
+// only, and another project-less session's decisions are not its own.
+func knownFor(ctx context.Context, q store.Querier, project string) (Known, error) {
+	if project == "" {
+		return Known{}, nil
+	}
+	decs, err := store.BrainCurrentDecisions(ctx, q, project, KnownDecisions, false)
+	if err != nil {
+		return Known{}, err
+	}
+	recent, err := store.BrainRecentMemories(ctx, q, project, KnownRecent)
+	return Known{Decisions: decs, Recent: recent}, err
+}
+
+// dupScan is how many of a project's newest memories a new one's title is
+// compared with before it is kept.
+const dupScan = 300
+
 // keep stores the memories a read returned, each linked to its project, its
-// topics and the memories it names, and returns the new nodes.
-func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandidate, passages []store.BrainPassage, mems []Memory, now int64) ([]store.BrainNode, error) {
+// topics, the memories it names in the answer and the shown memories it
+// cites, and returns the new nodes. A memory whose title is near one the
+// project already keeps (store.BrainTitlesNear), or one kept earlier in the
+// same answer, is left out.
+func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandidate, in Input, mems []Memory, now int64) ([]store.BrainNode, error) {
+	passages := in.Passages
 	if len(mems) > 8 {
 		mems = mems[:8]
+	}
+	existing, err := store.BrainRecentMemories(ctx, q, c.Project, dupScan)
+	if err != nil {
+		return nil, err
+	}
+	var titles []string
+	for _, m := range existing {
+		titles = append(titles, m.Title)
+	}
+	isDup := func(title string) bool {
+		for _, t := range titles {
+			if store.BrainTitlesNear(title, t) {
+				return true
+			}
+		}
+		return false
 	}
 	// The passage a memory cites, else the last answer read.
 	var lastAnswer store.BrainPassage
@@ -479,7 +522,7 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 		// A model asked for plain text still sends Markdown now and then; a
 		// title is one line, so its heading marks and stray newlines go.
 		m.Title = strings.Join(strings.Fields(strings.TrimLeft(strings.TrimSpace(m.Title), "#> ")), " ")
-		if store.NormTitle(m.Title) == "" {
+		if store.NormTitle(m.Title) == "" || isDup(m.Title) {
 			continue
 		}
 		src := lastAnswer
@@ -487,7 +530,7 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 			src = passages[m.Passage-1]
 		}
 		n, _, err := store.InsertBrainNode(ctx, q, store.BrainNode{
-			Kind: kind, Title: m.Title, Summary: m.Summary, RunID: runID,
+			Kind: kind, Title: m.Title, Summary: m.Summary, RunID: runID, Keywords: m.Keywords,
 			Source: store.BrainSource{SessionID: c.SessionID, EventID: src.EventID, Ts: src.Ts, Project: c.Project},
 		}, now)
 		if err != nil {
@@ -498,6 +541,7 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 		}
 		ids[i] = n.ID
 		added = append(added, n)
+		titles = append(titles, n.Title)
 		if projectID > 0 {
 			if err := store.LinkBrain(ctx, q, n.ID, projectID, store.EdgePartOf, 1, now); err != nil {
 				return nil, err
@@ -519,6 +563,31 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 	for i, m := range mems {
 		if ids[i] == 0 {
 			continue
+		}
+		// What it says of the memories the read was shown: only ids that
+		// were listed count, so a stray number never touches another
+		// project's memory.
+		if strings.EqualFold(strings.TrimSpace(m.Kind), store.BrainDecision) {
+			for _, old := range m.Supersedes {
+				if !in.Decisions[old] {
+					continue
+				}
+				if err := store.BrainSupersede(ctx, q, ids[i], old, now); err != nil && !errors.Is(err, store.ErrBrainInvalid) {
+					return nil, err
+				}
+			}
+		}
+		for _, link := range []struct {
+			to   []int64
+			kind string
+		}{{m.RelatedIDs, store.EdgeRelates}, {m.ContradictsIDs, store.EdgeContradicts}} {
+			for _, id := range link.to {
+				if in.Shown[id] && id != ids[i] {
+					if err := store.LinkBrain(ctx, q, ids[i], id, link.kind, 1, now); err != nil {
+						return nil, err
+					}
+				}
+			}
 		}
 		for _, link := range []struct {
 			to   []int
@@ -977,7 +1046,7 @@ func (e *Engine) EstimateFrom(ctx context.Context, since int64) (Estimate, error
 		// Every chunk a long session takes, as the reads will send them.
 		counted := false
 		for {
-			in, through, err := chunk(ctx, e.Store.DB(), c, nil)
+			in, through, err := chunk(ctx, e.Store.DB(), c, nil, Known{})
 			if err != nil {
 				return Estimate{}, err
 			}

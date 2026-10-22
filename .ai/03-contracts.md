@@ -568,20 +568,32 @@ nothing. [ADR-030](08-decisions.md). A session opening in the filesystem root,
 the home directory or the temp directory (`store.NotAProject`) gets nothing and
 runs no lookup.
 
-A served handoff also carries up to five of the repository's Second Brain
-memories (§ Second Brain), pinned first then newest, each `- kind: title —
-summary` with the summary clipped to 160 runes, in a budget of 700 runes of
-their own after the passage; none when the repository has none. How many
-went is recorded on the session (migration 0058: `ALTER TABLE sessions ADD
+A served handoff also carries the repository's Second Brain (§ Second
+Brain), after the passage, in two parts each with a budget of its own
+(`store.BrainHandoff`): first its **current decisions** — the decisions no
+newer memory supersedes — newest first, at most 15, one line each `- #id
+title`, in 1,500 runes; then up to five of its **other memories**, pinned
+first then newest, **at most one per source session** (so one long session
+cannot fill it), a decision already listed and a superseded memory left
+out, each `- kind: title — summary` with the summary clipped to 160 runes,
+in 700 runes. With **no passage** recent enough (none of 400 runes or more
+within 14 days), the decisions and memories go alone; nothing goes only
+when there is neither. The whole reply is then at most 1,200 + 1,500 + 700
+runes and two headings, about 3,500. How many memories went is recorded on
+the session (migration 0058: `ALTER TABLE sessions ADD
 COLUMN handoff_brain INTEGER NOT NULL DEFAULT 0` and `CREATE INDEX
 idx_sessions_handoff_brain ON sessions(started_at) WHERE handoff_brain >
 0`), so the Second Brain status can say how often agents start with its
 memories (§ Second Brain, `handoff`), and said on the live socket as a
 `brain` frame `{op: "handoff", session, project, memories}` (§ Second
 Brain, Live) so the sidebar can show them going into the session's tab.
+The length of the reply's `additionalContext`, in runes, is recorded too
+(migration 0069: `ALTER TABLE sessions ADD COLUMN handoff_runes INTEGER NOT
+NULL DEFAULT 0`; 0 when nothing was handed), so delivery can be measured.
 
-**Measuring it.** Whenever there is a passage to hand over, the session records
-whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
+**Measuring it.** Whenever there is anything to hand over — a passage, or,
+since 2026-10-22, Second Brain's decisions and memories alone — the session
+records whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
 `0` means nothing was there, and those sessions are in neither group
 (migration 0028: `ALTER TABLE sessions ADD COLUMN handoff INTEGER NOT NULL
 DEFAULT 0`). `settings.memory_holdout_pct` (0–50, default 0; a value outside
@@ -3869,33 +3881,37 @@ Brain DDL (migrations 0055, 0056).
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
 GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
-GET    /v1/brain/handoff        ?project= → {project, memories: [BrainNode], max, budget, served?: {on, left_off_at?, holdout_pct}}
+GET    /v1/brain/handoff        ?project= → {project, decisions: [BrainNode], memories: [BrainNode], max, budget, decisions_max, decisions_budget, served?: {on, left_off_at?, holdout_pct}}
 GET    /v1/brain/spend          ?days=1–90 (14) → {days: [{day, start, tokens, cost_usd, reads}], projects: [{project, reads, tokens, cost_usd, memories}], daily_tokens, spent_24h, claude_tokens_24h}
+GET    /v1/brain/decisions      ?project=&limit= → {project, decisions: [BrainNode]}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}     → 204
 POST   /v1/brain/links          {from, to, kind?} → 204
-DELETE /v1/brain/links          {from, to} → 204
+DELETE /v1/brain/links          {from, to, kind?} → 204
 PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStatus
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
 - **`/v1/brain/handoff`** — what a new session in `project` (required,
-  exact; else `400`) is handed from Second Brain with a served handoff
-  (§ SessionStart handoff): the memories, with their summaries, picked by
-  the code the handoff itself runs (`store.BrainHandoff`) — pinned first,
-  then newest, at most `max` (5), each line `- kind: title — summary` (the
-  summary clipped to 160 runes) counted against `budget` (700 runes), and
-  the first that does not fit ends the list. `served` is whether a session
-  opening there now would be served a handoff at all, which is what carries
-  them: `on` is Memory between sessions, `left_off_at` when the passage it
-  would be handed was written (unix ms; absent when none of 400 runes or
-  more is within 14 days, and then nothing goes), `holdout_pct` the share
-  of new sessions held back at random (§ SessionStart handoff, *Measuring
-  it*). `served` is absent from a daemon that does not wire it (tests). A
-  read: it writes nothing, rolls no holdout and records nothing on a
-  session.
+  exact; else `400`) is handed from Second Brain with its handoff
+  (§ SessionStart handoff), picked by the code the handoff itself runs
+  (`store.BrainHandoff`): `decisions`, the current decisions, newest
+  first, at most `decisions_max` (15), each line `- #id title` counted
+  against `decisions_budget` (1,500 runes); then `memories`, with their
+  summaries — pinned first, then newest, at most one per source session,
+  none superseded and no decision already listed, at most `max` (5), each
+  line `- kind: title — summary` (the summary clipped to 160 runes)
+  counted against `budget` (700 runes). In each part the first line that
+  does not fit ends it. `served` is whether a session opening there now
+  would be handed the passage too: `on` is Memory between sessions,
+  `left_off_at` when the passage it would be handed was written (unix ms;
+  absent when none of 400 runes or more is within 14 days, and then the
+  decisions and memories go alone), `holdout_pct` the share of new
+  sessions held back at random (§ SessionStart handoff, *Measuring it*).
+  `served` is absent from a daemon that does not wire it (tests). A read:
+  it writes nothing, rolls no holdout and records nothing on a session.
 - **`/v1/brain/spend`** — what the automatic extraction's reads spent,
   from `brain_runs` (code: `internal/api/brainspend.go`,
   `internal/store/brainspend.go`). `days` is one entry per local day of
@@ -3919,19 +3935,42 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   not in it: the share of all Claude tokens is `spent_24h / (spent_24h +
   claude_tokens_24h)`. `days` outside 1–90 or not a number is `400`. A
   read: it writes nothing.
+- **Current decisions** (`/v1/brain/decisions`, migration 0069). A
+  decision is current until a newer memory has a `supersedes` edge to it.
+  The route returns `project`'s (required, exact; else `400`) current
+  decisions, newest first, at most `limit` (default 50, at most 100);
+  `agents=1` leaves out what may not reach an agent, as the graph read
+  does. The automatic extraction is shown the same registry (*A read*,
+  below) and may answer that a new decision supersedes one; a person can
+  too, with `POST /v1/brain/links {from: newer, to: older, kind:
+  "supersedes"}` — both must be memories of the same project and `to` a
+  decision, else `400`. **Undo** is `DELETE /v1/brain/links {from, to,
+  kind: "supersedes"}`: with a `kind`, the delete removes that one edge
+  from `from` to `to` and leaves any other link between them; without
+  one, every edge between the two in either direction, as before. A
+  search ranks a superseded memory after every current one, and the
+  graph read and a node's own read name its replacement
+  (`superseded_by`).
 - **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
-  degree?, rank?, close?, vault?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
+  degree?, rank?, close?, vault?, keywords?, superseded_by?}`; times are unix ms. `kind` is `idea`, `decision`, `finding` or
   `question` (a memory), `note` (an Obsidian import; § Obsidian vaults), or
   `topic`, `person` or `project` (an entity).
   `title` is at most 80 runes and `summary` 400, clipped with `…` on the way
   in. `manual` is true for a node dropped in by hand; `run_id` names the
   automatic extraction's read that made it. `degree` is the number of
   returned edges touching the node, in a graph read only; `rank` and
-  `close` are a search's (below).
+  `close` are a search's (below). `keywords` are the five to eight English
+  search keywords the extraction gave a memory, whatever language its title
+  is in (migration 0069; trimmed, a comma made a space, deduplicated
+  folded, at most 8 of at most 40 runes); none on a memory made before
+  them, by hand or imported — old memories are not re-tagged. `superseded_by`
+  is the newest memory with a `supersedes` edge to this one, in the graph
+  read and a node's own read; absent while it is current.
 - **`BrainEdge`** — `{from, to, kind, weight}`; `kind` is `relates`,
-  `follows`, `contradicts` or `part_of`. One edge per `(from, to, kind)`;
+  `follows`, `contradicts`, `part_of` or `supersedes` (from a newer
+  decision to the older one it replaces; migration 0069). One edge per `(from, to, kind)`;
   linking an existing pair again adds its weight, capped at 10. A memory
   hangs off its project and topics with `part_of`.
 - **The graph read** returns the newest memories and imported notes that pass the filter
@@ -3945,31 +3984,52 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   node's own read carries its summary.
 - **Search (`q`).** The query is folded — NFKD, the combining diacritics
   of U+0300–U+036F dropped, Unicode lower case, `ς` as `σ`
-  (`store.FoldSearch`) — and split at whitespace into at most 8 words,
-  punctuation and wildcards kept literally. A memory matches when every
-  word, in any order, is a substring of its folded title, summary or
-  project, or of the name of a topic, person or project it has an edge to:
-  `ΑΘΗΝΑ` finds *Αθήνα*, `CAFE` finds *café*, `タワー` finds *東京タワー*.
-  When fewer than 5 memories match that way, a word of 4–7 letters may
-  also match a word 1 edit away, and one of 8 or more 2 edits (insert,
-  delete, change, or swap two neighbours), or the start of a longer word
-  that close — a typo or a different ending; such a memory is a close
+  (`store.FoldSearch`) — and split into words at anything that is not a
+  letter, digit or mark, in every script. Common English function words
+  (`a`, `the`, `of`, `per`, `no`, `as`, …; `store.brainStopwords`) are
+  dropped unless the query is nothing else. A word, or two neighbouring
+  words, in a synonym set make one **term** that looks for every member:
+  `pr` = `prs` = `pull request` = `pull requests`; `cost` = `costs` =
+  `price` = `prices` = `pricing` = `spend` = `spending`; `decision` =
+  `decisions` = `rule` = `rules`. A whitespace-separated piece that is
+  several words joined by punctuation (`read-only`, `project-3`) is also a
+  term of its own, first, so a memory with the whole of it ranks above one
+  with a part (at most 4 such). At most 8 terms. A term matches a
+  **whole word** of a memory's folded title, keywords, summary or project
+  — `pr` is not in *project* or *prompt* — or, for a term of 4 runes or
+  more, the start of a word (`router` finds *routers*); in a script
+  written without spaces (Han, Hiragana, Katakana, Thai, Lao, Khmer,
+  Myanmar) any substring counts, so `タワー` finds *東京タワー*. A term in
+  the name of a topic, person or project the memory has an edge to counts
+  too. **Any term** matching is a hit (`ΑΘΗΝΑ` finds *Αθήνα*, `CAFE`
+  finds *café*). Each term weighs 3 for a whole word of the title or the
+  keywords, 2 for the start of one there, 1 for a whole word of the
+  summary or project, 0.7 for the start of one there, 0.8 for a linked
+  entity's name — a synonym 0.9 of that — times its **IDF** over the
+  memories searched, ln(1 + N/df), so a word few memories have outweighs
+  one most have; `rank` is the sum over the terms times 100, rounded.
+  When fewer than 5 memories match that way, a term of one word of 4–7
+  letters may also match a word 1 edit away, and one of 8 or more 2 edits
+  (insert, delete, change, or swap two neighbours), or the start of a
+  longer word that close — a typo or a different ending — weighing 0.6 in
+  the title or keywords and 0.3 elsewhere, both in memories no term
+  matched and for the terms a hit did not match; such a memory is a close
   match (`close: true`). Words with anything but letters and digits, and
   shorter ones, match exactly only. The close pass reads at most 20,000 of
   the newest matching-filter memories and compares at most 50,000
-  distinct words. Each memory's `rank` is the sum over the words of
-  40 (a title word is the word), 30 (a title word starts with it), 25
-  (elsewhere in the title), 20 (summary or project), 15 (a linked
-  entity's name), 10 (a close match in the title) or 5 (a close match
-  elsewhere). A search returns memories best first — rank, then pinned,
-  then newest — so `limit` keeps the best. `terms` are the folded words
-  and the close words that matched them (at most 32), for the screen to
-  mark; `close` is true when a returned memory is a close match. Both,
-  and `rank`, are absent without `q`. Measured with
+  distinct words. A search returns memories best first — current before
+  superseded (*Current decisions*, above), then rank, then pinned, then
+  newest — so `limit` keeps the best. `terms` are the folded terms with
+  their synonyms and the close words that matched (at most 32), for the
+  screen to mark; `close` is true when a returned memory is a close match.
+  Both, and `rank`, are absent without `q`. Measured with
   `BenchmarkBrainSearch` (2026-10-15, Apple M1 Pro, a 400-character
-  summary per memory, the graph read included): 1,000 memories 2–4 ms,
-  5,000 memories 10–14 ms for a word and 19–34 ms when the close pass
-  runs, against 6 ms and 56 ms for the same read with no search.
+  summary per memory, the graph read included, before whole words and
+  IDF): 1,000 memories 2–4 ms, 5,000 memories 10–14 ms for a word and
+  19–34 ms when the close pass runs, against 6 ms and 56 ms for the same
+  read with no search. On a copy of the owner's database (1,221 memories,
+  2026-10-22) each of five queries took 4–7 ms; `PR` went from 1,097
+  memories to 136.
 - **A drop.** `kind` defaults to `idea`. With `event_id` the daemon reads
   the note's text, session, time and project from `events` itself — the event
   must be main-thread assistant prose (§ Phase 0's notes rules), else `400`.
@@ -4104,9 +4164,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 - **A read.** A session is a candidate when its last event is after
   `since` (or `backfill_since`), it has ended or been quiet ten minutes, and
   it has main-thread prompts or answers after the last read that did not
-  fail. Its passages are numbered and sent, with the project and up to 60
-  existing topic titles, on stdin to the user's `claude` (flags in
-  ADR-063). A "user" turn that starts with a machine tag — one of a
+  fail. Its passages are numbered and sent, with the project, up to 60
+  existing topic titles and — for a session with a project — that
+  project's 30 newest current decisions (`#id title`) and its 40 newest
+  memories besides them (`#id kind: title`, *do not repeat these*), on
+  stdin to the user's `claude` (flags in ADR-063). A "user" turn that starts with a machine tag — one of a
   known list (`task-notification`, `system-reminder`, `command-name`,
   `cross-session-message`, …) or any kebab-case tag — is left out; a
   prompt is clipped at 2,000 characters, an answer at 2,500. One read
@@ -4117,10 +4179,20 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   goes on from there. A wake makes at most four calls, whether to four
   sessions or four chunks of one, a session's chunks back to back; the
   rest waits for the next wake. The answer is `{memories: [{kind, title, summary, topics?,
-  passage?, related?, contradicts?}]}`, at most eight kept: each a node with
-  `run_id`, `manual: false` and the cited passage's event as its source,
+  keywords, passage?, related?, contradicts?, supersedes?, related_ids?,
+  contradicts_ids?}]}`, at most eight kept: each a node with
+  `run_id`, `manual: false`, its `keywords` (English, whatever the
+  title's language; the title and summary stay in the session's) and the
+  cited passage's event as its source,
   `part_of` the project and its topics, `relates`/`contradicts` to the
-  others named. Fewer than 300 runes of agent prose and fewer than 200 of the user's
+  others named by index, and to the shown memories named by id
+  (`related_ids`, `contradicts_ids`); a decision's `supersedes` ids become
+  `supersedes` edges from it to those shown current decisions. An id the
+  read was not shown is ignored. A memory whose title is near one the
+  project already keeps — among its 300 newest — or one kept earlier in
+  the same answer is left out: their folded words overlap by 0.75 or more
+  (Jaccard, shared over all, at least two words each; a one-word title
+  only when the same; `store.BrainTitlesNear`). Fewer than 300 runes of agent prose and fewer than 200 of the user's
   typed prompts (machine-tagged turns do not count) in a read: recorded
   `skipped`,
   never sent — except at the end of a session that has not ended: there
@@ -4148,7 +4220,9 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   regular read, oldest first, its `cursor` saved with each read so a
   restart goes on from there, its memories carrying the session's project
   by the same rule, and its prompt opened with one line saying it is an
-  earlier part of a session already read. It is read only while the
+  earlier part of a session already read. It is shown the project's recent
+  memories, as a regular read is, but not its current decisions: the prose
+  is older than they are, so nothing it says may supersede one. It is read only while the
   extraction is on, only when no session waits, with what is left of a
   wake's four calls, and within the same daily limit; a chunk with too
   little to say is marked read; failures are retried as a session's are
@@ -4273,10 +4347,20 @@ listener. Stdout carries the protocol and nothing else. Code:
 Every tool is annotated `readOnlyHint: true, destructiveHint: false,
 idempotentHint: true`; `openWorldHint` is true for `ci_status` alone.
 
-- **`search_memories`** `{query?, project?, limit?}` → `GET /v1/brain?summaries=1&q&project&limit`
+- **`search_memories`** `{query?, project?, limit? (30, at most 50)}` → `GET /v1/brain?summaries=1&q&project&limit`
   → `{total, returned, memories: [{id, kind, title, summary, project,
-  session_id, pinned, created_at, topics[]}]}`; entities are left out, a
-  memory's `topics` are the topic entities linked to it.
+  session_id, pinned, created_at, topics[], keywords[], superseded_by?}],
+  hint?}`: ranked candidates for the calling agent to judge by meaning,
+  each summary clipped to 200 runes; entities are left out, a memory's
+  `topics` are the topic entities linked to it; a superseded memory comes
+  last and names its replacement. `hint` asks the agent to rephrase and
+  search again when a query matched nothing; the tool's description says
+  the same, and that titles are often in the user's language while
+  keywords are English.
+- **`current_decisions`** `{project?, limit? (50, at most 100)}` →
+  `GET /v1/brain/decisions?project=&limit=` → `{project, decisions: [{id,
+  kind, title, summary, project, created_at, keywords[]}]}`; `project`
+  defaults to the repository the server was started in.
 - **`get_memory`** `{id}` → `GET /v1/brain/nodes/{id}` → `{memory, links:
   [{relation, id, kind, title}]}`, at most 30 links; `relation` is the edge
   kind, `(from)` when the edge points at this memory.
@@ -4286,8 +4370,8 @@ idempotentHint: true`; `openWorldHint` is true for `ci_status` alone.
   is that project's count and `projects` holds that project alone (empty
   when it has none), not the totals for every project.
 - **`next_session_handoff`** `{repo?}` → `GET /v1/brain/handoff?project=`
-  → `{project, memories[], max_memories, handoff_on, left_off_at,
-  holdout_pct, note}`.
+  → `{project, current_decisions[], memories[], max_memories, handoff_on,
+  left_off_at, holdout_pct, note}`.
 - **`recent_sessions`** `{repo?, all_repos?, limit?}` →
   `GET /v1/sessions?dir=<root>&limit=` (or `?chats=exclude&limit=` with
   `all_repos`) → `{repo, project, sessions: [{id, agent, title,
@@ -5938,8 +6022,9 @@ keeps its items, as it keeps its saved prompts.
 ### Second Brain DDL (migrations 0055, 0056)
 
 Second Brain's graph and the automatic extraction's reads (§ Second Brain,
-[ADR-063](08-decisions.md)). This is the initial DDL; migration 0062 extends
-it below (§ Obsidian vaults DDL). Writes go through `internal/store`.
+[ADR-063](08-decisions.md)). This is the initial DDL; migrations 0062 and
+0069 extend it below (§ Obsidian vaults DDL, § Second Brain find and
+decisions DDL). Writes go through `internal/store`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS brain_nodes (
@@ -6120,6 +6205,33 @@ CREATE TABLE IF NOT EXISTS brain_vault_edges (
 CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_edge ON brain_vault_edges(src, dst, kind);
 CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_dst ON brain_vault_edges(dst);
 ```
+
+### Second Brain find and decisions DDL (migration 0069)
+
+[0069_brain_find_decisions.sql](../internal/store/migrations/0069_brain_find_decisions.sql)
+(§ Second Brain, *Search*, *Current decisions*; § SessionStart handoff):
+
+```sql
+ALTER TABLE brain_nodes ADD COLUMN keywords TEXT NOT NULL DEFAULT '';
+-- brain_edges rebuilt as 0062 did, its rows copied across, with:
+--   kind TEXT NOT NULL CHECK (kind IN ('relates','follows','contradicts','part_of','supersedes'))
+CREATE INDEX IF NOT EXISTS idx_brain_edges_dst ON brain_edges(dst);
+CREATE INDEX IF NOT EXISTS idx_brain_edges_supersedes ON brain_edges(dst) WHERE kind = 'supersedes';
+ALTER TABLE sessions ADD COLUMN handoff_runes INTEGER NOT NULL DEFAULT 0;
+```
+
+- **`keywords`** — a memory's English search keywords joined with `, `;
+  `brain_nodes.search` carries them, folded, on a fourth line, and search
+  weighs them like the title. `''` for memories made before 0069: they
+  are not re-tagged (TODO: a lazy re-tag, off by default, if the measured
+  misses on old non-English titles warrant one).
+- **`supersedes`** — an edge from a newer decision to the older one it
+  replaces. Nothing references `brain_edges`, so the rebuild is a copy
+  aside, a drop, a create and a copy back, inside the migration's
+  transaction. The partial index answers "is this superseded" for the
+  current-decisions read, the handoff and every search.
+- **`handoff_runes`** — the length of a new session's handoff reply in
+  runes; 0 when nothing was handed.
 
 ### Turn bounds DDL (migration 0048)
 

@@ -65,19 +65,20 @@ A tool about "this repository" uses the directory your agent started the
 server in — normally the project it is working in — unless it is given
 another (`repo`). A linked git worktree counts as its repository.
 
-| Tool                   | What it answers                                                        |
-| ---------------------- | ---------------------------------------------------------------------- |
-| `search_memories`      | Second Brain's memories matching some words, with their topics         |
-| `get_memory`           | One memory in full, with what it links to                              |
-| `memory_topics`        | The topics Second Brain knows, and the memories per project            |
-| `next_session_handoff` | What a new session in this repository is handed, and whether it is on  |
-| `recent_sessions`      | Recent sessions here (or everywhere): status, branch, cost, loop alert |
-| `session_summary`      | One session: description, files touched, pull requests, cost           |
-| `session_prose`        | What one session's agent wrote, newest first                           |
-| `search_prose`         | What agents wrote, searched across every session                       |
-| `cost`                 | Spend and tokens per day and model, for this repository or all         |
-| `ci_status`            | GitHub Actions on the default branch and the open pull request         |
-| `loop_alerts`          | Running sessions repeating the same tool call                          |
+| Tool                   | What it answers                                                           |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `search_memories`      | Up to 30 ranked Second Brain memories for some words, to judge by meaning |
+| `current_decisions`    | The decisions in force for this repository, newest first                  |
+| `get_memory`           | One memory in full, with what it links to                                 |
+| `memory_topics`        | The topics Second Brain knows, and the memories per project               |
+| `next_session_handoff` | What a new session here is handed: current decisions, then memories       |
+| `recent_sessions`      | Recent sessions here (or everywhere): status, branch, cost, loop alert    |
+| `session_summary`      | One session: description, files touched, pull requests, cost              |
+| `session_prose`        | What one session's agent wrote, newest first                              |
+| `search_prose`         | What agents wrote, searched across every session                          |
+| `cost`                 | Spend and tokens per day and model, for this repository or all            |
+| `ci_status`            | GitHub Actions on the default branch and the open pull request            |
+| `loop_alerts`          | Running sessions repeating the same tool call                             |
 
 Costs are Caprock's own figures at API list prices; on a Pro or Max plan they
 are what the same usage would cost on the API, not what you were billed.

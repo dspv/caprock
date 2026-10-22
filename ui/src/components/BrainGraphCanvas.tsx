@@ -81,6 +81,8 @@ const LINGER_MS = 140
 const INTRO_MS = 420
 /** A fit glides over this long. */
 const GLIDE_MS = 260
+/** How much of its alpha a superseded memory — no longer current — keeps, dot and label. */
+const SUPERSEDED = 0.4
 /** Zoom, relative to the fitted one, where the hubs' labels start to fade in; fully in by +LABEL_RAMP. */
 export const HUB_LABELS_AT = 1.5
 /** Zoom, relative to the fitted one, where every memory on screen is named. */
@@ -440,6 +442,8 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       if (x < -120 || x > w + 120 || y < -10 || y > h + 10) return
       const title = graph.nodes[i]!.title
       const text = title.length > 38 ? title.slice(0, 37) + '…' : title
+      // A superseded memory: its label faint and struck through.
+      const gone = !!graph.nodes[i]!.superseded_by
       c.font = isEntity(kinds[i]!) ? LABEL_FONT_HUB : LABEL_FONT
       const half = c.measureText(text).width / 2 + 2
       const x0 = x - half
@@ -449,13 +453,16 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         if (x0 < boxes[b + 2]! && x1 > boxes[b]! && y < boxes[b + 3]! && y1 > boxes[b + 1]!) return
       }
       boxes.push(x0, y, x1, y1)
-      c.globalAlpha = alpha
+      c.globalAlpha = gone ? alpha * SUPERSEDED : alpha
       c.lineWidth = 3
       c.lineJoin = 'round'
       c.strokeStyle = colors.halo
       c.strokeText(text, x, y)
       c.fillStyle = strong ? colors.fg : colors.label
       c.fillText(text, x, y)
+      if (gone) {
+        c.fillRect(x0 + 2, y + 7, x1 - x0 - 4, 1)
+      }
     }
 
     const drawBase = (c: CanvasRenderingContext2D, v: View) => {
@@ -559,10 +566,14 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           dots(list, (i) => isPicked(i) && (!inFocus(i) || lit === 0), 2.6)
         }
       }
+      const superseded = (i: number) => !!graph.nodes[i]!.superseded_by
       for (const { kind, color, list } of groups.values()) {
         c.fillStyle = color
         c.globalAlpha = Math.min(1, restAlpha(kind) * rest * (picked ? 1.12 : 1))
-        dots(list, (i) => isPicked(i) && (!inFocus(i) || lit === 0))
+        dots(list, (i) => isPicked(i) && (!inFocus(i) || lit === 0) && !superseded(i))
+        // A superseded memory is drawn dimmed.
+        c.globalAlpha = Math.min(1, restAlpha(kind) * rest * SUPERSEDED)
+        dots(list, (i) => isPicked(i) && (!inFocus(i) || lit === 0) && superseded(i))
       }
       if (focus !== undefined && lit > 0) {
         // The glow: two soft halos under each lit dot, one path each (a

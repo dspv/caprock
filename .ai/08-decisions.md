@@ -5774,6 +5774,10 @@ take tools from outside.
   tool that is about "this repository" defaults to the directory the agent
   started the server in, resolved the way the daemon groups sessions
   (`store.RepoFromCwd`: a linked worktree counts as its repository).
+  Amended 2026-10-22: a twelfth tool, `current_decisions`, reads the
+  registry of decisions nothing supersedes from a new read,
+  `GET /v1/brain/decisions` (03-contracts.md § Second Brain, *Current
+  decisions*).
 - **No new endpoint.** Every tool is an existing read: `/v1/brain`,
   `/v1/brain/nodes/{id}`, `/v1/brain/status`, `/v1/brain/handoff`,
   `/v1/sessions`, `/v1/sessions/{id}`, `/v1/sessions/{id}/notes`,

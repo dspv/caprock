@@ -18,12 +18,31 @@ Skip routine progress, tool chatter, greetings, and anything true only for the m
 Title: one line of at most 80 characters that states the thing itself ("Keep SQLite in WAL mode for the cache"), never "Discussed X".
 Summary: at most 400 characters of plain text, the why and the context someone needs later.
 Topics: one to three short lowercase noun phrases; when one of the existing topics fits, use its exact spelling.
+Keywords: five to eight lowercase English words or short phrases someone would search for to find this memory later (the subject, the component, the product terms, the obvious synonyms), always in English, whatever language the title is in.
 Passage: the number of the passage the memory comes from.
 Related: indexes (0-based) of other memories in your answer this one builds on; contradicts: the ones it contradicts.
-Write titles and summaries in the language the session was written in. Answer only with the JSON asked for.`
+The project's current decisions and the memories already kept are listed with their ids. Never repeat one: leave out a memory that says what a listed one already says.
+Supersedes: for a decision, the ids of listed current decisions it replaces, reverses or updates; only when the session clearly changed that decision, else none.
+Related_ids and contradicts_ids: ids of listed memories this one builds on, or contradicts.
+Write titles and summaries in the language the session was written in, and keywords in English. Answer only with the JSON asked for.`
 
 // Schema is the shape of the answer, for --json-schema.
-const Schema = `{"type":"object","properties":{"memories":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["idea","decision","finding","question"]},"title":{"type":"string"},"summary":{"type":"string"},"topics":{"type":"array","items":{"type":"string"},"maxItems":3},"passage":{"type":"integer"},"related":{"type":"array","items":{"type":"integer"}},"contradicts":{"type":"array","items":{"type":"integer"}}},"required":["kind","title","summary","topics"]}}},"required":["memories"]}`
+const Schema = `{"type":"object","properties":{"memories":{"type":"array","maxItems":8,"items":{"type":"object","properties":{"kind":{"type":"string","enum":["idea","decision","finding","question"]},"title":{"type":"string"},"summary":{"type":"string"},"topics":{"type":"array","items":{"type":"string"},"maxItems":3},"keywords":{"type":"array","items":{"type":"string"},"maxItems":8},"passage":{"type":"integer"},"related":{"type":"array","items":{"type":"integer"}},"contradicts":{"type":"array","items":{"type":"integer"}},"supersedes":{"type":"array","items":{"type":"integer"}},"related_ids":{"type":"array","items":{"type":"integer"}},"contradicts_ids":{"type":"array","items":{"type":"integer"}}},"required":["kind","title","summary","topics","keywords"]}}},"required":["memories"]}`
+
+// Known is what a read is shown of the project's brain: its current
+// decisions and the memories already kept, each with its id, so the answer
+// can supersede a decision, link to a memory and not repeat one.
+type Known struct {
+	Decisions []store.BrainNode
+	Recent    []store.BrainNode
+}
+
+// How much of the brain a read is shown: the project's newest current
+// decisions, and its newest memories besides them.
+const (
+	KnownDecisions = 30
+	KnownRecent    = 40
+)
 
 // Limits on what one read sends.
 const (
@@ -62,6 +81,10 @@ type Input struct {
 	// set when passages after it did not fit and wait for the next read.
 	Through int64
 	Cut     bool
+	// Shown are the existing memories the prompt lists, by id; Decisions
+	// the current decisions among them, which an answer may supersede.
+	Shown     map[int64]bool
+	Decisions map[int64]bool
 }
 
 // machineTags are the tags Claude Code and agents wrap a "user" turn in
@@ -113,7 +136,13 @@ func (in Input) WorthReading() bool {
 // as many of the oldest as fit in MaxInputChars. What does not fit is left
 // for the next read (Through, Cut); nothing is skipped.
 func BuildInput(project string, topics []string, passages []store.BrainPassage) Input {
-	in := Input{}
+	return BuildInputKnown(project, topics, Known{}, passages)
+}
+
+// BuildInputKnown is BuildInput with the project's current decisions and
+// recent memories listed before the passages (Known).
+func BuildInputKnown(project string, topics []string, known Known, passages []store.BrainPassage) Input {
+	in := Input{Shown: map[int64]bool{}, Decisions: map[int64]bool{}}
 	type line struct {
 		p    store.BrainPassage
 		text string
@@ -150,6 +179,25 @@ func BuildInput(project string, topics []string, passages []store.BrainPassage) 
 	}
 	if len(topics) > 0 {
 		fmt.Fprintf(&b, "Existing topics: %s\n", strings.Join(topics, ", "))
+	}
+	if len(known.Decisions) > 0 {
+		b.WriteString("\nCurrent decisions in this project, newest first (id and title):\n")
+		for _, d := range known.Decisions {
+			fmt.Fprintf(&b, "%s\n", store.BrainDecisionLine(d))
+			in.Shown[d.ID], in.Decisions[d.ID] = true, true
+		}
+	}
+	var recent []string
+	for _, m := range known.Recent {
+		if !in.Shown[m.ID] {
+			recent = append(recent, fmt.Sprintf("#%d %s: %s", m.ID, m.Kind, strings.Join(strings.Fields(m.Title), " ")))
+			in.Shown[m.ID] = true
+		}
+	}
+	if len(recent) > 0 {
+		b.WriteString("\nAlready kept for this project, newest first (do not repeat these):\n")
+		b.WriteString(strings.Join(recent, "\n"))
+		b.WriteString("\n")
 	}
 	b.WriteString("\nThe session, oldest first:\n")
 	for i, l := range lines {

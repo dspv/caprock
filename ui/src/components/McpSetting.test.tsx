@@ -27,7 +27,7 @@ describe('Use Caprock from your agents (MCP)', () => {
   it('lists every tool the server offers', () => {
     render(<McpSetting />)
     for (const [name] of MCP_TOOLS) expect(screen.getByText(name)).toBeInTheDocument()
-    expect(MCP_TOOLS).toHaveLength(11)
+    expect(MCP_TOOLS).toHaveLength(12)
   })
 
   it('quotes a Windows path so a shell and TOML both read it as written', () => {

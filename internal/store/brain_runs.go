@@ -282,30 +282,80 @@ func BrainProjectMemories(ctx context.Context, q Querier, project string, limit 
 	return scanBrainRows(rows)
 }
 
-// BrainHandoffMax and BrainHandoffRunes bound what Second Brain adds to a
-// served handoff (ADR-063): the repository's pinned memories first, then the
-// newest, titles with a clipped summary, in a budget of their own so the
-// passage before them is never cut to make room. BrainHandoffSummary is how
-// far each summary is clipped.
+// What Second Brain adds to a new session's handoff (ADR-063), each part in
+// a budget of its own so the passage before them is never cut to make room:
+//
+//   - the repository's current decisions (nothing supersedes them), newest
+//     first, at most BrainHandoffDecisions, one line each — "#id title" —
+//     in BrainHandoffDecisionRunes. Fifteen titles of up to 80 runes fit.
+//   - then its other memories, pinned first, then newest, at most one per
+//     source session (so one long session cannot fill it), at most
+//     BrainHandoffMax, titles with the summary clipped to
+//     BrainHandoffSummary, in BrainHandoffRunes. A superseded memory and a
+//     decision already listed are left out.
 const (
-	BrainHandoffMax     = 5
-	BrainHandoffRunes   = 700
-	BrainHandoffSummary = 160
+	BrainHandoffDecisions     = 15
+	BrainHandoffDecisionRunes = 1500
+	BrainHandoffMax           = 5
+	BrainHandoffRunes         = 700
+	BrainHandoffSummary       = 160
+	// brainHandoffScan is how many of the newest memories the second part
+	// looks through for one per session.
+	brainHandoffScan = 60
 )
 
-// BrainHandoff is what a new session in a repository is handed from Second
-// Brain: the memories that fit, in order, and the line each is given as. The
-// SessionStart handoff appends the lines; GET /v1/brain/handoff shows the
-// memories, so the screen names exactly what a session gets.
-func BrainHandoff(ctx context.Context, q Querier, project string) ([]BrainNode, []string, error) {
-	mems, err := BrainProjectMemories(ctx, q, project, BrainHandoffMax)
-	if err != nil || len(mems) == 0 {
-		return nil, nil, err
+// BrainHandoffPick is what a new session in a repository is handed from
+// Second Brain: its current decisions, its other memories, and the text
+// the SessionStart handoff appends ("" when there is neither).
+// GET /v1/brain/handoff shows the same pick, so the screen and the MCP tool
+// name exactly what a session gets.
+type BrainHandoffPick struct {
+	Decisions []BrainNode
+	Memories  []BrainNode
+	Text      string
+}
+
+// Count is how many memories it hands over, decisions included.
+func (p BrainHandoffPick) Count() int { return len(p.Decisions) + len(p.Memories) }
+
+// BrainHandoff picks what a new session in a repository is handed.
+func BrainHandoff(ctx context.Context, q Querier, project string) (BrainHandoffPick, error) {
+	var p BrainHandoffPick
+	decs, err := BrainCurrentDecisions(ctx, q, project, BrainHandoffDecisions, false)
+	if err != nil {
+		return p, err
 	}
-	var picked []BrainNode
-	var lines []string
-	left := BrainHandoffRunes
+	listed := map[int64]bool{}
+	var dl []string
+	left := BrainHandoffDecisionRunes
+	for _, d := range decs {
+		line := "\n- " + BrainDecisionLine(d)
+		n := utf8.RuneCountInString(line)
+		if n > left {
+			break
+		}
+		left -= n
+		listed[d.ID] = true
+		p.Decisions = append(p.Decisions, d)
+		dl = append(dl, line)
+	}
+	mems, err := BrainProjectMemories(ctx, q, project, brainHandoffScan)
+	if err != nil {
+		return p, err
+	}
+	if err := markBrainSuperseded(ctx, q, mems); err != nil {
+		return p, err
+	}
+	sessions := map[string]bool{}
+	var ml []string
+	left = BrainHandoffRunes
 	for _, m := range mems {
+		if len(p.Memories) == BrainHandoffMax {
+			break
+		}
+		if listed[m.ID] || m.SupersededBy != 0 || (m.Source.SessionID != "" && sessions[m.Source.SessionID]) {
+			continue
+		}
 		line := "\n- " + m.Kind + ": " + m.Title
 		if m.Summary != "" {
 			line += " — " + ClipSentence(m.Summary, BrainHandoffSummary)
@@ -315,10 +365,21 @@ func BrainHandoff(ctx context.Context, q Querier, project string) ([]BrainNode, 
 			break
 		}
 		left -= n
-		picked = append(picked, m)
-		lines = append(lines, line)
+		if m.Source.SessionID != "" {
+			sessions[m.Source.SessionID] = true
+		}
+		p.Memories = append(p.Memories, m)
+		ml = append(ml, line)
 	}
-	return picked, lines, nil
+	var parts []string
+	if len(dl) > 0 {
+		parts = append(parts, "Current decisions in the user's Second Brain for this repository, newest first (a newer one replaces an older one it contradicts; they may be stale):"+strings.Join(dl, ""))
+	}
+	if len(ml) > 0 {
+		parts = append(parts, "Also kept for this repository (decisions and findings from earlier sessions; they may be stale):"+strings.Join(ml, ""))
+	}
+	p.Text = strings.Join(parts, "\n\n")
+	return p, nil
 }
 
 // ClipSentence cuts to n runes at a sentence boundary where one is near the
@@ -378,6 +439,13 @@ func BrainGraphCounts(ctx context.Context, q Querier) (topics, links int, err er
 // handed with its handoff (migration 0058).
 func SetHandoffBrain(ctx context.Context, q Querier, sessionID string, n int) error {
 	_, err := q.ExecContext(ctx, `UPDATE sessions SET handoff_brain = ? WHERE session_id = ?`, n, sessionID)
+	return err
+}
+
+// SetHandoffRunes records how long a new session's handoff was, in runes of
+// its additionalContext (migration 0069).
+func SetHandoffRunes(ctx context.Context, q Querier, sessionID string, n int) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET handoff_runes = ? WHERE session_id = ?`, n, sessionID)
 	return err
 }
 
