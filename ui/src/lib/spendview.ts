@@ -2,8 +2,8 @@
  * The cockpit's spend figures as each viewer has set them (.ai/04-ui.md §
  * Inspector): which three figures stand beside the agent (the headline and
  * two smaller lines), whether the Spend details are folded, whether they
- * read as a chart or numbers, over which period, which three figures, and
- * the figures themselves. Kept
+ * read as a chart or numbers, which three figures, and the figures
+ * themselves; and, per tab, over which period. Kept
  * apart from the components so the arithmetic and the choice of figures
  * are tested.
  *
@@ -153,8 +153,6 @@ export interface SpendPrefs {
    * did you put the chart?").
    */
   view: SpendView
-  /** What the figures and the chart cover. */
-  period: SpendPeriod
   /** The Numbers row's three metrics, left to right, never one twice. */
   slots: Metric[]
   /**
@@ -165,7 +163,7 @@ export interface SpendPrefs {
   chartBy: ChartMetric
 }
 
-export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0]!, view: 'chart', period: 'session', slots: [...DEFAULT_SLOTS], chartBy: 'cost' }
+export const DEFAULT_SPEND_PREFS: SpendPrefs = { folded: false, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0]!, view: 'chart', slots: [...DEFAULT_SLOTS], chartBy: 'cost' }
 
 /**
  * A stored view, including 0.111.0's: *Full* drew the cells and *Spend
@@ -190,9 +188,13 @@ const KEY = 'caprock.app.cockpit.spend'
  * lacks: it reads as cost, and nothing else of it changes. 5 added burn
  * rate to the chart's metrics: a version 4 choice holds one of the three it
  * could pick then and is kept as picked, so there is no step for it — the
- * number says which menu the choice was made from.
+ * number says which menu the choice was made from. 6 took the period out:
+ * it was one choice for every tab, so a Caprock-wide period picked once
+ * put the same chart and dollars in every tab's cockpit (owner,
+ * 2026-10-22). A stored period is dropped once and each tab opens on its
+ * own session (`useSpendPeriod`).
  */
-const VERSION = 5
+const VERSION = 6
 const listeners = new Set<() => void>()
 
 /** Whatever was stored, made valid field by field. */
@@ -205,7 +207,6 @@ export function normalizeSpendPrefs(raw: unknown): SpendPrefs {
     hero,
     headline: hero[0]!,
     view: viewOf(v.view),
-    period: SPEND_PERIODS.includes(v.period as SpendPeriod) ? (v.period as SpendPeriod) : DEFAULT_SPEND_PREFS.period,
     slots: normalizeSlots(v.slots),
     chartBy: CHART_METRICS.some((m) => m.id === v.chartBy) ? (v.chartBy as ChartMetric) : DEFAULT_SPEND_PREFS.chartBy,
   }
@@ -224,6 +225,10 @@ export function migrateSpendPrefs(raw: unknown): unknown {
   if (was < 2) v = { ...v, view: 'chart', folded: false }
   if (was < 3 && Array.isArray(v.hero) && v.hero.length === OLD_HERO.length && v.hero.every((m, i) => m === OLD_HERO[i])) {
     v = { ...v, hero: [...DEFAULT_HERO], headline: DEFAULT_HERO[0] }
+  }
+  if (was < 6 && 'period' in v) {
+    const { period: _dropped, ...rest } = v
+    v = rest
   }
   return v
 }
@@ -258,6 +263,7 @@ export function setSpendPrefs(patch: Partial<SpendPrefs>): void {
 /** For tests: forget what was read, so the next read is from storage. */
 export function resetSpendPrefsForTest(): void {
   current = undefined
+  periods.clear()
 }
 
 export function useSpendPrefs(): SpendPrefs {
@@ -265,6 +271,36 @@ export function useSpendPrefs(): SpendPrefs {
     (fn) => { listeners.add(fn); return () => { listeners.delete(fn) } },
     getSpendPrefs,
     getSpendPrefs,
+  )
+}
+
+/**
+ * The period each tab's cockpit shows, by session id, for as long as the
+ * window is open. A tab opens on *session* — its own agent's burn and
+ * spend — and a Caprock-wide period picked in one tab stays in that tab
+ * only (owner, 2026-10-22: one stored period made every tab show the same
+ * chart and dollars). Not stored: a reload opens every tab on its session.
+ */
+const periods = new Map<string, SpendPeriod>()
+const periodListeners = new Set<() => void>()
+
+export function getSpendPeriod(sessionId: string): SpendPeriod {
+  return periods.get(sessionId) ?? 'session'
+}
+
+/** The period of one tab's cockpit; the others keep theirs. */
+export function setSpendPeriod(sessionId: string, p: SpendPeriod): void {
+  if (!SPEND_PERIODS.includes(p)) return
+  if (p === 'session') periods.delete(sessionId)
+  else periods.set(sessionId, p)
+  for (const fn of periodListeners) fn()
+}
+
+export function useSpendPeriod(sessionId: string): SpendPeriod {
+  return useSyncExternalStore(
+    (fn) => { periodListeners.add(fn); return () => { periodListeners.delete(fn) } },
+    () => getSpendPeriod(sessionId),
+    () => getSpendPeriod(sessionId),
   )
 }
 
@@ -508,6 +544,16 @@ export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined
 }
 
 /** Whose money the figures are: "This session", "Today · all sessions". */
+/**
+ * The folded strip's chip: *session* for the tab's own agent, and the
+ * range with *all* for a Caprock-wide one (*today · all*), so a strip that
+ * is every session's is never read as this agent's. Short: the cockpit is
+ * about 330px.
+ */
+export function periodChip(p: SpendPeriod): string {
+  return p === 'session' ? 'session' : `${p} · all`
+}
+
 export function periodScope(p: SpendPeriod): string {
   switch (p) {
     case 'session': return 'This session'

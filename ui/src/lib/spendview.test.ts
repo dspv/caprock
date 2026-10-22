@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
+import { getSpendPeriod, periodChip, resetSpendPrefsForTest, setSpendPeriod, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
 import type { Summary } from './api'
 
@@ -49,37 +49,47 @@ describe('the spend figures', () => {
   })
 
   it('reads stored choices field by field, unfolded on the chart by default, and 0.111.0’s views as Numbers or Chart', () => {
-    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: false, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'chart', period: 'session', slots: ['cost', 'tokens', 'cache'], chartBy: 'cost' })
+    expect(normalizeSpendPrefs(undefined)).toEqual({ folded: false, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'chart', slots: ['cost', 'tokens', 'cache'], chartBy: 'cost' })
     expect(normalizeSpendPrefs({ folded: true, headline: 'nope', view: 'numbers', period: '7d', slots: ['turns'] }))
-      .toEqual({ folded: true, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'numbers', period: '7d', slots: ['turns', 'cost', 'tokens'], chartBy: 'cost' })
+      .toEqual({ folded: true, hero: ['burn', 'tokens', 'cost'], headline: 'burn', view: 'numbers', slots: ['turns', 'cost', 'tokens'], chartBy: 'cost' })
     // One stored headline, from before the three figures, stays the big one.
     expect(normalizeSpendPrefs({ headline: 'tokens' })).toMatchObject({ hero: ['tokens', 'burn', 'cost'], headline: 'tokens' })
     expect(normalizeSpendPrefs({ hero: ['turns', 'cache', 'turns'] })).toMatchObject({ hero: ['turns', 'cache', 'burn'], headline: 'turns' })
     // 0.111.0 stored Compact | Full: Full drew the chart, Compact the figures.
     expect(normalizeSpendPrefs({ view: 'full', chart: false }).view).toBe('chart')
     expect(normalizeSpendPrefs({ view: 'compact', chart: true }).view).toBe('numbers')
-    expect(normalizeSpendPrefs({ view: 'tiny', period: '90d' })).toMatchObject({ view: 'chart', period: 'session' })
+    expect(normalizeSpendPrefs({ view: 'tiny', period: '90d' })).toMatchObject({ view: 'chart' })
+    // The period is each tab's own now, never a stored choice.
+    expect(normalizeSpendPrefs({ period: '7d' })).not.toHaveProperty('period')
     expect(normalizeSpendPrefs({ chart: true })).not.toHaveProperty('chart')
   })
 
   it('opens every choice stored before version 2 on the chart, once', () => {
     // Numbers and folded were the old defaults: nobody can tell them from a pick.
-    expect(migrateSpendPrefs({ view: 'numbers', folded: true, period: '7d' })).toEqual({ view: 'chart', folded: false, period: '7d' })
+    expect(migrateSpendPrefs({ view: 'numbers', folded: true, period: '7d' })).toEqual({ view: 'chart', folded: false })
     expect(migrateSpendPrefs({ v: 2, view: 'numbers', folded: true })).toEqual({ v: 2, view: 'numbers', folded: true })
     expect(migrateSpendPrefs(undefined)).toBeUndefined()
   })
 
   it('gives a stored hero that is exactly the old default the new one, and keeps any picked order', () => {
     expect(migrateSpendPrefs({ v: 2, hero: ['cost', 'burn', 'tokens'], period: '7d' }))
-      .toEqual({ v: 2, hero: ['burn', 'tokens', 'cost'], headline: 'burn', period: '7d' })
+      .toEqual({ v: 2, hero: ['burn', 'tokens', 'cost'], headline: 'burn' })
     expect(migrateSpendPrefs({ v: 2, hero: ['tokens', 'cost', 'burn'] })).toEqual({ v: 2, hero: ['tokens', 'cost', 'burn'] })
     expect(migrateSpendPrefs({ v: 3, hero: ['cost', 'burn', 'tokens'] })).toEqual({ v: 3, hero: ['cost', 'burn', 'tokens'] })
   })
 
+  it('drops a stored period once, keeping every other choice as picked', () => {
+    // Before 6 one period served every tab: 'today', picked once, put the
+    // same chart and dollars in every tab's cockpit.
+    const v5 = { v: 5, view: 'numbers', folded: true, hero: ['tokens', 'cost', 'burn'], period: 'today', slots: ['turns', 'cost', 'cache'], chartBy: 'burn' }
+    expect(migrateSpendPrefs(v5)).toEqual({ v: 5, view: 'numbers', folded: true, hero: ['tokens', 'cost', 'burn'], slots: ['turns', 'cost', 'cache'], chartBy: 'burn' })
+    expect(migrateSpendPrefs({ v: 6, view: 'chart' })).toEqual({ v: 6, view: 'chart' })
+  })
+
   it('keeps a version 3 choice as picked, its chart reading as cost', () => {
-    const v3 = { v: 3, view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], period: '30d' }
+    const v3 = { v: 3, view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'] }
     expect(migrateSpendPrefs(v3)).toEqual(v3)
-    expect(normalizeSpendPrefs(migrateSpendPrefs(v3))).toMatchObject({ view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], period: '30d', chartBy: 'cost' })
+    expect(normalizeSpendPrefs(migrateSpendPrefs(v3))).toMatchObject({ view: 'numbers', folded: true, hero: ['cost', 'burn', 'tokens'], chartBy: 'cost' })
     expect(normalizeSpendPrefs({ chartBy: 'tokens' }).chartBy).toBe('tokens')
     expect(normalizeSpendPrefs({ chartBy: 'turns' }).chartBy).toBe('turns')
     expect(normalizeSpendPrefs({ chartBy: 'burn' }).chartBy).toBe('burn')
@@ -161,6 +171,11 @@ describe('the spend figures', () => {
     expect(periodFigures('30d', f, { ...sum, projects: [] } as Summary).series).toBeUndefined()
     expect(periodScope('session')).toBe('This session')
     expect(periodScope('30d')).toBe('30 days · all sessions')
+    // The folded chip: whose figures they are, short enough for a 330px cockpit.
+    expect(periodChip('session')).toBe('session')
+    expect(periodChip('today')).toBe('today · all')
+    expect(periodChip('7d')).toBe('7d · all')
+    expect(periodChip('30d')).toBe('30d · all')
   })
 })
 
@@ -203,5 +218,22 @@ describe('burn rate on the chart', () => {
   it('leads the folded strip with the chart’s own burn rate', () => {
     const pf = { cost: 22, tokens: 1000, turns: 40, series: { step: H, bars: [bar({ activeHours: 2, activeCost: 6 })] } }
     expect(foldedFigures('burn', pf).map((x) => [x.id, x.value])).toEqual([['burn', '$3.00/h'], ['cost', '$22.00'], ['tokens', '1,000']])
+  })
+})
+
+describe('the period of each tab', () => {
+  it('opens every tab on its own session, and keeps a pick to the tab it was made in', () => {
+    resetSpendPrefsForTest()
+    expect(getSpendPeriod('a')).toBe('session')
+    setSpendPeriod('a', 'today')
+    expect(getSpendPeriod('a')).toBe('today')
+    expect(getSpendPeriod('b')).toBe('session')
+    setSpendPeriod('a', 'session')
+    expect(getSpendPeriod('a')).toBe('session')
+    // Not stored: nothing of it reaches the viewer's saved choices.
+    setSpendPeriod('b', '7d')
+    expect(localStorage.getItem('caprock.app.cockpit.spend') ?? '').not.toMatch(/period/)
+    resetSpendPrefsForTest()
+    expect(getSpendPeriod('b')).toBe('session')
   })
 })
