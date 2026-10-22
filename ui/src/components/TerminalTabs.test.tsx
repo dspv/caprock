@@ -58,21 +58,105 @@ function strip() {
 }
 
 describe('TabStrip', () => {
-  const original = document.elementFromPoint
-  afterEach(() => { document.elementFromPoint = original })
+  /**
+   * jsdom lays nothing out: each tab is 100px wide with the strip's 4px gap
+   * (tab i spans i*104 .. i*104+100), and the strip is 600×40 at the origin.
+   */
+  function layout(tabs: HTMLElement[]) {
+    const rect = (left: number, top: number, width: number, height: number) =>
+      ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect
+    tabs.forEach((t, i) => { t.getBoundingClientRect = () => rect(i * 104, 4, 100, 32) })
+    screen.getByRole('tablist').getBoundingClientRect = () => rect(0, 0, 600, 40)
+  }
 
-  it('moves a tab dragged with the pointer onto another, without activating it', () => {
+  it('drags a tab under the pointer, the others making room, and drops it in that slot without activating it', () => {
     const { onMove, onActivate, tabs } = strip()
+    layout(tabs)
     expect(tabs[0]!.getAttribute('draggable')).toBeNull()
-    document.elementFromPoint = () => tabs[2]!
     fireEvent.pointerDown(tabs[0]!, { button: 0, clientX: 10, clientY: 10 })
     fireEvent.pointerMove(window, { clientX: 60, clientY: 12 })
     expect(tabs[0]!.dataset.dragging).toBe('true')
+    expect(tabs[0]!.style.transform).toBe('translateX(50px)')
+    expect(tabs[0]!.style.zIndex).toBe('10')
+    expect(tabs[1]!.style.transform).toBe('')
+    // Past the second tab's middle: it slides left into the dragged tab's place.
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 12 })
+    expect(tabs[0]!.style.transform).toBe('translateX(120px)')
+    expect(tabs[1]!.style.transform).toBe('translateX(-104px)')
+    expect(tabs[2]!.style.transform).toBe('')
+    // Far right: held at the strip's last tab, both others moved over.
+    fireEvent.pointerMove(window, { clientX: 590, clientY: 12 })
+    expect(tabs[0]!.style.transform).toBe('translateX(208px)')
+    expect(tabs[2]!.style.transform).toBe('translateX(-104px)')
     fireEvent.pointerUp(window, { clientX: 300, clientY: 12 })
     fireEvent.click(tabs[0]!)
     expect(onMove).toHaveBeenCalledWith('one', 2)
     expect(onActivate).not.toHaveBeenCalled()
     expect(tabs[0]!.dataset.dragging).toBeUndefined()
+    expect(tabs[1]!.style.transform).toBe('')
+  })
+
+  it('moves nothing when the tab is released off the strip', () => {
+    const { onMove, onActivate, tabs } = strip()
+    layout(tabs)
+    fireEvent.pointerDown(tabs[0]!, { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 230, clientY: 12 })
+    expect(tabs[1]!.style.transform).toBe('translateX(-104px)')
+    // Dragged down off the strip, the slot closes.
+    fireEvent.pointerMove(window, { clientX: 230, clientY: 200 })
+    expect(tabs[1]!.style.transform).toBe('')
+    expect(tabs[0]!.style.transform).toBe('translateX(208px)')
+    fireEvent.pointerUp(window, { clientX: 230, clientY: 200 })
+    expect(onMove).not.toHaveBeenCalled()
+    expect(tabs[0]!.style.transform).toBe('')
+    expect(tabs[0]!.dataset.dragging).toBeUndefined()
+    fireEvent.click(tabs[0]!)
+    expect(onActivate).not.toHaveBeenCalled()
+  })
+
+  it('puts the tab back on Escape, and a later release moves nothing', () => {
+    const { onMove, tabs } = strip()
+    layout(tabs)
+    fireEvent.pointerDown(tabs[2]!, { button: 0, clientX: 250, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 12 })
+    expect(tabs[2]!.style.transform).toBe('translateX(-208px)')
+    expect(tabs[0]!.style.transform).toBe('translateX(104px)')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(tabs[2]!.style.transform).toBe('')
+    expect(tabs[0]!.style.transform).toBe('')
+    expect(tabs[2]!.dataset.dragging).toBeUndefined()
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 12 })
+    fireEvent.pointerUp(window, { clientX: 10, clientY: 12 })
+    expect(onMove).not.toHaveBeenCalled()
+    expect(tabs[2]!.style.transform).toBe('')
+  })
+
+  it('keeps a close button a close button', () => {
+    const onDetach = vi.fn()
+    const onMove = vi.fn()
+    render(
+      <TabStrip
+        tabs={[tab('one'), tab('two')]}
+        activeTabId="one"
+        sessions={new Map()}
+        permissions={new Set()}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={onDetach}
+        onMove={onMove}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const close = screen.getAllByRole('button', { name: /^Close/ })[1]!
+    fireEvent.pointerDown(close, { button: 0, clientX: 190, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 10 })
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 10 })
+    fireEvent.click(close)
+    expect(onMove).not.toHaveBeenCalled()
+    expect(onDetach).toHaveBeenCalledWith('two')
   })
 
   // Owner, 2026-10-09: tabs were barely noticeable. The one in front is the
@@ -111,7 +195,6 @@ describe('TabStrip', () => {
 
   it('takes a press that barely moves for a click', () => {
     const { onMove, onActivate, tabs } = strip()
-    document.elementFromPoint = () => tabs[2]!
     fireEvent.pointerDown(tabs[1]!, { button: 0, clientX: 10, clientY: 10 })
     fireEvent.pointerMove(window, { clientX: 12, clientY: 11 })
     fireEvent.pointerUp(window, { clientX: 12, clientY: 11 })
@@ -566,6 +649,43 @@ describe('a page tab', () => {
     expect(page.querySelector('[data-tab-project]')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Close browser tab Vite App' }))
     expect(onDetach).toHaveBeenCalledWith('w')
+  })
+
+  it('drags only along its own group: never among the agents', () => {
+    const onMove = vi.fn()
+    render(
+      <TabStrip
+        tabs={[tab('one'), tab('two'), pageTab('w', 'https://a.example/', 'A'), pageTab('x', 'https://b.example/', 'B')]}
+        activeTabId="one"
+        sessions={new Map()}
+        permissions={new Set()}
+        inspectorOpen={false}
+        sidebarOpen
+        onActivate={() => {}}
+        onDetach={() => {}}
+        onMove={onMove}
+        onNewAgent={() => {}}
+        onNewShell={() => {}}
+        onToggleInspector={() => {}}
+      />,
+    )
+    const tabs = screen.getAllByRole('tab')
+    const rect = (left: number, width: number) => ({ left, top: 4, width, height: 32, right: left + width, bottom: 36, x: left, y: 4, toJSON: () => ({}) }) as DOMRect
+    tabs.forEach((t, i) => { t.getBoundingClientRect = () => rect(i * 104, 100) })
+    screen.getByRole('tablist').getBoundingClientRect = () => ({ ...rect(0, 600), top: 0, bottom: 40 }) as DOMRect
+    // The first page pulled over the agents stops at the group's edge.
+    fireEvent.pointerDown(tabs[2]!, { button: 0, clientX: 220, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 10, clientY: 12 })
+    expect(tabs[2]!.style.transform).toBe('translateX(0px)')
+    expect(tabs[1]!.style.transform).toBe('')
+    fireEvent.pointerUp(window, { clientX: 10, clientY: 12 })
+    expect(onMove).not.toHaveBeenCalled()
+    // Past the other page, it takes that page's place.
+    fireEvent.pointerDown(tabs[2]!, { button: 0, clientX: 220, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 330, clientY: 12 })
+    expect(tabs[3]!.style.transform).toBe('translateX(-104px)')
+    fireEvent.pointerUp(window, { clientX: 330, clientY: 12 })
+    expect(onMove).toHaveBeenCalledWith('w', 3)
   })
 
   it('shows the page view in its panel, never a terminal', () => {

@@ -11,6 +11,7 @@
  */
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
+import { SLIDE_MS, clampOffset, reducedMotion, shiftFor, slotFor } from '@/lib/dragSlot'
 import { ownTab, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionAbout, sessionTitle } from '@/lib/sidebar'
 import { renamable } from '@/lib/sessionNames'
@@ -156,6 +157,26 @@ export function TabProject({ name, hue }: { name: string; hue: number }) {
   )
 }
 
+/** A tab being dragged: its group laid out as it was at the start, and the slot it would land in. */
+interface TabDrag {
+  group: HTMLElement[]
+  rects: DOMRect[]
+  /** Its place in the group, and the place it would take now. */
+  at: number
+  slot: number
+  /** How far a neighbour slides to make room: the dragged tab's width and the gap. */
+  step: number
+  /** The strip index of the group's first tab. */
+  first: number
+}
+
+/** Whether a point is over the strip: a little give above and below, none at the ends. */
+function overStrip(strip: HTMLElement | null, x: number, y: number): boolean {
+  if (!strip) return false
+  const r = strip.getBoundingClientRect()
+  return x >= r.left && x <= r.right && y >= r.top - 8 && y <= r.bottom + 8
+}
+
 export function TabStrip(props: TabStripProps) {
   const { tabs, activeTabId } = props
   const labels = props.labels ?? tabLabels(tabs, props.sessions, props.permissions, () => undefined)
@@ -163,37 +184,138 @@ export function TabStrip(props: TabStripProps) {
   // the shell's native drop handler takes every drag over the window (so a
   // dropped file arrives with its real path), and the page never sees a
   // dragover or a drop (.ai/21-app.md § Dropping a file). A press that moves
-  // past a few pixels is a drag; released over another tab, the tab moves
-  // there, and the click that follows the release is not an activation.
+  // past a few pixels is a drag, and the drag is drawn as it happens (owner,
+  // 2026-10-23, translated: "when dragging tabs at the top, you can't see
+  // under the mouse that they are moving"): the tab follows the pointer
+  // along its own group, raised over the others, which slide apart to show
+  // the slot it will land in. Released over the strip it lands there;
+  // released off the strip, or on Escape, it slides back and nothing moves.
+  // The click that follows the release is not an activation. A tab carries
+  // no data-tauri-drag-region of its own, so pressing one never drags the
+  // window.
   const [dragging, setDragging] = useState<string | null>(null)
   // The tab whose name is being typed (double-click on an agent's tab).
   const [renaming, setRenaming] = useState<string | null>(null)
   const dragged = useRef(false)
+  const stripRef = useRef<HTMLDivElement>(null)
+  // The landing of a released tab, run once the reorder it asked for is laid
+  // out (before paint, so the tab never flashes at its old offset in its new
+  // place), or on the next frame when no render follows.
+  const landing = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => { landing.current?.() })
   const press = (id: string) => (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || (e.target as Element).closest('button')) return
+    const el = e.currentTarget
+    const pointer = e.pointerId
     const x0 = e.clientX
     const y0 = e.clientY
     dragged.current = false
+    let drag: TabDrag | null = null
+    const begin = () => {
+      // Only along its own group: a browser tab among the browser tabs, any
+      // other tab among the rest (the `move` reducer keeps the same rule).
+      const page = el.hasAttribute('data-page-tab')
+      const row = el.parentElement
+      if (!row) return
+      const group = [...row.querySelectorAll<HTMLElement>('[data-tab-index]')].filter((t) => t.hasAttribute('data-page-tab') === page)
+      const at = group.indexOf(el)
+      if (at < 0) return
+      const rects = group.map((t) => t.getBoundingClientRect())
+      const gap = parseFloat(getComputedStyle(row).columnGap) || 4
+      drag = { group, rects, at, slot: at, step: rects[at]!.width + gap, first: Number(group[0]!.dataset.tabIndex) }
+      el.style.transition = 'none'
+      // Raised over the others: a drop shadow (the tab's own frame is a box
+      // shadow, so it stays) and, behind, an opaque fill — a tab behind is
+      // see-through, and the tabs it passes would show through it.
+      el.style.zIndex = '10'
+      el.style.filter = 'drop-shadow(0 3px 8px rgb(0 0 0 / 0.3))'
+      if (!el.classList.contains('app-tab-front')) el.style.background = 'color-mix(in srgb, var(--color-fg) 9%, var(--app-chrome-bg))'
+      const smooth = reducedMotion() ? 'none' : `transform ${SLIDE_MS}ms ease-out`
+      for (const t of group) if (t !== el) t.style.transition = smooth
+      // Moves outside the window still reach the drag.
+      try { el.setPointerCapture(pointer) } catch { /* jsdom, or the pointer is gone */ }
+    }
+    const follow = (d: TabDrag, x: number, y: number) => {
+      const spans = d.rects.map((o) => ({ start: o.left, size: o.width }))
+      const dx = clampOffset(spans, d.at, x - x0)
+      el.style.transform = `translateX(${dx}px)`
+      // Off the strip the slot closes: a release there moves nothing.
+      const slot = overStrip(stripRef.current, x, y) ? slotFor(spans, d.at, dx) : d.at
+      d.slot = slot
+      d.group.forEach((t, j) => {
+        if (j === d.at) return
+        const shift = shiftFor(j, d.at, slot, d.step)
+        t.style.transform = shift ? `translateX(${shift}px)` : ''
+      })
+    }
     const onMove = (m: PointerEvent) => {
       if (!dragged.current && Math.hypot(m.clientX - x0, m.clientY - y0) > 4) {
         dragged.current = true
         setDragging(id)
+        begin()
       }
+      if (drag) follow(drag, m.clientX, m.clientY)
     }
-    const onUp = (u: PointerEvent) => {
+    const finish = (commit: boolean) => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      setDragging(null)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKey, true)
       if (!dragged.current) return
-      const over = document.elementFromPoint(u.clientX, u.clientY)?.closest<HTMLElement>('[data-tab-index]')
-      const to = over ? Number(over.dataset.tabIndex) : NaN
-      if (Number.isInteger(to)) props.onMove(id, to)
+      setDragging(null)
+      // A release off every tab clicks no tab, so nothing else would clear it.
+      setTimeout(() => { dragged.current = false }, 0)
+      const d: TabDrag | null = drag
+      if (!d) return
+      const slot = commit ? d.slot : d.at
+      const from = el.getBoundingClientRect().left
+      const quick = reducedMotion()
+      landing.current = () => {
+        landing.current = null
+        // The tabs that made room are already where the reorder puts them;
+        // after a cancel they slide back.
+        for (const t of d.group) {
+          if (t === el) continue
+          if (commit) t.style.transition = 'none'
+          t.style.transform = ''
+        }
+        el.style.transform = ''
+        const offset = from - el.getBoundingClientRect().left
+        if (offset && !quick) {
+          el.style.transform = `translateX(${offset}px)`
+          void el.offsetWidth
+          el.style.transition = `transform ${SLIDE_MS}ms ease-out`
+          el.style.transform = ''
+        }
+        setTimeout(() => {
+          for (const t of d.group) t.style.transition = ''
+          el.style.zIndex = ''
+          el.style.filter = ''
+          el.style.background = ''
+        }, quick ? 0 : SLIDE_MS + 20)
+      }
+      if (slot !== d.at) props.onMove(id, d.first + slot)
+      requestAnimationFrame(() => landing.current?.())
+    }
+    const onUp = (u: PointerEvent) => {
+      if (drag) follow(drag, u.clientX, u.clientY)
+      finish(overStrip(stripRef.current, u.clientX, u.clientY))
+    }
+    const onCancel = () => finish(false)
+    const onKey = (k: KeyboardEvent) => {
+      if (k.key !== 'Escape' || !drag) return
+      k.preventDefault()
+      k.stopPropagation()
+      finish(false)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKey, true)
   }
   return (
     <div
+      ref={stripRef}
       data-tauri-drag-region
       role="tablist"
       aria-label="Terminals"
@@ -332,7 +454,7 @@ export function TabStrip(props: TabStripProps) {
                 title={page ? `${title} · ${page} — a browser tab, not an agent` : 'A new browser tab'}
                 className={`group relative flex h-[32px] max-w-[240px] flex-1 basis-[160px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none app-tab-page ${first ? 'app-tab-page-first' : ''} ${
                   active ? 'app-tab-front min-w-[160px] bg-bg font-semibold text-fg' : 'min-w-[92px] text-fg-muted hover:text-fg'
-                } ${dragging === t.id ? 'opacity-60' : ''}`}
+                }`}
               >
                 <GlobeIcon size={13} className={active ? 'text-accent' : 'text-fg-faint'} />
                 <span data-row-title className="min-w-[4ch] flex-1 truncate">{title}</span>
@@ -395,7 +517,7 @@ export function TabStrip(props: TabStripProps) {
               data-session-id={s?.session_id}
               className={`group relative flex h-[32px] max-w-[340px] flex-1 basis-[220px] cursor-default select-none items-center gap-1 rounded-t-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
                 active ? (file !== undefined ? 'app-tab-front min-w-[232px] bg-bg font-semibold text-fg' : 'app-tab-front min-w-[232px] app-slab font-semibold text-fg') : 'app-tab-back min-w-[92px] text-fg-muted hover:text-fg'
-              } ${dragging === t.id ? 'opacity-60' : ''}`}
+              }`}
             >
               {file !== undefined && <FileIcon size={13} className="text-fg-faint" />}
               {alert && <span data-tab-alert={alert} aria-hidden className={`mx-0.5 inline-block h-[8px] w-[8px] shrink-0 rounded-full ${ALERT_DOT[alert]}`} />}
