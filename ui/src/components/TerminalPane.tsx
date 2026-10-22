@@ -105,6 +105,7 @@ import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
 import { UpdateNoticeBar } from './UpdateNoticeBar'
+import { newShellCloseKey, newShellHintText, onlyPrompt } from '@/lib/newshellhint'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
 export { reuploadGlyphs } from '@/lib/termatlas'
@@ -209,6 +210,7 @@ export function TerminalPane({
   composer,
   quickReplies = false,
   inputBox = false,
+  shellHint = false,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
@@ -227,6 +229,12 @@ export function TerminalPane({
   quickReplies?: boolean
   /** A Claude Code session: its input box gets the faint band (lib/terminputbox). */
   inputBox?: boolean
+  /**
+   * A shell tab: while it holds nothing but its prompt, one dim line under
+   * the prompt says what to run and how to close the tab (lib/newshellhint).
+   * An overlay; nothing is written into the PTY.
+   */
+  shellHint?: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -261,6 +269,10 @@ export function TerminalPane({
   const [boxHint, setBoxHint] = useState<{ top: number; height: number } | null>(null)
   // An agent's "update available" notice, found in the output (lib/termupdate).
   const [update, setUpdate] = useState<UpdateNotice | null>(null)
+  // The new shell's hint, where it sits (lib/newshellhint); null when not shown.
+  const [shellLine, setShellLine] = useState<{ top: number; left: number } | null>(null)
+  const shellHintRef = useRef(shellHint)
+  shellHintRef.current = shellHint
 
   useEffect(() => {
     const el = host.current
@@ -331,6 +343,45 @@ export function TerminalPane({
     const onPointerLeave = () => { pointerY = null; queueHint() }
     el.addEventListener('mousemove', onPointerMove)
     el.addEventListener('mouseleave', onPointerLeave)
+    // The new shell's hint: under the prompt while the shell holds nothing
+    // else, gone for good at the first key typed or the first output that
+    // moves the cursor past the prompt's rows. Placed once a frame at most.
+    let shellGone = false
+    let shellRaf = 0
+    let shellKey = ''
+    const placeShell = () => {
+      shellRaf = 0
+      let next: { top: number; left: number } | null = null
+      const b = term.buffer.active
+      if (!shellGone && !onlyPrompt(b)) shellGone = true
+      if (!shellGone && shellHintRef.current && gotOutput && wrapRef.current && term.rows > 0) {
+        const screen = el.querySelector<HTMLElement>('.xterm-screen')
+        const r = (screen ?? el).getBoundingClientRect()
+        const w = wrapRef.current.getBoundingClientRect()
+        const cell = r.height / term.rows
+        const row = b.baseY + (b.cursorY ?? 0) - b.viewportY + 1
+        next = { top: Math.round(r.top - w.top + Math.max(0, row) * cell), left: Math.round(r.left - w.left) }
+      }
+      const k = next ? `${next.top},${next.left}` : ''
+      if (k !== shellKey) { shellKey = k; setShellLine(next) }
+    }
+    const queueShell = () => { if (!shellRaf && !shellGone) shellRaf = requestAnimationFrame(placeShell) }
+    const dropShell = () => {
+      if (shellGone) return
+      shellGone = true
+      if (shellRaf) { cancelAnimationFrame(shellRaf); shellRaf = 0 }
+      shellKey = ''
+      setShellLine(null)
+    }
+    // A key typed into the terminal, or a paste; an app chord (⌘1, ⌘T…) is
+    // not typing into this tab.
+    const onShellKey = (e: KeyboardEvent) => {
+      if (['Meta', 'Control', 'Shift', 'Alt', 'CapsLock'].includes(e.key) || e.metaKey) return
+      if (ownsTerminalKey(e, isMac)) return
+      dropShell()
+    }
+    el.addEventListener('keydown', onShellKey, true)
+    el.addEventListener('paste', dropShell, true)
     const resultsSub = search.onDidChangeResults((r) => setResults({ index: r.resultIndex, count: r.resultCount }))
     const decorations = () => ({ decorations: searchColors(terminalTheme(prefs.theme)) })
     searchRef.current = {
@@ -561,6 +612,7 @@ export function TerminalPane({
     const sizeSub = term.onResize(({ cols, rows }) => {
       conn.resize(cols, rows)
       band.update()
+      queueShell()
     })
     const input = attachTerminalInput(term, el, (d) => conn.send(d), {
       isAppKey: (e) => ownsTerminalKey(e, isMac),
@@ -586,6 +638,7 @@ export function TerminalPane({
       lastBase = base
       band.update()
       if (pointerY !== null) queueHint()
+      queueShell()
       // Output going to a canvas whose context is gone is output nobody sees.
       if (visible) checkGl()
     })
@@ -881,7 +934,10 @@ export function TerminalPane({
       links.dispose()
       el.removeEventListener('mousemove', onPointerMove)
       el.removeEventListener('mouseleave', onPointerLeave)
+      el.removeEventListener('keydown', onShellKey, true)
+      el.removeEventListener('paste', dropShell, true)
       if (hintRaf) cancelAnimationFrame(hintRaf)
+      if (shellRaf) cancelAnimationFrame(shellRaf)
       band.dispose()
       bandRef.current = null
       updates.dispose()
@@ -952,6 +1008,13 @@ export function TerminalPane({
             <span style={{ color: foreground, opacity: 0.55 }}>
               {keys(INPUT_HIGHLIGHT_KEY)} {highlightOn ? 'hides the highlight' : 'highlights where you type'}
             </span>
+          </span>
+        </div>
+      )}
+      {shellLine && shellHint && phase === 'ready' && (
+        <div data-new-shell-hint role="note" aria-label={newShellHintText()} className="pointer-events-none absolute right-3 z-10 truncate" style={{ top: shellLine.top, left: shellLine.left }}>
+          <span aria-hidden className="mono text-[11.5px]" style={{ color: foreground, opacity: 0.45 }}>
+            Run <span style={{ opacity: 0.85 }}>claude</span>, <span style={{ opacity: 0.85 }}>codex</span> or any command · {newShellCloseKey()} closes this tab
           </span>
         </div>
       )}

@@ -25,7 +25,11 @@ export interface NewMenuItem {
   run: () => void
 }
 
-export function NewMenu({ items }: { items: readonly NewMenuItem[] }) {
+/**
+ * `title` is the button's hover tooltip; the strip passes "New terminal" and
+ * its key (⌘T, Ctrl+Shift+T off macOS), spelled by `keys()`.
+ */
+export function NewMenu({ items, title = 'New…' }: { items: readonly NewMenuItem[]; title?: string }) {
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState(0)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
@@ -78,7 +82,7 @@ export function NewMenu({ items }: { items: readonly NewMenuItem[] }) {
       <button
         ref={button}
         type="button"
-        title="New…"
+        title={title}
         aria-label="New"
         aria-haspopup="menu"
         aria-expanded={open}

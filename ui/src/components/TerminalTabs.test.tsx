@@ -15,12 +15,13 @@ import { setComposerEnabled } from '@/lib/composer'
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
 // A pane that counts its renders: xterm is beside the point here.
-const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>(), quick: new Map<string, boolean>() }))
+const panes = vi.hoisted(() => ({ renders: new Map<string, number>(), composer: new Map<string, unknown>(), quick: new Map<string, boolean>(), hint: new Map<string, boolean>() }))
 vi.mock('./TerminalPane', () => ({
-  TerminalPane: ({ sessionId, composer, quickReplies }: { sessionId: string; composer?: unknown; quickReplies?: boolean }) => {
+  TerminalPane: ({ sessionId, composer, quickReplies, shellHint }: { sessionId: string; composer?: unknown; quickReplies?: boolean; shellHint?: boolean }) => {
     panes.renders.set(sessionId, (panes.renders.get(sessionId) ?? 0) + 1)
     panes.composer.set(sessionId, composer)
     panes.quick.set(sessionId, !!quickReplies)
+    panes.hint.set(sessionId, !!shellHint)
     return null
   },
 }))
@@ -459,6 +460,12 @@ describe('TerminalStack composer', () => {
       unmount()
     }
   })
+
+  it('offers the new-shell hint to a shell pane only, never to an agent', () => {
+    panes.hint.clear()
+    render(stack())
+    expect(Object.fromEntries(panes.hint)).toEqual({ mine: false, theirs: false, sh: true, gone: false })
+  })
 })
 
 // Owner, 2026-10-14 (translated): "The repo name on the right doesn't fit — it
@@ -567,5 +574,30 @@ describe('a page tab', () => {
     expect(screen.getByTestId('page')).toBeTruthy()
     expect(renderPage).toHaveBeenCalledWith(expect.objectContaining({ id: 'w' }), expect.objectContaining({ id: 'w-pane' }), true)
     expect(panes.renders.has('page:w')).toBe(false)
+  })
+})
+
+// The owner-approved mockup, 2026-10-22: the + says what ⌘T does.
+describe("the tab strip's + button", () => {
+  const plus = () => {
+    const r = render(
+      <TabStrip tabs={[tab('one')]} activeTabId="one" sessions={new Map()} permissions={new Set()} inspectorOpen={false} sidebarOpen
+        onActivate={() => {}} onDetach={() => {}} onMove={() => {}} onNewAgent={() => {}} onNewShell={() => {}} onToggleInspector={() => {}} />,
+    )
+    const title = screen.getByRole('button', { name: 'New' }).getAttribute('title')
+    r.unmount()
+    return title
+  }
+
+  it('hovers "New terminal" with the key in this platform\'s spelling', () => {
+    expect(plus()).toBe('New terminal ⌘T')
+    for (const os of ['Win32', 'Linux x86_64']) {
+      const platform = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(os)
+      try {
+        expect(plus()).toBe('New terminal Ctrl+Shift+T')
+      } finally {
+        platform.mockRestore()
+      }
+    }
   })
 })

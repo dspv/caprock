@@ -364,8 +364,14 @@ others. Installing it: [install-app.md](install-app.md).
   project's name in the project's colour; when room runs short the
   session's name is shortened first, and a project name that still does
   not fit scrolls into view while you point at the tab. The tooltip has
-  both in full. The amber + opens a menu: New agent, Quick
-  chat, New shell, Run saved…, Open file, Add project, each with its key.
+  both in full. The amber + (its tooltip: *New terminal* ⌘T, Ctrl+Shift+T
+  on Windows and Linux) opens a menu: New agent, Quick chat, New shell, Run
+  saved…, Open file, Add project, each with its key.
+- **A new shell says what to do.** Under the prompt of an empty new shell
+  one dim line reads *Run claude, codex or any command · ⌘W closes this tab*
+  (Ctrl+Shift+W on Windows and Linux). Caprock draws it over the terminal;
+  nothing is typed into the shell. It goes at the first key you type, and a
+  tab that already has output never shows it.
 - **Several attempts at once.** In *New agent*, choose *New copy from a
   branch* and set *Attempts* to 2, 3 or 4, then write the first message. The
   same agent gets the same message in that many separate copies
