@@ -54,6 +54,28 @@ func TestLookupPrefixAndProviderIDs(t *testing.T) {
 	}
 }
 
+// A gateway's free variant is priced at $0, not left unpriced (issue #787).
+func TestFreeModelsPriceAtZero(t *testing.T) {
+	tb, _ := Embedded()
+	d := event.TokenDelta{In: 1000, Out: 1000, CacheRead: 1000, CacheWrite: 1000}
+	for _, id := range []string{
+		"deepseek-v4.1-flash-free",
+		"opencode/deepseek-v4.1-flash-free",
+		"deepseek/deepseek-chat:free",
+		"Some-Model-FREE",
+	} {
+		usd, ok := tb.Price(id, d)
+		if !ok || usd != 0 {
+			t.Errorf("Price(%q) = %v,%v; want 0,true", id, usd, ok)
+		}
+	}
+	for _, id := range []string{"freedom-1", "model-freebie", "free"} {
+		if _, ok := tb.Lookup(id); ok {
+			t.Errorf("Lookup(%q) matched; only a -free or :free suffix is free", id)
+		}
+	}
+}
+
 func TestPriceArithmetic(t *testing.T) {
 	tb, _ := Embedded()
 	// Claude Opus 5: $5 in, $6.25 5m write, $10 1h write, $0.50 read, $25 out (per MTok).
