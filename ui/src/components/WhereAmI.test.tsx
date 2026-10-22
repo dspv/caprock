@@ -18,7 +18,7 @@ import { parseHash, type Route } from '@/lib/router'
 vi.mock('@/lib/live', async (orig) => {
   const actual = await orig<typeof import('@/lib/live')>()
   const link = { phase: 'live', attempt: 0, nextAt: null, downSince: null }
-  return { ...actual, useLiveLink: () => link, live: { heardAt: () => Date.now(), reconnectNow: () => {} } }
+  return { ...actual, useLiveLink: () => link, live: { heardAt: () => Date.now(), reconnectNow: () => {}, onFrame: () => () => {} } }
 })
 
 vi.mock('@/lib/api', async (orig) => {
