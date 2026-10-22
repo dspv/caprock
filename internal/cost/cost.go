@@ -175,7 +175,21 @@ func (t *Table) LookupAt(model string, at time.Time) (Model, bool) {
 			return row, true
 		}
 	}
+	if isFreeModel(m) {
+		return Model{ID: m, Display: m}, true
+	}
 	return Model{}, false
+}
+
+// isFreeModel reports whether a gateway names the id as its no-charge
+// variant: OpenCode Zen spells it "-free" ("deepseek-v4.1-flash-free",
+// issue #787) and OpenRouter ":free" ("deepseek/deepseek-chat:free"). The
+// gateway bills nothing for those, so $0 is the measured price, not a guess —
+// and an unpriced line asking the user to report a model that is free by name
+// is noise. A row in the table still wins, as for any other id. The row has
+// no context window, which is not known from the id.
+func isFreeModel(m string) bool {
+	return strings.HasSuffix(m, "-free") || strings.HasSuffix(m, ":free")
 }
 
 // appliesAt reports whether this row's prices were in force at `at`.
