@@ -639,6 +639,19 @@ an assumption that GPU rendering is always more expensive.
 selection, reconnect offsets and typed-input acknowledgments remain correct.
 Measure app helpers and holders as well as the daemon heap.
 
+**Implemented 2026-10-22.** Ten tabs in Playwright's headless shell
+(1440×900, 118 columns), each filled past its scrollback: xterm's buffers
+held 102.9 MB and the renderer's footprint was 278 MB, about 1.4 KB a line
+(12 bytes a cell). A tab hidden ten minutes now trims its scrollback to
+1,000 lines and gets 10,000 back when shown (`HIDDEN_TRIM_MS`,
+`HIDDEN_SCROLLBACK`): 23.6 MB of buffers, renderer 193 MB against 294 MB
+before the trim in the same run. A lower scrollback for every tab (3,000)
+gave 47.9 MB and was not chosen, since it also cuts the tab in use. No
+terminal is evicted, so nothing is rebuilt from the ring; the cost is
+scrollback older than 1,000 lines in a tab left alone for ten minutes.
+Numbers and method: [04-ui.md](../.ai/04-ui.md) under *Scrollback is 10,000
+lines*.
+
 ### F10 — P2: gate monitoring by actual viewing demand
 
 **Evidence:** [resourceLoop/someoneLooking](../internal/daemon/resources.go)

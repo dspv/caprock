@@ -183,10 +183,18 @@ func (m *Manager) ObserveHook(sig HookSignal) {
 		}
 	case "SessionEnd":
 		m.clearPermission(sig.SessionID)
-		m.permMu.Lock()
-		delete(m.calls, sig.SessionID)
-		m.permMu.Unlock()
+		m.forgetCalls(sig.SessionID)
 	}
+}
+
+// forgetCalls drops the PreToolUse calls kept for a session: on SessionEnd,
+// and on the process's exit, since a session killed or crashed sends no
+// SessionEnd and its calls (each a whole tool input, a Write's file among
+// them) were kept for as long as the daemon ran.
+func (m *Manager) forgetCalls(sessionID string) {
+	m.permMu.Lock()
+	delete(m.calls, sessionID)
+	m.permMu.Unlock()
 }
 
 // preCall is one PreToolUse a session made, kept to name the call a later

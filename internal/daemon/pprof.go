@@ -2,13 +2,17 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"runtime/metrics"
 	"time"
+
+	"modernc.org/libc"
 )
 
 // PprofEnv names the opt-in profiling listener. Unset (the default) means no
@@ -43,6 +47,7 @@ func startPprof(ctx context.Context, log *slog.Logger) {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.HandleFunc("/debug/caprock/mem", memHandler)
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
@@ -66,4 +71,42 @@ func loopbackAddr(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// memMetrics are the runtime/metrics memHandler reports, in bytes.
+var memMetrics = []string{
+	"/memory/classes/total:bytes",
+	"/memory/classes/heap/objects:bytes",
+	"/memory/classes/heap/unused:bytes",
+	"/memory/classes/heap/free:bytes",
+	"/memory/classes/heap/released:bytes",
+	"/memory/classes/heap/stacks:bytes",
+	"/gc/gomemlimit:bytes",
+}
+
+// memHandler splits the daemon's memory for a developer measuring it
+// (10-infrastructure.md § Profiling the daemon): what the Go runtime holds,
+// from runtime/metrics, and what SQLite holds. SQLite does not allocate on
+// the Go heap: the driver's C library (modernc.org/libc) maps memory of its
+// own, which a heap profile never shows and the process footprint does.
+// libc counts it only in a build with `-tags memory.counters`; in any other
+// build sqlite_bytes is 0, which says "not counted", not "none".
+func memHandler(w http.ResponseWriter, _ *http.Request) {
+	samples := make([]metrics.Sample, len(memMetrics))
+	for i, name := range memMetrics {
+		samples[i].Name = name
+	}
+	metrics.Read(samples)
+	out := map[string]any{}
+	for _, s := range samples {
+		if s.Value.Kind() == metrics.KindUint64 {
+			out[s.Name] = s.Value.Uint64()
+		}
+	}
+	st := libc.MemStat()
+	out["sqlite_bytes"] = st.Bytes
+	out["sqlite_allocs"] = st.Allocs
+	out["sqlite_mmaps"] = st.Mmaps
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }

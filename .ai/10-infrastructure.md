@@ -207,6 +207,55 @@ paired phone can reach. The Go heap is not the whole footprint: SQLite's page
 caches and sorter memory are allocated by the driver outside it, so compare
 `footprint <pid>` with the heap profile's `HeapInuse`.
 
+The same listener serves `/debug/caprock/mem`: JSON with the Go runtime's
+own figures (`runtime/metrics`: everything it has mapped, live objects,
+free and released heap, stacks, the memory limit) and SQLite's
+(`sqlite_bytes`, from the driver's C allocator in `modernc.org/libc`). The
+allocator counts only in a build with `-tags memory.counters`; anywhere
+else `sqlite_bytes` is 0, meaning not counted.
+
+**Memory under load, 2026-10-22.** A daemon built that way, on the stand
+above plus four fake `claude` terminals at 20 lines a second, Playwright's
+headless shell holding the app page and the Now screen, and six synthetic
+Claude sessions replaying `testdata/transcripts/normal.jsonl` with
+1–10 KB texts and tool results, one turn a second each with its hooks, a
+fresh session every 150 turns: 9,676 turns, 66 sessions and 180 MB of
+transcript in 30 minutes, then 10 minutes of viewers alone. Sampled every
+minute; the live heap is the heap profile's in-use total after a forced
+collection (a sampled figure):
+
+| Minute | Footprint | Go mapped | Go heap live | SQLite allocator |
+| ------ | --------- | --------- | ------------ | ---------------- |
+| 0      | 25 MB     | 23 MB     | 9 MB         | 3 MB             |
+| 10     | 90 MB     | 64 MB     | 19 MB        | 41 MB            |
+| 31     | 138 MB    | 86 MB     | 22 MB        | 57 MB            |
+| 40     | 152 MB    | 86 MB     | 19 MB        | 69 MB            |
+
+- **No leak in the Go heap.** What is live after a collection was 19 MB at
+  ten minutes and 19 MB at forty, with 66 sessions seen instead of 18: the
+  per-session event cache (`recentCache`, at most 256 sessions), the
+  terminal rings (256 KiB each) and the bus's replay ring. The goroutine
+  count stayed at 53–70.
+- **What grows is headroom and SQLite.** The Go runtime maps about four
+  times its live heap under this load (the collector's goal is twice what is
+  live, and the polled summaries allocate megabytes a second). SQLite's
+  memory follows the database (100 MB at minute ten): page caches and
+  sorters, bounded per connection by `cache_size` (16 MiB, eight
+  connections; internal/store/store.go). It kept growing after the writes
+  stopped, while the viewers' queries scanned the larger database. RSS
+  jumped to 350–470 MB in the same minutes: clean pages of the mapped
+  database, which the system takes back first and the footprint does not
+  count.
+- **The soft memory limit** (`SoftMemoryLimit`, 256 MiB on Go's memory
+  unless `GOMEMLIMIT` is set; internal/daemon/memlimit.go) sits three times
+  above the 86 MB this load reached, so it changed none of these figures;
+  it is a ceiling for spikes, never a target.
+- **After the fixes**, the same 40 minutes (9,806 turns) ended at 155 MB of
+  footprint, 86 MB mapped by Go, 23 MB live and 82 MB in SQLite: the same
+  within one run's noise. What was fixed grows over days (answer caches kept
+  each past day's keys) or with crashed sessions (their kept tool inputs),
+  which this run does not exercise; the unit tests do.
+
 ## Release checklist
 
 1. `14-build-status.md` and README progress bars updated; changelog assembled from its fragments (`python3 scripts/changelog.py assemble X.Y.Z YYYY-MM-DD`, see [docs/RELEASING.md](../docs/RELEASING.md)).

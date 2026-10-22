@@ -177,6 +177,9 @@ type answerCache struct {
 	// the history behind it grows. Zero means ttl alone.
 	costScale   int
 	costCeiling time.Duration
+	// swept is when prune last dropped the answers too old to show
+	// (sweepEvery). Guarded by mu.
+	swept time.Time
 	// bg tracks background refreshes so tests can wait for them.
 	bg sync.WaitGroup
 }
@@ -330,12 +333,28 @@ func (c *answerCache) waitBudget(ctx context.Context, key string, e *answerEntry
 	return e.val, e.at, true, e.err
 }
 
-// prune is called with c.mu held before a key is added. Past maxKeys it drops
-// the answers too old to show, then the oldest settled ones.
-func (c *answerCache) prune() {
-	if c.maxKeys <= 0 || len(c.m) < c.maxKeys {
-		return
+// sweepEvery is how often prune looks for answers too old to show.
+const sweepEvery = time.Minute
+
+// deadAfter is the age past which e is never handed back again: past its
+// freshness and maxStale, and past the recheck window when an unchanged
+// version could still renew it. getAt deletes such an answer when its key is
+// asked for.
+func (c *answerCache) deadAfter(e *answerEntry) time.Duration {
+	d := max(c.fresh(e), c.maxStale)
+	if c.version != nil {
+		d = max(d, c.recheckAfter())
 	}
+	return d
+}
+
+// prune is called with c.mu held before a key is added. At most once a
+// sweepEvery it drops the answers too old to show: most keys carry the start
+// of their range (today's date, this week), so yesterday's key is never asked
+// for again, and getAt alone never deleted it — every cache without maxKeys
+// kept a full response per key and day for as long as the daemon ran (memory
+// audit, 2026-10-22). Past maxKeys it then drops the oldest settled ones.
+func (c *answerCache) prune() {
 	now := c.now()
 	settled := func(e *answerEntry) bool {
 		select {
@@ -345,10 +364,17 @@ func (c *answerCache) prune() {
 			return false
 		}
 	}
-	for k, e := range c.m {
-		if settled(e) && now.Sub(e.at) >= c.maxStale {
-			delete(c.m, k)
+	full := c.maxKeys > 0 && len(c.m) >= c.maxKeys
+	if full || now.Sub(c.swept) >= sweepEvery {
+		c.swept = now
+		for k, e := range c.m {
+			if settled(e) && now.Sub(e.at) >= c.deadAfter(e) {
+				delete(c.m, k)
+			}
 		}
+	}
+	if !full {
+		return
 	}
 	for len(c.m) >= c.maxKeys {
 		oldest := ""

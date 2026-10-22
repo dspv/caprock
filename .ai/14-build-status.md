@@ -77,6 +77,30 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-22 — unreleased: memory of the window and the daemon
+
+After four hours the owner's window was about 600 MB and the daemon about
+400 MB, and a user's Mac froze when memory ran out. Measured on throwaway
+stands (never the live install):
+
+- **Window.** Every tab kept 10,000 lines of xterm scrollback, 12 bytes a
+  cell: ten full tabs held 103 MB of buffers at 118 columns. A tab out of
+  sight ten minutes now trims to 1,000 lines and gets 10,000 back when shown;
+  the same ten tabs then hold 24 MB (renderer footprint 294 → 193 MB). Not
+  disposing and rebuilding from the ring was deliberate: the ring starts
+  mid-frame. Table and method in [04-ui.md](04-ui.md) under *Scrollback is
+  10,000 lines*; audit F9.
+- **Daemon.** Under 30 minutes of heavy synthetic ingest the live Go heap
+  stayed at about 20 MB (no leak); the footprint grew 25 → 152 MB as Go's
+  headroom (up to 86 MB mapped) and SQLite's page caches (69 MB, bounded by
+  `cache_size`) grew. Fixed what grows without bound: dashboard answer
+  caches dropped no key, so yesterday's ranges stayed for the daemon's life
+  (now swept once a minute when too old to show); an owned session that
+  crashed kept up to 64 tool inputs. A soft 256 MiB `SetMemoryLimit` on
+  Go's memory, a ceiling the load never reached. `/debug/caprock/mem` on the
+  profiling listener splits Go from SQLite. See
+  [10-infrastructure.md](10-infrastructure.md) § Profiling the daemon.
+
 ### 2026-10-22 — 0.147.0: modules on Telegram, a clear Telegram status, Apple Mail import
 
 A minor release, one batch PR (#790). A module can send a message through the owner's paired Telegram bot, with buttons and replies written to its own store (`POST /v1/x/<id>/telegram`), and show a Caprock notification that opens it (`POST /v1/x/<id>/notify`); ADR-076 is amended. Saving a bot token clears the last alert failure and says to send a test alert, and an idle bot explains that it reads nothing. Mail's import says plainly when macOS keeps Apple Mail's account list from Caprock (Full Disk Access) and offers iCloud through a guided app-specific password. The inspector's folded rows shorten instead of clipping mid-word, and the Codex race tests no longer time out.
