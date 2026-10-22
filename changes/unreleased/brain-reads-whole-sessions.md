@@ -7,4 +7,5 @@ kind: Fixed
   read kept only the newest part and the older part was never read. A wake
   still makes at most four calls, so a read costs what it did. The
   extraction is also told to keep a decision or standing rule you state
-  ("from now on", "rule:") as a decision.
+  ("from now on", "rule:") as a decision, and a stretch of mostly your own
+  prompts is read rather than skipped for want of the agent's prose.

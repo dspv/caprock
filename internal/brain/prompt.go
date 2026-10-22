@@ -35,6 +35,12 @@ const (
 	// promptChars and answerChars clip one passage.
 	promptChars = 600
 	answerChars = 2500
+	// MinPromptRunes is how much of the user's own prompts make a read
+	// worth it without the agent's prose: a decision or a standing rule is
+	// mostly said in a prompt ("from now on, never push to master" is 40
+	// runes; a few of those, or one explained, pass), while "fix it" and
+	// "yes" do not. A read is skipped only when it has neither.
+	MinPromptRunes = 200
 	// MinProseRunes is how much of the agent's own prose a session needs
 	// before it is worth a read; less is a quick question, and is skipped.
 	MinProseRunes = 300
@@ -46,11 +52,20 @@ type Input struct {
 	Passages []store.BrainPassage // in the order numbered, 1-based
 	// ProseRunes is how much of the agent's prose was sent, before clipping.
 	ProseRunes int
+	// PromptRunes is how much of the user's prompts was sent, before
+	// clipping.
+	PromptRunes int
 	// Through is the event id of the last passage given that the prompt
 	// covers: how far a read of it may move the session's cursor. Cut is
 	// set when passages after it did not fit and wait for the next read.
 	Through int64
 	Cut     bool
+}
+
+// WorthReading reports whether a read of it is worth a call: enough of the
+// agent's prose, or enough of the user's prompts, where decisions are said.
+func (in Input) WorthReading() bool {
+	return in.ProseRunes >= MinProseRunes || in.PromptRunes >= MinPromptRunes
 }
 
 // BuildInput numbers a session's passages, oldest first, and writes the
@@ -71,8 +86,9 @@ func BuildInput(project string, topics []string, passages []store.BrainPassage) 
 			in.Through = p.EventID
 			continue
 		}
-		prose := 0
+		prose, prompt := 0, 0
 		if p.User {
+			prompt = len([]rune(t))
 			t = clip(t, promptChars)
 		} else {
 			prose = len([]rune(t))
@@ -84,6 +100,7 @@ func BuildInput(project string, topics []string, passages []store.BrainPassage) 
 			break
 		}
 		in.ProseRunes += prose
+		in.PromptRunes += prompt
 		in.Through = p.EventID
 		lines = append(lines, line{p, t})
 	}

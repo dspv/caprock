@@ -4227,8 +4227,9 @@ searching prose.
   read a full four is followed by the next three seconds later, so a
   backfill reads straight through within the daily limit instead of four
   sessions per five minutes (2026-10-15: the screen that shows the build
-  as it happens sat still between wakes). A session whose agent wrote fewer than 300
-  characters is recorded as skipped and never sent. The read is the
+  as it happens sat still between wakes). A read with fewer than 300
+  characters of agent prose and fewer than 200 of the user's prompts is
+  recorded as skipped and never sent. The read is the
   session's prompts and answers (main thread only, at most 24,000
   characters), the project's name and the topics
   already in the brain, sent on stdin to `claude -p --output-format json
@@ -4255,7 +4256,10 @@ searching prose.
   four calls; what is left waits for the next wake, three seconds later,
   so the per-read cost, the calls per wake and the daily limit are
   unchanged. The instructions also say to keep an explicit decision or
-  standing rule the user states ("from now on", "rule:") as a decision.
+  standing rule the user states ("from now on", "rule:") as a decision,
+  and a read with little agent prose is still sent when it carries 200
+  runes or more of the user's prompts, where such decisions are mostly
+  said; only a read with neither is skipped.
 - **What is kept, and its limits.** Each memory records the read it came
   from (`brain_runs`: model, tokens, cost, status) and the passage it
   cites, so its source link opens the moment it was said; it hangs off the

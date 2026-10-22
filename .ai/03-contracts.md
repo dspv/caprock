@@ -4054,7 +4054,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   passage?, related?, contradicts?}]}`, at most eight kept: each a node with
   `run_id`, `manual: false` and the cited passage's event as its source,
   `part_of` the project and its topics, `relates`/`contradicts` to the
-  others named. Fewer than 300 runes of agent prose: recorded `skipped`,
+  others named. Fewer than 300 runes of agent prose and fewer than 200 of the user's
+  prompts in a read: recorded `skipped`,
   never sent. A failure is recorded with its error and retried after 15
   minutes, doubling; after four the session waits for new prose. The
   project is the session's own, except for a session whose `cwd` is under

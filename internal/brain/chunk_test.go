@@ -223,3 +223,59 @@ func TestTheEstimateCountsEveryChunk(t *testing.T) {
 		t.Errorf("estimate %+v", est)
 	}
 }
+
+// rule is a prompt that states a standing rule, about 220 runes.
+var rule = "From now on, never push to master without a green Windows job; the owner decided this after the last release broke the installer. " +
+	"Rule: a release waits for the owner's word, and don't ever upgrade his install yourself."
+
+func TestAReadOfMostlyUserPromptsIsSentNotSkipped(t *testing.T) {
+	e := newEnv(t, twoMemories)
+	e.session(t, "rules", "acme-api", 20*time.Minute, [2]string{rule, "Done."}, [2]string{"And the changelog?", "Noted."})
+	e.session(t, "tiny", "acme-api", 30*time.Minute, [2]string{"fix it", "Done."})
+	if n, _ := e.eng.Wake(context.Background()); n != 1 || e.calls != 1 || !strings.Contains(e.reqs[0].Prompt, "User: From now on, never push to master") {
+		t.Fatalf("read %d, calls %d: the prompts that carry a rule were not sent", n, e.calls)
+	}
+	if runs := runsOf(t, e, "tiny"); len(runs) != 1 || runs[0].Status != store.BrainRunSkipped {
+		t.Errorf("a read with neither prose nor prompts worth it: %+v", runs)
+	}
+}
+
+var instructionMark = regexp.MustCompile(`User: instruction (i\d{3}) `)
+
+func TestAChunkOfMostlyUserPromptsInALongSessionIsSent(t *testing.T) {
+	e := newEnv(t, twoMemories)
+	turns := make([][2]string, 0, 170)
+	for i := 0; i < 20; i++ {
+		turns = append(turns, [2]string{fmt.Sprintf("question q%03d", i), fmt.Sprintf("answer a%03d ", i) + strings.Repeat("The fixture is rewritten by another test. ", 57)})
+	}
+	// Then a long stretch of the user's own instructions, answered in a word:
+	// a chunk of it has almost no agent prose.
+	for i := 0; i < 150; i++ {
+		turns = append(turns, [2]string{fmt.Sprintf("instruction i%03d ", i) + rule, "Ok."})
+	}
+	e.session(t, "long", "acme-api", 20*time.Minute, turns...)
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		if n, _ := e.eng.Wake(ctx); n == 0 {
+			break
+		}
+	}
+	seen := map[string]bool{}
+	promptOnly := false
+	for _, r := range e.reqs {
+		if !strings.Contains(r.Prompt, "Agent: answer a") {
+			promptOnly = true
+		}
+		for _, m := range instructionMark.FindAllStringSubmatch(r.Prompt, -1) {
+			seen[m[1]] = true
+		}
+	}
+	if !promptOnly || len(seen) != 150 {
+		t.Errorf("a chunk of only prompts sent: %v; %d of 150 prompt-only turns were sent", promptOnly, len(seen))
+	}
+	for _, r := range runsOf(t, e, "long") {
+		if r.Status != store.BrainRunOK {
+			t.Errorf("a chunk was %s: %+v", r.Status, r)
+		}
+	}
+}

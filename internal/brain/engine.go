@@ -347,7 +347,7 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		return false, 0, err
 	}
 	run.ThroughEventID = upTo
-	if in.ProseRunes < MinProseRunes {
+	if !in.WorthReading() {
 		run.Status, run.FinishedAt = store.BrainRunSkipped, started
 		if _, err := store.InsertBrainRun(ctx, db, run); err != nil {
 			return false, 0, err
@@ -875,7 +875,7 @@ func (e *Engine) EstimateFrom(ctx context.Context, since int64) (Estimate, error
 			if err != nil {
 				return Estimate{}, err
 			}
-			if in.ProseRunes >= MinProseRunes {
+			if in.WorthReading() {
 				if !counted {
 					est.Sessions++
 					counted = true
