@@ -11,6 +11,7 @@
  */
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { SessionSummary } from '@/lib/api'
+import { SLIDE_MS, clampOffset, reducedMotion, shiftFor, slotFor } from '@/lib/dragSlot'
 import { ownTab, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
 import { dotOf, sessionAbout, sessionTitle } from '@/lib/sidebar'
 import { renamable } from '@/lib/sessionNames'
@@ -156,9 +157,6 @@ export function TabProject({ name, hue }: { name: string; hue: number }) {
   )
 }
 
-/** How long the other tabs take to make room, and a released tab to land. */
-const SLIDE_MS = 150
-
 /** A tab being dragged: its group laid out as it was at the start, and the slot it would land in. */
 interface TabDrag {
   group: HTMLElement[]
@@ -170,10 +168,6 @@ interface TabDrag {
   step: number
   /** The strip index of the group's first tab. */
   first: number
-}
-
-function reducedMotion(): boolean {
-  try { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches } catch { return false }
 }
 
 /** Whether a point is over the strip: a little give above and below, none at the ends. */
@@ -242,23 +236,15 @@ export function TabStrip(props: TabStripProps) {
       try { el.setPointerCapture(pointer) } catch { /* jsdom, or the pointer is gone */ }
     }
     const follow = (d: TabDrag, x: number, y: number) => {
-      const r = d.rects[d.at]!
-      const dx = Math.max(d.rects[0]!.left - r.left, Math.min(x - x0, d.rects[d.rects.length - 1]!.right - r.right))
+      const spans = d.rects.map((o) => ({ start: o.left, size: o.width }))
+      const dx = clampOffset(spans, d.at, x - x0)
       el.style.transform = `translateX(${dx}px)`
       // Off the strip the slot closes: a release there moves nothing.
-      let slot = d.at
-      if (overStrip(stripRef.current, x, y)) {
-        const mid = r.left + dx + r.width / 2
-        d.rects.forEach((o, j) => {
-          const c = o.left + o.width / 2
-          if (j > d.at && c <= mid) slot++
-          if (j < d.at && c >= mid) slot--
-        })
-      }
+      const slot = overStrip(stripRef.current, x, y) ? slotFor(spans, d.at, dx) : d.at
       d.slot = slot
       d.group.forEach((t, j) => {
         if (j === d.at) return
-        const shift = j > d.at && j <= slot ? -d.step : j < d.at && j >= slot ? d.step : 0
+        const shift = shiftFor(j, d.at, slot, d.step)
         t.style.transform = shift ? `translateX(${shift}px)` : ''
       })
     }

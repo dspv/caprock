@@ -4,7 +4,7 @@
  * their places; only if moved by hand … fixed positions, I orient visually
  * by them"), and a project row carries its ⌘1–⌘9 key.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { Project } from '@/lib/projects'
 import type { SessionSummary } from '@/lib/api'
@@ -57,9 +57,21 @@ const three = () => [
   live({ session_id: 'c', title: 'Third', started_at: 3 }),
 ]
 
-const original = document.elementFromPoint
 beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
-afterEach(() => { document.elementFromPoint = original })
+
+const li = (k: string) => document.querySelector(`[data-row-key="${k}"]`) as HTMLElement
+
+/**
+ * jsdom lays nothing out: under alpha, row a spans 0..38, b 38..76 and c,
+ * a taller one, 76..126, in a list 240 wide from 0 to 130.
+ */
+function layout() {
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect
+  const tops: Record<string, [number, number]> = { a: [0, 38], b: [38, 38], c: [76, 50] }
+  for (const [k, [top, h]] of Object.entries(tops)) li(k).getBoundingClientRect = () => rect(0, top, 240, h)
+  li('a').parentElement!.getBoundingClientRect = () => rect(0, 0, 240, 130)
+}
 
 describe('rows keep their places', () => {
   it('does not move a row picked from the list: opened as a tab and brought to the front, it stays where it was', () => {
@@ -90,21 +102,108 @@ describe('rows keep their places', () => {
     expect(rows()).toEqual(['a', 'b', 'c', 'n'])
   })
 
-  it('moves a row dragged onto another, keeps it across a restart, and opens nothing on the release', () => {
+  it('drags a row under the pointer, the others making room by its own height, and drops it in that slot', () => {
     const p = props(three(), [])
     const first = render(<Sidebar {...p} />)
-    const li = (k: string) => document.querySelector(`[data-row-key="${k}"]`) as HTMLElement
-    document.elementFromPoint = () => li('a')
+    layout()
     fireEvent.pointerDown(li('c'), { button: 0, clientX: 20, clientY: 100 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 98 })
+    // Under the 4px threshold: still a click.
+    expect(li('c').dataset.dragging).toBeUndefined()
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 90 })
+    expect(li('c').dataset.dragging).toBe('true')
+    expect(li('c').style.transform).toBe('translateY(-10px)')
+    expect(li('c').style.zIndex).toBe('10')
+    expect(li('b').style.transform).toBe('')
+    // Its top past b's middle: b slides down by c's height (50), not its own.
     fireEvent.pointerMove(window, { clientX: 20, clientY: 60 })
-    fireEvent.pointerUp(window, { clientX: 20, clientY: 40 })
+    expect(li('c').style.transform).toBe('translateY(-40px)')
+    expect(li('b').style.transform).toBe('translateY(50px)')
+    expect(li('a').style.transform).toBe('')
+    // Far up: held at the list's top, both others moved down.
+    fireEvent.pointerMove(window, { clientX: 20, clientY: -10 })
+    expect(li('c').style.transform).toBe('translateY(-76px)')
+    expect(li('a').style.transform).toBe('translateY(50px)')
+    expect(li('b').style.transform).toBe('translateY(50px)')
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 5 })
     fireEvent.click(li('c').querySelector('button')!)
     expect(p.onOpenLive).not.toHaveBeenCalled()
     expect(rows()).toEqual(['c', 'a', 'b'])
+    expect(li('c').dataset.dragging).toBeUndefined()
+    expect(li('a').style.transform).toBe('')
     expect(JSON.parse(localStorage.getItem(ROW_ORDER_KEY)!)).toEqual({ alpha: ['c', 'a', 'b'] })
     first.unmount()
     render(<Sidebar {...props(three(), [])} />)
     expect(rows()).toEqual(['c', 'a', 'b'])
+  })
+
+  it('drops a row dragged down in the slot under the pointer', () => {
+    render(<Sidebar {...props(three(), [])} />)
+    layout()
+    fireEvent.pointerDown(li('a'), { button: 0, clientX: 20, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 50 })
+    expect(li('a').style.transform).toBe('translateY(40px)')
+    expect(li('b').style.transform).toBe('translateY(-38px)')
+    expect(li('c').style.transform).toBe('')
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 50 })
+    expect(rows()).toEqual(['b', 'a', 'c'])
+  })
+
+  it('moves nothing when the row is released off the list, and the slot closes as it leaves', () => {
+    const p = props(three(), [])
+    render(<Sidebar {...p} />)
+    layout()
+    fireEvent.pointerDown(li('c'), { button: 0, clientX: 20, clientY: 100 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 40 })
+    expect(li('b').style.transform).toBe('translateY(50px)')
+    // Out to the side, past the sidebar: the slot closes, the row still follows.
+    fireEvent.pointerMove(window, { clientX: 400, clientY: 40 })
+    expect(li('b').style.transform).toBe('')
+    expect(li('c').style.transform).toBe('translateY(-60px)')
+    fireEvent.pointerUp(window, { clientX: 400, clientY: 40 })
+    expect(rows()).toEqual(['a', 'b', 'c'])
+    expect(localStorage.getItem(ROW_ORDER_KEY)).toBeNull()
+    expect(li('c').dataset.dragging).toBeUndefined()
+    fireEvent.click(li('c').querySelector('button')!)
+    expect(p.onOpenLive).not.toHaveBeenCalled()
+  })
+
+  it('puts the row back on Escape, and the release after moves nothing', () => {
+    render(<Sidebar {...props(three(), [])} />)
+    layout()
+    fireEvent.pointerDown(li('a'), { button: 0, clientX: 20, clientY: 10 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 120 })
+    expect(li('a').style.transform).toBe('translateY(88px)')
+    expect(li('c').style.transform).toBe('translateY(-38px)')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(li('a').style.transform).toBe('')
+    expect(li('c').style.transform).toBe('')
+    expect(li('a').dataset.dragging).toBeUndefined()
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 120 })
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 120 })
+    expect(rows()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('a click after a drag opens nothing, the next click opens the row, and a row\'s own button still works', async () => {
+    const p = props(three(), [tabOf('t1', 'a')])
+    render(<Sidebar {...p} />)
+    layout()
+    // Released off every row: no click follows, and the next real one is not eaten.
+    fireEvent.pointerDown(li('b'), { button: 0, clientX: 20, clientY: 50 })
+    fireEvent.pointerMove(window, { clientX: 20, clientY: 300 })
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 300 })
+    await new Promise((r) => setTimeout(r, 0))
+    fireEvent.click(li('b').querySelector('button')!)
+    expect(p.onOpenLive).toHaveBeenCalledTimes(1)
+    // The × on a tab's row closes the tab, a drag or not.
+    const close = li('a').querySelector('[data-row-actions] button') as HTMLElement
+    fireEvent.pointerDown(close, { button: 0, clientX: 230, clientY: 19 })
+    fireEvent.pointerMove(window, { clientX: 230, clientY: 100 })
+    expect(li('a').dataset.dragging).toBeUndefined()
+    fireEvent.pointerUp(window, { clientX: 230, clientY: 100 })
+    fireEvent.click(close)
+    expect(p.onCloseTab).toHaveBeenCalledWith('t1')
+    expect(rows()).toEqual(['a', 'b', 'c'])
   })
 
   it('moves a focused row with ⌥⇧↑ and ⌥⇧↓, focus staying on it; a plain ↓ still only moves focus', () => {

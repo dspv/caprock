@@ -31,7 +31,7 @@ test('a dragged tab follows the pointer and lands in the slot its neighbours ope
   const front = await selected()
   expect(front).toBe('2')
 
-  // Press the first tab and drag it right past the second's middle.
+  // Press the first tab and drag it right, its right edge past the second's middle.
   const first = tabs.nth(0)
   const a = (await first.boundingBox())!
   const b = (await tabs.nth(1).boundingBox())!
@@ -39,7 +39,7 @@ test('a dragged tab follows the pointer and lands in the slot its neighbours ope
   await page.mouse.move(a.x + 30, y)
   await page.mouse.down()
   await page.mouse.move(a.x + 40, y, { steps: 2 })
-  await page.mouse.move(b.x + b.width * 0.75, y, { steps: 8 })
+  await page.mouse.move(b.x + b.width * 0.1 + 30, y, { steps: 8 })
   await expect(first).toHaveAttribute('data-dragging', 'true')
   const moved = (await first.boundingBox())!
   expect(moved.x).toBeGreaterThan(a.x + 40)

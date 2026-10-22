@@ -58,7 +58,7 @@
  * its tabs close and it stays, its dot green. Delete and Backspace close
  * nothing.
  */
-import { Fragment, memo, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { Fragment, memo, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import type { SessionSummary } from '@/lib/api'
 import { rowHidden, type HiddenSessions, type ProjectNode, type SessionNode } from '@/lib/sidebar'
 import type { Dot } from '@/lib/sidebar'
@@ -77,6 +77,7 @@ import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { heldClass, keys, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
+import { SLIDE_MS, clampOffset, reducedMotion, shiftFor, slotFor, type Span } from '@/lib/dragSlot'
 import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
 import { instructionsSummary } from '@/lib/projectWizard'
@@ -400,9 +401,10 @@ export type SidebarRow = LeadItem & {
  * project, or every project's in one flat list (the sidebar's *Group by
  * project* off). A row opens on a click, closes its tab or hides itself
  * from its ×, has a menu (right-click, Shift+F10) with Stop…, and moves by
- * hand: dragged onto another (pointer events, as the strip's tabs, since
- * the desktop shell takes HTML5 drops) or with ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift off
- * macOS) on a focused row; the order is kept under `orderId`.
+ * hand: dragged within its own list, drawn as it happens (pointer events,
+ * as the strip's tabs, since the desktop shell takes HTML5 drops), or with
+ * ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift off macOS) on a focused row; the order is kept
+ * under `orderId`.
  */
 export function SessionList({ items, visible = items, orderId, ariaLabel, activeTabId, onActivateTab, onCloseTab, onOpenLive, onHideSession, onReorder, digits, untabbedHeading }: {
   items: readonly SidebarRow[]
@@ -429,28 +431,132 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
   const allKeys = useMemo(() => items.map(leadKey), [items])
   const [dragKey, setDragKey] = useState<string | null>(null)
   const dragged = useRef(false)
+  const listRef = useRef<HTMLUListElement>(null)
+  // The landing of a released row, run once the reorder it asked for is laid
+  // out (before paint, so the row never flashes at its old offset in its new
+  // place), or on the next frame when no render follows.
+  const landing = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => { landing.current?.() })
   const reorder = (key: string, target: string, where: 'before' | 'after') => {
     const next = moveKey(allKeys, key, target, where)
     if (next.join('\n') !== allKeys.join('\n')) onReorder?.(orderId, next)
   }
+  // A press that moves past 4px is a drag, drawn as it happens, as the
+  // strip's tabs are (owner, 2026-10-23): the row follows the pointer up and
+  // down its own list, raised over the others, which slide apart by its own
+  // height to open the slot it will land in. Released over the list it
+  // lands there; released off the list, or on Escape, it slides back and
+  // nothing moves. Pointer events, never HTML5 drag and drop (the desktop
+  // shell takes those).
   const pressRow = (key: string) => (e: ReactPointerEvent<HTMLElement>) => {
     if (!onReorder || e.button !== 0 || (e.target as Element).closest('[data-row-actions]')) return
+    const el = e.currentTarget
+    const pointer = e.pointerId
+    const x0 = e.clientX
     const y0 = e.clientY
     dragged.current = false
-    const onMove = (m: PointerEvent) => {
-      if (!dragged.current && Math.abs(m.clientY - y0) > 4) { dragged.current = true; setDragKey(key) }
+    let drag: RowDragState | null = null
+    const begin = () => {
+      // Only along its own list: the rows of this <ul> under this order.
+      const list = listRef.current
+      if (!list) return
+      const group = [...list.querySelectorAll<HTMLElement>(':scope > [data-row-key]')].filter((r) => r.dataset.rowProject === orderId)
+      const at = group.indexOf(el)
+      if (at < 0) return
+      const spans = group.map((r) => { const b = r.getBoundingClientRect(); return { start: b.top, size: b.height } })
+      const gap = parseFloat(getComputedStyle(list).rowGap) || 0
+      // Rows differ in height: the slot is the dragged row's own.
+      drag = { group, spans, at, slot: at, step: spans[at]!.size + gap }
+      el.style.transition = 'none'
+      // Raised over the others, with an opaque fill: the sidebar is
+      // see-through in the app, and the rows it passes would show through.
+      el.style.zIndex = '10'
+      el.style.borderRadius = '7px'
+      el.style.boxShadow = '0 4px 12px rgb(0 0 0 / 0.22), 0 0 0 1px color-mix(in srgb, var(--color-fg) 10%, transparent)'
+      el.style.background = 'color-mix(in srgb, var(--color-fg) 7%, var(--color-panel))'
+      const smooth = reducedMotion() ? 'none' : `transform ${SLIDE_MS}ms ease-out`
+      for (const r of group) if (r !== el) r.style.transition = smooth
+      // Moves outside the window still reach the drag.
+      try { el.setPointerCapture(pointer) } catch { /* jsdom, or the pointer is gone */ }
     }
-    const onUp = (u: PointerEvent) => {
+    const follow = (d: RowDragState, x: number, y: number) => {
+      const dy = clampOffset(d.spans, d.at, y - y0)
+      el.style.transform = `translateY(${dy}px)`
+      // Off the list the slot closes: a release there moves nothing.
+      const slot = overList(listRef.current, x, y) ? slotFor(d.spans, d.at, dy) : d.at
+      d.slot = slot
+      d.group.forEach((row, j) => {
+        if (j === d.at) return
+        const shift = shiftFor(j, d.at, slot, d.step)
+        row.style.transform = shift ? `translateY(${shift}px)` : ''
+      })
+    }
+    const onMove = (m: PointerEvent) => {
+      if (!dragged.current && Math.hypot(m.clientX - x0, m.clientY - y0) > 4) {
+        dragged.current = true
+        setDragKey(key)
+        begin()
+      }
+      if (drag) follow(drag, m.clientX, m.clientY)
+    }
+    const finish = (commit: boolean) => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      setDragKey(null)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('keydown', onKey, true)
       if (!dragged.current) return
-      const over = document.elementFromPoint(u.clientX, u.clientY)?.closest<HTMLElement>('[data-row-key]')
-      if (!over || over.dataset.rowProject !== orderId || !over.dataset.rowKey) return
-      reorder(key, over.dataset.rowKey, u.clientY > y0 ? 'after' : 'before')
+      setDragKey(null)
+      // A release off every row clicks no row, so nothing else would clear it.
+      setTimeout(() => { dragged.current = false }, 0)
+      const d: RowDragState | null = drag
+      if (!d) return
+      const slot = commit ? d.slot : d.at
+      const from = el.getBoundingClientRect().top
+      const quick = reducedMotion()
+      landing.current = () => {
+        landing.current = null
+        // The rows that made room are already where the reorder puts them;
+        // after a cancel they slide back.
+        for (const row of d.group) {
+          if (row === el) continue
+          if (slot !== d.at) row.style.transition = 'none'
+          row.style.transform = ''
+        }
+        el.style.transform = ''
+        const offset = from - el.getBoundingClientRect().top
+        if (offset && !quick) {
+          el.style.transform = `translateY(${offset}px)`
+          void el.offsetHeight
+          el.style.transition = `transform ${SLIDE_MS}ms ease-out`
+          el.style.transform = ''
+        }
+        setTimeout(() => {
+          for (const row of d.group) row.style.transition = ''
+          el.style.zIndex = ''
+          el.style.borderRadius = ''
+          el.style.boxShadow = ''
+          el.style.background = ''
+        }, quick ? 0 : SLIDE_MS + 20)
+      }
+      const target = d.group[slot]?.dataset.rowKey
+      if (slot !== d.at && target) reorder(key, target, slot > d.at ? 'after' : 'before')
+      requestAnimationFrame(() => landing.current?.())
+    }
+    const onUp = (u: PointerEvent) => {
+      if (drag) follow(drag, u.clientX, u.clientY)
+      finish(overList(listRef.current, u.clientX, u.clientY))
+    }
+    const onCancel = () => finish(false)
+    const onKey = (k: KeyboardEvent) => {
+      if (k.key !== 'Escape' || !drag) return
+      k.preventDefault()
+      k.stopPropagation()
+      finish(false)
     }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('keydown', onKey, true)
   }
   // The click that ends a drag opens nothing.
   const onClickCapture = (e: React.MouseEvent) => {
@@ -580,7 +686,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
   }
   return (
     <>
-      <ul className="grid grid-cols-1 pb-1" role="group" aria-label={ariaLabel} onKeyDown={onMoveKey} onClickCapture={onClickCapture}>
+      <ul ref={listRef} className="grid grid-cols-1 pb-1" role="group" aria-label={ariaLabel} onKeyDown={onMoveKey} onClickCapture={onClickCapture}>
         {/* Every agent session in its fixed place (lib/rowOrder.ts). */}
         {visible.map((it, i) => (
           <Fragment key={leadKey(it)}>
@@ -654,6 +760,24 @@ interface RowDrag {
   onPress?: (e: ReactPointerEvent<HTMLElement>) => void
 }
 
+/** A row being dragged: its list laid out as it was at the start, and the slot it would land in. */
+interface RowDragState {
+  group: HTMLElement[]
+  spans: Span[]
+  /** Its place in the list, and the place it would take now. */
+  at: number
+  slot: number
+  /** How far a neighbour slides to make room: the dragged row's height and the gap. */
+  step: number
+}
+
+/** Whether a point is over a list: a little give at the sides, about half a row above and below. */
+function overList(list: HTMLElement | null, x: number, y: number): boolean {
+  if (!list) return false
+  const r = list.getBoundingClientRect()
+  return x >= r.left - 8 && x <= r.right + 8 && y >= r.top - 20 && y <= r.bottom + 20
+}
+
 /** The attributes that make a row's <li> a drop target and a drag handle. */
 function dragProps(drag?: RowDrag) {
   if (!drag) return {}
@@ -693,7 +817,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
   return (
-    <li className={`@container/srow group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
+    <li className="@container/srow group/row relative" {...dragProps(drag)}>
       <button
         type="button"
         data-nav-row
@@ -798,7 +922,7 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
   // Ended by Caprock for sitting idle (lib/idleEnd.ts): one line says so, and a click continues it.
   const idle = idleEndedText(s)
   return (
-    <li className={`@container/srow group/row relative ${drag?.dragging ? 'opacity-60' : ''}`} {...dragProps(drag)}>
+    <li className="@container/srow group/row relative" {...dragProps(drag)}>
       <button
         type="button"
         data-nav-row
