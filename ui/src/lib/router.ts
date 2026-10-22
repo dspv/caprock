@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id · #/x/:id · #/m/:machine[/session/:id]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m/:machine[/session/:id]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -40,7 +40,9 @@ export type Route =
   | { name: 'chats'; archived?: boolean }
   | { name: 'chat'; id: string }
   // A private module the admin key opens (ADR-076): its page at /x/<id>/.
-  | { name: 'module'; id: string }
+  // `to` is a route inside the module's own page ("#review/42"), from an
+  // item its sidebar row lists (ModuleRows): #/x/<id>?to=%23review%2F42.
+  | { name: 'module'; id: string; to?: string }
   // Another computer this one reaches (ADR-067): its sessions, or one of
   // them — the Session view and terminal through /v1/m/{id}/… (screens/Machine).
   | { name: 'machine'; id: string; session?: string; tab?: string }
@@ -49,6 +51,11 @@ export type StartMode = 'clone' | 'new' | 'worktree'
 
 /** The parts of Settings a link can open on: the phone, Telegram beside it, and the other computers. */
 export type SettingsSection = 'phone' | 'telegram' | 'computers'
+
+/** A route inside a module's own page: '#' and then up to 511 characters, no spaces (as PUT /v1/x/<id>/attention takes it). */
+export function isModuleHref(h: string): boolean {
+  return h.length >= 2 && h.length <= 512 && h.startsWith('#') && !/[\s\u0000-\u001f\u007f]/.test(h)
+}
 
 export function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, '')
@@ -104,8 +111,11 @@ export function parseHash(hash: string): Route {
     case 'chats':
       if (parts[1]) return { name: 'chat', id: decodeURIComponent(parts[1]) }
       return params.get('archived') === '1' ? { name: 'chats', archived: true } : { name: 'chats' }
-    case 'x':
-      return parts[1] && /^[a-z][a-z0-9-]{0,31}$/.test(parts[1]) ? { name: 'module', id: parts[1] } : { name: 'now' }
+    case 'x': {
+      if (!parts[1] || !/^[a-z][a-z0-9-]{0,31}$/.test(parts[1])) return { name: 'now' }
+      const to = params.get('to') ?? ''
+      return isModuleHref(to) ? { name: 'module', id: parts[1], to } : { name: 'module', id: parts[1] }
+    }
     case 'm': {
       const id = parts[1] ?? ''
       if (!/^[A-Za-z0-9_-]{16,128}$/.test(id)) return { name: 'now' }
@@ -144,7 +154,7 @@ export function href(r: Route): string {
     case 'work': return '#/work'
     case 'chats': return r.archived ? '#/chats?archived=1' : '#/chats'
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
-    case 'module': return `#/x/${r.id}`
+    case 'module': return r.to && isModuleHref(r.to) ? `#/x/${r.id}?to=${encodeURIComponent(r.to)}` : `#/x/${r.id}`
     case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}`
     case 'pipeline': {
       const q = new URLSearchParams()

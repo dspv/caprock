@@ -20,8 +20,9 @@
  *   <img> sources by asking the dashboard with postMessage; the dashboard
  *   forwards a request only when it is this module's own (bridgePath): a GET
  *   of a file under /x/<id>/, its store under /v1/x/<id>/docs/, or a POST
- *   of /v1/x/<id>/telegram or /v1/x/<id>/notify, or a PATCH of
- *   /v1/x/<id>/telegram/<message_id>. Anything
+ *   of /v1/x/<id>/telegram or /v1/x/<id>/notify, a PATCH of
+ *   /v1/x/<id>/telegram/<message_id>, or a PUT of /v1/x/<id>/attention.
+ *   Anything
  *   else, other API routes included, is answered 403 without being sent.
  *
  * Why not something smaller: a frame cannot add a header to its loads, a
@@ -81,6 +82,8 @@ export function bridgePath(id: string, method: string, raw: string): string | nu
   // And an edit of a message it sent, by Telegram's numeric message id; the
   // daemon answers 404 for any message that is not the module's.
   if (m === 'PATCH' && raw.startsWith(`/v1/x/${id}/telegram/`) && /^\d{1,19}$/.test(raw.slice(`/v1/x/${id}/telegram/`.length))) return raw
+  // And what waits on the owner in it, for its sidebar row (same amendment).
+  if (m === 'PUT' && raw === `/v1/x/${id}/attention`) return raw
   return null
 }
 
@@ -110,6 +113,9 @@ interface BootConfig {
  *   one of the module's files does nothing (it cannot open as a page here).
  * - The theme: `caprock:theme` messages are applied to <html> as the
  *   dashboard does on the machine, where it can reach into the frame.
+ * - A route: a `caprock:route` message `{hash: "#review/42"}` (an item of
+ *   the module's sidebar row) sets the page's hash, as the frame's fragment
+ *   does on the machine.
  */
 const BOOTSTRAP = String.raw`(function (cfg) {
   'use strict';
@@ -135,6 +141,7 @@ const BOOTSTRAP = String.raw`(function (cfg) {
     var d = e.data;
     if (d.type === 'caprock:bridge-reply' && d.secret === cfg.secret && waiting[d.id]) { var w = waiting[d.id]; delete waiting[d.id]; w(d); }
     else if (d.type === 'caprock:theme') applyTheme(d);
+    else if (d.type === 'caprock:route' && typeof d.hash === 'string' && /^#\S{1,511}$/.test(d.hash)) location.hash = d.hash;
   });
   var nativeFetch = window.fetch;
   window.fetch = function (input, init) {

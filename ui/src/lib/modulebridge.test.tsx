@@ -49,6 +49,12 @@ describe('bridgePath: what a module page may ask for', () => {
     expect(bridgePath('alpha', 'PATCH', '/v1/x/alpha/telegram/')).toBeNull()
   })
 
+  it('lets the module say what waits on the owner: its own attention route, PUT only', () => {
+    expect(bridgePath('alpha', 'put', '/v1/x/alpha/attention')).toBe('/v1/x/alpha/attention')
+    expect(bridgePath('alpha', 'POST', '/v1/x/alpha/attention')).toBeNull()
+    expect(bridgePath('alpha', 'PUT', '/v1/x/beta/attention')).toBeNull()
+  })
+
   it('refuses everything else: the API, another module, the key, climbing out, tricks', () => {
     for (const [m, p] of [
       ['POST', '/v1/agents'],

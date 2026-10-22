@@ -89,6 +89,9 @@ type ModuleInfo struct {
 	Name    string `json:"name"`
 	Version string `json:"version,omitempty"`
 	URL     string `json:"url"`
+	// Attention is what the module last said waits on the owner, while it
+	// is under a day old and its count is above 0 (moduleattention.go).
+	Attention *ModuleAttention `json:"attention,omitempty"`
 }
 
 // AdminState is GET /v1/admin.
@@ -118,7 +121,7 @@ func (s *Server) adminState(r *http.Request) AdminState {
 	if s.d.DataDir != "" {
 		for _, m := range modules.Installed(modules.Root(s.d.DataDir)) {
 			if g.Allows(m.ID) {
-				st.Installed = append(st.Installed, ModuleInfo{ID: m.ID, Name: m.Name, Version: m.Version, URL: "/x/" + m.ID + "/"})
+				st.Installed = append(st.Installed, ModuleInfo{ID: m.ID, Name: m.Name, Version: m.Version, URL: "/x/" + m.ID + "/", Attention: s.moduleAttention(r, m.ID)})
 			}
 		}
 	}
