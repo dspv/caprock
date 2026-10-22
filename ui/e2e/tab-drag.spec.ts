@@ -13,25 +13,30 @@ const shots = process.env.TAB_DRAG_SHOTS
 
 test('a dragged tab follows the pointer and lands in the slot its neighbours open', async ({ app, page }) => {
   await app.open()
-  for (const name of ['alpha', 'beta'] as const) {
-    await app.openSession(name).catch(async () => {
-      const s = app.session(name)
-      await app.row(s.name).first().click()
-    })
+  // Three shells of its own: sidebar-recent.spec.ts ends beta, and the
+  // specs after it cannot count on the fake agents still being open.
+  for (let i = 0; i < 3; i++) {
+    await app.tabs.getByRole('button', { name: 'New', exact: true }).click()
+    await page.getByRole('menuitem', { name: /New shell/ }).click()
   }
-  await app.tabs.getByRole('button', { name: 'New', exact: true }).click()
-  await page.getByRole('menuitem', { name: /New shell/ }).click()
   const tabs = app.tabs.locator('[data-tab-index]')
   await expect(tabs).toHaveCount(3)
-  const order = () => tabs.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? e.textContent ?? ''))
+  // Read the order by each tab's own element, never its name: shells are
+  // numbered by their place in the strip (lib/tablabels.ts), so after a move
+  // the first shell is "Shell 1" again whichever shell it is. React keeps a
+  // keyed tab's element through a reorder, so a mark set on it here moves
+  // with the tab.
+  await tabs.evaluateAll((els) => els.forEach((e, i) => e.setAttribute('data-e2e-tab', String(i))))
+  const order = () => tabs.evaluateAll((els) => els.map((e) => e.getAttribute('data-e2e-tab')))
   const before = await order()
+  expect(before).toEqual(['0', '1', '2'])
   const selected = () => app.tabs.locator('[data-tab-index][aria-selected="true"]').evaluate((e) => e.getAttribute('data-tab-index'))
   // The shell just opened is in front, at the end: a drag of the first tab
   // must not bring that one forward.
   const front = await selected()
   expect(front).toBe('2')
 
-  // Press the first tab and drag it right, its right edge past the second's middle.
+  // Press the first tab and drag it right until its middle is 20px past the second's.
   const first = tabs.nth(0)
   const a = (await first.boundingBox())!
   const b = (await tabs.nth(1).boundingBox())!
@@ -39,7 +44,7 @@ test('a dragged tab follows the pointer and lands in the slot its neighbours ope
   await page.mouse.move(a.x + 30, y)
   await page.mouse.down()
   await page.mouse.move(a.x + 40, y, { steps: 2 })
-  await page.mouse.move(b.x + b.width * 0.1 + 30, y, { steps: 8 })
+  await page.mouse.move(a.x + 30 + (b.x + b.width / 2 + 20) - (a.x + a.width / 2), y, { steps: 8 })
   await expect(first).toHaveAttribute('data-dragging', 'true')
   const moved = (await first.boundingBox())!
   expect(moved.x).toBeGreaterThan(a.x + 40)
