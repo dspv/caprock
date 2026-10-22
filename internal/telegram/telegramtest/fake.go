@@ -34,7 +34,9 @@ type Sent struct {
 	Emoji      string
 	// Photo is a sendPhoto's file; Text is then its caption.
 	Photo []byte
-	At    time.Time
+	// Silent is a pin asked for without a notification.
+	Silent bool
+	At     time.Time
 }
 
 // Bot is a fake Bot API serving one bot.
@@ -53,6 +55,8 @@ type Bot struct {
 	retry            int      // their retry_after
 	refuseURLButtons bool
 	unchanged        int // the next unchanged edits answer "message is not modified"
+	refusePins       bool
+	pinned           map[int64]bool
 	files            map[string]fakeFile
 	notify           chan struct{}
 	pollWait         time.Duration
@@ -93,6 +97,21 @@ func (b *Bot) EditsUnchanged(n int) {
 	b.mu.Lock()
 	b.unchanged = n
 	b.mu.Unlock()
+}
+
+// RefusePins makes pinChatMessage fail as Telegram fails a bot without the
+// right to pin.
+func (b *Bot) RefusePins() {
+	b.mu.Lock()
+	b.refusePins = true
+	b.mu.Unlock()
+}
+
+// Pinned reports whether a message is pinned now.
+func (b *Bot) Pinned(id int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.pinned[id]
 }
 
 func (b *Bot) push(u telegram.Update) {
@@ -316,6 +335,28 @@ func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
 			ok200(w, telegram.Message{MessageID: s.MessageID, Text: s.Text})
 			return
 		}
+		ok200(w, true)
+	case "pinChatMessage", "unpinChatMessage":
+		id := int64(num(in["message_id"]))
+		s := Sent{Method: method, ChatID: str(in["chat_id"]), ReplyTo: id, At: time.Now()}
+		s.Silent, _ = in["disable_notification"].(bool)
+		b.mu.Lock()
+		if method == "pinChatMessage" && b.refusePins {
+			b.mu.Unlock()
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 400, "description": "Bad Request: not enough rights to manage pinned messages in the chat"})
+			return
+		}
+		if b.pinned == nil {
+			b.pinned = map[int64]bool{}
+		}
+		if method == "pinChatMessage" {
+			b.pinned[id] = true
+		} else {
+			delete(b.pinned, id)
+		}
+		b.sent = append(b.sent, s)
+		b.mu.Unlock()
 		ok200(w, true)
 	case "answerCallbackQuery":
 		b.mu.Lock()

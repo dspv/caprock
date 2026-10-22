@@ -5580,7 +5580,11 @@ shows desktop notifications from the app. The decisions:
   as an unknown one, so a module learns nothing about the chat beyond its
   own messages. Which module sent which message is the bridge's record in
   `telegram.json`, so it survives a restart. Presses on edited buttons go to
-  the module's store like any other.
+  the module's store like any other. A module may also **pin** one of its
+  messages (`pin` on `POST` and `PATCH`, silently): it holds at most one
+  pin, pinning another unpins its previous one, and it never touches a pin
+  the bridge, another module or the owner made; its pin is kept in
+  `telegram.json` too.
 - **What is sent** (rule 4): to Telegram, the module's name and the text and
   button labels the module wrote, to the chat the owner paired, through the
   bot token he gave, as everything else the bridge sends; nothing else.

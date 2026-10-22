@@ -158,3 +158,45 @@ func TestAModuleRepliesUnderItsOwnMessage(t *testing.T) {
 		t.Fatalf("%d refused replies were sent", n-before)
 	}
 }
+
+// pin on POST and PATCH: one pin per module, a refused pin a 502 carrying
+// Telegram's words and the sent message's id, never the token.
+func TestAModulePinsOverHTTP(t *testing.T) {
+	e, bot := moduleBridge(t)
+	a := e.sendTelegram(t, "alpha", `{"text":"Batch 1","pin":true}`)
+	theirs := e.sendTelegram(t, "beta", `{"text":"Theirs","pin":true}`)
+	b := e.sendTelegram(t, "alpha", `{"text":"Batch 2"}`)
+	bPath := "/v1/x/alpha/telegram/" + strconv.FormatInt(b, 10)
+	if code := e.send(t, http.MethodPatch, bPath, `{"pin":true}`, nil); code != 200 {
+		t.Fatalf("PATCH pin: %d", code)
+	}
+	if !bot.Pinned(b) || bot.Pinned(a) || !bot.Pinned(theirs) {
+		t.Fatalf("pins: a=%v b=%v theirs=%v", bot.Pinned(a), bot.Pinned(b), bot.Pinned(theirs))
+	}
+	if code := e.send(t, http.MethodPatch, "/v1/x/beta/telegram/"+strconv.FormatInt(b, 10), `{"pin":false}`, nil); code != 404 {
+		t.Fatalf("another module unpinning: %d", code)
+	}
+	if code := e.send(t, http.MethodPatch, bPath, `{"pin":false}`, nil); code != 200 || bot.Pinned(b) || !bot.Pinned(theirs) {
+		t.Fatalf("PATCH unpin: %d", code)
+	}
+
+	bot.RefusePins()
+	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/x/alpha/telegram", strings.NewReader(`{"text":"Batch 3","pin":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Error     string `json:"error"`
+		MessageID int64  `json:"message_id"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode != 502 || out.MessageID == 0 || !strings.Contains(out.Error, "not enough rights") || strings.Contains(out.Error, "SECRET") {
+		t.Fatalf("refused pin: %d %+v", resp.StatusCode, out)
+	}
+	if code := e.send(t, http.MethodPatch, "/v1/x/alpha/telegram/"+strconv.FormatInt(out.MessageID, 10), `{"pin":true}`, nil); code != 502 {
+		t.Fatalf("refused PATCH pin: %d", code)
+	}
+}

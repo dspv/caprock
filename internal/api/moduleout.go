@@ -60,11 +60,13 @@ func (s *Server) moduleOutKey(w http.ResponseWriter, r *http.Request) (id, name 
 }
 
 // handleModuleTelegram is POST /v1/x/{id}/telegram {text, buttons?, reply?,
-// reply_to_message_id?}: one message to the owner's paired chat, its first
-// line naming the module, threaded under one of the module's own when
-// reply_to_message_id names it. {message_id}; 409 with no paired chat or
-// under /mute all; 400 for a bad message; 404 when reply_to_message_id is not
-// a message this module sent; 502 with Telegram's words.
+// reply_to_message_id?, pin?}: one message to the owner's paired chat, its
+// first line naming the module, threaded under one of the module's own when
+// reply_to_message_id names it, pinned (in place of the module's previous
+// pin) with pin. {message_id}; 409 with no paired chat or under /mute all;
+// 400 for a bad message; 404 when reply_to_message_id is not a message this
+// module sent; 502 with Telegram's words — with message_id too when the
+// message was sent and only the pin was refused.
 func (s *Server) handleModuleTelegram(w http.ResponseWriter, r *http.Request) {
 	id, name, ok := s.moduleOutKey(w, r)
 	if !ok {
@@ -79,13 +81,18 @@ func (s *Server) handleModuleTelegram(w http.ResponseWriter, r *http.Request) {
 		Buttons []telegram.ModuleButton `json:"buttons"`
 		Reply   bool                    `json:"reply"`
 		ReplyTo int64                   `json:"reply_to_message_id"`
+		Pin     bool                    `json:"pin"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}], "reply": false, "reply_to_message_id": 0}`))
+		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}], "reply": false, "reply_to_message_id": 0, "pin": false}`))
 		return
 	}
-	msgID, err := s.d.Telegram.SendModule(r.Context(), telegram.ModuleMessage{Module: id, Name: name, Text: body.Text, Buttons: body.Buttons, Reply: body.Reply, ReplyTo: body.ReplyTo})
+	msgID, err := s.d.Telegram.SendModule(r.Context(), telegram.ModuleMessage{Module: id, Name: name, Text: body.Text, Buttons: body.Buttons, Reply: body.Reply, ReplyTo: body.ReplyTo, Pin: body.Pin})
+	var pinErr *telegram.PinError
 	switch {
+	case errors.As(err, &pinErr):
+		// Sent, not pinned: the module still learns which message it was.
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "message_id": pinErr.MessageID})
 	case errors.Is(err, telegram.ErrModuleMessage):
 		s.failCode(w, http.StatusBadRequest, err)
 	case errors.Is(err, telegram.ErrNotModuleMessage):
@@ -100,9 +107,10 @@ func (s *Server) handleModuleTelegram(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleModuleTelegramEdit is PATCH /v1/x/{id}/telegram/{message_id}
-// {text?, buttons?}: a change to a message this module sent. An omitted (or
-// null) part is left as it is; `buttons: []` removes the buttons; at least
-// one part is required. {message_id}; 400 for a bad edit; 404 for any
+// {text?, buttons?, pin?}: a change to a message this module sent. An
+// omitted (or null) part is left as it is; `buttons: []` removes the
+// buttons; `pin: true` pins it in place of the module's previous pin, `pin:
+// false` unpins it; at least one part is required. {message_id}; 400 for a bad edit; 404 for any
 // message this module did not send (another module's, the bridge's own, an
 // unknown or forgotten one); 409 with no paired chat; 502 with Telegram's
 // words. Telegram's "message is not modified" is a 200.
@@ -123,12 +131,13 @@ func (s *Server) handleModuleTelegramEdit(w http.ResponseWriter, r *http.Request
 	var body struct {
 		Text    *string                  `json:"text"`
 		Buttons *[]telegram.ModuleButton `json:"buttons"`
+		Pin     *bool                    `json:"pin"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}]}, either or both`))
+		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}], "pin": true}, any of them`))
 		return
 	}
-	err = s.d.Telegram.EditModule(r.Context(), telegram.ModuleEdit{Module: id, Name: name, MessageID: msgID, Text: body.Text, Buttons: body.Buttons})
+	err = s.d.Telegram.EditModule(r.Context(), telegram.ModuleEdit{Module: id, Name: name, MessageID: msgID, Text: body.Text, Buttons: body.Buttons, Pin: body.Pin})
 	switch {
 	case errors.Is(err, telegram.ErrModuleMessage):
 		s.failCode(w, http.StatusBadRequest, err)

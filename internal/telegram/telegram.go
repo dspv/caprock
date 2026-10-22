@@ -414,6 +414,18 @@ func (c *Client) EditMarkup(ctx context.Context, chatID string, messageID int64,
 	}, nil)
 }
 
+// Pin pins a message in the chat without a notification.
+func (c *Client) Pin(ctx context.Context, chatID string, messageID int64) error {
+	return c.Call(ctx, "pinChatMessage", map[string]any{
+		"chat_id": chatID, "message_id": messageID, "disable_notification": true,
+	}, nil)
+}
+
+// Unpin unpins one message in the chat, leaving every other pin.
+func (c *Client) Unpin(ctx context.Context, chatID string, messageID int64) error {
+	return c.Call(ctx, "unpinChatMessage", map[string]any{"chat_id": chatID, "message_id": messageID}, nil)
+}
+
 // React puts one emoji reaction on a message: how a reply that reached its
 // session says so without another message in the chat.
 func (c *Client) React(ctx context.Context, chatID string, messageID int64, emoji string) error {

@@ -67,6 +67,9 @@ type State struct {
 	// PremiumNoteAt is when a reply or command last got the one line that
 	// says it is a Premium feature, so it is said at most once a day.
 	PremiumNoteAt int64 `json:"premium_note_at,omitempty"`
+	// ModulePins is the one message each private module has pinned in the
+	// chat, by module id (ADR-076, amended 2026-10-22).
+	ModulePins map[string]int64 `json:"module_pins,omitempty"`
 	// ForwardReply is the forward picker's *Reply here* switch, as the
 	// owner last left it (ADR-081); off until turned on.
 	ForwardReply bool `json:"forward_reply,omitempty"`
@@ -98,6 +101,12 @@ func (s *Store) Get() State {
 	cp.Muted = make(map[string]int64, len(s.st.Muted))
 	for k, v := range s.st.Muted {
 		cp.Muted[k] = v
+	}
+	if s.st.ModulePins != nil {
+		cp.ModulePins = make(map[string]int64, len(s.st.ModulePins))
+		for k, v := range s.st.ModulePins {
+			cp.ModulePins[k] = v
+		}
 	}
 	return cp
 }

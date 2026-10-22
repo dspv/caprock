@@ -1857,7 +1857,7 @@ unless turned on; `GET` returns them). `<data_dir>/telegram.json` (`0600`) is
 the bridge's own: `{bot_id, bot_username, chat_id, chat_name, paired_at,
 offset, refs: [{message_id, session_id, prompt_id, kind, at, module,
 buttons, order, chosen, answers}], muted: {session_id: ms}, mute_all,
-premium_note_at, forward_reply}` — the last 400 messages and the sessions (or
+premium_note_at, module_pins: {module_id: message_id}, forward_reply}` — the last 400 messages and the sessions (or
 private modules) they were about, so a reply finds its session, and a module
 its own message, across a restart. The
 token stays in `config.json`.
@@ -4909,11 +4909,16 @@ machine's alone (`403` from any device).
   **`reply_to_message_id`** (optional) threads the new message under one
   this module sent; any other id (another module's, the bridge's own, an
   unknown or forgotten one) is `404` and nothing is sent; a negative one
-  is `400`.
+  is `400`. **`pin: true`** pins the message once sent (below); when only
+  the pin is refused the answer is `502` `{error, message_id}`, the message
+  having been sent.
 - **Editing a sent message** (amended 2026-10-22): **`PATCH
-  /v1/x/<id>/telegram/<message_id>`** `{text?, buttons?}` → `{message_id}`.
-  An omitted (or `null`) part is left as it is; `buttons: []` removes the
-  keyboard; at least one part is required (`400` otherwise). Same limits as
+  /v1/x/<id>/telegram/<message_id>`** `{text?, buttons?, pin?}` →
+  `{message_id}`. An omitted (or `null`) part is left as it is; `buttons:
+  []` removes the keyboard; `pin: true` pins the message, `pin: false`
+  unpins it; at least one part is required (`400` otherwise). Text and
+  buttons are changed first, then the pin. A message can be edited any
+  number of times. Same limits as
   `POST`: `text` 1–3500 characters (the first line still names the module),
   buttons as above. New text is `editMessageText` and keeps the keyboard the
   message shows (its buttons in their order, or the `✓ <label>` of a press);
@@ -4929,6 +4934,15 @@ machine's alone (`403` from any device).
   `409` with no bot or paired chat; `502` with Telegram's words. `/mute all`
   does not hold an edit back: it changes a message already in the chat and
   makes no sound.
+- **Pinning** (amended 2026-10-22): a module holds **at most one** pinned
+  message. A pin is `pinChatMessage` with `disable_notification: true`;
+  once it succeeds, the module's previous pin, if another message, is
+  unpinned with `unpinChatMessage` and that `message_id` — never a pin the
+  bridge, another module or the owner made. `pin: false` unpins only that
+  message; Telegram saying it is not pinned counts as done. The module's
+  pin is kept in `telegram.json` (`module_pins`), so it outlives a restart.
+  A refused pin (the bot lacks the right to pin) is `502` with Telegram's
+  words, the token never in them, and the previous pin stays.
 - **Notification** (amended 2026-10-22): **`POST /v1/x/<id>/notify`**
   `{title, body?}` → `204`: a desktop notification from the Caprock app,
   titled `<module name> · <title>`, whose click opens `#/x/<id>` (§ Notify

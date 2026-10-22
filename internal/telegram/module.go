@@ -60,6 +60,8 @@ type ModuleMessage struct {
 	// ReplyTo threads the message under one this module sent; 0 is none.
 	// Any other message is ErrNotModuleMessage.
 	ReplyTo int64
+	// Pin pins the message once sent, unpinning the module's previous pin.
+	Pin bool
 }
 
 // ModuleEdit is what a module asks to change in a message it sent. Nil
@@ -70,7 +72,20 @@ type ModuleEdit struct {
 	MessageID    int64
 	Text         *string
 	Buttons      *[]ModuleButton
+	// Pin true pins the message (unpinning the module's previous pin),
+	// false unpins it; nil leaves the pin as it is.
+	Pin *bool
 }
+
+// PinError is a message sent but not pinned: Telegram refused the pin
+// (the bot may lack the right). MessageID is the message that was sent.
+type PinError struct {
+	MessageID int64
+	Err       error
+}
+
+func (e *PinError) Error() string { return "sent, but not pinned: " + e.Err.Error() }
+func (e *PinError) Unwrap() error { return e.Err }
 
 // ErrNotModuleMessage is a message id that is not one this module sent: an
 // unknown one, another module's, the bridge's own, or one sent so long ago
@@ -103,8 +118,8 @@ func (m ModuleMessage) Check() error {
 // Check reports what is wrong with a module's edit, nil when nothing is:
 // the same limits as a message, and at least one part to change.
 func (e ModuleEdit) Check() error {
-	if e.Text == nil && e.Buttons == nil {
-		return badModule("text or buttons is required")
+	if e.Text == nil && e.Buttons == nil && e.Pin == nil {
+		return badModule("text, buttons or pin is required")
 	}
 	if e.Text != nil {
 		if err := checkModuleText(*e.Text); err != nil {
@@ -267,7 +282,63 @@ func (b *Bridge) SendModule(ctx context.Context, m ModuleMessage) (int64, error)
 		// Something may answer it: read updates even with no alert on.
 		b.Wake()
 	}
+	if m.Pin {
+		token, chat := b.Host.Bot()
+		if err := b.pinModule(ctx, b.client(token), chat, m.Module, msg.MessageID); err != nil {
+			return msg.MessageID, &PinError{MessageID: msg.MessageID, Err: err}
+		}
+	}
 	return msg.MessageID, nil
+}
+
+// pinModule pins a module's message and then unpins the module's previous
+// pin, if it had another; the record in telegram.json follows. A pin the
+// bridge or another module made is never touched. Telegram refusing the
+// pin is returned as it said it, and the previous pin stays.
+func (b *Bridge) pinModule(ctx context.Context, c *Client, chat, module string, messageID int64) error {
+	b.pinMu.Lock()
+	defer b.pinMu.Unlock()
+	prev := b.Store.Get().ModulePins[module]
+	if err := c.Pin(ctx, chat, messageID); err != nil {
+		return err
+	}
+	if prev != 0 && prev != messageID {
+		if err := c.Unpin(ctx, chat, prev); err != nil && !unpinGone(err) {
+			b.Log.Info("telegram: a module's previous pin was not unpinned", "component", "telegram", "module", module, "err", err)
+		}
+	}
+	return b.Store.Update(func(st *State) {
+		if st.ModulePins == nil {
+			st.ModulePins = map[string]int64{}
+		}
+		st.ModulePins[module] = messageID
+	})
+}
+
+// unpinModule unpins a module's own message and forgets it as the module's
+// pin when it was.
+func (b *Bridge) unpinModule(ctx context.Context, c *Client, chat, module string, messageID int64) error {
+	b.pinMu.Lock()
+	defer b.pinMu.Unlock()
+	if err := c.Unpin(ctx, chat, messageID); err != nil && !unpinGone(err) {
+		return err
+	}
+	return b.Store.Update(func(st *State) {
+		if st.ModulePins[module] == messageID {
+			delete(st.ModulePins, module)
+		}
+	})
+}
+
+// unpinGone is Telegram saying there is nothing to unpin: the message is
+// not pinned (any more), which is what was asked.
+func unpinGone(err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) || ae.Code != http.StatusBadRequest {
+		return false
+	}
+	d := strings.ToLower(ae.Description)
+	return strings.Contains(d, "not pinned") || strings.Contains(d, "message to unpin not found")
 }
 
 func moduleName(name, module string) string {
@@ -279,9 +350,10 @@ func moduleName(name, module string) string {
 
 // EditModule changes the text, the buttons or both of a message the module
 // sent: editMessageText for new text (keeping the buttons it shows unless
-// new ones are given), editMessageReplyMarkup for buttons alone. A press on
-// new buttons is written to the module's store as one on the first ones.
-// Telegram's "message is not modified" is success. ErrModuleMessage for a
+// new ones are given), editMessageReplyMarkup for buttons alone; then pins
+// or unpins it when Pin says so. A press on new buttons is written to the
+// module's store as one on the first ones. Telegram's "message is not
+// modified" is success. ErrModuleMessage for a
 // bad edit, ErrNotModuleMessage for a message the module did not send,
 // ErrNotPaired without a bot and a chat. /mute all does not hold an edit
 // back: it changes a message already in the chat and makes no sound.
@@ -297,6 +369,24 @@ func (b *Bridge) EditModule(ctx context.Context, e ModuleEdit) error {
 	if token == "" || chat == "" {
 		return ErrNotPaired
 	}
+	c := b.client(token)
+	if e.Text != nil || e.Buttons != nil {
+		if err := b.editModule(ctx, c, chat, ref, e); err != nil {
+			return err
+		}
+	}
+	switch {
+	case e.Pin == nil:
+		return nil
+	case *e.Pin:
+		return b.pinModule(ctx, c, chat, e.Module, e.MessageID)
+	default:
+		return b.unpinModule(ctx, c, chat, e.Module, e.MessageID)
+	}
+}
+
+// editModule changes a module message's text, buttons or both.
+func (b *Bridge) editModule(ctx context.Context, c *Client, chat string, ref Ref, e ModuleEdit) error {
 	var (
 		mk     *Markup
 		labels map[string]string
@@ -307,7 +397,6 @@ func (b *Bridge) EditModule(ctx context.Context, e ModuleEdit) error {
 	} else {
 		mk = shownKeyboard(ref)
 	}
-	c := b.client(token)
 	var err error
 	if e.Text != nil {
 		err = c.EditText(ctx, chat, e.MessageID, clipText(ModuleText(moduleName(e.Name, e.Module), *e.Text)), "HTML", mk)
