@@ -209,9 +209,16 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	if len(cands) == 0 {
-		// No session waits: the wake's calls go to the re-tag (retag.go),
-		// which a session that comes to wait overtakes at the next wake.
-		return e.retag(ctx, Batch)
+		// No session waits: the wake's calls go to the catch-up of skipped
+		// text (catchup.go), then what is left of them to the re-tag
+		// (retag.go); a session that comes to wait overtakes both at the
+		// next wake.
+		read, err := e.readGaps(ctx, 0)
+		if err != nil || read >= Batch {
+			return read, err
+		}
+		tagged, err := e.retag(ctx, Batch-read)
+		return read + tagged, err
 	}
 	read := 0
 	for _, c := range cands {

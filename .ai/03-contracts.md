@@ -4244,9 +4244,10 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   titled in another language. A memory here is `idea`, `decision`,
   `finding` or `question`; an imported note and an entity never are. Only
   while the extraction is on, and only in a wake that finds no session
-  waiting (a session waiting out a failure does not count): the wake's
-  four calls go to the re-tag then, and a session that comes to wait goes
-  first at the next wake. Each call sends 40 memories, lowest id first,
+  waiting (a session waiting out a failure does not count): what the
+  catch-up (*Catch-up* above) leaves of the wake's four calls goes to the
+  re-tag then, and a session that comes to wait goes first at the next
+  wake. Each call sends 40 memories, lowest id first,
   above the re-tag's cursor, one per line as `#id kind: title — summary`
   (the summary clipped to 200 runes), to the same `claude`, flags and
   model as a read, with its own instructions and `--json-schema`; the
