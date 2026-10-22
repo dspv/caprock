@@ -17,8 +17,11 @@ func TestMigration0068ListsThePastReadsAsGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	db := s.DB()
-	// Back to schema 67, as a database from before the migration is.
+	// Back to schema 67, as a database from before the migration is: 0069
+	// undone too, so it applies again after 0068.
 	for _, q := range []string{
+		`ALTER TABLE brain_nodes DROP COLUMN keywords`,
+		`ALTER TABLE sessions DROP COLUMN handoff_runes`,
 		`DROP TABLE brain_gaps`,
 		`ALTER TABLE brain_runs DROP COLUMN gap_id`,
 		`ALTER TABLE brain_runs DROP COLUMN held`,

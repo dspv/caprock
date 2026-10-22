@@ -120,7 +120,18 @@ func TestGapsAreFoundByTheOldCutOnceAndAgain(t *testing.T) {
 }
 
 func TestTheCatchUpReadsTheGapOldestFirstAndResumesAfterARestart(t *testing.T) {
-	e := newEnv(t, twoMemories)
+	// A different decision per read: the same title twice would be left
+	// out as a repeat of one the project keeps.
+	reads := 0
+	e := newEnv(t, func(r Request) (Result, error) {
+		words := []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet"}
+		res, err := twoMemories(r)
+		for i := range res.Memories {
+			res.Memories[i].Title = fmt.Sprintf("%s %s %d", words[reads%len(words)], words[(reads+3)%len(words)], i)
+		}
+		reads++
+		return res, err
+	})
 	ctx := context.Background()
 	ids := e.skippedLong(t)
 	if n, err := e.eng.Wake(ctx); n != Batch || err != nil {
