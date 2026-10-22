@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/dspv/caprock/internal/store"
 )
 
 // The limits on PUT /v1/tabs: a viewer id is a short random token, and no
@@ -55,4 +57,58 @@ func (s *Server) handlePutTabs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// TabsAnswer is GET /v1/tabs: the tabs the computer has open, in tab-strip
+// order, for the phone home's Continue (03-contracts.md § Open tabs).
+type TabsAnswer struct {
+	// Known is false when no viewer's report counts (none yet, or none for
+	// a week): the phone then lists live sessions in a fixed order.
+	Known bool `json:"known"`
+	// At is when that viewer last reported, unix ms; 0 when not known.
+	At int64 `json:"at"`
+	// Sessions is the reported list as it came: tab-strip order, and ids
+	// that are not sessions (a file, a page, a shell) included.
+	Sessions []string `json:"sessions"`
+	// Items is each of those that is a session in the store, in the same
+	// order, as GET /v1/sessions describes it. Shells are left out.
+	Items []SessionSummary `json:"items"`
+}
+
+// handleGetTabs is GET /v1/tabs: the list the phone mirrors. Only the
+// computer's app reports tabs (PUT), so a phone asking reads the computer's.
+func (s *Server) handleGetTabs(w http.ResponseWriter, r *http.Request) {
+	if s.d.LatestTabs == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("open tabs are not kept by this daemon"))
+		return
+	}
+	ctx := r.Context()
+	ids, at, ok := s.d.LatestTabs()
+	out := TabsAnswer{Known: ok, Sessions: []string{}, Items: []SessionSummary{}}
+	if !ok {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+	out.At = at
+	out.Sessions = append(out.Sessions, ids...)
+	for _, id := range ids {
+		if s.d.Shells != nil && s.d.Shells.IsShell(id) {
+			continue
+		}
+		sess, err := store.GetSession(ctx, s.d.Store.DB(), id)
+		if err != nil {
+			if strings.Contains(err.Error(), "no rows") {
+				continue // a file's or a page's key, or a session since deleted
+			}
+			s.fail(w, err)
+			return
+		}
+		sum, _, err := s.summarize(ctx, sess)
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		out.Items = append(out.Items, sum)
+	}
+	writeJSON(w, http.StatusOK, out)
 }

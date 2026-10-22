@@ -30,12 +30,14 @@ function viewer(): string {
 }
 
 /**
- * Tells the daemon which sessions this viewer has a tab for: at once when
- * the list changes, and every TABS_HEARTBEAT_MS. A failure is let go: the
- * next change or beat says it again.
+ * Tells the daemon which sessions this viewer has a tab for, in tab-strip
+ * order: at once when the list or its order changes (a drag is a change: the
+ * phone home lists the tabs in this order, GET /v1/tabs), and every
+ * TABS_HEARTBEAT_MS. A failure is let go: the next change or beat says it
+ * again.
  */
 export function useReportTabs(sessionIds: readonly string[], enabled = true): void {
-  const key = useMemo(() => [...new Set(sessionIds)].sort().join('\n'), [sessionIds])
+  const key = useMemo(() => [...new Set(sessionIds)].join('\n'), [sessionIds])
   useEffect(() => {
     if (!enabled) return
     const ids = key ? key.split('\n') : []

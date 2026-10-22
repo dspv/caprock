@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { InboxItem, SessionSummary } from './api'
 import {
-  CONTINUE_WINDOW_MS, continueCounts, continueList, DEFAULT_FOLDS, FOLDS_KEY, installWay, keepFolds, limitsGlance, messageWith,
+  CONTINUE_LIVE_MAX, continueCounts, continueRows, DEFAULT_FOLDS, FOLDS_KEY, installWay, keepFolds, limitsGlance, messageWith,
   openFromHash, readFolds, rowMeta, savedSummary, sharedFromSearch, shortIn, waitingOnYou,
 } from './phonehome'
 
@@ -14,27 +14,65 @@ function s(id: string, health: string, at: number, extra: Partial<SessionSummary
   } as unknown as SessionSummary
 }
 
-describe('continueList', () => {
-  it('puts what waits on you first, then work in progress, then the rest, newest first', () => {
-    const list = [
-      s('idle-new', 'idle', NOW - 1000),
-      s('working-old', 'working', NOW - 50_000),
-      s('waiting', 'waiting-on-you', NOW - 90_000),
-      s('working-new', 'working', NOW - 10_000),
-      s('ended', 'ended', NOW - 5000, { status: 'ended' } as Partial<SessionSummary>),
+// Owner, 2026-10-22 (translated): a session is known by its place in the
+// list; a row that moves because of what it is doing drives him mad.
+describe('continueRows', () => {
+  const ids = (r: { rows: SessionSummary[] }) => r.rows.map((x) => x.session_id)
+  const tabs = (items: SessionSummary[], sessions = items.map((x) => x.session_id)) => ({ known: true, at: NOW, sessions, items })
+
+  it("follows the computer's tab order, whatever each row is doing", () => {
+    const a = s('a', 'idle', NOW - 90_000)
+    const b = s('b', 'working', NOW - 1000)
+    const c = s('c', 'waiting-on-you', NOW - 50_000)
+    const first = continueRows(tabs([a, b, c]), false, [])
+    expect(first.source).toBe('tabs')
+    expect(ids(first)).toEqual(['a', 'b', 'c'])
+    // a starts working, b finishes, c is answered: nobody moves.
+    const next = continueRows(tabs([s('a', 'working', NOW), s('b', 'done', NOW - 1000), s('c', 'idle', NOW - 500)]), false, [])
+    expect(ids(next)).toEqual(['a', 'b', 'c'])
+    // A drag on the computer is the one thing that reorders.
+    expect(ids(continueRows(tabs([c, a, b]), false, []))).toEqual(['c', 'a', 'b'])
+  })
+
+  it('lists only the tabs: no cap, a background session left out, an ended tab kept, shells never', () => {
+    const many = Array.from({ length: 12 }, (_, i) => s(`t${i}`, 'idle', NOW - i))
+    const ended = s('gone', 'idle', NOW - 9, { status: 'ended' } as Partial<SessionSummary>)
+    const shell = s('sh', 'idle', NOW, { kind: 'shell' } as Partial<SessionSummary>)
+    const background = s('bg', 'working', NOW)
+    const r = continueRows(tabs([...many, ended, shell, many[0]!]), false, [background, ...many])
+    expect(ids(r)).toEqual([...many.map((x) => x.session_id), 'gone'])
+  })
+
+  it('a known empty list is empty, not the live sessions', () => {
+    const r = continueRows({ known: true, at: NOW, sessions: [], items: [] }, false, [s('x', 'working', NOW)])
+    expect(r).toEqual({ rows: [], source: 'tabs' })
+  })
+
+  it('draws nothing while the tabs are first read, so the rows never jump from one order to another', () => {
+    expect(continueRows(undefined, false, [s('x', 'working', NOW)])).toEqual({ rows: [], source: 'reading' })
+  })
+
+  it('without tabs: the live sessions, oldest started first, a change of state moving nobody', () => {
+    const list = (h: [string, string, string]) => [
+      s('new', h[0], NOW - 1000, { started_at: 300 } as Partial<SessionSummary>),
+      s('old', h[1], NOW - 90_000, { started_at: 100 } as Partial<SessionSummary>),
+      s('mid', h[2], NOW - 50_000, { started_at: 200 } as Partial<SessionSummary>),
+      s('ended', 'idle', NOW - 5, { status: 'ended', started_at: 50 } as Partial<SessionSummary>),
+      s('sh', 'idle', NOW, { kind: 'shell', started_at: 1 } as Partial<SessionSummary>),
     ]
-    expect(continueList(list, NOW).map((x) => x.session_id)).toEqual(['waiting', 'working-new', 'working-old', 'idle-new', 'ended'])
+    const unknown = { known: false, at: 0, sessions: [], items: [] }
+    const first = continueRows(unknown, false, list(['working', 'idle', 'waiting-on-you']))
+    expect(first.source).toBe('live')
+    expect(ids(first)).toEqual(['old', 'mid', 'new'])
+    expect(ids(continueRows(unknown, false, list(['done', 'working', 'idle'])))).toEqual(['old', 'mid', 'new'])
+    // An older daemon has no GET /v1/tabs: the same fallback.
+    expect(ids(continueRows(undefined, true, list(['idle', 'idle', 'working'])))).toEqual(['old', 'mid', 'new'])
   })
 
-  it('drops what went quiet more than two days ago, unless it is working or waiting', () => {
-    const old = NOW - CONTINUE_WINDOW_MS - 1
-    const list = [s('stale', 'idle', old), s('stale-ended', 'ended', old, { status: 'ended' } as Partial<SessionSummary>), s('busy', 'working', old)]
-    expect(continueList(list, NOW).map((x) => x.session_id)).toEqual(['busy'])
-  })
-
-  it('keeps at most five', () => {
-    const list = Array.from({ length: 9 }, (_, i) => s(`x${i}`, 'idle', NOW - i))
-    expect(continueList(list, NOW)).toHaveLength(5)
+  it('without tabs keeps the most recently started few, still oldest first', () => {
+    const list = Array.from({ length: CONTINUE_LIVE_MAX + 3 }, (_, i) => s(`x${i}`, 'idle', NOW - i, { started_at: i + 1 } as Partial<SessionSummary>))
+    const r = continueRows(undefined, true, list)
+    expect(ids(r)).toEqual(list.slice(3).map((x) => x.session_id))
   })
 })
 

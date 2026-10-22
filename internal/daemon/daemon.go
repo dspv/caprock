@@ -732,6 +732,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		StopOrphans:     func(ctx context.Context, t []api.OrphanTarget, force bool) any { return d.stopOrphans(ctx, t, force) },
 		KeepAwake:       d.keepAwakeStatus,
 		OpenTabs:        d.tabs.report,
+		LatestTabs:      d.tabs.latest,
 		UpdateBusy:      d.workingSessions,
 		ReapOrphans:     func(ctx context.Context) (any, error) { return d.reapOrphans(ctx, true) },
 		RateLimitsRecorded: func(ctx context.Context) {

@@ -331,6 +331,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/tools/drill":                     true, // the tool drill-down; its Premium half is gated in the handler
 	"GET /v1/saved-prompts":                   true, // the phone's chips (ADR-051); changing them is the machine's
 	"GET /v1/attempts/{group}":                true, // Compare attempts (ADR-052): what each changed and cost, a read
+	"GET /v1/tabs":                            true, // the computer's open tabs in order: the phone home's Continue mirrors them
 	"GET /v1/inbox":                           true, // what was saved for later, from the phone or the machine
 	"GET /v1/inbox/{id}/files/{n}":            true, // an Inbox item's image, for its thumbnail
 	"GET /v1/brain":                           true, // Second Brain's graph (ADR-063); writing it is the machine's

@@ -12,14 +12,18 @@ describe('useReportTabs', () => {
     const { rerender } = renderHook(({ ids }) => useReportTabs(ids), { initialProps: { ids: ['b', 'a', 'a'] } })
     expect(put).toHaveBeenCalledTimes(1)
     const viewer = put.mock.calls[0]![0]
-    expect(put.mock.calls[0]![1]).toEqual(['a', 'b'])
-    // The same set in another order is no change.
-    rerender({ ids: ['a', 'b'] })
+    // In tab-strip order, each once: the phone home lists them so.
+    expect(put.mock.calls[0]![1]).toEqual(['b', 'a'])
+    // The same list again is no change.
+    rerender({ ids: ['b', 'a'] })
     expect(put).toHaveBeenCalledTimes(1)
+    // A drag is: the new order is said at once.
+    rerender({ ids: ['a', 'b'] })
+    expect(put).toHaveBeenLastCalledWith(viewer, ['a', 'b'])
     rerender({ ids: ['a'] })
     expect(put).toHaveBeenLastCalledWith(viewer, ['a'])
     vi.advanceTimersByTime(TABS_HEARTBEAT_MS)
-    expect(put).toHaveBeenCalledTimes(3)
+    expect(put).toHaveBeenCalledTimes(4)
     // Every tab closed: an empty list, said too.
     rerender({ ids: [] })
     expect(put).toHaveBeenLastCalledWith(viewer, [])

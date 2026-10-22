@@ -36,6 +36,8 @@ function stubs(inbox: InboxItem[] = []) {
   vi.spyOn(api, 'subscriptions').mockResolvedValue({ agents: [] } as unknown as Awaited<ReturnType<typeof api.subscriptions>>)
   vi.spyOn(api, 'chats').mockResolvedValue({ items: chats, total: chats.length, chats: chats.length, archived: 0 })
   vi.spyOn(api, 'limits').mockResolvedValue(limits)
+  // No app has reported its tabs: Continue lists the live sessions.
+  vi.spyOn(api, 'tabs').mockResolvedValue({ known: false, at: 0, sessions: [], items: [] })
 }
 
 let limits: LimitsAnswer = {}
@@ -295,5 +297,59 @@ describe('PhoneHome folds, limits and rows', () => {
     expect(metas.map((m) => m.textContent)).toEqual(['context 84%· 3 subagents', 'context 38%'])
     expect(metas[0]!.querySelector('.text-warn')).toBeTruthy()
     expect(metas[1]!.querySelector('.text-warn')).toBeNull()
+  })
+})
+
+// Owner, 2026-10-22 (translated): the phone shows the sessions open as tabs
+// on the computer, in a stable position — a row never moves because of what
+// it is doing.
+describe("PhoneHome Continue mirrors the computer's tabs", () => {
+  afterEach(() => { vi.useRealTimers() })
+  const rows = () => [...document.querySelectorAll<HTMLElement>('[data-continue-row]')]
+  const order = () => rows().map((r) => r.dataset.continueRow)
+  const tabbed = (items: SessionSummary[]) => ({ known: true, at: NOW, sessions: items.map((s) => s.session_id), items })
+
+  it('lists the tabs in strip order, leaves a background session out, and keeps each row in place as its state changes', async () => {
+    stubs()
+    const web = session('web', 'caprock-web', 'idle', { name: 'site copy' })
+    const cap = session('cap', 'caprock', 'working', { name: 'phone tabs' })
+    const ops = session('ops', 'caprock-ops', 'idle', { name: 'deploy' })
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [session('bg', 'caprock-web', 'working', { name: 'background' }), cap, web, ops], total: 4 })
+    vi.mocked(api.tabs).mockResolvedValue(tabbed([cap, web, ops]))
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(<PhoneHome />)
+    await screen.findByText('site copy')
+    expect(order()).toEqual(['cap', 'web', 'ops'])
+    expect(screen.queryByText('background')).toBeNull()
+    expect(screen.getByRole('region', { name: 'Continue' }).dataset.continueSource).toBe('tabs')
+    const opsRow = rows()[2]
+    // ops starts working and cap waits on you: nobody moves, no row is drawn anew.
+    vi.mocked(api.tabs).mockResolvedValue(tabbed([
+      { ...cap, activity: { health: 'waiting-on-you', phrase: '', at: '' } } as unknown as SessionSummary,
+      web,
+      { ...ops, activity: { health: 'working', phrase: 'running tests', at: '' } } as unknown as SessionSummary,
+    ]))
+    await act(async () => { vi.advanceTimersByTime(6000) })
+    await waitFor(() => expect(screen.getByText('caprock-ops · running tests')).toBeTruthy())
+    expect(order()).toEqual(['cap', 'web', 'ops'])
+    expect(rows()[2]).toBe(opsRow)
+    // A drag on the computer is followed.
+    vi.mocked(api.tabs).mockResolvedValue(tabbed([ops, cap, web]))
+    await act(async () => { vi.advanceTimersByTime(6000) })
+    await waitFor(() => expect(order()).toEqual(['ops', 'cap', 'web']))
+  })
+
+  it('without tabs from the computer lists the live sessions oldest first, and activity moves nobody', async () => {
+    stubs()
+    const list = (busy: string) => ['a', 'b', 'c'].map((id, i) => session(id, `p${id}`, id === busy ? 'working' : 'idle', { started_at: NOW - (3 - i) * 60_000, worked_at: id === busy ? NOW : NOW - 600_000 }))
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: list('a'), total: 3 })
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(<PhoneHome />)
+    await screen.findByText('work in pa')
+    expect(order()).toEqual(['a', 'b', 'c'])
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: list('c'), total: 3 })
+    await act(async () => { vi.advanceTimersByTime(6000) })
+    await waitFor(() => expect(api.sessionsWithTotal).toHaveBeenCalledTimes(2))
+    expect(order()).toEqual(['a', 'b', 'c'])
   })
 })

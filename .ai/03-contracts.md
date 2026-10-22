@@ -759,7 +759,8 @@ GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, model
 GET  /v1/stats/limits                  → {rate_limits?, codex_rate_limits?} — the plan windows alone, as the summary carries them
 GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
-PUT  /v1/tabs                          {viewer, sessions} → 204: the sessions this dashboard has a tab for (§ Open tabs)
+PUT  /v1/tabs                          {viewer, sessions} → 204: the sessions this dashboard has a tab for, in strip order (§ Open tabs)
+GET  /v1/tabs                          → TabsAnswer {known, at, sessions, items}: the computer's tabs the phone home mirrors (§ Open tabs)
 POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
 POST /v1/support                       → {ok: true} — forward one bug report to Caprock support at caprock.dev on the user's click (§ Report a bug, ADR-073)
 GET  /v1/update                        → cached release status (no network I/O)
@@ -2264,15 +2265,33 @@ released). The sessions are looked at once a minute.
 
 **Open tabs** — `PUT /v1/tabs` `{"viewer": "<id>", "sessions": ["<id>",
 …]}` → `204`. Tabs live in the browser, so the dashboard tells the daemon
-which sessions it has a tab for: the whole list, at once when it changes and
-every 10 minutes while it is open (`ui/src/lib/reportTabs.ts`). `viewer` is
-a random id the browser keeps (`caprock.app.viewer-id`), 1–64 characters;
-`sessions` at most 500, blank and repeated ids dropped; otherwise `400`.
-Each viewer's last list is kept in `<data_dir>/open-tabs.json`
-(`{"viewers": {"<id>": {"at": <unix ms>, "sessions": [...]}}}`, written when
-the list changes or is an hour old), so a restarted daemon still knows, and
-so does one whose app was closed for the night. A viewer that has not
-reported for 7 days no longer counts. `501` when the daemon keeps no list.
+which sessions it has a tab for: the whole list in tab-strip order (each
+pane of a split in turn), at once when it or its order changes and every 10
+minutes while it is open (`ui/src/lib/reportTabs.ts`). Only the app
+workspace (`screens/AppShell.tsx`) reports; the phone's page never does.
+`viewer` is a random id the browser keeps (`caprock.app.viewer-id`), 1–64
+characters; `sessions` at most 500, blank and repeated ids dropped (the
+first kept); otherwise `400`. Each viewer's last list is kept in
+`<data_dir>/open-tabs.json` (`{"viewers": {"<id>": {"at": <unix ms>,
+"changed": <unix ms>, "sessions": [...]}}}`; `changed` is when the list or
+its order last changed, absent in a file from before it, which then reads as
+`at`; written when the list changes or is an hour old), so a restarted daemon
+still knows, and so does one whose app was closed for the night. A viewer
+that has not reported for 7 days no longer counts. `501` when the daemon
+keeps no list.
+
+`GET /v1/tabs` → `TabsAnswer` `{"known": bool, "at": <unix ms>, "sessions":
+[...], "items": [SessionSummary...]}`: the list the phone home's Continue
+mirrors (04-ui.md § The phone home). Of the viewers within the 7 days, one
+that reported in the last 30 minutes (on screen: three heartbeats) wins over
+one that did not, then the one whose list changed last — so two windows
+heartbeating the same lists never take turns — then the later report, then
+the lower viewer id. `sessions` is that list as reported, file and page keys
+included; `items` is each of them that is a session in the store, in the
+same order, as `GET /v1/sessions` describes it, shells left out. `known` is
+false (and the arrays empty, `at` 0) when no viewer counts. A paired device,
+viewer or controller, may read it (`pairedDeviceRoutes`); it may not report
+(`PUT` stays the machine's). `501` when the daemon keeps no list.
 
 **`GET /v1/sessions/{id}/prs`** → `SessionPRs` `{connected, prs, fetched_at,
 refreshing?}`: the session's latest

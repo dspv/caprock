@@ -3,45 +3,60 @@
  * tested without a DOM (components/PhoneHome.tsx; .ai/04-ui.md § The phone
  * home).
  */
-import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary } from './api'
+import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary, TabsAnswer } from './api'
 import { quotePath } from './xtermInput'
-import { isDone, needsYou, oldestFirst } from './needs'
-
-/** How many sessions Continue lists. */
-export const CONTINUE_MAX = 5
-/** A session quiet for longer than this is history, not something to continue. */
-export const CONTINUE_WINDOW_MS = 2 * 24 * 60 * 60 * 1000
-
-function at(s: SessionSummary): number {
-  return Math.max(s.worked_at || 0, s.last_event_at || 0)
-}
-
-function rank(s: SessionSummary): number {
-  const h = s.activity?.health
-  if (h === 'waiting-on-you') return 0
-  if (h === 'working' || h === 'looping' || h === 'error') return 1
-  if (s.status !== 'ended') return 2
-  return 3
-}
+import { needsYou, oldestFirst } from './needs'
 
 /**
- * The sessions worth one tap: needing you first, then working, then the rest
- * of what is open, then what ended lately — newest first within each, the
- * last two days only, at most CONTINUE_MAX. A Done turn is not here: it folds
- * into its own row below (doneList; § Needs you and Done).
+ * How many rows Continue lists when the computer's tabs are not known. With
+ * the tabs known there is no cap: the tabs are the set the user chose.
  */
-export function continueList(sessions: readonly SessionSummary[], now: number, max = CONTINUE_MAX): SessionSummary[] {
-  return sessions
-    .filter((s) => !isDone(s))
-    .filter((s) => rank(s) < 2 || now - at(s) < CONTINUE_WINDOW_MS)
-    .slice()
-    .sort((a, b) => rank(a) - rank(b) || at(b) - at(a))
-    .slice(0, max)
-}
+export const CONTINUE_LIVE_MAX = 8
 
-/** Sessions whose turn ended asking nothing, the last two days, newest first: the folded Done row. */
-export function doneList(sessions: readonly SessionSummary[], now: number): SessionSummary[] {
-  return sessions.filter((s) => isDone(s) && now - at(s) < CONTINUE_WINDOW_MS).sort((a, b) => at(b) - at(a))
+/**
+ * Where Continue's rows come from: the computer's tabs, the live sessions
+ * when no app has reported its tabs, or nothing yet while the tabs are being
+ * read for the first time (drawing the live sessions meanwhile would show one
+ * order and then jump to another).
+ */
+export type ContinueSource = 'tabs' | 'live' | 'reading'
+
+/**
+ * Continue's rows (owner, 2026-10-22, translated: "people identify a session
+ * by a few pieces of text and above all by its position in the list; when it
+ * flickers it drives me mad"). A row never moves because of what it is
+ * doing: its dot and words change in place.
+ *
+ * - The computer's tabs known (`GET /v1/tabs`): the sessions open as tabs,
+ *   in tab-strip order, whatever their state. A session that is not a tab is
+ *   not here (All sessions has it).
+ * - Not known (no app reported for a week, or a daemon from before): the
+ *   live sessions, oldest started first — a new one goes last, one that ends
+ *   leaves without the others changing places. At most CONTINUE_LIVE_MAX,
+ *   the most recently started.
+ *
+ * `tabs` is undefined while the first read is out, and `tabsFailed` when it
+ * failed (an older daemon has no `GET /v1/tabs`). Shells are never rows (a
+ * phone opens no terminal); the caller leaves chats out of both lists.
+ */
+export function continueRows(
+  tabs: TabsAnswer | undefined, tabsFailed: boolean, sessions: readonly SessionSummary[], max = CONTINUE_LIVE_MAX,
+): { rows: SessionSummary[]; source: ContinueSource } {
+  if (tabs?.known) {
+    const seen = new Set<string>()
+    const rows = (tabs.items ?? []).filter((s) => {
+      if (s.kind === 'shell' || seen.has(s.session_id)) return false
+      seen.add(s.session_id)
+      return true
+    })
+    return { rows, source: 'tabs' }
+  }
+  if (!tabs && !tabsFailed) return { rows: [], source: 'reading' }
+  const live = sessions
+    .filter((s) => s.status !== 'ended' && s.kind !== 'shell')
+    .slice()
+    .sort((a, b) => (a.started_at || 0) - (b.started_at || 0) || (a.session_id < b.session_id ? -1 : a.session_id > b.session_id ? 1 : 0))
+  return { rows: live.slice(Math.max(0, live.length - max)), source: 'live' }
 }
 
 /** Sessions that need you and that this screen may answer, oldest first: the amber card. */

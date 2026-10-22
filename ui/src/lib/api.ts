@@ -915,6 +915,18 @@ export interface RateLimits {
   seven_day?: RateWindow
 }
 
+/**
+ * `GET /v1/tabs`: the tabs the computer's app has open, in strip order
+ * (03-contracts.md § Open tabs). `known` is false when no app has reported
+ * for a week; `items` are the sessions among `sessions`, in the same order.
+ */
+export interface TabsAnswer {
+  known: boolean
+  at: number
+  sessions: string[]
+  items: SessionSummary[]
+}
+
 /** `GET /v1/stats/limits`: the plan windows, as the summary carries them. */
 export interface LimitsAnswer {
   rate_limits?: RateLimits
@@ -2298,8 +2310,10 @@ export const api = {
   checkUpdateSoon: () => post<UpdateStatus>('/v1/update/check?soon=1', {}),
   updateBusy: () => get<UpdateBusy>('/v1/update/busy'),
   saveSettings: (s: Settings) => post<Settings>('/v1/settings', s, 'PUT'),
-  /** The sessions this viewer has a tab for, the whole list (PUT /v1/tabs): none of them is ever ended for idling. */
+  /** The sessions this viewer has a tab for, the whole list in tab-strip order (PUT /v1/tabs): none of them is ever ended for idling, and the phone home mirrors them. */
   putTabs: (viewer: string, sessions: string[]) => post<void>('/v1/tabs', { viewer, sessions }, 'PUT'),
+  /** The computer's open tabs in strip order (GET /v1/tabs), for the phone home's Continue. */
+  tabs: () => get<TabsAnswer>('/v1/tabs'),
   summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
     get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
   /** The plan windows alone (`GET /v1/stats/limits`): the summary's rate_limits and codex_rate_limits without the rest. */

@@ -118,6 +118,10 @@ type Deps struct {
 	// /v1/tabs: a session with a tab is never ended for idling
 	// (daemon/endidle.go). nil ⇒ 501.
 	OpenTabs func(viewer string, sessions []string) error
+	// LatestTabs is the reported list GET /v1/tabs answers with, in tab-strip
+	// order: the window on screen whose tabs changed last; ok is false when
+	// no viewer's report counts. nil ⇒ 501.
+	LatestTabs func() (sessions []string, at int64, ok bool)
 	// WindowStop returns the plan-window stop's state for GET
 	// /v1/window-stop: the share, whether a licence is active, the figures it
 	// acts on and how fresh they are, and the sessions it has paused. nil ⇒ 501.
@@ -717,6 +721,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/keepawake", s.handleKeepAwake)
 	m.HandleFunc("PUT /v1/settings", s.handlePutSettings)
 	m.HandleFunc("PUT /v1/tabs", s.handlePutTabs)
+	m.HandleFunc("GET /v1/tabs", s.handleGetTabs)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
 	m.HandleFunc("POST /v1/alerts/test", s.handleTestAlert)
 	m.HandleFunc("GET /v1/telegram", s.handleTelegram)
