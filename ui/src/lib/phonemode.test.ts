@@ -4,7 +4,7 @@
  * preferences.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { ANDROID_CHROME_UA, DEFAULT_PHONE_PREFS, DEVICES, IOS_SAFARI_UA, PHONE_PREFS_KEY, TRUTH, customDevice, deviceOf, fitOf, frameSize, hostOs, layoutOf, loadPhonePrefs, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn } from './phonemode'
+import { ANDROID_CHROME_UA, DEFAULT_PHONE_PREFS, DEVICES, IOS_SAFARI_UA, PHONE_PREFS_KEY, TRUTH, customDevice, deviceOf, fitOf, frameSize, hostOs, layoutOf, loadPhonePrefs, pageKeysOf, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_MIN_SCALE } from './phonemode'
 
 const dev = (id: string) => DEVICES.find((d) => d.id === id)!
 
@@ -113,6 +113,36 @@ describe('the preferences', () => {
     expect(phoneOn('page:b')).toBe(false)
     setPhoneOn('page:a', false)
     expect(phoneOn('page:a')).toBe(false)
+  })
+})
+
+describe('side by side', () => {
+  it('is off by default and remembered', () => {
+    expect(DEFAULT_PHONE_PREFS.side).toBe(false)
+    savePhonePrefs({ ...DEFAULT_PHONE_PREFS, side: true })
+    expect(loadPhonePrefs().side).toBe(true)
+    localStorage.setItem(PHONE_PREFS_KEY, JSON.stringify({ side: 'yes' }))
+    expect(loadPhonePrefs().side).toBe(false)
+  })
+
+  it('keeps the tab’s own window on the device in use, else iPhone 16, and names the others apart', () => {
+    expect(sideMain('pixel9')).toBe('pixel9')
+    expect(sideMain('s24')).toBe('iphone16')
+    expect(sideMain('custom')).toBe('iphone16')
+    expect(sideKey('page:ab-1', 'iphonese')).toBe('page:ab-1-sbs-iphonese')
+    expect(pageKeysOf('page:ab-1')).toEqual(['page:ab-1', 'page:ab-1-sbs-iphonese', 'page:ab-1-sbs-iphone16', 'page:ab-1-sbs-pixel9'])
+  })
+
+  it('fits the tallest to the height and the row to the width, never above 1 nor below the readable floor', () => {
+    const frames = [{ w: 403, h: 803 }, { w: 415, h: 874 }, { w: 432, h: 943 }]
+    expect(sideScale(frames, 22, { w: 5000, h: 5000 })).toBe(1)
+    expect(sideScale(frames, 22, { w: 5000, h: 471.5 })).toBe(0.5)
+    expect(sideScale(frames, 22, { w: 5000, h: 707.25 })).toBe(0.75)
+    // Narrow: the row's width decides.
+    expect(sideScale(frames, 22, { w: 44 + 625, h: 5000 })).toBe(0.5)
+    // Too narrow even at the floor: it stays there and the row scrolls.
+    expect(sideScale(frames, 22, { w: 300, h: 300 })).toBe(SIDE_MIN_SCALE)
+    expect(sideScale(frames, 22, { w: 0, h: 0 })).toBe(1)
   })
 })
 

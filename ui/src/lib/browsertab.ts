@@ -338,6 +338,14 @@ export interface BrowserNews {
   ok?: boolean
   /** A browser key pressed in the page (browserKey). */
   key?: BrowserKey
+  /** `measure`'s answer: the document's width and the width it is laid out in, CSS px. */
+  doc?: number
+  view?: number
+}
+
+/** Whether a page's document is wider than its window: it runs past the phone's edge. */
+export function cutOff(n: Pick<BrowserNews, 'doc' | 'view'>): boolean {
+  return typeof n.doc === 'number' && typeof n.view === 'number' && n.view > 0 && n.doc > n.view + 1
 }
 
 /** A rectangle in the window's logical pixels: the element's CSS box times the dashboard's zoom. */
@@ -372,6 +380,8 @@ export type BrowserAct =
   | { do: 'focus' }
   /** Pause what plays in it: an agent is waiting on you. */
   | { do: 'pause' }
+  /** Side by side: is its document wider than its window? The answer comes back as news (`doc`, `view`). */
+  | { do: 'measure' }
   /** Close every page but these: the tabs the workspace still has after a reload. */
   | { do: 'retain'; ids: string[] }
 

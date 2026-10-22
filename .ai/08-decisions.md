@@ -5481,6 +5481,22 @@ point at; nothing is probed or stored). Verified: UI tests, and the button
 and the split in a headless dashboard with the shell stubbed; not verified:
 a real Tauri run of the preview's page window.
 
+**Amended 2026-10-22 — Side by side.** The same local page on three phones
+at once (iPhone SE, iPhone 16, Pixel 9; the owner's approved mockup), so a
+front-end developer sees every width after one save. Each phone is a page
+window of its own rather than three frames in one: an iframe in the
+dashboard would put a stranger's page inside the dashboard's origin and
+webview, which this ADR exists to avoid, and one window cannot hold three
+layouts. The cost is a WebContent process per extra phone (about 16 MB on a
+small page, measured), so the two extras exist only while the toggle is on.
+The phones are drawn smaller than life; the page window is zoomed out by the
+same factor so the page still lays out at the phone's CSS width — zoom, not
+a smaller viewport. The *cut off* mark comes from a read-only script the
+shell evaluates with a callback (`measure`), never from the page calling
+the shell, so it adds no way for a page to reach Caprock and fakes nothing
+but its own mark. Not verified in the app: the zoom and the callback on each
+engine.
+
 ---
 
 ## ADR-076 — Private modules: a slot opened by a signed admin key, holding nothing of its own

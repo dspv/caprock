@@ -227,7 +227,7 @@ A page on any other origin gets nothing; `cargo test` checks each refusal.
 A browser tab's page (`browser-<id>`, the in-app browser, ADR-075) is a
 window no capability names, so it gets nothing either, even on
 `127.0.0.1`. `browser_tab` (`{id, act}`, `src-tauri/src/browser.rs`) is how
-the dashboard opens, places, shows, hides, navigates, pauses and closes
+the dashboard opens, places, shows, hides, navigates, pauses, measures and closes
 those windows; it is never called while the in-app browser is off.
 The `app_update_*` commands are the app's updater (F20, `src-tauri/src/updater.rs`,
 ADR-042): the state (`{version, supported, blocked?, asked, phase, …}`), a

@@ -1,7 +1,9 @@
 /**
  * Phone mode's device bar, under a browser tab's toolbar (lib/phonemode.ts):
  * the device, a custom size, the browser's bars shown or scrolled away,
- * rotate, touch, the honest list behind ?, and what the page reads.
+ * rotate, side by side, touch, the honest list behind ?, and what the page
+ * reads. Side by side has no device, size or rotate of its own: it is the
+ * three phones, portrait (components/PhoneRow.tsx).
  */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { CUSTOM_MAX, CUSTOM_MIN, DEVICES, TRUTH, clampSide, hostOs, type Device, type Fit, type HostOs, type Layout, type PhonePrefs } from '@/lib/phonemode'
@@ -13,6 +15,8 @@ export interface DeviceBarProps {
   device: Device
   layout: Layout
   fit: Fit
+  /** Side by side is on: the three phones and the scale they are drawn at. */
+  side?: { scale: number; devices: readonly Device[] } | null
   /** Tests: the host OS the list opens on. */
   os?: HostOs
 }
@@ -20,7 +24,7 @@ export interface DeviceBarProps {
 const OS_NAMES: Record<HostOs, string> = { mac: 'macOS', win: 'Windows', lin: 'Linux' }
 const MARK: Record<string, string> = { real: '✓', approx: '≈', no: '×' }
 
-export function DeviceBar({ prefs, onChange, device, layout, fit, os = hostOs() }: DeviceBarProps) {
+export function DeviceBar({ prefs, onChange, device, layout, fit, side = null, os = hostOs() }: DeviceBarProps) {
   const [help, setHelp] = useState(false)
   const [listOs, setListOs] = useState<HostOs>(os)
   const helpRef = useRef<HTMLDivElement>(null)
@@ -35,13 +39,13 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, os = hostOs() 
       window.removeEventListener('keydown', onKey)
     }
   }, [help])
-  const custom = device.id === 'custom'
+  const custom = !side && device.id === 'custom'
   const tbtn = (on: boolean) => `flex h-[24px] shrink-0 items-center gap-1 rounded-[6px] border px-2 text-[12px] ${on ? 'border-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-fg' : 'border-[var(--app-hairline)] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'}`
   const here = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
   const estTitle = 'An estimate of what the status bar and the browser’s bars leave; not measured on a phone yet'
   return (
     <div data-phone-bar className="relative flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--app-hairline)] px-2 py-1 text-[12px]">
-      <select
+      {!side && <select
         aria-label="Device"
         value={prefs.device}
         onChange={(e) => onChange({ device: e.target.value as PhonePrefs['device'] })}
@@ -49,7 +53,7 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, os = hostOs() 
       >
         {DEVICES.map((d) => <option key={d.id} value={d.id}>{d.name} · {d.browser}</option>)}
         <option value="custom">Custom W×H</option>
-      </select>
+      </select>}
       {custom && <CustomSize w={prefs.customW} h={prefs.customH} onChange={(customW, customH) => onChange({ customW, customH })} />}
       {!custom && (
         <div role="group" aria-label="Browser bars" className="flex overflow-hidden rounded-[6px] border border-[var(--app-hairline)]">
@@ -67,7 +71,8 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, os = hostOs() 
           ))}
         </div>
       )}
-      <button type="button" aria-pressed={prefs.rotate} onClick={() => onChange({ rotate: !prefs.rotate })} className={tbtn(prefs.rotate)} title="Rotate: swap the sides"><RotateIcon size={13} />Rotate</button>
+      {!side && <button type="button" aria-pressed={prefs.rotate} onClick={() => onChange({ rotate: !prefs.rotate })} className={tbtn(prefs.rotate)} title="Rotate: swap the sides"><RotateIcon size={13} />Rotate</button>}
+      <button type="button" aria-pressed={!!side} onClick={() => onChange({ side: !side })} className={tbtn(!!side)} title="Side by side: the same page on iPhone SE, iPhone 16 and Pixel 9 at once, at their real widths" data-side-toggle><SideIcon />Side by side</button>
       <button type="button" aria-pressed={prefs.touch} onClick={() => onChange({ touch: !prefs.touch })} className={tbtn(prefs.touch)} title="Touch (approximate): the mouse acts as one finger — drag to scroll, swipe, pull a sheet"><TouchIcon size={13} />Touch</button>
       <div ref={helpRef} className="relative">
         <button type="button" aria-expanded={help} aria-label="How true phone mode is" title="How true phone mode is" onClick={() => setHelp((h) => !h)} className="flex h-[24px] w-[24px] items-center justify-center rounded-[6px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"><QuestionIcon size={14} /></button>
@@ -95,13 +100,17 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, os = hostOs() 
         )}
       </div>
       <span className="min-w-0 flex-1" />
-      <span className="mono truncate text-[11.5px] text-fg-muted" data-phone-readout>
+      {side ? (
+        <span className="mono truncate text-[11.5px] text-fg-muted" data-phone-readout>
+          widths <b className="font-medium text-fg">{side.devices.map((d) => d.w).join(' · ')}</b> · drawn at {Math.round(side.scale * 100)}% · DPR {here} here
+        </span>
+      ) : <span className="mono truncate text-[11.5px] text-fg-muted" data-phone-readout>
         page <b className="font-medium text-fg">{layout.pageW}×{layout.pageH}</b>
         {layout.est && <abbr title={estTitle} className="ml-0.5 cursor-help border-b border-dotted border-warn no-underline">est.</abbr>}
         {!custom && <> · screen {layout.screenW}×{layout.screenH}</>}
         {' '}· DPR {here}{!custom && <> here, {device.dpr} on the phone</>} · {device.uaName}
-      </span>
-      {fit !== 'full' && (
+      </span>}
+      {!side && fit !== 'full' && (
         <p role="status" data-phone-fit-note className="w-full text-[11.5px] text-warn">
           {fit === 'page'
             ? 'The whole phone does not fit this tab: the page area alone, at its true size.'
@@ -132,5 +141,16 @@ function CustomSize({ w, h, onChange }: { w: number; h: number; onChange: (w: nu
       <span className="text-fg-faint">×</span>
       <input aria-label="Height" value={th} onChange={(e) => setTh(e.target.value)} className={field} {...props} />
     </span>
+  )
+}
+
+/** Three phones in a row, for *Side by side*. */
+function SideIcon() {
+  return (
+    <svg width={13} height={13} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.3} aria-hidden>
+      <rect x="1" y="4" width="3.6" height="8" rx="0.9" />
+      <rect x="6.2" y="3" width="3.6" height="10" rx="0.9" />
+      <rect x="11.4" y="2.5" width="3.6" height="11" rx="0.9" />
+    </svg>
   )
 }

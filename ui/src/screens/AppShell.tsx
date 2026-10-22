@@ -92,7 +92,7 @@ import { BrowserView } from '@/components/BrowserView'
 import { browserAct, browserAvailable, browserOn, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
 import { openLink } from '@/lib/termlinks'
 import { PHONE_PREVIEW_EVENT, type PhonePreviewDetail } from '@/lib/devservers'
-import { startPhonePreview } from '@/lib/phonemode'
+import { pageKeysOf, startPhonePreview } from '@/lib/phonemode'
 import { PhonePreviewPalette } from '@/components/PhonePreviewPalette'
 import { attachable, detachedSession, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
@@ -660,7 +660,8 @@ export function AppShell() {
     // A phone preview shows with the setting off, so its pages are kept the same way.
     if (retained.current || !(browserEnabled || (isTauri() && pages.some((l) => l.target.preview)))) return
     retained.current = true
-    const ids = pages.map((l) => pageId(l.target.sessionId))
+    // A tab's side-by-side phones (lib/phonemode) are its pages too.
+    const ids = pages.flatMap((l) => pageKeysOf(l.target.sessionId)).map(pageId)
     void browserAct('page:all', { do: 'retain', ids }).catch(() => {})
   }, [browserEnabled, ws.tabs])
 

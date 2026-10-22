@@ -33,6 +33,13 @@
 //! agent is changed in place (WKWebView `customUserAgent`, WebView2
 //! `Settings.UserAgent`, WebKitGTK `user-agent`) and the page reloaded, so
 //! the page keeps its window, its store and its logins.
+//!
+//! Side by side (2026-10-22) is three such pages, one per phone, drawn
+//! smaller than the phones: the dashboard names the page's CSS width and
+//! the shell zooms the page out by window ÷ width (`zoom_for`; WKWebView
+//! `pageZoom`, WebView2 `ZoomFactor`, WebKitGTK zoom level), so it still
+//! lays out at the phone's width. `Measure` reads, through
+//! `eval_with_callback`, whether the page's document is wider than that.
 //! It runs in a non-persistent data store of its own, so it shares no cookie
 //! or storage with the dashboard or another page and leaves nothing on disk.
 //! It loads only what the user asked for, follows only the web's schemes,
@@ -208,6 +215,31 @@ pub const TOUCH_SCRIPT: &str = r#"(() => {
   Object.defineProperty(window, '__caprockTouch', { value: (v) => { on = !!v; drag = null; eatClick = false; cancelAnimationFrame(raf); } });
 })();"#;
 
+/// What `Measure` evaluates in the page: its document's width and the width
+/// it is laid out in, CSS px, as one string — `"640/375"`. It reads and
+/// changes nothing; a page that fakes it only fakes its own *cut off* mark.
+pub const MEASURE_SCRIPT: &str = "(() => { const d = document.documentElement; return d ? Math.ceil(d.scrollWidth) + '/' + Math.round(d.clientWidth) : '' })()";
+
+/// `MEASURE_SCRIPT`'s answer as the shell hears it (a JSON string on every
+/// system, or the bare text): the two widths, or None.
+pub fn measured(raw: &str) -> Option<(u32, u32)> {
+    let t = raw.trim().trim_matches('"');
+    let (a, b) = t.split_once('/')?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+}
+
+/// The zoom that lays a page of CSS width `page` out in a window `window`
+/// logical px wide: 1 unless the window is narrower (side by side draws the
+/// phones smaller), never below a tenth.
+pub fn zoom_for(window: f64, page: Option<f64>) -> f64 {
+    match page {
+        Some(p) if p.is_finite() && p >= 1.0 && window.is_finite() && window < p - 0.5 => {
+            (window / p).clamp(0.1, 1.0)
+        }
+        _ => 1.0,
+    }
+}
+
 /// What turns a live page's touch on or off (TOUCH_SCRIPT).
 pub fn touch_eval(on: bool) -> String {
     format!("window.__caprockTouch && window.__caprockTouch({on})")
@@ -265,6 +297,9 @@ pub enum Act {
     Focus,
     /// Pause what plays in it: an agent is waiting on the user.
     Pause,
+    /// Side by side: is its document wider than its window? Told back as
+    /// `{id, doc, view}` (`MEASURE_SCRIPT`).
+    Measure,
     /// Close every page but these ids: the tabs a reloaded dashboard still has.
     Retain {
         ids: Vec<String>,
@@ -279,6 +314,10 @@ pub struct Phone {
     pub ua: String,
     #[serde(default)]
     pub touch: bool,
+    /// Side by side: the page's CSS width; the window is smaller, so the
+    /// page is zoomed out to lay out at it (`zoom_for`). Absent, no zoom.
+    #[serde(default)]
+    pub width: Option<f64>,
 }
 
 /// What a page window is set to now: the user agent phone mode gave it
@@ -411,9 +450,30 @@ pub struct Pages {
     /// Windows: each page's own user agent, read before phone mode first
     /// replaced it, to give it back (WebView2 has no "reset").
     own_ua: Mutex<HashMap<String, String>>,
+    /// Side by side, by label: the page's CSS width (`Phone::width`) and the
+    /// zoom last given for it. Absent, 1.
+    widths: Mutex<HashMap<String, f64>>,
+    zooms: Mutex<HashMap<String, f64>>,
 }
 
 impl Pages {
+    fn width(&self, label: &str) -> Option<f64> {
+        self.widths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(label)
+            .copied()
+    }
+
+    fn zoom(&self, label: &str) -> f64 {
+        self.zooms
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(label)
+            .copied()
+            .unwrap_or(1.0)
+    }
+
     fn mode(&self, label: &str) -> Mode {
         self.modes
             .lock()
@@ -450,6 +510,13 @@ pub async fn browser_tab<R: Runtime>(
             phone,
         } => {
             let rect = sane(rect).ok_or("not a place in the window")?;
+            if let Some(pages) = app.try_state::<Pages>() {
+                let mut w = pages.widths.lock().unwrap_or_else(|e| e.into_inner());
+                match phone.as_ref().and_then(|p| p.width) {
+                    Some(px) => w.insert(label.clone(), px),
+                    None => w.remove(&label),
+                };
+            }
             let page = match page {
                 Some(p) => {
                     set_mode(&app, &label, &p, phone.as_ref(), true);
@@ -498,6 +565,18 @@ pub async fn browser_tab<R: Runtime>(
                 Act::Reload => page.reload().map_err(|e| e.to_string()),
                 Act::Focus => page.set_focus().map_err(|e| e.to_string()),
                 Act::Pause => page.eval(PAUSE_SCRIPT).map_err(|e| e.to_string()),
+                Act::Measure => {
+                    let (to, id) = (app.clone(), id.clone());
+                    page.eval_with_callback(MEASURE_SCRIPT, move |raw| {
+                        if let Some((doc, view)) = measured(&raw) {
+                            tell(
+                                &to,
+                                serde_json::json!({ "id": id, "doc": doc, "view": view }),
+                            );
+                        }
+                    })
+                    .map_err(|e| e.to_string())
+                }
                 Act::Open { .. } | Act::Retain { .. } => Ok(()),
             }
         }
@@ -631,6 +710,14 @@ fn place<R: Runtime>(
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(label.to_owned(), r);
+        // Side by side: zoomed so the page lays out at the phone's width.
+        let want = zoom_for(r.width, p.width(label));
+        if (want - p.zoom(label)).abs() > 1e-3 && page.set_zoom(want).is_ok() {
+            p.zooms
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(label.to_owned(), want);
+        }
     }
     Ok(())
 }
@@ -690,6 +777,14 @@ fn drain<R: Runtime>(app: &AppHandle<R>, label: &str, page: WebviewWindow<R>) {
             .unwrap_or_else(|e| e.into_inner())
             .remove(label);
         p.own_ua
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
+        p.widths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
+        p.zooms
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(label);
@@ -800,6 +895,11 @@ fn build<R: Runtime>(
                     let m = pages.mode(w.label());
                     if m.ua.is_some() || m.touch {
                         let _ = w.eval(touch_eval(m.touch));
+                    }
+                    // A side-by-side page keeps its zoom across a load.
+                    let z = pages.zoom(w.label());
+                    if (z - 1.0).abs() > 1e-3 {
+                        let _ = w.set_zoom(z);
                     }
                 }
             }
@@ -986,6 +1086,35 @@ mod tests {
     }
 
     #[test]
+    fn a_side_by_side_page_is_zoomed_to_lay_out_at_the_phones_width() {
+        // Drawn at 72%: the window is 283 px for a 393 px phone.
+        let z = zoom_for(283.0, Some(393.0));
+        assert!((283.0 / z - 393.0).abs() < 1e-9);
+        // Full size, wider, no width, nonsense: never zoomed.
+        assert_eq!(zoom_for(393.0, Some(393.0)), 1.0);
+        assert_eq!(zoom_for(500.0, Some(393.0)), 1.0);
+        assert_eq!(zoom_for(283.0, None), 1.0);
+        assert_eq!(zoom_for(283.0, Some(f64::NAN)), 1.0);
+        assert_eq!(zoom_for(1.0, Some(1000.0)), 0.1);
+    }
+
+    #[test]
+    fn a_measure_is_two_widths_or_nothing() {
+        assert_eq!(measured("\"640/375\""), Some((640, 375)));
+        assert_eq!(measured("640/375"), Some((640, 375)));
+        assert_eq!(measured("\"\""), None);
+        assert_eq!(measured("null"), None);
+        assert_eq!(measured("\"a/b\""), None);
+        assert!(MEASURE_SCRIPT.contains("scrollWidth"));
+        let a: Act = serde_json::from_value(serde_json::json!({"do": "measure"})).unwrap();
+        assert!(matches!(a, Act::Measure));
+        let o: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "http://localhost:5173/", "rect": {"x": 1, "y": 2, "width": 283, "height": 490}, "phone": {"ua": "UA", "touch": true, "width": 393}})).unwrap();
+        assert!(
+            matches!(o, Act::Open { phone: Some(Phone { width: Some(w), .. }), .. } if w == 393.0)
+        );
+    }
+
+    #[test]
     fn a_user_agent_is_one_printable_line() {
         let ua = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15";
         assert_eq!(user_agent(ua).as_deref(), Some(ua));
@@ -1000,6 +1129,7 @@ mod tests {
         let phone = |ua: &str, touch| Phone {
             ua: ua.into(),
             touch,
+            width: None,
         };
         let desk = Mode::default();
         // On: the device's agent (a reload) and touch.
@@ -1088,7 +1218,7 @@ mod tests {
         ));
         let a: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "https://a.b/", "rect": {"x": 1, "y": 2, "width": 393, "height": 681}, "focus": false, "phone": {"ua": "UA", "touch": true}})).unwrap();
         assert!(
-            matches!(a, Act::Open { phone: Some(Phone { ref ua, touch: true }), .. } if ua == "UA")
+            matches!(a, Act::Open { phone: Some(Phone { ref ua, touch: true, .. }), .. } if ua == "UA")
         );
         let a: Act = serde_json::from_value(serde_json::json!({"do": "hide"})).unwrap();
         assert!(matches!(a, Act::Hide));

@@ -908,6 +908,16 @@ are estimates of the phone's bars. The **?** beside it lists, for your
 system, what is real, what is approximate and what is not emulated at all
 (the screen's pixel ratio, the browser engine, the on-screen keyboard).
 
+**Side by side.** *Side by side* on the phone bar shows the same page on an
+iPhone SE, an iPhone 16 and a Pixel 9 in a row, each at its real width (375,
+393 and 412) and drawn smaller together to fit the pane. Reload reloads all
+three, your dev server's hot reload reaches each, and each scrolls on its
+own. A phone whose page is wider than its screen gets a red *cut off*. If
+the pane is too narrow the row scrolls sideways rather than shrink the
+phones past readable; click a phone's name to go back to that one phone.
+Caprock remembers the choice. Each extra phone is one more page in memory
+while side by side is on, and is closed when you turn it off.
+
 **Phone preview, in one click.** When a terminal prints a local dev
 server's address — Vite's `Local: http://localhost:5173/`, Next's, webpack's,
 `127.0.0.1`, `0.0.0.0`, `[::1]` or `*.localhost` — a small *Preview on

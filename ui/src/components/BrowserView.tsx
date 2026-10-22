@@ -26,11 +26,23 @@ import { isMacPlatform, isTauri } from '@/lib/appmode'
 import { getUiScale, useUiScale } from '@/lib/uiscale'
 import { openLink } from '@/lib/termlinks'
 import { keys, PHONE_MODE_KEY } from '@/lib/appkeys'
-import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, engineOf, overlayOpen, pageId, rectOf, sameRect, type BrowserNews, type PageRect } from '@/lib/browsertab'
-import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, type PhonePrefs } from '@/lib/phonemode'
+import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, cutOff, engineOf, overlayOpen, pageId, rectOf, sameRect, type BrowserNews, type PageRect } from '@/lib/browsertab'
+import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_DEVICES, SIDE_GAP, SIDE_LABEL, SIDE_MARGIN, type DeviceId, type PhonePrefs, type PhoneSpec } from '@/lib/phonemode'
 import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, PhoneIcon, ReloadIcon } from './AppIcons'
 import { DeviceBar } from './DeviceBar'
 import { PhoneFrame } from './PhoneFrame'
+import { PhoneRow } from './PhoneRow'
+
+/** One page window the tab has: its own, or a side-by-side phone's. */
+interface Slot {
+  key: string
+  /** Side by side: which phone's page area it is laid over. */
+  dev?: DeviceId
+  spec?: PhoneSpec
+}
+
+/** Side by side: how often each phone is asked whether its page runs past its edge, in seconds. */
+const MEASURE_EVERY = 2
 
 /** A session waiting on you, as the nudge names it. */
 export interface WaitingAgent {
@@ -143,15 +155,38 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     ro.observe(el)
     return () => ro.disconnect()
   }, [phone])
-  const device = deviceOf(phonePrefs)
-  const layout = useMemo(() => layoutOf(device, phonePrefs.bars, phonePrefs.rotate), [device, phonePrefs.bars, phonePrefs.rotate])
-  const fit = fitOf(frameSize(device, layout, phonePrefs.rotate), { w: layout.pageW, h: layout.pageH }, { w: (boxSize?.w ?? 0) * zoom, h: (boxSize?.h ?? 0) * zoom })
+  // Side by side: three phones, portrait, the tab's own page window one of
+  // them (the device in use, else iPhone 16) and two more beside it.
+  const side = phone && phonePrefs.side
+  const device = side ? deviceOf({ ...phonePrefs, device: sideMain(phonePrefs.device) }) : deviceOf(phonePrefs)
+  const rotate = side ? false : phonePrefs.rotate
+  const layout = useMemo(() => layoutOf(device, phonePrefs.bars, rotate), [device, phonePrefs.bars, rotate])
+  const fit = side ? 'full' : fitOf(frameSize(device, layout, rotate), { w: layout.pageW, h: layout.pageH }, { w: (boxSize?.w ?? 0) * zoom, h: (boxSize?.h ?? 0) * zoom })
+  const trio = useMemo(() => SIDE_DEVICES.map((id) => deviceOf({ device: id, customW: 0, customH: 0 })), [])
+  const sideAt = side
+    ? sideScale(
+      trio.map((d) => frameSize(d, layoutOf(d, phonePrefs.bars, false), false)),
+      SIDE_GAP * zoom,
+      { w: ((boxSize?.w ?? 0) - 2 * SIDE_MARGIN) * zoom, h: ((boxSize?.h ?? 0) - 2 * SIDE_MARGIN - SIDE_LABEL) * zoom },
+    )
+    : 1
   const spec = phone ? phoneSpec(device, phonePrefs.touch) : undefined
-  const specRef = useRef(spec)
-  specRef.current = spec
-  // What reopens the page's window: a new device, side, bars or fit moves
-  // the page area; a new agent or touch is the shell's to apply.
-  const phoneKey = phone ? `${device.id}|${layout.pageW}x${layout.pageH}|${fit}|${spec?.ua}|${spec?.touch}` : ''
+  // The pages this tab shows: its own, and side by side two more.
+  const slots: Slot[] = side
+    ? trio.map((d) => ({ key: d.id === device.id ? pageKey : sideKey(pageKey, d.id), dev: d.id, spec: { ...phoneSpec(d, phonePrefs.touch), width: layoutOf(d, phonePrefs.bars, false).pageW } }))
+    : [{ key: pageKey, ...(spec ? { spec } : {}) }]
+  const slotsRef = useRef(slots)
+  slotsRef.current = slots
+  const sideEls = useRef<Partial<Record<DeviceId, HTMLDivElement | null>>>({})
+  const sideRefs = useRef<Partial<Record<DeviceId, (el: HTMLDivElement | null) => void>>>({})
+  const sideRef = (id: DeviceId) => (sideRefs.current[id] ??= (el) => { sideEls.current[id] = el })
+  // Side by side: the phones scrolled partly out of view, and the ones whose page runs past their edge.
+  const [out, setOut] = useState<Partial<Record<DeviceId, boolean>>>({})
+  const [wide, setWide] = useState<Partial<Record<DeviceId, number>>>({})
+  useEffect(() => { if (!side) { setOut({}); setWide({}) } }, [side])
+  // What reopens the page windows: a new device, side, bars, fit or scale
+  // moves a page area; a new agent or touch is the shell's to apply.
+  const phoneKey = phone ? `${side ? `side@${sideAt}` : ''}|${slots.map((sl) => `${sl.key}=${sl.spec?.ua}|${sl.spec?.touch}|${sl.spec?.width ?? ''}`).join(',')}|${layout.pageW}x${layout.pageH}|${fit}` : ''
   // The page takes the keyboard when it was just sent somewhere from the address box.
   const focusNext = useRef(false)
   useEffect(() => { if (!editing) setAddress(url) }, [url, editing])
@@ -169,9 +204,29 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   useEffect(() => {
     if (!inApp) return
     const id = pageId(pageKey)
+    // A side-by-side phone's own window: what it measured, a window it
+    // asked for, a key pressed in it. Where it went is its own.
+    const extras = new Map(SIDE_DEVICES.map((dev) => [pageId(sideKey(pageKey, dev)), dev] as const))
+    const measured = (d: BrowserNews, dev: DeviceId | undefined) => {
+      if (!dev || d.doc === undefined) return
+      const w = cutOff(d) ? d.doc : undefined
+      setWide((m) => (m[dev] === w ? m : { ...m, [dev]: w }))
+    }
     const on = (e: Event) => {
       const d = (e as CustomEvent<BrowserNews>).detail
-      if (!d || d.id !== id) return
+      if (!d) return
+      const extra = extras.get(d.id)
+      if (extra) {
+        measured(d, extra)
+        if (typeof d.open === 'string') handlers.current.onOpenPage(d.open)
+        if (d.key === 'prev') handlers.current.onStep(-1)
+        if (d.key === 'next') handlers.current.onStep(1)
+        if (d.key === 'address') focusAddress()
+        if (d.key === 'phone') handlers.current.togglePhone()
+        return
+      }
+      if (d.id !== id) return
+      measured(d, slotsRef.current.find((sl) => sl.key === pageKey)?.dev)
       if (typeof d.url === 'string') {
         if (d.loading !== undefined) setLoading(d.loading)
         if (!d.loading) handlers.current.onNav(d.url)
@@ -217,61 +272,103 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const overlay = useOverlay(live && visible, box)
   const windowShown = useWindowShown()
   const showing = live && visible && !overlay && windowShown
-  const opened = useRef(false)
+  /** The page windows asked for and not closed since, by key. */
+  const opened = useRef(new Set<string>())
   useEffect(() => {
-    if (!live) {
-      // Turned off in Settings: the page goes, not just out of sight.
-      if (opened.current) {
-        opened.current = false
-        void browserAct(pageKey, { do: 'close' }).catch(() => {})
-      }
-      return
+    const slots = slotsRef.current
+    // A page window no longer wanted is closed: every one when the in-app
+    // browser is turned off (the page goes, not just out of sight), the two
+    // extra phones when side by side goes off.
+    const want = new Set(live ? slots.map((sl) => sl.key) : [])
+    for (const k of Array.from(opened.current)) {
+      if (want.has(k)) continue
+      opened.current.delete(k)
+      void browserAct(k, { do: 'close' }).catch(() => {})
     }
+    if (!live) return
     if (!showing) {
-      if (opened.current) void browserAct(pageKey, { do: 'hide' }).catch(() => {})
+      for (const k of opened.current) void browserAct(k, { do: 'hide' }).catch(() => {})
       return
     }
-    let last: PageRect | null = null
-    const measure = (): PageRect | null => {
-      if (specRef.current && !pageEl.current) return null
-      const r = (specRef.current ? pageEl.current : box.current)?.getBoundingClientRect()
+    const last = new Map<string, PageRect | null>()
+    const measure = (sl: Slot): PageRect | null => {
+      if (sl.dev) {
+        // A side-by-side phone shows only while wholly inside the stage: a
+        // native window is not clipped, and would draw over the panes beside.
+        const el = sideEls.current[sl.dev]
+        const stage = box.current?.getBoundingClientRect()
+        if (!el || !stage) return null
+        const r = el.getBoundingClientRect()
+        const inside = r.left >= stage.left - 0.5 && r.top >= stage.top - 0.5 && r.right <= stage.right + 0.5 && r.bottom <= stage.bottom + 0.5
+        return inside && r.width >= 1 && r.height >= 1 ? rectOf(r, getUiScale()) : null
+      }
+      if (sl.spec && !pageEl.current) return null
+      const r = (sl.spec ? pageEl.current : box.current)?.getBoundingClientRect()
       return r && r.width >= 1 && r.height >= 1 ? rectOf(r, getUiScale()) : null
     }
-    const open = (rect: PageRect) => {
-      const focus = focusNext.current
-      focusNext.current = false
-      opened.current = true
-      const phoneNow = specRef.current
-      void browserAct(pageKey, { do: 'open', url: urlRef.current, rect, focus, ...(phoneNow ? { phone: phoneNow } : {}) }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)))
+    const open = (sl: Slot, rect: PageRect) => {
+      const own = sl.key === pageKey
+      const focus = own && focusNext.current
+      if (own) focusNext.current = false
+      opened.current.add(sl.key)
+      void browserAct(sl.key, { do: 'open', url: urlRef.current, rect, focus, ...(sl.spec ? { phone: sl.spec } : {}) }).catch((e: unknown) => setNote(e instanceof Error ? e.message : String(e)))
     }
-    const first = measure()
-    if (first) {
-      last = first
-      open(first)
+    const outNow: Partial<Record<DeviceId, boolean>> = {}
+    const sync = (first: boolean) => {
+      let changed = first
+      for (const sl of slots) {
+        const r = measure(sl)
+        const was = last.get(sl.key) ?? null
+        if (sl.dev && (r === null) !== (outNow[sl.dev] === true)) {
+          outNow[sl.dev] = r === null
+          changed = true
+        }
+        if (!r) {
+          // Out of view: hidden until it is back.
+          if (was && opened.current.has(sl.key)) void browserAct(sl.key, { do: 'hide' }).catch(() => {})
+          last.set(sl.key, null)
+          continue
+        }
+        if (!first && sameRect(r, was)) continue
+        last.set(sl.key, r)
+        if (was && !first) void browserAct(sl.key, { do: 'place', rect: r }).catch(() => {})
+        else open(sl, r)
+      }
+      if (changed && slots.some((sl) => sl.dev)) setOut({ ...outNow })
     }
-    const follow = () => {
-      const r = measure()
-      if (!r || sameRect(r, last)) return
-      const was = last
-      last = r
-      if (was) void browserAct(pageKey, { do: 'place', rect: r }).catch(() => {})
-      else open(r)
-    }
+    sync(true)
+    const follow = () => sync(false)
     const ro = new ResizeObserver(follow)
     if (box.current) ro.observe(box.current)
     if (pageEl.current) ro.observe(pageEl.current)
     window.addEventListener('resize', follow)
+    // The side-by-side row scrolls inside the box; scroll does not bubble,
+    // so it is heard on the way down.
+    const boxEl = box.current
+    boxEl?.addEventListener('scroll', follow, true)
     // A panel that moves the box without resizing it (a line appearing
-    // above the strip): one rectangle read a second, nothing more.
-    const tick = window.setInterval(follow, 1000)
+    // above the strip): one rectangle read a second, nothing more. Side by
+    // side, each phone in view is asked every MEASURE_EVERY seconds whether
+    // its page runs past its edge.
+    let ticks = 0
+    const tick = window.setInterval(() => {
+      follow()
+      ticks += 1
+      if (ticks % MEASURE_EVERY !== 0) return
+      for (const sl of slots) if (sl.dev && last.get(sl.key)) void browserAct(sl.key, { do: 'measure' }).catch(() => {})
+    }, 1000)
     return () => {
       ro.disconnect()
       window.removeEventListener('resize', follow)
+      boxEl?.removeEventListener('scroll', follow, true)
       window.clearInterval(tick)
     }
   }, [live, showing, pageKey, phoneKey])
-  // A closed tab takes its page with it.
-  useEffect(() => () => { if (opened.current) void browserAct(pageKey, { do: 'close' }).catch(() => {}) }, [pageKey])
+  // A closed tab takes its pages with it.
+  useEffect(() => () => {
+    for (const k of opened.current) void browserAct(k, { do: 'close' }).catch(() => {})
+    opened.current.clear()
+  }, [pageKey])
 
   // An agent that starts waiting on you while this tab is in front.
   const seen = useRef<Set<string>>(new Set(waiting.map((w) => w.id)))
@@ -282,7 +379,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     if (fresh.length === 0) return
     if (!visible) return
     setNudge(fresh[fresh.length - 1]!)
-    if (pause && opened.current) void browserAct(pageKey, { do: 'pause' }).catch(() => {})
+    if (pause) for (const k of opened.current) void browserAct(k, { do: 'pause' }).catch(() => {})
   }, [waiting, visible, pause, pageKey])
   useEffect(() => {
     if (nudge && !waiting.some((w) => w.id === nudge.id)) setNudge(null)
@@ -300,8 +397,14 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     if (!url) { onArm(); return }
     if (!armed) { onArm(); return }
     void browserAct(pageKey, { do: 'go', url: next }).then(() => browserAct(pageKey, { do: 'focus' })).catch((err: unknown) => setNote(err instanceof Error ? err.message : String(err)))
+    // Side by side, the address box sends every phone there.
+    for (const k of opened.current) if (k !== pageKey) void browserAct(k, { do: 'go', url: next }).catch(() => {})
   }
-  const act = (a: 'back' | 'forward' | 'reload') => { void browserAct(pageKey, { do: a }).catch(() => {}) }
+  // Side by side, back, forward and reload act on every phone: one click reloads all three.
+  const act = (a: 'back' | 'forward' | 'reload') => {
+    void browserAct(pageKey, { do: a }).catch(() => {})
+    for (const k of opened.current) if (k !== pageKey) void browserAct(k, { do: a }).catch(() => {})
+  }
   const copy = () => {
     void navigator.clipboard?.writeText(url).then(() => setNote('Address copied'), () => setNote('Could not copy the address'))
   }
@@ -379,10 +482,24 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
           device={device}
           layout={layout}
           fit={fit}
+          side={side ? { scale: sideAt, devices: trio } : null}
         />
       )}
       <div ref={box} className={`relative min-h-0 flex-1${phone ? ' overflow-hidden' : ''}`} data-page-box>
-        {phone ? (
+        {side ? (
+          <PhoneRow
+            devices={trio}
+            bars={phonePrefs.bars}
+            scale={sideAt}
+            zoom={zoom}
+            host={hostOf(url)}
+            pageRef={sideRef}
+            wide={wide}
+            out={out}
+            onPick={(id) => changePhone({ side: false, device: id })}
+            content={content}
+          />
+        ) : phone ? (
           <div className={`flex h-full w-full ${fit === 'over' ? 'items-start justify-start' : 'items-center justify-center'}`} data-phone-stage>
             <PhoneFrame device={device} layout={layout} rotate={phonePrefs.rotate} fit={fit} zoom={zoom} host={hostOf(url)} pageRef={pageEl}>
               {content}

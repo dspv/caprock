@@ -1946,7 +1946,7 @@ crashed (ADR-070); what the user sees is in
   `get_webview_window` and the drops (§ Dropping a file) work as without a
   browser. One command, `browser_tab` (`{id, act}`; app/README.md § What a
   page may call): open, place, show, hide, close, go, back, forward, reload,
-  focus, pause, retain.
+  focus, pause, measure, retain.
 - **Kept where it was.** Behind, the window is hidden, never reloaded or
   unloaded. A page is closed only with its tab, when the switch is turned
   off, or when a reloaded dashboard no longer has its tab (`retain`); a
@@ -1985,9 +1985,24 @@ crashed (ADR-070); what the user sees is in
   Nothing new in the shell: the same `open` with `phone`, laid over the
   pane's page area; `retain` also runs at load when only previews hold pages
   (the setting off).
+- **Side by side** (ADR-075, amended 2026-10-22): up to three page windows
+  per tab — its own and `<id>-sbs-<device>` for the two others, made only
+  while the toggle is on and closed with it. `phone` may carry `width`, the
+  page's CSS width; when the placed window is narrower the shell zooms the
+  page by window ÷ width (`zoom_for`; WKWebView `pageZoom`, WebView2
+  `ZoomFactor`, WebKitGTK zoom level) on every `place`, and again after a
+  load. `measure` evaluates `MEASURE_SCRIPT` with `eval_with_callback` — the
+  document's `scrollWidth` and `clientWidth`, read only — and tells the
+  dashboard `{id, doc, view}`. Footprint, measured 2026-10-22 on macOS with
+  a probe that builds the same WKWebView as the shell (non-persistent store)
+  on a small static page: each extra page is one WebContent process, about
+  16 MB phys_footprint (24 MB RSS), plus about 1 MB in the app; a real dev
+  app's page weighs more. Bounded at two extra per tab.
 - **Not verified in a real run** (ADR-075): the overlay on Windows and Linux,
   Wayland placement, `navigator.clipboard` and drops inside a page; phone
-  mode's window at the device size, and its agent change off macOS.
+  mode's window at the device size, and its agent change off macOS; side
+  by side's zoom keeping `innerWidth` at the phone's width on each engine,
+  and `measure`'s callback, in the app on any system.
 
 ## Feedback screenshots
 

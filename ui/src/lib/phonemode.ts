@@ -96,11 +96,13 @@ export interface PhonePrefs {
   touch: boolean
   customW: number
   customH: number
+  /** Side by side: three phones at once (SIDE_DEVICES). Off by default. */
+  side: boolean
 }
 
 export const PHONE_PREFS_KEY = 'caprock.app.browser-phone'
 
-export const DEFAULT_PHONE_PREFS: PhonePrefs = { device: 'iphone16', rotate: false, bars: 'shown', touch: true, customW: 390, customH: 700 }
+export const DEFAULT_PHONE_PREFS: PhonePrefs = { device: 'iphone16', rotate: false, bars: 'shown', touch: true, customW: 390, customH: 700, side: false }
 
 export function loadPhonePrefs(): PhonePrefs {
   try {
@@ -115,6 +117,7 @@ export function loadPhonePrefs(): PhonePrefs {
       touch: p.touch !== false,
       customW: clampSide(Number(p.customW ?? DEFAULT_PHONE_PREFS.customW)),
       customH: clampSide(Number(p.customH ?? DEFAULT_PHONE_PREFS.customH)),
+      side: p.side === true,
     }
   } catch {
     return DEFAULT_PHONE_PREFS
@@ -148,6 +151,60 @@ export function startPhonePreview(pageKey: string): void {
   setPhoneOn(pageKey, true)
   const p = loadPhonePrefs()
   if (!p.touch) savePhonePrefs({ ...p, touch: true })
+}
+
+// ---------------------------------------------------------------------------
+// Side by side
+
+/**
+ * Side by side (owner-approved mockup, 2026-10-22): the same address in
+ * three phones in a row, narrowest first, each at its real CSS width. Each
+ * is a page window of its own — the tab's own one and two more, made only
+ * while side by side is on and closed when it goes off — so a dev server's
+ * live reload reaches each, and each scrolls on its own.
+ */
+export const SIDE_DEVICES: readonly DeviceId[] = ['iphonese', 'iphone16', 'pixel9']
+
+/** As the label under each phone names it. */
+export const SIDE_NAMES: Partial<Record<DeviceId, string>> = { iphonese: 'iPhone SE', iphone16: 'iPhone 16', pixel9: 'Pixel 9' }
+
+/** CSS px: the gap between the phones, the label line under each, the stage's margin. */
+export const SIDE_GAP = 22
+export const SIDE_LABEL = 26
+export const SIDE_MARGIN = 16
+
+/** Below this the phones stop shrinking and the row scrolls instead: text stays readable. */
+export const SIDE_MIN_SCALE = 0.5
+
+/** Which of the three the tab's own page window is: the device in use, or iPhone 16. */
+export function sideMain(device: DeviceId): DeviceId {
+  return SIDE_DEVICES.includes(device) ? device : 'iphone16'
+}
+
+/** The key of the page window a side-by-side phone other than the tab's own takes. */
+export function sideKey(pageKey: string, id: DeviceId): string {
+  return `${pageKey}-sbs-${id}`
+}
+
+/** Every key a tab's pages may have, its own first: what a reloaded dashboard keeps. */
+export function pageKeysOf(pageKey: string): string[] {
+  return [pageKey, ...SIDE_DEVICES.map((d) => sideKey(pageKey, d))]
+}
+
+/**
+ * The one scale the three phones are drawn at, in a stage of `avail`
+ * logical px (labels and margins already taken off): the tallest fits the
+ * height and the row fits the width, never above 1 and never below
+ * SIDE_MIN_SCALE — under that the row scrolls instead.
+ */
+export function sideScale(frames: readonly { w: number; h: number }[], gap: number, avail: { w: number; h: number }): number {
+  if (frames.length === 0 || !(avail.w > 0) || !(avail.h > 0)) return 1
+  const tall = Math.max(...frames.map((f) => f.h))
+  const wide = frames.reduce((n, f) => n + f.w, 0)
+  // The gaps are CSS px that do not scale with the phones.
+  const byW = (avail.w - gap * (frames.length - 1)) / wide
+  const s = Math.min(1, avail.h / tall, byW)
+  return Math.round(Math.max(SIDE_MIN_SCALE, s) * 1000) / 1000
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +298,13 @@ export function fitOf(frame: { w: number; h: number }, page: { w: number; h: num
 export interface PhoneSpec {
   ua: string
   touch: boolean
+  /**
+   * Side by side: the page's CSS width. The window is drawn smaller than
+   * that, so the shell zooms the page out by window ÷ width (WKWebView
+   * pageZoom, WebView2 ZoomFactor, WebKitGTK zoom level) and the page still
+   * lays out at the phone's width. Absent, the page is never zoomed.
+   */
+  width?: number
 }
 
 export function phoneSpec(d: Device, touch: boolean): PhoneSpec {
