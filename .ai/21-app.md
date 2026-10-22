@@ -2045,6 +2045,13 @@ tells a page where a file lives.
   `TemporaryItems` component into the paste directory (which sessions get
   through `--add-dir`) and types the copy's path; a folder, any other path,
   or a failed copy is typed as it is.
+- **No file I/O on the main thread.** The drop handler runs on the main
+  thread, which draws every window. A drop from Finder touches no file
+  there: its paths go to the page at once. A drop that needs a
+  `keep_transient` copy is copied on a worker thread (one at a time, so
+  drops keep their order), which then records the paths and hands them to
+  the page. On a Mac short of memory and swapping, a disk read or write on
+  the main thread stalled the app (a user's report against 0.147.0).
 - **Why not turn the handler off.** With it off the page gets an HTML5 drop
   and the upload path works unchanged, which is the smaller fix. It was the
   worse behaviour: the upload copies the bytes into the data directory, so
