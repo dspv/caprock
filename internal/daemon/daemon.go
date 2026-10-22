@@ -924,6 +924,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.goBg(func() { d.backfillToolLinks(ctx) })
 	d.goBg(func() { d.repairEmptyText(ctx) })
 	d.goBg(func() { d.backfillPRs(ctx) })
+	d.goBg(func() { d.fillToolFields(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
 	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
 	d.activity.Store(time.Now().UnixMilli())
@@ -1410,6 +1411,32 @@ func (d *Daemon) backfillToolLinks(ctx context.Context) {
 		}
 	}
 }
+
+// fillToolFields fills tool_fields for the tool calls stored before it
+// (migration 0070), newest first, in small steps with a rest between them, so
+// an upgrade never waits on it: until a call is filled, the Tools screen and
+// the subagent rows read it from its payload as before. On a 2 GB database
+// it is the reading that took 15 s when it ran inside the migration.
+func (d *Daemon) fillToolFields(ctx context.Context) {
+	start := time.Now()
+	n, err := d.store.FillToolFields(ctx, toolFieldsWindow, compactPause)
+	if err != nil {
+		if ctx.Err() == nil {
+			// Degraded, not wrong: the pending calls keep being read from
+			// their payloads, and the next start resumes.
+			d.log.Warn("could not fill tool_fields for older tool calls; resumed at the next start",
+				"component", "store", "err", err)
+		}
+		return
+	}
+	if n > 0 {
+		d.log.Info("filled tool_fields for older tool calls", "component", "store",
+			"events", n, "took", time.Since(start).Round(time.Millisecond))
+	}
+}
+
+// toolFieldsWindow is how many event ids one fillToolFields step reads.
+const toolFieldsWindow = 1000
 
 func (d *Daemon) sweep(ctx context.Context) {
 	t := time.NewTicker(30 * time.Second)

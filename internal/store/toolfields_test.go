@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,19 +77,43 @@ func TestMigration0070MovesToolFieldsOutOfThePayload(t *testing.T) {
 	defer s.Close()
 	db = s.DB()
 
-	again, err := ToolDrillStats(ctx, db, opts)
-	if err != nil {
+	// The same answers while the older calls wait to be filled (read from
+	// their payloads), after one step of the newest, and once all are.
+	same := func(when string) {
+		t.Helper()
+		again, err := ToolDrillStats(ctx, db, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(again, bash) {
+			t.Fatalf("%s, the Tools screen changed:\n before %+v\n now    %+v", when, bash, again)
+		}
+		if r, err := ToolDrillStats(ctx, db, DrillOptions{Tool: "Read", Home: "/home/u"}); err != nil || !reflect.DeepEqual(r, read) {
+			t.Fatalf("%s, Read changed: %+v (%v), was %+v", when, r, err, read)
+		}
+		list := []SubagentActivity{{AgentID: "a1"}}
+		if err := describeSubagents(ctx, db, "s", list); err != nil || list[0].Description != "Fix the cockpit" {
+			t.Fatalf("%s, description %q, %v", when, list[0].Description, err)
+		}
+	}
+	same("before filling")
+	// While results wait to be filled, their subagents are sought on the
+	// old index, not read from every payload of the session.
+	plan := queryPlan(t, db, `SELECT `+agentTaskDesc+` FROM events
+		WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task') AND `+agentTaskID+` IN (?)`, "s", "a1")
+	if !strings.Contains(plan, "idx_events_agent_task") {
+		t.Fatalf("pending results are not sought on idx_events_agent_task; plan:\n%s", plan)
+	}
+	if _, done, err := s.ToolFieldsStep(ctx, 3); err != nil || done {
+		t.Fatalf("one step of three ids: done %v, %v", done, err)
+	}
+	same("half filled")
+	if _, err := s.FillToolFields(ctx, 3, 0); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(again, bash) {
-		t.Fatalf("the Tools screen changed with the migration:\n before %+v\n after  %+v", bash, again)
-	}
-	if r, err := ToolDrillStats(ctx, db, DrillOptions{Tool: "Read", Home: "/home/u"}); err != nil || !reflect.DeepEqual(r, read) {
-		t.Fatalf("Read changed with the migration: %+v (%v), was %+v", r, err, read)
-	}
-	list := []SubagentActivity{{AgentID: "a1"}}
-	if err := describeSubagents(ctx, db, "s", list); err != nil || list[0].Description != "Fix the cockpit" {
-		t.Fatalf("description %q, %v", list[0].Description, err)
+	same("filled")
+	if v, _ := s.GetMeta(ctx, metaToolFieldsPending); v != "0" {
+		t.Fatalf("pending = %q after filling", v)
 	}
 	// One row per call, one per failed result, one for the Agent result; a
 	// result that succeeded or is not JSON has nothing to keep.
@@ -153,6 +178,14 @@ func TestToolFieldsFollowTheEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	// Pending again: the screen reads the payload, not the stale row.
+	d, err := ToolDrillStats(ctx, s.DB(), DrillOptions{Tool: "Bash"})
+	if err != nil || len(d.Rows) != 1 || d.Rows[0].Key != "git push" || d.Failures != 1 {
+		t.Fatalf("while re-deriving: %+v, %v", d, err)
+	}
+	if _, err := s.FillToolFields(ctx, 1000, 0); err != nil {
+		t.Fatal(err)
+	}
 	if k := key(); k != "git push" {
 		t.Fatalf("after a new derivation, drill_key = %q", k)
 	}

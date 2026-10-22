@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -21,13 +22,23 @@ type toolFields struct {
 	agentDesc         string
 }
 
-// toolFieldsVersion names how drill_key is derived. Raising it re-derives
-// every stored call on the next Open, so a change to drillKey reaches the
-// calls stored before it.
+// toolFieldsVersion names how the fields are derived. Raising it marks every
+// stored event pending again on the next Open, so a change to drillKey
+// reaches the calls stored before it.
 const toolFieldsVersion = "1"
 
-// metaToolFields is the toolFieldsVersion every stored tool.pre carries.
-const metaToolFields = "tool_fields_version"
+const (
+	// metaToolFields is the toolFieldsVersion the stored fields were made by.
+	metaToolFields = "tool_fields_version"
+	// metaToolFieldsPending is the highest event id whose fields are not yet
+	// filled: every id at or below it is read from its payload, every id
+	// above it from tool_fields. 0 when all are filled.
+	metaToolFieldsPending = "tool_fields_pending"
+)
+
+// toolFieldsPending is metaToolFieldsPending as a query reads it: a constant
+// subquery, evaluated once per statement.
+const toolFieldsPending = `(SELECT COALESCE(MAX(CAST(v AS INTEGER)), 0) FROM meta WHERE k = '` + metaToolFieldsPending + `')`
 
 // readToolFields reads a tool event's fields from its payload. ok is false
 // for an event with nothing to store: not a tool call, or a result that
@@ -165,77 +176,128 @@ func RefreshToolFields(ctx context.Context, q Querier, id int64) error {
 	return putToolFields(ctx, q, id, f)
 }
 
-// backfillToolFields derives drill_key for tool calls stored before
-// migration 0070, or before toolFieldsVersion last changed. The results were
-// filled by the migration itself; a call needs drillKey, which is Go.
-//
-// A call without a key is one not yet read, so an interrupted pass resumes by
-// itself; the marker keeps a finished pass off every later open.
-func (s *Store) backfillToolFields(ctx context.Context) error {
-	done, err := s.GetMeta(ctx, metaToolFields)
-	if err == nil && done == toolFieldsVersion {
-		return nil
+// markToolFieldsPending runs on Open: when the stored fields were made by
+// another toolFieldsVersion, or the table is new (migration 0070), every
+// event stored so far becomes pending. It reads one value and writes two, so
+// Open stays as fast as before; ToolFieldsStep does the reading, in the
+// background.
+func (s *Store) markToolFieldsPending(ctx context.Context) error {
+	if v, err := s.GetMeta(ctx, metaToolFields); err != nil || v == toolFieldsVersion {
+		return err
 	}
-	if done != "" {
-		if _, err := s.db.ExecContext(ctx, `UPDATE tool_fields SET drill_key = NULL, drill_by = NULL`); err != nil {
+	return s.WithTx(ctx, func(q Querier) error {
+		if _, err := q.ExecContext(ctx, `
+			INSERT INTO meta(k, v) SELECT ?, COALESCE(MAX(id), 0) FROM events WHERE true
+			ON CONFLICT(k) DO UPDATE SET v = excluded.v`, metaToolFieldsPending); err != nil {
 			return err
 		}
-	}
-	const batch = 5000
-	var lastID int64
-	for {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT e.id, COALESCE(e.tool, ''), e.payload FROM events e
-			  LEFT JOIN tool_fields f ON f.event_id = e.id
-			 WHERE e.kind = 'tool.pre' AND e.id > ? AND f.drill_key IS NULL
-			 ORDER BY e.id LIMIT ?`, lastID, batch)
-		if err != nil {
+		if _, err := q.ExecContext(ctx, `INSERT INTO meta(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v`,
+			metaToolFields, toolFieldsVersion); err != nil {
 			return err
 		}
-		type row struct {
-			id int64
-			f  toolFields
+		// A database with nothing to fill never runs the step that drops
+		// the index the fill keeps.
+		var pending int64
+		if err := q.QueryRowContext(ctx, `SELECT `+toolFieldsPending).Scan(&pending); err != nil || pending > 0 {
+			return err
 		}
-		var pending []row
-		for rows.Next() {
-			var id int64
-			var tool string
-			var payload []byte
-			if err := rows.Scan(&id, &tool, &payload); err != nil {
-				_ = rows.Close()
+		_, err := q.ExecContext(ctx, `DROP INDEX IF EXISTS idx_events_agent_task`)
+		return err
+	})
+}
+
+// ToolFieldsStep fills the fields of up to window pending event ids, the
+// newest first, and moves the pending mark below them in the same
+// transaction: an interrupted pass resumes where it stopped, and a reader
+// never sees a row as filled before it is. Done when nothing is pending.
+func (s *Store) ToolFieldsStep(ctx context.Context, window int) (filled int, done bool, err error) {
+	if window <= 0 {
+		window = 1000
+	}
+	v, err := s.GetMeta(ctx, metaToolFieldsPending)
+	if err != nil {
+		return 0, false, err
+	}
+	hi, _ := strconv.ParseInt(v, 10, 64)
+	if hi <= 0 {
+		return 0, true, nil
+	}
+	lo := max(hi-int64(window), 0)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, kind, COALESCE(tool, ''), payload FROM events
+		 WHERE id > ? AND id <= ? AND kind IN ('tool.pre', 'tool.post')`, lo, hi)
+	if err != nil {
+		return 0, false, err
+	}
+	type row struct {
+		id int64
+		f  toolFields
+		ok bool
+	}
+	var pending []row
+	for rows.Next() {
+		var r row
+		var kind, tool string
+		var payload []byte
+		if err := rows.Scan(&r.id, &kind, &tool, &payload); err != nil {
+			_ = rows.Close()
+			return 0, false, err
+		}
+		r.f, r.ok = readToolFields(event.Kind(kind), tool, payload)
+		pending = append(pending, r)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return 0, false, err
+	}
+	if err := rows.Close(); err != nil {
+		return 0, false, err
+	}
+	err = s.WithTx(ctx, func(q Querier) error {
+		for _, r := range pending {
+			var err error
+			if r.ok {
+				err = putToolFields(ctx, q, r.id, r.f)
+			} else {
+				// A result made by an older derivation that now has nothing
+				// to keep.
+				_, err = q.ExecContext(ctx, `DELETE FROM tool_fields WHERE event_id = ?`, r.id)
+			}
+			if err != nil {
 				return err
 			}
-			f, _ := readToolFields(event.KindToolPre, tool, payload)
-			pending = append(pending, row{id, f})
-			lastID = id
 		}
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
+		if _, err := q.ExecContext(ctx, `UPDATE meta SET v = ? WHERE k = ?`, strconv.FormatInt(lo, 10), metaToolFieldsPending); err != nil {
 			return err
 		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
-		if len(pending) == 0 {
-			break
-		}
-		err = s.WithTx(ctx, func(q Querier) error {
-			for _, r := range pending {
-				if _, err := q.ExecContext(ctx, `
-					INSERT INTO tool_fields(event_id, drill_key, drill_by) VALUES(?, ?, ?)
-					ON CONFLICT(event_id) DO UPDATE SET drill_key = excluded.drill_key, drill_by = excluded.drill_by`,
-					r.id, r.f.drillKey, r.f.drillBy); err != nil {
-					return err
-				}
-			}
+		if lo > 0 {
 			return nil
-		})
-		if err != nil {
-			return err
 		}
-		if len(pending) < batch {
-			break
+		// Nothing reads a result's payload for its subagent any more: the
+		// index that did, kept for the fill (migration 0070), goes with it.
+		_, err := q.ExecContext(ctx, `DROP INDEX IF EXISTS idx_events_agent_task`)
+		return err
+	})
+	if err != nil {
+		return 0, false, err
+	}
+	return len(pending), lo == 0, nil
+}
+
+// FillToolFields runs ToolFieldsStep until nothing is pending, resting
+// between steps so ingest and the dashboard always find the database free.
+func (s *Store) FillToolFields(ctx context.Context, window int, pause time.Duration) (int, error) {
+	total := 0
+	for {
+		n, done, err := s.ToolFieldsStep(ctx, window)
+		total += n
+		if err != nil || done {
+			return total, err
+		}
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		case <-time.After(pause):
 		}
 	}
-	return s.SetMeta(ctx, metaToolFields, toolFieldsVersion)
 }

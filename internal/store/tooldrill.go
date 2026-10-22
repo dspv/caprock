@@ -78,7 +78,9 @@ const drillTrendBuckets = 8
 // ToolDrillStats groups one tool's calls. The pre's group and the post's
 // failure are read from tool_fields, stored when each was written (migration
 // 0070), so no payload is opened; the post is found through the unique
-// (session_id, key) index rather than by scanning results.
+// (session_id, key) index rather than by scanning results. A call stored
+// before tool_fields and not yet filled (toolFieldsPending) is read from its
+// payload, as every call once was, so the screen is the same either way.
 func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, error) {
 	if o.Rows <= 0 {
 		o.Rows = 12
@@ -89,7 +91,12 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 	scope, args := o.Agent.sessionScope("pr.session_id")
 	rows, err := q.QueryContext(ctx, `
 		SELECT pr.ts, COALESCE(f.drill_key, ''), COALESCE(f.drill_by, ''),
-		       po.id IS NOT NULL, COALESCE(pf.is_error, 0), COALESCE(po.tool_bytes, 0)
+		       CASE WHEN pr.id <= `+toolFieldsPending+` THEN pr.payload END,
+		       po.id IS NOT NULL,
+		       CASE WHEN po.id <= `+toolFieldsPending+`
+		            THEN json_valid(po.payload) AND COALESCE(json_extract(po.payload, '$.is_error'), 0) <> 0
+		            ELSE COALESCE(pf.is_error, 0) END,
+		       COALESCE(po.tool_bytes, 0)
 		FROM events pr
 		LEFT JOIN tool_fields f ON f.event_id = pr.id
 		LEFT JOIN events po ON po.session_id = pr.session_id AND po.key = 'post:' || substr(pr.key, 5)
@@ -108,10 +115,14 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 		var (
 			ts, isErr, bytes int64
 			key, by          string
+			payload          []byte
 			hasPost          bool
 		)
-		if err := rows.Scan(&ts, &key, &by, &hasPost, &isErr, &bytes); err != nil {
+		if err := rows.Scan(&ts, &key, &by, &payload, &hasPost, &isErr, &bytes); err != nil {
 			return ToolDrill{}, err
+		}
+		if payload != nil {
+			key, by = drillKeyOf(o.Tool, payload)
 		}
 		switch by {
 		case "":

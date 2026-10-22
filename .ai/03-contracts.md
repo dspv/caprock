@@ -6753,14 +6753,13 @@ walked its payload's overflow pages. The installed daemon's slow-query log
 named `describeSubagents` 441 times, `SubagentsSpend` 312 and
 `LiveSubagents` 48 in under two hours with nine live sessions (2026-10-14).
 
-- **`idx_events_agent_task`** (dropped by migration 0070, which moved the two
-  fields into `tool_fields`, § Tool fields DDL) held the agent id and the description each
+- **`idx_events_agent_task`** held the agent id and the description each
   parent `Agent`/`Task` result names, as expressions, so
-  `store.describeSubagents` looks up the listed agents by id and opens no
-  payload. The query must spell the expressions exactly as the index does
-  (`store.agentTaskID`, `store.agentTaskDesc`); a test checks the plan seeks
-  on them. `json_valid` guards the extraction because `json_extract` raises
+  `store.describeSubagents` looked up the listed agents by id and opened no
+  payload. `json_valid` guarded the extraction because `json_extract` raises
   on malformed JSON, which in an index expression would fail the `INSERT`.
+  Migration 0070 dropped it: the two fields now live in `tool_fields`
+  (§ Tool fields DDL).
 - **`idx_events_subagent_turn`** covers `store.SubagentsSpend`. `kind` and
   `internal` are columns as well as conditions: SQLite counts an index as
   covering only when it holds every column the query names.
@@ -6829,17 +6828,33 @@ parse the result JSON.
 - **Written** by `store.InsertEvent` beside the event. A payload rewritten in
   place (the Codex input repair) calls `store.RefreshToolFields`. The trigger
   deletes a row with its event, whichever code deletes it.
-- **Filled** for older rows by the migration itself for results (SQL over
-  their payloads), and by `Store.backfillToolFields` on Open for calls,
-  since `drillKey` is Go. `meta.tool_fields_version` records the derivation;
-  raising `store.toolFieldsVersion` re-derives every call on the next Open.
+- **Filled in the background, never during the upgrade.** The migration
+  only creates the table, so the daemon answers as soon as before. Open
+  marks every event stored so far as pending (`meta.tool_fields_pending`,
+  the highest id not yet filled; also when `meta.tool_fields_version` differs
+  from `store.toolFieldsVersion`, which re-derives every call). The daemon's
+  `fillToolFields` then fills them newest first, 1,000 ids per step with a
+  50 ms rest, each step and the lowered mark in one transaction, resuming
+  after a restart.
+- **Until a row is filled, it is read from its payload, as before.**
+  `ToolDrillStats` takes the pre's payload and the post's `is_error` from
+  `events` for ids at or below the mark; `describeSubagents` seeks the
+  agents it did not find on `idx_events_agent_task`, which the migration
+  leaves in place for this. The step that empties the mark drops it, and
+  Open drops it at once on a database with nothing to fill. The screens
+  are the same before, during and after the fill.
 
-Measured on a copy of the owner's database (2026-10-22; 2.0 GB, 220,815
-calls, 210,252 results), warm, medians of five through the Go driver: the
-Bash drill-down over 30 days 4.07 s → 0.83 s, over all time 7.32 s → 1.38 s;
-Read over all time 1.04 s → 0.43 s. Every group, count and hint of nine
-tools came out byte-identical. The migration and the backfill took 15 s on
-the first Open.
+Measured on a copy of the owner's database (2026-10-22; 2.0 GB, 431,546
+tool events), through the Go driver, medians of five on a loaded Mac (load
+average 15): Open with the migration took 14 ms, where filling inside the
+migration had taken 15 s. While pending, the Bash drill-down over 30 days
+took 3.2 s, as before; the fill ran 55 s in the background, its longest
+step 147 ms; filled, 0.65 s (all time 4.8 s → 1.1 s). The old and new
+queries alternated on one copy: 3.2 s → 0.86 s. Subagent descriptions
+stayed under a millisecond throughout; without the kept index the pending
+lookup was 345 ms. Every group, count and hint of nine tools, and the
+descriptions, were byte-identical before and after the fill, and matched
+master's.
 
 ### First-prompt DDL (migration 0033)
 

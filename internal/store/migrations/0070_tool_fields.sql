@@ -12,10 +12,16 @@
 -- bytes each and stay on their own pages.
 --
 -- A tool.pre always has a row, with the group its call belongs to on the
--- Tools screen (store.drillKey, derived in Go: Open fills the calls stored
--- before this table). A tool.post has one only when it failed or is an
--- Agent/Task result naming its subagent; no row reads as "succeeded, no
--- agent". The posts are filled here, in SQL, from their payloads.
+-- Tools screen (store.drillKey). A tool.post has one only when it failed or
+-- is an Agent/Task result naming its subagent; no row reads as "succeeded,
+-- no agent".
+--
+-- Nothing is filled here: reading every tool payload took 15 s on a 2 GB
+-- database, and a migration runs before the daemon answers. The calls stored
+-- before this table are filled in the background, newest first
+-- (Store.ToolFieldsStep); until then meta.tool_fields_pending names the
+-- highest id not yet filled, and the readers take those rows from their
+-- payloads as before.
 -- See 03-contracts.md § Tool fields DDL.
 CREATE TABLE IF NOT EXISTS tool_fields (
   event_id   INTEGER PRIMARY KEY,  -- events.id
@@ -37,14 +43,7 @@ CREATE TRIGGER IF NOT EXISTS events_tool_fields_delete AFTER DELETE ON events BE
   DELETE FROM tool_fields WHERE event_id = OLD.id;
 END;
 
-INSERT OR IGNORE INTO tool_fields(event_id, is_error, agent_id, agent_desc)
-  SELECT id, is_error, agent_id, agent_desc FROM (
-    SELECT id,
-           CASE WHEN COALESCE(json_extract(payload, '$.is_error'), 0) <> 0 THEN 1 END AS is_error,
-           CASE WHEN tool IN ('Agent', 'Task') THEN NULLIF(json_extract(payload, '$.tool_response.agentId'), '') END AS agent_id,
-           CASE WHEN tool IN ('Agent', 'Task') THEN NULLIF(json_extract(payload, '$.tool_response.description'), '') END AS agent_desc
-      FROM events
-     WHERE kind = 'tool.post' AND json_valid(payload))
-   WHERE is_error IS NOT NULL OR agent_id IS NOT NULL;
-
-DROP INDEX IF EXISTS idx_events_agent_task;
+-- idx_events_agent_task (0054) stays until the fill is done: describeSubagents
+-- seeks it for the results not yet filled, 0.1 ms where reading their
+-- payloads was 345 ms on a busy session. Store.ToolFieldsStep drops it with
+-- the last step.
