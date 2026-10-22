@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { SUBAGENT_MODELS, rememberSubagentModel, rememberedSubagentModel, subagentModelLabel } from './subagentModel'
+import { SUBAGENT_MODELS, defaultSubagentModel, rememberSubagentModel, rememberedSubagentModel, setDefaultSubagentModel, subagentModelLabel } from './subagentModel'
 
 describe('subagent model choice', () => {
   beforeEach(() => localStorage.clear())
@@ -22,6 +22,21 @@ describe('subagent model choice', () => {
   it('ignores a stored value that is not on the list', () => {
     localStorage.setItem('caprock.subagentmodel.1', 'gpt-5')
     expect(rememberedSubagentModel('1')).toBe('')
+  })
+
+  it('starts a project with no choice on the default, and keeps a project that chose otherwise', () => {
+    rememberSubagentModel('2', '')
+    rememberSubagentModel('3', 'opus')
+    setDefaultSubagentModel('haiku')
+    expect(defaultSubagentModel()).toBe('haiku')
+    expect(rememberedSubagentModel('1')).toBe('haiku')
+    expect(rememberedSubagentModel('2')).toBe('haiku') // it chose the then-default, so nothing was stored
+    expect(rememberedSubagentModel('3')).toBe('opus')
+    rememberSubagentModel('2', '')
+    expect(rememberedSubagentModel('2')).toBe('')
+    setDefaultSubagentModel('')
+    expect(rememberedSubagentModel('1')).toBe('')
+    expect(rememberedSubagentModel('3')).toBe('opus')
   })
 
   it('labels a chosen model for the session card, and nothing for the default', () => {

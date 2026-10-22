@@ -166,11 +166,23 @@ export function WeekScreen({ start: initial }: { start?: string } = {}) {
         </div>
       </Panel>
       {week?.subagent_saving && <SubagentSavingNote saving={week.subagent_saving} />}
-      <p className="text-[11px] text-fg-faint max-w-[80ch]">
-        No repository, path, prompt or session title is ever on the card. Merged means a <span className="num">gh pr merge</span> the
-        agents ran on this machine, in a call that did not fail — Caprock does not ask GitHub. ≈ marks estimates: lines count a whole file on every Write, and
-        cost per PR divides all of the week's spend by the merges.
-      </p>
+      <ul aria-label="About the card" className="flex flex-wrap gap-1.5">
+        {FINE_PRINT.map((f) => (
+          <li key={f.chip} title={f.full}
+            className="rounded-full border border-border bg-panel-2 px-2.5 py-0.5 text-[11px] text-fg-muted cursor-help">
+            {f.chip}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
+
+/** The card's fine print, a chip each; the hover holds the whole sentence. */
+const FINE_PRINT: { chip: string; full: string }[] = [
+  { chip: '🔒 No repo, path, prompt or title on the card', full: 'No repository, path, prompt or session title is ever on the card.' },
+  { chip: 'merged = gh pr merge run here', full: 'Merged means a gh pr merge the agents ran on this machine, in a call that did not fail — Caprock does not ask GitHub.' },
+  { chip: '≈ estimate', full: '≈ marks estimates.' },
+  { chip: 'lines count whole files', full: 'Lines count a whole file on every Write.' },
+  { chip: 'cost per PR = week ÷ merges', full: "Cost per PR divides all of the week's spend by the merges." },
+]
