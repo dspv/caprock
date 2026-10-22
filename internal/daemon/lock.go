@@ -92,16 +92,20 @@ func acquireDataDirLock(dir string, log *slog.Logger) (release func(), err error
 	}, nil
 }
 
-// lockHolderPID names the daemon holding the lock: runtime.json's pid, else
-// the pid the holder wrote into the lock file.
+// lockHolderPID names the daemon holding the lock: the pid the holder wrote
+// into the lock file the moment it took it, else runtime.json's. The lock
+// file comes first because runtime.json is written only once the daemon
+// listens: while the holder is still starting (a login service racing the
+// app after a reboot, 0.147.0), runtime.json is the previous run's and
+// named a pid from before the reboot.
 func lockHolderPID(dir string) int {
-	if rt, err := config.ReadRuntime(dir); err == nil && rt.PID > 0 {
-		return rt.PID
-	}
 	if b, err := os.ReadFile(filepath.Join(dir, LockFileName)); err == nil {
 		if n, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && n > 0 {
 			return n
 		}
+	}
+	if rt, err := config.ReadRuntime(dir); err == nil && rt.PID > 0 {
+		return rt.PID
 	}
 	return 0
 }

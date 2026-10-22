@@ -40,7 +40,15 @@ import (
 )
 
 func main() {
-	// First: a process started as the disclaim trampoline becomes the program
+	// Started as caprock-hook: the desktop app ships no separate shim, so the
+	// daemon puts this binary at <data dir>/caprock-hook (hooks.EnsureShim)
+	// and it runs as the shim there — the same code as `caprock hook`, which
+	// always exits 0 (rule 3).
+	if isShimName(os.Args[0]) {
+		shim.Run(os.Stdin, os.Stdout)
+		os.Exit(0)
+	}
+	// Next: a process started as the disclaim trampoline becomes the program
 	// it was asked to run and never gets further.
 	disclaim.Main()
 	disclaim.Enable()
@@ -52,6 +60,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+// isShimName reports whether argv[0] names the hook shim: caprock-hook, or
+// caprock-hook.exe, under any directory and with either separator.
+func isShimName(arg0 string) bool {
+	if i := strings.LastIndexAny(arg0, `/\`); i >= 0 {
+		arg0 = arg0[i+1:]
+	}
+	return strings.EqualFold(strings.TrimSuffix(strings.TrimSuffix(arg0, ".exe"), ".EXE"), "caprock-hook")
 }
 
 func newRoot() *cobra.Command {

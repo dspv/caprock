@@ -104,6 +104,7 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
 
 fn main() {
     let data_dir = discovery::data_dir().unwrap_or_else(|| PathBuf::from("caprock"));
+    applog::install_panic_hook(&data_dir);
     let sup = Supervisor::new(data_dir);
     // The first look is synchronous so a running daemon's dashboard is the
     // first page the window loads: no fallback flash on the common path.
@@ -826,6 +827,73 @@ mod tests {
         // A drag that leaves is not a drop: the last drop's paths stay.
         shell::on_drop(&w, &tauri::DragDropEvent::Leave);
         assert!(app.state::<capture::Dropped>().contains(&p));
+    }
+
+    // 0.141.0 and 0.147.0 aborted when a file in iCloud Drive was dragged
+    // over the window. Every kind of path a drop can carry goes through the
+    // handler without a panic and is recorded as it is: other scripts,
+    // emoji, iCloud and its placeholder, a gone hand-over file, a path that
+    // is not UTF-8, and a drop with none at all.
+    #[test]
+    fn no_dropped_path_makes_the_drop_handler_panic() {
+        let dir = std::env::temp_dir().join(format!("caprock-odd-drop-{}", std::process::id()));
+        let app = configure(mock_builder(), Supervisor::new(dir))
+            .build(tauri::generate_context!(test = true))
+            .expect("mock app");
+        let page: tauri::Url = DAEMON.parse().unwrap();
+        let w = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(page))
+            .build()
+            .unwrap();
+        #[allow(unused_mut)]
+        let mut paths: Vec<PathBuf> = [
+            "/Users/a/Desktop/\u{3b5}\u{3b9}\u{3ba}\u{3cc}\u{3bd}\u{3b1}.png",
+            "/Users/a/Desktop/\u{1f600} \u{1f4c4}.md",
+            "/Users/a/Library/Mobile Documents/com~apple~CloudDocs/Desktop/linkly r2 token",
+            "/Users/a/Library/Mobile Documents/com~apple~CloudDocs/.linkly r2 token.icloud",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            paths.push(PathBuf::from(std::ffi::OsStr::from_bytes(
+                b"/Users/a/Desktop/\xff\xfe.txt",
+            )));
+        }
+        let at = tauri::PhysicalPosition::new(1.0, 2.0);
+        for one in &paths {
+            let drop = tauri::DragDropEvent::Drop {
+                paths: vec![one.clone()],
+                position: at,
+            };
+            shell::on_drop(&w, &drop);
+            assert!(app.state::<capture::Dropped>().contains(one), "{one:?}");
+        }
+        shell::on_drop(
+            &w,
+            &tauri::DragDropEvent::Drop {
+                paths: paths.clone(),
+                position: at,
+            },
+        );
+        assert!(paths
+            .iter()
+            .all(|p| app.state::<capture::Dropped>().contains(p)));
+        shell::on_drop(
+            &w,
+            &tauri::DragDropEvent::Drop {
+                paths: vec![],
+                position: at,
+            },
+        );
+        shell::on_drop(
+            &w,
+            &tauri::DragDropEvent::Enter {
+                paths: vec![],
+                position: at,
+            },
+        );
     }
 
     #[test]

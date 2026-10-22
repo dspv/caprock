@@ -71,6 +71,12 @@ export interface LinkStatus extends ReconnectStatus {
   phase: LinkPhase
   /** Why the link was revoked, in words for the user. */
   reason?: string
+  /**
+   * Why the daemon keeps refusing the socket, in words for the user, with
+   * what to do: learnt by asking (TermClient's diagnosis), since a browser
+   * is never told why an upgrade failed. Retries go on meanwhile.
+   */
+  refusal?: string
 }
 
 /**

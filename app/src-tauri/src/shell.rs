@@ -283,7 +283,25 @@ pub fn listen_for_drops<R: tauri::Runtime>(w: &WebviewWindow<R>) {
 /// (Tauri queues `eval` to the main thread). With the Mac swapping, a disk
 /// read or write on the main thread can stall for seconds, and the app with
 /// it (a user's report against 0.147.0).
+///
+/// Nothing in it may panic: it runs inside AppKit's drag callback, where a
+/// panic aborts the app whatever the build (0.141.0 and 0.147.0 aborted on
+/// a drag, in wry's and tao's own handlers before this one, now patched:
+/// `patched/`). Every path is passed on as it is — an iCloud file that is
+/// not downloaded, a `.icloud` placeholder, a name in any script — and one
+/// that is not UTF-8 is recorded but not typed. A panic here all the same
+/// is caught where the build unwinds (debug, tests) and logged.
 pub fn on_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent) {
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handle_drop(w, e)));
+    if caught.is_err() {
+        if let Some(dir) = discovery::data_dir() {
+            crate::applog::line(&dir, "a drop's handler panicked; the drop was skipped");
+        }
+    }
+}
+
+/// `on_drop`'s body.
+fn handle_drop<R: tauri::Runtime>(w: &WebviewWindow<R>, e: &tauri::DragDropEvent) {
     let tauri::DragDropEvent::Drop { paths, position } = e else {
         return;
     };
@@ -911,10 +929,10 @@ mod tests {
     fn a_drop_does_no_file_io_on_the_main_thread() {
         let src = include_str!("shell.rs").replace("\r\n", "\n");
         let body = src
-            .split("pub fn on_drop<")
+            .split("fn handle_drop<")
             .nth(1)
             .and_then(|r| r.split("\n}\n").next())
-            .expect("on_drop");
+            .expect("handle_drop");
         let code: String = body
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -933,5 +951,88 @@ mod tests {
             assert!(!main.contains(io), "{io} on the main thread: {main}");
         }
         assert!(worker.contains("keep_transient("), "{worker}");
+    }
+
+    // The paths a user drags, by the kinds that break drop handlers: names
+    // in other scripts and emoji (a byte slice there panics), iCloud Drive
+    // and its not-downloaded placeholders (0.141.0 and 0.147.0 aborted on
+    // one), and spaces. Each is typed exactly as it is.
+    fn odd_paths() -> Vec<PathBuf> {
+        [
+            "/Users/a/Desktop/\u{3b5}\u{3b9}\u{3ba}\u{3cc}\u{3bd}\u{3b1} \u{3c3}\u{3c7}\u{3ad}\u{3b4}\u{3b9}\u{3bf}.png",
+            "/Users/a/Desktop/\u{1f600} notes \u{1f4c4}.md",
+            "/Users/a/Desktop/\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{30d5}\u{30a1}\u{30a4}\u{30eb}.txt",
+            "/Users/a/Library/Mobile Documents/com~apple~CloudDocs/Desktop/linkly r2 token",
+            "/Users/a/Library/Mobile Documents/com~apple~CloudDocs/Desktop/.linkly r2 token.icloud",
+            "/Users/a/Desktop/caf\u{e9} r\u{e9}sum\u{e9}.pdf",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .collect()
+    }
+
+    #[test]
+    fn every_odd_name_and_icloud_path_is_typed_as_it_is() {
+        let paths = odd_paths();
+        let d = detail(&drop_script(&paths, (3.0, 4.0), 2.0).unwrap());
+        let want: Vec<&str> = paths.iter().map(|p| p.to_str().unwrap()).collect();
+        assert_eq!(d["paths"], serde_json::json!(want));
+        for p in &paths {
+            assert!(!is_transient(p), "{}", p.display());
+            // Not transient: handed back untouched, with no disk access.
+            assert_eq!(&keep_transient(p, std::path::Path::new("/nonexistent")), p);
+        }
+    }
+
+    #[test]
+    fn an_empty_drop_and_a_missing_transient_file_are_no_trouble() {
+        assert!(drop_script(&[], (0.0, 0.0), 0.0).is_none());
+        // A hand-over file that is already gone is typed as it is: not
+        // copied, and no panic.
+        let gone =
+            PathBuf::from("/private/var/folders/x/T/TemporaryItems/NSIRD_x/\u{1f600} gone.png");
+        let paste = scratch("gone");
+        assert_eq!(keep_transient(&gone, &paste), gone);
+        let _ = std::fs::remove_dir_all(&paste);
+    }
+
+    // The abort itself was in wry's and tao's macOS drag handlers, which
+    // unwrapped the pasteboard's file names. The app builds patched copies
+    // (patched/, [patch.crates-io] in Cargo.toml). A crate bump that copies a
+    // new release in without the patch fails here, not on a user's drag.
+    #[test]
+    fn the_patched_drag_handlers_never_unwrap() {
+        let toml = include_str!("../Cargo.toml");
+        assert!(toml.contains("wry = { path = \"patched/wry\" }"));
+        assert!(toml.contains("tao = { path = \"patched/tao\" }"));
+        let wry = include_str!("../patched/wry/src/wkwebview/drag_drop.rs").replace("\r\n", "\n");
+        let tao = include_str!("../patched/tao/src/platform_impl/macos/window_delegate.rs")
+            .replace("\r\n", "\n");
+        let code = |s: &str| -> String {
+            s.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let body = |src: &str, f: &str| -> String {
+            src.split(f)
+                .nth(1)
+                .and_then(|r| r.split("\n}\n").next())
+                .map(code)
+                .unwrap_or_else(|| panic!("{f}"))
+        };
+        assert!(wry.contains("CAPROCK PATCH") && tao.contains("CAPROCK PATCH"));
+        let wry_paths = body(&wry, "fn collect_paths");
+        assert!(!wry_paths.contains("unwrap()"), "{wry_paths}");
+        assert!(wry_paths.contains("is_null()"), "{wry_paths}");
+        for f in [
+            "fn dragged_paths",
+            "extern \"C\" fn dragging_entered",
+            "extern \"C\" fn perform_drag_operation",
+        ] {
+            let b = body(&tao, f);
+            assert!(!b.contains("unwrap()"), "{f}: {b}");
+            assert!(!b.contains("cast_unchecked"), "{f}: {b}");
+        }
     }
 }

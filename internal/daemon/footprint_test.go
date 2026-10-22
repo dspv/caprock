@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/procstat"
 	"github.com/dspv/caprock/internal/ptyhost"
 )
@@ -276,6 +277,12 @@ func TestDataDirLock(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	dir := t.TempDir()
 
+	// The previous run's runtime.json, still on disk while the holder starts
+	// (it is rewritten only once the daemon listens): its pid is not the
+	// holder's and must not be the one named.
+	if err := config.WriteRuntime(dir, config.Runtime{Port: 1, PID: os.Getpid() + 100000}); err != nil {
+		t.Fatal(err)
+	}
 	release, err := acquireDataDirLock(dir, log)
 	if err != nil {
 		t.Fatal(err)

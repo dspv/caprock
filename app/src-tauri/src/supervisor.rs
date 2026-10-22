@@ -491,6 +491,11 @@ impl Supervisor {
         if self.wait_up(wait) {
             return Ok(());
         }
+        if let Err(e) = &up {
+            if is_lock_conflict(e) {
+                return self.wait_for_lock_holder(e);
+            }
+        }
         let mut msg = up
             .err()
             .unwrap_or_else(|| "the daemon did not answer within 10 s".into());
@@ -498,6 +503,34 @@ impl Supervisor {
             msg = format!("{msg}\n\nservice install: {service_err}");
         }
         Err(msg)
+    }
+
+    /// `caprock up` found another daemon holding this data directory's lock.
+    /// That is most often the login service, started at login or by the
+    /// service install a moment ago, still on its way up on a busy Mac (a
+    /// user's report against 0.147.0: launchd and the app raced at login,
+    /// and the app showed "could not start" with the daemon seconds away).
+    /// It is waited for and used. One that holds the lock and never answers
+    /// is the app's own login service hung: it is restarted through launchd
+    /// (`kickstart -k`, macOS), never signalled directly. Only then is the
+    /// start a failure, saying what to do.
+    fn wait_for_lock_holder(&self, up_err: &str) -> Result<(), String> {
+        self.set(State::Starting {
+            step: "Caprock's daemon is already starting; waiting for it".into(),
+        });
+        if self.wait_up(HOLDER_WAIT) {
+            return Ok(());
+        }
+        if cfg!(target_os = "macos") && launch_agent_registered() {
+            self.set(State::Starting {
+                step: "Restarting Caprock's background service".into(),
+            });
+            restart_launch_agent();
+            if self.wait_up(HOLDER_WAIT) {
+                return Ok(());
+            }
+        }
+        Err(lock_conflict_message(up_err))
     }
 
     /// Prepares an update of an outdated daemon this app installed: the new
@@ -570,6 +603,51 @@ impl Supervisor {
         };
         Err(format!("caprock {} failed: {text}", args.join(" ")))
     }
+}
+
+/// How long a daemon that holds the data directory's lock gets to answer
+/// before the app restarts its login service, and again after that. A Mac
+/// that was swapping took tens of seconds to bring the daemon up.
+pub const HOLDER_WAIT: Duration = Duration::from_secs(40);
+
+/// Whether `caprock up` refused because another daemon holds the data
+/// directory's lock (`daemon.AlreadyRunningError`).
+pub fn is_lock_conflict(err: &str) -> bool {
+    err.contains("already running for this data directory")
+}
+
+/// The failure shown when the lock's holder never answered, even after its
+/// login service was restarted: what happened, then what to do.
+pub fn lock_conflict_message(up_err: &str) -> String {
+    format!(
+        "Another Caprock daemon holds this data directory but does not answer.\n\n\
+         Try again waits for it and restarts Caprock's background service. If \
+         this stays, run `caprock down` in Terminal, then Try again.\n\n{up_err}"
+    )
+}
+
+/// macOS: restarts the app's own login service through launchd, which stops
+/// and starts its process (`launchctl kickstart -k`). The label is the one
+/// the service was installed under. Best-effort.
+fn restart_launch_agent() {
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: getuid has no preconditions and cannot fail.
+        let uid = unsafe { libc::getuid() };
+        let target = format!("gui/{uid}/{}", service_label());
+        let mut cmd = Command::new("/bin/launchctl");
+        cmd.args(["kickstart", "-k", &target]);
+        let _ = cmd.output();
+    }
+}
+
+/// The login service's label: `CAPROCK_SERVICE_LABEL` (a preview's own
+/// install), else `dev.caprock.daemon`.
+fn service_label() -> String {
+    std::env::var("CAPROCK_SERVICE_LABEL")
+        .ok()
+        .filter(|l| !l.is_empty())
+        .unwrap_or_else(|| "dev.caprock.daemon".into())
 }
 
 /// How to upgrade the daemon: its own answer (`/v1/update` names a command
@@ -686,10 +764,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// macOS: whether a login service for this label is registered (its plist
 /// exists), so a moved daemon comes back the same way.
 fn launch_agent_registered() -> bool {
-    let label = std::env::var("CAPROCK_SERVICE_LABEL")
-        .ok()
-        .filter(|l| !l.is_empty())
-        .unwrap_or_else(|| "dev.caprock.daemon".into());
+    let label = service_label();
     dirs::home_dir().is_some_and(|h| {
         h.join("Library/LaunchAgents")
             .join(format!("{label}.plist"))
@@ -795,6 +870,64 @@ mod tests {
                 api_level: level,
             },
         }
+    }
+
+    // What `caprock up` prints when the login service holds the data
+    // directory (daemon.AlreadyRunningError, through cmd/caprock's log scan),
+    // verbatim from a user's 0.147.0 screen.
+    const LOCKED: &str = "caprock up --no-open --no-hooks failed: error: daemon did not start: \
+        another Caprock daemon (pid 651) is already running for this data directory \
+        (/Users/a/Library/Application Support/caprock); `caprock status` shows it and \
+        `caprock down` stops it";
+
+    #[test]
+    fn a_lock_held_by_another_daemon_is_told_from_other_failures() {
+        assert!(is_lock_conflict(LOCKED));
+        assert!(!is_lock_conflict(
+            "caprock up failed: port 127.0.0.1 is already in use"
+        ));
+        let msg = lock_conflict_message(LOCKED);
+        assert!(msg.starts_with("Another Caprock daemon holds this data directory"));
+        assert!(msg.contains("caprock down") && msg.ends_with(LOCKED));
+    }
+
+    // The race itself: the login service holds the lock and answers only
+    // later. The start waits for it and uses it instead of failing.
+    #[test]
+    fn a_daemon_that_holds_the_lock_and_answers_late_is_used() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        let s = sup("late-holder");
+        std::fs::create_dir_all(&s.data_dir).unwrap();
+        let ln = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = ln.local_addr().unwrap().port();
+        let dir = s.data_dir.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(700));
+            let rt = format!(r#"{{"port":{port},"token":"t","pid":1,"version":"0.147.0"}}"#);
+            std::fs::write(dir.join("runtime.json"), rt).unwrap();
+            for conn in ln.incoming().take(16) {
+                let Ok(mut c) = conn else { continue };
+                let mut req = Vec::new();
+                let mut buf = [0u8; 512];
+                while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match c.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => req.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let body = r#"{"version":"0.147.0","api_level":1}"#;
+                let _ = write!(
+                    c,
+                    "HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        let started = Instant::now();
+        assert_eq!(s.wait_for_lock_holder(LOCKED), Ok(()));
+        assert!(started.elapsed() < HOLDER_WAIT);
+        let _ = std::fs::remove_dir_all(&s.data_dir);
     }
 
     #[test]

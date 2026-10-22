@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -158,6 +159,61 @@ func TestTerminalWebSocketSnapshotAndStream(t *testing.T) {
 	_, chunk, err := c.Read(ctx)
 	if err != nil || string(chunk) != "more-output" {
 		t.Fatalf("stream: %v %q", err, chunk)
+	}
+}
+
+// A browser is never told why a WebSocket upgrade was refused, so a terminal
+// tab that kept failing reconnected forever with no word ("Reconnecting…" on
+// every tab after a crash, 0.147.0). A plain GET on the same route says why:
+// 204 when the socket would be accepted, 409 for a session this daemon does
+// not hold, 501 when no agent can start and the session is not held. And a
+// held session is served even when no new agent could be started.
+func TestTerminalDiagnosisSaysWhyTheSocketIsRefused(t *testing.T) {
+	e := newEnv(t)
+	fa := &fakeAgents{avail: true, held: map[string]bool{"held": true}}
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok",
+		Now: func() time.Time { return e.now }, Agents: fa})
+	probe := func(id string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest("GET", e.srv.URL+"/v1/agents/"+id+"/term", nil)
+		req.Header.Set("Origin", "http://localhost:5173")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = res.Body.Close() }()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, strings.TrimSpace(string(b))
+	}
+	if code, _ := probe("held"); code != http.StatusNoContent {
+		t.Fatalf("held session: %d, want 204", code)
+	}
+	if code, body := probe("gone"); code != http.StatusConflict || !strings.Contains(body, "not owned") {
+		t.Fatalf("unknown session: %d %q, want 409", code, body)
+	}
+	fa.mu.Lock()
+	fa.avail = false
+	fa.mu.Unlock()
+	if code, _ := probe("held"); code != http.StatusNoContent {
+		t.Fatalf("held session with no agent to start: %d, want 204", code)
+	}
+	if code, body := probe("gone"); code != http.StatusNotImplemented || !strings.Contains(body, "spawning unavailable") {
+		t.Fatalf("unknown session with no agent to start: %d %q, want 501", code, body)
+	}
+	// And the socket itself opens for the held session with no agent to start.
+	fa.mu.Lock()
+	fa.snapshot, fa.termCh = []byte("SNAP"), make(chan []byte, 1)
+	fa.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wsURL := "ws" + strings.TrimPrefix(e.srv.URL, "http") + "/v1/agents/held/term"
+	c, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"http://localhost:5173"}}})
+	if err != nil {
+		t.Fatalf("held session refused with no agent to start: %v", err)
+	}
+	defer func() { _ = c.CloseNow() }()
+	if _, snap, err := c.Read(ctx); err != nil || string(snap) != "SNAP" {
+		t.Fatalf("snapshot: %v %q", err, snap)
 	}
 }
 

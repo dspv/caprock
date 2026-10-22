@@ -54,6 +54,11 @@ export function readLink(link: LinkStatus, heardAt: number, now: number): Readin
       if (isBrowserOffline()) {
         return { tone: 'danger', label: `Offline since ${clock(since)}`, title: `No network. Retrying by itself — ${retryIn(link.nextAt, now)}.` }
       }
+      if (link.refusal) {
+        // The daemon was asked why it keeps refusing (lib/termv2): said, not
+        // left at "Reconnecting" for good.
+        return { tone: 'danger', label: `Can’t connect · ${retryIn(link.nextAt, now)}`, title: `${link.refusal} Still retrying by itself.` }
+      }
       return {
         tone: 'warn',
         // The number of the try under way, or of the next one.
@@ -80,6 +85,7 @@ export function ConnectionState({ link, heardAt, className = '', onReconnect }: 
     <span role="status" aria-live="polite" title={reading.title} data-link={link.phase} className={`inline-flex items-center gap-1.5 ${className}`}>
       <span aria-hidden className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${DOT[reading.tone]}`} />
       <span className="num">{reading.label}</span>
+      {link.phase === 'reconnecting' && link.refusal && <span data-refusal>— {link.refusal}</span>}
       {onReconnect && offersManualRetry(link, now) && (
         <button type="button" className="underline hover:text-fg" onClick={onReconnect}>Reconnect now</button>
       )}
