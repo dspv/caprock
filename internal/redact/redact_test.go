@@ -37,14 +37,14 @@ func TestTextRedactsWhatItShould(t *testing.T) {
 		{"password is", "the wifi password is tr0ub4dor&3", KindPassword, "tr0ub4dor"},
 		{"password in backquotes", "login `demo@example.com`, password `correct9horse`", KindPassword, "correct9horse"},
 		{"pin-like password", "pwd: 482913", KindPassword, "482913"},
-		{"russian password label", "пароль: Qwerty123", KindPassword, "Qwerty123"},
+		{"russian password label", "\u043f\u0430\u0440\u043e\u043b\u044c: Qwerty123", KindPassword, "Qwerty123"},
 		{"labelled hex secret", "webhook secret: 3f9a1c7e5b2d4f6a8c0e1b3d5f7a9c2e", KindSecret, "3f9a1c7e"},
 		{"labelled api key", "Dev.to API key: `Ab3dEf6hIj9kLm2nOp5qRs8t`", KindSecret, "Ab3dEf6h"},
 		{"labelled token", "token=Zm9vYmFyYmF6cXV4MTIzNDU2", KindSecret, "Zm9vYmFy"},
 		{"account number", "account number: 12345678", KindBankAccount, "12345678"},
 		{"routing number", "routing # 021000021", KindBankAccount, "021000021"},
 		{"sort code", "sort code 12-34-56, acct 31926819", KindBankAccount, "31926819"},
-		{"russian settlement account", "р/с 40817810099910004312", KindBankAccount, "40817810099910004312"},
+		{"russian settlement account", "\u0440/\u0441 40817810099910004312", KindBankAccount, "40817810099910004312"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
