@@ -2091,8 +2091,8 @@ next read of any total is without it. `caprock sessions rm [ids…]
 agent's argv builder translates or drops it (`internal/agents/argv.go`; the
 per-agent flags are in [19-codex.md](19-codex.md) and
 [16-opencode.md](16-opencode.md)). With `resume`, the agent is the stored
-session's, whatever the request says, and a Codex or OpenCode resume is given
-the session's `native_id` when it has one. `fork` with Codex or OpenCode is a
+session's, whatever the request says, and a Codex, OpenCode or Hermes resume
+is given the session's `native_id` when it has one. `fork` with Codex or OpenCode is a
 400: their forks copy history with its cost.
 
 **A request with no `permission_mode` gets one from the daemon**
@@ -3095,12 +3095,13 @@ the main transcript
 (`<project>/<session-id>.jsonl`, found from `transcript_path` or from the cwd's
 Claude Code folder) still existing. `command` is offered whenever the agent has
 one, including when Caprock cannot run it (folder gone, `claude` not found) —
-except when the transcript is gone, where no command could work. Codex and
-OpenCode: `command` is `cd <cwd> && codex resume <id>` / `opencode --session
-<id>` with the agent's own id (`native_id` when set); `ok` is false while the
-session is not ended (two processes on one thread), when its folder is gone,
-when Caprock started it and nothing was ever sent (nothing to continue), or
-when the binary is not found.
+except when the transcript is gone, where no command could work. Codex,
+OpenCode and Hermes: `command` is `cd <cwd> && codex resume <id>` /
+`opencode --session <id>` / `hermes chat --resume <id>` with the agent's own
+id (`native_id` when set); `ok` is false while the session is not ended (two
+processes on one thread), when its folder is gone, when Caprock started it and
+nothing was ever sent (nothing to continue), when the binary is not found, or,
+for Hermes, when its `state.db` is gone.
 
 **`open_terminal`** — `{modes, reason?}`, filled wherever `resume` is: how the
 session can be opened in the user's **own** terminal application (Ghostty,

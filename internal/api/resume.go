@@ -9,6 +9,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/chatimport"
+	"github.com/dspv/caprock/internal/hermes"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -110,14 +111,14 @@ func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 	}
 	switch agent {
 	case "claude":
-	case "codex", "opencode":
+	case "codex", "opencode", "hermes":
 		return s.resumeOther(sess, agent)
 	case chatimport.SourceClaudeAI, chatimport.SourceChatGPT:
 		// An imported conversation (ADR-074): its history is a copy, and the
 		// service it lives on has no way in for a program on this machine.
 		return &ResumeInfo{Reason: "Imported from " + chatimport.SourceName(agent) + ": it can be read here, and carried on in " + chatimport.SourceName(agent) + " itself."}
 	default:
-		return &ResumeInfo{Reason: "Caprock continues Claude Code, Codex and OpenCode sessions."}
+		return &ResumeInfo{Reason: "Caprock continues Claude Code, Codex, OpenCode and Hermes sessions."}
 	}
 	info := &ResumeInfo{OK: true, Command: "claude --resume " + sess.SessionID}
 	if sess.Cwd != "" {
@@ -154,14 +155,17 @@ func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 	return info
 }
 
-// resumeOther answers for Codex and OpenCode, whose conversations live in
-// their own stores rather than in a transcript Caprock can look for. The
-// agent's own id is the one its resume flag takes: for a session Caprock
+// resumeOther answers for Codex, OpenCode and Hermes, whose conversations
+// live in their own stores rather than in a transcript Caprock can look for.
+// The agent's own id is the one its resume flag takes: for a session Caprock
 // started, that is the linked id (sessions.native_id), not Caprock's.
 func (s *Server) resumeOther(sess store.Session, agent string) *ResumeInfo {
 	name, flag := "Codex", "codex resume "
-	if agent == "opencode" {
+	switch agent {
+	case "opencode":
 		name, flag = "OpenCode", "opencode --session "
+	case "hermes":
+		name, flag = "Hermes", "hermes chat --resume "
 	}
 	native := sess.NativeID
 	if native == "" {
@@ -178,8 +182,9 @@ func (s *Server) resumeOther(sess store.Session, agent string) *ResumeInfo {
 		if st, err := os.Stat(sess.Cwd); err != nil || !st.IsDir() {
 			info.OK, info.Reason = false, "The folder it ran in no longer exists: "+sess.Cwd
 			info.Command = ""
-			if agent == "codex" {
-				// Codex finds a thread by id from any folder.
+			if agent == "codex" || agent == "hermes" {
+				// Codex finds a thread by id from any folder, and Hermes a
+				// session in its one state database.
 				info.Command = flag + native
 			}
 			return info
@@ -191,6 +196,12 @@ func (s *Server) resumeOther(sess store.Session, agent string) *ResumeInfo {
 		// make copy the history with its cost, which Caprock would count
 		// twice. So it waits for the session to end.
 		info.OK, info.Reason = false, "It is still running. Caprock continues a "+name+" session once it has ended."
+		return info
+	}
+	if agent == "hermes" && hermes.DBPath() == "" {
+		// `hermes chat --resume` reads the session from state.db, the same
+		// file Caprock read it from; without it there is nothing to load.
+		info.OK, info.Reason, info.Command = false, "Hermes's state database is no longer there, so it has nothing to continue.", ""
 		return info
 	}
 	if s.d.Agents == nil || !s.d.Agents.Has(agent) {
