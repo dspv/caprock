@@ -39,7 +39,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
-import { FlowCards, Releases } from './PRBoard'
+import { FlowCards, MostExpensive, Releases } from './PRBoard'
 import { AgentsCard, TeamChart, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
 import { PipelineShareButton } from './PipelineShare'
@@ -292,6 +292,8 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
         </div>
       )}
       {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
+      {/* The dearest pull requests and releases, from the same board (owner, 2026-10-23). */}
+      {ready && board && <MostExpensive board={board} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
       {/* The default branch's workflows and this month's Actions bill: the session deck's Main view until 2026-10-20. */}
       {ready && <PipelineMain sessionId={sessionId} s={s} visible={visible} now={now} why={why} onToast={onToast} />}
     </div>

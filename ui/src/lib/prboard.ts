@@ -240,5 +240,47 @@ export function initials(login: string): string {
   return (parts[0] ?? '?').slice(0, 2).toUpperCase()
 }
 
+/** How many rows each list of the Most expensive panel shows. */
+export const TOP_SHOWN = 5
+
+/** One row of the Most expensive panel's pull requests: a card joined with its title and link. */
+export interface TopPR {
+  number: number
+  title?: string
+  url?: string
+  stage: Stage
+  spend: PRSpend
+}
+
+/**
+ * The board's pull requests by recorded agent cost, dearest first, at most
+ * `n` (owner, 2026-10-23, translated: "TOP-5 most expensive pull requests").
+ * The cards are the board's own — open ones and merges in its window, from
+ * the newest listed — so this ranks only what the board holds, never all
+ * time. One with no session or no cost is left out; a tie goes to more
+ * sessions, then the newer number.
+ */
+export function topPRs(board: PRBoard, prs: BranchPR[], n = TOP_SHOWN): TopPR[] {
+  const byNum = new Map(prs.map((p) => [p.number, p]))
+  return board.cards
+    .filter((c) => c.spend.sessions > 0 && c.spend.cost_usd > 0)
+    .sort((a, b) => b.spend.cost_usd - a.spend.cost_usd || b.spend.sessions - a.spend.sessions || b.number - a.number)
+    .slice(0, Math.max(0, n))
+    .map((c) => { const p = byNum.get(c.number); return { number: c.number, title: p?.title, url: p?.url, stage: c.stage, spend: c.spend } })
+}
+
+/**
+ * The board's releases (its newest published ones) by the recorded agent
+ * cost of the merges they shipped, dearest first, at most `n`. One with no
+ * cost or no session is left out; a tie goes to more pull requests, then the
+ * newer release.
+ */
+export function topReleases(board: PRBoard, n = TOP_SHOWN): BoardRelease[] {
+  return board.releases
+    .filter((r) => r.sessions > 0 && r.cost_usd > 0)
+    .sort((a, b) => b.cost_usd - a.cost_usd || b.prs.length - a.prs.length || b.published_at - a.published_at)
+    .slice(0, Math.max(0, n))
+}
+
 /** How many cards a column shows before "+N more": the done columns grow all day. */
 export const COLUMN_SHOWN = 8

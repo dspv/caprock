@@ -145,6 +145,47 @@ describe('the Pipeline page', () => {
     expect(document.querySelector('[data-prs-detail]')).toBeNull()
   })
 
+  // Owner, 2026-10-23, translated: "TOP-5 most expensive pull requests and
+  // TOP-5 most expensive releases … it must fit in organically".
+  it('lists the dearest pull requests and releases from the board, saying the span, and each opens', async () => {
+    withBoard()
+    const nudges = await import('@/lib/nudges')
+    const opened = vi.spyOn(nudges, 'openExternal').mockImplementation(() => {})
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    const panel = document.querySelector('[data-board-expensive]') as HTMLElement
+    expect(panel).not.toBeNull()
+    expect(screen.getByRole('heading', { name: /Most expensive/ })).toBeInTheDocument()
+    const prs = panel.querySelector('[data-expensive="prs"]') as HTMLElement
+    expect(prs).toHaveTextContent('Pull requests · last 14 days')
+    // Dearest first; #21 has no recorded session and is left out.
+    expect([...prs.querySelectorAll('[data-expensive-pr]')].map((e) => e.getAttribute('data-expensive-pr'))).toEqual(['20', '22'])
+    expect(prs.querySelector('[data-expensive-pr="20"]')).toHaveTextContent('#20Release$12.001 session')
+    expect(prs.querySelector('[data-expensive-pr="22"]')).toHaveTextContent('$3.502 sessions')
+    expect(prs.querySelector('[data-expensive-pr="22"]')!.getAttribute('title')).toContain('API list price')
+    const rels = panel.querySelector('[data-expensive="releases"]') as HTMLElement
+    expect(rels).toHaveTextContent('Releases · newest 1')
+    expect(rels.querySelector('[data-expensive-release="v1.2.0"]')).toHaveTextContent('$12.00')
+    expect(rels.querySelector('[data-expensive-release="v1.2.0"]')).toHaveTextContent('1 PR')
+    // A pull request opens beside the list; a release on GitHub.
+    fireEvent.click(prs.querySelector('[data-expensive-pr="22"]')!)
+    expect(await screen.findByRole('dialog', { name: '#22 in detail' })).toBeInTheDocument()
+    fireEvent.click(rels.querySelector('[data-expensive-release="v1.2.0"]')!)
+    expect(opened).toHaveBeenCalledWith('https://github.com/a/b/releases/tag/v1.2.0')
+    opened.mockRestore()
+  })
+
+  it('draws no Most expensive panel when nothing on the board has a recorded cost', async () => {
+    withBoard()
+    const b = (h.stats as { board: { cards: { spend: object }[]; releases: { cost_usd: number; sessions: number }[] } }).board
+    for (const c of b.cards) c.spend = { cost_usd: 0, sessions: 0, live: 0, agents: [] }
+    for (const r of b.releases) { r.cost_usd = 0; r.sessions = 0 }
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    expect(document.querySelector('[data-board-release="v1.2.0"]')).toBeInTheDocument()
+    expect(document.querySelector('[data-board-expensive]')).toBeNull()
+  })
+
   // Owner, 2026-10-18: the Flow row is three cards; Now says All clear or the most urgent count.
   it('says All clear when nothing is in flight, red or waiting, and the red count first when a pull request needs a fix', async () => {
     withBoard()

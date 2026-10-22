@@ -17,7 +17,7 @@
  */
 import type { ReactNode } from 'react'
 import type { BranchPR } from '@/lib/branches'
-import { AGENT_COST_NOTE, perDay, type BoardRelease, type FlowPoint, type PRBoard, type SeriesKey } from '@/lib/prboard'
+import { AGENT_COST_NOTE, costText, costTitle, perDay, topPRs, topReleases, type BoardRelease, type FlowPoint, type PRBoard, type SeriesKey } from '@/lib/prboard'
 import { flowCompare, flowCompareTitle, flowPointTitle, flowTone, flowUsualLine, flowWord } from '@/lib/flowtrend'
 import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
@@ -190,6 +190,90 @@ export function FlowTrend({ k, pts, label }: { k: SeriesKey; pts: readonly FlowP
         {c && <span className={c.kind === 'thin' || c.kind === 'quiet' ? 'text-fg-faint' : WORD_TONE[tone]}>{flowWord(k, c)}</span>}
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------- the most expensive
+
+/** A release's day, "21 Oct" (the year too when not this one). */
+function relDay(ms: number, now: number): string {
+  const d = new Date(ms)
+  const same = d.getFullYear() === new Date(now).getFullYear()
+  return d.toLocaleDateString('en-GB', same ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+const sessionsText = (n: number) => `${n} session${n === 1 ? '' : 's'}`
+
+/**
+ * The five dearest pull requests and releases by recorded agent cost
+ * (owner, 2026-10-23, translated: "some stats inside, like TOP-5 most
+ * expensive pull requests and TOP-5 most expensive releases … it must fit in
+ * organically"). Both from the board the page already holds (topPRs,
+ * topReleases): the pull requests are its cards — open, or merged in its
+ * window, among the newest listed — and the releases its newest published
+ * ones, so each list says the span it covers, never all time. Drawn only
+ * when either list has a row.
+ */
+export function MostExpensive({ board, prs, now, onOpen }: { board: PRBoard; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
+  const tops = topPRs(board, prs)
+  const rels = topReleases(board)
+  if (tops.length === 0 && rels.length === 0) return null
+  const cap = 'px-3 pb-1 pt-2.5 text-[10px] uppercase tracking-[0.12em] text-fg-faint'
+  const row = 'grid w-full items-baseline gap-x-2 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none'
+  const rank = (i: number) => <span aria-hidden className="num text-[11px] text-fg-faint">{i + 1}</span>
+  const none = (what: string) => <p className="px-3 pb-2.5 pt-1 text-[12px] text-fg-muted">{what}</p>
+  const prScope = `Open, or merged in the last ${board.flow.days} days, among the newest pull requests GitHub lists (the most recently updated first): on a busy repository they may not reach back the whole window.`
+  return (
+    <Panel fold="pipeline.expensive" title="Most expensive" right={<span title={AGENT_COST_NOTE}>recorded agent cost · API list price</span>}>
+      <div className="@container/top">
+        <div data-board-expensive className="grid grid-cols-1 divide-y divide-border @min-[640px]/top:grid-cols-2 @min-[640px]/top:divide-x @min-[640px]/top:divide-y-0">
+          <div data-expensive="prs" className="min-w-0 pb-1">
+            <div className={cap} title={prScope}>Pull requests · last {board.flow.days} days</div>
+            {tops.length === 0 ? none('No agent cost recorded on these pull requests.') : (
+              <ol>
+                {tops.map((p, i) => (
+                  <li key={p.number}>
+                    <button type="button" data-expensive-pr={p.number} onClick={() => onOpen(p.number)} title={`${p.title ? `#${p.number} ${p.title}\n` : ''}${costTitle(p.spend)}`} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto]`}>
+                      {rank(i)}
+                      <span className="flex min-w-0 items-baseline gap-1.5"><span className="num shrink-0 text-fg-muted">#{p.number}</span><span className="truncate text-fg">{p.title}</span></span>
+                      <span className="flex items-baseline gap-2 whitespace-nowrap">
+                        <span className="num font-semibold text-fg">{costText(p.spend)}</span>
+                        <span className="text-[12px] text-fg-muted">{sessionsText(p.spend.sessions)}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+          <div data-expensive="releases" className="min-w-0 pb-1">
+            <div className={cap} title="The newest published releases read, each charged with the agent cost of the listed merges matched to it by merge time.">
+              Releases · newest {board.releases.length}
+            </div>
+            {rels.length === 0 ? none('No agent cost recorded on the merges they shipped.') : (
+              <ol>
+                {rels.map((r, i) => (
+                  <li key={r.tag}>
+                    <button type="button" data-expensive-release={r.tag} onClick={() => r.url && openExternal(r.url)} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto_auto]`}
+                      {...extProps(`${r.tag}${r.name && r.name !== r.tag ? ` · ${r.name}` : ''}\n$${r.cost_usd.toFixed(2)} from ${sessionsText(r.sessions)} on ${r.prs.length} pull request${r.prs.length === 1 ? '' : 's'}${r.partial ? '\nThe listed pull requests may not reach back to the release before it: older merges may be missing' : ''}\nOpen on GitHub`)}>
+                      {rank(i)}
+                      <span className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="mono truncate font-semibold text-fg">{r.tag}</span>
+                        <span className="shrink-0 text-[12px] text-fg-muted">{relDay(r.published_at, now)}</span>
+                      </span>
+                      <span className="flex items-baseline gap-2 whitespace-nowrap">
+                        <span className="num font-semibold text-fg">{r.partial ? '≥' : ''}{costText({ cost_usd: r.cost_usd, sessions: r.sessions, live: 0, agents: [] })}</span>
+                        <span className="text-[12px] text-fg-muted">{r.prs.length} PR{r.prs.length === 1 ? '' : 's'}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        </div>
+      </div>
+    </Panel>
   )
 }
 
