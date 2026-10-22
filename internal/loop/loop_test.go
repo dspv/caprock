@@ -223,3 +223,60 @@ func TestSpendingToolsStillRaiseLoops(t *testing.T) {
 		})
 	}
 }
+
+// A browser agent screenshots, scrolls and waits again and again as the way it
+// works; five identical screenshots in three minutes raised a red LOOP card
+// the owner could do nothing about (2026-10-22). Those steps are skipped. A
+// repeated click, and the same Bash or Edit, still raise one.
+func TestBrowserObservationStepsAreNotLoops(t *testing.T) {
+	base := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	run := func(tool, input string) []*Alert {
+		d := New(5, 3*time.Minute)
+		var alerts []*Alert
+		for i := 0; i < 8; i++ {
+			ev := event.Event{SessionID: "s", Kind: event.KindToolPre, Tool: tool,
+				Payload: json.RawMessage(`{"tool_input":` + input + `}`), Ts: base.Add(time.Duration(i) * 10 * time.Second)}
+			if a := d.Observe(ev); a != nil {
+				alerts = append(alerts, a)
+			}
+		}
+		return alerts
+	}
+	quiet := []struct{ tool, input string }{
+		{"mcp__claude-in-chrome__computer", `{"action":"screenshot","tabId":1}`},
+		{"mcp__claude-in-chrome__computer", `{"action":"scroll","coordinate":[640,400],"scroll_direction":"down","tabId":1}`},
+		{"mcp__claude-in-chrome__computer", `{"action":"wait","duration":2,"tabId":1}`},
+		{"mcp__claude-in-chrome__computer", `{"action":"key","text":"Page_Down","tabId":1}`},
+		{"mcp__claude-in-chrome__computer", `{"action":"zoom","region":[0,0,100,100],"tabId":1}`},
+		{"mcp__computer-use__computer", `{"action":"screenshot"}`},
+		{"computer", `{"action":"screenshot"}`},
+		{"mcp__claude-in-chrome__read_page", `{"tabId":1}`},
+		{"mcp__claude-in-chrome__navigate", `{"url":"https://example.com","tabId":1}`},
+		{"mcp__playwright__browser_take_screenshot", `{}`},
+		{"mcp__playwright__browser_snapshot", `{}`},
+		{"mcp__playwright__browser_wait_for", `{"time":2}`},
+	}
+	for _, c := range quiet {
+		if alerts := run(c.tool, c.input); len(alerts) != 0 {
+			t.Errorf("%s %s: %d alerts, want none", c.tool, c.input, len(alerts))
+		}
+		if !Ignored(c.tool, json.RawMessage(c.input)) {
+			t.Errorf("Ignored(%s, %s) = false; the week replay would count what the live alert skips", c.tool, c.input)
+		}
+	}
+	loud := []struct{ tool, input string }{
+		{"mcp__claude-in-chrome__computer", `{"action":"left_click","coordinate":[100,200],"tabId":1}`},
+		{"mcp__playwright__browser_click", `{"element":"Submit","ref":"e12"}`},
+		{"Bash", `{"command":"go test ./..."}`},
+		{"Edit", `{"file_path":"/w/a.go","old_string":"a","new_string":"b"}`},
+		{"mcp__github__screenshot", `{"action":"screenshot"}`}, // not a browser tool by name
+	}
+	for _, c := range loud {
+		if alerts := run(c.tool, c.input); len(alerts) != 1 {
+			t.Errorf("%s %s: %d alerts, want 1", c.tool, c.input, len(alerts))
+		}
+		if Ignored(c.tool, json.RawMessage(c.input)) {
+			t.Errorf("Ignored(%s, %s) = true", c.tool, c.input)
+		}
+	}
+}

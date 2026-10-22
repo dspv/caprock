@@ -1,9 +1,14 @@
 package daemon
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dspv/caprock/internal/store"
@@ -19,6 +24,71 @@ type Interrupted struct {
 	// it stopped, to within a minute.
 	StoppedAt int64    `json:"stopped_at"`
 	IDs       []string `json:"ids"`
+}
+
+// A print-mode run is finished work, not interrupted work. `claude -p` and the
+// Agent SDK answer one prompt and exit, so a stop that caught one cut nothing
+// off, and offering Continue on it resumes a job some other tool started and
+// already read the answer of. Four of them — another tool drafting replies,
+// cwd "/", permissions bypassed — filled the owner's banner (2026-10-22).
+//
+// Claude Code writes the way it was started on every transcript line:
+// `"entrypoint":"cli"` for the interactive terminal, `"sdk-cli"` for `-p`,
+// `"sdk-ts"` / `"sdk-py"` for the SDKs (measured 2026-10-22: 373 sdk-cli lines
+// in the owner's cwd-"/" transcripts, none of them cli). Hooks do not carry
+// it, so it is read from the head of the transcript.
+
+// headlessScanBytes bounds the read: the entrypoint is on the first line after
+// the queue operations a print run opens with.
+const headlessScanBytes = 256 << 10
+
+// isHeadless reports whether a session was a print-mode or SDK run, by the
+// entrypoint in its transcript; a session with no readable transcript is not.
+func (d *Daemon) isHeadless(s *store.Session) bool {
+	if v, ok := d.headless.Load(s.SessionID); ok {
+		return v.(bool)
+	}
+	ep := transcriptEntrypoint(s.TranscriptPath)
+	if ep == "" {
+		return false // not known yet: ask again next time
+	}
+	h := headlessEntrypoint(ep)
+	d.headless.Store(s.SessionID, h)
+	return h
+}
+
+// headlessEntrypoint reports whether Claude Code's entrypoint is a
+// non-interactive one.
+func headlessEntrypoint(ep string) bool {
+	return strings.HasPrefix(ep, "sdk-")
+}
+
+// transcriptEntrypoint is the first `entrypoint` on a transcript's top-level
+// lines within headlessScanBytes, or "".
+func transcriptEntrypoint(path string) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	r := bufio.NewReader(io.LimitReader(f, headlessScanBytes))
+	for {
+		line, err := r.ReadBytes('\n')
+		if bytes.Contains(line, []byte(`"entrypoint"`)) {
+			var l struct {
+				Entrypoint string `json:"entrypoint"`
+			}
+			if json.Unmarshal(line, &l) == nil && l.Entrypoint != "" {
+				return l.Entrypoint
+			}
+		}
+		if err != nil {
+			return ""
+		}
+	}
 }
 
 // heartbeatEvery is how often the daemon records that it is alive, and so
@@ -71,7 +141,7 @@ func (d *Daemon) recordInterrupted(ctx context.Context, stoppedAt int64, candida
 	}
 	var ids []string
 	for _, id := range candidates {
-		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil && s.Status == store.StatusEnded {
+		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil && s.Status == store.StatusEnded && !d.isHeadless(&s) {
 			ids = append(ids, id)
 		}
 	}
@@ -99,7 +169,7 @@ func (d *Daemon) interrupted(ctx context.Context) *Interrupted {
 	}
 	ids := in.IDs[:0]
 	for _, id := range in.IDs {
-		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil && s.Status == store.StatusEnded {
+		if s, err := store.GetSession(ctx, d.store.DB(), id); err == nil && s.Status == store.StatusEnded && !d.isHeadless(&s) {
 			ids = append(ids, id)
 		}
 	}

@@ -859,7 +859,8 @@ own tool calls recorded:
   `gh pr checks`, `gh run watch`, or a script named like `wait-ci`. Tool time,
   not wall clock: parallel calls overlap.
 - **The loop** is the longest episode the live detector would have alerted on
-  — `loop.Signature`, read-only tools skipped, at least `loop_k` calls within
+  — `loop.Signature`, read-only tools and browser observation steps skipped
+  (`loop.Ignored`), at least `loop_k` calls within
   `loop_t_minutes`, the episode running while repeats keep arriving within the
   window — except that repeats issued by one assistant message count once (a
   turn that launches eleven subagents decided once). `tax_usd` is priced by
@@ -1194,7 +1195,12 @@ one as `stopped_at` before overwriting it, lists the sessions of agents whose
 process it watches that were worked in within the day before and were either
 not ended or ended within two minutes of `stopped_at` (`store.RunningAt`, at
 most 12), lets the first sweep ask their pids, and records those now ended in
-`meta.interrupted`. A later restart that interrupted nothing keeps the record.
+`meta.interrupted`. A print-mode or SDK run is left out, at record and on
+read: its transcript's `entrypoint` (Claude Code writes it on every line) is
+`sdk-cli` for `claude -p` and `sdk-ts` / `sdk-py` for the SDKs, against `cli`
+for the interactive terminal; hooks do not carry it, so the daemon reads the
+first 256 KB of the transcript once per session. A session with no readable
+transcript is kept. A later restart that interrupted nothing keeps the record.
 On read, a session continued since (live again) drops out, and a record older
 than 7 days is not reported.
 
