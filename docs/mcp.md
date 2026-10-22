@@ -20,8 +20,22 @@ It is read-only and free.
 
 ## Turn it on
 
-Caprock has to be running (`caprock up`, or the desktop app). Then add the
-server to your agent.
+Caprock has to be running (`caprock up`, or the desktop app).
+
+**One click.** Open Second Brain: the row on top, *Let your agents ask Second
+Brain*, has a **Connect** button for each agent installed on this computer
+(Claude Code, Codex). Settings → *Use Caprock from your agents (MCP)* has the
+same buttons. Connect runs the agent's own command for you —
+`claude mcp add -s user caprock -- <path to caprock> mcp`, or
+`codex mcp add caprock -- <path to caprock> mcp` — so Caprock is in that
+agent's MCP servers for your user, in every project. **Disconnect** runs its
+`mcp remove`. If the agent's config points at an older caprock (you moved or
+reinstalled it), the button reads **Update path**. Nothing happens until you
+click, the click only changes that agent's config file on this computer, and
+it is not offered on a paired phone. If the agent's command fails, its
+message is shown under the button.
+
+**By hand** — the same thing, or for another client.
 
 **Claude Code** — in the project you want it in:
 
@@ -55,9 +69,10 @@ full path to the binary instead. Settings → *Use Caprock from your agents
 caprock*. On Windows the path ends in `caprock.exe`; quote it if it holds a
 space.
 
-To turn it off, remove it from the agent: `claude mcp remove caprock`,
-`codex mcp remove caprock`, or delete the lines. Nothing in Caprock changes
-either way.
+To turn it off, press **Disconnect**, or remove it from the agent yourself:
+`claude mcp remove caprock` (add `-s user` if you added it for every
+project), `codex mcp remove caprock`, or delete the lines. Nothing in
+Caprock changes either way.
 
 ## The tools
 

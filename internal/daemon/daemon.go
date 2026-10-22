@@ -52,6 +52,7 @@ import (
 	"github.com/dspv/caprock/internal/logcap"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/mail"
+	"github.com/dspv/caprock/internal/mcpreg"
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/opencode"
@@ -745,7 +746,16 @@ func (d *Daemon) run(ctx context.Context) error {
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Admin: &adminAdapter{d: d}, Update: d.upd,
 		ModuleNotify: moduleNotifier{d: d},
 		AskGemini:    d.askGemini,
-		DataDir:      d.opt.DataDir,
+		// Connect on the Second Brain screen and in Settings (ADR-078): the
+		// agents' own CLIs, found and run the way a spawned agent is.
+		MCP: &mcpreg.Registrar{
+			Exe:       stableExecutable,
+			Env:       func() []string { return userenv.Environ(d.log) },
+			CachedEnv: userenv.Cached,
+			Find:      agents.FindBinary,
+			Home:      os.UserHomeDir,
+		},
+		DataDir: d.opt.DataDir,
 		Terminals: &nativeterm.Opener{
 			DataDir:   d.opt.DataDir,
 			Env:       func() []string { return userenv.Environ(d.log) },
