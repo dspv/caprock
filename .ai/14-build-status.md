@@ -133,6 +133,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-22 — 0.149.0: the Mac's memory on the status bar, no crash on a drop, a self-repairing start
+
+A minor release, one batch PR (#794). The status bar shows the machine's memory and pressure, flags an agent grown past max(3 GB, a fifth of RAM), and offers to end idle agents Caprock started or restart a heavy one fresh, conversation kept. A Finder drop of an iCloud item no longer aborts the app (wry and tao unwrapped the dragged names; patched copies until upstream fixes it). The app adopts a daemon the login service already started instead of dead-ending, tabs of sessions whose process is gone stop reconnecting and offer Continue, and a release daemon refreshes its hook shim and repoints Caprock's own hook and statusline entries. Each inspector opens on its own session's spend. Hidden terminal tabs trim their scrollback after ten minutes, the daemon sweeps stale answer-cache keys and gets a soft memory limit.
+
 ### 2026-10-22 — 0.148.0: the phone mirrors the tabs, Second Brain finds and keeps current decisions
 
 A minor release, one batch PR (#792). The phone's Continue list shows the Mac app's open tabs in tab order (`GET /v1/tabs`) and rows no longer move with activity. Second Brain reads long sessions in chunks instead of keeping only the newest part, catches up on text skipped before, leaves machine-made turns out, adds English keywords (and re-tags older memories), ranks search by whole words with synonyms, marks a decision a newer one supersedes, hands new sessions the current decisions, and shows its own token spend. `caprock mcp` can be connected to Claude Code and Codex with one click. Modules can edit and pin their Telegram messages and show a count in their sidebar chip. "What happened" is back, new shells hint at ⌘T/⌘W, Hermes sessions continue in a tab, and a file dropped from a temporary place is copied off the main thread.

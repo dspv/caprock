@@ -12,6 +12,88 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.149.0] - 2026-10-22
+
+### Added
+
+- **ui:** the status bar shows the machine's memory: *Mac 9.1/16 GB* with a
+  small green bar, amber with what the agents hold when the system warns or
+  85% is in use, and red *Memory low* when the pressure is critical or swap
+  keeps growing. A click shows who holds it — agents, Caprock, other apps —
+  each agent with its state, the apps using the most, and one button that
+  ends the idle agents Caprock started (their conversations are kept;
+  Continue picks them up). Agents started elsewhere are listed, never
+  touched. Read from the OS's own figures on macOS, Linux and Windows, only
+  while a window is open; a paired phone sees the totals, not other apps'
+  names. An agent whose one process passes 3 GB (or a fifth of the
+  machine), or grows for hours, is flagged in the popover and its
+  inspector with **Restart it fresh**: the process ends and the same
+  conversation continues in a new one. Memory is each process's physical
+  footprint on macOS, compressed pages included, as Activity Monitor shows.
+  New `GET /v1/system/memory`, `POST /v1/system/memory/end-idle` and
+  `POST /v1/system/memory/restart`.
+
+### Changed
+
+- **inspector:** every tab's Spend now opens on that agent's own session —
+  its burn and spend — instead of one period shared by every tab, which made
+  a Caprock-wide *today* show the same chart and dollars in every tab.
+  *Today*, *7d* and *30d* across all sessions are still in the period picker,
+  and a pick stays in the tab it was made in. Folded, a chip says whose
+  figures they are: *session*, or *today · all*.
+
+### Fixed
+
+- **app:** a terminal tab left out of sight for ten minutes keeps the last
+  1,000 lines of its scrollback instead of 10,000, and has the full 10,000
+  again when shown. Every tab ever opened used to hold its whole scrollback:
+  ten full tabs held 103 MB of the window's memory, 24 MB once trimmed
+  (measured 2026-10-22). The tab in front and anything shown in the last ten
+  minutes are unchanged, and nothing is redrawn on the way back.
+- **daemon:** cached dashboard answers for a past day or range are dropped
+  once they are too old to show (they were kept for as long as the daemon
+  ran); a session Caprock started that crashes or is killed no longer leaves
+  its last tool inputs in memory; and the daemon sets a soft 256 MiB ceiling
+  on Go's own memory (unless `GOMEMLIMIT` is set). A heavy synthetic load
+  stayed under 90 MB of it (measured 2026-10-22); near it the daemon collects
+  harder and returns memory to the system instead of growing.
+- **app:** dragging a file from iCloud Drive onto the window no longer
+  closes the app. macOS hands over such a file in a way the window's drag
+  code did not expect, and the app quit on the spot (0.141.0 to 0.147.0).
+  Every file is now passed on as it is, whatever its name or where it lives.
+  If the app ever stops on an error again, the reason is written to
+  `app.log` in Caprock's data folder.
+- **app:** the app no longer stops at "Caprock could not start: another
+  Caprock daemon is already running" when its background service is still
+  starting, which happened at login on a busy Mac. It waits for that daemon
+  and connects to it. If the service does not answer, the app restarts it.
+  Try again does the same.
+- **app:** dropping a file on the window no longer touches the disk on the
+  thread that draws the app. A file from Finder is handed to the terminal as
+  it is; a screenshot thumbnail or another temporary file is copied on a
+  background thread first. On a Mac short of memory and swapping, that copy
+  could freeze the window for seconds.
+- **hooks:** the hook shim in Caprock's data folder is brought up to date every
+  time Caprock starts. The desktop app never replaced it, so a shim an earlier
+  Homebrew install had put there could keep running, months old, under a
+  current Caprock. With no separate shim to copy, the app puts its own
+  `caprock` there, which works as the shim.
+- **hooks:** Caprock's own hook and status line commands in
+  `~/.claude/settings.json` are repointed at this install when they run a
+  `caprock` that is gone or is another copy (an uninstalled Homebrew one, for
+  example). A status line or hook of your own is never touched, and the file
+  is backed up first.
+- **terminal:** a terminal tab whose session's process is gone no longer
+  spins on "Reconnecting…" for good. After the background service restarted,
+  tabs for sessions that died with it were refused by the daemon on every try,
+  and a browser is never told why. Now, after three refused tries, the tab
+  asks the daemon and says what is wrong and what to do ("Can't connect" with
+  the reason); a session the daemon still does not hold about 20 s later is
+  ended, and the app shows its conversation with Continue here. A tab restored
+  for a running session whose terminal Caprock lost opens that way at once,
+  and a session the daemon holds is served even when no new agent could be
+  started.
+
 ## [0.148.0] - 2026-10-22
 
 ### Added
