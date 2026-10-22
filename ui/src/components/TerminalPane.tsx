@@ -207,6 +207,7 @@ export function TerminalPane({
   focused = true,
   onStatus,
   onExit,
+  onGone,
   composer,
   quickReplies = false,
   inputBox = false,
@@ -224,6 +225,13 @@ export function TerminalPane({
    * workspace puts a shell in the same folder here.
    */
   onExit?: (code: number) => void
+  /**
+   * The daemon no longer holds the session — its process is gone, say with
+   * a restart of the background service — and the terminal has stopped
+   * retrying (lib/termv2 `gone`): the workspace shows its conversation,
+   * with Continue here, in its place.
+   */
+  onGone?: () => void
   composer?: PaneComposer
   /** A session Caprock started: the quick replies under its terminal (rule 7; lib/quickReplies). */
   quickReplies?: boolean
@@ -259,6 +267,8 @@ export function TerminalPane({
   onStatusRef.current = onStatus
   const onExitRef = useRef(onExit)
   onExitRef.current = onExit
+  const onGoneRef = useRef(onGone)
+  onGoneRef.current = onGone
   const bandRef = useRef<InputBoxBand | null>(null)
   const inputBoxRef = useRef(inputBox)
   inputBoxRef.current = inputBox
@@ -535,6 +545,7 @@ export function TerminalPane({
           report(conn.state)
         },
         exit: (code) => onExitRef.current?.(code),
+        gone: () => onGoneRef.current?.(),
       },
     })
 
@@ -976,6 +987,7 @@ export function TerminalPane({
             {status === 'reconnecting' ? 'Connecting to the session…' : 'Starting…'}
           </p>
           {status === 'reconnecting' && <ReconnectBadge link={link} onReconnect={() => connRef.current?.reconnectNow()} />}
+          {status === 'reconnecting' && link.refusal && <Refusal text={link.refusal} />}
         </div>
       )}
       {status === 'revoked' && phase === 'ready' && (
@@ -986,8 +998,9 @@ export function TerminalPane({
         </div>
       )}
       {status === 'reconnecting' && phase === 'ready' && (
-        <div className="pointer-events-none absolute right-3 top-2 z-20 app-fade-in">
+        <div className="pointer-events-none absolute right-3 top-2 z-20 flex flex-col items-end gap-1.5 app-fade-in">
           <ReconnectBadge link={link} onReconnect={() => connRef.current?.reconnectNow()} />
+          {link.refusal && <Refusal text={link.refusal} />}
         </div>
       )}
       {find.open && searchRef.current && (
@@ -1046,6 +1059,15 @@ export function TerminalPane({
       />
     )}
     </div>
+  )
+}
+
+/** Why the daemon keeps refusing this terminal, and what to do (lib/termv2 refusalFor). */
+function Refusal({ text }: { text: string }) {
+  return (
+    <p data-refusal className="mono max-w-[52ch] rounded-md border border-white/10 bg-black/50 px-3 py-2 text-center text-[11.5px] leading-snug text-[#e7bb63] backdrop-blur-sm">
+      {text}
+    </p>
   )
 }
 

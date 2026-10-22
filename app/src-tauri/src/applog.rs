@@ -79,6 +79,35 @@ pub fn utc(t: SystemTime) -> String {
     )
 }
 
+/// Writes a panic's message and place to the log before the default hook
+/// runs. A release build aborts on a panic (`panic = "abort"`), and the
+/// crash report macOS keeps names only the abort: the drag crash of 0.141.0
+/// and 0.147.0 left nothing that said which unwrap it was. Now the line
+/// `panic at <file>:<line>: <message>` is in app.log.
+pub fn install_panic_hook(data_dir: &Path) {
+    let dir = data_dir.to_path_buf();
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        line(&dir, &panic_line(info));
+        default(info);
+    }));
+}
+
+/// `panic at <file>:<line>: <message>`, the message as the panic gave it.
+fn panic_line(info: &std::panic::PanicHookInfo<'_>) -> String {
+    let at = info
+        .location()
+        .map(|l| format!("{}:{}", l.file(), l.line()))
+        .unwrap_or_else(|| "an unknown place".into());
+    let payload = info.payload();
+    let msg = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("(no message)");
+    format!("panic at {at}: {msg}")
+}
+
 /// Days since 1970-01-01 to (year, month, day) in the proleptic Gregorian
 /// calendar (Howard Hinnant's `civil_from_days`).
 fn civil(z: i64) -> (i64, u32, u32) {
@@ -147,6 +176,26 @@ mod tests {
         );
         let fresh = std::fs::read_to_string(dir.join(FILE)).unwrap();
         assert!(fresh.ends_with(" after\n") && fresh.lines().count() == 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_panic_is_written_with_its_place_and_message() {
+        // The hook is process-wide: install it, panic on a thread, put the
+        // default back. Other tests that panic on purpose may add lines to
+        // this scratch file meanwhile; only ours is looked for.
+        let dir = scratch("panic");
+        install_panic_hook(&dir);
+        let r = std::thread::spawn(|| -> u8 { panic!("dropped file names") }).join();
+        let _ = std::panic::take_hook();
+        assert!(r.is_err());
+        let text = std::fs::read_to_string(dir.join(FILE)).unwrap();
+        assert!(
+            text.lines()
+                .any(|l| l.contains("panic at src/applog.rs:")
+                    && l.ends_with(": dropped file names")),
+            "{text}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

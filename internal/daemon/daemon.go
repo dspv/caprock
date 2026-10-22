@@ -829,6 +829,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// normal case and is silent. With the CLI installed it starts even with no
 	// transcripts yet: the first rollout may be one a session Caprock starts.
 	d.startCodex(ctx, d.mgr.AgentAvailable(agents.AgentCodex))
+	// The data-dir shim and our settings.json commands pointed at this
+	// install, off the start path (selfrepair.go).
+	d.goBg(d.repairHookPaths)
 	// Each subscription's directory (ADR-048): its hooks brought up to date
 	// and its transcripts read.
 	d.startSubscriptions()

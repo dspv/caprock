@@ -1476,6 +1476,24 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   can run translocated from a read-only path, and a login service must
   survive the app moving. The first-run choice is kept in
   `<data_dir>/app.json` ([03-contracts.md § Runtime file](03-contracts.md#runtime-file)).
+- **A daemon that is already starting is waited for, never a dead end.**
+  At login the login service (RunAtLoad, KeepAlive) and the app both bring
+  the daemon up. On a busy Mac the service held `caprock.lock` but did not
+  answer yet, the app's `caprock up` refused ("another Caprock daemon (pid
+  N) is already running for this data directory"), and the app showed
+  "Caprock could not start" with the daemon seconds away (a user's report
+  against 0.147.0). Now that refusal makes the start wait up to 40 s for
+  the holder to answer and use it (then, as on every connect, the app's own
+  daemon is replaced when the bundle carries another version). One that
+  holds the lock and still does not answer is the app's login service hung:
+  on macOS, with its plist registered, the app restarts it through
+  `launchctl kickstart -k gui/<uid>/dev.caprock.daemon` and waits 40 s
+  more. Only then is it a failure, which says to run `caprock down` and
+  Try again; Try again runs all of this again. The lock itself cannot go
+  stale (the OS drops it with the process); the pid the refusal names is
+  read from the lock file first, which the holder writes the moment it
+  takes the lock, since `runtime.json` is the previous run's until the
+  daemon listens and named a pid from before a reboot.
 - **api_level.** `GET /v1/status` and `runtime.json` gain `api_level`, an
   integer raised by every change a client must know about. The app declares
   the minimum it needs. A daemon below it is shown as "needs an upgrade" with
@@ -2052,6 +2070,26 @@ tells a page where a file lives.
   drops keep their order), which then records the paths and hands them to
   the page. On a Mac short of memory and swapping, a disk read or write on
   the main thread stalled the app (a user's report against 0.147.0).
+- **No drag may abort the app.** 0.141.0 and 0.147.0 aborted (SIGABRT on
+  the main thread) the moment a user dragged a Finder file that lived in
+  iCloud Drive. The crash report's app frames were Rust's panic-to-abort
+  path; the panic sat in wry's (`collect_paths`) and tao's
+  (`draggingEntered:`, `performDragOperation:`) macOS drag callbacks, which
+  `unwrap()` the pasteboard's file names — an item that advertises file
+  names and yields none (a not-downloaded iCloud file can) panics there,
+  inside an Objective-C method, where any panic aborts whatever the
+  `panic` setting. Both crates are built from patched copies in
+  `app/src-tauri/patched/` (`[patch.crates-io]`; each patched spot is marked
+  `CAPROCK PATCH`; anything that is not a list of strings is skipped). A
+  crate bump copies the new release in and carries the patch over, or drops
+  the copy once upstream stops unwrapping; `shell.rs`'s
+  `the_patched_drag_handlers_never_unwrap` fails a bump that loses it. The
+  shell's own handler passes every path on as it is — any script, emoji,
+  iCloud paths and `.icloud` placeholders; a non-UTF-8 path is recorded but
+  not typed — and wraps its body in `catch_unwind` (effective in builds
+  that unwind). A release build still aborts on any panic, so the app
+  installs a panic hook that writes `panic at <file>:<line>: <message>` to
+  `app.log` first: the next crash report is answered from that line.
 - **Why not turn the handler off.** With it off the page gets an HTML5 drop
   and the upload path works unchanged, which is the smaller fix. It was the
   worse behaviour: the upload copies the bytes into the data directory, so

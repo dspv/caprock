@@ -80,3 +80,14 @@ lto = true
 opt-level = "s"
 strip = true
 panic = "abort"
+
+# wry and tao with macOS drag handlers that cannot panic: upstream unwraps
+# the dragged file names, a Finder item in iCloud that is not downloaded can
+# yield none, and with panic = "abort" (and inside an Objective-C method in
+# any case) that panic killed the app (0.141.0 and 0.147.0). Each patched
+# spot is marked CAPROCK PATCH; the shell's tests fail if one goes missing.
+# To bump either crate, copy the new release here and carry the patch over,
+# or drop this once upstream stops unwrapping. .ai/21-app.md § Dropping a file.
+[patch.crates-io]
+wry = { path = "patched/wry" }
+tao = { path = "patched/tao" }

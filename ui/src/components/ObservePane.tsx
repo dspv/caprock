@@ -42,6 +42,16 @@ export function attachable(s: Pick<SessionSummary, 'status' | 'detached' | 'owne
   return s.owned && s.status !== 'ended' && !s.detached
 }
 
+/**
+ * A session open as a terminal tab whose terminal this daemon does not hold:
+ * running, not a shell, and Caprock's own but detached, or not Caprock's at
+ * all. Its tab is turned into its conversation (AppShell), since its socket
+ * would only be refused. An ended one keeps its terminal: it shows the end.
+ */
+export function detachedSession(s: Pick<SessionSummary, 'status' | 'detached' | 'owned' | 'kind'>): boolean {
+  return s.kind !== 'shell' && s.status !== 'ended' && !attachable(s)
+}
+
 const HEADLINE: Record<ObserveWhy, string> = {
   other: 'Started in another terminal — Caprock watches it, it can’t type into it.',
   ended: 'This session has ended — what it said is below, read-only.',

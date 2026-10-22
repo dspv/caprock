@@ -53,6 +53,12 @@ export interface TermCallbacks {
   exit?(code: number): void
   /** The socket opened (v1 or v2): the place to tell the daemon the size. */
   open?(): void
+  /**
+   * The daemon no longer holds the session (its process is gone, e.g. it
+   * died with a restart of the background service): the client has stopped
+   * retrying and is 'ended'.
+   */
+  gone?(): void
 }
 
 export interface TermOptions {
@@ -64,6 +70,50 @@ export interface TermOptions {
   /** Injected for tests. */
   random?: () => number
   now?: () => number
+  fetch?: typeof fetch
+}
+
+/** Sockets in a row that closed without opening before the daemon is asked why. */
+export const DIAGNOSE_AFTER = 3
+/** The daemon is asked at most this often while the refusals go on. */
+export const DIAGNOSE_EVERY_MS = 15_000
+/**
+ * A session the daemon has said it does not hold, still not held this long
+ * after (asked again), is gone: the tab stops retrying. Longer than a
+ * permission-mode restart, which starts a new process under the same id.
+ */
+export const GONE_AFTER_MS = 10_000
+
+/** The terminal socket's HTTP twin: the same route, asked by a plain GET. */
+export function diagnosisUrl(wsUrl: string): string {
+  return wsUrl.replace(/^ws(s?):\/\//, 'http$1://')
+}
+
+/**
+ * Why the daemon refuses a terminal socket, from the plain GET's answer
+ * (internal/api/ws.go serveTerm), in words with what to do; undefined when
+ * the answer says nothing is wrong. `status` 0 is no answer at all.
+ */
+export function refusalFor(status: number, body = ''): string | undefined {
+  const restart = 'Quit Caprock, run `caprock down` in Terminal, then open Caprock again.'
+  switch (status) {
+    case 0:
+      return `Caprock’s background service is not answering. ${restart}`
+    case 409:
+      return 'This session is no longer running in Caprock: its process ended, or Caprock’s background service restarted without it. Close this tab and resume the session from its list.'
+    case 501:
+      return `Caprock’s background service found no Claude Code or other agent, so it runs no terminal. ${restart}`
+    case 401:
+    case 403:
+      return body.includes('shells are used') ? 'A shell is used on the machine Caprock runs on.' : 'Caprock’s background service refused this window. Reload the window.'
+    case 404:
+      return `Caprock’s background service does not have this terminal: it may be an older Caprock. ${restart}`
+  }
+  if (status >= 200 && status < 300) {
+    return `Caprock’s background service accepts this terminal but the connection keeps failing. ${restart}`
+  }
+  const detail = body.trim().slice(0, 120)
+  return `Caprock’s background service refused the terminal (HTTP ${status}${detail ? `: ${detail}` : ''}). ${restart}`
 }
 
 interface Pending { seq: number; frame: Uint8Array<ArrayBuffer>; size: number }
@@ -117,6 +167,14 @@ export class TermClient {
   /** The program exited to be started again under the same id (a
    *  permission-mode restart): the close that follows is reconnected. */
   private restarting = false
+  /** Sockets in a row that closed without ever opening: refused, or no daemon. */
+  private unopened = 0
+  /** Why the daemon refuses, once asked (`diagnose`); cleared by a live link. */
+  private refusal: string | undefined
+  private diagnosedAt = 0
+  private diagnosing = false
+  /** When the daemon first said it does not hold this session; 0 when it has not. */
+  private goneSince = 0
   /** A claim on the PTY's size (`focus`) waits to be sent: debounced, or until a socket opens. */
   private focusPending = false
   private focusTimer: ReturnType<typeof setTimeout> | undefined
@@ -137,7 +195,7 @@ export class TermClient {
 
   get state(): TermState { return this.stateNow }
   /** The state with its retry status, for the state indicator. */
-  get link(): LinkStatus { return { phase: this.stateNow, ...this.retry.status, reason: this.revokedReason } }
+  get link(): LinkStatus { return { phase: this.stateNow, ...this.retry.status, reason: this.revokedReason, refusal: this.refusal } }
   /** When anything last arrived from the daemon: "live" means a round trip within DEAD_MS. */
   get heardAt(): number { return this.heard }
   /** The protocol of the open socket, if one is open. */
@@ -348,6 +406,7 @@ export class TermClient {
       this.ws = null
       this.setState('reconnecting')
       this.retry.fail()
+      this.unopenedClose()
       return
     }
     ws.binaryType = 'arraybuffer'
@@ -355,9 +414,13 @@ export class TermClient {
     this.heard = this.now()
     this.probeAt = 0
     this.v1Repaint = this.wroteAny
+    let opened = false
     ws.onopen = () => {
       if (this.ws !== ws) return
       this.heard = this.now()
+      opened = true
+      this.unopened = 0
+      this.goneSince = 0
       if (!this.isV2(ws)) {
         // An older daemon answers with version 1: it replays the screen (so
         // the terminal is cleared before it lands, see output) and takes
@@ -365,6 +428,7 @@ export class TermClient {
         for (const p of this.pending) ws.send(p.frame.subarray(4))
         this.pending = []
         this.retry.succeed()
+        this.refusal = undefined
         this.setState('live')
       } else if (this.stateNow !== 'connecting') {
         // Open, and the hello with what was missed is on its way.
@@ -411,7 +475,77 @@ export class TermClient {
       // retried forever.
       this.setState('reconnecting')
       this.retry.fail()
+      if (!opened) this.unopenedClose()
     }
+  }
+
+  /**
+   * A socket closed without ever opening. A browser is never told why an
+   * upgrade failed, so after DIAGNOSE_AFTER in a row the daemon is asked by
+   * a plain GET on the same route (internal/api/ws.go), at most every
+   * DIAGNOSE_EVERY_MS, and the answer is shown with what to do. Before,
+   * a session the daemon no longer held — after a crash and a restart of
+   * the background service — read "Reconnecting…" on every tab, for good.
+   * The retries go on: a refusal that ends connects as usual.
+   */
+  private unopenedClose(): void {
+    this.unopened++
+    if (this.unopened < DIAGNOSE_AFTER || this.diagnosing) return
+    const now = this.now()
+    if (this.diagnosedAt && now - this.diagnosedAt < DIAGNOSE_EVERY_MS) return
+    const f = this.opts.fetch ?? (typeof fetch === 'function' ? fetch : undefined)
+    if (!f) return
+    this.diagnosing = true
+    this.diagnosedAt = now
+    const headers: Record<string, string> = {}
+    if (this.opts.deviceToken) headers['X-Caprock-Device'] = this.opts.deviceToken
+    const settle = (status: number, body = '') => {
+      this.diagnosing = false
+      if (this.disposed || this.ended || this.unopened < DIAGNOSE_AFTER) return
+      if (status === 409) {
+        // The daemon does not hold this session: its process is gone (or
+        // restarting under the same id, which takes seconds). Still so
+        // GONE_AFTER_MS later, it is over — not a network blip.
+        if (!this.goneSince) this.goneSince = this.now()
+        else if (this.now() - this.goneSince >= GONE_AFTER_MS) { this.gone(); return }
+      } else {
+        this.goneSince = 0
+      }
+      const refusal = refusalFor(status, body)
+      if (refusal === this.refusal) return
+      this.refusal = refusal
+      this.opts.callbacks.status?.(this.link)
+    }
+    let asked: Promise<Response>
+    try {
+      asked = f(diagnosisUrl(this.opts.url), { headers, cache: 'no-store' })
+    } catch {
+      settle(0)
+      return
+    }
+    asked.then(
+      async (res) => {
+        let body = ''
+        try { body = await res.text() } catch { /* the status says enough */ }
+        settle(res.status, body)
+      },
+      () => settle(0),
+    )
+  }
+
+  /**
+   * The session's process is gone: retrying cannot bring it back. The
+   * client ends ('ended', with the reason) and says so (`gone`), and the
+   * app shows the session's conversation with Continue here in its place.
+   */
+  private gone(): void {
+    this.ended = true
+    this.refusal = refusalFor(409)
+    this.retry.cancel()
+    this.unwatch()
+    this.setState('ended')
+    this.opts.callbacks.status?.(this.link)
+    this.opts.callbacks.gone?.()
   }
 
   private tick(): void {
@@ -473,6 +607,7 @@ export class TermClient {
       // daemon drops anything it already applied.
       for (const p of this.pending) ws.send(p.frame)
       this.retry.succeed()
+      this.refusal = undefined
       this.setState('live')
       return
     }

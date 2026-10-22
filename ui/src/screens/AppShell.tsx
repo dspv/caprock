@@ -91,7 +91,7 @@ import { FileView } from '@/components/FileView'
 import { BrowserView } from '@/components/BrowserView'
 import { browserAct, browserOn, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
 import { openLink } from '@/lib/termlinks'
-import { attachable, ObservePane } from '@/components/ObservePane'
+import { attachable, detachedSession, ObservePane } from '@/components/ObservePane'
 import { PipelineHostContext, type PipelineHost } from '@/lib/pipelineHost'
 import { ScreenShown } from '@/lib/refresh'
 import { FilePicker } from '@/components/FilePicker'
@@ -859,6 +859,34 @@ export function AppShell() {
       dispatch({ type: 'drop-session', sessionId })
     }
   }, [sessionsById, refresh])
+
+  /**
+   * A pane whose session the daemon no longer holds — its process died, say
+   * with a restart of the background service — and whose terminal stopped
+   * retrying (lib/termv2 `gone`). It spun "Reconnecting…" for good before
+   * (0.147.0). An agent becomes its conversation, read-only, with Continue
+   * here (ObservePane); a quick chat says it ended; a shell, which has
+   * nothing to continue, closes as one that exited does.
+   */
+  const onPaneGone = useCallback((sessionId: string) => {
+    const s = sessionsById.get(sessionId)
+    if (isQuickChat(s) || startedChat(sessionId)) {
+      setEndedChats((cur) => (cur.has(sessionId) ? cur : new Set(cur).add(sessionId)))
+      return
+    }
+    const tab = findTabBySession(wsRef.current, sessionId)
+    const leaf = tab && leaves(tab.root).find((l) => l.target.sessionId === sessionId)
+    if (!tab || !leaf) return
+    if (s?.kind === 'shell' || leaf.target.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
+    const title = s ? sessionTitle(s) : tab.title
+    if (tab.root.type === 'pane') {
+      dispatch({ type: 'replace-session', sessionId, target: { kind: 'observe', sessionId }, title })
+      return
+    }
+    // A watched session is a tab of its own: out of the split, into one.
+    dispatch({ type: 'drop-session', sessionId })
+    dispatch({ type: 'open', target: { kind: 'observe', sessionId }, projectId: tab.projectId, title })
+  }, [sessionsById])
 
   /**
    * An agent's install or sign-in (ADR-046): a shell tab in the home folder —
@@ -1782,6 +1810,21 @@ export function AppShell() {
       }
     }
   }, [ws.tabs, sessionsById])
+  // And the other way: a session tab whose terminal this daemon does not hold
+  // — restored from the stored workspace after a crash or a restart of the
+  // background service, its pty-host gone — becomes its conversation,
+  // read-only, which says why and offers Continue here. As a terminal it
+  // could only be refused, and read "Reconnecting…" for good (0.147.0). A
+  // watched session is a tab of its own, so only a tab with no split is
+  // turned; a pane in a split says why its terminal is refused (lib/termv2).
+  useEffect(() => {
+    for (const t of ws.tabs) {
+      const l = t.root
+      if (l.type !== 'pane' || l.target.kind !== 'session') continue
+      const s = sessionsById.get(l.target.sessionId)
+      if (s && detachedSession(s)) dispatch({ type: 'replace-session', sessionId: s.session_id, target: { kind: 'observe', sessionId: s.session_id }, title: sessionTitle(s) })
+    }
+  }, [ws.tabs, sessionsById])
   const renderObserve = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
     // Only the tab in front reads the conversation: a tab behind costs nothing.
     if (!visible) return null
@@ -2025,6 +2068,7 @@ export function AppShell() {
                     covered={showChat || !!changesView || !!compare}
                     onPaneStatus={onPaneStatus}
                     onPaneExit={onPaneExit}
+                    onPaneGone={onPaneGone}
                     sessions={sessionsById}
                     permissions={data.permissions}
                     onFocusPane={onFocusPane}

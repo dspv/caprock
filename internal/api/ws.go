@@ -261,20 +261,39 @@ func (h *wsHub) Close() {
 
 // serveTerm bridges an owned session's PTY to a bidirectional WebSocket for
 // xterm.js: binary frames both ways, snapshot on connect, closes when the
-// process exits. Returns 501 when the session is not owned / spawning is off.
+// process exits. Returns 409 when the session is not held here, and 501 when
+// no agent can be started and the session is not held either: a session
+// this daemon holds is served whether or not a new one could be started (a
+// daemon started with a bare PATH used to refuse every open terminal).
 // A client that asks for caprock.term.v2 is served by serveTermV2; this is
 // version 1, kept unchanged for clients that predate it.
+//
+// A plain GET (no WebSocket upgrade) is the terminal's diagnosis: a browser
+// is never told why an upgrade was refused (the socket just closes, 1006),
+// so a tab that keeps failing asks this way (ui/src/lib/termv2.ts) and gets
+// 204 when the socket would be accepted, or the refusal with its reason.
 func (h *wsHub) serveTerm(s *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.d.Agents == nil || !s.d.Agents.Available() {
+		id := r.PathValue("id")
+		if s.d.Agents == nil || (!s.d.Agents.Available() && !s.d.Agents.Holds(id)) {
 			http.Error(w, "spawning unavailable", http.StatusNotImplemented)
+			return
+		}
+		if !isWebSocketUpgrade(r) {
+			if s.refuseShellToDevice(w, r, id) {
+				return
+			}
+			if !s.d.Agents.Holds(id) {
+				http.Error(w, "session is not owned by caprock", http.StatusConflict)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if src, ok := s.d.Agents.(termV2Source); ok && wantsTermV2(r) {
 			h.serveTermV2(s, src, w, r)
 			return
 		}
-		id := r.PathValue("id")
 		if s.refuseShellToDevice(w, r, id) {
 			return
 		}
@@ -396,4 +415,9 @@ func (h *wsHub) setLANHosts(hosts []string) {
 	h.mu.Lock()
 	h.lanHosts = hosts
 	h.mu.Unlock()
+}
+
+// isWebSocketUpgrade reports whether r asks to become a WebSocket.
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }
