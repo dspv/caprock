@@ -41,8 +41,10 @@ Caprock looks where Hermes keeps it: `$HERMES_HOME/state.db`, or
 **New agent → Hermes** opens `hermes chat` in a Caprock terminal tab, in the
 folder you pick, with the model you type (or Hermes's default). *Bypass* starts
 it with `--yolo`; Hermes has no plan or accept-edits mode, so those start
-Hermes as it is. A first message is sent as Hermes's first turn. A Hermes
-session can be continued later from its card.
+Hermes as it is. A first message is sent as Hermes's first turn. Once a
+Hermes session has ended, **Open in …** on its card carries it on in your
+own terminal (`hermes chat --resume <id>`); continuing it in a Caprock tab
+is not offered yet.
 
 If Hermes has no model chosen yet, Caprock shows `hermes model` as the step to
 run — Hermes's own picker for a provider and its sign-in, typed into a shell
