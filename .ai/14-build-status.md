@@ -151,6 +151,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-22 — 0.151.0: tool statistics without reading payloads
+
+A minor release, one PR (#798). Migration 0070 adds tool_fields: what the Tools screen and the subagent rows need from a tool call is stored once when the call is written, so neither reads the payload JSON any more, which unblocks payload compression (#672). Calls stored earlier are filled in the background, newest first; until then the readers take those rows from their payloads as before, and open stays fast.
+
 ### 2026-10-22 — 0.150.0: a page on three phones at once, quieter alerts, secrets kept out of Second Brain
 
 A minor release, one batch PR (#797). A local dev-server address in a terminal gets "Preview on phone", which opens the page beside the terminal in Phone mode with Touch on, and "Side by side" shows it on iPhone SE, iPhone 16 and Pixel 9 widths at once with a cut-off mark where the page overflows. The update card folds into a status-bar item. Second Brain removes card numbers, IBANs, keys, tokens and labelled passwords before anything is sent or saved, and scrubs stored memories once. Print-mode runs are no longer offered for Continue after a restart, browser observation steps no longer count as loops, the weekly report panel stops showing a stale failure, the memory popover never shows an app larger than its group, and the Week screen shows the subagent saving as figures.
