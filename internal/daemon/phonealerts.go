@@ -68,6 +68,13 @@ func (s *phoneAlertState) botChanged() {
 	s.lastErr, s.lastSent, s.untested = "", 0, true
 }
 
+// botChanged is a new bot token or chat: what the last alert and the last
+// weekly report did was the old one's, so both are forgotten.
+func (d *Daemon) botChanged() {
+	d.phone.botChanged()
+	d.forgetReportError(context.Background())
+}
+
 // isUntested reports a bot or chat saved since the last alert was tried.
 func (s *phoneAlertState) isUntested() bool {
 	s.mu.RLock()

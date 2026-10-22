@@ -44,6 +44,11 @@ export function WeeklyReport() {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setTesting(false)
+      // The daemon records this send's outcome — clears the last failure on
+      // success, stores the new reason on failure. Without a re-read the
+      // panel kept its old snapshot, and a stale "Last send failed" sat under
+      // "sent — check Telegram" (owner, 2026-10-22).
+      void settings.refresh?.()
     }
   }
 
@@ -84,11 +89,11 @@ export function WeeklyReport() {
 
         {/* The whole reason this line exists: a message that stopped arriving
           * is invisible otherwise, and looks identical to a quiet week. */}
-        {s?.report_last_error ? (
+        {s?.report_last_error && s.report_last_error !== error ? (
           <p className="m-0 text-[11px] text-danger">
             Last send failed: {s.report_last_error}
           </p>
-        ) : s?.report_last_sent_ms ? (
+        ) : s?.report_last_error ? null : s?.report_last_sent_ms ? (
           <p className="m-0 text-[11px] text-fg-faint">
             Last sent {fmtAgo(s.report_last_sent_ms, now)} ago.
           </p>
