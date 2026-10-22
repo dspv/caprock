@@ -17,8 +17,10 @@ import (
 // the prompt from stdin, and answers in the shape of `claude -p
 // --output-format json`: one memory per agent passage, at most three, kinds
 // and topics guessed from the words, with a usage block and a cost. No model,
-// no network. FAKECLAUDE_PRINT_FAIL=1 makes it fail as a refused login does;
-// FAKECLAUDE_PRINT_DELAY_MS makes each answer take that long.
+// no network. A re-tag prompt (internal/brain, retag.go) is answered with
+// keywords per note instead (retagAnswer). FAKECLAUDE_PRINT_FAIL=1 makes it
+// fail as a refused login does; FAKECLAUDE_PRINT_DELAY_MS makes each answer
+// take that long.
 func printMode(args []string) {
 	need := map[string]bool{"--no-session-persistence": false, "--output-format=json": false, "--tools=": false, "--setting-sources=local": false, "--settings": false}
 	for i, a := range args {
@@ -55,6 +57,9 @@ func printMode(args []string) {
 	// shows the Second Brain screen reading a session, as a real model does.
 	if ms, err := strconv.Atoi(os.Getenv("FAKECLAUDE_PRINT_DELAY_MS")); err == nil && ms > 0 {
 		time.Sleep(time.Duration(ms) * time.Millisecond)
+	}
+	if strings.Contains(string(in), "The notes, one per line") {
+		retagAnswer(string(in))
 	}
 	type mem struct {
 		Kind    string   `json:"kind"`
@@ -115,6 +120,45 @@ func printMode(args []string) {
 		"structured_output": map[string]any{"memories": mems},
 		"total_cost_usd":    0,
 		"usage":             map[string]int{"input_tokens": len(in) / 4, "output_tokens": 50 * len(mems), "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+		"modelUsage":        map[string]any{"fake-claude": map[string]int{}},
+	}
+	b, _ := json.Marshal(out)
+	fmt.Println(string(b))
+	os.Exit(0)
+}
+
+// retagAnswer answers a re-tag: for every `#id kind: title` line, the
+// title's ASCII words, lowercased, as its keywords (at most eight), or
+// "note" when it has none.
+func retagAnswer(in string) {
+	type tag struct {
+		ID       int64    `json:"id"`
+		Keywords []string `json:"keywords"`
+	}
+	tags := []tag{}
+	re := regexp.MustCompile(`(?m)^#(\d+) [a-z]+: (.*)$`)
+	word := regexp.MustCompile(`[A-Za-z]{3,}`)
+	for _, m := range re.FindAllStringSubmatch(in, -1) {
+		id, _ := strconv.ParseInt(m[1], 10, 64)
+		title := m[2]
+		if i := strings.Index(title, " — "); i >= 0 {
+			title = title[:i]
+		}
+		kw := []string{}
+		for _, w := range word.FindAllString(title, 8) {
+			kw = append(kw, strings.ToLower(w))
+		}
+		if len(kw) == 0 {
+			kw = append(kw, "note")
+		}
+		tags = append(tags, tag{ID: id, Keywords: kw})
+	}
+	out := map[string]any{
+		"type": "result", "subtype": "success", "is_error": false,
+		"result":            "",
+		"structured_output": map[string]any{"tags": tags},
+		"total_cost_usd":    0,
+		"usage":             map[string]int{"input_tokens": len(in) / 4, "output_tokens": 20 * len(tags), "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
 		"modelUsage":        map[string]any{"fake-claude": map[string]int{}},
 	}
 	b, _ := json.Marshal(out)

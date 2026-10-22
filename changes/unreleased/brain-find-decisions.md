@@ -8,7 +8,8 @@ kind: Added
   and *PR*, *pull request*, *cost*, *price*, *spend*, *decision* and *rule*
   find each other. Each new memory gets five to eight English keywords,
   whatever language its title is in, so an English query finds a memory
-  written in another language (older memories are not re-tagged). A read
+  written in another language (older memories get theirs from the
+  re-tag). A read
   is shown the project's current decisions and recent memories with their
   ids: it no longer repeats one, can link to one, and can say a new
   decision supersedes an older one. A superseded memory is ranked last,

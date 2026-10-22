@@ -52,13 +52,20 @@ type Request struct {
 	// no --json-schema, nothing parsed out of the text. AI;DR uses it
 	// (ADR-072).
 	Plain bool
+	// Schema, when set, is the answer's shape instead of the memories'
+	// (Schema): the answer is then read from Result.JSON. The re-tag uses it.
+	Schema string
 }
 
 // Result is what one call returned and what it cost, as claude reported it.
 type Result struct {
 	Memories []Memory
 	// Text is the answer's text as claude returned it (`result`).
-	Text      string
+	Text string
+	// JSON is the structured answer as claude returned it (its
+	// structured_output, else the first JSON object in the text), for a
+	// request with its own Schema.
+	JSON      json.RawMessage
 	Model     string
 	TokensIn  int64 // input, cache read and cache write
 	TokensOut int64
@@ -178,10 +185,14 @@ func Argv(r Request, settingsPath string, batch bool) ([]string, string) {
 		}
 		return append(args, "--system-prompt", r.System), r.Prompt
 	}
-	if batch {
-		return args, r.System + "\n\nAnswer with only this JSON, nothing around it: " + Schema + "\n\n" + r.Prompt
+	schema := Schema
+	if r.Schema != "" {
+		schema = r.Schema
 	}
-	args = append(args, "--system-prompt", r.System, "--json-schema", Schema)
+	if batch {
+		return args, r.System + "\n\nAnswer with only this JSON, nothing around it: " + schema + "\n\n" + r.Prompt
+	}
+	args = append(args, "--system-prompt", r.System, "--json-schema", schema)
 	return args, r.Prompt
 }
 
@@ -213,6 +224,7 @@ func ParseResult(b []byte) (Result, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		raw = json.RawMessage(firstObject(c.Result))
 	}
+	res.JSON = raw
 	var body struct {
 		Memories []Memory `json:"memories"`
 	}

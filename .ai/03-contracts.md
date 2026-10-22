@@ -3917,8 +3917,9 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   `close` are a search's (below). `keywords` are the five to eight English
   search keywords the extraction gave a memory, whatever language its title
   is in (migration 0069; trimmed, a comma made a space, deduplicated
-  folded, at most 8 of at most 40 runes); none on a memory made before
-  them, by hand or imported — old memories are not re-tagged. `superseded_by`
+  folded, at most 8 of at most 40 runes); none on an imported note, nor
+  on a memory made before them or by hand until the extraction's re-tag
+  gives it some (*Re-tag* below). `superseded_by`
   is the newest memory with a `supersedes` edge to this one, in the graph
   read and a node's own read; absent while it is current.
 - **`BrainEdge`** — `{from, to, kind, weight}`; `kind` is `relates`,
@@ -4029,17 +4030,18 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
   links, handoff, running, pending, since?, backfill_since?, last_wake?,
-  next_wake?, last_error?, recent: [BrainRun], reading?, build?,
+  next_wake?, last_error?, recent: [BrainRun], reading?, build?, retag?,
   agents_24h}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
   runs, so a screen can say when the first memories may come — `spent`
-  the tokens of the reads in the last 24 hours, `pending` the sessions
-  waiting (counted up to 200), `recent` the last reads that were not
-  skipped. `spent_usd` is the reads' `cost_usd` in the last 24 hours —
-  what claude reported, at API list price; `last_read` when the newest read
-  with status `ok` finished; `new_today` the memories (not entities) added
+  the tokens of the reads and re-tag batches (*Re-tag* below) in the last
+  24 hours, `pending` the sessions waiting (counted up to 200), `recent`
+  the last reads of sessions that were not skipped (no re-tag batch).
+  `spent_usd` is the `cost_usd` of the same reads and batches in the last
+  24 hours — what claude reported, at API list price; `last_read` when the
+  newest read of a session with status `ok` finished; `new_today` the memories (not entities) added
   since the daemon's local midnight, by hand or read; `topics` the topic
   entities and `links` the rows of `brain_edges`. `stage` is where the
   build is: `off` (not on), `extracting` or `linking` (a read is asking
@@ -4053,8 +4055,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   memories with their handoff and how many (`sessions.handoff_brain`,
   § SessionStart handoff). `agents_24h` is `[{agent, sessions, last_at}]`:
   the agents whose sessions a read with status `ok` went through in the
-  last 24 hours (`brain_runs` joined to `sessions`; no agent recorded counts
-  as `claude`), `sessions` the distinct sessions, `last_at` when the newest
+  last 24 hours (`brain_runs` joined to `sessions`, re-tag batches left
+  out; no agent recorded counts as `claude`), `sessions` the distinct sessions, `last_at` when the newest
   of those reads finished (unix ms), most sessions first; `[]` when none.
   `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
@@ -4141,6 +4143,36 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   there it is the repository's name from its remote's web address when the
   session's `repo_root` is a checkout with one, else none, so the memories
   hang off their topics only and the read is sent without a project.
+- **Re-tag.** A memory with no `keywords` — kept before migration 0069, or
+  typed by hand — is given them in batches, so an English query finds one
+  titled in another language. A memory here is `idea`, `decision`,
+  `finding` or `question`; an imported note and an entity never are. Only
+  while the extraction is on, and only in a wake that finds no session
+  waiting (a session waiting out a failure does not count): the wake's
+  four calls go to the re-tag then, and a session that comes to wait goes
+  first at the next wake. Each call sends 40 memories, lowest id first,
+  above the re-tag's cursor, one per line as `#id kind: title — summary`
+  (the summary clipped to 200 runes), to the same `claude`, flags and
+  model as a read, with its own instructions and `--json-schema`; the
+  answer is `{tags: [{id, keywords}]}`. Only an id the batch sent is kept,
+  the first answer for an id wins, the keywords are cleaned as a read's
+  are (five to eight, at most 40 runes each), and a memory that has
+  keywords by then is left alone; `updated_at` does not move. Each batch
+  is a `brain_runs` row with `session_id` `caprock:retag`,
+  `from_event_id` and `through_event_id` the first and last memory id it
+  sent, `nodes` the memories it gave keywords, and its tokens and cost as
+  claude reported them — so it counts toward `daily_tokens`, `spent` and
+  `spent_usd` like a read, and no migration is needed. The cursor is the
+  highest `through_event_id` of a batch that did not fail, so the re-tag
+  resumes there after a restart and a memory the answer left out is not
+  asked again. A failed batch is retried after 15 minutes, doubling;
+  after four it is recorded `skipped` (*gave up after repeated failures*)
+  and the re-tag goes on past it. `retag` in the status is `{done, total}`
+  while the extraction is on and memories without keywords wait above the
+  cursor: `done` the memories batches gave keywords, `total` that plus
+  those waiting; absent otherwise. It is its own field, not a kind of
+  any catch-up progress, and it adds no frame: a screen reads the status
+  while the extraction runs.
 
 ### Obsidian vaults
 
@@ -5959,7 +5991,10 @@ share one. Deleting a node deletes its edges (foreign keys are on), and the
 topics and people the delete leaves unlinked go too unless dropped in by hand
 or pinned. A session's newest `brain_runs` row says how far the extraction has
 read it (`through_event_id`, never past a passage it did not send); `tokens_in` is input, cache read and cache write
-as `claude` reported them, `cost_usd` its own `total_cost_usd`.
+as `claude` reported them, `cost_usd` its own `total_cost_usd`. A row with
+`session_id` `caprock:retag` is a re-tag batch, not a read: its
+`from_event_id` and `through_event_id` are memory ids (§ Second Brain,
+*Re-tag*).
 
 ### Obsidian vaults DDL (migration 0062)
 
@@ -6045,9 +6080,9 @@ ALTER TABLE sessions ADD COLUMN handoff_runes INTEGER NOT NULL DEFAULT 0;
 
 - **`keywords`** — a memory's English search keywords joined with `, `;
   `brain_nodes.search` carries them, folded, on a fourth line, and search
-  weighs them like the title. `''` for memories made before 0069: they
-  are not re-tagged (TODO: a lazy re-tag, off by default, if the measured
-  misses on old non-English titles warrant one).
+  weighs them like the title. `''` for memories made before 0069 and by
+  hand, until the extraction's re-tag gives them some (§ Second Brain,
+  *Re-tag*; no migration of its own).
 - **`supersedes`** — an edge from a newer decision to the older one it
   replaces. Nothing references `brain_edges`, so the rebuild is a copy
   aside, a drop, a create and a copy back, inside the migration's

@@ -1636,6 +1636,9 @@ export interface BrainAutoStatus {
   handoff?: BrainHandoff
   /** The agents whose sessions a read went through in the last 24 hours, most sessions first: the card's faces. */
   agents_24h?: BrainAgentRead[]
+  /** The re-tag of memories without keywords, while some wait and it is on:
+   * `done` given keywords, `total` that plus those waiting. */
+  retag?: { done: number; total: number }
 }
 
 /** One agent whose sessions Second Brain read: distinct sessions, and when the newest read finished (unix ms). */
