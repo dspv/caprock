@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -36,6 +37,7 @@ type ModuleNotifier interface {
 
 func (s *Server) routeModuleOut(m *http.ServeMux) {
 	m.HandleFunc("POST /v1/x/{id}/telegram", s.handleModuleTelegram)
+	m.HandleFunc("PATCH /v1/x/{id}/telegram/{message_id}", s.handleModuleTelegramEdit)
 	m.HandleFunc("POST /v1/x/{id}/notify", s.handleModuleNotify)
 }
 
@@ -57,10 +59,12 @@ func (s *Server) moduleOutKey(w http.ResponseWriter, r *http.Request) (id, name 
 	return id, name, true
 }
 
-// handleModuleTelegram is POST /v1/x/{id}/telegram {text, buttons?, reply?}:
-// one message to the owner's paired chat, its first line naming the module.
-// {message_id}; 409 with no paired chat or under /mute all; 400 for a bad
-// message; 502 with Telegram's words.
+// handleModuleTelegram is POST /v1/x/{id}/telegram {text, buttons?, reply?,
+// reply_to_message_id?}: one message to the owner's paired chat, its first
+// line naming the module, threaded under one of the module's own when
+// reply_to_message_id names it. {message_id}; 409 with no paired chat or
+// under /mute all; 400 for a bad message; 404 when reply_to_message_id is not
+// a message this module sent; 502 with Telegram's words.
 func (s *Server) handleModuleTelegram(w http.ResponseWriter, r *http.Request) {
 	id, name, ok := s.moduleOutKey(w, r)
 	if !ok {
@@ -74,16 +78,63 @@ func (s *Server) handleModuleTelegram(w http.ResponseWriter, r *http.Request) {
 		Text    string                  `json:"text"`
 		Buttons []telegram.ModuleButton `json:"buttons"`
 		Reply   bool                    `json:"reply"`
+		ReplyTo int64                   `json:"reply_to_message_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}], "reply": false}`))
+		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}], "reply": false, "reply_to_message_id": 0}`))
 		return
 	}
-	msgID, err := s.d.Telegram.SendModule(r.Context(), telegram.ModuleMessage{Module: id, Name: name, Text: body.Text, Buttons: body.Buttons, Reply: body.Reply})
+	msgID, err := s.d.Telegram.SendModule(r.Context(), telegram.ModuleMessage{Module: id, Name: name, Text: body.Text, Buttons: body.Buttons, Reply: body.Reply, ReplyTo: body.ReplyTo})
 	switch {
 	case errors.Is(err, telegram.ErrModuleMessage):
 		s.failCode(w, http.StatusBadRequest, err)
+	case errors.Is(err, telegram.ErrNotModuleMessage):
+		s.failCode(w, http.StatusNotFound, err)
 	case errors.Is(err, telegram.ErrNotPaired), errors.Is(err, telegram.ErrMuted):
+		s.failCode(w, http.StatusConflict, err)
+	case err != nil:
+		s.failCode(w, http.StatusBadGateway, err)
+	default:
+		writeJSON(w, http.StatusOK, map[string]int64{"message_id": msgID})
+	}
+}
+
+// handleModuleTelegramEdit is PATCH /v1/x/{id}/telegram/{message_id}
+// {text?, buttons?}: a change to a message this module sent. An omitted (or
+// null) part is left as it is; `buttons: []` removes the buttons; at least
+// one part is required. {message_id}; 400 for a bad edit; 404 for any
+// message this module did not send (another module's, the bridge's own, an
+// unknown or forgotten one); 409 with no paired chat; 502 with Telegram's
+// words. Telegram's "message is not modified" is a 200.
+func (s *Server) handleModuleTelegramEdit(w http.ResponseWriter, r *http.Request) {
+	id, name, ok := s.moduleOutKey(w, r)
+	if !ok {
+		return
+	}
+	if s.d.Telegram == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("the Telegram bridge is unavailable"))
+		return
+	}
+	msgID, err := strconv.ParseInt(r.PathValue("message_id"), 10, 64)
+	if err != nil || msgID <= 0 {
+		s.failCode(w, http.StatusNotFound, telegram.ErrNotModuleMessage)
+		return
+	}
+	var body struct {
+		Text    *string                  `json:"text"`
+		Buttons *[]telegram.ModuleButton `json:"buttons"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+		s.failCode(w, http.StatusBadRequest, errors.New(`body must be {"text": "…", "buttons": [{"id": "…", "label": "…"}]}, either or both`))
+		return
+	}
+	err = s.d.Telegram.EditModule(r.Context(), telegram.ModuleEdit{Module: id, Name: name, MessageID: msgID, Text: body.Text, Buttons: body.Buttons})
+	switch {
+	case errors.Is(err, telegram.ErrModuleMessage):
+		s.failCode(w, http.StatusBadRequest, err)
+	case errors.Is(err, telegram.ErrNotModuleMessage):
+		s.failCode(w, http.StatusNotFound, err)
+	case errors.Is(err, telegram.ErrNotPaired):
 		s.failCode(w, http.StatusConflict, err)
 	case err != nil:
 		s.failCode(w, http.StatusBadGateway, err)

@@ -52,6 +52,7 @@ type Bot struct {
 	limit            int      // the next limit calls answer 429
 	retry            int      // their retry_after
 	refuseURLButtons bool
+	unchanged        int // the next unchanged edits answer "message is not modified"
 	files            map[string]fakeFile
 	notify           chan struct{}
 	pollWait         time.Duration
@@ -83,6 +84,14 @@ func (b *Bot) RateLimit(n, retryAfter int) {
 func (b *Bot) RefuseURLButtons() {
 	b.mu.Lock()
 	b.refuseURLButtons = true
+	b.mu.Unlock()
+}
+
+// EditsUnchanged makes the next n edits answer as Telegram answers an edit
+// that changes nothing: 400 "message is not modified".
+func (b *Bot) EditsUnchanged(n int) {
+	b.mu.Lock()
+	b.unchanged = n
 	b.mu.Unlock()
 }
 
@@ -240,6 +249,14 @@ func (b *Bot) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refuseURL := b.refuseURLButtons
+	if b.unchanged > 0 && (method == "editMessageText" || method == "editMessageReplyMarkup") {
+		b.unchanged--
+		b.mu.Unlock()
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": false, "error_code": 400,
+			"description": "Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"})
+		return
+	}
 	b.mu.Unlock()
 
 	switch method {

@@ -37,6 +37,18 @@ describe('bridgePath: what a module page may ask for', () => {
     expect(bridgePath('alpha', 'POST', '/v1/telegram/photo')).toBeNull()
   })
 
+  it('lets the module edit a Telegram message by its numeric id, PATCH only', () => {
+    expect(bridgePath('alpha', 'PATCH', '/v1/x/alpha/telegram/42')).toBe('/v1/x/alpha/telegram/42')
+    expect(bridgePath('alpha', 'patch', '/v1/x/alpha/telegram/7')).toBe('/v1/x/alpha/telegram/7')
+    expect(bridgePath('alpha', 'POST', '/v1/x/alpha/telegram/42')).toBeNull()
+    expect(bridgePath('alpha', 'DELETE', '/v1/x/alpha/telegram/42')).toBeNull()
+    expect(bridgePath('alpha', 'PATCH', '/v1/x/beta/telegram/42')).toBeNull()
+    expect(bridgePath('alpha', 'PATCH', '/v1/x/alpha/telegram/4a')).toBeNull()
+    expect(bridgePath('alpha', 'PATCH', '/v1/x/alpha/telegram/42/x')).toBeNull()
+    expect(bridgePath('alpha', 'PATCH', '/v1/x/alpha/telegram/42?x=1')).toBeNull()
+    expect(bridgePath('alpha', 'PATCH', '/v1/x/alpha/telegram/')).toBeNull()
+  })
+
   it('refuses everything else: the API, another module, the key, climbing out, tricks', () => {
     for (const [m, p] of [
       ['POST', '/v1/agents'],
