@@ -172,6 +172,38 @@ describe('the popover', () => {
     expect(document.querySelectorAll('[data-memory-app]')).toHaveLength(0)
   })
 
+  // The owner's popover, 2026-10-22: colima at 8.2 GB under "Other apps and
+  // the system" at 7.6 GB. The daemon now sends the group as what its apps
+  // hold when that is more; the VM is named as one, the parts' sum past
+  // what is in use is explained, and the bar never shows more than used.
+  it('never lists an app bigger than its group, and says why the parts pass what is in use', async () => {
+    const m = mem('tight', { used: 14 * GB, swap_used: 7.6 * GB, agents: 5.9 * GB, caprock: 0.5 * GB, other: 9.8 * GB })
+    act(() => resetResourcesForTest(frame(m)))
+    vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m, {
+      apps: [{ name: 'colima', mem_bytes: 8.2 * GB, procs: 5, vm: true }, { name: 'Google Chrome', mem_bytes: 1.1 * GB, procs: 30 }],
+    }))
+    render(<MemoryBar owner sessions={sessions} />)
+    await open()
+    const other = [...popover()!.querySelectorAll('section[aria-label="Who holds it"] .num')].map((e) => e.textContent)
+    expect(other[2]).toBe('9.8 GB')
+    const vm = document.querySelector('[data-memory-app="vm"]')!
+    expect(vm.textContent).toContain('colima · virtual machine')
+    expect(vm.getAttribute('title')).toContain('compressed or moved to swap')
+    expect(document.querySelector('[data-memory-beyond]')!.textContent).toContain('more than the 14 GB in use')
+    const widths = [...document.querySelectorAll<HTMLElement>('[data-memory-stack] [data-part]')].map((e) => parseFloat(e.style.width))
+    expect(widths.reduce((a, b) => a + b, 0)).toBeCloseTo((14 / 16) * 100, 5)
+  })
+
+  it('has no such note when the parts fit in what is in use', async () => {
+    const m = mem('normal')
+    act(() => resetResourcesForTest(frame(m)))
+    vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m))
+    render(<MemoryBar owner sessions={sessions} />)
+    await open()
+    expect(document.querySelector('[data-memory-beyond]')).toBeNull()
+    expect(document.querySelector('[data-memory-app="vm"]')).toBeNull()
+  })
+
   it('closes on Escape', async () => {
     const m = mem('tight')
     act(() => resetResourcesForTest(frame(m)))

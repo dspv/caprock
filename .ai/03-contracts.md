@@ -1471,7 +1471,8 @@ carry `memory`, totals only — the live socket reaches every paired device:
  "agents": [{"session_id": "…", "pid": 4242, "mem_bytes": 1932735283, "procs": 9,
              "owned": true, "state": "idle", "idle_since": 1791397480000, "endable": true,
              "max_proc_bytes": 1610612736, "heavy": "growing", "restartable": true}],
- "apps": [{"name": "Google Chrome", "mem_bytes": 7348010288, "procs": 49}],
+ "apps": [{"name": "Google Chrome", "mem_bytes": 7348010288, "procs": 49},
+          {"name": "colima", "mem_bytes": 8770000000, "procs": 5, "vm": true}],
  "idle_end": {"count": 3, "mem_bytes": 2576980377, "session_ids": ["…"]},
  "error": "…"}
 ```
@@ -1493,9 +1494,27 @@ carry `memory`, totals only — the live socket reaches every paired device:
   app — on macOS under the process macOS holds responsible for it, named
   after its outermost `.app` (Chrome's renderers under *Google Chrome*), or
   the program's name. Other users' processes cannot be read and stay in
-  `memory.other`. **Absent for a paired device**, which reads totals and
+  `memory.other`. **`vm`** marks an app one of whose processes holds a
+  virtual machine's guest memory, told by the process table's name alone:
+  `com.apple.Virtualization.VirtualMachine` (Apple's Virtualization
+  framework: colima, lima, Docker Desktop, UTM; cut to 16 bytes by macOS),
+  `qemu-system-*`, `vfkit` or `krunkit`. **Absent for a paired device**, which reads totals and
   agents, not what else runs on the machine. Cost (same machine and date):
   7.8 ms, 89 ms on the first ask while the executables are looked up once.
+- **`memory.other` here** is the larger of the frame's (the rest of `used`)
+  and what every app read holds together, not only the three listed. The
+  two are counted differently: `used` is RAM, compressed memory at the size
+  it takes in the compressor and swapped-out memory not at all, while an
+  app's size is its footprint, which counts its compressed and swapped-out
+  pages at full size. An app whose memory is mostly compressed or in swap is
+  far bigger by footprint than its share of `used` — an idle virtual
+  machine, whose whole guest RAM is one process. Measured on the owner's
+  Mac (2026-10-22, 16 GB): colima's `com.apple.Virtualization.VirtualMachine`
+  had an 8.2 GB footprint (`footprint`: 8 GB of it the guest's memory) with
+  0.5 GB resident and 7.6 GB of swap in use, and the popover listed it at
+  8.2 GB under *Other apps and the system* at 7.6 GB. A group is never
+  smaller than its members, so it takes their sum; `agents + caprock +
+  other` may then pass `used`, and the popover says why.
 - **`idle_end`** is what the button would end: the `endable` agents, how
   many and their memory together.
 
