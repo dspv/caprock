@@ -86,6 +86,8 @@ func TestBrainSpendByProjectJoinsTheSession(t *testing.T) {
 		{SessionID: "w1", Status: BrainRunOK, TokensIn: 1000, TokensOut: 100, Nodes: 1, FinishedAt: 2200},
 		{SessionID: "gone", Status: BrainRunOK, TokensIn: 10, Nodes: 1, FinishedAt: 2300},
 		{SessionID: "q1", Status: BrainRunSkipped, FinishedAt: 2400},
+		// A re-tag batch: its own row, never "no project", and no read.
+		{SessionID: BrainRetagSession, Status: BrainRunOK, TokensIn: 3000, TokensOut: 100, Nodes: 40, FromEventID: 1, ThroughEventID: 90, FinishedAt: 2500},
 		{SessionID: "w1", Status: BrainRunOK, TokensIn: 77777, FinishedAt: 10}, // before the window
 	} {
 		r.StartedAt = r.FinishedAt
@@ -99,6 +101,7 @@ func TestBrainSpendByProjectJoinsTheSession(t *testing.T) {
 	}
 	want := []BrainProjectSpend{
 		{Project: "acme-api", Reads: 2, Tokens: 5100, CostUSD: 0.004, Memories: 3},
+		{Project: "", Retag: true, Reads: 1, Tokens: 3100, Memories: 40},
 		{Project: "web", Reads: 1, Tokens: 1100, Memories: 1},
 		{Project: "", Reads: 1, Tokens: 10, Memories: 1},
 	}
@@ -115,7 +118,7 @@ func TestBrainSpendByProjectJoinsTheSession(t *testing.T) {
 		t.Errorf("tokens per read: %d over %d, %v", per, n, err)
 	}
 	rows, err := BrainSpendRows(ctx, s.db, 1000)
-	if err != nil || len(rows) != 5 || rows[4].Read || !rows[0].Read || rows[0].Tokens != 4200 {
+	if err != nil || len(rows) != 6 || rows[4].Read || !rows[0].Read || rows[0].Tokens != 4200 {
 		t.Errorf("rows: %+v %v", rows, err)
 	}
 }

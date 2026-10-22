@@ -8,7 +8,7 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 import type { BrainAutoStatus, BrainSpend as Spend } from '@/lib/api'
-import { BrainSpend, catchUpLine, spendShare } from './BrainSpend'
+import { BrainSpend, catchUpLine, RETAG_ROW, retagLine, spendShare } from './BrainSpend'
 
 const auto = (over: Partial<BrainAutoStatus> = {}): BrainAutoStatus => ({
   chosen: true, on: true, enabled: true, claude_found: true, model: 'haiku', daily_tokens: 300_000, spent: 84_000, running: false, pending: 0, recent: [], ...over,
@@ -60,6 +60,33 @@ describe('what Second Brain spends', () => {
     expect(document.querySelector('[data-brain-spend-catchup]')).toBeNull()
     expect(catchUpLine({ kind: 'backfill', done: 0, total: 200, truncated: true, days_left: 1 })).toBe('Catching up on earlier sessions: 0 / 200+ reads, about 1 day left')
     expect(catchUpLine({ kind: 'backfill', done: 1, total: 5 })).toBe('Catching up on earlier sessions: 1 / 5 reads')
+  })
+
+  it('says the re-tag on the second line while no catch-up has one, and gives way to a catch-up', () => {
+    m.spend.mockResolvedValue(spend())
+    const { rerender } = render(<BrainSpend auto={auto({ catch_up: null, retag: { done: 40, total: 120 } })} />)
+    expect(document.querySelector('[data-brain-spend-catchup]')!.textContent).toBe('Adding keywords to older memories: 40 / 120')
+    rerender(<BrainSpend auto={auto({ catch_up: { kind: 'skipped', done: 1, total: 4 }, retag: { done: 40, total: 120 } })} />)
+    expect(document.querySelector('[data-brain-spend-catchup]')!.textContent).toBe('Catching up on skipped text: 1 / 4 reads')
+    rerender(<BrainSpend auto={auto({ catch_up: null, retag: { done: 120, total: 120 } })} />)
+    expect(document.querySelector('[data-brain-spend-catchup]')).toBeNull()
+    expect(retagLine(undefined)).toBeNull()
+    expect(retagLine({ done: 0, total: 7 })).toBe('Adding keywords to older memories: 0 / 7')
+  })
+
+  it('shows the re-tag batches as one labelled row, never as a project', async () => {
+    m.spend.mockResolvedValue(spend({ projects: [
+      { project: 'acme-api', reads: 12, tokens: 60_000, cost_usd: 0.06, memories: 31 },
+      { project: '', retag: true, reads: 3, tokens: 30_000, cost_usd: 0.03, memories: 120 },
+      { project: '', reads: 2, tokens: 24_000, cost_usd: 0.02, memories: 3 },
+    ] }))
+    render(<BrainSpend auto={auto()} />)
+    await screen.findByText(/of all your Claude tokens today/)
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-brain-spend-toggle]')!)
+    const rows = Array.from(document.querySelectorAll('[data-brain-spend-projects] tbody tr')).map((r) => Array.from(r.querySelectorAll('td')).map((c) => c.textContent))
+    expect(rows).toEqual([['acme-api', '12', '60k', '31'], [RETAG_ROW, '3', '30k', '120'], ['No project', '2', '24k', '3']])
+    expect(RETAG_ROW).toBe('Keywords for older memories')
+    expect(document.querySelectorAll('[data-brain-spend-retag]')).toHaveLength(1)
   })
 
   it('opens the last 14 days: a bar a day against the limit, and reads, tokens and memories per project', async () => {

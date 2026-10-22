@@ -1690,8 +1690,9 @@ export interface BrainCatchUp {
 /** One local day of the reads (GET /v1/brain/spend). */
 export interface BrainDaySpend { day: string; start: number; tokens: number; cost_usd: number; reads: number }
 
-/** One project's share of the reads over the window. */
-export interface BrainProjectSpend { project: string; reads: number; tokens: number; cost_usd: number; memories: number }
+/** One project's share of the reads over the window; `retag` marks the one
+ *  row that is no project: the batches that gave older memories keywords. */
+export interface BrainProjectSpend { project: string; retag?: boolean; reads: number; tokens: number; cost_usd: number; memories: number }
 
 /** GET /v1/brain/spend: what the reads spent per day and per project, the
  *  daily limit, and the last 24 hours of the reads and of Claude Code's

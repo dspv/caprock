@@ -3925,7 +3925,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   project (`brain_runs` joined to `sessions`; `""` when the session has no
   project or is gone), most tokens first: `reads`, `tokens`, `cost_usd`,
   and `memories` — the `nodes` of the reads with status `ok`; a project
-  with nothing but skipped sessions is left out. `daily_tokens` is the
+  with nothing but skipped sessions is left out. The re-tag batches
+  (*Re-tag* below) are one row of their own, `{project: "", retag: true,
+  …}`, `memories` the memories they gave keywords, never folded into the
+  `""` of reads without a project; they count in `days` like a read, and
+  are left out of the mean a catch-up's `days_left` is counted from. `daily_tokens` is the
   daily limit (0 in a build without the extraction). `spent_24h` is the
   reads' tokens in the last 24 hours (the status's `spent`) and
   `claude_tokens_24h` the input, output, cache-read and cache-write tokens

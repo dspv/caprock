@@ -95,9 +95,12 @@ func BucketBrainDays(runs []BrainSpendRow, now time.Time, days int) []BrainDaySp
 
 // BrainProjectSpend is one project's share of the reads since a moment:
 // how many asked claude, their tokens and cost, and the memories the reads
-// with status ok kept.
+// with status ok kept. Retag marks the one row that is not a project: the
+// re-tag batches (BrainRetagSession), with Project "", Reads the batches
+// and Memories the memories they gave keywords.
 type BrainProjectSpend struct {
 	Project  string  `json:"project"`
+	Retag    bool    `json:"retag,omitempty"`
 	Reads    int     `json:"reads"`
 	Tokens   int64   `json:"tokens"`
 	CostUSD  float64 `json:"cost_usd"`
@@ -105,16 +108,17 @@ type BrainProjectSpend struct {
 }
 
 // BrainSpendByProject groups the reads since a moment by their session's
-// project ("" when the session has none or is gone), most tokens first. A
-// project whose reads were all skipped is left out.
+// project ("" when the session has none or is gone), most tokens first, the
+// re-tag batches in a row of their own. A project whose reads were all
+// skipped is left out.
 func BrainSpendByProject(ctx context.Context, q Querier, since int64) ([]BrainProjectSpend, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(s.project, '') AS p, SUM(r.status != 'skipped'), SUM(r.tokens_in + r.tokens_out), SUM(r.cost_usd),
+		SELECT COALESCE(s.project, '') AS p, r.session_id = ? AS rt, SUM(r.status != 'skipped'), SUM(r.tokens_in + r.tokens_out), SUM(r.cost_usd),
 		       SUM(CASE WHEN r.status = 'ok' THEN r.nodes ELSE 0 END)
 		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
 		WHERE r.finished_at >= ?
-		GROUP BY p HAVING SUM(r.status != 'skipped') > 0
-		ORDER BY 3 DESC, 2 DESC, p`, since)
+		GROUP BY p, rt HAVING SUM(r.status != 'skipped') > 0
+		ORDER BY 4 DESC, 3 DESC, p`, BrainRetagSession, since)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +126,7 @@ func BrainSpendByProject(ctx context.Context, q Querier, since int64) ([]BrainPr
 	out := []BrainProjectSpend{}
 	for rows.Next() {
 		var p BrainProjectSpend
-		if err := rows.Scan(&p.Project, &p.Reads, &p.Tokens, &p.CostUSD, &p.Memories); err != nil {
+		if err := rows.Scan(&p.Project, &p.Retag, &p.Reads, &p.Tokens, &p.CostUSD, &p.Memories); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -132,12 +136,13 @@ func BrainSpendByProject(ctx context.Context, q Querier, since int64) ([]BrainPr
 
 // BrainTokensPerRead is the mean tokens of the reads that asked claude and
 // spent something since a moment, and how many there were: what a
-// catch-up's days left are counted from. 0, 0 before the first.
+// catch-up's days left are counted from. A re-tag batch is no read of a
+// session and is left out. 0, 0 before the first.
 func BrainTokensPerRead(ctx context.Context, q Querier, since int64) (int64, int, error) {
 	var sum int64
 	var n int
 	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(tokens_in + tokens_out), 0), COUNT(*) FROM brain_runs
-		WHERE finished_at >= ? AND status != 'skipped' AND tokens_in + tokens_out > 0`, since).Scan(&sum, &n)
+		WHERE finished_at >= ? AND status != 'skipped' AND tokens_in + tokens_out > 0 AND session_id != ?`, since, BrainRetagSession).Scan(&sum, &n)
 	if err != nil || n == 0 {
 		return 0, 0, err
 	}

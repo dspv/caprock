@@ -45,6 +45,16 @@ export function catchUpLine(c: BrainCatchUp | null | undefined): string | null {
   return `${what}: ${c.done} / ${c.total}${c.truncated ? '+' : ''} reads${left}`
 }
 
+/** The re-tag line while no catch-up has one to show, or null:
+ *  *Adding keywords to older memories: 40 / 120*. */
+export function retagLine(r: BrainAutoStatus['retag']): string | null {
+  if (!r || r.total <= 0 || r.done >= r.total) return null
+  return `Adding keywords to older memories: ${r.done} / ${r.total}`
+}
+
+/** What a row of the per-project table is called. */
+export const RETAG_ROW = 'Keywords for older memories'
+
 /** Tokens against the limit, a thin bar; warm once the limit is reached. */
 function LimitBar({ spent, limit }: { spent: number; limit: number }) {
   const share = limit > 0 ? Math.max(0, Math.min(1, spent / limit)) : 0
@@ -120,8 +130,11 @@ function Detail({ spend, id }: { spend: Spend | null; id: string }) {
           </thead>
           <tbody>
             {spend.projects.map((p) => (
-              <tr key={p.project || '-'} className="border-t border-border" data-brain-spend-project={p.project}>
-                <td className="truncate py-1 pr-2 text-fg" title={p.project}>{p.project || 'No project'}</td>
+              <tr key={p.retag ? ':retag' : p.project || '-'} className="border-t border-border" data-brain-spend-project={p.retag ? undefined : p.project} data-brain-spend-retag={p.retag ? '' : undefined}>
+                <td className={`truncate py-1 pr-2 ${p.retag ? 'text-fg-muted' : 'text-fg'}`}
+                  title={p.retag ? 'Batches that gave memories kept before keywords existed their keywords; Memories is how many got them' : p.project}>
+                  {p.retag ? RETAG_ROW : p.project || 'No project'}
+                </td>
                 <td className="num py-1 text-right text-fg-muted">{p.reads}</td>
                 <td className="num py-1 text-right text-fg" title={`${fmtTokens(p.tokens)} tokens · ${fmtUSD(p.cost_usd)} at API list price`}>{tokensShort(p.tokens)}</td>
                 <td className="num py-1 text-right text-fg-muted">{p.memories}</td>
@@ -151,7 +164,7 @@ export function BrainSpend({ auto }: { auto: BrainAutoStatus }) {
     return () => { live = false; stop() }
   }, [auto.spent])
   const share = spendShare(spend)
-  const catchUp = catchUpLine(auto.catch_up)
+  const catchUp = catchUpLine(auto.catch_up) ?? retagLine(auto.retag)
   const over = auto.daily_tokens > 0 && auto.spent >= auto.daily_tokens
   return (
     <section className="grid min-w-0 gap-2" aria-label="Second Brain tokens" data-brain-spend>
