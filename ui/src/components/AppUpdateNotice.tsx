@@ -23,12 +23,13 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
-import { appUpdate, inBackground, offerFor, useAppUpdate, v } from '@/lib/appupdate'
+import { appUpdate, inBackground, offerFor, useAppUpdate, v, type Offer } from '@/lib/appupdate'
 import { Copyable } from './ui'
 import { everyWhileVisible } from '@/lib/visible'
 import { askSoon, onWindowFront } from '@/lib/updatesoon'
 import { checkByHand, checkingByHand, reportCheck, useCheckResult } from '@/lib/checkbanner'
 import { extTitle } from '@/lib/externalLinks'
+import { cardOwnsFailure, updateCard, useUpdateCard } from '@/lib/updatecard'
 
 /** UpdateBanner's key: "not now" in either place hides that version in both. */
 export const DISMISS_KEY = 'caprock.update.dismissed'
@@ -86,6 +87,7 @@ export function AppUpdateNotice() {
   const byHand = useCheckResult()
   const [retrying, setRetrying] = useState(false)
   const box = useRef<HTMLSpanElement>(null)
+  const card = useUpdateCard()
 
   useEffect(() => {
     if (!open) return
@@ -110,7 +112,8 @@ export function AppUpdateNotice() {
     if (phase === 'checking') setDismissed('')
     // A failed install opens its own explanation; a failed check says so
     // in the strip, with Retry.
-    if (phase === 'failed' && was !== 'checking' && !checkingByHand()) setOpen(true)
+    // Not while the update card holds it: folded, the strip's item says it.
+    if (phase === 'failed' && was !== 'checking' && !checkingByHand() && !cardOwnsFailure()) setOpen(true)
     if (phase !== 'up_to_date') return
     const t = window.setTimeout(() => setSettled(true), UP_TO_DATE_MS)
     return () => window.clearTimeout(t)
@@ -139,6 +142,17 @@ export function AppUpdateNotice() {
       <button type="button" aria-label="Close" onClick={() => { setCheckFailed(false); setSettled(true); reportCheck(null) }} className="px-0.5 text-fg-faint hover:text-fg">×</button>
     </span>
   )
+
+  // The update card folded into the strip for this version (lib/updatecard):
+  // its compact item stands in for this line, and a click unfolds the card.
+  const cardOffer = offerFor(info, st, '')
+  const cardNext = cardOffer.kind === 'install' || cardOffer.kind === 'progress' || cardOffer.kind === 'installing' ? cardOffer.next : ''
+  if (cardNext && card.folded === cardNext) return <FoldedUpdate offer={cardOffer} ready={info?.phase === 'ready'} />
+  if (cardOffer.kind === 'failed' && cardOwnsFailure(card)) {
+    // Open, the card shows the error itself.
+    if (card.error) return null
+    return <FoldedUpdate offer={cardOffer} next={card.lastNext} />
+  }
 
   let offer = offerFor(info, st, dismissed)
   // An update on offer, a download or an install outranks a check's answer.
@@ -276,5 +290,53 @@ export function AppUpdateNotice() {
         </div>
       )}
     </span>
+  )
+}
+
+/**
+ * The update card folded into the strip (lib/updatecard; owner 2026-10-22,
+ * after Orca): *↓ 0.149.0 · 22%* with a thin bar under it while it
+ * downloads, *0.149.0 ready · Restart* once it is held, *0.149.0 ·
+ * restarting…* while it installs, and the failure in the warn colour. A
+ * click unfolds the card (on the error, after a failure); nothing here
+ * installs, and the card never unfolds by itself.
+ */
+function FoldedUpdate({ offer, ready = false, next = '' }: { offer: Offer; ready?: boolean; next?: string }) {
+  const version = (offer.kind === 'install' || offer.kind === 'progress' || offer.kind === 'installing' ? offer.next : next).replace(/^v/, '')
+  const failed = offer.kind === 'failed'
+  let text: string
+  let title: string
+  switch (offer.kind) {
+    case 'progress':
+      text = `↓ ${version}${offer.pct !== null ? ` · ${offer.pct}%` : ''}`
+      title = 'Downloading in the background; sessions keep running. Click to show the update card.'
+      break
+    case 'installing':
+      text = `${version} · restarting…`
+      title = `Installing Caprock ${version}; the app restarts in a moment`
+      break
+    case 'failed':
+      text = `${version} failed`
+      title = `The update did not install: ${offer.error}. Click for the reason and Try again.`
+      break
+    default:
+      text = ready ? `${version} ready · Restart` : `${version} · Update`
+      title = ready ? `Caprock ${version} is downloaded and verified. Click to show the update card.` : `Caprock ${version} is available. Click to show the update card.`
+  }
+  return (
+    <button
+      type="button"
+      data-update-folded={offer.kind === 'install' ? (ready ? 'ready' : 'install') : offer.kind}
+      onClick={() => updateCard.unfold(failed)}
+      title={title}
+      className={`relative inline-flex items-center whitespace-nowrap pb-[3px] pt-[2px] leading-[16px] ${failed ? 'text-warn' : ready ? 'text-accent' : 'text-fg-muted hover:text-fg'}`}
+    >
+      <span className="num">{text}</span>
+      {offer.kind === 'progress' && (
+        <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden rounded-full bg-[var(--app-hairline-strong)]">
+          <span data-update-folded-bar className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200" style={{ width: `${offer.pct ?? 8}%` }} />
+        </span>
+      )}
+    </button>
   )
 }

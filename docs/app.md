@@ -1329,6 +1329,12 @@ and their sizes, the sidebar, the window's size and place, each terminal
 scrolled where you left it, and anything you had half typed into an agent. The ▾ beside it
 shows what is new, or **Not now** to hide that version.
 
+The card folds away: the chevron in its corner, or Esc while you are in it,
+hides it and the download goes on in the status strip as a short item —
+*↓ 0.149.0 · 22%* with a thin bar, then *0.149.0 ready · Restart*, or the
+failure in the warning colour. Click the item to bring the card back; it does not come
+back by itself, and a newer version starts with the card open again.
+
 - **Checking.** On its first launch the app asks once: *Check for updates
   automatically?* With **Yes**, Caprock asks GitHub for the newest version
   number every 15 minutes, soon after the computer wakes, and when you

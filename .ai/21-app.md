@@ -2603,6 +2603,19 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   panel with the reason, **Try again** and the release page. The ▾ beside the
   button shows what is new and **Not now**, which hides that version (the
   same key as the dashboard banner).
+- **Folding the card** (owner 2026-10-22, translated: "I want this to be
+  collapsible, with the status continuing to show only in the bottom line.
+  Orca does it that way"). A chevron in the card's corner (tooltip *Hide;
+  progress stays in the status bar*), or Esc while focus is in the card,
+  folds it into the status strip, where the update line becomes a compact
+  item: *↓ 0.149.0 · 22%* over a 2px bar while it downloads, *0.149.0
+  ready · Restart* once a download is held, *0.149.0 · restarting…* while
+  it installs, *0.149.0 · Update* for an offer, and *0.149.0 failed* in the
+  warn colour. A click on the item unfolds the card (on a failure, onto the
+  reason with **Try again**, the release page and **Close**); the item
+  never installs and the card never unfolds by itself. The fold is kept
+  for that version only (`caprock.update.cardFolded` holds the version),
+  so a newer one is announced unfolded (`ui/src/lib/updatecard.ts`).
 - **When a release is found** (owner 2026-10-16, translated: "why isn't
   the update highlighted when there is an update?" — 0.124.0 was out for
   twelve minutes and 0.123.1 showed nothing; then 0.124.1, published at
