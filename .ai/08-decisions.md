@@ -4222,15 +4222,15 @@ searching prose.
   many sessions and tokens that is.
 - **How a session is read** (`internal/brain`). A session is read once it
   has ended or been quiet for ten minutes, and again only when it has new
-  prose; at most four per wake, a wake every five minutes and one at once
+  prose; at most four reads per wake, a wake every five minutes and one at once
   when it is turned on, one at a time, off the request path. A wake that
   read a full four is followed by the next three seconds later, so a
   backfill reads straight through within the daily limit instead of four
   sessions per five minutes (2026-10-15: the screen that shows the build
   as it happens sat still between wakes). A session whose agent wrote fewer than 300
   characters is recorded as skipped and never sent. The read is the
-  session's prompts and answers (main thread only, the newest 24,000
-  characters when there are more), the project's name and the topics
+  session's prompts and answers (main thread only, at most 24,000
+  characters), the project's name and the topics
   already in the brain, sent on stdin to `claude -p --output-format json
   --tools "" --no-session-persistence --setting-sources local --settings
   <{"disableAllHooks": true}> --model haiku --system-prompt … --json-schema
@@ -4241,6 +4241,21 @@ searching prose.
   fixed cost of a call from 16,637 input tokens to 4,318. A Windows `.cmd`
   shim cannot carry JSON on its command line, so there the instructions and
   schema go on stdin too.
+- **A long session is read in chunks** (2026-10-22). A session with more
+  unread prose than one read sends is read oldest first: each read sends
+  the oldest unread passages that fit in the 24,000 characters (and at
+  most 400 passages), and its `through_event_id` is the last passage it
+  sent, so the next read goes on from there. Until then a read kept the
+  newest 24,000 characters and moved the cursor past the whole session,
+  and the older part was never read: on a copy of the owner's database
+  (2026-10-22), 43 of 1,210 reads were over budget, in 25 sessions, and
+  left about 5.9 million characters of main-thread prose unread — about
+  273 reads at today's budget to recover, which no backfill has done. A
+  session's chunks run back to back within a wake, each one of the wake's
+  four calls; what is left waits for the next wake, three seconds later,
+  so the per-read cost, the calls per wake and the daily limit are
+  unchanged. The instructions also say to keep an explicit decision or
+  standing rule the user states ("from now on", "rule:") as a decision.
 - **What is kept, and its limits.** Each memory records the read it came
   from (`brain_runs`: model, tokens, cost, status) and the passage it
   cites, so its source link opens the moment it was said; it hangs off the

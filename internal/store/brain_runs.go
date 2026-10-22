@@ -131,7 +131,10 @@ type BrainPassage struct {
 }
 
 // BrainPassages returns a session's main-thread prompts and prose after an
-// event id, oldest first, at most limit of them (the newest kept when cut).
+// event id, oldest first by event id, at most limit of them (the oldest kept
+// when there are more). Empty passages are left out before the limit, so a
+// full page means more may follow: a read that sends only part of them moves
+// its cursor to the last one it sent, and the next read goes on from there.
 func BrainPassages(ctx context.Context, q Querier, sessionID string, after int64, limit int) ([]BrainPassage, error) {
 	if limit <= 0 {
 		limit = 400
@@ -145,8 +148,7 @@ func BrainPassages(ctx context.Context, q Querier, sessionID string, after int64
 			FROM events e
 			WHERE e.session_id = ? AND e.id > ? AND +e.kind IN ('turn.user', 'turn.assistant')
 			  AND e.internal = 0 AND `+MainThreadWhere+`
-			ORDER BY e.id DESC LIMIT ?
-		) WHERE text != '' ORDER BY ts, id`, sessionID, after, limit)
+		) WHERE text != '' ORDER BY id LIMIT ?`, sessionID, after, limit)
 	if err != nil {
 		return nil, err
 	}

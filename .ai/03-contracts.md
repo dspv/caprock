@@ -4035,7 +4035,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   days_estimate, daily_tokens, truncated?}`: the sessions since `days` ago
   with unread prose worth a read, and an estimate of their tokens (a
   quarter of the characters sent, plus the call's measured fixed cost,
-  4,300, plus 400 for the answer), labelled an estimate on screen. Without
+  4,300, plus 400 for the answer, for every read a session takes — a long
+  one is read in chunks), labelled an estimate on screen. Without
   `dry_run` it also sets `backfill_since`, which needs the extraction on
   (`409`), and wakes the reader.
 - **A read.** A session is a candidate when its last event is after
@@ -4043,7 +4044,13 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   it has main-thread prompts or answers after the last read that did not
   fail. Its passages are numbered and sent, with the project and up to 60
   existing topic titles, on stdin to the user's `claude` (flags in
-  ADR-063). The answer is `{memories: [{kind, title, summary, topics?,
+  ADR-063). One read sends at most 24,000 characters and 400 passages,
+  the oldest unread first; a session with more is read in chunks, each
+  read's `through_event_id` the last passage it sent (the session's newest
+  event when it sent the rest), so nothing is skipped and the next read
+  goes on from there. A wake makes at most four calls, whether to four
+  sessions or four chunks of one, a session's chunks back to back; the
+  rest waits for the next wake. The answer is `{memories: [{kind, title, summary, topics?,
   passage?, related?, contradicts?}]}`, at most eight kept: each a node with
   `run_id`, `manual: false` and the cited passage's event as its source,
   `part_of` the project and its topics, `relates`/`contradicts` to the
@@ -5862,7 +5869,7 @@ unique index makes an entity one per normalised title while memories may
 share one. Deleting a node deletes its edges (foreign keys are on), and the
 topics and people the delete leaves unlinked go too unless dropped in by hand
 or pinned. A session's newest `brain_runs` row says how far the extraction has
-read it (`through_event_id`); `tokens_in` is input, cache read and cache write
+read it (`through_event_id`, never past a passage it did not send); `tokens_in` is input, cache read and cache write
 as `claude` reported them, `cost_usd` its own `total_cost_usd`.
 
 ### Obsidian vaults DDL (migration 0062)

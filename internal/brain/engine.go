@@ -21,11 +21,15 @@ const (
 	DefaultModel = "haiku"
 	// DefaultDailyTokens caps what the extraction spends in a rolling day.
 	DefaultDailyTokens = 300_000
-	// Interval is how often the extraction wakes; each wake reads at most
-	// Batch sessions. A wake that read a full Batch is followed by the next
-	// after Continue, not Interval: while a build has sessions waiting it
-	// reads one after another, within the daily cap, so the screen shows it
-	// working instead of a pause of five minutes between every four.
+	// Interval is how often the extraction wakes; each wake makes at most
+	// Batch calls to claude. A session with more unread prose than one read
+	// sends (MaxInputChars) is read in chunks, oldest first and back to
+	// back, each chunk one of the wake's Batch calls; what is left of it
+	// waits for the next wake, which picks it up first. A wake that made a
+	// full Batch is followed by the next after Continue, not Interval: while
+	// a build has sessions waiting it reads one after another, within the
+	// daily cap, so the screen shows it working instead of a pause of five
+	// minutes between every four.
 	Interval = 5 * time.Minute
 	Batch    = 4
 	Continue = 3 * time.Second
@@ -202,21 +206,31 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 	}
 	read := 0
 	for _, c := range cands {
-		if read >= Batch || ctx.Err() != nil || !e.Enabled() {
-			break
-		}
-		if e.spent(ctx) >= e.dailyCap() {
-			e.setError("today's token limit is reached; reading resumes as the day rolls over")
-			break
-		}
-		did, err := e.readSession(ctx, c)
-		if err != nil {
-			// A failure is recorded and retried later; the next session goes on.
-			e.setError(err.Error())
-			e.log().Warn("second brain: a read failed", "component", "brain", "session", c.SessionID, "err", err)
-		}
-		if did {
-			read++
+		// A long session's chunks, oldest first, until it is read through
+		// or the wake's Batch calls are spent. Each chunk moves the cursor,
+		// so the loop always ends.
+		for {
+			if read >= Batch || ctx.Err() != nil || !e.Enabled() {
+				return read, nil
+			}
+			if e.spent(ctx) >= e.dailyCap() {
+				e.setError("today's token limit is reached; reading resumes as the day rolls over")
+				return read, nil
+			}
+			did, through, err := e.readSession(ctx, c)
+			if did {
+				read++
+			}
+			if err != nil {
+				// A failure is recorded and retried later; the next session goes on.
+				e.setError(err.Error())
+				e.log().Warn("second brain: a read failed", "component", "brain", "session", c.SessionID, "err", err)
+				break
+			}
+			if through <= c.Cursor || through >= c.MaxEventID {
+				break
+			}
+			c.Cursor = through
 		}
 	}
 	return read, nil
@@ -283,36 +297,62 @@ func (e *Engine) model() string {
 	return DefaultModel
 }
 
-// readSession reads one session: skips it when there is too little to say,
-// gives up after MaxFailures, else asks claude and keeps what comes back.
-// did is true when claude was called.
-func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did bool, err error) {
+// passagesPerRead is the most passages one read fetches. A read sends what
+// fits in MaxInputChars of them; a full page that all fits still leaves the
+// rest for the next read.
+const passagesPerRead = 400
+
+// chunk is the next read of a session after its cursor: the oldest unread
+// passages that fit, and how far the cursor may move once they are read —
+// past the last passage sent when some did not fit, else to the session's
+// newest event.
+func chunk(ctx context.Context, q store.Querier, c store.BrainCandidate, topics []string) (Input, int64, error) {
+	passages, err := store.BrainPassages(ctx, q, c.SessionID, c.Cursor, passagesPerRead)
+	if err != nil {
+		return Input{}, 0, err
+	}
+	in := BuildInput(c.Project, topics, passages)
+	through := c.MaxEventID
+	if (in.Cut || len(passages) >= passagesPerRead) && in.Through > c.Cursor && in.Through < c.MaxEventID {
+		through = in.Through
+	}
+	return in, through, nil
+}
+
+// readSession reads the next chunk of one session: skips it when there is
+// too little to say, gives up after MaxFailures, else asks claude and keeps
+// what comes back. did is true when claude was called; through is how far
+// the session's cursor now is when the read was recorded (below
+// c.MaxEventID while unread prose remains), 0 when nothing was recorded.
+func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did bool, through int64, err error) {
 	db := e.Store.DB()
 	started := e.now().UnixMilli()
 	run := store.BrainRun{SessionID: c.SessionID, FromEventID: c.Cursor, ThroughEventID: c.MaxEventID, StartedAt: started, Model: e.model()}
 	n, _, err := store.BrainFailures(ctx, db, c.SessionID)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
 	if n >= MaxFailures {
 		run.Status, run.Error, run.FinishedAt = store.BrainRunSkipped, "gave up after repeated failures", started
 		_, err := store.InsertBrainRun(ctx, db, run)
-		return false, err
+		return false, 0, err
 	}
 	c.Project = memoryProject(ctx, c)
-	passages, err := store.BrainPassages(ctx, db, c.SessionID, c.Cursor, 400)
-	if err != nil {
-		return false, err
-	}
 	topics, err := store.BrainEntityTitles(ctx, db, store.BrainTopic, topicsSent)
 	if err != nil {
-		return false, err
+		return false, 0, err
 	}
-	in := BuildInput(c.Project, topics, passages)
+	in, upTo, err := chunk(ctx, db, c, topics)
+	if err != nil {
+		return false, 0, err
+	}
+	run.ThroughEventID = upTo
 	if in.ProseRunes < MinProseRunes {
 		run.Status, run.FinishedAt = store.BrainRunSkipped, started
-		_, err := store.InsertBrainRun(ctx, db, run)
-		return false, err
+		if _, err := store.InsertBrainRun(ctx, db, run); err != nil {
+			return false, 0, err
+		}
+		return false, upTo, nil
 	}
 	e.startReading(ctx, c, in.Passages, started)
 	res, callErr := e.Runner.Run(ctx, Request{System: System, Prompt: in.Prompt, Model: e.model()})
@@ -330,15 +370,15 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		var runID int64
 		defer func() { e.publishDone(e.stopReading(), runID, 0) }()
 		if ctx.Err() != nil {
-			return true, ctx.Err()
+			return true, 0, ctx.Err()
 		}
 		run.Status, run.Error = store.BrainRunFailed, clip(callErr.Error(), 500)
 		id, err := store.InsertBrainRun(ctx, db, run)
 		if err != nil {
-			return true, err
+			return true, 0, err
 		}
 		runID = id
-		return true, callErr
+		return true, 0, callErr
 	}
 	run.Status = store.BrainRunOK
 	var added []store.BrainNode
@@ -358,7 +398,7 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	r := e.stopReading()
 	if err != nil {
 		e.publishDone(r, 0, 0)
-		return true, err
+		return true, 0, err
 	}
 	e.setError("")
 	agent := ""
@@ -371,7 +411,7 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	// After the memories, so a screen that waits for the read's end has
 	// every one of them by then.
 	e.publishDone(r, runID, len(added))
-	return true, nil
+	return true, upTo, nil
 }
 
 // keep stores the memories a read returned, each linked to its project, its
@@ -828,16 +868,25 @@ func (e *Engine) EstimateFrom(ctx context.Context, since int64) (Estimate, error
 	}
 	est := Estimate{DailyCap: e.dailyCap(), Truncated: len(cands) == most}
 	for _, c := range cands {
-		passages, err := store.BrainPassages(ctx, e.Store.DB(), c.SessionID, c.Cursor, 400)
-		if err != nil {
-			return Estimate{}, err
+		// Every chunk a long session takes, as the reads will send them.
+		counted := false
+		for {
+			in, through, err := chunk(ctx, e.Store.DB(), c, nil)
+			if err != nil {
+				return Estimate{}, err
+			}
+			if in.ProseRunes >= MinProseRunes {
+				if !counted {
+					est.Sessions++
+					counted = true
+				}
+				est.Tokens += int64(len(in.Prompt)/4) + OverheadTokens + 400
+			}
+			if through <= c.Cursor || through >= c.MaxEventID {
+				break
+			}
+			c.Cursor = through
 		}
-		in := BuildInput(c.Project, nil, passages)
-		if in.ProseRunes < MinProseRunes {
-			continue
-		}
-		est.Sessions++
-		est.Tokens += int64(len(in.Prompt)/4) + OverheadTokens + 400
 	}
 	if est.Tokens > 0 {
 		est.Days = int((est.Tokens + est.DailyCap - 1) / est.DailyCap)

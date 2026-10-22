@@ -348,20 +348,26 @@ func TestClaudeRunnerAgainstTheFakeClaude(t *testing.T) {
 	}
 }
 
-func TestBuildInputKeepsTheNewestWhenTooLong(t *testing.T) {
+func TestBuildInputSendsTheOldestThatFitAndSaysWhereItStopped(t *testing.T) {
 	var ps []store.BrainPassage
 	for i := 0; i < 60; i++ {
-		ps = append(ps, store.BrainPassage{EventID: int64(i), Text: fmt.Sprintf("answer %d %s", i, strings.Repeat("x", 3000))})
+		ps = append(ps, store.BrainPassage{EventID: int64(i + 1), Text: fmt.Sprintf("answer %d %s", i, strings.Repeat("x", 3000))})
 	}
 	in := BuildInput("", []string{"a", "b"}, ps)
 	if len(in.Prompt) > MaxInputChars+500 {
 		t.Errorf("prompt is %d chars", len(in.Prompt))
 	}
-	if in.Passages[len(in.Passages)-1].EventID != 59 || in.Passages[0].EventID == 0 {
-		t.Errorf("kept %d..%d", in.Passages[0].EventID, in.Passages[len(in.Passages)-1].EventID)
+	last := in.Passages[len(in.Passages)-1].EventID
+	if in.Passages[0].EventID != 1 || !in.Cut || in.Through != last || last >= 60 {
+		t.Errorf("kept %d..%d, cut %v, through %d", in.Passages[0].EventID, last, in.Cut, in.Through)
 	}
-	if !strings.Contains(in.Prompt, "Existing topics: a, b") || !strings.HasPrefix(strings.Split(in.Prompt, "\n[1] ")[1], "Agent: answer") {
+	if !strings.Contains(in.Prompt, "Existing topics: a, b") || !strings.HasPrefix(strings.Split(in.Prompt, "\n[1] ")[1], "Agent: answer 0 ") {
 		t.Error("topics and numbering")
+	}
+	// What fits is sent whole, and nothing is cut.
+	small := BuildInput("", nil, ps[:3])
+	if small.Cut || small.Through != 3 || len(small.Passages) != 3 {
+		t.Errorf("small: cut %v, through %d, %d passages", small.Cut, small.Through, len(small.Passages))
 	}
 }
 
