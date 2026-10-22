@@ -20,7 +20,8 @@
  *   <img> sources by asking the dashboard with postMessage; the dashboard
  *   forwards a request only when it is this module's own (bridgePath): a GET
  *   of a file under /x/<id>/, its store under /v1/x/<id>/docs/, or a POST
- *   of /v1/x/<id>/telegram or /v1/x/<id>/notify. Anything
+ *   of /v1/x/<id>/telegram or /v1/x/<id>/notify, or a PATCH of
+ *   /v1/x/<id>/telegram/<message_id>. Anything
  *   else, other API routes included, is answered 403 without being sent.
  *
  * Why not something smaller: a frame cannot add a header to its loads, a
@@ -77,6 +78,9 @@ export function bridgePath(id: string, method: string, raw: string): string | nu
   // and a desktop notification (ADR-076, amended 2026-10-22). Exactly these.
   if (m === 'POST' && raw === `/v1/x/${id}/telegram`) return raw
   if (m === 'POST' && raw === `/v1/x/${id}/notify`) return raw
+  // And an edit of a message it sent, by Telegram's numeric message id; the
+  // daemon answers 404 for any message that is not the module's.
+  if (m === 'PATCH' && raw.startsWith(`/v1/x/${id}/telegram/`) && /^\d{1,19}$/.test(raw.slice(`/v1/x/${id}/telegram/`.length))) return raw
   return null
 }
 

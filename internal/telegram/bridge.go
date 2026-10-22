@@ -163,6 +163,10 @@ type Bridge struct {
 	// a module the admin key no longer names. nil keeps none (module.go).
 	ModuleAnswer func(ctx context.Context, module, doc string, data map[string]any) error
 
+	// pinMu keeps one module pin change at a time, so a module never
+	// ends up with two pinned messages.
+	pinMu sync.Mutex
+
 	mu         sync.Mutex
 	pair       *pairing
 	lastErr    string

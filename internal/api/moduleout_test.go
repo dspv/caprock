@@ -92,7 +92,7 @@ func TestAModuleNotifies(t *testing.T) {
 
 // Both are a controller's, like the module's store; never a viewer's.
 func TestModuleOutIsAControllersRoute(t *testing.T) {
-	for _, r := range []string{"POST /v1/x/{id}/telegram", "POST /v1/x/{id}/notify"} {
+	for _, r := range []string{"POST /v1/x/{id}/telegram", "PATCH /v1/x/{id}/telegram/{message_id}", "POST /v1/x/{id}/notify"} {
 		if !controllerRoutes[r] {
 			t.Errorf("%s is not a controller route", r)
 		}

@@ -5572,6 +5572,19 @@ shows desktop notifications from the app. The decisions:
   name; a click opens `#/x/<id>`, a route the shell accepts only in that
   shape. The default banner style stays (owner, 2026-10-22); the
   notification stays in Notification Center like the app's others.
+- **A module may tidy what it sent** (relayed owner feedback, 2026-10-22:
+  approving a batch of drafts, he could not tell which cards were done).
+  `PATCH /v1/x/<id>/telegram/<message_id>` changes the text or the buttons
+  of a message **that module sent**, and `reply_to_message_id` on `POST`
+  threads a new one under it; any other message is `404`, the same answer
+  as an unknown one, so a module learns nothing about the chat beyond its
+  own messages. Which module sent which message is the bridge's record in
+  `telegram.json`, so it survives a restart. Presses on edited buttons go to
+  the module's store like any other. A module may also **pin** one of its
+  messages (`pin` on `POST` and `PATCH`, silently): it holds at most one
+  pin, pinning another unpins its previous one, and it never touches a pin
+  the bridge, another module or the owner made; its pin is kept in
+  `telegram.json` too.
 - **What is sent** (rule 4): to Telegram, the module's name and the text and
   button labels the module wrote, to the chat the owner paired, through the
   bot token he gave, as everything else the bridge sends; nothing else.

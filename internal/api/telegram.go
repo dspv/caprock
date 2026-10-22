@@ -25,6 +25,9 @@ type TelegramController interface {
 	// SendModule sends a private module's message to the paired chat
 	// (POST /v1/x/{id}/telegram) and returns its Telegram message id.
 	SendModule(ctx context.Context, m telegram.ModuleMessage) (int64, error)
+	// EditModule changes a message that module sent
+	// (PATCH /v1/x/{id}/telegram/{message_id}).
+	EditModule(ctx context.Context, e telegram.ModuleEdit) error
 }
 
 func (s *Server) requireTelegram(w http.ResponseWriter) bool {

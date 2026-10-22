@@ -1856,9 +1856,11 @@ existed; it keeps working.
 `PUT /v1/settings` accepts `telegram_chat` and `telegram_code` (bools, off
 unless turned on; `GET` returns them). `<data_dir>/telegram.json` (`0600`) is
 the bridge's own: `{bot_id, bot_username, chat_id, chat_name, paired_at,
-offset, refs: [{message_id, session_id, prompt_id, kind, at}], muted:
-{session_id: ms}, mute_all, premium_note_at, forward_reply}` — the last 400 messages and the
-sessions they were about, so a reply finds its session across a restart. The
+offset, refs: [{message_id, session_id, prompt_id, kind, at, module,
+buttons, order, chosen, answers}], muted: {session_id: ms}, mute_all,
+premium_note_at, module_pins: {module_id: message_id}, forward_reply}` — the last 400 messages and the sessions (or
+private modules) they were about, so a reply finds its session, and a module
+its own message, across a restart. The
 token stays in `config.json`.
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
@@ -4924,6 +4926,43 @@ machine's alone (`403` from any device).
   session. While such a message is less than a day old the bridge reads
   updates even with every alert and two-way chat off. An answer for a
   module the key no longer names is not kept; the button says *Not saved*.
+  **`reply_to_message_id`** (optional) threads the new message under one
+  this module sent; any other id (another module's, the bridge's own, an
+  unknown or forgotten one) is `404` and nothing is sent; a negative one
+  is `400`. **`pin: true`** pins the message once sent (below); when only
+  the pin is refused the answer is `502` `{error, message_id}`, the message
+  having been sent.
+- **Editing a sent message** (amended 2026-10-22): **`PATCH
+  /v1/x/<id>/telegram/<message_id>`** `{text?, buttons?, pin?}` →
+  `{message_id}`. An omitted (or `null`) part is left as it is; `buttons:
+  []` removes the keyboard; `pin: true` pins the message, `pin: false`
+  unpins it; at least one part is required (`400` otherwise). Text and
+  buttons are changed first, then the pin. A message can be edited any
+  number of times. Same limits as
+  `POST`: `text` 1–3500 characters (the first line still names the module),
+  buttons as above. New text is `editMessageText` and keeps the keyboard the
+  message shows (its buttons in their order, or the `✓ <label>` of a press);
+  buttons alone are `editMessageReplyMarkup`. A press on new buttons is
+  written to the store exactly like one on the first (`telegram/<message_id>-<n>`,
+  `n` continuing); a press on a replaced button says *That button is out of
+  date*. Telegram's *message is not modified* is a `200`. Only a message
+  this module sent: any other — another module's, the bridge's own, an
+  unknown, non-numeric or forgotten id — is `404` and nothing is sent. Which
+  module sent a message is kept in `telegram.json` (§ Telegram bridge), so
+  it outlives a restart; it holds the last 400 messages the bridge sent, and
+  disconnecting the bot forgets them. `403` unless the key names `<id>`;
+  `409` with no bot or paired chat; `502` with Telegram's words. `/mute all`
+  does not hold an edit back: it changes a message already in the chat and
+  makes no sound.
+- **Pinning** (amended 2026-10-22): a module holds **at most one** pinned
+  message. A pin is `pinChatMessage` with `disable_notification: true`;
+  once it succeeds, the module's previous pin, if another message, is
+  unpinned with `unpinChatMessage` and that `message_id` — never a pin the
+  bridge, another module or the owner made. `pin: false` unpins only that
+  message; Telegram saying it is not pinned counts as done. The module's
+  pin is kept in `telegram.json` (`module_pins`), so it outlives a restart.
+  A refused pin (the bot lacks the right to pin) is `502` with Telegram's
+  words, the token never in them, and the previous pin stays.
 - **Notification** (amended 2026-10-22): **`POST /v1/x/<id>/notify`**
   `{title, body?}` → `204`: a desktop notification from the Caprock app,
   titled `<module name> · <title>`, whose click opens `#/x/<id>` (§ Notify
@@ -4934,7 +4973,8 @@ machine's alone (`403` from any device).
   other notifications.
 - **Who may call them:** the machine and a controller, like the store
   (`controllerRoutes`); on a phone the module bridge forwards a `POST` of
-  exactly `/v1/x/<id>/telegram` or `/v1/x/<id>/notify`.
+  exactly `/v1/x/<id>/telegram` or `/v1/x/<id>/notify`, and a `PATCH` of
+  `/v1/x/<id>/telegram/<digits>`.
 - **Install:** `caprock module install <dir>` (hidden) copies a folder with
   `module.json` (`{id, name, version?}`, name 1–40 characters) and
   `index.html` into `<data dir>/modules/<id>/`, whole, through a staging
@@ -4970,7 +5010,7 @@ machine's alone (`403` from any device).
   or `HEAD` under `/x/<id>/`, or `GET`, `HEAD`, `PUT`, `PATCH`, `DELETE`
   on `/v1/x/<id>/docs/<collection>[/<doc>]` — with no dot, empty or encoded
   `.`/`/`/`\` segment — or `POST` of exactly `/v1/x/<id>/telegram` or
-  `/v1/x/<id>/notify`. Anything else is answered `403` without a request. It
+  `/v1/x/<id>/notify`, or `PATCH` of `/v1/x/<id>/telegram/<digits>`. Anything else is answered `403` without a request. It
   passes on `Content-Type` and `Accept` only, adds the device token, and says
   `application/json` on a write that did not; the reply carries the answer's
   `Content-Type`.

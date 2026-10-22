@@ -34,9 +34,15 @@ type Ref struct {
 	Kind string `json:"kind,omitempty"`
 	At   int64  `json:"at"`
 	// Module is the private module a "module" message came from; Buttons
-	// its buttons' labels by id; Answers how many answers it has had.
+	// its buttons' labels by id, Order their ids top to bottom; Chosen the
+	// button pressed, whose "✓ <label>" the message now shows; Answers how
+	// many answers it has had. Kept in telegram.json, so a module may edit
+	// or reply under its message after a restart (ADR-076, amended
+	// 2026-10-22).
 	Module  string            `json:"module,omitempty"`
 	Buttons map[string]string `json:"buttons,omitempty"`
+	Order   []string          `json:"order,omitempty"`
+	Chosen  string            `json:"chosen,omitempty"`
 	Answers int               `json:"answers,omitempty"`
 }
 
@@ -61,6 +67,9 @@ type State struct {
 	// PremiumNoteAt is when a reply or command last got the one line that
 	// says it is a Premium feature, so it is said at most once a day.
 	PremiumNoteAt int64 `json:"premium_note_at,omitempty"`
+	// ModulePins is the one message each private module has pinned in the
+	// chat, by module id (ADR-076, amended 2026-10-22).
+	ModulePins map[string]int64 `json:"module_pins,omitempty"`
 	// ForwardReply is the forward picker's *Reply here* switch, as the
 	// owner last left it (ADR-081); off until turned on.
 	ForwardReply bool `json:"forward_reply,omitempty"`
@@ -92,6 +101,12 @@ func (s *Store) Get() State {
 	cp.Muted = make(map[string]int64, len(s.st.Muted))
 	for k, v := range s.st.Muted {
 		cp.Muted[k] = v
+	}
+	if s.st.ModulePins != nil {
+		cp.ModulePins = make(map[string]int64, len(s.st.ModulePins))
+		for k, v := range s.st.ModulePins {
+			cp.ModulePins[k] = v
+		}
 	}
 	return cp
 }
@@ -158,6 +173,22 @@ func (s *Store) Lookup(messageID int64) (Ref, bool) {
 		}
 	}
 	return Ref{}, false
+}
+
+// UpdateRef changes the latest record of a sent message and writes it; false
+// when no such message is remembered.
+func (s *Store) UpdateRef(messageID int64, f func(*Ref)) bool {
+	found := false
+	_ = s.Update(func(st *State) {
+		for i := len(st.Refs) - 1; i >= 0; i-- {
+			if st.Refs[i].MessageID == messageID {
+				f(&st.Refs[i])
+				found = true
+				return
+			}
+		}
+	})
+	return found
 }
 
 // NextAnswer counts one more answer to a sent message and returns the count.
