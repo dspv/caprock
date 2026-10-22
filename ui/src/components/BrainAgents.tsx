@@ -67,10 +67,16 @@ export function nameList(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
-/** The line under the headline, built from the agents drawn. */
+/**
+ * The line under the headline, built from the agents drawn. Every agent's
+ * sessions add memories, but only Claude Code sessions are handed them at
+ * start (the SessionStart hook), so the line says that instead of "remember
+ * together", which promised Codex a memory it is never given.
+ */
 export function agentsLine(agents: string[]): string {
   const names = agents.map(agentName)
-  return names.length > 1 ? `${nameList(names)} remember together.` : `${names[0] ?? 'Claude Code'} remembers across sessions.`
+  if (names.length <= 1 && (names[0] ?? 'Claude Code') === 'Claude Code') return 'Claude Code remembers across sessions.'
+  return `${nameList(names)} ${names.length > 1 ? 'add' : 'adds'} to it; Claude Code sessions start with it.`
 }
 
 /** One agent whose sessions Second Brain read in the last 24 hours, for a face on its card. */

@@ -4003,7 +4003,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   what claude reported, at API list price; `last_read` when the newest read
   with status `ok` finished; `new_today` the memories (not entities) added
   since the daemon's local midnight, by hand or read; `topics` the topic
-  entities and `links` the rows of `brain_edges`. `stage` is where the
+  entities and `links` the rows of `brain_edges` that join one memory to
+  another (a link to a topic, person or project is not counted). `stage` is where the
   build is: `off` (not on), `extracting` or `linking` (a read is asking
   claude, or storing what it returned), `no_claude`, `limit` (sessions
   wait and `spent` has reached `daily_tokens`), `waiting` (sessions wait
@@ -4191,7 +4192,9 @@ idempotentHint: true`; `openWorldHint` is true for `ci_status` alone.
   kind, `(from)` when the edge points at this memory.
 - **`memory_topics`** `{project?}` → `GET /v1/brain` and `/v1/brain/status`
   → `{memories, topics: [{title, memories}], projects: [{project, count}]}`,
-  topics by linked memories, at most 60 of each.
+  topics by linked memories, at most 60 of each. With `project`, `memories`
+  is that project's count and `projects` holds that project alone (empty
+  when it has none), not the totals for every project.
 - **`next_session_handoff`** `{repo?}` → `GET /v1/brain/handoff?project=`
   → `{project, memories[], max_memories, handoff_on, left_off_at,
   holdout_pct, note}`.
@@ -4202,8 +4205,11 @@ idempotentHint: true`; `openWorldHint` is true for `ci_status` alone.
   last_event_at, doing, cost_usd, tokens, turns, tool_calls, files_touched,
   loop?}]}`; `title` is the user's name for the session, else the agent's.
 - **`session_summary`** `{session_id}` → `GET /v1/sessions/{id}` →
-  `{session, files[] (at most 40, files_not_shown beyond), pull_requests:
-  [{number, title, url}]}`. An id holding `/`, `\`, `?` or `#` is refused
+  `{session, files[] (the 40 most recently touched), files_not_shown and
+  files_note (*The 40 most recently touched files; +N more.*) when the
+  session touched more, pull_requests: [{number, title, url}]}`.
+  `files_not_shown` counts from the session's `files_touched`, not from the
+  daemon's list, which stops at 100. An id holding `/`, `\`, `?` or `#` is refused
   before any request.
 - **`session_prose`** `{session_id, limit? (5, at most 20)}` →
   `GET /v1/sessions/{id}/notes` → `{session_id, notes: [{session_id,

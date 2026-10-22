@@ -15,8 +15,11 @@ export const BRAIN_CAPTURE_EVENT = 'caprock:brain-capture'
 
 /** The one line on what Second Brain is, under its name in the sidebar and
  *  on its screen. It said "your personal Jarvis" until the owner found that
- *  might not be quickly understood (2026-10-15). */
-export const BRAIN_TAGLINE = 'Remembers what your agents learn — so the next one starts smarter.'
+ *  might not be quickly understood (2026-10-15), then "so the next one starts
+ *  smarter" until an audit found only Claude Code sessions are handed
+ *  memories at start (a SessionStart hook); other agents read them only
+ *  through `caprock mcp` (2026-10-22). */
+export const BRAIN_TAGLINE = 'Remembers what your agents learn and hands it to your next Claude Code session.'
 
 /** Opens the quick capture (⇧⌘H, ⌘K "Add to Second Brain…"), optionally with text in it. */
 export function openBrainCapture(text?: string) {

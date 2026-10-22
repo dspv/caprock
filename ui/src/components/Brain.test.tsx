@@ -99,7 +99,7 @@ describe('Second Brain', () => {
     // Its name in full, with its mark and the one line on what it is.
     const title = screen.getByRole('heading', { level: 1, name: 'Second Brain' })
     expect(title.querySelector('svg')).not.toBeNull()
-    expect(screen.getByText('Remembers what your agents learn — so the next one starts smarter.')).toBeTruthy()
+    expect(screen.getByText('Remembers what your agents learn and hands it to your next Claude Code session.')).toBeTruthy()
     // The graph is a card; opened, it has a fit button and a legend drawn as the graph is.
     fireEvent.click(await screen.findByRole('button', { name: /Open the graph/ }))
     expect(screen.getByRole('img', { name: /Second Brain graph: 3 nodes/ })).toBeTruthy()

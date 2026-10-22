@@ -54,8 +54,9 @@ describe('Second Brain agents', () => {
     expect(nameList(['Claude Code', 'Codex'])).toBe('Claude Code and Codex')
     expect(nameList(['Claude Code', 'Codex', 'Gemini CLI'])).toBe('Claude Code, Codex and Gemini CLI')
     expect(agentsLine(['claude'])).toBe('Claude Code remembers across sessions.')
-    expect(agentsLine(['claude', 'codex'])).toBe('Claude Code and Codex remember together.')
-    expect(agentsLine(['claude', 'codex', 'gemini'])).toBe('Claude Code, Codex and Gemini CLI remember together.')
+    expect(agentsLine(['claude', 'codex'])).toBe('Claude Code and Codex add to it; Claude Code sessions start with it.')
+    expect(agentsLine(['claude', 'codex', 'gemini'])).toBe('Claude Code, Codex and Gemini CLI add to it; Claude Code sessions start with it.')
+    expect(agentsLine(['codex'])).toBe('Codex adds to it; Claude Code sessions start with it.')
   })
 
   it('reads several agents from the last 30 days of usage', async () => {
@@ -63,7 +64,7 @@ describe('Second Brain agents', () => {
     render(<Probe />)
     await waitFor(() => expect(drawn()).toEqual(['claude', 'codex', 'gemini']))
     expect(m.glance).toHaveBeenCalledWith('30d')
-    expect(document.querySelector('[data-line]')!.textContent).toBe('Claude Code, Codex and Gemini CLI remember together.')
+    expect(document.querySelector('[data-line]')!.textContent).toBe('Claude Code, Codex and Gemini CLI add to it; Claude Code sessions start with it.')
     // One line and one pulse per agent, into the one brain.
     expect(document.querySelectorAll('.brain-hero-links path')).toHaveLength(3)
     expect(document.querySelectorAll('.brain-hero-pulse')).toHaveLength(3)
@@ -87,7 +88,7 @@ describe('Second Brain agents', () => {
     m.glance.mockResolvedValue({ agents: [row('codex', 3)], display: {} })
     render(<Probe />)
     await waitFor(() => expect(drawn()).toEqual(['codex']))
-    expect(document.querySelector('[data-line]')!.textContent).toBe('Codex remembers across sessions.')
+    expect(document.querySelector('[data-line]')!.textContent).toBe('Codex adds to it; Claude Code sessions start with it.')
   })
 
   it('says Free in the How it works dialog, by the title, and names the agents used', async () => {
@@ -97,7 +98,7 @@ describe('Second Brain agents', () => {
     expect(dialog.querySelector('[data-brain-free]')!.textContent).toBe('Free')
     expect(dialog.querySelector('[data-brain-free] + h2')!.textContent).toBe('One memory for all your agents')
     expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Free — runs on your own Claude, on this computer.')
-    await waitFor(() => expect(dialog.querySelector('[data-brain-agents-line]')!.textContent).toBe('Claude Code and Codex remember together.'))
+    await waitFor(() => expect(dialog.querySelector('[data-brain-agents-line]')!.textContent).toBe('Claude Code and Codex add to it; Claude Code sessions start with it.'))
     expect([...dialog.querySelectorAll('[data-brain-agent]')].map((g) => g.getAttribute('data-brain-agent'))).toEqual(['claude', 'codex'])
   })
 

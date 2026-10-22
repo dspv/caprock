@@ -130,6 +130,8 @@ describe('the Second Brain screen', () => {
     expect(document.querySelector('[data-brain-step-reading]')!.textContent).toMatch(/Fix the flaky cache test.*Claude Code · acme-api · 14 passages · 4s/)
     const figures = [...document.querySelectorAll('[data-brain-figures] dd')].map((d) => d.textContent)
     expect(figures).toEqual(['12 of 41 read · last 30 days', '17', '84k of 300k', '$0.42 API list price'])
+    // Links counts memory-to-memory links only, and says so.
+    expect(document.querySelectorAll('[data-brain-figures] > div')[1]?.getAttribute('title')).toMatch(/one memory to another.*topic or project is not counted/)
     const sources = [...document.querySelectorAll('[data-brain-source]')].map((li) => li.textContent)
     expect(sources).toEqual(['acme-api9 of 29 read · 6 memories', 'web3 of 12 read · 2 memories'])
     expect(document.querySelector('[data-brain-recent]')!.textContent).toMatch(/Pick a queue.*acme-api · 3 memories/)

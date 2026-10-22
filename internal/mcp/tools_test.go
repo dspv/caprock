@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -413,5 +414,55 @@ func TestMCPRespectsVaultConsent(t *testing.T) {
 	}
 	if _, msg := f.call(t, "get_memory", map[string]any{"id": id}); !strings.Contains(msg, "not found") {
 		t.Fatalf("revoked read: %s", msg)
+	}
+}
+
+func TestMemoryTopicsOfOneProject(t *testing.T) {
+	f := newFixture(t)
+	out, errText := f.call(t, "memory_topics", map[string]any{"project": "elsewhere"})
+	if errText != "" {
+		t.Fatal(errText)
+	}
+	if out["memories"].(float64) != 1 {
+		t.Errorf("memories %v, want the project's 1, not the global 2", out["memories"])
+	}
+	ps := out["projects"].([]any)
+	if len(ps) != 1 || ps[0].(map[string]any)["project"] != "elsewhere" {
+		t.Errorf("projects %v, want only elsewhere", ps)
+	}
+	out, _ = f.call(t, "memory_topics", map[string]any{"project": "no-such-project"})
+	if out["memories"].(float64) != 0 || len(out["projects"].([]any)) != 0 {
+		t.Errorf("unknown project: %v", out)
+	}
+}
+
+func TestSessionSummaryCapsTheFileList(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	const n = 4172
+	for i := range n {
+		if _, err := store.TouchFile(ctx, f.st.DB(), "s-new", fmt.Sprintf("/repo/file-%04d.go", i), int64(1000+i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.AddStats(ctx, f.st.DB(), store.Stats{SessionID: "s-new", FilesTouched: n}); err != nil {
+		t.Fatal(err)
+	}
+	out, errText := f.call(t, "session_summary", map[string]any{"session_id": "s-new"})
+	if errText != "" {
+		t.Fatal(errText)
+	}
+	files := out["files"].([]any)
+	if len(files) != maxFiles || files[0] != fmt.Sprintf("/repo/file-%04d.go", n-1) {
+		t.Fatalf("files: %d, first %v; want %d, the latest first", len(files), files[0], maxFiles)
+	}
+	if out["files_not_shown"].(float64) != n-maxFiles {
+		t.Errorf("files_not_shown %v, want %d", out["files_not_shown"], n-maxFiles)
+	}
+	if note, _ := out["files_note"].(string); !strings.Contains(note, fmt.Sprintf("+%d more", n-maxFiles)) {
+		t.Errorf("files_note %q", note)
+	}
+	if b, _ := json.Marshal(out); len(b) > 8<<10 {
+		t.Errorf("answer is %d bytes", len(b))
 	}
 }
