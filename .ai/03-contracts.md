@@ -202,8 +202,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
-  `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status` and
-  `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status`,
+  `/v1/brain/spend` and `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -2025,6 +2025,7 @@ GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ 
 GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph (§ Second Brain)
 GET    /v1/brain/status              → BrainStatus: counts, projects (§ Second Brain)
 GET    /v1/brain/handoff             ?project= → {project, memories, max, budget, served?}; what a new session there is handed (§ Second Brain)
+GET    /v1/brain/spend               ?days= → BrainSpend; what the automatic reads spent, per day and project (§ Second Brain)
 POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; no cap
 GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
@@ -3869,6 +3870,7 @@ Brain DDL (migrations 0055, 0056).
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
 GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
 GET    /v1/brain/handoff        ?project= → {project, memories: [BrainNode], max, budget, served?: {on, left_off_at?, holdout_pct}}
+GET    /v1/brain/spend          ?days=1–90 (14) → {days: [{day, start, tokens, cost_usd, reads}], projects: [{project, reads, tokens, cost_usd, memories}], daily_tokens, spent_24h, claude_tokens_24h}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
 PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
@@ -3894,6 +3896,29 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   it*). `served` is absent from a daemon that does not wire it (tests). A
   read: it writes nothing, rolls no holdout and records nothing on a
   session.
+- **`/v1/brain/spend`** — what the automatic extraction's reads spent,
+  from `brain_runs` (code: `internal/api/brainspend.go`,
+  `internal/store/brainspend.go`). `days` is one entry per local day of
+  the daemon's time zone, oldest first, today the last, every day present:
+  `day` its date (`YYYY-MM-DD`), `start` its midnight (unix ms; a day with
+  a clock change is 23 or 25 hours), `tokens` the reads' `tokens_in +
+  tokens_out` by when each finished, `cost_usd` their summed `cost_usd`
+  (what claude reported, at API list price), `reads` the runs that asked
+  claude (status `ok` or `failed`; a `skipped` session is no read, and
+  costs nothing). `projects` is the same window by the read session's
+  project (`brain_runs` joined to `sessions`; `""` when the session has no
+  project or is gone), most tokens first: `reads`, `tokens`, `cost_usd`,
+  and `memories` — the `nodes` of the reads with status `ok`; a project
+  with nothing but skipped sessions is left out. `daily_tokens` is the
+  daily limit (0 in a build without the extraction). `spent_24h` is the
+  reads' tokens in the last 24 hours (the status's `spent`) and
+  `claude_tokens_24h` the input, output, cache-read and cache-write tokens
+  of Claude Code's assistant turns in the recorded sessions in the same 24
+  hours (agent `claude`, `internal = 0`; a fork's copy of a turn carries
+  none). The reads are not sessions — no transcript, no hooks — so they are
+  not in it: the share of all Claude tokens is `spent_24h / (spent_24h +
+  claude_tokens_24h)`. `days` outside 1–90 or not a number is `400`. A
+  read: it writes nothing.
 - **`db_path`** on `/v1/brain/status` — the database the memories live in, `caprock.db` in the daemon's data directory (`config.DBPath`), resolved by the daemon rather than guessed per OS by the page; the screen's *Where it's kept* shows it. Omitted when the daemon has no data directory (tests).
 - **`BrainNode`** — `{id, kind, title, summary, source: {session_id?,
   event_id?, ts?, project?}, manual, pinned, run_id?, created_at, updated_at,
@@ -3968,7 +3993,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   was saved, and the same request lands a moment later (the dashboard tries
   a drop three more times, a second apart). Every route answers a busy
   database that way rather than with a bare `500`.
-- **Who.** The four `GET`s are open to every paired device; every write,
+- **Who.** The five `GET`s are open to every paired device; every write,
   settings and backfill included, is the machine's (a device gets `403`).
 - **Live.** Every change publishes a `brain` frame on `/v1/live`: `{id, op:
   "added" | "changed" | "deleted", kind?, title?, auto?, session?, project?,
@@ -3991,7 +4016,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   status is `BrainAutoStatus` — `{chosen, on, enabled, claude_found, model,
   daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
   links, handoff, running, pending, since?, backfill_since?, last_wake?,
-  next_wake?, last_error?, recent: [BrainRun], reading?, build?,
+  next_wake?, last_error?, recent: [BrainRun], reading?, build?, catch_up?,
   agents_24h}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
@@ -4043,6 +4068,17 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   failure is in neither; `memories` what the reads of those sessions kept
   (as recorded per read); `truncated` when the waiting were counted only
   to 200; `sources` the same per project, most sessions first, at most 12.
+- **Catching up.** `catch_up` is present while a catch-up has reads left:
+  `{kind, done, total, truncated?, days_left?}`. One shape for every kind,
+  so a screen reads it the same way whatever is being caught up on. `kind`
+  `backfill` is the sessions a backfill brought into reach: those in reach
+  whose last event is before `since` (when it was turned on) — present
+  only while `backfill_since` is before `since` and one of them waits.
+  `done` is those read with nothing new since, `total` that plus the ones
+  waiting (`truncated` when the waiting were counted only to 200).
+  `days_left` is an estimate, said as one: the reads left times the mean
+  tokens of the reads that spent any in the last 14 days, over
+  `daily_tokens`, rounded up; absent before any read was measured.
 - **Settings.** `auto: true` starts reading from that moment and wakes the
   reader at once, not at the next five-minute wake — on the daemon's own
   loop, never under the request; a wake that read a full four is followed

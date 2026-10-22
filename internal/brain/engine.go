@@ -606,10 +606,13 @@ type Status struct {
 	Reading *Reading `json:"reading,omitempty"`
 	// Build is the progress through everything in reach — the sessions
 	// since `since` or `backfill_since` — while it is on.
-	Build         *Build `json:"build,omitempty"`
-	Since         int64  `json:"since,omitempty"`
-	BackfillSince int64  `json:"backfill_since,omitempty"`
-	LastWake      int64  `json:"last_wake,omitempty"`
+	Build *Build `json:"build,omitempty"`
+	// CatchUp is a catch-up's progress while one has reads left; absent
+	// otherwise. Generic, so each kind of catch-up reports the same way.
+	CatchUp       *CatchUp `json:"catch_up,omitempty"`
+	Since         int64    `json:"since,omitempty"`
+	BackfillSince int64    `json:"backfill_since,omitempty"`
+	LastWake      int64    `json:"last_wake,omitempty"`
 	// NextWake is when the next wake is due, unix ms; absent while it is off.
 	// At or before now when one was just asked for or is running.
 	NextWake  int64  `json:"next_wake,omitempty"`
@@ -644,6 +647,31 @@ type Handoff struct {
 	Memories    int  `json:"memories"`
 }
 
+// The kinds of catch-up, as CatchUp.Kind names them.
+const (
+	// CatchUpBackfill is the backfill: sessions from before the extraction
+	// was turned on, read because a backfill reached back to them.
+	CatchUpBackfill = "backfill"
+)
+
+// CatchUp is the progress of reading something the extraction has not
+// reached on its own: how many reads are done of how many, and about how
+// many days are left at the daily limit. A screen shows a line while one is
+// present and hides it otherwise.
+type CatchUp struct {
+	// Kind is what is being caught up on, one of the CatchUp* values.
+	Kind string `json:"kind"`
+	Done int    `json:"done"`
+	// Total is Done plus the reads left; Truncated when those were counted
+	// only to 200.
+	Total     int  `json:"total"`
+	Truncated bool `json:"truncated,omitempty"`
+	// DaysLeft is an estimate: the reads left, times the mean tokens of the
+	// reads in the last 14 days, over the daily limit, rounded up. 0 (and
+	// absent) before any read has been measured.
+	DaysLeft int `json:"days_left,omitempty"`
+}
+
 // Build is how far the extraction has got through the sessions in reach.
 type Build struct {
 	// From is the start of what is in reach, unix ms (the earlier of `since`
@@ -675,15 +703,7 @@ const statusPending = 200
 // build counts the progress through what is in reach; cands are the
 // sessions waiting (from candidates). A session read before and waiting
 // again counts once, as waiting, with the memories it already gave.
-func (e *Engine) build(ctx context.Context, cands []store.BrainCandidate) (*Build, error) {
-	from := e.readFrom()
-	if from <= 0 {
-		return nil, nil
-	}
-	read, err := store.BrainReadSessions(ctx, e.Store.DB(), from)
-	if err != nil {
-		return nil, err
-	}
+func (e *Engine) build(from int64, cands []store.BrainCandidate, read []store.BrainReadSession) *Build {
 	b := &Build{From: from, Truncated: len(cands) >= statusPending, Sources: []BuildSource{}}
 	by := map[string]*BuildSource{}
 	src := func(p string) *BuildSource {
@@ -722,8 +742,49 @@ func (e *Engine) build(ctx context.Context, cands []store.BrainCandidate) (*Buil
 	if len(b.Sources) > 12 {
 		b.Sources = b.Sources[:12]
 	}
-	return b, nil
+	return b
 }
+
+// catchUpWindow is how far back the reads a catch-up's days left are
+// counted from reach.
+const catchUpWindow = 14 * 24 * time.Hour
+
+// catchUp is the backfill's progress while it has reads left: the sessions
+// in reach that went quiet before the extraction was turned on (`since`),
+// which only the backfill brought into reach. Nil when there is no backfill
+// before `since`, or nothing of it waits. cands and read are the status's.
+func (e *Engine) catchUp(ctx context.Context, cands []store.BrainCandidate, read []store.BrainReadSession) *CatchUp {
+	c := e.Config()
+	if c.BackfillSince <= 0 || c.Since <= 0 || c.BackfillSince >= c.Since {
+		return nil
+	}
+	cu := &CatchUp{Kind: CatchUpBackfill, Truncated: len(cands) >= statusPending}
+	left := 0
+	waiting := make(map[string]bool, len(cands))
+	for _, s := range cands {
+		waiting[s.SessionID] = true
+		if s.LastEventAt < c.Since {
+			left++
+		}
+	}
+	if left == 0 {
+		return nil
+	}
+	for _, r := range read {
+		if r.LastEventAt < c.Since && !waiting[r.SessionID] {
+			cu.Done++
+		}
+	}
+	cu.Total = cu.Done + left
+	if per, _, err := store.BrainTokensPerRead(ctx, e.Store.DB(), e.now().Add(-catchUpWindow).UnixMilli()); err == nil && per > 0 {
+		capTokens := e.dailyCap()
+		cu.DaysLeft = int((int64(left)*per + capTokens - 1) / capTokens)
+	}
+	return cu
+}
+
+// DailyTokens is the daily limit the reads keep to.
+func (e *Engine) DailyTokens() int64 { return e.dailyCap() }
 
 // Status reports the extraction's state.
 func (e *Engine) Status(ctx context.Context) Status {
@@ -752,8 +813,11 @@ func (e *Engine) Status(ctx context.Context) Status {
 	if st.On {
 		if cands, err := e.candidates(ctx, statusPending); err == nil {
 			st.Pending = len(cands)
-			if b, err := e.build(ctx, cands); err == nil {
-				st.Build = b
+			if from := e.readFrom(); from > 0 {
+				if read, err := store.BrainReadSessions(ctx, e.Store.DB(), from); err == nil {
+					st.Build = e.build(from, cands, read)
+					st.CatchUp = e.catchUp(ctx, cands, read)
+				}
 			}
 		}
 	}

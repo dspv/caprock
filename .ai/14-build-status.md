@@ -167,6 +167,17 @@ owner's request. ChatGPT imports use the existing OpenAI Blossom rather than
 a generic speech bubble, in black or white. The DOM and share-card canvas
 share the Codex stroke path. See [ADR-080](08-decisions.md#adr-080--codex-keeps-its-original-glyph-and-character-chatgpt-uses-the-openai-blossom).
 
+### 2026-10-22 — unreleased: what Second Brain spends
+
+A strip on top of Second Brain: the reads' tokens in the last 24 hours of
+the daily limit, a silver bar, and their share of all Claude tokens Caprock
+recorded; a catch-up line from the status's generic `catch_up` (fed today by
+the backfill). A click opens 14 days per day and per project from the new
+`GET /v1/brain/spend`. Dollars stay labelled API list price, as elsewhere:
+the app has no way to tell API billing from a subscription. See
+[04-ui.md § Second Brain](04-ui.md#second-brain) and
+[03-contracts.md § Second Brain](03-contracts.md#second-brain).
+
 ### 2026-10-18 — unreleased: projects on the tablet home
 
 The browser and installed web app expose Projects before Home's figures at

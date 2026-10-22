@@ -58,6 +58,8 @@ type BrainAuto interface {
 	Estimate(ctx context.Context, days int) (any, error)
 	// Backfill asks for the last days to be read.
 	Backfill(ctx context.Context, days int) error
+	// DailyTokens is the daily limit the reads keep to.
+	DailyTokens() int64
 }
 
 // BrainSettings is PUT /v1/brain/settings; a nil field is left as it is.

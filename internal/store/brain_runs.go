@@ -208,13 +208,16 @@ type BrainReadSession struct {
 	SessionID string
 	Project   string
 	Memories  int
+	// LastEventAt is when the session last did something, unix ms: a
+	// catch-up tells the sessions from before the yes by it.
+	LastEventAt int64
 }
 
 // BrainReadSessions lists the sessions active since `since` with a read
 // that did not fail: the "read" side of a build's progress.
 func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainReadSession, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT s.session_id, COALESCE(s.project, ''), COALESCE(SUM(r.nodes), 0)
+		SELECT s.session_id, COALESCE(s.project, ''), COALESCE(SUM(r.nodes), 0), COALESCE(s.last_event_at, 0)
 		FROM sessions s JOIN brain_runs r ON r.session_id = s.session_id AND r.status != 'failed'
 		WHERE COALESCE(s.last_event_at, 0) >= ?
 		GROUP BY s.session_id`, since)
@@ -225,7 +228,7 @@ func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainRead
 	out := []BrainReadSession{}
 	for rows.Next() {
 		var r BrainReadSession
-		if err := rows.Scan(&r.SessionID, &r.Project, &r.Memories); err != nil {
+		if err := rows.Scan(&r.SessionID, &r.Project, &r.Memories, &r.LastEventAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
