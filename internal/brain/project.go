@@ -19,8 +19,21 @@ var lookupRepo = gitremote.Lookup
 // that name for every run — so the project is the repository's name from
 // its remote when the folder was a checkout with one, and none otherwise:
 // the memories are kept, hanging off their topics only.
+//
+// A session opened in the filesystem root, the home directory or the temp
+// directory itself (store.NotAProject) is in no project either, nor is one
+// whose label folds to nothing: a background `claude` run in "/" was
+// labelled "/", a title no project can have, and every read of one failed
+// whole and was asked again (3,363 times in 13 hours on the owner's Mac,
+// 2026-10-22).
 func memoryProject(ctx context.Context, c store.BrainCandidate) string {
+	if c.Cwd != "" && store.NotAProject(c.Cwd) {
+		return ""
+	}
 	if c.Cwd == "" || !store.UnderTempDir(c.Cwd) {
+		if store.NormTitle(c.Project) == "" {
+			return ""
+		}
 		return c.Project
 	}
 	if c.RepoRoot == "" {

@@ -115,6 +115,33 @@ describe('the Second Brain screen', () => {
     expect(document.querySelector('[data-brain-graph-card="waiting"] [data-brain-live-orb]')).not.toBeNull()
   })
 
+  it('a read that did not finish is said in plain words; the raw error only in the tooltip', async () => {
+    const raw = 'invalid memory\na memory needs a title'
+    m.status.mockResolvedValue(status({
+      memories: 8,
+      auto: building({
+        last_error: raw,
+        recent: [
+          { id: 4, session_id: 's12', status: 'failed', tokens_in: 0, tokens_out: 0, cost_usd: 0, nodes: 0, error: 'claude: exit status 1', finished_at: Date.now() - 10_000, title: 'Fix the flaky cache test' },
+          { id: 3, session_id: 's11', status: 'skipped', tokens_in: 0, tokens_out: 0, cost_usd: 0, nodes: 0, error: 'gave up after repeated failures', finished_at: Date.now() - 20_000, title: 'Pick a queue' },
+        ],
+      }),
+    }))
+    m.brain.mockResolvedValue({ nodes: [node({ id: 1 })], edges: [], total: 1 })
+    m.handoff.mockResolvedValue({ project: '', memories: [], max: 5, budget: 700 })
+    render(<BrainScreen />)
+    await screen.findByRole('heading', { name: 'Building' })
+    const problem = document.querySelector('[data-brain-problem]')!
+    expect(problem.textContent).toBe('The last read didn’t finish (Claude’s answer could not be saved). Caprock tries that session again by itself in 15–60 min and goes on with the others.')
+    expect(problem.textContent).not.toMatch(/invalid memory|needs a title/)
+    expect(problem.querySelector('span')!.getAttribute('title')).toBe(`The error: ${raw}`)
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }))
+    const recent = document.querySelector('[data-brain-recent]')!.textContent!
+    expect(recent).toMatch(/didn’t finish, tried again later/)
+    expect(recent).toMatch(/given up after 4 tries/)
+    expect(recent).not.toMatch(/too short/)
+  })
+
   it('building: one line with N of M over a bar; what it reads, the steps, tokens and sources under Details', async () => {
     m.status.mockResolvedValue(status({ memories: 8, auto: building() }))
     m.brain.mockResolvedValue({ nodes: [node({ id: 1 }), node({ id: 2, title: 'Use a queue' })], edges: [], total: 2 })
