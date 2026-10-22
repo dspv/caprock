@@ -14,6 +14,9 @@ import { api } from '@/lib/api'
 
 export const BRAIN_TABLES = ['brain_nodes', 'brain_edges', 'brain_runs'] as const
 export const BRAIN_LEAVES = 'The session text goes to Anthropic through your own Claude to be read; nothing goes to Caprock.'
+// The privacy filter (internal/redact): what is sent to be read and what is
+// kept are both run through it.
+export const BRAIN_FILTERED = 'Card numbers, keys and passwords are removed before anything is sent or saved.'
 
 export function BrainWhere({ dbPath, className = '' }: { dbPath?: string; className?: string }) {
   // Asked once when the caller has no status at hand (How it works).
@@ -43,6 +46,7 @@ export function BrainWhere({ dbPath, className = '' }: { dbPath?: string; classN
       </div>
       <p className="text-fg-muted">Tables: {BRAIN_TABLES.map((t, i) => <span key={t}>{i > 0 && ' · '}<code className="mono text-[12px]">{t}</code></span>)}</p>
       <p className="text-fg-muted" data-brain-leaves>{BRAIN_LEAVES}</p>
+      <p className="text-fg-muted" data-brain-filtered>{BRAIN_FILTERED}</p>
     </div>
   )
 }

@@ -38,14 +38,22 @@ The licence key is checked offline; activating it calls nothing
 **Your prompts and the agents' responses are stored in cleartext** in the local
 SQLite database at `<data_dir>/caprock.db`. That is what the product is: the
 Memory screen searches the prose across every session, which is only possible
-because the text is on disk in readable form. Nothing is encrypted and nothing
-is redacted.
+because the text is on disk in readable form. Nothing is encrypted, and the
+sessions' own text is not redacted.
 
 The practical consequence: **anything that appears in a prompt, a tool result,
 or a response is written to that file** — including secrets that happen to pass
 through a session, such as an API key echoed by a command or pasted into a
-prompt. Caprock does not scan for or strip credentials. Treat the database as
-being as sensitive as the sessions it recorded.
+prompt. Caprock does not strip credentials from the recorded sessions. Treat
+the database as being as sensitive as the sessions it recorded.
+
+Second Brain's memories are the exception, because they are handed on to
+later sessions and, if you set it up, to agents over MCP: before a memory is
+saved, and in the text sent to be read, API keys, tokens, private keys, card
+numbers, IBANs and labelled passwords, secrets and bank account numbers are
+replaced with a placeholder such as `[redacted: card number]`. MCP answers go
+through the same filter. It catches values that look like these, not every
+secret.
 
 The rest of `<data_dir>`:
 

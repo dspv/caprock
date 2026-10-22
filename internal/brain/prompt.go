@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dspv/caprock/internal/redact"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -14,7 +15,8 @@ const System = `You keep a developer's second brain. You are given the prose of 
 - idea: something worth trying later;
 - question: something still open.
 Always keep an explicit decision or standing rule the user states ("owner decided", "from now on", "rule:", "don't ever") as a decision.
-Skip routine progress, tool chatter, greetings, and anything true only for the moment. Fewer is better: at most 8, and none is right for a session that settled nothing.
+Skip routine progress, tool chatter, greetings, and anything true only for the moment.
+Never record a credential (an API key, a token, a password, a private key), a card number, a bank account, routing number or IBAN, or anyone's home address or ID number, not even in part: leave the value out, and when the fact still matters say only where it lives ("the Stripe key is in .env"). Text shown as "[redacted: …]" was removed on purpose; never guess it back. Fewer is better: at most 8, and none is right for a session that settled nothing.
 Title: one line of at most 80 characters that states the thing itself ("Keep SQLite in WAL mode for the cache"), never "Discussed X".
 Summary: at most 400 characters of plain text, the why and the context someone needs later.
 Topics: one to three short lowercase noun phrases; when one of the existing topics fits, use its exact spelling.
@@ -155,6 +157,10 @@ func BuildInputKnown(project string, topics []string, known Known, passages []st
 			in.Through = p.EventID
 			continue
 		}
+		// The privacy filter runs on what is sent as well as on what is
+		// kept: a key the model never sees is one it cannot copy into a
+		// memory, and it leaves this machine for the model no more.
+		t = redact.String(t)
 		prose, prompt := 0, 0
 		if p.User {
 			prompt = len([]rune(t))

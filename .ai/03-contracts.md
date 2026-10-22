@@ -4406,6 +4406,43 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   those waiting; absent otherwise. It is its own field, not a kind of
   any catch-up progress, and it adds no frame: a screen reads the status
   while the extraction runs.
+- **Privacy filter** (`internal/redact`, `internal/store/brainredact.go`).
+  A memory is handed on — the handoff, other projects' screens, `caprock
+  mcp` — so a credential or payment detail in one would spread. Every
+  write of a node's `title`, `summary` and `keywords` runs through
+  `redact.Text` before it is clipped: `InsertBrainNode` (the extraction,
+  `POST /v1/brain/nodes`, entities), `UpdateBrainNode` (`PATCH`) and the
+  re-tag's `SetBrainKeywords`; an Obsidian note's `excerpt` is redacted
+  when it is parsed, so an unchanged file still compares equal. A value
+  becomes `[redacted: <kind>]`, kind one of `private key` (a PEM block,
+  or what a clip left of one), `api key` (`sk-…` with a vendor prefix or
+  digits, Stripe `sk|rk|pk_live|test_…`, `AKIA…`/`ASIA…` but not a docs
+  key ending `EXAMPLE`, `AIza…`), `token` (`ghp_…` and the other GitHub
+  prefixes, `github_pat_…`, `xox?-…`, Telegram bot tokens, JWTs, a
+  `Bearer` value), `card number` (13–19 digits, one kind of separator, a
+  network's prefix and length, Luhn), `iban` (a known country's length and
+  mod 97), `password` (after a password label — English, or Russian
+  written as escapes — a value of six or more with a digit or a symbol,
+  never a placeholder, variable, path, URL, identifier or plain word),
+  `secret` (after a key, token or secret label, 16 or more characters with
+  letters and digits, never a dotted name, an environment variable's name
+  or joined words) and `bank account` (6–34 digits after an account,
+  routing, ABA, sort code or BSB label, or the Russian ones). A keyword
+  that held a value is dropped. Ordinary numbers, commit SHAs, UUIDs,
+  versions, dates and prices are left alone. The prose a read sends is
+  filtered the same way (`BuildInputKnown`), and the extraction's
+  instructions forbid recording credentials, card or bank details, home
+  addresses and ID numbers. The memories and note excerpts kept before
+  the filter are scrubbed once on the daemon's start, in one transaction,
+  whether or not the extraction is on (`brain.Engine.ScrubOnce`,
+  `meta.brain_secrets_scrubbed`): changed nodes get their search document
+  rebuilt, a note node is re-synced from its rows, an entity whose new
+  title would collide keeps its title, and the log line holds counts by
+  kind, never a value. On a copy of the owner's database (2026-10-22) it
+  changed none of 1,468 nodes; over the 210,504 typed prompts and answers
+  stored there, the filter matched 21 values, all of them credentials
+  (API keys, bot tokens, a JWT, bearer headers, labelled passwords and
+  keys), and nothing else.
 
 ### Obsidian vaults
 
@@ -4502,9 +4539,12 @@ listener. Stdout carries the protocol and nothing else. Code:
   10 and stop at 50; memory summaries are clipped to 600 runes (1,500 in
   `get_memory`), prose to 1,500. The whole text is capped at 48 KiB on a rune
   boundary, with `[cut at N bytes: ask for fewer items]` appended when cut.
-  Credential-shaped runs (`sk-…`, `ghp_…`/`github_pat_…`, `xox?-…`,
-  `AKIA…`/`ASIA…`, `AIza…`, Telegram bot tokens, Stripe `sk_/rk_/pk_live|test_…`,
-  JWTs, `Bearer …`, PEM private keys) are replaced with `[redacted]`. A
+  Credentials and payment details are replaced with `[redacted: <kind>]`
+  by Second Brain's privacy filter (§ Second Brain, *Privacy filter*:
+  `sk-…`, `ghp_…`/`github_pat_…`, `xox?-…`, `AKIA…`/`ASIA…`, `AIza…`,
+  Telegram bot tokens, Stripe `sk_/rk_/pk_live|test_…`, JWTs, `Bearer …`,
+  PEM private keys, card numbers, IBANs, labelled passwords, secrets and
+  bank accounts). A
   tool's failure — the daemon's 4xx message, a bad argument — is a result
   with `isError: true`, never a protocol error.
 - **Repository.** `repo` is a directory inside it; absent, the directory

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/dspv/caprock/internal/redact"
 )
 
 // Note is what one Markdown file says, as the import uses it.
@@ -101,7 +103,9 @@ func Parse(rel string, data []byte) Note {
 		}
 	})
 	n.Aliases, n.Tags, n.Links = aliases.list, tags.list, links.list
-	n.Excerpt = clip(strings.Join(strings.Fields(prose.String()), " "), ExcerptRunes)
+	// Redacted before the clip (Second Brain's privacy filter, internal/redact):
+	// the excerpt is a node's summary and what a search and an agent read.
+	n.Excerpt = clip(redact.String(strings.Join(strings.Fields(prose.String()), " ")), ExcerptRunes)
 	return n
 }
 

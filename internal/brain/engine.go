@@ -127,6 +127,8 @@ func (e *Engine) Start(ctx context.Context) {
 	e.mu.Unlock()
 	go func() {
 		defer close(stopped)
+		// Before any wake, so nothing reads a memory the filter would change.
+		e.ScrubOnce(ctx)
 		t := time.NewTimer(time.Minute)
 		defer t.Stop()
 		for {
