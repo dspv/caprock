@@ -4,8 +4,10 @@
 replies, tool calls, tokens and cost are read from its own state database and
 shown on the same screens as every other agent, with background runs (cron, a
 chat through its gateway) split out on the Cost screen. Caprock can also start
-Hermes in a terminal tab and continue a Hermes session. The decision is
-[ADR-069](08-decisions.md); this file is what it rests on.
+Hermes in a terminal tab, and carry an ended Hermes session on in a Caprock
+tab or in the user's own terminal (*Open in …*), both with `hermes chat
+--resume <id>`. The decision is [ADR-069](08-decisions.md); this file is what
+it rests on.
 
 Everything below was read from Hermes Agent **v0.21.6** (git `97a9ae8`)
 installed on the owner's machine on 2026-10-11, and re-read on 2026-10-15:
@@ -148,7 +150,12 @@ the real `hermes chat --help` (`internal/agents/hermes.go`):
 - `-m <model>`; `--yolo` for Bypass (Hermes's one approval switch; it has no
   plan or accept-edits mode, and those start Hermes as it is); `-q <prompt>`
   for a first message — on a TTY it "seeds an interactive session".
-- `chat --resume <id>` continues a session; there is no fork.
+- `chat --resume <id>` continues a session; there is no fork. Continue in a
+  Caprock tab and *Open in …* (`internal/api/openterm.go`) both use it, with
+  Hermes's own id. `resumeState` (`internal/api/resume.go`) offers it as it
+  does for Codex and OpenCode: once the session has ended, its folder exists,
+  something was sent (a Caprock-started session is linked), `hermes` is
+  installed and `state.db` is still there.
 - Hermes has no flag that names a new session's id. It mints one when the CLI
   starts — `YYYYMMDD_HHMMSS_<hex>`, local time — and writes the row on the
   first message. The importer links that row to the spawn the way Codex's

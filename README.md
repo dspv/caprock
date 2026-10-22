@@ -249,20 +249,23 @@ last said, what changed in the folder, the PRs it opened. For Gemini, install
 the CLI
 (`npm install -g @google/gemini-cli`).
 With a Gemini key set (see [Premium](#premium) for where), Caprock passes it to
-the child process. Gemini has no hooks and writes no transcript, but it does
-write OpenTelemetry, and Caprock asks it to write that to a file it then reads;
+the child process. Gemini has no hooks, and the session history it keeps
+for itself is not something Caprock reads; it does write OpenTelemetry, and
+Caprock asks it to write that to a file it then reads
+(`GEMINI_TELEMETRY_OUTFILE`);
 what you ask it is kept there too, so the Memory screen can find a Gemini
 session by your question. Starting and watching Gemini sessions is free, like
 every other agent.
 
 ## The desktop app
 
-The app opens on your terminals, not on charts. Each project in the sidebar
-opens to its worktrees and the agent sessions and shells in each, with its
-branch, today's cost and a dot for what every session is doing; whatever is
-waiting on you sits at the top. ⌘T opens a shell, ⇧⌘N an agent, ⌘O adds,
-creates or clones a project. Tabs come back when you reopen it, and closing
-one never stops its session. An agent's tab switches between its terminal
+The app opens on your terminals, not on charts. The sidebar starts with
+today's spend and what is running and waiting; each project in it opens to
+its agent sessions and shells, with a dot for what every session is doing,
+and whatever is waiting on you sits at the top.
+⌘T opens a shell, ⇧⌘N an agent, ⌘O adds, creates or clones a project. Tabs
+come back when you reopen it. Closing an agent's tab ends it if it is idle,
+its conversation kept, and asks first if it is working. An agent's tab switches between its terminal
 and a chat view of the same conversation.
 
 Outside the window: the menu bar shows your plan limits, today's spend and
@@ -894,7 +897,9 @@ place Caprock stops being loopback-only:
   sessions, costs, answers, changes and the task board. *It can control
   sessions*, ticked under *Connect a phone* (the default), or *Allow control*
   beside a device afterwards, lets that phone also start a session in
-  any folder under your home directory with Claude Code, Codex or OpenCode, in
+  any folder under your home directory with any agent the phone lists —
+  each coding agent Caprock knows that is installed on the computer, not a
+  custom one — in
   any permission mode (Bypass asks once first, and the computer's one-time
   bypass consent has to have been given at the computer), type into it (a big input
   field plus Esc, Tab, arrows, Enter and Ctrl+C buttons; `/` and `@` pick a

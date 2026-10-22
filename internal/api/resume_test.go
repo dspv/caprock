@@ -178,3 +178,114 @@ func TestDescriptionPrefersTitleThenASubstantivePrompt(t *testing.T) {
 		t.Fatalf("clip: %d runes", len([]rune(got)))
 	}
 }
+
+// ADR-069: an ended Hermes session is continued in a Caprock tab like a Codex
+// or OpenCode one — by Hermes's own id, from its state database, with hermes
+// installed. HERMES_HOME points at a temporary folder: never the real
+// ~/.hermes.
+func TestResumeInfoContinuesHermes(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "state.db"), []byte{}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := newEnv(t)
+	fa := &fakeAgents{avail: true}
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: fa})
+	ctx := context.Background()
+	db := e.st.DB()
+	cwd := t.TempDir()
+
+	add := func(id string, cwd string, ended, owned bool) {
+		t.Helper()
+		p := store.SessionPatch{Cwd: cwd, Agent: "hermes"}
+		if ended {
+			p.Status = store.StatusEnded
+		}
+		if err := store.UpsertSession(ctx, db, id, p); err != nil {
+			t.Fatal(err)
+		}
+		if owned {
+			if err := store.MarkOwned(ctx, db, id, "", "hermes", 1); err != nil {
+				t.Fatal(err)
+			}
+			if ended {
+				if err := store.SetExit(ctx, db, id, 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	add("20261015_101500_ab12cd", cwd, true, false)
+	add("hm-live", cwd, false, false)
+	add("hm-gone", filepath.Join(cwd, "gone"), true, false)
+	// Started by Caprock and linked to the id Hermes minted for it.
+	add("hm-mine", cwd, true, true)
+	if _, err := store.SetNativeID(ctx, db, "hm-mine", "20261015_102000_ef34ab"); err != nil {
+		t.Fatal(err)
+	}
+	// Started by Caprock, nothing sent: Hermes never wrote a row.
+	add("hm-empty", cwd, true, true)
+
+	resume := func(id string) *ResumeInfo {
+		t.Helper()
+		rr := httptest.NewRecorder()
+		e.srv.Config.Handler.ServeHTTP(rr, httptest.NewRequest("GET", "/v1/sessions/"+id, nil))
+		if rr.Code != 200 {
+			t.Fatalf("%s: %d", id, rr.Code)
+		}
+		var d SessionDetail
+		if err := json.Unmarshal(rr.Body.Bytes(), &d); err != nil {
+			t.Fatal(err)
+		}
+		return d.Resume
+	}
+
+	if r := resume("20261015_101500_ab12cd"); r == nil || !r.OK || !strings.HasSuffix(r.Command, "&& hermes chat --resume 20261015_101500_ab12cd") || !strings.HasPrefix(r.Command, "cd ") {
+		t.Fatalf("ended hermes: %+v", r)
+	}
+	if r := resume("hm-mine"); r == nil || !r.OK || !strings.HasSuffix(r.Command, "&& hermes chat --resume 20261015_102000_ef34ab") {
+		t.Fatalf("linked hermes: %+v", r)
+	}
+	// Two processes on one Hermes session: it waits for the first to end.
+	if r := resume("hm-live"); r == nil || r.OK || !strings.Contains(r.Reason, "still running") {
+		t.Fatalf("live hermes: %+v", r)
+	}
+	// Hermes finds a session by id from any folder, so the command drops the cd.
+	if r := resume("hm-gone"); r == nil || r.OK || !strings.Contains(r.Reason, "no longer exists") || r.Command != "hermes chat --resume hm-gone" {
+		t.Fatalf("hermes, folder gone: %+v", r)
+	}
+	if r := resume("hm-empty"); r == nil || r.OK || r.Command != "" || !strings.Contains(r.Reason, "Nothing was sent") {
+		t.Fatalf("unlinked hermes: %+v", r)
+	}
+
+	// The continue request goes through to the agent manager.
+	post := func(id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/v1/agents", strings.NewReader(`{"cwd":"`+filepath.ToSlash(cwd)+`","resume":"`+id+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		e.srv.Config.Handler.ServeHTTP(rr, req)
+		return rr
+	}
+	if rr := post("20261015_101500_ab12cd"); rr.Code >= 300 {
+		t.Fatalf("continue hermes: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// hermes is not installed: the command is still offered for a terminal.
+	fa.avail = false
+	if r := resume("20261015_101500_ab12cd"); r == nil || r.OK || !strings.Contains(r.Reason, "cannot find hermes") || r.Command == "" {
+		t.Fatalf("hermes not installed: %+v", r)
+	}
+	fa.avail = true
+
+	// Its state database is gone: nothing for `chat --resume` to load.
+	if err := os.Remove(filepath.Join(home, "state.db")); err != nil {
+		t.Fatal(err)
+	}
+	if r := resume("20261015_101500_ab12cd"); r == nil || r.OK || !strings.Contains(r.Reason, "state database") {
+		t.Fatalf("hermes without state.db: %+v", r)
+	}
+	if rr := post("20261015_101500_ab12cd"); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "state database") {
+		t.Fatalf("stale hermes continue: %d %s", rr.Code, rr.Body.String())
+	}
+}

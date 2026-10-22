@@ -516,9 +516,10 @@ others. Installing it: [install-app.md](install-app.md).
   that project and ⌥⌘→ / ⌥⌘← to the next / previous project, both round
   the end. Option+← → stay word jumps in the terminal, and ⌘↑ ↓ stay the
   terminal's. Tabs come back when
-  you reopen the app. Closing a tab (⌘W) never stops its agent — a shell's
-  tab closes the shell, as above — and the tab beside it comes to the front; *Stop the session…* in the inspector
-  stops one, after asking.
+  you reopen the app. Closing a tab (⌘W) treats its agent as *Closing
+  things* above says — an idle one ends, its conversation kept; a working
+  one asks — a shell's tab closes the shell, and the tab beside it comes to
+  the front; *Stop the session…* in the inspector stops one, after asking.
 - **Split panes.** ⌘E opens a new shell beside the terminal in front, ⇧⌘E
   below it; ⇧Enter on a session in the palette opens it there. Up to four
   panes a tab. Click a pane or press ⌘[ ⌘] to move between them; drag the
@@ -774,8 +775,7 @@ others. Installing it: [install-app.md](install-app.md).
   with *Open Work →*. A session row brings that session's tab to the
   front; a pull request's title opens it in the Pipeline, its detail open.
   ⇧⌘W again goes back to where you were.
-- **Changes.** Click a worktree's ±N in the sidebar (hover the row for the
-  same button), *Review and commit* in the inspector, or "Review changes" in
+- **Changes.** *Review and commit* in the inspector, or "Review changes" in
   the palette. The files are listed as *Staged*, *Changes* and *Conflicts*;
   the one selected shows its diff, unified or side by side (**v**). Hover a
   file to stage, unstage or discard it, or press **s**, **u**, **d**;
@@ -828,8 +828,8 @@ others. Installing it: [install-app.md](install-app.md).
   as you type, Enter and ⇧Enter step through them, **Aa** matches case and
   **.\*** takes a regular expression. Esc closes it and you are back in the
   terminal.
-- **Open in your editor.** A project's menu (its ⋯, or a right-click) and a
-  right-click on a worktree in the sidebar open it in VS Code, Cursor, Zed or a JetBrains IDE — whichever
+- **Open in your editor.** A project's menu (its ⋯, or a right-click) opens
+  it in VS Code, Cursor, Zed or a JetBrains IDE — whichever
   are installed; the palette and the inspector have *Open in …* too.
   Settings → *Editor* picks the default. Only this computer can do this; a
   paired phone cannot open an editor here.
@@ -922,7 +922,7 @@ On macOS:
 | ⌥⇧↑, ⌥⇧↓    | Move the focused sidebar or Live pulse row, or right panel section grip, up or down |
 | ⌃Tab, ⇧⌘[ ] | Next and previous tab                                                               |
 | ⌥←, ⌥→      | In a browser tab (beta): the tab before and after, outside a text field             |
-| ⌘W          | Close the tab or pane (the session keeps going); on the Dashboard, nothing          |
+| ⌘W          | Close the tab or pane (an idle agent ends, a working one asks); Dashboard: nothing  |
 | ⇧⌘T         | Reopen the last closed tab: its conversation back in a tab                          |
 | ⌘E, ⇧⌘E     | Split: a new shell beside, below                                                    |
 | ⌘[ ]        | Previous and next pane                                                              |
@@ -1167,8 +1167,8 @@ notification server draws actions, and a click opens the
 session. On Windows a notification has no buttons; a click opens the session
 with its Yes and No buttons.
 
-Settings → *Desktop notifications* has two switches: *waiting for approval*
-(on) and *has finished* (off). They are separate from the Telegram alerts in
+Settings → *Desktop notifications* has that one switch, on until you turn
+it off. It is separate from the Telegram alerts in
 [Phone alerts](../README.md#hear-about-it-on-your-phone--and-answer-from-telegram), which stay off until
 you turn them on.
 
@@ -1500,21 +1500,25 @@ relay that passes bytes it cannot read
    Android the app and Chrome share the pairing.
 
 **When the phone cannot reach the computer**, it never just says
-*Connecting…*: after five seconds the page says why and what to do, and
-keeps trying by itself (after 1, 2, 4, 8, 15, then every 30 seconds, and at
-once when the phone comes back to the page or onto a network):
+*Connecting…*: the page says why and what to do — at once when the phone
+has no network or its pairing was refused, after five seconds otherwise —
+and keeps trying by itself (after 1, 2, 4, 8, 15, then every 30 seconds,
+and at once when the phone comes back to the page or onto a network). Under
+the headline a line counts down to the next try (*Next try in 8 s · attempt
+4*), and **Retry now** under it tries at once:
 
-- **Can't reach the relay**: the phone cannot reach relay.caprock.dev or
-  m.caprock.dev. Check its connection or VPN: a VPN, or a network that
-  blocks either address, is the usual cause. **This phone is offline** is
-  the phone with no network at all.
-- **Connected to the relay — your computer is offline**: the relay has no
-  connection from it. Wake it, check it is online, open Caprock.
-- **Connected to the relay — your computer isn't answering**: the relay
-  reached it but it did not reply, the usual sign of a computer that went to
-  sleep.
-- **Paired device removed: pair again**: it was removed in *Your
-  devices*. Connect it again with a new code.
+- **No internet on this phone**: the phone has no network at all. It
+  reconnects by itself when the network is back.
+- **Can't reach the relay**: the phone has a network but cannot reach
+  relay.caprock.dev or m.caprock.dev. A VPN, or a network that blocks
+  either address, is the usual cause.
+- **Your computer isn't answering**: the relay has no connection from the
+  computer (asleep, off the internet, or Caprock not running: wake it and
+  open Caprock), or reached it and got no reply, the usual sign of a
+  computer that went to sleep or a Caprock restarting.
+- **This phone was removed** (in Settings → Use on your phone) or **Pair
+  this phone again** (the computer's keys were reset): the only two that
+  offer **Pair again** instead of a countdown.
 
 **Details**, folded under each of these, lists the last error with the
 relay's code, when it happened, the last try and the last time the phone
