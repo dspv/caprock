@@ -80,7 +80,7 @@ describe('the strip item', () => {
     act(() => resetResourcesForTest(frame(mem('normal'))))
     render(<MemoryBar owner />)
     expect(bar()!.dataset.memoryBar).toBe('normal')
-    expect(bar()!.textContent).toContain('Mac 9.1/16 GB')
+    expect(bar()!.textContent).toContain('This Mac 9.1/16 GB')
     expect(bar()!.textContent).not.toContain('agents')
     expect(document.querySelector('[data-memory-minibar] span')!.className).toContain('bg-ok')
   })
