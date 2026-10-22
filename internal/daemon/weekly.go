@@ -77,6 +77,23 @@ func (d *Daemon) reportLastError() string {
 	return d.report.lastErr
 }
 
+// forgetReportError drops the weekly report's last failure when the bot token
+// or chat it was about is replaced. "telegram: Unauthorized" from a token that
+// is no longer configured says nothing about the one that is, and left on the
+// panel it sat under a fresh "sent — check Telegram" (owner, 2026-10-22). The
+// last success is kept: a report did arrive then.
+func (d *Daemon) forgetReportError(ctx context.Context) {
+	d.report.mu.Lock()
+	had := d.report.lastErr != ""
+	d.report.lastErr = ""
+	d.report.mu.Unlock()
+	if had && d.store != nil {
+		if err := d.store.SetMeta(ctx, store.MetaReportLastError, ""); err != nil && d.log != nil {
+			d.log.Warn("weekly report: could not clear the error", "component", "report", "err", err)
+		}
+	}
+}
+
 func (d *Daemon) reportLastSent() int64 {
 	d.report.mu.RLock()
 	defer d.report.mu.RUnlock()

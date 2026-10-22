@@ -556,3 +556,72 @@ func TestTodaysSpendIsNotCountedInThisWeeksReport(t *testing.T) {
 		t.Errorf("today's $%.2f was counted in the week that ended this morning", rep.CostUSD)
 	}
 }
+
+// A new bot token or chat forgets the weekly report's last failure: it was
+// about the old one. Left in place, "telegram: Unauthorized" from a replaced
+// token sat under a fresh "sent — check Telegram" (owner, 2026-10-22). The
+// cleared reason is cleared in the store too, so a restart does not bring it
+// back; re-saving the same chat is no change and keeps a real failure.
+func TestANewBotForgetsTheReportsOldFailure(t *testing.T) {
+	ctx := context.Background()
+	st := memStore(t)
+	d := secretsDaemon(t, t.TempDir(), &fakeSecrets{})
+	d.store = st
+	a := &settingsAdapter{d: d}
+	h := &tgHost{d: d}
+	failed := func() {
+		t.Helper()
+		if err := st.SetMeta(ctx, store.MetaReportLastError, "telegram: Unauthorized"); err != nil {
+			t.Fatal(err)
+		}
+		d.loadReportState(ctx)
+		if g := a.Get(); g.ReportLastError == "" {
+			t.Fatal("before the save: no error on the panel")
+		}
+	}
+	cleared := func(what string) {
+		t.Helper()
+		if g := a.Get(); g.ReportLastError != "" {
+			t.Fatalf("after %s: panel still says %q", what, g.ReportLastError)
+		}
+		if v, _ := st.GetMeta(ctx, store.MetaReportLastError); v != "" {
+			t.Fatalf("after %s: store still says %q", what, v)
+		}
+	}
+
+	failed()
+	if err := h.SaveBot(testBotToken); err != nil {
+		t.Fatal(err)
+	}
+	cleared("re-pairing the bot")
+
+	failed()
+	if err := h.SaveChat("42"); err != nil {
+		t.Fatal(err)
+	}
+	cleared("a new chat")
+
+	failed()
+	if err := h.SaveChat("42"); err != nil {
+		t.Fatal(err)
+	}
+	if g := a.Get(); g.ReportLastError == "" {
+		t.Fatal("re-saving the same chat forgot a real failure")
+	}
+
+	in := a.Get()
+	in.ReportBotToken = "654321:another-bot-token-value"
+	if err := a.Set(in); err != nil {
+		t.Fatal(err)
+	}
+	cleared("Change bot in Settings")
+
+	// An unrelated save is no change either.
+	failed()
+	if err := a.Set(a.Get()); err != nil {
+		t.Fatal(err)
+	}
+	if g := a.Get(); g.ReportLastError == "" {
+		t.Fatal("an unrelated settings save forgot a real failure")
+	}
+}

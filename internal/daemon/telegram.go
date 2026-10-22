@@ -71,7 +71,7 @@ func (h *tgHost) SaveBot(token string) error {
 	if err := h.saveConfig(func(c *config.Config) { applySecret(c, telegramSecret, token) }); err != nil {
 		return err
 	}
-	h.d.phone.botChanged()
+	h.d.botChanged()
 	return nil
 }
 
@@ -84,7 +84,7 @@ func (h *tgHost) SaveChat(chat string) error {
 		return err
 	}
 	if changed {
-		h.d.phone.botChanged()
+		h.d.botChanged()
 	}
 	return nil
 }

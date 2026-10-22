@@ -10,6 +10,7 @@ import type { Settings } from '@/lib/api'
 
 const settings = vi.hoisted(() => ({ value: {} as Settings }))
 const saved = vi.hoisted(() => ({ calls: [] as Partial<Settings>[] }))
+const sendNow = vi.hoisted(() => ({ fn: async () => {} }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -18,6 +19,7 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       settings: async () => settings.value,
+      testReport: () => sendNow.fn(),
       saveSettings: async (s: Settings) => {
         saved.calls.push(s)
         return s
@@ -47,6 +49,37 @@ describe('WeeklyReport', () => {
     } as Settings
     render(<WeeklyReport />)
     await waitFor(() => expect(screen.getByText(/chat not found/)).toBeInTheDocument())
+  })
+
+  // The daemon clears the failure when a send succeeds; the panel has to read
+  // it again, or the old reason sits under "sent — check Telegram".
+  it('drops a stale failure once a send goes through', async () => {
+    settings.value = {
+      report_bot_set: true, report_chat_id: '1',
+      report_last_error: 'telegram: Unauthorized',
+    } as Settings
+    sendNow.fn = async () => {
+      settings.value = { report_bot_set: true, report_chat_id: '1' } as Settings
+    }
+    render(<WeeklyReport />)
+    fireEvent.click(await screen.findByText('Send one now'))
+    await waitFor(() => expect(screen.getByText(/sent — check Telegram/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText(/Last send failed/)).toBeNull())
+  })
+
+  it('shows a new failure reason after a failed send, once', async () => {
+    settings.value = {
+      report_bot_set: true, report_chat_id: '1',
+      report_last_error: 'telegram: Unauthorized',
+    } as Settings
+    sendNow.fn = async () => {
+      settings.value = { report_bot_set: true, report_chat_id: '1', report_last_error: 'telegram: chat not found' } as Settings
+      throw new Error('telegram: chat not found')
+    }
+    render(<WeeklyReport />)
+    fireEvent.click(await screen.findByText('Send one now'))
+    await waitFor(() => expect(screen.queryByText(/Unauthorized/)).toBeNull())
+    expect(screen.getAllByText(/chat not found/)).toHaveLength(1)
   })
 
   it('says nothing has been sent yet rather than leaving it blank', async () => {

@@ -1856,8 +1856,8 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	cfg := a.d.opt.Config
 	a.d.cfgMu.Unlock()
 	if botChanged || chatChanged {
-		// The last alert's outcome was the old bot's or chat's.
-		a.d.phone.botChanged()
+		// The last alert's and report's outcomes were the old bot's or chat's.
+		a.d.botChanged()
 	}
 	if statuslineChanged {
 		a.d.applyStatuslineMode(cfg)
