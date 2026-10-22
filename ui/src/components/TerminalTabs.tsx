@@ -431,7 +431,7 @@ export function TabStrip(props: TabStripProps) {
           )
         })}
         <div className="mb-[5px] ml-1.5 flex shrink-0 items-center">
-          <NewMenu items={props.newItems ?? [
+          <NewMenu title={`New terminal ${keys('⌘T')}`} items={props.newItems ?? [
             { id: 'agent', label: 'New agent', hint: keys('⇧⌘N'), icon: <PlusIcon size={13} />, run: props.onNewAgent },
             { id: 'shell', label: 'New shell', hint: keys('⌘T'), icon: <TerminalIcon size={13} />, run: props.onNewShell },
           ]} />
@@ -618,7 +618,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     const quick = !!own && node.target.kind !== 'shell' && composerFits(own)
     const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit}
       composer={withComposer} quick={quick} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
-      inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} />
+      inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} shellHint={node.target.kind === 'shell'} />
     const chat = ctx.chats?.get(id)
     const ended = chat?.ended && (
       <ChatEnded visible={visible && focused} onClose={() => ctx.onChatClose?.(node.id)} onRestart={() => ctx.onChatRestart?.(id)} />
@@ -680,7 +680,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
  * callbacks are stable (TerminalStack), so a new session list — the sidebar's
  * dots moving — does not reach a terminal.
  */
-const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, quick = false, agent, asking = false, inputBox = false }: {
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, composer = false, quick = false, agent, asking = false, inputBox = false, shellHint = false }: {
   id: string
   visible: boolean
   focused: boolean
@@ -694,11 +694,13 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   asking?: boolean
   /** A Claude Code session: the faint band behind its input box. */
   inputBox?: boolean
+  /** A shell: the hint under its prompt while it is empty (lib/newshellhint). */
+  shellHint?: boolean
 }) {
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
   const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])
-  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} quickReplies={quick} inputBox={inputBox} />
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} composer={box} quickReplies={quick} inputBox={inputBox} shellHint={shellHint} />
 })
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */

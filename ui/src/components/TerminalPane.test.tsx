@@ -10,7 +10,9 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  terms: [] as { options: Record<string, unknown>; focused: number; cols: number; rows: number; buffer: { active: { viewportY: number; baseY: number } }; scrolledTo: number | null }[],
+  terms: [] as { options: Record<string, unknown>; focused: number; cols: number; rows: number; buffer: { active: { viewportY: number; baseY: number; cursorY?: number } }; scrolledTo: number | null }[],
+  /** Every onWriteParsed listener (the pane's and its addons'): calling them is xterm having parsed a write. */
+  parsed: [] as (() => void)[],
   calls: [] as [string, string, Record<string, unknown>?][],
   results: [] as ((r: { resultIndex: number; resultCount: number }) => void)[],
   clears: 0,
@@ -43,7 +45,7 @@ vi.mock('@xterm/xterm', () => ({
     cols = 80
     rows = 24
     element: HTMLElement | undefined
-    buffer = { active: { viewportY: 0, baseY: 0 } }
+    buffer = { active: { viewportY: 0, baseY: 0, cursorY: 0 } }
     scrolledTo: number | null = null
     // xterm's render service, as paintNow reaches it.
     _core = { _renderService: { _handleIntersectionChange: () => { h.steps.push('paint') } } }
@@ -61,7 +63,7 @@ vi.mock('@xterm/xterm', () => ({
     scrollToBottom() {}
     onData() { return { dispose() {} } }
     onResize() { return { dispose() {} } }
-    onWriteParsed() { return { dispose() {} } }
+    onWriteParsed(fn: () => void) { h.parsed.push(fn); return { dispose() {} } }
     onScroll() { return { dispose() {} } }
     attachCustomKeyEventHandler() {}
     dispose() {}
@@ -130,9 +132,11 @@ import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
 import { APP_UPDATE_EVENT } from '@/lib/appupdate'
 import { RESUME_KEY } from '@/lib/termresume'
+import { isMacPlatform } from '@/lib/appmode'
 
 beforeEach(() => {
   h.terms.length = 0
+  h.parsed.length = 0
   h.calls.length = 0
   h.results.length = 0
   h.clears = 0
@@ -832,5 +836,72 @@ describe('a terminal that is reconnecting says how it stands', () => {
     act(() => { window.dispatchEvent(new Event('focus')) })
     act(() => { window.dispatchEvent(new Event('online')) })
     expect(h.wakes).toBe(before + 2)
+  })
+})
+
+// The owner-approved mockup, 2026-10-22: an empty new shell says what to run
+// and how to close the tab — drawn over the terminal, never typed into it.
+describe('the new shell hint', () => {
+  let raf: { mockRestore(): void } | undefined
+  beforeEach(() => {
+    // Placed once a frame: run the frame at once (handle 0, so the pane queues the next one).
+    raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => { cb(0); return 0 })
+  })
+  afterEach(() => { raf?.mockRestore() })
+
+  const hint = () => document.querySelector('[data-new-shell-hint]')
+  // The shell's first output, its prompt, parsed by xterm with the cursor on `row`.
+  const prompt = (row = 0) => act(() => {
+    h.terms[0]!.buffer.active.cursorY = row
+    h.clients[0]!.callbacks.write(new Uint8Array([36, 32]), () => {})
+    for (const fn of h.parsed) fn()
+  })
+
+  it('shows under the prompt of an empty new shell, the close key in this platform\'s spelling', () => {
+    render(<TerminalPane sessionId="s" active shellHint />)
+    expect(hint()).toBeNull()
+    prompt()
+    expect(hint()).not.toBeNull()
+    expect(hint()!.getAttribute('aria-label')).toBe(`Run claude, codex or any command · ${isMacPlatform() ? '⌘W' : 'Ctrl+Shift+W'} closes this tab`)
+    // An overlay: nothing of it went to the PTY or into xterm.
+    expect(h.writes.some((w) => typeof w === 'string' && w.includes('claude'))).toBe(false)
+  })
+
+  it('hides at the first key typed and does not come back', () => {
+    render(<TerminalPane sessionId="s" active shellHint />)
+    prompt()
+    expect(hint()).not.toBeNull()
+    const el = document.querySelector('[data-term-host]')!
+    // A lone modifier or an app chord is not typing into the tab.
+    fireEvent.keyDown(el, { key: 'Shift' })
+    fireEvent.keyDown(el, { key: '1', code: 'Digit1', metaKey: true })
+    expect(hint()).not.toBeNull()
+    fireEvent.keyDown(el, { key: 'l', code: 'KeyL' })
+    expect(hint()).toBeNull()
+    prompt()
+    expect(hint()).toBeNull()
+  })
+
+  it('hides at output that moves past the prompt', () => {
+    render(<TerminalPane sessionId="s" active shellHint />)
+    prompt()
+    expect(hint()).not.toBeNull()
+    prompt(6)
+    expect(hint()).toBeNull()
+    prompt(0)
+    expect(hint()).toBeNull()
+  })
+
+  it('never shows on a tab that already has output', () => {
+    render(<TerminalPane sessionId="s" active shellHint />)
+    h.terms[0]!.buffer.active.baseY = 30
+    prompt(12)
+    expect(hint()).toBeNull()
+  })
+
+  it('never shows on an agent', () => {
+    render(<TerminalPane sessionId="s" active />)
+    prompt()
+    expect(hint()).toBeNull()
   })
 })
