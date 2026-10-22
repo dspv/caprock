@@ -4259,7 +4259,14 @@ searching prose.
   standing rule the user states ("from now on", "rule:") as a decision,
   and a read with little agent prose is still sent when it carries 200
   runes or more of the user's prompts, where such decisions are mostly
-  said; only a read with neither is skipped.
+  said; only a read with neither is skipped. "User" turns that start with
+  a machine tag (a background task's notice, a reminder, a slash
+  command's echo, a message from another session: a known list, or any
+  kebab-case tag) are not the user's words and are left out of the read
+  and of that count; `<pasted_content>` stays. With that room freed, a
+  prompt is clipped at 2,000 characters instead of 600, which cut a
+  third of the prompts in the owner's last 30 days; the 24,000 per read
+  is unchanged.
 - **What is kept, and its limits.** Each memory records the read it came
   from (`brain_runs`: model, tokens, cost, status) and the passage it
   cites, so its source link opens the moment it was said; it hangs off the

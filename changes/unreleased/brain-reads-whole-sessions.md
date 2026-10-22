@@ -9,3 +9,6 @@ kind: Fixed
   extraction is also told to keep a decision or standing rule you state
   ("from now on", "rule:") as a decision, and a stretch of mostly your own
   prompts is read rather than skipped for want of the agent's prose.
+  Machine-made "user" turns (task notifications, reminders, slash-command
+  echoes, messages from other sessions) are no longer read as your words,
+  and a prompt is sent up to 2,000 characters instead of 600.

@@ -32,8 +32,10 @@ const (
 	// sends the oldest unread passages that fit and moves the cursor only
 	// past those, so the next read goes on where it stopped.
 	MaxInputChars = 24000
-	// promptChars and answerChars clip one passage.
-	promptChars = 600
+	// promptChars and answerChars clip one passage. A prompt is the user's
+	// own words, where decisions are said, so it gets nearly as much room as
+	// an answer (600 until 2026-10-22, which cut a third of the prompts).
+	promptChars = 2000
 	answerChars = 2500
 	// MinPromptRunes is how much of the user's own prompts make a read
 	// worth it without the agent's prose: a decision or a standing rule is
@@ -62,6 +64,44 @@ type Input struct {
 	Cut     bool
 }
 
+// machineTags are the tags Claude Code and agents wrap a "user" turn in
+// that no person typed: a background task's notice, a reminder, a slash
+// command's echo, a message from another session or a subagent.
+var machineTags = map[string]bool{
+	"task-notification": true, "system-reminder": true, "local-command-caveat": true,
+	"local-command-stdout": true, "local-command-stderr": true, "command-name": true,
+	"command-message": true, "command-args": true, "cross-session-message": true,
+	"agent-message": true, "in-app-browser-context": true, "bash-input": true,
+	"bash-stdout": true, "bash-stderr": true, "user-prompt-submit-hook": true,
+}
+
+// machineTurn reports whether a prompt is machine-made rather than typed:
+// it starts with a tag that is one of machineTags, or any kebab-case tag
+// (`<some-name`), the shape all of those share. Only the leading tag is
+// looked at, never the content. `<pasted_content>`, what a person pasted,
+// is not kebab-case and stays.
+func machineTurn(t string) bool {
+	if !strings.HasPrefix(t, "<") {
+		return false
+	}
+	name := t[1:]
+	if i := strings.IndexAny(name, " >/\n\t"); i >= 0 {
+		name = name[:i]
+	}
+	if machineTags[name] {
+		return true
+	}
+	if name == "" || name[0] < 'a' || name[0] > 'z' || !strings.Contains(name, "-") {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 // WorthReading reports whether a read of it is worth a call: enough of the
 // agent's prose, or enough of the user's prompts, where decisions are said.
 func (in Input) WorthReading() bool {
@@ -82,7 +122,7 @@ func BuildInput(project string, topics []string, passages []store.BrainPassage) 
 	total := 0
 	for _, p := range passages {
 		t := strings.Join(strings.Fields(p.Text), " ")
-		if t == "" {
+		if t == "" || (p.User && machineTurn(t)) {
 			in.Through = p.EventID
 			continue
 		}

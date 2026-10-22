@@ -240,6 +240,49 @@ func TestAReadOfMostlyUserPromptsIsSentNotSkipped(t *testing.T) {
 	}
 }
 
+func TestMachineTaggedTurnsAreNotTheUsersWords(t *testing.T) {
+	notice := "<task-notification> <task-id>a1</task-id> <status>completed</status> <result>" + strings.Repeat("The build passed on three systems. ", 20) + "</result> </task-notification>"
+	ps := []store.BrainPassage{
+		{EventID: 1, User: true, Text: notice},
+		{EventID: 2, User: true, Text: "<system-reminder>The date changed.</system-reminder>"},
+		{EventID: 3, User: true, Text: "<some-new-tool-notice id=\"x\">" + strings.Repeat("noise ", 60)},
+		{EventID: 4, Text: "Done."},
+	}
+	in := BuildInput("", nil, ps)
+	if strings.Contains(in.Prompt, "task-notification") || strings.Contains(in.Prompt, "system-reminder") || strings.Contains(in.Prompt, "some-new-tool-notice") {
+		t.Errorf("a machine turn was sent:\n%s", in.Prompt)
+	}
+	if in.PromptRunes != 0 || in.WorthReading() || in.Through != 4 {
+		t.Errorf("machine turns counted toward the bar: %d prompt runes, through %d", in.PromptRunes, in.Through)
+	}
+	// What a person typed or pasted stays, tag or not.
+	for _, typed := range []string{
+		"<pasted_content id=\"e8c7\"> " + rule,
+		"<div> renders twice on the settings page; from now on test it in both themes.",
+		rule,
+	} {
+		if !machineTurn(strings.Join(strings.Fields(typed), " ")) {
+			continue
+		}
+		t.Errorf("a typed prompt was taken for a machine's: %q", typed)
+	}
+	if !machineTurn("<command-name>/clear</command-name>") || !machineTurn("<cross-session-message from=\"a\">hi") {
+		t.Error("known machine tags")
+	}
+}
+
+func TestAHumanPromptOf1500CharsIsSentWhole(t *testing.T) {
+	typed := "From now on " + strings.Repeat("every release waits for the owner's word and a green Windows job. ", 25)
+	typed = strings.TrimSpace(typed[:1500])
+	in := BuildInput("", nil, []store.BrainPassage{{EventID: 1, User: true, Text: typed}, {EventID: 2, Text: "Noted."}})
+	if !strings.Contains(in.Prompt, "User: "+typed+"\n") || strings.Contains(in.Prompt, "…") {
+		t.Errorf("the prompt was cut:\n%s", in.Prompt)
+	}
+	if !in.WorthReading() {
+		t.Error("a long typed prompt is worth a read")
+	}
+}
+
 var instructionMark = regexp.MustCompile(`User: instruction (i\d{3}) `)
 
 func TestAChunkOfMostlyUserPromptsInALongSessionIsSent(t *testing.T) {

@@ -4044,7 +4044,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   it has main-thread prompts or answers after the last read that did not
   fail. Its passages are numbered and sent, with the project and up to 60
   existing topic titles, on stdin to the user's `claude` (flags in
-  ADR-063). One read sends at most 24,000 characters and 400 passages,
+  ADR-063). A "user" turn that starts with a machine tag — one of a
+  known list (`task-notification`, `system-reminder`, `command-name`,
+  `cross-session-message`, …) or any kebab-case tag — is left out; a
+  prompt is clipped at 2,000 characters, an answer at 2,500. One read
+  sends at most 24,000 characters and 400 passages,
   the oldest unread first; a session with more is read in chunks, each
   read's `through_event_id` the last passage it sent (the session's newest
   event when it sent the rest), so nothing is skipped and the next read
@@ -4055,7 +4059,8 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   `run_id`, `manual: false` and the cited passage's event as its source,
   `part_of` the project and its topics, `relates`/`contradicts` to the
   others named. Fewer than 300 runes of agent prose and fewer than 200 of the user's
-  prompts in a read: recorded `skipped`,
+  typed prompts (machine-tagged turns do not count) in a read: recorded
+  `skipped`,
   never sent. A failure is recorded with its error and retried after 15
   minutes, doubling; after four the session waits for new prose. The
   project is the session's own, except for a session whose `cwd` is under
