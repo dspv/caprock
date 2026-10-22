@@ -12,6 +12,85 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.150.0] - 2026-10-22
+
+### Added
+
+- **app:** Phone preview in one click. When a terminal prints a local dev
+  server's address (Vite, Next, webpack, `localhost`, `127.0.0.1`,
+  `0.0.0.0`, `[::1]`, `*.localhost`), *Preview on phone* appears after it;
+  a click opens the page beside that terminal, split, already in Phone mode
+  on the device used last with Touch on, with no setting to turn on first.
+  ⌘K → *Preview on phone…* lists the servers your terminals printed, then
+  *Preview a URL on phone…* for any other address.
+- **app:** Phones side by side. *Side by side* on the phone bar shows the
+  page on an iPhone SE, an iPhone 16 and a Pixel 9 at once, each at its real
+  width (375, 393, 412) and drawn smaller together to fit the pane. Reload
+  and your dev server's hot reload reach all three, each scrolls on its own,
+  and a phone whose page is wider than its screen gets a red *cut off*. A
+  pane too narrow scrolls the row sideways; a phone's name goes back to that
+  one phone. Off by default and remembered; the two extra phones exist only
+  while it is on.
+
+### Changed
+
+- **app:** the update card folds into the status strip. A chevron in its
+  corner, or Esc while focus is in it, hides the card, and the download goes
+  on as a short item in the strip: *↓ 0.149.0 · 22%* with a thin bar, then
+  *0.149.0 ready · Restart*, or the failure in the warning colour. A click on
+  the item brings the card back (on the error, after a failure); the card
+  never comes back by itself, and the fold holds for that version only.
+- **ui:** under the Week card, the subagent hint is now three big figures —
+  what the week's subagents cost, about what the same tokens cost on Haiku,
+  and the possible saving — with one button, *Start new agents with Haiku
+  subagents*, that makes Haiku the default New agent starts subagents on in
+  every project that has not chosen otherwise. The fine print below the card
+  is a row of small chips, each with its full sentence on hover.
+
+### Fixed
+
+- **pricing:** a gateway's free model — an id ending in `-free` (OpenCode
+  Zen, such as `deepseek-v4.1-flash-free`) or `:free` (OpenRouter) — is priced
+  at $0 instead of showing as an unknown model to report. Turns already stored
+  unpriced are priced on the next start. Pricing table `2026-10-22.1`. Closes
+  #787.
+- **now:** the "sessions were still running when Caprock last stopped" banner
+  no longer offers Continue on `claude -p` and Agent SDK runs. Those answer one
+  prompt and exit, so a stop that caught one cut nothing off; Caprock now reads
+  how the session was started from its transcript and leaves them out,
+  including from a banner already showing.
+- **loop:** a browser or computer-use tool taking the same screenshot,
+  scrolling, waiting, pressing a key or navigating again is no longer flagged
+  as a loop. That is how those tools work. A repeated click, typed text, edit
+  or command still raises the alert.
+- **memory:** the memory popover no longer lists an app bigger than the
+  group it sits in (colima at 8.2 GB under *Other apps and the system* at
+  7.6 GB). The used figure is RAM, while an app's size counts its compressed
+  and swapped-out memory too, as Activity Monitor does; an idle virtual
+  machine's guest is mostly in swap. The group now takes what its apps hold
+  when that is more, an app running a virtual machine is marked *· virtual
+  machine*, the card says when the sizes add up past what is in use, and the
+  stacked bar never runs past the used share.
+- **report:** the Weekly report panel no longer shows an old "Last send failed"
+  under a fresh "sent — check Telegram". It reads the outcome again after
+  *Send one now*, and a new bot token or chat forgets the last failure, which
+  was about the bot that is no longer configured.
+
+### Security
+
+- **brain:** Second Brain no longer keeps credentials or payment details.
+  Before a memory's title, summary or keywords are saved — by the automatic
+  extraction, by hand, by the re-tag or from an Obsidian note — API keys and
+  tokens (`sk-…`, GitHub, Slack, AWS, Google, Stripe, Telegram bot tokens,
+  JWTs, bearer values, PEM private keys), card numbers (Luhn-checked),
+  IBANs (checksum-checked), labelled passwords, secrets and bank account or
+  routing numbers become a placeholder such as `[redacted: card number]`.
+  The prose sent to the model to be read is filtered the same way, and the
+  extraction's instructions say never to record such values. Memories kept
+  before this are scrubbed once on start; the log says how many, by kind.
+  `caprock mcp` uses the same filter, so its placeholders now name the kind
+  too. The Second Brain settings say so in one line.
+
 ## [0.149.0] - 2026-10-22
 
 ### Added

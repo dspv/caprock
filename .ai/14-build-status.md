@@ -151,6 +151,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-22 — 0.150.0: a page on three phones at once, quieter alerts, secrets kept out of Second Brain
+
+A minor release, one batch PR (#797). A local dev-server address in a terminal gets "Preview on phone", which opens the page beside the terminal in Phone mode with Touch on, and "Side by side" shows it on iPhone SE, iPhone 16 and Pixel 9 widths at once with a cut-off mark where the page overflows. The update card folds into a status-bar item. Second Brain removes card numbers, IBANs, keys, tokens and labelled passwords before anything is sent or saved, and scrubs stored memories once. Print-mode runs are no longer offered for Continue after a restart, browser observation steps no longer count as loops, the weekly report panel stops showing a stale failure, the memory popover never shows an app larger than its group, and the Week screen shows the subagent saving as figures.
+
 ### 2026-10-22 — 0.149.0: the Mac's memory on the status bar, no crash on a drop, a self-repairing start
 
 A minor release, one batch PR (#794). The status bar shows the machine's memory and pressure, flags an agent grown past max(3 GB, a fifth of RAM), and offers to end idle agents Caprock started or restart a heavy one fresh, conversation kept. A Finder drop of an iCloud item no longer aborts the app (wry and tao unwrapped the dragged names; patched copies until upstream fixes it). The app adopts a daemon the login service already started instead of dead-ending, tabs of sessions whose process is gone stop reconnecting and offer Continue, and a release daemon refreshes its hook shim and repoints Caprock's own hook and statusline entries. Each inspector opens on its own session's spend. Hidden terminal tabs trim their scrollback after ten minutes, the daemon sweeps stale answer-cache keys and gets a soft memory limit.
