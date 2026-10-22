@@ -176,6 +176,8 @@ describe('the phone home', () => {
     vi.spyOn(api, 'work').mockResolvedValue({ now: NOW, day_start: NOW, sessions: [], hive: 'off', queued: [], repos: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 } })
     vi.spyOn(api, 'subscriptions').mockResolvedValue({ agents: [] } as unknown as Awaited<ReturnType<typeof api.subscriptions>>)
     vi.spyOn(api, 'chats').mockResolvedValue({ items: chats, total: chats.length, chats: chats.length, archived: 0 })
+    // Continue mirrors the computer's tabs (GET /v1/tabs): every session open there.
+    vi.spyOn(api, 'tabs').mockResolvedValue({ known: true, at: NOW, sessions: sessions.map((s) => s.session_id), items: sessions })
   }
 
   it('ends a session from Continue; the row then reads ended', async () => {
@@ -183,13 +185,13 @@ describe('the phone home', () => {
     const signal = vi.spyOn(api, 'signal').mockResolvedValue(undefined)
     render(<PhoneHome />)
     await screen.findByText('work in alpha')
-    fireEvent.click(screen.getByRole('button', { name: 'More for alpha' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More for work in alpha' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'End session…' }))
     fireEvent.click(screen.getByRole('button', { name: 'End session' }))
     await waitFor(() => expect(signal).toHaveBeenCalledWith('alpha', 'end'))
     await waitFor(() => expect(screen.getByRole('link', { name: /work in alpha/ })).toHaveTextContent(/ended/))
     // The terminal's own session: the reason, and no End.
-    fireEvent.click(screen.getByRole('button', { name: 'More for beta' }))
+    fireEvent.click(screen.getByRole('button', { name: 'More for work in beta' }))
     expect(screen.getByRole('menu')).toHaveTextContent(WHY_NOT_OURS)
     expect(signal).toHaveBeenCalledTimes(1)
   })
