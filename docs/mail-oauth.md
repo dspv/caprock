@@ -11,6 +11,18 @@ page is how to make them and how to put them into a build. Why and what is
 sent where: [ADR-057](../.ai/08-decisions.md). The routes:
 [03-contracts.md › Mail](../.ai/03-contracts.md).
 
+## Recovering a sign-in
+
+In Mail's Settings, use **Sign in again** beside an OAuth account. This opens
+the provider's browser sign-in with that account's address as a hint and keeps
+its existing mail. A refused or expired attempt shows its reason in Mail and
+can be retried. Password accounts keep their password field in Edit.
+
+If Mail says **Sign-in with Google isn't set up in this build**, browser
+sign-in cannot start: the build has no Google client ID. An app password is
+the alternative for a new account; the normal Google password does not work.
+The release owner must complete the checklist below to enable browser sign-in.
+
 ## Owner checklist
 
 What only the owner of the Caprock releases can do; the code, the build

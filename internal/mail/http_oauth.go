@@ -73,13 +73,16 @@ func (f *oauthFlows) finish(id string, o oauthOutcome) {
 	f.done[id] = o
 }
 
-// status is the flow id's outcome: pending while its browser has not come
-// back, expired when it never did (or the id is unknown).
+// status is the flow id's outcome: pending while waiting for the browser or
+// processing its callback, expired when no result remains (or the id is unknown).
 func (f *oauthFlows) status(id string) oauthOutcome {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if o, ok := f.done[id]; ok {
-		return o
+		if time.Since(o.at) <= flowTTL {
+			return o
+		}
+		delete(f.done, id)
 	}
 	now := time.Now()
 	for _, fl := range f.flows {
@@ -116,6 +119,12 @@ func (f *oauthFlows) take(state string) (oauthFlow, bool) {
 	if !ok || time.Now().After(fl.expires) {
 		return oauthFlow{}, false
 	}
+	// The callback still has to exchange tokens and check both mail servers.
+	// Keep polling pending while that happens, even though state is consumed.
+	if f.done == nil {
+		f.done = map[string]oauthOutcome{}
+	}
+	f.done[fl.id] = oauthOutcome{Status: "pending", at: time.Now()}
 	return fl, true
 }
 

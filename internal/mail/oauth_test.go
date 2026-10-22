@@ -184,3 +184,82 @@ func TestOAuthStartOnlyOnLoopback(t *testing.T) {
 		t.Fatalf("LAN start: %d %s", w.Code, w.Body)
 	}
 }
+
+// Consuming the single-use state must not look like an expired sign-in while
+// the browser callback exchanges tokens and checks the mail servers.
+func TestOAuthFlowPendingDuringCallback(t *testing.T) {
+	var flows oauthFlows
+	flows.put("state", oauthFlow{id: "flow", expires: time.Now().Add(time.Minute)})
+	if _, ok := flows.take("state"); !ok {
+		t.Fatal("state not accepted")
+	}
+	if _, ok := flows.take("state"); ok {
+		t.Fatal("state reused")
+	}
+	if got := flows.status("flow"); got.Status != "pending" {
+		t.Fatalf("during callback: %+v", got)
+	}
+	flows.finish("flow", oauthOutcome{Status: "ok", Email: "me@example.com"})
+	if got := flows.status("flow"); got.Status != "ok" {
+		t.Fatalf("after callback: %+v", got)
+	}
+	flows.mu.Lock()
+	out := flows.done["flow"]
+	out.at = time.Now().Add(-flowTTL - time.Second)
+	flows.done["flow"] = out
+	flows.mu.Unlock()
+	if got := flows.status("flow"); got.Status != "expired" {
+		t.Fatalf("old result: %+v", got)
+	}
+}
+
+func TestOAuthReconnectKeepsAccountAndMail(t *testing.T) {
+	s, prov, srv := oauthFixture(t)
+	srv.SetToken("")
+	srv.SetTokenCheck(prov.Valid)
+	_ = srv.Deliver("INBOX", fakemail.Msg{From: "ana@example.com", To: "me@fake.test", Subject: "keep this mail", Body: "saved message"}.Raw())
+	authURL, _ := startHint(t, s, "me@fake.test")
+	redirect, err := prov.Approve(authURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := callback(s.Handler(), redirect); w.Code != 200 {
+		t.Fatalf("sign-in: %d %s", w.Code, w.Body)
+	}
+	msg := waitInbox(t, s, "keep this mail")
+	st, _, err := s.parts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := st.Accounts(context.Background())
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("accounts: %+v, %v", accounts, err)
+	}
+	account := accounts[0]
+	account.Name, account.Signature = "Alex", "Regards, Alex"
+	if err := st.UpdateAccount(context.Background(), account); err != nil {
+		t.Fatal(err)
+	}
+	authURL, flow := startHint(t, s, account.Email)
+	redirect, err = prov.Approve(authURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := callback(s.Handler(), redirect); w.Code != 200 {
+		t.Fatalf("reconnect: %d %s", w.Code, w.Body)
+	}
+	accounts, err = st.Accounts(context.Background())
+	if err != nil || len(accounts) != 1 {
+		t.Fatalf("after reconnect: %+v, %v", accounts, err)
+	}
+	got := accounts[0]
+	if got.ID != account.ID || got.Name != account.Name || got.Signature != account.Signature {
+		t.Fatalf("account changed: %+v", got)
+	}
+	if status := flowStatus(t, s, flow); status.Status != "ok" {
+		t.Fatalf("reconnect outcome: %+v", status)
+	}
+	if w := do(t, s.Handler(), "GET", "/v1/mail/messages/"+strconv.FormatInt(msg, 10), nil); w.Code != 200 || !strings.Contains(w.Body.String(), "saved message") {
+		t.Fatalf("mail lost: %d %s", w.Code, w.Body)
+	}
+}

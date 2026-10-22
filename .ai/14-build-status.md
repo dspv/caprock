@@ -77,6 +77,27 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-23 — unreleased: Mail sign-in recovery
+
+Started 2026-10-18 and left unfinished; ported onto the current Mail code.
+
+- **OAuth.** The add-account sign-in follows `GET /v1/mail/oauth/flow`
+  instead of waiting for a new account id, so a refusal or an expired
+  attempt comes back with its reason and a re-sign-in of an existing
+  address finishes. A callback in progress stays `pending` after its
+  single-use state is consumed. Settings has *Sign in again* for OAuth
+  accounts, keeping their mail; Edit no longer offers them a password field.
+  A build without a provider's client ID says browser sign-in is not set up.
+  The Google and Azure registrations remain the owner's step
+  ([docs/mail-oauth.md](../docs/mail-oauth.md)).
+- **Timeouts.** A server that stops answering names the host and the 30 s
+  bound and what to check, without socket traces or the old guess about
+  connection limits. A failed check keeps known server settings folded and
+  offers *Try again* and the provider's help link.
+- **iCloud.** A credentials refusal becomes *iCloud rejected this sign-in*
+  with a link to make a new app-specific password; the server's answer is
+  folded under *Why this can happen*.
+
 ### 2026-10-22 — unreleased: memory of the window and the daemon
 
 After four hours the owner's window was about 600 MB and the daemon about

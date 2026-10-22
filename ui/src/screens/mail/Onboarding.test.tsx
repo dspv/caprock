@@ -131,11 +131,70 @@ describe('mail first run', () => {
     await act(async () => {})
     fireEvent.click(screen.getByText('Google'))
     await act(async () => { fireEvent.click(screen.getByText('Sign in with Google')) })
-    expect(start).toHaveBeenCalledWith('google')
+    expect(start).toHaveBeenCalledWith('google', undefined)
     expect(open).toHaveBeenCalledWith('https://accounts.example/auth', '_blank', 'noopener')
     expect(screen.getByText(/Waiting for you to approve in the browser/)).toBeTruthy()
     fireEvent.click(screen.getByText('Cancel'))
     expect(screen.getByText('Sign in with Google')).toBeTruthy()
+  })
+
+  it('reports the flow error and allows another attempt', async () => {
+    vi.spyOn(api, 'oauthProviders').mockResolvedValue({ google: true })
+    vi.spyOn(api, 'state').mockResolvedValue(empty)
+    vi.spyOn(api, 'oauthStart').mockResolvedValue({ auth_url: 'https://accounts.example/auth', flow: 'attempt-1' })
+    vi.spyOn(window, 'open').mockReturnValue(null)
+    const status = vi.spyOn(api, 'oauthFlow').mockResolvedValue({ status: 'error', error: 'Google refused access to mail.' })
+    const done = vi.fn()
+    render(<AddFlow initial="google" onDone={done} />)
+    fireEvent.click(await screen.findByText('Sign in with Google'))
+    await screen.findByText(/Waiting for you to approve/)
+    await screen.findByText('Google refused access to mail.', {}, { timeout: 3000 })
+    expect(status).toHaveBeenCalledWith('attempt-1')
+    expect(screen.getByText('Sign in with Google')).toBeTruthy()
+    expect(done).not.toHaveBeenCalled()
+  })
+
+  it('finishes reauthentication even when the account id stays the same', async () => {
+    vi.spyOn(api, 'oauthProviders').mockResolvedValue({ google: true })
+    vi.spyOn(api, 'state').mockResolvedValue({ ...empty, accounts: [acct] })
+    const start = vi.spyOn(api, 'oauthStart').mockResolvedValue({ auth_url: 'https://accounts.example/auth', flow: 'reconnect' })
+    vi.spyOn(window, 'open').mockReturnValue(null)
+    vi.spyOn(api, 'oauthFlow').mockResolvedValue({ status: 'ok', email: acct.email })
+    const done = vi.fn()
+    render(<AddFlow initial="google" loginHint={acct.email} onDone={done} />)
+    fireEvent.click(await screen.findByText('Sign in with Google'))
+    await waitFor(() => expect(done).toHaveBeenCalledOnce(), { timeout: 3000 })
+    expect(start).toHaveBeenCalledWith('google', acct.email)
+  })
+
+  it('explains why Google offers an app password instead of sign-in', async () => {
+    render(<AddFlow initial="google" onDone={() => {}} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Checking sign-in options')
+    expect(await screen.findByText(/Sign-in with Google isn't set up in this build/)).toBeTruthy()
+  })
+
+  it('ignores a sign-in start that completes after cancellation', async () => {
+    vi.spyOn(api, 'oauthProviders').mockResolvedValue({ google: true })
+    let resolve!: (r: { auth_url: string; flow: string }) => void
+    vi.spyOn(api, 'state').mockResolvedValue(empty)
+    vi.spyOn(api, 'oauthStart').mockReturnValue(new Promise((r) => { resolve = r }))
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<AddFlow initial="google" onDone={() => {}} />)
+    fireEvent.click(await screen.findByText('Sign in with Google'))
+    await waitFor(() => expect(api.oauthStart).toHaveBeenCalled())
+    fireEvent.click(screen.getByText('Use an app password instead'))
+    await act(async () => { resolve({ auth_url: 'https://accounts.example/auth', flow: 'cancelled' }) })
+    expect(open).not.toHaveBeenCalled()
+    expect(screen.queryByText(/Waiting for you to approve/)).toBeNull()
+  })
+
+  it('retries a failed availability check instead of asking for a password', async () => {
+    vi.spyOn(api, 'oauthProviders').mockRejectedValueOnce(new Error('Daemon disconnected')).mockResolvedValue({ google: true })
+    render(<AddFlow initial="google" onDone={() => {}} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Daemon disconnected')
+    expect(screen.queryByText('App password')).toBeNull()
+    fireEvent.click(screen.getByText('Try again'))
+    expect(await screen.findByText('Sign in with Google')).toBeTruthy()
   })
 
   it('knows an imported server by its host', () => {

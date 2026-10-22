@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"errors"
+	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -69,6 +72,10 @@ func TestCheckEndsWhenAServerGoesQuiet(t *testing.T) {
 			if err == nil || !strings.HasPrefix(err.Error(), tc.want) || !strings.Contains(err.Error(), "stopped answering") {
 				t.Fatalf("err = %v", err)
 			}
+			// The host is named once; no socket address or port trace.
+			if strings.Contains(err.Error(), ":"+strconv.Itoa(qp)) || strings.Contains(err.Error(), "->") {
+				t.Fatalf("socket detail in %v", err)
+			}
 		})
 	}
 }
@@ -94,5 +101,21 @@ func TestSignedInConnectionOutlivesTheBound(t *testing.T) {
 	time.Sleep(600 * time.Millisecond)
 	if err := c.Noop().Wait(); err != nil {
 		t.Fatalf("noop after the bound: %v", err)
+	}
+}
+
+func TestTimeoutMessageKeepsCauseWithoutExposingSocketTrace(t *testing.T) {
+	cause := fmt.Errorf("in response: cannot read tag: read tcp 10.0.0.1:1234->198.51.100.1:993: %w", os.ErrDeadlineExceeded)
+	err := quiet("mail.spacemail.com", cause)
+	if !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatal("timeout cause lost")
+	}
+	for _, hidden := range []string{"cannot read tag", "read tcp", "10.0.0.1", "limiting connections", "password"} {
+		if strings.Contains(err.Error(), hidden) {
+			t.Fatalf("misleading or raw detail in message: %v", err)
+		}
+	}
+	if !strings.Contains(err.Error(), "mail.spacemail.com") || !strings.Contains(err.Error(), "try again") {
+		t.Fatalf("unhelpful timeout: %v", err)
 	}
 }
