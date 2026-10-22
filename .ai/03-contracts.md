@@ -312,6 +312,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   the role: `/v1/pair/*` but `me`, settings writes (`PUT /v1/settings`,
   Telegram, GitHub connect, custom agents, subscriptions, Second Brain's
   settings), `POST /v1/footprint/orphans/stop`, `POST /v1/resources/reap`,
+  `POST /v1/system/memory/end-idle`, `POST /v1/system/memory/restart`,
   `POST /v1/shutdown`, `POST /v1/update/check`, `POST /v1/hooks/install`,
   `open-terminal`, the editor routes, `POST /v1/sessions/remove`,
   `/v1/machines` and `/v1/m/…`. Rule 7 is unchanged: the agent manager
@@ -1278,7 +1279,7 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
 {"at": 1791400000000,
  "sessions": [{"session_id": "…", "pid": 4242, "cpu_pct": 182.4, "mem_bytes": 1342177280, "procs": 7, "warm": true,
                "top": [{"pid": 4300, "name": "node vite", "cpu_pct": 150.2, "mem_bytes": 1181116006}],
-               "hot": true, "over_since": 1791399800000}],
+               "hot": true, "over_since": 1791399800000, "max_proc_bytes": 1181116006, "heavy": "big"}],
  "caprock": {"daemon": {"pid": 1, "name": "caprock", "cpu_pct": 1.2, "mem_bytes": 220000000},
              "app": {"pid": 2, "name": "caprock-app", "cpu_pct": 2.0, "mem_bytes": 48000000},
              "webview": {"count": 4, "cpu_pct": 2.1, "mem_bytes": 446000000,
@@ -1310,6 +1311,17 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   under both. The limits are round numbers chosen to separate "an agent
   waiting on the model" (a few percent) from "the machine will feel this", not
   measured thresholds.
+- **Heavy** (2026-10-22). `max_proc_bytes` is the tree's largest process's
+  own memory. `heavy` is `big` when that process holds max(3 GiB, a fifth of
+  `machine.mem_total`), `growing` when its readings — one written down every
+  10 min, kept 4 h — cover 2 h or more, gained 1 GiB or more and never fell
+  back by more than a twentieth between two; absent otherwise, and on a
+  shell. Long sessions of an agent's CLI grow: on the owner's Mac one Claude
+  Code process had a 2.7 GB footprint (peak 3.7 GB), 2 GB of it compressed,
+  with a resident set of 0.6 GB (2026-10-22) — why memory here is the
+  footprint, never the RSS. The figures are chosen, not measured. The
+  readings exist only while the meter samples, so "for hours" is measured by
+  their times, gaps and all.
 - **Caprock itself.** `daemon` is this process; `app` is the desktop app's
   shell process (`caprock-app`), absent when it is not running. `webview`
   (2026-10-13) is the processes that draw the app's window, absent without
@@ -1337,6 +1349,8 @@ own memory as below). Only reads: nothing is signalled except by the reap below.
   without swapping as the OS judges it (gopsutil `VirtualMemory`: macOS free
   plus inactive pages, Linux `MemAvailable`, Windows available physical
   memory). Absent when the OS gave none of it, and from a daemon before it.
+  `memory` (2026-10-22) is the machine's memory split by who holds it, with
+  the OS's pressure (§ System memory).
   Another computer reads it through `/v1/m/{id}/v1/resources`. Nothing acts
   on it yet: the New-agent line *"This Mac is busy — run it on …?"* waits for
   thresholds set from OQ-19's measurement ([12-risks.md](12-risks.md)).
@@ -1390,6 +1404,122 @@ nobody else cleans up after a user's Caprock. Rule 7 allows it because every
 one is a Caprock's own holder, a process some Caprock started; a holder
 running an agent or a command is never stopped. Each reap that stops
 anything is written to the footprint's `actions` (§ Footprint).
+
+#### System memory
+
+The machine's memory as a whole (2026-10-22): how full it is, who holds it,
+and ending the idle agents Caprock started on the user's click. A user's Mac
+froze with agents holding all its memory while the status bar said only what
+the agent in front used. Code: `internal/procstat/sysmem*.go` (the readings),
+`internal/daemon/sysmem.go` (the split, the states, the end). The status
+bar's item and popover are in [04-ui.md § Status strip](04-ui.md).
+
+**On every resource sample** (§ Resources, *When it samples*: every 5 s, only
+while a dashboard is open) the `resources` frame and `GET /v1/resources`
+carry `memory`, totals only — the live socket reaches every paired device:
+
+```json
+"memory": {"label": "Mac", "total": 17179869184, "used": 14110726144,
+           "swap_total": 9663676416, "swap_used": 8957198336, "swap_growing": false,
+           "pressure": "warn", "level": "tight",
+           "agents": 6657199308, "agent_count": 7, "caprock": 419430400, "other": 7034096436}
+```
+
+- **Read from.** macOS: `hw.memsize`, `host_statistics64(HOST_VM_INFO64)`
+  through libSystem (no process started), `vm.swapusage` and
+  `kern.memorystatus_vm_pressure_level` (1 `normal`, 2 `warn`, 4
+  `critical`). `used` is Activity Monitor's *Memory Used*: app memory
+  (anonymous pages less purgeable), wired and compressed; cached files are
+  not in it. Linux: `/proc/meminfo` (`used` is `MemTotal − MemAvailable`)
+  and, where the kernel keeps PSI, `/proc/pressure/memory`: `critical` when
+  `full avg10` ≥ 10, `warn` when `some avg10` ≥ 10 — round numbers chosen,
+  not measured; Linux has no levels of its own. Windows:
+  `GlobalMemoryStatusEx` (gopsutil); no pressure and no swap are read, so
+  `pressure`, `swap_total` and `swap_used` are absent.
+- **`label`** is `Mac`, `Linux`, `Windows`, or `Memory` elsewhere.
+- **`level`.** `critical` when `pressure` is `critical` or `swap_growing`;
+  `tight` when `pressure` is `warn` or `used` is 85% of `total` or more;
+  else `normal`. `swap_growing` is swap in use that grew by 256 MiB or more
+  within the last 30 s of samples. 85%, 256 MiB and 30 s are chosen, not
+  measured: room for one more agent on a 16 GB machine, and well above the
+  trickle an idle Mac swaps.
+- **Per-process memory** is the process's own, as in § Resources: on macOS
+  its physical footprint (`proc_pid_rusage` with `RUSAGE_INFO_V2`,
+  `ri_phys_footprint`, called through libSystem with purego — no cgo),
+  compressed pages included, which is what Activity Monitor shows; the
+  resident set only if that call fails. Linux `RssAnon + RssShmem`, Windows
+  private bytes.
+- **The split.** `agents` is every live session's process tree that is not a
+  shell (§ Resources' trees, each process tree once: `/clear` lists one
+  process under two ids), `agent_count` how many; `caprock` the daemon, the
+  terminal holders, the app and its web view; `other` the rest of `used`,
+  the system's own memory included. Per-process memory is each process's
+  own (§ Resources), so the parts are estimates of who holds `used`, not an
+  exact partition of it.
+- **Test hook.** `CAPROCK_TEST_MEMORY_PRESSURE=normal|warn|critical` in the
+  daemon's environment replaces the OS's `pressure` and sets
+  `"simulated": true`; any other value is ignored. For screenshots and
+  browser checks only; Caprock never sets it.
+- **Cost** (measured 2026-10-22, Apple M1 Pro, 16 GB, 669 processes,
+  `BenchmarkSystemMemory`): 7.4 µs per sample.
+
+`GET /v1/system/memory` is the popover's list, read only while it is open:
+
+```json
+{"at": 1791400000000,
+ "memory": {…the object above…},
+ "agents": [{"session_id": "…", "pid": 4242, "mem_bytes": 1932735283, "procs": 9,
+             "owned": true, "state": "idle", "idle_since": 1791397480000, "endable": true,
+             "max_proc_bytes": 1610612736, "heavy": "growing", "restartable": true}],
+ "apps": [{"name": "Google Chrome", "mem_bytes": 7348010288, "procs": 49}],
+ "idle_end": {"count": 3, "mem_bytes": 2576980377, "session_ids": ["…"]},
+ "error": "…"}
+```
+
+- **`agents`**, largest first: each tree in `memory.agents`, with `owned`
+  (Caprock started it) and `state` — `working` (mid-turn as the keep-awake
+  keeper reads it, or anything drawn or written in the last 2 min), `waiting`
+  (a permission prompt or question open, a message queued, a subagent at
+  work, paused, or the turn ended asking the user something), or `idle`,
+  with `idle_since` its last activity (§ Ending idle sessions' *last
+  activity*). `endable` is an idle agent Caprock started that is not the
+  orchestrator or one of its workers; a session another terminal started is
+  never endable.
+- **`max_proc_bytes`, `heavy`** are the tree's, as in § Resources' *Heavy*.
+  **`restartable`** is an agent Caprock started, not the orchestrator or a
+  worker, whose state is not `working`: Restart it fresh may run now.
+- **`apps`**: the three other apps using the most, every process of this
+  user outside the agents' trees and Caprock's own counted once under its
+  app — on macOS under the process macOS holds responsible for it, named
+  after its outermost `.app` (Chrome's renderers under *Google Chrome*), or
+  the program's name. Other users' processes cannot be read and stay in
+  `memory.other`. **Absent for a paired device**, which reads totals and
+  agents, not what else runs on the machine. Cost (same machine and date):
+  7.8 ms, 89 ms on the first ask while the executables are looked up once.
+- **`idle_end`** is what the button would end: the `endable` agents, how
+  many and their memory together.
+
+`POST /v1/system/memory/end-idle` `{"session_ids": ["…"]}` (1 to 256) →
+`{"ended": ["…"], "skipped": [{"session_id": "…", "why": "working"}]}`.
+Each named session is judged again under its queue lock and ended only if it
+is still `endable`; `why` is its state, `not started by Caprock`, or
+`already ending`. Ending is End's, the same as closing an idle agent's tab:
+asked first, so the transcript is written, killed after the grace; the
+conversation is continued later like any ended one. The session is not
+marked as ended for idling (§ Ending idle sessions) — the user ended it.
+A confirmed user action, never automatic; machine only — on no paired
+device's list.
+
+`POST /v1/system/memory/restart` `{"session_id": "…"}` →
+`{"ended": true, "cwd": "/…", "agent": "claude"}` or `{"ended": false, "why":
+"working"}`: the first half of **Restart it fresh**, offered on a heavy
+agent. The daemon judges the session under its queue lock — started by
+Caprock (`not started by Caprock` otherwise), `restartable` (`why` is its
+state otherwise), not already ending — ends it with End, and answers once the
+process has exited (up to End's grace and 3 s more; `it has not exited yet`
+past that). The dashboard then continues it as Continue does, `POST
+/v1/agents` with `resume` and `fork: false` in `cwd`: same conversation, a
+new process. A click, never automatic; machine only.
 
 #### Footprint
 

@@ -43,7 +43,7 @@ var computerMayAlso = map[string]bool{
 var neverAComputer = []string{
 	"PUT /v1/settings", "POST /v1/pair/code", "DELETE /v1/pair/code", "DELETE /v1/pair/devices/{id}",
 	"PUT /v1/pair/devices/{id}/role", "POST /v1/pair/devices/{id}/allow", "POST /v1/pair/lan", "POST /v1/pair/remote",
-	"GET /v1/pair/state", "POST /v1/footprint/orphans/stop", "POST /v1/resources/reap", "POST /v1/shutdown",
+	"GET /v1/pair/state", "POST /v1/footprint/orphans/stop", "POST /v1/resources/reap", "POST /v1/system/memory/end-idle", "POST /v1/system/memory/restart", "POST /v1/shutdown",
 	"POST /v1/update/check", "POST /v1/hooks/install", "POST /v1/sessions/{id}/open-terminal", "GET /v1/editors",
 	"POST /v1/editors/open", "PUT /v1/telegram/token", "POST /v1/github/connect", "PUT /v1/agents/custom",
 	"POST /v1/subscriptions", "GET /v1/machines", "POST /v1/machines", "PATCH /v1/machines/{id}", "DELETE /v1/machines/{id}",

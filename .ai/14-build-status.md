@@ -77,6 +77,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-22 — unreleased: the machine's memory on the status bar
+
+A user's Mac froze with agents holding all its memory while the status bar
+said only what the agent in front used. The bar now shows the machine's
+memory — green, amber when the OS warns or 85% is used, red when the
+pressure is critical or swap keeps growing — read on each resource sample
+(7.4 µs on an M1 Pro: host_statistics64 and two sysctls; `/proc/meminfo` and
+PSI on Linux; GlobalMemoryStatusEx on Windows). A click lists who holds it
+and offers to end the idle agents Caprock started, through End as a closed
+tab does; agents started elsewhere are never touched, and a paired phone gets
+totals without other apps' names. An agent whose one process passes
+max(3 GiB, a fifth of the machine), or grows steadily for hours, is flagged
+in the popover and its inspector with Restart it fresh (End, then continue
+with --resume). See [03-contracts.md](03-contracts.md)
+§ System memory.
+
 ### 2026-10-22 — unreleased: Second Brain re-tags memories without keywords
 
 Migration 0069 gave each new memory English keywords, but the memories kept

@@ -9,7 +9,8 @@
  */
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import type { SessionSummary } from '@/lib/api'
-import { api, errText } from '@/lib/api'
+import { api, errText, isPairedDevice } from '@/lib/api'
+import { heavyLine, heavyText, restartFresh } from '@/lib/memory'
 import { fmtCPU, fmtMem, refreshResources, useResources, useSessionHot, useSessionResources, type ReapResult, type SessionResources } from '@/lib/resources'
 import { SectionLabel } from './Cockpit'
 import { FitSummary } from './FitSummary'
@@ -121,9 +122,15 @@ export const HotMark = memo(function HotMark({ sessionId }: { sessionId: string 
   )
 })
 
-/** The inspector's list of the session's busiest processes. */
-export function Processes({ sessionId }: { sessionId: string }) {
+/**
+ * The inspector's list of the session's busiest processes, and the heavy
+ * flag: one process too big, or growing for hours, with Restart it fresh
+ * for an agent Caprock started (lib/memory.ts).
+ */
+export function Processes({ sessionId, session }: { sessionId: string; session?: SessionSummary }) {
   const r = useSessionResources(sessionId)
+  const [restarting, setRestarting] = useState(false)
+  const [said, setSaid] = useState<string>()
   if (!r || r.top.length === 0) return null
   return (
     <section aria-label="Processes" className="grid gap-2" data-processes>
@@ -141,6 +148,30 @@ export function Processes({ sessionId }: { sessionId: string }) {
         ))}
       </ul>
       {r.hot && <p className="text-[11.5px] text-warn">{hotReasonShort(r)}</p>}
+      {r.heavy && (
+        <div data-heavy={r.heavy} className="grid gap-1 text-[11.5px]">
+          <p className="text-danger">{heavyText(r.heavy, r.max_proc_bytes)}</p>
+          {session?.owned && session.status !== 'ended' && (
+            <>
+              <p className="text-fg-faint">{heavyLine(session.agent)}</p>
+              {!isPairedDevice() && (
+                <button type="button" data-restart-fresh={sessionId} disabled={restarting} className={`${BUTTON} justify-self-start`}
+                  onClick={() => {
+                    setRestarting(true)
+                    setSaid(undefined)
+                    restartFresh(sessionId, session.cwd)
+                      .then(() => setSaid('Restarted fresh; the conversation carries on.'))
+                      .catch((e: unknown) => setSaid(errText(e)))
+                      .finally(() => setRestarting(false))
+                  }}>
+                  {restarting ? 'Restarting…' : 'Restart it fresh'}
+                </button>
+              )}
+            </>
+          )}
+          {said && <p role="status" className="text-fg-muted">{said}</p>}
+        </div>
+      )}
     </section>
   )
 }

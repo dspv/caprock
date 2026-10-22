@@ -54,6 +54,67 @@ func (s *Server) handleFootprint(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.d.Footprint(r.Context(), q.Get("orphans") == "1", q.Get("fresh") == "1"))
 }
 
+// handleSystemMemory answers GET /v1/system/memory: how full the machine's
+// memory is, the agents holding it with what each is doing, and the other
+// apps using the most (03-contracts.md § System memory). A paired device
+// gets it without the other apps: totals, not what else runs here.
+func (s *Server) handleSystemMemory(w http.ResponseWriter, r *http.Request) {
+	if s.d.SystemMemory == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("system memory not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.SystemMemory(r.Context(), s.fromPairedDevice(r)))
+}
+
+// maxEndIdle bounds one end-idle request.
+const maxEndIdle = 256
+
+// handleEndIdleAgents ends the idle agents the user chose in the memory
+// popover: {"session_ids": [...]}. The daemon ends each only if it is still
+// idle and was started by Caprock (rule 7), the way closing an idle tab
+// ends one. Machine only: on no paired device's list.
+func (s *Server) handleEndIdleAgents(w http.ResponseWriter, r *http.Request) {
+	if s.d.EndIdleAgents == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("ending idle agents is not available"))
+		return
+	}
+	var body struct {
+		SessionIDs []string `json:"session_ids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
+		return
+	}
+	if len(body.SessionIDs) == 0 || len(body.SessionIDs) > maxEndIdle {
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("session_ids: name 1 to %d sessions", maxEndIdle))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.EndIdleAgents(r.Context(), body.SessionIDs))
+}
+
+// handleRestartEnd is Restart it fresh's first half, {"session_id": "…"}:
+// the daemon ends the heavy agent the way End does, if Caprock started it
+// and it is not mid-turn, and answers once it has exited; the dashboard then
+// continues the conversation with --resume. Machine only.
+func (s *Server) handleRestartEnd(w http.ResponseWriter, r *http.Request) {
+	if s.d.RestartEnd == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("restarting an agent is not available"))
+		return
+	}
+	var body struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
+		return
+	}
+	if body.SessionID == "" {
+		s.failCode(w, http.StatusBadRequest, errors.New("session_id is required"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.RestartEnd(r.Context(), body.SessionID))
+}
+
 // OrphanTarget names one process from the footprint's orphan list: its pid
 // and the start time the list gave, so a pid reused since is not touched.
 type OrphanTarget struct {

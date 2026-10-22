@@ -16,6 +16,7 @@ import { AppUpdateNotice } from './AppUpdateNotice'
 import { StaleUiPill } from './StaleUiPill'
 import { KeepAwakeIndicator } from './KeepAwake'
 import { SessionLoad } from './ResourceMeter'
+import { MemoryBar } from './MemoryBar'
 import { CaprockFootprint } from './FootprintPanel'
 import { isPairedDevice } from '@/lib/api'
 import { useAppUpdate } from '@/lib/appupdate'
@@ -76,6 +77,9 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
       <span className="ml-auto flex items-center gap-4">
         {/* Caprock's own memory and disk, always: whether a slow machine
           * is Caprock is a question with or without a session in front. */}
+        {/* The machine's memory, always: a Mac froze with agents holding
+          * all of it while the strip said only the front agent's share. */}
+        <MemoryBar owner={!isPairedDevice()} sessions={sessions} onOpenSession={onOpenSession} />
         <CaprockFootprint owner={!isPairedDevice()} />
         {pane && pane.status !== 'live' && (
           <span title="The terminal in front">{pane.status}</span>

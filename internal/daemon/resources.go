@@ -71,6 +71,12 @@ type SessionResources struct {
 	// OverSince is when the tree last went over a limit (unix ms), 0 while
 	// it is under both; Hot follows hotAfter later.
 	OverSince int64 `json:"over_since,omitempty"`
+	// MaxProcBytes is the tree's largest process's own memory — on macOS
+	// its physical footprint, compressed pages included.
+	MaxProcBytes uint64 `json:"max_proc_bytes"`
+	// Heavy flags an agent whose one process is too big ("big") or has grown
+	// steadily for hours ("growing"); "" otherwise (sysmem.go, heavyOf).
+	Heavy string `json:"heavy,omitempty"`
 }
 
 // HostSummary is the pty-hosts on this machine, counted.
@@ -155,7 +161,11 @@ type ResourceReport struct {
 	// reads through /v1/m/{id}/v1/resources to say which one has room.
 	// Absent when the OS gave none of it.
 	Machine *MachineResources `json:"machine,omitempty"`
-	Error   string            `json:"error,omitempty"`
+	// Memory is the machine's memory and who holds it, totals only
+	// (sysmem.go; 03-contracts.md § System memory). Absent when the OS
+	// gave none of it.
+	Memory *MachineMemory `json:"memory,omitempty"`
+	Error  string         `json:"error,omitempty"`
 
 	// What the footprint needs beyond the contract's figures (footprint.go).
 	scan   caprockScan
@@ -192,6 +202,11 @@ type resourceMeter struct {
 	orphLast    OrphanReport
 	// hist is the last hour of samples (reshistory.go).
 	hist resourceHistory
+	// swap is the last swapGrowWindow of swap readings (sysmem.go).
+	swap []swapMark
+	// growth is each session's largest process over the last hours, one
+	// reading per growEvery (sysmem.go).
+	growth map[string][]growPoint
 }
 
 func newResourceMeter() *resourceMeter {
@@ -200,6 +215,7 @@ func newResourceMeter() *resourceMeter {
 		argv:    map[pidKey][]string{}, env: map[pidKey][]string{},
 		exe: map[pidKey]string{}, resp: map[pidKey]int32{}, tty: map[pidKey]bool{},
 		over:        map[string]*overState{},
+		growth:      map[string][]growPoint{},
 		orphSampler: procstat.NewSampler(),
 	}
 }
@@ -328,6 +344,7 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 			s.CPUPct += u.CPUPct
 			s.MemBytes += u.MemBytes
 			s.Warm = s.Warm && u.Warm
+			s.MaxProcBytes = max(s.MaxProcBytes, u.MemBytes)
 			procs = append(procs, ProcUsage{PID: pid, CPUPct: u.CPUPct, MemBytes: u.MemBytes})
 		}
 		sort.Slice(procs, func(i, j int) bool {
@@ -344,12 +361,24 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 		}
 		s.Top = procs
 		d.res.judge(&s, now)
+		var total uint64
+		if r.Machine != nil {
+			total = r.Machine.MemTotal
+		}
+		if d.mgr == nil || !d.mgr.IsShell(id) {
+			s.Heavy = d.res.heavyOf(id, s.MaxProcBytes, total, now)
+		}
 		r.Sessions = append(r.Sessions, s)
 	}
 	// Forget sessions that are gone, so a pid reused tomorrow starts cold.
 	for id := range d.res.over {
 		if _, ok := trees[id]; !ok {
 			delete(d.res.over, id)
+		}
+	}
+	for id := range d.res.growth {
+		if _, ok := trees[id]; !ok {
+			delete(d.res.growth, id)
 		}
 	}
 	sort.Slice(r.Sessions, func(i, j int) bool { return r.Sessions[i].SessionID < r.Sessions[j].SessionID })
@@ -359,6 +388,7 @@ func (d *Daemon) sampleResources(ctx context.Context) *ResourceReport {
 	r.scan = scan
 	r.others = withMemory(scan.daemons, use)
 	r.apps = withMemory(scan.apps, use)
+	r.Memory = d.machineMemory(r, now)
 	d.res.forgetGone(tab)
 	d.res.last = r
 	d.res.hist.record(r)
