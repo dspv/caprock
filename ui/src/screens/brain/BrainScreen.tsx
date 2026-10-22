@@ -31,6 +31,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { isPairedDevice, type BrainNode } from '@/lib/api'
+import { McpConnectRow } from '@/components/McpConnect'
 import { BRAIN_TAGLINE, isBuilding, isEntity, KIND_COLOR, KIND_LABEL, openBrainCapture, useBrainGraph, useBrainStatus } from '@/lib/brain'
 import { matchRanges } from '@/lib/brainsearch'
 import { fmtAgo } from '@/lib/format'
@@ -160,6 +161,7 @@ export function BrainScreen({ node }: { node?: number }) {
         )}
       </header>
 
+      {owner && phase !== 'loading' && <McpConnectRow />}
       {vaultsOpen && <ObsidianVaults onClose={() => setVaultsOpen(false)} />}
       {phase === 'loading' && <Skeleton rows={5} className="rounded-[var(--radius-panel)] border border-border bg-panel" />}
 

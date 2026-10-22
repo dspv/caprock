@@ -4416,6 +4416,43 @@ runs from, with a Homebrew keg path (`<prefix>/Cellar/caprock/<v>/bin/caprock`)
 given as `<prefix>/bin/caprock`, which survives an upgrade; omitted when the
 path cannot be read. Settings puts it in the MCP command when asked.
 
+**Registering it with the agents** (2026-10-22, ADR-078 amended). Code:
+`internal/mcpreg`, `internal/api/mcpreg.go`. Nothing here runs except on a
+click.
+
+- **`GET /v1/mcp/agents`** → `{executable, unstable?, agents: [{agent:
+  "claude"|"codex", name, state, command?, config?}]}`. `state` is
+  `not_installed` (the CLI is not found the way a spawned agent's is: the
+  daemon's PATH, the login shell's, the installers' directories),
+  `not_connected`, `connected`, or `different` (a `caprock` entry whose
+  command is another path, or whose arguments are not `["mcp"]`: a stale
+  path). Read from the agent's own file, never by running it: Claude Code's
+  user scope is the top-level `mcpServers.caprock` of `.claude.json` in
+  `$CLAUDE_CONFIG_DIR` or the home directory (project-scoped entries are not
+  read); Codex's is the `[mcp_servers.caprock]` table of `config.toml` in
+  `$CODEX_HOME` or `~/.codex`, read line by line (`command = "…"`,
+  `args = [ … ]`). Either override is taken from the login shell's
+  environment. A registered `command` counts as this caprock when it equals
+  `executable`, is a bare `caprock` (the copy command), or resolves through
+  links to the same file. A file that cannot be read or parsed reads as
+  `not_connected`. The parse is cached on the file's size and mtime.
+  `executable` is `/v1/status`'s; `unstable` says why Connect would refuse it
+  (a macOS App Translocation path, an app on a mounted disk image, a
+  `go run` build). 501 when the daemon has no registrar.
+- **`POST /v1/mcp/agents/{agent}/connect`** runs, with the login shell's
+  environment, from the home directory, no stdin, a one-minute bound:
+  `claude mcp add -s user caprock -- <executable> mcp` or `codex mcp add
+  caprock -- <executable> mcp`. `different` first runs the remove below;
+  `connected` runs nothing. → `200` and the agent's new status.
+- **`POST /v1/mcp/agents/{agent}/disconnect`** runs `claude mcp remove -s
+  user caprock` or `codex mcp remove caprock`; `not_connected` runs nothing.
+  → `200` and the new status.
+- **Errors** are `{error, agent}`: `403` from any paired device (a phone or
+  an allowed computer: this changes the machine's agent config), `404` an
+  agent other than `claude` or `codex`, `409` not installed or an unstable
+  path, `502` the CLI failed — `error` is `<Name>: ` and the last 600
+  characters of what it printed. One change runs at a time.
+
 ### AI;DR
 
 One agent answer squeezed into at most two short sentences, on the user's

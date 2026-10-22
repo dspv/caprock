@@ -173,6 +173,10 @@ setting. Adding this server to an agent makes its answers part of that
 agent's conversation, including the model it uses; Settings states this
 alongside the copyable setup commands. The `executable` field in status
 supplies the stable binary path for installations without `caprock` on PATH.
+Registering the server is the agent's own CLI, run by the daemon
+(`internal/mcpreg`) only when the user clicks Connect on the machine: status
+is read from the agents' config files, `mcp add` / `mcp remove` run with the
+login shell's environment through `hidewin`.
 The tool list and protocol belong to
 [03-contracts.md § MCP server](03-contracts.md#mcp-server); rationale is in
 [ADR-078](08-decisions.md), setup in [docs/mcp.md](../docs/mcp.md).

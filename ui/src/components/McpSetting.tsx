@@ -2,16 +2,19 @@
  * Use Caprock from your agents (MCP, ADR-078): the commands that add
  * `caprock mcp` to Claude Code and Codex, and what it lets them read.
  *
- * Nothing here switches anything on: the user's agent starts the server
- * when it is in that agent's own MCP config, and nothing in Caprock changes.
- * So the section is the command, a copy button, and the line that says what
- * a tool's answer reaches — the agent's conversation, and so the model it
- * runs on — which is the condition of adding it, kept on screen (rule 4).
+ * The user's agent starts the server when it is in that agent's own MCP
+ * config. The section leads with each agent's status and a Connect button
+ * (McpConnect.tsx), which runs that agent's own `mcp add` on the click and
+ * nothing else; the copy commands stay below as the fallback, with the line
+ * that says what a tool's answer reaches — the agent's conversation, and so
+ * the model it runs on — which is the condition of adding it, kept on screen
+ * (rule 4).
  */
 import { useState } from 'react'
 import { Copyable } from '@/components/ui'
 import { Details, Section, Toggle } from '@/components/SettingsParts'
 import { isTauri } from '@/lib/appmode'
+import { McpConnectList } from '@/components/McpConnect'
 
 /** What `caprock mcp` offers, in the order tools/list gives them (internal/mcp/tools.go). */
 export const MCP_TOOLS: [name: string, what: string][] = [
@@ -64,6 +67,8 @@ export function McpSetting({ executable }: { executable?: string }) {
         one, or change a setting. What a tool returns goes into your agent&rsquo;s conversation, and so to the model it runs
         on; text shaped like a key or token is replaced with [redacted]. It opens no port: it reads this Caprock while it runs.
       </p>
+      <McpConnectList />
+      <p data-help className="text-[12px] text-fg-muted">Or add it yourself:</p>
       <div className="grid gap-1.5">
         <span className="text-[14px] text-fg">Claude Code</span>
         <Copyable command={cmd.claude} className="w-fit max-w-full break-all" />

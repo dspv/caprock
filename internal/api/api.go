@@ -192,6 +192,9 @@ type Deps struct {
 	// Catalog answers the agent pickers and keeps the custom agents
 	// (ADR-046). nil ⇒ /v1/agents/catalog and /v1/agents/custom return 501.
 	Catalog AgentCatalog
+	// MCP reads and changes whether `caprock mcp` is registered with Claude
+	// Code and Codex (ADR-078). nil ⇒ /v1/mcp/agents returns 501.
+	MCP MCPRegistrar
 	// Subscriptions keeps the sign-ins of Settings → Subscriptions (ADR-048).
 	// nil ⇒ /v1/subscriptions returns 501.
 	Subscriptions SubscriptionManager
@@ -892,6 +895,10 @@ func New(d Deps) *Server {
 	m.HandleFunc("DELETE /v1/brain/vaults/{id}", s.handleRemoveBrainVault)
 	m.HandleFunc("GET /v1/brain", s.handleBrainGraph)
 	m.HandleFunc("GET /v1/brain/status", s.handleBrainStatus)
+	// Connect Caprock's MCP server to the user's agents (mcpreg.go, ADR-078).
+	m.HandleFunc("GET /v1/mcp/agents", s.handleMCPAgents)
+	m.HandleFunc("POST /v1/mcp/agents/{agent}/connect", s.handleMCPConnect)
+	m.HandleFunc("POST /v1/mcp/agents/{agent}/disconnect", s.handleMCPDisconnect)
 	m.HandleFunc("GET /v1/brain/handoff", s.handleBrainHandoff)
 	m.HandleFunc("GET /v1/brain/spend", s.handleBrainSpend)
 	m.HandleFunc("GET /v1/brain/decisions", s.handleBrainDecisions)

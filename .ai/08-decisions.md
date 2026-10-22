@@ -5757,7 +5757,8 @@ decision avoids), or the home repository proves the wrong default and a
 ## ADR-078 — `caprock mcp`: a read-only MCP server on stdio, answered from the daemon's loopback API
 
 **Date:** 2026-10-18 · **Status:** accepted (owner, 2026-10-18, after
-reading how ScreenMind lets agents query it over MCP). Contract:
+reading how ScreenMind lets agents query it over MCP); amended 2026-10-22
+(registration on an explicit click, below). Contract:
 [03-contracts.md § MCP server](03-contracts.md#mcp-server); screen:
 [04-ui.md § Settings](04-ui.md#settings), *Use Caprock from your agents
 (MCP)*; user docs: [docs/mcp.md](../docs/mcp.md).
@@ -5835,6 +5836,37 @@ take tools from outside.
   its own decision.
 - **Resources and prompts.** Tools cover the questions; `resources/list` and
   `prompts/list` answer empty so a client that asks is not refused.
+
+**Amended 2026-10-22: registration on an explicit click** (owner
+approved). An audit found no agent had called `caprock mcp` in seven days:
+nobody registers it, because the one route was a command to copy from
+Settings. So the Second Brain screen leads with *Let your agents ask Second
+Brain* and a button per installed agent, and Settings shows the same
+status above the copy commands (which stay as the fallback).
+
+- **The agent's own CLI writes its config.** Connect runs `claude mcp add
+  -s user caprock -- <executable> mcp` or `codex mcp add caprock --
+  <executable> mcp`; Disconnect runs their `mcp remove`. Caprock never
+  edits `~/.claude.json` or `config.toml` itself: the agents own those
+  formats, and `~/.claude.json` is rewritten by every running Claude Code.
+- **Only on a click, only at the machine.** Nothing registers on start,
+  upgrade or any other event. A paired device — a phone or an allowed
+  computer — is refused (403) and not shown the row: this changes the
+  machine's agent config, like a custom agent's command (ADR-046).
+- **User scope, an absolute path.** User scope so every project has it,
+  which is what "let your agents ask" means. The path is `/v1/status`'s
+  `executable` — a Homebrew keg path given as its `bin` link, the desktop
+  app's daemon at its own copy in the data directory (ADR-040) — and a path
+  that will vanish (App Translocation, a mounted disk image, `go run`) is
+  refused rather than written.
+- **Status is read from the files, not from `claude mcp get`.** That
+  command starts Node and health-checks the server by starting it, which on
+  every screen open would launch a `caprock mcp` under Claude Code. The two
+  keys are documented and the reads are tolerant; a registration whose
+  command is not this caprock shows *Update path*.
+- **Rule 4.** The click changes a file on this machine; nothing is sent
+  anywhere. What the agents later ask is the condition stated in Settings'
+  first paragraph, unchanged.
 
 **Revisit if:** an agent needs to write into Second Brain from a session
 (a `remember` tool), a client that only speaks HTTP matters, or the SDK

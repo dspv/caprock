@@ -1595,6 +1595,22 @@ export interface BrainVault {
 export interface BrainNoteSource {
  vault_id: number; vault: string; path: string; title: string; aliases?: string[]; excerpt: string; mtime: number
 }
+/** One agent's registration of `caprock mcp` (GET /v1/mcp/agents, ADR-078). */
+export interface McpAgent {
+  agent: 'claude' | 'codex'
+  name: string
+  state: 'not_installed' | 'not_connected' | 'connected' | 'different'
+  /** What the agent's config starts, when caprock is registered. */
+  command?: string
+  config?: string
+}
+export interface McpAgents {
+  /** The caprock path Connect registers. */
+  executable?: string
+  /** Why Connect would refuse that path (a temporary location). */
+  unstable?: string
+  agents: McpAgent[]
+}
 export interface BrainStatus {
   notes?: number
   memories: number
@@ -2505,6 +2521,9 @@ export const api = {
   brainStatus: () => get<BrainStatus>('/v1/brain/status'),
   /** What the reads spent over the last `days` local days (1–90). */
   brainSpend: (days = 14) => get<BrainSpend>(`/v1/brain/spend?days=${days}`),
+  mcpAgents: () => get<McpAgents>('/v1/mcp/agents'),
+  mcpConnect: (agent: string) => post<McpAgent>(`/v1/mcp/agents/${agent}/connect`, {}),
+  mcpDisconnect: (agent: string) => post<McpAgent>(`/v1/mcp/agents/${agent}/disconnect`, {}),
   brainHandoff: (project: string) => get<BrainHandoffView>(`/v1/brain/handoff?project=${encodeURIComponent(project)}`),
   brainNode: (id: number) => get<{ node: BrainNode; links: BrainLink[]; sources?: BrainNoteSource[] }>(`/v1/brain/nodes/${id}`),
   dropBrain: (d: BrainDrop) => post<{ node: BrainNode; created: boolean }>('/v1/brain/nodes', d),
