@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.152.0: drags you can see, the costliest work, Mail sign-in recovery
+
+A minor release, one PR (#801). A dragged tab or sidebar row follows the pointer and its neighbours open the slot it will land in; the Pipeline page lists the five most expensive pull requests and releases of its window by recorded agent cost; Mail recovers failed or expired OAuth sign-ins, reconnects an account from Settings without removing its mail, and explains timeouts and iCloud refusals; the memory item reads "This Mac".
+
 ### 2026-10-22 — 0.151.0: tool statistics without reading payloads
 
 A minor release, one PR (#798). Migration 0070 adds tool_fields: what the Tools screen and the subagent rows need from a tool call is stored once when the call is written, so neither reads the payload JSON any more, which unblocks payload compression (#672). Calls stored earlier are filled in the background, newest first; until then the readers take those rows from their payloads as before, and open stays fast.

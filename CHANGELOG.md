@@ -12,6 +12,34 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.152.0] - 2026-10-23
+
+### Added
+
+- **pipeline:** A Most expensive panel under Releases on the Pipeline page: the five pull requests (open, or merged in the last 14 days) and the five releases (of the newest read) with the highest recorded agent cost at API list price, side by side, stacked on a phone. A pull request opens its detail beside the list, a release opens on GitHub; one with no recorded session is left out, and each list says the span it covers.
+
+### Changed
+
+- **status bar:** the memory item reads "This Mac" instead of "Mac".
+
+### Fixed
+
+- **mail:** Show OAuth failures and expiry in the add-account screen, keep in-progress callbacks pending, and reconnect OAuth accounts from Settings without removing their mail. Explain when browser sign-in is unavailable in a build.
+- **mail:** Keep connection timeouts concise without guessing their cause, offer retry and provider help, and keep known server settings folded after a failed account check.
+- **mail:** Explain iCloud app-specific passwords step by step and replace raw authentication failures with an actionable error and folded details.
+- **ui:** dragging a session row in the sidebar now shows it moving: the row
+  follows the pointer, raised over the others, and they slide apart by its
+  height to show where it will land. Released over the list it lands there;
+  released off the list, or on Escape, it slides back and nothing moves.
+  Before, the row only dimmed and you could not see where it was going. A
+  dragged row or tab now makes way for a neighbour once it is halfway over
+  it, rather than all the way.
+- **ui:** dragging a tab in the top strip now shows it moving: the tab
+  follows the pointer, raised over the others, and they slide apart to show
+  where it will land. Released over the strip it lands there; released off
+  the strip, or on Escape, it slides back and nothing moves. Before, the tab
+  only dimmed and you could not see where it was going.
+
 ## [0.151.0] - 2026-10-22
 
 ### Changed
