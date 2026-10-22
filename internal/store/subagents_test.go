@@ -78,24 +78,23 @@ func queryPlan(t *testing.T, q Querier, query string, args ...any) string {
 	return plan
 }
 
-// A subagent's description comes off idx_events_agent_task without opening a
-// payload: the query must name the index's expressions exactly, or SQLite
-// computes them from every Agent result again. A result whose payload is not
-// JSON is still stored — an index expression that raised on it would fail
-// the INSERT and lose the event.
+// A subagent's description comes off idx_tool_fields_agent without opening
+// a payload. A result whose payload is not JSON is still stored, and one in
+// another session names nobody here.
 func TestDescribeSubagentsReadsTheIndex(t *testing.T) {
 	ctx := context.Background()
 	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
 	at := time.Date(2026, 10, 14, 1, 0, 0, 0, time.UTC)
-	post := func(key, payload string) {
-		f.put(event.Event{SessionID: "s", Source: event.SourceHook, Kind: event.KindToolPost, Tool: "Agent",
+	post := func(session, key, payload string) {
+		f.put(event.Event{SessionID: session, Source: event.SourceHook, Kind: event.KindToolPost, Tool: "Agent",
 			Key: key, Ts: at, Payload: []byte(payload)})
 	}
-	post("post:1", `{"tool_response":{"agentId":"a","description":"Fix the cockpit"}}`)
-	post("post:2", `{"tool_response":{"agentId":"b","description":"Read the log"}}`)
-	post("post:3", `{"tool_response": not json`)
+	post("s", "post:1", `{"tool_response":{"agentId":"a","description":"Fix the cockpit"}}`)
+	post("s", "post:2", `{"tool_response":{"agentId":"b","description":"Read the log"}}`)
+	post("s", "post:3", `{"tool_response": not json`)
+	post("other", "post:4", `{"tool_response":{"agentId":"c","description":"Not this session's"}}`)
 	var n int
-	if err := f.s.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'tool.post'`).Scan(&n); err != nil || n != 3 {
+	if err := f.s.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE kind = 'tool.post'`).Scan(&n); err != nil || n != 4 {
 		t.Fatalf("stored %d Agent results (%v); a payload that is not JSON must still be stored", n, err)
 	}
 
@@ -107,10 +106,11 @@ func TestDescribeSubagentsReadsTheIndex(t *testing.T) {
 		t.Fatalf("descriptions = %q, %q, %q", list[0].Description, list[1].Description, list[2].Description)
 	}
 
-	plan := queryPlan(t, f.s.DB(), `SELECT `+agentTaskDesc+` FROM events INDEXED BY idx_events_agent_task
-		WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task') AND `+agentTaskID+` = ?`, "s", "a")
-	if !strings.Contains(plan, "<expr>=?") {
-		t.Fatalf("the agent id is not sought on the index's expression; plan:\n%s", plan)
+	plan := queryPlan(t, f.s.DB(), `SELECT f.agent_desc FROM tool_fields f INDEXED BY idx_tool_fields_agent
+		JOIN events e ON e.id = f.event_id
+		WHERE f.agent_id IN (?) AND e.session_id = ? AND e.kind = 'tool.post'`, "a", "s")
+	if !strings.Contains(plan, "COVERING INDEX idx_tool_fields_agent (agent_id=?)") {
+		t.Fatalf("the agent id is not sought on idx_tool_fields_agent; plan:\n%s", plan)
 	}
 }
 

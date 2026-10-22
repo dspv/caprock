@@ -2098,6 +2098,8 @@ Premium fields below:
   file, shown relative to the home directory; WebFetch by domain; WebSearch
   by query; an MCP tool by its `action` input; any other tool by subagent
   type (Task), pattern (Grep, Glob) or command, else one `call` group.
+  The group is derived once, when the call is stored (`tool_fields`,
+  § Tool fields DDL); the home directory is applied when asked.
   A call stored with an empty input is
   grouped as `(input not recorded)`, one whose input names nothing
   groupable as `(no detail)`; neither gets a hint. Counts in hint text are
@@ -2107,7 +2109,8 @@ Premium fields below:
 - **Premium** (left out without an active licence, [ADR-022](08-decisions.md)):
   `results`, `failures` and `bytes` for the tool and per row — a result is a
   `tool.post` matched to its `tool.pre` by `key` through the unique
-  `(session_id, key)` index, a failure is one whose `is_error` is set, bytes
+  `(session_id, key)` index, a failure is one whose `is_error` is set
+  (read from `tool_fields`, § Tool fields DDL, not from the payload), bytes
   are the stored `tool_bytes` (migration 0018); a call with no stored result
   counts as a call and is left out of the rate. Each row's `trend` is 8
   equal buckets of calls placed by `trend_from_ms` and `trend_width_ms`.
@@ -6750,7 +6753,8 @@ walked its payload's overflow pages. The installed daemon's slow-query log
 named `describeSubagents` 441 times, `SubagentsSpend` 312 and
 `LiveSubagents` 48 in under two hours with nine live sessions (2026-10-14).
 
-- **`idx_events_agent_task`** holds the agent id and the description each
+- **`idx_events_agent_task`** (dropped by migration 0070, which moved the two
+  fields into `tool_fields`, § Tool fields DDL) held the agent id and the description each
   parent `Agent`/`Task` result names, as expressions, so
   `store.describeSubagents` looks up the listed agents by id and opens no
   payload. The query must spell the expressions exactly as the index does
@@ -6786,6 +6790,56 @@ first event that names a type, where one pass had read the type off every
 event of every listed agent. The three indexes are 60 KB, 8.2 MB and 21.3 MB
 there over 597 Agent results, 75,244 subagent turns and 271,249 subagent
 rows, and took 8.7 s to build, once.
+
+### Tool fields DDL (migration 0070)
+
+```sql
+CREATE TABLE IF NOT EXISTS tool_fields (
+  event_id   INTEGER PRIMARY KEY,  -- events.id
+  drill_key  TEXT,                 -- tool.pre: the call's group, home not shortened
+  drill_by   TEXT,                 -- tool.pre: what the group is (command, file, ...)
+  is_error   INTEGER,              -- tool.post: 1 when the result says it failed
+  agent_id   TEXT,                 -- Agent/Task tool.post: tool_response.agentId
+  agent_desc TEXT                  -- Agent/Task tool.post: tool_response.description
+);
+CREATE INDEX IF NOT EXISTS idx_tool_fields_agent
+  ON tool_fields(agent_id, agent_desc)
+  WHERE agent_id IS NOT NULL;
+CREATE TRIGGER IF NOT EXISTS events_tool_fields_delete AFTER DELETE ON events BEGIN
+  DELETE FROM tool_fields WHERE event_id = OLD.id;
+END;
+DROP INDEX IF EXISTS idx_events_agent_task;
+```
+
+What the two readers that opened tool payloads need, stored once when the
+call is written, so no read depends on the payload's JSON — the first step of
+compressing tool payloads (#672). `store.ToolDrillStats` called
+`json_extract` eleven times per call and once per result;
+`store.describeSubagents` sought `idx_events_agent_task`, whose expressions
+parse the result JSON.
+
+- **Rows.** A `tool.pre` always has one: `drill_key` and `drill_by` are
+  `store.drillKey` over its input, with the home directory left as is (the
+  reader shortens it). A `tool.post` has one only when it failed or is an
+  `Agent`/`Task` result naming its subagent; no row means it succeeded and
+  names nobody.
+- **A side table, not columns on `events`.** A column added to `events` sits
+  after `payload`, and reading it walks the payload's overflow pages
+  (§ Subagent reads DDL); these rows are a few dozen bytes each.
+- **Written** by `store.InsertEvent` beside the event. A payload rewritten in
+  place (the Codex input repair) calls `store.RefreshToolFields`. The trigger
+  deletes a row with its event, whichever code deletes it.
+- **Filled** for older rows by the migration itself for results (SQL over
+  their payloads), and by `Store.backfillToolFields` on Open for calls,
+  since `drillKey` is Go. `meta.tool_fields_version` records the derivation;
+  raising `store.toolFieldsVersion` re-derives every call on the next Open.
+
+Measured on a copy of the owner's database (2026-10-22; 2.0 GB, 220,815
+calls, 210,252 results), warm, medians of five through the Go driver: the
+Bash drill-down over 30 days 4.07 s → 0.83 s, over all time 7.32 s → 1.38 s;
+Read over all time 1.04 s → 0.43 s. Every group, count and hint of nine
+tools came out byte-identical. The migration and the backfill took 15 s on
+the first Open.
 
 ### First-prompt DDL (migration 0033)
 

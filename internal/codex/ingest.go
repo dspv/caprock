@@ -1193,11 +1193,13 @@ func (in *Ingester) syncTools(ctx context.Context, s *Session) (int, error) {
 					string(f.input), f.id); err != nil {
 					return err
 				}
-				continue
-			}
-			if _, err := q.ExecContext(ctx,
+			} else if _, err := q.ExecContext(ctx,
 				`UPDATE events SET payload = json_set(payload, '$.tool_use_id', ?, '$.tool_input', json(?)) WHERE id = ?`,
 				f.useID, string(f.input), f.id); err != nil {
+				return err
+			}
+			// The Tools screen groups the call by its input, stored beside it.
+			if err := store.RefreshToolFields(ctx, q, f.id); err != nil {
 				return err
 			}
 		}

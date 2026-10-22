@@ -226,6 +226,13 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 		return 0, err
 	}
 	ev.ID = id
+	// What the Tools screen and the subagent rows read from a tool call,
+	// stored beside it so neither reads the payload again (migration 0070).
+	if f, ok := readToolFields(ev.Kind, ev.Tool, ev.Payload); ok {
+		if err := putToolFields(ctx, q, id, f); err != nil {
+			return id, fmt.Errorf("insert tool fields: %w", err)
+		}
+	}
 	return id, nil
 }
 

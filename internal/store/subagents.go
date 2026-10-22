@@ -146,33 +146,26 @@ func countSubagentCalls(ctx context.Context, q Querier, sessionID string, workin
 	return rows.Err()
 }
 
-// agentTaskID and agentTaskDesc are the agent id and the description a
-// parent's Agent/Task result names, exactly as idx_events_agent_task
-// (migration 0054) indexes them: SQLite matches an indexed expression by its
-// text, so a query that spells either differently opens every payload again.
-const (
-	agentTaskID   = `(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.agentId') END)`
-	agentTaskDesc = `(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.description') END)`
-)
-
 // describeSubagents fills Description from the parent's Agent calls whose
 // result names the agent. Only the listed agents are looked up, each by its
-// id in idx_events_agent_task, so no result payload is read: they hold the
+// id in idx_tool_fields_agent, so no result payload is read: they hold the
 // subagent's whole answer, and reading all of a busy session's on every
-// refresh was 0.6 s (§ Subagent reads DDL).
+// refresh was 0.6 s (§ Subagent reads DDL, § Tool fields DDL).
 func describeSubagents(ctx context.Context, q Querier, sessionID string, working []SubagentActivity) error {
 	if len(working) == 0 {
 		return nil
 	}
-	args := []any{sessionID}
+	args := []any{}
 	for _, a := range working {
 		args = append(args, a.AgentID)
 	}
+	args = append(args, sessionID)
 	rows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(`+agentTaskID+`, ''), COALESCE(`+agentTaskDesc+`, '')
-		  FROM events INDEXED BY idx_events_agent_task
-		 WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task')
-		   AND `+agentTaskID+` IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)`, args...)
+		SELECT f.agent_id, COALESCE(f.agent_desc, '')
+		  FROM tool_fields f INDEXED BY idx_tool_fields_agent
+		  JOIN events e ON e.id = f.event_id
+		 WHERE f.agent_id IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)
+		   AND e.session_id = ? AND e.kind = 'tool.post' AND e.tool IN ('Agent', 'Task')`, args...)
 	if err != nil {
 		return err
 	}

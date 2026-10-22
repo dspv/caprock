@@ -321,6 +321,11 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		s.log.Warn("inner tool backfill incomplete; some Codex edits still count as commands",
 			"component", "store", "err", err)
 	}
+	// Migration 0070's drill_key is drillKey, which is Go.
+	if err := s.backfillToolFields(ctx); err != nil {
+		s.log.Warn("tool fields backfill incomplete; some older calls show as not recorded on the Tools screen",
+			"component", "store", "err", err)
+	}
 	return s, nil
 }
 

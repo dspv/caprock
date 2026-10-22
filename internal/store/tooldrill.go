@@ -75,9 +75,10 @@ type DrillOptions struct {
 // drillTrendBuckets is how many columns a row's trend has.
 const drillTrendBuckets = 8
 
-// ToolDrillStats groups one tool's calls. The pre carries the input; its
-// post (same session, key post:<id>) carries the result, read through the
-// unique (session_id, key) index rather than by scanning results.
+// ToolDrillStats groups one tool's calls. The pre's group and the post's
+// failure are read from tool_fields, stored when each was written (migration
+// 0070), so no payload is opened; the post is found through the unique
+// (session_id, key) index rather than by scanning results.
 func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, error) {
 	if o.Rows <= 0 {
 		o.Rows = 12
@@ -87,18 +88,12 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 	}
 	scope, args := o.Agent.sessionScope("pr.session_id")
 	rows, err := q.QueryContext(ctx, `
-		SELECT pr.ts, COALESCE(json_extract(pr.payload, '$.cwd'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.command'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.file_path'), json_extract(pr.payload, '$.tool_input.notebook_path'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.url'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.query'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.action'), json_extract(pr.payload, '$.tool_input.tool_name'), json_extract(pr.payload, '$.tool_input.name'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.pattern'), ''),
-		       COALESCE(json_extract(pr.payload, '$.tool_input.subagent_type'), ''),
-		       CASE WHEN json_type(pr.payload, '$.tool_input') = 'text' THEN json_extract(pr.payload, '$.tool_input') ELSE '' END,
-		       po.id IS NOT NULL, COALESCE(json_extract(po.payload, '$.is_error'), 0), COALESCE(po.tool_bytes, 0)
+		SELECT pr.ts, COALESCE(f.drill_key, ''), COALESCE(f.drill_by, ''),
+		       po.id IS NOT NULL, COALESCE(pf.is_error, 0), COALESCE(po.tool_bytes, 0)
 		FROM events pr
+		LEFT JOIN tool_fields f ON f.event_id = pr.id
 		LEFT JOIN events po ON po.session_id = pr.session_id AND po.key = 'post:' || substr(pr.key, 5)
+		LEFT JOIN tool_fields pf ON pf.event_id = po.id
 		WHERE pr.kind = 'tool.pre' AND pr.tool = ? AND pr.ts >= ?`+nonInternalEventPr+scope+`
 		ORDER BY pr.ts`, append([]any{o.Tool, o.FromMs}, args...)...)
 	if err != nil {
@@ -111,16 +106,21 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 	var first, last int64
 	for rows.Next() {
 		var (
-			ts                                                 int64
-			cwd, cmd, file, link, query, action, pat, sub, raw string
-			hasPost                                            bool
-			isErr                                              int64
-			bytes                                              int64
+			ts, isErr, bytes int64
+			key, by          string
+			hasPost          bool
 		)
-		if err := rows.Scan(&ts, &cwd, &cmd, &file, &link, &query, &action, &pat, &sub, &raw, &hasPost, &isErr, &bytes); err != nil {
+		if err := rows.Scan(&ts, &key, &by, &hasPost, &isErr, &bytes); err != nil {
 			return ToolDrill{}, err
 		}
-		key, by := drillKey(d.Kind, cwd, cmd, file, link, query, action, pat, sub, raw, o.Home)
+		switch by {
+		case "":
+			// A call written while its fields could not be stored; Open
+			// derives them again.
+			key, by = drillNotRecorded, "call"
+		case "file":
+			key = homeRel(key, o.Home)
+		}
 		if d.GroupBy == "" || d.GroupBy == "call" {
 			d.GroupBy = by
 		}

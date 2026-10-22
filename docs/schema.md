@@ -128,7 +128,8 @@ Rules that hold for every row:
   It is yours and it is on your disk; it is still not something to put in a
   spreadsheet by accident. `--payload` adds it, as jsonl only.
 - **Rollup tables.** `session_stats`, `daily_stats` and the rest are sums of
-  these rows; sum them yourself and the totals reconcile.
+  these rows; sum them yourself and the totals reconcile. `tool_fields` holds
+  what the Tools screen reads from each tool call, derived from its payload.
 
 ## Imported Obsidian sources
 
