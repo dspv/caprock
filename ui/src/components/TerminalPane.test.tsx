@@ -126,7 +126,7 @@ vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
 import { DESK_WRITE_MS } from '@/lib/termwrite'
 import { PAGE_HIDDEN_SUSPEND_MS } from '@/lib/visible'
-import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
+import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, HIDDEN_SCROLLBACK, HIDDEN_TRIM_MS, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SCROLLBACK, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
@@ -450,6 +450,67 @@ describe('a hidden pane does no terminal work', () => {
 // parsed 80 wide, Claude Code's cursor moves land on the wrong rows and leave
 // smeared rules and repeated status rows in the scrollback, which no later
 // reflow undoes (user report, 2026-10-13).
+describe('a long-hidden pane trims its scrollback', () => {
+  const bytes = (n: number) => new Uint8Array(n).fill(120)
+  const scrollback = () => h.terms[0]!.options.scrollback
+
+  it('keeps the full scrollback in front and on a quick switch', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active />)
+      expect(scrollback()).toBe(SCROLLBACK)
+      // In front for hours: nothing is trimmed.
+      act(() => { vi.advanceTimersByTime(HIDDEN_TRIM_MS * 3) })
+      expect(scrollback()).toBe(SCROLLBACK)
+      // Hidden, back just before the trim, hidden again: the clock starts over.
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_TRIM_MS - 1) })
+      rerender(<TerminalPane sessionId="a" active />)
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_TRIM_MS - 1) })
+      expect(scrollback()).toBe(SCROLLBACK)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('trims after HIDDEN_TRIM_MS out of sight, and has the full scrollback back before what it held is written', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender } = render(<TerminalPane sessionId="a" active />)
+      const write = h.clients[0]!.callbacks.write
+      act(() => write(bytes(1), () => {}))
+      act(() => { vi.advanceTimersByTime(SETTLE_MS) })
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      act(() => { vi.advanceTimersByTime(HIDDEN_TRIM_MS) })
+      expect(scrollback()).toBe(HIDDEN_SCROLLBACK)
+      // Output while hidden is held; shown, it is written into the full scrollback.
+      act(() => write(bytes(5), () => {}))
+      const term = h.terms[0] as unknown as { options: Record<string, unknown>; write: (d: unknown, cb?: () => void) => void }
+      const seen: unknown[] = []
+      const real = term.write.bind(term)
+      term.write = (d: unknown, cb?: () => void) => { seen.push(term.options.scrollback); real(d, cb) }
+      rerender(<TerminalPane sessionId="a" active />)
+      expect(seen).toEqual([SCROLLBACK])
+      expect(scrollback()).toBe(SCROLLBACK)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a pane closed while hidden leaves no trim behind', () => {
+    vi.useFakeTimers()
+    try {
+      const { rerender, unmount } = render(<TerminalPane sessionId="a" active />)
+      rerender(<TerminalPane sessionId="a" active={false} />)
+      unmount()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
 describe('a pane never laid out', () => {
   const bytes = (n: number) => new Uint8Array(n).fill(120)
 

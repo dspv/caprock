@@ -1123,6 +1123,7 @@ func (a *Agent) wait(m *Manager) {
 	// A session a /clear started in the process ends with it.
 	for _, id := range append([]string{a.SessionID}, followed...) {
 		m.clearPermission(id)
+		m.forgetCalls(id)
 		m.forgetMode(id)
 		m.forgetNudge(id)
 		if a.Kind != KindShell {

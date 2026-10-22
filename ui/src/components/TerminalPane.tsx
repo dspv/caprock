@@ -10,6 +10,15 @@
  * - **Hidden tabs disconnect after 30 s** (`TermClient.suspend`) and catch up
  *   when shown: v2 from the byte last seen, v1 from the daemon's snapshot. The xterm instance and its
  *   scrollback stay, so switching back paints at once.
+ * - **A tab hidden ten minutes trims its scrollback** to HIDDEN_SCROLLBACK
+ *   lines (HIDDEN_TRIM_MS), and gets the full SCROLLBACK back when shown.
+ *   xterm keeps 12 bytes a cell, so a full 10,000-line scrollback at 118
+ *   columns held 14 MB of the webview's memory per tab, kept for every tab
+ *   ever opened (measured 2026-10-22: ten full tabs held 103 MB of buffers,
+ *   24 MB once the nine behind were trimmed; .ai/04-ui.md). The
+ *   screen, the cursor, the modes and the last lines stay exactly as they
+ *   were: nothing is disposed or replayed, so the mid-frame replay a rebuilt
+ *   terminal would get from the daemon's ring is never parsed.
  * - **A hidden tab does no terminal work** — nor does the tab in front while
  *   the window is out of sight, and no cursor blinks then. Once its first output has been
  *   drawn, what arrives while it is out of sight is held and handed to xterm
@@ -113,6 +122,21 @@ export { reuploadGlyphs } from '@/lib/termatlas'
 
 /** A tab out of sight this long drops its socket. */
 export const HIDDEN_DISCONNECT_MS = 30_000
+
+/**
+ * Lines of scrollback a terminal keeps while its tab is in use: a build log
+ * passes 5,000 easily (.ai/04-ui.md § Terminal).
+ */
+export const SCROLLBACK = 10_000
+
+/** A tab out of sight this long trims its scrollback to HIDDEN_SCROLLBACK lines (the header). */
+export const HIDDEN_TRIM_MS = 10 * 60_000
+
+/**
+ * The scrollback a long-hidden tab keeps: the lines just above the screen,
+ * about what the daemon's 256 KiB ring would repaint anyway after a reset.
+ */
+export const HIDDEN_SCROLLBACK = 1000
 
 /** Output held for a hidden tab before its socket is let go and the daemon keeps the rest. */
 export const HIDDEN_HOLD_BYTES = 256 * 1024
@@ -304,7 +328,7 @@ export function TerminalPane({
       ...xtermOptions(prefs, monoStack),
       cursorBlink: true,
       cursorWidth: 2,
-      scrollback: 10000,
+      scrollback: SCROLLBACK,
       macOptionIsMeta: true,
       // The search addon highlights matches with decorations, which xterm 6
       // still files under its proposed API.
@@ -427,6 +451,7 @@ export function TerminalPane({
     let unwatchGl = () => {}
     let webglTimer = 0
     let hideTimer = 0
+    let trimTimer = 0
     // The box last fitted to (refit, below).
     let lastGeom = ''
     // When the pane was last hidden, and whether its atlas is to be
@@ -838,6 +863,10 @@ export function TerminalPane({
         releaseWebgl(kept)
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = 0
+        if (trimTimer) window.clearTimeout(trimTimer)
+        trimTimer = 0
+        // The full scrollback again before anything held is written (the header).
+        if (term.options.scrollback !== SCROLLBACK) term.options.scrollback = SCROLLBACK
         // What was held goes to xterm before anything newer the socket brings.
         flushHeld()
         conn.wake()
@@ -883,6 +912,16 @@ export function TerminalPane({
         if (webgl) keepWebgl(kept)
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = window.setTimeout(() => conn.suspend(), HIDDEN_DISCONNECT_MS)
+        // Out of sight for long, the scrollback beyond the last lines goes
+        // (the header). xterm trims from the top and moves the viewport with it.
+        if (trimTimer) window.clearTimeout(trimTimer)
+        trimTimer = window.setTimeout(() => {
+          trimTimer = 0
+          if (disposed || visible) return
+          term.options.scrollback = HIDDEN_SCROLLBACK
+          // The new-lines pill counts growth from here, not from a base that is gone.
+          lastBase = term.buffer.active.baseY
+        }, HIDDEN_TRIM_MS)
       },
       scrollToBottom: () => {
         term.scrollToBottom()
@@ -915,6 +954,7 @@ export function TerminalPane({
       unfont()
       resultsSub.dispose()
       if (hideTimer) window.clearTimeout(hideTimer)
+      if (trimTimer) window.clearTimeout(trimTimer)
       unsuspend()
       out.dispose()
       if (raf) cancelAnimationFrame(raf)

@@ -1553,8 +1553,9 @@ blank):
   wry hands `webViewWebContentProcessDidTerminate` to Tauri, and Tauri does
   nothing unless the app sets `Builder::on_web_content_process_terminate`;
   the window then draws nothing until a reload. The workspace keeps every
-  terminal mounted with 10,000 lines of scrollback and a WebGL atlas each,
-  so its process is a large one to end. The app now reloads the webview —
+  terminal mounted, each with up to 10,000 lines of scrollback (1,000 once
+  its tab has been out of sight ten minutes, since 2026-10-22,
+  [04-ui.md](04-ui.md)), so its process is a large one to end. The app now reloads the webview —
   the main window, Mail, the popover or a browser tab's page — at once the
   first time, then after 2 s, 10 s and a minute when it repeats within ten
   minutes, so a page that dies on every load does not spin.

@@ -459,6 +459,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		d.waitBackground(bgStopWithin)
 	}()
 	d.baseCtx = ctx
+	applyMemoryLimit(d.log)
 	startPprof(ctx, d.log)
 	// Before anything reads a credential: a key an older release left in
 	// config.json moves to the secret store here, once.
