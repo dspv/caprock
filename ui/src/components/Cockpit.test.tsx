@@ -535,7 +535,7 @@ describe('the spend details', () => {
     // The chart's metric first, then the next two the session carries.
     expect(within(spend()).getByRole('button', { name: 'Spend $1.84 · 950.1k tok · 12 turns' })).toHaveAttribute('aria-expanded', 'false')
     expect(within(spend()).queryByRole('group', { name: 'Spend view' })).toBeNull()
-    expect(stored()).toMatchObject({ folded: true, v: 5 })
+    expect(stored()).toMatchObject({ folded: true, v: 6 })
     unmount()
     resetSpendPrefsForTest()
     show(agent())
@@ -554,7 +554,7 @@ describe('the spend details', () => {
     const menu = within(spend()).getByRole('menu', { name: 'What the bars show' })
     expect(within(menu).getAllByRole('menuitemradio').map((b) => b.textContent?.split(/[$\d—]/)[0])).toEqual(['Cost', 'Burn rate', 'Tokens', 'Turns'])
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Tokens/ }))
-    expect(stored()).toMatchObject({ chartBy: 'tokens', v: 5 })
+    expect(stored()).toMatchObject({ chartBy: 'tokens', v: 6 })
     expect(spend().querySelector('[data-spend-time]')).toHaveAttribute('data-metric', 'tokens')
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('950.1k')
     fireEvent.click(within(spend()).getByRole('button', { name: /^Spend$/ }))
@@ -566,10 +566,11 @@ describe('the spend details', () => {
     h.summaries = { '7d': { range: '7d', cost_usd: 84.5, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary }
     const { unmount } = await act(async () => show(agent()))
     expect(spend()).toHaveAttribute('data-spend-view', 'chart')
-    expect(spend()).toHaveAttribute('data-spend-period', '7d')
+    // A stored period served every tab; each tab opens on its session now.
+    expect(spend()).toHaveAttribute('data-spend-period', 'session')
     // A pick after that holds.
     showNumbers()
-    expect(stored()).toMatchObject({ view: 'numbers', v: 5 })
+    expect(stored()).toMatchObject({ view: 'numbers', v: 6 })
     unmount()
     resetSpendPrefsForTest()
     await act(async () => { show(agent()) })
@@ -632,7 +633,8 @@ describe('the spend details', () => {
     expect(fig(/^Spent, 30 days/)).toHaveTextContent('$310.00')
     // No input in the range: no cache rate, a dash rather than a zero.
     expect(fig(/^Cache hit rate, 30 days/)).toHaveTextContent('—')
-    expect(stored()).toMatchObject({ period: '30d', view: 'numbers' })
+    expect(stored()).toMatchObject({ view: 'numbers' })
+    expect(stored()).not.toHaveProperty('period')
   })
 
   it('lays the numbers out to shrink: min-w-0 down the chain, three equal columns', async () => {
@@ -666,6 +668,34 @@ describe('the spend details', () => {
     expect(slots()).toEqual(['turns', 'cache', 'time'])
     expect(stored().slots).toEqual(['turns', 'cache', 'time'])
     expect(within(spend()).queryByRole('menu')).toBeNull()
+  })
+
+  it('opens each tab on its own session, keeps a period to its tab, and says whose figures a folded strip shows', async () => {
+    h.summaries = { '7d': { range: '7d', cost_usd: 84.5, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary }
+    const today = { ...summary, range: 'today', cost_usd: 12.25, tokens_in: 500, cache_read: 1_500, cache_write: 0, savings: { hit_rate: 0.75 }, projects: [] } as unknown as Summary
+    const one = agent()
+    const two = agent({ session_id: 's2', stats: { ...agent().stats!, session_id: 's2', cost_usd: 7.5 } })
+    const view = (s: SessionSummary) => <Inspector session={s} sessionId={s.session_id} hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={today} />
+    const { rerender } = await act(async () => render(view(one)))
+    expect(spend()).toHaveAttribute('data-spend-period', 'session')
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
+    fireEvent.click(within(spend()).getByRole('button', { name: 'today' }))
+    expect(spend()).toHaveAttribute('data-spend-period', 'today')
+    // Another tab opens on its own agent's spend, not the Caprock-wide today.
+    await act(async () => { rerender(view(two)) })
+    expect(spend()).toHaveAttribute('data-spend-period', 'session')
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$7.50')
+    // Folded, the strip draws the session's own bars and says so.
+    fireEvent.click(within(spend()).getByRole('button', { name: /^Spend$/ }))
+    const strip = () => spend().querySelector('[data-spend-folded]')!
+    expect(strip().querySelector('[data-fold-period]')).toHaveTextContent(/^session$/)
+    expect(strip().querySelectorAll('rect').length).toBeGreaterThan(0)
+    expect(strip()).toHaveTextContent('$7.50')
+    // The first tab kept its pick; its strip says it is every session's.
+    await act(async () => { rerender(view(one)) })
+    expect(strip().querySelector('[data-fold-period]')).toHaveTextContent(/^today · all$/)
+    expect(strip()).toHaveTextContent('$12.25')
+    expect(stored()).not.toHaveProperty('period')
   })
 
   it('draws the chart in the flow of the block, never over it', async () => {

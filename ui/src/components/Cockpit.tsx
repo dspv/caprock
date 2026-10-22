@@ -28,7 +28,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodFigures, periodScope, pickHero, pickSlot, setSpendPrefs, shownSlots, spendFigures, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodChip, periodFigures, periodScope, pickHero, pickSlot, setSpendPeriod, setSpendPrefs, shownSlots, spendFigures, useSpendPeriod, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
@@ -640,8 +640,9 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
 
 /**
  * The spend details under Now, unfolded by default, foldable to one strip
- * (FoldSpark). The header carries a period chip (session · today · 7d · 30d) and
- * *Chart | Numbers*, both remembered per viewer (owner, 2026-10-12: "you
+ * (FoldSpark). The header carries a period chip (session · today · 7d · 30d),
+ * per tab and *session* until picked (owner, 2026-10-22), and
+ * *Chart | Numbers*, remembered per viewer (owner, 2026-10-12: "you
  * can choose what you see — the chart or the numbers — and which ones").
  * **Chart**, the default since the figures beside the agent carry the
  * numbers (owner, 2026-10-12: "where did you put the chart?"): the
@@ -653,7 +654,8 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
  * session, never one of the figures beside the agent again.
  */
 function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSummary; sessionId: string; events: readonly Event[]; now: number; figures: SpendFigures; summary?: Summary }) {
-  const { folded, hero, view, period, slots, chartBy } = useSpendPrefs()
+  const { folded, hero, view, slots, chartBy } = useSpendPrefs()
+  const period = useSpendPeriod(sessionId)
   // Folded, the strip shows the period and the metric the chart shows.
   const range = usePeriodSummary(period, summary)
   // The session's bars, read once for the chart, the folded strip and the
@@ -683,7 +685,7 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
         </button>
         {!folded && (
           <>
-            <Segmented label={`Period: ${scope}`} value={period} options={SPEND_PERIODS.map((p) => [p, p, periodScope(p)] as const)} onPick={(p) => setSpendPrefs({ period: p })} />
+            <Segmented label={`Period: ${scope}`} value={period} options={SPEND_PERIODS.map((p) => [p, p, periodScope(p)] as const)} onPick={(p) => setSpendPeriod(sessionId, p)} />
             <Segmented label="Spend view" value={view} options={VIEW_OPTIONS} onPick={(v) => setSpendPrefs({ view: v })} />
           </>
         )}
@@ -734,10 +736,9 @@ function ChartChooser({ metric, figures }: { metric: ChartMetric; figures: Perio
   )
 }
 
-/** "7d" before a folded strip's figures, when they are not the session's own. */
+/** Whose figures a folded strip shows: *session*, or *today · all* for every session's. */
 function FoldPeriod({ period }: { period: SpendPeriod }) {
-  if (period === 'session') return null
-  return <span className="num shrink-0 rounded-[4px] border border-[var(--app-hairline)] px-1 text-[10.5px] leading-[14px] text-fg-muted">{period}</span>
+  return <span data-fold-period={period} title={periodScope(period)} className="num shrink-0 whitespace-nowrap rounded-[4px] border border-[var(--app-hairline)] px-1 text-[10.5px] leading-[14px] text-fg-muted">{periodChip(period)}</span>
 }
 
 /** The short word after a folded figure: none for dollars, which say what they are. */
