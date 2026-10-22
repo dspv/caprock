@@ -4267,6 +4267,28 @@ searching prose.
   prompt is clipped at 2,000 characters instead of 600, which cut a
   third of the prompts in the owner's last 30 days; the 24,000 per read
   is unchanged.
+- **What was skipped is caught up, for everyone** (2026-10-22). The span a
+  past read never sent is recomputable: re-running the old cut against the
+  stored events gives the oldest passage it sent, and everything after its
+  `from_event_id` before that is the gap. Almost every user who read a long
+  session has one, so the catch-up is automatic, not a button: migration
+  0068 lists the past reads, the first wake measures them, and the gaps are
+  read with the same chunks and prompt, oldest first, only when no session
+  waits and within the same daily limit and four calls per wake, so it
+  never delays a new session or spends more than the user set. On a copy of
+  the owner's database (2026-10-22) the measure found 42 gaps in 24
+  sessions, 5.8 million characters, 245 reads, in 16 seconds once. The
+  prompt says a gap is an earlier part of a session already read, which is
+  all the model needs to avoid repeating its later part. The status says
+  how far it is (`catch_up`), with the days left labelled an estimate.
+- **A short open tail waits** (2026-10-22). A read with too little to say
+  used to be recorded as skipped and move the cursor, so a short exchange
+  at the end of a session was never read even when the session went on: the
+  audit counted 58 such windows, about 5,800 characters, in 56 sessions.
+  Now a short window at the end of a session that has not ended is held:
+  the cursor stays, the session is left alone until it has newer events,
+  and the held prose is read with them. A session that has ended with a
+  short tail has it marked read, so nothing waits forever.
 - **What is kept, and its limits.** Each memory records the read it came
   from (`brain_runs`: model, tokens, cost, status) and the passage it
   cites, so its source link opens the moment it was said; it hangs off the

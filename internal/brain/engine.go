@@ -200,6 +200,9 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 		e.running = false
 		e.mu.Unlock()
 	}()
+	if err := e.FindGaps(ctx); err != nil && ctx.Err() == nil {
+		e.log().Warn("second brain: finding the skipped spans failed", "component", "brain", "err", err)
+	}
 	cands, err := e.candidates(ctx, 25)
 	if err != nil {
 		return 0, err
@@ -233,7 +236,11 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 			c.Cursor = through
 		}
 	}
-	return read, nil
+	// The catch-up only when no session waits: new sessions come first.
+	if rest, err := e.candidates(ctx, 25); err != nil || len(rest) > 0 {
+		return read, err
+	}
+	return e.readGaps(ctx, read)
 }
 
 func (e *Engine) setError(s string) {
@@ -307,7 +314,7 @@ const passagesPerRead = 400
 // past the last passage sent when some did not fit, else to the session's
 // newest event.
 func chunk(ctx context.Context, q store.Querier, c store.BrainCandidate, topics []string) (Input, int64, error) {
-	passages, err := store.BrainPassages(ctx, q, c.SessionID, c.Cursor, passagesPerRead)
+	passages, err := store.BrainPassagesBetween(ctx, q, c.SessionID, c.Cursor, c.MaxEventID, passagesPerRead)
 	if err != nil {
 		return Input{}, 0, err
 	}
@@ -324,6 +331,11 @@ func chunk(ctx context.Context, q store.Querier, c store.BrainCandidate, topics 
 // what comes back. did is true when claude was called; through is how far
 // the session's cursor now is when the read was recorded (below
 // c.MaxEventID while unread prose remains), 0 when nothing was recorded.
+//
+// Too little to say at the end of a session that has not ended is held,
+// not skipped: the cursor stays, so that prose is read with what the
+// session says next, and the session is not looked at again until it has
+// newer events or ends. Once it has ended, a short tail is marked read.
 func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did bool, through int64, err error) {
 	db := e.Store.DB()
 	started := e.now().UnixMilli()
@@ -349,12 +361,28 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	run.ThroughEventID = upTo
 	if !in.WorthReading() {
 		run.Status, run.FinishedAt = store.BrainRunSkipped, started
+		if upTo >= c.MaxEventID && !c.Ended {
+			run.Held, run.Error = true, "held: too little to read yet"
+			_, err := store.InsertBrainRun(ctx, db, run)
+			return false, 0, err
+		}
 		if _, err := store.InsertBrainRun(ctx, db, run); err != nil {
 			return false, 0, err
 		}
 		return false, upTo, nil
 	}
-	e.startReading(ctx, c, in.Passages, started)
+	if err := e.ask(ctx, c, in, run, nil); err != nil {
+		return true, 0, err
+	}
+	return true, upTo, nil
+}
+
+// ask sends one read to claude and keeps what comes back, recording the
+// run; `also`, when set, runs inside the transaction that stores it. A
+// failed call is recorded as a failed run, and its error returned.
+func (e *Engine) ask(ctx context.Context, c store.BrainCandidate, in Input, run store.BrainRun, also func(q store.Querier) error) error {
+	db := e.Store.DB()
+	e.startReading(ctx, c, in.Passages, run.StartedAt)
 	res, callErr := e.Runner.Run(ctx, Request{System: System, Prompt: in.Prompt, Model: e.model()})
 	if callErr == nil {
 		e.setPhase(PhaseLinking)
@@ -370,20 +398,20 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		var runID int64
 		defer func() { e.publishDone(e.stopReading(), runID, 0) }()
 		if ctx.Err() != nil {
-			return true, 0, ctx.Err()
+			return ctx.Err()
 		}
 		run.Status, run.Error = store.BrainRunFailed, clip(callErr.Error(), 500)
 		id, err := store.InsertBrainRun(ctx, db, run)
 		if err != nil {
-			return true, 0, err
+			return err
 		}
 		runID = id
-		return true, 0, callErr
+		return callErr
 	}
 	run.Status = store.BrainRunOK
 	var added []store.BrainNode
 	var runID int64
-	err = e.Store.WithTx(ctx, func(q store.Querier) error {
+	err := e.Store.WithTx(ctx, func(q store.Querier) error {
 		id, err := store.InsertBrainRun(ctx, q, run)
 		if err != nil {
 			return err
@@ -393,12 +421,18 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		if err != nil {
 			return err
 		}
-		return store.SetBrainRunNodes(ctx, q, id, len(added))
+		if err := store.SetBrainRunNodes(ctx, q, id, len(added)); err != nil {
+			return err
+		}
+		if also != nil {
+			return also(q)
+		}
+		return nil
 	})
 	r := e.stopReading()
 	if err != nil {
 		e.publishDone(r, 0, 0)
-		return true, 0, err
+		return err
 	}
 	e.setError("")
 	agent := ""
@@ -411,7 +445,7 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 	// After the memories, so a screen that waits for the read's end has
 	// every one of them by then.
 	e.publishDone(r, runID, len(added))
-	return true, upTo, nil
+	return nil
 }
 
 // keep stores the memories a read returned, each linked to its project, its
@@ -647,10 +681,13 @@ type Status struct {
 	Reading *Reading `json:"reading,omitempty"`
 	// Build is the progress through everything in reach — the sessions
 	// since `since` or `backfill_since` — while it is on.
-	Build         *Build `json:"build,omitempty"`
-	Since         int64  `json:"since,omitempty"`
-	BackfillSince int64  `json:"backfill_since,omitempty"`
-	LastWake      int64  `json:"last_wake,omitempty"`
+	Build *Build `json:"build,omitempty"`
+	// CatchUp is the progress through what reads before 2026-10-22
+	// skipped, while it is on and some is left; null otherwise.
+	CatchUp       *CatchUp `json:"catch_up"`
+	Since         int64    `json:"since,omitempty"`
+	BackfillSince int64    `json:"backfill_since,omitempty"`
+	LastWake      int64    `json:"last_wake,omitempty"`
 	// NextWake is when the next wake is due, unix ms; absent while it is off.
 	// At or before now when one was just asked for or is running.
 	NextWake  int64  `json:"next_wake,omitempty"`
@@ -797,6 +834,7 @@ func (e *Engine) Status(ctx context.Context) Status {
 				st.Build = b
 			}
 		}
+		st.CatchUp = e.catchUp(ctx)
 	}
 	if runs, err := store.LastBrainRuns(ctx, e.Store.DB(), 5); err == nil {
 		st.Recent = runs

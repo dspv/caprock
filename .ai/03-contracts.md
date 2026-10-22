@@ -3970,7 +3970,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
   links, handoff, running, pending, since?, backfill_since?, last_wake?,
   next_wake?, last_error?, recent: [BrainRun], reading?, build?,
-  agents_24h}`: `chosen` once
+  catch_up, agents_24h}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
@@ -3999,8 +3999,9 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
   tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
-  title?, agent?}`; `title` is the session's own name, else its first
-  stored prompt, and `agent` its agent, joined in.
+  title?, agent?, gap_id?}`; `title` is the session's own name, else its first
+  stored prompt, and `agent` its agent, joined in; `gap_id` the catch-up
+  gap a read went through, absent on a regular read.
 - **What it reads now, and how far it is.** `reading` is present while a
   read is asking `claude` about a session: `{session_id, title?, agent?,
   project?, last_event_at?, started_at, phase, passages}` — `phase`
@@ -4061,7 +4062,11 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   others named. Fewer than 300 runes of agent prose and fewer than 200 of the user's
   typed prompts (machine-tagged turns do not count) in a read: recorded
   `skipped`,
-  never sent. A failure is recorded with its error and retried after 15
+  never sent — except at the end of a session that has not ended: there
+  the read is recorded `skipped` with `held` set and the cursor stays, so
+  that prose is read with whatever the session says next, and the session
+  is not a candidate again until it has newer events or ends; once it has
+  ended, a short tail is marked read. A failure is recorded with its error and retried after 15
   minutes, doubling; after four the session waits for new prose. The
   project is the session's own, except for a session whose `cwd` is under
   the system's temp directory (`os.TempDir`, `/tmp`, `/var/folders` and
@@ -4069,6 +4074,34 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   there it is the repository's name from its remote's web address when the
   session's `repo_root` is a checkout with one, else none, so the memories
   hang off their topics only and the read is sent without a project.
+- **Catch-up.** Until 2026-10-22 a read kept only the newest 24,000
+  characters of a session's unread prose and moved the cursor past the
+  rest. Migration 0068 lists every read with status `ok` made before it in
+  `brain_gaps`; on its first wake the reader measures each by re-running
+  that old cut against the stored events (the newest 400 main-thread turns
+  up to the read's `through_event_id`, prompts clipped at 600 characters,
+  newest first until 24,000) and keeps the span it never sent, after
+  `from_event_id` up to the event before the oldest passage it did send,
+  with the reads that span takes now; a read that skipped nothing loses
+  its row. A gap is read with the same chunks, prompt and model as a
+  regular read, oldest first, its `cursor` saved with each read so a
+  restart goes on from there, its memories carrying the session's project
+  by the same rule, and its prompt opened with one line saying it is an
+  earlier part of a session already read. It is read only while the
+  extraction is on, only when no session waits, with what is left of a
+  wake's four calls, and within the same daily limit; a chunk with too
+  little to say is marked read; failures are retried as a session's are
+  and the gap given up after four in a row. The reads are `brain_runs`
+  rows with `gap_id` set, which never move a session's cursor. `catch_up`
+  in the status is `{kind, done, total, truncated?, days_left?}` while it
+  is on and a gap is left to read, else `null`. For this catch-up `kind`
+  is `skipped` (the screen also knows `backfill`), `done` and `total` the
+  reads made and in all over every gap found, `truncated` never set, and
+  `days_left`, present only when reads are left to estimate, an estimate,
+  labelled as one on screen, of the days the rest takes — the reads left
+  times the mean tokens of the catch-up reads so far (before the first, a
+  full read's: 6,000 + 4,300 + 400), over `daily_tokens`, as if the
+  catch-up had the whole limit.
 
 ### Obsidian vaults
 
@@ -5877,6 +5910,44 @@ topics and people the delete leaves unlinked go too unless dropped in by hand
 or pinned. A session's newest `brain_runs` row says how far the extraction has
 read it (`through_event_id`, never past a passage it did not send); `tokens_in` is input, cache read and cache write
 as `claude` reported them, `cost_usd` its own `total_cost_usd`.
+
+### Brain catch-up DDL (migration 0068)
+
+```sql
+CREATE TABLE IF NOT EXISTS brain_gaps (
+  id            INTEGER PRIMARY KEY,
+  run_id        INTEGER NOT NULL UNIQUE,     -- the brain_runs read that skipped it
+  session_id    TEXT    NOT NULL,
+  from_event_id INTEGER NOT NULL,
+  to_event_id   INTEGER,                     -- last event of the span; NULL until measured
+  cursor        INTEGER NOT NULL,
+  status        TEXT    NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','failed')),
+  reads_total   INTEGER NOT NULL DEFAULT 0,
+  reads_done    INTEGER NOT NULL DEFAULT 0,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  error         TEXT    NOT NULL DEFAULT '',
+  updated_at    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_brain_gaps_status ON brain_gaps(status, id);
+ALTER TABLE brain_runs ADD COLUMN gap_id INTEGER;
+ALTER TABLE brain_runs ADD COLUMN held INTEGER NOT NULL DEFAULT 0;
+INSERT OR IGNORE INTO brain_gaps (run_id, session_id, from_event_id, cursor)
+  SELECT id, session_id, from_event_id, from_event_id FROM brain_runs WHERE status = 'ok';
+```
+
+A gap is the span of one past read that the read never sent: the
+session's events after `from_event_id` up to and including `to_event_id`,
+read up to `cursor`. Every successful read existing when the migration runs
+is listed, unmeasured (`to_event_id` NULL); the daemon measures them
+(§ Second Brain, *Catch-up*), deleting the rows that skipped nothing, so a
+measured row is a real gap. `reads_total` is the reads it was measured to
+take, set to `reads_done` when it is done or given up; `attempts` the
+failed reads in a row, reset by one that succeeds. A read with `gap_id`
+set is a catch-up read and a read with `held = 1` left a short, open tail
+for later; neither counts toward a session's cursor (the newest
+`through_event_id` of its other reads that did not fail), and catch-up
+reads are left out of a session's failure count. A held read's
+`through_event_id` is the session's newest event when it was held.
 
 ### Obsidian vaults DDL (migration 0062)
 

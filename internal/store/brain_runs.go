@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"strings"
 	"unicode/utf8"
 )
@@ -34,6 +35,11 @@ type BrainRun struct {
 	Error          string  `json:"error,omitempty"`
 	StartedAt      int64   `json:"started_at"`
 	FinishedAt     int64   `json:"finished_at"`
+	// GapID is the catch-up gap a read went through (brain_gaps), 0 for a
+	// regular read. Held marks a read that left a short, still-open tail
+	// unread so it is read with what comes next (migration 0068).
+	GapID int64 `json:"gap_id,omitempty"`
+	Held  bool  `json:"-"`
 	// Project, Title and Agent are the session's, joined in when listed;
 	// Title is its own name or, without one, its first stored prompt.
 	Project string `json:"project,omitempty"`
@@ -44,9 +50,10 @@ type BrainRun struct {
 // InsertBrainRun records a read and returns its id.
 func InsertBrainRun(ctx context.Context, q Querier, r BrainRun) (int64, error) {
 	res, err := q.ExecContext(ctx, `INSERT INTO brain_runs
-		(session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.SessionID, r.FromEventID, r.ThroughEventID, r.Status, r.Model, r.TokensIn, r.TokensOut, r.CostUSD, r.Nodes, r.Error, r.StartedAt, r.FinishedAt)
+		(session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, gap_id, held)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.SessionID, r.FromEventID, r.ThroughEventID, r.Status, r.Model, r.TokensIn, r.TokensOut, r.CostUSD, r.Nodes, r.Error, r.StartedAt, r.FinishedAt,
+		nullID(r.GapID), r.Held)
 	if err != nil {
 		return 0, err
 	}
@@ -60,8 +67,13 @@ func SetBrainRunNodes(ctx context.Context, q Querier, id int64, nodes int) error
 }
 
 // brainCursorSQL is how far the extraction has read a session: the newest
-// event a read that did not fail went through.
-const brainCursorSQL = `COALESCE((SELECT MAX(r.through_event_id) FROM brain_runs r WHERE r.session_id = s.session_id AND r.status != 'failed'), 0)`
+// event a regular read that did not fail went through. A catch-up read
+// (gap_id) reads behind the cursor and a held read leaves it where it was.
+const brainCursorSQL = `COALESCE((SELECT MAX(r.through_event_id) FROM brain_runs r WHERE r.session_id = s.session_id AND r.status != 'failed' AND r.gap_id IS NULL AND r.held = 0), 0)`
+
+// brainHeldSQL is the session's newest event when a read last held its
+// short tail: until the session has newer events, or ends, it is not read.
+const brainHeldSQL = `COALESCE((SELECT MAX(r.through_event_id) FROM brain_runs r WHERE r.session_id = s.session_id AND r.held = 1), 0)`
 
 // BrainCandidate is a session with events the extraction has not read.
 type BrainCandidate struct {
@@ -75,23 +87,30 @@ type BrainCandidate struct {
 	// Cursor is the newest event already read; MaxEventID the session's newest.
 	Cursor     int64
 	MaxEventID int64
+	// Ended is set when the session has ended: a short tail can no longer
+	// wait for more and is marked read.
+	Ended bool
 }
 
 // BrainCandidates lists sessions active since `since` and quiet since
-// `idleBefore` (or ended), with events past their cursor, newest first.
+// `idleBefore` (or ended), with events past their cursor, newest first. A
+// session whose short tail was held is left out until it has newer events
+// or ends.
 func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, limit int) ([]BrainCandidate, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, project, cwd, repo_root, last_event_at, cursor, max_id FROM (
+		SELECT session_id, project, cwd, repo_root, last_event_at, cursor, max_id, ended FROM (
 			SELECT s.session_id, COALESCE(s.project, '') AS project, COALESCE(s.cwd, '') AS cwd, COALESCE(s.repo_root, '') AS repo_root,
 			       COALESCE(s.last_event_at, 0) AS last_event_at,
 			       `+brainCursorSQL+` AS cursor,
-			       COALESCE((SELECT MAX(e.id) FROM events e WHERE e.session_id = s.session_id), 0) AS max_id
+			       COALESCE((SELECT MAX(e.id) FROM events e WHERE e.session_id = s.session_id), 0) AS max_id,
+			       s.status = 'ended' AS ended,
+			       `+brainHeldSQL+` AS held
 			FROM sessions s
 			WHERE COALESCE(s.last_event_at, 0) >= ? AND (s.status = 'ended' OR COALESCE(s.last_event_at, 0) < ?)
-		) WHERE max_id > cursor
+		) WHERE max_id > cursor AND (ended OR max_id > held)
 		ORDER BY last_event_at DESC LIMIT ?`, since, idleBefore, limit)
 	if err != nil {
 		return nil, err
@@ -100,7 +119,7 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 	out := []BrainCandidate{}
 	for rows.Next() {
 		var c BrainCandidate
-		if err := rows.Scan(&c.SessionID, &c.Project, &c.Cwd, &c.RepoRoot, &c.LastEventAt, &c.Cursor, &c.MaxEventID); err != nil {
+		if err := rows.Scan(&c.SessionID, &c.Project, &c.Cwd, &c.RepoRoot, &c.LastEventAt, &c.Cursor, &c.MaxEventID, &c.Ended); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -108,15 +127,15 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 	return out, rows.Err()
 }
 
-// BrainFailures is how many reads of a session have failed since its last
+// BrainFailures is how many regular reads of a session have failed since its last
 // one that did not, and when the latest failed (unix ms).
 func BrainFailures(ctx context.Context, q Querier, sessionID string) (int, int64, error) {
 	var n int
 	var last int64
 	err := q.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(MAX(finished_at), 0) FROM brain_runs
-		WHERE session_id = ? AND status = 'failed'
-		  AND id > COALESCE((SELECT MAX(id) FROM brain_runs WHERE session_id = ? AND status != 'failed'), 0)`,
+		WHERE session_id = ? AND status = 'failed' AND gap_id IS NULL
+		  AND id > COALESCE((SELECT MAX(id) FROM brain_runs WHERE session_id = ? AND status != 'failed' AND gap_id IS NULL), 0)`,
 		sessionID, sessionID).Scan(&n, &last)
 	return n, last, err
 }
@@ -136,6 +155,13 @@ type BrainPassage struct {
 // full page means more may follow: a read that sends only part of them moves
 // its cursor to the last one it sent, and the next read goes on from there.
 func BrainPassages(ctx context.Context, q Querier, sessionID string, after int64, limit int) ([]BrainPassage, error) {
+	return BrainPassagesBetween(ctx, q, sessionID, after, math.MaxInt64, limit)
+}
+
+// BrainPassagesBetween is BrainPassages for the events after `after` up to
+// and including `through`: a read never goes past the event it was told to
+// stop at, and a catch-up read stays inside its gap.
+func BrainPassagesBetween(ctx context.Context, q Querier, sessionID string, after, through int64, limit int) ([]BrainPassage, error) {
 	if limit <= 0 {
 		limit = 400
 	}
@@ -146,9 +172,9 @@ func BrainPassages(ctx context.Context, q Querier, sessionID string, after int64
 			            THEN COALESCE(json_extract(e.payload, '$.prompt'), json_extract(e.payload, '$.text'), '')
 			            ELSE COALESCE(json_extract(e.payload, '$.text'), '') END AS text
 			FROM events e
-			WHERE e.session_id = ? AND e.id > ? AND +e.kind IN ('turn.user', 'turn.assistant')
+			WHERE e.session_id = ? AND e.id > ? AND e.id <= ? AND +e.kind IN ('turn.user', 'turn.assistant')
 			  AND e.internal = 0 AND `+MainThreadWhere+`
-		) WHERE text != '' ORDER BY id LIMIT ?`, sessionID, after, limit)
+		) WHERE text != '' ORDER BY id LIMIT ?`, sessionID, after, through, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +204,7 @@ func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error
 	rows, err := q.QueryContext(ctx, `
 		SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.model, r.tokens_in, r.tokens_out,
 		       r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, ''),
-		       COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, '')
+		       COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, ''), COALESCE(r.gap_id, 0)
 		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
 		WHERE r.status != 'skipped' ORDER BY r.id DESC LIMIT ?`, limit)
 	if err != nil {
@@ -189,7 +215,7 @@ func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error
 	for rows.Next() {
 		var r BrainRun
 		if err := rows.Scan(&r.ID, &r.SessionID, &r.FromEventID, &r.ThroughEventID, &r.Status, &r.Model, &r.TokensIn, &r.TokensOut,
-			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.Project, &r.Title, &r.Agent); err != nil {
+			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.Project, &r.Title, &r.Agent, &r.GapID); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
