@@ -191,9 +191,9 @@ mod tests {
         assert!(r.is_err());
         let text = std::fs::read_to_string(dir.join(FILE)).unwrap();
         assert!(
-            text.lines()
-                .any(|l| l.contains("panic at src/applog.rs:")
-                    && l.ends_with(": dropped file names")),
+            text.lines().any(|l| (l.contains("panic at src/applog.rs:")
+                || l.contains("panic at src\\applog.rs:"))
+                && l.ends_with(": dropped file names")),
             "{text}"
         );
         let _ = std::fs::remove_dir_all(&dir);
