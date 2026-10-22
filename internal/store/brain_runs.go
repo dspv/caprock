@@ -65,9 +65,13 @@ const brainCursorSQL = `COALESCE((SELECT MAX(r.through_event_id) FROM brain_runs
 
 // BrainCandidate is a session with events the extraction has not read.
 type BrainCandidate struct {
-	SessionID   string
-	Project     string
-	LastEventAt int64
+	SessionID string
+	Project   string
+	// Cwd and RepoRoot are where the session ran and the repository root
+	// found there at ingest ("" outside one), for the extraction to decide
+	// which project its memories belong to.
+	Cwd, RepoRoot string
+	LastEventAt   int64
 	// Cursor is the newest event already read; MaxEventID the session's newest.
 	Cursor     int64
 	MaxEventID int64
@@ -80,8 +84,9 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 		limit = 50
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, project, last_event_at, cursor, max_id FROM (
-			SELECT s.session_id, COALESCE(s.project, '') AS project, COALESCE(s.last_event_at, 0) AS last_event_at,
+		SELECT session_id, project, cwd, repo_root, last_event_at, cursor, max_id FROM (
+			SELECT s.session_id, COALESCE(s.project, '') AS project, COALESCE(s.cwd, '') AS cwd, COALESCE(s.repo_root, '') AS repo_root,
+			       COALESCE(s.last_event_at, 0) AS last_event_at,
 			       `+brainCursorSQL+` AS cursor,
 			       COALESCE((SELECT MAX(e.id) FROM events e WHERE e.session_id = s.session_id), 0) AS max_id
 			FROM sessions s
@@ -95,7 +100,7 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 	out := []BrainCandidate{}
 	for rows.Next() {
 		var c BrainCandidate
-		if err := rows.Scan(&c.SessionID, &c.Project, &c.LastEventAt, &c.Cursor, &c.MaxEventID); err != nil {
+		if err := rows.Scan(&c.SessionID, &c.Project, &c.Cwd, &c.RepoRoot, &c.LastEventAt, &c.Cursor, &c.MaxEventID); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

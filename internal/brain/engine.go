@@ -299,6 +299,7 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		_, err := store.InsertBrainRun(ctx, db, run)
 		return false, err
 	}
+	c.Project = memoryProject(ctx, c)
 	passages, err := store.BrainPassages(ctx, db, c.SessionID, c.Cursor, 400)
 	if err != nil {
 		return false, err

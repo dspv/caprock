@@ -4049,7 +4049,13 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   `part_of` the project and its topics, `relates`/`contradicts` to the
   others named. Fewer than 300 runes of agent prose: recorded `skipped`,
   never sent. A failure is recorded with its error and retried after 15
-  minutes, doubling; after four the session waits for new prose.
+  minutes, doubling; after four the session waits for new prose. The
+  project is the session's own, except for a session whose `cwd` is under
+  the system's temp directory (`os.TempDir`, `/tmp`, `/var/folders` and
+  their `/private` forms), where that label is a throwaway folder's name:
+  there it is the repository's name from its remote's web address when the
+  session's `repo_root` is a checkout with one, else none, so the memories
+  hang off their topics only and the read is sent without a project.
 
 ### Obsidian vaults
 
