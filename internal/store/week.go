@@ -833,7 +833,7 @@ func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, e
 		if err := rows.Scan(&sess, &agent, &tool, &ts, &msg, &sub, &input); err != nil {
 			return out, err
 		}
-		if tool == "" || loop.ReadOnly(tool) {
+		if tool == "" || loop.Ignored(tool, json.RawMessage(input)) {
 			continue
 		}
 		sig := loop.InputSignature(tool, json.RawMessage(input))

@@ -159,6 +159,9 @@ type Daemon struct {
 	slow   slowStatus
 	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
 	subSpend subSpendCache
+	// headless remembers which sessions were print-mode runs (interrupted.go),
+	// by session id; a transcript's entrypoint never changes.
+	headless sync.Map
 	log      *slog.Logger
 	store    *store.Store
 	// roll replaces the handoff holdout's random draw in tests.

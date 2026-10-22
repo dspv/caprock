@@ -2,7 +2,9 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -82,5 +84,58 @@ func TestARestartNamesTheSessionsItCutOff(t *testing.T) {
 	put("closed-by-stop", store.SessionPatch{Status: store.StatusActive, LastEventAt: ms(time.Now())})
 	if got := d.interrupted(ctx); got != nil {
 		t.Fatalf("after continuing both: %+v, want nothing", got)
+	}
+}
+
+// A print-mode run caught by the stop is finished work, not interrupted work:
+// four `claude -p` jobs another tool started filled the owner's banner with
+// Continue buttons (2026-10-22). The transcript says how the session was
+// started (`"entrypoint":"sdk-cli"`); an interactive one (`"cli"`) and one
+// whose transcript is gone stay. A record written before this, holding a
+// print run, drops it on read.
+func TestAPrintModeRunIsNotInterrupted(t *testing.T) {
+	ctx := context.Background()
+	stop := time.Now().Add(-time.Hour)
+	d := handoffDaemon(t, time.Now())
+	db := d.store.DB()
+	ms := func(t time.Time) int64 { return t.UnixMilli() }
+	fixture := func(name string) string {
+		p, err := filepath.Abs(filepath.Join("..", "..", "testdata", "transcripts", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	for id, p := range map[string]store.SessionPatch{
+		"print":       {Cwd: "/", TranscriptPath: fixture("print_mode.jsonl")},
+		"interactive": {Cwd: "/w", TranscriptPath: fixture("normal.jsonl")},
+		"no-file":     {Cwd: "/w", TranscriptPath: filepath.Join(t.TempDir(), "gone.jsonl")},
+	} {
+		p.StartedAt, p.LastEventAt, p.WorkedAt = ms(stop.Add(-time.Hour)), ms(stop.Add(-20*time.Minute)), ms(stop.Add(-20*time.Minute))
+		p.Status = store.StatusEnded
+		if err := store.UpsertSession(ctx, db, id, p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := transcriptEntrypoint(fixture("print_mode.jsonl")); got != "sdk-cli" {
+		t.Fatalf("print-mode entrypoint = %q, want sdk-cli", got)
+	}
+	if got := transcriptEntrypoint(fixture("normal.jsonl")); got != "cli" {
+		t.Fatalf("interactive entrypoint = %q, want cli", got)
+	}
+
+	d.recordInterrupted(ctx, ms(stop), []string{"print", "interactive", "no-file"})
+	got := d.interrupted(ctx)
+	if got == nil || len(got.IDs) != 2 || got.IDs[0] != "interactive" || got.IDs[1] != "no-file" {
+		t.Fatalf("interrupted = %+v, want interactive and no-file", got)
+	}
+
+	// The record an older daemon wrote, print run included.
+	b, _ := json.Marshal(Interrupted{StoppedAt: ms(stop), IDs: []string{"print", "interactive"}})
+	if err := d.store.SetMeta(ctx, store.MetaInterrupted, string(b)); err != nil {
+		t.Fatal(err)
+	}
+	if got := d.interrupted(ctx); got == nil || len(got.IDs) != 1 || got.IDs[0] != "interactive" {
+		t.Fatalf("old record read as %+v, want interactive only", got)
 	}
 }

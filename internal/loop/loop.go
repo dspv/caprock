@@ -145,6 +145,91 @@ func ReadOnlyTools() []string {
 	return out
 }
 
+// Browser and computer-use tools take a screenshot, scroll, wait or press a key
+// again and again as the ordinary way they work: the page is looked at, moved
+// along, looked at again. Five identical `mcp__claude-in-chrome__computer`
+// screenshots in three minutes raised a red LOOP card the owner could do
+// nothing about (2026-10-22). A step that only looks at or moves through the
+// page is skipped; a click, typed text or a script run still counts, since an
+// agent clicking the same button five times may well be stuck.
+
+// observeActions are the `action` values of a computer-use tool (Claude in
+// Chrome's `computer`, the Anthropic computer-use tool) that look or move.
+var observeActions = map[string]bool{
+	"screenshot": true, "zoom": true, "wait": true, "scroll": true, "scroll_to": true,
+	"key": true, "mouse_move": true, "hover": true, "cursor_position": true,
+	"navigate": true, "back": true, "forward": true, "reload": true,
+}
+
+// observeTools are browser tools whose every call looks at or moves through
+// the page, by the name after the server prefix (`mcp__<server>__`) and an
+// optional `browser_` (Playwright's spelling).
+var observeTools = map[string]bool{
+	"navigate": true, "navigate_back": true, "navigate_forward": true, "go_back": true, "go_forward": true, "reload": true,
+	"screenshot": true, "take_screenshot": true, "snapshot": true, "read_page": true, "get_page_text": true, "find": true,
+	"wait": true, "wait_for": true, "scroll": true, "press_key": true, "mouse_wheel": true, "hover": true,
+	"tabs_context": true, "tabs_context_mcp": true, "tab_list": true, "tabs": true, "list_connected_browsers": true,
+	"read_console_messages": true, "read_network_requests": true, "console_messages": true, "network_requests": true,
+}
+
+// browserTool reports whether a tool drives a browser or the screen: the
+// computer-use tool, an MCP tool named `computer`, or an MCP tool whose name
+// mentions a browser.
+func browserTool(tool string) bool {
+	t := strings.ToLower(tool)
+	if t == "computer" {
+		return true
+	}
+	if !strings.HasPrefix(t, "mcp__") {
+		return false
+	}
+	if strings.HasSuffix(t, "__computer") {
+		return true
+	}
+	for _, w := range [...]string{"browser", "chrome", "playwright", "puppeteer", "computer-use", "computer_use"} {
+		if strings.Contains(t, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// browserObservation reports whether a call is a browser tool looking at or
+// moving through the page: an observeActions `action`, or, for a tool with no
+// action, an observeTools name.
+func browserObservation(tool string, input map[string]json.RawMessage) bool {
+	if !browserTool(tool) {
+		return false
+	}
+	if raw, ok := input["action"]; ok {
+		var a string
+		if json.Unmarshal(raw, &a) == nil && a != "" {
+			return observeActions[strings.ToLower(a)]
+		}
+	}
+	leaf := strings.ToLower(tool)
+	if i := strings.LastIndex(leaf, "__"); i >= 0 {
+		leaf = leaf[i+2:]
+	}
+	return observeTools[strings.TrimPrefix(leaf, "browser_")]
+}
+
+// Ignored reports whether the detector skips a call: a read-only tool, or a
+// browser step that only looks or moves (browserObservation). input is the
+// call's tool_input. A replay of stored calls uses it to skip exactly what the
+// live alert skips.
+func Ignored(tool string, input json.RawMessage) bool {
+	if readOnlyTools[tool] {
+		return true
+	}
+	if !browserTool(tool) {
+		return false
+	}
+	var m map[string]json.RawMessage
+	_ = json.Unmarshal(input, &m)
+	return browserObservation(tool, m)
+}
+
 // Observe feeds a stored event. It returns an Alert (non-nil) when a loop is
 // detected for the first time in an episode.
 func (d *Detector) Observe(ev event.Event) *Alert {
@@ -153,6 +238,15 @@ func (d *Detector) Observe(ev event.Event) *Alert {
 	}
 	if readOnlyTools[ev.Tool] {
 		return nil
+	}
+	if browserTool(ev.Tool) {
+		var p struct {
+			ToolInput json.RawMessage `json:"tool_input"`
+		}
+		_ = json.Unmarshal(ev.Payload, &p)
+		if Ignored(ev.Tool, p.ToolInput) {
+			return nil
+		}
 	}
 	sig, sample := Signature(ev.Tool, ev.Payload)
 	if sig == "" {
