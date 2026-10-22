@@ -66,7 +66,8 @@ func BrainRetagDone(ctx context.Context, q Querier) (int, error) {
 // batch got there first), that is not a memory, or that is gone, is left as
 // it is. updated_at does not move: keywords are a search aid, not an edit.
 func SetBrainKeywords(ctx context.Context, q Querier, id int64, keywords []string) (bool, error) {
-	kw := CleanBrainKeywords(keywords)
+	_, _, clean, _ := redactBrain("", "", keywords)
+	kw := CleanBrainKeywords(clean)
 	if len(kw) == 0 {
 		return false, nil
 	}

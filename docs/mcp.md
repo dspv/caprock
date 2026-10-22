@@ -118,8 +118,12 @@ code.
   commands Caprock used to start sessions are never included.
 - **Redacted.** Text shaped like a credential — `sk-…` API keys, GitHub,
   Slack, AWS, Google, Stripe and Telegram tokens, JWTs, bearer values,
-  private keys — is replaced with `[redacted]`. That catches keys that look
-  like keys, not every secret.
+  private keys — and payment details — card numbers that pass the Luhn
+  check, IBANs that pass theirs, and passwords, secrets and bank account
+  numbers written after a label — are replaced with a placeholder naming
+  the kind, such as `[redacted: api key]`. It is the same filter Second
+  Brain runs before it saves a memory. That catches keys that look like
+  keys, not every secret.
 
 ## When it says Caprock is not running
 

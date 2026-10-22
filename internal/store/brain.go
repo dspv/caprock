@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/dspv/caprock/internal/redact"
 )
 
 // Second Brain (migration 0055, ADR-063): memories and the entities they hang
@@ -279,6 +281,8 @@ func InsertBrainNode(ctx context.Context, q Querier, v BrainNode, now int64) (Br
 	if !IsBrainKind(v.Kind) {
 		return BrainNode{}, false, brainInvalid("unknown memory kind")
 	}
+	// Redacted before it is clipped, so a clip never leaves half a key.
+	v.Title, v.Summary, v.Keywords, _ = redactBrain(v.Title, v.Summary, v.Keywords)
 	v.Title = ClipRunes(strings.Join(strings.Fields(v.Title), " "), BrainTitleRunes)
 	v.Summary = ClipRunes(v.Summary, BrainSummaryRunes)
 	v.Keywords = CleanBrainKeywords(v.Keywords)
@@ -393,10 +397,10 @@ func UpdateBrainNode(ctx context.Context, q Querier, id int64, p BrainPatch, now
 		cur.Kind = *p.Kind
 	}
 	if p.Title != nil {
-		cur.Title = ClipRunes(strings.Join(strings.Fields(*p.Title), " "), BrainTitleRunes)
+		cur.Title = ClipRunes(strings.Join(strings.Fields(redact.String(*p.Title)), " "), BrainTitleRunes)
 	}
 	if p.Summary != nil {
-		cur.Summary = ClipRunes(*p.Summary, BrainSummaryRunes)
+		cur.Summary = ClipRunes(redact.String(*p.Summary), BrainSummaryRunes)
 	}
 	if p.Pinned != nil {
 		cur.Pinned = *p.Pinned

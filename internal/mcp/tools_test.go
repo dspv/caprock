@@ -333,7 +333,7 @@ func TestSessionSummaryAndProse(t *testing.T) {
 	if n := notes[0].(map[string]any); n["fragment"] != true {
 		t.Errorf("newest first, marked fragment: %v", n)
 	}
-	if txt := notes[1].(map[string]any)["text"].(string); !strings.Contains(txt, "[redacted]") {
+	if txt := notes[1].(map[string]any)["text"].(string); !strings.Contains(txt, "[redacted: ") {
 		t.Errorf("not redacted: %q", txt)
 	}
 }
@@ -402,7 +402,7 @@ func TestLoopAlerts(t *testing.T) {
 	if a["session_id"] != "s-new" || l["tool"] != "Bash" || l["count"].(float64) != 7 || l["reread_tax_usd"].(float64) != 0.42 {
 		t.Errorf("alert %v", a)
 	}
-	if !strings.Contains(l["sample"].(string), "[redacted]") {
+	if !strings.Contains(l["sample"].(string), "[redacted: ") {
 		t.Errorf("sample not redacted: %v", l["sample"])
 	}
 }

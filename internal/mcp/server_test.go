@@ -162,7 +162,7 @@ func TestRedact(t *testing.T) {
 		"ghp_abcdefghijklmnopqrstuvwxyz0123456789",
 		"github_pat_11ABCDEFG0123456789_abcdefghijklmnop",
 		"xoxb-1234567890-abcdefghij",
-		"AKIAIOSFODNN7EXAMPLE",
+		"AKIAQ3EGUKZ7FAKEFAKE",
 		"AIzaSyA-abcdefghijklmnopqrstuvwxyz012345",
 		"123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawq",
 		"sk_live_abcdefghijklmnop1234",
@@ -171,7 +171,7 @@ func TestRedact(t *testing.T) {
 		"-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----",
 	} {
 		got := Redact("before " + s + " after")
-		if strings.Contains(got, s) || !strings.Contains(got, "[redacted]") || !strings.HasPrefix(got, "before ") {
+		if strings.Contains(got, s) || !strings.Contains(got, "[redacted: ") || !strings.HasPrefix(got, "before ") {
 			t.Errorf("not redacted: %q", got)
 		}
 	}

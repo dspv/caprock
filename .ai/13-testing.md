@@ -146,6 +146,17 @@ memories or automatic extraction. The headless-browser golden path imports a
 synthetic vault, changes and revokes consent, reads its source marker, removes
 the import and checks that its file stayed unchanged.
 
+Second Brain's privacy filter: `internal/redact/redact_test.go` holds
+fake positives of every kind (keys, tokens, a PEM block, test cards, the
+example IBANs, labelled passwords, secrets and accounts, Russian labels as
+escapes) and the negatives it must leave alone (commit SHAs, UUIDs,
+versions, prices, Unix times, phone numbers, Luhn and IBAN checksum
+failures, placeholders, variables, paths, URLs, identifiers, environment
+variable names, a docs example key). `internal/store/brainredact_test.go`
+covers the write paths and the one-time scrub of nodes and note excerpts
+(idempotent); `internal/brain/scrub_test.go` the prose sent to the model
+and the meta mark.
+
 `CAPROCK_OBSIDIAN_MEASURE=1 go test ./internal/obsidian -run
 '^TestMeasureFiveThousandNotes$' -count=1 -v` measures a 5,000-note synthetic
 vault on disk, its idle and one-edit refresh and removal. Run it alone after

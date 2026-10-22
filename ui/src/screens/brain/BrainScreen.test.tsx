@@ -196,6 +196,7 @@ describe('the Second Brain screen', () => {
     expect(pop.querySelector('[data-brain-db-path]')!.textContent).toBe('C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db')
     expect(pop.textContent).toMatch(/brain_nodes · brain_edges · brain_runs/)
     expect(pop.textContent).toMatch(/nothing goes to Caprock/)
+    expect(pop.querySelector('[data-brain-filtered]')!.textContent).toMatch(/Card numbers, keys and passwords are removed/)
     fireEvent.click(screen.getByRole('radio', { name: 'Sonnet' }))
     await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ model: 'sonnet' }))
     fireEvent.click(screen.getByRole('radio', { name: '1M' }))

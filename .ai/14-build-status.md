@@ -117,6 +117,24 @@ in the popover and its inspector with Restart it fresh (End, then continue
 with --resume). See [03-contracts.md](03-contracts.md)
 § System memory.
 
+### 2026-10-22 — unreleased: Second Brain's privacy filter
+
+A memory is handed to later sessions, other projects' screens and agents
+over MCP, so a credential in one spreads. `internal/redact` now replaces
+keys, tokens, PEM private keys, Luhn-checked card numbers, checksum-checked
+IBANs and labelled passwords, secrets and bank accounts with `[redacted:
+<kind>]` before a memory is saved, in the prose a read sends to the model,
+in Obsidian excerpts and in MCP answers (which used `internal/mcp`'s own
+shorter list before); the extraction's instructions forbid recording them,
+and the memories kept before are scrubbed once on start
+(`meta.brain_secrets_scrubbed`; 03-contracts.md § Second Brain, *Privacy
+filter*). No migration. Measured on a copy of the owner's database on
+2026-10-22: none of 1,468 nodes held a value the filter finds (the memory
+the audit flagged holds a home address and a bank's support numbers, not
+an account or card; the instructions now forbid addresses, the filter does
+not look for them). Over all 210,504 typed prompts and answers stored, it
+matched 21 values, every one a credential, and no ordinary text.
+
 ### 2026-10-22 — unreleased: Second Brain re-tags memories without keywords
 
 Migration 0069 gave each new memory English keywords, but the memories kept

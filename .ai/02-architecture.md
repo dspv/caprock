@@ -164,8 +164,9 @@ in [ADR-079](08-decisions.md).
 process started by the user's MCP client, not a listener in the daemon. It
 finds the running daemon through `runtime.json` on every tool call and reads
 its existing loopback HTTP API using GET only. The tools rebuild responses
-from selected fields, bound lists and text, and redact credential-shaped
-strings before writing JSON-RPC to stdout. A missing daemon is a tool error
+from selected fields, bound lists and text, and redact credentials and
+payment details (`internal/redact`, Second Brain's privacy filter) before
+writing JSON-RPC to stdout. A missing daemon is a tool error
 with startup instructions; it does not end the protocol session.
 
 No tool starts, stops or types into an agent, writes a memory, or changes a
