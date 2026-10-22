@@ -1667,6 +1667,9 @@ export interface BrainAutoStatus {
   /** A catch-up's progress while one has reads left (`skipped` first, then
    *  `backfill`); null (or absent, from an older daemon) otherwise. */
   catch_up?: BrainCatchUp | null
+  /** The re-tag of memories without keywords, while some wait and it is on:
+   * `done` given keywords, `total` that plus those waiting. */
+  retag?: { done: number; total: number }
 }
 
 /** What a catch-up is reading: `backfill` the sessions from before the yes

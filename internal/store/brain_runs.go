@@ -190,23 +190,23 @@ func BrainPassagesBetween(ctx context.Context, q Querier, sessionID string, afte
 	return out, rows.Err()
 }
 
-// BrainTokensSince is what the extraction's reads have spent since a moment,
-// input and output together.
+// BrainTokensSince is what the extraction's reads and re-tag batches have
+// spent since a moment, input and output together.
 func BrainTokensSince(ctx context.Context, q Querier, since int64) (int64, error) {
 	var n int64
 	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(tokens_in + tokens_out), 0) FROM brain_runs WHERE finished_at >= ?`, since).Scan(&n)
 	return n, err
 }
 
-// LastBrainRuns returns the newest reads that did something (not skipped),
-// newest first.
+// LastBrainRuns returns the newest reads of sessions that did something
+// (not skipped, not a re-tag batch), newest first.
 func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.model, r.tokens_in, r.tokens_out,
 		       r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, ''),
 		       COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, ''), COALESCE(r.gap_id, 0)
 		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
-		WHERE r.status != 'skipped' ORDER BY r.id DESC LIMIT ?`, limit)
+		WHERE r.status != 'skipped' AND `+brainNotRetag+` ORDER BY r.id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -395,19 +395,20 @@ func ClipSentence(s string, n int) string {
 	return strings.TrimSpace(cut) + "…"
 }
 
-// BrainCostSince is what the extraction's reads cost since a moment, in US
-// dollars, as claude reported each (its `total_cost_usd`, at API list price).
+// BrainCostSince is what the extraction's reads and re-tag batches cost
+// since a moment, in US dollars, as claude reported each (its
+// `total_cost_usd`, at API list price).
 func BrainCostSince(ctx context.Context, q Querier, since int64) (float64, error) {
 	var n float64
 	err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd), 0) FROM brain_runs WHERE finished_at >= ?`, since).Scan(&n)
 	return n, err
 }
 
-// BrainLastRead is when the newest read that kept something finished, unix
-// ms; 0 before the first.
+// BrainLastRead is when the newest read of a session that kept something
+// finished, unix ms; 0 before the first. A re-tag batch is not a read.
 func BrainLastRead(ctx context.Context, q Querier) (int64, error) {
 	var n int64
-	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(finished_at), 0) FROM brain_runs WHERE status = 'ok'`).Scan(&n)
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(finished_at), 0) FROM brain_runs r WHERE r.status = 'ok' AND `+brainNotRetag).Scan(&n)
 	return n, err
 }
 
@@ -472,7 +473,7 @@ func BrainAgentsSince(ctx context.Context, q Querier, since int64) ([]BrainAgent
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(s.agent, ''), 'claude') AS a, COUNT(DISTINCT r.session_id), MAX(r.finished_at)
 		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
-		WHERE r.status = 'ok' AND r.finished_at >= ?
+		WHERE r.status = 'ok' AND r.finished_at >= ? AND `+brainNotRetag+`
 		GROUP BY a ORDER BY 2 DESC, 3 DESC, a`, since)
 	if err != nil {
 		return nil, err

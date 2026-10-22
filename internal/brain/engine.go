@@ -182,7 +182,8 @@ func (e *Engine) Kick() {
 }
 
 // Wake reads up to Batch sessions, if the extraction may run, and returns
-// how many it read. One wake at a time.
+// how many calls it made. With no session waiting it re-tags memories that
+// have no keywords instead (retag.go). One wake at a time.
 func (e *Engine) Wake(ctx context.Context) (int, error) {
 	if !e.Enabled() {
 		return 0, nil
@@ -206,6 +207,11 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 	cands, err := e.candidates(ctx, 25)
 	if err != nil {
 		return 0, err
+	}
+	if len(cands) == 0 {
+		// No session waits: the wake's calls go to the re-tag (retag.go),
+		// which a session that comes to wait overtakes at the next wake.
+		return e.retag(ctx, Batch)
 	}
 	read := 0
 	for _, c := range cands {
@@ -755,10 +761,13 @@ type Status struct {
 	// skipped text (kind `skipped`) first, else the backfill (`backfill`) —
 	// while it is on; null otherwise. Generic, so each kind reports the
 	// same way.
-	CatchUp       *CatchUp `json:"catch_up"`
-	Since         int64    `json:"since,omitempty"`
-	BackfillSince int64    `json:"backfill_since,omitempty"`
-	LastWake      int64    `json:"last_wake,omitempty"`
+	CatchUp *CatchUp `json:"catch_up"`
+	// Retag is the re-tag's progress while memories without keywords wait
+	// for it and it is on.
+	Retag         *Retag `json:"retag,omitempty"`
+	Since         int64  `json:"since,omitempty"`
+	BackfillSince int64  `json:"backfill_since,omitempty"`
+	LastWake      int64  `json:"last_wake,omitempty"`
 	// NextWake is when the next wake is due, unix ms; absent while it is off.
 	// At or before now when one was just asked for or is running.
 	NextWake  int64  `json:"next_wake,omitempty"`
@@ -972,6 +981,7 @@ func (e *Engine) Status(ctx context.Context) Status {
 		if cu := e.catchUpSkipped(ctx); cu != nil {
 			st.CatchUp = cu
 		}
+		st.Retag = e.retagStatus(ctx)
 	}
 	if runs, err := store.LastBrainRuns(ctx, e.Store.DB(), 5); err == nil {
 		st.Recent = runs

@@ -87,8 +87,10 @@ var long = strings.Repeat("The cache test reads a fixture another test rewrites,
 func twoMemories(Request) (Result, error) {
 	return Result{
 		Memories: []Memory{
-			{Kind: "decision", Title: "## Keep SQLite\nin WAL mode", Summary: "Postgres is too much for one machine.", Topics: []string{"SQLite", "storage"}, Passage: 2},
-			{Kind: "finding", Title: "The cache test shared a fixture", Summary: "Each test gets its own directory now.", Topics: []string{"sqlite", "tests"}, Passage: 4, Related: []int{0}},
+			{Kind: "decision", Title: "## Keep SQLite\nin WAL mode", Summary: "Postgres is too much for one machine.", Topics: []string{"SQLite", "storage"}, Passage: 2,
+				Keywords: []string{"sqlite", "wal"}},
+			{Kind: "finding", Title: "The cache test shared a fixture", Summary: "Each test gets its own directory now.", Topics: []string{"sqlite", "tests"}, Passage: 4, Related: []int{0},
+				Keywords: []string{"cache", "fixture"}},
 		},
 		Model: "claude-haiku-test", TokensIn: 4000, TokensOut: 200, CostUSD: 0.004,
 	}, nil
