@@ -173,7 +173,7 @@ export function BrainStrip({ auto, memories, onChanged, owner = true }: { auto: 
           </ol>
           <dl className="grid grid-cols-2 gap-x-5 gap-y-2 sm:grid-cols-4" data-brain-figures>
             {b && <Fact label="Sessions">{b.read} of {b.sessions}{b.truncated ? '+' : ''} read{f?.days ? ` · last ${f.days} days` : ''}</Fact>}
-            <Fact label="Links">{auto.links ?? 0}</Fact>
+            <Fact label="Links" title="Links from one memory to another; a link to a topic or project is not counted">{auto.links ?? 0}</Fact>
             <Fact label="Tokens, 24 h" title="What the reads used in the last 24 hours, of the daily limit">
               {tokensShort(auto.spent)} <span className="text-fg-muted">of {tokensShort(auto.daily_tokens)}</span>
             </Fact>

@@ -90,6 +90,33 @@ func TestBrainLinksStrengthenAndCap(t *testing.T) {
 	}
 }
 
+// The Links figure on the Brain screen counted every edge, so a memory's
+// link to its topic and its project read as a connection between memories.
+func TestBrainGraphCountsOnlyMemoryToMemoryLinks(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	a := mustBrain(t, s, BrainNode{Kind: BrainFinding, Title: "WAL helps"})
+	b := mustBrain(t, s, BrainNode{Kind: BrainDecision, Title: "Keep SQLite"})
+	topic := mustBrain(t, s, BrainNode{Kind: BrainTopic, Title: "sqlite"})
+	proj := mustBrain(t, s, BrainNode{Kind: BrainProject, Title: "caprock"})
+	for _, l := range [][2]int64{{a.ID, topic.ID}, {b.ID, topic.ID}, {a.ID, proj.ID}, {b.ID, proj.ID}, {a.ID, b.ID}} {
+		kind := EdgePartOf
+		if l[1] == b.ID {
+			kind = EdgeRelates
+		}
+		if err := LinkBrain(ctx, s.db, l[0], l[1], kind, 1, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	topics, links, err := BrainGraphCounts(ctx, s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if topics != 1 || links != 1 {
+		t.Errorf("topics %d, links %d; want 1 topic and the 1 link between the memories", topics, links)
+	}
+}
+
 func TestBrainDeleteTakesOrphanedTopicsWithIt(t *testing.T) {
 	ctx := context.Background()
 	s := openTest(t)

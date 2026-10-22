@@ -395,6 +395,19 @@ func (t *tools) memoryTopics(ctx context.Context, args json.RawMessage) (any, er
 	if err := t.c.get(ctx, "/v1/brain/status", nil, &st); err != nil {
 		return nil, err
 	}
+	// A project filter narrows the count and the project list too: the
+	// global total beside one project's topics reads as that project's.
+	if p := q.Get("project"); p != "" {
+		st.Memories = 0
+		mine := st.Projects[:0]
+		for _, x := range st.Projects {
+			if x.Project == p {
+				st.Memories = x.Count
+				mine = append(mine, x)
+			}
+		}
+		st.Projects = mine
+	}
 	if len(st.Projects) > maxTopics {
 		st.Projects = st.Projects[:maxTopics]
 	}
@@ -612,12 +625,14 @@ func (t *tools) sessionSummary(ctx context.Context, args json.RawMessage) (any, 
 	if err := t.c.get(ctx, p, nil, &d); err != nil {
 		return nil, err
 	}
+	// The daemon lists the most recently touched paths first and stops at
+	// 100; the session's own count says how many there were in all, so a
+	// long session's thousands of paths become the latest few and a number.
 	files := d.Files
-	more := 0
 	if len(files) > maxFiles {
-		more = len(files) - maxFiles
 		files = files[:maxFiles]
 	}
+	more := max(int(d.Stats.FilesTouched), len(d.Files)) - len(files)
 	type pr struct {
 		Number int    `json:"number"`
 		Title  string `json:"title,omitempty"`
@@ -630,6 +645,7 @@ func (t *tools) sessionSummary(ctx context.Context, args json.RawMessage) (any, 
 	out := map[string]any{"session": sessionOf(d.sessionIn), "files": files, "pull_requests": prs}
 	if more > 0 {
 		out["files_not_shown"] = more
+		out["files_note"] = fmt.Sprintf("The %d most recently touched files; +%d more.", len(files), more)
 	}
 	return out, nil
 }

@@ -30,7 +30,7 @@ const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeL
 const STEPS: [ReactNode, string][] = [
   [<svg width="15" height="15" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="10" rx="1.5" {...stroke} /><path d="M5 7l2 1.5L5 10M8.5 10.5h2.5" {...stroke} /></svg>, 'Sessions end'],
   [<svg width="15" height="15" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="7.5" rx="1.2" {...stroke} /><path d="M5.5 13.5h5M8 10.5v3" {...stroke} /></svg>, 'Your Claude reads them, on this computer'],
-  [<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 1.8l1.6 4.1 4.1 1.6-4.1 1.6L8 13.2 6.4 9.1 2.3 7.5l4.1-1.6z" {...stroke} /></svg>, 'The next agent starts smarter'],
+  [<svg width="15" height="15" viewBox="0 0 16 16"><path d="M8 1.8l1.6 4.1 4.1 1.6-4.1 1.6L8 13.2 6.4 9.1 2.3 7.5l4.1-1.6z" {...stroke} /></svg>, 'Your next Claude Code session starts with the memories'],
 ]
 
 /** What Details says, one short line each. The numbers are the daemon's defaults. */

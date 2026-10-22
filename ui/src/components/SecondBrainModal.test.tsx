@@ -22,7 +22,7 @@ describe('SecondBrainModal', () => {
     expect([...steps.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
       'Sessions end',
       'Your Claude reads them, on this computer',
-      'The next agent starts smarter',
+      'Your next Claude Code session starts with the memories',
     ])
     expect(dialog.querySelector('[data-brain-jarvis]')!.textContent).toBe('Over time: your personal Jarvis.')
     expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Free — runs on your own Claude, on this computer.')

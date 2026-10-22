@@ -324,11 +324,17 @@ func CountBrainMemoriesSince(ctx context.Context, q Querier, since int64) (int, 
 }
 
 // BrainGraphCounts is how many topics the graph holds and how many links
-// join its nodes.
+// join one memory to another. A memory's link to its topic or project is not
+// counted: nearly every memory has one, and counting them made the figure
+// read as connections between memories that were never drawn.
 func BrainGraphCounts(ctx context.Context, q Querier) (topics, links int, err error) {
 	err = q.QueryRowContext(ctx, `SELECT
 		(SELECT COUNT(*) FROM brain_nodes WHERE kind = 'topic'),
-		(SELECT COUNT(*) FROM brain_edges)`).Scan(&topics, &links)
+		(SELECT COUNT(*) FROM brain_edges e
+		   JOIN brain_nodes a ON a.id = e.src
+		   JOIN brain_nodes b ON b.id = e.dst
+		  WHERE a.kind NOT IN ('topic','person','project')
+		    AND b.kind NOT IN ('topic','person','project'))`).Scan(&topics, &links)
 	return topics, links, err
 }
 

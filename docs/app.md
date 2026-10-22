@@ -1079,8 +1079,9 @@ it: nothing that updates behind the sheet takes it from the field you are in.
 
 The few answers worth keeping, kept as a graph: ideas, decisions, findings
 and open questions, each linked to its project and topics and to the moment
-in the session it came from. It remembers what your agents learn, so the
-next one starts smarter. Open it from *Second Brain* in the dashboard's screen row, or from
+in the session it came from. It remembers what your agents learn and hands
+it to your next Claude Code session; other agents can read it through
+[`caprock mcp`](mcp.md). Open it from *Second Brain* in the dashboard's screen row, or from
 the Second Brain block in the app's sidebar.
 
 - **Drop an answer in.** Under any answer on the Memory screen, in a
