@@ -21,13 +21,41 @@ export function subagentModelLabel(v: string | undefined): string {
   return SUBAGENT_MODELS.find((m) => m.value === v && m.value !== '')?.label ?? ''
 }
 
-/** Remembered per project in this browser, like the sign-in a project runs on. */
+/**
+ * Remembered per project in this browser, like the sign-in a project runs on.
+ * A project with no choice of its own starts on the default for new agents
+ * (the Week screen's *Start new agents with Haiku subagents*); a project whose
+ * choice differs from that default keeps it, and *Same as the session* is
+ * stored as `same` so a Haiku default cannot override it.
+ */
 const key = (project: string) => `caprock.subagentmodel.${project || '-'}`
+const DEFAULT_KEY = 'caprock.subagentmodel-default'
+const SAME = 'same'
+
+/** The model new agents' subagents start on where a project chose nothing. */
+export function defaultSubagentModel(): SubagentModel {
+  try {
+    const v = localStorage.getItem(DEFAULT_KEY)
+    return isSubagentModel(v) ? v : ''
+  } catch {
+    return ''
+  }
+}
+
+export function setDefaultSubagentModel(v: SubagentModel): void {
+  try {
+    if (!v) localStorage.removeItem(DEFAULT_KEY)
+    else localStorage.setItem(DEFAULT_KEY, v)
+  } catch {
+    // Not remembering is fine.
+  }
+}
 
 export function rememberedSubagentModel(project: string): SubagentModel {
   try {
     const v = localStorage.getItem(key(project))
-    return isSubagentModel(v) ? v : ''
+    if (v === SAME) return ''
+    return isSubagentModel(v) ? v : defaultSubagentModel()
   } catch {
     return ''
   }
@@ -35,8 +63,8 @@ export function rememberedSubagentModel(project: string): SubagentModel {
 
 export function rememberSubagentModel(project: string, v: SubagentModel): void {
   try {
-    if (!v) localStorage.removeItem(key(project))
-    else localStorage.setItem(key(project), v)
+    if (v === defaultSubagentModel()) localStorage.removeItem(key(project))
+    else localStorage.setItem(key(project), v || SAME)
   } catch {
     // Not remembering is fine.
   }
