@@ -85,7 +85,7 @@ export function MemoryBar({ owner, sessions, onOpenSession }: {
           </>
         ) : (
           <>
-            <span>{m.label} <span className={`num ${m.level === 'normal' ? 'text-fg' : ''}`}>{fmtUsedOf(m.used, m.total)}</span></span>
+            <span>{m.label === 'Mac' ? 'This Mac' : m.label} <span className={`num ${m.level === 'normal' ? 'text-fg' : ''}`}>{fmtUsedOf(m.used, m.total)}</span></span>
             <MiniBar m={m} />
             {m.level === 'tight' && <span>agents <span className="num">{fmtMem(m.agents)}</span></span>}
           </>
