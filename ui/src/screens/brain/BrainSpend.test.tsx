@@ -9,7 +9,7 @@ vi.mock('@/lib/api', async (orig) => {
 
 import type { BrainAutoStatus, BrainSpend as Spend } from '@/lib/api'
 import { dayName } from '@/components/BarChart'
-import { BrainSpend, catchUpLine, RETAG_ROW, retagLine, rowShares, spendShare, spendStacks } from './BrainSpend'
+import { BrainSpend, catchUpLine, gridLabel, RETAG_ROW, retagLine, rowShares, spendShare, spendStacks, spendTop, TOP_ROWS } from './BrainSpend'
 
 const auto = (over: Partial<BrainAutoStatus> = {}): BrainAutoStatus => ({
   chosen: true, on: true, enabled: true, claude_found: true, model: 'haiku', daily_tokens: 300_000, spent: 84_000, running: false, pending: 0, recent: [], ...over,
@@ -84,13 +84,14 @@ describe('what Second Brain spends', () => {
     render(<BrainSpend auto={auto()} />)
     await screen.findByText(/of all your Claude tokens today/)
     fireEvent.click(document.querySelector<HTMLButtonElement>('[data-brain-spend-toggle]')!)
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-brain-spend-more]')!)
     const rows = Array.from(document.querySelectorAll('[data-brain-spend-projects] tbody tr')).map((r) => Array.from(r.querySelectorAll('td')).map((c) => c.textContent))
-    expect(rows).toEqual([['acme-api', '12', '60k', '', '31'], [RETAG_ROW, '3', '30k', '', '120'], ['No project', '2', '24k', '', '3']])
+    expect(rows).toEqual([['acme-api', '12', '60.0k', '', '31'], [RETAG_ROW, '3', '30.0k', '', '120'], ['No project', '2', '24.0k', '', '3']])
     expect(RETAG_ROW).toBe('Keywords for older memories')
     expect(document.querySelectorAll('[data-brain-spend-retag]')).toHaveLength(1)
   })
 
-  it('opens the last 14 days: a bar a day against the limit, and reads, tokens and memories per project', async () => {
+  it('opens the last 14 days: the Dashboard’s figures, a bar a day against the limit, the top projects, every project one click on', async () => {
     m.spend.mockResolvedValue(spend())
     render(<BrainSpend auto={auto()} />)
     const toggle = document.querySelector<HTMLButtonElement>('[data-brain-spend-toggle]')!
@@ -100,11 +101,23 @@ describe('what Second Brain spends', () => {
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByRole('heading', { name: 'Last 14 days' })).toBeVisible()
+    // The figures, in the Dashboard's Stat tiles.
+    const fig = (name: string) => document.querySelector(`[data-stat="brain-spend-${name}"]`)!.textContent
+    // 0 + 10k + … + 120k, and today's 84k: 864k over the 14 days.
+    expect(fig('tokens')).toBe('Tokens, 14 days864.0k61.7k a day on average')
+    expect(fig('cost')).toContain('$0.14')
+    expect(fig('today')).toBe('Today84.0kof 300k a day · 28%')
+    expect(fig('reads')).toBe('Reads9134 memories kept')
     expect(document.querySelectorAll('[data-brain-spend-day]')).toHaveLength(14)
     expect(document.querySelector('[data-brain-spend-limit]')!.textContent).toBe('limit 300k')
+    // The top: the leader's share large, a row each, no rest to fold.
+    const top = document.querySelector('[data-brain-spend-top]')!
+    expect(top.textContent).toContain('71%acme-api of the tokens')
+    expect(document.querySelector('[data-brain-spend-more]')!.textContent).toContain('Reads and memories per project')
+    expect(document.querySelector('[data-brain-spend-projects]')).toBeNull()
+    fireEvent.click(document.querySelector('[data-brain-spend-more]')!)
     const rows = Array.from(document.querySelectorAll('[data-brain-spend-project]')).map((r) => Array.from(r.querySelectorAll('td')).map((c) => c.textContent))
-    expect(rows).toEqual([['acme-api', '12', '60k', '', '31'], ['No project', '2', '24k', '', '3']])
-    expect(document.querySelector('[data-brain-spend-cost]')!.textContent).toBe('$0.14 at API list price')
+    expect(rows).toEqual([['acme-api', '12', '60.0k', '', '31'], ['No project', '2', '24.0k', '', '3']])
     // An older daemon lists no parts: plain bars, no swatches, the row bars still drawn.
     expect(document.querySelector('[data-brain-spend-chart]')).toHaveAttribute('data-brain-spend-chart', 'plain')
     expect(document.querySelectorAll('[data-brain-spend-seg]')).toHaveLength(0)
@@ -132,6 +145,11 @@ describe('what Second Brain spends', () => {
     render(<BrainSpend auto={auto()} />)
     await screen.findByText(/of all your Claude tokens today/)
     fireEvent.click(document.querySelector<HTMLButtonElement>('[data-brain-spend-toggle]')!)
+    // The top five wear the bars' colours; the tail past them is one line.
+    expect(document.querySelector('[data-brain-spend-top]')!.textContent).toContain('52%acme-api of the tokens')
+    expect(document.querySelector('[data-brain-spend-more]')!.textContent).toBe('›Reads and memories per project')
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-brain-spend-more]')!)
+    expect(document.querySelector('[data-brain-spend-overdays]')!.textContent).toBe('2 days over the limit')
     expect(document.querySelector('[data-brain-spend-chart]')).toHaveAttribute('data-brain-spend-chart', 'stacked')
     const segs = (day: string) => Array.from(document.querySelectorAll(`[data-brain-spend-day="${day}"] [data-brain-spend-seg]`)).map((s) => s.getAttribute('data-brain-spend-seg'))
     expect(segs(d[12]!.day)).toEqual(['acme-api', 'web', 'docs', 'other'])
@@ -144,12 +162,12 @@ describe('what Second Brain spends', () => {
     expect(Array.from(document.querySelectorAll('[data-brain-spend-swatch]')).map((s) => s.getAttribute('data-brain-spend-swatch'))).toEqual(['0', '1', '2', '-1', '-1'])
     expect(document.querySelector<HTMLElement>('[data-brain-spend-swatch="0"]')!.style.background).toBe('var(--spend-1)')
     fireEvent.mouseEnter(document.querySelector(`[data-brain-spend-day="${d[12]!.day}"] [data-brain-spend-seg="web"]`)!)
-    expect(screen.getByRole('tooltip').textContent).toBe(`web · ${dayName(d[12]!.day)} · 200k tokens`)
+    expect(document.querySelector('[data-brain-spend-tip]')!.textContent).toBe(`web · ${dayName(d[12]!.day)} · 200k tokens`)
     fireEvent.mouseEnter(document.querySelector(`[data-brain-spend-day="${d[12]!.day}"] [data-brain-spend-seg="other"]`)!)
-    expect(screen.getByRole('tooltip').textContent).toBe(`Other · ${dayName(d[12]!.day)} · 50k tokens`)
+    expect(document.querySelector('[data-brain-spend-tip]')!.textContent).toBe(`Other · ${dayName(d[12]!.day)} · 50k tokens`)
     // The focus reads the whole day, top part first.
     fireEvent.focus(document.querySelector(`[data-brain-spend-day="${d[10]!.day}"]`)!)
-    expect(Array.from(screen.getByRole('tooltip').children).map((c) => c.textContent)).toEqual([
+    expect(Array.from(document.querySelector('[data-brain-spend-tip]')!.children).map((c) => c.textContent)).toEqual([
       `${dayName(d[10]!.day)}: 302.0k tokens, 10 reads, over the daily limit`, 'Other · 2k', 'web · 100k', 'acme-api · 200k',
     ])
   })
@@ -192,6 +210,27 @@ describe('grouping the days into stacks', () => {
     expect(rowShares([{ tokens: 1_093_000 }, { tokens: 849_000 }, { tokens: 0 }, { tokens: 1 }])).toEqual([1, 849_000 / 1_093_000, 0, 1 / 1_093_000])
     expect(rowShares([{ tokens: 0 }])).toEqual([0])
     expect(rowShares([])).toEqual([])
+  })
+
+  it('names the top five by tokens in the bars’ colours, the rest summed, shares of the whole window', () => {
+    const p = (project: string, tokens: number, retag?: boolean) => ({ project, tokens, reads: 1, cost_usd: 0, memories: 0, ...(retag ? { retag } : {}) })
+    const projects = [p('f', 50), p('a', 400), p('b', 200), p('', 30, true), p('c', 150), p('d', 100), p('e', 60), p('z', 0)]
+    const stacks = spendStacks([{ day: '2026-10-01', start: 0, tokens: 0, cost_usd: 0, reads: 0, projects }])
+    const t = spendTop(projects, stacks)
+    expect(TOP_ROWS).toBe(5)
+    expect(t.total).toBe(990)
+    expect(t.rows.map((r) => [r.key, r.label, r.color])).toEqual([
+      ['a', 'a', 'var(--spend-1)'], ['b', 'b', 'var(--spend-2)'], ['c', 'c', 'var(--spend-3)'],
+      ['d', 'd', 'var(--spend-other)'], ['e', 'e', 'var(--spend-other)'],
+    ])
+    expect(t.rest).toEqual({ count: 2, tokens: 80 })
+    // Without the daemon's parts no colour is the project's own.
+    expect(spendTop(projects, null).rows[0]!.color).toBeUndefined()
+    expect(spendTop([], null)).toEqual({ rows: [], total: 0, rest: { count: 0, tokens: 0 } })
+  })
+
+  it('labels the ruler short', () => {
+    expect([gridLabel(200_000), gridLabel(1_000_000), gridLabel(1_500_000), gridLabel(500)]).toEqual(['200k', '1M', '1.5M', '500'])
   })
 
   it('warns once the limit is reached', () => {

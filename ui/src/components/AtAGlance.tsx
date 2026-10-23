@@ -336,7 +336,7 @@ export function AtAGlancePanel() {
  * donuts' colours, and under every row a bar of its share. Still a table, so
  * it stays the charts' text alternative.
  */
-function ShareBlock({ title, head, of, segments, total, extra, trends, days, note }: {
+export function ShareBlock({ title, head, of, segments, total, extra, trends, days, note }: {
   title: string
   head: string[]
   of: string
