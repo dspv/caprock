@@ -27,7 +27,7 @@ import { getUiScale, useUiScale } from '@/lib/uiscale'
 import { openLink } from '@/lib/termlinks'
 import { keys, PHONE_MODE_KEY } from '@/lib/appkeys'
 import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, cutOff, engineOf, overlayOpen, pageId, rectOf, sameRect, type BrowserNews, type PageRect } from '@/lib/browsertab'
-import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_DEVICES, SIDE_GAP, SIDE_LABEL, SIDE_MARGIN, type DeviceId, type PhonePrefs, type PhoneSpec } from '@/lib/phonemode'
+import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, pageScale, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_DEVICES, SIDE_GAP, SIDE_LABEL, SIDE_MARGIN, type DeviceId, type PhonePrefs, type PhoneSpec } from '@/lib/phonemode'
 import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, PhoneIcon, ReloadIcon } from './AppIcons'
 import { DeviceBar } from './DeviceBar'
 import { PhoneFrame } from './PhoneFrame'
@@ -133,6 +133,10 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const [loading, setLoading] = useState(false)
   const [note, setNote] = useState('')
   const [nudge, setNudge] = useState<WaitingAgent | null>(null)
+  // A load where nothing answers (browser.rs `probe`): said in place of the
+  // page, whose window is a blank white rectangle then. `trying` once Retry
+  // or a new address sent it again, until the shell hears back.
+  const [failed, setFailed] = useState<{ url: string; text: string; trying: boolean } | null>(null)
   const urlRef = useRef(url)
   urlRef.current = url
 
@@ -161,7 +165,12 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const device = side ? deviceOf({ ...phonePrefs, device: sideMain(phonePrefs.device) }) : deviceOf(phonePrefs)
   const rotate = side ? false : phonePrefs.rotate
   const layout = useMemo(() => layoutOf(device, phonePrefs.bars, rotate), [device, phonePrefs.bars, rotate])
-  const fit = side ? 'full' : fitOf(frameSize(device, layout, rotate), { w: layout.pageW, h: layout.pageH }, { w: (boxSize?.w ?? 0) * zoom, h: (boxSize?.h ?? 0) * zoom })
+  const avail = { w: (boxSize?.w ?? 0) * zoom, h: (boxSize?.h ?? 0) * zoom }
+  const fit = side ? 'full' : fitOf(frameSize(device, layout, rotate), { w: layout.pageW, h: layout.pageH }, avail)
+  // A page area that does not fit is drawn smaller, never past the tab: a
+  // native window is not clipped by the box, and would draw over the status
+  // bar, past the app's window, over the Dock.
+  const fitAt = fit === 'scaled' ? pageScale({ w: layout.pageW, h: layout.pageH }, avail) : 1
   const trio = useMemo(() => SIDE_DEVICES.map((id) => deviceOf({ device: id, customW: 0, customH: 0 })), [])
   const sideAt = side
     ? sideScale(
@@ -170,7 +179,8 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
       { w: ((boxSize?.w ?? 0) - 2 * SIDE_MARGIN) * zoom, h: ((boxSize?.h ?? 0) - 2 * SIDE_MARGIN - SIDE_LABEL) * zoom },
     )
     : 1
-  const spec = phone ? phoneSpec(device, phonePrefs.touch) : undefined
+  // Drawn smaller, the page still lays out at the device's width: the shell zooms it out to match.
+  const spec = phone ? { ...phoneSpec(device, phonePrefs.touch), ...(fitAt < 1 ? { width: layout.pageW } : {}) } : undefined
   // The pages this tab shows: its own, and side by side two more.
   const slots: Slot[] = side
     ? trio.map((d) => ({ key: d.id === device.id ? pageKey : sideKey(pageKey, d.id), dev: d.id, spec: { ...phoneSpec(d, phonePrefs.touch), width: layoutOf(d, phonePrefs.bars, false).pageW } }))
@@ -186,7 +196,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   useEffect(() => { if (!side) { setOut({}); setWide({}) } }, [side])
   // What reopens the page windows: a new device, side, bars, fit or scale
   // moves a page area; a new agent or touch is the shell's to apply.
-  const phoneKey = phone ? `${side ? `side@${sideAt}` : ''}|${slots.map((sl) => `${sl.key}=${sl.spec?.ua}|${sl.spec?.touch}|${sl.spec?.width ?? ''}`).join(',')}|${layout.pageW}x${layout.pageH}|${fit}` : ''
+  const phoneKey = phone ? `${side ? `side@${sideAt}` : ''}|${slots.map((sl) => `${sl.key}=${sl.spec?.ua}|${sl.spec?.touch}|${sl.spec?.width ?? ''}`).join(',')}|${layout.pageW}x${layout.pageH}|${fit}@${fitAt}` : ''
   // The page takes the keyboard when it was just sent somewhere from the address box.
   const focusNext = useRef(false)
   useEffect(() => { if (!editing) setAddress(url) }, [url, editing])
@@ -227,7 +237,11 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
       }
       if (d.id !== id) return
       measured(d, slotsRef.current.find((sl) => sl.key === pageKey)?.dev)
-      if (typeof d.url === 'string') {
+      if (typeof d.unreachable === 'string') {
+        const text = d.unreachable
+        setFailed({ url: d.url ?? urlRef.current, text, trying: false })
+      } else if (d.reachable || typeof d.url === 'string') setFailed(null)
+      if (typeof d.url === 'string' && d.unreachable === undefined) {
         if (d.loading !== undefined) setLoading(d.loading)
         if (!d.loading) handlers.current.onNav(d.url)
       }
@@ -271,7 +285,8 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const live = inApp && enabled && armed && url !== ''
   const overlay = useOverlay(live && visible, box)
   const windowShown = useWindowShown()
-  const showing = live && visible && !overlay && windowShown
+  // A failed page's window stays hidden: the reason shows where it would be.
+  const showing = live && visible && !overlay && windowShown && !failed
   /** The page windows asked for and not closed since, by key. */
   const opened = useRef(new Set<string>())
   useEffect(() => {
@@ -304,7 +319,12 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
       }
       if (sl.spec && !pageEl.current) return null
       const r = (sl.spec ? pageEl.current : box.current)?.getBoundingClientRect()
-      return r && r.width >= 1 && r.height >= 1 ? rectOf(r, getUiScale()) : null
+      if (!r || r.width < 1 || r.height < 1) return null
+      // A phone's page area shows only while inside the tab's box (a resize
+      // the scale has not caught up with yet): never drawn past it.
+      const stage = sl.spec ? box.current?.getBoundingClientRect() : undefined
+      if (stage && !(r.left >= stage.left - 0.5 && r.top >= stage.top - 0.5 && r.right <= stage.right + 0.5 && r.bottom <= stage.bottom + 0.5)) return null
+      return rectOf(r, getUiScale())
     }
     const open = (sl: Slot, rect: PageRect) => {
       const own = sl.key === pageKey
@@ -391,6 +411,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     if (!next) return
     setEditing(false)
     setNote('')
+    setFailed((f) => (f ? { url: next, text: f.text, trying: true } : f))
     input.current?.blur()
     focusNext.current = true
     onNav(next)
@@ -404,6 +425,13 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const act = (a: 'back' | 'forward' | 'reload') => {
     void browserAct(pageKey, { do: a }).catch(() => {})
     for (const k of opened.current) if (k !== pageKey) void browserAct(k, { do: a }).catch(() => {})
+  }
+  // Retry a page where nothing answered: sent again while its window stays
+  // hidden, shown when the shell hears it answer or load.
+  const retry = () => {
+    const to = urlRef.current
+    setFailed((f) => (f ? { ...f, url: to, trying: true } : f))
+    for (const k of opened.current) void browserAct(k, { do: 'go', url: to }).catch(() => {})
   }
   const copy = () => {
     void navigator.clipboard?.writeText(url).then(() => setNote('Address copied'), () => setNote('Could not copy the address'))
@@ -419,6 +447,8 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     <Note text={`Type an address, or words to search with ${searchWith}.`} />
   ) : !armed ? (
     <Waiting url={url} onLoad={onArm} />
+  ) : failed ? (
+    <Failed url={failed.url} text={failed.text} trying={failed.trying} onRetry={retry} />
   ) : null
   return (
     <div className="flex h-full w-full flex-col bg-bg" data-browser-view={pageKey}>
@@ -482,6 +512,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
           device={device}
           layout={layout}
           fit={fit}
+          scale={fitAt}
           side={side ? { scale: sideAt, devices: trio } : null}
         />
       )}
@@ -500,8 +531,8 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
             content={content}
           />
         ) : phone ? (
-          <div className={`flex h-full w-full ${fit === 'over' ? 'items-start justify-start' : 'items-center justify-center'}`} data-phone-stage>
-            <PhoneFrame device={device} layout={layout} rotate={phonePrefs.rotate} fit={fit} zoom={zoom} host={hostOf(url)} pageRef={pageEl}>
+          <div className="flex h-full w-full items-center justify-center" data-phone-stage>
+            <PhoneFrame device={device} layout={layout} rotate={phonePrefs.rotate} fit={fit} zoom={zoom / fitAt} host={hostOf(url)} pageRef={pageEl}>
               {content}
             </PhoneFrame>
           </div>
@@ -524,6 +555,19 @@ function Waiting({ url, onLoad }: { url: string; onLoad: () => void }) {
       <p className="mono max-w-[60ch] break-all text-[13px] text-fg">{url}</p>
       <p className="max-w-[52ch] text-[12.5px] text-fg-muted">A page loads only when you ask for it.</p>
       <button type="button" onClick={onLoad} className="app-primary rounded-[8px] px-3 py-1.5 text-[13px]">Load the page</button>
+    </div>
+  )
+}
+
+/** A page where nothing answers: what happened, and Retry. */
+function Failed({ url, text, trying, onRetry }: { url: string; text: string; trying: boolean; onRetry: () => void }) {
+  return (
+    <div role="alert" data-page-failed className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <GlobeIcon size={28} className="text-fg-faint" />
+      <p className="max-w-[52ch] text-[13.5px] font-medium text-fg">{text}</p>
+      <p className="mono max-w-[60ch] break-all text-[12px] text-fg-muted">{url}</p>
+      <p className="max-w-[52ch] text-[12.5px] text-fg-muted">The page did not load: start the server, or check the address.</p>
+      <button type="button" onClick={onRetry} disabled={trying} className="app-primary rounded-[8px] px-3 py-1.5 text-[13px] disabled:opacity-60">{trying ? 'Trying…' : 'Retry'}</button>
     </div>
   )
 }

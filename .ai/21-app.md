@@ -1979,7 +1979,22 @@ crashed (ADR-070); what the user sees is in
   `open` without `phone` gives the webview its own agent back. Touch is
   `TOUCH_SCRIPT`, a second initialization script in every page, dormant
   until a phone's agent or `window.__caprockTouch(true)`; the shell re-sends
-  its state when a page has loaded. What the user sees is in 04-ui.md.
+  its state when a page has loaded. A page area that does not fit the tab
+  is drawn smaller and `phone` carries `width` as side by side's does (below),
+  so the window never runs past the tab (2026-10-23). What the user sees is
+  in 04-ui.md.
+- **A load where nothing answers** (2026-10-23): wry reports a WKWebView
+  load only once it commits, so an address where nothing listens gave a
+  white window and no news. After each `open` of a new window, `go` and
+  `reload` the shell tries the address's host and port off the main thread
+  (`reach`: a TCP connect with a 3 s timeout, closed at once, nothing sent;
+  the same host and port the page itself connects to) and tells the
+  dashboard `{id, reachable}` or, when nothing answers and the page
+  reported no load for `QUIET` (1.5 s) after, `{id, unreachable, url}` —
+  *Nothing answers at host:port* or *No address found for host*. The
+  dashboard hides the page and says so with Retry (04-ui.md). WebView2 and
+  WebKitGTK commit an error page of their own, which counts as a load, so
+  there the shell stays quiet.
 - **Phone preview** (ADR-075, amended 2026-10-22): a page pane split beside
   a terminal, asked for from a dev server's address in that terminal or ⌘K.
   Nothing new in the shell: the same `open` with `phone`, laid over the

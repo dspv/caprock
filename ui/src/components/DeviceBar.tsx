@@ -6,7 +6,8 @@
  * three phones, portrait (components/PhoneRow.tsx).
  */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { CUSTOM_MAX, CUSTOM_MIN, DEVICES, TRUTH, clampSide, hostOs, type Device, type Fit, type HostOs, type Layout, type PhonePrefs } from '@/lib/phonemode'
+import { CUSTOM_MAX, CUSTOM_MIN, DEVICES, TRUTH, clampSide, dprText, hostOs, type Device, type Fit, type HostOs, type Layout, type PhonePrefs } from '@/lib/phonemode'
+import { getUiScale } from '@/lib/uiscale'
 import { QuestionIcon, RotateIcon, TouchIcon } from './AppIcons'
 
 export interface DeviceBarProps {
@@ -15,6 +16,8 @@ export interface DeviceBarProps {
   device: Device
   layout: Layout
   fit: Fit
+  /** A `scaled` fit: the scale the page area is drawn at (`pageScale`). */
+  scale?: number
   /** Side by side is on: the three phones and the scale they are drawn at. */
   side?: { scale: number; devices: readonly Device[] } | null
   /** Tests: the host OS the list opens on. */
@@ -24,7 +27,7 @@ export interface DeviceBarProps {
 const OS_NAMES: Record<HostOs, string> = { mac: 'macOS', win: 'Windows', lin: 'Linux' }
 const MARK: Record<string, string> = { real: '✓', approx: '≈', no: '×' }
 
-export function DeviceBar({ prefs, onChange, device, layout, fit, side = null, os = hostOs() }: DeviceBarProps) {
+export function DeviceBar({ prefs, onChange, device, layout, fit, scale = 1, side = null, os = hostOs() }: DeviceBarProps) {
   const [help, setHelp] = useState(false)
   const [listOs, setListOs] = useState<HostOs>(os)
   const helpRef = useRef<HTMLDivElement>(null)
@@ -41,7 +44,9 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, side = null, o
   }, [help])
   const custom = !side && device.id === 'custom'
   const tbtn = (on: boolean) => `flex h-[24px] shrink-0 items-center gap-1 rounded-[6px] border px-2 text-[12px] ${on ? 'border-accent bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)] text-fg' : 'border-[var(--app-hairline)] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'}`
-  const here = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+  // The dashboard's own ratio is its screen's times the interface size (the
+  // shell zooms its webview); a page window is not zoomed by it.
+  const here = dprText((typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1) / (getUiScale() || 1))
   const estTitle = 'An estimate of what the status bar and the browser’s bars leave; not measured on a phone yet'
   return (
     <div data-phone-bar className="relative flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-[var(--app-hairline)] px-2 py-1 text-[12px]">
@@ -108,13 +113,14 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, side = null, o
         page <b className="font-medium text-fg">{layout.pageW}×{layout.pageH}</b>
         {layout.est && <abbr title={estTitle} className="ml-0.5 cursor-help border-b border-dotted border-warn no-underline">est.</abbr>}
         {!custom && <> · screen {layout.screenW}×{layout.screenH}</>}
+        {fit === 'scaled' && <> · drawn at {Math.round(scale * 100)}%</>}
         {' '}· DPR {here}{!custom && <> here, {device.dpr} on the phone</>} · {device.uaName}
       </span>}
       {!side && fit !== 'full' && (
-        <p role="status" data-phone-fit-note className="w-full text-[11.5px] text-warn">
+        <p role="status" data-phone-fit-note className={`w-full text-[11.5px] ${fit === 'page' ? 'text-warn' : 'text-fg-muted'}`}>
           {fit === 'page'
             ? 'The whole phone does not fit this tab: the page area alone, at its true size.'
-            : 'The page area is larger than this tab and runs past its edge, at its true size: make the window larger, rotate, or pick a smaller device.'}
+            : `The page area does not fit this tab: drawn at ${Math.round(scale * 100)}%, still laid out ${layout.pageW} CSS px wide. Make the window larger for its true size.`}
         </p>
       )}
     </div>

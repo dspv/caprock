@@ -4,7 +4,7 @@
  * preferences.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { ANDROID_CHROME_UA, DEFAULT_PHONE_PREFS, DEVICES, IOS_SAFARI_UA, PHONE_PREFS_KEY, TRUTH, customDevice, deviceOf, fitOf, frameSize, hostOs, layoutOf, loadPhonePrefs, pageKeysOf, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_MIN_SCALE } from './phonemode'
+import { ANDROID_CHROME_UA, DEFAULT_PHONE_PREFS, DEVICES, IOS_SAFARI_UA, PHONE_PREFS_KEY, TRUTH, customDevice, deviceOf, dprText, fitOf, frameSize, hostOs, layoutOf, loadPhonePrefs, pageKeysOf, pageScale, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_MIN_SCALE } from './phonemode'
 
 const dev = (id: string) => DEVICES.find((d) => d.id === id)!
 
@@ -75,7 +75,7 @@ describe('the page area', () => {
 })
 
 describe('the fit', () => {
-  it('draws the whole phone when it fits, the page area alone when only that fits, and never scales it', () => {
+  it('draws the whole phone when it fits, the page area alone when only that fits, and smaller when even that does not', () => {
     const d = dev('iphone16')
     const l = layoutOf(d, 'shown', false)
     const frame = frameSize(d, l, false)
@@ -84,10 +84,25 @@ describe('the fit', () => {
     expect(fitOf(frame, page, { w: 1200, h: 1000 })).toBe('full')
     // A laptop's tab: about 790 logical px tall.
     expect(fitOf(frame, page, { w: 1200, h: 790 })).toBe('page')
-    expect(fitOf(frame, page, { w: 1200, h: 600 })).toBe('over')
+    expect(fitOf(frame, page, { w: 1200, h: 600 })).toBe('scaled')
+    // Scaled: the page area in its rim fits the box with its margin, rounded down.
+    const at = pageScale(page, { w: 1200, h: 600 })
+    expect(at).toBe(Math.floor(((600 - 2 * 16) / (681 + 12)) * 1000) / 1000)
+    expect((page.h + 12) * at + 32).toBeLessThanOrEqual(600)
+    expect(pageScale(page, { w: 1200, h: 1000 })).toBe(1)
+    expect(pageScale(page, { w: 10, h: 10 })).toBe(0.1)
     // The SE's chin and forehead count.
     const se = dev('iphonese')
     expect(frameSize(se, layoutOf(se, 'shown', false), false).h).toBe(667 + 62 + 74)
+  })
+})
+
+describe('the device pixel ratio', () => {
+  it('reads to two decimals at most', () => {
+    expect(dprText(2.200000047683716)).toBe('2.2')
+    expect(dprText(2)).toBe('2')
+    expect(dprText(1.3333333)).toBe('1.33')
+    expect(dprText(Number.NaN)).toBe('1')
   })
 })
 

@@ -40,6 +40,16 @@
 //! `pageZoom`, WebView2 `ZoomFactor`, WebKitGTK zoom level), so it still
 //! lays out at the phone's width. `Measure` reads, through
 //! `eval_with_callback`, whether the page's document is wider than that.
+//! A page that cannot load says so. WKWebView reports a load to the shell
+//! only once it commits (wry's `didCommitNavigation`), so an address where
+//! nothing listens leaves a blank white window and no news at all. After
+//! each load the dashboard asks for (`open`, `go`, `reload`) the shell tries
+//! the address's host and port itself (`reach`, a TCP connect, nothing
+//! sent); when nothing answers and the page has still said nothing
+//! `QUIET` later, the dashboard hears `{id, unreachable}` and shows why in
+//! place of the page. WebView2 and WebKitGTK commit an error page of their
+//! own, which is news, so there the dashboard stays quiet.
+//!
 //! It runs in a non-persistent data store of its own, so it shares no cookie
 //! or storage with the dashboard or another page and leaves nothing on disk.
 //! It loads only what the user asked for, follows only the web's schemes,
@@ -67,6 +77,13 @@ pub const EVENT: &str = "caprock:browser";
 
 /// The scheme the page's key script navigates to; never followed (`key_of`).
 pub const KEY_SCHEME: &str = "caprock-browser";
+
+/// How long a page has to report any load after its address failed `reach`
+/// before the dashboard is told nothing answers (a proxy may still reach it).
+pub const QUIET: Duration = Duration::from_millis(1500);
+
+/// How long `reach` waits on one address.
+pub const REACH_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// How long a closed page's process is left to settle on `about:blank`
 /// before its window goes (the root cause in the module's doc).
@@ -238,6 +255,35 @@ pub fn zoom_for(window: f64, page: Option<f64>) -> f64 {
         }
         _ => 1.0,
     }
+}
+
+/// Whether anything answers at `url`'s host and port: None when one of its
+/// addresses takes a TCP connection (closed at once, nothing sent), else
+/// the sentence the dashboard shows in place of the page.
+pub fn reach(url: &Url, timeout: Duration) -> Option<String> {
+    use std::net::{TcpStream, ToSocketAddrs};
+    let host = url.host_str()?;
+    let port = url.port_or_known_default()?;
+    let at = match url.port() {
+        Some(p) => format!("{host}:{p}"),
+        None => host.to_owned(),
+    };
+    // A bracketed IPv6 host resolves without its brackets.
+    let bare = host.trim_start_matches('[').trim_end_matches(']');
+    let addrs: Vec<_> = match (bare, port).to_socket_addrs() {
+        Ok(a) => a.collect(),
+        Err(_) => return Some(format!("No address found for {host}")),
+    };
+    if addrs.is_empty() {
+        return Some(format!("No address found for {host}"));
+    }
+    if addrs
+        .iter()
+        .any(|a| TcpStream::connect_timeout(a, timeout).is_ok())
+    {
+        return None;
+    }
+    Some(format!("Nothing answers at {at}"))
 }
 
 /// What turns a live page's touch on or off (TOUCH_SCRIPT).
@@ -454,6 +500,9 @@ pub struct Pages {
     /// zoom last given for it. Absent, 1.
     widths: Mutex<HashMap<String, f64>>,
     zooms: Mutex<HashMap<String, f64>>,
+    /// The page loads each page has reported, by label: `probe` tells the
+    /// dashboard nothing answers only when none came while it looked.
+    loads: Mutex<HashMap<String, u64>>,
 }
 
 impl Pages {
@@ -472,6 +521,15 @@ impl Pages {
             .get(label)
             .copied()
             .unwrap_or(1.0)
+    }
+
+    fn loads(&self, label: &str) -> u64 {
+        self.loads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(label)
+            .copied()
+            .unwrap_or(0)
     }
 
     fn mode(&self, label: &str) -> Mode {
@@ -530,10 +588,16 @@ pub async fn browser_tab<R: Runtime>(
                     let blank = "about:blank".parse().map_err(|_| "about:blank")?;
                     let p = build(&app, &id, &label, blank)?;
                     set_mode(&app, &label, &p, phone.as_ref(), false);
-                    p.navigate(to).map_err(|e| e.to_string())?;
+                    p.navigate(to.clone()).map_err(|e| e.to_string())?;
+                    probe(&app, &id, &label, to);
                     p
                 }
-                None => build(&app, &id, &label, web_url(&url)?)?,
+                None => {
+                    let to = web_url(&url)?;
+                    let p = build(&app, &id, &label, to.clone())?;
+                    probe(&app, &id, &label, to);
+                    p
+                }
             };
             follow_main(&app);
             place(&app, &label, &page, rect)?;
@@ -559,10 +623,26 @@ pub async fn browser_tab<R: Runtime>(
                     drain(&app, &label, page);
                     Ok(())
                 }
-                Act::Go { url } => page.navigate(web_url(&url)?).map_err(|e| e.to_string()),
+                Act::Go { url } => {
+                    let to = web_url(&url)?;
+                    page.navigate(to.clone()).map_err(|e| e.to_string())?;
+                    probe(&app, &id, &label, to);
+                    Ok(())
+                }
                 Act::Back => page.eval("history.back()").map_err(|e| e.to_string()),
                 Act::Forward => page.eval("history.forward()").map_err(|e| e.to_string()),
-                Act::Reload => page.reload().map_err(|e| e.to_string()),
+                Act::Reload => {
+                    page.reload().map_err(|e| e.to_string())?;
+                    // What it reloads: the page's address, else nothing to try.
+                    if let Some(to) = page
+                        .url()
+                        .ok()
+                        .filter(|u| matches!(u.scheme(), "http" | "https"))
+                    {
+                        probe(&app, &id, &label, to);
+                    }
+                    Ok(())
+                }
                 Act::Focus => page.set_focus().map_err(|e| e.to_string()),
                 Act::Pause => page.eval(PAUSE_SCRIPT).map_err(|e| e.to_string()),
                 Act::Measure => {
@@ -581,6 +661,30 @@ pub async fn browser_tab<R: Runtime>(
             }
         }
     }
+}
+
+/// After a load the dashboard asked for: off the main thread, whether
+/// anything answers at `url` (`reach`). Answered, the dashboard hears
+/// `{id, reachable}`; not, and the page reported no load of its own for
+/// `QUIET`, `{id, unreachable, url}`, and shows why in place of the page.
+fn probe<R: Runtime>(app: &AppHandle<R>, id: &str, label: &str, url: Url) {
+    let (app, id, label) = (app.clone(), id.to_owned(), label.to_owned());
+    std::thread::spawn(move || {
+        let before = app.try_state::<Pages>().map_or(0, |p| p.loads(&label));
+        match reach(&url, REACH_TIMEOUT) {
+            None => tell(&app, serde_json::json!({ "id": id, "reachable": true })),
+            Some(why) => {
+                std::thread::sleep(QUIET);
+                let after = app.try_state::<Pages>().map_or(0, |p| p.loads(&label));
+                if after == before {
+                    tell(
+                        &app,
+                        serde_json::json!({ "id": id, "unreachable": why, "url": url.as_str() }),
+                    );
+                }
+            }
+        }
+    });
 }
 
 /// Gives the page the mode `phone` asks for: the device's user agent (the
@@ -788,6 +892,10 @@ fn drain<R: Runtime>(app: &AppHandle<R>, label: &str, page: WebviewWindow<R>) {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(label);
+        p.loads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
     }
     if let Ok(blank) = "about:blank".parse() {
         let _ = page.navigate(blank);
@@ -888,6 +996,14 @@ fn build<R: Runtime>(
                 return;
             }
             let loading = matches!(p.event(), PageLoadEvent::Started);
+            if let Some(pages) = load.try_state::<Pages>() {
+                *pages
+                    .loads
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .entry(w.label().to_owned())
+                    .or_default() += 1;
+            }
             // A loaded page in phone mode gets Touch as the user left it
             // (it starts on with a phone's agent: TOUCH_SCRIPT).
             if !loading {
@@ -973,6 +1089,33 @@ mod tests {
         for bad in ["", "a/b", "../main", "x y", "main:1", &"a".repeat(65)] {
             assert_eq!(label(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn an_address_where_nothing_listens_is_named() {
+        use std::net::TcpListener;
+        // A port that was just free: bound, its number read, let go.
+        let free = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let url: Url = format!("http://127.0.0.1:{free}/").parse().unwrap();
+        assert_eq!(
+            reach(&url, Duration::from_millis(500)),
+            Some(format!("Nothing answers at 127.0.0.1:{free}"))
+        );
+        // Something listening answers.
+        let on = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = on.local_addr().unwrap().port();
+        let url: Url = format!("http://127.0.0.1:{port}/x").parse().unwrap();
+        assert_eq!(reach(&url, Duration::from_millis(500)), None);
+        // A name that resolves nowhere (.invalid is reserved, RFC 6761).
+        let url: Url = "https://nothing.invalid/".parse().unwrap();
+        assert_eq!(
+            reach(&url, Duration::from_millis(500)),
+            Some("No address found for nothing.invalid".to_owned())
+        );
     }
 
     #[test]

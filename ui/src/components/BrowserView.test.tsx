@@ -68,6 +68,36 @@ describe('a browser tab in the app', () => {
     expect(acts.list.at(-1)!.act).toEqual({ do: 'close' })
   })
 
+  it('says so when nothing answers at the address, hides the blank page, and retries', () => {
+    const tell = (detail: object) => act(() => { window.dispatchEvent(new CustomEvent(BROWSER_EVENT, { detail: { id: 't1', ...detail } })) })
+    render(<BrowserView {...props} url="http://127.0.0.1:22776/" visible armed />)
+    expect(does()).toEqual(['open'])
+    // The shell's probe (browser.rs `probe`): nothing listens, and the page said nothing.
+    tell({ unreachable: 'Nothing answers at 127.0.0.1:22776', url: 'http://127.0.0.1:22776/' })
+    expect(screen.getByRole('alert').textContent).toContain('Nothing answers at 127.0.0.1:22776')
+    // The page's window is a white rectangle now: hidden, the reason shows in its place.
+    expect(acts.list.at(-1)!.act).toEqual({ do: 'hide' })
+    acts.list = []
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(acts.list).toEqual([{ key: 'page:t1', act: { do: 'go', url: 'http://127.0.0.1:22776/' } }])
+    expect((screen.getByRole('button', { name: 'Trying…' }) as HTMLButtonElement).disabled).toBe(true)
+    // Still nothing: said again, Retry back.
+    tell({ unreachable: 'Nothing answers at 127.0.0.1:22776', url: 'http://127.0.0.1:22776/' })
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+    // The server is up: the page is shown again.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    tell({ reachable: true })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(acts.list.at(-1)!.act.do).toBe('open')
+  })
+
+  it('says so in phone mode too, inside the phone', () => {
+    render(<BrowserView {...props} url="http://127.0.0.1:22776/" phoneFirst visible armed />)
+    act(() => { window.dispatchEvent(new CustomEvent(BROWSER_EVENT, { detail: { id: 't1', unreachable: 'Nothing answers at 127.0.0.1:22776', url: 'http://127.0.0.1:22776/' } })) })
+    expect(document.querySelector('[data-phone-page] [data-page-failed]')).toBeTruthy()
+    expect(acts.list.at(-1)!.act).toEqual({ do: 'hide' })
+  })
+
   it('closes its page when the in-app browser is turned off, and opens none while it is off', () => {
     const { rerender } = render(<BrowserView {...props} visible armed />)
     expect(does()).toEqual(['open'])
@@ -187,7 +217,8 @@ describe('a browser tab in the app', () => {
 
 describe('phone mode (ADR-075, amended 2026-10-21)', () => {
   // The tab's box is big enough for the whole phone at the default
-  // interface size (1.1); the page area reports the size it is drawn at.
+  // interface size (1.1); the page area reports the size it is drawn at,
+  // centred in the box.
   beforeEach(() => {
     localStorage.clear()
     setPhoneOn('page:t1', false)
@@ -195,7 +226,10 @@ describe('phone mode (ADR-075, amended 2026-10-21)', () => {
       if (this.dataset.phoneSize) {
         const w = parseFloat(this.style.width)
         const h = parseFloat(this.style.height)
-        return { left: 400, top: 120, width: w, height: h, right: 400 + w, bottom: 120 + h, x: 400, y: 120, toJSON() {} } as DOMRect
+        // Centred in the box, as the stage lays it out.
+        const left = 700 - w / 2
+        const top = 528 - h / 2
+        return { left, top, width: w, height: h, right: left + w, bottom: top + h, x: left, y: top, toJSON() {} } as DOMRect
       }
       return { left: 200, top: 78, width: 1000, height: 900, right: 1200, bottom: 978, x: 200, y: 78, toJSON() {} } as DOMRect
     })
@@ -256,7 +290,11 @@ describe('phone mode (ADR-075, amended 2026-10-21)', () => {
 
   it('draws the page area alone when the phone does not fit, never scaled', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      if (this.dataset.phoneSize) return { left: 0, top: 0, width: parseFloat(this.style.width), height: parseFloat(this.style.height), right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
+      if (this.dataset.phoneSize) {
+        const w = parseFloat(this.style.width)
+        const h = parseFloat(this.style.height)
+        return { left: 600 - w / 2, top: 428 - h / 2, width: w, height: h, right: 600 + w / 2, bottom: 428 + h / 2, x: 0, y: 0, toJSON() {} } as DOMRect
+      }
       return { left: 200, top: 78, width: 800, height: 700, right: 1000, bottom: 778, x: 200, y: 78, toJSON() {} } as DOMRect
     })
     render(<BrowserView {...props} visible armed />)
@@ -264,6 +302,40 @@ describe('phone mode (ADR-075, amended 2026-10-21)', () => {
     expect(document.querySelector('[data-phone-fit="page"]')).toBeTruthy()
     expect(lastOpen().rect).toMatchObject({ width: 393, height: 681 })
     expect(screen.getByText(/does not fit this tab/)).toBeTruthy()
+  })
+
+  it('draws a page area that does not fit smaller, never past the tab, still laid out at the device’s width', () => {
+    // The tab of the owner's report: 500 CSS px tall at the interface's 1.1, 550 logical; the page area is 681.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.phoneSize) {
+        const w = parseFloat(this.style.width)
+        const h = parseFloat(this.style.height)
+        return { left: 600 - w / 2, top: 328 - h / 2, width: w, height: h, right: 600 + w / 2, bottom: 328 + h / 2, x: 0, y: 0, toJSON() {} } as DOMRect
+      }
+      return { left: 200, top: 78, width: 800, height: 500, right: 1000, bottom: 578, x: 200, y: 78, toJSON() {} } as DOMRect
+    })
+    render(<BrowserView {...props} visible armed />)
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    expect(document.querySelector('[data-phone-fit="scaled"]')).toBeTruthy()
+    const at = Math.floor(((550 - 32) / (681 + 12)) * 1000) / 1000
+    const o = lastOpen()
+    // The window is the page area drawn smaller; the shell zooms the page to its true width.
+    expect(o.phone).toMatchObject({ width: 393 })
+    expect(o.rect.height).toBeLessThanOrEqual(550)
+    expect(o.rect.width).toBe(Math.round(393 * at))
+    expect(o.rect.height).toBe(Math.round(681 * at))
+    expect(screen.getByText(new RegExp(`drawn at ${Math.round(at * 100)}%, still laid out 393 CSS px wide`))).toBeTruthy()
+    expect(screen.queryByText(/runs past its edge/)).toBeNull()
+  })
+
+  it('shows the page window’s device pixel ratio, rounded: the screen’s, not the dashboard’s zoomed one', () => {
+    // A Retina screen at the interface's 1.1: the dashboard reads 2.2000000476…
+    vi.stubGlobal('devicePixelRatio', 2.200000047683716)
+    render(<BrowserView {...props} visible armed />)
+    fireEvent.click(screen.getByRole('button', { name: 'Phone' }))
+    const out = document.querySelector('[data-phone-readout]')!.textContent!
+    expect(out).toContain('DPR 2 here')
+    expect(out).not.toMatch(/\d\.\d{3,}/)
   })
 
   it('turns on and off with ⌥⌘R in the dashboard, Ctrl+Alt+Shift+D off macOS, and from the page', () => {
