@@ -236,14 +236,28 @@ func TestABusyDatabaseFailsTheBatchRetryably(t *testing.T) {
 }
 
 // A live hook event is not held up by a large import: an open batch commits
-// as soon as a writer is waiting, so the hook lands within the shim's one
-// second budget (rule 3) however long the import runs.
+// as soon as a writer is waiting, so the hook waits for one event and one
+// commit, never for the import's own limits (the shim's one second budget,
+// rule 3, however long the import runs).
+//
+// What is proven is the ordering, not a wall-clock time: on a shared CI disk
+// one SQLite COMMIT has taken 12.5 s (windows-latest, 2026-10-23), which says
+// nothing about the batch. The import's limits are unbounded here, so only a
+// waiting writer can end a batch; each hook is sent while a batch holds the
+// lock, and the importer checks after every event that a waiting writer makes
+// the batch due. A batch that ignored a waiter would make the hook wait for
+// the whole import; that is caught at the first event, without a hang.
 func TestAHookIsNotDelayedByABackfill(t *testing.T) {
 	r, _, _ := fileRecorder(t)
 	ctx, stop := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	wg.Add(1)
-	var imported atomic.Int64
+	var (
+		imported   atomic.Int64
+		inBatch    atomic.Int64 // events in the open batch, 0 when none is open
+		stepAsides atomic.Int64 // batches committed because a writer waited
+		ignored    atomic.Int64 // events a batch took with a writer waiting, staying open
+	)
 	go func() {
 		defer wg.Done()
 		b := r.Batch(ctx)
@@ -254,7 +268,20 @@ func TestAHookIsNotDelayedByABackfill(t *testing.T) {
 				return
 			}
 			imported.Add(1)
-			if b.Due() {
+			inBatch.Add(1)
+			// The batch holds the lock, so a writer counted as waiting stays
+			// waiting until the batch commits: Due must say so now.
+			waiter := r.waiting.Load() > 0
+			due := b.Due()
+			switch {
+			case waiter && due:
+				stepAsides.Add(1)
+			case waiter:
+				ignored.Add(1)
+				due = true // commit anyway, so the hook is not left waiting
+			}
+			if due {
+				inBatch.Store(0)
 				if _, _, err := b.Flush(); err != nil {
 					return
 				}
@@ -262,33 +289,45 @@ func TestAHookIsNotDelayedByABackfill(t *testing.T) {
 		}
 		_, _, _ = b.Flush()
 	}()
-	time.Sleep(50 * time.Millisecond) // the import is under way
-	before := imported.Load()
+	// awaitBatch waits until the import holds an open batch, so the next hook
+	// is certain to wait behind it.
+	awaitBatch := func(i int) {
+		t.Helper()
+		deadline := time.Now().Add(30 * time.Second)
+		for inBatch.Load() == 0 {
+			if time.Now().After(deadline) {
+				t.Fatalf("hook %d: the import never opened a batch", i)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	const hooks = 20
 	var worst time.Duration
-	for i := 0; i < 20; i++ {
+	for i := 0; i < hooks; i++ {
+		awaitBatch(i)
 		ev := &event.Event{SessionID: "live", Source: event.SourceHook, Kind: event.KindToolPre, Tool: "Bash",
 			Key: fmt.Sprintf("hook-%d", i), Payload: []byte(`{"tool_input":{"command":"ls"}}`)}
 		start := time.Now()
 		res, err := r.Record(ctx, ev, SessionInfo{Cwd: "/p"})
-		d := time.Since(start)
+		worst = max(worst, time.Since(start))
 		if err != nil || !res.Stored {
 			t.Fatalf("hook %d: stored=%v err=%v", i, res.Stored, err)
 		}
-		worst = max(worst, d)
-		time.Sleep(5 * time.Millisecond)
 	}
 	stop()
 	wg.Wait()
-	if imported.Load() == before {
-		t.Fatal("the import wrote nothing while the hooks were recorded: it did not run alongside them")
+	if n := ignored.Load(); n > 0 {
+		t.Fatalf("a batch took %d events while a hook waited for it, instead of committing", n)
 	}
-	if worst > time.Second {
-		t.Fatalf("a hook waited %v behind the import, over the shim's 1s budget", worst)
+	// Every hook was sent behind an open batch, and every one ended a batch
+	// (more than one when the import took the lock back first).
+	if n := stepAsides.Load(); n < hooks {
+		t.Fatalf("%d batches stepped aside for %d hooks sent behind them", n, hooks)
 	}
-	if n, _ := countRows(t, r.Store.DB(), "live"); n != 20 {
-		t.Fatalf("%d hook events visible, want 20", n)
+	if n, _ := countRows(t, r.Store.DB(), "live"); n != hooks {
+		t.Fatalf("%d hook events visible, want %d", n, hooks)
 	}
-	t.Logf("worst hook latency %v beside %d imported events", worst, imported.Load())
+	t.Logf("worst hook latency %v beside %d imported events, %d step-asides", worst, imported.Load(), stepAsides.Load())
 }
 
 // A writer outside the recorder — a project added from the dashboard — still

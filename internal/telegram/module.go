@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -361,8 +362,7 @@ func (b *Bridge) EditModule(ctx context.Context, e ModuleEdit) error {
 	if err := e.Check(); err != nil {
 		return err
 	}
-	ref, ok := b.moduleRef(e.Module, e.MessageID)
-	if !ok {
+	if _, ok := b.moduleRef(e.Module, e.MessageID); !ok {
 		return ErrNotModuleMessage
 	}
 	token, chat := b.Host.Bot()
@@ -371,7 +371,7 @@ func (b *Bridge) EditModule(ctx context.Context, e ModuleEdit) error {
 	}
 	c := b.client(token)
 	if e.Text != nil || e.Buttons != nil {
-		if err := b.editModule(ctx, c, chat, ref, e); err != nil {
+		if err := b.editModuleLocked(ctx, c, chat, e); err != nil {
 			return err
 		}
 	}
@@ -383,6 +383,18 @@ func (b *Bridge) EditModule(ctx context.Context, e ModuleEdit) error {
 	default:
 		return b.unpinModule(ctx, c, chat, e.Module, e.MessageID)
 	}
+}
+
+// editModuleLocked is editModule under editMu, with the message as it is
+// remembered once no press is marking it.
+func (b *Bridge) editModuleLocked(ctx context.Context, c *Client, chat string, e ModuleEdit) error {
+	b.editMu.Lock()
+	defer b.editMu.Unlock()
+	ref, ok := b.moduleRef(e.Module, e.MessageID)
+	if !ok {
+		return ErrNotModuleMessage
+	}
+	return b.editModule(ctx, c, chat, ref, e)
 }
 
 // editModule changes a module message's text, buttons or both.
@@ -464,7 +476,19 @@ func (b *Bridge) modulePress(ctx context.Context, c *Client, chat string, msgID 
 		return
 	}
 	toast("")
-	b.Store.UpdateRef(msgID, func(r *Ref) { r.Chosen = id })
+	// The module may already have edited the message in answer to this
+	// press: the mark goes only under the buttons that were pressed, never
+	// over newer ones (or none).
+	b.editMu.Lock()
+	defer b.editMu.Unlock()
+	marked := b.Store.UpdateRef(msgID, func(r *Ref) {
+		if r.Chosen == "" && r.Buttons[id] == label && slices.Equal(r.Order, ref.Order) {
+			r.Chosen = id
+		}
+	})
+	if now, _ := b.Store.Lookup(msgID); !marked || now.Chosen != id {
+		return
+	}
 	_ = c.EditMarkup(ctx, chat, msgID, chosenKeyboard(label))
 }
 
