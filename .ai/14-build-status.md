@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.152.1: Second Brain stops re-reading a project-less session
+
+A patch release, one PR (#803). Sessions started at the filesystem root had the project "/", which normalised to an empty name; the rejection failed the whole read and wiped its record, so the same sessions were sent to Claude about every 30 s for 13 hours on the owner's machine, outside the daily token limit. Such sessions are now read with no project, one bad item never fails a read, a read that cannot be saved is recorded with its tokens, and the strip says failures in plain words.
+
 ### 2026-10-23 — 0.152.0: drags you can see, the costliest work, Mail sign-in recovery
 
 A minor release, one PR (#801). A dragged tab or sidebar row follows the pointer and its neighbours open the slot it will land in; the Pipeline page lists the five most expensive pull requests and releases of its window by recorded agent cost; Mail recovers failed or expired OAuth sign-ins, reconnects an account from Settings without removing its mail, and explains timeouts and iCloud refusals; the memory item reads "This Mac".
