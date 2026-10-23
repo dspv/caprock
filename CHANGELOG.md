@@ -12,6 +12,43 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.157.0] - 2026-10-24
+
+### Added
+
+- **brain:** Second Brain no longer reads every session. A session a
+  scheduled job starts can say so (`POST /v1/agents {"automation": true}`)
+  and is never read or handed memories; Settings → Second Brain → *Never
+  read these folders* skips every session in a folder (recorded as skipped,
+  with the folder) and keeps those projects out of the graph, search and
+  what a new session is handed unless you open that project. Nothing
+  already kept is deleted. The instructions also tell the model to skip
+  what is true only of one run (what the agent did or saved this time, a
+  dropped connection) and keep what still holds for the product or the
+  codebase.
+- **ui:** the Lifetime screen says, under its daily chart, that Claude Code
+  deletes conversations older than its `cleanupPeriodDays` (30 days unless
+  set), so the history before Caprock's first day was gone before Caprock saw
+  it, and offers **Keep them from now on**: it writes `cleanupPeriodDays:
+  36500` into `~/.claude/settings.json`, that key only and every other byte of
+  the file kept, backed up first, and refuses a file that is not valid JSON.
+  Shown only while the period is unset or 90 days or fewer; nothing leaves
+  the machine (`GET`/`POST /v1/claude/retention`).
+
+### Fixed
+
+- **agents:** a session whose program exits a moment after it starts now
+  says why. Its tab shows *Claude Code exited at once (code 1)* with the last
+  lines it printed, the program that ran, and **Try again** and **Close**,
+  instead of *Connecting to the session… Can't connect · next try in 5 s*
+  over a process that was already gone. The same lines, the command and the
+  binary's version go to service.log at WARN, and `GET /v1/agents/{id}/exit`
+  serves them (kept in the new `session_exits` table).
+- **agents:** *Continue here* on a Claude Code session that moved to another
+  folder with `cd` starts in the folder its conversation began in. Started in
+  the moved-to folder, `claude --resume` printed "No conversation found" and
+  exited at once.
+
 ## [0.156.0] - 2026-10-24
 
 ### Changed

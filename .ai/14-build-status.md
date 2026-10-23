@@ -184,6 +184,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-24 — 0.157.0: Second Brain skips automation, a session that exits at once says why
+
+A minor release, one PR (#821). Second Brain no longer reads sessions a scheduled job marks `automation` when it starts, nor folders listed under Settings → Second Brain *Never read these folders* (a scout every 15 minutes had put 348 run notes into it in a week). A session Caprock starts that exits at once keeps its exit code and last lines (`session_exits`, migration 0072) and its tab shows them with Try again, instead of retrying a connection to a process that is gone; *Continue here* starts in the folder the conversation began in. Lifetime offers to keep Claude Code's transcripts past its 30-day default (`cleanupPeriodDays`).
+
 ### 2026-10-24 — 0.156.0: the status strip holds service things only
 
 A minor release, one PR (#817). The app's status strip holds service things only: the session in front's model, context, next-call price and cost, and today's spend left it (the cockpit and the sidebar's Today strip carry them); what the session's processes use stays. On a 15-inch screen the update offer and its download no longer wrap onto two lines, and a paid plan reads *Premium*, the plan and its end date in its tooltip.
