@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -69,6 +70,42 @@ func TestBrainSpendDaysFollowTheCalendarAcrossAClockChange(t *testing.T) {
 	}
 }
 
+// Each day says whose its tokens were, keyed as the window's projects are:
+// most first, a tie by name with the re-tag batches after the projects, no
+// entry for a run that spent nothing, and together they make the day.
+func TestBrainSpendDaysSplitByProject(t *testing.T) {
+	loc := time.FixedZone("UTC", 0)
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, loc)
+	at := func(d, h int) int64 { return time.Date(2026, 10, d, h, 0, 0, 0, loc).UnixMilli() }
+	runs := []BrainSpendRow{
+		{FinishedAt: at(21, 1), Tokens: 100, Read: true, Project: "web"},
+		{FinishedAt: at(21, 2), Tokens: 300, Read: true, Project: "acme"},
+		{FinishedAt: at(21, 3), Tokens: 50, Read: true, Project: "web"},
+		{FinishedAt: at(21, 4), Tokens: 150, Read: true, Retag: true},
+		{FinishedAt: at(21, 5), Tokens: 150, Read: true, Project: ""},
+		{FinishedAt: at(21, 6), Tokens: 0, Read: false, Project: "quiet"},
+		{FinishedAt: at(22, 1), Tokens: 7, Read: true, Project: "acme"},
+	}
+	days := BucketBrainDays(runs, now, 3)
+	if len(days[0].Projects) != 0 || days[0].Projects == nil {
+		t.Errorf("a day with nothing read has an empty list, not null: %#v", days[0].Projects)
+	}
+	want := []BrainDayProject{{Project: "acme", Tokens: 300}, {Project: "", Tokens: 150}, {Project: "web", Tokens: 150}, {Retag: true, Tokens: 150}}
+	if !slices.Equal(days[1].Projects, want) {
+		t.Errorf("21 Oct: %+v, want %+v", days[1].Projects, want)
+	}
+	var sum int64
+	for _, p := range days[1].Projects {
+		sum += p.Tokens
+	}
+	if sum != days[1].Tokens {
+		t.Errorf("the parts make %d of %d", sum, days[1].Tokens)
+	}
+	if !slices.Equal(days[2].Projects, []BrainDayProject{{Project: "acme", Tokens: 7}}) {
+		t.Errorf("today: %+v", days[2].Projects)
+	}
+}
+
 // Per project through the read session; a run whose session is gone is
 // "", memories count only from reads that went through, and a project
 // with nothing but skipped sessions is not listed.
@@ -120,6 +157,9 @@ func TestBrainSpendByProjectJoinsTheSession(t *testing.T) {
 	rows, err := BrainSpendRows(ctx, s.db, 1000)
 	if err != nil || len(rows) != 6 || rows[4].Read || !rows[0].Read || rows[0].Tokens != 4200 {
 		t.Errorf("rows: %+v %v", rows, err)
+	}
+	if rows[0].Project != "acme-api" || rows[0].Retag || rows[3].Project != "" || !rows[5].Retag || rows[5].Project != "" {
+		t.Errorf("rows say whose they were: %+v", rows)
 	}
 }
 
