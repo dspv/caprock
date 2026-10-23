@@ -5462,7 +5462,9 @@ machine's alone (`403` from any device).
   land in the module's store**, collection `telegram`, document
   `<message_id>-<n>` (`n` counts that message's answers from 1): a press of
   one of its buttons is `{button: "<id>", at: <ms>}`, after which the
-  message's buttons become one `✓ <label>`; a text reply to it (the reply
+  message's buttons become one `✓ <label>` — unless the module has already
+  changed the buttons in answer (the answer is in the store before the mark
+  is made), in which case its edit stands; a text reply to it (the reply
   field, or a swipe-reply) is `{text, at}`, marked 👍, and never reaches a
   session. While such a message is less than a day old the bridge reads
   updates even with every alert and two-way chat off. An answer for a

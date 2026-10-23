@@ -62,6 +62,12 @@ func TestAModuleMessageIsEditedManyTimes(t *testing.T) {
 	if d, _ := k.get(key); d["button"] != "ship" {
 		t.Fatalf("doc %v", d)
 	}
+	// The press is handled in full, its mark made, before the module's
+	// final edit: the answer reaches the store before the mark does.
+	eventually(t, "the chosen mark", func() bool {
+		e, _ := lastEdit(s, id)
+		return e.Method == "editMessageReplyMarkup" && strings.Join(e.Buttons, ",") == "-"
+	})
 
 	// The final text, its buttons gone.
 	if err := s.b.EditModule(ctx, telegram.ModuleEdit{Module: "ops", Name: "Ops", MessageID: id, Text: ptr("Draft 3 · shipped"), Buttons: &none}); err != nil {
@@ -71,6 +77,56 @@ func TestAModuleMessageIsEditedManyTimes(t *testing.T) {
 		t.Fatalf("final edit %+v (%d edits)", got, n)
 	}
 	if ref, _ := s.b.Store.Lookup(id); ref.Module != "ops" || len(ref.Buttons) != 0 {
+		t.Fatalf("ref %+v", ref)
+	}
+}
+
+// A module that answers a press at once, before the press has put its
+// "✓ <label>" under the message, keeps its answer: the late mark never
+// goes over the newer text and buttons. The module edits from inside the
+// store write, so the order is the one that raced on a slow runner.
+func TestALatePressMarkKeepsTheModulesEdit(t *testing.T) {
+	k := &kept{docs: map[string]map[string]any{}}
+	h := newHost()
+	h.chat = "777"
+	h.alertsOn = false
+	var b *telegram.Bridge
+	var answered error
+	s := newStand(t, h, func(br *telegram.Bridge) {
+		b = br
+		br.ModuleAnswer = func(ctx context.Context, module, doc string, data map[string]any) error {
+			if err := k.answer(ctx, module, doc, data); err != nil {
+				return err
+			}
+			id, _ := strconv.ParseInt(strings.SplitN(doc, "-", 2)[0], 10, 64)
+			none := []telegram.ModuleButton{}
+			answered = b.EditModule(ctx, telegram.ModuleEdit{Module: "ops", Name: "Ops", MessageID: id, Text: ptr("Shipped"), Buttons: &none})
+			return nil
+		}
+	})
+	ctx := context.Background()
+	id, err := s.b.SendModule(ctx, telegram.ModuleMessage{Module: "ops", Name: "Ops", Text: "Ship it?",
+		Buttons: []telegram.ModuleButton{{ID: "ship", Label: "Ship"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.message(1)
+	s.bot.Press(owner, id, "x:ship")
+	// Updates are handled one at a time: once a second press is answered,
+	// the first one's handler has returned, its mark made or not.
+	s.bot.Press(owner, id, "x:ship")
+	eventually(t, "the second press answered", func() bool {
+		a := s.bot.Answers()
+		return len(a) > 0 && a[len(a)-1] == "That button is out of date."
+	})
+	if answered != nil {
+		t.Fatal(answered)
+	}
+	got, n := lastEdit(s, id)
+	if got.Method != "editMessageText" || got.Text != "🧩 <b>Ops</b>\nShipped" || len(got.Buttons) != 0 || n != 1 {
+		t.Fatalf("last edit %+v (%d edits)", got, n)
+	}
+	if ref, _ := s.b.Store.Lookup(id); len(ref.Buttons) != 0 || ref.Chosen != "" {
 		t.Fatalf("ref %+v", ref)
 	}
 }

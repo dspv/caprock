@@ -166,6 +166,12 @@ type Bridge struct {
 	// pinMu keeps one module pin change at a time, so a module never
 	// ends up with two pinned messages.
 	pinMu sync.Mutex
+	// editMu keeps one change to a module message's buttons at a time: a
+	// module's edit and the "✓ <label>" a press puts under the message.
+	// The press's answer reaches the module before that mark is made, so
+	// without it a module answering at once could have its new text and
+	// buttons overwritten by the mark of the press it was answering.
+	editMu sync.Mutex
 
 	mu         sync.Mutex
 	pair       *pairing
