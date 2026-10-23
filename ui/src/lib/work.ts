@@ -97,6 +97,12 @@ export interface WorkItem {
   startedAt?: number
   /** Agent cost at API list price; undefined when none was recorded. */
   costUsd?: number
+  /**
+   * A session's row whose recorded pull requests are all done — the newest
+   * closed without a merge, or merged — so it is no longer on one: said as
+   * *PR closed* / *PR merged*, never *no PR yet*.
+   */
+  donePR?: { number: number; state: 'closed' | 'merged' }
 }
 
 export interface WorkBoard {
@@ -135,10 +141,23 @@ export function prStage(card: Pick<BoardCard, 'stage' | 'ci' | 'why' | 'release'
   }
 }
 
-/** The pull request a session counts toward: the newest one recorded on it. */
-export function newestPR(prs: readonly WorkPR[]): WorkPR | undefined {
+/**
+ * A row's title that is only its number ("#796": a pull request recorded with
+ * no title). The number is drawn once, as the title, never "#796 #796"
+ * (owner, 2026-10-24).
+ */
+export const titleIsNumber = (n: number | undefined, title: string | undefined) => n !== undefined && (title ?? '').trim() === `#${n}`
+
+/**
+ * The pull request a session counts toward: the newest one recorded on it
+ * that is not done — `gone` (closed unmerged, or merged and off the board,
+ * as GitHub says) and the ones its own command closed unmerged are skipped
+ * (owner, 2026-10-24: a closed pull request drawn as "PR open" in flight).
+ */
+export function newestPR(prs: readonly WorkPR[], gone?: (n: number) => boolean): WorkPR | undefined {
   let best: WorkPR | undefined
   for (const p of prs) {
+    if ((p.closed_at && !p.merged_at) || gone?.(p.number)) continue
     if (!best || (p.opened_at ?? 0) > (best.opened_at ?? 0) || ((p.opened_at ?? 0) === (best.opened_at ?? 0) && p.number > best.number)) best = p
   }
   return best
@@ -199,16 +218,21 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
     if (it.repo && it.branch) byBranch.set(`${it.repo.root}\0${it.branch}`, it)
   }
 
+  // The pull requests GitHub lists as done with no row here: closed
+  // unmerged, or merged and off the board. A session's record of one never
+  // brings it back as open.
+  const gone = new Map<string, 'closed' | 'merged'>()
+
   // 1. Pull requests, one row per repository and branch.
   for (const [root, st] of stats) {
     if (!st) continue
     const board = asBoard(st.board)
     const cards = new Map((board?.cards ?? []).map((c) => [c.number, c]))
     for (const p of st.prs ?? []) {
-      if (p.state === 'closed') continue
+      if (p.state === 'closed') { gone.set(`${root}\0${p.number}`, 'closed'); continue }
       const card = cards.get(p.number)
       // A merged one the board does not hold is older than its window: done and gone.
-      if (p.state === 'merged' && !card) continue
+      if (p.state === 'merged' && !card) { gone.set(`${root}\0${p.number}`, 'merged'); continue }
       const it = prItem(named(root), p, card, board?.ships_by)
       const key = it.key
       const had = items.get(key)
@@ -221,7 +245,7 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
   for (const s of work.sessions ?? []) {
     const root = s.repo_root || ''
     let target: WorkItem | undefined
-    const newest = newestPR(s.prs ?? [])
+    const newest = newestPR(s.prs ?? [], (n) => gone.has(`${root}\0${n}`))
     if (newest && root) {
       target = byNumber.get(`${root}\0${newest.number}`)
       if (!target) {
@@ -238,9 +262,13 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
       target = byBranch.get(`${root}\0${s.branch}`)
     }
     if (!target) {
+      // Its pull requests all done: which one, so the row says so.
+      const last = !newest ? newestPR((s.prs ?? []).map((p) => ({ ...p, closed_at: undefined }))) : undefined
+      const lastState = last ? (gone.get(`${root}\0${last.number}`) ?? (last.merged_at ? 'merged' : 'closed')) : undefined
       target = {
         key: `s:${s.session_id}`, kind: 'session', repo: root ? named(root) : undefined, title: sessionTitle(s), branch: s.on_default ? undefined : s.branch,
         sessions: [], stage: 'agent', fill: 1, red: false, running: false, word: 'agent', lane: 'work', group: 'work', needsYou: false, working: false,
+        ...(last && lastState ? { donePR: { number: last.number, state: lastState } } : {}),
       }
       put(target)
     }
@@ -285,7 +313,10 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
       if (it.sessions.some((s) => s.state === 'working')) it.working = true
       const first = Math.min(...it.sessions.map((s) => s.started_at).filter((v) => v > 0), it.pr?.created_at ?? Infinity)
       if (Number.isFinite(first)) it.startedAt = first
-      if (it.card && it.card.spend.sessions > 0) it.costUsd = it.card.spend.cost_usd
+      // A pull request on the board: its card's spend, the one source the
+      // Pipeline's list and its Agents figure use too (owner, 2026-10-24:
+      // $29.89 here beside "–" there). Else the sessions on the row.
+      if (it.card) it.costUsd = it.card.spend.sessions > 0 ? it.card.spend.cost_usd : undefined
       else if (it.sessions.length > 0) it.costUsd = it.sessions.reduce((n, s) => n + (s.cost_usd || 0), 0)
     }
     if (it.kind === 'session' && !it.task && it.sessions.length > 0 && it.sessions.every((s) => isIdle(s, now))) idle.push(it)

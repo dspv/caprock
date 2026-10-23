@@ -388,7 +388,10 @@ export function pickSession(ss: readonly WorkSession[], now?: number): PlanRow['
 export function stateOf(it: WorkItem, landing: ReturnType<typeof landingOf>, wait: Wait | undefined, dots: OSDot[] | undefined, ctx: RowContext = {}): RowState {
   const c = it.card
   const says = (text: string, rank: RowState['rank'], title: string, tone?: RowState['tone']): RowState => ({ text, rank, title, tone })
-  if (it.kind !== 'pr') return says(it.kind === 'session' && it.word === 'agent' ? 'no PR yet' : it.word, 1, wait?.title ?? 'An agent is on it; it has not opened a pull request yet.')
+  if (it.kind !== 'pr') {
+    if (it.kind === 'session' && it.word === 'agent' && it.donePR) return says(`PR ${it.donePR.state}`, 1, wait?.title ?? `Its pull request #${it.donePR.number} ${it.donePR.state === 'closed' ? 'was closed without a merge' : 'is merged'}; no other of it is open.`)
+    return says(it.kind === 'session' && it.word === 'agent' ? 'no PR yet' : it.word, 1, wait?.title ?? 'An agent is on it; it has not opened a pull request yet.')
+  }
   if (it.stage === 'released') return says('released', 2, `In ${c?.release ?? 'a release'}.`)
   if (it.stage === 'merged') {
     const at = it.pr?.merged_at
@@ -430,8 +433,12 @@ export function rowOf(it: WorkItem, labels?: BranchPR['labels'], ctx: RowContext
     warn: !landing?.red && !!landing?.warn,
     // An agent's row says in its word that no pull request is open yet, at
     // any width (owner, 2026-10-17: a bare bar and "agent" said nothing).
-    word: landing?.word ?? (it.kind === 'session' && it.word === 'agent' ? 'no PR yet' : it.word),
-    wordTitle: landing ? `Set by the landing queue; on the board: ${it.word}` : it.kind === 'session' && it.word === 'agent' ? 'An agent is on it; it has not opened a pull request yet.' : undefined,
+    // One whose pull request was closed (or merged) is not "no PR yet" (owner, 2026-10-24).
+    word: landing?.word ?? (it.kind === 'session' && it.word === 'agent' ? (it.donePR ? `PR ${it.donePR.state}` : 'no PR yet') : it.word),
+    wordTitle: landing ? `Set by the landing queue; on the board: ${it.word}`
+      : it.kind === 'session' && it.word === 'agent' ? (it.donePR
+        ? `Its pull request #${it.donePR.number} ${it.donePR.state === 'closed' ? 'was closed without a merge' : 'is merged'}; no other of it is open. The agent is still running.`
+        : 'An agent is on it; it has not opened a pull request yet.') : undefined,
     running: it.running || (it.kind === 'session' && it.working),
     wait,
     age: started && ctx.now ? { text: ageText(ctx.now - started), title: `${it.kind === 'pr' ? 'Opened' : 'Started'} ${spanText(Math.max(0, ctx.now - started))} ago` } : undefined,

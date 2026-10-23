@@ -17,7 +17,7 @@ import type { BoardFlow } from '@/lib/prboard'
 import { AGENT_COST_NOTE } from '@/lib/prboard'
 import { fmtUSD } from '@/lib/format'
 import { spanText } from '@/lib/prstats'
-import { ciVsUsual, origin, pipelineHref, releaseLag, STEPS, todoSteps, turnLeft, type WorkItem } from '@/lib/work'
+import { ciVsUsual, origin, pipelineHref, releaseLag, STEPS, titleIsNumber, todoSteps, turnLeft, type WorkItem } from '@/lib/work'
 import type { WorkSession } from '@/lib/api'
 import { agentName } from './Characters'
 
@@ -146,7 +146,7 @@ export function WorkRow({ it, now, passed, flow, onOpenSession, showRepo = true 
       <div className={ROW_GRID}>
         <div className="min-w-0 @max-[720px]/work:col-span-3">
           <div className="flex min-w-0 items-baseline gap-2">
-            {it.pr && <span className="num shrink-0 text-[13px] text-fg-muted">#{it.pr.number}</span>}
+            {it.pr && !titleIsNumber(it.pr.number, it.title) && <span className="num shrink-0 text-[13px] text-fg-muted">#{it.pr.number}</span>}
             <TitleLink it={it} onOpenSession={onOpenSession} className="text-[14px]" />
           </div>
           <Meta it={it} showRepo={showRepo} onOpenSession={onOpenSession} />

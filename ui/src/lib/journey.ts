@@ -18,7 +18,7 @@
  * nothing read says. A pull request closed unmerged stays distinct: its
  * Merged step reads *Closed*, the CI step before it never filled.
  */
-import type { BoardCard, PRBoard, ShipsBy, Stage } from './prboard'
+import type { BoardCard, PRBoard, PRSpend, ShipsBy, Stage } from './prboard'
 import type { BranchPR } from './branches'
 import type { TabPR } from './prstats'
 
@@ -198,6 +198,8 @@ export function progressOf(steps: JourneyStep[]): number {
 /** One row of the Pipeline: a listed pull request with its board card and labels. */
 export interface PipelineRow extends TabPR {
   card?: BoardCard
+  /** Its recorded agent work: its card's, else (closed unmerged in the window) its `board.closed` entry's — the one source the list, the figure and the release plan share. */
+  spend?: PRSpend
   labels?: { name: string; color?: string }[]
   author?: string
   author_avatar?: string
@@ -206,10 +208,12 @@ export interface PipelineRow extends TabPR {
 /** The rows with their cards, labels and authors, in journey order. */
 export function pipelineRows(rows: TabPR[], board: PRBoard | undefined, repo: BranchPR[]): PipelineRow[] {
   const cards = new Map((board?.cards ?? []).map((c) => [c.number, c]))
+  const closed = new Map((board?.closed ?? []).map((c) => [c.number, c]))
   const listed = new Map(repo.map((p) => [p.number, p]))
   return journeyOrder(rows.map((r) => {
     const b = listed.get(r.number)
-    return { ...r, card: cards.get(r.number), labels: b?.labels, author: b?.author, author_avatar: b?.author_avatar }
+    const card = cards.get(r.number)
+    return { ...r, card, spend: card?.spend ?? closed.get(r.number)?.spend, labels: b?.labels, author: b?.author, author_avatar: b?.author_avatar }
   }))
 }
 

@@ -26,11 +26,13 @@ const LIST_PRICE = 'at API list price · estimate'
  * cost per agent-hour, the second opens the team's daily chart. Everything
  * the old cost-per-hour and team tiles said is in the hover.
  */
-export function AgentsCard({ cost, costHint, trend, a, open, onToggle }: {
-  cost: number; costHint: string; trend?: ReactNode; a?: RepoAgents; open: boolean; onToggle: () => void
+export function AgentsCard({ cost, costHint, noCost, trend, a, open, onToggle }: {
+  /** Undefined: no agent cost was recorded on any pull request of the window, drawn "–" with `noCost`, never $0.00. */
+  cost: number | undefined; costHint: string; noCost?: string; trend?: ReactNode; a?: RepoAgents; open: boolean; onToggle: () => void
 }) {
   const hint = (
     <>
+      {cost === undefined && noCost && <><b>{noCost}</b>.<br /></>}
       <b>Agent cost</b>: {costHint}
       {a && <>
         <br /><b>Cost per agent-hour</b>, the last 24 hours, {LIST_PRICE}. An hour of work is one agent session’s clock hour with five or more priced calls, its subagents included; per agent-hour, not per wall-clock hour: four agents at once are four hours of work.
@@ -42,7 +44,7 @@ export function AgentsCard({ cost, costHint, trend, a, open, onToggle }: {
   const rate = a ? perHour(a.rate.last24) : undefined
   const t = a?.team
   return (
-    <Stat data="agents" label="Agents · 14 days" size="compact" value={fmtUSD(cost)} trend={trend} hint={hint}
+    <Stat data="agents" label="Agents · 14 days" size="compact" value={cost === undefined ? <span data-agents-none title={noCost}>–</span> : fmtUSD(cost)} trend={trend} hint={hint}
       sub={<span className="mono">
         {a ? <>
           <span data-agent-rate title={`Cost per agent-hour, the last 24 hours, ${LIST_PRICE}`}>{rate === undefined ? '–' : `${fmtUSD(rate)}/h`}</span>

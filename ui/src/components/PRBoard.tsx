@@ -17,7 +17,7 @@
  */
 import type { ReactNode } from 'react'
 import type { BranchPR } from '@/lib/branches'
-import { AGENT_COST_NOTE, EXPENSIVE_PERIODS, costText, costTitle, perDay, periodWords, type BoardRelease, type Costliest, type ExpensivePeriod, type FlowPoint, type KnownPR, type PRBoard, type SeriesKey } from '@/lib/prboard'
+import { AGENT_COST_NOTE, EXPENSIVE_PERIODS, FLOW_COST_NOTE, costText, costTitle, flowCost, noMerge, noPRCost, perDay, periodWords, type BoardRelease, type Costliest, type ExpensivePeriod, type FlowPoint, type KnownPR, type PRBoard, type SeriesKey } from '@/lib/prboard'
 import { flowCompare, flowCompareTitle, flowPointTitle, flowTone, flowUsualLine, flowWord } from '@/lib/flowtrend'
 import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
@@ -36,6 +36,7 @@ export interface FlowFigure { key: string; label: string; value: string; sub: Re
 /** The flow's figures in reading order; Home shows the first five. */
 export function flowFigures(board: PRBoard): FlowFigure[] {
   const f = board.flow
+  const cost = flowCost(board)
   const open = f.counts.draft + f.counts.open + f.counts.fix + f.counts.ready
   return [
     { key: 'flight', series: 'flight', label: 'In flight', value: String(open), sub: `${f.counts.open} with CI running${f.counts.draft ? ` · ${f.counts.draft} draft` : ''}`,
@@ -44,7 +45,7 @@ export function flowFigures(board: PRBoard): FlowFigure[] {
       hint: 'Open pull requests with a red check, a merge conflict, or a review asking for changes.' },
     { key: 'ready', label: 'Ready', value: String(f.counts.ready), sub: 'green, awaiting a merge', tone: f.counts.ready ? 'ok' : undefined,
       hint: 'Open pull requests whose checks passed (or that have none): waiting for a review or a merge.' },
-    { key: 'throughput', series: 'throughput', label: `Throughput · ${f.days}d`, value: perDay(f.merged, f.days), sub: `${f.merged} merged`,
+    { key: 'throughput', series: 'throughput', label: `Throughput · ${f.days}d`, value: perDay(f.merged, f.days), sub: f.merged ? `${f.merged} merged` : `none merged in ${f.days} days`,
       hint: `Pull requests merged in the last ${f.days} days, a day on average, from GitHub's merge stamps.` },
     { key: 'ci', series: 'ci', label: 'CI median', value: f.ci_median_ms ? fmtRun(f.ci_median_ms) : '–', sub: f.ci_median_ms ? 'one successful run' : 'fewer than two runs',
       hint: "The busiest workflow's median successful run, start to finish, from GitHub's run times." },
@@ -53,7 +54,8 @@ export function flowFigures(board: PRBoard): FlowFigure[] {
     { key: 'lag', series: 'lag', label: 'Merged → released', value: f.release_lag_median_ms ? `~${spanText(f.release_lag_median_ms)}` : '–',
       sub: f.release_lag_median_ms ? `estimate · ${f.release_lag_count} released` : f.release_lag_count === 1 ? 'one release so far' : 'no release matched',
       hint: 'An estimate: each merge into the default branch is matched to the first release published after it, and the median taken of merge to publish.' },
-    { key: 'cost', series: 'cost', label: 'Agent cost', value: `$${f.cost_usd.toFixed(2)}`, sub: 'on these PRs · API list price', hint: AGENT_COST_NOTE },
+    { key: 'cost', series: 'cost', label: 'Agent cost', value: cost === undefined ? '–' : `$${cost.toFixed(2)}`, sub: cost === undefined ? 'none recorded' : 'on these PRs · API list price',
+      hint: cost === undefined ? `${noPRCost(f.days)}. ${FLOW_COST_NOTE}` : FLOW_COST_NOTE },
   ]
 }
 
@@ -156,8 +158,9 @@ export function FlowCards({ board, bucket, onBucket, preview, agents }: {
             {rest.map((k, i) => <span key={k} className="inline-flex gap-x-2">{i > 0 && <span aria-hidden>·</span>}{btn(k)}</span>)}
           </div>
         </div>
-        <Stat data="speed" label={`Speed · ${f.days} days`} size="compact" value={perDay(f.merged, f.days)} trend={spark('throughput', 'Throughput')}
-          hint={<><b>Throughput</b>: {hintOf('throughput')}<br /><b>CI</b>: {hintOf('ci')}<br /><b>PR→merge</b>: {hintOf('ttm')}<br /><b>merge→release</b> (an estimate): {hintOf('lag')}</>}
+        {/* No merge in the window: "–", not a 0.0/day beside a breakdown of dashes (owner, 2026-10-24). */}
+        <Stat data="speed" label={`Speed · ${f.days} days`} size="compact" value={f.merged ? perDay(f.merged, f.days) : <span data-speed-none title={noMerge(f.days)}>–</span>} trend={spark('throughput', 'Throughput')}
+          hint={<>{!f.merged && <><b>{noMerge(f.days)}</b>, so no rate is said.<br /></>}<b>Throughput</b>: {hintOf('throughput')}<br /><b>CI</b>: {hintOf('ci')}<br /><b>PR→merge</b>: {hintOf('ttm')}<br /><b>merge→release</b> (an estimate): {hintOf('lag')}</>}
           sub={<span className="mono">{part('ci', 'CI', ci)} · {part('ttm', 'PR→merge', ttm)} · {part('lag', 'merge→release', lag)}</span>} />
         {agents(spark('cost', 'Agent cost'))}
       </div>

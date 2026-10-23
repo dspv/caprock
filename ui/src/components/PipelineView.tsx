@@ -31,7 +31,7 @@ import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prR
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
-import { AGENT_COST_NOTE, asBoard, asCostliest, costText, costTitle, readExpensivePeriod, writeExpensivePeriod, type Costliest, type ExpensivePeriod, type PRBoard } from '@/lib/prboard'
+import { AGENT_COST_NOTE, FLOW_COST_NOTE, asBoard, asCostliest, costText, costTitle, flowCost, noPRCost, readExpensivePeriod, writeExpensivePeriod, type Costliest, type ExpensivePeriod, type PRBoard } from '@/lib/prboard'
 import type { BranchPR } from '@/lib/branches'
 import { journey, pipelineRows, releaseNote, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { BUCKET_LABEL, bucketItems, fixedLately, inBucket, noteFixes, readFixSeen, writeFixSeen, type Bucket, type FixSeen } from '@/lib/flowbucket'
@@ -39,6 +39,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { openExternal } from '@/lib/nudges'
 import { keys } from '@/lib/appkeys'
 import { sessionTitle } from '@/lib/sidebar'
+import { titleIsNumber } from '@/lib/work'
 import { FlowCards, MostExpensive, Releases } from './PRBoard'
 import { AgentsCard, TeamChart, useRepoAgents } from './AgentFigures'
 import { PipelineRelease } from './ReleasePlan'
@@ -271,7 +272,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
           right={<span title="Read from GitHub: the newest pull requests listed, the runs of the last 14 days">GitHub · last {board?.flow.days ?? 14} days</span>}>
           {board ? <FlowCards board={board} bucket={bucket} onBucket={pickBucket}
             preview={(b) => <BucketPreview b={b} board={board} prs={stats?.prs ?? []} fixed={b === 'fix' ? fixedLately(fixSeen, now) : 0} />}
-            agents={(trend) => <AgentsCard cost={board.flow.cost_usd} costHint={AGENT_COST_NOTE} trend={trend} a={agents} open={teamOpen} onToggle={() => setTeamOpen((o) => !o)} />} />
+            agents={(trend) => <AgentsCard cost={flowCost(board)} costHint={FLOW_COST_NOTE} noCost={noPRCost(board.flow.days)} trend={trend} a={agents} open={teamOpen} onToggle={() => setTeamOpen((o) => !o)} />} />
             : !stats ? <div className="px-3 py-2"><DeckSkeleton label="Reading the figures" /></div>
               : stats.error && (stats.prs?.length ?? 0) === 0 ? <p className="truncate px-3 py-3 text-[13px] text-warn" title={stats.error.message}>Not read: {stats.error.message}</p>
                 : <p className="px-3 py-3 text-[13px] text-fg-muted">No figures yet.</p>}
@@ -398,14 +399,14 @@ function BucketPreview({ b, board, prs, fixed }: { b: Bucket; board: PRBoard; pr
 function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: boolean; onPick: () => void; now: number; dim: boolean; ships: ShipsContext }) {
   const steps = journey(r)
   const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
-  const cost = r.card ? costText(r.card.spend) : ''
+  const cost = r.spend ? costText(r.spend) : ''
   return (
     <li data-prs-row={r.number} data-stage={stageOf(r)} data-prs-unconfirmed={dim ? '' : undefined} className="border-b border-border last:border-b-0">
       <button type="button" onClick={onPick} aria-current={on || undefined}
         title={dim ? 'Not re-confirmed: from an earlier read of GitHub' : undefined}
         className={`${ROW_GRID} w-full gap-y-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none ${on ? 'bg-[var(--app-row-active)] shadow-[inset_3px_0_0_var(--color-accent)]' : ''} ${dim ? 'opacity-60' : ''}`}>
         <span className="flex min-w-0 items-baseline gap-2 @max-[820px]/list:col-span-2">
-          <span className="num shrink-0 text-[13px] text-fg-muted">#{r.number}</span>
+          {!titleIsNumber(r.number, r.title) && <span className="num shrink-0 text-[13px] text-fg-muted">#{r.number}</span>}
           <span className="min-w-0 flex-1">
             <span data-prs-title className="block text-[14px] font-medium leading-[1.35] text-fg [overflow-wrap:anywhere]">{r.title}</span>
             {(r.labels?.length || r.author || r.mine) && (
@@ -419,9 +420,9 @@ function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: 
         </span>
         <JourneyPills steps={steps} note={releaseNote(r, ships)} />
         <span className="num text-right text-[12.5px] text-fg-muted @max-[820px]/list:hidden" title={at ? new Date(at).toLocaleString() : undefined}>{at ? spanText(Math.max(0, now - at)) : '–'}</span>
-        <span className="num text-right text-[13px] font-medium text-fg" title={r.card ? costTitle(r.card.spend) : undefined}>
+        <span data-prs-cost className="num text-right text-[13px] font-medium text-fg" title={r.spend ? costTitle(r.spend) : undefined}>
           {cost || <span className="font-normal text-fg-muted">–</span>}
-          {r.card && r.card.spend.live > 0 && <span className="ml-1 text-ok" title={`${r.card.spend.live} agent session${r.card.spend.live === 1 ? '' : 's'} running on it now`}>●</span>}
+          {r.spend && r.spend.live > 0 && <span className="ml-1 text-ok" title={`${r.spend.live} agent session${r.spend.live === 1 ? '' : 's'} running on it now`}>●</span>}
         </span>
       </button>
     </li>

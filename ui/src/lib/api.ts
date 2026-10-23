@@ -2915,6 +2915,8 @@ export interface WorkPR {
   title?: string
   opened_at?: number
   merged_at?: number
+  /** Its own command closed it (a merge aside); GitHub may say closed without it. */
+  closed_at?: number
 }
 
 /** One live agent session on the Work board (GET /v1/work). */

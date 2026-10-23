@@ -5,7 +5,7 @@
  */
 import type { BoardFlow } from '@/lib/prboard'
 import { spanText } from '@/lib/prstats'
-import type { WorkItem } from '@/lib/work'
+import { titleIsNumber, type WorkItem } from '@/lib/work'
 import { CostCell, Meta, NoteWord, StageBar, TitleLink, TodoMeter, rowNotes } from './WorkRow'
 
 export function WorkCard({ it, now, passed, flow, onOpenSession, showRepo = true }: { it: WorkItem; now: number; passed: number; flow?: BoardFlow; onOpenSession?: (id: string) => void; showRepo?: boolean }) {
@@ -14,7 +14,7 @@ export function WorkCard({ it, now, passed, flow, onOpenSession, showRepo = true
     <li data-work-card={it.key} data-work-stage={it.stage} data-needs-you={it.needsYou || undefined}
       className={`grid min-w-0 gap-1.5 rounded-[8px] border bg-panel px-2.5 py-2 ${it.needsYou ? 'border-warn/60' : 'border-border'}`}>
       <div className="flex min-w-0 items-baseline gap-1.5">
-        {it.pr && <span className="num shrink-0 text-[12px] text-fg-muted">#{it.pr.number}</span>}
+        {it.pr && !titleIsNumber(it.pr.number, it.title) && <span className="num shrink-0 text-[12px] text-fg-muted">#{it.pr.number}</span>}
         <TitleLink it={it} onOpenSession={onOpenSession} className="text-[13px]" />
       </div>
       <Meta it={it} showRepo={showRepo} onOpenSession={onOpenSession} />

@@ -35,6 +35,18 @@ const plan = (): ReleasePlanData => {
   return planForRepo(withKinds(), '/w/caprock', stats, NOW)
 }
 
+describe('a pull request recorded with no title', () => {
+  it('names it by its number once, never "#796 #796" (owner, 2026-10-24)', () => {
+    const w = withKinds()
+    w.sessions = [{ ...w.sessions[0]!, prs: [{ number: 796, url: 'https://github.com/dspv/caprock/pull/796', opened_at: NOW - 60_000 }] }]
+    const p = planForRepo(w, '/w/caprock', statsFixture(), NOW)
+    const { container } = render(<ReleasePlan plan={p} />)
+    const text = container.textContent ?? ''
+    expect(text).toContain('#796')
+    expect(text.split('#796').length - 1).toBe(1)
+  })
+})
+
 describe('the release line', () => {
   it('a part scrolls to its section', () => {
     const scroll = vi.fn()

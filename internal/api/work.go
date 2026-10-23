@@ -99,6 +99,9 @@ type WorkPR struct {
 	Title    string `json:"title,omitempty"`
 	OpenedAt int64  `json:"opened_at,omitempty"`
 	MergedAt int64  `json:"merged_at,omitempty"`
+	// ClosedAt is set when the session's own command closed it; GitHub may
+	// say closed when this is absent (closed in the browser).
+	ClosedAt int64 `json:"closed_at,omitempty"`
 }
 
 // WorkTask is one of the task runner's tasks.
