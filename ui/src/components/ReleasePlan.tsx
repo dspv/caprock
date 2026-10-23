@@ -82,6 +82,8 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
   if (nothing && !plan.next && !empty) return null
   const merge = plan.ships === 'merge'
   // A release pull request names the version; else the rule's prediction.
+  // The heading says the version or, with none, "Next release": the line's own
+  // head word would repeat it ("Next release Next release · 1 merged").
   const pre = !merge && status?.phase === 'pre' ? status : undefined
   const v = pre?.version ?? plan.next?.version
   const steps = { ships: plan.ships, next: v }
@@ -108,7 +110,7 @@ export function ReleasePlan({ plan, compact = false, showRepo = false, onOpen, e
           <span data-release-since title={plan.since?.title} className="num min-w-0 truncate text-[11px] text-fg-muted">
             <span aria-hidden className="mr-1.5 text-fg-faint">·</span>last {plan.last.name} {ageText(now - plan.last.at)} ago
           </span>
-        )) : plan.line ? <ReleaseLine parts={v ? plan.line.filter((p) => p.key !== 'head') : plan.line} since={plan.since} phone={phone} compact={compact} /> : plan.since && (
+        )) : plan.line ? <ReleaseLine parts={plan.line.filter((p) => p.key !== 'head')} since={plan.since} phone={phone} compact={compact} /> : plan.since && (
           <span data-release-since title={plan.since.title} className={`num min-w-0 text-fg-muted [overflow-wrap:anywhere] ${phone ? 'basis-full text-[12.5px]' : compact ? 'basis-full text-[11px]' : 'text-[12.5px]'}`}>{plan.since.text}</span>
         )}
       </header>

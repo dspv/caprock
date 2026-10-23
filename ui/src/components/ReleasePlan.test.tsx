@@ -181,6 +181,15 @@ describe('the release plan', () => {
     expect(screen.getByRole('heading', { name: 'Next release' }).title).toMatch(/No number/)
   })
 
+  it('says Next release once when no version is predicted: the line does not repeat it', () => {
+    const p = planForRepo(workFixture(), '/w/caprock', statsFixture(), NOW)
+    expect(p.line?.[0]?.key).toBe('head')
+    const { container } = render(<ReleasePlan plan={p} />)
+    const header = container.querySelector('header')!
+    expect(header.textContent!.match(/Next release/g)).toHaveLength(1)
+    expect(container.querySelector('[data-line-part="head"]')).toBeNull()
+  })
+
   // Owner, 2026-10-18, translated, of caprock-web: eighteen merged pull
   // requests under Next release, each waiting for a release that never comes.
   it('has no next release where the repository ships on merge: one line, open work, and a short Merged recently', () => {
