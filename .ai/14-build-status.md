@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-24 — 0.156.0: the status strip holds service things only
+
+A minor release, one PR (#817). The app's status strip holds service things only: the session in front's model, context, next-call price and cost, and today's spend left it (the cockpit and the sidebar's Today strip carry them); what the session's processes use stays. On a 15-inch screen the update offer and its download no longer wrap onto two lines, and a paid plan reads *Premium*, the plan and its end date in its tooltip.
+
 ### 2026-10-23 — 0.155.0: any file from the phone, a visible way to the full dashboard
 
 A minor release, one PR (#814). The phone's attach buttons (session chat, Home dock, Save sheet) take every file type Caprock's paste endpoint accepts — Markdown, text, PDF, office, data and source files as well as photos — and send a document into a session by its path, as a file dropped on the desktop is; a refused file gets one short line. The faint *Full dashboard* link at the bottom of the phone's Home is a row that says what is behind it: a new session, every project and session, settings.

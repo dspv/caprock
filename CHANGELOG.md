@@ -12,6 +12,22 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.156.0] - 2026-10-24
+
+### Changed
+
+- **app:** the status strip holds service things only: the session in
+  front's model, context, next-call price and cost, and today's spend, left
+  it — the session's cockpit and the sidebar's Today strip carry them. What
+  the session's processes use (CPU and memory) stays.
+
+### Fixed
+
+- **app:** on a narrower screen the status strip's *Update to vX — Restart*
+  button and *Downloading vX* wrapped onto two lines; they stay on one, and
+  a paid plan reads *Premium* there, with the plan and its end date in its
+  tooltip.
+
 ## [0.155.0] - 2026-10-23
 
 ### Added
