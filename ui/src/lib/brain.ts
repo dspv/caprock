@@ -251,7 +251,9 @@ export function brainMode(status: BrainStatus | null, today = 0): { mode: string
     const verb = auto.reading.phase === 'linking' ? 'Linking' : 'Reading'
     return { mode: auto.reading.project ? `${verb} ${auto.reading.project}` : `${verb} a session`, metric: n > 0 ? String(n) : '', active: true }
   }
-  if (auto.daily_tokens > 0 && auto.spent >= auto.daily_tokens) return { mode: 'Today’s limit reached', metric, active: false }
+  // Short: on a 14-inch screen the sidebar card cut "Today’s limit reached ·
+  // 1546 · +8 today" mid-word (owner, 2026-10-24); the count alone follows.
+  if (auto.daily_tokens > 0 && auto.spent >= auto.daily_tokens) return { mode: 'Limit reached', metric: n > 0 ? String(n) : '', active: false }
   if (auto.pending > 0) return { mode: `${auto.pending} session${auto.pending === 1 ? '' : 's'} to read`, metric: n > 0 ? String(n) : '', active: true }
   return { mode: 'Up to date', metric, active: false }
 }
