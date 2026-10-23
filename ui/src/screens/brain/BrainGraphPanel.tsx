@@ -37,9 +37,9 @@ function MemoryRow({ n, now, onSelect }: { n: BrainNode; now: number; onSelect: 
   return (
     <li>
       <button type="button" onClick={() => onSelect(n.id)} data-brain-panel-memory={n.id}
-        className="flex w-full min-w-0 items-baseline gap-2 rounded-[6px] px-1.5 py-1 text-left hover:bg-panel-2">
-        <span aria-hidden className="inline-block h-[7px] w-[7px] shrink-0 translate-y-[-1px] rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
-        <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg" title={n.title}>{n.title}</span>
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-1.5 py-1 text-left hover:bg-panel-2">
+        <span aria-hidden className="inline-block h-[7px] w-[7px] translate-y-[-1px] rounded-full" style={{ background: KIND_COLOR[n.kind] }} />
+        <span className="truncate text-[12.5px] text-fg" title={n.title}>{n.title}</span>
         <span className="num shrink-0 text-[11px] text-fg-faint">{fmtAgo(n.created_at, now)}</span>
       </button>
     </li>
