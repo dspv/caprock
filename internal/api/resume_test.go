@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -287,5 +288,52 @@ func TestResumeInfoContinuesHermes(t *testing.T) {
 	}
 	if rr := post("20261015_101500_ab12cd"); rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "state database") {
 		t.Fatalf("stale hermes continue: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+// Claude Code finds a conversation only from the folder it began in, and a
+// session's recorded folder follows its `cd`s: one started in a folder and
+// moved into a subfolder is continued from where it began, or `claude
+// --resume` prints "No conversation found" and exits at once (2026-10-24).
+func TestContinueStartsInTheFolderTheConversationBeganIn(t *testing.T) {
+	e := newEnv(t)
+	fa := &fakeAgents{avail: true}
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: fa})
+	ctx := context.Background()
+	began := t.TempDir()
+	moved := filepath.Join(began, "app")
+	if err := os.Mkdir(moved, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	proj := filepath.Join(t.TempDir(), projectDirName(began))
+	if err := os.Mkdir(proj, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const id = "aaaaaaaa-1111-4222-8333-444444444444"
+	line, _ := json.Marshal(map[string]string{"type": "user", "sessionId": id, "cwd": began})
+	if err := os.WriteFile(filepath.Join(proj, id+".jsonl"), append(append([]byte(`{"type":"summary"}`+"\n"), line...), '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertSession(ctx, e.st.DB(), id, store.SessionPatch{Cwd: moved, TranscriptPath: filepath.Join(proj, id+".jsonl"), Status: store.StatusEnded}); err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	e.srv.Config.Handler.ServeHTTP(rr, httptest.NewRequest("GET", "/v1/sessions/"+id, nil))
+	var d SessionDetail
+	if err := json.Unmarshal(rr.Body.Bytes(), &d); err != nil || d.Resume == nil || !d.Resume.OK || !strings.Contains(d.Resume.Command, strconv.Quote(began)) {
+		t.Fatalf("resume: %+v %v", d.Resume, err)
+	}
+	body, _ := json.Marshal(map[string]any{"cwd": moved, "resume": id, "fork": true})
+	req := httptest.NewRequest("POST", "/v1/agents", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	e.srv.Config.Handler.ServeHTTP(rr, req)
+	if rr.Code >= 300 || len(fa.spawns) != 1 || fa.spawns[0]["cwd"] != began {
+		t.Fatalf("spawn: %d %s %v", rr.Code, rr.Body.String(), fa.spawns)
+	}
+
+	// Where the transcript does not say, the asked folder stands.
+	if got := claudeStartDir(store.Session{SessionID: "x", Cwd: moved}, moved); got != moved {
+		t.Fatalf("no transcript: %q", got)
 	}
 }

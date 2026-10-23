@@ -26,6 +26,7 @@ import { UnpricedNote } from '@/components/Unpriced'
 import { Donut, ShareBar, sharePct, sliceColors, topN, type Segment } from '@/components/Donut'
 import { cacheLevel } from '@/lib/cachelevel'
 import { ToolDrill } from '@/components/ToolDrill'
+import { RetentionNote } from '@/components/RetentionNote'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 type View = 'charts' | 'numbers'
@@ -245,6 +246,9 @@ export function HistoryScreen() {
         {shownDays.length > 0 && (
           <BarChart bars={shownDays} active={activeDay} onActive={setActiveDay} height={dailyTall ? 144 : 72} showDayLabels={false} axis />
         )}
+        {/* Why the history starts where it does, under the chart that shows
+          * it: Claude Code deleted what came before (cleanupPeriodDays). */}
+        {range === 'all' && d && <RetentionNote earliest={groupDays(d.daily ?? [])[0]?.day} />}
       </Panel>
 
       {/* Top projects lead: "which repository did this go into" is the first

@@ -103,6 +103,10 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 	id := r.PathValue("id")
 	ts, ok := src.TermV2(id)
 	if !ok {
+		// A program that exited at once is said so, not refused.
+		if h.serveEarlyExit(s, w, r, id) {
+			return
+		}
 		http.Error(w, "session is not owned by caprock", http.StatusConflict)
 		return
 	}
@@ -239,6 +243,10 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 				// under this id (a permission-mode restart): the terminal
 				// reconnects to it rather than closing the tab.
 				exit["restart"] = 1
+			} else if rep, ok := s.exitOf(id); ok && rep.Early {
+				// It ended at once: the tab says so, with what it printed
+				// (GET /v1/agents/{id}/exit), instead of a shell in its place.
+				exit["early"] = 1
 			}
 			_ = t.text(map[string]map[string]int{"exit": exit})
 			_ = c.Close(websocket.StatusNormalClosure, "session ended")

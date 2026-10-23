@@ -966,3 +966,29 @@ describe('the new shell hint', () => {
     expect(hint()).toBeNull()
   })
 })
+
+describe('a program that exited at once', () => {
+  type Exiting = { callbacks: { exit: (code: number, early?: boolean) => void } }
+  const exitWith = (code: number, early: boolean) => act(() => { (h.clients[0] as unknown as Exiting).callbacks.exit(code, early) })
+
+  it('says so in the pane, with Close, instead of becoming a shell', () => {
+    const onExit = vi.fn()
+    const onEarlyExit = vi.fn()
+    render(<TerminalPane sessionId="s" active onExit={onExit} onEarlyExit={onEarlyExit} />)
+    exitWith(1, true)
+    expect(document.querySelector('[data-early-exit="s"]')).not.toBeNull()
+    expect(screen.getByText('Claude Code exited at once (code 1)')).toBeTruthy()
+    expect(screen.queryByText('Connecting to the session…')).toBeNull()
+    expect(onExit).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('Close'))
+    expect(onEarlyExit).toHaveBeenCalledWith(null)
+  })
+
+  it('an ordinary exit still goes to the workspace', () => {
+    const onExit = vi.fn()
+    render(<TerminalPane sessionId="s" active onExit={onExit} onEarlyExit={() => {}} />)
+    exitWith(0, false)
+    expect(onExit).toHaveBeenCalledWith(0)
+    expect(document.querySelector('[data-early-exit]')).toBeNull()
+  })
+})

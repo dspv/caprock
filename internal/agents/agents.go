@@ -180,6 +180,23 @@ type Agent struct {
 	// terminal before the agent, is over (worktreesetup.go); nil when the
 	// session had none.
 	setupDone chan struct{}
+
+	// typedAny is set by the first input typed into the session: an exit
+	// after it is somebody closing it, not a program that never started
+	// (EarlyExit).
+	typedAny atomic.Bool
+	// stopped is set when Caprock was asked to end it (End, a stop signal,
+	// a restart): an exit then is not one the program chose.
+	stopped atomic.Bool
+	// pumped is closed when its output has been read to the end, so the
+	// screen it left is complete when its exit is recorded.
+	pumped chan struct{}
+	// retry is the request that started it, for Try again (ExitReport);
+	// nil for a session reattached from an earlier daemon.
+	retry *SpawnRequest
+	// argv0 and argv are what was run, for the log line of an early exit.
+	argv0 string
+	argv  []string
 }
 
 // Manager owns the set of running agents.
@@ -194,6 +211,9 @@ type Manager struct {
 	// ocVersions caches what `opencode --version` answered (opencode.go).
 	vers       map[string]string
 	ocVersions versions
+	// binVersions caches `--version` of a binary an early exit ran, for its
+	// log line (exitreport.go).
+	binVersions versions
 	// bins overrides where an agent's binary is, by agent name; tests set it.
 	// Everything else is resolved at the moment it is needed (findBinary),
 	// because a CLI installed while the daemon runs should be offered without
@@ -203,6 +223,10 @@ type Manager struct {
 	shellCmd func() (string, []string)
 	mu       sync.Mutex
 	agents   map[string]*Agent
+	// exits is how recently ended sessions ended, newest exitReportsKept,
+	// oldest first in exitOrder (exitreport.go).
+	exits     map[string]ExitReport
+	exitOrder []string
 	// follows files a session a /clear started under the id of the terminal
 	// it runs in (follow.go): new id → spawn id.
 	follows  map[string]string
@@ -740,6 +764,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	a := &Agent{
 		SessionID: sessionID, Cwd: cwd, Worktree: worktree, Command: command + " " + join(args), StartedAt: time.Now(), Kind: agent, Port: port, NativeID: nativeID, EndWhenDone: req.EndWhenDone,
 		sess: sess, ring: ringFor(sess, 256<<10), inputs: termbuf.NewInputs(termbuf.InputTTL), log: m.log, subs: map[chan []byte]struct{}{}, done: make(chan struct{}), onExit: m.OnExit,
+		pumped: make(chan struct{}), retry: retryOf(req, cwd), argv0: command, argv: args,
 	}
 	cols, rows := req.Cols, req.Rows
 	if cols <= 0 {
@@ -754,6 +779,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	}
 	m.mu.Lock()
 	m.agents[sessionID] = a
+	m.forgetExitLocked(sessionID)
 	m.mu.Unlock()
 
 	// Persist ownership so a restart knows what Caprock launched.
@@ -900,6 +926,7 @@ func (m *Manager) Input(sessionID string, data []byte) error {
 	}
 	// Answered in the terminal: the buttons are out of date.
 	m.typedInput(a, data)
+	a.typedAny.Store(true)
 	_, err := a.sess.Write(data)
 	return err
 }
@@ -915,6 +942,7 @@ func (m *Manager) InputSeq(sessionID, client string, seq uint64, data []byte) (u
 	}
 	if seq > 0 {
 		m.typedInput(a, data)
+		a.typedAny.Store(true)
 	}
 	if sw, ok := a.sess.(ptyman.SeqWriter); ok {
 		last, err := sw.WriteSeq(client, seq, data)
@@ -934,6 +962,9 @@ func (m *Manager) Signal(sessionID string, sig ptyman.Signal) error {
 	if !ok {
 		return errNotOwned(sessionID)
 	}
+	if sig == ptyman.SignalTerm || sig == ptyman.SignalKill {
+		a.stopped.Store(true)
+	}
 	return a.sess.Signal(sig)
 }
 
@@ -950,6 +981,7 @@ func (m *Manager) End(sessionID string) error {
 	if !ok {
 		return errNotOwned(sessionID)
 	}
+	a.stopped.Store(true)
 	if a.sess.Paused() {
 		_ = a.sess.Signal(ptyman.SignalResume)
 	}
@@ -1012,6 +1044,7 @@ func (m *Manager) Shutdown() {
 		return
 	}
 	for _, a := range agents {
+		a.stopped.Store(true)
 		// A paused session cannot act on a signal, so let it run first —
 		// otherwise SIGTERM sits undelivered and every one of them takes the
 		// full grace period before being killed anyway.
@@ -1049,6 +1082,9 @@ var ErrNotOwned = errors.New("caprock did not start this session, so only its ow
 func errNotOwned(id string) error { return fmt.Errorf("%w: %s", ErrNotOwned, id) }
 
 func (a *Agent) pump(onOutput func(string)) {
+	if a.pumped != nil {
+		defer close(a.pumped)
+	}
 	r := bufio.NewReader(a.sess.Output())
 	buf := make([]byte, 32<<10)
 	for {
@@ -1085,6 +1121,9 @@ func (a *Agent) pump(onOutput func(string)) {
 	}
 }
 
+// exitDrain bounds the wait for an exited session's last output.
+const exitDrain = 750 * time.Millisecond
+
 // exitCoder lets a ptyman.Session report an exit code without an *exec.ExitError
 // (used by the in-memory test backend).
 type exitCoder interface{ ExitCode() int }
@@ -1117,6 +1156,17 @@ func (a *Agent) wait(m *Manager) {
 		m.mu.Unlock()
 		m.log.Info("owned session left running in its pty-host", "component", "agents", "session_id", a.SessionID, "pid", a.sess.PID())
 		return
+	}
+	// The last output may still be on its way when the process is reaped:
+	// it is read to the end first, so the screen the exit keeps is whole.
+	if a.pumped != nil {
+		select {
+		case <-a.pumped:
+		case <-time.After(exitDrain):
+		}
+	}
+	if a.Kind != KindShell {
+		m.recordExit(a, code, time.Now())
 	}
 	a.mu.Lock()
 	a.exit, a.exited = code, true

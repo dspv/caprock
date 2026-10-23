@@ -730,7 +730,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer d.machines.close()
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
-		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, Storage: d.storageReport, WindowStop: d.windowStopStatus,
+		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, WindowStop: d.windowStopStatus,
 		Resources:       func(ctx context.Context) any { return d.resources(ctx) },
 		ResourceHistory: func(since int64) any { return d.resourceHistory(since) },
 		Footprint:       func(ctx context.Context, orphans, fresh bool) any { return d.footprint(ctx, orphans, fresh) },
@@ -2177,6 +2177,9 @@ func (a *agentAdapter) Term(id string) ([]byte, <-chan []byte, func(), bool) {
 	return ag.Snapshot(), sub, cancel, true
 }
 
+// Exit is how an owned session's program ended (agents.ExitReport).
+func (a *agentAdapter) Exit(id string) (agents.ExitReport, bool) { return a.m.Exit(id) }
+
 // TermV2 is the session's terminal for protocol v2: its ring with offsets and
 // sequenced input.
 func (a *agentAdapter) TermV2(id string) (api.TermStream, bool) {
@@ -2976,6 +2979,29 @@ func acceptBypass() error {
 		return err
 	}
 	_, err = hooks.AcceptBypass(sp)
+	return err
+}
+
+// readRetention and keepTranscripts read and write how long Claude Code
+// keeps transcripts (cleanupPeriodDays) in the same settings file.
+func readRetention() (int, bool, error) {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return hooks.DefaultRetentionDays, false, err
+	}
+	r, err := hooks.ReadRetention(sp)
+	if err != nil {
+		return hooks.DefaultRetentionDays, false, err
+	}
+	return r.Days, r.Set, nil
+}
+
+func keepTranscripts(days int) error {
+	sp, err := hooks.DefaultSettingsPath()
+	if err != nil {
+		return err
+	}
+	_, err = hooks.KeepTranscripts(sp, days)
 	return err
 }
 

@@ -259,6 +259,27 @@ describe('TermClient (protocol v2)', () => {
     expect(FakeSocket.all).toHaveLength(1)
   })
 
+  // A program that exited at once: the daemon accepts, says the exit with
+  // early and closes — no hello, no reconnect, and the pane is told it was
+  // early (it shows what the program printed, components/EarlyExit).
+  it('ends on an early exit without a hello, and says it was early', () => {
+    let seen: [number, boolean | undefined] | undefined
+    const c = new TermClient({
+      url: 'ws://localhost/v1/agents/s1/term',
+      random: () => 0.5,
+      callbacks: { write: (_d, done) => done(), reset: () => {}, state: () => {}, exit: (code, early) => { seen = [code, early] } },
+    })
+    c.start()
+    last().accept()
+    last().text({ exit: { code: 1, early: 1 } })
+    last().drop(1000)
+    vi.advanceTimersByTime(60_000)
+    expect(seen).toEqual([1, true])
+    expect(c.state).toBe('ended')
+    expect(FakeSocket.all).toHaveLength(1)
+    c.dispose()
+  })
+
   it('reconnects to the new process after a restart exit, from its start, without ending', () => {
     const t = mount()
     last().accept()

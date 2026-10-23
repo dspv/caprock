@@ -397,6 +397,7 @@ func (m *Manager) StopForRestart(ctx context.Context, sessionID string) (cols, r
 		return 0, 0, errNotOwned(sessionID)
 	}
 	cols, rows = a.size()
+	a.stopped.Store(true)
 	_ = a.sess.Signal(ptyman.SignalTerm)
 	select {
 	case <-a.done:

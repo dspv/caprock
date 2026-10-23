@@ -93,6 +93,15 @@ type Deps struct {
 	// and the route answers 501.
 	BypassAccepted func() (bool, error)
 	AcceptBypass   func() error
+	// ReadRetention reads how long Claude Code keeps transcripts
+	// (cleanupPeriodDays in user settings: the period applied, and whether
+	// the settings name one); KeepTranscripts writes that period. nil ⇒ 501
+	// (retention.go).
+	ReadRetention   func() (days int, set bool, err error)
+	KeepTranscripts func(days int) error
+	// KeepTranscriptDays is what KeepTranscripts is asked to write; 0 is
+	// 36500 (hooks.KeepRetentionDays).
+	KeepTranscriptDays int
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
 	// Resources returns the resource meter's figures for GET /v1/resources;
@@ -736,6 +745,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/update/busy", s.handleUpdateBusy)
 	m.HandleFunc("POST /v1/hooks/install", s.handleInstallHooks)
 	m.HandleFunc("POST /v1/claude/bypass-consent", s.handleBypassConsent)
+	m.HandleFunc("GET /v1/claude/retention", s.handleRetention)
+	m.HandleFunc("POST /v1/claude/retention", s.handleKeepTranscripts)
 	m.HandleFunc("GET /v1/settings", s.handleGetSettings)
 	m.HandleFunc("GET /v1/window-stop", s.handleWindowStop)
 	m.HandleFunc("GET /v1/keepawake", s.handleKeepAwake)
@@ -828,6 +839,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents/{id}/permission-mode", s.handleSetPermissionMode)
 	m.HandleFunc("POST /v1/paste", s.handlePaste)
 	m.HandleFunc("GET /v1/agents/{id}/term", s.ws.serveTerm(s))
+	m.HandleFunc("GET /v1/agents/{id}/exit", s.handleAgentExit)
 	m.HandleFunc("GET /v1/projects", s.handleProjects)
 	m.HandleFunc("GET /v1/team-signal", s.handleTeamSignal)
 	m.HandleFunc("GET /v1/repos/activity", s.handleReposActivity)
@@ -2820,6 +2832,17 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 			if info := s.resumeState(sess); info != nil && !info.OK {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": info.Reason})
 				return
+			}
+			// Claude Code finds a conversation only from the folder it began
+			// in; a session that moved is continued from there, rather than
+			// from a folder where `claude --resume` prints "No conversation
+			// found" and exits at once (claudeStartDir).
+			if a := sess.Agent; (a == "" || a == "claude") && req["command"] == nil {
+				cwd, _ := req["cwd"].(string)
+				if dir := claudeStartDir(sess, cwd); dir != cwd {
+					s.d.Log.Info("continuing from the folder the conversation began in", "component", "api", "session", resume, "asked", cwd, "dir", dir)
+					req["cwd"] = dir
+				}
 			}
 		}
 	}

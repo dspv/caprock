@@ -940,6 +940,19 @@ export function AppShell() {
   }, [sessionsById])
 
   /**
+   * A pane whose program exited at once (components/EarlyExit.tsx): Try
+   * again started `newId`, which takes the pane's place with the tab's
+   * title; Close drops the pane, as closing a tab whose session has ended
+   * does.
+   */
+  const onPaneEarlyExit = useCallback((sessionId: string, newId: string | null) => {
+    if (newId === null) { dispatch({ type: 'drop-session', sessionId }); return }
+    const tab = findTabBySession(wsRef.current, sessionId)
+    dispatch({ type: 'replace-session', sessionId, target: { kind: 'session', sessionId: newId }, title: tab?.title ?? 'session' })
+    refresh()
+  }, [refresh])
+
+  /**
    * An agent's install or sign-in (ADR-046): a shell tab in the home folder —
    * or the current project, when the daemon did not say where home is — with
    * the command typed at the prompt and not run. The user reads it and
@@ -2132,6 +2145,7 @@ export function AppShell() {
                     onPaneStatus={onPaneStatus}
                     onPaneExit={onPaneExit}
                     onPaneGone={onPaneGone}
+                    onPaneEarlyExit={onPaneEarlyExit}
                     sessions={sessionsById}
                     permissions={data.permissions}
                     onFocusPane={onFocusPane}

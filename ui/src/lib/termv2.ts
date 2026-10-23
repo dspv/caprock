@@ -49,8 +49,12 @@ export interface TermCallbacks {
   state(s: TermState): void
   /** The retry status changed (attempt, next try, down since): for the state indicator. */
   status?(link: LinkStatus): void
-  /** The session's program exited with this code. */
-  exit?(code: number): void
+  /**
+   * The session's program exited with this code. `early`: it ended a moment
+   * after it started, with nothing typed (the daemon's ExitReport) — it never
+   * really started, and GET /v1/agents/{id}/exit says what it printed.
+   */
+  exit?(code: number, early?: boolean): void
   /** The socket opened (v1 or v2): the place to tell the daemon the size. */
   open?(): void
   /**
@@ -615,7 +619,7 @@ export class TermClient {
     if (m.ping !== undefined) { ws.send(JSON.stringify({ pong: m.ping })); return }
     const reset = m.reset as { offset: number } | undefined
     if (reset) { this.snapshotAt = reset.offset; return }
-    const exit = m.exit as { code: number; restart?: number } | undefined
+    const exit = m.exit as { code: number; restart?: number; early?: number } | undefined
     if (exit?.restart) {
       // A new process, a new ring: the next connect asks for all of it.
       this.restarting = true
@@ -624,7 +628,7 @@ export class TermClient {
     }
     if (exit) {
       this.ended = true
-      this.opts.callbacks.exit?.(exit.code)
+      this.opts.callbacks.exit?.(exit.code, !!exit.early)
     }
   }
 
