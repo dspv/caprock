@@ -69,7 +69,7 @@ var viewerMay = map[string]bool{
 // the machine.
 var controllerMayAlso = map[string]bool{
 	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/agents/catalog": true, "GET /v1/subscriptions": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true, "GET /v1/browse/stat": true, "GET /v1/browse/repos": true,
-	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true,
+	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true, "GET /v1/agents/{id}/exit": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
 	"PUT /v1/sessions/{id}/name":  true,

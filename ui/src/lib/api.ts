@@ -1889,6 +1889,41 @@ export interface SubscriptionsResponse {
   home?: string
 }
 
+/**
+ * How an owned session's program ended (GET /v1/agents/{id}/exit,
+ * internal/agents ExitReport).
+ */
+export interface AgentExit {
+  session_id: string
+  /** Which coding agent it was; absent when only the store remembers it. */
+  agent?: string
+  code: number
+  /** Ended within 15 s of its start with nothing typed into it: it never really started. */
+  early: boolean
+  ran_ms: number
+  /** The last lines its screen showed, plain text. */
+  tail: string
+  at: number
+  /** The request that started it, for Try again; absent when this daemon did not start it. */
+  retry?: SpawnRequest
+  /** The program that ran, as the background service resolved it. */
+  binary?: string
+}
+
+/** How long Claude Code keeps a transcript before deleting it (GET /v1/claude/retention). */
+export interface Retention {
+  /** The period applied: the setting, or Claude Code's default (30). */
+  days: number
+  /** Whether ~/.claude/settings.json names a period. */
+  set: boolean
+  /** Unset, or 90 days or fewer: the Lifetime screen offers to keep them. */
+  offer: boolean
+  /** What keepTranscripts writes. */
+  keep_days: number
+  /** Why the settings file could not be read (not valid JSON, say). */
+  error?: string
+}
+
 export interface SpawnRequest {
   /** Which coding agent to launch: "claude" (default), "codex", "opencode",
    *  "gemini", "grok" or a custom one ("custom:<id>"). They take different
@@ -2362,6 +2397,10 @@ export const api = {
   installHooks: () => post<{ hooks: HooksStatus; backup?: string }>('/v1/hooks/install', {}),
   /** The user accepted Caprock's copy of Claude Code's bypass warning (ADR-041). */
   acceptBypass: () => post<{ accepted: boolean }>('/v1/claude/bypass-consent', {}),
+  /** How long Claude Code keeps transcripts (cleanupPeriodDays in ~/.claude/settings.json). */
+  retention: () => get<Retention>('/v1/claude/retention'),
+  /** Writes cleanupPeriodDays (keep_days) into ~/.claude/settings.json, the one key; refused (409) when the file is not valid JSON. */
+  keepTranscripts: () => post<Retention>('/v1/claude/retention', {}),
   pairState: () => get<PairState>('/v1/pair/state'),
   /** Exchange a code for a token. The one call a device makes before it is trusted. */
   pairRedeem: (code: string, name: string) =>
@@ -2493,6 +2532,8 @@ export const api = {
   /** Remove sessions from Caprock for good — the machine only (ADR-037). */
   removeSessions: (req: { ids?: string[]; cwd_prefix?: string; dry_run?: boolean }) => post<RemoveResult>('/v1/sessions/remove', req),
   spawn: (req: SpawnRequest) => post<SpawnResult>('/v1/agents', req),
+  /** How an owned session's program ended (GET /v1/agents/{id}/exit): the tab of one that exited at once shows it. */
+  agentExit: (id: string) => get<AgentExit>(`/v1/agents/${encodeURIComponent(id)}/exit`),
   /** GET /v1/attempts/{group}: the attempts started together, with their spend and changes (ADR-052). */
   attempts: (group: string) => get<AttemptsResponse>(`/v1/attempts/${encodeURIComponent(group)}`),
   /** The models an agent's own CLI lists — Codex's on-disk catalog and its

@@ -116,6 +116,7 @@ import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
 import { UpdateNoticeBar } from './UpdateNoticeBar'
+import { EarlyExit } from './EarlyExit'
 import { newShellCloseKey, newShellHintText, onlyPrompt } from '@/lib/newshellhint'
 
 export { APP_TERMINAL_THEME } from '@/lib/termthemes'
@@ -234,6 +235,7 @@ export function TerminalPane({
   onStatus,
   onExit,
   onGone,
+  onEarlyExit,
   composer,
   quickReplies = false,
   inputBox = false,
@@ -258,6 +260,13 @@ export function TerminalPane({
    * with Continue here, in its place.
    */
   onGone?: () => void
+  /**
+   * Its program exited a moment after it started (lib/termv2 `exit` with
+   * early): the pane says so with what it printed (EarlyExit), and its Try
+   * again started `newId` in its place, or Close (null) was pressed. Without
+   * it the pane offers Try again only, and stays.
+   */
+  onEarlyExit?: (newId: string | null) => void
   composer?: PaneComposer
   /** A session Caprock started: the quick replies under its terminal (rule 7; lib/quickReplies). */
   quickReplies?: boolean
@@ -295,6 +304,11 @@ export function TerminalPane({
   onExitRef.current = onExit
   const onGoneRef = useRef(onGone)
   onGoneRef.current = onGone
+  // The program exited at once: its code, for EarlyExit (which reads the rest).
+  const [early, setEarly] = useState<number | null>(null)
+  // Bumped when Try again starts the same id again: the terminal reconnects to the new process.
+  const [run, setRun] = useState(0)
+  useEffect(() => { setEarly(null) }, [sessionId])
   const bandRef = useRef<InputBoxBand | null>(null)
   const inputBoxRef = useRef(inputBox)
   inputBoxRef.current = inputBox
@@ -577,7 +591,9 @@ export function TerminalPane({
           if (fitNow()) conn.resize(term.cols, term.rows)
           report(conn.state)
         },
-        exit: (code) => onExitRef.current?.(code),
+        // An exit at once is said in the pane, not turned into a shell: the
+        // program never really started, and what it printed is the reason.
+        exit: (code, isEarly) => { if (isEarly) setEarly(code); else onExitRef.current?.(code) },
         gone: () => onGoneRef.current?.(),
       },
     })
@@ -1003,7 +1019,9 @@ export function TerminalPane({
       devServers.dispose()
       term.dispose()
     }
-  }, [sessionId])
+    // `run`: Try again under the same id (an ended session continued as
+    // itself) is a new process on the same id, so the terminal starts over.
+  }, [sessionId, run])
 
   // A layout effect: the tab's panel is un-hidden in the same commit, and the
   // terminal must have its renderer and its frame before the browser paints
@@ -1030,7 +1048,12 @@ export function TerminalPane({
       <div className="absolute inset-0 pl-3 pt-2 pr-1 pb-1">
         <div ref={host} data-term-host data-term-session={sessionId} className="h-full w-full" />
       </div>
-      {phase === 'waiting' && status !== 'ended' && (
+      {early !== null && (
+        <EarlyExit sessionId={sessionId} code={early} onRetried={(id) => {
+          if (id === sessionId) { setEarly(null); setRun((n) => n + 1) } else onEarlyExit?.(id)
+        }} onClose={onEarlyExit ? () => onEarlyExit(null) : undefined} />
+      )}
+      {phase === 'waiting' && status !== 'ended' && early === null && (
         <div role="status" className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2">
           <p className="mono text-[12px]" style={{ color: foreground, opacity: 0.6 }}>
             {status === 'reconnecting' ? 'Connecting to the session…' : 'Starting…'}

@@ -704,8 +704,81 @@ Every output byte has an offset and every input frame a sequence number, so a re
 - **Size: the terminal in use wins** (tmux's `latest`; `internal/api/termsize.go`). A session's PTY has one size and may have several terminals attached. The daemon remembers each socket's own size (its last `resize`) and gives the PTY the size of the one **in use**. A socket becomes the one in use when it sends input (any binary frame, before the bytes are typed), when it sends `focus` (the client's window gained focus or came into view, its tab came to the front, a click in the terminal), when it is the only socket with a size, or when its `client` id is the tab that last claimed the PTY (a reconnect of that tab). Every other socket is a **viewer**: its resizes are recorded, not applied, and it is drawn at the size in use. A claim by the socket already in use at the size the PTY already has changes nothing, so a claim on every keystroke costs nothing. A socket says `blur` when its terminal goes out of sight (the page hidden, a phone locked or in the background, an app tab behind another, the page going away); it stays a viewer until its next claim. When the socket in use sends `blur`, the PTY goes at once to the socket in sight that claimed most recently, at its last size, and that socket's `client` becomes the owner, so a phone whose socket died while locked does not take the PTY back by reconnecting; with no other socket in sight that has a size, nothing changes. When the socket in use closes, the PTY goes to another socket of the same `client`, else to the one that claimed most recently, a socket in sight before one out of sight, at its size. A client re-sends its current size with every `focus` (`{"resize":…,"focus":true}`), so a PTY left at another terminal's size by a close the daemon never saw is put right by looking. Before 2026-10-13 there was no `blur`: a phone put away kept the PTY until its socket was taken for dead (25–35 s when its page froze, never when its browser kept answering pings in the background), and the desktop stayed at the phone's width (Vova). Until 2026-10-12 every resize was applied and the last sender won: a phone that typed into a session left the desktop's agent drawn 45 columns wide in a wide pane until the desktop's box next changed (Vova).
 - **Repaint.** A socket's **first** resize repaints: the PTY is given one column less, then the full size once the program has written output after the narrower one (up to 750 ms for one that draws nothing on a resize, `repaintWait`) and at least 40 ms after that (`repaintGap`) — two real size changes, so whatever runs gets SIGWINCH and redraws its whole screen — at the new socket's size when it is in use, at the size in use when it is a viewer (a phone opening a session never shrinks the desktop's agent). Without it a reattached terminal kept the ring's replay, and a TUI that redraws by difference (Claude Code) showed rows whose labels had scrolled out of the ring as bare numbers until something changed size. A column, not a row (since 0.140.2): on one row less Claude Code clears only as many rows as it then thinks it has, so the terminal's bottom row kept a stale line after every attach and resume; a width change clears every row. It waits for output because a fixed 40 ms was not enough (owner, 2026-10-21, on a loaded Mac): two SIGWINCHes that arrive while a program's event loop is busy reach it as one, at the size it already drew at, so it redrew nothing and the replay's bare changed cells stayed — a status line of lone digits, the mode line's words gone. A Node program blocked 120 ms in every 150 saw no resize at all on 2 of 5 such repaints. A client sent `reset` and a snapshot mid-session (it fell behind the ring) gets the same repaint at the size in use. The PTY passing from one terminal to another repaints the same way; the socket in use resizing its own box is applied as sent. Version 1 sockets resize as before (every resize applied).
 - **Liveness.** Each side sends `{"ping":t}` every 10 s and answers the other's with `{"pong":t}`; 25 s with nothing received closes the socket.
-- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. When it exits to be resumed under the same id in another permission mode (`POST /v1/agents/{id}/permission-mode` with `restart`), the frame is `{"exit":{"code":N,"restart":1}}`: the client keeps the tab, forgets its offset (the new process has a new ring) and reconnects through the 1000 close, retrying while the daemon answers 501 until the new process is up. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects by the policy `/v1/live` shares (§ Client reconnect policy, below).
+- **End.** When the process exits: the last output, `{"exit":{"code":N}}`, then close **1000**. When it exits to be resumed under the same id in another permission mode (`POST /v1/agents/{id}/permission-mode` with `restart`), the frame is `{"exit":{"code":N,"restart":1}}`: the client keeps the tab, forgets its offset (the new process has a new ring) and reconnects through the 1000 close, retrying while the daemon answers 501 until the new process is up. A program that exited **at once** (`early`: within 15 s of its start, nothing typed, not stopped by Caprock or restarted; § Session exits) says so: `{"exit":{"code":N,"early":1}}`, and a socket that arrives after such a process is gone — the usual case, since it lived ~100 ms — is accepted and gets that frame and the 1000 close at once, with no hello, rather than **409** (which a tab read as "Can't connect · next try in 5 s" for good). The client ends without reconnecting and the pane reads `GET /v1/agents/{id}/exit` for what the program printed. An exit that is not early, and a session with no exit recorded, are refused with 409 as before. Close **1008**: the device lost the controller role, do not reconnect. Any other close is the connection, and the client reconnects by the policy `/v1/live` shares (§ Client reconnect policy, below).
 - **Client backpressure.** The dashboard closes the socket while more than 1 MiB it has received waits for xterm.js to parse, and reconnects with `since` once that drops to 256 KiB.
+
+### Session exits
+
+How an owned session's program ended, so a program that could not start says
+why (a user pressing *Continue here* five times on 0.154.2: each tab read
+"Can't connect · next try in 5 s", and service.log said only `exit status 1`).
+Code: `internal/agents/exitreport.go`, `internal/api/agentexit.go`,
+`ui/src/components/EarlyExit.tsx`.
+
+- **What is kept.** When an owned session's process exits, its output is read
+  to the end (up to 750 ms), and the last 32 KiB is replayed onto a screen of
+  the terminal's width (`termbuf.Screen`): blank lines dropped at both ends,
+  the last 40 lines, at most 4 KiB, plain text. With the code, how long it ran
+  and when, it is kept in memory (the newest 64, with the request that started
+  it) and in `session_exits` (§ Session exits DDL).
+- **Early.** An exit within **15 s** of the start (`agents.EarlyExit`) with
+  nothing typed into the session, not asked for by Caprock (End, a stop
+  signal, a shutdown) and not a permission-mode restart. An early exit is
+  logged at **WARN** in service.log, `owned session exited at once`, with the
+  binary as resolved in the daemon's environment and its version (asked once and
+  cached; a second line when it was not cached yet), the
+  code, `ran_ms`, the command (flags as run; a first message or project
+  instructions passed on it cut to their length, anything key- or
+  token-shaped dropped) and the output tail.
+- **`GET /v1/agents/{id}/exit`** → `{session_id, agent?, binary?, code, early, ran_ms,
+  tail, at, retry?}`; **409** while the session runs, **404** when no exit is
+  recorded. `retry` is the request that started it, as `POST /v1/agents` takes
+  it — the folder it ran in, a worktree already made not made again, nothing
+  the daemon fills in (keys, configuration directories) — present only while
+  this daemon remembers the exit. A controller may read it (it may start the
+  same session anyway).
+- **The tab.** On `{"exit":{…,"early":1}}` the pane shows *<Agent> exited at
+  once (code N)*, how long it ran, the tail in a mono box, a one-line reading
+  of known messages (`ui/src/lib/earlyexit.ts`), **Try again** (posts `retry`
+  to `POST /v1/agents`; the new session takes the pane) and **Close**. It does
+  not turn into a shell as an ordinary exit does.
+- **Continue from where the conversation began.** `claude --resume <id>` finds
+  a conversation only under `~/.claude/projects/<the folder it was started
+  in>`; started anywhere else it prints `No conversation found with session ID:
+  …` and exits 1 (measured with 2.1.309, 2026-10-24). A session's recorded
+  `cwd` follows its `cd`s, so `POST /v1/agents` with `resume` for a Claude Code
+  session, when the asked folder does not find the transcript, starts in the
+  folder the transcript's first lines name — when that folder is the one its
+  project directory is named after and still exists — and the resume command
+  `GET /v1/sessions/{id}` offers `cd`s there. Anything less certain keeps the
+  asked folder.
+
+### Transcript retention
+
+Claude Code deletes a transcript older than `cleanupPeriodDays` (user
+settings; **30** when unset) from `~/.claude/projects` at startup, and Caprock
+imports only what is still on disk, so a new user's history starts about that
+far back. Code: `internal/hooks/retention.go`, `internal/api/retention.go`,
+`ui/src/components/RetentionNote.tsx`.
+
+- **`GET /v1/claude/retention`** → `{days, set, offer, keep_days, error?}`:
+  `days` is the period applied (the setting, else 30), `set` whether
+  `~/.claude/settings.json` names one (a non-number is unset), `offer` is
+  `!set || days <= 90`, `keep_days` is 36500, `error` why the file could not
+  be read (then `days` is the default, as Claude Code skips such a file).
+- **`POST /v1/claude/retention`** writes `cleanupPeriodDays: keep_days` into
+  that file and answers the new state. Only that key changes, in place when it
+  is there, else first in the object indented like the key after it; every
+  other byte of the file is kept. The file is backed up once
+  (`settings.json.caprock-backup-<ts>`, as for the hooks entry) and written
+  atomically; asking again for the period already set writes nothing. A file
+  that is not valid JSON (or whose top level is not an object) is refused with
+  **409** and left as it is. A mutating route: cross-site requests and paired
+  devices are refused, so it is asked at the machine. Nothing leaves it.
+- **The line.** Under the Lifetime screen's *Daily cost* chart, range *all*,
+  while `offer`: *Claude Code deletes conversations older than N days, so the
+  history before <first day> was gone before Caprock saw it.* with *Keep them
+  from now on*; after the write, *Kept from now on.* for 6 s, then nothing.
 
 ### Live socket, replay
 
@@ -783,6 +856,9 @@ POST /v1/update/check                  → check now (403 unless enabled); ?soon
 GET  /v1/update/busy                   → {working} — sessions an app restart would interrupt (Update automatically, ADR-042)
 POST /v1/hooks/install                 → {hooks: HooksStatus, backup?} — `caprock hooks install`, from the dashboard
 POST /v1/claude/bypass-consent         → {accepted: true} — the user accepted Caprock's copy of Claude Code's bypass warning (ADR-041)
+GET  /v1/claude/retention              → Retention — how long Claude Code keeps transcripts (cleanupPeriodDays; § Transcript retention)
+POST /v1/claude/retention              → Retention — write cleanupPeriodDays = keep_days into user settings; 409 when the file is not valid JSON
+GET  /v1/agents/{id}/exit              → ExitReport — how an owned session's program ended: code, early, ran_ms, tail, retry (§ Session exits)
 GET  /v1/stats/daily?days=30           → DailyStat[]
 GET  /v1/stats/trends?agent=…         → Trends — Now's Today cells: 14 previous days cut at this time of day, today, the usual burn
 GET  /v1/pipeline/agents?repo=…      → RepoAgents — the Pipeline's cost per agent-hour and agent team for a repository's folders (§ Pipeline agents)
@@ -7049,6 +7125,26 @@ holds, so a list read late never undoes a newer one. The migration only
 creates the table — nothing is filled at startup; it grows as lists are read.
 Read by `store.KnownPRs` (§ Most expensive) for the head branch, title, state
 and stamps of pull requests no agent recorded.
+
+### Session exits DDL (migration 0072)
+
+```sql
+CREATE TABLE IF NOT EXISTS session_exits (
+  session_id TEXT    PRIMARY KEY,
+  code       INTEGER NOT NULL,
+  ran_ms     INTEGER NOT NULL DEFAULT 0,  -- spawn to exit
+  early      INTEGER NOT NULL DEFAULT 0,  -- 1: ended within agents.EarlyExit, nothing typed
+  tail       TEXT    NOT NULL DEFAULT '', -- last lines on its screen, plain text
+  at         INTEGER NOT NULL             -- unix ms it ended
+) WITHOUT ROWID;
+```
+
+One row per owned session (shells excepted) whose program ended, written by
+`agents.Manager` when the process exits (`store.RecordExit`; a later exit
+under the same id replaces it) and removed with the session
+(`store.RemoveSession`). The migration only creates the table. Read by
+`GET /v1/agents/{id}/exit` (§ Session exits) once the daemon no longer
+remembers the exit itself.
 
 ### Touch attribution DDL (migration 0012)
 

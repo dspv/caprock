@@ -608,6 +608,7 @@ export const TerminalStack = memo(function TerminalStack({
   onPaneStatus,
   onPaneExit,
   onPaneGone,
+  onPaneEarlyExit,
   sessions,
   permissions,
   onFocusPane,
@@ -641,6 +642,8 @@ export const TerminalStack = memo(function TerminalStack({
   onPaneExit?: (sessionId: string) => void
   /** The daemon no longer holds the session (TerminalPane onGone). */
   onPaneGone?: (sessionId: string) => void
+  /** Its program exited at once: Try again started `newId` in its place, or Close (null) (TerminalPane onEarlyExit). */
+  onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   /** For the header a pane gets once its tab is split (F15). */
   sessions?: ReadonlyMap<string, SessionSummary>
   permissions?: ReadonlySet<string>
@@ -668,6 +671,9 @@ export const TerminalStack = memo(function TerminalStack({
   const goneRef = useRef(onPaneGone)
   goneRef.current = onPaneGone
   const paneGone = useCallback((id: string) => goneRef.current?.(id), [])
+  const earlyRef = useRef(onPaneEarlyExit)
+  earlyRef.current = onPaneEarlyExit
+  const paneEarly = useCallback((id: string, newId: string | null) => earlyRef.current?.(id, newId), [])
   const chatRef = useRef({ onChatClose, onChatRestart, onChatHintDismiss })
   chatRef.current = { onChatClose, onChatRestart, onChatHintDismiss }
   const chatClose = useCallback((tabId: string, paneId: string) => chatRef.current.onChatClose?.(tabId, paneId), [])
@@ -693,6 +699,7 @@ export const TerminalStack = memo(function TerminalStack({
               onPaneStatus: onPaneStatus && paneStatus,
               onPaneExit: onPaneExit && paneExit,
               onPaneGone: onPaneGone && paneGone,
+              onPaneEarlyExit: onPaneEarlyExit && paneEarly,
               sessions,
               permissions,
               onFocusPane: onFocusPane && ((paneId: string) => onFocusPane(t.id, paneId)),
@@ -723,6 +730,7 @@ interface PaneCtx {
   /** The session's program exited; the workspace replaces it with a shell. */
   onPaneExit?: (sessionId: string) => void
   onPaneGone?: (sessionId: string) => void
+  onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   onFocusPane?: (paneId: string) => void
   onClosePane?: (paneId: string) => void
   onResize?: (splitId: string, sizes: number[]) => void
@@ -764,7 +772,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     // The quick replies: an agent Caprock started, live, whatever the composer (rule 7).
     const own = ctx.sessions?.get(id)
     const quick = !!own && node.target.kind !== 'shell' && composerFits(own)
-    const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} onPaneGone={ctx.onPaneGone}
+    const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} onPaneGone={ctx.onPaneGone} onPaneEarlyExit={ctx.onPaneEarlyExit}
       composer={withComposer} quick={quick} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
       inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} shellHint={node.target.kind === 'shell'} />
     const chat = ctx.chats?.get(id)
@@ -828,13 +836,14 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
  * callbacks are stable (TerminalStack), so a new session list — the sidebar's
  * dots moving — does not reach a terminal.
  */
-const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, onPaneGone, composer = false, quick = false, agent, asking = false, inputBox = false, shellHint = false }: {
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, onPaneGone, onPaneEarlyExit, composer = false, quick = false, agent, asking = false, inputBox = false, shellHint = false }: {
   id: string
   visible: boolean
   focused: boolean
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   onPaneExit?: (sessionId: string) => void
   onPaneGone?: (sessionId: string) => void
+  onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   /** Primitives, so the memo still holds while the session list moves. */
   composer?: boolean
   /** The quick replies under the terminal: a session Caprock started. */
@@ -849,8 +858,9 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
   const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
   const onGone = useMemo(() => onPaneGone && (() => onPaneGone(id)), [onPaneGone, id])
+  const onEarlyExit = useMemo(() => onPaneEarlyExit && ((newId: string | null) => onPaneEarlyExit(id, newId)), [onPaneEarlyExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])
-  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} onGone={onGone} composer={box} quickReplies={quick} inputBox={inputBox} shellHint={shellHint} />
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} onGone={onGone} onEarlyExit={onEarlyExit} composer={box} quickReplies={quick} inputBox={inputBox} shellHint={shellHint} />
 })
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */

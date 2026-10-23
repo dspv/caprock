@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -130,13 +132,18 @@ func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 		if st, err := os.Stat(sess.Cwd); err != nil || !st.IsDir() {
 			info.OK, info.Reason = false, "The folder it ran in no longer exists: "+sess.Cwd
 			// The command used to keep its `cd` into that folder, which fails
-			// before claude ever starts. `claude --resume <id>` looks the id up
-			// in every project on the machine, so it still works from any
-			// folder — as long as the transcript is there to find.
+			// before claude ever starts. Measured with 2.1.309 (2026-10-24),
+			// `claude --resume <id>` looks only under the folder it is started
+			// in (claudeStartDir), so the folder the conversation began in is
+			// named when the transcript says it and it is still there.
 			info.Command = ""
 			if transcriptOnDisk(sess) {
 				info.Command = "claude --resume " + sess.SessionID
 				info.Reason += ". Claude Code can still resume it from another folder."
+				if dir := claudeStartDir(sess, sess.Cwd); dir != sess.Cwd {
+					info.Command = "cd " + strconv.Quote(dir) + " && " + info.Command
+					info.Reason = "The folder it ran in no longer exists: " + sess.Cwd + ". Claude Code can still resume it from the folder it began in, " + dir + "."
+				}
 			}
 			return info
 		}
@@ -148,6 +155,11 @@ func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 		info.Reason = "Claude Code has deleted its transcript (it keeps them 30 days by default, see cleanupPeriodDays)."
 		info.Command = ""
 		return info
+	}
+	// Found, but perhaps only from the folder it began in (claudeStartDir):
+	// the command starts there, and POST /v1/agents does too.
+	if dir := claudeStartDir(sess, sess.Cwd); dir != sess.Cwd {
+		info.Command = "cd " + strconv.Quote(dir) + " && claude --resume " + sess.SessionID
 	}
 	if s.d.Agents == nil || !s.d.Agents.Has("claude") {
 		info.OK, info.Reason = false, "Caprock cannot find claude to start it; run the command in a terminal."
@@ -238,4 +250,73 @@ func projectDirName(cwd string) string {
 		}
 		return '-'
 	}, cwd)
+}
+
+// claudeStartDir is the folder `claude --resume <id>` has to start in to
+// find the session's conversation, given the folder a request names.
+//
+// Claude Code keeps a transcript under ~/.claude/projects/<the folder it was
+// started in, every character not a letter or digit made "-">, and a resume
+// by id looks only there: started anywhere else it prints "No conversation
+// found with session ID: …" and exits 1 (measured with 2.1.309,
+// 2026-10-24). A session's recorded folder follows its `cd`s, so a session
+// started in ~/work and moved into ~/work/app is recorded in ~/work/app, and
+// continuing it there failed at once, every time.
+//
+// The transcript says where it began (its lines carry the cwd). When the
+// asked folder does not find it and the one it began in does — the folder
+// its project directory is named after, still on disk — that one is the
+// answer. Anything less certain keeps the asked folder: a guess that
+// started a session somewhere else would be worse than an exit whose
+// reason the tab shows.
+func claudeStartDir(sess store.Session, cwd string) string {
+	if cwd == "" {
+		cwd = sess.Cwd
+	}
+	if root, err := ingest.DefaultRoot(); err == nil && cwd != "" {
+		if st, err := os.Stat(filepath.Join(root, projectDirName(cwd), sess.SessionID+".jsonl")); err == nil && !st.IsDir() {
+			return cwd
+		}
+	}
+	if sess.TranscriptPath == "" {
+		return cwd
+	}
+	tp := ingest.MainTranscript(sess.TranscriptPath, sess.SessionID)
+	if st, err := os.Stat(tp); err != nil || st.IsDir() {
+		return cwd
+	}
+	proj := filepath.Base(filepath.Dir(tp))
+	if cwd != "" && projectDirName(cwd) == proj {
+		// Another configuration directory's projects (a subscription), the
+		// same folder name: found.
+		return cwd
+	}
+	if began := transcriptCwd(tp); began != "" && began != cwd && projectDirName(began) == proj {
+		if st, err := os.Stat(began); err == nil && st.IsDir() {
+			return began
+		}
+	}
+	return cwd
+}
+
+// transcriptCwd is the first working directory a transcript's lines name:
+// the folder its session was started in. "" when none of the first lines
+// says one.
+func transcriptCwd(path string) string {
+	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	for n := 0; n < 200 && sc.Scan(); n++ {
+		var line struct {
+			Cwd string `json:"cwd"`
+		}
+		if json.Unmarshal(sc.Bytes(), &line) == nil && line.Cwd != "" {
+			return line.Cwd
+		}
+	}
+	return ""
 }

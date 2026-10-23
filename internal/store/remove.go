@@ -126,6 +126,7 @@ func RemoveSession(ctx context.Context, q Querier, c RemovalCandidate, loc *time
 		`DELETE FROM throttle_observations WHERE session_id = ?`,
 		`DELETE FROM forced_continues WHERE session_id = ?`,
 		`DELETE FROM pending_permissions WHERE session_id = ?`,
+		`DELETE FROM session_exits WHERE session_id = ?`,
 		`DELETE FROM sessions WHERE session_id = ?`,
 	} {
 		if _, err := q.ExecContext(ctx, stmt, c.SessionID); err != nil {
