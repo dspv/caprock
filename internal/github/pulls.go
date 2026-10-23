@@ -371,6 +371,7 @@ type apiPull struct {
 	// MergedAt is set on a merged pull request in a list, where Merged is not.
 	MergedAt  *string `json:"merged_at"`
 	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 	// ClosedAt is set once it is closed, merged or not.
 	ClosedAt *string `json:"closed_at"`
 	// Only the answer for one pull request carries these; a list leaves them out.

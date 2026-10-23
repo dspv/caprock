@@ -6,9 +6,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/github"
+	"github.com/dspv/caprock/internal/store"
 	"github.com/dspv/caprock/internal/userenv"
 )
 
@@ -59,6 +61,26 @@ func (d *Daemon) newGitHub() *github.Service {
 		// A pull request seen merged: its branch's copy may be finished.
 		projs := d.projs
 		s.OnMerged = func(_ github.Repo, branches []string) { projs.CleanupBranchesMerged(branches) }
+	}
+	if d.store != nil {
+		// Every pull request list GitHub sent is remembered (migration
+		// 0071), so the Pipeline's Most expensive reaches past the newest
+		// 50 and a pull request opened by hand still has a head branch to
+		// charge sessions by. Nothing more is asked of GitHub for it.
+		st, log := d.store, d.log
+		// Written beside the read, not in its way: the board waits on the
+		// list, not on this write (an older list written late never undoes a
+		// newer one, UpsertGitHubPRs).
+		s.OnPulls = func(repo github.Repo, prs []github.BranchPR) {
+			rows, at := githubPRHeaders(prs), time.Now().UnixMilli()
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := st.UpsertGitHubPRs(ctx, repo.FullName(), rows, at); err != nil {
+					log.Warn("github: keeping the pull request headers failed", "component", "github", "repo", repo.FullName(), "err", err)
+				}
+			}()
+		}
 	}
 	return s
 }
@@ -112,4 +134,14 @@ func (d *Daemon) startGitHub(ctx context.Context) {
 	d.gh = d.newGitHub()
 	d.gh.Start(ctx)
 	d.ghLive.Store(d.gh)
+}
+
+// githubPRHeaders is a pull request list as github_prs keeps it.
+func githubPRHeaders(prs []github.BranchPR) []store.GitHubPR {
+	out := make([]store.GitHubPR, 0, len(prs))
+	for _, p := range prs {
+		out = append(out, store.GitHubPR{Number: p.Number, URL: p.URL, Title: p.Title, Head: p.Head, State: p.State,
+			CreatedAt: p.CreatedAt, MergedAt: p.MergedAt, ClosedAt: p.ClosedAt, UpdatedAt: p.UpdatedAt})
+	}
+	return out
 }

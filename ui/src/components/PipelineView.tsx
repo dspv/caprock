@@ -31,7 +31,7 @@ import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prR
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
-import { AGENT_COST_NOTE, asBoard, costText, costTitle, type PRBoard } from '@/lib/prboard'
+import { AGENT_COST_NOTE, asBoard, asCostliest, costText, costTitle, readExpensivePeriod, writeExpensivePeriod, type Costliest, type ExpensivePeriod, type PRBoard } from '@/lib/prboard'
 import type { BranchPR } from '@/lib/branches'
 import { journey, pipelineRows, releaseNote, shipsOf, stageOf, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { BUCKET_LABEL, bucketItems, fixedLately, inBucket, noteFixes, readFixSeen, writeFixSeen, type Bucket, type FixSeen } from '@/lib/flowbucket'
@@ -83,6 +83,9 @@ function readScope(): TabScope {
  *  never replaces a list that had pull requests: it stays, said to be not
  *  refreshed. */
 export const keepStats = (prev: SessionCIStats, next: SessionCIStats) => !!next.error && (next.prs?.length ?? 0) === 0 && (prev.prs?.length ?? 0) > 0
+
+/** The repository a session's kept answers are filed under. */
+const relScopeOf = (s: Pick<SessionSummary, 'repo_root' | 'cwd'> | undefined, sessionId: string) => s?.repo_root || s?.cwd || sessionId
 
 /** The kept answer's key: per repository, so every session in it shares one. */
 export function statsKey(s: Pick<SessionSummary, 'repo_root' | 'cwd'> | undefined, sessionId: string): string {
@@ -137,6 +140,13 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const [relCI] = usePoll<SessionRepoCI>(visible, `${sessionId}:${n}`, () => api.sessionCIRelease(sessionId), (d) => d.release?.state === 'running', CI_RUNNING_MS, `release:${relScope}`,
     (prev, next) => !!next.error && !!prev.release && !next.release)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  // The Most expensive section's period, remembered on this device (the
+  // month unless All time was picked), and its own answer: local reads
+  // only, so asked as rarely as the figures.
+  const [period, setPeriodState] = useState<ExpensivePeriod>(readExpensivePeriod)
+  const setPeriod = (v: ExpensivePeriod) => { setPeriodState(v); writeExpensivePeriod(v) }
+  const [costliestRaw] = usePoll<Costliest>(visible && !!sessionId, `${sessionId}:${period}:${n}`, () => api.sessionCostliest(sessionId, period), () => false, CI_IDLE_MS, `costliest:${relScopeOf(s, sessionId)}:${period}`)
+  const costliest = useMemo(() => asCostliest(costliestRaw), [costliestRaw])
   const ships = useMemo(() => shipsOf(board), [board])
   // A count tile clicked: the list shows only the pull requests it counts
   // (owner, 2026-10-15, translated: "I see the red 'NEEDS A FIX 4' figure,
@@ -292,8 +302,9 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
         </div>
       )}
       {ready && board && board.releases.length > 0 && <Releases releases={board.releases} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
-      {/* The dearest pull requests and releases, from the same board (owner, 2026-10-23). */}
-      {ready && board && <MostExpensive board={board} prs={stats?.prs ?? []} now={now} onOpen={(num) => setChosen(num)} />}
+      {/* The dearest pull requests and releases over a period, from this machine alone (owner, 2026-10-23). */}
+      {ready && <MostExpensive data={costliest} period={period} onPeriod={setPeriod} now={now}
+        onOpenPR={(x) => { if ((stats?.prs ?? []).some((q) => q.number === x.number) || sessionPRs.some((q) => q.number === x.number)) setChosen(x.number); else if (x.url) openExternal(x.url) }} />}
       {/* The default branch's workflows and this month's Actions bill: the session deck's Main view until 2026-10-20. */}
       {ready && <PipelineMain sessionId={sessionId} s={s} visible={visible} now={now} why={why} onToast={onToast} />}
     </div>
