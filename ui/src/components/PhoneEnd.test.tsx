@@ -130,6 +130,43 @@ describe('the Chats list', () => {
     expect(within(menu).queryAllByRole('menuitem')).toEqual([])
   })
 
+  // #816: the list clips its rows (overflow hidden, for the rounded corners),
+  // so a menu drawn inside the row was cut off on a wide window.
+  it('the ⋯ menu is drawn outside the clipping list, under the ⋯, and above it near the bottom', async () => {
+    vi.spyOn(api, 'chats').mockResolvedValue({ items: [chat('c1'), chat('c2')], total: 2, chats: 2, archived: 0 })
+    render(<ChatsScreen />)
+    const list = await screen.findByRole('list', { name: 'Chats' })
+    expect(list.className).toContain('overflow-hidden')
+    const open = (name: string, top: number) => {
+      const button = screen.getByRole('button', { name })
+      vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ top, bottom: top + 44, left: 956, right: 1000, width: 44, height: 44, x: 956, y: top, toJSON: () => ({}) })
+      fireEvent.click(button)
+      return screen.getByRole('menu', { name })
+    }
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(160)
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(260)
+    try {
+      const menu = open('More for Trial c1', 100)
+      expect(list.contains(menu)).toBe(false)
+      expect(menu.parentElement).toBe(document.body)
+      expect(menu.style.getPropertyValue('--menu-top')).toBe('148px')
+      expect(menu.style.getPropertyValue('--menu-left')).toBe('740px')
+      fireEvent.click(screen.getByRole('button', { name: 'More for Trial c1' }))
+      expect(screen.queryByRole('menu')).toBeNull()
+      // The last row near the window's bottom: the menu opens upwards.
+      const low = open('More for Trial c2', window.innerHeight - 50)
+      expect(low.style.getPropertyValue('--menu-top')).toBe(`${window.innerHeight - 50 - 4 - 160}px`)
+      // An item inside the portalled menu still works; a click away closes it.
+      fireEvent.pointerDown(within(low).getByRole('menuitem', { name: 'Rename' }))
+      expect(screen.getByRole('menu')).toBe(low)
+      fireEvent.pointerDown(document.body)
+      expect(screen.queryByRole('menu')).toBeNull()
+    } finally {
+      height.mockRestore()
+      width.mockRestore()
+    }
+  })
+
   it('an ended chat on a watching phone has no ⋯ at all: nothing to end, nothing to do', async () => {
     control.value = false
     vi.spyOn(api, 'chats').mockResolvedValue({ items: [chat('c1', { status: 'ended' })], total: 1, chats: 1, archived: 0 })

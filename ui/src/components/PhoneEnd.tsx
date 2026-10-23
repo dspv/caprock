@@ -14,7 +14,8 @@
  * gets the reason and nothing else, and the daemon refuses it anyway
  * (`agents.Manager.End`: not owned).
  */
-import { useEffect, useRef, useState, type ReactNode, type TouchEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type TouchEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { api, errText, type SessionSummary } from '@/lib/api'
 import { MoreIcon } from './AppIcons'
 
@@ -130,8 +131,13 @@ export function EndMenuItem({ state, onEnd }: { state: EndState; onEnd: () => vo
  * A list row with a ⋯ on its right holding End (and whatever else the row
  * offers), a swipe left that opens the same End, and the confirm sheet. On a
  * phone the menu is a sheet at the bottom, where the thumb is and where no
- * list's rounded box can clip it; wider, it hangs under the ⋯. Nothing is
- * drawn beside the row when it has nothing to offer.
+ * list's rounded box can clip it; wider, it hangs under the ⋯ (above it
+ * when the window has no room below). Nothing is drawn beside the row when it
+ * has nothing to offer.
+ *
+ * The menu is portalled to <body>: every list holding these rows clips them
+ * (overflow hidden, for its rounded corners), and a menu drawn inside the row
+ * was cut off there, a wide window's last rows showing nothing at all (#816).
  */
 export function EndableRow({ s, title, canControl, onEnded, items, onMenu, after, children, className = '' }: {
   s: Endable & { session_id: string }
@@ -152,14 +158,41 @@ export function EndableRow({ s, title, canControl, onEnded, items, onMenu, after
   const [menu, setMenuState] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const box = useRef<HTMLLIElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const sheet = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const told = useRef(onMenu)
   told.current = onMenu
   const setMenu = (open: boolean) => { setMenuState(open); told.current?.(open) }
   useEffect(() => {
     if (!menu) return
-    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) { setMenuState(false); told.current?.(false) } }
+    const shut = () => { setMenuState(false); told.current?.(false) }
+    const away = (e: PointerEvent) => {
+      const t = e.target as Node
+      if (!box.current?.contains(t) && !sheet.current?.contains(t)) shut()
+    }
+    // Fixed where the ⋯ was: a scroll or a resize would leave it behind.
+    const moved = (e: Event) => { if (!sheet.current?.contains(e.target as Node)) shut() }
     document.addEventListener('pointerdown', away)
-    return () => document.removeEventListener('pointerdown', away)
+    window.addEventListener('scroll', moved, true)
+    window.addEventListener('resize', shut)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      window.removeEventListener('scroll', moved, true)
+      window.removeEventListener('resize', shut)
+    }
+  }, [menu])
+  // Wider than a phone the menu hangs under the ⋯, right edges aligned, and
+  // goes above it when it would run off the bottom of the window.
+  useLayoutEffect(() => {
+    if (!menu) { setPos(null); return }
+    const r = button.current?.getBoundingClientRect()
+    if (!r) return
+    const w = sheet.current?.offsetWidth || 260
+    const h = sheet.current?.offsetHeight || 0
+    const below = r.bottom + 4
+    const top = below + h > window.innerHeight - 8 && r.top - 4 - h >= 8 ? r.top - 4 - h : below
+    setPos({ top, left: Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) })
   }, [menu])
   const close = () => setMenu(false)
   const extra = items?.(close)
@@ -170,23 +203,25 @@ export function EndableRow({ s, title, canControl, onEnded, items, onMenu, after
       <div className="flex items-center">
         <div className="min-w-0 flex-1">{children}</div>
         {hasMenu && (
-          <button type="button" aria-label={`More for ${title}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}
+          <button ref={button} type="button" aria-label={`More for ${title}`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}
             className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-fg-faint hover:text-fg">
             <MoreIcon size={18} />
           </button>
         )}
       </div>
       {after}
-      {menu && (
+      {menu && createPortal(
         <>
           <div aria-hidden className="fixed inset-0 z-40 bg-black/30 sm:hidden" onClick={close} />
-          <div role="menu" aria-label={`More for ${title}`}
-            className="fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-[16px] border-t border-border-strong bg-panel pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-2 sm:top-[calc(100%-6px)] sm:z-20 sm:w-[260px] sm:rounded-[12px] sm:border sm:py-1 sm:shadow-[0_16px_40px_-16px_rgba(0,0,0,0.6)]">
+          <div ref={sheet} role="menu" aria-label={`More for ${title}`}
+            style={pos ? { '--menu-top': `${pos.top}px`, '--menu-left': `${pos.left}px` } as CSSProperties : undefined}
+            className={`fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-[16px] border-t border-border-strong bg-panel pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg sm:inset-x-auto sm:bottom-auto sm:left-[var(--menu-left)] sm:top-[var(--menu-top)] sm:w-[260px] sm:rounded-[12px] sm:border sm:py-1 sm:shadow-[0_16px_40px_-16px_rgba(0,0,0,0.6)] ${pos ? '' : 'sm:invisible'}`}>
             <p className="truncate px-4 pb-1 pt-2 text-[12px] text-fg-faint sm:hidden">{title}</p>
             <EndMenuItem state={state} onEnd={() => { setMenu(false); setConfirm(true) }} />
             {extra}
           </div>
-        </>
+        </>,
+        document.body,
       )}
       {confirm && <EndSheet sessionId={s.session_id} title={title} onClose={() => setConfirm(false)} onEnded={onEnded} />}
     </li>
