@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.154.2: the phone preview, checked in the real app
+
+A patch release, one PR (#812). Phone mode was checked in a real macOS build of the app with window snapshots, and three defects found there are fixed: a new tab on an address nothing answers no longer flashes a white rectangle first, the page is shown only while it fits inside the window (shrinking a rotated phone drew it past the edge), and the page lays out at exactly the device's CSS size (393×681, not 393×680; 393 wide side by side, not 392).
+
 ### 2026-10-23 — 0.154.1: 0.154.0 as published
 
 A patch release, one PR (#810). v0.154.0 was tagged but never published: a local `ui/node_modules` link had been committed with it, and goreleaser stopped on the dirty tree. The link is removed and `.gitignore` ignores `node_modules` as a link too; the tag stays where it is. This release carries everything listed for 0.154.0.

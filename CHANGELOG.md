@@ -12,6 +12,19 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.154.2] - 2026-10-23
+
+### Fixed
+
+- **app:** a Page tab opened on an address nobody answers no longer flashes
+  a white rectangle before *Nothing answers at …*: a new page stays hidden
+  until it has something to show.
+- **app:** shrinking the window with a phone preview open no longer draws
+  the page past the window's bottom edge while the tab catches up.
+- **app:** a phone page drawn smaller than its true size reads the device's
+  size exactly: an iPhone 16 reads 393×681, where it had read 392 wide side
+  by side and up to three pixels short in height when scaled.
+
 ## [0.154.1] - 2026-10-23
 
 ### Fixed
