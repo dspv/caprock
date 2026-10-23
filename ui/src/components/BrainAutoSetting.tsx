@@ -98,7 +98,7 @@ function ExcludeFolders({ folders, save }: { folders: string[]; save: (b: BrainS
     setDraft('')
   }
   return (
-    <div className="grid gap-1.5" data-brain-exclude>
+    <div className="grid min-w-0 gap-1.5" data-brain-exclude>
       <span className="text-[13px] text-fg">Never read these folders</span>
       <span className="text-[12.5px] leading-relaxed text-fg-muted">
         Sessions in them, or in a repository under them, are skipped unread, and their projects stay out of the graph, search and what a new session is handed unless you open that project. A scheduled job that says so when it starts is skipped on its own. Nothing already kept is deleted.
@@ -113,9 +113,10 @@ function ExcludeFolders({ folders, save }: { folders: string[]; save: (b: BrainS
           ))}
         </ul>
       )}
-      <div className="flex gap-2">
+      <div className="flex min-w-0 gap-2">
         <input
           type="text"
+          size={1}
           value={draft}
           placeholder="/Users/you/dev/scheduled-jobs"
           aria-label="Folder to exclude"
@@ -123,7 +124,7 @@ function ExcludeFolders({ folders, save }: { folders: string[]; save: (b: BrainS
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
         />
-        <button type="button" className="rounded-[6px] border border-border px-3 py-1 text-[13px] text-fg hover:text-accent disabled:opacity-50 disabled:hover:text-fg" disabled={busy || !draft.trim()} onClick={add}>Exclude</button>
+        <button type="button" className="shrink-0 rounded-[6px] border border-border px-3 py-1 text-[13px] text-fg hover:text-accent disabled:opacity-50 disabled:hover:text-fg" disabled={busy || !draft.trim()} onClick={add}>Exclude</button>
       </div>
     </div>
   )
