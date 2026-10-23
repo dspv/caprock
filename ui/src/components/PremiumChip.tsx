@@ -70,9 +70,12 @@ export function PremiumChip({ variant = 'header' }: { variant?: 'header' | 'stri
       <span
         data-premium-chip
         className={`text-premium-strong ${strip ? 'whitespace-nowrap' : ''}`}
-        title={ends && !lifetime ? `Covers you through ${ends.toLocaleDateString()}` : 'Bought outright'}
+        title={`Premium, ${lifetime ? 'lifetime' : 'yearly'}: ${ends && !lifetime ? `covers you through ${ends.toLocaleDateString()}` : 'bought outright'}`}
       >
-        premium <span className="opacity-70">{lifetime ? 'lifetime' : 'yearly'}</span>
+        {/* The strip says one word (owner, 2026-10-23: on a 15-inch screen
+            "premium lifetime" pushed the update button onto two lines); the
+            plan and its end date are in the title. */}
+        {strip ? 'Premium' : <>premium <span className="opacity-70">{lifetime ? 'lifetime' : 'yearly'}</span></>}
         {lic.in_grace && <span className="ml-1 text-warn">· renew</span>}
       </span>
     )

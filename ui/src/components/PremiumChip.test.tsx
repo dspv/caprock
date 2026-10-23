@@ -73,6 +73,16 @@ describe('PremiumChip', () => {
     await waitFor(() => expect(screen.getByText('lifetime')).toBeInTheDocument())
   })
 
+  // The status strip has no room for two words on a 15-inch screen: one word,
+  // the plan in the title.
+  it('says one word in the strip, the plan in its title', async () => {
+    state.value = pricing({ active: true, expires_at: '2076-09-01' } as PremiumPricing['license'])
+    render(<PremiumChip variant="strip" />)
+    const chip = await waitFor(() => screen.getByText('Premium'))
+    expect(chip.getAttribute('title')).toMatch(/lifetime/)
+    expect(screen.queryByText('lifetime')).toBeNull()
+  })
+
   // A renewal that has not arrived is worth noticing a week early, not on the
   // morning the features stop.
   it('flags a key inside its grace period', async () => {

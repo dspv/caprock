@@ -73,8 +73,10 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
       {/* The session in front, the figures you check while you work in its
         * terminal: the strip stood empty beside an open sidebar, and the
         * cockpit that carries them is often closed (owner, 2026-10-10). */}
-      {session && <SessionFigures s={session} sessions={sessions} onOpenSession={onOpenSession} />}
-      <span className="ml-auto flex items-center gap-4">
+      {/* The one part that gives way on a narrow screen: the right side keeps
+        * its words on one line (owner, 2026-10-23, a 15-inch screen). */}
+      {session && <span className="flex min-w-0 shrink items-center overflow-hidden whitespace-nowrap"><SessionFigures s={session} sessions={sessions} onOpenSession={onOpenSession} /></span>}
+      <span className="ml-auto flex shrink-0 items-center gap-4">
         {/* Caprock's own memory and disk, always: whether a slow machine
           * is Caprock is a question with or without a session in front. */}
         {/* The machine's memory, always: a Mac froze with agents holding

@@ -180,7 +180,7 @@ export function AppUpdateNotice() {
       return <span role="status" className="text-fg-muted" title={`Caprock ${offer.version} is the newest release`}>Caprock is up to date</span>
     case 'progress':
       return (
-        <span role="status" className="inline-flex items-center gap-1.5 text-fg-muted" title="Downloading in the background; sessions keep running">
+        <span role="status" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-fg-muted" title="Downloading in the background; sessions keep running">
           Downloading {offer.next}
           <span className="relative h-[4px] w-[46px] overflow-hidden rounded-full bg-[var(--app-hairline-strong)]">
             <span className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200" style={{ width: `${offer.pct ?? 8}%` }} />
@@ -189,7 +189,7 @@ export function AppUpdateNotice() {
         </span>
       )
     case 'installing':
-      return <span role="status" className="text-fg-muted">Installing {offer.next} — restarting…</span>
+      return <span role="status" className="whitespace-nowrap text-fg-muted">Installing {offer.next} — restarting…</span>
     default:
       break
   }
@@ -199,14 +199,14 @@ export function AppUpdateNotice() {
   const current = info ? v(info.version) : st?.current
 
   return (
-    <span ref={box} className="relative inline-flex items-center gap-1">
+    <span ref={box} className="relative inline-flex shrink-0 items-center gap-1 whitespace-nowrap">
       {offer.kind === 'install' && (
         <>
           <button
             type="button"
             onClick={() => { setOpen(false); void appUpdate.install() }}
             data-update-offer
-            className="rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
+            className="shrink-0 whitespace-nowrap rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
             title={`Download Caprock ${offer.next}, check its signature, install it and restart. Sessions keep running.`}
           >
             Update to {offer.next} — Restart
@@ -228,7 +228,7 @@ export function AppUpdateNotice() {
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           data-update-offer
-          className="rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
+          className="shrink-0 whitespace-nowrap rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
           title={`Caprock ${offer.latest} is available — you are on ${current}`}
         >
           {offer.latest} is out
