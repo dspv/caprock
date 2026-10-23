@@ -282,8 +282,8 @@ function ArrangeSections({ order, onDone }: { order: readonly CockpitSection[]; 
   )
 }
 
-/** A section the cockpit folds for it: its SectionLabel becomes the chevron that folds it. */
-const FoldCtx = createContext<{ full: boolean; toggle: () => void } | null>(null)
+/** A section the cockpit folds for it: its SectionLabel becomes the chevron that folds it (exported for tests). */
+export const FoldCtx = createContext<{ full: boolean; toggle: () => void } | null>(null)
 
 /**
  * Folds a section that has no fold of its own (Now, Tasks, Changes, CI,

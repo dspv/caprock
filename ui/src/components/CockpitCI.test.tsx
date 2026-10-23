@@ -5,6 +5,7 @@ import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
 import { prChecks } from '@/lib/ci'
 import { CheckSummary } from './CheckSummary'
 import { forgetPRProgress } from '@/lib/usePRForce'
+import { FoldCtx } from './Cockpit'
 
 const now = Date.now()
 const live = (n: number, checks: object, p: object = {}) => ({ number: n, url: `https://github.com/a/b/pull/${n}`, title: `PR ${n}`, state: 'open', draft: false,
@@ -333,5 +334,63 @@ describe('the cockpit’s CI block', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
     expect(document.querySelector('[data-cockpit-ci-action]')).toBeNull()
     expect(document.querySelector('[data-cockpit-ci-log]')).toBeNull()
+  })
+
+  // Owner, 2026-10-23: folded, the line read "1 min ago #801 ● 4 running ✓ 8
+  // · 11h" while #801 had merged 11 hours before and #806 was the newest, every
+  // check passed. The line came from the copy kept when the block was last
+  // unfolded, never read again while folded, and the time beside it was
+  // another answer's.
+  it('folded, draws its line from a fresh read of the session’s PRs, never the old copy’s running checks', async () => {
+    const then = now - 11 * 3_600_000
+    const STALE = { state: 'pending', passed: 2, failed: 0, pending: 1, items: [
+      { name: 'lint', state: 'pass', started_at: then - 240_000, completed_at: then - 200_000 },
+      { name: 'go (ubuntu-latest)', state: 'pass', started_at: then - 240_000, completed_at: then - 60_000 },
+      { name: 'go (windows-latest)', state: 'pending', status: 'in_progress', started_at: then - 240_000 },
+    ] }
+    writeDeck('prs:s1', { connected: true, prs: [row(801, live(801, STALE))] }, then)
+    writeDeck('stats:s1', { connected: true, fetched_at: now - 60_000, read_at: now - 60_000, prs: [
+      { number: 801, url: 'https://github.com/a/b/pull/801', title: 'PR 801', state: 'open', created_at: then },
+    ] }, now - 60_000)
+    let answer!: (r: Response) => void
+    const asked: string[] = []
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      asked.push(url)
+      if (url.endsWith('/prs')) return new Promise<Response>((r) => { answer = r })
+      return Promise.resolve(new Response('', { status: 404 }))
+    }))
+    render(
+      <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+        <CockpitCI sessionId="s1" onOpen={() => {}} />
+      </FoldCtx.Provider>,
+    )
+    // Folded, the session's PRs are asked; the Pipeline answer is not.
+    await waitFor(() => expect(asked).toEqual(['/v1/sessions/s1/prs']))
+    // Until that read lands there is no line, and no time from another answer.
+    expect(document.querySelector('[data-cockpit-ci-fold]')).toBeNull()
+    // The label row is the folded block's one line; the rest is hidden by CSS.
+    const head = () => document.querySelector('section[aria-label="CI"] [data-section-head]')!
+    expect(head()).not.toHaveTextContent(/running|ago|#801/)
+    const merged = live(806, PASSED, { state: 'merged' })
+    await act(async () => {
+      answer(new Response(JSON.stringify({ connected: true, prs: [row(806, merged), row(801, live(801, PASSED, { state: 'merged' }))] }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    await waitFor(() => expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveAttribute('data-cockpit-ci-fold', '806'))
+    expect(head()).not.toHaveTextContent(/running|#801/)
+    expect(head()).toHaveTextContent(/^CIjust now#806/)
+  })
+
+  it('unfolded, times a kept copy as of its read until it is read again', () => {
+    const then = now - 11 * 3_600_000
+    const STALE = { state: 'pending', passed: 2, failed: 0, pending: 1, items: [
+      { name: 'lint', state: 'pass', started_at: then - 240_000, completed_at: then - 200_000 },
+      { name: 'go (windows-latest)', state: 'pending', status: 'in_progress', started_at: then - 240_000 },
+    ] }
+    writeDeck('prs:s1', { connected: true, prs: [row(801, live(801, STALE))] }, then)
+    localStorage.setItem('caprock.cockpit.ciView', 'ring')
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+    render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+    // 4 minutes as of the read, not 11 hours and growing.
+    expect(document.querySelector('[data-cockpit-ci-ring]')).toHaveTextContent('1/2 · 4m 00s')
   })
 })
