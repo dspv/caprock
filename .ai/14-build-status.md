@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.153.0: the most expensive work over a month or all time, Second Brain spend by project
+
+A minor release, one PR (#804). The Pipeline's Most expensive reads local data, not only the board's newest 50 pull requests: the pull requests agents recorded, the repository's own v-tags (a release's pull requests are the `(#N)` merges since the tag before it), and the pull request headers GitHub already sent, kept in the new `github_prs` table (migration 0071). A switch shows the last 30 days (the default) or all time. Second Brain's 14-day spend chart stacks each day by its three biggest projects and Other, and each project row carries a bar of its share.
+
 ### 2026-10-23 — 0.152.1: Second Brain stops re-reading a project-less session
 
 A patch release, one PR (#803). Sessions started at the filesystem root had the project "/", which normalised to an empty name; the rejection failed the whole read and wiped its record, so the same sessions were sent to Claude about every 30 s for 13 hours on the owner's machine, outside the daily token limit. Such sessions are now read with no project, one bad item never fails a read, a read that cannot be saved is recorded with its tokens, and the strip says failures in plain words.

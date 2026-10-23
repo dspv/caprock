@@ -12,6 +12,47 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.153.0] - 2026-10-23
+
+### Added
+
+- **pipeline:** Most expensive now has a Month · All time switch, the month by
+  default and remembered on this device, and reaches past the newest 50 pull
+  requests GitHub lists: every pull request Caprock knows of in the repository
+  (the ones agents opened or merged, and every one GitHub ever listed to this
+  machine, now kept locally) and every release the checkout's version tags
+  mark, each release costing what the pull requests it shipped cost. All from
+  this machine; nothing more is asked of GitHub.
+
+### Changed
+
+- **brain:** Second Brain's *Last 14 days* shows where the tokens went. Each
+  day's bar is stacked by project: the three that spent the most each get a
+  colour, everything else is one grey *Other*, and hovering a segment names
+  the project, the day and its tokens. A day over the limit keeps its
+  colours and gets a warn dot above it. The table puts the same colour
+  before each project's name and a thin bar after its tokens, sized against
+  the project that spent the most. `GET /v1/brain/spend` now splits each
+  day by project (`days[].projects`).
+
+### Fixed
+
+- **brain:** a session opened in `/` (a background `claude` run there is
+  labelled `/`) no longer stalls Second Brain. Its project could not be
+  stored, so every read of it failed whole, was never recorded, and the same
+  chunk was asked again every few seconds: 3,363 times in 13 hours on one
+  machine, its tokens counted toward neither the retry wait nor the daily
+  limit. Such a session is now read in no project; an answer that cannot be
+  stored is recorded as a failed read with its tokens and waits out the retry;
+  and one memory that cannot be stored is left out while the rest of the read
+  is kept, a memory sent with no title taking one from its summary.
+- **brain:** the Second Brain strip says a read that did not finish in plain
+  words — *The last read didn't finish (Claude's answer could not be saved).
+  Caprock tries that session again by itself in 15–60 min and goes on with
+  the others.* — with the raw error only in its tooltip, and so do Settings'
+  *Last problem* line and the *Just read* list (*given up after 4 tries*
+  instead of *too short* for a session given up on).
+
 ## [0.152.1] - 2026-10-23
 
 ### Fixed
