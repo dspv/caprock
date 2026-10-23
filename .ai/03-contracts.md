@@ -1870,7 +1870,7 @@ On a paired device's read list. `501` without the projects service.
 
 `GET /v1/repos/remotes?dir=…&dir=…` (2026-10-15) → `ReposRemotes` `{repos[]}`: the Pipeline's repository picker ([04-ui.md § CI on the Pipeline and in the cockpit, and Investigate](04-ui.md#ci-on-the-pipeline-and-in-the-cockpit-and-investigate)) asks which of the folders agent sessions worked in are git repositories with a GitHub remote. One `RepoRemote` `{dir, root?, repo?, guarded?}` per distinct non-empty `dir`, in the order asked, at most 100 (`reposRemotesMax`): `root` is the repository's top level (absent outside git), `repo` is owner/name when its remote is on GitHub (`github.ParseRemote`; absent with no remote or another host). A folder macOS guards (`tcc.Guarded`: Documents, Downloads, Desktop…) is never read here and answers `guarded: true` alone, so opening the Pipeline asks for no folder access. Read through the session page's `repoCache` (one minute per folder), at most 8 folders at once; nothing is sent anywhere. Nothing asked answers `{"repos":[]}`. On a paired device's read list.
 
-**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and one sum per slice over a session's events (`(session_id, ts)` index). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them.
+**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and the slices' sums over the sessions' events, all in one statement (a JSON array of `[session, lo, hi]`, each two ranges of `idx_events_attr_work`, which carries every column summed; 2026-10-23: one query per slice spent most of its time taking and dropping the WAL read lock). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them. An ended session's slice sums are kept in the process (`sliceMemo`, per database and session, at most 1,024 sessions) while its fingerprint — status, `session_stats` cost and tokens, its pull requests' moments — is unchanged; only the slices asked for are summed and kept. For every pull request of the owner's repository (665, 14 cut sessions, 380,000 of their events; a 2 GB copy, 2026-10-23) that took the sum from 190–250 ms warm to 9–14 ms once kept; the first read in a process still sums them (~300 ms).
 
 **Phone alerts** ([ADR-036](08-decisions.md)) go through the same bot and are
 free: no licence is checked. `PUT /v1/settings` accepts `alert_approval` and
@@ -2710,7 +2710,70 @@ over the 14 local calendar days ending today:
   `user.login` and `user.avatar_url`, an address on
   `avatars.githubusercontent.com`) from the same list, and `labels?`
   `[{name, color?}]` (2026-10-14; GitHub's label names and hex colours, at
-  most 6, absent with none) for the Pipeline's label chips.
+  most 6, absent with none) for the Pipeline's label chips. `updated_at`
+  (2026-10-23) is GitHub's stamp of its last change (unix ms), the list's
+  order, kept with the header.
+- **Kept headers** (2026-10-23) — every list read fresh from GitHub (not one
+  handed back from what was kept) is handed to `github.Service.OnPulls`,
+  which the daemon wires to `store.UpsertGitHubPRs` in the background: the
+  repository's own pull requests' headers go into `github_prs` (§ GitHub pull
+  requests DDL), so history accumulates past the newest 50 and a pull request
+  opened by hand or by a contributor keeps a head branch to charge sessions
+  by. Nothing more is asked of GitHub for it.
+
+**Most expensive** (2026-10-23) — `GET /v1/sessions/{id}/ci/costliest?days=30|14|all`
+→ `Costliest` (`internal/api/costliest.go`), the Pipeline's Most expensive
+section (04-ui.md § The Pipeline). `days` defaults to `30`; anything else is
+`400`. Read from this machine alone — no GitHub request, connected or not —
+and kept like the deck's answers (deckcache.go, `costliest:<days>` keys). On
+the same machine-only footing as `…/ci/stats` for another computer
+(`computerRoutes`); not on a paired phone. Fields: `repo`, `reason` (as
+`SessionRepoCI`), `days` (0 = all time), `since?` (unix ms: the local
+midnight starting the last `days` calendar days, today included; absent for
+all time), `prs[]`, `prs_counted`, `prs_known`, `releases[]`,
+`releases_counted`, `tags_read`, plus the deck's freshness.
+
+- **Pull requests** — `store.KnownPRs`: every pull request of the
+  repository in `github_prs` or `session_prs` (by its address under
+  `https://github.com/<repo>/pull/`), one row each, charged by `SpendByPR`
+  over the sessions of the session's `repo_root` exactly as the board charges
+  its cards (the open ones first, then the most recently moved, own a shared
+  head branch). Each `KnownPR` `{number, url, title?, state?, at, spend}`:
+  `state` as GitHub listed it, else `merged`/`closed` when a session recorded
+  that, else absent; `at` is when it last moved — merged, else closed, else
+  its newest activity (GitHub's `updated_at`, or a session's last command on
+  it). `prs` are those with a cost and a session whose `at` is in the period,
+  dearest first, at most 5 (a tie: more sessions, then the newer number);
+  `prs_counted` how many qualified, `prs_known` how many are known at all.
+- **Releases** — `relplan.ReleaseHistory` over the checkout (the session's
+  `repo_root`): version tags `^v\d+\.\d+\.\d+$` (a pre-release or a tag of
+  another shape is not a release) on the first-parent line of the remote
+  default branch (`origin/HEAD`, else `HEAD`). One `git for-each-ref` (tags
+  peeled to their commits, dated by `creatordate`) and one `git log
+  --first-parent --format=%H%x09%s`; each commit's pull request — a squash
+  subject's trailing `(#N)`, or a merge commit's `Merge pull request #N from`
+  — goes to the first release at or after it, so a release's pull requests
+  are those of `git log --first-parent prev..tag`. A tag off that line is left
+  out; of several on one commit the highest version is the release; CRLF is
+  read as LF. Each `CostlyRelease` `{tag, at, url, prs[], cost_usd, sessions,
+  first?}`: `at` the tag's date, `url`
+  `https://github.com/<repo>/releases/tag/<tag>`, `cost_usd` and `sessions`
+  the sums of its pull requests' `KnownPR.spend` (the same figure as the left
+  list, so no session is counted twice; a session cut between two pull
+  requests counts in each one's `sessions`), `first` on the oldest release,
+  which shipped everything before it too. `releases` are those tagged in the
+  period with a cost, dearest first, at most 5 (a tie: more pull requests,
+  then the newer); `releases_counted` how many were tagged in it.
+  `tags_read` false says the checkout could not be read, not that there are
+  no releases. The history is kept per checkout while the default branch's
+  tip and the tag list are unchanged, and that key is read again at most
+  every 2 minutes (`relHistRecheck`): reading it was 150 ms of a 300 ms
+  composition on the owner's checkout.
+- **Measured** on a sandboxed daemon over a 2 GB copy of the owner's
+  database and his checkout (665 pull requests known, ~300 tags,
+  2026-10-23): the first composition after a start 1.6 s (summing the cut
+  sessions' slices, reading the history); later compositions 16–113 ms,
+  mostly ~25 ms; an answer handed back from the deck cache 1–3 ms.
 
 Nothing is sent while GitHub is not connected: `connected` is false, `prs`
 empty, `stats` and `board` absent. A failed list keeps the last one, with
@@ -6933,6 +6996,39 @@ records `created`, `merged` and `closed` in the same transaction as the event
 a merged PR. `meta.session_prs_backfilled` gates a one-off pass over the
 `tool.post` rows already stored (`store.PRToolPosts`), run in the background
 after the port opens.
+
+### GitHub pull requests DDL (migration 0072)
+
+```sql
+CREATE TABLE IF NOT EXISTS github_prs (
+  repo       TEXT    NOT NULL COLLATE NOCASE,  -- owner/name
+  number     INTEGER NOT NULL,
+  url        TEXT    NOT NULL,
+  title      TEXT    NOT NULL DEFAULT '',
+  head       TEXT    NOT NULL DEFAULT '',      -- head branch
+  state      TEXT    NOT NULL DEFAULT '',      -- open | closed | merged
+  created_at INTEGER NOT NULL DEFAULT 0,       -- unix ms, GitHub's stamps
+  merged_at  INTEGER NOT NULL DEFAULT 0,       -- 0 until merged
+  closed_at  INTEGER NOT NULL DEFAULT 0,       -- 0 while open
+  updated_at INTEGER NOT NULL DEFAULT 0,
+  seen_at    INTEGER NOT NULL,                 -- unix ms the daemon last read it
+  PRIMARY KEY (repo, number)
+) WITHOUT ROWID;
+```
+
+The headers of every pull request list the daemon read from GitHub
+(`store.UpsertGitHubPRs`, through `github.Service.OnPulls`; § the Pipeline's
+*Kept headers*): the repository's own pull requests, a fork's left out. A row
+is rewritten only by a header whose `updated_at` is at least the one it
+holds, so a list read late never undoes a newer one. The migration only
+creates the table — nothing is filled at startup; it grows as lists are read.
+Read by `store.KnownPRs` (§ Most expensive) for the head branch, title, state
+and stamps of pull requests no agent recorded.
+
+Migration 0071 is a no-op (`SELECT 1`) holding version 71 for PR #768
+(`perf/integer-session-ids`): the loader requires every version in turn. If
+#768 lands first, 0071_reserved.sql is deleted for its 0071; once 0071_reserved
+has shipped it is frozen and #768 takes the next free number.
 
 ### Touch attribution DDL (migration 0012)
 

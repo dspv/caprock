@@ -240,46 +240,92 @@ export function initials(login: string): string {
   return (parts[0] ?? '?').slice(0, 2).toUpperCase()
 }
 
-/** How many rows each list of the Most expensive panel shows. */
-export const TOP_SHOWN = 5
+// ---------------------------------------------------------------- the most expensive
 
-/** One row of the Most expensive panel's pull requests: a card joined with its title and link. */
-export interface TopPR {
+/** The Most expensive section's periods (owner, 2026-10-23, translated: "by
+ *  default a month"): the last 30 days, or every pull request and release
+ *  this machine knows of. The daemon also answers `14`. */
+export type ExpensivePeriod = '30' | 'all'
+export const EXPENSIVE_PERIODS: readonly { v: ExpensivePeriod; label: string; title: string }[] = [
+  { v: '30', label: 'Month', title: 'Pull requests merged or last active, and releases tagged, in the last 30 days' },
+  { v: 'all', label: 'All time', title: 'Every pull request and release this machine knows of' },
+]
+export const EXPENSIVE_PERIOD_KEY = 'caprock.pipeline.expensive.period'
+
+/** The period last picked on this device; the month when none was, or storage is closed. */
+export function readExpensivePeriod(): ExpensivePeriod {
+  try { return localStorage.getItem(EXPENSIVE_PERIOD_KEY) === 'all' ? 'all' : '30' } catch { return '30' }
+}
+
+export function writeExpensivePeriod(v: ExpensivePeriod): void {
+  try { if (v === '30') localStorage.removeItem(EXPENSIVE_PERIOD_KEY); else localStorage.setItem(EXPENSIVE_PERIOD_KEY, v) } catch { /* this page only */ }
+}
+
+/** A period as the headings say it: "last 30 days", "all time". */
+export function periodWords(days: number): string {
+  return days > 0 ? `last ${days} days` : 'all time'
+}
+
+/** A pull request the daemon knows of locally, with its recorded agent cost (store.KnownPR). */
+export interface KnownPR {
   number: number
+  url: string
   title?: string
-  url?: string
-  stage: Stage
+  /** open | closed | merged; absent when not known. */
+  state?: string
+  /** When it last moved: merged, else closed, else last active (unix ms). */
+  at: number
   spend: PRSpend
 }
 
-/**
- * The board's pull requests by recorded agent cost, dearest first, at most
- * `n` (owner, 2026-10-23, translated: "TOP-5 most expensive pull requests").
- * The cards are the board's own — open ones and merges in its window, from
- * the newest listed — so this ranks only what the board holds, never all
- * time. One with no session or no cost is left out; a tie goes to more
- * sessions, then the newer number.
- */
-export function topPRs(board: PRBoard, prs: BranchPR[], n = TOP_SHOWN): TopPR[] {
-  const byNum = new Map(prs.map((p) => [p.number, p]))
-  return board.cards
-    .filter((c) => c.spend.sessions > 0 && c.spend.cost_usd > 0)
-    .sort((a, b) => b.spend.cost_usd - a.spend.cost_usd || b.spend.sessions - a.spend.sessions || b.number - a.number)
-    .slice(0, Math.max(0, n))
-    .map((c) => { const p = byNum.get(c.number); return { number: c.number, title: p?.title, url: p?.url, stage: c.stage, spend: c.spend } })
+/** A version tag and what the pull requests it shipped cost. */
+export interface CostlyRelease {
+  tag: string
+  at: number
+  url: string
+  prs: number[]
+  cost_usd: number
+  sessions: number
+  /** The oldest release on the line: it shipped everything before it too. */
+  first?: boolean
 }
 
-/**
- * The board's releases (its newest published ones) by the recorded agent
- * cost of the merges they shipped, dearest first, at most `n`. One with no
- * cost or no session is left out; a tie goes to more pull requests, then the
- * newer release.
- */
-export function topReleases(board: PRBoard, n = TOP_SHOWN): BoardRelease[] {
-  return board.releases
-    .filter((r) => r.sessions > 0 && r.cost_usd > 0)
-    .sort((a, b) => b.cost_usd - a.cost_usd || b.prs.length - a.prs.length || b.published_at - a.published_at)
-    .slice(0, Math.max(0, n))
+/** GET /v1/sessions/{id}/ci/costliest: the dearest pull requests and releases over a period, from this machine alone. */
+export interface Costliest {
+  repo?: string
+  reason?: string
+  /** The period in days, 0 for all time. */
+  days: number
+  since?: number
+  prs: KnownPR[]
+  prs_counted: number
+  prs_known: number
+  releases: CostlyRelease[]
+  releases_counted: number
+  tags_read: boolean
+  fetched_at?: number
+}
+
+/** The answer read defensively: an odd one is none, never a crash. */
+export function asCostliest(v: unknown): Costliest | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Partial<Costliest>
+  if (!Array.isArray(o.prs) || !Array.isArray(o.releases)) return undefined
+  return {
+    repo: typeof o.repo === 'string' ? o.repo : undefined,
+    reason: typeof o.reason === 'string' ? o.reason : undefined,
+    days: num(o.days),
+    since: num(o.since) || undefined,
+    prs: o.prs.filter((p) => p && typeof p === 'object' && typeof p.number === 'number')
+      .map((p) => ({ number: p.number, url: typeof p.url === 'string' ? p.url : '', title: typeof p.title === 'string' ? p.title : undefined, state: typeof p.state === 'string' && p.state ? p.state : undefined, at: num(p.at), spend: asSpend(p.spend) })),
+    prs_counted: num(o.prs_counted),
+    prs_known: num(o.prs_known),
+    releases: o.releases.filter((r) => r && typeof r === 'object' && typeof r.tag === 'string')
+      .map((r) => ({ tag: r.tag, at: num(r.at), url: typeof r.url === 'string' ? r.url : '', prs: Array.isArray(r.prs) ? r.prs.filter((n) => typeof n === 'number') : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), first: r.first === true || undefined })),
+    releases_counted: num(o.releases_counted),
+    tags_read: o.tags_read === true,
+    fetched_at: num(o.fetched_at) || undefined,
+  }
 }
 
 /** How many cards a column shows before "+N more": the done columns grow all day. */

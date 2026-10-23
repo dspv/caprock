@@ -33,7 +33,8 @@ var computerMayAlso = map[string]bool{
 	"POST /v1/sessions/{id}/prs/{number}/update-branch": true, "GET /v1/sessions/{id}/ci": true,
 	"GET /v1/sessions/{id}/branches": true, "GET /v1/sessions/{id}/ci/jobs/{job}/log": true,
 	"GET /v1/sessions/{id}/ci/release": true, "GET /v1/sessions/{id}/ci/main": true, "GET /v1/sessions/{id}/ci/stats": true,
-	"GET /v1/projects/{id}/branches": true, "GET /v1/projects/{id}/copies": true, "POST /v1/projects/{id}/copies/remove": true,
+	"GET /v1/sessions/{id}/ci/costliest": true,
+	"GET /v1/projects/{id}/branches":     true, "GET /v1/projects/{id}/copies": true, "POST /v1/projects/{id}/copies/remove": true,
 	"GET /v1/projects/{id}/cleanup": true, "POST /v1/projects/{id}/cleanup": true, "POST /v1/projects/{id}/cleanup/restore": true,
 	"GET /v1/projects/scan": true, "POST /v1/projects/merge": true, "POST /v1/projects/{id}/split": true,
 }

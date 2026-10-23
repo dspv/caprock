@@ -596,6 +596,9 @@ type Server struct {
 	// deck holds the session deck's composed Pull requests & CI answers
 	// (deckcache.go).
 	deck *answerCache
+	// relHist is each checkout's release history, kept while its tags and
+	// default branch stay the same (costliest.go).
+	relHist relHistCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
 	// sizes decides which attached terminal a session's PTY is sized for
@@ -688,6 +691,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/sessions/{id}/ci/release", s.handleSessionCIRepo("release"))
 	m.HandleFunc("GET /v1/sessions/{id}/ci/main", s.handleSessionCIRepo("main"))
 	m.HandleFunc("GET /v1/sessions/{id}/ci/stats", s.handleSessionCIStats)
+	m.HandleFunc("GET /v1/sessions/{id}/ci/costliest", s.handleSessionCostliest)
 	m.HandleFunc("GET /v1/notes", s.handleSearchNotes)
 	m.HandleFunc("GET /v1/sessions/{id}/diff", s.handleSessionDiff)
 	m.HandleFunc("POST /v1/sessions/{id}/open-terminal", s.handleOpenTerminal)

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { asBoard, boardColumns, ciChip, costText, costTitle, initials, perDay, topPRs, topReleases, type BoardRelease, type PRBoard } from './prboard'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { EXPENSIVE_PERIOD_KEY, asBoard, asCostliest, boardColumns, ciChip, costText, costTitle, initials, perDay, periodWords, readExpensivePeriod, writeExpensivePeriod } from './prboard'
 
 describe('the board’s words', () => {
   it('reads an older daemon’s answer as no board, and an odd card as none', () => {
@@ -43,51 +43,45 @@ describe('the board’s words', () => {
 })
 
 // Owner, 2026-10-23, translated: "TOP-5 most expensive pull requests and TOP-5
-// most expensive releases".
+// most expensive releases" … "by default a month".
 describe('the most expensive pull requests and releases', () => {
-  const spend = (cost_usd: number, sessions: number) => ({ cost_usd, sessions, live: 0, agents: [] })
-  const rel = (tag: string, cost_usd: number, sessions: number, prs: number[], published_at: number): BoardRelease => ({ tag, cost_usd, sessions, prs, published_at })
-  const board = (cards: unknown[], releases: BoardRelease[] = []): PRBoard => asBoard({ cards, releases, flow: {} })!
+  afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
 
-  it('ranks the pull requests dearest first, five at most, joined with their titles', () => {
-    const b = board([1, 2, 3, 4, 5, 6, 7].map((n) => ({ number: n, stage: 'merged', spend: spend(n * 1.5, 1) })))
-    const top = topPRs(b, [{ number: 7, url: 'https://github.com/a/b/pull/7', state: 'merged', title: 'Seven' }])
-    expect(top.map((p) => p.number)).toEqual([7, 6, 5, 4, 3])
-    expect(top[0]).toMatchObject({ title: 'Seven', url: 'https://github.com/a/b/pull/7', stage: 'merged' })
-    expect(top[1]!.title).toBeUndefined()
-    // The board's own order is left alone.
-    expect(b.cards.map((c) => c.number)).toEqual([1, 2, 3, 4, 5, 6, 7])
+  it('is the month until All time is picked, remembered on this device', () => {
+    expect(readExpensivePeriod()).toBe('30')
+    writeExpensivePeriod('all')
+    expect(localStorage.getItem(EXPENSIVE_PERIOD_KEY)).toBe('all')
+    expect(readExpensivePeriod()).toBe('all')
+    writeExpensivePeriod('30')
+    expect(localStorage.getItem(EXPENSIVE_PERIOD_KEY)).toBeNull()
+    localStorage.setItem(EXPENSIVE_PERIOD_KEY, 'week')
+    expect(readExpensivePeriod()).toBe('30')
   })
 
-  it('breaks a tie by more sessions, then the newer number', () => {
-    const b = board([
-      { number: 10, stage: 'open', spend: spend(4, 1) },
-      { number: 11, stage: 'open', spend: spend(4, 3) },
-      { number: 12, stage: 'ready', spend: spend(4, 1) },
-    ])
-    expect(topPRs(b, []).map((p) => p.number)).toEqual([11, 12, 10])
+  it('falls back to the month when storage is closed, and never throws', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
+    expect(readExpensivePeriod()).toBe('30')
+    expect(() => writeExpensivePeriod('all')).not.toThrow()
   })
 
-  it('leaves out a pull request with no recorded session or no cost, and says fewer than five or none', () => {
-    const b = board([
-      { number: 1, stage: 'open', spend: spend(0, 0) },
-      { number: 2, stage: 'open', spend: spend(0, 2) },
-      { number: 3, stage: 'merged', spend: spend(0.004, 1) },
-    ])
-    expect(topPRs(b, []).map((p) => p.number)).toEqual([3])
-    expect(topPRs(board([]), [])).toEqual([])
+  it('names the period honestly', () => {
+    expect(periodWords(30)).toBe('last 30 days')
+    expect(periodWords(14)).toBe('last 14 days')
+    expect(periodWords(0)).toBe('all time')
   })
 
-  it('ranks the releases by what their merges cost, ties by more pull requests then the newer, none at no cost', () => {
-    const b = board([], [
-      rel('v1.6.0', 2, 1, [6], 600), rel('v1.5.0', 9, 4, [5, 4], 500), rel('v1.4.0', 0, 0, [], 400),
-      rel('v1.3.0', 2, 1, [3, 2], 300), rel('v1.2.0', 2, 1, [1], 200), rel('v1.1.0', 1, 1, [8], 100), rel('v1.0.0', 0.5, 1, [9], 50),
-    ])
-    expect(topReleases(b).map((r) => r.tag)).toEqual(['v1.5.0', 'v1.3.0', 'v1.6.0', 'v1.2.0', 'v1.1.0'])
-    expect(topReleases(board([], [rel('v2', 0, 0, [], 1)]))).toEqual([])
-    expect(topReleases(board([]))).toEqual([])
-    expect(topReleases(b, 2).map((r) => r.tag)).toEqual(['v1.5.0', 'v1.3.0'])
-    // The board's newest-first order is left alone.
-    expect(b.releases[0]!.tag).toBe('v1.6.0')
+  it('reads the daemon’s answer defensively: an older daemon’s 404 body or an odd row is none', () => {
+    expect(asCostliest(undefined)).toBeUndefined()
+    expect(asCostliest({ error: 'not found' })).toBeUndefined()
+    const c = asCostliest({
+      repo: 'a/b', days: 30, since: 5, prs_known: 3, prs_counted: 1, releases_counted: 1, tags_read: true,
+      prs: [{ number: 7, url: 'u', title: 'Seven', state: 'merged', at: 9, spend: { cost_usd: 2, sessions: 1, live: 0, agents: ['claude'] } }, { title: 'no number' }],
+      releases: [{ tag: 'v1.0.0', at: 1, url: 'r', prs: [7, 'x'], cost_usd: 2, sessions: 1, first: true }, { prs: [] }],
+    })!
+    expect(c.prs).toHaveLength(1)
+    expect(c.prs[0]).toMatchObject({ number: 7, title: 'Seven', state: 'merged', spend: { cost_usd: 2, sessions: 1 } })
+    expect(c.releases).toEqual([{ tag: 'v1.0.0', at: 1, url: 'r', prs: [7], cost_usd: 2, sessions: 1, first: true }])
+    expect(c.tags_read).toBe(true)
   })
 })

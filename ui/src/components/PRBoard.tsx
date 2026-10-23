@@ -17,7 +17,7 @@
  */
 import type { ReactNode } from 'react'
 import type { BranchPR } from '@/lib/branches'
-import { AGENT_COST_NOTE, costText, costTitle, perDay, topPRs, topReleases, type BoardRelease, type FlowPoint, type PRBoard, type SeriesKey } from '@/lib/prboard'
+import { AGENT_COST_NOTE, EXPENSIVE_PERIODS, costText, costTitle, perDay, periodWords, type BoardRelease, type Costliest, type ExpensivePeriod, type FlowPoint, type KnownPR, type PRBoard, type SeriesKey } from '@/lib/prboard'
 import { flowCompare, flowCompareTitle, flowPointTitle, flowTone, flowUsualLine, flowWord } from '@/lib/flowtrend'
 import { spanText } from '@/lib/prstats'
 import { fmtAgo } from '@/lib/format'
@@ -208,32 +208,45 @@ const sessionsText = (n: number) => `${n} session${n === 1 ? '' : 's'}`
  * The five dearest pull requests and releases by recorded agent cost
  * (owner, 2026-10-23, translated: "some stats inside, like TOP-5 most
  * expensive pull requests and TOP-5 most expensive releases … it must fit in
- * organically"). Both from the board the page already holds (topPRs,
- * topReleases): the pull requests are its cards — open, or merged in its
- * window, among the newest listed — and the releases its newest published
- * ones, so each list says the span it covers, never all time. Drawn only
- * when either list has a row.
+ * organically"), over a period the viewer picks — the last 30 days by
+ * default (owner: "by default a month"), or all time — from the daemon's own
+ * answer (GET …/ci/costliest): every pull request this machine knows of,
+ * past the board's newest 50, and the releases the checkout's version tags
+ * mark. No GitHub request. Drawn once Caprock knows a pull request of the
+ * repository, so a quiet month still offers All time.
  */
-export function MostExpensive({ board, prs, now, onOpen }: { board: PRBoard; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
-  const tops = topPRs(board, prs)
-  const rels = topReleases(board)
-  if (tops.length === 0 && rels.length === 0) return null
+export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?: Costliest; period: ExpensivePeriod; onPeriod: (v: ExpensivePeriod) => void; now: number; onOpenPR: (p: KnownPR) => void }) {
+  if (!data || data.reason || (data.prs_known === 0 && data.releases_counted === 0 && period === '30')) return null
+  const span = periodWords(data.days)
   const cap = 'px-3 pb-1 pt-2.5 text-[10px] uppercase tracking-[0.12em] text-fg-faint'
   const row = 'grid w-full items-baseline gap-x-2 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none'
   const rank = (i: number) => <span aria-hidden className="num text-[11px] text-fg-faint">{i + 1}</span>
   const none = (what: string) => <p className="px-3 pb-2.5 pt-1 text-[12px] text-fg-muted">{what}</p>
-  const prScope = `Open, or merged in the last ${board.flow.days} days, among the newest pull requests GitHub lists (the most recently updated first): on a busy repository they may not reach back the whole window.`
+  const prScope = `${data.prs_counted} of the ${data.prs_known} pull requests Caprock knows of in this repository have a recorded agent cost${data.days > 0 ? ` and were merged, closed or last active in the ${span}` : ''}. Known: those an agent opened, merged or closed, and every one GitHub listed to this machine, kept locally.`
+  const relScope = data.tags_read
+    ? `Version tags (v1.2.3) on the default branch of this checkout, as of its last fetch${data.days > 0 ? `, tagged in the ${span}` : ''}: ${data.releases_counted}. Each costs what the pull requests its commits name cost, the same figures as on the left.`
+    : 'The checkout’s tags could not be read.'
+  const picker = (
+    <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5" role="group" aria-label="Period" data-expensive-period>
+      {EXPENSIVE_PERIODS.map((o) => (
+        <button key={o.v} type="button" onClick={() => onPeriod(o.v)} aria-pressed={period === o.v} title={o.title} data-period={o.v}
+          className={`rounded-[5px] px-2 py-0.5 text-[11px] normal-case tracking-normal ${period === o.v ? 'bg-accent font-medium text-panel' : 'text-fg-muted hover:text-fg'}`}>
+          {o.label}
+        </button>
+      ))}
+    </span>
+  )
   return (
-    <Panel fold="pipeline.expensive" title="Most expensive" right={<span title={AGENT_COST_NOTE}>recorded agent cost · API list price</span>}>
+    <Panel fold="pipeline.expensive" title={<span title={AGENT_COST_NOTE}>Most expensive</span>} right={picker}>
       <div className="@container/top">
         <div data-board-expensive className="grid grid-cols-1 divide-y divide-border @min-[640px]/top:grid-cols-2 @min-[640px]/top:divide-x @min-[640px]/top:divide-y-0">
           <div data-expensive="prs" className="min-w-0 pb-1">
-            <div className={cap} title={prScope}>Pull requests · last {board.flow.days} days</div>
-            {tops.length === 0 ? none('No agent cost recorded on these pull requests.') : (
+            <div className={cap} title={prScope}>Pull requests · {span}</div>
+            {data.prs.length === 0 ? none(`No agent cost recorded on a pull request in the ${span}.`) : (
               <ol>
-                {tops.map((p, i) => (
+                {data.prs.map((p, i) => (
                   <li key={p.number}>
-                    <button type="button" data-expensive-pr={p.number} onClick={() => onOpen(p.number)} title={`${p.title ? `#${p.number} ${p.title}\n` : ''}${costTitle(p.spend)}`} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto]`}>
+                    <button type="button" data-expensive-pr={p.number} onClick={() => onOpenPR(p)} title={`${p.title ? `#${p.number} ${p.title}\n` : ''}${p.state ? `${p.state.charAt(0).toUpperCase()}${p.state.slice(1)} · ` : ''}${costTitle(p.spend)}`} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto]`}>
                       {rank(i)}
                       <span className="flex min-w-0 items-baseline gap-1.5"><span className="num shrink-0 text-fg-muted">#{p.number}</span><span className="truncate text-fg">{p.title}</span></span>
                       <span className="flex items-baseline gap-2 whitespace-nowrap">
@@ -247,22 +260,20 @@ export function MostExpensive({ board, prs, now, onOpen }: { board: PRBoard; prs
             )}
           </div>
           <div data-expensive="releases" className="min-w-0 pb-1">
-            <div className={cap} title="The newest published releases read, each charged with the agent cost of the listed merges matched to it by merge time.">
-              Releases · newest {board.releases.length}
-            </div>
-            {rels.length === 0 ? none('No agent cost recorded on the merges they shipped.') : (
+            <div className={cap} title={relScope}>Releases · {span}</div>
+            {data.releases.length === 0 ? none(!data.tags_read ? 'The checkout’s version tags could not be read.' : data.releases_counted === 0 ? `No version tag in the ${span}.` : 'No agent cost recorded on the pull requests they shipped.') : (
               <ol>
-                {rels.map((r, i) => (
+                {data.releases.map((r, i) => (
                   <li key={r.tag}>
                     <button type="button" data-expensive-release={r.tag} onClick={() => r.url && openExternal(r.url)} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto_auto]`}
-                      {...extProps(`${r.tag}${r.name && r.name !== r.tag ? ` · ${r.name}` : ''}\n$${r.cost_usd.toFixed(2)} from ${sessionsText(r.sessions)} on ${r.prs.length} pull request${r.prs.length === 1 ? '' : 's'}${r.partial ? '\nThe listed pull requests may not reach back to the release before it: older merges may be missing' : ''}\nOpen on GitHub`)}>
+                      {...extProps(`${r.tag}\n$${r.cost_usd.toFixed(2)} from ${sessionsText(r.sessions)} on ${r.prs.length} pull request${r.prs.length === 1 ? '' : 's'}${r.first ? '\nThe oldest release here: it shipped everything before it too' : ''}\nOpen on GitHub`)}>
                       {rank(i)}
                       <span className="flex min-w-0 items-baseline gap-1.5">
                         <span className="mono truncate font-semibold text-fg">{r.tag}</span>
-                        <span className="shrink-0 text-[12px] text-fg-muted">{relDay(r.published_at, now)}</span>
+                        <span className="shrink-0 text-[12px] text-fg-muted">{relDay(r.at, now)}</span>
                       </span>
                       <span className="flex items-baseline gap-2 whitespace-nowrap">
-                        <span className="num font-semibold text-fg">{r.partial ? '≥' : ''}{costText({ cost_usd: r.cost_usd, sessions: r.sessions, live: 0, agents: [] })}</span>
+                        <span className="num font-semibold text-fg">{costText({ cost_usd: r.cost_usd, sessions: r.sessions, live: 0, agents: [] })}</span>
                         <span className="text-[12px] text-fg-muted">{r.prs.length} PR{r.prs.length === 1 ? '' : 's'}</span>
                       </span>
                     </button>

@@ -2,8 +2,11 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // The PRs & CI board's "agent cost" and the Now screen's cost per pull
@@ -67,6 +70,7 @@ type prSession struct {
 	cost                  float64
 	tok                   prTokens
 	rows                  []prRow
+	sums                  []prSum // per row, for a session cut between several
 }
 
 type prRow struct {
@@ -204,16 +208,27 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	// The slices of the sessions cut between several, all summed in one
+	// read. An ended session's are kept (sliceMemo): its events no longer
+	// change, and summing them again was most of the cost.
+	var slices []prSlice
+	var memoize []string
 	for _, id := range order {
 		s := sessions[id]
 		sort.SliceStable(s.rows, func(a, b int) bool { return s.rows[a].anchor < s.rows[b].anchor })
-		live := s.status != "ended"
 		if len(s.rows) == 1 {
-			add(s.rows[0].url, s.agent, s.cost, s.tok, live, false, false)
 			continue
 		}
+		ended := s.status == "ended"
+		var have []bool
+		if ended {
+			s.sums, have = sliceMemo.get(memoKey(q, id), s.fingerprint(), len(s.rows))
+		} else {
+			s.sums = make([]prSum, len(s.rows))
+		}
+		added := false
 		for i, r := range s.rows {
-			if !want[r.url] {
+			if !want[r.url] || (have != nil && have[i]) {
 				continue
 			}
 			lo := int64(-1)
@@ -224,17 +239,41 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			if i < len(s.rows)-1 {
 				hi = r.anchor
 			}
-			var cost float64
-			var tok prTokens
-			if err := q.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
-				COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0)
-				FROM events WHERE session_id = ? AND ts > ? AND ts <= ? AND internal = 0`, id, lo, hi).Scan(&cost, &tok.in, &tok.out, &tok.read, &tok.write); err != nil {
-				return nil, err
-			}
-			if cost == 0 && i < len(s.rows)-1 {
+			slices = append(slices, prSlice{session: id, lo: lo, hi: hi, sum: &s.sums[i], row: i})
+			added = true
+		}
+		if ended && added {
+			memoize = append(memoize, id)
+		}
+	}
+	if err := sliceSums(ctx, q, slices); err != nil {
+		return nil, err
+	}
+	if len(memoize) > 0 {
+		done := map[string][]int{}
+		for _, sl := range slices {
+			done[sl.session] = append(done[sl.session], sl.row)
+		}
+		for _, id := range memoize {
+			s := sessions[id]
+			sliceMemo.put(memoKey(q, id), s.fingerprint(), s.sums, done[id])
+		}
+	}
+	for _, id := range order {
+		s := sessions[id]
+		live := s.status != "ended"
+		if len(s.rows) == 1 {
+			add(s.rows[0].url, s.agent, s.cost, s.tok, live, false, false)
+			continue
+		}
+		for i, r := range s.rows {
+			if !want[r.url] {
 				continue
 			}
-			add(r.url, s.agent, cost, tok, live && i == len(s.rows)-1, false, true)
+			if s.sums[i].cost == 0 && i < len(s.rows)-1 {
+				continue
+			}
+			add(r.url, s.agent, s.sums[i].cost, s.sums[i].tok, live && i == len(s.rows)-1, false, true)
 		}
 	}
 	for u, s := range out {
@@ -246,4 +285,141 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		out[u] = s
 	}
 	return out, nil
+}
+
+// sliceMemo keeps the slice sums of ended sessions, per database and
+// session: summing them again on every board and Most expensive read was
+// 190 ms warm for every pull request of the owner's repository
+// (2026-10-23), 13 sessions and 380,000 events. A session's fingerprint —
+// its recorded total and tokens, and its pull requests' moments — must
+// match, so one that resumed, was tailed further or recorded another pull
+// request is summed afresh.
+var sliceMemo = &memoSums{m: map[string]memoEntry{}}
+
+// sliceMemoMax bounds the sessions kept; past it the memo starts over.
+const sliceMemoMax = 1024
+
+type memoSums struct {
+	mu sync.Mutex
+	m  map[string]memoEntry
+}
+
+type memoEntry struct {
+	fp   string
+	sums []prSum
+	have []bool // which slices are summed: only the ones asked for are
+}
+
+// get is a session's kept slices when its fingerprint still matches: the
+// sums and which of them are summed, each n long; zeroes and none otherwise.
+func (c *memoSums) get(key, fp string, n int) ([]prSum, []bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	sums, have := make([]prSum, n), make([]bool, n)
+	if e, ok := c.m[key]; ok && e.fp == fp && len(e.sums) == n {
+		copy(sums, e.sums)
+		copy(have, e.have)
+	}
+	return sums, have
+}
+
+// put keeps the slices rows of sums, beside those already kept for the
+// same fingerprint.
+func (c *memoSums) put(key, fp string, sums []prSum, rows []int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[key]
+	if !ok || e.fp != fp || len(e.sums) != len(sums) {
+		if !ok && len(c.m) >= sliceMemoMax {
+			c.m = map[string]memoEntry{}
+		}
+		e = memoEntry{fp: fp, sums: make([]prSum, len(sums)), have: make([]bool, len(sums))}
+	}
+	for _, i := range rows {
+		e.sums[i], e.have[i] = sums[i], true
+	}
+	c.m[key] = e
+}
+
+// memoKey names a session within one database (tests' in-memory ones reuse
+// session ids).
+func memoKey(q Querier, id string) string { return fmt.Sprintf("%p|%s", q, id) }
+
+// fingerprint is what a session's slices rest on: its status, total and
+// tokens, and its pull requests' moments in order.
+func (s *prSession) fingerprint() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s|%v|%d,%d,%d,%d", s.status, s.cost, s.tok.in, s.tok.out, s.tok.read, s.tok.write)
+	for _, r := range s.rows {
+		fmt.Fprintf(&b, "|%d %s", r.anchor, r.url)
+	}
+	return b.String()
+}
+
+// prSlice is one slice of a session cut between its pull requests: its
+// events after lo up to and including hi.
+type prSlice struct {
+	session string
+	lo, hi  int64
+	sum     *prSum
+	row     int // its pull request's place in the session's rows
+}
+
+type prSum struct {
+	cost float64
+	tok  prTokens
+}
+
+// sliceSums sums every slice in one statement, so in one read transaction:
+// a query per slice spent most of its time taking and dropping the WAL read
+// lock (665 of them, 190–250 ms warm, for every pull request of the owner's
+// repository, 2026-10-23). The slices go in as one JSON array; each is two
+// ranges of idx_events_attr_work, which carries every column summed — one
+// joined GROUP BY sorted every event row instead and was slower still.
+func sliceSums(ctx context.Context, q Querier, slices []prSlice) error {
+	if len(slices) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, s := range slices {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		js, _ := json.Marshal(s.session)
+		fmt.Fprintf(&b, "[%s,%d,%d]", js, s.lo, s.hi)
+	}
+	b.WriteByte(']')
+	rows, err := q.QueryContext(ctx, `
+		WITH a(i, sid, lo, hi) AS MATERIALIZED (
+		  SELECT CAST(key AS INTEGER), json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]')
+		  FROM json_each(?))
+		SELECT a.i,
+		  (SELECT COALESCE(SUM(e.cost_usd),0) FROM events e INDEXED BY idx_events_attr_work
+		   WHERE e.session_id = a.sid AND e.ts > a.lo AND e.ts <= a.hi AND e.internal = 0),
+		  (SELECT json_array(COALESCE(SUM(e.tokens_in),0), COALESCE(SUM(e.tokens_out),0), COALESCE(SUM(e.cache_read),0), COALESCE(SUM(e.cache_write),0))
+		   FROM events e INDEXED BY idx_events_attr_work
+		   WHERE e.session_id = a.sid AND e.ts > a.lo AND e.ts <= a.hi AND e.internal = 0)
+		FROM a`, b.String())
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var i int
+		var x prSum
+		var tok string
+		if err := rows.Scan(&i, &x.cost, &tok); err != nil {
+			return err
+		}
+		var t [4]int64
+		if err := json.Unmarshal([]byte(tok), &t); err != nil {
+			return err
+		}
+		x.tok = prTokens{in: t[0], out: t[1], read: t[2], write: t[3]}
+		if i >= 0 && i < len(slices) {
+			*slices[i].sum = x
+		}
+	}
+	return rows.Err()
 }

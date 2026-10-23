@@ -618,6 +618,7 @@ var computerRoutes = map[string]bool{
 	"GET /v1/sessions/{id}/ci/release":                  true,
 	"GET /v1/sessions/{id}/ci/main":                     true,
 	"GET /v1/sessions/{id}/ci/stats":                    true,
+	"GET /v1/sessions/{id}/ci/costliest":                true,
 	// A project's branches, copies and their clean-up, and its repositories.
 	"GET /v1/projects/{id}/branches":         true,
 	"GET /v1/projects/{id}/copies":           true,

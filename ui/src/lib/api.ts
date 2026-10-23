@@ -8,7 +8,7 @@ import type { PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
-import type { PRBoard } from './prboard'
+import type { Costliest, ExpensivePeriod, PRBoard } from './prboard'
 import type { ReposCI } from './reposci'
 import type { CreateRequest, GHStatus, Inspection, Template, TemplateInput, TemplateOp } from './templates'
 
@@ -2312,6 +2312,8 @@ export const api = {
   sessionCIMain: (id: string) => get<SessionRepoCI>(`/v1/sessions/${encodeURIComponent(id)}/ci/main`).then(listedJobs),
   /** The Pipeline page: the repository's pull requests and its figures over 14 days. Asked only while the tab is shown. */
   sessionCIStats: (id: string) => get<SessionCIStats>(`/v1/sessions/${encodeURIComponent(id)}/ci/stats`),
+  /** The Pipeline's Most expensive: the dearest pull requests and releases over a period, from this machine alone (no GitHub request). */
+  sessionCostliest: (id: string, days: ExpensivePeriod) => get<Costliest>(`/v1/sessions/${encodeURIComponent(id)}/ci/costliest?days=${days}`),
   /** The branches of the session's repository, with their PRs and what Caprock's sessions on each cost. */
   /** The Now screen's Repos section (.ai/04-ui.md § Repos on Now). */
   reposActivity: () => get<ReposActivity>('/v1/repos/activity'),

@@ -41,6 +41,9 @@ type BranchPR struct {
 	// ClosedAt is GitHub's stamp of its closing, merged or not (unix ms), 0
 	// while open: when it left the Pipeline's in-flight count.
 	ClosedAt int64 `json:"closed_at,omitempty"`
+	// UpdatedAt is GitHub's stamp of its last change (unix ms): what the
+	// list is sorted by, kept with the header (github_prs).
+	UpdatedAt int64 `json:"updated_at,omitempty"`
 	// Head is the head branch; Author and AuthorAvatar who opened it, as
 	// GitHub names them (the avatar a URL on avatars.githubusercontent.com):
 	// the PRs & CI board's cards and the Now screen's "who".
@@ -104,6 +107,9 @@ func ownPulls(repo Repo, list []apiPull) []ownPull {
 			Base: p.Base.Ref, HeadSHA: p.Head.SHA, CreatedAt: unixMS(p.CreatedAt), MergedAt: p.mergedMS(), Head: p.Head.Ref}
 		if p.ClosedAt != nil {
 			pr.ClosedAt = unixMS(*p.ClosedAt)
+		}
+		if p.UpdatedAt != "" {
+			pr.UpdatedAt = unixMS(p.UpdatedAt)
 		}
 		if p.User != nil {
 			pr.Author, pr.AuthorAvatar = p.User.Login, p.User.AvatarURL
@@ -173,6 +179,9 @@ func (s *Service) keepBranchPulls(repo Repo, before map[string]BranchPR, list []
 	bound(s.branchPulls.m, key, func(v branchPullsEntry) time.Time { return v.at })
 	s.branchPulls.m[key] = branchPullsEntry{m: m, list: all, at: now}
 	s.branchPulls.mu.Unlock()
+	if s.OnPulls != nil && len(all) > 0 {
+		s.OnPulls(repo, append([]BranchPR(nil), all...))
+	}
 	if s.OnMerged != nil {
 		if merged := newlyMerged(before, m); len(merged) > 0 {
 			s.OnMerged(repo, merged)

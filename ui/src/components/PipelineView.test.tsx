@@ -5,12 +5,13 @@ import type { SessionSummary } from '@/lib/api'
 const now = Date.now()
 const day = (i: number) => new Date(now - (13 - i) * 86_400_000).toISOString().slice(0, 10)
 
-const h = vi.hoisted(() => ({ statsGate: undefined as Promise<void> | undefined, stats: undefined as unknown, prs: { connected: true, prs: [] as unknown[] } as unknown, ci: {} as Record<number, unknown>, asked: [] as string[], queued: [] as string[], logs: 0, work: 0 }))
+const h = vi.hoisted(() => ({ statsGate: undefined as Promise<void> | undefined, stats: undefined as unknown, prs: { connected: true, prs: [] as unknown[] } as unknown, ci: {} as Record<number, unknown>, asked: [] as string[], queued: [] as string[], logs: 0, work: 0, costliest: {} as Record<string, unknown> }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return { ...actual, api: { ...actual.api,
     sessionCIStats: async () => { h.asked.push('stats'); if (h.statsGate) await h.statsGate; return h.stats },
     sessionPRs: async () => { h.asked.push('prs'); return h.prs },
+    sessionCostliest: async (_id: string, days: string) => { h.asked.push(`costliest ${days}`); if (!h.costliest[days]) throw new Error('404 not found'); return h.costliest[days] },
     work: async () => {
       h.work++
       return { now, day_start: 0, sessions: [], hive: 'off', queued: [], totals: { live: 0, working: 0, waiting_you: 0, today_usd: 0, machine_today_usd: 0 },
@@ -53,7 +54,7 @@ function connected() {
   ] }] } }
 }
 
-afterEach(() => { h.statsGate = undefined; h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; h.work = 0; forgetDeckAnswers(); localStorage.clear() })
+afterEach(() => { h.statsGate = undefined; h.stats = undefined; h.prs = { connected: true, prs: [] }; h.ci = {}; h.asked = []; h.queued = []; h.logs = 0; h.work = 0; h.costliest = {}; forgetDeckAnswers(); localStorage.clear() })
 
 const card = (number: number, stage: string, p: object = {}) => ({ number, stage, stage_at: now - 600_000, spend: { cost_usd: 0, sessions: 0, live: 0, agents: [] }, ...p })
 const FLOW = { counts: { draft: 0, open: 1, fix: 1, ready: 0, merged: 0, released: 1 }, days: 14, merged: 7, ttm_median_ms: 2 * 3_600_000, ttm_count: 7, release_lag_median_ms: 5 * 3_600_000, release_lag_count: 4, ci_median_ms: 430_000, cost_usd: 15.5 }
@@ -146,28 +147,48 @@ describe('the Pipeline page', () => {
   })
 
   // Owner, 2026-10-23, translated: "TOP-5 most expensive pull requests and
-  // TOP-5 most expensive releases … it must fit in organically".
-  it('lists the dearest pull requests and releases from the board, saying the span, and each opens', async () => {
+  // TOP-5 most expensive releases … it must fit in organically" … "by default
+  // a month".
+  const sp = (cost_usd: number, sessions: number) => ({ cost_usd, sessions, live: 0, agents: ['claude'] })
+  function withCostliest() {
+    h.costliest['30'] = {
+      repo: 'a/b', days: 30, since: now - 30 * 86_400_000, prs_known: 40, prs_counted: 2, releases_counted: 1, tags_read: true,
+      prs: [
+        { number: 20, url: 'https://github.com/a/b/pull/20', title: 'Release', state: 'merged', at: now - 3_000_000, spend: sp(12, 1) },
+        { number: 22, url: 'https://github.com/a/b/pull/22', title: 'Bump deps', state: 'open', at: now, spend: sp(3.5, 2) },
+      ],
+      releases: [{ tag: 'v1.2.0', at: now - 600_000, url: 'https://github.com/a/b/releases/tag/v1.2.0', prs: [20], cost_usd: 12, sessions: 1 }],
+    }
+    h.costliest.all = {
+      repo: 'a/b', days: 0, prs_known: 40, prs_counted: 30, releases_counted: 12, tags_read: true,
+      prs: [{ number: 3, url: 'https://github.com/a/b/pull/3', title: 'Old and dear', state: 'merged', at: now - 90 * 86_400_000, spend: sp(80, 4) }],
+      releases: [{ tag: 'v0.9.0', at: now - 90 * 86_400_000, url: 'https://github.com/a/b/releases/tag/v0.9.0', prs: [3, 2, 1], cost_usd: 95, sessions: 6, first: true }],
+    }
+  }
+
+  it('lists the dearest pull requests and releases of the last 30 days by default, saying so, and each opens', async () => {
     withBoard()
+    withCostliest()
     const nudges = await import('@/lib/nudges')
     const opened = vi.spyOn(nudges, 'openExternal').mockImplementation(() => {})
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
-    const panel = document.querySelector('[data-board-expensive]') as HTMLElement
-    expect(panel).not.toBeNull()
+    await waitFor(() => { if (!document.querySelector('[data-board-expensive]')) throw new Error('no panel') })
+    expect(h.asked).toContain('costliest 30')
+    expect(h.asked).not.toContain('costliest all')
     expect(screen.getByRole('heading', { name: /Most expensive/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Month' })).toHaveAttribute('aria-pressed', 'true')
+    const panel = document.querySelector('[data-board-expensive]') as HTMLElement
     const prs = panel.querySelector('[data-expensive="prs"]') as HTMLElement
-    expect(prs).toHaveTextContent('Pull requests · last 14 days')
-    // Dearest first; #21 has no recorded session and is left out.
+    expect(prs).toHaveTextContent('Pull requests · last 30 days')
     expect([...prs.querySelectorAll('[data-expensive-pr]')].map((e) => e.getAttribute('data-expensive-pr'))).toEqual(['20', '22'])
     expect(prs.querySelector('[data-expensive-pr="20"]')).toHaveTextContent('#20Release$12.001 session')
-    expect(prs.querySelector('[data-expensive-pr="22"]')).toHaveTextContent('$3.502 sessions')
     expect(prs.querySelector('[data-expensive-pr="22"]')!.getAttribute('title')).toContain('API list price')
     const rels = panel.querySelector('[data-expensive="releases"]') as HTMLElement
-    expect(rels).toHaveTextContent('Releases · newest 1')
+    expect(rels).toHaveTextContent('Releases · last 30 days')
     expect(rels.querySelector('[data-expensive-release="v1.2.0"]')).toHaveTextContent('$12.00')
     expect(rels.querySelector('[data-expensive-release="v1.2.0"]')).toHaveTextContent('1 PR')
-    // A pull request opens beside the list; a release on GitHub.
+    // A listed pull request opens beside the list; a release on GitHub.
     fireEvent.click(prs.querySelector('[data-expensive-pr="22"]')!)
     expect(await screen.findByRole('dialog', { name: '#22 in detail' })).toBeInTheDocument()
     fireEvent.click(rels.querySelector('[data-expensive-release="v1.2.0"]')!)
@@ -175,15 +196,55 @@ describe('the Pipeline page', () => {
     opened.mockRestore()
   })
 
-  it('draws no Most expensive panel when nothing on the board has a recorded cost', async () => {
+  it('switches to all time, remembers it on this device, and opens an old pull request on GitHub', async () => {
     withBoard()
-    const b = (h.stats as { board: { cards: { spend: object }[]; releases: { cost_usd: number; sessions: number }[] } }).board
-    for (const c of b.cards) c.spend = { cost_usd: 0, sessions: 0, live: 0, agents: [] }
-    for (const r of b.releases) { r.cost_usd = 0; r.sessions = 0 }
+    withCostliest()
+    const nudges = await import('@/lib/nudges')
+    const opened = vi.spyOn(nudges, 'openExternal').mockImplementation(() => {})
+    const { unmount } = render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    fireEvent.click(await screen.findByRole('button', { name: 'All time' }))
+    await waitFor(() => { if (!document.querySelector('[data-expensive-pr="3"]')) throw new Error('not switched') })
+    expect(screen.getByRole('button', { name: 'All time' })).toHaveAttribute('aria-pressed', 'true')
+    const panel = document.querySelector('[data-board-expensive]') as HTMLElement
+    expect(panel.querySelector('[data-expensive="prs"]')).toHaveTextContent('Pull requests · all time')
+    expect(panel.querySelector('[data-expensive="releases"]')).toHaveTextContent('Releases · all time')
+    expect(panel.querySelector('[data-expensive-release="v0.9.0"]')).toHaveTextContent('3 PRs')
+    expect(localStorage.getItem('caprock.pipeline.expensive.period')).toBe('all')
+    // #3 is not among the pull requests the page lists: it opens on GitHub.
+    fireEvent.click(panel.querySelector('[data-expensive-pr="3"]')!)
+    expect(opened).toHaveBeenCalledWith('https://github.com/a/b/pull/3')
+    expect(screen.queryByRole('dialog', { name: '#3 in detail' })).toBeNull()
+    unmount()
+    // Opened again, the page asks for all time first.
+    h.asked = []
     render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
     await rowsDrawn()
+    await waitFor(() => { if (!document.querySelector('[data-expensive-pr="3"]')) throw new Error('not remembered') })
+    expect(h.asked).toContain('costliest all')
+    expect(h.asked).not.toContain('costliest 30')
+    opened.mockRestore()
+  })
+
+  it('draws no Most expensive panel for an older daemon, or while nothing is known of the repository', async () => {
+    withBoard()
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    await waitFor(() => { if (!h.asked.includes('costliest 30')) throw new Error('not asked') })
     expect(document.querySelector('[data-board-release="v1.2.0"]')).toBeInTheDocument()
     expect(document.querySelector('[data-board-expensive]')).toBeNull()
+  })
+
+  it('says a quiet month plainly and still offers all time', async () => {
+    withBoard()
+    h.costliest['30'] = { repo: 'a/b', days: 30, prs_known: 4, prs_counted: 0, releases_counted: 0, tags_read: true, prs: [], releases: [] }
+    render(<PipelineView sessionId="s1" session={session} visible onBack={() => {}} />)
+    await rowsDrawn()
+    await waitFor(() => { if (!document.querySelector('[data-board-expensive]')) throw new Error('no panel') })
+    const panel = document.querySelector('[data-board-expensive]') as HTMLElement
+    expect(panel).toHaveTextContent('No agent cost recorded on a pull request in the last 30 days.')
+    expect(panel).toHaveTextContent('No version tag in the last 30 days.')
+    expect(screen.getByRole('button', { name: 'All time' })).toBeInTheDocument()
   })
 
   // Owner, 2026-10-18: the Flow row is three cards; Now says All clear or the most urgent count.

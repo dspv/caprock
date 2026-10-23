@@ -162,3 +162,43 @@ func TestOwnPullsReadClosedAt(t *testing.T) {
 		t.Errorf("closed_at = %d, %d", got[0].pr.ClosedAt, got[1].pr.ClosedAt)
 	}
 }
+
+// Every list read fresh is handed to OnPulls with GitHub's updated_at, so
+// the daemon keeps the headers (github_prs); a list handed back from what
+// was kept is not handed again.
+func TestPullsByBranchTellsOnPulls(t *testing.T) {
+	x := newFixture(t)
+	repo := Repo{Owner: "dspv", Name: "caprock"}
+	var told [][]BranchPR
+	x.s.OnPulls = func(r Repo, prs []BranchPR) {
+		if r != repo {
+			t.Errorf("repo %+v", r)
+		}
+		told = append(told, prs)
+	}
+	x.connect(t)
+	x.f.failWith("GET /repos/dspv/caprock/pulls", func(w http.ResponseWriter, r *http.Request) {
+		answer(w, r, 200, []any{
+			map[string]any{"number": 3, "html_url": "https://github.com/dspv/caprock/pull/3", "title": "x", "state": "closed",
+				"merged_at": "2026-10-20T10:00:00Z", "updated_at": "2026-10-20T10:05:00Z",
+				"head": map[string]any{"ref": "feat/x", "sha": "abc", "repo": map[string]any{"full_name": "dspv/caprock"}}, "base": map[string]any{"ref": "master"}},
+			// A fork's is not this repository's, and is not kept.
+			map[string]any{"number": 2, "html_url": "https://github.com/dspv/caprock/pull/2", "title": "y", "state": "open",
+				"head": map[string]any{"ref": "main", "sha": "def", "repo": map[string]any{"full_name": "someone/caprock"}}, "base": map[string]any{"ref": "master"}},
+		})
+	})
+	if _, e := x.s.RepoPulls(context.Background(), repo); e != nil {
+		t.Fatal(e)
+	}
+	if len(told) != 1 || len(told[0]) != 1 {
+		t.Fatalf("told %+v", told)
+	}
+	p := told[0][0]
+	if p.Number != 3 || p.Head != "feat/x" || p.State != "merged" ||
+		p.UpdatedAt != time.Date(2026, 10, 20, 10, 5, 0, 0, time.UTC).UnixMilli() || p.MergedAt == 0 {
+		t.Fatalf("header %+v", p)
+	}
+	if _, e := x.s.RepoPulls(context.Background(), repo); e != nil || len(told) != 1 {
+		t.Fatalf("the kept list was handed again: %d", len(told))
+	}
+}
