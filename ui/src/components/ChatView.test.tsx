@@ -535,7 +535,7 @@ describe('ChatView', () => {
   it('a file the daemon refuses is not attached, and its reason shows under the field', async () => {
     render(<ChatView sessionId="s" canType />)
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'setup.exe')] } })
-    expect((await screen.findByRole('alert')).textContent).toBe('setup.exe: not added — unsupported file type: .exe — accepted: images (png); PDF (pdf)')
+    expect((await screen.findByRole('alert')).textContent).toBe("setup.exe can't be attached: .exe isn't a supported type. Photos, PDFs, text, Markdown, office, data and source files can.")
     expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
   })
 

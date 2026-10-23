@@ -33,7 +33,7 @@ import { fmtAgo } from '@/lib/format'
 import { projectLabels } from '@/lib/sessionLabels'
 import { projectsApi, type Project } from '@/lib/projects'
 import { downscalePhoto } from '@/lib/downscale'
-import { ATTACH_ACCEPT, isPhotoFile } from '@/lib/attach'
+import { ATTACH_ACCEPT, attachRefusal, attachRefusalOf, isPhotoFile } from '@/lib/attach'
 import { isInboxImage, useInbox, useInboxThumb } from '@/lib/inbox'
 import {
   continueCounts, continueRows, INSTALL_HINT_KEY, installWay, isStandalone, keepFolds, limitsGlance, messageWith, openFromHash,
@@ -121,7 +121,7 @@ async function pastedPaths(photos: readonly Picked[]): Promise<string[]> {
       const { path } = await api.paste({ name: f.name || 'photo.jpg', type: f.type, data: await base64Of(f) })
       paths.push(path)
     } catch (e) {
-      throw new Error(`${p.file.name || 'photo'}: not added — ${errText(e)}`)
+      throw new Error(attachRefusal({ name: p.file.name || 'photo', size: f.size }, e))
     }
   }
   return paths
@@ -920,7 +920,8 @@ export function SaveSheet({ projects, text: initialText, photos: initialPhotos, 
       await api.addInbox({ text, project_id: to, files: await uploads(photos) })
       onSaved()
     } catch (e) {
-      setError(errText(e))
+      // A refused file in one short line (lib/attach); anything else as the daemon said it.
+      setError(attachRefusalOf(photos.map((p) => p.file), e))
       setBusy(false)
     }
   }, [text, to, photos, onSaved])

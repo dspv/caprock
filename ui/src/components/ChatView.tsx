@@ -20,6 +20,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type Event, type QueueView } from '@/lib/api'
 import { downscalePhoto } from '@/lib/downscale'
+import { attachRefusal } from '@/lib/attach'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
 import { BrainDropButton } from './BrainDrop'
 import { live, useLiveConn, useLiveLink } from '@/lib/live'
@@ -412,13 +413,15 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
     setSendError('')
     const paths: string[] = []
     for (const f of files) {
+      let sent: File = f
       try {
-        const photo = await downscalePhoto(f)
-        const { path } = await api.paste({ name: photo.name, type: photo.type, data: await base64Of(photo) })
+        sent = await downscalePhoto(f)
+        const { path } = await api.paste({ name: sent.name, type: sent.type, data: await base64Of(sent) })
         paths.push(path)
       } catch (e) {
         paths.push('')
-        setSendError(`${f.name ? `${f.name}: ` : ''}not added — ${errText(e)}`)
+        // One short line (lib/attach), not the daemon's whole allow-list.
+        setSendError(attachRefusal({ name: f.name, size: sent.size }, e))
       }
     }
     return paths

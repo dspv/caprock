@@ -1,3 +1,5 @@
+import { ApiError, errText } from './api'
+
 /**
  * What a phone may attach: photos, and the documents the daemon keeps.
  *
@@ -57,4 +59,65 @@ export function baseName(path: string): string {
 export function attachLabels(paths: readonly string[]): string[] {
   let n = 0
   return paths.map((p) => (isImageName(p) ? `Image ${++n}` : baseName(p)))
+}
+
+/** The daemon's paste limit (`pasteLimit` in paste.go): ten megabytes. */
+export const ATTACH_LIMIT_BYTES = 10 << 20
+
+const KINDS_SENTENCE = 'Photos, PDFs, text, Markdown, office, data and source files can.'
+
+/** The daemon's `{error}` on a refusal, lowercased, or ''. */
+function refusalHead(e: unknown): string {
+  if (!(e instanceof ApiError)) return ''
+  const b = e.body as { error?: string } | undefined
+  return (b?.error ?? '').toLowerCase()
+}
+
+/** The extension the daemon turned a file away for ('' for none), or null
+ *  when the refusal was not about the type. */
+function refusedType(e: unknown): string | null {
+  const m = /^unsupported file type: (.+)$/.exec(refusalHead(e))
+  if (m) return m[1] ?? ''
+  return e instanceof ApiError && e.status === 415 ? '' : null
+}
+
+/** Whether the daemon turned a file away for its size, or the file is past the limit. */
+function refusedSize(e: unknown, size?: number): boolean {
+  if (size !== undefined && size > ATTACH_LIMIT_BYTES) return true
+  return (e instanceof ApiError && e.status === 413) || refusalHead(e).includes('larger than 10 mb')
+}
+
+/**
+ * One short line for a file the phone could not attach. The daemon's own
+ * refusal carries its whole allow-list — six red lines at 390 px — so the
+ * two reasons a person can act on are said briefly here (owner, 2026-10-23):
+ * the type, and the 10 MB limit. Any other reason is the daemon's text as it
+ * is. The desktop's drop keeps the daemon's full message.
+ */
+export function attachRefusal(file: { name: string; size?: number }, e: unknown): string {
+  const name = file.name || 'This file'
+  if (refusedSize(e, file.size)) return `${name} is over 10 MB`
+  const ext = refusedType(e)
+  if (ext !== null) {
+    const what = ext.startsWith('.') ? `${ext} isn't a supported type` : "a file with no extension isn't supported"
+    return `${name} can't be attached: ${what}. ${KINDS_SENTENCE}`
+  }
+  return `${name}: not added — ${errText(e)}`
+}
+
+/**
+ * attachRefusal for a request that carried several files (the Inbox's Save):
+ * the daemon does not say which one it refused, so it is found by its size
+ * or its extension; any other reason is the daemon's text as it is.
+ */
+export function attachRefusalOf(files: readonly { name: string; size?: number }[], e: unknown): string {
+  const big = files.find((f) => (f.size ?? 0) > ATTACH_LIMIT_BYTES)
+  if (big && refusedSize(e)) return attachRefusal(big, e)
+  const ext = refusedType(e)
+  if (ext !== null) {
+    const hit = files.find((f) => (ext.startsWith('.') ? f.name.toLowerCase().endsWith(ext) : !/\.[^./\\]+$/.test(f.name)))
+    return attachRefusal({ name: hit?.name ?? '' }, e)
+  }
+  if (refusedSize(e)) return attachRefusal({ name: '' }, e)
+  return errText(e)
 }

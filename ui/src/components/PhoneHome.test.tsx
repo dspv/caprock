@@ -219,7 +219,7 @@ describe('PhoneHome', () => {
     fireEvent.change(screen.getByTestId('dock-picker'), { target: { files: [new File(['x'], 'scan.heic2')] } })
     await screen.findByText('scan.heic2')
     fireEvent.click(screen.getByText('Start chat'))
-    expect((await screen.findByRole('alert')).textContent).toBe('scan.heic2: not added — unsupported file type: .heic2 — accepted: images (png)')
+    expect((await screen.findByRole('alert')).textContent).toBe("scan.heic2 can't be attached: .heic2 isn't a supported type. Photos, PDFs, text, Markdown, office, data and source files can.")
     expect(spawn).not.toHaveBeenCalled()
   })
 
