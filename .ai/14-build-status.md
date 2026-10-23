@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.154.0: Second Brain spend in the Dashboard's style, a folded CI line that is never stale, the phone preview fits its tab
+
+A minor release, one PR (#808). Second Brain's *Last 14 days* is built from the Dashboard's pieces: big figures, its bar-chart style, and a top-5 projects list with shares. The folded cockpit CI line is read while folded and drawn only from a fresh read; it had shown a pull request merged 11 h earlier as still running. Phone mode draws the page scaled to fit the tab instead of past the window, and a page nothing answers shows that, with Retry, instead of a white page. A late Telegram button-press mark can no longer overwrite a module's newer edit, and two Windows tests that measured the runner now assert the property itself.
+
 ### 2026-10-23 — 0.153.0: the most expensive work over a month or all time, Second Brain spend by project
 
 A minor release, one PR (#804). The Pipeline's Most expensive reads local data, not only the board's newest 50 pull requests: the pull requests agents recorded, the repository's own v-tags (a release's pull requests are the `(#N)` merges since the tag before it), and the pull request headers GitHub already sent, kept in the new `github_prs` table (migration 0071). A switch shows the last 30 days (the default) or all time. Second Brain's 14-day spend chart stacks each day by its three biggest projects and Other, and each project row carries a bar of its share.

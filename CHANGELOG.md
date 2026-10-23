@@ -12,6 +12,48 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.154.0] - 2026-10-23
+
+### Changed
+
+- **ui/brain:** Second Brain's *Last 14 days* now looks like the Dashboard:
+  a row of big figures (tokens over the 14 days, the API-price cost, today
+  against the daily limit, reads), the tokens per day in the Dashboard's
+  chart style with its ruler, still stacked by project with the limit line
+  and the over-limit mark, and a clear top five projects with each one's
+  share and a bar in its chart colour. The rest fold into one *and N more*
+  line that opens the full table of every project.
+
+### Fixed
+
+- **pipeline:** with no predicted version, the release plan said *Next release
+  Next release · 1 merged*; the line under the heading no longer repeats it.
+- **brain:** a long memory title in the graph panel's *Newest* list is cut
+  with an ellipsis instead of running past the panel's edge.
+- **ui:** the cockpit's CI block, folded, no longer shows an old copy of a
+  pull request's checks as running. Its one line was drawn from what was
+  kept when the block was last unfolded and never read again, so it could
+  say "#801 · 4 running · 11h" of a pull request merged hours before, next
+  to the time of a different answer. The session's pull requests are now
+  read folded too, the line waits for that read and the time beside it is
+  that read's; a kept copy not read again yet no longer has a growing
+  elapsed time.
+- **telegram:** a module that answers a button press at once keeps its edit.
+  The press is written to the module's store before its `✓ <label>` mark is
+  put under the message, so a module quick enough to replace the text and
+  buttons in that moment could see the late mark put an old button back over
+  its new message. The mark now goes only under the buttons that were
+  pressed, and a module's edit and a press's mark no longer interleave.
+- **app:** a Page tab in Phone mode never draws past the tab any more. A
+  device whose page area did not fit kept its true size, and the page's
+  window drew over the status bar, past the app's window and over the Dock;
+  it is now drawn smaller to fit (*drawn at 74%*) and the page zoomed out to
+  match, so it still lays out at the device's width. The bar's DPR reads
+  *2*, not *2.200000047683716*.
+- **app:** a page where nothing answers says so instead of a blank white
+  page: *Nothing answers at 127.0.0.1:22776* (or *No address found for* a
+  host) with Retry, in a normal tab and inside the phone alike.
+
 ## [0.153.0] - 2026-10-23
 
 ### Added
