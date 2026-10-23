@@ -378,6 +378,14 @@ func UnderTempDir(dir string) bool {
 	return false
 }
 
+// UnderDir reports whether p is dir itself or lies beneath it, on segment
+// boundaries, both put into the store's form first (NormalizeDir). "" is
+// under nothing and nothing is under "".
+func UnderDir(p, dir string) bool {
+	p, dir = NormalizeDir(p), NormalizeDir(dir)
+	return p != "" && hasPathPrefix(p, dir)
+}
+
 // NormalizeDir puts a directory into the one form the store keeps paths in:
 // forward slashes, no trailing separator (sessions.repo_root, projects.root).
 func NormalizeDir(dir string) string { return normalizeCwd(dir) }

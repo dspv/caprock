@@ -20,6 +20,22 @@ const (
 	BrainRunSkipped = "skipped"
 )
 
+// Reasons a read is recorded as skipped before anything is sent, in
+// BrainRun.Error. A reason that names its cause carries it after a colon
+// ("excluded: /Users/u/dev/ops"); the prefixes are what a screen reads.
+const (
+	// BrainSkipAutomation marks a session started with `automation: true`
+	// (POST /v1/agents): a scheduled job's run, which Second Brain never
+	// reads. Written at the spawn, before the session's first event, as the
+	// extraction's own record that it was told not to read this session;
+	// BrainCandidates leaves such a session out. It is not a column on the
+	// session: the extraction is the only reader of the mark.
+	BrainSkipAutomation = "automation"
+	// BrainSkipExcluded is the prefix of the reason for a session in a
+	// folder the user excluded (Settings → Second Brain); the folder follows.
+	BrainSkipExcluded = "excluded"
+)
+
 // BrainRun is one read of one session by the automatic extraction.
 type BrainRun struct {
 	ID             int64   `json:"id"`
@@ -66,6 +82,36 @@ func SetBrainRunNodes(ctx context.Context, q Querier, id int64, nodes int) error
 	return err
 }
 
+// MarkBrainAutomation records, at a session's spawn, that Second Brain is
+// never to read it (BrainSkipAutomation): a skipped run with no span. A
+// second mark on the same session is not written twice.
+func MarkBrainAutomation(ctx context.Context, q Querier, sessionID string, now int64) error {
+	_, err := q.ExecContext(ctx, `INSERT INTO brain_runs (session_id, status, error, started_at, finished_at)
+		SELECT ?, 'skipped', ?, ?, ? WHERE NOT EXISTS (`+brainAutomationSQL+`)`,
+		sessionID, BrainSkipAutomation, now, now, sessionID)
+	return err
+}
+
+// brainAutomationSQL is the automation mark of the session whose id is the
+// bound argument.
+const brainAutomationSQL = `SELECT 1 FROM brain_runs a WHERE a.session_id = ? AND a.status = 'skipped' AND a.error = '` + BrainSkipAutomation + `'`
+
+// BrainAutomation reports whether a session carries the automation mark.
+func BrainAutomation(ctx context.Context, q Querier, sessionID string) (bool, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM (`+brainAutomationSQL+`)`, sessionID).Scan(&n)
+	return n > 0, err
+}
+
+// BrainAutomationSince counts the sessions marked as automation since a
+// moment (by when the mark was written, which is the spawn).
+func BrainAutomationSince(ctx context.Context, q Querier, since int64) (int, error) {
+	var n int
+	err := q.QueryRowContext(ctx, `SELECT COUNT(DISTINCT session_id) FROM brain_runs
+		WHERE status = 'skipped' AND error = ? AND finished_at >= ?`, BrainSkipAutomation, since).Scan(&n)
+	return n, err
+}
+
 // brainCursorSQL is how far the extraction has read a session: the newest
 // event a regular read that did not fail went through. A catch-up read
 // (gap_id) reads behind the cursor and a held read leaves it where it was.
@@ -95,7 +141,7 @@ type BrainCandidate struct {
 // BrainCandidates lists sessions active since `since` and quiet since
 // `idleBefore` (or ended), with events past their cursor, newest first. A
 // session whose short tail was held is left out until it has newer events
-// or ends.
+// or ends, and a session marked as automation (MarkBrainAutomation) always.
 func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, limit int) ([]BrainCandidate, error) {
 	if limit <= 0 {
 		limit = 50
@@ -110,6 +156,7 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 			       `+brainHeldSQL+` AS held
 			FROM sessions s
 			WHERE COALESCE(s.last_event_at, 0) >= ? AND (s.status = 'ended' OR COALESCE(s.last_event_at, 0) < ?)
+			  AND NOT EXISTS (SELECT 1 FROM brain_runs a WHERE a.session_id = s.session_id AND a.status = 'skipped' AND a.error = '`+BrainSkipAutomation+`')
 		) WHERE max_id > cursor AND (ended OR max_id > held)
 		ORDER BY last_event_at DESC LIMIT ?`, since, idleBefore, limit)
 	if err != nil {
@@ -223,6 +270,28 @@ func LastBrainRuns(ctx context.Context, q Querier, limit int) ([]BrainRun, error
 	return out, rows.Err()
 }
 
+// BrainRunsOf lists one session's reads and marks, oldest first.
+func BrainRunsOf(ctx context.Context, q Querier, sessionID string) ([]BrainRun, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT id, session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out,
+		       cost_usd, nodes, error, started_at, finished_at, COALESCE(gap_id, 0), held
+		FROM brain_runs WHERE session_id = ? ORDER BY id`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BrainRun{}
+	for rows.Next() {
+		var r BrainRun
+		if err := rows.Scan(&r.ID, &r.SessionID, &r.FromEventID, &r.ThroughEventID, &r.Status, &r.Model, &r.TokensIn, &r.TokensOut,
+			&r.CostUSD, &r.Nodes, &r.Error, &r.StartedAt, &r.FinishedAt, &r.GapID, &r.Held); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // BrainSessionInfo is what a screen names a session by while it is read:
 // its own title (or first stored prompt), agent and the time of its last
 // event. A session that is not there gives empty values, not an error.
@@ -251,7 +320,7 @@ type BrainReadSession struct {
 func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainReadSession, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT s.session_id, COALESCE(s.project, ''), COALESCE(SUM(r.nodes), 0), COALESCE(s.last_event_at, 0)
-		FROM sessions s JOIN brain_runs r ON r.session_id = s.session_id AND r.status != 'failed'
+		FROM sessions s JOIN brain_runs r ON r.session_id = s.session_id AND r.status != 'failed' AND r.error != '`+BrainSkipAutomation+`'
 		WHERE COALESCE(s.last_event_at, 0) >= ?
 		GROUP BY s.session_id`, since)
 	if err != nil {

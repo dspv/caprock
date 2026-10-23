@@ -215,10 +215,14 @@ type fakeBrainAuto struct {
 	set      []BrainSettings
 	on       bool
 	backfill int
+	// excluded is what ExcludedProjects answers: the projects of the
+	// excluded folders.
+	excluded []string
 }
 
 func (f *fakeBrainAuto) Status(context.Context) any { return map[string]bool{"on": f.on} }
 func (f *fakeBrainAuto) DailyTokens() int64         { return 300_000 }
+func (f *fakeBrainAuto) ExcludedProjects() []string { return f.excluded }
 func (f *fakeBrainAuto) Configure(_ context.Context, set BrainSettings) error {
 	f.set = append(f.set, set)
 	if set.Auto != nil {
@@ -331,5 +335,65 @@ func TestBrainHandoffListsWhatANewSessionGets(t *testing.T) {
 	}
 	if code := e.get(t, "/v1/brain/handoff?project=caprock", &v); code != 200 || v.Served == nil || !v.Served.On || v.Served.LeftOffAt != 42 || v.Served.HoldoutPct != 25 {
 		t.Errorf("served: %d %+v", code, v.Served)
+	}
+}
+
+// Excluded folders (Settings → Second Brain): the setting is cleaned and
+// refused when it is not a list of absolute folders; their projects are left
+// out of the graph, search, the handoff and the current decisions unless
+// the project is opened by name; nothing is deleted.
+func TestBrainExcludedFoldersLeaveTheirProjectsOut(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	f := &fakeBrainAuto{}
+	e.api.d.BrainAuto = f
+	for _, bad := range []map[string]any{{"exclude": []string{"dev/ops"}}, {"exclude": []string{"/"}}, {"exclude": "/Users/u/dev/ops"}} {
+		if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", bad); code != http.StatusBadRequest {
+			t.Errorf("%v: %d", bad, code)
+		}
+	}
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"exclude": []string{" /Users/u/dev/ops/ ", "/Users/u/dev/ops"}}); code != 200 {
+		t.Fatalf("set: %d", code)
+	}
+	if last := f.set[len(f.set)-1]; last.Exclude == nil || len(*last.Exclude) != 1 || (*last.Exclude)[0] != "/Users/u/dev/ops" {
+		t.Fatalf("cleaned list passed on: %+v", last.Exclude)
+	}
+	if code, _ := brainDo(t, e, "PUT", "/v1/brain/settings", map[string]any{"exclude": []string{}}); code != 200 || len(*f.set[len(f.set)-1].Exclude) != 0 {
+		t.Fatalf("[] clears it: %+v", f.set[len(f.set)-1].Exclude)
+	}
+
+	f.excluded = []string{"ops"}
+	keep := func(kind, title, project string) {
+		t.Helper()
+		if _, _, err := store.InsertBrainNode(ctx, e.st.DB(), store.BrainNode{Kind: kind, Title: title, Summary: "why", Source: store.BrainSource{Project: project}, Manual: true}, 1000); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keep("decision", "Scout stays read-only", "ops")
+	keep("finding", "Chrome dropped mid-run", "ops")
+	keep("decision", "Keep SQLite in WAL mode", "caprock")
+	var g store.BrainGraph
+	if code := e.get(t, "/v1/brain", &g); code != 200 || g.Total != 1 || len(g.Nodes) == 0 || g.Nodes[0].Title != "Keep SQLite in WAL mode" {
+		t.Fatalf("graph without the excluded project: %d %+v", code, g)
+	}
+	if code := e.get(t, "/v1/brain?q=scout", &g); code != 200 || g.Total != 0 {
+		t.Fatalf("search: %d %+v", code, g)
+	}
+	if code := e.get(t, "/v1/brain?project=ops", &g); code != 200 || g.Total != 2 {
+		t.Fatalf("opened by name it is still there: %d %+v", code, g)
+	}
+	var h BrainHandoffView
+	if code := e.get(t, "/v1/brain/handoff?project=ops", &h); code != 200 || !h.Excluded || len(h.Decisions) != 0 || len(h.Memories) != 0 {
+		t.Fatalf("handoff: %d %+v", code, h)
+	}
+	var h2 BrainHandoffView
+	if code := e.get(t, "/v1/brain/handoff?project=caprock", &h2); code != 200 || h2.Excluded || len(h2.Decisions) != 1 {
+		t.Fatalf("another project's handoff: %d %+v", code, h2)
+	}
+	var d struct {
+		Decisions []store.BrainNode `json:"decisions"`
+	}
+	if code := e.get(t, "/v1/brain/decisions?project=ops", &d); code != 200 || len(d.Decisions) != 0 {
+		t.Fatalf("decisions: %d %+v", code, d)
 	}
 }

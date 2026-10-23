@@ -1671,6 +1671,13 @@ export interface BrainAutoStatus {
   /** The re-tag of memories without keywords, while some wait and it is on:
    * `done` given keywords, `total` that plus those waiting. */
   retag?: { done: number; total: number }
+  /** Folders whose sessions are never read (Settings → Second Brain); their
+   *  projects are left out of the graph, search and the handoff unless opened
+   *  by name. `[]` when none; absent from an older daemon. */
+  exclude?: string[]
+  /** Sessions started with `automation: true` in the last 24 hours, which
+   *  were skipped unread. Absent from an older daemon. */
+  automation_24h?: number
 }
 
 /** What a catch-up is reading: `backfill` the sessions from before the yes
@@ -1787,7 +1794,13 @@ export interface BrainEstimate {
   truncated?: boolean
 }
 
-export interface BrainSettings { auto?: boolean; daily_tokens?: number; model?: string }
+export interface BrainSettings {
+  auto?: boolean
+  daily_tokens?: number
+  model?: string
+  /** Replaces the folders never read; `[]` clears the list. */
+  exclude?: string[]
+}
 
 /** What POST /v1/brain/nodes takes: text (or a title), or an assistant note by its event id. */
 export interface BrainDrop {

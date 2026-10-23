@@ -161,6 +161,21 @@ describe('Second Brain', () => {
     await screen.findByText(/Started/)
   })
 
+  it('Settings lists the folders never read, adds one, removes one, and counts the automation sessions skipped', async () => {
+    m.status.mockResolvedValue(status({ auto: auto({ exclude: ['/Users/u/dev/jobs'], automation_24h: 3 }) }))
+    m.settings.mockResolvedValue(auto())
+    render(<BrainAutoSetting />)
+    await screen.findByText('/Users/u/dev/jobs')
+    expect(screen.getByText(/3 automation sessions skipped unread/)).toBeTruthy()
+    const field = screen.getByRole('textbox', { name: 'Folder to exclude' })
+    fireEvent.change(field, { target: { value: ' /Users/u/dev/scout ' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => expect(m.settings).toHaveBeenLastCalledWith({ exclude: ['/Users/u/dev/jobs', '/Users/u/dev/scout'] }))
+    expect((field as HTMLInputElement).value).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: 'Stop excluding /Users/u/dev/jobs' }))
+    await waitFor(() => expect(m.settings).toHaveBeenLastCalledWith({ exclude: [] }))
+  })
+
   it('is a banner while empty and off: the agents and the brain, Free, the line, Start building, How it works, no bare zero, nothing sent', async () => {
     m.status.mockResolvedValue(status({ memories: 0, manual: 0, auto: auto({ chosen: false, on: false, enabled: false, pending: 0 }) }))
     m.brain.mockResolvedValue({ nodes: [], edges: [], total: 0 })

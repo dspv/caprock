@@ -111,6 +111,13 @@ func TestAgentsEndpoints(t *testing.T) {
 	if r := do("POST", "/v1/agents", `{"cwd":"/tmp/x","model":"claude-opus-5"}`); r.StatusCode != 200 {
 		t.Fatalf("spawn: %d", r.StatusCode)
 	}
+	// A scheduled job's session says so with a boolean (§ Second Brain).
+	if r := do("POST", "/v1/agents", `{"cwd":"/tmp/x","automation":"yes"}`); r.StatusCode != 400 {
+		t.Fatalf("automation must be a boolean: %d", r.StatusCode)
+	}
+	if r := do("POST", "/v1/agents", `{"cwd":"/tmp/x","automation":true}`); r.StatusCode != 200 || fa.spawns[len(fa.spawns)-1]["automation"] != true {
+		t.Fatalf("automation reaches the spawn: %d %v", r.StatusCode, fa.spawns[len(fa.spawns)-1])
+	}
 	if r := do("POST", "/v1/agents/new-session/input", `{"data":"hi\n"}`); r.StatusCode != 204 || len(fa.inputs) != 1 || fa.inputs[0] != "hi\n" {
 		t.Fatalf("input: %d %v", r.StatusCode, fa.inputs)
 	}

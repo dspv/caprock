@@ -196,6 +196,11 @@ func (e *Engine) readGap(ctx context.Context, g store.BrainGap) (did bool, err e
 	if err != nil {
 		return false, err
 	}
+	// A gap in a session the user has since excluded is closed unread, as a
+	// regular read of that session would be skipped.
+	if _, ok := ExcludedFolder(e.Config().Exclude, c.Cwd, c.RepoRoot); ok {
+		return false, store.FinishBrainGap(ctx, db, g.ID, now)
+	}
 	c.Project = memoryProject(ctx, c)
 	c.Cursor, c.MaxEventID = g.Cursor, g.ToEventID
 	topics, err := store.BrainEntityTitles(ctx, db, store.BrainTopic, topicsSent)

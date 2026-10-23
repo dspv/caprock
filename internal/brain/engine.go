@@ -365,6 +365,17 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 		_, err := store.InsertBrainRun(ctx, db, run)
 		return false, 0, err
 	}
+	// A session in an excluded folder is recorded as skipped, with the
+	// folder, and its cursor moved: nothing of it is read or sent, and it is
+	// not looked at again until it has newer events. Decided here, at read
+	// time, because the list can change after the session ran.
+	if dir, ok := ExcludedFolder(e.Config().Exclude, c.Cwd, c.RepoRoot); ok {
+		run.Status, run.Error, run.FinishedAt = store.BrainRunSkipped, store.BrainSkipExcluded+": "+dir, started
+		if _, err := store.InsertBrainRun(ctx, db, run); err != nil {
+			return false, 0, err
+		}
+		return false, c.MaxEventID, nil
+	}
 	c.Project = memoryProject(ctx, c)
 	topics, err := store.BrainEntityTitles(ctx, db, store.BrainTopic, topicsSent)
 	if err != nil {
@@ -839,10 +850,16 @@ type Status struct {
 	CatchUp *CatchUp `json:"catch_up"`
 	// Retag is the re-tag's progress while memories without keywords wait
 	// for it and it is on.
-	Retag         *Retag `json:"retag,omitempty"`
-	Since         int64  `json:"since,omitempty"`
-	BackfillSince int64  `json:"backfill_since,omitempty"`
-	LastWake      int64  `json:"last_wake,omitempty"`
+	Retag *Retag `json:"retag,omitempty"`
+	// Exclude is the folders whose sessions are never read (Settings →
+	// Second Brain), in the store's path form; [] when none.
+	Exclude []string `json:"exclude"`
+	// Automation24h is how many sessions started with `automation: true` in
+	// the last 24 hours, which the extraction skipped unread.
+	Automation24h int   `json:"automation_24h"`
+	Since         int64 `json:"since,omitempty"`
+	BackfillSince int64 `json:"backfill_since,omitempty"`
+	LastWake      int64 `json:"last_wake,omitempty"`
 	// NextWake is when the next wake is due, unix ms; absent while it is off.
 	// At or before now when one was just asked for or is running.
 	NextWake  int64  `json:"next_wake,omitempty"`
@@ -1025,7 +1042,10 @@ func (e *Engine) Status(ctx context.Context) Status {
 	st := Status{
 		Chosen: c.Auto != nil, On: c.Auto != nil && *c.Auto, Enabled: e.Enabled(),
 		Model: e.model(), DailyTokens: e.dailyCap(), Spent: e.spent(ctx),
-		Since: c.Since, BackfillSince: c.BackfillSince, Recent: []store.BrainRun{},
+		Since: c.Since, BackfillSince: c.BackfillSince, Recent: []store.BrainRun{}, Exclude: []string{},
+	}
+	if len(c.Exclude) > 0 {
+		st.Exclude = append(st.Exclude, c.Exclude...)
 	}
 	if e.ClaudeFound != nil {
 		st.ClaudeFound = e.ClaudeFound()
@@ -1082,6 +1102,7 @@ func (e *Engine) measure(ctx context.Context, st *Status) {
 	}
 	st.Handoff.Sessions24h, st.Handoff.Memories24h, _ = store.BrainHandedSince(ctx, db, day)
 	st.Handoff.Sessions, st.Handoff.Memories, _ = store.BrainHandedSince(ctx, db, 0)
+	st.Automation24h, _ = store.BrainAutomationSince(ctx, db, day)
 	st.Agents24h = []store.BrainAgentRead{}
 	if a, err := store.BrainAgentsSince(ctx, db, day); err == nil {
 		st.Agents24h = a
@@ -1127,7 +1148,11 @@ func (e *Engine) EstimateFrom(ctx context.Context, since int64) (Estimate, error
 		return Estimate{}, err
 	}
 	est := Estimate{DailyCap: e.dailyCap(), Truncated: len(cands) == most}
+	exclude := e.Config().Exclude
 	for _, c := range cands {
+		if _, ok := ExcludedFolder(exclude, c.Cwd, c.RepoRoot); ok {
+			continue
+		}
 		// Every chunk a long session takes, as the reads will send them.
 		counted := false
 		for {

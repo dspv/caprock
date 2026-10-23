@@ -499,6 +499,11 @@ type BrainFilter struct {
 	Query string
 	// Project keeps the memories of one project.
 	Project string
+	// ExcludeProjects are project labels left out of a read that names no
+	// Project: the projects of the folders the user excluded from Second
+	// Brain (Settings → Second Brain). Opening one of them by Project still
+	// shows it; nothing is deleted.
+	ExcludeProjects []string
 	// Since and Until bound when a memory was made, unix ms; 0 is open.
 	Since, Until int64
 	// Limit is how many memories at most; their entities come with them.
@@ -529,7 +534,7 @@ type BrainGraph struct {
 // limit below the ceiling (the sidebar's thirty newest are a selection).
 // Called after the limit is normalised.
 func (f BrainFilter) empty() bool {
-	return strings.TrimSpace(f.Query) == "" && f.Project == "" && f.Since == 0 && f.Until == 0 && f.Limit >= BrainGraphMax
+	return strings.TrimSpace(f.Query) == "" && f.Project == "" && len(f.ExcludeProjects) == 0 && f.Since == 0 && f.Until == 0 && f.Limit >= BrainGraphMax
 }
 
 // ReadBrainGraph reads the graph for a filter.
@@ -545,6 +550,13 @@ func ReadBrainGraph(ctx context.Context, q Querier, f BrainFilter) (BrainGraph, 
 	if f.Project != "" {
 		where = append(where, `n.project = ?`)
 		args = append(args, f.Project)
+	} else if len(f.ExcludeProjects) > 0 {
+		marks := make([]string, len(f.ExcludeProjects))
+		for i, p := range f.ExcludeProjects {
+			marks[i] = "?"
+			args = append(args, p)
+		}
+		where = append(where, `n.project NOT IN (`+strings.Join(marks, ",")+`)`)
 	}
 	if f.Since > 0 {
 		where = append(where, `n.created_at >= ?`)

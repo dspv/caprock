@@ -309,6 +309,8 @@ export function brainRunOutcome(run: { status: 'ok' | 'failed' | 'skipped'; node
   if (run.status === 'failed') return 'didn’t finish, tried again later'
   if (run.error?.startsWith('gave up')) return 'given up after 4 tries'
   if (run.error?.startsWith('held')) return 'waiting for more'
+  if (run.error === 'automation') return 'an automation, not read'
+  if (run.error?.startsWith('excluded')) return 'in an excluded folder, not read'
   return 'too short'
 }
 
