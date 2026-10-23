@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.154.1: 0.154.0 as published
+
+A patch release, one PR (#810). v0.154.0 was tagged but never published: a local `ui/node_modules` link had been committed with it, and goreleaser stopped on the dirty tree. The link is removed and `.gitignore` ignores `node_modules` as a link too; the tag stays where it is. This release carries everything listed for 0.154.0.
+
 ### 2026-10-23 — 0.154.0: Second Brain spend in the Dashboard's style, a folded CI line that is never stale, the phone preview fits its tab
 
 A minor release, one PR (#808). Second Brain's *Last 14 days* is built from the Dashboard's pieces: big figures, its bar-chart style, and a top-5 projects list with shares. The folded cockpit CI line is read while folded and drawn only from a fresh read; it had shown a pull request merged 11 h earlier as still running. Phone mode draws the page scaled to fit the tab instead of past the window, and a page nothing answers shows that, with Retry, instead of a white page. A late Telegram button-press mark can no longer overwrite a module's newer edit, and two Windows tests that measured the runner now assert the property itself.

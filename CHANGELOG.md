@@ -12,6 +12,15 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.154.1] - 2026-10-23
+
+### Fixed
+
+- **release:** a stray `ui/node_modules` link committed in 0.154.0 stopped
+  that release from building; it is removed, and `.gitignore` now ignores
+  `node_modules` whether it is a folder or a link. 0.154.0 was tagged but
+  never published, so this release carries everything listed for it.
+
 ## [0.154.0] - 2026-10-23
 
 ### Changed
