@@ -58,10 +58,11 @@ describe('the status strip', () => {
       expect(await screen.findByText('pause before the limit')).toBeInTheDocument()
     })
 
-    it('says which plan instead, and offers nothing, once Premium is on', async () => {
+    it('says Premium, the plan in its title, and offers nothing, once Premium is on', async () => {
       vi.stubGlobal('fetch', premium(true))
       const { container } = render(<StatusStrip version="0.94.1" summary={summary(95)} />)
-      await waitFor(() => expect(container.querySelector('[data-premium-chip]')?.textContent).toBe('premium yearly'))
+      await waitFor(() => expect(container.querySelector('[data-premium-chip]')?.textContent).toBe('Premium'))
+      expect(container.querySelector('[data-premium-chip]')?.getAttribute('title')).toMatch(/yearly/)
       expect(screen.queryByRole('button', { name: 'Premium' })).toBeNull()
       expect(container.querySelector('[data-window-hint]')).toBeNull()
     })
