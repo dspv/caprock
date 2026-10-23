@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -50,6 +51,28 @@ func TestBrainNodeIsRedactedBeforeItIsSaved(t *testing.T) {
 	u, err := UpdateBrainNode(ctx, s.db, n.ID, BrainPatch{Summary: &sum}, 2)
 	if err != nil || strings.Contains(u.Summary, "021000021") {
 		t.Fatalf("patch kept it: %q %v", u.Summary, err)
+	}
+}
+
+// The filter never leaves a title empty: a title that is nothing but a
+// secret is kept as the placeholder that names it, so the memory is stored
+// rather than refused as one with no title.
+func TestATitleThatIsWhollyASecretKeepsItsPlaceholder(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	for _, title := range []string{fakeKey, "  " + fakeKey + "  ", fakeCard} {
+		n, created, err := InsertBrainNode(ctx, s.db, BrainNode{Kind: BrainFinding, Title: title, Summary: "Found in the logs."}, 1)
+		if err != nil || !created {
+			t.Fatalf("%q: created %v, err %v", title, created, err)
+		}
+		if NormTitle(n.Title) == "" || !strings.HasPrefix(n.Title, "[redacted: ") || strings.Contains(n.Title, "sk-ant") || strings.Contains(n.Title, "4242") {
+			t.Fatalf("%q stored as %q", title, n.Title)
+		}
+	}
+	// A title that is only punctuation is refused, as before: there is
+	// nothing in it the filter took.
+	if _, _, err := InsertBrainNode(ctx, s.db, BrainNode{Kind: BrainFinding, Title: " / ", Summary: "x"}, 1); !errors.Is(err, ErrBrainInvalid) {
+		t.Fatalf("a title of punctuation: %v", err)
 	}
 }
 

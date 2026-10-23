@@ -274,6 +274,45 @@ export function clockOrDay(ms: number, now = Date.now()): string {
 }
 
 /**
+ * Why a read did not finish, in plain words, from the engine's raw error
+ * (`last_error`, a run's `error`). The raw text is for a tooltip only: the
+ * owner, 2026-10-23 (translated), of *The last read failed: invalid memory:
+ * a memory needs a title*: "that's not human at all".
+ */
+export function brainFailureReason(raw: string): string {
+  const e = raw.toLowerCase()
+  if (e.includes('token limit is reached')) return 'today’s token limit is used'
+  if (/invalid memory|needs a title|storing the answer/.test(e)) return 'Claude’s answer could not be saved'
+  if (/not logged in|please run \/login|invalid api key|oauth token|authentication_error|unauthorized/.test(e)) return 'Claude Code is not signed in'
+  if (/usage limit|rate.?limit|limit reached|overloaded/.test(e)) return 'Claude is at its usage limit'
+  if (/executable file not found|not found in \$path/.test(e)) return 'Claude Code was not found'
+  if (/deadline exceeded|timed out|timeout/.test(e)) return 'Claude took too long to answer'
+  if (/econnrefused|econnreset|enotfound|etimedout|network|dial tcp|no such host|connection (refused|reset)|unable to connect/.test(e)) return 'Claude could not be reached'
+  if (e.includes('context canceled')) return 'it was stopped before it finished'
+  if (/exit status|^claude:/.test(e)) return 'Claude Code stopped with an error'
+  return 'something went wrong'
+}
+
+/**
+ * The strip's sentence for a read that did not finish. A session whose read
+ * failed is tried again 15 minutes later, then 30, then 60, and given up
+ * after the fourth (03-contracts.md § Second Brain) — so "in 15–60 min",
+ * while the other sessions go on being read.
+ */
+export function brainFailureText(raw: string): string {
+  return `The last read didn’t finish (${brainFailureReason(raw)}). Caprock tries that session again by itself in 15–60 min and goes on with the others.`
+}
+
+/** A run of the "Just read" list, in words: what it kept, or why it did not. */
+export function brainRunOutcome(run: { status: 'ok' | 'failed' | 'skipped'; nodes: number; error?: string }): string {
+  if (run.status === 'ok') return `${run.nodes} ${run.nodes === 1 ? 'memory' : 'memories'}`
+  if (run.status === 'failed') return 'didn’t finish, tried again later'
+  if (run.error?.startsWith('gave up')) return 'given up after 4 tries'
+  if (run.error?.startsWith('held')) return 'waiting for more'
+  return 'too short'
+}
+
+/**
  * The build's state as one line (the screen's strip and the sidebar card):
  * a word, what it means now, and how far it is — every figure from the
  * status, none made up. `share` is the sessions read of all in reach while

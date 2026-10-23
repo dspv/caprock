@@ -11,6 +11,7 @@ import (
 
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/redact"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -430,13 +431,14 @@ func (e *Engine) ask(ctx context.Context, c store.BrainCandidate, in Input, run 
 	run.Status = store.BrainRunOK
 	var added []store.BrainNode
 	var runID int64
+	skipped := 0
 	err := e.Store.WithTx(ctx, func(q store.Querier) error {
 		id, err := store.InsertBrainRun(ctx, q, run)
 		if err != nil {
 			return err
 		}
 		runID = id
-		added, err = keep(ctx, q, id, c, in, res.Memories, run.FinishedAt)
+		added, skipped, err = keep(ctx, q, id, c, in, res.Memories, run.FinishedAt)
 		if err != nil {
 			return err
 		}
@@ -450,8 +452,23 @@ func (e *Engine) ask(ctx context.Context, c store.BrainCandidate, in Input, run 
 	})
 	r := e.stopReading()
 	if err != nil {
-		e.publishDone(r, 0, 0)
+		// Claude answered and its tokens are spent, but what it said could
+		// not be stored: the transaction took the run's row with it. It is
+		// recorded as a failed read outside it, so the tokens count toward
+		// the daily limit and the session waits out the retry like any other
+		// failure. Unrecorded, the same chunk was asked again at once, every
+		// few seconds, for hours (2026-10-22).
+		if ctx.Err() == nil {
+			run.Status, run.Error = store.BrainRunFailed, clip("storing the answer: "+err.Error(), 500)
+			if id, ierr := store.InsertBrainRun(ctx, db, run); ierr == nil {
+				runID = id
+			}
+		}
+		e.publishDone(r, runID, 0)
 		return err
+	}
+	if skipped > 0 {
+		e.log().Info("second brain: memories left out of a read", "component", "brain", "session", c.SessionID, "run", runID, "skipped", skipped)
 	}
 	e.setError("")
 	agent := ""
@@ -491,14 +508,20 @@ const dupScan = 300
 // cites, and returns the new nodes. A memory whose title is near one the
 // project already keeps (store.BrainTitlesNear), or one kept earlier in the
 // same answer, is left out.
-func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandidate, in Input, mems []Memory, now int64) ([]store.BrainNode, error) {
+//
+// One memory that cannot be stored never costs the read the others: a
+// memory with no title takes one from its summary (titleFromSummary), and
+// one still invalid after that is left out and counted in skipped, as is a
+// topic the store refuses; a project the store refuses leaves the memories
+// in no project. Only a database failure fails the read.
+func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandidate, in Input, mems []Memory, now int64) (added []store.BrainNode, skipped int, err error) {
 	passages := in.Passages
 	if len(mems) > 8 {
 		mems = mems[:8]
 	}
 	existing, err := store.BrainRecentMemories(ctx, q, c.Project, dupScan)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var titles []string
 	for _, m := range existing {
@@ -522,13 +545,17 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 	var projectID int64
 	if c.Project != "" {
 		id, err := store.EnsureBrainEntity(ctx, q, store.BrainProject, c.Project, store.BrainSource{}, false, runID, now)
-		if err != nil {
-			return nil, err
+		switch {
+		case errors.Is(err, store.ErrBrainInvalid):
+			// memoryProject keeps such a label out; should one get through,
+			// the memories hang off their topics instead of failing the read.
+		case err != nil:
+			return nil, 0, err
+		default:
+			projectID = id
 		}
-		projectID = id
 	}
 	ids := make([]int64, len(mems))
-	var added []store.BrainNode
 	for i, m := range mems {
 		kind := strings.ToLower(strings.TrimSpace(m.Kind))
 		if !store.IsBrainKind(kind) || store.IsBrainEntity(kind) || kind == store.BrainNote {
@@ -537,7 +564,14 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 		// A model asked for plain text still sends Markdown now and then; a
 		// title is one line, so its heading marks and stray newlines go.
 		m.Title = strings.Join(strings.Fields(strings.TrimLeft(strings.TrimSpace(m.Title), "#> ")), " ")
-		if store.NormTitle(m.Title) == "" || isDup(m.Title) {
+		if store.NormTitle(m.Title) == "" {
+			m.Title = titleFromSummary(m.Summary)
+		}
+		if store.NormTitle(m.Title) == "" {
+			skipped++
+			continue
+		}
+		if isDup(m.Title) {
 			continue
 		}
 		src := lastAnswer
@@ -550,16 +584,17 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 		}, now)
 		if err != nil {
 			if errors.Is(err, store.ErrBrainInvalid) {
+				skipped++
 				continue
 			}
-			return nil, err
+			return nil, 0, err
 		}
 		ids[i] = n.ID
 		added = append(added, n)
 		titles = append(titles, n.Title)
 		if projectID > 0 {
 			if err := store.LinkBrain(ctx, q, n.ID, projectID, store.EdgePartOf, 1, now); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 		for j, t := range m.Topics {
@@ -567,11 +602,14 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 				continue
 			}
 			tid, err := store.EnsureBrainEntity(ctx, q, store.BrainTopic, t, store.BrainSource{}, false, runID, now)
+			if errors.Is(err, store.ErrBrainInvalid) {
+				continue
+			}
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			if err := store.LinkBrain(ctx, q, n.ID, tid, store.EdgePartOf, 1, now); err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 	}
@@ -588,7 +626,7 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 					continue
 				}
 				if err := store.BrainSupersede(ctx, q, ids[i], old, now); err != nil && !errors.Is(err, store.ErrBrainInvalid) {
-					return nil, err
+					return nil, 0, err
 				}
 			}
 		}
@@ -599,7 +637,7 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 			for _, id := range link.to {
 				if in.Shown[id] && id != ids[i] {
 					if err := store.LinkBrain(ctx, q, ids[i], id, link.kind, 1, now); err != nil {
-						return nil, err
+						return nil, 0, err
 					}
 				}
 			}
@@ -611,13 +649,41 @@ func keep(ctx context.Context, q store.Querier, runID int64, c store.BrainCandid
 			for _, j := range link.to {
 				if j >= 0 && j < len(ids) && j != i && ids[j] != 0 {
 					if err := store.LinkBrain(ctx, q, ids[i], ids[j], link.kind, 1, now); err != nil {
-						return nil, err
+						return nil, 0, err
 					}
 				}
 			}
 		}
 	}
-	return added, nil
+	return added, skipped, nil
+}
+
+// titleWords is how many of a summary's first words a memory with no title
+// is given as one.
+const titleWords = 10
+
+// titleFromSummary is the title of a memory claude sent with none: the
+// first words of its summary's first sentence, after the privacy filter, so
+// that cutting the summary short can never leave half a secret the filter
+// would no longer see. "" when the summary says nothing either.
+func titleFromSummary(summary string) string {
+	s := redact.String(strings.TrimSpace(summary))
+	if i := strings.IndexAny(s, "\n"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.Index(s, ". "); i >= 0 {
+		s = s[:i]
+	}
+	words := strings.Fields(strings.TrimLeft(s, "#>-* "))
+	cut := len(words) > titleWords
+	if cut {
+		words = words[:titleWords]
+	}
+	t := strings.TrimRight(strings.Join(words, " "), ".,;:")
+	if cut && t != "" {
+		t += "…"
+	}
+	return store.ClipRunes(t, store.BrainTitleRunes)
 }
 
 // A read's phases, in order: claude is asked for the memories, then what it

@@ -4358,7 +4358,15 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   project already keeps — among its 300 newest — or one kept earlier in
   the same answer is left out: their folded words overlap by 0.75 or more
   (Jaccard, shared over all, at least two words each; a one-word title
-  only when the same; `store.BrainTitlesNear`). Fewer than 300 runes of agent prose and fewer than 200 of the user's
+  only when the same; `store.BrainTitlesNear`). One memory that cannot
+  be stored never fails the read: a memory with no title (empty, or only
+  heading marks and punctuation) is given the first words of its
+  summary's first sentence, at most ten, after the privacy filter
+  (`titleFromSummary`); one with no summary either, or one the store
+  still refuses, is left out and the rest kept, counted in one info log
+  line per read; a topic the store refuses is not linked. The filter
+  itself never empties a title: a title that is all secret is kept as its
+  placeholder. Fewer than 300 runes of agent prose and fewer than 200 of the user's
   typed prompts (machine-tagged turns do not count) in a read: recorded
   `skipped`,
   never sent — except at the end of a session that has not ended: there
@@ -4366,8 +4374,16 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   that prose is read with whatever the session says next, and the session
   is not a candidate again until it has newer events or ends; once it has
   ended, a short tail is marked read. A failure is recorded with its error and retried after 15
-  minutes, doubling; after four the session waits for new prose. The
-  project is the session's own, except for a session whose `cwd` is under
+  minutes, doubling; after four the session waits for new prose. An
+  answer that came back but could not be stored is such a failure too,
+  recorded outside the transaction that failed, with its tokens, error
+  `storing the answer: …`: rolled back with the rest, it counted toward
+  neither the backoff nor the daily limit, and the same chunk was asked
+  again every few seconds (3,363 times in 13 hours on the owner's Mac,
+  2026-10-22). The project is the session's own — none for a session
+  opened in the filesystem root, the home directory or the temp directory
+  itself (`store.NotAProject`), or whose label folds to nothing (`/`) —
+  except for a session whose `cwd` is under
   the system's temp directory (`os.TempDir`, `/tmp`, `/var/folders` and
   their `/private` forms), where that label is a throwaway folder's name:
   there it is the repository's name from its remote's web address when the

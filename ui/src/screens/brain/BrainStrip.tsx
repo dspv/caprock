@@ -21,11 +21,13 @@
  *   (per project) and the last three reads.
  * - **A problem** is said under the line with the one action that fixes it:
  *   no claude → *Check again*; today's limit used → *Raise to 1M a day*; a
- *   failed read → that it is tried again on its own.
+ *   read that did not finish → why, in plain words (lib/brain
+ *   brainFailureReason), and that Caprock tries it again by itself; the raw
+ *   error only in the sentence's tooltip.
  */
 import { useState, type ReactNode } from 'react'
 import { api, errText, type BrainAutoStatus } from '@/lib/api'
-import { BRAIN_STEPS, brainState, buildFigures, clockOrDay, isBuilding, tokensShort } from '@/lib/brain'
+import { BRAIN_STEPS, brainFailureText, brainRunOutcome, brainState, buildFigures, clockOrDay, isBuilding, tokensShort } from '@/lib/brain'
 import { fmtAgo, fmtUSD } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { agentName } from '@/components/Characters'
@@ -71,6 +73,7 @@ function Problem({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => 
     api.brainSettings({ daily_tokens: ONE_MILLION }).then(onChanged, (e: unknown) => setErr(errText(e)))
   }
   let text = ''
+  let raw = ''
   let action: ReactNode = null
   if (!auto.claude_found) {
     text = 'Claude Code was not found on this computer, so nothing can be read. Install it, then check again.'
@@ -79,12 +82,13 @@ function Problem({ auto, onChanged }: { auto: BrainAutoStatus; onChanged: () => 
     text = `Today’s ${tokensShort(auto.daily_tokens)} tokens are used. Reading goes on as the day rolls over.`
     if (auto.daily_tokens < ONE_MILLION) action = <button type="button" onClick={raise} className="brain-live-fix">Raise to 1M a day</button>
   } else if (auto.last_error && isBuilding(auto)) {
-    text = `The last read failed: ${auto.last_error}. It is tried again on its own.`
+    text = brainFailureText(auto.last_error)
+    raw = auto.last_error
   }
   if (!text) return null
   return (
     <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[10px] border border-warn/40 bg-warn/10 px-3.5 py-2.5 text-[13.5px] leading-snug text-fg" data-brain-problem>
-      <span className="min-w-0 flex-1">{text}</span>
+      <span className="min-w-0 flex-1" title={raw ? `The error: ${raw}` : undefined}>{text}</span>
       {action}
       {err && <span className="w-full text-danger">{err}</span>}
     </div>
@@ -202,17 +206,20 @@ export function BrainStrip({ auto, memories, onChanged, owner = true }: { auto: 
             <div className="grid gap-1" data-brain-recent>
               <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-fg-muted">Just read</h3>
               <ul className="grid gap-0.5 text-[12.5px]">
-                {recent.map((run) => (
+                {recent.map((run) => {
+                  const bad = run.status === 'failed' || !!run.error?.startsWith('gave up')
+                  return (
                   <li key={run.id} className="flex min-w-0 items-baseline gap-2">
-                    <span className={`shrink-0 ${run.status === 'failed' ? 'text-warn' : 'text-accent'}`} aria-hidden>{run.status === 'failed' ? '!' : '✓'}</span>
+                    <span className={`shrink-0 ${bad ? 'text-warn' : 'text-accent'}`} aria-hidden>{bad ? '!' : '✓'}</span>
                     <span className="min-w-0 truncate text-fg">{run.title || run.project || run.session_id.slice(0, 8)}</span>
                     <span className="shrink-0 text-fg-muted">
                       {run.project && run.title ? `${run.project} · ` : ''}
-                      {run.status === 'ok' ? plural(run.nodes, 'memory', 'memories') : run.status === 'failed' ? 'failed, will retry' : 'too short'}
+                      <span title={run.error || undefined}>{brainRunOutcome(run)}</span>
                       {' · '}{fmtAgo(run.finished_at, now)}
                     </span>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             </div>
           )}

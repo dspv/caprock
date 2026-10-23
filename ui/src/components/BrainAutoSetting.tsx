@@ -11,7 +11,7 @@
  */
 import { useState } from 'react'
 import { api, type BrainAutoStatus, type BrainEstimate } from '@/lib/api'
-import { brainArrivalsSetting, setBrainArrivals, useBrainStatus } from '@/lib/brain'
+import { brainArrivalsSetting, brainFailureReason, setBrainArrivals, useBrainStatus } from '@/lib/brain'
 import { fmtAgo, fmtTokens } from '@/lib/format'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 
@@ -103,7 +103,7 @@ function Figures({ auto }: { auto: BrainAutoStatus }) {
           {auto.last_wake ? ` Last looked ${fmtAgo(auto.last_wake)}.` : ''}
         </span>
       )}
-      {auto.last_error && <span className="text-warn">Last problem: {auto.last_error}</span>}
+      {auto.last_error && <span className="text-warn" title={`The error: ${auto.last_error}`} data-brain-last-problem>Last problem: {brainFailureReason(auto.last_error)}.</span>}
     </div>
   )
 }
