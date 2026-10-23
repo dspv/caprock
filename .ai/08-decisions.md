@@ -5438,7 +5438,12 @@ terminal keeps it):
   line saying so. It is never scaled~~ is drawn smaller to fit and the page
   zoomed out by the same factor, so it still lays out at the device's width
   (amended 2026-10-23: a native window is not clipped by the tab, and the
-  true-size page area drew over the status bar and the Dock).
+  true-size page area drew over the status bar and the Dock). Checked the
+  same day in the real macOS app: the shell, too, shows a page window only
+  while its box is inside the main window and once the page has something
+  to show, so neither a shrinking window nor a new tab on a dead address
+  flashes a page past the window or a white rectangle (21-app.md § When a
+  page window shows).
 - **Devices:** iPhone 16 (393×852 @3), iPhone SE 3rd gen (375×667 @2),
   Pixel 9 (412×923), Galaxy S24 (360×780), and a custom W×H page. The
   screens are sourced; every bar height is an estimate, marked *est.* in the

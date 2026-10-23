@@ -50,6 +50,15 @@
 //! place of the page. WebView2 and WebKitGTK commit an error page of their
 //! own, which is news, so there the dashboard stays quiet.
 //!
+//! A page window is shown only when three things hold (`visible`): the
+//! dashboard wants it shown, it has something to show, and its box is inside
+//! the main window. A new window is held hidden until its first load (or
+//! `HOLD` after its address answered), so a tab that opens on an address
+//! nobody answers shows no white rectangle before it says so (2026-10-23,
+//! seen in the real app). And while the main window shrinks, the dashboard
+//! lays out a beat behind it: a box that now runs past the window's edge is
+//! hidden until the dashboard places it inside again, never drawn past it.
+//!
 //! It runs in a non-persistent data store of its own, so it shares no cookie
 //! or storage with the dashboard or another page and leaves nothing on disk.
 //! It loads only what the user asked for, follows only the web's schemes,
@@ -84,6 +93,15 @@ pub const QUIET: Duration = Duration::from_millis(1500);
 
 /// How long `reach` waits on one address.
 pub const REACH_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// A new page whose address answered is shown after this even before it
+/// loads: a server that takes its time shows its blank page, as a browser does.
+pub const HOLD: Duration = Duration::from_secs(4);
+
+/// CSS px a zoomed page is laid out wider (and taller) than asked: WebKit
+/// floors `innerWidth`, and 261 ÷ (261 ÷ 393) came out 392.99… = 392 in the
+/// real app. A fiftieth of a pixel more reads 393 and changes no layout.
+pub const ZOOM_SLACK: f64 = 0.02;
 
 /// How long a closed page's process is left to settle on `about:blank`
 /// before its window goes (the root cause in the module's doc).
@@ -251,10 +269,35 @@ pub fn measured(raw: &str) -> Option<(u32, u32)> {
 pub fn zoom_for(window: f64, page: Option<f64>) -> f64 {
     match page {
         Some(p) if p.is_finite() && p >= 1.0 && window.is_finite() && window < p - 0.5 => {
-            (window / p).clamp(0.1, 1.0)
+            (window / (p + ZOOM_SLACK)).clamp(0.1, 1.0)
         }
         _ => 1.0,
     }
+}
+
+/// The height, logical px, of a window zoomed by `zoom` for a page `page`
+/// CSS px tall on a screen of `scale`: the fewest whole screen pixels in
+/// which the page reads at least `page` px tall. Not zoomed, or no height
+/// named, the box's own `height`.
+pub fn zoomed_height(height: f64, zoom: f64, page: Option<f64>, scale: f64) -> f64 {
+    match page {
+        Some(p) if zoom < 1.0 && p.is_finite() && p >= 1.0 && scale.is_finite() && scale > 0.0 => {
+            ((p + ZOOM_SLACK) * zoom * scale - 1e-6).ceil() / scale
+        }
+        _ => height,
+    }
+}
+
+/// Whether a box (logical px, from the main window's content origin) lies
+/// inside a content area `w`×`h`, give or take a pixel of rounding.
+pub fn fits(r: Rect, w: f64, h: f64) -> bool {
+    r.x + r.width <= w + 1.0 && r.y + r.height <= h + 1.0
+}
+
+/// Whether a page window is shown: wanted by the dashboard, not held
+/// before its first load, and its box inside the main window.
+pub fn visible(wanted: bool, held: bool, inside: bool) -> bool {
+    wanted && !held && inside
 }
 
 /// Whether anything answers at `url`'s host and port: None when one of its
@@ -364,6 +407,9 @@ pub struct Phone {
     /// page is zoomed out to lay out at it (`zoom_for`). Absent, no zoom.
     #[serde(default)]
     pub width: Option<f64>,
+    /// With `width`: the page's CSS height (`zoomed_height`).
+    #[serde(default)]
+    pub height: Option<f64>,
 }
 
 /// What a page window is set to now: the user agent phone mode gave it
@@ -499,7 +545,13 @@ pub struct Pages {
     /// Side by side, by label: the page's CSS width (`Phone::width`) and the
     /// zoom last given for it. Absent, 1.
     widths: Mutex<HashMap<String, f64>>,
+    heights: Mutex<HashMap<String, f64>>,
     zooms: Mutex<HashMap<String, f64>>,
+    /// The pages the dashboard wants shown (`Open`, `Show`; not `Hide`).
+    wanted: Mutex<HashSet<String>>,
+    /// New pages with nothing loaded yet: held hidden (`visible`). The value
+    /// says whether the dashboard asked for the keyboard meanwhile.
+    held: Mutex<HashMap<String, bool>>,
     /// The page loads each page has reported, by label: `probe` tells the
     /// dashboard nothing answers only when none came while it looked.
     loads: Mutex<HashMap<String, u64>>,
@@ -512,6 +564,37 @@ impl Pages {
             .unwrap_or_else(|e| e.into_inner())
             .get(label)
             .copied()
+    }
+
+    fn height(&self, label: &str) -> Option<f64> {
+        self.heights
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(label)
+            .copied()
+    }
+
+    fn wanted(&self, label: &str) -> bool {
+        self.wanted
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(label)
+    }
+
+    fn want(&self, label: &str, on: bool) {
+        let mut w = self.wanted.lock().unwrap_or_else(|e| e.into_inner());
+        if on {
+            w.insert(label.to_owned());
+        } else {
+            w.remove(label);
+        }
+    }
+
+    fn held(&self, label: &str) -> bool {
+        self.held
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(label)
     }
 
     fn zoom(&self, label: &str) -> f64 {
@@ -574,6 +657,22 @@ pub async fn browser_tab<R: Runtime>(
                     Some(px) => w.insert(label.clone(), px),
                     None => w.remove(&label),
                 };
+                drop(w);
+                let mut h = pages.heights.lock().unwrap_or_else(|e| e.into_inner());
+                match phone.as_ref().and_then(|p| p.width.and(p.height)) {
+                    Some(px) => h.insert(label.clone(), px),
+                    None => h.remove(&label),
+                };
+                drop(h);
+                pages.want(&label, true);
+                if page.is_none() {
+                    // Held until it has something to show (`release`).
+                    pages
+                        .held
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(label.clone(), focus);
+                }
             }
             let page = match page {
                 Some(p) => {
@@ -601,9 +700,20 @@ pub async fn browser_tab<R: Runtime>(
             };
             follow_main(&app);
             place(&app, &label, &page, rect)?;
-            page.show().map_err(|e| e.to_string())?;
             if focus {
-                let _ = page.set_focus();
+                if let Some(pages) = app.try_state::<Pages>() {
+                    if let Some(f) = pages
+                        .held
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .get_mut(&label)
+                    {
+                        *f = true;
+                    }
+                }
+                if page.is_visible().unwrap_or(false) {
+                    let _ = page.set_focus();
+                }
             }
             Ok(())
         }
@@ -617,8 +727,19 @@ pub async fn browser_tab<R: Runtime>(
                     &page,
                     sane(rect).ok_or("not a place in the window")?,
                 ),
-                Act::Show => page.show().map_err(|e| e.to_string()),
-                Act::Hide => page.hide().map_err(|e| e.to_string()),
+                Act::Show => {
+                    if let Some(pages) = app.try_state::<Pages>() {
+                        pages.want(&label, true);
+                    }
+                    apply(&app, &label, &page);
+                    Ok(())
+                }
+                Act::Hide => {
+                    if let Some(pages) = app.try_state::<Pages>() {
+                        pages.want(&label, false);
+                    }
+                    page.hide().map_err(|e| e.to_string())
+                }
                 Act::Close => {
                     drain(&app, &label, page);
                     Ok(())
@@ -672,7 +793,13 @@ fn probe<R: Runtime>(app: &AppHandle<R>, id: &str, label: &str, url: Url) {
     std::thread::spawn(move || {
         let before = app.try_state::<Pages>().map_or(0, |p| p.loads(&label));
         match reach(&url, REACH_TIMEOUT) {
-            None => tell(&app, serde_json::json!({ "id": id, "reachable": true })),
+            None => {
+                tell(&app, serde_json::json!({ "id": id, "reachable": true }));
+                // Answered but slow to load: shown blank after HOLD, as a
+                // browser shows a page that is still coming.
+                std::thread::sleep(HOLD);
+                release(&app, &label);
+            }
             Some(why) => {
                 std::thread::sleep(QUIET);
                 let after = app.try_state::<Pages>().map_or(0, |p| p.loads(&label));
@@ -806,24 +933,92 @@ fn place<R: Runtime>(
         .map_err(|e| e.to_string())?
         .to_logical::<f64>(scale);
     let (x, y) = on_screen((origin.x, origin.y), r);
-    page.set_size(LogicalSize::new(r.width, r.height))
+    let pages = app.try_state::<Pages>();
+    // Drawn smaller: zoomed so the page lays out at the phone's width, and
+    // just tall enough to read the phone's height.
+    let zoom = pages
+        .as_ref()
+        .map_or(1.0, |p| zoom_for(r.width, p.width(label)));
+    let height = zoomed_height(
+        r.height,
+        zoom,
+        pages.as_ref().and_then(|p| p.height(label)),
+        scale,
+    );
+    page.set_size(LogicalSize::new(r.width, height))
         .and_then(|_| page.set_position(LogicalPosition::new(x, y)))
         .map_err(|e| e.to_string())?;
-    if let Some(p) = app.try_state::<Pages>() {
+    if let Some(p) = pages {
         p.rects
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(label.to_owned(), r);
-        // Side by side: zoomed so the page lays out at the phone's width.
-        let want = zoom_for(r.width, p.width(label));
-        if (want - p.zoom(label)).abs() > 1e-3 && page.set_zoom(want).is_ok() {
+        if (zoom - p.zoom(label)).abs() > 1e-6 && page.set_zoom(zoom).is_ok() {
             p.zooms
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
-                .insert(label.to_owned(), want);
+                .insert(label.to_owned(), zoom);
         }
     }
+    apply(app, label, page);
     Ok(())
+}
+
+/// Shows or hides the page as `visible` says: wanted, not held, and its
+/// last box inside the main window's content area as it is now.
+fn apply<R: Runtime>(app: &AppHandle<R>, label: &str, page: &WebviewWindow<R>) {
+    let Some(pages) = app.try_state::<Pages>() else {
+        let _ = page.show();
+        return;
+    };
+    let inside = match (
+        pages
+            .rects
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(label)
+            .copied(),
+        app.get_webview_window(MAIN),
+    ) {
+        (Some(r), Some(main)) => match (main.inner_size(), main.scale_factor()) {
+            (Ok(size), Ok(scale)) => {
+                let size = size.to_logical::<f64>(scale);
+                fits(r, size.width, size.height)
+            }
+            _ => true,
+        },
+        // Never placed yet (a load can beat the first place): not shown
+        // wherever the window happens to be.
+        (None, _) => false,
+        (Some(_), None) => true,
+    };
+    let show = visible(pages.wanted(label), pages.held(label), inside);
+    if show != page.is_visible().unwrap_or(!show) {
+        let _ = if show { page.show() } else { page.hide() };
+    }
+}
+
+/// A held page has something to show (its first load, or `HOLD` after its
+/// address answered): shown if the dashboard still wants it, with the
+/// keyboard when it asked for it meanwhile.
+fn release<R: Runtime>(app: &AppHandle<R>, label: &str) {
+    let Some(pages) = app.try_state::<Pages>() else {
+        return;
+    };
+    let Some(focus) = pages
+        .held
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(label)
+    else {
+        return;
+    };
+    if let Some(page) = app.get_webview_window(label) {
+        apply(app, label, &page);
+        if focus && page.is_visible().unwrap_or(false) {
+            let _ = page.set_focus();
+        }
+    }
 }
 
 /// The main window moved, resized or changed screens: every shown page
@@ -859,7 +1054,9 @@ fn follow_main<R: Runtime>(app: &AppHandle<R>) {
             .collect();
         for (label, r) in rects {
             if let Some(w) = app.get_webview_window(&label) {
-                if w.is_visible().unwrap_or(false) {
+                // A page hidden because its box ran past the window comes
+                // back here too, once the window is large enough again.
+                if pages.wanted(&label) {
                     let _ = place(&app, &label, &w, r);
                 }
             }
@@ -889,6 +1086,15 @@ fn drain<R: Runtime>(app: &AppHandle<R>, label: &str, page: WebviewWindow<R>) {
             .unwrap_or_else(|e| e.into_inner())
             .remove(label);
         p.zooms
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
+        p.heights
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(label);
+        p.want(label, false);
+        p.held
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(label);
@@ -922,6 +1128,9 @@ fn retain<R: Runtime>(app: &AppHandle<R>, ids: &[String]) {
 pub fn hide_all<R: Runtime>(app: &AppHandle<R>) {
     for (l, w) in app.webview_windows() {
         if l.starts_with(PREFIX) {
+            if let Some(p) = app.try_state::<Pages>() {
+                p.want(&l, false);
+            }
             let _ = w.hide();
         }
     }
@@ -996,6 +1205,9 @@ fn build<R: Runtime>(
                 return;
             }
             let loading = matches!(p.event(), PageLoadEvent::Started);
+            // Something to show: a held page comes out (WKWebView reports
+            // Started once the first bytes commit).
+            release(&load, w.label());
             if let Some(pages) = load.try_state::<Pages>() {
                 *pages
                     .loads
@@ -1230,15 +1442,57 @@ mod tests {
 
     #[test]
     fn a_side_by_side_page_is_zoomed_to_lay_out_at_the_phones_width() {
-        // Drawn at 72%: the window is 283 px for a 393 px phone.
+        // Drawn at 72%: the window is 283 px for a 393 px phone. It lays out
+        // a hair wider, so a floored innerWidth reads 393, never 392 (seen
+        // in the real app at 261 px).
         let z = zoom_for(283.0, Some(393.0));
-        assert!((283.0 / z - 393.0).abs() < 1e-9);
+        assert_eq!((283.0 / z).floor(), 393.0);
+        assert!(283.0 / z - 393.0 < 0.05);
+        for w in [143.0, 183.0, 249.0, 261.0, 274.0, 362.0] {
+            let z = zoom_for(w, Some(393.0));
+            assert_eq!(((w / z) as f32).floor(), 393.0, "{w}");
+        }
         // Full size, wider, no width, nonsense: never zoomed.
         assert_eq!(zoom_for(393.0, Some(393.0)), 1.0);
         assert_eq!(zoom_for(500.0, Some(393.0)), 1.0);
         assert_eq!(zoom_for(283.0, None), 1.0);
         assert_eq!(zoom_for(283.0, Some(f64::NAN)), 1.0);
         assert_eq!(zoom_for(1.0, Some(1000.0)), 0.1);
+    }
+
+    #[test]
+    fn a_zoomed_page_reads_the_phones_height_in_whole_pixels() {
+        // 47% on a 2x screen: 317 logical px read 680.8 = 680 CSS px.
+        let z = zoom_for(183.0, Some(393.0));
+        let h = zoomed_height(317.0, z, Some(681.0), 2.0);
+        assert!(h / z >= 681.0, "{}", h / z);
+        assert!(h - 317.0 < 1.0, "{h}");
+        // Whole screen pixels.
+        assert_eq!((h * 2.0).fract(), 0.0);
+        // Not zoomed, or no height named: the box's own.
+        assert_eq!(zoomed_height(553.0, 1.0, Some(553.0), 2.0), 553.0);
+        assert_eq!(zoomed_height(317.0, z, None, 2.0), 317.0);
+        assert_eq!(zoomed_height(317.0, z, Some(681.0), 0.0), 317.0);
+    }
+
+    #[test]
+    fn a_page_shows_only_wanted_loaded_and_inside_the_window() {
+        let r = Rect {
+            x: 376.0,
+            y: 295.0,
+            width: 734.0,
+            height: 324.0,
+        };
+        // The window shrank to 520 px and the dashboard has not caught up:
+        // the box runs past the bottom, so the page is hidden.
+        assert!(!fits(r, 1200.0, 520.0));
+        assert!(fits(r, 1200.0, 867.0));
+        // A pixel of rounding is no reason to hide it.
+        assert!(fits(r, 1109.5, 618.5));
+        assert!(visible(true, false, true));
+        assert!(!visible(false, false, true));
+        assert!(!visible(true, true, true));
+        assert!(!visible(true, false, false));
     }
 
     #[test]
@@ -1251,9 +1505,9 @@ mod tests {
         assert!(MEASURE_SCRIPT.contains("scrollWidth"));
         let a: Act = serde_json::from_value(serde_json::json!({"do": "measure"})).unwrap();
         assert!(matches!(a, Act::Measure));
-        let o: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "http://localhost:5173/", "rect": {"x": 1, "y": 2, "width": 283, "height": 490}, "phone": {"ua": "UA", "touch": true, "width": 393}})).unwrap();
+        let o: Act = serde_json::from_value(serde_json::json!({"do": "open", "url": "http://localhost:5173/", "rect": {"x": 1, "y": 2, "width": 283, "height": 490}, "phone": {"ua": "UA", "touch": true, "width": 393, "height": 681}})).unwrap();
         assert!(
-            matches!(o, Act::Open { phone: Some(Phone { width: Some(w), .. }), .. } if w == 393.0)
+            matches!(o, Act::Open { phone: Some(Phone { width: Some(w), height: Some(h), .. }), .. } if w == 393.0 && h == 681.0)
         );
     }
 
@@ -1273,6 +1527,7 @@ mod tests {
             ua: ua.into(),
             touch,
             width: None,
+            height: None,
         };
         let desk = Mode::default();
         // On: the device's agent (a reload) and touch.

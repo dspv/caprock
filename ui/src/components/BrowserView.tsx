@@ -27,7 +27,7 @@ import { getUiScale, useUiScale } from '@/lib/uiscale'
 import { openLink } from '@/lib/termlinks'
 import { keys, PHONE_MODE_KEY } from '@/lib/appkeys'
 import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, cutOff, engineOf, overlayOpen, pageId, rectOf, sameRect, type BrowserNews, type PageRect } from '@/lib/browsertab'
-import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, pageScale, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_DEVICES, SIDE_GAP, SIDE_LABEL, SIDE_MARGIN, type DeviceId, type PhonePrefs, type PhoneSpec } from '@/lib/phonemode'
+import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, pageScale, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, zoomedSpec, sideKey, sideMain, sideScale, SIDE_DEVICES, SIDE_GAP, SIDE_LABEL, SIDE_MARGIN, type DeviceId, type PhonePrefs, type PhoneSpec } from '@/lib/phonemode'
 import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, PhoneIcon, ReloadIcon } from './AppIcons'
 import { DeviceBar } from './DeviceBar'
 import { PhoneFrame } from './PhoneFrame'
@@ -180,10 +180,10 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
     )
     : 1
   // Drawn smaller, the page still lays out at the device's width: the shell zooms it out to match.
-  const spec = phone ? { ...phoneSpec(device, phonePrefs.touch), ...(fitAt < 1 ? { width: layout.pageW } : {}) } : undefined
+  const spec = phone ? (fitAt < 1 ? zoomedSpec(device, phonePrefs.touch, layout) : phoneSpec(device, phonePrefs.touch)) : undefined
   // The pages this tab shows: its own, and side by side two more.
   const slots: Slot[] = side
-    ? trio.map((d) => ({ key: d.id === device.id ? pageKey : sideKey(pageKey, d.id), dev: d.id, spec: { ...phoneSpec(d, phonePrefs.touch), width: layoutOf(d, phonePrefs.bars, false).pageW } }))
+    ? trio.map((d) => ({ key: d.id === device.id ? pageKey : sideKey(pageKey, d.id), dev: d.id, spec: zoomedSpec(d, phonePrefs.touch, layoutOf(d, phonePrefs.bars, false)) }))
     : [{ key: pageKey, ...(spec ? { spec } : {}) }]
   const slotsRef = useRef(slots)
   slotsRef.current = slots
@@ -196,7 +196,7 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   useEffect(() => { if (!side) { setOut({}); setWide({}) } }, [side])
   // What reopens the page windows: a new device, side, bars, fit or scale
   // moves a page area; a new agent or touch is the shell's to apply.
-  const phoneKey = phone ? `${side ? `side@${sideAt}` : ''}|${slots.map((sl) => `${sl.key}=${sl.spec?.ua}|${sl.spec?.touch}|${sl.spec?.width ?? ''}`).join(',')}|${layout.pageW}x${layout.pageH}|${fit}@${fitAt}` : ''
+  const phoneKey = phone ? `${side ? `side@${sideAt}` : ''}|${slots.map((sl) => `${sl.key}=${sl.spec?.ua}|${sl.spec?.touch}|${sl.spec?.width ?? ''}x${sl.spec?.height ?? ''}`).join(',')}|${layout.pageW}x${layout.pageH}|${fit}@${fitAt}` : ''
   // The page takes the keyboard when it was just sent somewhere from the address box.
   const focusNext = useRef(false)
   useEffect(() => { if (!editing) setAddress(url) }, [url, editing])

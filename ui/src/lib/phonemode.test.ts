@@ -4,7 +4,7 @@
  * preferences.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { ANDROID_CHROME_UA, DEFAULT_PHONE_PREFS, DEVICES, IOS_SAFARI_UA, PHONE_PREFS_KEY, TRUTH, customDevice, deviceOf, dprText, fitOf, frameSize, hostOs, layoutOf, loadPhonePrefs, pageKeysOf, pageScale, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_MIN_SCALE } from './phonemode'
+import { ANDROID_CHROME_UA, DEFAULT_PHONE_PREFS, DEVICES, IOS_SAFARI_UA, PHONE_PREFS_KEY, TRUTH, customDevice, deviceOf, dprText, fitOf, frameSize, hostOs, layoutOf, loadPhonePrefs, pageKeysOf, pageScale, phoneOn, phoneSpec, savePhonePrefs, setPhoneOn, sideKey, sideMain, sideScale, SIDE_MIN_SCALE, zoomedSpec } from './phonemode'
 
 const dev = (id: string) => DEVICES.find((d) => d.id === id)!
 
@@ -94,6 +94,14 @@ describe('the fit', () => {
     // The SE's chin and forehead count.
     const se = dev('iphonese')
     expect(frameSize(se, layoutOf(se, 'shown', false), false).h).toBe(667 + 62 + 74)
+  })
+
+  it('tells the shell the CSS width and height of a page drawn smaller', () => {
+    // Both: the shell zooms by the width and sizes the window so innerHeight
+    // reads the height, not a pixel or three short (browser.rs zoomed_height).
+    const d = dev('iphone16')
+    expect(zoomedSpec(d, true, layoutOf(d, 'shown', false))).toEqual({ ua: IOS_SAFARI_UA, touch: true, width: 393, height: 681 })
+    expect(phoneSpec(d, false)).toEqual({ ua: IOS_SAFARI_UA, touch: false })
   })
 })
 

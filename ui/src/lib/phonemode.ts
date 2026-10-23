@@ -327,6 +327,17 @@ export interface PhoneSpec {
    * WebKitGTK zoom level) and the page still lays out at the phone's width. Absent, the page is never zoomed.
    */
   width?: number
+  /**
+   * With `width`: the page's CSS height. A window is sized in whole screen
+   * pixels, so the shell makes the zoomed window just tall enough that the
+   * page reads at least this height (`innerHeight`), not a pixel or three short.
+   */
+  height?: number
+}
+
+/** The spec for a page drawn smaller than its `pageW`×`pageH` CSS px: zoomed out by the shell to lay out at that size. */
+export function zoomedSpec(d: Device, touch: boolean, page: { pageW: number; pageH: number }): PhoneSpec {
+  return { ...phoneSpec(d, touch), width: page.pageW, height: page.pageH }
 }
 
 export function phoneSpec(d: Device, touch: boolean): PhoneSpec {

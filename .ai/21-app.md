@@ -1995,6 +1995,31 @@ crashed (ADR-070); what the user sees is in
   dashboard hides the page and says so with Retry (04-ui.md). WebView2 and
   WebKitGTK commit an error page of their own, which counts as a load, so
   there the shell stays quiet.
+- **When a page window shows** (2026-10-23, checked in the real app, not
+  only a stand-in): only while the dashboard wants it shown (`open`, `show`;
+  not `hide`), it has something to show, and its last box lies inside the
+  main window's content area (`visible`, `fits`). A new window is held
+  hidden until its first load, or `HOLD` (4 s) after its address answered
+  (a slow server then shows its blank page, as a browser does): a tab opened
+  on an address nobody answers had shown a white rectangle for about half a
+  second before *Nothing answers*. While the main window shrinks the
+  dashboard lays out a beat behind it, and a rotated phone's page drew past
+  the window's bottom edge for a quarter of a second or more; the shell now
+  hides a box that no longer fits on the main window's own resize event and
+  shows it again once the dashboard places it inside.
+- **A zoomed page reads the device's size** (2026-10-23): `zoom_for` lays
+  the page out `ZOOM_SLACK` (0.02 CSS px) wider than asked, because WebKit
+  floors `innerWidth` and 261 ÷ (261 ÷ 393) read 392 in side by side; and
+  `phone` carries `height` with `width`, so the shell makes the zoomed window
+  the fewest whole screen pixels in which `innerHeight` reads at least that
+  (`zoomed_height`). Measured in the app: 393×681 at 56%, 87% and side by
+  side's 50%, where it had read 393×680, 393×678 and 392×680.
+- **Checking it** (`--features snapshot`, app/README.md § Checking it on a
+  machine someone is using): a capture includes the shown page windows over
+  the main one and writes every window's frame to `<name>.json`; `size`
+  resizes and moves the main window, `page-eval` runs a script in every page
+  window. With an `init.js` present a page window keeps painting off screen
+  too, so the whole check runs with the window all but 2 px off the display.
 - **Phone preview** (ADR-075, amended 2026-10-22): a page pane split beside
   a terminal, asked for from a dev server's address in that terminal or ⌘K.
   Nothing new in the shell: the same `open` with `phone`, laid over the

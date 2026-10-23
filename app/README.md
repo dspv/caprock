@@ -389,6 +389,14 @@ registers one, `-u` forgets it). A build with `--features snapshot` (never
 shipped) also reads `CAPROCK_APP_SNAPSHOT_DIR`: a name written to
 `<dir>/request` captures the window to `<dir>/<name>.png`, a script written to
 `<dir>/eval` runs in the page, and page loads are logged to `<dir>/loads.txt`.
+The capture includes the in-app browser's page windows shown over the main
+one, and `<dir>/<name>.json` gives every window's frame, so a page drawn past
+its tab or the window shows as one; `W H [X Y]` written to `<dir>/size`
+resizes (and moves) the main window, and a script in `<dir>/page-eval` runs in
+every page window, its answers appended to `<dir>/page-eval.out`. Run the
+copy under its own bundle id (as `bench/run-macos.sh` makes one), and move the
+window all but 2 px off the display with `size` once it shows: macOS pulls a
+restored window back on screen.
 For the benchmarks ([bench/README.md](../bench/README.md)): `<dir>/init.js`,
 when present at launch, runs before every page's scripts and keeps the window
 painting while covered or off screen (WebKit's occlusion detection and App

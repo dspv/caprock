@@ -10,6 +10,12 @@
 //! says whether the app became active and which window is key; `hide-app`
 //! hides the app and shows it again without activating it, so the check
 //! starts from an inactive app whose windows are behind the one in front.
+//! The capture includes the in-app browser's page windows (`browser-*`,
+//! child windows of the main one) composited over it, and writes every
+//! window's place to `<name>.json`, so a check sees a page that draws past
+//! its tab or past the window. `W H` written to `size` resizes the main
+//! window (logical px), `W H X Y` moves it too; a script written to `page-eval` runs in every page
+//! window and each answer is appended to `page-eval.out`.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -35,6 +41,7 @@ pub fn watch(app: AppHandle) {
         keep_painting(&app);
     }
     let every = Duration::from_millis(if bench { 1000 } else { 200 });
+    let mut painting = std::collections::HashSet::new();
     std::thread::spawn(move || loop {
         std::thread::sleep(every);
         if let Ok(js) = std::fs::read_to_string(dir.join("eval")) {
@@ -64,6 +71,48 @@ pub fn watch(app: AppHandle) {
                 popover(&app, what.trim() == "show", dir.join("popover.json"));
             }
         }
+        if let Ok(size) = std::fs::read_to_string(dir.join("size")) {
+            let _ = std::fs::remove_file(dir.join("size"));
+            let n: Vec<f64> = size
+                .split_whitespace()
+                .filter_map(|v| v.parse().ok())
+                .collect();
+            if let (Some(&w), Some(&h)) = (n.first(), n.get(1)) {
+                if let Some(m) = app.get_webview_window(crate::shell::MAIN) {
+                    let _ = m.set_size(tauri::LogicalSize::new(w, h));
+                    if let (Some(&x), Some(&y)) = (n.get(2), n.get(3)) {
+                        let _ = m.set_position(tauri::LogicalPosition::new(x, y));
+                    }
+                }
+            }
+        }
+        if let Ok(js) = std::fs::read_to_string(dir.join("page-eval")) {
+            let _ = std::fs::remove_file(dir.join("page-eval"));
+            for (label, w) in app.webview_windows() {
+                if !label.starts_with(crate::browser::PREFIX) {
+                    continue;
+                }
+                let out = dir.join("page-eval.out");
+                let _ = w.eval_with_callback(js.clone(), move |raw| {
+                    use std::io::Write;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&out)
+                    {
+                        let _ = writeln!(f, "{label} {raw}");
+                    }
+                });
+            }
+        }
+        // Under bench/, a page window keeps painting while off screen too.
+        if bench {
+            for (label, w) in app.webview_windows() {
+                if label.starts_with(crate::browser::PREFIX) && painting.insert(label) {
+                    occlusion_detection(&w, false);
+                }
+            }
+        }
         // bench/ (WP-16): the window hidden, for the hidden-window CPU row,
         // with WebKit's occlusion detection back on as in a shipped build.
         if std::fs::remove_file(dir.join("hide")).is_ok() {
@@ -82,8 +131,17 @@ pub fn watch(app: AppHandle) {
         let handle = app.clone();
         let _ = app.run_on_main_thread(move || {
             if let Some(w) = handle.get_webview_window(crate::shell::MAIN) {
-                let result = capture(&w, &out);
+                let pages: Vec<tauri::WebviewWindow> = handle
+                    .webview_windows()
+                    .into_iter()
+                    .filter(|(l, p)| {
+                        l.starts_with(crate::browser::PREFIX) && p.is_visible().unwrap_or(false)
+                    })
+                    .map(|(_, p)| p)
+                    .collect();
+                let result = capture(&w, &pages, &out);
                 let _ = std::fs::write(out.with_extension("txt"), format!("{result:?}"));
+                let _ = std::fs::write(out.with_extension("json"), places(&handle).to_string());
             }
         });
     });
@@ -191,30 +249,72 @@ fn occlusion_detection(w: &tauri::WebviewWindow, enabled: bool) {
     });
 }
 
+/// Every window of the app, logical px on screen: whether it is visible,
+/// its scale, and its outer and inner frames as `[x, y, width, height]`.
+fn places(app: &AppHandle) -> serde_json::Value {
+    let mut all = serde_json::Map::new();
+    for (label, w) in app.webview_windows() {
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let pos = w.outer_position().map(|p| p.to_logical::<f64>(scale));
+        let size = w.outer_size().map(|s| s.to_logical::<f64>(scale));
+        let inner = w.inner_position().map(|p| p.to_logical::<f64>(scale));
+        let inner_size = w.inner_size().map(|s| s.to_logical::<f64>(scale));
+        if let (Ok(p), Ok(s), Ok(ip), Ok(is)) = (pos, size, inner, inner_size) {
+            all.insert(
+                label,
+                serde_json::json!({
+                    "visible": w.is_visible().unwrap_or(false),
+                    "scale": scale,
+                    "outer": [p.x, p.y, s.width, s.height],
+                    "inner": [ip.x, ip.y, is.width, is.height],
+                }),
+            );
+        }
+    }
+    serde_json::Value::Object(all)
+}
+
+/// The main window with the page windows shown over it, composited by the
+/// window server in the order given (front first), over the union of their
+/// frames: a page past the window's edge shows past it.
 #[allow(deprecated)]
-fn capture(w: &tauri::WebviewWindow, out: &Path) -> Result<(), String> {
+fn capture(
+    w: &tauri::WebviewWindow,
+    pages: &[tauri::WebviewWindow],
+    out: &Path,
+) -> Result<(), String> {
     use objc2::AnyThread;
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSWindow};
-    use objc2_core_foundation::{CGPoint, CGRect, CGSize};
-    use objc2_core_graphics::{CGWindowImageOption, CGWindowListCreateImage, CGWindowListOption};
+    use objc2_core_foundation::{CFArray, CGPoint, CGRect, CGSize};
+    use objc2_core_graphics::{CGWindowImageOption, CGWindowListCreateImageFromArray};
     use objc2_foundation::NSDictionary;
 
-    let ptr = w.ns_window().map_err(|e| e.to_string())?;
-    // SAFETY: Tauri hands out the window's NSWindow, alive for this call on
-    // the main thread.
-    let window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
-    let id = window.windowNumber() as u32;
+    let number = |w: &tauri::WebviewWindow| -> Result<usize, String> {
+        let ptr = w.ns_window().map_err(|e| e.to_string())?;
+        // SAFETY: Tauri hands out the window's NSWindow, alive for this call
+        // on the main thread.
+        let window: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+        Ok(window.windowNumber() as usize)
+    };
+    let mut ids: Vec<*const std::ffi::c_void> = Vec::new();
+    for p in pages {
+        ids.push(number(p)? as *const std::ffi::c_void);
+    }
+    ids.push(number(w)? as *const std::ffi::c_void);
+    // SAFETY: CGWindowIDs stored as pointer-sized values with no callbacks,
+    // which is what CGWindowListCreateImageFromArray reads.
+    let array =
+        unsafe { CFArray::new(None, ids.as_mut_ptr(), ids.len() as isize, std::ptr::null()) }
+            .ok_or("CFArrayCreate returned nothing")?;
     let null = CGRect::new(
         CGPoint::new(f64::INFINITY, f64::INFINITY),
         CGSize::new(0.0, 0.0),
     );
-    let image = CGWindowListCreateImage(
-        null,
-        CGWindowListOption::OptionIncludingWindow,
-        id,
-        CGWindowImageOption::BoundsIgnoreFraming,
-    )
-    .ok_or("CGWindowListCreateImage returned nothing")?;
+    // SAFETY: the array holds window ids, as above.
+    let image = unsafe {
+        CGWindowListCreateImageFromArray(null, &array, CGWindowImageOption::BoundsIgnoreFraming)
+    }
+    .ok_or("CGWindowListCreateImageFromArray returned nothing")?;
     let rep = NSBitmapImageRep::initWithCGImage(NSBitmapImageRep::alloc(), &image);
     // SAFETY: an empty properties dictionary is valid for PNG.
     let png = unsafe {

@@ -67,7 +67,7 @@ objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSPanel", "NSWindow", "NSResponder", "NSBitmapImageRep", "NSImageRep", "NSGraphics", "NSImage"] }
 objc2-core-graphics = { version = "0.3", optional = true, features = ["CGWindow", "CGImage"] }
 objc2-foundation = { version = "0.3", features = ["NSData", "NSDictionary", "NSString", "NSBundle", "NSError", "NSSet", "NSArray"] }
-objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes"] }
+objc2-core-foundation = { version = "0.3", optional = true, features = ["CFCGTypes", "CFArray"] }
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "bitflags", "block2", "UNError", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 block2 = "0.6"
 
