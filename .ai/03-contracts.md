@@ -4042,7 +4042,7 @@ Brain DDL (migrations 0055, 0056).
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
 GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
 GET    /v1/brain/handoff        ?project= → {project, decisions: [BrainNode], memories: [BrainNode], max, budget, decisions_max, decisions_budget, served?: {on, left_off_at?, holdout_pct}}
-GET    /v1/brain/spend          ?days=1–90 (14) → {days: [{day, start, tokens, cost_usd, reads}], projects: [{project, reads, tokens, cost_usd, memories}], daily_tokens, spent_24h, claude_tokens_24h}
+GET    /v1/brain/spend          ?days=1–90 (14) → {days: [{day, start, tokens, cost_usd, reads, projects: [{project, retag?, tokens}]}], projects: [{project, reads, tokens, cost_usd, memories}], daily_tokens, spent_24h, claude_tokens_24h}
 GET    /v1/brain/decisions      ?project=&limit= → {project, decisions: [BrainNode]}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
 GET    /v1/brain/nodes/{id}     → {node: BrainNode, links: [{node, kind, out, weight}]}
@@ -4081,7 +4081,14 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   tokens_out` by when each finished, `cost_usd` their summed `cost_usd`
   (what claude reported, at API list price), `reads` the runs that asked
   claude (status `ok` or `failed`; a `skipped` session is no read, and
-  costs nothing). `projects` is the same window by the read session's
+  costs nothing), and `projects` the day's `tokens` split by whose they
+  were — `[{project, retag?, tokens}]`, keyed as the window's `projects`
+  below (a re-tag batch `{project: "", retag: true}`), most tokens first,
+  a tie by name with the re-tag batches last, only those that spent any
+  (a skipped run's tokens included), so they add up to the day's `tokens`;
+  `[]` on a day with nothing, never null. The dashboard stacks each day's
+  bar from it; a daemon from before it omits the field, and the dashboard
+  then draws plain bars. `projects` (top level) is the same window by the read session's
   project (`brain_runs` joined to `sessions`; `""` when the session has no
   project or is gone), most tokens first: `reads`, `tokens`, `cost_usd`,
   and `memories` — the `nodes` of the reads with status `ok`; a project

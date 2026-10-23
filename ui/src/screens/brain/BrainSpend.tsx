@@ -4,7 +4,9 @@
  * limit, as a line and a thin silver bar, and their share of every Claude
  * token Caprock recorded in the same 24 hours. While a catch-up runs, a
  * second line says how far it is. A click opens the last 14 days: tokens
- * per day against the limit, and per project the reads, tokens and memories.
+ * per day against the limit, each day stacked by the projects that spent
+ * it, and per project the reads, tokens (with a bar against the largest)
+ * and memories.
  *
  * Every figure is a count from GET /v1/brain/status and GET
  * /v1/brain/spend (03-contracts.md § Second Brain). The one estimate, the
@@ -68,13 +70,112 @@ function LimitBar({ spent, limit }: { spent: number; limit: number }) {
   )
 }
 
-/** Tokens per day, today the last, with the daily limit as a dashed line. */
-function DayChart({ days, limit }: { days: Spend['days']; limit: number }) {
+/** How many projects get a colour of their own in the stacks; the rest are
+ *  one grey *Other*. Three, because the validator passes three hues on
+ *  every pair (the table's swatches are compared across rows, not only
+ *  neighbours) and not four. */
+export const STACK_SLOTS = 3
+
+/** The colour of a stack slot, 0 the largest; -1 is *Other*. */
+export const slotColor = (slot: number) => (slot >= 0 && slot < STACK_SLOTS ? `var(--spend-${slot + 1})` : 'var(--spend-other)')
+
+/** What a project row, a day's part or a stack segment is keyed by: the
+ *  re-tag batches are no project and never share the "" of reads without one. */
+export const spendKey = (p: { project: string; retag?: boolean }) => (p.retag ? ':retag' : p.project)
+
+/** One part of a day's bar, bottom first. */
+export interface StackSegment { key: string; slot: number; tokens: number }
+
+/** The days as stacks: the keys that got a colour, largest first, and per
+ *  day its segments in slot order with *Other* (slot -1, key '') on top. */
+export interface SpendStacks { top: string[]; days: StackSegment[][] }
+
+/**
+ * Groups the days' parts into stacks: the STACK_SLOTS projects with the most
+ * tokens over the whole window each keep their own segment, in the same
+ * order every day (the largest at the bottom), and everything else — the
+ * re-tag batches always among it — sums into one *Other*. A tie goes by
+ * name, so the colours do not swap between reads. Null when a day has no
+ * parts listed (an older daemon), and the chart draws plain bars.
+ */
+export function spendStacks(days: Spend['days']): SpendStacks | null {
+  if (days.length === 0 || days.some((d) => !Array.isArray(d.projects))) return null
+  const sums = new Map<string, number>()
+  for (const d of days) {
+    for (const p of d.projects!) {
+      if (p.retag || !(p.tokens > 0)) continue
+      sums.set(p.project, (sums.get(p.project) ?? 0) + p.tokens)
+    }
+  }
+  const top = [...sums.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .slice(0, STACK_SLOTS).map(([k]) => k)
+  return {
+    top,
+    days: days.map((d) => {
+      const parts = top.map((key, slot): StackSegment => ({ key, slot, tokens: 0 }))
+      let other = 0
+      for (const p of d.projects!) {
+        if (!(p.tokens > 0)) continue
+        const slot = p.retag ? -1 : top.indexOf(p.project)
+        if (slot < 0) other += p.tokens
+        else parts[slot]!.tokens += p.tokens
+      }
+      const segs = parts.filter((s) => s.tokens > 0)
+      if (other > 0) segs.push({ key: '', slot: -1, tokens: other })
+      return segs
+    }),
+  }
+}
+
+/** Each row's tokens over the largest row's, 0–1: the leader is the full
+ *  bar. A row that spent anything is drawn at least as a sliver (RowBar). */
+export function rowShares(rows: Pick<Spend['projects'][number], 'tokens'>[]): number[] {
+  const max = Math.max(0, ...rows.map((r) => r.tokens))
+  return rows.map((r) => (max > 0 && r.tokens > 0 ? r.tokens / max : 0))
+}
+
+/** What a segment is called. */
+const segmentName = (s: StackSegment) => (s.slot < 0 ? 'Other' : s.key || 'No project')
+
+/** The thin bar after a row's tokens: its share of the largest row's. */
+function RowBar({ share }: { share: number }) {
+  return (
+    <div className="h-[4px] w-full overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-fg-muted)_12%,transparent)]" aria-hidden data-brain-spend-rowbar={share.toFixed(3)}>
+      {share > 0 && <div className="h-full rounded-full bg-[color-mix(in_srgb,var(--color-fg-muted)_55%,transparent)]" style={{ width: `max(3px, ${(share * 100).toFixed(1)}%)` }} />}
+    </div>
+  )
+}
+
+/** The square before a project's name: the colour its tokens wear in the bars. */
+function Swatch({ slot }: { slot: number }) {
+  return <span aria-hidden className="mr-1.5 inline-block h-[8px] w-[8px] shrink-0 rounded-[2px] align-[0.5px]" style={{ background: slotColor(slot) }} data-brain-spend-swatch={slot} />
+}
+
+/** Tokens per day, today the last, with the daily limit as a dashed line;
+ *  each day a stack of the projects that spent it when the daemon lists
+ *  them, else one silver bar. */
+function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number; stacks: SpendStacks | null }) {
   const max = Math.max(limit, ...days.map((d) => d.tokens), 1) * 1.08
   const limitAt = limit > 0 ? (limit / max) * 100 : null
+  // What the tooltip says: a segment under the pointer, or the day under
+  // the focus with each of its parts.
+  const [tip, setTip] = useState<{ i: number; seg?: StackSegment } | null>(null)
+  const over = (d: Spend['days'][number]) => limit > 0 && d.tokens > limit
+  const dayLabel = (d: Spend['days'][number], i: number) =>
+    `${dayName(d.day)}${i === days.length - 1 ? ' (today, so far)' : ''}: ${fmtTokens(d.tokens)} tokens, ${d.reads} ${d.reads === 1 ? 'read' : 'reads'}${over(d) ? ', over the daily limit' : ''}`
+  const tipText = (() => {
+    if (!tip) return null
+    const d = days[tip.i]
+    if (!d) return null
+    if (tip.seg) return [`${segmentName(tip.seg)} · ${dayName(d.day)} · ${tokensShort(tip.seg.tokens)} tokens`]
+    const lines = [dayLabel(d, tip.i)]
+    for (const s of [...(stacks?.days[tip.i] ?? [])].reverse()) lines.push(`${segmentName(s)} · ${tokensShort(s.tokens)}`)
+    return lines
+  })()
   return (
-    <figure className="grid gap-1" data-brain-spend-chart>
-      <div className="relative h-[96px]" role="img"
+    <figure className="grid gap-1" data-brain-spend-chart={stacks ? 'stacked' : 'plain'}>
+      <div className="relative h-[96px]" role="group" onMouseLeave={() => setTip(null)}
         aria-label={`Second Brain tokens per day, last ${days.length} days, against the daily limit of ${tokensShort(limit)}`}>
         {limitAt !== null && (
           <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-fg-muted/60" style={{ bottom: `${limitAt}%` }} data-brain-spend-limit>
@@ -85,15 +186,41 @@ function DayChart({ days, limit }: { days: Spend['days']; limit: number }) {
           {days.map((d, i) => {
             const h = d.tokens > 0 ? Math.max(2, (d.tokens / max) * 100) : 0
             const today = i === days.length - 1
+            const segs = stacks?.days[i]
             return (
-              <div key={d.day} className="flex h-full min-w-0 flex-1 items-end" data-brain-spend-day={d.day}
-                title={`${dayName(d.day)}${today ? ' (today, so far)' : ''}: ${fmtTokens(d.tokens)} tokens, ${d.reads} ${d.reads === 1 ? 'read' : 'reads'}`}>
-                <div className={`w-full rounded-t-[2px] ${d.tokens > limit && limit > 0 ? 'bg-warn' : 'bg-[var(--wisp-core)]'} ${today ? 'opacity-60' : 'opacity-90'}`}
-                  style={{ height: `${h}%` }} />
+              <div key={d.day} className="relative flex h-full min-w-0 flex-1 items-end rounded-[3px] focus:outline-none focus-visible:ring-1 focus-visible:ring-fg-muted"
+                data-brain-spend-day={d.day} data-brain-spend-over={over(d) ? '' : undefined}
+                tabIndex={0} aria-label={dayLabel(d, i)} title={stacks ? undefined : dayLabel(d, i)}
+                onFocus={() => setTip({ i })} onBlur={() => setTip(null)}>
+                {segs ? (
+                  <div className={`relative flex w-full flex-col-reverse gap-[2px] ${today ? 'opacity-70' : ''}`} style={{ height: `${h}%` }}>
+                    {segs.map((s, j) => (
+                      <div key={s.slot} className={`min-h-[1px] w-full ${j === segs.length - 1 ? 'rounded-t-[2px]' : ''}`}
+                        style={{ flex: `${s.tokens} 1 0px`, background: slotColor(s.slot) }}
+                        data-brain-spend-seg={s.slot < 0 ? 'other' : s.key}
+                        onMouseEnter={() => setTip({ i, seg: s })} />
+                    ))}
+                    {over(d) && (
+                      // Over the limit: a warn dot over the stack, the stack
+                      // keeping its colours (and the tooltip saying so).
+                      <span aria-hidden className="absolute left-1/2 top-[-9px] h-[6px] w-[6px] -translate-x-1/2 rounded-full bg-warn" data-brain-spend-overmark />
+                    )}
+                  </div>
+                ) : (
+                  <div className={`w-full rounded-t-[2px] ${over(d) ? 'bg-warn' : 'bg-[var(--wisp-core)]'} ${today ? 'opacity-60' : 'opacity-90'}`}
+                    style={{ height: `${h}%` }} />
+                )}
               </div>
             )
           })}
         </div>
+        {tipText && tip && (
+          <div role="tooltip" data-brain-spend-tip
+            className="pointer-events-none absolute bottom-full z-10 mb-1 max-w-[240px] whitespace-nowrap rounded-[6px] border border-border bg-panel-2 px-2 py-1 text-[11.5px] leading-snug text-fg shadow-panel"
+            style={tip.i < days.length / 2 ? { left: `${(tip.i / days.length) * 100}%` } : { right: `${((days.length - 1 - tip.i) / days.length) * 100}%` }}>
+            {tipText.map((l, k) => <div key={k} className={k > 0 ? 'text-fg-muted' : ''}>{l}</div>)}
+          </div>
+        )}
       </div>
       <div className="flex gap-[3px] text-[10px] leading-none text-fg-muted" aria-hidden>
         {days.map((d, i) => (
@@ -110,6 +237,8 @@ function Detail({ spend, id }: { spend: Spend | null; id: string }) {
   }
   const total = spend.days.reduce((n, d) => n + d.tokens, 0)
   const cost = spend.days.reduce((n, d) => n + d.cost_usd, 0)
+  const stacks = spendStacks(spend.days)
+  const shares = rowShares(spend.projects)
   return (
     <div id={id} className="grid min-w-0 gap-3 rounded-[10px] border border-border bg-panel px-3.5 py-3" data-brain-spend-detail>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
@@ -117,7 +246,7 @@ function Detail({ spend, id }: { spend: Spend | null; id: string }) {
         <span className="text-[12.5px] text-fg"><span className="num">{fmtTokens(total)}</span> tokens</span>
         <span className="text-[12px] text-fg-muted" title={SUBSCRIPTION_NOTE} data-brain-spend-cost><span className="num">{fmtUSD(cost)}</span> at API list price</span>
       </div>
-      <DayChart days={spend.days} limit={spend.daily_tokens} />
+      <DayChart days={spend.days} limit={spend.daily_tokens} stacks={stacks} />
       {spend.projects.length > 0 ? (
         <table className="w-full table-fixed text-[12.5px]" data-brain-spend-projects>
           <thead>
@@ -125,18 +254,21 @@ function Detail({ spend, id }: { spend: Spend | null; id: string }) {
               <th scope="col" className="pb-1 text-left font-medium">Project</th>
               <th scope="col" className="w-[52px] pb-1 text-right font-medium">Reads</th>
               <th scope="col" className="w-[64px] pb-1 text-right font-medium">Tokens</th>
+              <th scope="col" className="w-[40px] pb-1 sm:w-[22%]"><span className="sr-only">Share of the largest</span></th>
               <th scope="col" className="w-[78px] pb-1 text-right font-medium">Memories</th>
             </tr>
           </thead>
           <tbody>
-            {spend.projects.map((p) => (
+            {spend.projects.map((p, i) => (
               <tr key={p.retag ? ':retag' : p.project || '-'} className="border-t border-border" data-brain-spend-project={p.retag ? undefined : p.project} data-brain-spend-retag={p.retag ? '' : undefined}>
                 <td className={`truncate py-1 pr-2 ${p.retag ? 'text-fg-muted' : 'text-fg'}`}
                   title={p.retag ? 'Batches that gave memories kept before keywords existed their keywords; Memories is how many got them' : p.project}>
+                  {stacks && <Swatch slot={stacks.top.indexOf(spendKey(p))} />}
                   {p.retag ? RETAG_ROW : p.project || 'No project'}
                 </td>
                 <td className="num py-1 text-right text-fg-muted">{p.reads}</td>
                 <td className="num py-1 text-right text-fg" title={`${fmtTokens(p.tokens)} tokens · ${fmtUSD(p.cost_usd)} at API list price`}>{tokensShort(p.tokens)}</td>
+                <td className="py-1 pl-2"><RowBar share={shares[i]!} /></td>
                 <td className="num py-1 text-right text-fg-muted">{p.memories}</td>
               </tr>
             ))}

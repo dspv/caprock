@@ -1689,7 +1689,15 @@ export interface BrainCatchUp {
 }
 
 /** One local day of the reads (GET /v1/brain/spend). */
-export interface BrainDaySpend { day: string; start: number; tokens: number; cost_usd: number; reads: number }
+export interface BrainDaySpend {
+  day: string; start: number; tokens: number; cost_usd: number; reads: number
+  /** The day's tokens by project, keyed as `BrainProjectSpend` is, most
+   *  first; they add up to `tokens`. Absent from an older daemon. */
+  projects?: BrainDayProject[]
+}
+
+/** One project's tokens on one day; `retag` the re-tag batches. */
+export interface BrainDayProject { project: string; retag?: boolean; tokens: number }
 
 /** One project's share of the reads over the window; `retag` marks the one
  *  row that is no project: the batches that gave older memories keywords. */

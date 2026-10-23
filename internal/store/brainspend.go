@@ -1,7 +1,10 @@
 package store
 
 import (
+	"cmp"
 	"context"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -11,18 +14,24 @@ import (
 
 // BrainSpendRow is one read's spend: when it finished, its tokens (input
 // and output together, as brain_runs keeps them) and cost, and whether
-// claude was asked at all — a skipped session costs nothing and is no read.
+// claude was asked at all — a skipped session costs nothing and is no read —
+// and whose it was: the read session's project ("" when it has none or is
+// gone), or Retag for a re-tag batch, as BrainSpendByProject groups them.
 type BrainSpendRow struct {
 	FinishedAt int64
 	Tokens     int64
 	CostUSD    float64
 	Read       bool
+	Project    string
+	Retag      bool
 }
 
 // BrainSpendRows lists every read that finished since a moment, oldest first.
 func BrainSpendRows(ctx context.Context, q Querier, since int64) ([]BrainSpendRow, error) {
-	rows, err := q.QueryContext(ctx, `SELECT finished_at, tokens_in + tokens_out, cost_usd, status != 'skipped'
-		FROM brain_runs WHERE finished_at >= ? ORDER BY finished_at`, since)
+	rows, err := q.QueryContext(ctx, `SELECT r.finished_at, r.tokens_in + r.tokens_out, r.cost_usd, r.status != 'skipped',
+		       COALESCE(s.project, ''), r.session_id = ?
+		FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id
+		WHERE r.finished_at >= ? ORDER BY r.finished_at`, BrainRetagSession, since)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +39,7 @@ func BrainSpendRows(ctx context.Context, q Querier, since int64) ([]BrainSpendRo
 	out := []BrainSpendRow{}
 	for rows.Next() {
 		var r BrainSpendRow
-		if err := rows.Scan(&r.FinishedAt, &r.Tokens, &r.CostUSD, &r.Read); err != nil {
+		if err := rows.Scan(&r.FinishedAt, &r.Tokens, &r.CostUSD, &r.Read, &r.Project, &r.Retag); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -47,6 +56,17 @@ type BrainDaySpend struct {
 	Tokens  int64   `json:"tokens"`
 	CostUSD float64 `json:"cost_usd"`
 	Reads   int     `json:"reads"`
+	// Projects is the day's tokens by whose they were, keyed as the
+	// window's projects are (project, and retag for the re-tag batches),
+	// most tokens first; only those that spent any. They add up to Tokens.
+	Projects []BrainDayProject `json:"projects"`
+}
+
+// BrainDayProject is one project's tokens on one day.
+type BrainDayProject struct {
+	Project string `json:"project"`
+	Retag   bool   `json:"retag,omitempty"`
+	Tokens  int64  `json:"tokens"`
 }
 
 // BrainSpendStart is local midnight days-1 days before now's: where a
@@ -72,7 +92,7 @@ func BucketBrainDays(runs []BrainSpendRow, now time.Time, days int) []BrainDaySp
 	bounds := make([]int64, days+1)
 	for i := range days {
 		d := day(i)
-		out[i] = BrainDaySpend{Day: d.Format("2006-01-02"), Start: d.UnixMilli()}
+		out[i] = BrainDaySpend{Day: d.Format("2006-01-02"), Start: d.UnixMilli(), Projects: []BrainDayProject{}}
 		bounds[i] = d.UnixMilli()
 	}
 	bounds[days] = day(days).UnixMilli()
@@ -89,6 +109,33 @@ func BucketBrainDays(runs []BrainSpendRow, now time.Time, days int) []BrainDaySp
 		if r.Read {
 			out[i].Reads++
 		}
+		if r.Tokens == 0 {
+			continue
+		}
+		ps := out[i].Projects
+		j := 0
+		for j < len(ps) && (ps[j].Project != r.Project || ps[j].Retag != r.Retag) {
+			j++
+		}
+		if j == len(ps) {
+			ps = append(ps, BrainDayProject{Project: r.Project, Retag: r.Retag})
+		}
+		ps[j].Tokens += r.Tokens
+		out[i].Projects = ps
+	}
+	for i := range out {
+		slices.SortFunc(out[i].Projects, func(a, b BrainDayProject) int {
+			if c := cmp.Compare(b.Tokens, a.Tokens); c != 0 {
+				return c
+			}
+			if a.Retag != b.Retag {
+				if a.Retag {
+					return 1
+				}
+				return -1
+			}
+			return strings.Compare(a.Project, b.Project)
+		})
 	}
 	return out
 }
