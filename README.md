@@ -15,10 +15,10 @@ brew install --cask dspv/tap/caprock-app
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/readme/hero-light.webp">
-  <img alt="The Caprock app: six Claude Code sessions in tabs, one running six background agents; on the right its cost per hour, spend chart, subagents and context; below, the repository's pull requests with their CI checks" src="docs/readme/hero.webp">
+  <img alt="The Caprock app: six Claude Code sessions in tabs and in the sidebar, one of them waiting on you; the one in front runs background agents, and on the right are its cost per hour, context, plan limits, spend chart and running subagents" src="docs/readme/hero.webp">
 </picture>
 
-<sub>A real Caprock work session in this repository. Example figures.</sub>
+<sub>A real Caprock work session in this repository, replayed on a demo stand. Example figures.</sub>
 
 Other downloads: [macOS .dmg](https://github.com/dspv/caprock/releases/latest/download/Caprock-macOS.dmg) ·
 [Windows](https://github.com/dspv/caprock/releases/latest/download/Caprock-Windows-setup.exe) ·
@@ -96,13 +96,13 @@ a branch behind master gets *Fix CI with agent*, *Fix conflict with agent* or
 without leaving the window.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/readme/deck-light.webp">
-  <img alt="The Pull requests and CI tab: merges in 14 days, time to merge, CI time, red runs and Actions minutes above; the PR list on the left; one PR's checks as a job-by-runner grid on the right, with Fix CI with agent and Re-run checks" src="docs/readme/deck.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/pipeline-light.webp">
+  <img alt="The Pipeline: what needs a fix, merges a day and agent spend over 14 days above; below, the next release with each open pull request's progress, its CI state per OS, what the agents spent on it and its age" src="docs/readme/pipeline.webp">
 </picture>
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/readme/changes-light.webp">
-  <img alt="The Changes view on a feature branch: the pull request's checks with two failed Go jobs and Fix with agent, the changed files, a diff, and Commit and Commit and Push" src="docs/readme/changes.webp">
+  <img alt="The Changes view on a feature branch: the pull request with its three failed Go checks and Fix with agent, the changed files, a diff, and Commit all and Commit and Push" src="docs/readme/changes.webp">
 </picture>
 
 ## And the rest
