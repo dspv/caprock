@@ -7,8 +7,11 @@
  * the interface size), so the window laid over it is exactly that big.
  *
  * Three fits (`fitOf`): the whole phone; the page area alone in a thin rim
- * when the phone does not fit the tab; the page area at its true size,
- * running past the tab's edge, when even that does not fit. Never scaled.
+ * when the phone does not fit the tab; that rim drawn smaller when even it
+ * does not fit (`scaled`: the caller passes the interface size divided by
+ * `pageScale`, and the shell zooms the page out to match, so it still lays
+ * out at the device's width). The page window is a native window nothing
+ * here can clip, so the page area never runs past the tab.
  */
 import type { ReactNode, Ref } from 'react'
 import { PAGE_RIM, SE_CHIN, SE_FOREHEAD, type Band, type Device, type Fit, type Layout } from '@/lib/phonemode'
@@ -48,10 +51,9 @@ export function PhoneFrame({ device: d, layout: l, rotate, fit, zoom, host, page
       {children}
     </div>
   )
-  if (fit === 'over') return <div data-phone-fit="over" className="shrink-0">{page}</div>
-  if (fit === 'page') {
+  if (fit === 'page' || fit === 'scaled') {
     return (
-      <div data-phone-fit="page" className="shrink-0" style={{ padding: px(PAGE_RIM), background: BODY, borderRadius: px(12), boxShadow: `0 0 0 1px ${EDGE}` }}>
+      <div data-phone-fit={fit} className="shrink-0" style={{ padding: px(PAGE_RIM), background: BODY, borderRadius: px(12), boxShadow: `0 0 0 1px ${EDGE}` }}>
         {page}
       </div>
     )

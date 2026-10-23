@@ -5434,8 +5434,11 @@ terminal keeps it):
   leave, at the device's size in logical pixels, so media queries,
   `innerWidth`/`innerHeight` and `100dvh` read the device. When the phone
   does not fit the tab, the page area alone is drawn in a thin rim; when even
-  that does not fit, it keeps its size and runs past the tab's edge with a
-  line saying so. It is never scaled.
+  that does not fit, it ~~keeps its size and runs past the tab's edge with a
+  line saying so. It is never scaled~~ is drawn smaller to fit and the page
+  zoomed out by the same factor, so it still lays out at the device's width
+  (amended 2026-10-23: a native window is not clipped by the tab, and the
+  true-size page area drew over the status bar and the Dock).
 - **Devices:** iPhone 16 (393×852 @3), iPhone SE 3rd gen (375×667 @2),
   Pixel 9 (412×923), Galaxy S24 (360×780), and a custom W×H page. The
   screens are sourced; every bar height is an estimate, marked *est.* in the

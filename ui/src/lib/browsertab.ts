@@ -341,6 +341,13 @@ export interface BrowserNews {
   /** `measure`'s answer: the document's width and the width it is laid out in, CSS px. */
   doc?: number
   view?: number
+  /**
+   * Nothing answers at the address a load was asked for (browser.rs `probe`)
+   * and the page reported nothing: the sentence that says so, with `url`.
+   */
+  unreachable?: string
+  /** Something answers at the address a load was asked for. */
+  reachable?: boolean
 }
 
 /** Whether a page's document is wider than its window: it runs past the phone's edge. */

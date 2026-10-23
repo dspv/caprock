@@ -279,19 +279,41 @@ export function frameSize(d: Device, l: Layout, rotate: boolean): { w: number; h
 /**
  * How the frame is drawn in a box of `avail` logical px: `full`, the whole
  * phone; `page`, the page area alone in a thin rim (the bars are named, not
- * drawn) when the phone is taller or wider than the box; `over`, even the
- * page area does not fit — it keeps its true size and runs past the box,
- * and the bar says so. The page area is never scaled: its size is the point.
+ * drawn) when the phone is taller or wider than the box; `scaled`, even the
+ * page area does not fit — it is drawn smaller (`pageScale`), and the shell
+ * zooms the page out by the same factor so it still lays out at the
+ * device's true CSS width. The page window is a native window that nothing
+ * in the dashboard clips: it never runs past the box.
  */
-export type Fit = 'full' | 'page' | 'over'
+export type Fit = 'full' | 'page' | 'scaled'
 export const FIT_MARGIN = 16
 export const PAGE_RIM = 6
+/** The smallest a page area is drawn at; the shell's zoom stops at a tenth too (browser.rs `zoom_for`). */
+export const MIN_PAGE_SCALE = 0.1
 
 export function fitOf(frame: { w: number; h: number }, page: { w: number; h: number }, avail: { w: number; h: number }): Fit {
   const room = (w: number, h: number) => w + 2 * FIT_MARGIN <= avail.w && h + 2 * FIT_MARGIN <= avail.h
   if (room(frame.w, frame.h)) return 'full'
   if (room(page.w + 2 * PAGE_RIM, page.h + 2 * PAGE_RIM)) return 'page'
-  return 'over'
+  return 'scaled'
+}
+
+/**
+ * The scale a `scaled` page area (in its rim) is drawn at to fit `avail`
+ * logical px with the margin: under 1, rounded down so it never overshoots,
+ * never under MIN_PAGE_SCALE. 1 when it fits as it is.
+ */
+export function pageScale(page: { w: number; h: number }, avail: { w: number; h: number }): number {
+  const w = page.w + 2 * PAGE_RIM
+  const h = page.h + 2 * PAGE_RIM
+  if (!(w > 0) || !(h > 0) || !Number.isFinite(avail.w) || !Number.isFinite(avail.h)) return 1
+  const s = Math.min(1, (avail.w - 2 * FIT_MARGIN) / w, (avail.h - 2 * FIT_MARGIN) / h)
+  return Math.max(MIN_PAGE_SCALE, Math.floor(s * 1000) / 1000)
+}
+
+/** A device pixel ratio as the bar shows it: two decimals at most (2.200000047683716 is 2.2). */
+export function dprText(n: number): string {
+  return Number.isFinite(n) && n > 0 ? String(Math.round(n * 100) / 100) : '1'
 }
 
 /** What the shell is told for the page in phone mode (browser.rs `Phone`). */
@@ -299,10 +321,10 @@ export interface PhoneSpec {
   ua: string
   touch: boolean
   /**
-   * Side by side: the page's CSS width. The window is drawn smaller than
-   * that, so the shell zooms the page out by window ÷ width (WKWebView
-   * pageZoom, WebView2 ZoomFactor, WebKitGTK zoom level) and the page still
-   * lays out at the phone's width. Absent, the page is never zoomed.
+   * Side by side, or a page area `scaled` to fit the tab: the page's CSS
+   * width. The window is drawn smaller than that, so the shell zooms the
+   * page out by window ÷ width (WKWebView pageZoom, WebView2 ZoomFactor,
+   * WebKitGTK zoom level) and the page still lays out at the phone's width. Absent, the page is never zoomed.
    */
   width?: number
 }
