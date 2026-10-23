@@ -21,7 +21,7 @@ import { fmtTokens, fmtUSD } from '@/lib/format'
  * bars against — which is the entire job of the line. Two or three rules: any
  * more and they compete with the bars they exist to explain.
  */
-function gridLines(max: number): number[] {
+export function gridLines(max: number): number[] {
   if (!Number.isFinite(max) || max <= 0) return []
   // max/3, not max/2: rounding a half-max step UP to a nice number almost
   // always lands above half the height, leaving exactly one line on the

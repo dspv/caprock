@@ -17,6 +17,9 @@ export interface Segment {
   display: string
   /** A short gloss printed under the label in the legend ("re-reading context"). */
   detail?: string
+  /** A colour of its own, overriding the palette by position: a list whose
+   *  rows must wear the colours of a chart beside it (Second Brain's spend). */
+  color?: string
 }
 
 /**
@@ -34,6 +37,7 @@ export const SEGMENT_COLORS = [
 export const OTHER_COLOR = 'var(--color-border-strong)'
 
 export function colorOf(seg: Segment, i: number): string {
+  if (seg.color) return seg.color
   return seg.key === '__other' ? OTHER_COLOR : SEGMENT_COLORS[i % SEGMENT_COLORS.length]!
 }
 

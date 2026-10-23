@@ -3,10 +3,13 @@
  * 2026-10-22): the reads' tokens of the last 24 hours against the daily
  * limit, as a line and a thin silver bar, and their share of every Claude
  * token Caprock recorded in the same 24 hours. While a catch-up runs, a
- * second line says how far it is. A click opens the last 14 days: tokens
- * per day against the limit, each day stacked by the projects that spent
- * it, and per project the reads, tokens (with a bar against the largest)
- * and memories.
+ * second line says how far it is. A click opens the last 14 days, dressed
+ * as the Dashboard is (owner, 2026-10-23, translated: "styled like our
+ * Dashboard — big figures, charts you get at once, a clear top"): a row of
+ * its Stat figures, the tokens per day in its chart style stacked by the
+ * projects that spent them, and the top five projects as At a glance draws
+ * a ranked list, the rest one *and N more* line that opens every project's
+ * reads, tokens and memories.
  *
  * Every figure is a count from GET /v1/brain/status and GET
  * /v1/brain/spend (03-contracts.md § Second Brain). The one estimate, the
@@ -19,7 +22,10 @@ import { api, type BrainAutoStatus, type BrainCatchUp, type BrainSpend as Spend 
 import { tokensShort } from '@/lib/brain'
 import { fmtTokens, fmtUSD } from '@/lib/format'
 import { everyWhileVisible } from '@/lib/visible'
-import { dayName } from '@/components/BarChart'
+import { dayName, gridLines } from '@/components/BarChart'
+import { Panel, Stat } from '@/components/ui'
+import { ShareBlock } from '@/components/AtAGlance'
+import { sharePct, type Segment } from '@/components/Donut'
 
 /** The days the detail shows. */
 export const SPEND_DAYS = 14
@@ -152,12 +158,27 @@ function Swatch({ slot }: { slot: number }) {
   return <span aria-hidden className="mr-1.5 inline-block h-[8px] w-[8px] shrink-0 rounded-[2px] align-[0.5px]" style={{ background: slotColor(slot) }} data-brain-spend-swatch={slot} />
 }
 
-/** Tokens per day, today the last, with the daily limit as a dashed line;
- *  each day a stack of the projects that spent it when the daemon lists
- *  them, else one silver bar. */
+/** A gridline's figure, as short as the ruler wants it: *500k*, *1M*, *1.5M*. */
+export function gridLabel(v: number): string {
+  if (v >= 1_000_000) return `${Number((v / 1_000_000).toFixed(1))}M`
+  if (v >= 1000) return `${Math.round(v / 1000)}k`
+  return String(Math.round(v))
+}
+
+/**
+ * Tokens per day, today the last, in the Dashboard's chart dress (the daily
+ * cost bars, components/BarChart.tsx): its 1/2/5 ruler, faint and labelled
+ * on the right, the day under each bar in 9px figures. The daily limit is
+ * the one dashed line, named on the left so it never sits on a ruler's
+ * figure. Each day a stack of the projects that spent it when the daemon
+ * lists them, else one silver bar.
+ */
 function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number; stacks: SpendStacks | null }) {
   const max = Math.max(limit, ...days.map((d) => d.tokens), 1) * 1.08
   const limitAt = limit > 0 ? (limit / max) * 100 : null
+  // A ruler line within a few per cent of the limit would print a figure on
+  // top of the limit's own; the limit says it.
+  const rules = gridLines(max).filter((v) => !(limit > 0 && Math.abs(v - limit) / max < 0.08))
   // What the tooltip says: a segment under the pointer, or the day under
   // the focus with each of its parts.
   const [tip, setTip] = useState<{ i: number; seg?: StackSegment } | null>(null)
@@ -173,16 +194,32 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
     for (const s of [...(stacks?.days[tip.i] ?? [])].reverse()) lines.push(`${segmentName(s)} · ${tokensShort(s.tokens)}`)
     return lines
   })()
+  const overDays = days.filter(over).length
   return (
-    <figure className="grid gap-1" data-brain-spend-chart={stacks ? 'stacked' : 'plain'}>
-      <div className="relative h-[96px]" role="group" onMouseLeave={() => setTip(null)}
+    <figure className="m-0 flex min-w-0 flex-col gap-1.5" data-brain-spend-chart={stacks ? 'stacked' : 'plain'}>
+      <figcaption className="flex items-baseline gap-2 text-[10px] uppercase tracking-[0.12em] text-fg-faint">
+        <span>Tokens per day</span>
+        {overDays > 0 && (
+          <span className="ml-auto normal-case tracking-normal text-[11px] text-warn" data-brain-spend-overdays>
+            {overDays} {overDays === 1 ? 'day' : 'days'} over the limit
+          </span>
+        )}
+      </figcaption>
+      <div className="relative min-h-[128px] flex-1" role="group" onMouseLeave={() => setTip(null)}
         aria-label={`Second Brain tokens per day, last ${days.length} days, against the daily limit of ${tokensShort(limit)}`}>
+        {rules.map((v) => (
+          <div key={v} aria-hidden className="pointer-events-none absolute inset-x-0 border-t border-border/60" style={{ bottom: `${(v / max) * 100}%` }} data-brain-spend-rule>
+            <span className="num absolute -top-[5px] right-0 w-7 text-right text-[9px] leading-none text-fg-faint">{gridLabel(v)}</span>
+          </div>
+        ))}
         {limitAt !== null && (
-          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-fg-muted/60" style={{ bottom: `${limitAt}%` }} data-brain-spend-limit>
-            <span className="absolute right-0 -translate-y-full pb-0.5 text-[10.5px] leading-none text-fg-muted">limit {tokensShort(limit)}</span>
+          <div className="pointer-events-none absolute left-0 right-8 z-[1] border-t border-dashed border-fg-muted/70" style={{ bottom: `${limitAt}%` }} data-brain-spend-limit>
+            <span className="num absolute left-0 -translate-y-full pb-0.5 text-[9.5px] leading-none text-fg-muted">limit {tokensShort(limit)}</span>
           </div>
         )}
-        <div className="absolute inset-0 flex items-end gap-[3px]">
+        {/* The bars stop short of the ruler's figures: a gutter on the
+          * right holds them, so no bar ever lies under a label. */}
+        <div className="absolute inset-y-0 left-0 right-8 flex items-end gap-[3px]" data-brain-spend-bars>
           {days.map((d, i) => {
             const h = d.tokens > 0 ? Math.max(2, (d.tokens / max) * 100) : 0
             const today = i === days.length - 1
@@ -195,7 +232,7 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
                 {segs ? (
                   <div className={`relative flex w-full flex-col-reverse gap-[2px] ${today ? 'opacity-70' : ''}`} style={{ height: `${h}%` }}>
                     {segs.map((s, j) => (
-                      <div key={s.slot} className={`min-h-[1px] w-full ${j === segs.length - 1 ? 'rounded-t-[2px]' : ''}`}
+                      <div key={s.slot} className={`min-h-[1px] w-full ${j === segs.length - 1 ? 'rounded-t-sm' : ''}`}
                         style={{ flex: `${s.tokens} 1 0px`, background: slotColor(s.slot) }}
                         data-brain-spend-seg={s.slot < 0 ? 'other' : s.key}
                         onMouseEnter={() => setTip({ i, seg: s })} />
@@ -207,7 +244,7 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
                     )}
                   </div>
                 ) : (
-                  <div className={`w-full rounded-t-[2px] ${over(d) ? 'bg-warn' : 'bg-[var(--wisp-core)]'} ${today ? 'opacity-60' : 'opacity-90'}`}
+                  <div className={`w-full rounded-t-sm ${over(d) ? 'bg-warn' : 'bg-[var(--wisp-core)]'} ${today ? 'opacity-60' : 'opacity-90'}`}
                     style={{ height: `${h}%` }} />
                 )}
               </div>
@@ -217,67 +254,147 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
         {tipText && tip && (
           <div role="tooltip" data-brain-spend-tip
             className="pointer-events-none absolute bottom-full z-10 mb-1 max-w-[240px] whitespace-nowrap rounded-[6px] border border-border bg-panel-2 px-2 py-1 text-[11.5px] leading-snug text-fg shadow-panel"
-            style={tip.i < days.length / 2 ? { left: `${(tip.i / days.length) * 100}%` } : { right: `${((days.length - 1 - tip.i) / days.length) * 100}%` }}>
+            style={tip.i < days.length / 2 ? { left: `calc((100% - 2rem) * ${tip.i / days.length})` } : { right: `calc(2rem + (100% - 2rem) * ${(days.length - 1 - tip.i) / days.length})` }}>
             {tipText.map((l, k) => <div key={k} className={k > 0 ? 'text-fg-muted' : ''}>{l}</div>)}
           </div>
         )}
       </div>
-      <div className="flex gap-[3px] text-[10px] leading-none text-fg-muted" aria-hidden>
+      <div className="flex gap-[3px] pr-8 leading-none" aria-hidden>
         {days.map((d, i) => (
-          <span key={d.day} className="min-w-0 flex-1 text-center">{i === days.length - 1 ? 'now' : Number(d.day.slice(8))}</span>
+          <span key={d.day} className="num min-w-0 flex-1 text-center text-[9px] text-fg-faint">{i === days.length - 1 ? 'now' : Number(d.day.slice(8))}</span>
         ))}
       </div>
     </figure>
   )
 }
 
-function Detail({ spend, id }: { spend: Spend | null; id: string }) {
+/** How many projects the top names; the rest fold into one *and N more*. */
+export const TOP_ROWS = 5
+
+/** What a project row is called. */
+const projectName = (p: Spend['projects'][number]) => (p.retag ? RETAG_ROW : p.project || 'No project')
+
+/** The top of the window: the TOP_ROWS projects with the most tokens, each
+ *  in the colour its tokens wear in the bars (the grey of *Other* past the
+ *  three that have one), and what the rest add up to. Shares are of every
+ *  token in the window, never of the rows shown. */
+export interface SpendTop { rows: Segment[]; total: number; rest: { count: number; tokens: number } }
+
+export function spendTop(projects: Spend['projects'], stacks: SpendStacks | null): SpendTop {
+  const sorted = [...projects].filter((p) => p.tokens > 0).sort((a, b) => b.tokens - a.tokens)
+  const total = sorted.reduce((n, p) => n + p.tokens, 0)
+  const head = sorted.slice(0, TOP_ROWS)
+  const tail = sorted.slice(TOP_ROWS)
+  return {
+    total,
+    rows: head.map((p) => ({
+      key: spendKey(p),
+      label: projectName(p),
+      value: p.tokens,
+      display: fmtTokens(p.tokens),
+      // Without the daemon's parts the bars are plain silver, so no colour
+      // carries a project there; the Dashboard's own palette stands in.
+      color: stacks ? slotColor(stacks.top.indexOf(spendKey(p))) : undefined,
+    })),
+    rest: { count: tail.length, tokens: tail.reduce((n, p) => n + p.tokens, 0) },
+  }
+}
+
+/** Every project: reads, tokens with a bar against the largest, memories. */
+function ProjectTable({ projects, stacks }: { projects: Spend['projects']; stacks: SpendStacks | null }) {
+  const shares = rowShares(projects)
+  return (
+    <table className="w-full table-fixed text-[12.5px]" data-brain-spend-projects>
+      <thead>
+        <tr className="text-[11px] text-fg-faint">
+          <th scope="col" className="pb-1 text-left font-normal">project</th>
+          <th scope="col" className="w-[52px] pb-1 text-right font-normal">reads</th>
+          <th scope="col" className="w-[64px] pb-1 text-right font-normal">tokens</th>
+          <th scope="col" className="w-[40px] pb-1 sm:w-[22%]"><span className="sr-only">Share of the largest</span></th>
+          <th scope="col" className="w-[72px] pb-1 text-right font-normal">memories</th>
+        </tr>
+      </thead>
+      <tbody>
+        {projects.map((p, i) => (
+          <tr key={p.retag ? ':retag' : p.project || '-'} className="border-t border-border" data-brain-spend-project={p.retag ? undefined : p.project} data-brain-spend-retag={p.retag ? '' : undefined}>
+            <td className={`truncate py-1 pr-2 ${p.retag ? 'text-fg-muted' : 'text-fg'}`}
+              title={p.retag ? 'Batches that gave memories kept before keywords existed their keywords; Memories is how many got them' : p.project}>
+              {stacks && <Swatch slot={stacks.top.indexOf(spendKey(p))} />}
+              {projectName(p)}
+            </td>
+            <td className="num py-1 text-right text-fg-muted">{p.reads}</td>
+            <td className="num py-1 text-right text-fg" title={`${fmtTokens(p.tokens)} tokens · ${fmtUSD(p.cost_usd)} at API list price`}>{fmtTokens(p.tokens)}</td>
+            <td className="py-1 pl-2"><RowBar share={shares[i]!} /></td>
+            <td className="num py-1 text-right text-fg-muted">{p.memories}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/** The top projects, the Dashboard's ranked list (At a glance, Numbers):
+ *  the leader's share large, the whole as one bar, a row and a bar each;
+ *  then one line for the rest that opens the table of every project. */
+function TopProjects({ spend, stacks }: { spend: Spend; stacks: SpendStacks | null }) {
+  const [all, setAll] = useState(false)
+  const top = spendTop(spend.projects, stacks)
+  const restShare = top.total > 0 ? sharePct(top.rest.tokens, top.total) : ''
+  return (
+    <div className="grid min-w-0 content-start gap-1" data-brain-spend-top>
+      <ShareBlock title="Top projects" head={['project', 'reads', 'tokens']} of="of the tokens"
+        segments={top.rows} total={top.total} rest={{ value: top.rest.tokens, color: slotColor(-1) }}
+        extra={top.rows.map((r) => String(spend.projects.find((p) => spendKey(p) === r.key)?.reads ?? ''))} />
+      <button type="button" onClick={() => setAll((v) => !v)} aria-expanded={all} data-brain-spend-more
+        className="flex items-baseline gap-2 rounded-md py-1 text-left text-[12.5px] text-fg-muted hover:text-fg">
+        <span aria-hidden className={`inline-block w-2.5 text-fg-faint transition-transform motion-reduce:transition-none ${all ? 'rotate-90' : ''}`}>›</span>
+        {all
+          ? <span>Hide every project</span>
+          : top.rest.count > 0
+            ? <span>and {top.rest.count} more <span className="num text-fg-faint">· {fmtTokens(top.rest.tokens)} · {restShare}</span></span>
+            : <span>Reads and memories per project</span>}
+      </button>
+      {all && <ProjectTable projects={spend.projects} stacks={stacks} />}
+    </div>
+  )
+}
+
+function Detail({ spend, auto, id }: { spend: Spend | null; auto: BrainAutoStatus; id: string }) {
   if (!spend) {
-    return <div id={id} className="h-[120px] animate-pulse rounded-[10px] border border-border bg-panel" data-brain-spend-detail="loading" />
+    return <div id={id} className="h-[120px] animate-pulse rounded-[var(--radius-panel)] border border-border bg-panel" data-brain-spend-detail="loading" />
   }
   const total = spend.days.reduce((n, d) => n + d.tokens, 0)
   const cost = spend.days.reduce((n, d) => n + d.cost_usd, 0)
+  const reads = spend.days.reduce((n, d) => n + d.reads, 0)
+  const memories = spend.projects.reduce((n, p) => n + p.memories, 0)
   const stacks = spendStacks(spend.days)
-  const shares = rowShares(spend.projects)
+  const limit = auto.daily_tokens
+  const todayPct = limit > 0 ? Math.round((Math.max(0, auto.spent) / limit) * 100) : null
   return (
-    <div id={id} className="grid min-w-0 gap-3 rounded-[10px] border border-border bg-panel px-3.5 py-3" data-brain-spend-detail>
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.06em] text-fg-muted">Last {spend.days.length} days</h3>
-        <span className="text-[12.5px] text-fg"><span className="num">{fmtTokens(total)}</span> tokens</span>
-        <span className="text-[12px] text-fg-muted" title={SUBSCRIPTION_NOTE} data-brain-spend-cost><span className="num">{fmtUSD(cost)}</span> at API list price</span>
-      </div>
-      <DayChart days={spend.days} limit={spend.daily_tokens} stacks={stacks} />
-      {spend.projects.length > 0 ? (
-        <table className="w-full table-fixed text-[12.5px]" data-brain-spend-projects>
-          <thead>
-            <tr className="text-[11px] uppercase tracking-[0.06em] text-fg-muted">
-              <th scope="col" className="pb-1 text-left font-medium">Project</th>
-              <th scope="col" className="w-[52px] pb-1 text-right font-medium">Reads</th>
-              <th scope="col" className="w-[64px] pb-1 text-right font-medium">Tokens</th>
-              <th scope="col" className="w-[40px] pb-1 sm:w-[22%]"><span className="sr-only">Share of the largest</span></th>
-              <th scope="col" className="w-[78px] pb-1 text-right font-medium">Memories</th>
-            </tr>
-          </thead>
-          <tbody>
-            {spend.projects.map((p, i) => (
-              <tr key={p.retag ? ':retag' : p.project || '-'} className="border-t border-border" data-brain-spend-project={p.retag ? undefined : p.project} data-brain-spend-retag={p.retag ? '' : undefined}>
-                <td className={`truncate py-1 pr-2 ${p.retag ? 'text-fg-muted' : 'text-fg'}`}
-                  title={p.retag ? 'Batches that gave memories kept before keywords existed their keywords; Memories is how many got them' : p.project}>
-                  {stacks && <Swatch slot={stacks.top.indexOf(spendKey(p))} />}
-                  {p.retag ? RETAG_ROW : p.project || 'No project'}
-                </td>
-                <td className="num py-1 text-right text-fg-muted">{p.reads}</td>
-                <td className="num py-1 text-right text-fg" title={`${fmtTokens(p.tokens)} tokens · ${fmtUSD(p.cost_usd)} at API list price`}>{tokensShort(p.tokens)}</td>
-                <td className="py-1 pl-2"><RowBar share={shares[i]!} /></td>
-                <td className="num py-1 text-right text-fg-muted">{p.memories}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="text-[12.5px] text-fg-muted">Nothing read in these days.</p>
-      )}
-      <p className="text-[11.5px] leading-snug text-fg-muted">On a Claude subscription these tokens come out of your plan’s limits; the dollars are what Claude Code reported, at API list price.</p>
+    <div id={id} className="min-w-0" data-brain-spend-detail>
+      <Panel title={`Last ${spend.days.length} days`} right={<span>Second Brain’s reads, by day and project</span>}>
+        <div className="@container">
+          {/* The Dashboard's Today row: one hero figure, the rest stepping
+            * down, divided by hairlines (screens/Now.tsx). */}
+          <div className="grid grid-cols-2 divide-x divide-border @[720px]:grid-cols-[1.5fr_1fr_1fr_1fr]" data-brain-spend-figures>
+            <Stat data="brain-spend-tokens" label={`Tokens, ${spend.days.length} days`} value={fmtTokens(total)} size="hero"
+              sub={`${fmtTokens(Math.round(total / Math.max(1, spend.days.length)))} a day on average`} />
+            <Stat data="brain-spend-cost" label="At API list price" value={fmtUSD(cost)} tone="info" sub="what Claude Code reported" hint={SUBSCRIPTION_NOTE} />
+            <Stat data="brain-spend-today" label="Today" value={fmtTokens(Math.max(0, auto.spent))} tone={limit > 0 && auto.spent >= limit ? 'warn' : undefined}
+              sub={limit > 0 ? `of ${tokensShort(limit)} a day · ${todayPct}%` : 'no daily limit'} />
+            <Stat data="brain-spend-reads" label="Reads" value={reads.toLocaleString('en-US')} size="compact" sub={`${memories.toLocaleString('en-US')} memories kept`} />
+          </div>
+          <div className="grid gap-x-8 gap-y-5 border-t border-border px-3 py-3 @[860px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <DayChart days={spend.days} limit={limit} stacks={stacks} />
+            {spend.projects.length > 0
+              ? <TopProjects spend={spend} stacks={stacks} />
+              : <p className="text-[12.5px] text-fg-muted">Nothing read in these days.</p>}
+          </div>
+          <div className="border-t border-border px-3 py-1.5 text-[10.5px] text-fg-faint">
+            On a Claude subscription these tokens come out of your plan’s limits; the dollars are what Claude Code reported, at API list price.
+          </div>
+        </div>
+      </Panel>
     </div>
   )
 }
@@ -318,7 +435,7 @@ export function BrainSpend({ auto }: { auto: BrainAutoStatus }) {
         <LimitBar spent={auto.spent} limit={auto.daily_tokens} />
         {catchUp && <span className="text-[12px] text-fg-muted" data-brain-spend-catchup>{catchUp}</span>}
       </button>
-      {open && <Detail spend={spend} id={detailId} />}
+      {open && <Detail spend={spend} auto={auto} id={detailId} />}
     </section>
   )
 }
