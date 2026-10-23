@@ -6997,7 +6997,7 @@ a merged PR. `meta.session_prs_backfilled` gates a one-off pass over the
 `tool.post` rows already stored (`store.PRToolPosts`), run in the background
 after the port opens.
 
-### GitHub pull requests DDL (migration 0072)
+### GitHub pull requests DDL (migration 0071)
 
 ```sql
 CREATE TABLE IF NOT EXISTS github_prs (
@@ -7024,11 +7024,6 @@ holds, so a list read late never undoes a newer one. The migration only
 creates the table — nothing is filled at startup; it grows as lists are read.
 Read by `store.KnownPRs` (§ Most expensive) for the head branch, title, state
 and stamps of pull requests no agent recorded.
-
-Migration 0071 is a no-op (`SELECT 1`) holding version 71 for PR #768
-(`perf/integer-session-ids`): the loader requires every version in turn. If
-#768 lands first, 0071_reserved.sql is deleted for its 0071; once 0071_reserved
-has shipped it is frozen and #768 takes the next free number.
 
 ### Touch attribution DDL (migration 0012)
 

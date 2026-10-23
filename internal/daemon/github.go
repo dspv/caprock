@@ -64,7 +64,7 @@ func (d *Daemon) newGitHub() *github.Service {
 	}
 	if d.store != nil {
 		// Every pull request list GitHub sent is remembered (migration
-		// 0072), so the Pipeline's Most expensive reaches past the newest
+		// 0071), so the Pipeline's Most expensive reaches past the newest
 		// 50 and a pull request opened by hand still has a head branch to
 		// charge sessions by. Nothing more is asked of GitHub for it.
 		st, log := d.store, d.log

@@ -134,7 +134,7 @@ type Service struct {
 	OnMerged func(repo Repo, branches []string)
 	// OnPulls is told every pull request list just read from GitHub (the
 	// repository's own pull requests, most recently updated first), so the
-	// daemon can keep their headers (store.UpsertGitHubPRs, migration 0072)
+	// daemon can keep their headers (store.UpsertGitHubPRs, migration 0071)
 	// and the Pipeline's Most expensive reaches past the newest 50. Not
 	// called for a list handed back from what was kept. Called without
 	// locks held.

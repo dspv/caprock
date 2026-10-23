@@ -11,7 +11,7 @@ import (
 // requests (owner, 2026-10-23): every pull request Caprock knows of in a
 // repository, from its own tables only — the ones agents opened, merged or
 // closed (session_prs, migration 0035) and the headers of every GitHub list
-// the daemon read (github_prs, migration 0072) — each charged by
+// the daemon read (github_prs, migration 0071) — each charged by
 // SpendByPR, the same figure the board shows, so nothing is counted twice
 // (rule 6). Nothing here asks GitHub.
 
