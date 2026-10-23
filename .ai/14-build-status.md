@@ -172,6 +172,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-23 — 0.155.0: any file from the phone, a visible way to the full dashboard
+
+A minor release, one PR (#814). The phone's attach buttons (session chat, Home dock, Save sheet) take every file type Caprock's paste endpoint accepts — Markdown, text, PDF, office, data and source files as well as photos — and send a document into a session by its path, as a file dropped on the desktop is; a refused file gets one short line. The faint *Full dashboard* link at the bottom of the phone's Home is a row that says what is behind it: a new session, every project and session, settings.
+
 ### 2026-10-23 — 0.154.2: the phone preview, checked in the real app
 
 A patch release, one PR (#812). Phone mode was checked in a real macOS build of the app with window snapshots, and three defects found there are fixed: a new tab on an address nothing answers no longer flashes a white rectangle first, the page is shown only while it fits inside the window (shrinking a rotated phone drew it past the edge), and the page lays out at exactly the device's CSS size (393×681, not 393×680; 393 wide side by side, not 392).
