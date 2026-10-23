@@ -711,4 +711,10 @@ type BrainConfig struct {
 	DailyTokens int `json:"daily_tokens,omitempty"`
 	// Model is passed to claude --model; "" is brain.DefaultModel.
 	Model string `json:"model,omitempty"`
+	// Exclude is the folders whose sessions Second Brain never reads
+	// (absolute, in the store's path form): a session whose working
+	// directory or repository root is one of them or under it is skipped,
+	// and their projects are left out of the handoff, search and the graph
+	// unless opened by name. Empty by default.
+	Exclude []string `json:"exclude,omitempty"`
 }

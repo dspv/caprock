@@ -579,7 +579,10 @@ cannot fill it), a decision already listed and a superseded memory left
 out, each `- kind: title — summary` with the summary clipped to 160 runes,
 in 700 runes. With **no passage** recent enough (none of 400 runes or more
 within 14 days), the decisions and memories go alone; nothing goes only
-when there is neither. The whole reply is then at most 1,200 + 1,500 + 700
+when there is neither. A session started with `automation: true` is handed
+nothing at all and recorded in neither group; one in a folder excluded from
+Second Brain is handed the passage only (§ Second Brain, *What is never
+read*). The whole reply is then at most 1,200 + 1,500 + 700
 runes and two headings, about 3,500. How many memories went is recorded on
 the session (migration 0058: `ALTER TABLE sessions ADD
 COLUMN handoff_brain INTEGER NOT NULL DEFAULT 0` and `CREATE INDEX
@@ -2172,7 +2175,7 @@ machine, never from a forge's API (rule 4):
   guarded recent folder without checking that it still exists.
 
 ```
-POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?} → {session_id, cwd, session_ids?, attempt_group?, error?}
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?, automation?} → {session_id, cwd, session_ids?, attempt_group?, error?}
 GET    /v1/attempts/{group}          → {group, base?, attempts: [AttemptView]}; 404 for an unknown group
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 GET    /v1/agents/catalog            → {agents: [CatalogEntry], licensed, home?}
@@ -2194,16 +2197,16 @@ GET    /v1/inbox                     → {items, max}; what was saved for later 
 POST   /v1/inbox                     {text?, project_id?, files?} → {item}; save a note, a link or a photo (§ Inbox)
 DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
 GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
-GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph (§ Second Brain)
+GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph; without project=, excluded folders' projects are left out (§ Second Brain)
 GET    /v1/brain/status              → BrainStatus: counts, projects (§ Second Brain)
-GET    /v1/brain/handoff             ?project= → {project, memories, max, budget, served?}; what a new session there is handed (§ Second Brain)
+GET    /v1/brain/handoff             ?project= → {project, memories, max, budget, served?, excluded?}; what a new session there is handed (§ Second Brain)
 GET    /v1/brain/spend               ?days= → BrainSpend; what the automatic reads spent, per day and project (§ Second Brain)
 POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; no cap
 GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}          → 204; its edges go with it
 POST   /v1/brain/links               {from, to, kind?} → 204; DELETE with {from, to} → 204
-PUT    /v1/brain/settings            {auto?, daily_tokens?, model?} → BrainAutoStatus; no licence needed
+PUT    /v1/brain/settings            {auto?, daily_tokens?, model?, exclude?} → BrainAutoStatus; no licence needed
 POST   /v1/brain/backfill            {days?, dry_run?} → BrainEstimate; 409 while off (dry run: never)
 GET    /v1/terminals                 → {terminals: [{id, name}], preferred}; terminal apps installed here, most preferred first
 GET    /v1/editors                   → {editors: [{id, name}], preferred}; editors installed here (F18), this machine only
@@ -2400,6 +2403,21 @@ nothing waits on anyone.
   daemon), and a Codex request that finished while the daemon was stopped in
   a rollout not written to since — both stay running until ended by hand, as
   without the flag.
+
+**`automation` on `POST /v1/agents`** — a scheduled job's session, not a
+person's (2026-10-24). The owner's ops jobs start a Codex scout every 15
+minutes, about 140 sessions a week; Second Brain read every one and kept 188
+"memories" of run chatter in a week ("Chrome connection dropped mid-scout
+run"). `automation: true` says so at the start, and Second Brain never reads
+the session and hands it nothing (§ Second Brain, *What is never read*).
+Nothing else changes for it: it is owned, shown, priced and ended like any
+other. A value that is not a boolean is `400`; `false` or absent is an
+ordinary start; with `attempts` every attempt carries it. Recorded in the
+spawn's own transaction as a `brain_runs` row with status `skipped` and
+reason `automation` and no span (`store.MarkBrainAutomation`), the
+extraction's own record that it was told not to read the session — not a
+column on the session, and no migration: the extraction is the only reader
+of the mark. A phone may send it.
 
 **Ending idle sessions** (`internal/daemon/endidle.go`; owner,
 2026-10-21). An agent session Caprock started that no tab shows — a chat from
@@ -4104,7 +4122,7 @@ Brain DDL (migrations 0055, 0056).
 ```
 GET    /v1/brain                ?q=&project=&since=&until=&limit=&summaries=1 → {nodes: [BrainNode], edges: [BrainEdge], total, terms?, close?}
 GET    /v1/brain/status         → {memories, manual, projects: [{project, count}], auto?, db_path?}
-GET    /v1/brain/handoff        ?project= → {project, decisions: [BrainNode], memories: [BrainNode], max, budget, decisions_max, decisions_budget, served?: {on, left_off_at?, holdout_pct}}
+GET    /v1/brain/handoff        ?project= → {project, decisions: [BrainNode], memories: [BrainNode], max, budget, decisions_max, decisions_budget, served?: {on, left_off_at?, holdout_pct}, excluded?}
 GET    /v1/brain/spend          ?days=1–90 (14) → {days: [{day, start, tokens, cost_usd, reads, projects: [{project, retag?, tokens}]}], projects: [{project, reads, tokens, cost_usd, memories}], daily_tokens, spent_24h, claude_tokens_24h}
 GET    /v1/brain/decisions      ?project=&limit= → {project, decisions: [BrainNode]}
 POST   /v1/brain/nodes          {text?, title?, summary?, kind?, event_id?, session_id?, project?, topics?: [string], pinned?} → {node, created}
@@ -4113,7 +4131,7 @@ PATCH  /v1/brain/nodes/{id}     {kind?, title?, summary?, pinned?} → {node}
 DELETE /v1/brain/nodes/{id}     → 204
 POST   /v1/brain/links          {from, to, kind?} → 204
 DELETE /v1/brain/links          {from, to, kind?} → 204
-PUT    /v1/brain/settings       {auto?, daily_tokens?, model?} → BrainAutoStatus
+PUT    /v1/brain/settings       {auto?, daily_tokens?, model?, exclude?} → BrainAutoStatus
 POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
@@ -4312,7 +4330,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   daily_tokens, spent, spent_usd, stage, last_read?, new_today, topics,
   links, handoff, running, pending, since?, backfill_since?, last_wake?,
   next_wake?, last_error?, recent: [BrainRun], reading?, build?,
-  catch_up, retag?, agents_24h}`: `chosen` once
+  catch_up, retag?, agents_24h, exclude, automation_24h}`: `chosen` once
   the user has answered, `enabled` when on (only then does it read; no
   licence is looked at), `last_wake` and `next_wake` unix ms — `next_wake`
   absent while off, at or before now just after turning on or while a wake
@@ -4340,6 +4358,9 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   last 24 hours (`brain_runs` joined to `sessions`, re-tag batches left
   out; no agent recorded counts as `claude`), `sessions` the distinct sessions, `last_at` when the newest
   of those reads finished (unix ms), most sessions first; `[]` when none.
+  `exclude` is the folders never read (*What is never read* below), `[]`
+  when none; `automation_24h` the sessions started with `automation: true`
+  in the last 24 hours, skipped unread.
   `BrainRun` is `{id, session_id, from_event_id,
   through_event_id, status: ok | failed | skipped, model?, tokens_in,
   tokens_out, cost_usd, nodes, error?, started_at, finished_at, project?,
@@ -4386,9 +4407,39 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   again, and a wake never runs beside another; `false` stops it. Neither needs a licence. `daily_tokens`
   is 20,000–5,000,000 (the screen offers 100k, 300k and 1M; the default is
   300,000) and `model` is `""`, `haiku` (the default) or `sonnet`; anything
-  else is `400`. Kept in `config.json` as `brain: {auto?, since?,
-  backfill_since?, daily_tokens?, model?}`; `auto` absent means the user has
-  not answered, and nothing runs.
+  else is `400`. `exclude` replaces the list of folders never read
+  (`[]` clears it): each an absolute folder, trimmed, in the store's path
+  form, without repeats, at most 64 of at most 1,024 bytes on one line;
+  the root, the home and the temp folder are refused, as is anything else
+  (`400`, `brain.CleanExclude`). Kept in `config.json` as `brain: {auto?,
+  since?, backfill_since?, daily_tokens?, model?, exclude?}`; `auto` absent
+  means the user has not answered, and nothing runs.
+- **What is never read** (2026-10-24; owner, translated: "accumulate only
+  important and necessary data, not everything including junk"). Two
+  filters sit before the read, where nothing has been sent and no token
+  spent. A session started with `automation: true` (`POST /v1/agents`,
+  above) is never a candidate: `BrainCandidates` leaves out a session with
+  the `automation` mark, so it is not pending, not estimated and not read,
+  and the SessionStart handoff hands it nothing and records neither
+  `served` nor `withheld` for it. A session whose working directory or
+  repository root is one of the excluded folders, or under one, is
+  recorded as a skipped read with reason `excluded: <folder>` and its
+  cursor moved to the session's newest event, so it is not looked at again
+  until it has new events (a catch-up gap in such a session is closed
+  unread); decided at read time, because the list can change after the
+  session ran. The excluded folders' projects (`store.ProjectFromCwd` of
+  each; `brain.ExcludedProjects`) are left out of `GET /v1/brain` without
+  `project=` — the graph and search, so an MCP `search_memories` does not
+  find them — and `GET /v1/brain/handoff` and `/v1/brain/decisions` answer
+  empty lists for them (`excluded: true` on the handoff view); a new
+  session in such a folder is handed the passage but no memories. Opening
+  the project by name (`?project=`) still shows everything: nothing is
+  deleted, and the user can read or delete what was kept before. Last, the
+  instructions tell the model to skip what is true only of this run — what
+  the agent did, saved, searched or found this time, a dropped connection,
+  a failed tool — and keep what still holds for the product, the codebase
+  or the way of working; a nudge, not a guarantee, so it is the third
+  filter, not the first.
 - **Backfill.** `BrainEstimate` is `{sessions, tokens_estimate,
   days_estimate, daily_tokens, truncated?}`: the sessions since `days` ago
   with unread prose worth a read, and an estimate of their tokens (a
@@ -4398,9 +4449,10 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   `dry_run` it also sets `backfill_since`, which needs the extraction on
   (`409`), and wakes the reader.
 - **A read.** A session is a candidate when its last event is after
-  `since` (or `backfill_since`), it has ended or been quiet ten minutes, and
-  it has main-thread prompts or answers after the last read that did not
-  fail. Its passages are numbered and sent, with the project, up to 60
+  `since` (or `backfill_since`), it has ended or been quiet ten minutes, it
+  has main-thread prompts or answers after the last read that did not
+  fail, and it is not marked `automation` (*What is never read*, above; a
+  session in an excluded folder is a candidate and is recorded as skipped). Its passages are numbered and sent, with the project, up to 60
   existing topic titles and — for a session with a project — that
   project's 30 newest current decisions (`#id title`) and its 40 newest
   memories besides them (`#id kind: title`, *do not repeat these*), on

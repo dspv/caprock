@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/brain"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/store"
@@ -60,6 +61,10 @@ type BrainAuto interface {
 	Backfill(ctx context.Context, days int) error
 	// DailyTokens is the daily limit the reads keep to.
 	DailyTokens() int64
+	// ExcludedProjects are the project labels of the excluded folders
+	// (brain.ExcludedProjects), left out of the graph, search, the handoff
+	// and the current decisions unless the project is named.
+	ExcludedProjects() []string
 }
 
 // BrainSettings is PUT /v1/brain/settings; a nil field is left as it is.
@@ -67,6 +72,9 @@ type BrainSettings struct {
 	Auto        *bool   `json:"auto,omitempty"`
 	DailyTokens *int    `json:"daily_tokens,omitempty"`
 	Model       *string `json:"model,omitempty"`
+	// Exclude replaces the list of folders never read; [] clears it. It is
+	// cleaned (brain.CleanExclude) before it is kept.
+	Exclude *[]string `json:"exclude,omitempty"`
 }
 
 // Limits on the settings: the daily cap a user may choose, the models the
@@ -87,7 +95,7 @@ func (s *Server) handleBrainSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var b BrainSettings
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4<<10)).Decode(&b); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 128<<10)).Decode(&b); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad JSON"})
 		return
 	}
@@ -98,6 +106,14 @@ func (s *Server) handleBrainSettings(w http.ResponseWriter, r *http.Request) {
 	if b.Model != nil && !brainModels[*b.Model] {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model must be haiku or sonnet"})
 		return
+	}
+	if b.Exclude != nil {
+		clean, err := brain.CleanExclude(*b.Exclude)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		b.Exclude = &clean
 	}
 	if err := s.d.BrainAuto.Configure(r.Context(), b); err != nil {
 		s.fail(w, err)
@@ -178,12 +194,28 @@ func (s *Server) handleBrainGraph(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Limit = n
 	}
+	f.ExcludeProjects = s.brainExcluded()
 	g, err := store.ReadBrainGraph(r.Context(), s.d.Store.DB(), f)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, g)
+}
+
+// brainExcluded is the projects of the excluded folders; nil without the
+// extraction wired.
+func (s *Server) brainExcluded() []string {
+	if s.d.BrainAuto == nil {
+		return nil
+	}
+	return s.d.BrainAuto.ExcludedProjects()
+}
+
+// brainProjectExcluded reports whether a project's folder is excluded from
+// Second Brain, so nothing of it is handed or listed as current.
+func (s *Server) brainProjectExcluded(project string) bool {
+	return slices.Contains(s.brainExcluded(), project)
 }
 
 func (s *Server) handleBrainStatus(w http.ResponseWriter, r *http.Request) {
@@ -249,6 +281,9 @@ type BrainHandoffView struct {
 	DecisionsBudget int `json:"decisions_budget"`
 	// Served is BrainHandoffState, when the daemon wires it.
 	Served *BrainHandoffState `json:"served,omitempty"`
+	// Excluded is set when the project's folder is excluded from Second
+	// Brain: a session there is handed nothing, and the lists are empty.
+	Excluded bool `json:"excluded,omitempty"`
 }
 
 // handleBrainHandoff reads what Second Brain would hand a new session in a
@@ -259,14 +294,18 @@ func (s *Server) handleBrainHandoff(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, errors.New("project is required"))
 		return
 	}
-	pick, err := store.BrainHandoff(r.Context(), s.d.Store.DB(), project)
-	if err != nil {
-		s.fail(w, err)
-		return
+	var pick store.BrainHandoffPick
+	excluded := s.brainProjectExcluded(project)
+	if !excluded {
+		var err error
+		if pick, err = store.BrainHandoff(r.Context(), s.d.Store.DB(), project); err != nil {
+			s.fail(w, err)
+			return
+		}
 	}
 	v := BrainHandoffView{Project: project, Decisions: pick.Decisions, Memories: pick.Memories,
 		Max: store.BrainHandoffMax, Budget: store.BrainHandoffRunes,
-		DecisionsMax: store.BrainHandoffDecisions, DecisionsBudget: store.BrainHandoffDecisionRunes}
+		DecisionsMax: store.BrainHandoffDecisions, DecisionsBudget: store.BrainHandoffDecisionRunes, Excluded: excluded}
 	if v.Memories == nil {
 		v.Memories = []store.BrainNode{}
 	}
@@ -302,10 +341,13 @@ func (s *Server) handleBrainDecisions(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = min(n, BrainDecisionsMax)
 	}
-	decs, err := store.BrainCurrentDecisions(r.Context(), s.d.Store.DB(), project, limit, qv.Get("agents") == "1")
-	if err != nil {
-		s.fail(w, err)
-		return
+	decs := []store.BrainNode{}
+	if !s.brainProjectExcluded(project) {
+		var err error
+		if decs, err = store.BrainCurrentDecisions(r.Context(), s.d.Store.DB(), project, limit, qv.Get("agents") == "1"); err != nil {
+			s.fail(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"project": project, "decisions": decs})
 }

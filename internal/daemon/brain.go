@@ -73,6 +73,9 @@ func (b *brainAdapter) Configure(_ context.Context, set api.BrainSettings) error
 	if set.Model != nil {
 		c.Model = *set.Model
 	}
+	if set.Exclude != nil {
+		c.Exclude = *set.Exclude
+	}
 	cfg := d.opt.Config
 	d.cfgMu.Unlock()
 	if err := config.Save(d.opt.DataDir, cfg); err != nil {
@@ -82,6 +85,17 @@ func (b *brainAdapter) Configure(_ context.Context, set api.BrainSettings) error
 		b.eng.Kick()
 	}
 	return nil
+}
+
+func (b *brainAdapter) ExcludedProjects() []string {
+	return brain.ExcludedProjects(b.d.config().Brain.Exclude)
+}
+
+// brainExcludedFolder is whether a folder is one the user excluded from
+// Second Brain: a session there is handed none of its memories.
+func (d *Daemon) brainExcludedFolder(cwd string) bool {
+	_, ok := brain.ExcludedFolder(d.config().Brain.Exclude, cwd, "")
+	return ok
 }
 
 func (b *brainAdapter) Estimate(ctx context.Context, days int) (any, error) {

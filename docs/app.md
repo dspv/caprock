@@ -1150,6 +1150,14 @@ the Second Brain block in the app's sidebar.
   sessions and tokens that is before it starts. These reads use your Claude
   plan like any other `claude -p` call; they do not show up as sessions and
   do not run your hooks.
+- **Not everything is worth keeping.** A session a scheduled job starts
+  through Caprock's API can say so (`"automation": true` on
+  `POST /v1/agents`): Second Brain never reads it and hands it nothing.
+  Settings → Second Brain → *Never read these folders* does the same for
+  every session in a folder you name — it is skipped unread, and that
+  folder's project stays out of the graph, search and what new sessions are
+  handed unless you open the project yourself. Nothing already kept is
+  deleted.
 - **New sessions draw on it.** When Claude starts in a folder and is handed
   where the last session left off, it also gets up to five of that
   repository's memories, pinned ones first.

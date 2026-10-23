@@ -10,8 +10,8 @@
  * user's login — the place the session itself went — and nothing to Caprock.
  */
 import { useState } from 'react'
-import { api, type BrainAutoStatus, type BrainEstimate } from '@/lib/api'
-import { brainArrivalsSetting, brainFailureReason, setBrainArrivals, useBrainStatus } from '@/lib/brain'
+import { api, type BrainAutoStatus, type BrainEstimate, type BrainSettings } from '@/lib/api'
+import { brainArrivalsSetting, brainFailureReason, brainRunOutcome, setBrainArrivals, useBrainStatus } from '@/lib/brain'
 import { fmtAgo, fmtTokens } from '@/lib/format'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 
@@ -32,9 +32,9 @@ export function BrainAutoSetting() {
   const auto = status?.auto
   const [err, setErr] = useState('')
   if (!status || !auto) return null
-  const save = (b: Parameters<typeof api.brainSettings>[0]) => {
+  const save = (b: BrainSettings) => {
     setErr('')
-    api.brainSettings(b).then(reload, (e: Error) => setErr(e.message))
+    return api.brainSettings(b).then(reload, (e: Error) => setErr(e.message))
   }
   const limit = LIMITS.includes(auto.daily_tokens) ? auto.daily_tokens : LIMITS[1]
   return (
@@ -66,12 +66,66 @@ export function BrainAutoSetting() {
         options={LIMITS.map((v) => ({ value: String(v), label: limitLabel(v) }))}
         onChange={(v) => save({ daily_tokens: Number(v) })}
       />
+      <ExcludeFolders folders={auto.exclude ?? []} save={save} />
       <ArrivalsToggle />
       <Figures auto={auto} />
       {err &&<p className="text-[12.5px] text-danger">{err}</p>}
       <Backfill on={auto.on} />
       {auto.recent.length > 0 && <Recent auto={auto} />}
     </Section>
+  )
+}
+
+/**
+ * *Never read these folders*: the folders whose sessions Second Brain skips
+ * (`brain.exclude`). A scheduled job's runs — the owner's scout every 15
+ * minutes — filled the brain with run chatter (2026-10-24); a job that says
+ * `automation: true` when it starts needs no entry here, this is for the
+ * rest. Their projects are left out of the graph, search and the handoff
+ * unless opened by name; nothing is deleted.
+ */
+function ExcludeFolders({ folders, save }: { folders: string[]; save: (b: BrainSettings) => Promise<void> }) {
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const put = (next: string[]) => {
+    setBusy(true)
+    save({ exclude: next }).finally(() => setBusy(false))
+  }
+  const add = () => {
+    const p = draft.trim()
+    if (!p) return
+    put([...folders, p])
+    setDraft('')
+  }
+  return (
+    <div className="grid gap-1.5" data-brain-exclude>
+      <span className="text-[13px] text-fg">Never read these folders</span>
+      <span className="text-[12.5px] leading-relaxed text-fg-muted">
+        Sessions in them, or in a repository under them, are skipped unread, and their projects stay out of the graph, search and what a new session is handed unless you open that project. A scheduled job that says so when it starts is skipped on its own. Nothing already kept is deleted.
+      </span>
+      {folders.length > 0 && (
+        <ul className="grid gap-1 text-[12.5px]">
+          {folders.map((f) => (
+            <li key={f} className="flex items-center gap-2">
+              <span className="mono min-w-0 flex-1 truncate text-fg" title={f}>{f}</span>
+              <button type="button" className="text-fg-faint hover:text-danger disabled:opacity-50" aria-label={`Stop excluding ${f}`} disabled={busy} onClick={() => put(folders.filter((x) => x !== f))}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={draft}
+          placeholder="/Users/you/dev/scheduled-jobs"
+          aria-label="Folder to exclude"
+          className="mono min-w-0 flex-1 rounded-[6px] border border-border bg-panel px-2 py-1 text-[12.5px] text-fg placeholder:text-fg-faint"
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+        />
+        <button type="button" className="rounded-[6px] border border-border px-3 py-1 text-[13px] text-fg hover:text-accent disabled:opacity-50 disabled:hover:text-fg" disabled={busy || !draft.trim()} onClick={add}>Exclude</button>
+      </div>
+    </div>
   )
 }
 
@@ -101,6 +155,11 @@ function Figures({ auto }: { auto: BrainAutoStatus }) {
           {auto.running ? 'Reading now. ' : ''}
           {auto.pending > 0 ? `${auto.pending} session${auto.pending === 1 ? '' : 's'} waiting to be read.` : 'Nothing waiting.'}
           {auto.last_wake ? ` Last looked ${fmtAgo(auto.last_wake)}.` : ''}
+        </span>
+      )}
+      {(auto.automation_24h ?? 0) > 0 && (
+        <span data-brain-automation>
+          {auto.automation_24h} automation session{auto.automation_24h === 1 ? '' : 's'} skipped unread in the last 24 hours.
         </span>
       )}
       {auto.last_error && <span className="text-warn" title={`The error: ${auto.last_error}`} data-brain-last-problem>Last problem: {brainFailureReason(auto.last_error)}.</span>}
@@ -165,7 +224,7 @@ function Recent({ auto }: { auto: BrainAutoStatus }) {
             <span>{fmtAgo(r.finished_at)}</span>
             <span>
               {r.status === 'ok' ? `${r.nodes} kept · ${fmtTokens(r.tokens_in + r.tokens_out)} tokens`
-                : r.status === 'skipped' ? 'skipped: too short'
+                : r.status === 'skipped' ? `skipped: ${brainRunOutcome(r)}`
                 : `failed: ${r.error ?? ''}`}
             </span>
           </li>

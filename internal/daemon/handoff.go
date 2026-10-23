@@ -79,6 +79,14 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 	if project == "" {
 		return nil
 	}
+	// A scheduled job's session (`automation: true` at its spawn) is handed
+	// nothing and counted in neither group: it is not a person returning to
+	// the repository, and Second Brain never reads it either.
+	if auto, err := store.BrainAutomation(ctx, d.store.DB(), p.SessionID); err != nil {
+		d.log.Warn("handoff automation lookup failed", "component", "daemon", "err", err)
+	} else if auto {
+		return nil
+	}
 	now := d.rec.Now()
 	// The passage where the repository was left, when one is recent enough.
 	text := ""
@@ -94,11 +102,15 @@ func (d *Daemon) handoff(ctx context.Context, p hookd.Payload) []byte {
 		d.log.Warn("handoff lookup failed", "component", "daemon", "project", project, "err", err)
 	}
 	// Second Brain's current decisions and memories go with it, or alone
-	// when there is no recent passage.
-	pick, err := store.BrainHandoff(ctx, d.store.DB(), project)
-	if err != nil {
-		d.log.Warn("handoff memories lookup failed", "component", "daemon", "project", project, "err", err)
-		pick = store.BrainHandoffPick{}
+	// when there is no recent passage — unless the folder is one the user
+	// excluded from Second Brain, which is handed the passage only.
+	var pick store.BrainHandoffPick
+	if !d.brainExcludedFolder(p.Cwd) {
+		var err error
+		if pick, err = store.BrainHandoff(ctx, d.store.DB(), project); err != nil {
+			d.log.Warn("handoff memories lookup failed", "component", "daemon", "project", project, "err", err)
+			pick = store.BrainHandoffPick{}
+		}
 	}
 	if text == "" && pick.Text == "" {
 		return nil // a repository nobody has worked in is not an error

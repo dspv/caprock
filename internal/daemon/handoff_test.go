@@ -500,3 +500,40 @@ func TestAHandoffCarriesDecisionsWithoutAPassage(t *testing.T) {
 		t.Errorf("handoff_runes %d (%v), the reply is %d", runes, err, utf8.RuneCountInString(got))
 	}
 }
+
+// A session started with automation: true is handed nothing at all and
+// counted in neither group of the experiment; a session in a folder the user
+// excluded from Second Brain is handed the passage but none of its memories.
+func TestAutomationAndExcludedFoldersGetNoMemories(t *testing.T) {
+	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	d := handoffDaemon(t, now)
+	ctx := context.Background()
+	said(t, d, "caprock", strings.Repeat("We settled on process liveness rather than a timeout. ", 12), now.Add(-2*time.Hour))
+	if _, _, err := store.InsertBrainNode(ctx, d.store.DB(), store.BrainNode{Kind: "decision", Title: "Keep SQLite in WAL mode", Summary: "why",
+		Source: store.BrainSource{Project: "caprock"}, Manual: true}, 1); err != nil {
+		t.Fatal(err)
+	}
+	start := hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock", SessionID: "s-job"}
+	if got := contextOf(t, d.handoff(ctx, start)); !strings.Contains(got, "Keep SQLite") {
+		t.Fatalf("a person's session is handed the memories: %q", got)
+	}
+	if err := store.MarkBrainAutomation(ctx, d.store.DB(), "s-job", now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if reply := d.handoff(ctx, start); len(reply) != 0 {
+		t.Fatalf("an automation session is handed nothing: %s", reply)
+	}
+	if err := store.UpsertSession(ctx, d.store.DB(), "s-job", store.SessionPatch{Project: "caprock", StartedAt: now.UnixMilli(), LastEventAt: now.UnixMilli(), FromHook: true}); err != nil {
+		t.Fatal(err)
+	}
+	if s, w, err := store.HandoffEffect(ctx, d.store.DB()); err != nil || s.Sessions+w.Sessions != 0 {
+		t.Errorf("counted in the experiment: %+v %+v %v", s, w, err)
+	}
+
+	d.opt.Config.Brain.Exclude = []string{"/home/u/caprock"}
+	start.SessionID = "s-person"
+	got := contextOf(t, d.handoff(ctx, start))
+	if !strings.Contains(got, "process liveness") || strings.Contains(got, "Keep SQLite") {
+		t.Fatalf("an excluded folder gets the passage, not the memories: %q", got)
+	}
+}

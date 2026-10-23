@@ -109,10 +109,15 @@ type SpawnRequest struct {
 	// once its turn finishes with nothing waiting on anyone: a scripted
 	// one-job start that would otherwise sit idle at its prompt for good
 	// (daemon/enddone.go). Claude Code and Codex only, with a prompt.
-	EndWhenDone bool     `json:"end_when_done,omitempty"`
-	Args        []string `json:"args,omitempty"` // extra args
-	Cols        int      `json:"cols,omitempty"`
-	Rows        int      `json:"rows,omitempty"`
+	EndWhenDone bool `json:"end_when_done,omitempty"`
+	// Automation says a scheduled job started this session, not a person:
+	// Second Brain never reads it and hands it nothing (store.
+	// MarkBrainAutomation, written in the spawn's transaction). Nothing else
+	// in Caprock changes for it.
+	Automation bool     `json:"automation,omitempty"`
+	Args       []string `json:"args,omitempty"` // extra args
+	Cols       int      `json:"cols,omitempty"`
+	Rows       int      `json:"rows,omitempty"`
 }
 
 // Agent is a live owned session.
@@ -772,6 +777,11 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		if sm := subagentModelFor(agent, req.SubagentModel); sm != "" {
 			if err := store.SetSubagentModel(ctx, q, sessionID, sm); err != nil {
+				return err
+			}
+		}
+		if req.Automation {
+			if err := store.MarkBrainAutomation(ctx, q, sessionID, time.Now().UnixMilli()); err != nil {
 				return err
 			}
 		}

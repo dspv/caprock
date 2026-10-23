@@ -2804,6 +2804,13 @@ func (s *Server) handleSpawn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 		return
 	}
+	// A scheduled job's session: a boolean or absent (§ Second Brain).
+	if v, ok := req["automation"]; ok {
+		if _, isBool := v.(bool); !isBool {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "automation is true or false"})
+			return
+		}
+	}
 	// A resume the detail screen would refuse is refused here too, with the
 	// same reason: otherwise a stale button opens a terminal that prints "No
 	// conversation found" and dies. An id the store has never seen is let

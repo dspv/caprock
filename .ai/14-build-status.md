@@ -77,6 +77,18 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-24 — unreleased: Second Brain reads only what matters
+
+- **Two filters before the read** ([ADR-063](08-decisions.md), amended).
+  `POST /v1/agents {automation: true}` marks a scheduled job's session,
+  which Second Brain never reads and hands nothing; Settings → Second Brain
+  → *Never read these folders* (`brain.exclude`) skips every session in a
+  folder, recorded with the reason, and keeps those projects out of the
+  graph, search and the handoff unless opened by name. Measured first on
+  the owner's database: 140 scout sessions in a week had given 188
+  memories of run chatter. The instructions now also say to skip what is
+  true only of this run. No migration: the mark is a `brain_runs` row.
+
 ### 2026-10-23 — unreleased: Mail sign-in recovery
 
 Started 2026-10-18 and left unfinished; ported onto the current Mail code.

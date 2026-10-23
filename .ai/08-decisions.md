@@ -4323,6 +4323,30 @@ searching prose.
   by default for everyone, with *How it works*, a short explainer that
   opens the Brain screen.
 
+- **Not every session is worth reading** (amended 2026-10-24; owner,
+  translated: "this is very, very bad; accumulate only important and
+  necessary data, not everything including junk"). Measured on his machine
+  that day: a scheduled scout the ops jobs start every 15 minutes made 140
+  Codex sessions in a week, and the extraction read them all — 120 reads,
+  188 memories of run chatter ("Chrome connection dropped mid-scout run",
+  "Activity feed had no replies inside the scout cutoff window"), eight
+  rewordings of the same "decision" that the title dedupe did not catch,
+  a sixth of the week's memories and a fifth of its tokens. The filter
+  belongs before the read, where nothing has been sent: a session a job
+  starts says so (`automation: true` on `POST /v1/agents`) and is never a
+  candidate, never pending and never handed anything; and Settings → Second
+  Brain takes a list of folders never read (`brain.exclude`), whose sessions
+  are recorded as skipped with the folder and whose projects stay out of the
+  graph, search and the handoff unless opened by name. Nothing already kept
+  is deleted: the user can open the project and judge it. The instructions
+  also say to skip what is true only of this run, a nudge behind the two
+  filters. The mark is a `brain_runs` row, not a session column — the
+  extraction is its only reader, and the next migration number was spoken
+  for. Considered and not built: a stronger dedupe (reworded titles), which
+  risks merging real memories for a symptom the first filter removes; and
+  skipping every owned one-job session, which would skip the owner's own
+  scripted work that is worth reading.
+
 **Rules out:** an embedding index or a vector store (a dependency and a model
 for what titles, topics and links do); a graph library in the dashboard
 (the layout is under 300 lines we can read); a server of ours; an API key of
