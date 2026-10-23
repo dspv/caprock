@@ -47,8 +47,15 @@
  * the row (lib/usePRForce, the Pipeline page's own), a quiet *Log in
  * Pipeline →* that opens the Pipeline on that PR (its failed job's log and
  * Investigate are there), and a grey line with its agent cost and who is on
- * it. The session's pull requests (`prs:<session>`) are asked here while the
- * block is unfolded; the Pipeline page asks the same route under the same key.
+ * it. The session's pull requests (`prs:<session>`) are asked here, folded
+ * too; the Pipeline page asks the same route under the same key.
+ *
+ * Folded, the block is one line: the session's own newest PR and its
+ * checks, drawn only once that read landed since the block was drawn, the
+ * time beside it that read's. A copy kept from before is never drawn there
+ * as running (owner, 2026-10-23: "#801 · 4 running · 11h" of a PR merged 11
+ * hours earlier); unfolded, a kept copy not read again yet is timed as of its
+ * read, so its elapsed time does not grow.
  */
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
@@ -141,9 +148,13 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const hasStats = !!stats?.connected && (stats.prs?.length ?? 0) > 0
   // The session's own pull requests with what GitHub says of each (`prs:`,
   // the key the Pipeline page shares): their state, checks and merge state
-  // say which action a row offers. Asked while the block is unfolded.
+  // say which action a row offers. Asked folded too: folded, the newest of
+  // them is the block's one line, and a line drawn from the copy kept hours
+  // ago said "4 running · 11h" of a pull request merged long before (owner,
+  // 2026-10-23). The daemon answers from the reads it keeps per pull request
+  // (github.PullByURL), so a poll costs GitHub nothing between them.
   const [n, setN] = useState(0)
-  const [prsPolled, prsAt] = usePoll<SessionPRs>(!folded && !!onOpen, `cockpit-prs:${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`, keepPRs)
+  const [prsPolled, prsAt, prsMeta] = usePoll<SessionPRs>(!!onOpen, `cockpit-prs:${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`, keepPRs)
   const prs = { d: prsPolled, at: prsAt || undefined }
   const rows = orderPRs(prs.d?.prs ?? []).filter((p) => !!p.live)
   const mine = useMemo(() => new Map((prs.d?.prs ?? []).map((p) => [p.number, p])), [prs.d])
@@ -172,9 +183,13 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     return c?.pr?.number === num ? c.ci?.runs : undefined
   }
   // That PR's checks, asked only for Ring and By OS shown unfolded, and only when the session has no PR of its own with checks.
-  const [, ciAt] = usePoll<SessionCI>(view !== 'dots' && !folded && !!onOpen && !ownLead && leadNo > 0, `cockpit-ci:${sessionId}:${leadNo}`, () => api.sessionCI(sessionId, leadNo), (d) => ciActive(d.ci), CI_RUNNING_MS, leadNo ? `ci:${sessionId}:${leadNo}` : undefined)
+  const [, ciAt, ciMeta] = usePoll<SessionCI>(view !== 'dots' && !folded && !!onOpen && !ownLead && leadNo > 0, `cockpit-ci:${sessionId}:${leadNo}`, () => api.sessionCI(sessionId, leadNo), (d) => ciActive(d.ci), CI_RUNNING_MS, leadNo ? `ci:${sessionId}:${leadNo}` : undefined)
   const lead: LeadPR | undefined = ownLead?.live ? { number: ownLead.number, live: ownLead.live }
     : flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
+  // A copy kept from before, not read again since the block was drawn, is
+  // timed as of when it was read: a check it says runs is not still running
+  // now, and its elapsed time does not grow (the read, once it lands, moves it).
+  const fresh = ownLead ? prsMeta.confirmed : ciMeta.confirmed
   const running = rows.some((p) => p.live?.checks.state === 'pending') || lead?.live.checks.state === 'pending'
   // A clock only while a check runs and the window is shown: the elapsed time moves.
   const [now, setNow] = useState(() => Date.now())
@@ -185,15 +200,23 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
   if (!hasStats && !ownLead) return null
-  const leadSum = folded && lead ? prChecks(lead, now) : undefined
-  const at = view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : ownLead ? prs.at : (ci.at || ciAt)
+  const leadAt = ownLead ? prs.at : (ci.at || ciAt)
+  const leadNow = fresh || !leadAt ? now : Math.min(now, leadAt)
+  // Folded, the line is the session's own newest PR, and only once it was
+  // read since the block was drawn: the PRs it reads are asked folded too.
+  // The newest PR in flight needs the Pipeline answer, which is asked only
+  // unfolded, so folded it draws no line rather than one from an old copy.
+  const foldLead: LeadPR | undefined = folded && ownLead?.live && prsMeta.confirmed ? { number: ownLead.number, live: ownLead.live } : undefined
+  const leadSum = foldLead ? prChecks(foldLead, now) : undefined
+  // The time beside the line is the time of what it shows.
+  const at = folded ? (foldLead ? prs.at : undefined) : view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : leadAt
   const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
   const listed = flight.rows.length > 0 ? flight.rows : flight.recent
 
   const faint = (text: string) => <span className="text-[11.5px] text-fg-faint">{text}</span>
   const checksOf = (draw: (p: LeadPR) => ReactNode) =>
     lead ? draw(lead) : quiet ?? (flown ? faint(ci.d?.pr?.number === flown.number ? `#${flown.number}’s checks could not be read.` : `Reading #${flown.number}’s checks…`) : faint('Reading the repository’s pull requests…'))
-  const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={now} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={now} />) : (
+  const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={leadNow} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={leadNow} />) : (
     !hasStats ? faint('Reading the repository’s pull requests…') : (
       <div className="grid gap-1">
       {quiet}
@@ -217,12 +240,12 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
       <SectionLabel right={(
         <span className="flex items-center gap-2">
-          <span className="text-[10.5px] text-fg-faint" title={view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
+          <span className="text-[10.5px] text-fg-faint" title={folded ? 'When GitHub was last read for this session’s pull requests' : view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
           {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
-          {leadSum && lead && (
-            <span data-fold-only className="flex min-w-0 items-center gap-1.5">
-              <span className="num shrink-0 text-[11.5px] text-fg-muted">#{lead.number}</span>
-              <CheckSummary s={leadSum} label={`#${lead.number}: its checks`} focusable={false} beside className="shrink-0" />
+          {leadSum && foldLead && (
+            <span data-fold-only data-cockpit-ci-fold={foldLead.number} className="flex min-w-0 items-center gap-1.5">
+              <span className="num shrink-0 text-[11.5px] text-fg-muted">#{foldLead.number}</span>
+              <CheckSummary s={leadSum} label={`#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
             </span>
           )}
           {!folded && (
