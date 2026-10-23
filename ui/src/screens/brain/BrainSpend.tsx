@@ -209,15 +209,17 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
         aria-label={`Second Brain tokens per day, last ${days.length} days, against the daily limit of ${tokensShort(limit)}`}>
         {rules.map((v) => (
           <div key={v} aria-hidden className="pointer-events-none absolute inset-x-0 border-t border-border/60" style={{ bottom: `${(v / max) * 100}%` }} data-brain-spend-rule>
-            <span className="num absolute -top-[7px] right-0 z-[1] bg-panel pl-1 text-[9px] leading-none text-fg-faint">{gridLabel(v)}</span>
+            <span className="num absolute -top-[5px] right-0 w-7 text-right text-[9px] leading-none text-fg-faint">{gridLabel(v)}</span>
           </div>
         ))}
         {limitAt !== null && (
-          <div className="pointer-events-none absolute inset-x-0 z-[1] border-t border-dashed border-fg-muted/70" style={{ bottom: `${limitAt}%` }} data-brain-spend-limit>
+          <div className="pointer-events-none absolute left-0 right-8 z-[1] border-t border-dashed border-fg-muted/70" style={{ bottom: `${limitAt}%` }} data-brain-spend-limit>
             <span className="num absolute left-0 -translate-y-full pb-0.5 text-[9.5px] leading-none text-fg-muted">limit {tokensShort(limit)}</span>
           </div>
         )}
-        <div className="absolute inset-0 flex items-end gap-[3px]">
+        {/* The bars stop short of the ruler's figures: a gutter on the
+          * right holds them, so no bar ever lies under a label. */}
+        <div className="absolute inset-y-0 left-0 right-8 flex items-end gap-[3px]" data-brain-spend-bars>
           {days.map((d, i) => {
             const h = d.tokens > 0 ? Math.max(2, (d.tokens / max) * 100) : 0
             const today = i === days.length - 1
@@ -252,12 +254,12 @@ function DayChart({ days, limit, stacks }: { days: Spend['days']; limit: number;
         {tipText && tip && (
           <div role="tooltip" data-brain-spend-tip
             className="pointer-events-none absolute bottom-full z-10 mb-1 max-w-[240px] whitespace-nowrap rounded-[6px] border border-border bg-panel-2 px-2 py-1 text-[11.5px] leading-snug text-fg shadow-panel"
-            style={tip.i < days.length / 2 ? { left: `${(tip.i / days.length) * 100}%` } : { right: `${((days.length - 1 - tip.i) / days.length) * 100}%` }}>
+            style={tip.i < days.length / 2 ? { left: `calc((100% - 2rem) * ${tip.i / days.length})` } : { right: `calc(2rem + (100% - 2rem) * ${(days.length - 1 - tip.i) / days.length})` }}>
             {tipText.map((l, k) => <div key={k} className={k > 0 ? 'text-fg-muted' : ''}>{l}</div>)}
           </div>
         )}
       </div>
-      <div className="flex gap-[3px] leading-none" aria-hidden>
+      <div className="flex gap-[3px] pr-8 leading-none" aria-hidden>
         {days.map((d, i) => (
           <span key={d.day} className="num min-w-0 flex-1 text-center text-[9px] text-fg-faint">{i === days.length - 1 ? 'now' : Number(d.day.slice(8))}</span>
         ))}
@@ -341,7 +343,7 @@ function TopProjects({ spend, stacks }: { spend: Spend; stacks: SpendStacks | nu
   return (
     <div className="grid min-w-0 content-start gap-1" data-brain-spend-top>
       <ShareBlock title="Top projects" head={['project', 'reads', 'tokens']} of="of the tokens"
-        segments={top.rows} total={top.total}
+        segments={top.rows} total={top.total} rest={{ value: top.rest.tokens, color: slotColor(-1) }}
         extra={top.rows.map((r) => String(spend.projects.find((p) => spendKey(p) === r.key)?.reads ?? ''))} />
       <button type="button" onClick={() => setAll((v) => !v)} aria-expanded={all} data-brain-spend-more
         className="flex items-baseline gap-2 rounded-md py-1 text-left text-[12.5px] text-fg-muted hover:text-fg">

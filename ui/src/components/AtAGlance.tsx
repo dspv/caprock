@@ -336,7 +336,7 @@ export function AtAGlancePanel() {
  * donuts' colours, and under every row a bar of its share. Still a table, so
  * it stays the charts' text alternative.
  */
-export function ShareBlock({ title, head, of, segments, total, extra, trends, days, note }: {
+export function ShareBlock({ title, head, of, segments, total, extra, trends, days, note, rest }: {
   title: string
   head: string[]
   of: string
@@ -347,6 +347,9 @@ export function ShareBlock({ title, head, of, segments, total, extra, trends, da
   trends?: Map<string, TrendCell>
   days?: number
   note?: string
+  /** What the rows shown leave of the total, drawn at the end of the whole
+   *  bar in grey (no row of its own), so the bar reads as 100%. */
+  rest?: { value: number; color: string }
 }) {
   const lead = segments[0]
   const pct = (v: number) => (total > 0 ? (100 * v) / total : 0)
@@ -365,6 +368,9 @@ export function ShareBlock({ title, head, of, segments, total, extra, trends, da
         {segments.map((sg, i) => (
           <span key={sg.key} style={{ width: `${pct(sg.value)}%`, background: colorOf(sg, i) }} className="h-full min-w-[2px] first:rounded-l-full last:rounded-r-full" />
         ))}
+        {rest && rest.value > 0 && (
+          <span style={{ width: `${pct(rest.value)}%`, background: rest.color }} className="h-full min-w-[2px] last:rounded-r-full" data-share-rest />
+        )}
       </div>
       <table className="mt-3 w-full border-collapse text-[13px]">
         <caption className="sr-only">{title}</caption>

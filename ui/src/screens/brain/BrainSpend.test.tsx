@@ -229,6 +229,19 @@ describe('grouping the days into stacks', () => {
     expect(spendTop([], null)).toEqual({ rows: [], total: 0, rest: { count: 0, tokens: 0 } })
   })
 
+  it('fills the top’s whole bar to 100%, the projects past the five in grey, and folds them into one line', async () => {
+    const p = (project: string, tokens: number) => ({ project, reads: 1, tokens, cost_usd: 0, memories: 0 })
+    m.spend.mockResolvedValue(spend({ projects: [p('a', 400), p('b', 200), p('c', 150), p('d', 100), p('e', 60), p('f', 50), p('g', 40)] }))
+    render(<BrainSpend auto={auto()} />)
+    await screen.findByText(/of all your Claude tokens today/)
+    fireEvent.click(document.querySelector<HTMLButtonElement>('[data-brain-spend-toggle]')!)
+    const rest = document.querySelector<HTMLElement>('[data-brain-spend-top] [data-share-rest]')!
+    // 90 of 1,000 tokens.
+    expect(rest.style.width).toBe('9%')
+    expect(rest.style.background).toBe('var(--spend-other)')
+    expect(document.querySelector('[data-brain-spend-more]')!.textContent).toBe('›and 2 more · 90 · 9%')
+  })
+
   it('labels the ruler short', () => {
     expect([gridLabel(200_000), gridLabel(1_000_000), gridLabel(1_500_000), gridLabel(500)]).toEqual(['200k', '1M', '1.5M', '500'])
   })
