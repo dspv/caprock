@@ -43,7 +43,11 @@ vi.mock('@/lib/api', async (orig) => {
         for (const p of paths) store.inputs.push(pathInput(p, true))
       },
       permission: async () => ({ permission: store.prompt ? { id: 'p', tool: 'Bash', detail: 'ls', since: '' } : null }),
-      paste: async (f: { name: string }) => ({ path: `/data/paste/${f.name}` }),
+      // The daemon's allow-list (internal/api/paste.go): an .exe is refused.
+      paste: async (f: { name: string }) => {
+        if (f.name.endsWith('.exe')) throw new actual.ApiError(415, 'Unsupported Media Type', { error: 'unsupported file type: .exe', detail: 'accepted: images (png); PDF (pdf)' })
+        return { path: `/data/paste/${f.name}` }
+      },
       // The daemon's queue (ADR-053): typed at once at the prompt, held mid-turn
       // or while a prompt waits.
       queue: async (id: string) => view(id),
@@ -515,6 +519,24 @@ describe('ChatView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     // The paste the desktop terminal writes for a dropped image, then the words and Enter.
     await waitFor(() => expect(store.inputs).toEqual(['\x1b[200~"/data/paste/IMG_0001.png"\x1b[201~', 'what is wrong here?', '\r']), { timeout: 1000 })
+  })
+
+  // Owner, 2026-10-23: a Markdown file from the phone, typed in by its path
+  // as the desktop types a dropped one (no bracketed paste: not an image).
+  it('a document is saved, shown by its name, and typed in by its path before the words', async () => {
+    render(<ChatView sessionId="s" canType />)
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['# plan'], 'plan.md')] } })
+    expect(await screen.findByRole('button', { name: 'Remove plan.md' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'follow it' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', 'follow it', '\r']), { timeout: 1000 })
+  })
+
+  it('a file the daemon refuses is not attached, and its reason shows under the field', async () => {
+    render(<ChatView sessionId="s" canType />)
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'setup.exe')] } })
+    expect((await screen.findByRole('alert')).textContent).toBe('setup.exe: not added — unsupported file type: .exe — accepted: images (png); PDF (pdf)')
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
   })
 
   it('a viewer gets no input', async () => {

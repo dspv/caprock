@@ -33,6 +33,7 @@ import { fmtAgo } from '@/lib/format'
 import { projectLabels } from '@/lib/sessionLabels'
 import { projectsApi, type Project } from '@/lib/projects'
 import { downscalePhoto } from '@/lib/downscale'
+import { ATTACH_ACCEPT, isPhotoFile } from '@/lib/attach'
 import { isInboxImage, useInbox, useInboxThumb } from '@/lib/inbox'
 import {
   continueCounts, continueRows, INSTALL_HINT_KEY, installWay, isStandalone, keepFolds, limitsGlance, messageWith, openFromHash,
@@ -44,7 +45,7 @@ import { NeedChip } from './NeedChip'
 import { sessionTitle } from '@/lib/sidebar'
 import { needsYou, reasonsSentence } from '@/lib/needs'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
-import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, InboxIcon } from './AppIcons'
+import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, FileIcon, InboxIcon, PaperclipIcon } from './AppIcons'
 import { PermissionPrompt } from './PermissionPrompt'
 import { EndableRow, useEndedHere, type EndedHere } from './PhoneEnd'
 import { ChipSelect, FoldHeader } from './PhoneParts'
@@ -64,7 +65,8 @@ function keepChoice(c: Choice) {
   try { localStorage.setItem(CHOICE_KEY, JSON.stringify(c)) } catch { /* not remembering is fine */ }
 }
 
-/** A photo picked to go with a message or a save, before it is sent. */
+/** A photo or file picked to go with a message or a save, before it is sent.
+ *  `url` is a photo's preview; '' for any other file, shown by its name. */
 interface Picked { file: File; url: string }
 
 /** A file's bytes as base64, in chunks: one call over a large array blows the argument limit. */
@@ -108,13 +110,19 @@ function useAgents() {
   return { agents, entries: catalog.entries, loaded: catalog.loaded }
 }
 
-/** The photos, pasted where the agent can read them, as the paths a message names. */
+/** The photos and files, pasted where the agent can read them, as the paths a
+ *  message names. A refused one stops the start, with its name and the
+ *  daemon's reason (an unsupported type, over 10 MB). */
 async function pastedPaths(photos: readonly Picked[]): Promise<string[]> {
   const paths: string[] = []
   for (const p of photos) {
     const f = await downscalePhoto(p.file)
-    const { path } = await api.paste({ name: f.name || 'photo.jpg', type: f.type, data: await base64Of(f) })
-    paths.push(path)
+    try {
+      const { path } = await api.paste({ name: f.name || 'photo.jpg', type: f.type, data: await base64Of(f) })
+      paths.push(path)
+    } catch (e) {
+      throw new Error(`${p.file.name || 'photo'}: not added — ${errText(e)}`)
+    }
   }
   return paths
 }
@@ -255,8 +263,13 @@ export function PhoneHome() {
         folded={folds.continue} onToggle={() => toggle('continue')} />
       <PhoneReleases pull={pull} folded={folds.releases} onToggle={() => toggle('releases')} />
       <Saved items={inbox.items} now={now} canDelete={canControl} folded={folds.saved} onToggle={() => toggle('saved')} />
-      <a href="#/home" className="flex min-h-11 items-center justify-center gap-1 text-[14px] text-fg-muted no-underline">
-        Full dashboard <ChevronIcon size={14} />
+      <a href="#/home" data-full-dashboard
+        className="flex min-h-[56px] min-w-0 items-center gap-3 rounded-[12px] border border-border bg-panel px-3 py-2 text-fg no-underline active:bg-panel-2">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[16px] font-medium leading-[1.3]">Full dashboard</span>
+          <span className="block truncate text-[13px] text-fg-muted">New session, all projects and sessions, settings</span>
+        </span>
+        <span aria-hidden="true" className="shrink-0 text-fg-faint"><ChevronIcon size={16} /></span>
       </a>
       {sheet?.kind === 'chat' && <NewChatSheet projects={projects} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'save' && (
@@ -545,7 +558,7 @@ function Saved({ items, now, canDelete, folded, onToggle }: { items: InboxItem[]
           <li key={r.id} className="flex min-h-[56px] items-center gap-3 border-b border-border px-3 py-2 last:border-b-0">
             <Thumb item={r} />
             <span className="min-w-0 flex-1">
-              <span className="line-clamp-2 break-words text-[14px] leading-[1.3]">{r.text || `${r.files.length} photo${r.files.length === 1 ? '' : 's'}`}</span>
+              <span className="line-clamp-2 break-words text-[14px] leading-[1.3]">{r.text || filesText(r.files)}</span>
               <span className="block truncate text-[12px] text-fg-faint">{r.project_name || 'Inbox'} · {fmtAgo(r.created_at, now)}</span>
             </span>
             {canDelete && (
@@ -560,39 +573,58 @@ function Saved({ items, now, canDelete, folded, onToggle }: { items: InboxItem[]
   )
 }
 
-function CameraIcon({ size = 20 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0">
-      <path d="M4 8h3l1.5-2.5h7L17 8h3v11H4z" /><circle cx="12" cy="13.5" r="3.5" />
-    </svg>
-  )
+/** A saved item with no words, by what it holds: "2 photos", "1 file". */
+function filesText(files: readonly string[]): string {
+  const what = files.every(isInboxImage) ? 'photo' : 'file'
+  return `${files.length} ${what}${files.length === 1 ? '' : 's'}`
 }
 
-/** Photos picked from the camera roll or the camera, with object URLs for their previews. */
+/** What one picked item is called on its × button. */
+function removeLabel(p: Picked): string {
+  return p.url ? 'Remove photo' : `Remove ${p.file.name}`
+}
+
+/**
+ * Photos and files picked from the camera roll, the camera or Files, with
+ * object URLs for the photos' previews. Every pick is kept, whatever its
+ * type: the daemon decides, and says why when it refuses one.
+ */
 function usePhotos(initial: Picked[] = []) {
   const [photos, setPhotos] = useState<Picked[]>(initial)
   const latest = useRef(photos)
   latest.current = photos
-  useEffect(() => () => { for (const p of latest.current) URL.revokeObjectURL(p.url) }, [])
+  useEffect(() => () => { for (const p of latest.current) if (p.url) URL.revokeObjectURL(p.url) }, [])
   const add = (files: FileList | null) => {
     if (!files) return
-    const next = [...files].filter((f) => f.type.startsWith('image/')).map((file) => ({ file, url: URL.createObjectURL(file) }))
+    const next = [...files].map((file) => ({ file, url: isPhotoFile(file) ? URL.createObjectURL(file) : '' }))
     setPhotos((p) => [...p, ...next].slice(0, 4))
   }
-  const remove = (i: number) => setPhotos((p) => { const x = p[i]; if (x) URL.revokeObjectURL(x.url); return p.filter((_, j) => j !== i) })
+  const remove = (i: number) => setPhotos((p) => { const x = p[i]; if (x?.url) URL.revokeObjectURL(x.url); return p.filter((_, j) => j !== i) })
   // Handing them on to a sheet: the sheet revokes them, this hook forgets them.
   const take = () => { const p = latest.current; latest.current = []; setPhotos([]); return p }
   return { photos, add, remove, take }
 }
 
+/** A picked file that is not a photo: its document icon and name, as tall as a thumbnail. */
+function FileTile({ file, size }: { file: File; size: string }) {
+  return (
+    <span data-file-chip title={file.name} className={`flex ${size} max-w-[160px] items-center gap-1.5 rounded-[8px] border border-border-strong bg-bg pl-2 pr-3 text-[13px] text-fg`}>
+      <span className="text-fg-muted"><FileIcon size={18} /></span>
+      <span className="min-w-0 truncate">{file.name}</span>
+    </span>
+  )
+}
+
 function PhotoRow({ photos, onRemove }: { photos: Picked[]; onRemove: (i: number) => void }) {
   if (photos.length === 0) return null
   return (
-    <div className="mb-2 flex gap-2">
+    <div className="mb-2 flex flex-wrap gap-2">
       {photos.map((p, i) => (
-        <span key={p.url} className="relative">
-          <img src={p.url} alt="" className="h-14 w-14 rounded-[8px] object-cover" />
-          <button type="button" aria-label="Remove photo" onClick={() => onRemove(i)} className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full border border-border-strong bg-panel text-fg-muted">
+        <span key={`${i}-${p.url || p.file.name}`} className="relative min-w-0">
+          {p.url
+            ? <img src={p.url} alt="" className="h-14 w-14 rounded-[8px] object-cover" />
+            : <FileTile file={p.file} size="h-14" />}
+          <button type="button" aria-label={removeLabel(p)} onClick={() => onRemove(i)} className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full border border-border-strong bg-panel text-fg-muted">
             <CloseIcon size={12} />
           </button>
         </span>
@@ -647,7 +679,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
         navigate({ name: 'chat', id })
       }
       setText('')
-      take().forEach((p) => URL.revokeObjectURL(p.url))
+      take().forEach((p) => { if (p.url) URL.revokeObjectURL(p.url) })
     } catch (e) {
       setError(errText(e))
     } finally {
@@ -676,10 +708,10 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
           </div>
           <PhotoRow photos={photos} onRemove={remove} />
           <div className="flex items-end gap-2">
-            <button type="button" aria-label="Add a photo" onClick={() => file.current?.click()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border-strong bg-bg text-fg-muted">
-              <CameraIcon />
+            <button type="button" aria-label="Attach a photo or file" onClick={() => file.current?.click()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border-strong bg-bg text-fg-muted">
+              <PaperclipIcon size={20} />
             </button>
-            <input ref={file} type="file" accept="image/*" multiple hidden onChange={(e) => { add(e.target.files); e.target.value = '' }} />
+            <input ref={file} type="file" accept={ATTACH_ACCEPT} multiple hidden data-testid="dock-picker" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
             <textarea
               ref={field}
               rows={1}
@@ -916,20 +948,22 @@ export function SaveSheet({ projects, text: initialText, photos: initialPhotos, 
         aria-label="What to save"
         className="w-full resize-none rounded-[12px] border border-border-strong bg-bg px-3.5 py-3 text-[16px] leading-[1.4] text-fg outline-none placeholder:text-fg-faint focus:border-accent"
       />
-      <FieldLabel>Photos</FieldLabel>
+      <FieldLabel>Photos and files</FieldLabel>
       <div className="flex flex-wrap gap-2">
         {photos.map((p, i) => (
-          <span key={p.url} className="relative">
-            <img src={p.url} alt="" className="h-[72px] w-[72px] rounded-[10px] object-cover" />
-            <button type="button" aria-label="Remove photo" onClick={() => remove(i)} className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full border border-border-strong bg-panel text-fg-muted"><CloseIcon size={12} /></button>
+          <span key={`${i}-${p.url || p.file.name}`} className="relative min-w-0">
+            {p.url
+              ? <img src={p.url} alt="" className="h-[72px] w-[72px] rounded-[10px] object-cover" />
+              : <FileTile file={p.file} size="h-[72px]" />}
+            <button type="button" aria-label={removeLabel(p)} onClick={() => remove(i)} className="absolute -right-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full border border-border-strong bg-panel text-fg-muted"><CloseIcon size={12} /></button>
           </span>
         ))}
         {photos.length < 4 && (
-          <button type="button" onClick={() => file.current?.click()} className="grid h-[72px] w-[72px] place-items-center rounded-[10px] border border-dashed border-border-strong text-fg-muted">
-            <span className="grid justify-items-center gap-0.5 text-[12px]"><CameraIcon />Add</span>
+          <button type="button" aria-label="Attach a photo or file" onClick={() => file.current?.click()} className="grid h-[72px] w-[72px] place-items-center rounded-[10px] border border-dashed border-border-strong text-fg-muted">
+            <span className="grid justify-items-center gap-0.5 text-[12px]"><PaperclipIcon size={20} />Add</span>
           </button>
         )}
-        <input ref={file} type="file" accept="image/*" multiple hidden onChange={(e) => { add(e.target.files); e.target.value = '' }} />
+        <input ref={file} type="file" accept={ATTACH_ACCEPT} multiple hidden data-testid="save-picker" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
       </div>
       <FieldLabel>Save to</FieldLabel>
       <div className="flex flex-wrap gap-2">

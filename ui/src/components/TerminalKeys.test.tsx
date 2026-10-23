@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { TerminalKeys } from './TerminalKeys'
+import { ATTACH_ACCEPT } from '@/lib/attach'
 
 describe('TerminalKeys — typing from a phone', () => {
   afterEach(() => {
@@ -49,18 +50,19 @@ describe('TerminalKeys — attaching a photo', () => {
 
   it('has no photo button where nothing can attach one', () => {
     render(<TerminalKeys send={vi.fn()} />)
-    expect(screen.queryByRole('button', { name: 'Attach a photo' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Attach a photo or file' })).toBeNull()
   })
 
   it('opens the picker for images, from the camera or the library, and attaches what is picked', async () => {
     const attach = vi.fn(async () => {})
     render(<TerminalKeys send={vi.fn()} attach={attach} />)
     const picker = screen.getByTestId('photo-picker') as HTMLInputElement
-    expect(picker.accept).toBe('image/*')
+    expect(picker.accept).toBe(ATTACH_ACCEPT)
+    expect(picker.accept.split(',')).toEqual(expect.arrayContaining(['image/*', '.md', '.pdf']))
     // `capture` would make iOS open the camera only, with no library.
     expect(picker.hasAttribute('capture')).toBe(false)
     const click = vi.spyOn(picker, 'click')
-    fireEvent.click(screen.getByRole('button', { name: 'Attach a photo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Attach a photo or file' }))
     expect(click).toHaveBeenCalled()
     const photo = new File(['x'], 'IMG_0001.jpg', { type: 'image/jpeg' })
     fireEvent.change(picker, { target: { files: [photo] } })
@@ -77,12 +79,40 @@ describe('TerminalKeys — attaching a photo', () => {
     const field = screen.getByLabelText('Type to the session') as HTMLTextAreaElement
     fireEvent.change(field, { target: { value: 'look at' } })
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' }), new File(['y'], 'b.jpg', { type: 'image/jpeg' })] } })
-    const chips = await screen.findByRole('list', { name: 'Attached photos' })
+    const chips = await screen.findByRole('list', { name: 'Attachments' })
     expect(chips.textContent).toContain('Image 1')
     expect(chips.textContent).toContain('Image 2')
     expect(field.value).toBe('look at')
     expect(document.body.textContent).not.toContain('/data/paste')
     expect(send).not.toHaveBeenCalled()
+  })
+
+  // A document from the phone (owner, 2026-10-23: a Markdown file into a
+  // session): a chip with its name and a document icon, no preview, pasted
+  // on Send as the desktop pastes a dropped file.
+  it('shows a non-image file as a chip with its name and a document icon, and sends its path', async () => {
+    const attach = vi.fn(async () => ['/data/paste/1/shot.png', '/data/paste/2/meeting-notes.md'])
+    const sendPaths = vi.fn(async () => {})
+    const submitText = vi.fn(async () => true)
+    render(<TerminalKeys send={vi.fn()} attach={attach} sendPaths={sendPaths} submitText={submitText} />)
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'shot.png', { type: 'image/png' }), new File(['# hi'], 'meeting-notes.md')] } })
+    const chips = await screen.findByRole('list', { name: 'Attachments' })
+    const items = chips.querySelectorAll('li')
+    expect(items[0]?.textContent).toContain('Image 1')
+    expect(items[1]?.textContent).toContain('meeting-notes.md')
+    expect(items[1]?.querySelector('img')).toBeNull()
+    expect(items[1]?.querySelector('[data-doc-icon]')).not.toBeNull()
+    fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'summarise' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await vi.waitFor(() => expect(submitText).toHaveBeenCalledWith('summarise'))
+    expect(sendPaths).toHaveBeenCalledWith(['/data/paste/1/shot.png', '/data/paste/2/meeting-notes.md'])
+  })
+
+  it('the × on a file chip takes it out by name', async () => {
+    render(<TerminalKeys send={vi.fn()} attach={vi.fn(async () => ['/p/spec.pdf'])} sendPaths={vi.fn(async () => {})} />)
+    fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'spec.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove spec.pdf' }))
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
   })
 
   it('the × on a chip takes that photo out, and the rest renumber', async () => {
@@ -93,12 +123,12 @@ describe('TerminalKeys — attaching a photo', () => {
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.jpg'), new File(['y'], 'b.jpg')] } })
     fireEvent.click(await screen.findByRole('button', { name: 'Remove Image 1' }))
     expect(screen.queryByRole('button', { name: 'Remove Image 2' })).toBeNull()
-    expect(screen.getByRole('list', { name: 'Attached photos' }).textContent).toContain('Image 1')
+    expect(screen.getByRole('list', { name: 'Attachments' }).textContent).toContain('Image 1')
     fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'this one' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await vi.waitFor(() => expect(submitText).toHaveBeenCalledWith('this one'))
     expect(sendPaths).toHaveBeenCalledWith(['/p/two.jpg'])
-    expect(screen.queryByRole('list', { name: 'Attached photos' })).toBeNull()
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
   })
 
   it('on Send the photos are pasted first, in order, then the words go', async () => {
@@ -108,7 +138,7 @@ describe('TerminalKeys — attaching a photo', () => {
     const submitText = vi.fn(async (t: string) => { order.push(`text:${t}`); return true })
     render(<TerminalKeys send={vi.fn()} attach={attach} sendPaths={sendPaths} submitText={submitText} />)
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.png'), new File(['y'], 'b.png')] } })
-    await screen.findByRole('list', { name: 'Attached photos' })
+    await screen.findByRole('list', { name: 'Attachments' })
     fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'help me answer' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await vi.waitFor(() => expect(order).toEqual(['paths:/p/1.png,/p/2.png', 'text:help me answer']))
@@ -120,7 +150,7 @@ describe('TerminalKeys — attaching a photo', () => {
     const submitText = vi.fn(async () => true)
     render(<TerminalKeys send={send} attach={vi.fn(async () => ['/p/1.jpg'])} sendPaths={sendPaths} submitText={submitText} />)
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.jpg')] } })
-    await screen.findByRole('list', { name: 'Attached photos' })
+    await screen.findByRole('list', { name: 'Attachments' })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith('\r'))
     expect(sendPaths).toHaveBeenCalledWith(['/p/1.jpg'])
@@ -131,7 +161,7 @@ describe('TerminalKeys — attaching a photo', () => {
     const sendPaths = vi.fn(async () => {})
     render(<TerminalKeys send={vi.fn()} state="reconnecting" sessionId="chip" attach={vi.fn(async () => ['/p/1.jpg'])} sendPaths={sendPaths} />)
     fireEvent.change(screen.getByTestId('photo-picker'), { target: { files: [new File(['x'], 'a.jpg')] } })
-    await screen.findByRole('list', { name: 'Attached photos' })
+    await screen.findByRole('list', { name: 'Attachments' })
     fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'see' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     expect(screen.getByText('[Image 1] see')).toBeTruthy()
@@ -140,7 +170,7 @@ describe('TerminalKeys — attaching a photo', () => {
     render(<TerminalKeys send={vi.fn()} state="reconnecting" sessionId="chip" attach={vi.fn()} sendPaths={sendPaths} />)
     fireEvent.click(screen.getByRole('button', { name: 'Edit the message: [Image 1] see' }))
     expect((screen.getByLabelText('Type to the session') as HTMLTextAreaElement).value).toBe('see')
-    expect(screen.getByRole('list', { name: 'Attached photos' }).textContent).toContain('Image 1')
+    expect(screen.getByRole('list', { name: 'Attachments' }).textContent).toContain('Image 1')
     expect(sendPaths).not.toHaveBeenCalled()
     sessionStorage.clear()
   })

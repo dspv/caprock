@@ -401,12 +401,15 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   if (canType && !typable) setTypable(true)
   const showInput = canType || (ended && typable)
 
-  // A photo: made small enough to send and saved by the daemon (the paste
-  // path a dropped file takes). The field shows it as an "Image N" chip, one
-  // path per file ('' for one that failed), and on Send it is pasted in
-  // before the words, as the desktop terminal pastes a dropped image, so
-  // Claude Code shows `[Image #N]` (sendPaths).
+  // A photo or a file: a photo made small enough to send, then saved by the
+  // daemon (the paste path a dropped file takes). The field shows it as an
+  // "Image N" chip, or a file's name, one path per file ('' for one the
+  // daemon refused, whose reason shows under the field), and on Send it goes
+  // in before the words as the desktop terminal pastes a dropped file, so
+  // Claude Code shows `[Image #N]` or reads the file by its path (sendPaths).
   const attachPhotos = useCallback(async (files: File[]): Promise<string[]> => {
+    // A new pick replaces the last one's refusal; this pick's own stays.
+    setSendError('')
     const paths: string[] = []
     for (const f of files) {
       try {

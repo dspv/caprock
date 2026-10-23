@@ -1641,12 +1641,13 @@ What the phone opens to:
   start the session there, and an empty field opens *Start in a project*,
   where you also choose the agent and what it runs on — a second
   subscription, or DeepSeek on your own key.
-- **Save** keeps a note, a link or photos (the camera button) on this
+- **Save** keeps a note, a link, photos or files (the paperclip button) on this
   computer. It shows in *Quick chat with…* on the computer under *Saved*, where
   **Start a chat** turns it into a first message, its photos included, and
   **Delete** removes it.
-- **Full dashboard** at the bottom, or **⋯** at the top right, opens
-  everything else: the dashboard, Settings, Feedback and Premium.
+- **Full dashboard**, the last row, or **⋯** at the top right, opens
+  everything else: a new session, all projects and sessions, Settings,
+  Feedback and Premium.
 
 On Android, holding the icon also offers **New chat** and **Save**, and
 **Share** from another app can send text or a link to Caprock's Save. Both
@@ -1671,8 +1672,10 @@ A phone you let control sessions can:
   Scroll down in the chat and the bar slides away so the conversation has
   the screen; scroll up, or tap the top edge, and it is back.
 - **Chat with a session.** On a phone a session opens on its chat. Type into
-  the field and send (the field glows softly while it has the focus); **Photo** attaches a picture by putting its path in the
-  message. The keys bar has Esc, Tab, the arrows, Enter and Ctrl+C for the
+  the field and send (the field glows softly while it has the focus); **Attach** adds a photo, or a file such as a
+  Markdown note, a PDF or a spreadsheet (Choose File on an iPhone), and the
+  agent reads it by its path. A file Caprock does not keep, or one over
+  10 MB, is refused with the reason under the field. The keys bar has Esc, Tab, the arrows, Enter and Ctrl+C for the
   agent's menus. Your saved prompts — the ones for every project and for
   this session's project — are chips above the field: tap one to put it in
   the field, then **Send**. They are added and changed on the computer, in

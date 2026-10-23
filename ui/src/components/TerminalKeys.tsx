@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { INPUT_HIGHLIGHT_KEY, keys } from '@/lib/appkeys'
 import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
+import { ATTACH_ACCEPT, attachLabels, isImageName } from '@/lib/attach'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, startDictation, type Dictation } from '@/lib/speech'
 import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
@@ -118,20 +119,21 @@ function saveDraft(sessionId: string | undefined, text: string): void {
  * keys are buttons, and the text goes in a field big enough to read what is
  * being sent before sending it, rather than letter by letter into a canvas.
  */
-/** A photo attached in the field: the saved file's path, sent as a paste
- *  (never shown), and a preview while the picked file is at hand. */
+/** A photo or file attached in the field: the saved file's path, sent as a
+ *  paste (never shown), and a photo's preview while the picked file is at hand. */
 export interface Attached {
   path: string
   /** An object URL of the picked file; absent for one restored from a draft. */
   url?: string
 }
 
-/** A message as it is held or shown: the words, with "Image N" for each photo. */
+/** A message as it is held or shown: the words, with "[Image N]" for each
+ *  photo and the name of each other file (lib/attach attachLabels). */
 export function heldLabel(h: { text: string; paths?: readonly string[] }): string {
-  const n = h.paths?.length ?? 0
-  if (n === 0) return h.text
-  const imgs = Array.from({ length: n }, (_, i) => `[Image ${i + 1}]`).join(' ')
-  return h.text ? `${imgs} ${h.text}` : imgs
+  const paths = h.paths ?? []
+  if (paths.length === 0) return h.text
+  const files = attachLabels(paths).map((l, i) => (isImageName(paths[i] ?? '') ? `[${l}]` : l)).join(' ')
+  return h.text ? `${files} ${h.text}` : files
 }
 
 export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder }: {
@@ -342,7 +344,8 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
         paths.forEach((p, i) => {
           if (!p) return
           const f = aligned ? files[i] : undefined
-          next.push({ path: p, ...(f && typeof URL.createObjectURL === 'function' ? { url: URL.createObjectURL(f) } : {}) })
+          const preview = f && isImageName(p) && typeof URL.createObjectURL === 'function'
+          next.push({ path: p, ...(preview ? { url: URL.createObjectURL(f) } : {}) })
         })
         setAttached((list) => [...list, ...next])
         field.current?.focus()
@@ -385,11 +388,11 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
       try {
         await sendPaths(imgs)
       } catch {
-        holdFailed(message, imgs, 'the photos did not reach Caprock')
+        holdFailed(message, imgs, 'the attachments did not reach Caprock')
         return false
       }
       if (!message) {
-        // Photos alone: Enter, as after a drop in the terminal.
+        // Attachments alone: Enter, as after a drop in the terminal.
         await new Promise<void>((resolve) => window.setTimeout(() => { send('\r'); resolve() }, SUBMIT_DELAY_MS))
         return true
       }
@@ -570,12 +573,13 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   )
 
   const photoInput = attach && (
-    /* No `capture`: with it iOS opens only the camera; without it the
-     * picker offers Take Photo and the photo library both. */
+    /* Photos and the documents the daemon keeps (lib/attach ATTACH_ACCEPT):
+     * iOS offers Photo Library, Take Photo and Choose File. No `capture`:
+     * with it iOS opens only the camera. */
     <input
       ref={picker}
       type="file"
-      accept="image/*"
+      accept={ATTACH_ACCEPT}
       multiple
       hidden
       aria-hidden="true"
@@ -668,11 +672,11 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
               type="button"
               disabled={attaching}
               onClick={() => picker.current?.click()}
-              title="Attach a photo from the camera or the library"
-              aria-label="Attach a photo"
+              title="Attach a photo or a file: the camera, the library or Files"
+              aria-label="Attach a photo or file"
               className="shrink-0 rounded-sm border border-border-strong bg-panel-2 px-3 py-2 min-h-[44px] text-[14px] text-fg hover:border-accent disabled:opacity-50"
             >
-              {attaching ? 'Adding…' : 'Photo'}
+              {attaching ? 'Adding…' : 'Attach'}
             </button>
           </>
         )}
@@ -725,22 +729,24 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
 }
 
 /**
- * The photos attached in the field, as Claude Code will show them once sent:
- * "Image 1", "Image 2", each with its preview and an × to take it out. The
- * path is the file Caprock saved; it is pasted on Send, never typed here.
+ * The photos and files attached in the field, as Claude Code will show them
+ * once sent: "Image 1", "Image 2" with a preview, any other file by its name
+ * with a document icon, each with an × to take it out. The path is the file
+ * Caprock saved; it is pasted on Send, never typed here.
  */
 function AttachedChips({ attached, onRemove }: { attached: readonly Attached[]; onRemove: (i: number) => void }) {
+  const labels = attachLabels(attached.map((a) => a.path))
   return (
-    <ul aria-label="Attached photos" data-attached className="flex flex-wrap gap-1.5 px-0.5">
+    <ul aria-label="Attachments" data-attached className="flex flex-wrap gap-1.5 px-0.5">
       {attached.map((a, i) => (
-        <li key={`${a.path}-${i}`} className="flex h-9 items-center gap-1.5 rounded-[12px] border border-border-strong bg-panel-2 pl-1 pr-0.5 text-[14px] text-fg">
+        <li key={`${a.path}-${i}`} className="flex h-9 min-w-0 max-w-full items-center gap-1.5 rounded-[12px] border border-border-strong bg-panel-2 pl-1 pr-0.5 text-[14px] text-fg">
           {a.url
             ? <img src={a.url} alt="" className="h-7 w-7 rounded-[8px] object-cover" />
-            : <span className="grid h-7 w-7 place-items-center"><PhotoIcon /></span>}
-          <span>Image {i + 1}</span>
+            : <span className="grid h-7 w-7 shrink-0 place-items-center">{isImageName(a.path) ? <PhotoIcon /> : <DocIcon />}</span>}
+          <span className="min-w-0 max-w-[14rem] truncate" title={labels[i]}>{labels[i]}</span>
           <button
             type="button"
-            aria-label={`Remove Image ${i + 1}`}
+            aria-label={`Remove ${labels[i]}`}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onRemove(i)}
             className="grid h-8 w-8 place-items-center rounded-full text-fg-muted hover:text-fg active:bg-panel"
@@ -824,6 +830,10 @@ function LangMenu({ current, onPick, onClose }: { current: string; onPick: (tag:
 }
 
 const ICON = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
+
+function DocIcon() {
+  return <svg {...ICON} data-doc-icon className="text-fg-muted"><path d="M6 3h8l4 4v14H6z" /><path d="M14 3v4h4M9 12h6M9 16h4" /></svg>
+}
 
 function PhotoIcon() {
   return <svg {...ICON} className="text-fg-muted"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 8" /></svg>

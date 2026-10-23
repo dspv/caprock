@@ -2394,12 +2394,13 @@ connection and the work survive a bad network.
     state and a Details toggle on one line; pause, resume, kill, continue
     and relay on one row; ids, folder, links, activity, Remove and the
     figures under Details or on the other tabs.
-  - *Photo.* The keys bar's Photo button saves the picture through
-    `POST /v1/paste` (downscaled first, as in the terminal) and shows it as
-    an *Image N* chip over the field, never its path; on Send it is pasted
-    in before the words, as the desktop terminal pastes a dropped image
-    (`POST /v1/agents/{id}/input {paths}`), so Claude Code shows
-    `[Image #N]`.
+  - *Attach.* The keys bar's Attach button (a photo or any file
+    `POST /v1/paste` keeps) saves it through `POST /v1/paste` (a photo
+    downscaled first, as in the terminal) and shows it as an *Image N* chip,
+    or a document chip with its name, over the field, never its path; on
+    Send it goes in before the words, as the desktop terminal pastes a
+    dropped file (`POST /v1/agents/{id}/input {paths}`), so Claude Code
+    shows `[Image #N]` for a photo and reads a document by its path.
 - **Start work.** New project, clone and worktree from the phone (see
   [§ Projects](#projects)), then a session in it, with the clone's progress
   surviving a drop.

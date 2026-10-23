@@ -5,7 +5,8 @@
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, type CatalogEntry, type InboxItem, type LimitsAnswer, type SessionSummary } from '@/lib/api'
+import { ATTACH_ACCEPT } from '@/lib/attach'
+import { ApiError, api, type CatalogEntry, type InboxItem, type LimitsAnswer, type SessionSummary } from '@/lib/api'
 import { FOLDS_KEY } from '@/lib/phonehome'
 import { projectsApi, type Project } from '@/lib/projects'
 import { PhoneHome } from './PhoneHome'
@@ -184,6 +185,72 @@ describe('PhoneHome', () => {
     expect((screen.getByLabelText('What to save') as HTMLTextAreaElement).value).toBe('remember this')
     fireEvent.click(sheet.querySelector('button.bg-accent')!)
     await waitFor(() => expect(add).toHaveBeenCalledWith({ text: 'remember this', project_id: 0, files: [] }))
+  })
+
+  // Owner, 2026-10-23: a Markdown file from the phone into a session.
+  it('attaches any file the daemon keeps: the picker offers documents, a file shows by name, and its path starts the chat', async () => {
+    stubs()
+    const paste = vi.spyOn(api, 'paste').mockResolvedValue({ path: '/data/paste/1/notes.md' })
+    const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'c3', cwd: '/data/chats/x' })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    openChats()
+    const picker = screen.getByTestId('dock-picker') as HTMLInputElement
+    expect(picker.accept).toBe(ATTACH_ACCEPT)
+    expect(screen.getByRole('button', { name: 'Attach a photo or file' })).toBeTruthy()
+    fireEvent.change(picker, { target: { files: [new File(['# plan'], 'notes.md')] } })
+    const chip = await screen.findByText('notes.md')
+    expect(chip.closest('[data-file-chip]')).not.toBeNull()
+    expect(screen.getByRole('button', { name: 'Remove notes.md' })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Message or note'), { target: { value: 'read this' } })
+    fireEvent.click(screen.getByText('Start chat'))
+    await waitFor(() => expect(spawn).toHaveBeenCalled())
+    expect(paste.mock.calls[0]![0]).toMatchObject({ name: 'notes.md' })
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ chat: true, prompt: 'read this\n\n"/data/paste/1/notes.md"' })
+  })
+
+  it('a file the daemon refuses says which and why, and nothing starts', async () => {
+    stubs()
+    vi.spyOn(api, 'paste').mockRejectedValue(new ApiError(415, 'Unsupported Media Type', { error: 'unsupported file type: .heic2', detail: 'accepted: images (png)' }))
+    const spawn = vi.spyOn(api, 'spawn')
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    openChats()
+    fireEvent.change(screen.getByTestId('dock-picker'), { target: { files: [new File(['x'], 'scan.heic2')] } })
+    await screen.findByText('scan.heic2')
+    fireEvent.click(screen.getByText('Start chat'))
+    expect((await screen.findByRole('alert')).textContent).toBe('scan.heic2: not added — unsupported file type: .heic2 — accepted: images (png)')
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('saves a file to the Inbox with its name, as it does a photo', async () => {
+    stubs()
+    const add = vi.spyOn(api, 'addInbox').mockResolvedValue({ item: { id: 10, text: '', files: ['/x/notes.md'], created_at: NOW } })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    openChats()
+    fireEvent.change(screen.getByTestId('dock-picker'), { target: { files: [new File(['# plan'], 'notes.md')] } })
+    await screen.findByText('notes.md')
+    fireEvent.click(screen.getByText('Save'))
+    const sheet = await screen.findByRole('dialog', { name: 'Save' })
+    expect((screen.getByTestId('save-picker') as HTMLInputElement).accept).toBe(ATTACH_ACCEPT)
+    expect(sheet.textContent).toContain('notes.md')
+    fireEvent.click(sheet.querySelector('button.bg-accent')!)
+    await waitFor(() => expect(add).toHaveBeenCalled())
+    expect(add.mock.calls[0]![0].files).toEqual([{ name: 'notes.md', type: '', data: btoa('# plan') }])
+  })
+
+  // Owner, 2026-10-23: the way to the full dashboard was a faint line.
+  it('ends with a Full dashboard row: a title, what is there, a chevron, to #/home', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    const row = screen.getByText('Full dashboard').closest('a')!
+    expect(row.getAttribute('href')).toBe('#/home')
+    expect(row.hasAttribute('data-full-dashboard')).toBe(true)
+    expect(row.textContent).toContain('New session, all projects and sessions, settings')
+    expect(row.className).toContain('rounded-[12px]')
+    expect(row.querySelector('svg')).not.toBeNull()
   })
 
   it('opens Save filled in from another app\'s share', async () => {
