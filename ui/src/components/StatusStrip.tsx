@@ -1,15 +1,15 @@
 /**
  * The status strip along the bottom of the app (.ai/21-app.md § What the user
- * sees): the connection, the plan limits, today's spend, the terminal in
- * front, and a mark while Caprock keeps the computer awake. Read-only; each figure is the dashboard's own. The plan limits and
- * the spend show only while the sidebar is closed: open, its Today strip
- * carries them, and the same figures twice on one screen read as two.
+ * sees): service things only — the connection, the plan limits, the
+ * machine's and Caprock's load, the terminal in front, a mark while Caprock
+ * keeps the computer awake, the update, the plan and the version. Read-only.
+ * The plan limits show only while the sidebar is closed: open, its Today
+ * strip carries them, and the same figures twice on one screen read as two.
  */
 import { useState } from 'react'
 import type { SessionSummary, Summary, UpdateStatus } from '@/lib/api'
 import { useUpdateStatus } from './AppUpdateNotice'
 import { live, useLiveLink } from '@/lib/live'
-import { fmtUSD } from '@/lib/format'
 import type { PaneStatus } from './TerminalPane'
 import { ConnectionState } from './ConnectionState'
 import { AppUpdateNotice } from './AppUpdateNotice'
@@ -30,10 +30,10 @@ import { useLicensed } from '@/lib/nudges'
 export function StatusStrip({ summary, pane, session, version, figures = true, sessions, onOpenSession }: {
   summary?: Summary
   pane?: PaneStatus
-  /** The agent session in the focused pane; absent for a shell or a file. */
+  /** The agent session in the focused pane, for its processes' load; absent for a shell or a file. */
   session?: SessionSummary
   version?: string
-  /** The plan limits and today's spend; false while the sidebar shows them. */
+  /** The plan limits; false while the sidebar shows them. */
   figures?: boolean
   /** Every session, for the resource popover's names; and how one's tab is brought forward. */
   sessions?: SessionSummary[]
@@ -65,17 +65,11 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
       {/* Beside the limits only while one is close (PremiumHint's rule: an
         * offer appears beside the problem it solves, never on a quiet day). */}
       {Math.max(five?.used_percentage ?? 0, seven?.used_percentage ?? 0) >= WINDOW_HINT_PCT && <WindowStopHint />}
-      {figures && summary && (
-        <span className="whitespace-nowrap" title="Spent today, every agent">
-          Today <span className="num text-fg">{fmtUSD(summary.cost_usd)}</span>
-        </span>
-      )}
-      {/* The session in front, the figures you check while you work in its
-        * terminal: the strip stood empty beside an open sidebar, and the
-        * cockpit that carries them is often closed (owner, 2026-10-10). */}
-      {/* The one part that gives way on a narrow screen: the right side keeps
-        * its words on one line (owner, 2026-10-23, a 15-inch screen). */}
-      {session && <span className="flex min-w-0 shrink items-center overflow-hidden whitespace-nowrap"><SessionFigures s={session} sessions={sessions} onOpenSession={onOpenSession} /></span>}
+      {/* The session in front: its processes' CPU and memory only. Its model,
+        * context, next-call price and cost, and today's spend, left the strip
+        * (owner, 2026-10-23: the bottom bar holds service things; the cockpit
+        * carries those figures). */}
+      {session && <SessionLoad sessionId={session.session_id} sessions={sessions} onOpenSession={onOpenSession} />}
       <span className="ml-auto flex shrink-0 items-center gap-4">
         {/* Caprock's own memory and disk, always: whether a slow machine
           * is Caprock is a question with or without a session in front. */}
@@ -147,33 +141,3 @@ function Limit({ label, pct }: { label: string; pct: number }) {
 }
 
 /** Model, how full the context is, what the next call costs, what the session has cost, and what its processes use. */
-function SessionFigures({ s, sessions, onOpenSession }: { s: SessionSummary; sessions?: SessionSummary[]; onOpenSession?: (id: string) => void }) {
-  const ctx = s.context
-  const pct = ctx ? Math.max(0, Math.min(100, ctx.pct)) : 0
-  const tone = pct >= 85 ? 'bg-danger' : pct >= 65 ? 'bg-warn' : 'bg-fg-muted'
-  return (
-    <span data-session-figures className="flex min-w-0 items-center gap-3 truncate">
-      {s.model_display && <span className="truncate text-fg" title="The model of the session in front">{s.model_display}</span>}
-      {ctx && (
-        <span className="inline-flex items-center gap-1.5" title={`Context: ${Math.round(ctx.tokens / 1000)}k of ${Math.round(ctx.window / 1000)}k tokens`}>
-          context
-          <span className="relative h-[4px] w-[38px] overflow-hidden rounded-full bg-[var(--app-hairline-strong)]">
-            <span className={`absolute inset-y-0 left-0 rounded-full ${tone}`} style={{ width: `${pct}%` }} />
-          </span>
-          <span className="num text-fg">{Math.round(pct)}%</span>
-        </span>
-      )}
-      {ctx && ctx.next_call_usd > 0 && (
-        <span title="What the next call pays to re-read the context, before it does any work">
-          next call <span className="num text-fg">{fmtUSD(ctx.next_call_usd)}</span>
-        </span>
-      )}
-      <span title="What this session has cost at API list prices">
-        session <span className="num text-fg">{fmtUSD(s.stats.cost_usd)}</span>
-      </span>
-      {/* Its processes' CPU and memory, from the resource meter: absent
-        * until the daemon has measured them, and for a daemon without one. */}
-      <SessionLoad sessionId={s.session_id} sessions={sessions} onOpenSession={onOpenSession} />
-    </span>
-  )
-}

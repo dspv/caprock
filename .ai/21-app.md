@@ -508,8 +508,8 @@ One window, three regions:
   bars. Clicks: spend → `#/cost`, a window → `#/cost?section=limits`,
   *Running* → `#/now`, *Waiting* → the first Inbox item. Code:
   `components/TodayStrip.tsx`, `lib/today.ts`. While the sidebar is open
-  the status strip drops its plan windows and spend, so the same figures
-  are never on screen twice. It folds to one line (spend, running, what
+  the status strip drops its plan windows, so the same figures are never
+  on screen twice; the strip never shows the spend (owner, 2026-10-23). It folds to one line (spend, running, what
   waits, the 5h and 7d percentages) by its chevron and hides by a hover ×;
   its right-click menu offers Full card, One line and Hide; Settings →
   Appearance shows it again, and while hidden the list's heading counts
@@ -871,9 +871,9 @@ One window, three regions:
   nobody wrote in left out) with cost, age and one button: *Continue* resumes
   an ended one in a new tab, *Open* a running one. The sidebar is for what
   runs; this is the way back to what ended.
-- **Status strip (bottom).** Connection state, plan limits (5-hour and 7-day)
-  and today's spend while the sidebar is hidden (its Today strip carries
-  them otherwise), with an agent in front what its processes use (*agent
+- **Status strip (bottom).** Service things only. Connection state, plan
+  limits (5-hour and 7-day) while the sidebar is hidden (its Today strip
+  carries them otherwise), with an agent in front what its processes use (*agent
   cpu 8.1% ram 413 MB*, which opens the last hour's CPU and memory charts
   and who uses the most, [04-ui.md § Status strip](04-ui.md)), what Caprock
   itself costs this computer — *caprock

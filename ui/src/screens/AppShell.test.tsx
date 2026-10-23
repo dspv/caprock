@@ -165,10 +165,11 @@ describe('the app workspace', () => {
     expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
     // A project's row: what runs in it, nothing else.
     expect(screen.getByLabelText('2 running')).toBeInTheDocument()
-    // With the sidebar closed the status strip carries them again.
+    // With the sidebar closed the status strip carries the limits again, but
+    // never the spend: it holds service things only (owner, 2026-10-23).
     await act(() => { fireEvent.keyDown(window, { key: '\\', code: 'Backslash', metaKey: true }) })
     expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
-    expect(within(document.querySelector('footer')!).getByText('$1.25')).toBeInTheDocument()
+    expect(within(document.querySelector('footer')!).queryByText('$1.25')).toBeNull()
     expect(within(document.querySelector('footer')!).getByText('40%')).toBeInTheDocument()
   })
 

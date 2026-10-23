@@ -18,19 +18,23 @@ describe('the status strip', () => {
     expect(screen.getByText('0.94.1').closest('button')).toHaveAttribute('title', 'Version and updates\nterminal protocol v2 · 167×36')
   })
 
-  it('shows the figures of the session in front: model, context, next call, cost', () => {
+  // Service things only (owner, 2026-10-23): the session's model, context,
+  // next-call price and cost live in the cockpit, and today's spend with them.
+  it('carries no session figures and no spend', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
     const session = {
+      session_id: 's1',
       model_display: 'Opus 5.5',
       context: { tokens: 84_000, window: 200_000, pct: 42, next_call_usd: 0.12 },
       stats: { cost_usd: 3.4 },
     } as unknown as Parameters<typeof StatusStrip>[0]['session']
-    const { container } = render(<StatusStrip version="0.94.1" figures={false} session={session} />)
-    const text = container.querySelector('[data-session-figures]')!.textContent
-    expect(text).toContain('Opus 5.5')
-    expect(text).toContain('42%')
-    expect(text).toContain('$0.12')
-    expect(text).toContain('$3.40')
+    const { container } = render(<StatusStrip version="0.94.1" session={session} summary={{ cost_usd: 12.5 } as Parameters<typeof StatusStrip>[0]['summary']} />)
+    expect(container.querySelector('[data-session-figures]')).toBeNull()
+    const text = container.textContent ?? ''
+    expect(text).not.toContain('Opus 5.5')
+    expect(text).not.toContain('$3.40')
+    expect(text).not.toContain('$12.50')
+    expect(text).not.toContain('Today')
   })
 
   it('names the terminal state only while it is not live', () => {
