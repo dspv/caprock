@@ -82,7 +82,10 @@ export function BrainAutoSetting() {
  * minutes — filled the brain with run chatter (2026-10-24); a job that says
  * `automation: true` when it starts needs no entry here, this is for the
  * rest. Their projects are left out of the graph, search and the handoff
- * unless opened by name; nothing is deleted.
+ * unless opened by name; nothing is deleted. A session started at the disk
+ * root or in the home folder itself — launchd and cron start a job in "/" —
+ * is never read at all (store.RootOrHome), and the line says so: the list
+ * refuses those two folders.
  */
 function ExcludeFolders({ folders, save }: { folders: string[]; save: (b: BrainSettings) => Promise<void> }) {
   const [draft, setDraft] = useState('')
@@ -101,7 +104,7 @@ function ExcludeFolders({ folders, save }: { folders: string[]; save: (b: BrainS
     <div className="grid min-w-0 gap-1.5" data-brain-exclude>
       <span className="text-[13px] text-fg">Never read these folders</span>
       <span className="text-[12.5px] leading-relaxed text-fg-muted">
-        Sessions in them, or in a repository under them, are skipped unread, and their projects stay out of the graph, search and what a new session is handed unless you open that project. A scheduled job that says so when it starts is skipped on its own. Nothing already kept is deleted.
+        Sessions in them, or in a repository under them, are skipped unread, and their projects stay out of the graph, search and what a new session is handed unless you open that project. A scheduled job that says so when it starts is skipped on its own. Sessions started at the disk root or in your home folder itself, where scheduled jobs run, are never read. Nothing already kept is deleted.
       </span>
       {folders.length > 0 && (
         <ul className="grid gap-1 text-[12.5px]">

@@ -196,9 +196,9 @@ func (e *Engine) readGap(ctx context.Context, g store.BrainGap) (did bool, err e
 	if err != nil {
 		return false, err
 	}
-	// A gap in a session the user has since excluded is closed unread, as a
-	// regular read of that session would be skipped.
-	if _, ok := ExcludedFolder(e.Config().Exclude, c.Cwd, c.RepoRoot); ok {
+	// A gap in a session the user has since excluded, or one started at the
+	// root or home, is closed unread, as a regular read of it would be skipped.
+	if _, ok := ExcludedFolder(e.Config().Exclude, c.Cwd, c.RepoRoot); ok || store.RootOrHome(c.Cwd) {
 		return false, store.FinishBrainGap(ctx, db, g.ID, now)
 	}
 	c.Project = memoryProject(ctx, c)

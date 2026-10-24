@@ -4503,7 +4503,21 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   cursor moved to the session's newest event, so it is not looked at again
   until it has new events (a catch-up gap in such a session is closed
   unread); decided at read time, because the list can change after the
-  session ran. The excluded folders' projects (`store.ProjectFromCwd` of
+  session ran. A session whose working directory is a filesystem or drive
+  root (`/`, `C:\`) or the home directory itself (`%USERPROFILE%` on
+  Windows; not a folder under it) is never read either (2026-10-24, owner:
+  launchd and cron start a scheduled `claude -p` in `/`, 975 such sessions
+  on his machine, 143 of them waiting on the daily limit) —
+  `store.RootOrHome`, the set `brain.exclude` refuses minus the temp
+  folder. The engine's candidate list marks one as it meets it with a
+  skipped read through its newest event, reason `root or home: <cwd>`
+  (`store.MarkBrainRootOrHome`; no migration), and `BrainCandidates`
+  leaves a marked session out for good, so it is not pending (the count
+  drops at the first status), not estimated, not counted as read in the
+  build, and a catch-up gap in it is closed unread. Its memories had no
+  project (`memoryProject`), and the SessionStart handoff already hands
+  such a folder nothing (`store.NotAProject`); memories kept from such
+  sessions before are not deleted. The excluded folders' projects (`store.ProjectFromCwd` of
   each; `brain.ExcludedProjects`) are left out of `GET /v1/brain` without
   `project=` — the graph and search, so an MCP `search_memories` does not
   find them — and `GET /v1/brain/handoff` and `/v1/brain/decisions` answer
@@ -4579,8 +4593,9 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   neither the backoff nor the daily limit, and the same chunk was asked
   again every few seconds (3,363 times in 13 hours on the owner's Mac,
   2026-10-22). The project is the session's own — none for a session
-  opened in the filesystem root, the home directory or the temp directory
-  itself (`store.NotAProject`), or whose label folds to nothing (`/`) —
+  opened in the temp directory itself (`store.NotAProject`; one opened in
+  the filesystem root or the home directory itself is not read at all,
+  *What is never read*), or whose label folds to nothing (`/`) —
   except for a session whose `cwd` is under
   the system's temp directory (`os.TempDir`, `/tmp`, `/var/folders` and
   their `/private` forms), where that label is a throwaway folder's name:

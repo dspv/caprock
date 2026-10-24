@@ -3,6 +3,7 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -568,6 +569,37 @@ func NotAProject(cwd string) bool {
 		}
 	}
 	return false
+}
+
+// RootOrHome reports whether cwd is a filesystem or drive root ("/", `C:\`)
+// or the user's home directory itself (%USERPROFILE% on Windows) — not a
+// folder under it, and not "" (a session with no recorded cwd). Second Brain
+// never reads a session started there: a scheduled `claude -p` run by
+// launchd or cron opens in "/", and nobody keeps a project in either
+// (owner, 2026-10-24). It is NotAProject without the temp directories.
+func RootOrHome(cwd string) bool {
+	home, _ := os.UserHomeDir()
+	return rootOrHome(cwd, home, runtime.GOOS == "windows")
+}
+
+// rootOrHome is RootOrHome against a given home; fold compares the home
+// without case, as Windows paths are.
+func rootOrHome(cwd, home string, fold bool) bool {
+	c := normalizeCwd(cwd)
+	if c == "" {
+		return false
+	}
+	if isRootPath(c) || (len(c) == 2 && c[1] == ':') {
+		return true
+	}
+	h := normalizeCwd(home)
+	if h == "" {
+		return false
+	}
+	if fold {
+		return strings.EqualFold(c, h)
+	}
+	return c == h
 }
 
 // lastSegment is the final path segment of an already-normalized path, "" for a

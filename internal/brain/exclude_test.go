@@ -3,6 +3,8 @@ package brain
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -126,5 +128,63 @@ func TestAnAutomationSessionIsNeverRead(t *testing.T) {
 	}
 	if len(st.Exclude) != 0 {
 		t.Errorf("exclude is [] by default: %v", st.Exclude)
+	}
+}
+
+// A session started at the filesystem root or in the home folder itself —
+// where launchd and cron start a scheduled `claude -p` — is marked never
+// read with the reason as soon as it is met: not pending, not estimated,
+// not counted as read, never sent, and not back with new events. A folder
+// under the home is read as before.
+func TestARootOrHomeSessionIsNeverRead(t *testing.T) {
+	e := newEnv(t, twoMemories)
+	ctx := context.Background()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home directory")
+	}
+	place := func(id, cwd string, ago time.Duration) {
+		t.Helper()
+		if err := store.UpsertSession(ctx, e.st.DB(), id, store.SessionPatch{Cwd: cwd, LastEventAt: e.now.Add(-ago).UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	root := string(filepath.Separator)
+	if vol := filepath.VolumeName(home); vol != "" {
+		root = vol + root
+	}
+	homeCwd := home + string(filepath.Separator)
+	e.session(t, "cron", "root", time.Hour, [2]string{"You are the root scout", long})
+	place("cron", root, time.Hour)
+	e.session(t, "homejob", "u", time.Hour, [2]string{"You are the home scout", long})
+	place("homejob", homeCwd, time.Hour)
+	e.session(t, "work", "web", time.Hour, [2]string{"q", long})
+	place("work", filepath.Join(home, "dev", "web"), time.Hour)
+
+	st := e.eng.Status(ctx)
+	if st.Pending != 1 {
+		t.Fatalf("pending %d, want only the session under the home", st.Pending)
+	}
+	for id, cwd := range map[string]string{"cron": root, "homejob": homeCwd} {
+		runs, err := store.BrainRunsOf(ctx, e.st.DB(), id)
+		if err != nil || len(runs) != 1 || runs[0].Status != store.BrainRunSkipped || !strings.HasPrefix(runs[0].Error, store.BrainSkipRootOrHome+": ") {
+			t.Fatalf("%s (%s): the skip is recorded with its reason: %+v %v", id, cwd, runs, err)
+		}
+	}
+	if est, _ := e.eng.EstimateFrom(ctx, e.cfg.Since); est.Sessions != 1 {
+		t.Fatalf("estimate: %+v", est)
+	}
+	if n, _ := e.eng.Wake(ctx); n != 1 || e.calls != 1 || strings.Contains(e.reqs[0].Prompt, "scout") {
+		t.Fatalf("wake: %d calls=%d", n, e.calls)
+	}
+	// New events do not bring it back; the build counts only the real read.
+	e.session(t, "cron", "root", 30*time.Minute, [2]string{"more scouting", long})
+	place("cron", root, 30*time.Minute)
+	st = e.eng.Status(ctx)
+	if st.Pending != 0 || st.Build == nil || st.Build.Read != 1 {
+		t.Fatalf("status: pending %d build %+v", st.Pending, st.Build)
+	}
+	if runs, _ := store.BrainRunsOf(ctx, e.st.DB(), "cron"); len(runs) != 1 {
+		t.Fatalf("marked once: %+v", runs)
 	}
 }
