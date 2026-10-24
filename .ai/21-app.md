@@ -1539,6 +1539,13 @@ app had no reload command.
 - **Reload by hand.** View → Reload (⌘R) in the macOS menu. Windows and Linux
   have no menu; F5 reloads there, unless a focused terminal took the key for
   its program. Ctrl+R is not used: it is the shell's history search.
+- **Share by hand.** File → *Share Your Figures…* in the macOS menu, under
+  *New Browser Tab*, opens the share sheet over the tab in front: the menu
+  evaluates `caprock:share` in the main window and the page opens the sheet
+  (`SHARE_EVENT`, `components/Share.tsx`). No key, so nothing to check on
+  other systems; there the Today card's share icon and ⌘K *Share my numbers*
+  do the same (owner, 2026-10-25: from a session tab he could not find how to
+  share).
 
 ## A blank window recovers by itself
 

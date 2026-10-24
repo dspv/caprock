@@ -213,6 +213,12 @@ mod menu {
     const CLOSE_TAB: &str = "close-tab";
     const CLOSE_WINDOW: &str = "close-window";
     const NEW_BROWSER_TAB: &str = "new-browser-tab";
+    const SHARE: &str = "share";
+
+    /// What the page does on File -> Share Your Figures…: the share sheet
+    /// over the tab in front (`SHARE_EVENT`, ui/src/components/Share.tsx).
+    /// No key: a new chord would have to be checked on every OS (rule 12).
+    const SHARE_JS: &str = "window.dispatchEvent(new Event('caprock:share'))";
 
     /// What the page does on File -> New Browser Tab: an empty browser tab
     /// with its address box focused, or, while the in-app browser is off, a
@@ -285,6 +291,9 @@ mod menu {
             Some(NativeIcon::Network),
             None::<&str>,
         )?;
+        // File -> Share Your Figures…, under New Browser Tab (owner,
+        // 2026-10-25: from a session tab he could not find how to share).
+        let share = MenuItem::with_id(app, SHARE, "Share Your Figures…", true, None::<&str>)?;
         for kind in menu.items()? {
             if let MenuItemKind::Submenu(sub) = kind {
                 let text = sub.text()?;
@@ -294,7 +303,8 @@ mod menu {
                 }
                 if text == "File" {
                     sub.insert(&browser, 0)?;
-                    sub.insert(&PredefinedMenuItem::separator(app)?, 1)?;
+                    sub.insert(&share, 1)?;
+                    sub.insert(&PredefinedMenuItem::separator(app)?, 2)?;
                 }
                 if text == "File" || text == "Window" {
                     for (i, item) in sub.items()?.iter().enumerate() {
@@ -367,6 +377,14 @@ mod menu {
                     let _ = w.show();
                     let _ = w.set_focus();
                     let _ = w.eval(NEW_BROWSER_TAB_JS);
+                }
+                return;
+            }
+            if event.id() == SHARE {
+                if let Some(w) = app.get_webview_window(shell::MAIN) {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                    let _ = w.eval(SHARE_JS);
                 }
                 return;
             }
