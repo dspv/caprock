@@ -167,6 +167,7 @@ describe('Second Brain', () => {
     render(<BrainAutoSetting />)
     await screen.findByText('/Users/u/dev/jobs')
     expect(screen.getByText(/3 automation sessions skipped unread/)).toBeTruthy()
+    expect(document.querySelector('[data-brain-exclude]')!.textContent).toMatch(/started at the disk root or in your home folder itself, where scheduled jobs run, are never read\./)
     const field = screen.getByRole('textbox', { name: 'Folder to exclude' })
     fireEvent.change(field, { target: { value: ' /Users/u/dev/scout ' } })
     fireEvent.keyDown(field, { key: 'Enter' })

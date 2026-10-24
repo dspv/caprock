@@ -278,11 +278,34 @@ func (e *Engine) readFrom() int64 {
 
 // candidates lists sessions with unread events, quiet for IdleAfter, that
 // are not waiting out a failure, newest first.
+//
+// A session started at a filesystem root or in the home directory itself
+// (store.RootOrHome) is marked never read (store.MarkBrainRootOrHome) as
+// it is met and left out, so it is neither read nor counted as waiting; the
+// list is asked again while marks thinned a full one.
 func (e *Engine) candidates(ctx context.Context, limit int) ([]store.BrainCandidate, error) {
 	now := e.now()
-	all, err := store.BrainCandidates(ctx, e.Store.DB(), e.readFrom(), now.Add(-IdleAfter).UnixMilli(), limit)
-	if err != nil {
-		return nil, err
+	var all []store.BrainCandidate
+	for pass := 0; ; pass++ {
+		got, err := store.BrainCandidates(ctx, e.Store.DB(), e.readFrom(), now.Add(-IdleAfter).UnixMilli(), limit)
+		if err != nil {
+			return nil, err
+		}
+		all = got[:0]
+		marked := 0
+		for _, c := range got {
+			if store.RootOrHome(c.Cwd) {
+				if err := store.MarkBrainRootOrHome(ctx, e.Store.DB(), c, now.UnixMilli()); err != nil {
+					return nil, err
+				}
+				marked++
+				continue
+			}
+			all = append(all, c)
+		}
+		if marked == 0 || len(got) < limit || pass >= 20 {
+			break
+		}
 	}
 	out := all[:0]
 	for _, c := range all {
@@ -1150,7 +1173,7 @@ func (e *Engine) EstimateFrom(ctx context.Context, since int64) (Estimate, error
 	est := Estimate{DailyCap: e.dailyCap(), Truncated: len(cands) == most}
 	exclude := e.Config().Exclude
 	for _, c := range cands {
-		if _, ok := ExcludedFolder(exclude, c.Cwd, c.RepoRoot); ok {
+		if _, ok := ExcludedFolder(exclude, c.Cwd, c.RepoRoot); ok || store.RootOrHome(c.Cwd) {
 			continue
 		}
 		// Every chunk a long session takes, as the reads will send them.

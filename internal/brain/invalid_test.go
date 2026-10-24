@@ -121,27 +121,26 @@ func TestTitleFromSummary(t *testing.T) {
 
 // A background claude run in "/" was labelled "/", a title no project can
 // have: every read of it failed whole and was asked again at once, 3,363
-// times in 13 hours (2026-10-22). It is read in no project now.
-func TestASessionInTheFilesystemRootIsReadInNoProject(t *testing.T) {
+// times in 13 hours (2026-10-22). Since 2026-10-24 a session in the root is
+// not read at all (store.RootOrHome): it is marked skipped once, nothing is
+// sent, and it is not asked again.
+func TestASessionInTheFilesystemRootIsNotRead(t *testing.T) {
 	e := newEnv(t, twoMemories)
 	e.session(t, "s1", "", 20*time.Minute, [2]string{"Why is the cache test flaky?", long}, [2]string{"And the store?", long})
-	if p := e.inDir(t, "s1", "/", 20*time.Minute); store.NormTitle(p) != "" {
-		t.Skipf("the root is labelled %q here, a title a project can have", p)
+	e.inDir(t, "s1", "/", 20*time.Minute)
+	if n, err := e.eng.Wake(context.Background()); err != nil || n != 0 || e.calls != 0 {
+		t.Fatalf("wake: read %d, calls %d, err %v", n, e.calls, err)
 	}
-	if n, err := e.eng.Wake(context.Background()); err != nil || n != 1 {
-		t.Fatalf("wake: read %d, err %v", n, err)
+	status, _, _ := e.runsOf(t, "s1")
+	if len(status) != 1 || status[0] != store.BrainRunSkipped {
+		t.Fatalf("runs %v", status)
 	}
-	if strings.Contains(e.reqs[0].Prompt, "Project:") {
-		t.Errorf("the root is no project to tell claude about:\n%s", e.reqs[0].Prompt)
-	}
-	status, nodes, _ := e.runsOf(t, "s1")
-	if len(status) != 1 || status[0] != store.BrainRunOK || nodes[0] != 2 {
-		t.Fatalf("runs %v, memories %v", status, nodes)
-	}
-	calls := e.calls
 	e.now = e.now.Add(time.Hour)
-	if _, err := e.eng.Wake(context.Background()); err != nil || e.calls != calls {
-		t.Fatalf("asked again: calls %d → %d, err %v", calls, e.calls, err)
+	if _, err := e.eng.Wake(context.Background()); err != nil || e.calls != 0 {
+		t.Fatalf("asked again: calls %d, err %v", e.calls, err)
+	}
+	if status, _, _ := e.runsOf(t, "s1"); len(status) != 1 {
+		t.Fatalf("marked again: %v", status)
 	}
 }
 

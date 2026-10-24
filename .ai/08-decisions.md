@@ -4346,6 +4346,15 @@ searching prose.
   risks merging real memories for a symptom the first filter removes; and
   skipping every owned one-job session, which would skip the owner's own
   scripted work that is worth reading.
+  The same day a third filter followed (owner decision): a session whose
+  working directory is the filesystem root or the home folder itself is
+  never read. launchd and cron start a scheduled `claude -p` in `/`, and no
+  such job says `automation: true`; on the owner's machine 975 sessions ran
+  there, 832 were read into 87 memories of run chatter and 143 waited on
+  the daily limit. Nobody keeps a project in `/` or in the home folder
+  itself, and `brain.exclude` refuses both because they hold everything, so
+  the extraction skips them on its own, marked in `brain_runs` like the
+  automation mark; folders under the home are read as before.
 
 **Rules out:** an embedding index or a vector store (a dependency and a model
 for what titles, topics and links do); a graph library in the dashboard

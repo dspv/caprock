@@ -34,6 +34,13 @@ const (
 	// BrainSkipExcluded is the prefix of the reason for a session in a
 	// folder the user excluded (Settings → Second Brain); the folder follows.
 	BrainSkipExcluded = "excluded"
+	// BrainSkipRootOrHome is the prefix of the reason for a session started
+	// at a filesystem root or in the home directory itself (RootOrHome):
+	// where launchd and cron start a scheduled `claude -p`, and nobody keeps
+	// a project. The cwd follows ("root or home: /"). Like the automation
+	// mark it is for good — a session's cwd does not change — so
+	// BrainCandidates leaves such a session out from then on.
+	BrainSkipRootOrHome = "root or home"
 )
 
 // BrainRun is one read of one session by the automatic extraction.
@@ -92,6 +99,19 @@ func MarkBrainAutomation(ctx context.Context, q Querier, sessionID string, now i
 	return err
 }
 
+// brainNeverReadSQL matches the reason of a skipped run `a` that marks its
+// session as never read: the automation mark or the root-or-home one.
+const brainNeverReadSQL = `(a.error = '` + BrainSkipAutomation + `' OR a.error LIKE '` + BrainSkipRootOrHome + `:%')`
+
+// MarkBrainRootOrHome records that a session started at a root or in the
+// home directory itself is never read (BrainSkipRootOrHome, with its cwd):
+// a skipped run through the session's newest event, so nothing of it waits.
+func MarkBrainRootOrHome(ctx context.Context, q Querier, c BrainCandidate, now int64) error {
+	_, err := InsertBrainRun(ctx, q, BrainRun{SessionID: c.SessionID, FromEventID: c.Cursor, ThroughEventID: c.MaxEventID,
+		Status: BrainRunSkipped, Error: BrainSkipRootOrHome + ": " + c.Cwd, StartedAt: now, FinishedAt: now})
+	return err
+}
+
 // brainAutomationSQL is the automation mark of the session whose id is the
 // bound argument.
 const brainAutomationSQL = `SELECT 1 FROM brain_runs a WHERE a.session_id = ? AND a.status = 'skipped' AND a.error = '` + BrainSkipAutomation + `'`
@@ -141,7 +161,8 @@ type BrainCandidate struct {
 // BrainCandidates lists sessions active since `since` and quiet since
 // `idleBefore` (or ended), with events past their cursor, newest first. A
 // session whose short tail was held is left out until it has newer events
-// or ends, and a session marked as automation (MarkBrainAutomation) always.
+// or ends, and a session marked as automation (MarkBrainAutomation) or as
+// started at the root or home (MarkBrainRootOrHome) always.
 func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, limit int) ([]BrainCandidate, error) {
 	if limit <= 0 {
 		limit = 50
@@ -156,7 +177,7 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 			       `+brainHeldSQL+` AS held
 			FROM sessions s
 			WHERE COALESCE(s.last_event_at, 0) >= ? AND (s.status = 'ended' OR COALESCE(s.last_event_at, 0) < ?)
-			  AND NOT EXISTS (SELECT 1 FROM brain_runs a WHERE a.session_id = s.session_id AND a.status = 'skipped' AND a.error = '`+BrainSkipAutomation+`')
+			  AND NOT EXISTS (SELECT 1 FROM brain_runs a WHERE a.session_id = s.session_id AND a.status = 'skipped' AND `+brainNeverReadSQL+`)
 		) WHERE max_id > cursor AND (ended OR max_id > held)
 		ORDER BY last_event_at DESC LIMIT ?`, since, idleBefore, limit)
 	if err != nil {
@@ -316,12 +337,14 @@ type BrainReadSession struct {
 }
 
 // BrainReadSessions lists the sessions active since `since` with a read
-// that did not fail: the "read" side of a build's progress.
+// that did not fail: the "read" side of a build's progress. A session
+// marked as started at the root or home was never read and is not listed.
 func BrainReadSessions(ctx context.Context, q Querier, since int64) ([]BrainReadSession, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT s.session_id, COALESCE(s.project, ''), COALESCE(SUM(r.nodes), 0), COALESCE(s.last_event_at, 0)
 		FROM sessions s JOIN brain_runs r ON r.session_id = s.session_id AND r.status != 'failed' AND r.error != '`+BrainSkipAutomation+`'
 		WHERE COALESCE(s.last_event_at, 0) >= ?
+		  AND NOT EXISTS (SELECT 1 FROM brain_runs a WHERE a.session_id = s.session_id AND a.status = 'skipped' AND a.error LIKE '`+BrainSkipRootOrHome+`:%')
 		GROUP BY s.session_id`, since)
 	if err != nil {
 		return nil, err
