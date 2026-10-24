@@ -9,6 +9,7 @@
  * API list price — never a bill (rule 6).
  */
 import type { BranchPR } from './branches'
+import { asSpendParts, type SpendPart } from './planShare'
 
 export type Stage = 'draft' | 'open' | 'fix' | 'ready' | 'merged' | 'released'
 
@@ -22,6 +23,8 @@ export interface PRSpend {
   /** How the cost came: the sessions on its head branch, and those cut at their pull requests. */
   by_branch?: number
   by_slice?: number
+  /** The cost split by the sign-in each session ran on, for the plan figures (lib/planShare); absent from an older daemon. */
+  parts?: SpendPart[]
 }
 
 export interface BoardCard {
@@ -66,6 +69,8 @@ export interface BoardRelease {
   prs: number[]
   cost_usd: number
   sessions: number
+  /** cost_usd by sign-in: its pull requests' parts summed. */
+  parts?: SpendPart[]
   /** The listed pull requests may not reach back to the release before it. */
   partial?: boolean
 }
@@ -166,7 +171,7 @@ const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0
 
 function asSpend(v: unknown): PRSpend {
   const o = (v && typeof v === 'object' ? v : {}) as Partial<PRSpend>
-  return { cost_usd: num(o.cost_usd), sessions: num(o.sessions), live: num(o.live), agents: Array.isArray(o.agents) ? o.agents.filter((a) => typeof a === 'string') : [], by_branch: num(o.by_branch), by_slice: num(o.by_slice) }
+  return { cost_usd: num(o.cost_usd), sessions: num(o.sessions), live: num(o.live), agents: Array.isArray(o.agents) ? o.agents.filter((a) => typeof a === 'string') : [], by_branch: num(o.by_branch), by_slice: num(o.by_slice), parts: asSpendParts(o.parts) }
 }
 
 /** The answer as the board reads it: an older daemon (no board) or an odd answer is no board, never a crash. */
@@ -184,7 +189,7 @@ export function asBoard(v: unknown): PRBoard | undefined {
       .map((c) => ({ number: c.number, closed_at: c.closed_at || undefined, spend: asSpend(c.spend) })),
     cards: o.cards.filter((c) => c && typeof c === 'object' && STAGE_KEYS.has((c as BoardCard).stage)).map((c) => ({ ...c, spend: asSpend(c.spend) })),
     releases: (Array.isArray(o.releases) ? o.releases : []).filter((r) => r && typeof r === 'object' && typeof r.tag === 'string')
-      .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), published_at: num(r.published_at), assets: fin(r.assets) })),
+      .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), parts: asSpendParts(r.parts), published_at: num(r.published_at), assets: fin(r.assets) })),
     flow: {
       counts, days: num(f.days) || 14, merged: num(f.merged), ttm_median_ms: f.ttm_median_ms || undefined, ttm_count: num(f.ttm_count),
       release_lag_median_ms: f.release_lag_median_ms || undefined, release_lag_count: num(f.release_lag_count),
@@ -325,6 +330,8 @@ export interface CostlyRelease {
   prs: number[]
   cost_usd: number
   sessions: number
+  /** cost_usd by sign-in, for the plan figures. */
+  parts?: SpendPart[]
   /** The oldest release on the line: it shipped everything before it too. */
   first?: boolean
 }
@@ -360,7 +367,7 @@ export function asCostliest(v: unknown): Costliest | undefined {
     prs_counted: num(o.prs_counted),
     prs_known: num(o.prs_known),
     releases: o.releases.filter((r) => r && typeof r === 'object' && typeof r.tag === 'string')
-      .map((r) => ({ tag: r.tag, at: num(r.at), url: typeof r.url === 'string' ? r.url : '', prs: Array.isArray(r.prs) ? r.prs.filter((n) => typeof n === 'number') : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), first: r.first === true || undefined })),
+      .map((r) => ({ tag: r.tag, at: num(r.at), url: typeof r.url === 'string' ? r.url : '', prs: Array.isArray(r.prs) ? r.prs.filter((n) => typeof n === 'number') : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), parts: asSpendParts(r.parts), first: r.first === true || undefined })),
     releases_counted: num(o.releases_counted),
     tags_read: o.tags_read === true,
     fetched_at: num(o.fetched_at) || undefined,

@@ -1741,6 +1741,10 @@ type Summary struct {
 	// omitted when the range has no Hermes turns or another agent is
 	// filtered for.
 	Hermes *HermesCost `json:"hermes,omitempty"`
+	// CostParts splits CostUSD by the sign-in each session ran on (agent and
+	// subscription), for the plan figures (internal/planshare). Filled by the
+	// API's range summary, not by SummarizeSparkFor.
+	CostParts SpendParts `json:"cost_parts,omitempty"`
 }
 
 // Unpriced is the volume that could not be priced, and which models caused it.
@@ -3050,8 +3054,11 @@ const CodexRateLimitPrefix = "codex_"
 // transcripts are imported newest-modified first and out of order, and the
 // latest observation is the only one shown.
 //
-// Unlike RecordRateLimit this writes no history: the Codex rows are shown as
-// last observed, with no forecast built on them. Run it in a transaction.
+// Like RecordRateLimit it also appends each window to rate_limit_history,
+// throttled the same way (one row per window per 30 s), so the plan figures
+// can calibrate a Codex week once it has ended (internal/planshare). No
+// forecast is built on those rows: the Codex windows are shown as last
+// observed. Run it in a transaction.
 func ReplaceRateLimits(ctx context.Context, q Querier, prefix string, sessionID string, snaps []RateLimitSnapshot) (bool, error) {
 	if prefix == "" || len(snaps) == 0 {
 		return false, nil
@@ -3075,6 +3082,15 @@ func ReplaceRateLimits(ctx context.Context, q Querier, prefix string, sessionID 
 			VALUES(?, ?, ?, ?, ?)`,
 			prefix+s.Window, ts, sessionID, s.UsedPercentage, s.ResetsAt); err != nil {
 			return false, err
+		}
+		var lastTs sql.NullInt64
+		_ = q.QueryRowContext(ctx, `SELECT MAX(ts) FROM rate_limit_history WHERE window = ?`, prefix+s.Window).Scan(&lastTs)
+		if !lastTs.Valid || ts-lastTs.Int64 >= rateLimitHistoryMinIntervalMs {
+			if _, err := q.ExecContext(ctx, `
+				INSERT INTO rate_limit_history(ts, window, used_percentage, resets_at) VALUES(?, ?, ?, ?)`,
+				ts, prefix+s.Window, s.UsedPercentage, s.ResetsAt); err != nil {
+				return false, err
+			}
 		}
 	}
 	return true, nil

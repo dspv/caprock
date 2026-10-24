@@ -27,6 +27,9 @@ import type { Bucket } from '@/lib/flowbucket'
 import { Panel, Stat } from './ui'
 import { TrendLine } from './TodayTrend'
 import { extProps } from '@/lib/externalLinks'
+import { planShare, planShareTitle, type SpendPart } from '@/lib/planShare'
+import { usePlanRates } from '@/lib/planRates'
+import { PlanShare } from './PlanShare'
 
 // ---------------------------------------------------------------- the flow
 
@@ -219,12 +222,22 @@ const sessionsText = (n: number) => `${n} session${n === 1 ? '' : 's'}`
  * repository, so a quiet month still offers All time.
  */
 export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?: Costliest; period: ExpensivePeriod; onPeriod: (v: ExpensivePeriod) => void; now: number; onOpenPR: (p: KnownPR) => void }) {
+  const rates = usePlanRates()
   if (!data || data.reason || (data.prs_known === 0 && data.releases_counted === 0 && period === '30')) return null
   const span = periodWords(data.days)
   const cap = 'px-3 pb-1 pt-2.5 text-[10px] uppercase tracking-[0.12em] text-fg-faint'
   const row = 'grid w-full items-baseline gap-x-2 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none'
   const rank = (i: number) => <span aria-hidden className="num text-[11px] text-fg-faint">{i + 1}</span>
   const none = (what: string) => <p className="px-3 pb-2.5 pt-1 text-[12px] text-fg-muted">{what}</p>
+  // The plan figures go on their own line under the cost, across the title
+  // and cost columns, so they never take width from the title; the row's
+  // tooltip carries their explanation (a hover card inside a button would be
+  // a second tooltip over the first). Ordered last, so a release row's ↗
+  // keeps its place on the first line.
+  const planTitle = (parts?: SpendPart[]) => { const ps = planShare(rates, parts); return ps ? `\n\n${planShareTitle(ps)}` : '' }
+  const planLine = (parts?: SpendPart[]) => planShare(rates, parts) && (
+    <span className="flex justify-end" style={{ gridColumn: '2 / -1', order: 1 }}><PlanShare parts={parts} tip={false} align="end" /></span>
+  )
   const prScope = `${data.prs_counted} of the ${data.prs_known} pull requests Caprock knows of in this repository have a recorded agent cost${data.days > 0 ? ` and were merged, closed or last active in the ${span}` : ''}. Known: those an agent opened, merged or closed, and every one GitHub listed to this machine, kept locally.`
   const relScope = data.tags_read
     ? `Version tags (v1.2.3) on the default branch of this checkout, as of its last fetch${data.days > 0 ? `, tagged in the ${span}` : ''}: ${data.releases_counted}. Each costs what the pull requests its commits name cost, the same figures as on the left.`
@@ -249,13 +262,14 @@ export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?
               <ol>
                 {data.prs.map((p, i) => (
                   <li key={p.number}>
-                    <button type="button" data-expensive-pr={p.number} onClick={() => onOpenPR(p)} title={`${p.title ? `#${p.number} ${p.title}\n` : ''}${p.state ? `${p.state.charAt(0).toUpperCase()}${p.state.slice(1)} · ` : ''}${costTitle(p.spend)}`} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto]`}>
+                    <button type="button" data-expensive-pr={p.number} onClick={() => onOpenPR(p)} title={`${p.title ? `#${p.number} ${p.title}\n` : ''}${p.state ? `${p.state.charAt(0).toUpperCase()}${p.state.slice(1)} · ` : ''}${costTitle(p.spend)}${planTitle(p.spend.parts)}`} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto]`}>
                       {rank(i)}
                       <span className="flex min-w-0 items-baseline gap-1.5"><span className="num shrink-0 text-fg-muted">#{p.number}</span><span className="truncate text-fg">{p.title}</span></span>
                       <span className="flex items-baseline gap-2 whitespace-nowrap">
                         <span className="num font-semibold text-fg">{costText(p.spend)}</span>
                         <span className="text-[12px] text-fg-muted">{sessionsText(p.spend.sessions)}</span>
                       </span>
+                      {planLine(p.spend.parts)}
                     </button>
                   </li>
                 ))}
@@ -269,7 +283,7 @@ export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?
                 {data.releases.map((r, i) => (
                   <li key={r.tag}>
                     <button type="button" data-expensive-release={r.tag} onClick={() => r.url && openExternal(r.url)} className={`${row} grid-cols-[14px_minmax(0,1fr)_auto_auto]`}
-                      {...extProps(`${r.tag}\n$${r.cost_usd.toFixed(2)} from ${sessionsText(r.sessions)} on ${r.prs.length} pull request${r.prs.length === 1 ? '' : 's'}${r.first ? '\nThe oldest release here: it shipped everything before it too' : ''}\nOpen on GitHub`)}>
+                      {...extProps(`${r.tag}\n$${r.cost_usd.toFixed(2)} from ${sessionsText(r.sessions)} on ${r.prs.length} pull request${r.prs.length === 1 ? '' : 's'}${r.first ? '\nThe oldest release here: it shipped everything before it too' : ''}\nOpen on GitHub${planTitle(r.parts)}`)}>
                       {rank(i)}
                       <span className="flex min-w-0 items-baseline gap-1.5">
                         <span className="mono truncate font-semibold text-fg">{r.tag}</span>
@@ -279,6 +293,7 @@ export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?
                         <span className="num font-semibold text-fg">{costText({ cost_usd: r.cost_usd, sessions: r.sessions, live: 0, agents: [] })}</span>
                         <span className="text-[12px] text-fg-muted">{r.prs.length} PR{r.prs.length === 1 ? '' : 's'}</span>
                       </span>
+                      {planLine(r.parts)}
                     </button>
                   </li>
                 ))}
@@ -295,6 +310,12 @@ export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?
 
 export function Releases({ releases, prs, now, onOpen }: { releases: BoardRelease[]; prs: BranchPR[]; now: number; onOpen: (n: number) => void }) {
   const byNum = new Map(prs.map((p) => [p.number, p]))
+  // Each row is a grid of its own, so a cost column sized by its content
+  // would sit at a different width on a row with a plan line than on one
+  // without, and the pull requests beside it would start at a different x
+  // row to row. With any plan line on the panel the column is one width.
+  const rates = usePlanRates()
+  const planCol = releases.some((r) => r.cost_usd > 0 && planShare(rates, r.parts))
   return (
     <Panel fold="pipeline.releases" title="Releases" right={
       <span title={`Each merge into the default branch is matched to the first release published after it, from the newest listed pull requests. ${AGENT_COST_NOTE}`}>
@@ -305,7 +326,7 @@ export function Releases({ releases, prs, now, onOpen }: { releases: BoardReleas
         {releases.length === 0 ? <p className="px-3 py-3 text-[13px] text-fg-muted">No published release read.</p> : (
           <ul>
             {releases.map((r) => (
-              <li key={r.tag} data-board-release={r.tag} className="grid grid-cols-[minmax(120px,0.9fr)_minmax(0,3fr)_auto] items-start gap-x-4 gap-y-1.5 border-b border-border px-3 py-2.5 last:border-b-0 @max-[760px]/pipe:grid-cols-1">
+              <li key={r.tag} data-board-release={r.tag} className={`grid ${planCol ? 'grid-cols-[minmax(120px,0.9fr)_minmax(0,3fr)_13.5rem]' : 'grid-cols-[minmax(120px,0.9fr)_minmax(0,3fr)_auto]'} items-start gap-x-4 gap-y-1.5 border-b border-border px-3 py-2.5 last:border-b-0 @max-[760px]/pipe:grid-cols-1`}>
                 <div className="min-w-0">
                   <button type="button" onClick={() => r.url && openExternal(r.url)} className="mono truncate text-[14px] font-semibold text-fg hover:underline" {...extProps(r.name ? `${r.name}\nOpen on GitHub` : 'Open on GitHub')}>{r.tag}</button>
                   <div className="text-[12px] text-fg-muted" title={new Date(r.published_at).toLocaleString()}>
@@ -327,6 +348,7 @@ export function Releases({ releases, prs, now, onOpen }: { releases: BoardReleas
                 </div>
                 <div className="text-right @max-[760px]/pipe:text-left">
                   <div className="num text-[14px] font-semibold text-fg" title={AGENT_COST_NOTE}>{r.cost_usd > 0 ? `$${r.cost_usd.toFixed(2)}` : '–'}</div>
+                  {r.cost_usd > 0 && <div className="flex justify-end @max-[760px]/pipe:justify-start"><PlanShare parts={r.parts} /></div>}
                   <div className="text-[12px] text-fg-muted">{r.prs.length} PR{r.prs.length === 1 ? '' : 's'}{r.sessions ? ` · ${r.sessions} session${r.sessions === 1 ? '' : 's'}` : ''}</div>
                 </div>
               </li>

@@ -150,6 +150,9 @@ type BoardRelease struct {
 	PRs      []int   `json:"prs"`
 	CostUSD  float64 `json:"cost_usd"`
 	Sessions int     `json:"sessions"`
+	// Parts splits CostUSD by sign-in, the sum of its pull requests' parts
+	// (store.PRSpend.Parts), for the plan figures.
+	Parts store.SpendParts `json:"parts,omitempty"`
 	// Partial says the listed pull requests may not reach back to the
 	// release before it, so some of its merges may be missing.
 	Partial bool `json:"partial,omitempty"`
@@ -260,6 +263,7 @@ func buildBoard(in boardInput) PRBoard {
 				b.PRs = append(b.PRs, p.Number)
 				b.CostUSD += c.Spend.CostUSD
 				b.Sessions += c.Spend.Sessions
+				b.Parts = b.Parts.Merge(c.Spend.Parts).Sorted()
 			}
 			if p.MergedAt < start {
 				continue

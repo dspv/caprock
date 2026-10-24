@@ -46,6 +46,8 @@ import { useNarrowScreen } from '@/lib/phone'
 import { EndableRow, useEndedHere } from '@/components/PhoneEnd'
 import { NeedChip, NeedMove } from '@/components/NeedChip'
 import { isDone, needsYou, oldestFirst } from '@/lib/needs'
+import { PlanShare } from '@/components/PlanShare'
+import { sessionParts } from '@/lib/planShare'
 
 /** How recently a session must have spoken to belong on the Now screen.
  *
@@ -832,7 +834,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
       {/* data-session-figures: one session's own figures, where $0.00 can be
         * true (scripts/shots.py tells it from a screen still loading). */}
       <div data-session-figures className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
-        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={s.model || '—'} tone="info" />
+        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />} sub={s.model || '—'} tone="info" />
         <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
         {/* The caption carries the price of the NEXT call, not the window size
           * the percentage above already states. Every call re-reads the whole
