@@ -48,6 +48,8 @@ func newOrphanFixture() orphanFixture {
 		{pid: 210, ppid: 1, name: "caprock", start: old},             // `caprock up` left behind
 		{pid: 211, ppid: 50, name: "caprock", start: old, tty: true}, // `caprock status` in the user's terminal
 		{pid: 212, ppid: 1, name: "caprock", start: ms(time.Minute)}, // `caprock up` detaching right now
+		{pid: 213, ppid: 1, name: "caprock-mail", start: old},        // Caprock Mail, an app of its own
+		{pid: 214, ppid: 1, name: "caprock", start: old},             // the CLI inside Caprock.app, left behind
 		{pid: 400, ppid: 1, name: "caprock-pty-host", start: old},    // a registered holder: a live session of ours
 		{pid: 401, ppid: 400, name: "claude", start: old, tty: true}, // its claude
 		{pid: 402, ppid: 1, name: "caprock-pty-host", start: old},    // unreachable, claude still runs in it
@@ -131,6 +133,8 @@ func newOrphanFixture() orphanFixture {
 			{pid: 210, start: old, exe: "/x/caprock", sub: "up"},
 			{pid: 211, start: old, exe: "/x/caprock", sub: "status"},
 			{pid: 212, start: ms(time.Minute), exe: "/x/caprock", sub: "up"},
+			{pid: 213, start: old, exe: "/Applications/Caprock Mail.app/Contents/MacOS/caprock-mail"},
+			{pid: 214, start: old, exe: "/Applications/Caprock.app/Contents/MacOS/caprock", sub: "up"},
 		},
 	}
 	in := orphanInput{
@@ -162,7 +166,7 @@ func TestOrphansAreListedConservatively(t *testing.T) {
 		got[o.PID] = o
 	}
 	want := map[int32]string{
-		200: OrphanDaemon, 402: OrphanHolder, 404: OrphanHolder, 210: OrphanCaprockOther,
+		200: OrphanDaemon, 402: OrphanHolder, 404: OrphanHolder, 210: OrphanCaprockOther, 214: OrphanCaprockOther,
 		405: OrphanOldHolder,
 		500: OrphanClaude, 503: OrphanClaude, 508: OrphanClaude, 509: OrphanClaude,
 		510: OrphanCodex, 512: OrphanCodex, 513: OrphanCodex,

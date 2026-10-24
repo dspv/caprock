@@ -1734,7 +1734,9 @@ and once a minute as the fallback for a daemon before them; it asked every
   install directories, the same ones as `other_install_holders`; at least
   two minutes old; never `auto`; only when a daemon answers, since without
   one there is no install to compare with), `caprock_other` (another caprock
-  command whose parent is gone), `claude` (no terminal, and its parent gone,
+  command whose parent is gone; 2026-10-25: a separate Caprock app inside a
+  `.app` bundle, such as Caprock Mail's `caprock-mail`, is launchd's child by
+  design and never listed — only the `caprock` binary itself), `claude` (no terminal, and its parent gone,
   or the latest ended session in `sessions` with its pid started after the
   process did), `codex` (2026-10-18: the Codex CLI — named `codex`, argv[0]
   `codex`, or node/bun running `@openai/codex` — by the same rule as

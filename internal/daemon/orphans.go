@@ -178,6 +178,13 @@ func inAppBundle(exe string) bool {
 	return i >= 0 && !strings.Contains(e[:i], ".framework/")
 }
 
+// caprockCLI is whether exe is the caprock binary itself, not another
+// program whose name starts with caprock.
+func caprockCLI(exe string) bool {
+	b := strings.TrimSuffix(strings.ToLower(filepath.Base(filepath.ToSlash(exe))), ".exe")
+	return b == "caprock"
+}
+
 // claudeLike is whether a process is Claude Code: named claude (the native
 // binary sets it; argv[0] says so when the file is named by its version), or
 // node or bun running the npm package.
@@ -344,6 +351,12 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 	for _, c := range in.scan.other {
 		p, ok := in.tab.Procs[c.pid]
 		if !ok || in.skip[c.pid] || in.live[c.pid] || !old(c.start) || !reaped(in.tab, p) || m.ttyOf(pidKey{c.pid, p.StartMs}, p) {
+			continue
+		}
+		// A Caprock app of its own (Caprock Mail is caprock-mail) is
+		// launchd's child by design, like any app: only the CLI itself, even
+		// the one inside Caprock.app, can be left behind.
+		if inAppBundle(c.exe) && !caprockCLI(c.exe) {
 			continue
 		}
 		label := "caprock"
