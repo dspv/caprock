@@ -81,7 +81,9 @@ describe('what waits in a module', () => {
     expect(document.querySelector('[data-module-items]')).toBeNull()
 
     fireEvent.click(info)
-    expect(info).toHaveAttribute('aria-expanded', 'true')
+    // Under a loaded CI runner a second read can redraw the row between the
+    // find and the click; wait for the unfolded state instead of assuming it.
+    await waitFor(() => expect(screen.getByRole('button', { name: '2 waiting in Ops' })).toHaveAttribute('aria-expanded', 'true'))
     const items = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-module-item]'))
     expect(items.map((b) => b.textContent)).toEqual(['Review PR 42', 'Approve deploy'])
     fireEvent.click(items[0]!)
@@ -105,9 +107,9 @@ describe('what waits in a module', () => {
     stubFetch(ops(two))
     render(<ModuleRows onOpen={vi.fn()} dashboardActive />)
     fireEvent.click(await screen.findByRole('button', { name: '2 waiting in Ops' }))
+    await waitFor(() => expect(document.querySelector('[data-module-items]')).not.toBeNull())
     expect(localStorage.getItem(BRAIN_FOLD_KEY)).toBe('closed')
     expect(localStorage.getItem(MODULE_FOLD_KEY)).toBe('ops')
-    expect(document.querySelector('[data-module-items]')).not.toBeNull()
 
     act(() => setBrainFold(true))
     expect(document.querySelector('[data-module-items]')).toBeNull()

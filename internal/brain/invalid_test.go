@@ -13,9 +13,10 @@ import (
 // A made-up key: the privacy filter's own tests use the same shape.
 const fakeKey = "sk-ant-api03-AbCdEf0123456789xyzXYZ_abcd"
 
-// runsOf is the status and memories of each of a session's reads, oldest
-// first.
-func (e *env) runsOf(t *testing.T, session string) (status []string, nodes []int, tokens int64) {
+// s1Runs is the status and memories of each of session s1's reads, oldest
+// first: every test here reads that one session.
+func (e *env) s1Runs(t *testing.T) (status []string, nodes []int, tokens int64) {
+	const session = "s1"
 	t.Helper()
 	rows, err := e.st.DB().QueryContext(context.Background(), `SELECT status, nodes, tokens_in + tokens_out FROM brain_runs WHERE session_id = ? ORDER BY id`, session)
 	if err != nil {
@@ -66,7 +67,7 @@ func TestOneBadMemoryNeverCostsTheReadTheRest(t *testing.T) {
 	if n, err := e.eng.Wake(context.Background()); err != nil || n != 1 {
 		t.Fatalf("wake: read %d, err %v", n, err)
 	}
-	status, nodes, _ := e.runsOf(t, "s1")
+	status, nodes, _ := e.s1Runs(t)
 	if len(status) != 1 || status[0] != store.BrainRunOK || nodes[0] != 3 {
 		t.Fatalf("runs %v, memories %v: want one ok read keeping 3", status, nodes)
 	}
@@ -131,7 +132,7 @@ func TestASessionInTheFilesystemRootIsNotRead(t *testing.T) {
 	if n, err := e.eng.Wake(context.Background()); err != nil || n != 0 || e.calls != 0 {
 		t.Fatalf("wake: read %d, calls %d, err %v", n, e.calls, err)
 	}
-	status, _, _ := e.runsOf(t, "s1")
+	status, _, _ := e.s1Runs(t)
 	if len(status) != 1 || status[0] != store.BrainRunSkipped {
 		t.Fatalf("runs %v", status)
 	}
@@ -139,7 +140,7 @@ func TestASessionInTheFilesystemRootIsNotRead(t *testing.T) {
 	if _, err := e.eng.Wake(context.Background()); err != nil || e.calls != 0 {
 		t.Fatalf("asked again: calls %d, err %v", e.calls, err)
 	}
-	if status, _, _ := e.runsOf(t, "s1"); len(status) != 1 {
+	if status, _, _ := e.s1Runs(t); len(status) != 1 {
 		t.Fatalf("marked again: %v", status)
 	}
 }
@@ -185,7 +186,7 @@ func TestAnAnswerThatCannotBeStoredIsAFailedRead(t *testing.T) {
 	if err := e.eng.ask(ctx, c, in, run, func(store.Querier) error { return boom }); !errors.Is(err, boom) {
 		t.Fatalf("ask: %v", err)
 	}
-	status, _, tokens := e.runsOf(t, "s1")
+	status, _, tokens := e.s1Runs(t)
 	if len(status) != 1 || status[0] != store.BrainRunFailed || tokens != 4200 {
 		t.Fatalf("runs %v, tokens %d: want one failed read with its 4200 tokens", status, tokens)
 	}
