@@ -12,6 +12,71 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.158.0] - 2026-10-24
+
+### Added
+
+- **brain:** Second Brain no longer reads every session. A session a
+  scheduled job starts can say so (`POST /v1/agents {"automation": true}`)
+  and is never read or handed memories; Settings → Second Brain → *Never
+  read these folders* skips every session in a folder (recorded as skipped,
+  with the folder) and keeps those projects out of the graph, search and
+  what a new session is handed unless you open that project. Nothing
+  already kept is deleted. The instructions also tell the model to skip
+  what is true only of one run (what the agent did or saved this time, a
+  dropped connection) and keep what still holds for the product or the
+  codebase.
+- **ui:** the Lifetime screen says, under its daily chart, that Claude Code
+  deletes conversations older than its `cleanupPeriodDays` (30 days unless
+  set), so the history before Caprock's first day was gone before Caprock saw
+  it, and offers **Keep them from now on**: it writes `cleanupPeriodDays:
+  36500` into `~/.claude/settings.json`, that key only and every other byte of
+  the file kept, backed up first, and refuses a file that is not valid JSON.
+  Shown only while the period is unset or 90 days or fewer; nothing leaves
+  the machine (`GET`/`POST /v1/claude/retention`).
+
+### Changed
+
+- **docs:** the README opens the way caprock.dev now does: every coding agent
+  you run, wherever it runs, who is waiting on you, who is stuck and how close
+  the limit is, then each pull request to release with what it cost. Its first
+  sections follow the site's order: pull requests, sessions waiting on you,
+  terminals, cost and limits.
+
+### Fixed
+
+- **brain:** the sidebar card's line at the daily limit reads *Limit reached ·
+  1546* instead of being cut mid-word on a 14-inch screen.
+- **brain:** Second Brain no longer reads sessions started at the disk root or
+  in the home folder itself, where launchd and cron run scheduled `claude -p`
+  jobs. They are recorded as skipped with the reason, drop out of the
+  sessions waiting at once and stop using the daily token limit; folders
+  under the home are read as before, and nothing already kept is deleted.
+  Settings → Second Brain says so under *Never read these folders*.
+- **agents:** a session whose program exits a moment after it starts now
+  says why. Its tab shows *Claude Code exited at once (code 1)* with the last
+  lines it printed, the program that ran, and **Try again** and **Close**,
+  instead of *Connecting to the session… Can't connect · next try in 5 s*
+  over a process that was already gone. The same lines, the command and the
+  binary's version go to service.log at WARN, and `GET /v1/agents/{id}/exit`
+  serves them (kept in the new `session_exits` table).
+- **agents:** *Continue here* on a Claude Code session that moved to another
+  folder with `cd` starts in the folder its conversation began in. Started in
+  the moved-to folder, `claude --resume` printed "No conversation found" and
+  exited at once.
+- **pipeline:** a pull request closed without a merge is no longer drawn in
+  flight as *PR open*: a session's record of it made the row even though
+  GitHub listed it closed. A row whose only title is its number now reads
+  *#796*, not *#796 #796*.
+- **pipeline:** one cost per pull request. The in-flight row, the list's
+  *Agent cost* and the *Agents · 14 days* figure now read the same recorded
+  spend (the in-flight row used to add up the whole sessions on it), and a
+  pull request closed without a merge in the window counts toward the 14
+  days: what agents spent on it was spent.
+- **pipeline:** with no pull request merged in 14 days, *Speed* says *–*
+  and why instead of *0.0/day*; with no agent cost recorded on any pull
+  request, *Agents* says *–* and why instead of $0.00.
+
 ## [0.157.0] - 2026-10-24
 
 ### Added

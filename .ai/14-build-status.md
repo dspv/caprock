@@ -184,6 +184,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-24 — 0.158.0: Pipeline counts a closed pull request right, Second Brain skips root and home sessions
+
+A minor release, one PR (#823). A pull request closed without a merge is no longer drawn in flight as open, its number is not printed twice, and its cost counts once and in the 14-day agent total; with no merge or no cost in 14 days the Flow says "–" and why instead of 0.0/day or $0.00. Second Brain never reads a session started at the disk root or in the home folder itself — scheduled jobs, 975 of them on the owner's machine — and its sidebar line at the daily limit fits a 14-inch screen. The README leads with what Caprock lets you watch.
+
 ### 2026-10-24 — 0.157.0: Second Brain skips automation, a session that exits at once says why
 
 A minor release, one PR (#821). Second Brain no longer reads sessions a scheduled job marks `automation` when it starts, nor folders listed under Settings → Second Brain *Never read these folders* (a scout every 15 minutes had put 348 run notes into it in a week). A session Caprock starts that exits at once keeps its exit code and last lines (`session_exits`, migration 0072) and its tab shows them with Try again, instead of retrying a connection to a process that is gone; *Continue here* starts in the folder the conversation began in. Lifetime offers to keep Claude Code's transcripts past its 30-day default (`cleanupPeriodDays`).
