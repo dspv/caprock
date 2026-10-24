@@ -40,7 +40,7 @@ import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, usePoll } from '@/lib/usePoll'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
-import { pipelineHref, STEPS } from '@/lib/work'
+import { pipelineHref, STEPS, titleIsNumber } from '@/lib/work'
 import { SectionLabel, SessionSubagents, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
 import { Panel, usePanelFold } from './ui'
@@ -390,7 +390,7 @@ function PhoneRows({ plan, steps }: { plan: ReleasePlanData; steps: BarSteps }) 
     const body = (
       <>
         <span className="flex min-w-0 items-baseline text-[14px] leading-[1.3]">
-          {r.number ? <span className="num mr-1.5 shrink-0 text-fg-muted">#{r.number}</span> : null}
+          {r.number && !titleIsNumber(r.number, r.title) ? <span className="num mr-1.5 shrink-0 text-fg-muted">#{r.number}</span> : null}
           <span className="min-w-0 truncate text-fg">{r.title}</span>
         </span>
         {r.branch && <span data-release-branch title={r.branch} className="min-w-0 truncate text-[12px] text-fg-faint">{r.branch}</span>}
@@ -506,7 +506,7 @@ function Title({ row: r, root, compact, onOpen }: { row: PlanRow; root: string; 
   const go = s ? () => openSession(host.onOpenSession, s.id, s.owned) : undefined
   const text = (
     <>
-      {r.number ? <span className="num mr-1.5 text-fg-muted">#{r.number}</span> : null}
+      {r.number && !titleIsNumber(r.number, r.title) ? <span className="num mr-1.5 text-fg-muted">#{r.number}</span> : null}
       <span className="text-fg">{r.title}</span>
       {r.branch ? <span data-release-branch title={r.branch} className="block max-w-full truncate text-[0.85em] text-fg-faint">{r.branch}</span> : null}
     </>

@@ -1,12 +1,62 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionCIStats } from './api'
-import { buildWork, cadence, ciVsUsual, gapText, groupOf, headline, laneOf, MIN_GAPS, MIN_LAG_COUNT, newestPR, pipelineHref, prStage, releaseLag, repoState, statsRepos, todoSteps, turnLeft, type WorkItem } from './work'
+import { buildWork, cadence, ciVsUsual, gapText, groupOf, headline, laneOf, MIN_GAPS, MIN_LAG_COUNT, newestPR, pipelineHref, prStage, releaseLag, repoState, statsRepos, titleIsNumber, todoSteps, turnLeft, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
+import { rowOf } from './releaseplan'
 import { parseHash } from './router'
 
 const MIN = 60_000
 const stats = () => new Map<string, SessionCIStats | undefined>([['/w/caprock', statsFixture()]])
 const row = (items: WorkItem[], key: string) => items.find((it) => it.key === key || it.pr?.number === Number(key))
+
+// The owner's Pipeline on caprock-ops (2026-10-24): #796, closed without a
+// merge, drawn in flight as "#796 #796 · PR open · $29.89" beside a list
+// that said Closed and "–", and an Agents figure of $0.00.
+describe('a closed pull request is not in flight', () => {
+  const url = (n: number) => `https://github.com/dspv/caprock/pull/${n}`
+  it('never makes an open row from a session’s record of one GitHub lists as closed', () => {
+    const w = workFixture()
+    w.sessions = [session('c', { cost_usd: 29.89, started_at: NOW - 30 * 60 * MIN, prs: [{ number: 620, url: url(620), opened_at: NOW - 30 * 60 * MIN }] })]
+    const items = buildWork(w, stats(), NOW).items
+    expect(row(items, '620')).toBeUndefined()
+    // The session is still live: an agent row of its own, said to be on a closed pull request, not "no PR yet".
+    expect(row(items, 's:c')).toMatchObject({ kind: 'session', donePR: { number: 620, state: 'closed' } })
+    expect(rowOf(row(items, 's:c')!, undefined, { now: NOW })).toMatchObject({ word: 'PR closed' })
+    expect(rowOf(row(items, 's:c')!, undefined, { now: NOW }).state.text).toBe('PR closed')
+  })
+  it('nor of one its own command closed, with no GitHub answer read', () => {
+    const w = workFixture()
+    w.sessions = [session('c', { prs: [{ number: 796, url: url(796), opened_at: NOW - 30 * 60 * MIN, closed_at: NOW - 29 * 60 * MIN }] })]
+    expect(row(buildWork(w, new Map(), NOW).items, '796')).toBeUndefined()
+  })
+  it('nor of a merge older than the board, done and gone', () => {
+    const st = statsFixture()
+    st.prs!.push({ number: 500, url: url(500), title: 'old', state: 'merged', head: 'feat/old', merged_at: NOW - 30 * 24 * 60 * MIN })
+    const w = workFixture()
+    w.sessions = [session('c', { prs: [{ number: 500, url: url(500), opened_at: NOW - 31 * 24 * 60 * MIN }] })]
+    expect(row(buildWork(w, new Map([['/w/caprock', st]]), NOW).items, '500')).toBeUndefined()
+  })
+  it('attaches the session to its newest pull request still open instead', () => {
+    const w = workFixture()
+    w.sessions = [session('c', { prs: [{ number: 633, url: url(633), opened_at: NOW - 60 * MIN }, { number: 620, url: url(620), opened_at: NOW - 10 * MIN }] })]
+    expect(row(buildWork(w, stats(), NOW).items, '633')!.sessions.map((s) => s.session_id)).toEqual(['c'])
+    expect(newestPR([{ number: 1, url: '', opened_at: 1 }, { number: 2, url: '', opened_at: 2, closed_at: 3 }])?.number).toBe(1)
+    expect(newestPR([{ number: 2, url: '', opened_at: 2, merged_at: 3, closed_at: 3 }])?.number).toBe(2)
+  })
+  it('says a pull request’s cost from its card, the list’s and the figure’s one source, never the whole session’s', () => {
+    const st = statsFixture()
+    st.board!.cards.find((c) => c.number === 633)!.spend = { cost_usd: 0, sessions: 0, live: 0, agents: [] }
+    const items = buildWork(workFixture(), new Map([['/w/caprock', st]]), NOW).items
+    // s4 ($3 in all) is on #633, but no session was charged to it: "–", as the list says.
+    expect(row(items, '633')!.costUsd).toBeUndefined()
+    expect(row(items, '631')!.costUsd).toBe(5.1)
+  })
+  it('draws a row titled only by its number once: "#796", never "#796 #796"', () => {
+    expect(titleIsNumber(796, '#796')).toBe(true)
+    expect(titleIsNumber(796, 'fix(pricing): price a gateway’s free model at $0')).toBe(false)
+    expect(titleIsNumber(undefined, '#796')).toBe(false)
+  })
+})
 
 describe('the Work board’s rows', () => {
   const b = buildWork(workFixture(), stats(), NOW)

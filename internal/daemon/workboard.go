@@ -219,7 +219,7 @@ func (w *workBoard) session(ctx context.Context, s store.Session, evc *workEvent
 		if i == workPRs {
 			break
 		}
-		ws.PRs = append(ws.PRs, api.WorkPR{Number: p.Number, URL: p.URL, Title: p.Title, OpenedAt: p.OpenedAt, MergedAt: p.MergedAt})
+		ws.PRs = append(ws.PRs, api.WorkPR{Number: p.Number, URL: p.URL, Title: p.Title, OpenedAt: p.OpenedAt, MergedAt: p.MergedAt, ClosedAt: p.ClosedAt})
 	}
 
 	var queued []api.WorkQueued

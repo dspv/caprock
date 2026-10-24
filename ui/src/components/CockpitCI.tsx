@@ -71,6 +71,7 @@ import { SectionLabel, useFolded } from './Cockpit'
 import { JourneyBar, JourneyLegend, ReleaseNoteWord } from './Journey'
 import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePoll'
 import { costText, costTitle } from '@/lib/prboard'
+import { titleIsNumber } from '@/lib/work'
 import { prAgents, quickActions, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { PipelineHostContext } from '@/lib/pipelineHost'
@@ -294,7 +295,7 @@ function JourneyRow({ r, now, ships, act, agent, onLog }: { r: PipelineRow; now:
   return (
     <li data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
       <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
-        <span className="num shrink-0 text-fg-muted">#{r.number}</span>
+        {!titleIsNumber(r.number, r.title) && <span className="num shrink-0 text-fg-muted">#{r.number}</span>}
         <span className="min-w-0 flex-1 truncate text-[11.5px] text-fg" title={r.title}>{r.title}</span>
         {said && <ReleaseNoteWord note={said} className="shrink-0 text-[10.5px]" />}
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}

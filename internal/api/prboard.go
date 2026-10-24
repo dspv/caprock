@@ -75,6 +75,20 @@ type PRBoard struct {
 	// when the release list and the local tags were both read and neither
 	// is; absent when that cannot be said.
 	ShipsBy string `json:"ships_by,omitempty"`
+	// Closed are the pull requests closed without a merge in the window:
+	// not on the board, but what the agents spent on them was spent, so it
+	// is in Flow.CostUSD and the list can say it (owner, 2026-10-24).
+	Closed []BoardClosed `json:"closed"`
+}
+
+// BoardClosed is a pull request closed unmerged in the window, and the
+// agent work Caprock recorded for it.
+type BoardClosed struct {
+	Number int `json:"number"`
+	// ClosedAt is GitHub's closing stamp (unix ms); absent when only a live
+	// read said it closed.
+	ClosedAt int64         `json:"closed_at,omitempty"`
+	Spend    store.PRSpend `json:"spend"`
 }
 
 // BoardCard is one pull request on the board; its title, author and link are
@@ -163,7 +177,7 @@ type BoardFlow struct {
 	ReleaseGapCount    int   `json:"release_gap_count"`
 	// CIMedianMS is the busiest workflow's median successful run.
 	CIMedianMS int64 `json:"ci_median_ms,omitempty"`
-	// CostUSD sums the cards' agent cost.
+	// CostUSD sums the cards' agent cost and the closed ones' (PRBoard.Closed).
 	CostUSD float64 `json:"cost_usd"`
 	// Series is each figure's day by day over the window, keyed by the
 	// figure (flight, throughput, ci, ttm, lag, cost; prboardseries.go).
@@ -195,9 +209,10 @@ type boardInput struct {
 }
 
 // buildBoard lays the pull requests out by stage. Closed unmerged ones are
-// left out, and so are merges before the window.
+// left out of the stages (their cost is kept: PRBoard.Closed), and so are
+// merges before the window.
 func buildBoard(in boardInput) PRBoard {
-	out := PRBoard{Cards: []BoardCard{}, Releases: []BoardRelease{}, DefaultBranch: in.defaultBranch, ShipsBy: shipsBy(in),
+	out := PRBoard{Cards: []BoardCard{}, Releases: []BoardRelease{}, Closed: []BoardClosed{}, DefaultBranch: in.defaultBranch, ShipsBy: shipsBy(in),
 		Flow: BoardFlow{Counts: map[string]int{StageDraft: 0, StageOpen: 0, StageFix: 0, StageReady: 0, StageMerged: 0, StageReleased: 0}, Days: in.days}}
 	start := time.Date(in.now.Year(), in.now.Month(), in.now.Day(), 0, 0, 0, 0, in.now.Location()).AddDate(0, 0, -(in.days - 1)).UnixMilli()
 	// Releases oldest first, for "the first published after the merge".
@@ -224,8 +239,10 @@ func buildBoard(in boardInput) PRBoard {
 		}
 		// A pull request read on its own just now, merged or closed since the
 		// list was read, leaves the open stages at once.
+		justClosed := false
 		if live, ok := in.live[p.Number]; ok && p.State == "open" && !in.stale[p.Number] && live.State != "" && live.State != "open" {
 			p.State = live.State
+			justClosed = true
 			if p.MergedAt == 0 {
 				p.MergedAt = live.MergedAt
 			}
@@ -255,6 +272,15 @@ func buildBoard(in boardInput) PRBoard {
 		case "open":
 			c.Stage, c.StageAt = openStage(p, in.live[p.Number], in.runs, &c)
 			c.Stale = in.stale[p.Number]
+		case "closed":
+			// Closed in the window (or just now, by a live read with no
+			// stamp): its agent cost is real spend, so the window's cost
+			// counts it; it is in no stage.
+			if p.ClosedAt >= start || (p.ClosedAt == 0 && justClosed) {
+				out.Closed = append(out.Closed, BoardClosed{Number: p.Number, ClosedAt: p.ClosedAt, Spend: c.Spend})
+				out.Flow.CostUSD += c.Spend.CostUSD
+			}
+			continue
 		default:
 			continue
 		}

@@ -8,7 +8,7 @@
  * call (rule 6).
  */
 import type { SessionCIStats, WorkRepo } from '@/lib/api'
-import { boardOf, cadence, pipelineHref, repoState, type WorkItem } from '@/lib/work'
+import { boardOf, cadence, pipelineHref, repoState, titleIsNumber, type WorkItem } from '@/lib/work'
 
 export interface NextReleaseProps {
   repos: readonly WorkRepo[]
@@ -48,7 +48,7 @@ export function NextRelease({ repos, stats, items, now }: NextReleaseProps) {
                 <ul className="mt-0.5 grid min-w-0 gap-0.5">
                   {merged.map((it) => (
                     <li key={it.key} className="flex min-w-0 items-baseline gap-2 text-[13px]">
-                      <span className="num shrink-0 text-merged">#{it.pr?.number}</span>
+                      {!titleIsNumber(it.pr?.number, it.title) && <span className="num shrink-0 text-merged">#{it.pr?.number}</span>}
                       {it.pr && it.repo
                         ? <a href={pipelineHref(it.repo.root, it.pr.number)} className="min-w-0 text-fg no-underline [overflow-wrap:anywhere] hover:text-accent">{it.title}</a>
                         : <span className="min-w-0 [overflow-wrap:anywhere]">{it.title}</span>}

@@ -127,6 +127,19 @@ export interface PRBoard {
   default_branch?: string
   /** How merged work ships here (`ShipsBy`); absent from an older daemon or when a read failed. */
   ships_by?: ShipsBy
+  /**
+   * The pull requests closed without a merge in the window, with what agents
+   * spent on them: on no stage, but in `flow.cost_usd` (2026-10-24). Absent
+   * from an older daemon.
+   */
+  closed?: BoardClosed[]
+}
+
+/** A pull request closed unmerged in the window (internal/api/prboard.go BoardClosed). */
+export interface BoardClosed {
+  number: number
+  closed_at?: number
+  spend: PRSpend
 }
 
 /**
@@ -167,6 +180,8 @@ export function asBoard(v: unknown): PRBoard | undefined {
   return {
     default_branch: typeof o.default_branch === 'string' ? o.default_branch : undefined,
     ships_by: o.ships_by === 'release' || o.ships_by === 'merge' ? o.ships_by : undefined,
+    closed: (Array.isArray(o.closed) ? o.closed : []).filter((c) => c && typeof c === 'object' && typeof c.number === 'number')
+      .map((c) => ({ number: c.number, closed_at: c.closed_at || undefined, spend: asSpend(c.spend) })),
     cards: o.cards.filter((c) => c && typeof c === 'object' && STAGE_KEYS.has((c as BoardCard).stage)).map((c) => ({ ...c, spend: asSpend(c.spend) })),
     releases: (Array.isArray(o.releases) ? o.releases : []).filter((r) => r && typeof r === 'object' && typeof r.tag === 'string')
       .map((r) => ({ ...r, prs: Array.isArray(r.prs) ? r.prs : [], cost_usd: num(r.cost_usd), sessions: num(r.sessions), published_at: num(r.published_at), assets: fin(r.assets) })),
@@ -226,9 +241,33 @@ export function costTitle(s: PRSpend): string {
   return `$${s.cost_usd.toFixed(2)} from ${who}${live}\n${AGENT_COST_NOTE}`
 }
 
-/** Merges a day over the window: "1.4/day", "0.1/day". */
+/**
+ * The Flow's agent cost explained: AGENT_COST_NOTE, and what the window
+ * counts. A pull request closed without a merge counts: what agents spent on
+ * it was spent (owner, 2026-10-24).
+ */
+export const FLOW_COST_NOTE = `${AGENT_COST_NOTE.replace(/^Agent cost: w/, 'W')} The window counts the open pull requests, the ones merged in it, and the ones closed in it without a merge.`
+
+/** What the Flow says for a window with no agent cost recorded on any pull request. */
+export const noPRCost = (days: number) => `No agent cost recorded on a pull request in ${days} days`
+
+/** What the Speed figure says for a window with no merge. */
+export const noMerge = (days: number) => `No pull request merged in ${days} days`
+
+/**
+ * The window's agent cost, or undefined when no session was recorded on any
+ * of its pull requests: "–", never a $0.00 that reads as measured and free.
+ * A recorded session that cost nothing (a free model) is a real $0.00.
+ */
+export function flowCost(board: PRBoard): number | undefined {
+  const any = board.cards.some((c) => c.spend.sessions > 0) || (board.closed ?? []).some((c) => c.spend.sessions > 0)
+  return any ? board.flow.cost_usd : undefined
+}
+
+/** Merges a day over the window: "1.4/day", "0.1/day"; "–" with none, never a measured-looking 0.0/day. */
 export function perDay(merged: number, days: number): string {
   if (days <= 0) return ''
+  if (merged <= 0) return '–'
   const v = merged / days
   return `${v >= 10 ? Math.round(v) : v.toFixed(1)}/day`
 }

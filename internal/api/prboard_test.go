@@ -28,6 +28,9 @@ func TestBuildBoard(t *testing.T) {
 		{Number: 8, URL: "u8", State: "merged", Base: "main", CreatedAt: at(3 * time.Hour), MergedAt: at(2 * time.Hour)},
 		{Number: 9, URL: "u9", State: "merged", Base: "release/1", CreatedAt: at(30 * time.Hour), MergedAt: at(25 * time.Hour)},
 		{Number: 10, URL: "u10", State: "closed", CreatedAt: at(3 * time.Hour)},
+		// #12 closed unmerged yesterday, #13 before the window.
+		{Number: 12, URL: "u12", State: "closed", CreatedAt: at(30 * time.Hour), ClosedAt: at(27 * time.Hour)},
+		{Number: 13, URL: "u13", State: "closed", CreatedAt: at(30 * 24 * time.Hour), ClosedAt: at(29 * 24 * time.Hour)},
 		{Number: 11, URL: "u11", State: "merged", Base: "main", CreatedAt: at(40 * 24 * time.Hour), MergedAt: at(39 * 24 * time.Hour)},
 	}
 	live := map[int]github.PR{
@@ -43,7 +46,8 @@ func TestBuildBoard(t *testing.T) {
 	// #6 has no live read: its state comes from the runs list.
 	runs := []github.CIRun{{HeadSHA: "s6", Status: "in_progress", StartedAt: at(5 * time.Minute)}}
 	rels := []github.RepoRelease{{Tag: "v2", PublishedAt: at(24 * time.Hour)}, {Tag: "v1", PublishedAt: at(48 * time.Hour)}}
-	spend := map[string]store.PRSpend{"u7": {CostUSD: 4, Sessions: 2}, "u4": {CostUSD: 1.5, Sessions: 1, Live: 1, Agents: []string{"claude"}}}
+	spend := map[string]store.PRSpend{"u7": {CostUSD: 4, Sessions: 2}, "u4": {CostUSD: 1.5, Sessions: 1, Live: 1, Agents: []string{"claude"}},
+		"u12": {CostUSD: 2.25, Sessions: 1}, "u13": {CostUSD: 9, Sessions: 1}}
 	b := buildBoard(boardInput{prs: prs, live: live, runs: runs, releases: rels, defaultBranch: "main", spend: spend, now: now, days: 14})
 
 	got := map[int]BoardCard{}
@@ -94,8 +98,27 @@ func TestBuildBoard(t *testing.T) {
 	if len(b.Releases[1].PRs) != 1 || b.Releases[1].PRs[0] != 11 {
 		t.Errorf("v1: %+v", b.Releases[1])
 	}
-	if b.Flow.Counts[StageFix] != 2 || b.Flow.Merged != 3 || b.Flow.ReleaseLagCount != 1 || b.Flow.ReleaseLagMedianMS != 0 || b.Flow.CostUSD != 5.5 {
+	// The closed unmerged one in the window is on no stage, but its cost is
+	// the window's (owner, 2026-10-24: $29.89 in flight, $0.00 in the figure).
+	if b.Flow.Counts[StageFix] != 2 || b.Flow.Merged != 3 || b.Flow.ReleaseLagCount != 1 || b.Flow.ReleaseLagMedianMS != 0 || b.Flow.CostUSD != 7.75 {
 		t.Errorf("flow: %+v", b.Flow)
+	}
+	if _, ok := got[12]; ok {
+		t.Error("a closed pull request is on the board")
+	}
+	if len(b.Closed) != 1 || b.Closed[0].Number != 12 || b.Closed[0].Spend.CostUSD != 2.25 || b.Closed[0].ClosedAt != at(27*time.Hour) {
+		t.Errorf("closed: %+v", b.Closed)
+	}
+}
+
+// One the list says open and its live read says closed leaves the stages,
+// its cost kept as closed.
+func TestBoardClosedByLiveRead(t *testing.T) {
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	prs := []github.BranchPR{{Number: 796, URL: "u", State: "open", CreatedAt: now.Add(-30 * time.Hour).UnixMilli()}}
+	b := buildBoard(boardInput{prs: prs, live: map[int]github.PR{796: {Number: 796, State: "closed"}}, spend: map[string]store.PRSpend{"u": {CostUSD: 3, Sessions: 1}}, now: now, days: 14})
+	if len(b.Cards) != 0 || len(b.Closed) != 1 || b.Flow.CostUSD != 3 {
+		t.Errorf("cards %+v, closed %+v, cost %v", b.Cards, b.Closed, b.Flow.CostUSD)
 	}
 }
 
