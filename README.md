@@ -1,8 +1,8 @@
 # Caprock
 
-### Run Claude Code, Codex and OpenCode side by side — and know what every agent is doing, what it costs, and when it needs you.
+### See every coding agent you run, wherever it runs: who is waiting on you, who is stuck, how close the limit is, and every pull request to release with what it cost.
 
-A desktop app for macOS, Windows and Linux. Local, open source, no account.
+A desktop app for macOS, Windows and Linux. Nothing leaves your machine: open source, no account, no telemetry.
 
 ```bash
 brew install --cask dspv/tap/caprock-app
@@ -43,17 +43,22 @@ Paste it into Claude Code, Codex or any coding agent, in an empty folder. It
 runs every check on your machine and opens the pull request;
 [how it works](docs/contributing-with-ai.md).
 
-## Every agent in a real terminal tab
+## Every pull request, from agent to release
 
-Claude Code, Codex, OpenCode and Gemini CLI in tabs and split panes, per
-project and per git worktree, with a shell beside them. The sessions you start
-in your own terminal show up too. Keep a work and a personal Claude Code or
-Codex account side by side and pick which one each new session runs on; three
-per agent are free.
+The Pipeline shows the repository's pull requests with every check per job and OS,
+how long they took and what the agents spent on them. A red run, a conflict or
+a branch behind master gets *Fix CI with agent*, *Fix conflict with agent* or
+*Update branch* from the pull request, or from its row beside the agent; the Changes view stages, commits and pushes
+without leaving the window.
 
 <picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/readme/tabs-light.webp">
-  <img alt="An agent's terminal above a shell open in a git worktree of the same project, with the agent panel on the right" src="docs/readme/tabs.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/pipeline-light.webp">
+  <img alt="The Pipeline: what needs a fix, merges a day and agent spend over 14 days above; below, the next release with each open pull request's progress, its CI state per OS, what the agents spent on it and its age" src="docs/readme/pipeline.webp">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/changes-light.webp">
+  <img alt="The Changes view on a feature branch: the pull request with its three failed Go checks and Fix with agent, the changed files, a diff, and Commit all and Commit and Push" src="docs/readme/changes.webp">
 </picture>
 
 ## Nothing waits on you unseen
@@ -75,6 +80,19 @@ request, so you never answer a command you have not read.
   </picture>
 </p>
 
+## Every agent in a real terminal tab
+
+Claude Code, Codex, OpenCode and Gemini CLI in tabs and split panes, per
+project and per git worktree, with a shell beside them. The sessions you start
+in your own terminal show up too. Keep a work and a personal Claude Code or
+Codex account side by side and pick which one each new session runs on; three
+per agent are free.
+
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/readme/tabs-light.webp">
+  <img alt="An agent's terminal above a shell open in a git worktree of the same project, with the agent panel on the right" src="docs/readme/tabs.webp">
+</picture>
+
 ## What each repository costs, and how close the limit is
 
 Every turn priced at API list prices, per repository and per service in a
@@ -85,24 +103,6 @@ you hit the limit.
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/readme/limits-light.webp">
   <img alt="Plan limits: Claude's 5-hour window at 85% with the time it will run out, the weekly window at 72%, Codex's weekly window at 8%, and a note suggesting Codex until Claude resets" src="docs/readme/limits.webp" width="760">
-</picture>
-
-## Pull requests and CI next to the agent
-
-The Pipeline shows the repository's pull requests with every check per job and OS,
-how long they took and what the agents spent on them. A red run, a conflict or
-a branch behind master gets *Fix CI with agent*, *Fix conflict with agent* or
-*Update branch* from the pull request, or from its row beside the agent; the Changes view stages, commits and pushes
-without leaving the window.
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/readme/pipeline-light.webp">
-  <img alt="The Pipeline: what needs a fix, merges a day and agent spend over 14 days above; below, the next release with each open pull request's progress, its CI state per OS, what the agents spent on it and its age" src="docs/readme/pipeline.webp">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="docs/readme/changes-light.webp">
-  <img alt="The Changes view on a feature branch: the pull request with its three failed Go checks and Fix with agent, the changed files, a diff, and Commit all and Commit and Push" src="docs/readme/changes.webp">
 </picture>
 
 ## And the rest
