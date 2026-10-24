@@ -130,25 +130,107 @@ export function tally(w: Week, led: Headline['led']): TallyItem[] {
   return out
 }
 
-/** "One machine · 12 sessions · 6 days". */
+/** "One machine · 12 hand-run sessions · 6 days". */
 export function eyebrow(w: Week): string {
   const parts = ['One machine']
-  if (w.sessions > 0) parts.push(plural(w.sessions, 'session'))
+  if (w.sessions > 0) parts.push(plural(w.sessions, (w.scheduled_sessions ?? 0) > 0 ? 'hand-run session' : 'session'))
   if (w.active_days > 0) parts.push(plural(w.active_days, 'day'))
   return parts.join(' · ')
 }
 
 export interface SideStat { value: string; label: string; approx?: boolean }
 
-/** The three figures beside the headline. Money first, then what it bought. */
-export function sideStats(w: Week): SideStat[] {
+/** The plan the user said they are on (Settings → plan), when they said. */
+export interface CardPlan { kind: 'flat' | 'metered'; label: string; usdPerMonth: number }
+
+/** The stated plan from GET /v1/settings, or undefined when none was stated. */
+export function planOf(s: { plan_kind?: string; plan_label?: string; plan_usd_per_month?: number } | undefined): CardPlan | undefined {
+  if (!s || (s.plan_kind !== 'flat' && s.plan_kind !== 'metered')) return undefined
+  return { kind: s.plan_kind, label: s.plan_label ?? '', usdPerMonth: s.plan_usd_per_month ?? 0 }
+}
+
+/**
+ * The multiple of a flat plan's fee the window's work came to at API list
+ * prices — "33×" — or undefined where it is not honest: no flat plan with a
+ * price, a window that is not a week or a month (a day's share of a monthly
+ * fee is not a thing anyone pays; all time has no known start), or under
+ * 1.5× (the dollars say it better). Never "saved".
+ */
+export function planMultiple(w: Week, plan: CardPlan | undefined): string | undefined {
+  if (!plan || plan.kind !== 'flat' || !(plan.usdPerMonth > 0) || !(w.cost_usd > 0)) return undefined
+  const days = w.days.length
+  if (w.period === 'all' || w.period === 'today' || (days !== 7 && days !== 30)) return undefined
+  const m = w.cost_usd / ((plan.usdPerMonth * days) / 30)
+  if (m < 1.5) return undefined
+  return `${m >= 10 ? Math.round(m) : m.toFixed(1).replace(/\.0$/, '')}×`
+}
+
+/** One of the card's two big figures and what it is. */
+export interface Hero { figure: string; label: string; approx?: boolean }
+
+/** "the $200/mo Max plan". */
+function planWords(plan: CardPlan): string {
+  return `the ${money(plan.usdPerMonth)}/mo ${plan.label ? `${plan.label} plan` : 'plan'}`
+}
+
+/**
+ * The two big figures, the same on both layouts (owner, 2026-10-25: the
+ * landscape card led with the multiple and the portrait one with PRs, so
+ * the format changed the message). First the money: the multiple of the
+ * stated flat plan where planMultiple allows it, else the dollars at API
+ * list price. Then what it bought: merged pull requests, or — never a zero —
+ * the strongest thing the window did measure.
+ */
+export function heroes(w: Week, plan: CardPlan | undefined): [Hero, Hero] {
+  const m = planMultiple(w, plan)
+  const cash: Hero = m && plan
+    ? { figure: m, label: `${planWords(plan)}, at API list prices` }
+    : { figure: money(w.cost_usd), label: 'at API list prices — not a bill' }
+  const h = headline(w, '')
+  let work: Hero
+  switch (h.led) {
+    case 'merged': work = { figure: new Intl.NumberFormat('en-US').format(w.prs_merged), label: w.prs_merged === 1 ? 'PR merged' : 'PRs merged' }; break
+    case 'opened': work = { figure: new Intl.NumberFormat('en-US').format(w.prs_opened), label: w.prs_opened === 1 ? 'PR opened' : 'PRs opened' }; break
+    case 'commits': work = { figure: compact(w.commits), label: w.commits === 1 ? 'commit' : 'commits' }; break
+    case 'lines': work = { figure: compact(w.lines_added), label: 'lines written', approx: true }; break
+    case 'sessions': work = { figure: compact(w.sessions), label: w.sessions === 1 ? 'session' : 'sessions' }; break
+    default: work = { figure: '0', label: 'sessions' }
+  }
+  return [cash, work]
+}
+
+/**
+ * The row of figures under the two big ones: the cost per merged pull
+ * request first, then the dollars when the multiple led, the pull requests
+ * opened, the share re-reading context; turns and active days fill a free
+ * slot. At most four.
+ */
+export function sideStats(w: Week, plan?: CardPlan): SideStat[] {
   const out: SideStat[] = []
-  if (w.cost_usd > 0) out.push({ value: money(w.cost_usd), label: 'at API list price' })
+  const multiple = !!planMultiple(w, plan)
   if (w.cost_per_merged_pr && w.prs_merged > 0) out.push({ value: money(w.cost_per_merged_pr), label: 'per merged PR', approx: true })
+  if (multiple) out.push({ value: money(w.cost_usd), label: 'at API list price' })
+  if (w.prs_merged > 0 && w.prs_opened > 0) out.push({ value: compact(w.prs_opened), label: w.prs_opened === 1 ? 'PR opened' : 'PRs opened' })
   if (w.tax && w.tax.share > 0) out.push({ value: `${Math.round(w.tax.share)}%`, label: 'of it re-reading context' })
-  if (out.length < 3 && w.turns > 0) out.push({ value: compact(w.turns), label: 'turns' })
-  if (out.length < 3 && w.active_days > 0) out.push({ value: String(w.active_days), label: w.active_days === 1 ? 'active day' : 'active days' })
-  return out.slice(0, 3)
+  if (out.length < 4 && w.turns > 0) out.push({ value: compact(w.turns), label: 'turns' })
+  if (out.length < 4 && w.active_days > 0) out.push({ value: String(w.active_days), label: w.active_days === 1 ? 'active day' : 'active days' })
+  return out.slice(0, 4)
+}
+
+/**
+ * The card's footnote: where the pull requests came from, that scheduled
+ * runs are left out, and the two caveats. Short — it is set in 14 px mono.
+ */
+export function footNote(w: Week): string {
+  const parts: string[] = ['measured locally']
+  if (w.prs_merged > 0 || w.prs_opened > 0) {
+    parts.push(w.prs_source === 'github' ? 'PRs from GitHub'
+      : w.prs_source === 'both' ? 'PRs from GitHub + agent merges'
+      : 'PRs = merges the agents ran')
+  }
+  if ((w.scheduled_sessions ?? 0) > 0) parts.push('hand-run sessions')
+  parts.push('≈ = estimate', 'API list prices, not a bill')
+  return parts.join(' · ')
 }
 
 export interface CrewMember {
@@ -195,13 +277,16 @@ export function crew(w: Week): CrewMember[] {
     if (a.turns <= 0) continue
     let bit = plural(a.sessions, 'session')
     let bitLong = `${cap(plural(a.sessions, 'session'))}${a.subThreads > 0 ? `, ${plural(a.subThreads, 'sub-agent')} of its own` : ''}.`
+    // GitHub's count is everyone's pull requests, not Claude Code's: only the
+    // agents' own count may be said to be what it opened.
+    const opened = w.prs_source === 'github' || w.prs_source === 'both' ? 0 : w.prs_opened
     if (agent === 'claude') {
       if (w.ci_wait_ms >= 360_000) {
         bit = `${hours(w.ci_wait_ms)} watching CI`
-        bitLong = `${w.prs_opened > 0 ? `Opened ${plural(w.prs_opened, 'PR')} with its helpers. ` : ''}Spent ${hours(w.ci_wait_ms)} of tool time watching CI.`
-      } else if (w.prs_opened > 0) {
-        bit = `opened ${plural(w.prs_opened, 'PR')}`
-        bitLong = `Opened ${plural(w.prs_opened, 'PR')} with its helpers.`
+        bitLong = `${opened > 0 ? `Opened ${plural(opened, 'PR')} with its helpers. ` : ''}Spent ${hours(w.ci_wait_ms)} of tool time watching CI.`
+      } else if (opened > 0) {
+        bit = `opened ${plural(opened, 'PR')}`
+        bitLong = `Opened ${plural(opened, 'PR')} with its helpers.`
       }
     }
     out.push({ who: characterFor(agent), name: agentName(agent), turns: a.turns, cost: a.cost_usd, bit, bitLong })

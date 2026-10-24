@@ -16,9 +16,10 @@
  * percentages — by its chevron, unfolded by a click on the line; or hidden,
  * by the × that shows on hover or its menu (right-click, Shift+F10: Full
  * card, One line, Hide), until Settings → Appearance shows it again (a user,
- * 2026-10-15, translated: "can this be hidden? it's in the way"). No Share
- * button on it (owner, 2026-10-16, translated): sharing stays in ⌘K and on
- * Pipeline.
+ * 2026-10-15, translated: "can this be hidden? it's in the way"). Its
+ * Share corner was removed on 2026-10-16 and is back as a small icon beside
+ * the chevron (owner, 2026-10-25: he works in session tabs and could not
+ * find how to share at all), tooltip "Share your week".
  */
 import { useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { fmtUSD } from '@/lib/format'
@@ -27,6 +28,7 @@ import { useNow } from '@/lib/useNow'
 import type { TodayModel, TodayWindow } from '@/lib/today'
 import { fmtCostShort } from './ProjectRow'
 import { PlanLimitNudge } from './Nudges'
+import { ShareWeekIcon } from './Share'
 import type { RateLimits } from '@/lib/api'
 import { ChevronIcon, CloseIcon, DashboardIcon, EyeOffIcon, ListIcon } from './AppIcons'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
@@ -118,6 +120,7 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
             {windows.map((w) => <span key={w.label}>{' · '}<span data-today-window={w.label} className={pctTone(w)}>{w.label} {w.pct}%</span></span>)}
           </span>
         </button>
+        <ShareWeekIcon />
         {close}
         {menu}
       </section>
@@ -159,8 +162,11 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
         >
           <span className={`num text-[14px] font-semibold leading-none ${waiting > 0 ? 'text-warn' : 'text-fg-faint'}`}>{loaded ? waiting : '—'}</span>
         </Cell>
-        <span className="flex flex-col items-center justify-between">
+        <span className="flex flex-col items-end justify-between">
         {close || <span aria-hidden className="h-5 w-6" />}
+        <span className="flex items-center">
+        {/* Sharing, from every tab (owner, 2026-10-25): quiet, an icon. */}
+        <ShareWeekIcon />
         {/* Folds it to one line, as Second Brain's chevron folds that card. */}
         {onFold && (
           <button
@@ -175,6 +181,7 @@ export function TodayStrip({ today, loaded, onSpend, onWindows, onRunning, onWai
             <span aria-hidden className="flex rotate-90"><ChevronIcon size={10} /></span>
           </button>
         )}
+        </span>
         </span>
       </div>
       {windows.length > 0 && (

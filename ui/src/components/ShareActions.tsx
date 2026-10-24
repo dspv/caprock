@@ -1,39 +1,33 @@
 /**
  * The ways a share card leaves the sheet — one component for every card
- * (.ai/04-ui.md § Share): the dashboard's figures and story cards
- * (Share.tsx) and the Pipeline's (PipelineShare.tsx).
+ * (.ai/04-ui.md § Share): the dashboard's card (Share.tsx) and the
+ * Pipeline's (PipelineShare.tsx).
  *
- *  - **Share…** — the operating system's share sheet with the file, where
- *    the browser has the Web Share API with files.
- *  - **Copy image** — the clipboard (the app's own clipboard command in the
- *    desktop app, `ClipboardItem` image/png in a browser).
- *  - **Save image** — a download: the browser's downloads folder, or in the
- *    app the save dialog its download handler opens.
- *  - **Post** — the words, editable, and **Post to X** / **Post to LinkedIn**,
- *    which open the site with the text written. Neither site can be handed
- *    an image by URL, so the card goes on the clipboard first (or into the
- *    downloads when copying is refused) and the note says to paste or drag
- *    it in — a button that appears to post an image and does not would be a
- *    lie.
- *  - **Telegram** — its own row right under those three, always shown,
- *    because the operating system's share sheet often has no Telegram in it
- *    and the owner, offered only that, said he could not share to Telegram
- *    (2026-10-15). **Send to my Telegram** sends the card with the words as
- *    its caption through the person's own bot to their own paired chat
- *    (POST /v1/telegram/photo), only on this click; with no bot or chat it
- *    is **Set up Telegram**, a way to Settings. **Send to someone in
- *    Telegram** copies the card and opens Telegram at its chat picker with
- *    the words: the app's `tg://msg_url` link in the desktop app when
- *    Telegram is installed, else `t.me/share/url`. Neither link can carry an
- *    image, so the note says to paste it in the chat.
+ * Two rows of buttons and nothing else on screen (owner, 2026-10-25: the
+ * sheet was "visual chaos" — a sentence beside every row and a paragraph for
+ * every result). What each button does is in its tooltip; what just happened
+ * shows for a few seconds beside the first row.
+ *
+ *  - **Share…, Copy image, Save image** — the operating system's share sheet
+ *    with the file (where the browser has the Web Share API with files), the
+ *    clipboard (the app's own clipboard command in the desktop app), and a
+ *    download (in the app, its save dialog).
+ *  - **My Telegram, X, Threads, LinkedIn** — the destinations. My Telegram sends the
+ *    card with the words as its caption through the person's own bot to
+ *    their own paired chat (POST /v1/telegram/photo), only on this click;
+ *    with no bot or chat it is **Set up Telegram**, a way to Settings. X, Threads and
+ *    LinkedIn open a post with the words written; neither can be handed an
+ *    image by URL, so the card goes on the clipboard first (or into the
+ *    downloads when copying is refused) and the result says to paste it.
+ *    Sending to someone else in Telegram was a button that only copied the
+ *    card and opened a chat picker: Copy image does the copying.
+ *  - **Edit post text** — the words, folded away until asked for.
  *
  * Nothing leaves before a button is pressed, and the caller decides what the
  * card and the words contain (the Pipeline's are anonymous by default).
  */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type TelegramStatus } from '@/lib/api'
-import { isTauri } from '@/lib/appmode'
-import { shell } from '@/lib/shell'
 import { copyImage } from '@/lib/attachments'
 import { openExternal } from '@/lib/nudges'
 import { navigate } from '@/lib/router'
@@ -65,32 +59,13 @@ export function linkedInPostURL(text: string, link?: string): string {
   return `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(link ? `${text} ${link}` : text)}`
 }
 
-/** Telegram's own share link: pick a chat, the words and the site written. */
-export function telegramShareURL(text: string): string {
-  return `https://t.me/share/url?url=${encodeURIComponent('https://caprock.dev')}&text=${encodeURIComponent(text)}`
-}
-
-/** The same picker in the Telegram app itself: `tg://msg_url` is the app's form of t.me/share/url. */
-export function telegramAppShareURL(text: string): string {
-  return `tg://msg_url?url=${encodeURIComponent('https://caprock.dev')}&text=${encodeURIComponent(text)}`
-}
-
 /**
- * Telegram at its chat picker with the words. In the desktop app the shell
- * opens the `tg:` link only when an app on this machine handles it and
- * refuses otherwise (app/src-tauri/src/commands.rs), so a machine without
- * Telegram gets the web link instead of nothing. A browser cannot ask
- * whether an app handles a scheme, so it opens t.me, which offers the app.
+ * Threads' post box with the words written. threads.com is the address
+ * threads.net now redirects to (checked 2026-10-25); the link rides in the
+ * text, as on LinkedIn.
  */
-export async function openTelegram(text: string): Promise<'app' | 'web'> {
-  if (isTauri()) {
-    try {
-      await shell.openExternal(telegramAppShareURL(text))
-      return 'app'
-    } catch { /* no Telegram app here: the web link below */ }
-  }
-  openExternal(telegramShareURL(text))
-  return 'web'
+export function threadsPostURL(text: string, link?: string): string {
+  return `https://www.threads.com/intent/post?text=${encodeURIComponent(link ? `${text} ${link}` : text)}`
 }
 
 /** A blob as base64, for the JSON body POST /v1/telegram/photo takes. */
@@ -112,12 +87,16 @@ function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
+/** How long a result stays beside the buttons. */
+const NOTE_MS = 6000
+
 export function ShareActions({ build, fileName, text, onText, link, disabled, onShared, disclosure }: ShareActionsProps) {
-  // `drawing` is the label ("Drawing the card…"); `locked` outlasts it while
-  // the OS share sheet is open, so a second click cannot draw a second card.
+  // `drawing` is the label ("Drawing…"); `locked` outlasts it while the OS
+  // share sheet is open, so a second click cannot draw a second card.
   const [drawing, setDrawing] = useState(false)
   const [locked, setLocked] = useState(false)
   const [note, setNote] = useState('')
+  const [editing, setEditing] = useState(false)
   const [tg, setTg] = useState<TelegramStatus | undefined>(undefined)
   useEffect(() => {
     let live = true
@@ -126,17 +105,26 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   }, [])
   const tgReady = !!tg?.bot_set && !!tg?.chat_set
 
+  // A result is said briefly, then the row is quiet again.
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const say = (s: string) => {
+    setNote(s)
+    if (timer.current) clearTimeout(timer.current)
+    if (s) timer.current = setTimeout(() => setNote(''), NOTE_MS)
+  }
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+
   /** Draw, run `then` with the card, and say what happened. */
   const act = async (then: (blob: Blob) => Promise<string>, fail: string) => {
     if (locked) return
-    setLocked(true); setDrawing(true); setNote('')
+    setLocked(true); setDrawing(true); say('')
     try {
       const blob = await build()
       setDrawing(false)
-      if (!blob) { setNote('Could not draw the card in this browser.'); return }
-      setNote(await then(blob))
+      if (!blob) { say('Could not draw the card here.'); return }
+      say(await then(blob))
     } catch {
-      setNote(fail)
+      say(fail)
     } finally { setDrawing(false); setLocked(false) }
   }
 
@@ -149,10 +137,10 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
 
   const shareNative = async () => {
     if (locked) return
-    setLocked(true); setDrawing(true); setNote('')
+    setLocked(true); setDrawing(true); say('')
     try {
       const blob = await build()
-      if (!blob) { setNote('Could not draw the card in this browser.'); setLocked(false); return }
+      if (!blob) { say('Could not draw the card here.'); setLocked(false); return }
       setDrawing(false)
       // The file travels alone: several apps take {files, text} as two
       // items, and the owner got the card twice from macOS Copy.
@@ -160,20 +148,18 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
       setLocked(false)
       onShared?.()
     } catch (e) {
-      if ((e as Error)?.name !== 'AbortError') setNote('Sharing was not available — the card was not sent.')
+      if ((e as Error)?.name !== 'AbortError') say('Sharing was not available — nothing was sent.')
       setLocked(false)
     } finally { setDrawing(false) }
   }
 
-  const copy = () => act(async (b) => (await copyImage(b) ? 'Copied — paste it anywhere.' : 'This browser would not copy an image. Save the image instead.'),
+  const copy = () => act(async (b) => (await copyImage(b) ? 'Copied — paste it anywhere.' : 'Copying was refused — use Save image.'),
     'Could not read the figures — nothing was copied.')
   const save = () => act(async (b) => { download(b, fileName()); return 'Saved to your downloads.' }, 'Could not read the figures — nothing was saved.')
-  const post = (site: 'X' | 'LinkedIn') => act(async (b) => {
+  const post = (site: 'X' | 'Threads' | 'LinkedIn') => act(async (b) => {
     const how = await handOver(b)
-    openExternal(site === 'X' ? xPostURL(text, link) : linkedInPostURL(text, link))
-    return how === 'copied'
-      ? `Opened ${site} with the text — the card is on your clipboard, paste it in.`
-      : `Opened ${site} with the text — the card is in your downloads, drag it in.`
+    openExternal(site === 'X' ? xPostURL(text, link) : site === 'Threads' ? threadsPostURL(text, link) : linkedInPostURL(text, link))
+    return how === 'copied' ? `${site} is open — paste the card in.` : `${site} is open — drag the card in from your downloads.`
   }, 'Could not read the figures — nothing was posted.')
   const toMe = () => act(async (b) => {
     try {
@@ -183,80 +169,64 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
       return `Telegram did not take it: ${errText(e)}`
     }
   }, 'Could not read the figures — nothing was sent.')
-  const toSomeone = () => act(async (b) => {
-    const how = await handOver(b)
-    const where = await openTelegram(text)
-    const opened = where === 'app' ? 'Telegram is open at its chat list' : 'Telegram opened in your browser'
-    return how === 'copied'
-      ? `Image copied — paste it in the chat. ${opened}; pick who gets it.`
-      : `The image is in your downloads — drag it into the chat. ${opened}; pick who gets it.`
-  }, 'Could not read the figures — nothing was sent.')
 
   const canNative = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function'
     && navigator.canShare({ files: [new File([], 'x.png', { type: 'image/png' })] })
   const off = locked || !!disabled
-  const quiet = 'rounded-md border border-border px-3 py-2 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50'
-  const primary = 'rounded-md bg-accent px-4 py-2.5 text-[14px] font-semibold text-bg transition hover:brightness-110 disabled:opacity-50'
-  const head = 'mb-1.5 text-[11px] font-medium uppercase tracking-[0.12em] text-fg-muted'
+  const quiet = 'inline-flex items-center rounded-md border border-border px-3 py-1.5 text-[13px] text-fg transition-colors hover:border-border-strong hover:bg-panel-2 disabled:opacity-50'
+  const primary = 'inline-flex items-center rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-bg transition hover:brightness-110 disabled:opacity-50'
+  const busy = 'Drawing…'
 
   return (
     <div data-share-actions>
       {disclosure}
-      <div className="flex flex-wrap items-stretch gap-2">
-        {canNative ? (
-          <button onClick={shareNative} disabled={off} className={`${primary} min-w-[180px] flex-1`} title="Opens your share menu — Messages, Mail, anywhere">
-            {drawing ? 'Drawing the card…' : 'Share…'}
-          </button>
-        ) : (
-          <button onClick={copy} disabled={off} className={`${primary} min-w-[180px] flex-1`} title="Puts the picture on your clipboard, to paste into a post or a chat">
-            {drawing ? 'Drawing the card…' : 'Copy image'}
+      <div className="flex flex-wrap items-center gap-2">
+        {canNative && (
+          <button onClick={shareNative} disabled={off} className={primary} title="Opens your share menu — Messages, Mail, AirDrop, anywhere">
+            {drawing ? busy : 'Share…'}
           </button>
         )}
-        {canNative && <button onClick={copy} disabled={off} className={quiet}>Copy image</button>}
-        <button onClick={save} disabled={off} className={quiet} title="A PNG in your downloads">Save image</button>
+        <button onClick={copy} disabled={off} className={canNative ? quiet : primary} title="Puts the picture on your clipboard, to paste into a post or a chat">
+          {drawing && !canNative ? busy : 'Copy image'}
+        </button>
+        <button onClick={save} disabled={off} className={quiet} title="Saves the picture as a PNG in your downloads">Save image</button>
+        <span className="min-w-0 text-[12px] text-fg-muted" role="status" aria-live="polite">{note}</span>
       </div>
 
-      {/* Telegram is a row of its own, not a corner: the share sheet above
-        * often has no Telegram in it, and two small buttons under a caps
-        * label beside the post box were missed (owner, 2026-10-15). */}
-      <div data-share-telegram className="mt-2 flex flex-wrap items-center gap-2">
+      <div data-share-destinations className="mt-2 flex flex-wrap items-center gap-2">
         {tgReady ? (
-          <button onClick={() => void toMe()} disabled={off} className={quiet}
-            title={`Your own bot sends the card, with the text as its caption, to your own chat${tg?.chat_name ? ` (${tg.chat_name})` : ''}. Nothing goes anywhere else.`}>
-            <TelegramMark />Send to my Telegram
+          <button onClick={() => void toMe()} disabled={off} className={quiet} aria-label="Send to my Telegram"
+            title={`Your own bot sends the card, with the post text as its caption, to your own chat${tg?.chat_name ? ` (${tg.chat_name})` : ''}. Nothing goes anywhere else.`}>
+            <TelegramMark />My Telegram
           </button>
         ) : (
           <button type="button" onClick={() => navigate({ name: 'settings', section: 'telegram' })} className={quiet}
-            title="Send to my Telegram goes through your own bot to your own chat, once one is connected in Settings">
+            title="Connect your own Telegram bot in Settings, then the card goes from it to your own chat">
             <TelegramMark />Set up Telegram
           </button>
         )}
-        <button onClick={() => void toSomeone()} disabled={off} className={quiet}
-          title="Copies the card and opens Telegram's chat picker with the text; paste the card in the chat">
-          <TelegramMark />Send to someone in Telegram
+        <button onClick={() => void post('X')} disabled={off} className={quiet} aria-label="Post to X"
+          title="Opens a post on X with the post text; the card goes on your clipboard to paste in">X</button>
+        <button onClick={() => void post('Threads')} disabled={off} className={quiet} aria-label="Post to Threads"
+          title="Opens a Threads post with the post text; the card goes on your clipboard to paste in">Threads</button>
+        <button onClick={() => void post('LinkedIn')} disabled={off} className={quiet} aria-label="Post to LinkedIn"
+          title="Opens a LinkedIn post with the post text; the card goes on your clipboard to paste in">LinkedIn</button>
+        <button type="button" onClick={() => setEditing((v) => !v)} aria-expanded={editing}
+          className="ml-auto text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline"
+          title="The words that go with X, LinkedIn and the Telegram caption">
+          {editing ? 'Hide post text' : 'Edit post text'}
         </button>
-        <span className="text-[12px] text-fg-faint">
-          {tgReady ? `Yours goes from your own bot to your own chat${tg?.chat_name ? ` (${tg.chat_name})` : ''}. ` : ''}
-          For someone else the card is copied, to paste in the chat.
-        </span>
       </div>
 
-      <div className="mt-4 min-w-0">
-        <div className={head}>Post</div>
+      {editing && (
         <textarea value={text} onChange={(e) => onText(e.target.value)} rows={2} aria-label="The words to post with the card"
-          className="w-full resize-y rounded-md border border-border bg-panel-2 px-2.5 py-2 text-[13px] text-fg outline-none focus:border-accent/60" />
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-          <button onClick={() => void post('X')} disabled={off} className={quiet} title="Opens a post on X with the text; the card goes on your clipboard to paste in">Post to X</button>
-          <button onClick={() => void post('LinkedIn')} disabled={off} className={quiet} title="Opens a LinkedIn post with the text; the card goes on your clipboard to paste in">Post to LinkedIn</button>
-          <span className="text-[12px] text-fg-faint">The site gets the text; attach the card from your clipboard. The same words go with a Telegram send.</span>
-        </div>
-      </div>
-      {note && <p className="mt-2 text-[12px] text-fg-muted" role="status">{note}</p>}
+          className="mt-2 w-full resize-y rounded-md border border-border bg-panel-2 px-2.5 py-2 text-[13px] text-fg outline-none focus:border-accent/60" />
+      )}
     </div>
   )
 }
 
-/** Telegram's paper plane, so the row reads as Telegram before its words do. */
+/** Telegram's paper plane, so the button reads as Telegram before its words do. */
 function TelegramMark() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden className="mr-1.5 inline-block -mt-px align-middle text-fg-muted" fill="currentColor">
