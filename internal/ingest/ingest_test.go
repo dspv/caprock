@@ -214,7 +214,7 @@ func TestProseOnALaterLineOfOneResponseIsKept(t *testing.T) {
 		t.Fatalf("notes = %q, want the closing line and \"Adding the endpoint.\"", texts)
 	}
 	var payload string
-	if err := st.DB().QueryRow(`SELECT payload FROM events WHERE session_id = ? AND key = 'msg:msg-1'`, sid).Scan(&payload); err != nil {
+	if err := st.DB().QueryRow(`SELECT payload FROM events JOIN sessions USING (sid) WHERE session_id = ? AND key = 'msg:msg-1'`, sid).Scan(&payload); err != nil {
 		t.Fatal(err)
 	}
 	var p struct {

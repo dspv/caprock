@@ -118,8 +118,8 @@ func RemoveSession(ctx context.Context, q Querier, c RemovalCandidate, loc *time
 		return 0, err
 	}
 	for _, stmt := range []string{
-		`DELETE FROM event_tldr WHERE event_id IN (SELECT id FROM events WHERE session_id = ?)`,
-		`DELETE FROM events WHERE session_id = ?`,
+		`DELETE FROM event_tldr WHERE event_id IN (SELECT id FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?))`,
+		`DELETE FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)`,
 		`DELETE FROM session_stats WHERE session_id = ?`,
 		`DELETE FROM session_files WHERE session_id = ?`,
 		`DELETE FROM session_prs WHERE session_id = ?`,
@@ -146,7 +146,7 @@ func sessionDayTurns(ctx context.Context, q Querier, sessionID string, loc *time
 		       COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
 		  FROM events
-		 WHERE session_id = ? AND kind = 'turn.assistant' AND internal = 0`, sessionID)
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND internal = 0`, sessionID)
 	if err != nil {
 		return nil, err
 	}

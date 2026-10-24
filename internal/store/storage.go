@@ -165,13 +165,12 @@ func eventBreakdown(ctx context.Context, db *sql.DB, now time.Time, st *Storage)
 	// any payload that is not ASCII.
 	//
 	// The agent comes from the session row — the one place it is recorded for
-	// every agent. An event whose session row is missing is counted under the
-	// default agent, which is what the sessions column itself defaults to.
+	// every agent.
 	agentOf, err := sessionAgents(ctx, db)
 	if err != nil {
 		return fmt.Errorf("events breakdown: %w", err)
 	}
-	rows, err := db.QueryContext(ctx, `SELECT session_id, kind, ts, COALESCE(octet_length(payload), 0) FROM events`)
+	rows, err := db.QueryContext(ctx, `SELECT sid, kind, ts, COALESCE(octet_length(payload), 0) FROM events`)
 	if err != nil {
 		return fmt.Errorf("events breakdown: %w", err)
 	}
@@ -194,13 +193,13 @@ func eventBreakdown(ctx context.Context, db *sql.DB, now time.Time, st *Storage)
 	}
 	defaultAgent := []byte("claude")
 	for rows.Next() {
-		var sid, kind sql.RawBytes
-		var ts, b int64
+		var kind sql.RawBytes
+		var sid, ts, b int64
 		if err := rows.Scan(&sid, &kind, &ts, &b); err != nil {
 			return err
 		}
 		agent := defaultAgent
-		if a, ok := agentOf[string(sid)]; ok {
+		if a, ok := agentOf[sid]; ok {
 			agent = a
 		}
 		add(agents, agent, b)
@@ -232,15 +231,16 @@ func eventBreakdown(ctx context.Context, db *sql.DB, now time.Time, st *Storage)
 
 // sessionAgents maps each session to the agent that ran it, as bytes so the
 // breakdown can name a slice without converting per row.
-func sessionAgents(ctx context.Context, db *sql.DB) (map[string][]byte, error) {
-	rows, err := db.QueryContext(ctx, `SELECT session_id, COALESCE(agent, 'claude') FROM sessions`)
+func sessionAgents(ctx context.Context, db *sql.DB) (map[int64][]byte, error) {
+	rows, err := db.QueryContext(ctx, `SELECT sid, COALESCE(agent, 'claude') FROM sessions`)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := map[string][]byte{}
+	out := map[int64][]byte{}
 	for rows.Next() {
-		var id, agent string
+		var id int64
+		var agent string
 		if err := rows.Scan(&id, &agent); err != nil {
 			return nil, err
 		}

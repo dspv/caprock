@@ -55,6 +55,10 @@ func TestARemovedSessionLeavesTheTotalsAndStaysGone(t *testing.T) {
 	costBefore, tokensBefore, sessionsBefore := dayTotals(t, r.Store)
 	junk, _ := store.GetStats(ctx, r.Store.DB(), "junk")
 	keep, _ := store.GetStats(ctx, r.Store.DB(), "keep")
+	var junkSid int64
+	if err := r.Store.DB().QueryRow(`SELECT sid FROM sessions WHERE session_id = 'junk'`).Scan(&junkSid); err != nil {
+		t.Fatal(err)
+	}
 
 	cands, err := store.FindRemovalCandidates(ctx, r.Store.DB(), []string{"junk"}, "")
 	if err != nil || len(cands) != 1 {
@@ -85,7 +89,11 @@ func TestARemovedSessionLeavesTheTotalsAndStaysGone(t *testing.T) {
 	}
 	for _, table := range []string{"events", "sessions", "session_stats", "session_files", "daily_sessions"} {
 		var n int
-		if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM ` + table + ` WHERE session_id = 'junk'`).Scan(&n); err != nil || n != 0 {
+		where, arg := `session_id = ?`, any("junk")
+		if table == "events" {
+			where, arg = `sid = ?`, junkSid
+		}
+		if err := r.Store.DB().QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE `+where, arg).Scan(&n); err != nil || n != 0 {
 			t.Errorf("%s still holds %d rows of the removed session (%v)", table, n, err)
 		}
 	}

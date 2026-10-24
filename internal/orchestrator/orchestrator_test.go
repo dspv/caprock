@@ -203,7 +203,7 @@ func TestTickOpensAssignmentWindow(t *testing.T) {
 	}
 	o.tick(context.Background())
 	// A row must now exist in task_assignments keyed on the worker's *session*
-	// id — the column AttributeTaskCost joins events.session_id on. Keying it on
+	// id — the column AttributeTaskCost joins events through. Keying it on
 	// the hive agent id ("worker-1") would join nothing and cost $0 forever.
 	sid := sp.lastSession()
 	if sid == "" {

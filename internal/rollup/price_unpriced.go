@@ -27,10 +27,10 @@ func (r *Recorder) PriceUnpriced(ctx context.Context) (priced int, err error) {
 	}
 	db := r.Store.DB()
 	rows, err := db.QueryContext(ctx, `
-		SELECT e.id, e.ts, e.session_id, e.model,
+		SELECT e.id, e.ts, s.session_id, e.model,
 		       COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0),
 		       COALESCE(s.project,'')
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
+		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = ? AND e.cost_usd IS NULL AND COALESCE(e.model,'') != '' AND e.internal = 0
 		  AND COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0`,
 		string(event.KindTurnAssistant))

@@ -240,7 +240,7 @@ func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf
 		}
 	}
 	return q.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ? AND ts < ?`+nonInternalEvent,
+		`SELECT COUNT(DISTINCT sid) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ? AND ts < ?`+nonInternalEvent,
 		from, to).Scan(&w.Sessions)
 }
 
@@ -277,10 +277,10 @@ func weekModels(ctx context.Context, q Querier, from, to int64, w *Week) error {
 func weekBiggest(ctx context.Context, q Querier, from, to int64, w *Week, loc *time.Location) error {
 	var b WeekSession
 	err := q.QueryRowContext(ctx, `
-		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(SUM(e.cost_usd),0), COUNT(*)
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
+		SELECT s.session_id, COALESCE(s.agent,'claude'), COALESCE(SUM(e.cost_usd),0), COUNT(*)
+		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
-		GROUP BY e.session_id ORDER BY 3 DESC, 4 DESC LIMIT 1`, from, to).Scan(&b.SessionID, &b.Agent, &b.CostUSD, &b.Turns)
+		GROUP BY e.sid ORDER BY 3 DESC, 4 DESC LIMIT 1`, from, to).Scan(&b.SessionID, &b.Agent, &b.CostUSD, &b.Turns)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -290,7 +290,7 @@ func weekBiggest(ctx context.Context, q Querier, from, to int64, w *Week, loc *t
 	if b.CostUSD <= 0 {
 		return nil
 	}
-	rows, err := q.QueryContext(ctx, `SELECT ts FROM events WHERE session_id = ? AND kind = 'turn.assistant' AND ts >= ? AND ts < ?`+nonInternalEvent, b.SessionID, from, to)
+	rows, err := q.QueryContext(ctx, `SELECT ts FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND ts >= ? AND ts < ?`+nonInternalEvent, b.SessionID, from, to)
 	if err != nil {
 		return err
 	}
@@ -484,7 +484,7 @@ type toolRow struct {
 // is kept, for its output.
 func scanToolPosts(ctx context.Context, q Querier, from, to int64) ([]toolRow, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT e.session_id, COALESCE(e.key,''), COALESCE(e.tool,''), e.ts,
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), COALESCE(e.key,''), COALESCE(e.tool,''), e.ts,
 		       COALESCE(e.payload ->> '$.hook_event_name', ''),
 		       COALESCE(CAST(e.payload ->> '$.is_error' AS INTEGER), 0),
 		       COALESCE(e.payload ->> '$.cwd', ''),
@@ -549,7 +549,7 @@ func preInput(ctx context.Context, q Querier, session, postKey string) (json.Raw
 		return nil, nil
 	}
 	var payload []byte
-	err := q.QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id = ? AND key = ?`, session, "pre:"+id).Scan(&payload)
+	err := q.QueryRowContext(ctx, `SELECT payload FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?`, session, "pre:"+id).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -815,11 +815,11 @@ type loopScan struct {
 func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, error) {
 	out := loopScan{series: map[string]*loopSeries{}}
 	rows, err := q.QueryContext(ctx, `
-		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''),
+		SELECT s.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''),
 		       CASE WHEN COALESCE(e.agent_id,'') != '' THEN e.agent_id
 		            WHEN instr(e.payload, '"sidechain":true') > 0 THEN 'sidechain' ELSE '' END,
 		       COALESCE(CASE WHEN json_valid(e.payload) THEN e.payload -> '$.tool_input' END, '')
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
+		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
 		  AND COALESCE(e.tool,'') NOT IN (`+readOnlyList+`)`, from, to)
 	if err != nil {

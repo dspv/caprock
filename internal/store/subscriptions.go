@@ -16,8 +16,8 @@ type SubscriptionSpend struct {
 // calls) are left out, as everywhere else a cost is shown.
 func SpendBySubscription(ctx context.Context, q Querier, since int64) ([]SubscriptionSpend, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(s.agent, 'claude'), s.subscription, COUNT(DISTINCT e.session_id), COALESCE(SUM(e.cost_usd), 0)
-		FROM events e JOIN sessions s ON s.session_id = e.session_id
+		SELECT COALESCE(s.agent, 'claude'), s.subscription, COUNT(DISTINCT e.sid), COALESCE(SUM(e.cost_usd), 0)
+		FROM events e JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.internal = 0
 		  AND COALESCE(s.agent, 'claude') IN ('claude', 'codex')
 		GROUP BY 1, 2`, since)

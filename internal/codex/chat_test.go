@@ -201,7 +201,7 @@ func TestChatEventsAreStored(t *testing.T) {
 	}
 	// Every result pairs with a stored call.
 	if n := count(t, h.out, `SELECT COUNT(*) FROM events p JOIN events c
-		ON c.session_id = p.session_id AND c.kind = 'tool.pre'
+		ON c.sid = p.sid AND c.kind = 'tool.pre'
 		AND json_extract(c.payload,'$.tool_use_id') = json_extract(p.payload,'$.tool_use_id')
 		WHERE p.source='codex' AND p.kind='tool.post'`); n != 5 {
 		t.Fatalf("want 5 results paired with their calls, got %d", n)

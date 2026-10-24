@@ -33,8 +33,8 @@ func (r *Recorder) RepairSessionModels(ctx context.Context) (int, error) {
 		}
 		res, err := q.ExecContext(ctx, `
 			WITH ranked AS (
-				SELECT e.session_id, e.model,
-				       ROW_NUMBER() OVER (PARTITION BY e.session_id ORDER BY e.ts DESC, e.id DESC) AS rn
+				SELECT e.sid, e.model,
+				       ROW_NUMBER() OVER (PARTITION BY e.sid ORDER BY e.ts DESC, e.id DESC) AS rn
 				FROM events e
 				WHERE e.kind = 'turn.assistant' AND e.internal = 0
 				  AND COALESCE(e.model, '') != ''
@@ -42,7 +42,7 @@ func (r *Recorder) RepairSessionModels(ctx context.Context) (int, error) {
 			)
 			UPDATE sessions SET model = ranked.model
 			FROM ranked
-			WHERE ranked.session_id = sessions.session_id AND ranked.rn = 1
+			WHERE ranked.sid = sessions.sid AND ranked.rn = 1
 			  AND COALESCE(sessions.model, '') != ranked.model`)
 		if err != nil {
 			return err

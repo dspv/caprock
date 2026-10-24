@@ -44,20 +44,20 @@ type storedRow struct {
 
 func (in *Ingester) codexRows(ctx context.Context, session string) ([]storedRow, error) {
 	rows, err := in.rec.Store.DB().QueryContext(ctx, `
-		SELECT id, ts, session_id, COALESCE(key,''), kind, COALESCE(model,''), internal,
+		SELECT id, ts, COALESCE(key,''), kind, COALESCE(model,''), internal,
 		       CASE WHEN json_valid(payload) THEN COALESCE(json_extract(payload,'$.cwd'),'') ELSE '' END,
 		       COALESCE(tokens_in,0), COALESCE(tokens_out,0), COALESCE(cache_read,0), COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
-		  FROM events WHERE session_id = ? AND source = ?`, session, string(event.SourceCodex))
+		  FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ?`, session, string(event.SourceCodex))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []storedRow
 	for rows.Next() {
-		var r storedRow
+		r := storedRow{session: session}
 		var internal int
-		if err := rows.Scan(&r.id, &r.ts, &r.session, &r.key, &r.kind, &r.model, &internal, &r.cwd,
+		if err := rows.Scan(&r.id, &r.ts, &r.key, &r.kind, &r.model, &internal, &r.cwd,
 			&r.tokens.In, &r.tokens.Out, &r.tokens.CacheRead, &r.tokens.CacheWrite, &r.cost); err != nil {
 			return nil, err
 		}
@@ -202,7 +202,7 @@ func (in *Ingester) purgeImported(ctx context.Context, s *Session) (int, error) 
 			}
 		}
 		var left int
-		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE session_id = ?`, s.ID).Scan(&left); err != nil {
+		if err := q.QueryRowContext(ctx, `SELECT COUNT(*) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)`, s.ID).Scan(&left); err != nil {
 			return err
 		}
 		if left > 0 {

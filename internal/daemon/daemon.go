@@ -312,6 +312,9 @@ type Daemon struct {
 	// Ingest is the whole product on Phase 0, so its death is not a log line:
 	// it is reported by /v1/status, `caprock status` and the dashboard.
 	ingestErr error
+	// whole is closed once every event is in events: until migration 0073's
+	// move is done, what waits for it is started by afterMove (move.go).
+	whole chan struct{}
 }
 
 // setIngestErr records the terminal ingest error for /v1/status.
@@ -390,7 +393,8 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 	// migrated is refused inside Open before any write (ADR-082), and its
 	// error is the whole message, unwrapped, because it is what `caprock up`
 	// and the desktop app show.
-	st, err := store.Open(ctx, config.DBPath(opt.DataDir), log)
+	st, err := store.Open(ctx, config.DBPath(opt.DataDir), log,
+		store.OnUpgrade(func() func() { return config.MarkUpgrading(opt.DataDir) }))
 	if err != nil {
 		var newer *store.SchemaTooNewError
 		if errors.As(err, &newer) {
@@ -412,6 +416,27 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		}
 		_ = st.SetMeta(ctx, store.MetaPricingVersion, table.Version)
 	}
+	if !st.Moving() {
+		repairTranscripts(ctx, st, log)
+	}
+	b := bus.New()
+	rec := rollup.New(st, table, b, log)
+	// A transcript under a subscription's directory is that subscription's (ADR-048).
+	dataDir := opt.DataDir
+	rec.SubscriptionOf = func(p string) string { return subs.Of(dataDir, p) }
+	det := loop.New(opt.Config.LoopK, time.Duration(opt.Config.LoopTMinutes)*time.Minute)
+	d := &Daemon{opt: opt, log: log, store: st, bus: b, table: table, rec: rec, det: det, alerts: map[string]*loop.Alert{}, start: time.Now(), upd: update.New(), res: newResourceMeter(), whole: make(chan struct{})}
+	d.io, d.unlock, d.actions = newIORing(d.start), unlock, newActionLog()
+	rec.OnWrite = d.writes.want
+	ok = true
+	return d, nil
+}
+
+// repairTranscripts re-derives from the transcripts what an older parser
+// stored wrongly, once per transcript schema. It waits for migration
+// 0073's move (moveEvents): a repair over the newest rows alone would
+// record the schema as repaired.
+func repairTranscripts(ctx context.Context, st *store.Store, log *slog.Logger) {
 	// Parser v1 clipped assistant prose on byte boundaries, which cut multi-byte
 	// text at roughly half the intended length and corrupted the tail. Re-derive
 	// the affected rows from the transcripts once, then record the new version.
@@ -436,17 +461,6 @@ func newDaemon(ctx context.Context, opt Options) (*Daemon, error) {
 		}
 	}
 	_ = st.SetMeta(ctx, store.MetaTranscriptSchema, strconv.Itoa(ingest.SchemaVersion))
-	b := bus.New()
-	rec := rollup.New(st, table, b, log)
-	// A transcript under a subscription's directory is that subscription's (ADR-048).
-	dataDir := opt.DataDir
-	rec.SubscriptionOf = func(p string) string { return subs.Of(dataDir, p) }
-	det := loop.New(opt.Config.LoopK, time.Duration(opt.Config.LoopTMinutes)*time.Minute)
-	d := &Daemon{opt: opt, log: log, store: st, bus: b, table: table, rec: rec, det: det, alerts: map[string]*loop.Alert{}, start: time.Now(), upd: update.New(), res: newResourceMeter()}
-	d.io, d.unlock, d.actions = newIORing(d.start), unlock, newActionLog()
-	rec.OnWrite = d.writes.want
-	ok = true
-	return d, nil
 }
 
 func (d *Daemon) run(ctx context.Context) error {
@@ -493,7 +507,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// Turns stored before their model had a row in the pricing table are
 	// priced now that it may have one. Background, best-effort, idempotent:
 	// what is still missing stays unpriced and is counted as such.
-	d.goBg(func() {
+	d.afterMove(ctx, func() {
 		// Once: daily_stats' Codex rows carried the pre-0022/0023 imports as
 		// well as the re-imports. Days retention may have pruned are left as
 		// they are — rebuilding them from missing events would erase history.
@@ -825,9 +839,11 @@ func (d *Daemon) run(ctx context.Context) error {
 	// normal case and is silent: most machines run Claude Code only. OpenCode
 	// installed or first run after the daemon started creates the database
 	// later, so its absence is looked at again until it appears.
-	if !d.startOpenCode(ctx) && !d.opt.DisableIngest {
-		d.goBg(func() { d.awaitOpenCode(ctx, openCodeAwaitEvery) })
-	}
+	d.afterMove(ctx, func() {
+		if !d.startOpenCode(ctx) && !d.opt.DisableIngest {
+			d.awaitOpenCode(ctx, openCodeAwaitEvery)
+		}
+	})
 
 	// Codex, when this machine has it. Easier to observe than either of the
 	// others: it writes one append-only JSONL transcript per session carrying
@@ -835,7 +851,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// install and no config of someone else's to rewrite. Absence is the
 	// normal case and is silent. With the CLI installed it starts even with no
 	// transcripts yet: the first rollout may be one a session Caprock starts.
-	d.startCodex(ctx, d.mgr.AgentAvailable(agents.AgentCodex))
+	d.afterMove(ctx, func() { d.startCodex(ctx, d.mgr.AgentAvailable(agents.AgentCodex)) })
 	// The data-dir shim and our settings.json commands pointed at this
 	// install, off the start path (selfrepair.go).
 	d.goBg(d.repairHookPaths)
@@ -859,7 +875,7 @@ func (d *Daemon) run(ctx context.Context) error {
 				d.log.Warn("deepseek transcripts found but not readable", "component", "deepseek", "dir", dir, "err", err)
 			} else if len(ts) > 0 {
 				d.dsIn = deepseek.NewIngester(dir, d.rec, d.log, 5*time.Second)
-				d.goBg(func() {
+				d.afterMove(ctx, func() {
 					if err := d.dsIn.Run(ctx); err != nil && ctx.Err() == nil {
 						d.log.Error("deepseek ingest stopped", "component", "deepseek", "err", err)
 					}
@@ -873,9 +889,11 @@ func (d *Daemon) run(ctx context.Context) error {
 	// own per-session cost, read-only, as OpenCode's is (ADR-069). Hermes
 	// creates it on its first conversation, so its absence is looked at again
 	// until it appears.
-	if !d.startHermes(ctx) && !d.opt.DisableIngest {
-		go d.awaitHermes(ctx, openCodeAwaitEvery)
-	}
+	d.afterMove(ctx, func() {
+		if !d.startHermes(ctx) && !d.opt.DisableIngest {
+			d.awaitHermes(ctx, openCodeAwaitEvery)
+		}
+	})
 
 	// When the last run stopped, and what was running then — read before the
 	// first heartbeat overwrites the one and the first sweep ends the other.
@@ -910,7 +928,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// directory appears when the first Gemini session is spawned, and a sweep
 	// over a directory that does not exist is a no-op rather than an error.
 	d.gemIn = gemini.NewIngester(filepath.Join(d.opt.DataDir, "gemini"), d.rec, d.log)
-	d.goBg(func() { d.gemIn.Run(ctx) })
+	d.afterMove(ctx, func() { d.gemIn.Run(ctx) })
 	// Sessions reattached above are watched again the way a spawn starts
 	// watching them; here, once the Gemini ingester exists.
 	d.relink(ctx, reattached)
@@ -921,10 +939,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.startKeepAwake(ctx)
 	d.loadReportState(ctx)
 	d.goBg(func() { d.weeklyLoop(ctx) })
-	d.goBg(func() { d.backfillToolLinks(ctx) })
-	d.goBg(func() { d.repairEmptyText(ctx) })
-	d.goBg(func() { d.backfillPRs(ctx) })
-	d.goBg(func() { d.fillToolFields(ctx) })
+	d.afterMove(ctx, func() { d.backfillToolLinks(ctx) })
+	d.afterMove(ctx, func() { d.repairEmptyText(ctx) })
+	d.afterMove(ctx, func() { d.backfillPRs(ctx) })
+	d.afterMove(ctx, func() { d.fillToolFields(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
 	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
 	d.activity.Store(time.Now().UnixMilli())
@@ -932,9 +950,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.goBg(func() { d.resourceLoop(ctx) })
 	d.goBg(func() { d.ioLoop(ctx) })
 	if d.config().RetentionDays > 0 {
-		d.goBg(func() { d.pruneLoop(ctx) })
+		d.afterMove(ctx, func() { d.pruneLoop(ctx) })
 	}
 
+	d.goBg(func() { d.moveEvents(ctx) })
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
 	// The all-time aggregates take a second or more on a large database; work
@@ -1479,8 +1498,11 @@ type Status struct {
 	// while ingest is running. Without it the daemon looked healthy while
 	// capturing nothing, and the dashboard told the user to start `claude` and
 	// wait for sessions that could never arrive.
-	IngestError string        `json:"ingest_error,omitempty"`
-	Hooks       *hooks.Status `json:"hooks,omitempty"`
+	IngestError string `json:"ingest_error,omitempty"`
+	// EventsMove is how far the move of migration 0073 has come; absent once
+	// every event is in place.
+	EventsMove *MoveStatus   `json:"events_move,omitempty"`
+	Hooks      *hooks.Status `json:"hooks,omitempty"`
 	// ClaudeBypassAccepted says the user accepted Claude Code's one-time
 	// bypass warning, so a bypass session starts without it (ADR-041).
 	ClaudeBypassAccepted bool `json:"claude_bypass_accepted"`
@@ -1582,7 +1604,7 @@ type MemoryStatus struct {
 	Withheld   *store.HandoffGroup `json:"withheld,omitempty"`
 }
 
-func (d *Daemon) status(_ context.Context) any {
+func (d *Daemon) status(ctx context.Context) any {
 	b, _ := d.hiveState()
 	st := Status{
 		Version: d.opt.Version, APILevel: version.APILevel, Platform: runtime.GOOS + "/" + runtime.GOARCH, PID: os.Getpid(), StartedAt: d.start.UnixMilli(), UptimeS: int64(time.Since(d.start).Seconds()),
@@ -1621,6 +1643,9 @@ func (d *Daemon) status(_ context.Context) any {
 	}
 	if err := d.ingestError(); err != nil {
 		st.IngestError = err.Error()
+	}
+	if moved, total, err := d.store.MoveProgress(ctx); err == nil && total > 0 {
+		st.EventsMove = &MoveStatus{Moved: moved, Total: total}
 	}
 	// Read on request from a file the machine already has: no storage, no
 	// polling, and absence is a normal answer rather than an error.
@@ -2432,6 +2457,9 @@ func (d *Daemon) startOpenCode(ctx context.Context) bool {
 	if d.ocIn != nil {
 		return true
 	}
+	if d.moving() {
+		return false
+	}
 	p := d.openCodeDBPath()
 	if p == "off" || p == "" {
 		return false
@@ -2574,7 +2602,7 @@ func (d *Daemon) startCodex(ctx context.Context, force bool) {
 	}
 	d.ingMu.Lock()
 	defer d.ingMu.Unlock()
-	if d.cxIn != nil {
+	if d.cxIn != nil || d.moving() {
 		return
 	}
 	var dirs []string
@@ -2725,6 +2753,9 @@ func (d *Daemon) startHermes(ctx context.Context) bool {
 	defer d.ingMu.Unlock()
 	if d.hmIn != nil {
 		return true
+	}
+	if d.moving() {
+		return false
 	}
 	p := d.hermesDBPath()
 	if p == "off" || p == "" {

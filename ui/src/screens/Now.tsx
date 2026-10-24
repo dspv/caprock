@@ -202,6 +202,7 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
   // the all-time query takes about half a second — long enough to read.
   const loading = isLoading(summary.data, summary.error)
   const ingestError = status.data?.ingest_error
+  const move = status.data?.events_move
   // Every section below refreshes on one shared tick, at most every
   // NOW_LIVE_MS (lib/refresh.ts): each used to ask on every live event.
   return (
@@ -217,6 +218,16 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
             No new sessions are being captured. <span className="mono text-fg">{ingestError}</span> — check that
             <span className="mono text-fg"> ~/.claude</span> is readable, then restart with
             <span className="mono text-fg"> caprock down &amp;&amp; caprock up</span>.
+          </span>
+        </div>
+      )}
+      {move && (
+        <div className="border border-border bg-panel px-3 py-2 text-[12px] rounded-[var(--radius-panel)] flex items-center gap-3">
+          <span className="text-fg font-medium">Upgrading the database</span>
+          <span className="text-fg-muted">
+            Older history is moving in, newest first:{' '}
+            <span className="num text-fg">{Math.floor((move.moved * 100) / Math.max(move.total, 1))}%</span>. Until it is
+            done, older sessions and totals over them are incomplete. New work is recorded as usual.
           </span>
         </div>
       )}

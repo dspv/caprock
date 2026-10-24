@@ -24,7 +24,7 @@ func LastRun(ctx context.Context, q Querier, sessionID string, until int64) (Run
 	var r Run
 	err := q.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(e.ts), 0) FROM events e INDEXED BY idx_events_user_turn
-		WHERE e.session_id = ? AND e.kind = 'turn.user' AND e.ts <= ? AND `+MainThreadWhere,
+		WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'turn.user' AND e.ts <= ? AND `+MainThreadWhere,
 		sessionID, until).Scan(&r.PromptAt)
 	if err != nil {
 		return r, err
@@ -32,7 +32,7 @@ func LastRun(ctx context.Context, q Querier, sessionID string, until int64) (Run
 	err = q.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(CASE WHEN kind = 'turn.assistant' THEN cost_usd END), 0),
 		       COUNT(CASE WHEN kind = 'tool.pre' THEN 1 END)
-		FROM events WHERE session_id = ? AND ts >= ? AND ts <= ? AND internal = 0`,
+		FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND ts <= ? AND internal = 0`,
 		sessionID, r.PromptAt, until).Scan(&r.CostUSD, &r.ToolCalls)
 	if err != nil {
 		return r, err
@@ -42,15 +42,17 @@ func LastRun(ctx context.Context, q Querier, sessionID string, until int64) (Run
 }
 
 // runFiles is the distinct paths edited in [from, until], in the order first
-// edited. The tools are the ones rollup counts as touching a file.
+// edited. The tools are the ones rollup counts as touching a file. Pinned to
+// the index that holds kind and tool: on idx_events_session_ts, SQLite's own
+// choice, every event of the run is read from the table to test them.
 func runFiles(ctx context.Context, q Querier, sessionID string, from, until int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT p FROM (
 			SELECT COALESCE(json_extract(payload, '$.tool_input.file_path'),
 			                json_extract(payload, '$.tool_input.notebook_path'), '') AS p,
 			       MIN(ts) AS first
-			FROM events
-			WHERE session_id = ? AND kind = 'tool.pre' AND ts >= ? AND ts <= ? AND internal = 0
+			FROM events INDEXED BY idx_events_attr_work
+			WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre' AND ts >= ? AND ts <= ? AND internal = 0
 			  AND tool IN ('Edit', 'Write', 'MultiEdit', 'NotebookEdit')
 			GROUP BY 1
 		) WHERE p <> '' ORDER BY first, p`, sessionID, from, until)

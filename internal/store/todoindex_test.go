@@ -22,7 +22,7 @@ func TestTaskListReadsItsPartialIndex(t *testing.T) {
 	s := openTest(t)
 	rows, err := s.DB().QueryContext(context.Background(), `EXPLAIN QUERY PLAN
 		SELECT ts FROM events INDEXED BY idx_events_todo
-		 WHERE session_id = 'x' AND kind = 'tool.pre'
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = 'x') AND kind = 'tool.pre'
 		   AND tool IN ('TodoWrite', 'TaskCreate', 'TaskUpdate', 'update_plan')
 		 ORDER BY ts, id`)
 	if err != nil {

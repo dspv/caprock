@@ -53,17 +53,12 @@ func TestMigration0070MovesToolFieldsOutOfThePayload(t *testing.T) {
 		t.Fatalf("before the migration ran again: bash %+v, read %+v", bash, read)
 	}
 
-	// Back to schema 69, as a database from before the migration is.
+	// As migration 0070 leaves a database from before it: tool_fields empty
+	// and no version recorded, so the next Open marks every call pending.
 	db := s.DB()
 	for _, q := range []string{
-		`DROP TRIGGER events_tool_fields_delete`,
-		`DROP TABLE tool_fields`,
+		`DELETE FROM tool_fields`,
 		`DELETE FROM meta WHERE k = 'tool_fields_version'`,
-		`CREATE INDEX idx_events_agent_task ON events(session_id,
-			(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.agentId') END),
-			(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.tool_response.description') END))
-			WHERE kind = 'tool.post' AND tool IN ('Agent', 'Task')`,
-		`UPDATE meta SET v = '69' WHERE k = 'schema_version'`,
 	} {
 		if _, err := db.ExecContext(ctx, q); err != nil {
 			t.Fatalf("%s: %v", q, err)
@@ -100,7 +95,7 @@ func TestMigration0070MovesToolFieldsOutOfThePayload(t *testing.T) {
 	// While results wait to be filled, their subagents are sought on the
 	// old index, not read from every payload of the session.
 	plan := queryPlan(t, db, `SELECT `+agentTaskDesc+` FROM events
-		WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task') AND `+agentTaskID+` IN (?)`, "s", "a1")
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.post' AND tool IN ('Agent', 'Task') AND `+agentTaskID+` IN (?)`, "s", "a1")
 	if !strings.Contains(plan, "idx_events_agent_task") {
 		t.Fatalf("pending results are not sought on idx_events_agent_task; plan:\n%s", plan)
 	}

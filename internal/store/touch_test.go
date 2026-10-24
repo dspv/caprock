@@ -675,7 +675,7 @@ func TestTouchMigrationAddsColumns(t *testing.T) {
 }
 
 // TestAttributionIndexOrdersTheCarryScan guards migration 0013. Carry-forward
-// reads one scan ordered by (session_id, ts, id); without an index in that
+// reads one scan ordered by (sid, ts, id); without an index in that
 // order SQLite sorts 90271 rows in a temp B-tree, measured at ~290ms on the
 // owner's database against a ~250ms budget for the entire summary. The index
 // must also COVER every column the scan reads, or the plan falls back to a
@@ -692,8 +692,8 @@ func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
 	}
 	flat := strings.Join(strings.Fields(idx), "")
 	// The ORDER BY prefix, in order: anything else reintroduces the sort.
-	if !strings.Contains(flat, "(session_id,ts,id") {
-		t.Errorf("index must lead with (session_id, ts, id) — the carry scan's ORDER BY — got: %s", idx)
+	if !strings.Contains(flat, "(sid,ts,id") {
+		t.Errorf("index must lead with (sid, ts, id) — the carry scan's ORDER BY — got: %s", idx)
 	}
 	// The payload the scan reads, so the plan stays covering.
 	// `tool` and `msg_id` are read by the same scan for the work-kind breakdown
@@ -708,13 +708,13 @@ func TestAttributionIndexOrdersTheCarryScan(t *testing.T) {
 	var plan string
 	rows, err := s.db.QueryContext(ctx, `
 		EXPLAIN QUERY PLAN
-		SELECT session_id, kind, COALESCE(touch_dir,''), COALESCE(msg_id,''), COALESCE(tool,''),
+		SELECT sid, kind, COALESCE(touch_dir,''), COALESCE(msg_id,''), COALESCE(tool,''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
 		FROM events INDEXED BY idx_events_attr_work
-		WHERE session_id IS NOT NULL AND ts >= 0
+		WHERE sid IS NOT NULL AND ts >= 0
 		  AND kind IN ('tool.pre','turn.assistant')
-		ORDER BY session_id, ts, id`)
+		ORDER BY sid, ts, id`)
 	if err != nil {
 		t.Fatal(err)
 	}

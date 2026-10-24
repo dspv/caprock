@@ -188,7 +188,9 @@ func (e *Engine) Kick() {
 // how many calls it made. With no session waiting it re-tags memories that
 // have no keywords instead (retag.go). One wake at a time.
 func (e *Engine) Wake(ctx context.Context) (int, error) {
-	if !e.Enabled() {
+	// A read while migration 0073's move runs would move a session's cursor
+	// past its older turns before they are back.
+	if !e.Enabled() || (e.Store != nil && e.Store.Moving()) {
 		return 0, nil
 	}
 	e.mu.Lock()

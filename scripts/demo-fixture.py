@@ -83,7 +83,7 @@ def tool_rows(agent):
     pre = {}
     rows = []
     for ts, kind, tool, key, p in db.execute(
-            f"SELECT ts, kind, tool, key, payload FROM events WHERE session_id=? AND source='hook' "
+            f"SELECT ts, kind, tool, key, payload FROM events WHERE sid=(SELECT sid FROM sessions WHERE session_id=?) AND source='hook' "
             f"AND kind IN ('tool.pre','tool.post') AND ts BETWEEN ? AND ? AND {cond} ORDER BY ts", args):
         d = json.loads(p)
         use = d.get("tool_use_id")
@@ -103,12 +103,12 @@ def turns(agent):
     args = (SID, lo, hi) if agent is None else (SID, lo, hi, agent)
     return [[round((ts - lo) / 1000), m, ti or 0, to or 0, cr or 0, cw or 0]
             for ts, m, ti, to, cr, cw in db.execute(
-                f"SELECT ts, model, tokens_in, tokens_out, cache_read, cache_write FROM events WHERE session_id=? "
+                f"SELECT ts, model, tokens_in, tokens_out, cache_read, cache_write FROM events WHERE sid=(SELECT sid FROM sessions WHERE session_id=?) "
                 f"AND kind='turn.assistant' AND ts BETWEEN ? AND ? AND {cond} ORDER BY ts", args)]
 
 
 agents = []
-for ts, p in db.execute("SELECT ts, payload FROM events WHERE session_id=? AND kind='tool.post' AND tool='Agent' "
+for ts, p in db.execute("SELECT ts, payload FROM events WHERE sid=(SELECT sid FROM sessions WHERE session_id=?) AND kind='tool.post' AND tool='Agent' "
                         "AND source='hook' AND ts BETWEEN ? AND ? ORDER BY ts", (SID, lo - 30 * 60000, hi)):
     d = json.loads(p)
     r = d.get("tool_response") or {}

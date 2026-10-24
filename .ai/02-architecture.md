@@ -393,6 +393,11 @@ what and how many bytes it freed, and is listed in the footprint's `actions`
     the database does not know, or that is still running, is kept.
   - **`launchd.log` once it is 30 days old.** No current version writes it: the
     LaunchAgent's output goes to `service.log`.
+  - **`caprock.pre-<NNNN>.db` once it is 30 days old**: the copy of the
+    database kept before an upgrade no older release reads past
+    ([03-contracts.md § Session key DDL](03-contracts.md#session-key-ddl-migration-0073)).
+    It is the way back to that release, and a month on going back would cost
+    a month of history.
 - **The storage measurement** (a full read of the database) runs only when the
   Storage panel asks for figures older than a day, and once a day while idle
   ([03-contracts.md § Storage](03-contracts.md#storage)).

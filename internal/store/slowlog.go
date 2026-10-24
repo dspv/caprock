@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -88,23 +87,11 @@ func queryName(q string) string {
 	return q
 }
 
-// callerOf names the first function outside database/sql and this file — the
-// code that asked for the statement. Only worked out for a slow one.
+// callerOf names the code that asked for the statement. Only worked out for a
+// slow one.
 func callerOf() string {
-	pcs := make([]uintptr, 32)
-	n := runtime.Callers(3, pcs)
-	frames := runtime.CallersFrames(pcs[:n])
-	for {
-		f, more := frames.Next()
-		fn := f.Function
-		if !strings.HasPrefix(fn, "database/sql") && !strings.Contains(fn, "internal/store.(*timed") &&
-			!strings.Contains(fn, "internal/store.reportSlow") && !strings.HasPrefix(fn, "runtime.") {
-			return fn
-		}
-		if !more {
-			return ""
-		}
-	}
+	f, _ := callerFrame()
+	return f.Function
 }
 
 func reportSlow(log *slog.Logger, query string, start time.Time, rows int64, err error) {
@@ -165,6 +152,7 @@ type timedConn struct {
 }
 
 func (c *timedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	recordPlan(query, args)
 	start := slowClock()
 	r, err := c.fullConn.ExecContext(ctx, query, args)
 	var n int64
@@ -176,6 +164,7 @@ func (c *timedConn) ExecContext(ctx context.Context, query string, args []driver
 }
 
 func (c *timedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	recordPlan(query, args)
 	start := slowClock()
 	r, err := c.fullConn.QueryContext(ctx, query, args)
 	if err != nil {

@@ -167,7 +167,7 @@ func PullRequests(ctx context.Context, q store.Querier, sessionID string) ([]PR,
 		SELECT CAST(COALESCE(json_extract(payload, '$.tool_response.gitOperation.pr.number'), 0) AS INTEGER),
 		       COALESCE(json_extract(payload, '$.tool_response.gitOperation.pr.url'), '')
 		FROM events
-		WHERE session_id = ? AND kind = 'tool.post'
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.post'
 		  AND json_extract(payload, '$.tool_response.gitOperation.pr.action') = 'created'
 		ORDER BY ts`, sessionID)
 	if err != nil {

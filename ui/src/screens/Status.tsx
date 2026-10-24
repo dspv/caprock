@@ -481,6 +481,7 @@ function AboutSection({ s }: { s: Status }) {
   // A distinct key: React renders these rows keyed by name, and the live
   // ingest row below uses 'ingest'.
   if (s.ingest_error) rows.push(['ingest error', `STOPPED: ${s.ingest_error} — nothing is being captured`])
+  if (s.events_move) rows.push(['upgrade', `moving older events into the upgraded database: ${s.events_move.moved.toLocaleString()} of ${s.events_move.total.toLocaleString()}`])
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
     <Section title="About this install">

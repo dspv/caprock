@@ -262,7 +262,7 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 		               CASE WHEN e.kind = 'agent.stop' AND json_valid(e.payload)
 		                    THEN COALESCE(json_extract(e.payload, '$.last_assistant_message'), '') ELSE '' END
 		        FROM events e
-		        WHERE e.session_id = s.session_id ORDER BY e.ts DESC, e.id DESC LIMIT 1)
+		        WHERE e.sid = s.sid ORDER BY e.ts DESC, e.id DESC LIMIT 1)
 		FROM sessions s WHERE s.status != 'ended' AND COALESCE(NULLIF(s.repo_root,''), s.cwd, '') != ''`)
 	if err != nil {
 		return nil, err
@@ -308,7 +308,7 @@ func ProjectActivityByDir(ctx context.Context, q Querier, sinceMs int64) (map[st
 	}
 	rows, err = q.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd) AS d, COALESCE(SUM(e.cost_usd), 0)
-		FROM events e JOIN sessions s ON s.session_id = e.session_id
+		FROM events e JOIN sessions s ON s.sid = e.sid
 		WHERE e.ts >= ?`+nonInternalEventE+` AND e.cost_usd IS NOT NULL
 		GROUP BY d`, sinceMs)
 	if err != nil {

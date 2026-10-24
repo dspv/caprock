@@ -113,7 +113,7 @@ func TestSummaryCacheMatchesFresh(t *testing.T) {
 	check("subagent burst")
 
 	// An in-place rewrite, as Codex ingest and the repairs do.
-	if _, err := db.ExecContext(ctx, `UPDATE events SET payload = json_set(payload, '$.text', 'rewritten') WHERE session_id = 's1' AND kind = 'turn.assistant'`); err != nil {
+	if _, err := db.ExecContext(ctx, `UPDATE events SET payload = json_set(payload, '$.text', 'rewritten') WHERE sid = (SELECT sid FROM sessions WHERE session_id = 's1') AND kind = 'turn.assistant'`); err != nil {
 		t.Fatal(err)
 	}
 	check("payload rewrite")
@@ -134,7 +134,7 @@ func TestSummaryCacheMatchesFresh(t *testing.T) {
 	check("renamed")
 
 	// Deleting the newest events brings older ones back into the window.
-	if _, err := db.ExecContext(ctx, `DELETE FROM events WHERE id IN (SELECT id FROM events WHERE session_id = 's1' ORDER BY ts DESC, id DESC LIMIT 30)`); err != nil {
+	if _, err := db.ExecContext(ctx, `DELETE FROM events WHERE id IN (SELECT id FROM events JOIN sessions USING (sid) WHERE session_id = 's1' ORDER BY ts DESC, id DESC LIMIT 30)`); err != nil {
 		t.Fatal(err)
 	}
 	check("deleted newest")

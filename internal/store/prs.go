@@ -131,7 +131,7 @@ func scanPRs(rows *sql.Rows) ([]SessionPR, error) {
 // the payload: this runs once, after the port opens.
 func PRToolPosts(ctx context.Context, q Querier, fn func(sessionID string, ts int64, payload []byte) error) error {
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, ts, payload FROM events
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), ts, payload FROM events
 		WHERE kind = 'tool.post' AND tool = 'Bash'
 		  AND (payload LIKE '%"gitOperation":{"pr"%' OR payload LIKE '%gh pr create%')
 		ORDER BY id`)

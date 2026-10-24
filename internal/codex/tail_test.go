@@ -488,8 +488,9 @@ func TestIncrementalImportMatchesFullReread(t *testing.T) {
 // one import of a finished file and many of a growing one must agree on.
 func dumpEvents(t *testing.T, db *sql.DB) string {
 	t.Helper()
-	rows, err := db.Query(`SELECT session_id, key, kind, ts, COALESCE(model,''), tokens_in, tokens_out, cache_read, cache_write,
-		COALESCE(cost_usd,-1), COALESCE(msg_id,''), COALESCE(agent_id,''), payload FROM events ORDER BY session_id, key`)
+	rows, err := db.Query(`SELECT s.session_id, key, kind, ts, COALESCE(e.model,''), tokens_in, tokens_out, cache_read, cache_write,
+		COALESCE(cost_usd,-1), COALESCE(msg_id,''), COALESCE(agent_id,''), payload
+		FROM events e JOIN sessions s USING (sid) ORDER BY s.session_id, key`)
 	if err != nil {
 		t.Fatal(err)
 	}

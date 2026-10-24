@@ -124,7 +124,7 @@ func TestSpendByPRKeepsEndedSlices(t *testing.T) {
 	}
 	ev := func(ts int64, cost float64) {
 		t.Helper()
-		if _, err := q.ExecContext(ctx, `INSERT INTO events(ts, session_id, source, kind, payload, cost_usd, tokens_in) VALUES(?,?,?,?,?,?,?)`, ts, "o", "transcript", "turn.assistant", "{}", cost, 10); err != nil {
+		if _, err := q.ExecContext(ctx, `INSERT INTO events(ts, sid, source, kind, payload, cost_usd, tokens_in) VALUES(?,(SELECT sid FROM sessions WHERE session_id = ?),?,?,?,?,?)`, ts, "o", "transcript", "turn.assistant", "{}", cost, 10); err != nil {
 			t.Fatal(err)
 		}
 	}

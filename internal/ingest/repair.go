@@ -37,9 +37,9 @@ func RepairAssistantText(ctx context.Context, db *sql.DB, log *slog.Logger) (rep
 	// Only rows that v1 could have damaged: text ending in the truncation
 	// ellipsis, or already carrying a replacement character.
 	rows, err := db.QueryContext(ctx, `
-		SELECT e.id, e.session_id, COALESCE(json_extract(e.payload,'$.message_id'),''),
+		SELECT e.id, se.session_id, COALESCE(json_extract(e.payload,'$.message_id'),''),
 		       COALESCE(se.transcript_path,'')
-		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		FROM events e JOIN sessions se ON se.sid = e.sid
 		WHERE e.kind = 'turn.assistant'
 		  AND COALESCE(se.transcript_path,'') != ''
 		  AND (json_extract(e.payload,'$.text') LIKE '%…'
@@ -285,8 +285,8 @@ func textsByMessageID(path string, wanted map[string]int64) (map[string]string, 
 // a busy project is hundreds of files and this runs at startup.
 func RepairEmptyAssistantText(ctx context.Context, db *sql.DB, log *slog.Logger) (repaired int, err error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT e.id, e.session_id, json_extract(e.payload,'$.message_id'), se.transcript_path
-		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		SELECT e.id, se.session_id, json_extract(e.payload,'$.message_id'), se.transcript_path
+		FROM events e JOIN sessions se ON se.sid = e.sid
 		WHERE e.kind = 'turn.assistant' AND e.source = 'transcript'
 		  AND COALESCE(se.transcript_path,'') != ''
 		  AND COALESCE(json_extract(e.payload,'$.text'),'') = ''
@@ -484,7 +484,7 @@ func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger, a
 	rows, err := db.QueryContext(ctx, `
 		SELECT e.id, COALESCE(json_extract(e.payload,'$.tool_use_id'),''),
 		       COALESCE(se.transcript_path,'')
-		FROM events e JOIN sessions se ON se.session_id = e.session_id
+		FROM events e JOIN sessions se ON se.sid = e.sid
 		WHERE e.kind = 'tool.pre' AND e.msg_id IS NULL
 		  -- Claude Code's own sources: no other agent's call is in a Claude transcript.
 		  AND e.source IN ('hook', 'transcript')

@@ -144,7 +144,7 @@ func TestSessionNotesUsesTheSessionIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(plan, " | ")
-	if !strings.Contains(joined, "USING INDEX idx_events_session_id (session_id=?)") {
+	if !strings.Contains(joined, "USING INDEX idx_events_session_id (sid=?)") {
 		t.Fatalf("SessionNotes must walk the session's own index; plan: %s", joined)
 	}
 }

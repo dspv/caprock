@@ -36,7 +36,7 @@ func TestSpendByPR(t *testing.T) {
 	}
 	spend := func(id string, ts int64, cost float64) {
 		t.Helper()
-		if _, err := q.ExecContext(ctx, `INSERT INTO events(ts, session_id, source, kind, payload, cost_usd) VALUES(?,?,?,?,?,?)`, ts, id, "transcript", "turn.assistant", "{}", cost); err != nil {
+		if _, err := q.ExecContext(ctx, `INSERT INTO events(ts, sid, source, kind, payload, cost_usd) VALUES(?,(SELECT sid FROM sessions WHERE session_id = ?),?,?,?,?)`, ts, id, "transcript", "turn.assistant", "{}", cost); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -106,8 +106,10 @@ func TestSpendByPRDriverEndsOnABranch(t *testing.T) {
 	const feat, rel = "https://github.com/o/r/pull/5", "https://github.com/o/r/pull/6"
 	exec(`INSERT INTO sessions(session_id, cwd, status, git_branch, repo_root) VALUES('drv','/r','active','release/1','/r')`)
 	exec(`INSERT INTO session_stats(session_id, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES('drv', 10, 1000, 100, 9000, 500)`)
-	exec(`INSERT INTO events(ts, session_id, source, kind, payload, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES(50,'drv','transcript','turn.assistant','{}',7,700,70,6000,300)`)
-	exec(`INSERT INTO events(ts, session_id, source, kind, payload, cost_usd, tokens_in, tokens_out, cache_read, cache_write) VALUES(150,'drv','transcript','turn.assistant','{}',3,300,30,3000,200)`)
+	exec(`INSERT INTO events(ts, sid, source, kind, payload, cost_usd, tokens_in, tokens_out, cache_read, cache_write)
+		SELECT 50, sid, 'transcript', 'turn.assistant', '{}', 7, 700, 70, 6000, 300 FROM sessions WHERE session_id = 'drv'`)
+	exec(`INSERT INTO events(ts, sid, source, kind, payload, cost_usd, tokens_in, tokens_out, cache_read, cache_write)
+		SELECT 150, sid, 'transcript', 'turn.assistant', '{}', 3, 300, 30, 3000, 200 FROM sessions WHERE session_id = 'drv'`)
 	exec(`INSERT INTO session_prs(session_id, url, number, opened_at, merged_at, last_at) VALUES('drv',?,5,100,120,120)`, feat)
 	exec(`INSERT INTO session_prs(session_id, url, number, opened_at, last_at) VALUES('drv',?,6,200,200)`, rel)
 	// A worker on the release branch that opened only its pull request: whole.

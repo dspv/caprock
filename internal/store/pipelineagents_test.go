@@ -25,7 +25,9 @@ func turnIn(t *testing.T, s *Store, sid, sub string, at time.Time, tokens int64,
 
 func inRepo(t *testing.T, s *Store, sid, root, agent string) {
 	t.Helper()
-	if _, err := s.db.Exec(`INSERT INTO sessions(session_id, cwd, status, repo_root, agent) VALUES(?,?,'active',?,?)`, sid, root, root, agent); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO sessions(session_id, cwd, status, repo_root, agent) VALUES(?,?,'active',?,?)
+		ON CONFLICT(session_id) DO UPDATE SET cwd = excluded.cwd, status = excluded.status, repo_root = excluded.repo_root, agent = excluded.agent`,
+		sid, root, root, agent); err != nil {
 		t.Fatal(err)
 	}
 }

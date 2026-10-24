@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"testing"
-	"time"
 
 	"github.com/dspv/caprock/internal/event"
 )
@@ -13,15 +12,11 @@ import (
 // and DSH turns and tool calls with no msg_id at all.
 func TestLinkToolCallsMigration(t *testing.T) {
 	ctx := context.Background()
-	s, err := Open(ctx, ":memory:", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Close() })
+	_, db := openAtSchema(t, 36)
 	put := func(session string, source event.Source, kind event.Kind, key string) {
 		t.Helper()
-		ev := &event.Event{SessionID: session, Source: source, Kind: kind, Key: key, Ts: time.UnixMilli(1_000)}
-		if _, err := InsertEvent(ctx, s.db, ev); err != nil {
+		if _, err := db.ExecContext(ctx, `INSERT INTO events(ts, session_id, source, kind, payload, key) VALUES(1000, ?, ?, ?, '{}', ?)`,
+			session, string(source), string(kind), key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,7 +35,7 @@ func TestLinkToolCallsMigration(t *testing.T) {
 	put("d1", event.SourceDeepseek, turn, "dsh:turn:20")
 	put("d1", event.SourceDeepseek, tool, "dsh:tool:21")
 	put("h1", event.SourceHook, tool, "pre:toolu_1")
-	if err := s.SetMeta(ctx, MetaToolLinkCursor, ToolLinkDone); err != nil {
+	if _, err := db.ExecContext(ctx, `INSERT INTO meta(k, v) VALUES(?, ?)`, MetaToolLinkCursor, ToolLinkDone); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,7 +43,7 @@ func TestLinkToolCallsMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.ExecContext(ctx, string(b)); err != nil {
+	if _, err := db.ExecContext(ctx, string(b)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,14 +64,15 @@ func TestLinkToolCallsMigration(t *testing.T) {
 	}
 	for key, msg := range want {
 		var got sql.NullString
-		if err := s.db.QueryRowContext(ctx, `SELECT msg_id FROM events WHERE key = ?`, key).Scan(&got); err != nil {
+		if err := db.QueryRowContext(ctx, `SELECT msg_id FROM events WHERE key = ?`, key).Scan(&got); err != nil {
 			t.Fatalf("%s: %v", key, err)
 		}
 		if got.String != msg {
 			t.Errorf("%s: msg_id = %q, want %q", key, got.String, msg)
 		}
 	}
-	if v, _ := s.GetMeta(ctx, MetaToolLinkCursor); v != "0" {
+	var v string
+	if _ = db.QueryRowContext(ctx, `SELECT v FROM meta WHERE k = ?`, MetaToolLinkCursor).Scan(&v); v != "0" {
 		t.Errorf("tool-link backfill not re-armed: cursor = %q", v)
 	}
 }

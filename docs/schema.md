@@ -131,6 +131,27 @@ Rules that hold for every row:
   these rows; sum them yourself and the totals reconcile. `tool_fields` holds
   what the Tools screen reads from each tool call, derived from its payload.
 
+## Querying `caprock.db` directly
+
+`caprock export` is the stable way to read the record. To query the database
+itself — `caprock.db` in the data directory, readable while the daemon runs —
+open it read-only with any SQLite client. There an event names its session by
+`sid`, the integer key of `sessions`, so the session's id is a join away:
+
+```sql
+SELECT s.session_id, e.ts, e.kind, e.tool, e.cost_usd
+FROM events e JOIN sessions s USING (sid)
+WHERE s.session_id = ?
+ORDER BY e.ts, e.id;
+```
+
+Over many events, group by `e.sid` first and join `sessions` to the groups:
+the join then runs once per session instead of once per event.
+
+For a few minutes after the upgrade to this layout, `events` holds the newest
+events only: the rest wait in `events_legacy`, in the old layout, and move
+over in the background. `caprock status` shows how far it has come.
+
 ## Imported Obsidian sources
 
 Migration 0062 adds kind `note` and `vault_id` to `brain_nodes`, preserving

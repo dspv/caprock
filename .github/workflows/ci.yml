@@ -214,6 +214,12 @@ jobs:
           version: v2.14.0
       - name: go test
         run: go test -v -count=1 ./...
+        env:
+          # Ubuntu records every statement the tests run for the plan check.
+          CAPROCK_PLAN_LOG: ${{ matrix.os == 'ubuntu-latest' && format('{0}/plans', runner.temp) || '' }}
+      - name: query plans (make plans updates them)
+        if: matrix.os == 'ubuntu-latest'
+        run: CAPROCK_PLANS_FROM="$RUNNER_TEMP/plans" go test -count=1 -run '^TestQueryPlans$' ./internal/store
       - name: build
         shell: bash
         run: |

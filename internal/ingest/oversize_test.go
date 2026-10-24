@@ -77,7 +77,7 @@ func appendTo(t *testing.T, path, s string) {
 func turnsStored(t *testing.T, st *store.Store) int {
 	t.Helper()
 	var n int
-	if err := st.DB().QueryRow(`SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = 'turn.assistant'`,
+	if err := st.DB().QueryRow(`SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id = ? AND kind = 'turn.assistant'`,
 		oversizeSession).Scan(&n); err != nil {
 		t.Fatal(err)
 	}

@@ -96,7 +96,7 @@ func TestRepriceMovesTheTotalsWithTheEvent(t *testing.T) {
 			t.Fatalf("%s: %v", query, err)
 		}
 	}
-	q(`SELECT cost_usd FROM events WHERE session_id = 'cx'`, &evCost)
+	q(`SELECT cost_usd FROM events JOIN sessions USING (sid) WHERE session_id = 'cx'`, &evCost)
 	q(`SELECT cost_usd FROM session_stats WHERE session_id = 'cx'`, &sessCost)
 	q(`SELECT COALESCE(SUM(cost_usd),0), COALESCE(SUM(tokens_total),0) FROM daily_stats WHERE model = 'gpt-5-codex'`, &dayCost, &named)
 	q(`SELECT COALESCE(SUM(tokens_total),0) FROM daily_stats WHERE model = ''`, &unnamed)

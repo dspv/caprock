@@ -254,7 +254,7 @@ func countTurns(t *testing.T, st *store.Store, sid string) int {
 	t.Helper()
 	var n int
 	if err := st.DB().QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM events WHERE session_id = ?`, sid).Scan(&n); err != nil {
+		`SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id = ?`, sid).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n

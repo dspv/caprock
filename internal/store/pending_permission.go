@@ -121,7 +121,7 @@ func MovedOnSince(ctx context.Context, q Querier, sessionID string, sinceMs int6
 	var one int
 	err := q.QueryRowContext(ctx, `
 		SELECT 1 FROM events
-		 WHERE session_id = ? AND ts > ?
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts > ?
 		   AND kind IN ('tool.post', 'turn.user', 'turn.assistant', 'agent.stop', 'session.end')
 		 LIMIT 1`, sessionID, sinceMs).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {

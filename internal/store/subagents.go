@@ -53,7 +53,7 @@ func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64)
 		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END),
 		       SUM(kind = 'tool.pre')
 		  FROM events
-		 WHERE session_id = ? AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
 		 GROUP BY agent_id
 		 ORDER BY MAX(ts) DESC`, sessionID, since)
 	if err != nil {
@@ -124,7 +124,7 @@ func countSubagentCalls(ctx context.Context, q Querier, sessionID string, workin
 	}
 	rows, err := q.QueryContext(ctx, `
 		SELECT agent_id, COUNT(DISTINCT COALESCE(json_extract(payload, '$.tool_use_id'), 'event:' || id))
-		  FROM events WHERE session_id = ? AND +kind = 'tool.pre'
+		  FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +kind = 'tool.pre'
 		   AND agent_id IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)
 		 GROUP BY agent_id`, args...)
 	if err != nil {
@@ -173,7 +173,7 @@ func describeSubagents(ctx context.Context, q Querier, sessionID string, working
 		  FROM tool_fields f INDEXED BY idx_tool_fields_agent
 		  JOIN events e ON e.id = f.event_id
 		 WHERE f.agent_id IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)
-		   AND e.session_id = ? AND e.kind = 'tool.post' AND e.tool IN ('Agent', 'Task')`, args...)
+		   AND e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.post' AND e.tool IN ('Agent', 'Task')`, args...)
 	if err != nil {
 		return err
 	}
@@ -197,11 +197,11 @@ func describeSubagents(ctx context.Context, q Querier, sessionID string, working
 		}
 	}
 	if pending > 0 {
-		// idx_events_agent_task, kept until the fill is done, holds these
+		// idx_events_agent_task, there until the fill is done, holds these
 		// expressions; SQLite matches an indexed expression by its text.
 		rows, err := q.QueryContext(ctx, `
 			SELECT `+agentTaskID+`, `+agentTaskDesc+` FROM events
-			 WHERE session_id = ? AND kind = 'tool.post' AND tool IN ('Agent', 'Task')
+			 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.post' AND tool IN ('Agent', 'Task')
 			   AND `+agentTaskID+` IN (?`+strings.Repeat(`, ?`, len(missing)-1)+`)`,
 			append([]any{sessionID}, missing...)...)
 		if err != nil {
@@ -234,7 +234,7 @@ func scanDescriptions(rows *sql.Rows, desc map[string]string) error {
 func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentActivity) error {
 	var kind string
 	err := q.QueryRowContext(ctx, `
-		SELECT kind FROM events WHERE session_id = ? AND agent_id = ?
+		SELECT kind FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ?
 		 ORDER BY ts DESC, id DESC LIMIT 1`, sessionID, a.AgentID).Scan(&kind)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -245,7 +245,7 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 	var use sql.NullString
 	err = q.QueryRowContext(ctx, `
 		SELECT COALESCE(tool, ''), ts, payload, json_extract(payload, '$.tool_use_id')
-		  FROM events WHERE session_id = ? AND agent_id = ? AND +kind = 'tool.pre'
+		  FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND +kind = 'tool.pre'
 		 ORDER BY ts DESC, id DESC LIMIT 1`, sessionID, a.AgentID).Scan(&a.Tool, &a.ToolAt, &payload, &use)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -262,7 +262,7 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 		if use.String != "" {
 			var one int
 			err := q.QueryRowContext(ctx, `
-				SELECT 1 FROM events WHERE session_id = ? AND agent_id = ? AND +kind = 'tool.post' AND ts >= ?
+				SELECT 1 FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND +kind = 'tool.post' AND ts >= ?
 				   AND json_extract(payload, '$.tool_use_id') = ? LIMIT 1`, sessionID, a.AgentID, a.ToolAt, use.String).Scan(&one)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
@@ -274,7 +274,7 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 		// A subagent that made no call yet: its type is on whatever it sent.
 		_ = q.QueryRowContext(ctx, `
 			SELECT COALESCE(json_extract(payload, '$.agent_type'), '') FROM events
-			 WHERE session_id = ? AND agent_id = ? AND ts >= ? AND json_extract(payload, '$.agent_type') <> ''
+			 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND ts >= ? AND json_extract(payload, '$.agent_type') <> ''
 			 ORDER BY ts DESC LIMIT 1`, sessionID, a.AgentID, a.StartedAt).Scan(&a.AgentType)
 	}
 	return nil
@@ -289,7 +289,7 @@ func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64
 		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped,
 		       SUM(kind = 'tool.pre') AS calls
 		  FROM events
-		 WHERE session_id = ? AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
 		 GROUP BY agent_id
 		HAVING stopped >= MAX(ts) AND calls > 0
 		 ORDER BY stopped DESC
@@ -341,7 +341,7 @@ func typeSubagents(ctx context.Context, q Querier, sessionID string, since int64
 		var t string
 		err := q.QueryRowContext(ctx, `
 			SELECT json_extract(payload, '$.agent_type') FROM events
-			 WHERE session_id = ? AND agent_id = ? AND ts >= ?
+			 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND ts >= ?
 			   AND json_extract(payload, '$.agent_type') <> ''
 			 ORDER BY ts DESC, id DESC LIMIT 1`, sessionID, list[i].AgentID, since).Scan(&t)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -377,7 +377,7 @@ func SubagentsSpend(ctx context.Context, q Querier, sessionID string) (map[strin
 		SELECT agent_id, MAX(ts), COALESCE(model, ''), COUNT(*),
 		       SUM(cost_usd IS NULL AND tokens_in IS NOT NULL), COALESCE(SUM(cost_usd), 0)
 		  FROM events INDEXED BY idx_events_subagent_turn
-		 WHERE session_id = ? AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0
 		 GROUP BY agent_id`, sessionID)
 	if err != nil {
 		return nil, SubagentSpend{}, err

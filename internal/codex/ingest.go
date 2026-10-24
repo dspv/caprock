@@ -677,7 +677,7 @@ func (in *Ingester) syncText(ctx context.Context, s *Session, byKey bool) (int, 
 			err := in.rec.Store.DB().QueryRowContext(ctx,
 				`SELECT id, ts, COALESCE(json_extract(payload,'$.text'),'')
 				   FROM events
-				  WHERE session_id = ? AND key = ? AND source = ? AND kind = ?`,
+				  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND source = ? AND kind = ?`,
 				s.ID, key, string(event.SourceCodex), string(event.KindTurnAssistant)).Scan(&id, &ts, &text)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
@@ -695,7 +695,7 @@ func (in *Ingester) syncText(ctx context.Context, s *Session, byKey bool) (int, 
 	rows, err := in.rec.Store.DB().QueryContext(ctx,
 		`SELECT id, COALESCE(key,''), ts, COALESCE(json_extract(payload,'$.text'),'')
 		   FROM events
-		  WHERE session_id = ? AND source = ? AND kind = ?`,
+		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = ?`,
 		s.ID, string(event.SourceCodex), string(event.KindTurnAssistant))
 	if err != nil {
 		return 0, err
@@ -1147,7 +1147,7 @@ func (in *Ingester) syncTools(ctx context.Context, s *Session) (int, error) {
 		        COALESCE(json_extract(payload,'$.tool_use_id'),''),
 		        COALESCE(json_extract(payload,'$.tool_input'),'{}')
 		   FROM events
-		  WHERE session_id = ? AND source = ? AND kind = ? AND json_valid(payload)`,
+		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = ? AND json_valid(payload)`,
 		s.ID, string(event.SourceCodex), string(event.KindToolPre))
 	if err != nil {
 		return 0, err
@@ -1316,7 +1316,7 @@ func (in *Ingester) repriceSession(ctx context.Context, s *Session) error {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, COALESCE(key,''), ts, tokens_in, tokens_out, cache_read, cache_write
 		   FROM events
-		  WHERE session_id = ? AND source = ? AND kind = ?
+		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = ?
 		    AND COALESCE(model, '') = ''`,
 		s.ID, string(event.SourceCodex), string(event.KindTurnAssistant))
 	if err != nil {
@@ -1446,7 +1446,7 @@ func (in *Ingester) restoreSeen(ctx context.Context) {
 		}
 		var one int
 		err := db.QueryRowContext(ctx,
-			`SELECT 1 FROM events WHERE session_id = ? AND source = ? LIMIT 1`,
+			`SELECT 1 FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? LIMIT 1`,
 			f.Session, string(event.SourceCodex)).Scan(&one)
 		if err != nil {
 			continue

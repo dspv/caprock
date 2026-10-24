@@ -237,7 +237,7 @@ func (in *Ingester) pending(ctx context.Context, p place, s Session) (usage, err
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
 		FROM events
-		WHERE session_id = ? AND source = ? AND kind = 'turn.assistant' AND COALESCE(agent_id,'') = ?`,
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = 'turn.assistant' AND COALESCE(agent_id,'') = ?`,
 		p.storeID, string(event.SourceHermes), p.agentID).Scan(&tin, &tout, &cr, &cw, &spent)
 	if err != nil {
 		return usage{}, fmt.Errorf("read stored usage: %w", err)

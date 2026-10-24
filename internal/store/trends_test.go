@@ -28,10 +28,10 @@ func TestTrendsCutAtTimeOfDay(t *testing.T) {
 	at := func(daysAgo, h, m int) time.Time {
 		return time.Date(2026, 10, 14-daysAgo, h, m, 0, 0, loc)
 	}
-	// Yesterday: $2 before 10:30, $5 after it. Two sessions in the morning,
-	// a third only in the afternoon.
+	// Yesterday: $2 before 10:30, $5 after it. Two sessions in one morning
+	// bucket, a third only in the afternoon.
 	spend(t, s, "y1", at(1, 9, 0).UnixMilli(), 100, 1)
-	spend(t, s, "y2", at(1, 9, 5).UnixMilli(), 100, 1)
+	spend(t, s, "y2", at(1, 9, 4).UnixMilli(), 100, 1)
 	toolAt(t, s, "y1", at(1, 9, 1))
 	spend(t, s, "y3", at(1, 15, 0).UnixMilli(), 100, 5)
 	// Three days ago: only an afternoon. Active, but nothing by 10:30.

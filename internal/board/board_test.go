@@ -348,7 +348,7 @@ func TestVerifyEscalatesDestructiveCriteria(t *testing.T) {
 }
 
 // Defect regression: the router opens the assignment window on the worker's
-// *session* id (the column AttributeTaskCost joins events.session_id on), but
+// *session* id (the column AttributeTaskCost joins events through), but
 // verification closed it on the hive *agent* id, so the UPDATE matched nothing
 // and the window stayed open forever. An open window has no upper bound — the
 // join takes every event that session ever emits — so a finished task keeps

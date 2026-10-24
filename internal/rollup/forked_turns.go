@@ -57,14 +57,14 @@ func (r *Recorder) RepairForkedTurns(ctx context.Context) (repaired int, err err
 			WITH shared AS (
 				SELECT msg_id FROM events INDEXED BY idx_events_turn_msg
 				WHERE kind = 'turn.assistant' AND msg_id IS NOT NULL
-				GROUP BY msg_id HAVING COUNT(DISTINCT session_id) > 1
+				GROUP BY msg_id HAVING COUNT(DISTINCT sid) > 1
 			)
-			SELECT e.id, e.ts, e.msg_id, e.session_id, COALESCE(e.model,''), e.internal,
+			SELECT e.id, e.ts, e.msg_id, s.session_id, COALESCE(e.model,''), e.internal,
 			       COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0),
 			       COALESCE(e.cache_write_1h,0), COALESCE(e.cost_usd,0),
 			       COALESCE(s.project,''), COALESCE(s.cwd,'')
 			FROM events e JOIN shared USING (msg_id)
-			LEFT JOIN sessions s ON s.session_id = e.session_id
+			LEFT JOIN sessions s ON s.sid = e.sid
 			WHERE e.kind = 'turn.assistant'
 			ORDER BY e.msg_id, e.id`)
 		if err != nil {

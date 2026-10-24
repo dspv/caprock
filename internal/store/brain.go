@@ -929,8 +929,8 @@ func BrainNoteSource(ctx context.Context, q Querier, eventID int64) (BrainSource
 	var src BrainSource
 	var text string
 	err := q.QueryRowContext(ctx, `
-		SELECT e.session_id, e.ts, COALESCE(se.project, ''), COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
+		SELECT se.session_id, e.ts, COALESCE(se.project, ''), COALESCE(json_extract(e.payload, '$.text'), '')
+		FROM events e LEFT JOIN sessions se ON se.sid = e.sid
 		WHERE e.id = ? AND `+assistantTextWhere, eventID).Scan(&src.SessionID, &src.Ts, &src.Project, &text)
 	if errors.Is(err, sql.ErrNoRows) {
 		return src, "", ErrBrainNotFound

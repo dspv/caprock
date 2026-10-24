@@ -27,7 +27,7 @@ func storeOldPrompt(t *testing.T, ctx context.Context, in *Ingester, session, ke
 func keysOf(t *testing.T, ctx context.Context, st *store.Store, session string) map[string]bool {
 	t.Helper()
 	rows, err := st.DB().QueryContext(ctx,
-		`SELECT key FROM events WHERE session_id = ? AND kind = 'turn.user'`, session)
+		`SELECT key FROM events JOIN sessions USING (sid) WHERE session_id = ? AND kind = 'turn.user'`, session)
 	if err != nil {
 		t.Fatal(err)
 	}

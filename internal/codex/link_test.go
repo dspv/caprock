@@ -73,7 +73,7 @@ func TestASpawnedTUIThreadIsStoredUnderTheSessionThatStartedIt(t *testing.T) {
 	h.putAs("rollout-a.jsonl", "codex-tui", "cli", "2026-09-06T08:32:41.828Z")
 	h.poll()
 
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='cap-1' AND kind='turn.assistant'`); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='cap-1' AND kind='turn.assistant'`); n != 2 {
 		t.Errorf("%d turns under the spawned session, want 2", n)
 	}
 	if n := count(t, h.out, `SELECT COUNT(*) FROM sessions WHERE session_id='`+fixtureThread+`'`); n != 0 {
@@ -107,7 +107,7 @@ func TestOnlyAMatchingThreadIsTaken(t *testing.T) {
 			h.spawned("cap-1", mustTime(t, "2026-09-06T08:32:40Z"))
 			h.putAs("rollout-a.jsonl", tc.originator, tc.source, tc.started)
 			h.poll()
-			linked := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='cap-1'`) > 0
+			linked := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='cap-1'`) > 0
 			want := tc.originator == "codex_cli_rs"
 			if linked != want {
 				t.Fatalf("linked=%v, want %v", linked, want)

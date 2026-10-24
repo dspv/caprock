@@ -446,7 +446,7 @@ func TestAReplacedTranscriptOfTheSameSizeIsReReadWhole(t *testing.T) {
 
 	var turns int
 	if err := tl.Store.DB().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = 'turn.assistant'`,
+		`SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id = ? AND kind = 'turn.assistant'`,
 		"cccccccc-dddd-eeee-ffff-000000000000").Scan(&turns); err != nil {
 		t.Fatal(err)
 	}

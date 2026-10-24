@@ -253,7 +253,7 @@ func TestIngestGroupsByRepository(t *testing.T) {
 
 	rows, err := h.out.Query(`
 		SELECT s.project, ROUND(SUM(e.cost_usd), 2)
-		FROM events e JOIN sessions s USING(session_id)
+		FROM events e JOIN sessions s USING(sid)
 		WHERE e.source='opencode'
 		GROUP BY s.project ORDER BY 2 DESC`)
 	if err != nil {

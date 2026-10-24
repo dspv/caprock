@@ -64,6 +64,17 @@ pub fn read_runtime(dir: &Path) -> Option<Runtime> {
     serde_json::from_slice(&raw).ok()
 }
 
+/// Whether a daemon is upgrading this data directory's database: it rewrites
+/// `upgrading.json` every two seconds while it does, and answers only once it
+/// is done. A file older than `UPGRADING_STALE` was left by one that died.
+pub fn upgrading(dir: &Path) -> bool {
+    std::fs::metadata(dir.join("upgrading.json"))
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t.elapsed().is_ok_and(|age| age < UPGRADING_STALE))
+}
+
+const UPGRADING_STALE: Duration = Duration::from_secs(10);
+
 /// Reads `runtime.json` and asks the daemon it names whether it is alive. A
 /// stale file (a crashed daemon) reads as absent.
 pub fn find(dir: &Path) -> Found {
@@ -298,6 +309,23 @@ mod tests {
         };
         assert_eq!(status.api_level, 0);
         assert!(status.api_level < MIN_API_LEVEL);
+    }
+
+    #[test]
+    fn an_upgrade_is_seen_while_its_file_is_fresh() {
+        let dir = temp_dir("upgrading");
+        assert!(!upgrading(&dir));
+        let f = dir.join("upgrading.json");
+        std::fs::write(&f, r#"{"pid":1}"#).unwrap();
+        assert!(upgrading(&dir));
+        let old = std::time::SystemTime::now() - UPGRADING_STALE;
+        std::fs::File::options()
+            .write(true)
+            .open(&f)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert!(!upgrading(&dir));
     }
 
     #[test]

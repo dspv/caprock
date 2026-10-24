@@ -66,7 +66,7 @@ func TestForkCopyOfATurnIsNotPricedAgain(t *testing.T) {
 		t.Fatalf("the copy is still a turn in the fork's history: turns = %d", fork.Turns)
 	}
 	var text string
-	if err := r.Store.DB().QueryRow(`SELECT json_extract(payload,'$.text') FROM events WHERE session_id = 'fork'`).Scan(&text); err != nil || text != "the prose" {
+	if err := r.Store.DB().QueryRow(`SELECT json_extract(payload,'$.text') FROM events JOIN sessions USING (sid) WHERE session_id = 'fork'`).Scan(&text); err != nil || text != "the prose" {
 		t.Fatalf("the copy lost its prose: %q, %v", text, err)
 	}
 	if got := eventsCost(t, r); math.Abs(got-parent.CostUSD) > 1e-9 {
@@ -128,7 +128,7 @@ func TestRepairForkedTurnsRemovesStoredCopies(t *testing.T) {
 		if _, err := r.Record(ctx, ev, info); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := r.Store.DB().Exec(`UPDATE events SET msg_id = ? WHERE session_id = ? AND key = ?`, msg, session, "msg:"+msg); err != nil {
+		if _, err := r.Store.DB().Exec(`UPDATE events SET msg_id = ? WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?`, msg, session, "msg:"+msg); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -12,10 +12,10 @@ func ActivityBuckets(ctx context.Context, q Querier, from, bucket int64, n int) 
 		return map[string][]int{}, nil
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, (ts - ?) / ?, COUNT(*)
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), (ts - ?) / ?, COUNT(*)
 		FROM events INDEXED BY idx_events_ts
 		WHERE ts >= ? AND ts < ? AND kind IN ('turn.assistant', 'tool.pre')`+nonInternalEvent+`
-		GROUP BY 1, 2`, from, bucket, from, from+bucket*int64(n))
+		GROUP BY sid, 2`, from, bucket, from, from+bucket*int64(n))
 	if err != nil {
 		return nil, err
 	}

@@ -124,6 +124,14 @@ func upCmd() *cobra.Command {
 				}
 				return nil
 			}
+			// A daemon upgrading its database holds the data directory: a
+			// second one would only fail on the lock.
+			if _, ok := config.ReadUpgrading(dir); ok {
+				if rt, ok := awaitDaemon(cmd, dir, startWait); ok {
+					reportUp(cmd, rt, dir, cfg, noOpen, hiveDir)
+					return nil
+				}
+			}
 			_ = config.RemoveRuntime(dir) // stale file from a crashed run
 
 			// Shim: place it in the data dir and register it.
@@ -218,26 +226,52 @@ func detach(cmd *cobra.Command, dir string, cfg config.Config, noOpen, useLAN bo
 		return fmt.Errorf("start daemon: %w", err)
 	}
 	_ = child.Process.Release()
-	// Wait for runtime.json (up to 10s).
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		if rt, err := config.ReadRuntime(dir); err == nil && daemonAlive(rt) {
-			url := fmt.Sprintf("http://127.0.0.1:%d", rt.Port)
-			fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (pid %d, log: %s)\n", url, rt.PID, config.LogPath(dir))
-			printHive(cmd, hiveDir)
-			if !noOpen && cfg.OpenBrowser {
-				openBrowser(url)
-			}
-			return nil
-		}
-		time.Sleep(150 * time.Millisecond)
+	if rt, ok := awaitDaemon(cmd, dir, startWait); ok {
+		reportUp(cmd, rt, dir, cfg, noOpen, hiveDir)
+		return nil
 	}
 	// The child failed to come up. Surface the real cause from its log (the most
 	// common one is the port already being in use) instead of a bare timeout.
 	if cause := lastLogError(config.LogPath(dir)); cause != "" {
 		return fmt.Errorf("daemon did not start: %s\n(full log: %s)", cause, config.LogPath(dir))
 	}
-	return fmt.Errorf("daemon did not report ready within 10s; see %s", config.LogPath(dir))
+	return fmt.Errorf("daemon did not report ready within %v; see %s", startWait, config.LogPath(dir))
+}
+
+const startWait = 10 * time.Second
+
+// awaitDaemon waits up to wait for runtime.json to name a daemon that
+// answers. One upgrading its database answers only once it has copied and
+// migrated it, and then has the rest of its start to do: the wait lasts
+// while upgrading.json is fresh, and wait again after.
+func awaitDaemon(cmd *cobra.Command, dir string, wait time.Duration) (config.Runtime, bool) {
+	deadline := time.Now().Add(wait)
+	told := false
+	for {
+		if rt, err := config.ReadRuntime(dir); err == nil && daemonAlive(rt) {
+			return rt, true
+		}
+		if _, ok := config.ReadUpgrading(dir); ok {
+			if !told {
+				fmt.Fprintln(cmd.OutOrStdout(), "Upgrading the database, which can take a minute…")
+				told = true
+			}
+			deadline = time.Now().Add(wait)
+		}
+		if !time.Now().Before(deadline) {
+			return config.Runtime{}, false
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
+}
+
+func reportUp(cmd *cobra.Command, rt config.Runtime, dir string, cfg config.Config, noOpen bool, hiveDir string) {
+	url := fmt.Sprintf("http://127.0.0.1:%d", rt.Port)
+	fmt.Fprintf(cmd.OutOrStdout(), "caprock is up at %s  (pid %d, log: %s)\n", url, rt.PID, config.LogPath(dir))
+	printHive(cmd, hiveDir)
+	if !noOpen && cfg.OpenBrowser {
+		openBrowser(url)
+	}
 }
 
 // lastLogError returns the most recent error-ish line from the daemon log, made
@@ -493,6 +527,9 @@ func statusCmd() *cobra.Command {
 			if st.IngestError != "" {
 				fmt.Fprintf(out, "         STOPPED: %s\n", st.IngestError)
 				fmt.Fprintln(out, "         No new sessions are being captured. Check that ~/.claude is readable, then restart with `caprock down && caprock up`.")
+			}
+			if m := st.EventsMove; m != nil {
+				fmt.Fprintf(out, "upgrade: moving older events into the upgraded database, %d of %d (%d%%)\n", m.Moved, m.Total, m.Moved*100/max(m.Total, 1))
 			}
 			// A machine that runs OpenCode shows those sessions mixed in with
 			// Claude Code's, so "no OpenCode sessions" and "OpenCode is not

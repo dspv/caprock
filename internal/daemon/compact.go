@@ -133,6 +133,11 @@ type compactState struct {
 
 // compactDB runs the three steps as far as the quiet lasts.
 func (d *Daemon) compactDB(ctx context.Context, cs *compactState) {
+	// Not while migration 0073's move runs: compaction would mark the rows
+	// not moved yet as done, and a VACUUM would hold the move up.
+	if d.moving() {
+		return
+	}
 	if !d.compactPayloads(ctx) {
 		return
 	}

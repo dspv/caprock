@@ -76,7 +76,7 @@ func TestIngestLive(t *testing.T) {
 	// Per-repository attribution is the headline feature; it must have data.
 	rows, err := st.DB().QueryContext(ctx, `
 		SELECT s.project, ROUND(SUM(e.cost_usd),2) c
-		FROM events e JOIN sessions s USING(session_id)
+		FROM events e JOIN sessions s USING(sid)
 		WHERE e.source='opencode' AND s.project IS NOT NULL
 		GROUP BY s.project ORDER BY c DESC LIMIT 3`)
 	if err != nil {

@@ -147,12 +147,14 @@ func (s *Store) WithTx(ctx context.Context, fn func(q Querier) error) error {
 	return tx.Commit()
 }
 
-// ErrDuplicate is returned by InsertEvent when (session_id, key) already exists.
+// ErrDuplicate is returned by InsertEvent when its session already holds an
+// event with its key.
 var ErrDuplicate = errors.New("duplicate event")
 
 // InsertEvent appends an event. Returns ErrDuplicate (and leaves the row alone)
-// when the same (session_id, key) was already stored — the idempotency guarantee
-// that lets ingest re-read a transcript after restart.
+// when the same (session, key) was already stored — the idempotency guarantee
+// that lets ingest re-read a transcript after restart. A session with no row
+// gets a bare one, which its writer fills in.
 func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error) {
 	if ev.SessionID == "" {
 		return 0, errors.New("event without session_id")
@@ -208,14 +210,28 @@ func InsertEvent(ctx context.Context, q Querier, ev *event.Event) (int64, error)
 		inner = innerTool(ev.Tool, ev.Payload)
 	}
 
-	res, err := q.ExecContext(ctx, `
-		INSERT INTO events(ts, session_id, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes, internal, inner_tool)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(session_id, key) WHERE key IS NOT NULL DO NOTHING`,
-		ev.Ts.UnixMilli(), ev.SessionID, string(ev.Source), string(ev.Kind), nullStr(ev.Tool), string(ev.Payload),
-		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes, internal, nullStr(inner))
+	const insert = `
+		INSERT INTO events(ts, sid, source, kind, tool, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, key, model, cache_write_1h, agent_id, msg_id, touch_dir, tool_bytes, internal, inner_tool)
+		VALUES(?, (SELECT sid FROM sessions WHERE session_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(sid, key) WHERE key IS NOT NULL DO NOTHING`
+	args := []any{ev.Ts.UnixMilli(), ev.SessionID, string(ev.Source), string(ev.Kind), nullStr(ev.Tool), string(ev.Payload),
+		tin, tout, cr, cw, cost, key, nullStr(ev.Model), cw1h, nullStr(ev.AgentID), nullStr(ev.MsgID), touch, toolBytes, internal, nullStr(inner)}
+	res, err := q.ExecContext(ctx, insert, args...)
+	// sid is the one column of events this can leave NULL: only a session's
+	// first event pays for the second try, and a duplicate never does. The
+	// row holds what UpsertSession writes for an empty patch, and NULL where
+	// it reads NULL as unresolved, so the upsert that follows fills it as its
+	// own insert would.
+	if isNotNull(err) {
+		if _, err = q.ExecContext(ctx, `
+			INSERT INTO sessions(session_id, cwd, project, model, transcript_path, git_branch, version, pid, started_at, last_event_at)
+			VALUES(?, '', '', '', '', '', '', 0, ?, ?)
+			ON CONFLICT(session_id) DO NOTHING`, ev.SessionID, ev.Ts.UnixMilli(), ev.Ts.UnixMilli()); err == nil {
+			res, err = q.ExecContext(ctx, insert, args...)
+		}
+	}
 	if err != nil {
-		return 0, fmt.Errorf("insert event: %w", err)
+		return 0, fmt.Errorf("insert event of session %s: %w", ev.SessionID, err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
@@ -271,7 +287,7 @@ func MergeAssistantText(ctx context.Context, q Querier, sessionID, key string, p
 	}
 	var id int64
 	var raw string
-	err := q.QueryRowContext(ctx, `SELECT id, payload FROM events WHERE session_id = ? AND key = ? AND kind = ?`,
+	err := q.QueryRowContext(ctx, `SELECT id, payload FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND kind = ?`,
 		sessionID, key, string(event.KindTurnAssistant)).Scan(&id, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -334,7 +350,7 @@ func MergeAssistantText(ctx context.Context, q Querier, sessionID, key string, p
 // EventByKey returns the session's event of kind with key: the row a
 // duplicate line was merged into, as it now stands.
 func EventByKey(ctx context.Context, q Querier, sessionID, key string, kind event.Kind) (event.Event, error) {
-	return scanEvent(q.QueryRowContext(ctx, `SELECT `+eventCols+` FROM events WHERE session_id = ? AND key = ? AND kind = ?`,
+	return scanEvent(q.QueryRowContext(ctx, `SELECT `+eventCols+` FROM events e WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND kind = ?`,
 		sessionID, key, string(kind)))
 }
 
@@ -357,7 +373,7 @@ func LinkToolCall(ctx context.Context, q Querier, sessionID, key, msgID string) 
 	}
 	res, err := q.ExecContext(ctx, `
 		UPDATE events SET msg_id = ?
-		WHERE session_id = ? AND key = ? AND kind = ? AND msg_id IS NULL`,
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND kind = ? AND msg_id IS NULL`,
 		msgID, sessionID, key, string(event.KindToolPre))
 	if err != nil {
 		return false, fmt.Errorf("link tool call: %w", err)
@@ -389,7 +405,7 @@ func clipProse(s string) string {
 // Code nevertheless writes the same response into more than one transcript: a
 // fork (`--resume <id> --fork-session`) copies the parent's history since its
 // last compaction into the new session's file, ids and usage included. The
-// store dedupes on (session_id, key), which cannot see that, so the copy was
+// store dedupes on (session, key), which cannot see that, so the copy was
 // priced a second time.
 //
 // Only a row with usage counts as the payer. Claude Code zeroes the usage
@@ -403,7 +419,7 @@ func TurnPaidElsewhere(ctx context.Context, q Querier, msgID, sessionID string) 
 	var one int
 	err := q.QueryRowContext(ctx, `
 		SELECT 1 FROM events INDEXED BY idx_events_turn_msg
-		WHERE kind = 'turn.assistant' AND msg_id = ? AND session_id != ?
+		WHERE kind = 'turn.assistant' AND msg_id = ? AND sid IS NOT (SELECT sid FROM sessions WHERE session_id = ?)
 		  AND COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0) > 0
 		LIMIT 1`, msgID, sessionID).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -604,7 +620,7 @@ func SetPrompt(ctx context.Context, q Querier, id, prompt string) error {
 func FirstPrompts(ctx context.Context, q Querier, id string, limit int) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(json_extract(payload,'$.prompt'), json_extract(payload,'$.text'), '')
-		FROM events INDEXED BY idx_events_user_turn WHERE session_id = ? AND kind = 'turn.user'
+		FROM events INDEXED BY idx_events_user_turn WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.user'
 		ORDER BY ts, id LIMIT ?`, id, limit)
 	if err != nil {
 		return nil, err
@@ -1153,7 +1169,7 @@ func sessionQueryFilter(f SessionQuery) (string, []any) {
 			pat := "%" + escapeLike(v) + "%"
 			alts = append(alts, `(COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\'
 			  OR title LIKE ? ESCAPE '\' OR name LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\'
-			  OR session_id IN (SELECT session_id FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\'))`)
+			  OR sid IN (SELECT sid FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\'))`)
 			for i := 0; i < 8; i++ {
 				args = append(args, pat)
 			}
@@ -1184,7 +1200,7 @@ func searchVariants(s string) []string {
 	return out
 }
 
-const eventCols = `id, ts, session_id, source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
+const eventCols = `id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
 
 func scanEvent(sc interface{ Scan(...any) error }) (event.Event, error) {
 	var ev event.Event
@@ -1244,7 +1260,7 @@ const assistantTextWhere = `
 // to ONE session. The unary `+` on kind takes idx_events_kind_id out of the
 // planner's hands: with `ORDER BY e.id DESC` it preferred walking every
 // assistant turn on the machine backwards by id — and reading each one's
-// payload — over the session's own (session_id, id) index. On the owner's
+// payload — over the session's own (sid, id) index. On the owner's
 // database (330k events, 82k assistant turns) that was 3.3 s cold for a
 // session with 21 turns, measured 2026-10-04; on the session index it is
 // 20 ms. TestSessionNotesUsesTheSessionIndex holds the plan.
@@ -1265,10 +1281,10 @@ func SessionNotes(ctx context.Context, q Querier, sessionID string, limit int) (
 		limit = MaxEventPage
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
+		SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
-		WHERE e.session_id = ? AND `+sessionAssistantTextWhere+`
+		FROM events e LEFT JOIN sessions se ON se.sid = e.sid
+		WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND `+sessionAssistantTextWhere+`
 		ORDER BY e.id DESC LIMIT ?`, sessionID, limit)
 	if err != nil {
 		return nil, err
@@ -1296,9 +1312,9 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 		limit = MaxEventPage
 	}
 	sql := `
-		SELECT e.id, e.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
+		SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e LEFT JOIN sessions se ON se.session_id = e.session_id
+		FROM events e LEFT JOIN sessions se ON se.sid = e.sid
 		WHERE ` + assistantTextWhere
 	args := []any{}
 	if trimmed := strings.TrimSpace(query); trimmed != "" {
@@ -1317,11 +1333,11 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 		         OR (
 		              SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text'))
 		              FROM events p
-		              WHERE p.session_id = e.session_id AND p.kind = 'turn.user'
+		              WHERE p.sid = e.sid AND p.kind = 'turn.user'
 		                AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id)
 		                AND p.ts >= COALESCE((
 		                      SELECT w.ts FROM events w
-		                      WHERE w.session_id = e.session_id
+		                      WHERE w.sid = e.sid
 		                        AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id)
 		                      ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0)
 		              ORDER BY p.ts DESC, p.id DESC LIMIT 1
@@ -1338,7 +1354,7 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 		// the id window, and 24 Claude Code replies matched a prompt minutes
 		// older than the one they answered. The window is the reply's last
 		// promptLookback events in that session, and the lookups walk
-		// (session_id, ts) indexes.
+		// (sid, ts) indexes.
 		//
 		// The prompt's field depends on who wrote it: Claude Code, Gemini and
 		// OpenCode carry `prompt`, DeepSeek Harness `text` (as FirstPrompts reads
@@ -1400,7 +1416,7 @@ func ListEvents(ctx context.Context, q Querier, sessionID string, after int64, l
 	if limit > MaxEventPage {
 		limit = MaxEventPage
 	}
-	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT ?`, sessionID, after, limit)
+	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events e WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND id > ? ORDER BY id ASC LIMIT ?`, sessionID, after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1471,7 +1487,7 @@ func eventsBefore(ctx context.Context, q Querier, sessionID string, before int64
 	if n > MaxEventPage {
 		n = MaxEventPage
 	}
-	where, args := `session_id = ?`, []any{sessionID}
+	where, args := `sid = (SELECT sid FROM sessions WHERE session_id = ?)`, []any{sessionID}
 	if before > 0 {
 		// Paged by the timestamp of the row the caller already has, because the sort
 		// is by time: mixing an id cursor with a ts ordering skips rows on any
@@ -1525,7 +1541,7 @@ const mainTurnScan = 5000
 func LastMainTurn(ctx context.Context, q Querier, sessionID string) (ev event.Event, found bool, err error) {
 	row := q.QueryRowContext(ctx, `
 		SELECT `+eventCols+` FROM (
-			SELECT * FROM events WHERE session_id = ? ORDER BY ts DESC, id DESC LIMIT ?
+			SELECT * FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) ORDER BY ts DESC, id DESC LIMIT ?
 		) e
 		WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND e.tokens_in IS NOT NULL
 		  AND `+MainThreadWhere+`
@@ -1613,7 +1629,7 @@ func GetStats(ctx context.Context, q Querier, sessionID string) (Stats, error) {
 // every insert moves, because a new row takes a rowid above every existing
 // one. Within one Gen only inserts happen and each raises MaxID, so the pair
 // never repeats. Both come from one statement, one snapshot, and one index
-// lookup each (idx_events_session_id is (session_id, id)). Read it before the
+// lookup each (idx_events_session_id is (sid, id)). Read it before the
 // events it guards, so what is read is never older than it.
 type EventsGen struct {
 	Gen   int64
@@ -1632,7 +1648,8 @@ func ReadEventsGen(ctx context.Context, q Querier, sessionID string) (EventsGen,
 	var g EventsGen
 	err := q.QueryRowContext(ctx, `
 		SELECT COALESCE((SELECT gen FROM session_gen WHERE session_id = ?1), 0),
-		       COALESCE((SELECT MAX(id) FROM events INDEXED BY idx_events_session_id WHERE session_id = ?1), 0)`,
+		       COALESCE((SELECT MAX(id) FROM events INDEXED BY idx_events_session_id
+		                  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?1)), 0)`,
 		sessionID).Scan(&g.Gen, &g.MaxID)
 	return g, err
 }
@@ -2043,7 +2060,7 @@ const (
 )
 
 func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*Unpriced, error) {
-	scope, scopeArgs := agent.sessionScope("session_id")
+	scope, scopeArgs := agent.eventScope("sid")
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(model,''),
 		       COUNT(*),
@@ -2086,11 +2103,11 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilt
 // (backfilled by migration 0024) rather than a model-name pattern in SQL: a
 // future id must be investigated before Caprock hides it from ordinary totals.
 func queryBackgroundUsage(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*BackgroundUsage, error) {
-	scope, scopeArgs := agent.sessionScope("e.session_id")
+	scope, scopeArgs := agent.eventScope("e.sid")
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(e.model,''), s.model, ''), COUNT(*),
 		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0)
-		FROM events e JOIN sessions s ON s.session_id = e.session_id
+		FROM events e JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ?
 		  AND e.internal = 1`+scope+`
 		GROUP BY COALESCE(NULLIF(e.model,''), s.model, '') ORDER BY 3 DESC`, append([]any{fromMs}, scopeArgs...)...)
@@ -2145,6 +2162,47 @@ func (a AgentFilter) sessionScope(col string) (string, []any) {
 	return " AND " + col + " IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = ?)", []any{string(a)}
 }
 
+// sessionIDsOf rekeys a long scan's results from sid to session id. Naming the
+// session on every row instead took 0.28 s against 0.12 s for 355k events
+// (2026-10-19).
+func sessionIDsOf[V any](ctx context.Context, q Querier, bySid map[int64]V) (map[string]V, error) {
+	out := make(map[string]V, len(bySid))
+	if len(bySid) == 0 {
+		return out, nil
+	}
+	sids := make([]int64, 0, len(bySid))
+	for sid := range bySid {
+		sids = append(sids, sid)
+	}
+	list, err := json.Marshal(sids)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.QueryContext(ctx, `SELECT sid, session_id FROM sessions WHERE sid IN (SELECT value FROM json_each(?))`, string(list))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var sid int64
+		var id string
+		if err := rows.Scan(&sid, &id); err != nil {
+			return nil, err
+		}
+		out[id] = bySid[sid]
+	}
+	return out, rows.Err()
+}
+
+// eventScope is sessionScope for a column holding sessions.sid, as events'
+// does.
+func (a AgentFilter) eventScope(col string) (string, []any) {
+	if a == "" {
+		return "", nil
+	}
+	return " AND " + col + " IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = ?)", []any{string(a)}
+}
+
 // sumKinds adds the range's events, by kind, to s: tokens and cost over every
 // kind, and the turn and tool-call counts. One covering range scan.
 func sumKinds(ctx context.Context, q Querier, fromMs int64, ev string, evArgs []any, s *Summary) error {
@@ -2196,7 +2254,7 @@ func sumKinds(ctx context.Context, q Querier, fromMs int64, ev string, evArgs []
 // for four figures (2026-10-14).
 func RecentSpend(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (Summary, error) {
 	s := Summary{FromMs: fromMs}
-	ev, evArgs := agent.sessionScope("session_id")
+	ev, evArgs := agent.eventScope("sid")
 	err := sumKinds(ctx, q, fromMs, ev, evArgs, &s)
 	return s, err
 }
@@ -2211,8 +2269,8 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// One predicate, appended to every aggregate below. Computing it per query
 	// would be five chances to forget one, and a forgotten filter shows the
 	// other agent's money under this agent's heading.
-	ev, evArgs := agent.sessionScope("session_id")
-	evPrefixed, _ := agent.sessionScope("e.session_id")
+	ev, evArgs := agent.eventScope("sid")
+	evPrefixed, _ := agent.eventScope("e.sid")
 	// The sessions table carries the column itself, so it needs no subquery.
 	sess, sessArgs := "", []any(nil)
 	if agent != "" {
@@ -2250,7 +2308,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// 7d or 30d, so there is no range where the old form was the better plan
 	// and no reason to branch on one.
 	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
+		`SELECT COUNT(DISTINCT sid) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
 		return s, err
 	}
 	// "Active" means active *now*, so it is deliberately not range-scoped — but
@@ -2329,8 +2387,8 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// Events are aggregated per SESSION and grouped into repositories in Go.
 	//
 	// Grouping in SQL meant joining sessions on every one of ~90k assistant
-	// events and grouping on a wide text key; grouping on the integer-ish
-	// session_id alone runs off idx_events_turn_agent and needs no join and no
+	// events and grouping on a wide text key; grouping on the integer sid
+	// alone runs off idx_events_turn_agent and needs no join and no
 	// COUNT(DISTINCT) — a session's row IS one distinct session. The mapping
 	// from session to (repository, segment) is then applied to tens of rows
 	// instead of tens of thousands. Measured on the owner's 190k-event
@@ -2369,7 +2427,7 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		// database, 30 days, warm: 0.032s before and 0.033s after, 109 rows
 		// becoming 472, off the same covering index (2026-10-13).
 		rows, err = q.QueryContext(ctx, `
-			SELECT e.session_id,
+			SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid),
 			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / ? END AS bucket,
 			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / 3600000 END AS hr,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
@@ -2378,16 +2436,16 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			       COUNT(*), COUNT(e.cost_usd)
 			FROM events e
 			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
-			GROUP BY e.session_id, bucket, hr`,
+			GROUP BY e.sid, bucket, hr`,
 			append([]any{spark.FromMs, spark.FromMs, spark.WidthMs, spark.FromMs, spark.FromMs, fromMs}, evArgs...)...)
 	} else {
 		rows, err = q.QueryContext(ctx, `
-			SELECT e.session_id, 0 AS bucket, 0 AS hr,
+			SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), 0 AS bucket, 0 AS hr,
 			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
 			       COALESCE(SUM(e.cost_usd),0), 0, 0, 0
 			FROM events e
 			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
-			GROUP BY e.session_id`, append([]any{fromMs}, evArgs...)...)
+			GROUP BY e.sid`, append([]any{fromMs}, evArgs...)...)
 	}
 	if err != nil {
 		return s, err
@@ -2738,7 +2796,7 @@ func EventsAfter(ctx context.Context, q Querier, after int64, limit int) ([]even
 	if limit > MaxEventPage {
 		limit = MaxEventPage
 	}
-	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events WHERE id > ? ORDER BY id ASC LIMIT ?`, after, limit)
+	rows, err := q.QueryContext(ctx, `SELECT `+eventCols+` FROM events e WHERE id > ? ORDER BY id ASC LIMIT ?`, after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -3248,10 +3306,10 @@ func WhereWeLeftOff(ctx context.Context, q Querier, project string, before int64
 		minLen = 400
 	}
 	row := q.QueryRowContext(ctx, `
-		SELECT e.id, e.session_id, ?, e.ts, COALESCE(e.model,''),
+		SELECT e.id, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), ?, e.ts, COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload, '$.text'), '')
 		FROM events e INDEXED BY idx_events_turn_agent
-		WHERE e.session_id IN (SELECT session_id FROM sessions WHERE project = ?)
+		WHERE e.sid IN (SELECT sid FROM sessions WHERE project = ?)
 		  AND `+assistantTextWhere+`
 		  AND e.ts < ?
 		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?
@@ -3301,10 +3359,12 @@ func HandoffCoverage(ctx context.Context, q Querier, since int64, minLen int) (r
 		SELECT
 		  (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE project != '') p
 		    WHERE EXISTS (
-		      SELECT 1 FROM sessions se JOIN events e INDEXED BY idx_events_attr_work ON e.session_id = se.session_id
+		      -- CROSS JOIN keeps the project's sessions outside: with sid
+		      -- their rowid, SQLite walked all of idx_events_attr_work instead.
+		      SELECT 1 FROM sessions se CROSS JOIN events e INDEXED BY idx_events_attr_work ON e.sid = se.sid
 		       WHERE se.project = p.project AND `+passage+`)),
 		  COALESCE((
-		    SELECT e.ts FROM events e JOIN sessions se ON se.session_id = e.session_id
+		    SELECT e.ts FROM events e JOIN sessions se ON se.sid = e.sid
 		     WHERE se.project != '' AND `+passage+`
 		     ORDER BY e.ts LIMIT 1), 0)`, since, minLen)
 	err = row.Scan(&repos, &oldest)
@@ -3373,7 +3433,7 @@ type HandoffGroup struct {
 func HandoffEffect(ctx context.Context, q Querier) (served, withheld HandoffGroup, err error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT s.handoff, s.started_at,
-		       (SELECT MIN(e.ts) FROM events e WHERE e.session_id = s.session_id
+		       (SELECT MIN(e.ts) FROM events e WHERE e.sid = s.sid
 		          AND e.kind = 'tool.pre' AND e.tool IN ('Edit','Write','MultiEdit','NotebookEdit')) AS first_edit,
 		       s.session_id
 		FROM sessions s WHERE s.handoff IN (1, 2)`)
@@ -3413,7 +3473,7 @@ func HandoffEffect(ctx context.Context, q Querier) (served, withheld HandoffGrou
 		}
 		var n int
 		if err := q.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM events WHERE session_id = ? AND kind = 'tool.pre' AND ts < ?`, r.id, r.first).Scan(&n); err != nil {
+			`SELECT COUNT(*) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre' AND ts < ?`, r.id, r.first).Scan(&n); err != nil {
 			return served, withheld, err
 		}
 		g.Reached++

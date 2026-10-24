@@ -29,10 +29,10 @@ func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, er
 		upper, args = " AND ts < ?", append(args, to)
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,''))
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,''))
 		FROM events INDEXED BY idx_events_turn_agent
 		WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+`
-		GROUP BY 1, 2`, args...)
+		GROUP BY sid, 2`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, er
 			var side sql.NullInt64
 			err := q.QueryRowContext(ctx, `
 				SELECT json_extract(payload, '$.sidechain') FROM events INDEXED BY idx_events_session_ts
-				WHERE session_id = ? AND kind = 'turn.assistant' AND COALESCE(agent_id,'') = '' LIMIT 1`, p.session).Scan(&side)
+				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND COALESCE(agent_id,'') = '' LIMIT 1`, p.session).Scan(&side)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return nil, err
 			}
@@ -138,7 +138,7 @@ func SubagentTokensByModel(ctx context.Context, q Querier, from, to int64) ([]Mo
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0)
 		FROM events INDEXED BY idx_events_turn_agent
 		WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND COALESCE(agent_id,'') <> '' AND cost_usd > 0`+nonInternalEvent+`
-		  AND session_id IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = 'claude')
+		  AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude')
 		GROUP BY 1`, from, to)
 	if err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func LiveSubagents(ctx context.Context, q Querier, sessionID string, since int64
 		         MAX(ts) AS last,
 		         MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped
 		  FROM events
-		  WHERE session_id = ? AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
+		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
 		  GROUP BY agent_id
 		) WHERE stopped < last`, sessionID, since).Scan(&n)
 	return n, err
@@ -214,9 +214,12 @@ func FirstEventTs(ctx context.Context, q Querier) (int64, error) {
 // EventsVersion is the newest event's id: it moves on every event written,
 // and an answer counted at one version is still right at the same version
 // unless rows were removed. Read off the primary key, so it costs one lookup.
+// The rows migration 0073 moves in come below it, so their count is added
+// while they do.
 func EventsVersion(ctx context.Context, q Querier) (int64, error) {
 	var v int64
-	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM events`).Scan(&v)
+	err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0)
+		+ COALESCE((SELECT CAST(v AS INTEGER) FROM meta WHERE k = '`+metaMoved+`'), 0) FROM events`).Scan(&v)
 	return v, err
 }
 

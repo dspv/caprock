@@ -207,6 +207,6 @@ func ClaudeTokensSince(ctx context.Context, q Querier, since int64) (int64, erro
 		SELECT COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)), 0)
 		FROM events INDEXED BY idx_events_turn_agent
 		WHERE kind = 'turn.assistant' AND ts >= ?`+nonInternalEvent+`
-		  AND session_id IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = 'claude')`, since).Scan(&n)
+		  AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude')`, since).Scan(&n)
 	return n, err
 }

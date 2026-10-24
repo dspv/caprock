@@ -1366,6 +1366,9 @@ export interface Status {
    *  While this is set nothing new is being captured, however healthy the rest
    *  of the status looks. */
   ingest_error?: string
+  /** How many of the events stored before the 0073 upgrade are in place, of
+   *  how many; absent once all are. Until then older history is partial. */
+  events_move?: { moved: number; total: number }
   /** Sessions the last stop of Caprock (or of the machine) cut off and nobody
    *  has continued yet; absent when there are none. */
   interrupted?: { stopped_at: number; ids: string[] }

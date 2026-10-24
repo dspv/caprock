@@ -67,10 +67,10 @@ func (r *Recorder) correct(ctx context.Context, prefix string, from int64, loc *
 	// a prefix means exactly that prefix.
 	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)
 	rows, err := r.Store.DB().QueryContext(ctx, `
-		SELECT e.id, e.ts, e.session_id, e.model, e.cost_usd,
+		SELECT e.id, e.ts, s.session_id, e.model, e.cost_usd,
 		       COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0),
 		       COALESCE(s.project,'')
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
+		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = ? AND e.cost_usd IS NOT NULL AND e.model LIKE ? ESCAPE '\' AND e.ts >= ? AND e.internal = 0`,
 		string(event.KindTurnAssistant), esc+"%", from)
 	if err != nil {

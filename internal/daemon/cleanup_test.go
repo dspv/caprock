@@ -78,6 +78,8 @@ func TestSweepRemovesOnlyWhatTheRulesName(t *testing.T) {
 	write(filepath.Join(gem, "g-unknown.otel.log"), 1000, old) // never recorded: kept
 
 	write(filepath.Join(dir, "launchd.log"), 50, old) // nothing writes it: gone
+	write(filepath.Join(dir, "caprock.pre-0073.db"), 60, old)
+	write(filepath.Join(dir, "caprock.pre-0080.db"), 60, recent)
 	write(filepath.Join(dir, "caprock.db"), 5000, old)
 	write(filepath.Join(dir, "caprock.log"), 70, old)
 
@@ -93,21 +95,21 @@ func TestSweepRemovesOnlyWhatTheRulesName(t *testing.T) {
 		cwds: map[string]bool{filepath.Join(chats, "2026-10-01-110000"): true},
 	}
 	r := sweepDataDir(context.Background(), dir, now, look)
-	if r.Paste != 3 || r.Chats != 1 || r.Gemini != 1 || r.Logs != 1 {
+	if r.Paste != 3 || r.Chats != 1 || r.Gemini != 1 || r.Logs != 1 || r.Copies != 1 {
 		t.Fatalf("removed %+v", r)
 	}
-	if r.Bytes != 100+200+300+1000+50 {
+	if r.Bytes != 100+200+300+1000+50+60 {
 		t.Fatalf("freed %d bytes", r.Bytes)
 	}
 	gone := []string{
 		"paste/20260901-101010-aa", "paste/drop-1700000000", "paste/20260903-135850-b0f06691.png",
-		"chats/2026-10-01-100000", "gemini/g-old.otel.log", "launchd.log",
+		"chats/2026-10-01-100000", "gemini/g-old.otel.log", "launchd.log", "caprock.pre-0073.db",
 	}
 	kept := []string{
 		"paste/20260915-101010-bb/shot.png", "paste/20260901-111111-cc/a.txt",
 		"chats/2026-10-01-110000", "chats/2026-10-13-110000", "chats/2026-10-01-120000/notes.md",
 		"gemini/g-recent.otel.log", "gemini/g-live.otel.log", "gemini/g-unknown.otel.log",
-		"caprock.db", "caprock.log",
+		"caprock.db", "caprock.log", "caprock.pre-0080.db",
 	}
 	for _, p := range gone {
 		if _, err := os.Stat(filepath.Join(dir, p)); !os.IsNotExist(err) {

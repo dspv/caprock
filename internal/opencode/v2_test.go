@@ -233,10 +233,10 @@ func TestV2IngestStoresTurnsPromptsAndTools(t *testing.T) {
 		t.Errorf("plan session model not taken from its steps")
 	}
 	// A subagent's child session is a sidechain, as for OpenCode 1.
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND json_extract(payload,'$.sidechain')=1`, v2Child); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND json_extract(payload,'$.sidechain')=1`, v2Child); n != 2 {
 		t.Errorf("%d sidechain events in the child, want 2", n)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND json_extract(payload,'$.text')='The command ran; it printed hi. Done.'`, v2Tool); n != 1 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND json_extract(payload,'$.text')='The command ran; it printed hi. Done.'`, v2Tool); n != 1 {
 		t.Errorf("reply text not stored")
 	}
 
@@ -254,10 +254,10 @@ func TestV2IngestStoresTurnsPromptsAndTools(t *testing.T) {
 func TestV2TouchReadsOneSession(t *testing.T) {
 	h := newDumpHarness(t, "opencode-2.0.26.sql")
 	h.in.Touch(context.Background(), v2Tool)
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=?`, v2Tool); n != 6 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=?`, v2Tool); n != 6 {
 		t.Errorf("%d events after a touch, want 6 (a prompt, three steps, two calls)", n)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id<>?`, v2Tool); n != 0 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id<>?`, v2Tool); n != 0 {
 		t.Errorf("a touch read other sessions")
 	}
 }
@@ -297,24 +297,24 @@ func TestMixedIngest(t *testing.T) {
 
 	// The migrated session: three OpenCode 1 steps and one OpenCode 2 step,
 	// at 0.00357 each — session_v2.cost says 0.01428 too.
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='turn.assistant'`, mixedBoth); n != 4 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='turn.assistant'`, mixedBoth); n != 4 {
 		t.Errorf("%d turns in the migrated session, want 4", n)
 	}
-	if got := sum(t, h.out, `SELECT SUM(cost_usd) FROM events WHERE session_id='`+mixedBoth+`'`); !near(got, 0.01428) {
+	if got := sum(t, h.out, `SELECT SUM(cost_usd) FROM events JOIN sessions USING (sid) WHERE session_id='`+mixedBoth+`'`); !near(got, 0.01428) {
 		t.Errorf("migrated session cost = %v, want 0.01428", got)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='turn.user'`, mixedBoth); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='turn.user'`, mixedBoth); n != 2 {
 		t.Errorf("%d prompts, want 2 (one per version)", n)
 	}
 	// Its tool calls come from OpenCode 1's part rows, keyed by part id, and
 	// are not read a second time from the same messages in session_message.
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='tool.pre'`, mixedBoth); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='tool.pre'`, mixedBoth); n != 2 {
 		t.Errorf("%d tool calls, want 2", n)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='tool.pre' AND key LIKE 'oc-tool:prt_%'`, mixedBoth); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='tool.pre' AND key LIKE 'oc-tool:prt_%'`, mixedBoth); n != 2 {
 		t.Errorf("tool calls not keyed by OpenCode 1's part id")
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='tool.pre'`, mixedNewV2); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='tool.pre'`, mixedNewV2); n != 2 {
 		t.Errorf("%d tool calls in the OpenCode 2 session, want 2", n)
 	}
 }
@@ -327,14 +327,14 @@ func TestUpgradeAddsOnlyTheContinuation(t *testing.T) {
 	// Before OpenCode 2: only OpenCode 1's tables.
 	h.exec(`ALTER TABLE session_v2 RENAME TO later_session_v2; ALTER TABLE session_message RENAME TO later_session_message`)
 	h.poll()
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='turn.assistant'`, mixedBoth); n != 3 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='turn.assistant'`, mixedBoth); n != 3 {
 		t.Fatalf("%d turns before the upgrade, want 3", n)
 	}
 	before := count(t, h.out, `SELECT COUNT(*) FROM events`)
 
 	h.exec(`ALTER TABLE later_session_v2 RENAME TO session_v2; ALTER TABLE later_session_message RENAME TO session_message`)
 	h.poll()
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id=? AND kind='turn.assistant'`, mixedBoth); n != 4 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id=? AND kind='turn.assistant'`, mixedBoth); n != 4 {
 		t.Errorf("%d turns after the upgrade, want 4", n)
 	}
 	// Two events for the continuation (its prompt and its step) and six for

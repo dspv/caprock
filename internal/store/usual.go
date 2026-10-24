@@ -76,14 +76,14 @@ func deciles(v []float64, min int) *Deciles {
 // on the owner's 1.7 GB copy, 0.02s warm and 0.12s cold for 30 days
 // (2026-10-13). Session totals are the same rows summed in Go.
 func UsualSince(ctx context.Context, q Querier, fromMs int64, agent AgentFilter) (*Usual, error) {
-	scope, args := agent.sessionScope("session_id")
+	scope, args := agent.eventScope("sid")
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, ts / 3600000 AS h,
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), ts / 3600000 AS h,
 		       COALESCE(SUM(cost_usd), 0), COUNT(cost_usd),
 		       COALESCE(SUM(COALESCE(tokens_in,0)), 0), COALESCE(SUM(COALESCE(cache_read,0)), 0), COALESCE(SUM(COALESCE(cache_write,0)), 0)
 		FROM events
 		WHERE kind = 'turn.assistant' AND ts >= ?`+nonInternalEvent+scope+`
-		GROUP BY session_id, h`, append([]any{fromMs}, args...)...)
+		GROUP BY sid, h`, append([]any{fromMs}, args...)...)
 	if err != nil {
 		return nil, err
 	}

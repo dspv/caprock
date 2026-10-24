@@ -75,7 +75,7 @@ func TestAClaimedSessionIsStoredUnderTheSessionThatStartedIt(t *testing.T) {
 	h.in.Link = l
 	h.poll()
 
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='cap-1'`); n == 0 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='cap-1'`); n == 0 {
 		t.Fatal("nothing stored under the spawned session")
 	}
 	if n := count(t, h.out, `SELECT COUNT(*) FROM sessions WHERE session_id='ses_a'`); n != 0 {

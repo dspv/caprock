@@ -16,6 +16,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -63,7 +64,7 @@ type column struct {
 // reordering one is not.
 var eventCols = []column{
 	{"ts", "e.ts", kTime},
-	{"session_id", "e.session_id", kText},
+	{"session_id", "s.session_id", kText},
 	{"agent", "COALESCE(s.agent,'claude')", kText},
 	{"subagent_id", "e.agent_id", kText},
 	{"source", "e.source", kText},
@@ -151,6 +152,24 @@ func Write(ctx context.Context, db *sql.DB, w io.Writer, o Options) (int64, erro
 		return 0, fmt.Errorf("--payload is for events as jsonl: the raw payload is JSON with prose in it, and a cell of it breaks a table")
 	}
 
+	// Opened read-only, a database no daemon has upgraded since events were
+	// keyed by sid (migration 0073) stays in the old shape.
+	var keyed int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('events') WHERE name = 'sid'`).Scan(&keyed); err != nil {
+		return 0, err
+	}
+	if keyed == 0 {
+		return 0, errors.New("this database was written by an older Caprock: start Caprock once (`caprock up`) to upgrade it, then export again")
+	}
+	// Until migration 0073's move is done, events holds the newest rows only.
+	var moving int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'events_legacy'`).Scan(&moving); err != nil {
+		return 0, err
+	}
+	if moving > 0 && o.Table == "events" {
+		return 0, errors.New("older events are still moving into the upgraded database: export again once `caprock status` no longer shows it")
+	}
+
 	cols, query, args := build(o)
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -206,7 +225,7 @@ func build(o Options) ([]column, string, []any) {
 		from = "sessions s"
 		// A session that holds only hidden product machinery (Codex's review
 		// turns) is not work anyone did; the dashboard does not list it either.
-		where = append(where, "EXISTS (SELECT 1 FROM events e WHERE e.session_id = s.session_id AND e.internal = 0)")
+		where = append(where, "EXISTS (SELECT 1 FROM events e WHERE e.sid = s.sid AND e.internal = 0)")
 		if !o.Since.IsZero() {
 			where = append(where, "s.last_event_at >= ?")
 			args = append(args, o.Since.UnixMilli())
@@ -221,7 +240,7 @@ func build(o Options) ([]column, string, []any) {
 		if o.Payload {
 			cols = append(append([]column{}, eventCols...), payloadCol)
 		}
-		from = "events e LEFT JOIN sessions s ON s.session_id = e.session_id"
+		from = "events e LEFT JOIN sessions s ON s.sid = e.sid"
 		where = append(where, "e.internal = 0")
 		if !o.Since.IsZero() {
 			where = append(where, "e.ts >= ?")

@@ -95,6 +95,12 @@ func (d *Daemon) startSubIngest(sub config.Subscription) {
 		}
 		d.subIn.codex[sub.ID] = in
 		go func() {
+			// As the Default sign-in's importer waits (Daemon.afterMove).
+			select {
+			case <-d.whole:
+			case <-ctx.Done():
+				return
+			}
 			if err := in.Run(ctx); err != nil && ctx.Err() == nil {
 				d.log.Warn("subscription codex import stopped", "component", "subs", "subscription", sub.ID, "err", err)
 			}
