@@ -900,18 +900,41 @@ The Week screen's shareable card. `start` is a local date and the window is
 Cost screen's `7d` range uses, so the two never disagree about which day a
 turn fell on. A `start` that is not `YYYY-MM-DD` is `400`.
 
-`{start, end, partial, from_ms, to_ms, days[], sessions, active_days, turns,
-cost_usd, unpriced_turns?, models[], prs_opened, prs_merged,
-merges_unresolved, commits, files_edited, lines_added, lines_removed,
-ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, subagent_saving?, cost_per_merged_pr?,
-estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
+`{start, end, partial, from_ms, to_ms, days[], sessions, scheduled_sessions,
+active_days, turns, cost_usd, unpriced_turns?, tokens, models[], prs_opened,
+prs_merged, prs_source?, merges_unresolved, commits, files_edited, lines_added,
+lines_removed, ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?,
+subagent_saving?, cost_per_merged_pr?, estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
 active}` × 7; `agents[]` is `{agent, subagent, turns, cost_usd, sessions,
 threads?}`; `loop` is `{agent, tool, kind, calls, first_ms, last_ms, tax_usd?,
 tax_priced_calls?}`; `biggest` is `{agent, cost_usd, turns, active_days}`.
 
 Everything is computed from the local database (`store.WeekStats`); the daemon
-asks nothing of GitHub, so what can be said is bounded by what the agents'
-own tool calls recorded:
+asks nothing of GitHub for it.
+
+**Hand-run sessions only** (owner, 2026-10-25: 480 of a week's 1,036 sessions
+were scheduled scripts). A session whose cwd is a filesystem root or the home
+directory itself (`store.RootOrHome`, the rule Second Brain skips by) is left
+out of every figure — sessions, turns, `tokens`, cost, the per-day cost, the
+models, the agents, the biggest session, the loop, the tool counts and the
+subagent saving — and counted in `scheduled_sessions` instead. The clause is
+built once per request from the distinct `sessions.cwd` values that match.
+
+**Pull requests from GitHub's record where the daemon holds one** (owner,
+2026-10-25: the card said 5 merged in a week GitHub merged 59, because a
+script's or a batch merge is no agent's `gh pr merge`). Each repository root
+the window's hand-run turns ran in (`sessions.repo_root`, else the cwd) is
+mapped to its GitHub `owner/name` as the Pipeline maps a session (the repo
+cache, `github.ParseRemote`). For a repository with any row in `github_prs`
+(migration 0071, the pull request lists the Pipeline read), `prs_merged`
+counts its rows with `merged_at` in the window and `prs_opened` those with
+`created_at` in it, and `days[].prs_opened` buckets those by local day. A
+repository with no such row keeps the agents' own count below, as does a pull
+request the agents ran in a repository no hand-run session worked in.
+`prs_source` says which: `github`, `agents` or `both`; absent with no record
+and nothing counted. `github_prs` only holds what the Pipeline has listed (the
+newest 50 by update per read), so a week before the table filled reads short
+of GitHub, never over it. The agents' count:
 
 - **Opened** is distinct `github.com/<owner>/<repo>/pull/<n>` URLs printed by
   a successful Bash call that ran `gh pr create`, minus lines saying the pull
@@ -932,8 +955,13 @@ own tool calls recorded:
   counts its whole file.
 - **Cost** is the stored `cost_usd`, priced once per message id and never
   twice across forks; `tax` prices each model's cache reads exactly as
-  `/v1/history` does. `cost_per_merged_pr` divides all of the week's cost by
-  the merges — an estimate, absent when nothing merged.
+  `/v1/history` does. `cost_per_merged_pr` is an estimate, absent when
+  nothing merged: with GitHub's record, the mean of what the Pipeline charges
+  each pull request merged in the window (`store.KnownPRs` over the
+  repository's dearest root — the figure its Most expensive list shows; one
+  with no agent work recorded counts as $0), so the card and the Pipeline
+  never disagree; with the agents' count only, all of the window's cost over
+  its merges.
 - **CI wait** is the hook-plane `duration_ms` of Bash calls whose statement is
   `gh pr checks`, `gh run watch`, or a script named like `wait-ci`. Tool time,
   not wall clock: parallel calls overlap.
