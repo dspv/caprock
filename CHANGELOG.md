@@ -12,6 +12,15 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.159.1] - 2026-10-25
+
+### Fixed
+
+- **share:** X, Threads and LinkedIn get the card you chose, dark or paper: the
+  post no longer carries a caprock.dev link, which made them show the site's
+  dark preview instead, and a large line says to press ⌘V (Ctrl+V) in the post
+  to add the card from the clipboard.
+
 ## [0.159.0] - 2026-10-25
 
 ### Added
