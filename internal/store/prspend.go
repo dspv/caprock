@@ -31,6 +31,11 @@ import (
 //     session with one pull request is charged to it whole. A pull request
 //     charged a cut says so (PRSpend.Shared).
 //
+// A pull request a script made has no session_prs row; GitHub's stamps for
+// it (github_prs) are matched to the one session that had a Bash call
+// running over them and taken as that session's rows, never stored
+// (prlearn.go).
+//
 // All at API list price, as every cost in Caprock is (session_stats.cost_usd,
 // events.cost_usd).
 
@@ -125,6 +130,31 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		out[url] = s
 	}
 
+	// The pull requests no session recorded, matched to the session acting
+	// at GitHub's stamps (prlearn.go), and what those sessions recorded.
+	learned, err := learnPRs(ctx, q, repoRoot, prs)
+	if err != nil {
+		return nil, err
+	}
+	lrn := map[string][]learnedPR{}
+	for _, l := range learned {
+		lrn[l.session] = append(lrn[l.session], l)
+	}
+	drove, err := recordedDrives(ctx, q, lrn)
+	if err != nil {
+		return nil, err
+	}
+	// extra is how many pull requests each such session drove beyond those
+	// it recorded opening or merging.
+	extra := map[string]int{}
+	for id, ls := range lrn {
+		for _, l := range ls {
+			if !drove[id][l.url] {
+				extra[id]++
+			}
+		}
+	}
+
 	// The head branches' sessions, charged whole.
 	onBranch := map[string]bool{}
 	if repoRoot != "" && len(owner) > 0 {
@@ -149,7 +179,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			}
 			// A session that opened or merged several pull requests is cut
 			// between them below, whatever branch it ended on.
-			if u := owner[branch]; u != "" && driven <= 1 {
+			if u := owner[branch]; u != "" && driven+extra[id] <= 1 {
 				onBranch[id] = true
 				add(u, agent, cost, tok, status != "ended", true, false)
 			}
@@ -169,37 +199,58 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	for u := range want {
 		args = append(args, u)
 	}
+	// A session matched to one of them at GitHub's stamp is among them too,
+	// with its recorded rows beside its learned ones.
+	var also []string
+	for id, ls := range lrn {
+		for _, l := range ls {
+			if want[l.url] {
+				also = append(also, id)
+				break
+			}
+		}
+	}
+	sort.Strings(also)
+	alsoSQL := ""
+	if len(also) > 0 {
+		alsoSQL = ` OR s.session_id IN (?` + strings.Repeat(",?", len(also)-1) + `)`
+		for _, id := range also {
+			args = append(args, id)
+		}
+	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT p.session_id, p.url, CASE WHEN p.opened_at > 0 THEN p.opened_at ELSE p.last_at END,
+		SELECT s.session_id, COALESCE(p.url,''), COALESCE(p.opened_at,0), COALESCE(p.last_at,0),
 		       COALESCE(s.git_branch,''), s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0),
 		       COALESCE(st.tokens_in,0), COALESCE(st.tokens_out,0), COALESCE(st.cache_read,0), COALESCE(st.cache_write,0)
-		FROM session_prs p
-		JOIN sessions s ON s.session_id = p.session_id
-		LEFT JOIN session_stats st ON st.session_id = p.session_id
-		WHERE p.session_id IN (SELECT session_id FROM session_prs WHERE url IN (?`+strings.Repeat(",?", len(args)-1)+`))`, args...)
+		FROM sessions s
+		LEFT JOIN session_prs p ON p.session_id = s.session_id
+		LEFT JOIN session_stats st ON st.session_id = s.session_id
+		WHERE s.session_id IN (SELECT session_id FROM session_prs WHERE url IN (?`+strings.Repeat(",?", len(want)-1)+`))`+alsoSQL, args...)
 	if err != nil {
 		return nil, err
 	}
 	sessions := map[string]*prSession{}
 	var order []string
+	moments := map[string]map[string][2]int64{} // session -> url -> {opened_at, last_at}
 	for rows.Next() {
-		var id string
-		var r prRow
+		var id, url string
+		var at [2]int64
 		var x prSession
-		if err := rows.Scan(&id, &r.url, &r.anchor, &x.branch, &x.status, &x.agent, &x.cost, &x.tok.in, &x.tok.out, &x.tok.read, &x.tok.write); err != nil {
+		if err := rows.Scan(&id, &url, &at[0], &at[1], &x.branch, &x.status, &x.agent, &x.cost, &x.tok.in, &x.tok.out, &x.tok.read, &x.tok.write); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		if onBranch[id] {
 			continue
 		}
-		s := sessions[id]
-		if s == nil {
-			s = &x
-			sessions[id] = s
+		if sessions[id] == nil {
+			sessions[id] = &x
 			order = append(order, id)
+			moments[id] = map[string][2]int64{}
 		}
-		s.rows = append(s.rows, r)
+		if url != "" {
+			moments[id][url] = at
+		}
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -207,6 +258,30 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
+	}
+	// Each session's rows: what it recorded, with what it was matched to
+	// folded in as store.RecordPR would have folded the command — the
+	// earliest opening wins, last_at is the latest move — each at its
+	// opening, else its latest move.
+	for _, id := range order {
+		s, at := sessions[id], moments[id]
+		for _, l := range lrn[id] {
+			a := at[l.url]
+			if l.opened > 0 && (a[0] == 0 || l.opened < a[0]) {
+				a[0] = l.opened
+			}
+			a[1] = max(a[1], l.opened, l.merged)
+			at[l.url] = a
+		}
+		for url, a := range at {
+			r := prRow{url: url, anchor: a[1]}
+			if a[0] > 0 {
+				r.anchor = a[0]
+			}
+			s.rows = append(s.rows, r)
+		}
+		// The cut below sorts them by moment, stably: ties by address.
+		sort.Slice(s.rows, func(i, j int) bool { return s.rows[i].url < s.rows[j].url })
 	}
 	// The slices of the sessions cut between several, all summed in one
 	// read. An ended session's are kept (sliceMemo): its events no longer
