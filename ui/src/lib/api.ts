@@ -799,6 +799,9 @@ export interface Summary {
   cache_read: number
   cache_write: number
   cost_usd: number
+  /** cost_usd split by the sign-in each session ran on, for the plan figures
+   *  (lib/planShare); absent from an older daemon. Read with asSpendParts. */
+  cost_parts?: unknown
   models: ModelShare[]
   projects: ProjectShare[]
   /** What the money was spent ON — see WorkShare. Empty when nothing was
@@ -2624,6 +2627,8 @@ export const api = {
   },
   /** Settings → Subscriptions (ADR-048). */
   subscriptions: () => get<SubscriptionsResponse>('/v1/subscriptions'),
+  /** The rates behind the plan figures beside a cost (lib/planShare.ts); read as unknown and checked there. */
+  planShare: () => get<unknown>('/v1/plan-share'),
   /** 402 at the free number without a licence. */
   addSubscription: (agent: SubscriptionAgentId, label: string) => post<Subscription>('/v1/subscriptions', { agent, label }),
   /** Rename, Make default, or set a plan (null clears it). `agent` names whose own sign-in "default" is. */

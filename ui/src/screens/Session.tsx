@@ -38,6 +38,8 @@ import { ConnectionState, readLink } from '@/components/ConnectionState'
 import { narrowScreen, useFillViewport, useHideOnScroll, useNarrowScreen } from '@/lib/phone'
 import { PHONE_BAR_PX, PhoneSessionBar } from '@/components/PhoneSessionBar'
 import { endState } from '@/components/PhoneEnd'
+import { PlanShare } from '@/components/PlanShare'
+import { sessionParts } from '@/lib/planShare'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -341,7 +343,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               name without truncating — and it is the basis that would be cut.
               The model stays visible; the basis is on hover, and stated in
               full on the screens whose whole subject is money. */}
-          <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} sub={<span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
+          <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />} sub={<span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
           {/* The total includes cache reads, which are usually 99% of it. Breaking
               out only in/out made the subtitle contradict the number above it. */}
           <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />

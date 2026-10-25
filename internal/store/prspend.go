@@ -65,17 +65,20 @@ type PRSpend struct {
 	TokensOut  int64 `json:"tokens_out"`
 	CacheRead  int64 `json:"cache_read"`
 	CacheWrite int64 `json:"cache_write"`
+	// Parts splits CostUSD by the sign-in each session ran on, for the plan
+	// figures (internal/planshare); they sum to CostUSD.
+	Parts SpendParts `json:"parts,omitempty"`
 }
 
 // prTokens is a piece of work's tokens.
 type prTokens struct{ in, out, read, write int64 }
 
 type prSession struct {
-	branch, status, agent string
-	cost                  float64
-	tok                   prTokens
-	rows                  []prRow
-	sums                  []prSum // per row, for a session cut between several
+	branch, status, agent, sub string
+	cost                       float64
+	tok                        prTokens
+	rows                       []prRow
+	sums                       []prSum // per row, for a session cut between several
 }
 
 type prRow struct {
@@ -104,9 +107,10 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		}
 	}
 	agents := map[string]map[string]bool{}
-	add := func(url, agent string, cost float64, tok prTokens, live, branch, shared bool) {
+	add := func(url, agent, sub string, cost float64, tok prTokens, live, branch, shared bool) {
 		s := out[url]
 		s.CostUSD += cost
+		s.Parts = s.Parts.Add(agent, sub, cost)
 		s.TokensIn += tok.in
 		s.TokensOut += tok.out
 		s.CacheRead += tok.read
@@ -159,7 +163,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	onBranch := map[string]bool{}
 	if repoRoot != "" && len(owner) > 0 {
 		rows, err := q.QueryContext(ctx, `
-			SELECT s.session_id, s.git_branch, s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0),
+			SELECT s.session_id, s.git_branch, s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(s.subscription,''), COALESCE(st.cost_usd,0),
 			       COALESCE(st.tokens_in,0), COALESCE(st.tokens_out,0), COALESCE(st.cache_read,0), COALESCE(st.cache_write,0),
 			       (SELECT COUNT(*) FROM session_prs q WHERE q.session_id = s.session_id AND (q.opened_at > 0 OR q.merged_at > 0))
 			FROM sessions s
@@ -169,11 +173,11 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			return nil, err
 		}
 		for rows.Next() {
-			var id, branch, status, agent string
+			var id, branch, status, agent, sub string
 			var cost float64
 			var tok prTokens
 			var driven int
-			if err := rows.Scan(&id, &branch, &status, &agent, &cost, &tok.in, &tok.out, &tok.read, &tok.write, &driven); err != nil {
+			if err := rows.Scan(&id, &branch, &status, &agent, &sub, &cost, &tok.in, &tok.out, &tok.read, &tok.write, &driven); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -181,7 +185,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			// between them below, whatever branch it ended on.
 			if u := owner[branch]; u != "" && driven+extra[id] <= 1 {
 				onBranch[id] = true
-				add(u, agent, cost, tok, status != "ended", true, false)
+				add(u, agent, sub, cost, tok, status != "ended", true, false)
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -220,7 +224,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 	}
 	rows, err := q.QueryContext(ctx, `
 		SELECT s.session_id, COALESCE(p.url,''), COALESCE(p.opened_at,0), COALESCE(p.last_at,0),
-		       COALESCE(s.git_branch,''), s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(st.cost_usd,0),
+		       COALESCE(s.git_branch,''), s.status, COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(s.subscription,''), COALESCE(st.cost_usd,0),
 		       COALESCE(st.tokens_in,0), COALESCE(st.tokens_out,0), COALESCE(st.cache_read,0), COALESCE(st.cache_write,0)
 		FROM sessions s
 		LEFT JOIN session_prs p ON p.session_id = s.session_id
@@ -236,7 +240,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		var id, url string
 		var at [2]int64
 		var x prSession
-		if err := rows.Scan(&id, &url, &at[0], &at[1], &x.branch, &x.status, &x.agent, &x.cost, &x.tok.in, &x.tok.out, &x.tok.read, &x.tok.write); err != nil {
+		if err := rows.Scan(&id, &url, &at[0], &at[1], &x.branch, &x.status, &x.agent, &x.sub, &x.cost, &x.tok.in, &x.tok.out, &x.tok.read, &x.tok.write); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -338,7 +342,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 		s := sessions[id]
 		live := s.status != "ended"
 		if len(s.rows) == 1 {
-			add(s.rows[0].url, s.agent, s.cost, s.tok, live, false, false)
+			add(s.rows[0].url, s.agent, s.sub, s.cost, s.tok, live, false, false)
 			continue
 		}
 		for i, r := range s.rows {
@@ -348,7 +352,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			if s.sums[i].cost == 0 && i < len(s.rows)-1 {
 				continue
 			}
-			add(r.url, s.agent, s.sums[i].cost, s.sums[i].tok, live && i == len(s.rows)-1, false, true)
+			add(r.url, s.agent, s.sub, s.sums[i].cost, s.sums[i].tok, live && i == len(s.rows)-1, false, true)
 		}
 	}
 	for u, s := range out {
@@ -357,6 +361,7 @@ func SpendByPR(ctx context.Context, q Querier, repoRoot string, prs []PRRef) (ma
 			s.Agents = append(s.Agents, a)
 		}
 		sort.Strings(s.Agents)
+		s.Parts = s.Parts.Sorted()
 		out[u] = s
 	}
 	return out, nil

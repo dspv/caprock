@@ -43,6 +43,7 @@ import (
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/pairing"
+	"github.com/dspv/caprock/internal/planshare"
 	"github.com/dspv/caprock/internal/premium"
 	"github.com/dspv/caprock/internal/projects"
 	"github.com/dspv/caprock/internal/store"
@@ -216,6 +217,10 @@ type Deps struct {
 	// Subscriptions keeps the sign-ins of Settings → Subscriptions (ADR-048).
 	// nil ⇒ /v1/subscriptions returns 501.
 	Subscriptions SubscriptionManager
+	// PlanShare computes the rates behind the plan figures — plan dollars
+	// and share of a week per API dollar, per sign-in (internal/planshare).
+	// nil ⇒ /v1/plan-share returns 501.
+	PlanShare func(ctx context.Context) (planshare.Response, error)
 	// Tasks is the Phase 2 hive-backed task board (nil ⇒ endpoints return 501).
 	Tasks TaskController
 	// Settings reads and persists the user-editable settings (the subscription
@@ -713,6 +718,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/browsers/open", s.handleOpenBrowser)
 	m.HandleFunc("GET /v1/stats/summary", s.handleSummary)
 	m.HandleFunc("GET /v1/stats/limits", s.handleLimits)
+	m.HandleFunc("GET /v1/plan-share", s.handlePlanShare)
 	m.HandleFunc("GET /v1/stats/trends", s.handleTrends)
 	// The offer survey: forwards one answer to caprock.dev on a click (offer.go, ADR-062).
 	m.HandleFunc("POST /v1/offer", s.handleOffer)
@@ -2087,6 +2093,22 @@ type LimitsResponse struct {
 	CodexRateLimits *RateLimits `json:"codex_rate_limits,omitempty"`
 }
 
+// handlePlanShare serves the rates behind the plan figures: every sign-in's
+// plan factor and weekly share per API dollar, computed in one place
+// (internal/planshare) so every screen prices a cost the same way.
+func (s *Server) handlePlanShare(w http.ResponseWriter, r *http.Request) {
+	if s.d.PlanShare == nil {
+		http.Error(w, "plan figures unavailable", http.StatusNotImplemented)
+		return
+	}
+	resp, err := s.d.PlanShare(r.Context())
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // handleLimits serves the plan windows: the same reads as the summary's
 // rate_limits and codex_rate_limits (the latest rows and the kept pace),
 // nothing range- or agent-scoped.
@@ -2186,7 +2208,16 @@ func (s *Server) trendsFor(ctx context.Context, agent store.AgentFilter) (any, e
 func (s *Server) rangeSummary(ctx context.Context, from int64, label string, agent store.AgentFilter) (store.Summary, error) {
 	spark := s.sparkSpec(label, from)
 	compute := func(c context.Context) (store.Summary, error) {
-		return store.SummarizeSparkFor(c, s.d.Store.DB(), from, spark, agent)
+		sum, err := store.SummarizeSparkFor(c, s.d.Store.DB(), from, spark, agent)
+		if err != nil {
+			return sum, err
+		}
+		// The same range and agent filter, split by sign-in for the plan
+		// figures. A failure costs those figures, never the summary.
+		if parts, err := store.SpendPartsBetween(c, s.d.Store.DB(), from, 0, agent); err == nil {
+			sum.CostParts = parts
+		}
+		return sum, nil
 	}
 	cache := s.summ
 	if label == "today" {

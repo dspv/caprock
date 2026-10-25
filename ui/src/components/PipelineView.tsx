@@ -52,6 +52,8 @@ import { CIMark, DeckSkeleton, ExpandToggle, connectGitHub } from './CIParts'
 import { Freshness } from './Freshness'
 import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePoll'
 import { extTitle } from '@/lib/externalLinks'
+import { planShareTitle } from '@/lib/planShare'
+import { PlanShare, usePlanShare } from './PlanShare'
 
 export interface PipelineViewProps {
   /** The agent session the page reads through: its repository, its pull requests. */
@@ -318,7 +320,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
 const RELEASED_SHOWN = 10
 
 /** The list's columns: the pull request, its journey, the time in its step, its agent cost. */
-const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto_64px_88px] items-center gap-x-4 @max-[820px]/list:grid-cols-[minmax(0,1fr)_auto]'
+const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_auto_64px_108px] items-center gap-x-4 @max-[820px]/list:grid-cols-[minmax(0,1fr)_auto]'
 
 function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded, dim, bucket, onClearBucket, ships }: { rows: PipelineRow[]; scope: TabScope; onScope: (s: TabScope) => void; pick: number; onPick: (n: number) => void; now: number; counts: Record<TabScope, number>; loaded: boolean; dim: boolean; bucket?: Bucket; onClearBucket: () => void; ships: ShipsContext }) {
   const [allReleased, setAllReleased] = useState(false)
@@ -400,6 +402,7 @@ function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: 
   const steps = journey(r)
   const at = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const cost = r.spend ? costText(r.spend) : ''
+  const plan = usePlanShare(cost ? r.spend?.parts : undefined)
   return (
     <li data-prs-row={r.number} data-stage={stageOf(r)} data-prs-unconfirmed={dim ? '' : undefined} className="border-b border-border last:border-b-0">
       <button type="button" onClick={onPick} aria-current={on || undefined}
@@ -420,9 +423,13 @@ function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: 
         </span>
         <JourneyPills steps={steps} note={releaseNote(r, ships)} />
         <span className="num text-right text-[12.5px] text-fg-muted @max-[820px]/list:hidden" title={at ? new Date(at).toLocaleString() : undefined}>{at ? spanText(Math.max(0, now - at)) : '–'}</span>
-        <span data-prs-cost className="num text-right text-[13px] font-medium text-fg" title={r.spend ? costTitle(r.spend) : undefined}>
+        <span data-prs-cost className="num text-right text-[13px] font-medium text-fg" title={r.spend ? `${costTitle(r.spend)}${plan ? `\n\n${planShareTitle(plan)}` : ''}` : undefined}>
           {cost || <span className="font-normal text-fg-muted">–</span>}
           {r.spend && r.spend.live > 0 && <span className="ml-1 text-ok" title={`${r.spend.live} agent session${r.spend.live === 1 ? '' : 's'} running on it now`}>●</span>}
+          {/* The plan figures under the cost, each piece on its own line in
+            * the 88px column rather than widening it; the cell's tooltip
+            * carries their explanation (no card inside the row's button). */}
+          {cost && <PlanShare parts={r.spend?.parts} tip={false} align="end" className="mt-0.5" />}
         </span>
       </button>
     </li>

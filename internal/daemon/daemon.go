@@ -159,6 +159,8 @@ type Daemon struct {
 	slow   slowStatus
 	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
 	subSpend subSpendCache
+	// planShareC keeps GET /v1/plan-share's rates (planshare.go).
+	planShareC planShareCache
 	// headless remembers which sessions were print-mode runs (interrupted.go),
 	// by session id; a transcript's entrypoint never changes.
 	headless sync.Map
@@ -750,7 +752,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		},
 		ActiveLoops: d.activeLoop, IdleAfter: d.opt.IdleAfter,
 		LoopK: d.det.K, LoopWindow: d.det.Window,
-		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d}, Queue: d.queue, Board: d.queue, Work: newWorkBoard(d, d.queue), Catalog: &catalogAdapter{d: d}, Subscriptions: &subsAdapter{d: d},
+		Token: rt.Token, Shutdown: cancel, Agents: &agentAdapter{m: d.mgr, d: d}, Queue: d.queue, Board: d.queue, Work: newWorkBoard(d, d.queue), Catalog: &catalogAdapter{d: d}, Subscriptions: &subsAdapter{d: d}, PlanShare: d.planShare,
 		Tasks: &boardAdapter{d: d}, Settings: &settingsAdapter{d: d}, Admin: &adminAdapter{d: d}, Update: d.upd,
 		ModuleNotify: moduleNotifier{d: d},
 		AskGemini:    d.askGemini,

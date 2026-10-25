@@ -72,6 +72,8 @@ type CostlyRelease struct {
 	// Sessions sums its pull requests' sessions: a session cut between two
 	// of them counts in each.
 	Sessions int `json:"sessions"`
+	// Parts splits CostUSD by sign-in: its pull requests' parts summed.
+	Parts store.SpendParts `json:"parts,omitempty"`
 	// First says it is the oldest release on the line: it shipped
 	// everything before it too.
 	First bool `json:"first,omitempty"`
@@ -207,8 +209,10 @@ func (s *Server) composeCostliest(ctx context.Context, id string, days int) (dec
 					if p, ok := byNumber[n]; ok {
 						c.CostUSD += p.Spend.CostUSD
 						c.Sessions += p.Spend.Sessions
+						c.Parts = c.Parts.Merge(p.Spend.Parts)
 					}
 				}
+				c.Parts = c.Parts.Sorted()
 				counted = append(counted, c)
 			}
 			out.ReleasesCounted = len(counted)

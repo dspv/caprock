@@ -10,8 +10,10 @@ import (
 // latest one in the newest transcript is the latest thing Codex was told about
 // the plan. Caprock stores that one observation — every window in it, replacing
 // the previous set — and the Cost screen shows it as Codex's, beside Claude
-// Code's. Nothing is projected from it: there is no history kept and no pace
-// forecast, only the measured figure and when Codex wrote it.
+// Code's. Nothing is projected from it: no pace forecast, only the measured
+// figure and when Codex wrote it. Each stored sample is also kept in the
+// history (store.ReplaceRateLimits), which the plan figures calibrate a Codex
+// week on (internal/planshare).
 
 // limitBackfillFiles bounds how many of the newest transcripts the first pass
 // opens to find a limits sample, when the store has none yet.

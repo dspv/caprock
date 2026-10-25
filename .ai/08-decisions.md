@@ -6305,3 +6305,51 @@ cannot decrypt reliably within its time budget, which would leave (a) as the
 answer; or Tauri's mobile push becomes official and its iOS project stops
 being regenerated, which would let the phone and the desktop share a shell
 again.
+
+## ADR-084 — A cost also says what it was of the plan: plan dollars and a share of the week, per sign-in
+
+**Date:** 2026-10-25 · **Status:** accepted (owner's request, 2026-10-25).
+Builds on [ADR-048](#adr-048--several-sign-ins-per-agent-each-in-a-config-directory-of-caprocks-three-per-agent-are-free)
+(subscriptions and their plans) and rule 6.
+
+**Context.** Every cost Caprock shows is the API-list-price equivalent of
+the tokens it recorded. On a flat plan that is not a bill, and the owner
+asked to see, beside it, what the work was in subscription terms — *$50 at
+API · ≈$5 of plan · ≈8% of a week* — on the Pipeline's most expensive pull
+requests and releases, its other cost figures, the Cost screen and the
+session card.
+
+**Decision.**
+
+- **Two rates per sign-in, computed once in the daemon** (`internal/planshare`,
+  `GET /v1/plan-share`; [03-contracts.md § Plan figures](03-contracts.md)):
+  plan dollars per API dollar = the plan's price over the trailing 30 days /
+  the API-equivalent spend recorded on that sign-in in those days; a week's
+  percent per API dollar = the points of the weekly limit used over a
+  measured stretch of one weekly window / the spend recorded over the same
+  stretch. A figure carries its cost split by sign-in and is priced part by
+  part, in one client function, so every screen says the same number.
+- **The trailing 30 days, not the calendar month,** so the rate does not
+  jump on the first.
+- **The weekly window: the latest completed one** (ended within 35 days),
+  measured from its start to the first sample at its highest percentage,
+  restarted at an early reset (a fall of 20 points or more). The current
+  window stands in only while no completed one qualifies. A stretch needs at
+  least 10 points and $1 of spend: the status line reports whole
+  percentages, so fewer points would carry a rounding error over a twentieth
+  of the figure.
+- **Never a guess (rule 6):** no plan dollars for a metered plan (the API
+  figure is the bill), for no plan stated, or a price of 0; no week share
+  without an observed weekly window. **A Codex sign-in has plan dollars only
+  when a plan is stated on it:** the main plan is how the user pays for
+  Claude Code, and its price says nothing about Codex. A figure partly on an
+  unpriced sign-in shows its plan dollars as a floor (`+`); under half
+  covered, none. Week shares of two sign-ins are never added.
+- **Codex samples are now kept in `rate_limit_history`** (no DDL change), so
+  a completed Codex week can be calibrated; before, only the latest was kept.
+
+**Consequences.** Both figures run a little high, because use outside
+Caprock — claude.ai chats, another computer — draws on the same plan and
+limit without being recorded here; every explanation says so. A sign-in
+with no recorded work in 30 days has no plan factor. A month's total on the
+Cost screen can be several hundred percent of a week, and is shown so.

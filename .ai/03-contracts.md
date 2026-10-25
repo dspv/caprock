@@ -848,6 +848,7 @@ GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that p
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo — a shell tab's id gives its folder's diff (machine only; 403 to a paired device)
 GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
 GET  /v1/stats/limits                  → {rate_limits?, codex_rate_limits?} — the plan windows alone, as the summary carries them
+GET  /v1/plan-share                    → PlanShare — per sign-in, plan dollars and share of a week per API dollar (§ Plan figures)
 GET  /v1/settings                      → user-stated settings (plan, update checks)
 PUT  /v1/settings                      → store them
 PUT  /v1/tabs                          {viewer, sessions} → 204: the sessions this dashboard has a tab for, in strip order (§ Open tabs)
@@ -1951,7 +1952,7 @@ On a paired device's read list. `501` without the projects service.
 
 `GET /v1/repos/remotes?dir=…&dir=…` (2026-10-15) → `ReposRemotes` `{repos[]}`: the Pipeline's repository picker ([04-ui.md § CI on the Pipeline and in the cockpit, and Investigate](04-ui.md#ci-on-the-pipeline-and-in-the-cockpit-and-investigate)) asks which of the folders agent sessions worked in are git repositories with a GitHub remote. One `RepoRemote` `{dir, root?, repo?, guarded?}` per distinct non-empty `dir`, in the order asked, at most 100 (`reposRemotesMax`): `root` is the repository's top level (absent outside git), `repo` is owner/name when its remote is on GitHub (`github.ParseRemote`; absent with no remote or another host). A folder macOS guards (`tcc.Guarded`: Documents, Downloads, Desktop…) is never read here and answers `guarded: true` alone, so opening the Pipeline asks for no folder access. Read through the session page's `repoCache` (one minute per folder), at most 8 folders at once; nothing is sent anywhere. Nothing asked answers `{"repos":[]}`. On a paired device's read list.
 
-**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write}`: the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and the slices' sums over the sessions' events, all in one statement (a JSON array of `[session, lo, hi]`, each two ranges of `idx_events_attr_work`, which carries every column summed; 2026-10-23: one query per slice spent most of its time taking and dropping the WAL read lock). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them. An ended session's slice sums are kept in the process (`sliceMemo`, per database and session, at most 1,024 sessions) while its fingerprint — status, `session_stats` cost and tokens, its pull requests' moments — is unchanged; only the slices asked for are summed and kept. For every pull request of the owner's repository (665, 14 cut sessions, 380,000 of their events; a 2 GB copy, 2026-10-23) that took the sum from 190–250 ms warm to 9–14 ms once kept; the first read in a process still sums them (~300 ms).
+**Pull request spend** (`store.SpendByPR`, 2026-10-14) charges recorded agent work to pull requests, at API list price, each session through one way only so the figures add up to what the sessions cost and never more (rule 6). A session on a pull request's head branch (`sessions.git_branch`, `repo_root` the repository's) is charged to it whole, unless it opened or merged more than one pull request (`session_prs` rows with `opened_at` or `merged_at`): `git_branch` is the branch a session was on last, and a long session that drove hundreds of pull requests and ended on a release branch was charged whole to the release's pull request (#601 read as $1,884.29, the session's entire spend; cut as below it is $2.12, measured on the owner's database 2026-10-14). Where two pull requests share a head branch the open one owns it, else the most recently updated. A session not charged by its branch that recorded pull requests in `session_prs` is cut at them: ordered by `opened_at` (else `last_at`), each is charged the session's `events.cost_usd` (`internal = 0`) after the previous one's moment up to its own, and the newest also everything after it; a session with one pull request is charged its `session_stats.cost_usd` whole. `PRSpend` `{cost_usd, sessions, live, agents[], by_branch, by_slice, shared?, tokens_in, tokens_out, cache_read, cache_write, parts?}`: `parts` splits `cost_usd` by the sign-in each session ran on (`SpendPart`, § Plan figures), dearest first; the tokens are the same work's (`session_stats` for a whole session, the slice's `events` sums for a cut one), `shared` counts the cut sessions: `live` counts sessions not ended — for a cut session only on its newest pull request. Three reads: the repository's sessions with a branch (`idx_sessions_repo_branch`), the `session_prs` rows of the sessions that recorded one of the pull requests, and the slices' sums over the sessions' events, all in one statement (a JSON array of `[session, lo, hi]`, each two ranges of `idx_events_attr_work`, which carries every column summed; 2026-10-23: one query per slice spent most of its time taking and dropping the WAL read lock). 18–57 ms warm and 105 ms cold for 49 pull requests on a 2.3 GB copy of the owner's database (2026-10-14), one session holding 308 of them. An ended session's slice sums are kept in the process (`sliceMemo`, per database and session, at most 1,024 sessions) while its fingerprint — status, `session_stats` cost and tokens, its pull requests' moments — is unchanged; only the slices asked for are summed and kept. For every pull request of the owner's repository (665, 14 cut sessions, 380,000 of their events; a 2 GB copy, 2026-10-23) that took the sum from 190–250 ms warm to 9–14 ms once kept; the first read in a process still sums them (~300 ms).
 
 **Pull requests a script made** (2026-10-25; `internal/store/prlearn.go`). `session_prs` is filled only from the `gh pr` commands a session ran, so a pull request a script made had no row: `bash relgen.sh …` running `gh pr create` and `gh pr merge` inside, or `PR=$(gh pr create …)`, which neither Claude Code's `gitOperation` nor the parser reads as one. The session that drove it was never cut at it, and on the owner's board v0.155.0, v0.157.0 and v0.158.0 read "–" while v0.156.0 read $9.23. SpendByPR now also reads `github_prs` for every repository its pull requests belong to (from their `https://github.com/<owner>/<name>/pull/` address). For each of those pull requests, a `created_at` that no `session_prs` row of it records as `opened_at`, and a `merged_at` that none records as `merged_at`, is matched to the sessions of `repo_root` that had a Bash call over it. Such a call has a `tool.pre` (`internal = 0`) before the end of the stamp's second (GitHub stamps whole seconds) and at most 15 minutes earlier (`learnLookback`, past Claude Code's 10-minute foreground limit), and its `tool.post`, paired by tool-use id (`pre:`/`post:` keys), at or after the stamp. Every Bash call of a session counts, a subagent's included.
 - **Exactly one session** — the stamp is that session's, as if it had recorded the command when its earliest such call ended. It is folded into its rows the way `store.RecordPR` folds one: the earliest opening wins, `last_at` is the latest move. The cut, the head-branch rule's count of pull requests opened or merged (each counted once) and `sliceMemo`'s fingerprint all take it as a row.
@@ -2762,7 +2763,8 @@ over the 14 local calendar days ending today:
   at `merged_at`. Waiting stages are ordered longest-waiting first, merges
   newest first. `spend` is `store.PRSpend` (§ Pull request spend). Each
   `BoardRelease` is a `RepoRelease` plus `prs[]` (the listed merges it
-  shipped), `cost_usd`, `sessions` and `partial` (the list may not reach
+  shipped), `cost_usd`, `sessions`, `parts?` (its pull requests' parts
+  summed, § Plan figures) and `partial` (the list may not reach
   back to the release before it), newest first, at most 6. `flow`
   `{counts{stage}, days, merged, ttm_median_ms?, ttm_count,
   release_lag_median_ms?, release_lag_count, release_gap_median_ms?,
@@ -2866,7 +2868,8 @@ all time), `prs[]`, `prs_counted`, `prs_known`, `releases[]`,
   are those of `git log --first-parent prev..tag`. A tag off that line is left
   out; of several on one commit the highest version is the release; CRLF is
   read as LF. Each `CostlyRelease` `{tag, at, url, prs[], cost_usd, sessions,
-  first?}`: `at` the tag's date, `url`
+  parts?, first?}` (`parts`: its pull requests' parts summed, § Plan
+  figures): `at` the tag's date, `url`
   `https://github.com/<repo>/releases/tag/<tag>`, `cost_usd` and `sessions`
   the sums of its pull requests' `KnownPR.spend` (the same figure as the left
   list, so no session is counted twice; a session cut between two pull
@@ -7327,7 +7330,10 @@ is free text, and the migration-0005 comment listing two values is history.
   sample deletes every `codex_` row and writes its own windows, so a plan with
   no 5-hour window (`prolite`) leaves none behind from an earlier plan; an older
   sample read later is ignored.
-- **No `rate_limit_history` rows**, hence no forecast.
+- **History rows since 2026-10-25:** each replacing sample also appends its
+  windows to `rate_limit_history`, throttled like the status line's (30 s per
+  window), for the plan figures' weekly calibration (§ Plan figures). No
+  forecast is built on them.
 
 `GET /v1/stats/summary` returns them as `codex_rate_limits` (same shape as
 `rate_limits`: `five_hour?`, `seven_day?`, each `{used_percentage, resets_at,
@@ -7345,6 +7351,65 @@ Measured on a sandbox daemon over a 1.9 GB copy of the owner's database
 and 22,116 bytes, `/v1/stats/limits` 1.6 ms and 242 bytes. The time is small
 either way; the size is what a phone on mobile data, through the relay, pays
 for.
+
+**Plan figures** (`GET /v1/plan-share`, 2026-10-25, [ADR-084](08-decisions.md))
+— the rates that put a cost at API list price into subscription terms: *$50
+at API · ≈$1.65 of plan · ≈2.3% of a week*. Computed once, in the daemon
+(`internal/planshare`, kept 5 minutes and then served while one refresh runs
+behind it, recomputed at once when a plan changes), so every screen prices a
+cost the same way; the screens multiply through one function
+(`ui/src/lib/planShare.ts`). Answer: `{computed_at, plan_days: 30, rates[]}`,
+one `rate` per sign-in — the own Claude Code sign-in, each added
+subscription, Claude Code on DeepSeek while a key is set, the own Codex
+sign-in, each added Codex subscription — `{agent, subscription, label,
+plan_kind, plan?, plan_note?, week?, week_note?}`. `subscription` is what
+sessions record (`""` the own sign-in, an id, `deepseek`).
+
+- **`plan`** `{label?, usd_per_month, days, fee_usd, api_usd, from, to,
+  factor}`: `factor` = `fee_usd / api_usd`, the plan's price over the
+  trailing 30 days (`usd_per_month × days / 30`) over the API-equivalent
+  spend recorded on that sign-in in the same days (`events.cost_usd`,
+  `internal = 0`, joined to `sessions.agent` and `sessions.subscription`).
+  Trailing rather than the calendar month, so it does not jump on the first.
+  A sign-in whose first session is newer than 30 days counts only the days
+  since (`days` < 30). The plan is the sign-in's own; for a Claude Code
+  sign-in without one, the main plan (`plan_kind` in `/v1/settings`, which is
+  how the user pays for Claude Code). **A Codex sign-in has a plan only when
+  one is stated on it** — a Claude plan's price says nothing about Codex.
+  Absent with `plan_note`: `metered` (the API figure is the bill),
+  `no_plan` (none stated, or a price of 0), `no_spend`.
+- **`week`** `{resets_at, completed, from, to, used_points, api_usd,
+  pct_per_usd}`: a week's percent per API dollar = the percentage points of
+  the weekly limit used over a measured stretch / the spend recorded on the
+  sign-in over the same stretch. Samples are the weekly window's
+  (`seven_day`, `codex_seven_day`, `sub:<id>:seven_day`) in
+  `rate_limit_history` and `rate_limit_latest`, grouped by reset (resets
+  within an hour are one window). In a window the stretch runs from its start
+  (`resets_at − 7 days`, 0% used) to the first sample at its highest
+  percentage; a fall of 20 points or more below the highest so far is an
+  early reset and starts the stretch again at that sample, with its
+  percentage as the base (smaller falls are samples from two sessions
+  arriving out of order, and are ignored). The latest **completed** window
+  that ended within 35 days and has **at least 10 points and $1** of spend
+  is used; with none, the current window once it has as much; else no
+  `week` and `week_note` `not_enough`, or `no_window` when no weekly window
+  was ever observed (DeepSeek; Codex before its first sample).
+
+A figure is priced per part: its cost split by sign-in. Plan dollars sum
+each part × its sign-in's `factor`; a part with no factor leaves the figure a
+floor, drawn with a `+`, and under half covered there is no plan figure.
+Week shares are per sign-in and never added across sign-ins (different
+limits). Both may pass 100%. Use outside Caprock (claude.ai chats, another
+computer) draws on the same plan and limits unrecorded, so both run a little
+high; the screens say so. The parts travel with the figures:
+`SpendPart` `{agent, subscription, cost_usd}` as `PRSpend.parts`,
+`BoardRelease.parts`, `CostlyRelease.parts` and the summary's `cost_parts`
+(`store.SpendPartsBetween`, the same range and `?agent=` filter as
+`cost_usd`, cached with the summary). Each is absent from an older daemon,
+and a client then draws no plan figure. Open to a paired device
+(`pairedDeviceRoutes`), like the figures it prices. Measured on a 2.2 GB copy
+of the owner's database (2026-10-25): 1.4 s cold for the whole answer, of
+which the 30-day split was 0.8 s.
 
 **A subscription's windows are stored under `sub:<id>:`** —
 `sub:ab12cd34:five_hour` — for either agent ([ADR-048](08-decisions.md)), so
