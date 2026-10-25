@@ -225,7 +225,7 @@ export function footNote(w: Week): string {
   const parts: string[] = ['measured locally']
   if (w.prs_merged > 0 || w.prs_opened > 0) {
     parts.push(w.prs_source === 'github' ? 'PRs from GitHub'
-      : w.prs_source === 'both' ? 'PRs from GitHub + agent merges'
+      : w.prs_source === 'both' ? 'PRs: GitHub + agents'
       : 'PRs = merges the agents ran')
   }
   if ((w.scheduled_sessions ?? 0) > 0) parts.push('hand-run sessions')

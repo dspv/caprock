@@ -161,7 +161,7 @@ describe('week card wording', () => {
     expect(footNote(week({ prs_merged: 3, prs_source: 'github', scheduled_sessions: 480 })))
       .toBe('measured locally · PRs from GitHub · hand-run sessions · ≈ = estimate · API list prices, not a bill')
     expect(footNote(week({ prs_merged: 3, prs_source: 'agents' }))).toContain('PRs = merges the agents ran')
-    expect(footNote(week({ prs_merged: 3, prs_source: 'both' }))).toContain('PRs from GitHub + agent merges')
+    expect(footNote(week({ prs_merged: 3, prs_source: 'both' }))).toContain('PRs: GitHub + agents')
     expect(footNote(week())).toBe('measured locally · ≈ = estimate · API list prices, not a bill')
   })
 })

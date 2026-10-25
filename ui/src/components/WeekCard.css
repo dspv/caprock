@@ -61,6 +61,8 @@
 
 .wk-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; font: 500 15px/1 var(--font-mono); color: var(--wk-dim); }
 .wk-foot b { color: var(--wk-mute); font-weight: 500; }
+.wk-foot > span:first-child { white-space: nowrap; flex-shrink: 0; }
+.wk-land .wk-foot > span { white-space: nowrap; }
 .wk-foot .wk-url { color: var(--wk-amber); font-weight: 700; }
 .wk-foot .wk-ask { color: var(--wk-ink); font-family: var(--font-sans); font-weight: 600; }
 
