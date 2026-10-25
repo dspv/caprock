@@ -100,7 +100,7 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   const [editing, setEditing] = useState(false)
   // After X, Threads or LinkedIn opened: the one step left, said large until
   // the next action — a web post box cannot be handed a picture, only words.
-  const [paste, setPaste] = useState('')
+  const [paste, setPaste] = useState<{ site: string; how: 'copied' | 'saved' } | undefined>(undefined)
   // The paste key is the browser's, not the app's: keys() would say the
   // terminal's Ctrl+Shift+V off macOS, and the post box is a web page.
   const [tg, setTg] = useState<TelegramStatus | undefined>(undefined)
@@ -123,7 +123,7 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   /** Draw, run `then` with the card, and say what happened. */
   const act = async (then: (blob: Blob) => Promise<string>, fail: string) => {
     if (locked) return
-    setLocked(true); setDrawing(true); say(''); setPaste('')
+    setLocked(true); setDrawing(true); say(''); setPaste(undefined)
     try {
       const blob = await build()
       setDrawing(false)
@@ -165,9 +165,7 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   const post = (site: 'X' | 'Threads' | 'LinkedIn') => act(async (b) => {
     const how = await handOver(b)
     openExternal(site === 'X' ? xPostURL(text, link) : site === 'Threads' ? threadsPostURL(text, link) : linkedInPostURL(text, link))
-    setPaste(how === 'copied'
-      ? `This card is on your clipboard: in the ${site} post, press ${isMacPlatform() ? '⌘V' : 'Ctrl+V'} to add it.`
-      : `This card is in your downloads: drag it into the ${site} post.`)
+    setPaste({ site, how })
     return ''
   }, 'Could not read the figures — nothing was posted.')
   const toMe = () => act(async (b) => {
@@ -227,16 +225,35 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
         </button>
       </div>
 
-      {paste && (
-        <p role="status" data-share-paste className="mt-3 rounded-md border border-accent/50 bg-accent/10 px-3 py-2.5 text-[14px] font-medium text-fg">
-          {paste}
-        </p>
-      )}
+      {paste && <PasteSteps site={paste.site} how={paste.how} />}
 
       {editing && (
         <textarea value={text} onChange={(e) => onText(e.target.value)} rows={2} aria-label="The words to post with the card"
           className="mt-2 w-full resize-y rounded-md border border-border bg-panel-2 px-2.5 py-2 text-[13px] text-fg outline-none focus:border-accent/60" />
       )}
+    </div>
+  )
+}
+
+/**
+ * What is left after X, Threads or LinkedIn opened, as numbered steps (owner,
+ * 2026-10-25: he expected the card in the post and did not know to paste it).
+ * Two steps are done; the third is the person's, said largest.
+ */
+function PasteSteps({ site, how }: { site: string; how: 'copied' | 'saved' }) {
+  const done = 'flex gap-2 text-[13px] text-fg-muted'
+  return (
+    <div role="status" data-share-paste className="mt-3 rounded-md border border-accent/50 bg-accent/10 px-3 py-2.5">
+      <ol className="grid gap-1">
+        <li className={done}><span aria-hidden className="text-accent">✓</span>
+          {how === 'copied' ? 'This card is on your clipboard.' : 'This card is in your downloads.'}</li>
+        <li className={done}><span aria-hidden className="text-accent">✓</span>A {site} post is open with the words written.</li>
+        <li className="flex gap-2 text-[14px] font-medium text-fg"><span aria-hidden className="text-accent">3</span>
+          {how === 'copied'
+            ? `In the ${site} post, click the text and press ${isMacPlatform() ? '⌘V' : 'Ctrl+V'}: the card appears. Then post.`
+            : `Drag the card from your downloads into the ${site} post. Then post.`}</li>
+      </ol>
+      <p className="mt-1.5 text-[12px] text-fg-faint">{site} takes only words from a link, so the picture goes in by hand.</p>
     </div>
   )
 }

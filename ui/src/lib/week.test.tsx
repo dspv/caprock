@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import type { Week } from './api'
-import { addDays, biggestSentence, compact, crew, dayBars, footNote, headline, heroes, loopSentence, money, periodWords, planMultiple, rangeLabel, sideStats, tally, weekWord } from './week'
+import { addDays, biggestSentence, compact, crew, dayBars, footNote, headline, heroes, loopSentence, money, periodWords, planMultiple, postText, rangeLabel, sideStats, tally, weekWord } from './week'
 import { WeekCard } from '@/components/WeekCard'
 
 function week(over: Partial<Week> = {}): Week {
@@ -163,5 +163,23 @@ describe('week card wording', () => {
     expect(footNote(week({ prs_merged: 3, prs_source: 'agents' }))).toContain('PRs = merges the agents ran')
     expect(footNote(week({ prs_merged: 3, prs_source: 'both' }))).toContain('PRs: GitHub + agents')
     expect(footNote(week())).toBe('measured locally · ≈ = estimate · API list prices, not a bill')
+  })
+})
+
+describe('postText', () => {
+  it('writes the headline, the other counts and the agents, with no dollars or link', () => {
+    const t = postText(week({
+      prs_merged: 59, prs_opened: 64, commits: 312, files_edited: 1200, lines_added: 48210, active_days: 6, cost_usd: 900,
+      agents: [
+        { agent: 'claude', subagent: false, turns: 1, cost_usd: 1, sessions: 1 },
+        { agent: 'codex', subagent: false, turns: 1, cost_usd: 1, sessions: 1 },
+        { agent: 'claude', subagent: true, turns: 1, cost_usd: 1, sessions: 1 },
+      ],
+    }), 'this week')
+    expect(t).toBe('My agents shipped 59 PRs this week.\n64 opened, 312 commits, 1.2k files, ≈48.2k lines, over 6 days.\n\nClaude Code and Codex, tracked on my own machine with Caprock — free and open source.')
+  })
+
+  it('says nothing for a quiet week, so the plain line stands', () => {
+    expect(postText(week(), 'this week')).toBe('')
   })
 })

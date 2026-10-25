@@ -166,6 +166,6 @@ describe('the Pipeline share sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Post to LinkedIn' }))
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
     expect(new URL(open.mock.calls[0]![0] as string).searchParams.get('text')).toBe(words$())
-    expect(await screen.findByText(/This card is on your clipboard: in the LinkedIn post, press (⌘V|Ctrl\+V) to add it\./)).toBeTruthy()
+    expect(await screen.findByText(/In the LinkedIn post, click the text and press (⌘V|Ctrl\+V): the card appears\./)).toBeTruthy()
   })
 })
