@@ -37,8 +37,8 @@ type WeekResponse struct {
 	// pricing table.
 	Tax *contexttax.Lifetime `json:"tax,omitempty"`
 	// PRsSource says where prs_opened and prs_merged came from: "github"
-	// (github_prs, the pull request lists the Pipeline read, for every
-	// repository counted), "agents" (the agents' own `gh pr` commands, no
+	// (github_prs, the pull request lists the Pipeline read and the older
+	// ones a Week read, weekbackfill.go, for every repository counted), "agents" (the agents' own `gh pr` commands, no
 	// GitHub record held), or "both". Absent with no pull request counted
 	// and no GitHub record.
 	PRsSource string `json:"prs_source,omitempty"`
@@ -48,6 +48,9 @@ type WeekResponse struct {
 	// recorded counts as $0); with the agents' count only, all of the
 	// window's cost over its merges.
 	CostPerMergedPR *float64 `json:"cost_per_merged_pr,omitempty"`
+	// prSlugs are the GitHub repositories counted, for the read that makes
+	// github_prs cover the window (weekbackfill.go). Never sent.
+	prSlugs []string
 	// SubagentSaving is what the window's subagents on a pricier model than
 	// Haiku cost, against the same tokens on Haiku. An estimate at list
 	// prices; absent unless the difference is a dollar or more.
@@ -104,11 +107,18 @@ func (s *Server) weekAnswer(ctx context.Context, period string, from, to time.Ti
 		cache = s.weekLong
 	}
 	key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
-	return cache.get(ctx, key, func() (any, error) {
+	v, err := cache.get(ctx, key, func() (any, error) {
 		resp, err := s.buildWeek(context.WithoutCancel(ctx), from, to)
 		resp.Period = period
 		return resp, err
 	})
+	// On every ask, not only on a count: the cache keeps an answer while no
+	// event is written, and github_prs is not an event. What is already
+	// covered costs a meta read per repository and sends nothing.
+	if resp, ok := v.(WeekResponse); ok && err == nil {
+		s.fillWeekPRs(ctx, resp.prSlugs, resp.FromMs)
+	}
+	return v, err
 }
 
 // weekPeriod is the window a named period covers, in whole local days ending
@@ -182,7 +192,7 @@ func (s *Server) buildWeek(ctx context.Context, from, to time.Time) (WeekRespons
 	if err != nil {
 		return WeekResponse{}, err
 	}
-	resp.PRsOpened, resp.PRsMerged, resp.PRsSource = prs.opened, prs.merged, prs.source
+	resp.PRsOpened, resp.PRsMerged, resp.PRsSource, resp.prSlugs = prs.opened, prs.merged, prs.source, prs.slugs
 	for i := range resp.Days {
 		resp.Days[i].PRsOpened = prs.days[i]
 	}

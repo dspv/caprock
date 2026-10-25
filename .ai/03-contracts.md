@@ -932,9 +932,28 @@ counts its rows with `merged_at` in the window and `prs_opened` those with
 repository with no such row keeps the agents' own count below, as does a pull
 request the agents ran in a repository no hand-run session worked in.
 `prs_source` says which: `github`, `agents` or `both`; absent with no record
-and nothing counted. `github_prs` only holds what the Pipeline has listed (the
-newest 50 by update per read), so a week before the table filled reads short
-of GitHub, never over it. The agents' count:
+and nothing counted.
+
+**What `github_prs` lacks of the window is read from GitHub once** (owner,
+2026-10-25: the card said 48 merged in a week GitHub merged 59, and he shares
+the figure publicly). The Pipeline's lists are the newest 50 by update per
+read, from the day the table was made, so a window reaching before that, or
+one busier than 50 between two reads, held only part of it. On every ask for
+a Week, for each repository counted, `meta["prs_read:<owner/name>"]` =
+`"<from>,<at>"` (unix ms) records the span read whole. When it is absent or
+`from` is after the window's start, the daemon reads, in the background, every
+pull request updated since the start (`github.Service.PullsSince`:
+`GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=N`,
+page by page until one reaches past the start or a short page ends the list,
+at most 10 pages) and keeps them in `github_prs` (`store.UpsertGitHubPRs`,
+a fork's pull request without its head branch). A covered window whose `at`
+is 30 minutes old reads only what changed since `at` (less 5 minutes), one
+page as a rule. A complete read rewrites the record; a failed one waits 30
+minutes, one cut at 10 pages six hours; in-flight reads and waits are kept in
+memory. The answer never waits on GitHub: it is the count held so far, and
+the Week caches are dropped when a read kept anything, so the next ask counts
+GitHub's whole window. Nothing is sent while GitHub is not connected. The
+agents' count:
 
 - **Opened** is distinct `github.com/<owner>/<repo>/pull/<n>` URLs printed by
   a successful Bash call that ran `gh pr create`, minus lines saying the pull
@@ -7221,12 +7240,15 @@ CREATE TABLE IF NOT EXISTS github_prs (
 
 The headers of every pull request list the daemon read from GitHub
 (`store.UpsertGitHubPRs`, through `github.Service.OnPulls`; § the Pipeline's
-*Kept headers*): the repository's own pull requests, a fork's left out. A row
+*Kept headers*): in those lists the repository's own pull requests, a fork's
+left out. A row
 is rewritten only by a header whose `updated_at` is at least the one it
 holds, so a list read late never undoes a newer one. The migration only
-creates the table — nothing is filled at startup; it grows as lists are read.
-Read by `store.KnownPRs` (§ Most expensive) for the head branch, title, state
-and stamps of pull requests no agent recorded.
+creates the table — nothing is filled at startup; it grows as lists are read,
+and as a Week reads the part of its window the lists missed (§ Week, *What
+`github_prs` lacks*; those rows include a fork's pull requests, with `head`
+empty). Read by `store.KnownPRs` (§ Most expensive) for the head branch,
+title, state and stamps of pull requests no agent recorded.
 
 ### Session exits DDL (migration 0072)
 

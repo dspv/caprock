@@ -8,6 +8,10 @@ kind: Changed
   out of every figure, and the card says "hand-run sessions". The cost per
   merged PR is the Pipeline's own per-PR figure, averaged, so the two never
   disagree.
+- **share:** the card's pull request count is GitHub's whole period. When the
+  lists Caprock kept do not reach back to the period's start, the missing
+  older pull requests are read from GitHub once, in the background, and kept;
+  the next card counts them (it read 48 merged where GitHub said 59 before).
 - **share:** one card, two formats. Landscape and portrait lead with the same
   two big figures — your plan's multiple (or the dollars) and merged PRs —
   instead of a Figures card and a Story card that said different things.

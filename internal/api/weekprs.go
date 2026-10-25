@@ -15,8 +15,9 @@ import (
 // GitHub owner/name the way the Pipeline maps a session (repoCache, then
 // github.ParseRemote), the pull requests merged and opened in the window come
 // from github_prs; the transcripts' count stands only for a repository with
-// no such record. Nothing is asked of GitHub here: github_prs holds the lists
-// the Pipeline already read.
+// no such record. github_prs holds the lists the Pipeline read, and what of
+// the window they miss is read from GitHub once (fillWeekPRs, weekAnswer),
+// never while the answer waits.
 
 // PR sources a Week says its counts came from.
 const (
@@ -33,6 +34,8 @@ type weekPRs struct {
 	source         string
 	// perMerged is absent (nil) with nothing merged or nothing spent.
 	perMerged *float64
+	// slugs are the GitHub repositories the window's sessions worked in.
+	slugs []string
 }
 
 // slugOf is a repository root's GitHub owner/name, lower case, or "".
@@ -76,6 +79,7 @@ func (s *Server) countWeekPRs(ctx context.Context, wk store.Week, loc *time.Loca
 			slugs = append(slugs, slug)
 		}
 	}
+	out.slugs = slugs
 	ghWin := map[string]store.GitHubWindow{}
 	var spent float64
 	ghMerged := 0
