@@ -10,9 +10,11 @@
  *   low", and a ›.
  *
  * A click opens the popover: who holds the memory, the agents with their
- * state, the other apps using the most, and one button that ends the idle
- * agents Caprock started — the way closing an idle tab ends one, so the
- * conversation is kept. Agents started elsewhere are listed, never ended.
+ * state, the other apps using the most, and Free up memory
+ * (FreeUpMemory.tsx, the same component Caprock resources shows): leftovers
+ * and the idle agents Caprock started, reviewed before anything stops, each
+ * agent ended the way closing an idle tab ends one, so the conversation is
+ * kept. Agents started elsewhere are listed, never ended.
  *
  * The totals come with each `resources` frame; the popover asks
  * GET /v1/system/memory on open and again with each frame while open.
@@ -22,10 +24,11 @@ import { api, errText, type SessionSummary } from '@/lib/api'
 import { fmtMem, onResources, useMachineMemory } from '@/lib/resources'
 import { sessionTitle } from '@/lib/sidebar'
 import {
-  agentStateText, beyondUsedNote, endIdleLabel, fmtUsedOf, heavyLine, heavyText, levelReason, memoryHeadline, memoryParts, partsBeyondUsed, restartFresh, usedPct, VM_NOTE,
+  agentStateText, beyondUsedNote, fmtUsedOf, heavyLine, heavyText, levelReason, memoryHeadline, memoryParts, partsBeyondUsed, restartFresh, usedPct, VM_NOTE,
   type MachineMemory, type MemoryAgent, type MemoryReport,
 } from '@/lib/memory'
 import { CloseIcon } from './AppIcons'
+import { FreeUpMemory } from './FreeUpMemory'
 
 const TONE = {
   normal: { bar: 'bg-ok', text: 'text-fg-muted hover:text-fg' },
@@ -47,8 +50,10 @@ function MiniBar({ m }: { m: MachineMemory }) {
 }
 
 /** The strip's item. `owner` is false on a paired device, which reads the totals and ends nothing. */
-export function MemoryBar({ owner, sessions, onOpenSession }: {
+export function MemoryBar({ owner, front, sessions, onOpenSession }: {
   owner: boolean
+  /** The session whose tab is in front: Free up memory never offers it. */
+  front?: string
   sessions?: SessionSummary[]
   onOpenSession?: (id: string) => void
 }) {
@@ -91,23 +96,23 @@ export function MemoryBar({ owner, sessions, onOpenSession }: {
           </>
         )}
       </button>
-      {open && <MemoryPopover m={m} owner={owner} sessions={sessions} onOpenSession={onOpenSession} onClose={() => setOpen(false)} />}
+      {open && <MemoryPopover m={m} owner={owner} front={front} sessions={sessions} onOpenSession={onOpenSession} onClose={() => setOpen(false)} />}
     </span>
   )
 }
 
 /** The popover above the strip. */
-export function MemoryPopover({ m: frame, owner, sessions, onOpenSession, onClose }: {
+export function MemoryPopover({ m: frame, owner, front, sessions, onOpenSession, onClose }: {
   m: MachineMemory
   owner: boolean
+  front?: string
   sessions?: SessionSummary[]
   onOpenSession?: (id: string) => void
   onClose: () => void
 }) {
   const [rep, setRep] = useState<MemoryReport>()
-  const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string>()
-  const load = useCallback(() => api.systemMemory().then(setRep).catch(() => { /* an older daemon: the frame's totals stand */ }), [])
+  const load = useCallback(() => api.systemMemory(front).then(setRep).catch(() => { /* an older daemon: the frame's totals stand */ }), [front])
   useEffect(() => {
     void load()
     return onResources(() => { void load() })
@@ -134,24 +139,7 @@ export function MemoryPopover({ m: frame, owner, sessions, onOpenSession, onClos
   const agents = rep?.agents ?? []
   const shown = agents.slice(0, AGENTS_SHOWN)
   const more = agents.length - shown.length
-  const offer = rep?.idle_end
   const elsewhere = agents.some((a) => !a.owned)
-  const end = async () => {
-    if (!offer || offer.count === 0) return
-    setBusy(true)
-    setNote(undefined)
-    try {
-      const r = await api.endIdleAgents(offer.session_ids)
-      const n = r.ended.length
-      const left = r.skipped?.length ?? 0
-      setNote(`${n === 0 ? 'Nothing was ended' : `Ended ${n} ${n === 1 ? 'agent' : 'agents'}`}${left ? `; ${left} had started working again and ${left === 1 ? 'was' : 'were'} left alone` : ''}.`)
-      await load()
-    } catch (e) {
-      setNote(errText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
   const parts = memoryParts(m)
   return (
     <div role="dialog" aria-label="Memory" data-memory-popover={m.level}
@@ -247,16 +235,10 @@ export function MemoryPopover({ m: frame, owner, sessions, onOpenSession, onClos
         </section>
       )}
 
-      {owner && offer && offer.count > 0 && (
-        <div className="grid gap-1.5">
-          <button type="button" data-end-idle disabled={busy} onClick={() => void end()}
-            className="min-h-[30px] rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-bg hover:brightness-110 disabled:opacity-50">
-            {busy ? 'Ending…' : endIdleLabel(offer.count, offer.mem_bytes)}
-          </button>
-          <p className="text-fg-faint">Ending keeps their conversations; Continue picks them up later.</p>
-        </div>
-      )}
-      {elsewhere && <p className="text-fg-faint">Agents started outside Caprock are listed but never ended from here.</p>}
+      {/* Free up memory: the same component Caprock resources shows, given this card's list. */}
+      {owner && rep && <FreeUpMemory memory={rep} front={front} sessions={sessions} onDone={() => void load()} />}
+      {/* The owner reads it in Free up memory's list. */}
+      {elsewhere && !owner && <p className="text-fg-faint">Agents started outside Caprock are listed but never ended from here.</p>}
       {note && <p role="status" data-memory-note className="text-fg-muted">{note}</p>}
     </div>
   )

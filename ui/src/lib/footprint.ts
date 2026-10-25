@@ -53,6 +53,11 @@ export interface Orphan {
   why: string
   /** A holder the daemon stops on its own. */
   auto?: boolean
+  /**
+   * Why Free up memory leaves it alone although it is listed: a test copy whose agent is still
+   * running. Never ticked; Stop on its row may still stop it.
+   */
+  hold?: string
 }
 
 export interface OrphanReport {
@@ -401,9 +406,12 @@ export function startedFrom(...paths: (string | undefined)[]): string | undefine
  * (stopping it closes that terminal) — an old install's above all, whose
  * session this Caprock still lists — a Caprock daemon for a data folder
  * that is not a temporary one (it may be a second install someone uses),
- * and a Caprock command inside an app bundle.
+ * and a Caprock command inside an app bundle — and anything the daemon
+ * holds (`hold`): a test copy whose agent is still running (2026-10-25:
+ * Clean up offered two preview daemons agents were still using).
  */
 export function safeToStop(o: Orphan): boolean {
+  if (o.hold) return false
   switch (o.kind) {
     case 'caprock_daemon': return isTestCopy(o)
     case 'caprock_holder': return Boolean(o.auto)
@@ -556,7 +564,7 @@ export function doctorRows(f: Footprint): DoctorRow[] {
   return [...rows.filter((r) => r.warn), ...rows.filter((r) => !r.warn)]
 }
 
-/** Everything Clean up offers: each row's stoppable processes, in row order. */
+/** Everything the doctor's rows may stop: each row's stoppable processes, in row order. */
 export function cleanupList(rows: DoctorRow[]): Orphan[] {
   const seen = new Set<number>()
   return rows.flatMap((r) => r.stoppable).filter((o) => !seen.has(o.pid) && seen.add(o.pid))

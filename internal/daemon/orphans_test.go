@@ -390,7 +390,7 @@ func TestStopOnlyWhatIsListedWithItsStart(t *testing.T) {
 		{PID: 600, StartedAt: 1},    // never listed
 		{PID: 500, StartedAt: 1000}, // named twice
 		{PID: 501, StartedAt: 7},    // listed, but not with this start
-	}, 300*time.Millisecond, false)
+	}, 300*time.Millisecond, false, false)
 
 	if len(res.Stopped) != 1 || res.Stopped[0].PID != 500 {
 		t.Errorf("stopped: %+v", res.Stopped)
@@ -423,12 +423,26 @@ func TestStopOnlyWhatIsListedWithItsStart(t *testing.T) {
 
 	// The second click: force, for 501 alone.
 	f.sent = nil
-	res = stopListed(context.Background(), f, list, []OrphanTarget{{PID: 501, StartedAt: 1001}}, 300*time.Millisecond, true)
+	res = stopListed(context.Background(), f, list, []OrphanTarget{{PID: 501, StartedAt: 1001}}, 300*time.Millisecond, true, false)
 	if len(res.Stopped) != 1 || res.Stopped[0].PID != 501 || len(res.Running) != 0 || len(res.Failed) != 0 {
 		t.Errorf("force: %+v", res)
 	}
 	if got := strings.Join(f.sent, ","); got != "KILL 501" {
 		t.Errorf("force sent %q, want SIGKILL to 501 alone", got)
+	}
+
+	// Free up memory's stop (skip_held): a held one is refused with its
+	// hold and never signalled; Stop on its row (no skip_held) may stop it.
+	f.sent = nil
+	f.start[520] = 1020
+	held := []Orphan{{PID: 520, StartedAt: 1020, Kind: OrphanDaemon, Label: "caprock up", Hold: holdAgentRunning}}
+	res = stopListed(context.Background(), f, held, []OrphanTarget{{PID: 520, StartedAt: 1020}}, 300*time.Millisecond, false, true)
+	if len(res.Stopped) != 0 || len(res.Failed) != 1 || res.Failed[0].Error != holdAgentRunning || len(f.sent) != 0 {
+		t.Errorf("skip_held stopped a held test copy: %+v, sent %v", res, f.sent)
+	}
+	res = stopListed(context.Background(), f, held, []OrphanTarget{{PID: 520, StartedAt: 1020}}, 300*time.Millisecond, false, false)
+	if len(res.Stopped) != 1 {
+		t.Errorf("row Stop refused a held test copy: %+v", res)
 	}
 }
 

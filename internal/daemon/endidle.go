@@ -68,6 +68,9 @@ type endIdle struct {
 	window func() time.Duration
 	// worker reports the orchestrator or one of its workers.
 	worker func(id string) bool
+	// bg, when set, replaces the process table read for what runs in the
+	// background under an agent (agentwork.go): tests.
+	bg func(a *agents.Agent) string
 	// since is when this daemon began; nothing ends before since plus
 	// endIdleStartGrace.
 	since time.Time

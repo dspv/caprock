@@ -27,11 +27,13 @@ import { PremiumChip } from './PremiumChip'
 import { PremiumModal } from './PremiumModal'
 import { useLicensed } from '@/lib/nudges'
 
-export function StatusStrip({ summary, pane, session, version, figures = true, sessions, onOpenSession }: {
+export function StatusStrip({ summary, pane, session, front, version, figures = true, sessions, onOpenSession }: {
   summary?: Summary
   pane?: PaneStatus
   /** The agent session in the focused pane, for its processes' load; absent for a shell or a file. */
   session?: SessionSummary
+  /** The session whose tab is in front, shown or not: Free up memory never offers it. */
+  front?: string
   version?: string
   /** The plan limits; false while the sidebar shows them. */
   figures?: boolean
@@ -75,8 +77,8 @@ export function StatusStrip({ summary, pane, session, version, figures = true, s
           * is Caprock is a question with or without a session in front. */}
         {/* The machine's memory, always: a Mac froze with agents holding
           * all of it while the strip said only the front agent's share. */}
-        <MemoryBar owner={!isPairedDevice()} sessions={sessions} onOpenSession={onOpenSession} />
-        <CaprockFootprint owner={!isPairedDevice()} />
+        <MemoryBar owner={!isPairedDevice()} front={front} sessions={sessions} onOpenSession={onOpenSession} />
+        <CaprockFootprint owner={!isPairedDevice()} front={front} sessions={sessions} />
         {pane && pane.status !== 'live' && (
           <span title="The terminal in front">{pane.status}</span>
         )}

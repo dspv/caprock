@@ -1,6 +1,6 @@
 /**
  * Caprock's own cost on the status strip — *caprock 1.0 GB · 2.2 GB*, memory
- * then disk — and the doctor a click opens: one verdict line, Clean up, a row
+ * then disk — and the doctor a click opens: one verdict line, Free up memory, a row
  * per kind of problem in plain words, and what the memory and disk are spent
  * on behind the breakdown. The
  * owner asked (2026-10-13, translated): show the memory Caprock takes and
@@ -13,12 +13,13 @@
  * daemon without it, the strip falls back to the resource meter's memory.
  */
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, errText } from '@/lib/api'
+import { api, errText, type SessionSummary } from '@/lib/api'
 import { fmtAgo } from '@/lib/format'
 import { fmtCPU, fmtMem, useResources } from '@/lib/resources'
-import { age, cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, orphanFigure, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
+import { age, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, orphanFigure, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
 import { useNow } from '@/lib/useNow'
 import { useMenuDismiss } from './Cockpit'
+import { FreeUpMemory } from './FreeUpMemory'
 
 /**
  * Below this window width the strip says memory alone, "caprock 1.1 GB", and
@@ -66,7 +67,7 @@ export function openStorageSettings() {
  * The strip's figure. `owner` is false on a paired device, which may read the
  * footprint but not stop orphans.
  */
-export function CaprockFootprint({ owner }: { owner: boolean }) {
+export function CaprockFootprint({ owner, front, sessions }: { owner: boolean; front?: string; sessions?: SessionSummary[] }) {
   const fp = useFootprint()
   const rep = useResources()
   const narrow = useNarrow()
@@ -114,7 +115,7 @@ export function CaprockFootprint({ owner }: { owner: boolean }) {
           </>
         )}
       </button>
-      {open && <FootprintPanel f={f} owner={owner} onCheck={fp.refresh} onClose={() => setOpen(false)} />}
+      {open && <FootprintPanel f={f} owner={owner} front={front} sessions={sessions} onCheck={fp.refresh} onClose={() => setOpen(false)} />}
     </span>
   )
 }
@@ -126,21 +127,26 @@ const BUTTON = 'h-[32px] shrink-0 rounded-[7px] border border-[var(--app-hairlin
 const PRIMARY = 'min-h-[34px] shrink-0 rounded-[7px] bg-accent px-3 text-[14px] font-medium text-bg hover:brightness-110 disabled:opacity-50'
 const SMALL = 'h-[32px] shrink-0 rounded-[6px] border border-[var(--app-hairline-strong)] px-3 text-[14px] text-fg hover:border-accent hover:text-fg disabled:opacity-50'
 
-/** Where a confirmation is open: under the verdict for Clean up, under a row for its Stop. */
-type Confirming = { at: 'all' | DoctorRowKey; items: Orphan[] }
+/** Where a row's Stop confirmation is open: under that row. */
+type Confirming = { at: DoctorRowKey; items: Orphan[] }
 
 /**
  * The panel above the strip: `caprock doctor` in the window, in plain words
  * (owner, 2026-10-15: "nothing is understandable"). One verdict line; when
- * something can be stopped, one Clean up; a row per kind of problem with a
+ * anything can be freed safely, Free up memory (FreeUpMemory.tsx, the memory
+ * popover's too); a row per kind of problem with a
  * short line of why, then its size and Stop on a separate line; pids, paths and the daemon's own
  * sentences under each row's Details; the memory and disk breakdown behind
  * *Show breakdown*. Nothing is stopped without the confirmation, which lists
  * every process with its own checkbox (ADR-059).
  */
-export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose, className = 'fixed bottom-[30px] right-3 z-40' }: {
+export function FootprintPanel({ f: strip, owner, front, sessions, onCheck: onStripCheck, onClose, className = 'fixed bottom-[30px] right-3 z-40' }: {
   f: Footprint
   owner: boolean
+  /** The session whose tab is in front: Free up memory never offers it. */
+  front?: string
+  /** Every session, for Free up memory's agent names. */
+  sessions?: SessionSummary[]
   /** Ask the daemon again now: *Check now*, and after a stop. */
   onCheck?: () => void
   onClose?: () => void
@@ -177,8 +183,6 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
   const sinceCheck = now - f.at
   const checked = checking !== undefined ? 'Checking…' : sinceCheck < 10_000 ? 'Checked just now' : `Checked ${fmtAgo(f.at, now)}`
   const rows = doctorRows(f)
-  const all = owner ? cleanupList(rows) : []
-  const safe = all.filter(safeToStop)
   const head = doctorHeadline(f)
   const stop = async (items: Orphan[], force = false) => {
     if (!items.length) { setConfirm(undefined); return }
@@ -237,21 +241,14 @@ export function FootprintPanel({ f: strip, owner, onCheck: onStripCheck, onClose
             <span>Memory <span className="num font-medium text-fg">{fmtMem(f.memory.total_mem_bytes)}</span></span>
             <span>On disk <span className="num font-medium text-fg">{fmtBytes(f.disk.total_bytes)}</span></span>
           </p>
-          {safe.length > 0 && !confirm && (
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" data-cleanup className={PRIMARY} disabled={busy} onClick={() => { setNote(undefined); setConfirm({ at: 'all', items: all }) }}>
-                {busy ? 'Stopping…' : `Clean up (frees ~${fmtBytes(safe.reduce((s, x) => s + x.mem_bytes, 0))})`}
-              </button>
-              <span className="text-[13px] text-fg-muted">Review before stopping.</span>
-            </div>
-          )}
+          {/* Free up memory: leftovers and idle agents, the same component the memory popover shows. */}
+          {owner && <FreeUpMemory footprint={f} front={front} sessions={sessions} onDone={() => onCheck()} />}
           {looking && <p className="text-[14px] text-fg-muted">Looking for what can be stopped…</p>}
           {orphanFigure(f.orphans) && (
             <p data-orphan-summary className="text-[14px] text-fg-muted" title="Processes that look abandoned: Caprock's own, claude and codex sessions that ended, MCP servers whose agent is gone">
               {f.orphans!.count} {f.orphans!.count === 1 ? 'process' : 'processes'} to review{f.orphans!.mem_bytes ? ` · ${fmtBytes(f.orphans!.mem_bytes)}` : ''}
             </p>
           )}
-          {confirmBox('all')}
         </div>
 
         {owner && stubborn.length > 0 && (
@@ -420,6 +417,7 @@ function ForceStop({ items, busy, onForce, onDismiss }: { items: Orphan[]; busy:
 
 /** Why a listed process is not ticked for you. */
 function carefulWhy(o: Orphan): string {
+  if (o.hold) return `Kept: ${o.hold}.`
   switch (o.kind) {
     case 'caprock_daemon': return 'Not a test folder: it may be a Caprock you use.'
     case 'caprock_holder': return 'Something still runs in it; stopping closes that terminal.'

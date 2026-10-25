@@ -15,18 +15,21 @@ import (
 func TestSystemMemoryAuth(t *testing.T) {
 	var pairedAsks []bool
 	var ended [][]string
+	var fronts []string
 	var restarted []string
 	s, _, viewer, controller := pairedPhones(t, Deps{
 		RestartEnd: func(_ context.Context, id string) any {
 			restarted = append(restarted, id)
 			return map[string]any{"ended": true}
 		},
-		SystemMemory: func(_ context.Context, paired bool) any {
+		SystemMemory: func(_ context.Context, paired bool, front string) any {
 			pairedAsks = append(pairedAsks, paired)
+			fronts = append(fronts, front)
 			return map[string]any{"ok": true}
 		},
-		EndIdleAgents: func(_ context.Context, ids []string) any {
+		EndIdleAgents: func(_ context.Context, ids []string, front string) any {
 			ended = append(ended, ids)
+			fronts = append(fronts, front)
 			return map[string]any{"ended": ids}
 		},
 	})
@@ -39,7 +42,7 @@ func TestSystemMemoryAuth(t *testing.T) {
 		s.ServeHTTP(w, r)
 		return w
 	}
-	if w := local(http.MethodGet, "/v1/system/memory", ""); w.Code != http.StatusOK {
+	if w := local(http.MethodGet, "/v1/system/memory?front=tab-1", ""); w.Code != http.StatusOK {
 		t.Fatalf("machine GET: %d %s", w.Code, w.Body)
 	}
 	for _, dev := range []string{viewer.Token, controller.Token} {
@@ -70,11 +73,15 @@ func TestSystemMemoryAuth(t *testing.T) {
 	if ended != nil {
 		t.Fatalf("a refused body reached the daemon: %v", ended)
 	}
-	if w := local(http.MethodPost, "/v1/system/memory/end-idle", `{"session_ids":["a","b"]}`); w.Code != http.StatusOK {
+	if w := local(http.MethodPost, "/v1/system/memory/end-idle", `{"session_ids":["a","b"],"front":"tab-2"}`); w.Code != http.StatusOK {
 		t.Fatalf("end-idle: %d %s", w.Code, w.Body)
 	}
 	if len(ended) != 1 || len(ended[0]) != 2 || ended[0][0] != "a" {
 		t.Fatalf("ids the daemon got: %v", ended)
+	}
+	// The tab in front reaches the daemon from the query and from the body.
+	if len(fronts) < 2 || fronts[0] != "tab-1" || fronts[len(fronts)-1] != "tab-2" {
+		t.Fatalf("front the daemon got: %v", fronts)
 	}
 
 	for _, bad := range []string{`nope`, `{}`, `{"session_id":""}`} {

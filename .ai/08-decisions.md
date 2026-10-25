@@ -3954,6 +3954,33 @@ narrows how a stop signals:
   checkbox, nothing bulk without that list); pid and start time re-checked by
   a fresh scan before each signal; only the named pid, never its children.
 
+**Amended 2026-10-25 (owner, translated: "a button: clean everything that can
+be cleaned and is safe"; "I don't understand how safe ending idle agents is —
+I want it fully safe and to understand it").** That day Clean up offered two
+*Test copies of Caprock* (626 MB) that were preview daemons of agents still
+running and using them. Clean up and the memory popover's *End N idle agents*
+become one **Free up memory**, the same component in both places, opening the
+same per-item confirmation in two groups — Leftovers and Idle agents — each
+line with its own checkbox and size. Safety is tightened, not loosened:
+
+- **A test copy is offered only once what started it is gone.** The daemon
+  marks a listed Caprock daemon `hold` while its parent chain runs, while
+  `CLAUDE_PID` or `CLAUDE_CODE_SESSION_ID` in its environment names a running
+  claude or a live session, while the session its scratchpad path names runs,
+  or while a live session works in the repository of the worktree it runs
+  from. A held one is never ticked nor counted; its row's Stop still lists it
+  with the reason, and Free up memory's stop names `skip_held`, so one held
+  between the list and the click is refused.
+- **An idle agent is offered only** when Caprock started it, it has been idle
+  15 minutes (the popover still calls it idle after 2), nothing but its own
+  helpers (MCP servers, `caffeinate`, the agent itself below its launcher)
+  runs under it, it is not the tab in front, and it is not the orchestrator
+  or a worker; the daemon judges each again at the click and says `why` for
+  each it leaves running.
+- **Unchanged:** nothing automatic; the confirmation lists every item; a
+  session started in the user's own terminal is never offered; row Stop and
+  Force stop stay the expert's path.
+
 ## ADR-060 — Phone access may stay on across restarts, when the owner ticks it
 
 **Date:** 2026-10-14 · **Status:** accepted

@@ -58,21 +58,24 @@ func (s *Server) handleFootprint(w http.ResponseWriter, r *http.Request) {
 // memory is, the agents holding it with what each is doing, and the other
 // apps using the most (03-contracts.md § System memory). A paired device
 // gets it without the other apps: totals, not what else runs here.
+// ?front=<session_id> names the tab in front of the asking dashboard, which
+// Free up memory never offers.
 func (s *Server) handleSystemMemory(w http.ResponseWriter, r *http.Request) {
 	if s.d.SystemMemory == nil {
 		s.failCode(w, http.StatusNotImplemented, errors.New("system memory not available"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.d.SystemMemory(r.Context(), s.fromPairedDevice(r)))
+	writeJSON(w, http.StatusOK, s.d.SystemMemory(r.Context(), s.fromPairedDevice(r), r.URL.Query().Get("front")))
 }
 
 // maxEndIdle bounds one end-idle request.
 const maxEndIdle = 256
 
-// handleEndIdleAgents ends the idle agents the user chose in the memory
-// popover: {"session_ids": [...]}. The daemon ends each only if it is still
-// idle and was started by Caprock (rule 7), the way closing an idle tab
-// ends one. Machine only: on no paired device's list.
+// handleEndIdleAgents ends the idle agents the user chose in Free up
+// memory: {"session_ids": [...], "front"?: "…"}. The daemon ends each only
+// if it is still endable — idle long enough, started by Caprock (rule 7),
+// not the tab in front, nothing running under it — the way closing an idle
+// tab ends one. Machine only: on no paired device's list.
 func (s *Server) handleEndIdleAgents(w http.ResponseWriter, r *http.Request) {
 	if s.d.EndIdleAgents == nil {
 		s.failCode(w, http.StatusNotImplemented, errors.New("ending idle agents is not available"))
@@ -80,6 +83,7 @@ func (s *Server) handleEndIdleAgents(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		SessionIDs []string `json:"session_ids"`
+		Front      string   `json:"front"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -89,7 +93,7 @@ func (s *Server) handleEndIdleAgents(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("session_ids: name 1 to %d sessions", maxEndIdle))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.d.EndIdleAgents(r.Context(), body.SessionIDs))
+	writeJSON(w, http.StatusOK, s.d.EndIdleAgents(r.Context(), body.SessionIDs, body.Front))
 }
 
 // handleRestartEnd is Restart it fresh's first half, {"session_id": "…"}:
@@ -129,6 +133,8 @@ const maxStopTargets = 256
 // orphan list, each named by pid and start time (ADR-059). The daemon
 // scans again and signals only what that scan lists: SIGTERM, or SIGKILL
 // with `force`, the user's second click on one that outlived SIGTERM.
+// `skip_held` (Free up memory) refuses one the scan now holds, such as a
+// test copy whose agent is still running.
 // Machine only: it is on no paired device's list, so a phone can read the
 // orphans but never stop one.
 func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
@@ -137,8 +143,9 @@ func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Targets []OrphanTarget `json:"targets"`
-		Force   bool           `json:"force"`
+		Targets  []OrphanTarget `json:"targets"`
+		Force    bool           `json:"force"`
+		SkipHeld bool           `json:"skip_held"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 32<<10)).Decode(&body); err != nil {
 		s.failCode(w, http.StatusBadRequest, fmt.Errorf("parse body: %w", err))
@@ -154,7 +161,7 @@ func (s *Server) handleStopOrphans(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, s.d.StopOrphans(r.Context(), body.Targets, body.Force))
+	writeJSON(w, http.StatusOK, s.d.StopOrphans(r.Context(), body.Targets, body.Force, body.SkipHeld))
 }
 
 // handleReapOrphans stops the orphaned pty-hosts nothing runs in. Not on a

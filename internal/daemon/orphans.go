@@ -104,6 +104,10 @@ type Orphan struct {
 	Why string `json:"why"`
 	// Auto is set on a holder the daemon stops on its own (the sweep).
 	Auto bool `json:"auto,omitempty"`
+	// Hold says why Free up memory leaves it alone although it is listed:
+	// a Caprock daemon whose starter still runs (daemonHold). Row Stop may
+	// still stop it, after the confirmation that shows why.
+	Hold string `json:"hold,omitempty"`
 }
 
 // OrphanTarget names one listed process to stop: its pid and the start
@@ -130,6 +134,10 @@ type orphanInput struct {
 	skip map[int32]bool
 	// live is every process of a live session's tree.
 	live map[int32]bool
+	// liveSessions is every live session's id, and liveCwds their folders:
+	// whether the agent that started a Caprock daemon still runs.
+	liveSessions map[string]bool
+	liveCwds     []string
 	// ended is, by pid, the latest ended session that ran in it.
 	ended map[int32]store.EndedPID
 	now   time.Time
@@ -223,8 +231,10 @@ func codexLike(name string, argv []string, exe string) bool {
 			}
 		}
 	}
-	if !is {
-		return false
+	if !is || len(argv) == 0 {
+		// Named codex with no argv to read (it exited, or another user's):
+		// nothing says it is not the CLI.
+		return is
 	}
 	for _, a := range argv[1:] {
 		if a == "app-server" {
@@ -298,6 +308,7 @@ func (m *resourceMeter) orphans(ctx context.Context, in orphanInput) []Orphan {
 			dir = defaultDataDirFor(m.envOf(ctx, pidKey{p.PID, pr.StartMs}))
 		}
 		o := Orphan{PID: p.PID, StartedAt: pr.StartMs, Kind: OrphanDaemon, Label: "caprock up", Exe: p.Exe, DataDir: dir, DataDirGone: gone(dir)}
+		o.Hold = m.daemonHold(ctx, in, pr, dir, p.Exe)
 		switch {
 		case dir == "":
 			o.Why = "Another Caprock daemon; its data directory cannot be told."
@@ -637,9 +648,11 @@ func (d *Daemon) scanOrphans(ctx context.Context) OrphanReport {
 	in := orphanInput{
 		tab: tab, scan: scan, skip: skip, now: now, exists: dirExists,
 		holders:     ptyhost.Classify(scan.hosts, ptyhost.Dir(d.opt.DataDir), now),
-		live:        liveTrees(tab, d.sessionPIDs(ctx)),
 		installDirs: installDirs(exe, d.opt.HolderExe, d.opt.DataDir),
 	}
+	livePIDs := d.sessionPIDs(ctx)
+	in.live = liveTrees(tab, livePIDs)
+	in.liveSessions, in.liveCwds = d.liveSessionsOf(ctx, livePIDs)
 	note := orphanScanNote()
 	if cands := d.res.agentCandidates(ctx, tab, skip); len(cands) > 0 && d.store != nil {
 		pids := make([]int, len(cands))
@@ -821,7 +834,11 @@ var errNotListed = errors.New("not on the doctor's list now: it exited, stopped 
 // stopListed stops each target that list holds with the same start time,
 // all at once, and refuses the rest. list must be a scan taken for this
 // stop, not one the caller kept. force sends SIGKILL instead of SIGTERM.
-func stopListed(ctx context.Context, s signaller, list []Orphan, targets []OrphanTarget, grace time.Duration, force bool) OrphanStopResult {
+//
+// skipHeld refuses a target the list holds (Orphan.Hold), failed with the
+// hold as its error: Free up memory's stop, so a test copy whose agent
+// started running again since the list was drawn is left alone.
+func stopListed(ctx context.Context, s signaller, list []Orphan, targets []OrphanTarget, grace time.Duration, force, skipHeld bool) OrphanStopResult {
 	res := OrphanStopResult{Stopped: []Orphan{}, Running: []Orphan{}, Failed: []ReapFailure{}}
 	byPID := map[int32]Orphan{}
 	for _, o := range list {
@@ -846,6 +863,12 @@ func stopListed(ctx context.Context, s signaller, list []Orphan, targets []Orpha
 			// as failed either).
 			mu.Lock()
 			res.Failed = append(res.Failed, ReapFailure{PID: t.PID, Error: errNotListed.Error()})
+			mu.Unlock()
+			continue
+		}
+		if skipHeld && o.Hold != "" {
+			mu.Lock()
+			res.Failed = append(res.Failed, ReapFailure{PID: t.PID, Error: o.Hold})
 			mu.Unlock()
 			continue
 		}
@@ -876,12 +899,13 @@ func stopListed(ctx context.Context, s signaller, list []Orphan, targets []Orpha
 }
 
 // stopOrphans is POST /v1/footprint/orphans/stop: the user's click on Stop,
-// Clean up or — for one still running after SIGTERM — Force stop. It scans
-// again and stops only what that scan lists with the start time the click
-// named (ADR-059).
-func (d *Daemon) stopOrphans(ctx context.Context, targets []OrphanTarget, force bool) OrphanStopResult {
+// Free up memory or — for one still running after SIGTERM — Force stop. It
+// scans again and stops only what that scan lists with the start time the
+// click named (ADR-059); skipHeld (Free up memory) also refuses what that
+// scan holds.
+func (d *Daemon) stopOrphans(ctx context.Context, targets []OrphanTarget, force, skipHeld bool) OrphanStopResult {
 	list := d.scanOrphans(ctx).List
-	res := stopListed(ctx, d.signals(), list, targets, orphanStopGrace, force)
+	res := stopListed(ctx, d.signals(), list, targets, orphanStopGrace, force, skipHeld)
 	sig := map[bool]string{false: "SIGTERM", true: "SIGKILL"}[force]
 	for _, o := range res.Stopped {
 		d.log.Info("stopped a process the user picked from the doctor's orphan list", "component", "resources", "pid", o.PID, "kind", o.Kind, "label", o.Label, "signal", sig)
@@ -906,5 +930,5 @@ func (d *Daemon) signals() signaller {
 // same rule, against the doctor's own scan.
 func StopOrphansOffline(ctx context.Context, dataDir string, targets []OrphanTarget, running int32, force bool) OrphanStopResult {
 	list := OfflineOrphans(ctx, dataDir, running).List
-	return stopListed(ctx, osSignaller{}, list, targets, orphanStopGrace, force)
+	return stopListed(ctx, osSignaller{}, list, targets, orphanStopGrace, force, false)
 }

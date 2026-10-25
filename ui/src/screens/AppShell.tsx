@@ -2375,7 +2375,7 @@ export function AppShell() {
       <StarStrip app />
       <BrainCaptureHost />
       <ShareMoment />
-      <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} version={version} figures={!prefs.sidebar} sessions={data.sessions} onOpenSession={openSessionById} />
+      <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} front={focused?.kind === 'session' ? focused.sessionId : undefined} version={version} figures={!prefs.sidebar} sessions={data.sessions} onOpenSession={openSessionById} />
       <AppUpdateToast />
       {/* Another computer asking to control this one (ADR-067). */}
       <ComputerAsks />

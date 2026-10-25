@@ -1285,7 +1285,12 @@ func (a *Agent) TouchIO(t time.Time) { a.ioAt.Store(t.UnixNano()) }
 
 // PID is the agent's (or shell's) own process id — the child of its pty-host,
 // not the host. The resource meter starts its process tree here.
-func (a *Agent) PID() int { return a.sess.PID() }
+func (a *Agent) PID() int {
+	if a.sess == nil {
+		return 0
+	}
+	return a.sess.PID()
+}
 
 // childEnv is the environment for a spawned session: the user's login-shell
 // environment (see internal/userenv — the daemon's own is launchd's bare one,

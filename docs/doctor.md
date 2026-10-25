@@ -25,11 +25,17 @@ are any, one row per kind of problem with its size, and, behind each row's
 **Details**, every process with its pid, memory, CPU, age, command line and
 why it is listed. Then:
 
-- **Clean up** and each row's **Stop** open one confirmation listing every
-  process on its own line with its own checkbox; the ones safe to stop are
-  ticked, the rest are shown unticked with why. Nothing is sent before you
-  confirm, and only on the computer itself — a paired phone can read the
-  list but never stop anything.
+- **Free up memory** (the same button sits in the memory popover) opens one
+  list in two groups, each line with its own checkbox and size: the
+  leftovers that are safe to stop, and the idle agents Caprock started that
+  are safe to end — idle for 15 minutes, nothing running in the background
+  under them, not the tab in front. Ending an agent keeps its conversation;
+  Continue picks it up where it stopped. A test copy of Caprock whose agent
+  is still running is never offered: its row says *its agent is still
+  running*. Each row's **Stop** opens the same kind of list for that row
+  alone; there the ones safe to stop are ticked and the rest shown unticked
+  with why. Nothing is sent before you confirm, and only on the computer
+  itself — a paired phone can read the list but never stop anything.
 - **Force stop** appears only for a process that was asked to stop and is
   still running five seconds later. It lists each one again; nothing is
   killed without that second click.
@@ -80,7 +86,7 @@ why each is listed:
 - **A terminal from an older Caprock install** — say a Homebrew
   `caprock pty-host` still holding a session days after you moved to the
   app. Caprock still lists that session, so this is shown, never warned
-  about, never stopped on its own and never ticked in Clean up; stopping it
+  about, never stopped on its own and never offered by Free up memory; stopping it
   ends that session.
 - **Any other `caprock` command whose parent has exited.**
 - **A `claude` or `codex` whose session ended** in Caprock's history (and
@@ -111,7 +117,7 @@ pid is not running or now names a younger process.
 
 Caprock never stops a process it did not start on its own. You can:
 
-- **In the panel:** **Clean up**, or **Stop** on one row, then confirm the
+- **In the panel:** **Free up memory**, or **Stop** on one row, then confirm the
   list (untick anything you want to keep).
 - **In a terminal:** `caprock doctor --stop <pid>` (repeatable). It shows the
   process and why it is listed, and asks; `--yes` skips the question.

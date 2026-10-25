@@ -117,15 +117,18 @@ type Deps struct {
 	// list (at most 30 s old), and fresh is &fresh=1, which takes it now.
 	// StopOrphans stops processes from that list for POST
 	// /v1/footprint/orphans/stop; force (the second click on one that
-	// outlived SIGTERM) sends SIGKILL. nil ⇒ 501.
+	// outlived SIGTERM) sends SIGKILL; skipHeld (Free up memory) refuses a
+	// listed process the scan holds (its `hold`). nil ⇒ 501.
 	Footprint   func(ctx context.Context, orphans, fresh bool) any
-	StopOrphans func(ctx context.Context, targets []OrphanTarget, force bool) any
+	StopOrphans func(ctx context.Context, targets []OrphanTarget, force, skipHeld bool) any
 	// SystemMemory returns the machine's memory with the agents' states and
 	// the other apps for GET /v1/system/memory; paired leaves the apps'
-	// names out. EndIdleAgents ends the named idle agents Caprock started
-	// for POST /v1/system/memory/end-idle. nil => 501.
-	SystemMemory  func(ctx context.Context, paired bool) any
-	EndIdleAgents func(ctx context.Context, sessionIDs []string) any
+	// names out; front is ?front=, the session whose tab is in front of the
+	// asking dashboard, never offered. EndIdleAgents ends the named idle
+	// agents Caprock started for POST /v1/system/memory/end-idle, front
+	// likewise. nil => 501.
+	SystemMemory  func(ctx context.Context, paired bool, front string) any
+	EndIdleAgents func(ctx context.Context, sessionIDs []string, front string) any
 	// RestartEnd ends a heavy agent Caprock started and waits for it to exit,
 	// so the dashboard can continue it fresh: POST /v1/system/memory/restart.
 	RestartEnd func(ctx context.Context, sessionID string) any

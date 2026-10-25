@@ -1496,7 +1496,8 @@ The machine's memory as a whole (2026-10-22): how full it is, who holds it,
 and ending the idle agents Caprock started on the user's click. A user's Mac
 froze with agents holding all its memory while the status bar said only what
 the agent in front used. Code: `internal/procstat/sysmem*.go` (the readings),
-`internal/daemon/sysmem.go` (the split, the states, the end). The status
+`internal/daemon/sysmem.go` (the split, the states, the end),
+`internal/daemon/agentwork.go` (what runs under an agent). The status
 bar's item and popover are in [04-ui.md § Status strip](04-ui.md).
 
 **On every resource sample** (§ Resources, *When it samples*: every 5 s, only
@@ -1548,14 +1549,19 @@ carry `memory`, totals only — the live socket reaches every paired device:
 - **Cost** (measured 2026-10-22, Apple M1 Pro, 16 GB, 669 processes,
   `BenchmarkSystemMemory`): 7.4 µs per sample.
 
-`GET /v1/system/memory` is the popover's list, read only while it is open:
+`GET /v1/system/memory[?front=<session_id>]` is the popover's list, read
+only while it is open; `front` (2026-10-25) is the session whose tab is in
+front of the asking dashboard, which Free up memory never offers:
 
 ```json
 {"at": 1791400000000,
  "memory": {…the object above…},
  "agents": [{"session_id": "…", "pid": 4242, "mem_bytes": 1932735283, "procs": 9,
              "owned": true, "state": "idle", "idle_since": 1791397480000, "endable": true,
-             "max_proc_bytes": 1610612736, "heavy": "growing", "restartable": true}],
+             "max_proc_bytes": 1610612736, "heavy": "growing", "restartable": true},
+            {"session_id": "…", "pid": 4300, "mem_bytes": 734003200, "procs": 4,
+             "owned": true, "state": "idle", "idle_since": 1791399000000, "endable": false,
+             "why_not": "running in the background: npm", "max_proc_bytes": 400000000, "restartable": true}],
  "apps": [{"name": "Google Chrome", "mem_bytes": 7348010288, "procs": 49},
           {"name": "colima", "mem_bytes": 8770000000, "procs": 5, "vm": true}],
  "idle_end": {"count": 3, "mem_bytes": 2576980377, "session_ids": ["…"]},
@@ -1568,9 +1574,24 @@ carry `memory`, totals only — the live socket reaches every paired device:
   (a permission prompt or question open, a message queued, a subagent at
   work, paused, or the turn ended asking the user something), or `idle`,
   with `idle_since` its last activity (§ Ending idle sessions' *last
-  activity*). `endable` is an idle agent Caprock started that is not the
-  orchestrator or one of its workers; a session another terminal started is
-  never endable.
+  activity*).
+- **`endable`** (tightened 2026-10-25, [ADR-059](08-decisions.md) amended:
+  the owner wanted ending idle agents "fully safe") is an agent Caprock
+  started that is `idle`, has been for at least 15 minutes (`memEndQuiet`;
+  chosen, not measured), is not the orchestrator or one of its workers, is
+  not `front` (its spawn id or the session it runs now), and has nothing
+  running under its process but its own helpers: a process whose command
+  line says MCP (and what that starts), `caffeinate`, `conhost`,
+  `caprock-hook`, and the agent itself below its launcher (the npm Codex's
+  node running the native `codex`). Any other descendant — a dev server, a
+  watcher, a `run_in_background` command — is background work that ending
+  would stop. A process table that cannot be read counts as background work.
+  A session another terminal started is never endable.
+- **`why_not`** (2026-10-25) says, for an agent Caprock started that is not
+  endable, why: its state (`working`, `waiting`), `the orchestrator or one
+  of its workers`, `the tab in front`, `idle under 15 min`, or `running in
+  the background: <program>` (the first such process, by its label). Absent
+  when endable and for a session another terminal started.
 - **`max_proc_bytes`, `heavy`** are the tree's, as in § Resources' *Heavy*.
   **`restartable`** is an agent Caprock started, not the orchestrator or a
   worker, whose state is not `working`: Restart it fresh may run now.
@@ -1600,14 +1621,16 @@ carry `memory`, totals only — the live socket reaches every paired device:
   8.2 GB under *Other apps and the system* at 7.6 GB. A group is never
   smaller than its members, so it takes their sum; `agents + caprock +
   other` may then pass `used`, and the popover says why.
-- **`idle_end`** is what the button would end: the `endable` agents, how
+- **`idle_end`** is what Free up memory would end: the `endable` agents, how
   many and their memory together.
 
-`POST /v1/system/memory/end-idle` `{"session_ids": ["…"]}` (1 to 256) →
-`{"ended": ["…"], "skipped": [{"session_id": "…", "why": "working"}]}`.
-Each named session is judged again under its queue lock and ended only if it
-is still `endable`; `why` is its state, `not started by Caprock`, or
-`already ending`. Ending is End's, the same as closing an idle agent's tab:
+`POST /v1/system/memory/end-idle` `{"session_ids": ["…"], "front"?: "…"}`
+(1 to 256) → `{"ended": ["…"], "skipped": [{"session_id": "…", "why":
+"working"}]}`: Free up memory's idle agents (04-ui.md § Free up memory).
+Each named session is judged again under its queue lock, its process tree
+read again then, and ended only if it is still `endable` with the body's
+`front`; `why` is its `why_not`, `not started by Caprock`, or `already
+ending`. Ending is End's, the same as closing an idle agent's tab:
 asked first, so the transcript is written, killed after the grace; the
 conversation is continued later like any ended one. The session is not
 marked as ended for idling (§ Ending idle sessions) — the user ended it.
@@ -1726,8 +1749,20 @@ and once a minute as the fallback for a daemon before them; it asked every
   `data_dir_gone` (a Caprock daemon's or
   holder's data directory, when it can be told), `cpu_pct` (absent until
   two samples; the orphan list has its own sampler, so it never resets the
-  session meter's rates), `mem_bytes`, `why` (a sentence) and `auto` (a
-  holder the sweep stops on its own). Kinds: `caprock_daemon` (another
+  session meter's rates), `mem_bytes`, `why` (a sentence), `auto` (a
+  holder the sweep stops on its own) and `hold` (2026-10-25,
+  [ADR-059](08-decisions.md) amended: why Free up memory leaves it alone —
+  set on a `caprock_daemon` whose starter still runs: `its agent is still
+  running`, `what started it is still running`, or `an agent in its
+  repository is still running`; absent otherwise). The first that holds
+  wins: its parent is not gone (a claude or codex up the chain says *its
+  agent*); `CLAUDE_PID` in its environment names a running process started
+  before it, or `CLAUDE_CODE_SESSION_ID` a live session; the session an
+  agent scratchpad in its data directory or executable names
+  (`…/<uuid>/scratchpad/…`) is live or named on a running agent's command
+  line; or it runs from a `.claude/worktrees/<name>` checkout that still
+  exists while a live session's folder is in that repository. A daemon none
+  of these places is not held. Code: `internal/daemon/starter.go`. Kinds: `caprock_daemon` (another
   `caprock up --foreground`), `caprock_holder` (a holder whose verdict is an
   orphan, any install), `caprock_old_holder` (2026-10-18: a holder this
   daemon still lists — a live session — whose executable is outside its
@@ -1797,12 +1832,15 @@ and once a minute as the fallback for a daemon before them; it asked every
   object as `caprock doctor`'s text, and `testdata/footprint/doctor.json`
   with `doctor.txt` pin the two renderings to each other.
 
-`POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}], force?}`
-(1 to 256) → `{stopped: [orphan…], running: [orphan…], failed: [{pid,
-error}]}`: the doctor's Clean up, row Stop and Force stop
-([ADR-059](08-decisions.md), amended 2026-10-18). The daemon takes the
-orphan list again and stops only a target that list holds with the same
-`started_at`; anything else fails with *not on the doctor's list now*.
+`POST /v1/footprint/orphans/stop` `{targets: [{pid, started_at}], force?,
+skip_held?}` (1 to 256) → `{stopped: [orphan…], running: [orphan…],
+failed: [{pid, error}]}`: Free up memory's leftovers, row Stop and Force
+stop ([ADR-059](08-decisions.md), amended 2026-10-18 and 2026-10-25). The
+daemon takes the orphan list again and stops only a target that list holds
+with the same `started_at`; anything else fails with *not on the doctor's
+list now*. With `skip_held` (2026-10-25; Free up memory sends it, row Stop
+does not) a target that list now holds (`hold`) fails with its hold as the
+error and is not signalled.
 Each is sent one signal — SIGTERM, or SIGKILL when `force` is true
 (Windows: TerminateProcess either way) — the start time checked again
 before it (a pid whose start changed fails with *the process changed*), and

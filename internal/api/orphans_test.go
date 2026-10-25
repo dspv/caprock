@@ -14,7 +14,7 @@ import (
 // and ?orphans=1 on the footprint asks for the list.
 func TestOrphanStopContract(t *testing.T) {
 	var got []OrphanTarget
-	var forced []bool
+	var forced, held []bool
 	var asked, fresh []bool
 	s := New(Deps{
 		Footprint: func(_ context.Context, orphans, f bool) any {
@@ -22,9 +22,10 @@ func TestOrphanStopContract(t *testing.T) {
 			fresh = append(fresh, f)
 			return map[string]any{"ok": true}
 		},
-		StopOrphans: func(_ context.Context, ts []OrphanTarget, force bool) any {
+		StopOrphans: func(_ context.Context, ts []OrphanTarget, force, skipHeld bool) any {
 			got = ts
 			forced = append(forced, force)
+			held = append(held, skipHeld)
 			return map[string]any{"stopped": []any{}, "running": []any{}, "failed": []any{}}
 		},
 	})
@@ -74,6 +75,13 @@ func TestOrphanStopContract(t *testing.T) {
 	}
 	if len(forced) != 2 || forced[0] || !forced[1] {
 		t.Errorf("force: %v, want [false true]", forced)
+	}
+	// Free up memory's stop names skip_held: the daemon refuses what it holds.
+	if w := do(http.MethodPost, "/v1/footprint/orphans/stop", `{"targets":[{"pid":4242,"started_at":1791877000000}],"skip_held":true}`); w.Code != http.StatusOK {
+		t.Fatalf("skip_held stop: %d %s", w.Code, w.Body)
+	}
+	if len(held) != 3 || held[0] || held[1] || !held[2] {
+		t.Errorf("skip_held: %v, want [false false true]", held)
 	}
 
 	if w := (func() *httptest.ResponseRecorder {
