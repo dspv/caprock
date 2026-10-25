@@ -40,9 +40,13 @@ const (
 	swapGrowWindow = 30 * time.Second
 	swapGrowBytes  = 256 << 20
 	// memIdleQuiet is how long an agent Caprock started must have drawn
-	// nothing and written no event before the popover offers to end it: a
-	// turn that runs draws every second (endidle.go).
+	// nothing and written no event before the popover calls it idle rather
+	// than working: a turn that runs draws every second (endidle.go).
 	memIdleQuiet = 2 * time.Minute
+	// memEndQuiet is how long it must have been idle before Free up memory
+	// offers to end it (owner, 2026-10-25: two minutes is a person reading
+	// the answer, not an agent left behind). Chosen, not measured.
+	memEndQuiet = 15 * time.Minute
 	// memTopApps is how many other apps the popover names.
 	memTopApps = 3
 	// memTestPressureEnv fakes the OS's pressure level (normal, warn,
@@ -284,6 +288,10 @@ type MemoryAgent struct {
 	IdleSince int64 `json:"idle_since,omitempty"`
 	// Endable is an idle agent Caprock started that the button ends.
 	Endable bool `json:"endable"`
+	// WhyNot says, for an agent Caprock started that is not endable, why
+	// Free up memory leaves it running (whyNot*); "" when endable or not
+	// started by Caprock.
+	WhyNot string `json:"why_not,omitempty"`
 	// MaxProcBytes is its largest process; Heavy is "big" or "growing"
 	// when that process is flagged (heavyOf), "" otherwise.
 	MaxProcBytes uint64 `json:"max_proc_bytes"`
@@ -324,7 +332,9 @@ type MemoryReport struct {
 
 // systemMemory answers GET /v1/system/memory. paired leaves out the other
 // apps' names: a phone reads how full the machine is, not what else runs.
-func (d *Daemon) systemMemory(ctx context.Context, paired bool) *MemoryReport {
+// front is the session whose tab is in front of the asking dashboard
+// (?front=), never offered.
+func (d *Daemon) systemMemory(ctx context.Context, paired bool, front string) *MemoryReport {
 	r := d.resources(ctx)
 	rep := &MemoryReport{At: r.At, Agents: []MemoryAgent{}, IdleEnd: IdleEndOffer{SessionIDs: []string{}}}
 	if r.Memory == nil {
@@ -336,10 +346,11 @@ func (d *Daemon) systemMemory(ctx context.Context, paired bool) *MemoryReport {
 	}
 	rep.Memory = *r.Memory
 	now := time.Now()
+	bg := d.endIdle.bgFor(ctx)
 	for _, s := range d.agentTrees(r) {
 		a := MemoryAgent{SessionID: s.SessionID, PID: s.PID, MemBytes: s.MemBytes, Procs: s.Procs, MaxProcBytes: s.MaxProcBytes, Heavy: s.Heavy}
-		st := d.endIdle.memState(ctx, s.SessionID, now)
-		a.Owned, a.State, a.Endable, a.Restartable = st.owned, st.state, st.endable, st.restartable
+		st := d.endIdle.memState(ctx, s.SessionID, now, front, bg)
+		a.Owned, a.State, a.Endable, a.Restartable, a.WhyNot = st.owned, st.state, st.endable, st.restartable, st.whyNot
 		if st.state == agentIdle && !st.since.IsZero() {
 			a.IdleSince = st.since.UnixMilli()
 		}
@@ -527,14 +538,38 @@ type memAgentState struct {
 	since       time.Time
 	endable     bool
 	restartable bool
+	// whyNot is why an agent Caprock started is not endable.
+	whyNot string
 }
 
-// memState is what one agent is doing, and whether the button may end it:
-// only an agent Caprock started (rule 7) that is not a shell, not the
-// orchestrator or one of its workers, waits on nobody (endidle.go's
-// waitingOn: no prompt, question, queued message, live subagent or pause),
-// is not mid-turn, and has been quiet for memIdleQuiet.
-func (e *endIdle) memState(ctx context.Context, id string, now time.Time) memAgentState {
+// Why Free up memory leaves an agent Caprock started running, as
+// GET /v1/system/memory's why_not and end-idle's why say it. A state
+// (working, waiting) is said as itself.
+const (
+	whyNotWorker     = "the orchestrator or one of its workers"
+	whyNotFront      = "the tab in front"
+	whyNotRecent     = "idle under 15 min"
+	whyNotBackground = "running in the background: "
+)
+
+// bgFor is what memState asks about an agent's process tree: one process
+// table for every agent judged in one answer.
+func (e *endIdle) bgFor(ctx context.Context) func(a *agents.Agent) string {
+	if e.bg != nil {
+		return e.bg
+	}
+	r := newBGReader(ctx)
+	return func(a *agents.Agent) string { return r.of(int32(a.PID())) }
+}
+
+// memState is what one agent is doing, and whether Free up memory may end
+// it: only an agent Caprock started (rule 7) that is not a shell, not the
+// orchestrator or one of its workers, not the tab in front (front), waits
+// on nobody (endidle.go's waitingOn: no prompt, question, queued message,
+// live subagent or pause), is not mid-turn, has been quiet for
+// memEndQuiet, and has nothing running under it but its own helpers
+// (agentwork.go). bg reads that last.
+func (e *endIdle) memState(ctx context.Context, id string, now time.Time, front string, bg func(a *agents.Agent) string) memAgentState {
 	db := e.d.store.DB()
 	var st memAgentState
 	if e.sess != nil {
@@ -542,11 +577,12 @@ func (e *endIdle) memState(ctx context.Context, id string, now time.Time) memAge
 			st.owned = true
 			last, err := e.lastActive(ctx, a)
 			if err != nil {
-				return memAgentState{owned: true, state: agentWorking}
+				return memAgentState{owned: true, state: agentWorking, whyNot: agentWorking}
 			}
 			st.since = last
 			if why, err := e.waitingOn(ctx, a, now); err != nil || why != "" {
 				st.state = agentWaiting
+				st.whyNot = agentWaiting
 				return st
 			}
 			st.state = turnState(ctx, db, a.Current(), now)
@@ -554,10 +590,27 @@ func (e *endIdle) memState(ctx context.Context, id string, now time.Time) memAge
 				st.state = agentWorking
 			}
 			worker := e.worker != nil && e.worker(id)
-			st.endable = st.state == agentIdle && !worker
 			// A turn that ended asking something can be restarted: the
 			// question is in the conversation it continues.
 			st.restartable = st.state != agentWorking && !worker
+			switch {
+			case st.state != agentIdle:
+				st.whyNot = st.state
+			case worker:
+				st.whyNot = whyNotWorker
+			case front != "" && (id == front || a.Current() == front):
+				st.whyNot = whyNotFront
+			case now.Sub(last) < memEndQuiet:
+				st.whyNot = whyNotRecent
+			default:
+				if bg == nil {
+					bg = e.bgFor(ctx)
+				}
+				if w := bg(a); w != "" {
+					st.whyNot = whyNotBackground + w
+				}
+			}
+			st.endable = st.whyNot == ""
 			return st
 		}
 	}
@@ -600,12 +653,13 @@ type EndIdleSkip struct {
 	Why       string `json:"why"`
 }
 
-// endIdleNow ends the named agents the user chose from the memory popover,
-// each only if memState still offers it — idle, and started by Caprock —
-// the way closing an idle tab ends one: End asks first, so the transcript
-// is written and Continue picks the conversation up. A confirmed user
-// action, never automatic.
-func (e *endIdle) endIdleNow(ctx context.Context, ids []string) EndIdleResult {
+// endIdleNow ends the named agents the user chose in Free up memory, each
+// only if memState still offers it — idle for memEndQuiet, started by
+// Caprock, not the tab in front (front), nothing in the background — the
+// way closing an idle tab ends one: End asks first, so the transcript is
+// written and Continue picks the conversation up. A confirmed user action,
+// never automatic.
+func (e *endIdle) endIdleNow(ctx context.Context, ids []string, front string) EndIdleResult {
 	res := EndIdleResult{Ended: []string{}}
 	seen := map[string]bool{}
 	now := e.now()
@@ -614,7 +668,7 @@ func (e *endIdle) endIdleNow(ctx context.Context, ids []string) EndIdleResult {
 			continue
 		}
 		seen[id] = true
-		if why := e.endOne(ctx, id, now); why != "" {
+		if why := e.endOne(ctx, id, now, front); why != "" {
 			res.Skipped = append(res.Skipped, EndIdleSkip{SessionID: id, Why: why})
 			continue
 		}
@@ -626,18 +680,19 @@ func (e *endIdle) endIdleNow(ctx context.Context, ids []string) EndIdleResult {
 // endOne ends one session if it may be, holding the queue's lock so a
 // message queued meanwhile is either typed in first or not at all; "" when
 // it was ended, otherwise why not.
-func (e *endIdle) endOne(ctx context.Context, id string, now time.Time) string {
+func (e *endIdle) endOne(ctx context.Context, id string, now time.Time, front string) string {
 	if e.sess == nil {
 		return "not started by Caprock"
 	}
 	unlock := e.q.lock(id)
 	defer unlock()
-	st := e.memState(ctx, id, now)
+	// The process table read now, not the one the list was drawn from.
+	st := e.memState(ctx, id, now, front, nil)
 	switch {
 	case !st.owned:
 		return "not started by Caprock"
 	case !st.endable:
-		return st.state
+		return st.whyNot
 	}
 	e.mu.Lock()
 	if e.ending[id] {
@@ -681,7 +736,8 @@ func (e *endIdle) restartEnd(ctx context.Context, id string) RestartEnd {
 		return RestartEnd{Why: "not started by Caprock"}
 	}
 	unlock := e.q.lock(id)
-	st := e.memState(ctx, id, e.now())
+	// Restart asks only whether it is mid-turn: no process table is read.
+	st := e.memState(ctx, id, e.now(), "", func(*agents.Agent) string { return "" })
 	switch {
 	case !st.owned:
 		unlock()

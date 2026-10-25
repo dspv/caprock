@@ -45,6 +45,12 @@ export interface MemoryAgent {
   state: 'working' | 'waiting' | 'idle'
   idle_since?: number
   endable: boolean
+  /**
+   * Why Free up memory leaves an agent Caprock started running: its state (`working`, `waiting`),
+   * `the tab in front`, `idle under 15 min`, `running in the background: npm`, `the orchestrator or
+   * one of its workers`. Absent when endable, for one started elsewhere, and from an older daemon.
+   */
+  why_not?: string
   /** Its largest process; `heavy` flags it as too big or growing for hours. */
   max_proc_bytes?: number
   heavy?: 'big' | 'growing'
@@ -130,11 +136,6 @@ export function agentStateText(a: MemoryAgent, now: number): string {
   if (min < 60) return `idle ${min} min`
   const h = Math.round(min / 60)
   return h < 48 ? `idle ${h} h` : `idle ${Math.round(h / 24)} d`
-}
-
-/** The one button: "End 3 idle agents · frees about 2.1 GB". */
-export function endIdleLabel(count: number, bytes: number): string {
-  return `End ${count} idle ${count === 1 ? 'agent' : 'agents'} · frees about ${fmtMem(bytes)}`
 }
 
 /**

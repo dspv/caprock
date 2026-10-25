@@ -138,72 +138,105 @@ func TestMachineMemoryWithTheTestHook(t *testing.T) {
 	}
 }
 
-// The button's selection: an idle agent Caprock started is offered and
-// ended; one that works, one that waits on a prompt, a shell and a session
-// another terminal started are never ended — the last even when named.
+// Free up memory's idle agents: an agent Caprock started, idle for 15
+// minutes with nothing under it but its own helpers, is offered and ended.
+// Never ended: one that works, waits on a prompt, idled under 15 minutes,
+// runs something in the background (a dev server), is the tab in front, is
+// a worker, or was started in another terminal — the last even when named.
+// Each is judged again when the click comes.
 func TestEndIdleNowEndsOnlyIdleOwnedAgents(t *testing.T) {
 	s := newIdleStand(t)
 	ctx := context.Background()
-	s.add(t, "idle", agents.AgentClaude)
-	s.event(t, "idle", event.KindAgentStop, time.Minute)
+	idleFor := func(id string, at time.Duration) {
+		s.add(t, id, agents.AgentClaude)
+		s.event(t, id, event.KindAgentStop, at)
+	}
+	idleFor("idle", time.Minute)
+	idleFor("mcponly", time.Minute) // its MCP servers are helpers: backgroundWork says ""
+	idleFor("recent", 20*time.Minute)
+	idleFor("devserver", time.Minute)
+	s.bg["devserver"] = "npm"
+	idleFor("front", time.Minute)
+	idleFor("late", time.Minute)
 	s.add(t, "busy", agents.AgentClaude)
-	s.event(t, "busy", event.KindToolPre, 9*time.Minute)
+	s.event(t, "busy", event.KindToolPre, 29*time.Minute)
 	s.add(t, "asking", agents.AgentClaude)
 	set(s.f.fakeSessions, s.f.prompt, "asking", true)
 	s.event(t, "asking", event.KindPermissionPrompt, time.Minute)
-	s.add(t, "fresh", agents.AgentClaude)
-	s.event(t, "fresh", event.KindAgentStop, 9*time.Minute+30*time.Second)
-	s.add(t, "worker", agents.AgentClaude)
-	s.event(t, "worker", event.KindAgentStop, time.Minute)
+	idleFor("fresh", 29*time.Minute+30*time.Second)
+	idleFor("worker", time.Minute)
 	s.e.worker = func(id string) bool { return id == "worker" }
 	// Started in another terminal: a row in the database, nothing in the manager.
 	if err := store.UpsertSession(ctx, s.d.store.DB(), "theirs", store.SessionPatch{Cwd: t.TempDir(), Agent: agents.AgentClaude}); err != nil {
 		t.Fatal(err)
 	}
 	s.event(t, "theirs", event.KindAgentStop, time.Minute)
-	s.now = s.t0.Add(10 * time.Minute)
+	s.now = s.t0.Add(30 * time.Minute)
 
 	for id, want := range map[string]struct {
 		owned   bool
 		state   string
 		endable bool
+		whyNot  string
 	}{
-		"idle":   {true, agentIdle, true},
-		"busy":   {true, agentWorking, false},
-		"asking": {true, agentWaiting, false},
-		"fresh":  {true, agentWorking, false},
-		"worker": {true, agentIdle, false},
-		"theirs": {false, agentIdle, false},
+		"idle":      {true, agentIdle, true, ""},
+		"mcponly":   {true, agentIdle, true, ""},
+		"late":      {true, agentIdle, true, ""},
+		"recent":    {true, agentIdle, false, whyNotRecent},
+		"devserver": {true, agentIdle, false, whyNotBackground + "npm"},
+		"front":     {true, agentIdle, false, whyNotFront},
+		"busy":      {true, agentWorking, false, agentWorking},
+		"asking":    {true, agentWaiting, false, agentWaiting},
+		"fresh":     {true, agentWorking, false, agentWorking},
+		"worker":    {true, agentIdle, false, whyNotWorker},
+		"theirs":    {false, agentIdle, false, ""},
 	} {
-		st := s.e.memState(ctx, id, s.now)
-		if st.owned != want.owned || st.state != want.state || st.endable != want.endable {
-			t.Errorf("%s: owned %v state %s endable %v, want %+v", id, st.owned, st.state, st.endable, want)
+		st := s.e.memState(ctx, id, s.now, "front", nil)
+		if st.owned != want.owned || st.state != want.state || st.endable != want.endable || st.whyNot != want.whyNot {
+			t.Errorf("%s: owned %v state %s endable %v why_not %q, want %+v", id, st.owned, st.state, st.endable, st.whyNot, want)
 		}
 	}
-	if st := s.e.memState(ctx, "idle", s.now); st.since.UnixMilli() != s.t0.Add(time.Minute).UnixMilli() {
+	if st := s.e.memState(ctx, "idle", s.now, "", nil); st.since.UnixMilli() != s.t0.Add(time.Minute).UnixMilli() {
 		t.Errorf("idle since %v, want its Stop", st.since)
 	}
-
-	res := s.e.endIdleNow(ctx, []string{"idle", "busy", "asking", "fresh", "worker", "theirs", "idle", "nobody"})
-	if !slices.Equal(res.Ended, []string{"idle"}) {
-		t.Fatalf("ended %v, want [idle]", res.Ended)
+	// Without a tab in front, that one is offered like any other.
+	if st := s.e.memState(ctx, "front", s.now, "", nil); !st.endable {
+		t.Errorf("front with no front tab named: %+v", st)
 	}
-	s.wantEnded(t, "idle")
+
+	// Between the list and the click, "late" started a dev server.
+	s.f.mu.Lock()
+	s.bg["late"] = "node server.js"
+	s.f.mu.Unlock()
+	res := s.e.endIdleNow(ctx, []string{"idle", "mcponly", "late", "recent", "devserver", "front", "busy", "asking", "fresh", "worker", "theirs", "idle", "nobody"}, "front")
+	if !slices.Equal(res.Ended, []string{"idle", "mcponly"}) {
+		t.Fatalf("ended %v, want [idle mcponly]", res.Ended)
+	}
+	s.wantEnded(t, "idle", "mcponly")
 	why := map[string]string{}
 	for _, k := range res.Skipped {
 		why[k.SessionID] = k.Why
 	}
-	if why["theirs"] != "not started by Caprock" || why["nobody"] != "not started by Caprock" {
-		t.Errorf("skipped: %v", why)
-	}
-	if why["busy"] != agentWorking || why["asking"] != agentWaiting {
-		t.Errorf("skipped: %v", why)
+	for id, want := range map[string]string{
+		"theirs":    "not started by Caprock",
+		"nobody":    "not started by Caprock",
+		"busy":      agentWorking,
+		"asking":    agentWaiting,
+		"recent":    "idle under 15 min",
+		"devserver": "running in the background: npm",
+		"late":      "running in the background: node server.js",
+		"front":     "the tab in front",
+		"worker":    "the orchestrator or one of its workers",
+	} {
+		if why[id] != want {
+			t.Errorf("%s skipped with %q, want %q", id, why[id], want)
+		}
 	}
 	// Asked again before it is gone: not a second End.
-	if res := s.e.endIdleNow(ctx, []string{"idle"}); len(res.Ended) != 0 {
+	if res := s.e.endIdleNow(ctx, []string{"idle"}, ""); len(res.Ended) != 0 {
 		t.Fatalf("ended twice: %+v", res)
 	}
-	s.wantEnded(t, "idle")
+	s.wantEnded(t, "idle", "mcponly")
 }
 
 // A shell is never an agent the button ends.
@@ -211,7 +244,7 @@ func TestEndIdleNowNeverEndsAShell(t *testing.T) {
 	s := newIdleStand(t)
 	s.add(t, "sh", agents.KindShell)
 	s.now = s.t0.Add(time.Hour)
-	if res := s.e.endIdleNow(context.Background(), []string{"sh"}); len(res.Ended) != 0 {
+	if res := s.e.endIdleNow(context.Background(), []string{"sh"}, ""); len(res.Ended) != 0 {
 		t.Fatalf("ended a shell: %+v", res)
 	}
 	s.wantEnded(t)

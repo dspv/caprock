@@ -2523,9 +2523,10 @@ export const api = {
   /** Stop the orphaned pty-hosts nothing runs in. Machine only. */
   reapOrphans: () => post<ReapResult>('/v1/resources/reap', {}),
   /** The machine's memory with each agent's state and the other apps (lib/memory.ts). */
-  systemMemory: () => get<MemoryReport>('/v1/system/memory'),
-  /** Ends the named idle agents Caprock started; the daemon checks each again. */
-  endIdleAgents: (sessionIds: string[]) => post<EndIdleResult>('/v1/system/memory/end-idle', { session_ids: sessionIds }),
+  /** `front` is the session whose tab is in front here: never offered to Free up memory. */
+  systemMemory: (front?: string) => get<MemoryReport>(`/v1/system/memory${front ? `?front=${encodeURIComponent(front)}` : ''}`),
+  /** Ends the named idle agents Caprock started; the daemon checks each again, `front` included. */
+  endIdleAgents: (sessionIds: string[], front?: string) => post<EndIdleResult>('/v1/system/memory/end-idle', front ? { session_ids: sessionIds, front } : { session_ids: sessionIds }),
   /** Ends a heavy agent Caprock started and answers once it has exited (lib/memory.ts restartFresh). */
   restartEnd: (sessionId: string) => post<RestartEnd>('/v1/system/memory/restart', { session_id: sessionId }),
   /**
@@ -2537,8 +2538,11 @@ export const api = {
   /**
    * Stop processes the user picked from the doctor's orphan list, each by pid and start time (ADR-059).
    * SIGTERM; `force` sends SIGKILL — only the second click, on one a stop reported still running. Machine only.
+   * `skipHeld` (Free up memory) has the daemon refuse one it now holds, such as a test copy whose agent runs.
    */
-  stopOrphans: (targets: OrphanTarget[], force = false) => post<OrphanStopResult>('/v1/footprint/orphans/stop', force ? { targets, force } : { targets }),
+  stopOrphans: (targets: OrphanTarget[], force = false, skipHeld = false) => post<OrphanStopResult>('/v1/footprint/orphans/stop', {
+    targets, ...(force ? { force } : {}), ...(skipHeld ? { skip_held: true } : {}),
+  }),
   /** Terminal applications installed here, most preferred first. */
   terminals: () => get<TerminalList>('/v1/terminals'),
   /** Open a session in the user's own terminal app. */

@@ -52,6 +52,8 @@ function serve(f: Footprint) {
       lastServed = { ...f, at: Date.now(), orphans: f.orphans && (withList ? f.orphans : { ...f.orphans, scanned: false, list: [] }) }
       body = lastServed
     } else if (url.includes('/v1/resources/reap')) body = { reaped: [], kept: [] }
+    // Free up memory's agents: none idle here.
+    else if (url.includes('/v1/system/memory')) body = { at: f.at, memory: {}, agents: [], idle_end: { count: 0, mem_bytes: 0, session_ids: [] } }
     if (!body) return new Promise<Response>(() => {})
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }))
   })
@@ -190,7 +192,7 @@ describe('the panel', () => {
     const { button, container } = await strip(healthy())
     fireEvent.click(button)
     expect(container.querySelector('[data-verdict-summary]')!.textContent).toContain('All good')
-    expect(container.querySelector('[data-cleanup]')).toBeNull()
+    expect(container.querySelector('[data-free-up]')).toBeNull()
   })
 
   it('keeps its tooltip out of the way while the panel is open', async () => {
@@ -251,7 +253,7 @@ describe('the panel', () => {
   })
 })
 
-describe('Clean up and Stop', () => {
+describe('Free up memory and Stop', () => {
   const open = async (owner = true) => {
     const r = await strip(warned(), owner)
     fireEvent.click(r.button)
@@ -259,33 +261,62 @@ describe('Clean up and Stop', () => {
     return r
   }
 
-  it('offers one Clean up with what it frees, and stops nothing before the list is confirmed', async () => {
-    const { container } = await open()
-    const clean = container.querySelector<HTMLButtonElement>('[data-cleanup]')!
-    expect(clean.textContent).toBe('Clean up (frees ~316 MB)')
-    fireEvent.click(clean)
-    expect(stopBodies).toEqual([])
-    const confirm = container.querySelector('[data-stop-confirm]')!
-    // Every process on its own line with its own box; the safe ones ticked.
-    const picks = [...confirm.querySelectorAll<HTMLInputElement>('[data-stop-pick]')]
-    expect(picks.map((p) => [p.getAttribute('data-stop-pick'), p.checked])).toEqual([['34399', false], ['48120', true], ['48160', true], ['48133', true]])
-    expect(confirm.textContent).toContain('Something still runs in it')
-    expect(container.querySelector('[data-stop-confirm-yes]')!.textContent).toBe('Stop 3 · frees ~316 MB')
-    await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
-    await waitFor(() => expect(stopBodies).toHaveLength(1))
-    const started = warned().orphans!.list![1]!.started_at
-    expect(stopBodies[0]).toEqual({ targets: [{ pid: 48120, started_at: started }, { pid: 48160, started_at: warned().orphans!.list![2]!.started_at }, { pid: 48133, started_at: started }] })
-    await waitFor(() => expect(container.querySelector('[data-doctor-note]')!.textContent).toBe('Stopped 3, about 316 MB freed.'))
+  const freeUp = (c: HTMLElement) => waitFor(() => {
+    const b = c.querySelector<HTMLButtonElement>('[data-free-up]')
+    if (!b) throw new Error('not yet')
+    return b
   })
 
-  it('stops only what is left ticked', async () => {
+  it('offers one Free up memory with what it frees, and stops nothing before the list is confirmed', async () => {
     const { container } = await open()
-    fireEvent.click(container.querySelector('[data-cleanup]')!)
-    fireEvent.click(container.querySelector('[data-stop-pick="48133"]')!)
-    fireEvent.click(container.querySelector('[data-stop-pick="48160"]')!)
-    await act(async () => { fireEvent.click(container.querySelector('[data-stop-confirm-yes]')!) })
+    const clean = await freeUp(container)
+    // Only what is safe: the terminal something still runs in stays on its row.
+    expect(clean.textContent).toBe('Free up memory · ~316 MB')
+    fireEvent.click(clean)
+    expect(stopBodies).toEqual([])
+    const confirm = container.querySelector('[data-free-up-confirm]')!
+    expect(confirm.querySelector('[data-free-up-what]')!.textContent).toContain('stops with it')
+    const picks = [...confirm.querySelectorAll<HTMLInputElement>('[data-free-up-group="leftovers"] [data-free-up-pick]')]
+    expect(picks.map((p) => [p.getAttribute('data-free-up-pick'), p.checked])).toEqual([['o:48120', true], ['o:48160', true], ['o:48133', true]])
+    expect(container.querySelector('[data-free-up-yes]')!.textContent).toBe('Free up 3 · ~316 MB')
+    await act(async () => { fireEvent.click(container.querySelector('[data-free-up-yes]')!) })
+    await waitFor(() => expect(stopBodies).toHaveLength(1))
+    const started = warned().orphans!.list![1]!.started_at
+    expect(stopBodies[0]).toEqual({ targets: [{ pid: 48120, started_at: started }, { pid: 48160, started_at: warned().orphans!.list![2]!.started_at }, { pid: 48133, started_at: started }], skip_held: true })
+    await waitFor(() => expect(container.querySelector('[data-free-up-note]')!.textContent).toBe('Freed about 316 MB: stopped 3 leftovers.'))
+  })
+
+  it('stops only what is left ticked, the total following the ticks', async () => {
+    const { container } = await open()
+    fireEvent.click(await freeUp(container))
+    fireEvent.click(container.querySelector('[data-free-up-pick="o:48133"]')!)
+    fireEvent.click(container.querySelector('[data-free-up-pick="o:48160"]')!)
+    expect(container.querySelector('[data-free-up-yes]')!.textContent).toMatch(/^Free up 1 · ~/)
+    expect(container.querySelector('[data-free-up-group="leftovers"]')!.textContent).toContain('1 of 3')
+    await act(async () => { fireEvent.click(container.querySelector('[data-free-up-yes]')!) })
     await waitFor(() => expect(stopBodies).toHaveLength(1))
     expect((stopBodies[0] as { targets: { pid: number }[] }).targets.map((t) => t.pid)).toEqual([48120])
+  })
+
+  it('never offers a test copy whose agent is still running, and says why on its row', async () => {
+    const f = warned()
+    f.orphans!.list = [
+      { pid: 51000, started_at: f.at - 3_600_000, kind: 'caprock_daemon', label: 'caprock up', exe: '/Users/u/dev/caprock/.claude/worktrees/agent-1/caprock', data_dir: '/private/tmp/claude-501/x/scratchpad/prev', mem_bytes: 313 * 2 ** 20, why: 'Another Caprock daemon, for another data directory.', hold: 'its agent is still running' },
+      ...f.orphans!.list!,
+    ]
+    const r = await strip(f)
+    fireEvent.click(r.button)
+    const btn = await freeUp(r.container)
+    expect(btn.textContent).toBe('Free up memory · ~316 MB')
+    fireEvent.click(btn)
+    expect(r.container.querySelector('[data-free-up-pick="o:51000"]')).toBeNull()
+    expect(r.container.querySelector('[data-free-up-held]')!.textContent).toBe('1 test copy of Caprock kept: its agent is still running.')
+    fireEvent.click(r.container.querySelector('[data-free-up-no]')!)
+    // The row's Stop still lists it, unticked, with the reason.
+    fireEvent.click(r.container.querySelector('[data-doctor-row="copies"] [data-row-stop]')!)
+    const pick = r.container.querySelector<HTMLInputElement>('[data-stop-pick="51000"]')!
+    expect(pick.checked).toBe(false)
+    expect(r.container.querySelector('[data-doctor-row="copies"] [data-stop-confirm]')!.textContent).toContain('Kept: its agent is still running.')
   })
 
   it('sends SIGKILL only on a second click, for what outlived SIGTERM', async () => {
@@ -328,19 +359,19 @@ describe('Clean up and Stop', () => {
 
   it('cancels without stopping anything, with the button or Escape', async () => {
     const { container } = await open()
-    fireEvent.click(container.querySelector('[data-cleanup]')!)
-    fireEvent.click(container.querySelector('[data-stop-confirm-no]')!)
-    expect(container.querySelector('[data-stop-confirm]')).toBeNull()
-    fireEvent.click(container.querySelector('[data-cleanup]')!)
-    fireEvent.keyDown(container.querySelector('[data-stop-confirm-yes]')!, { code: 'Escape', key: 'Escape' })
-    expect(container.querySelector('[data-stop-confirm]')).toBeNull()
+    fireEvent.click(await freeUp(container))
+    fireEvent.click(container.querySelector('[data-free-up-no]')!)
+    expect(container.querySelector('[data-free-up-confirm]')).toBeNull()
+    fireEvent.click(container.querySelector('[data-free-up]')!)
+    fireEvent.keyDown(container.querySelector('[data-free-up-yes]')!, { code: 'Escape', key: 'Escape' })
+    expect(container.querySelector('[data-free-up-confirm]')).toBeNull()
     expect(screen.getByRole('dialog')).toBeTruthy() // Escape closed the confirmation, not the panel
     expect(stopBodies).toEqual([])
   })
 
   it('is not offered on a paired device', async () => {
     const { container } = await open(false)
-    expect(container.querySelector('[data-cleanup]')).toBeNull()
+    expect(container.querySelector('[data-free-up-box]')).toBeNull()
     expect(container.querySelector('[data-row-stop]')).toBeNull()
   })
 
@@ -349,7 +380,8 @@ describe('Clean up and Stop', () => {
     f.orphans = { scanned: true, at: f.at, count: 0, by_kind: {}, list: [] }
     const r = await strip(f)
     fireEvent.click(r.button)
-    expect(r.container.querySelector('[data-cleanup]')).toBeNull()
+    await waitFor(() => expect(r.container.querySelector('[data-free-up-none]')).not.toBeNull())
+    expect(r.container.querySelector('[data-free-up]')).toBeNull()
     expect(r.container.querySelector('[data-row-stop]')).toBeNull()
   })
 
@@ -366,6 +398,6 @@ describe('Clean up and Stop', () => {
     fireEvent.click(r.button)
     expect(r.container.querySelector('[data-doctor-row="helpers"]')!.textContent).toContain('Leftover processes (3)')
     expect(r.container.textContent).toContain('Looking for what can be stopped')
-    expect(r.container.querySelector('[data-cleanup]')).toBeNull()
+    expect(r.container.querySelector('[data-free-up]')).toBeNull()
   })
 })

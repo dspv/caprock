@@ -1,7 +1,7 @@
 /**
  * The machine's memory on the status strip (owner-approved mockup,
  * 2026-10-22): green, amber and red; the popover that says who holds it; and
- * the one button that ends the idle agents Caprock started.
+ * Free up memory, which ends the idle agents Caprock started after a review.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
@@ -10,7 +10,7 @@ import { Processes } from './ResourceMeter'
 import { api, type SessionSummary } from '@/lib/api'
 import { resetResourcesForTest, type ResourceReport } from '@/lib/resources'
 import type { MachineMemory, MemoryReport } from '@/lib/memory'
-import { agentStateText, endIdleLabel, fmtUsedOf } from '@/lib/memory'
+import { agentStateText, fmtUsedOf } from '@/lib/memory'
 
 const GB = 2 ** 30
 const MB = 2 ** 20
@@ -64,7 +64,11 @@ async function open() {
   await act(async () => { await Promise.resolve() })
 }
 
-beforeEach(() => { act(() => resetResourcesForTest()) })
+beforeEach(() => {
+  act(() => resetResourcesForTest())
+  // Free up memory asks for the doctor's leftovers too: none here.
+  vi.spyOn(api, 'footprint').mockRejectedValue(new Error('no footprint'))
+})
 afterEach(() => {
   act(() => resetResourcesForTest())
   vi.restoreAllMocks()
@@ -133,33 +137,59 @@ describe('the popover', () => {
     expect(row('a4')).toContain('waiting on you')
     expect(document.querySelectorAll('[data-memory-app]')).toHaveLength(2)
     expect(popover()!.textContent).toContain('Google Chrome')
-    const btn = document.querySelector<HTMLButtonElement>('[data-end-idle]')!
-    expect(btn.textContent).toBe('End 3 idle agents · frees about 2.4 GB')
-    expect(popover()!.textContent).toContain('Ending keeps their conversations; Continue picks them up later.')
-    expect(popover()!.textContent).toContain('never ended from here')
+    const btn = document.querySelector<HTMLButtonElement>('[data-free-up]')!
+    expect(btn.textContent).toBe('Free up memory · ~2.4 GB')
+    fireEvent.click(btn)
+    expect(document.querySelector('[data-free-up-confirm]')!.textContent).toContain('never ended from here')
   })
 
-  it('ends exactly the agents the daemon offered, on the click', async () => {
+  it('ends exactly the agents the daemon offered, after the review, naming the tab in front', async () => {
     const m = mem('critical')
     act(() => resetResourcesForTest(frame(m)))
-    vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m))
+    const asked = vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m))
     const ended = vi.spyOn(api, 'endIdleAgents').mockResolvedValue({ ended: ['a2', 'a5', 'a6'] })
+    render(<MemoryBar owner front="a1" sessions={sessions} />)
+    await open()
+    expect(asked).toHaveBeenCalledWith('a1')
+    await act(async () => { fireEvent.click(document.querySelector('[data-free-up]')!) })
+    expect(ended).not.toHaveBeenCalled()
+    const confirm = document.querySelector('[data-free-up-confirm]')!
+    expect(confirm.textContent).toContain('Conversations are kept; Continue picks each up where it stopped.')
+    expect([...confirm.querySelectorAll('[data-free-up-group="agents"] [data-free-up-pick]')].map((e) => e.getAttribute('data-free-up-pick'))).toEqual(['a:a2', 'a:a5', 'a:a6'])
+    await act(async () => { fireEvent.click(document.querySelector('[data-free-up-yes]')!) })
+    expect(ended).toHaveBeenCalledWith(['a2', 'a5', 'a6'], 'a1')
+    expect(document.querySelector('[data-free-up-note]')!.textContent).toBe('Freed about 2.4 GB: ended 3 idle agents.')
+  })
+
+  it('says why an idle agent is kept running', async () => {
+    const m = mem('critical')
+    act(() => resetResourcesForTest(frame(m)))
+    vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m, {
+      agents: [
+        { session_id: 'a2', pid: 12, mem_bytes: 1.2 * GB, procs: 3, owned: true, state: 'idle', idle_since: T - 42 * 60_000, endable: false, why_not: 'running in the background: npm' },
+        { session_id: 'a5', pid: 15, mem_bytes: 700 * MB, procs: 2, owned: true, state: 'idle', idle_since: T - 5 * 60_000, endable: false, why_not: 'idle under 15 min' },
+        { session_id: 'a1', pid: 11, mem_bytes: 1.8 * GB, procs: 9, owned: true, state: 'idle', idle_since: T - 60 * 60_000, endable: false, why_not: 'the tab in front' },
+      ],
+    }))
     render(<MemoryBar owner sessions={sessions} />)
     await open()
-    expect(ended).not.toHaveBeenCalled()
-    await act(async () => { fireEvent.click(document.querySelector('[data-end-idle]')!) })
-    expect(ended).toHaveBeenCalledWith(['a2', 'a5', 'a6'])
-    expect(document.querySelector('[data-memory-note]')!.textContent).toBe('Ended 3 agents.')
+    expect(document.querySelector('[data-free-up]')).toBeNull()
+    fireEvent.click(document.querySelector('[data-free-up-why]')!)
+    const kept = (id: string) => document.querySelector(`[data-free-up-kept-agent="${id}"]`)!.textContent
+    expect(kept('a2')).toContain('still running npm in the background')
+    expect(kept('a5')).toContain('idle 5 min: offered after 15 min')
+    expect(kept('a1')).toContain('the tab in front')
   })
 
   it('has no button when no agent is idle', async () => {
     const m = mem('critical')
     act(() => resetResourcesForTest(frame(m)))
-    vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m, { idle_end: { count: 0, mem_bytes: 0, session_ids: [] } }))
+    const r = report(m)
+    vi.spyOn(api, 'systemMemory').mockResolvedValue({ ...r, agents: r.agents.map((a) => ({ ...a, endable: false })), idle_end: { count: 0, mem_bytes: 0, session_ids: [] } })
     render(<MemoryBar owner sessions={sessions} />)
     await open()
     expect(popover()).not.toBeNull()
-    expect(document.querySelector('[data-end-idle]')).toBeNull()
+    expect(document.querySelector('[data-free-up]')).toBeNull()
   })
 
   it('has no button on a paired device', async () => {
@@ -168,7 +198,7 @@ describe('the popover', () => {
     vi.spyOn(api, 'systemMemory').mockResolvedValue(report(m, { apps: undefined }))
     render(<MemoryBar owner={false} sessions={sessions} />)
     await open()
-    expect(document.querySelector('[data-end-idle]')).toBeNull()
+    expect(document.querySelector('[data-free-up-box]')).toBeNull()
     expect(document.querySelectorAll('[data-memory-app]')).toHaveLength(0)
   })
 
@@ -295,10 +325,9 @@ describe('the inspector', () => {
 })
 
 describe('the words', () => {
-  it('formats used of total and the button', () => {
+  it('formats used of total', () => {
     expect(fmtUsedOf(9.1 * GB, 16 * GB)).toBe('9.1/16 GB')
     expect(fmtUsedOf(3.25 * GB, 7.5 * GB)).toBe('3.3/7.5 GB')
-    expect(endIdleLabel(1, 512 * MB)).toBe('End 1 idle agent · frees about 512 MB')
   })
   it('says how long an agent has been idle', () => {
     const a = { session_id: 'x', pid: 1, mem_bytes: 0, procs: 1, owned: true, endable: true } as const

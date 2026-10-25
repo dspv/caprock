@@ -72,6 +72,8 @@ type idleStand struct {
 	t0  time.Time
 	now time.Time
 	win time.Duration
+	// bg is backgroundWork's answer per session (agentwork.go), under f.mu.
+	bg map[string]string
 }
 
 func newIdleStand(t *testing.T) *idleStand {
@@ -86,6 +88,13 @@ func newIdleStand(t *testing.T) *idleStand {
 	s.e.since = s.t0
 	s.e.window = func() time.Duration { return s.win }
 	s.e.worker = func(string) bool { return false }
+	// What runs under each agent, by session: nothing unless a test says.
+	s.bg = map[string]string{}
+	s.e.bg = func(a *agents.Agent) string {
+		s.f.mu.Lock()
+		defer s.f.mu.Unlock()
+		return s.bg[a.SessionID]
+	}
 	return s
 }
 
