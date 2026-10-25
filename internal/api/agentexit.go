@@ -51,13 +51,14 @@ func (s *Server) handleAgentExit(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveEarlyExit answers a v2 terminal socket for a session whose program
-// exited at once, before any terminal reached it: the exit frame, with
-// early, then a normal close. Before, the socket was refused (409) and the
-// tab read "Connecting to the session… Can't connect · next try in 5 s"
-// over a process that was long gone. It reports whether it answered.
+// exited at once, before any terminal reached it, or that Caprock ended to
+// free memory: the exit frame, with early or freed, then a normal close.
+// Before, the socket was refused (409) and the tab read "Connecting to the
+// session… Can't connect · next try in 5 s" over a process that was long
+// gone. It reports whether it answered.
 func (h *wsHub) serveEarlyExit(s *Server, w http.ResponseWriter, r *http.Request, id string) bool {
 	rep, ok := s.exitOf(id)
-	if !ok || !rep.Early {
+	if !ok || (!rep.Early && !rep.Freed) {
 		return false
 	}
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: h.origins(), Subprotocols: []string{TermV2Protocol}})
@@ -67,7 +68,13 @@ func (h *wsHub) serveEarlyExit(s *Server, w http.ResponseWriter, r *http.Request
 	defer h.held(r, c)()
 	defer func() { _ = c.CloseNow() }()
 	t := &termConn{c: c, ctx: r.Context()}
-	_ = t.text(map[string]map[string]int{"exit": {"code": rep.Code, "early": 1}})
+	exit := map[string]int{"code": rep.Code}
+	if rep.Early {
+		exit["early"] = 1
+	} else {
+		exit["freed"] = 1
+	}
+	_ = t.text(map[string]map[string]int{"exit": exit})
 	_ = c.Close(websocket.StatusNormalClosure, "session ended")
 	return true
 }

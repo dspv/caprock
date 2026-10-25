@@ -701,6 +701,9 @@ func (e *endIdle) endOne(ctx context.Context, id string, now time.Time, front st
 	}
 	e.ending[id] = true
 	e.mu.Unlock()
+	if f, ok := e.sess.(interface{ MarkFreed(string) }); ok {
+		f.MarkFreed(id)
+	}
 	if err := e.sess.End(id); err != nil {
 		e.mu.Lock()
 		delete(e.ending, id)

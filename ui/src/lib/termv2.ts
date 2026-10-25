@@ -88,6 +88,9 @@ export const DIAGNOSE_EVERY_MS = 15_000
  */
 export const GONE_AFTER_MS = 10_000
 
+/** Why a tab's agent is gone when Caprock ended it to free memory. */
+export const FREED = 'Caprock ended this agent to free memory. Its conversation is kept: Continue picks it up.'
+
 /** The terminal socket's HTTP twin: the same route, asked by a plain GET. */
 export function diagnosisUrl(wsUrl: string): string {
   return wsUrl.replace(/^ws(s?):\/\//, 'http$1://')
@@ -542,9 +545,9 @@ export class TermClient {
    * client ends ('ended', with the reason) and says so (`gone`), and the
    * app shows the session's conversation with Continue here in its place.
    */
-  private gone(): void {
+  private gone(reason = refusalFor(409)): void {
     this.ended = true
-    this.refusal = refusalFor(409)
+    this.refusal = reason
     this.retry.cancel()
     this.unwatch()
     this.setState('ended')
@@ -619,11 +622,16 @@ export class TermClient {
     if (m.ping !== undefined) { ws.send(JSON.stringify({ pong: m.ping })); return }
     const reset = m.reset as { offset: number } | undefined
     if (reset) { this.snapshotAt = reset.offset; return }
-    const exit = m.exit as { code: number; restart?: number; early?: number } | undefined
+    const exit = m.exit as { code: number; restart?: number; early?: number; freed?: number } | undefined
     if (exit?.restart) {
       // A new process, a new ring: the next connect asks for all of it.
       this.restarting = true
       this.pos = null
+      return
+    }
+    if (exit?.freed) {
+      // Ended to free memory: nothing to retry, the conversation is kept.
+      this.gone(FREED)
       return
     }
     if (exit) {

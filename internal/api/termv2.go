@@ -103,7 +103,8 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 	id := r.PathValue("id")
 	ts, ok := src.TermV2(id)
 	if !ok {
-		// A program that exited at once is said so, not refused.
+		// A program that exited at once, or was ended to free memory, is
+		// said so, not refused.
 		if h.serveEarlyExit(s, w, r, id) {
 			return
 		}
@@ -247,6 +248,10 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 				// It ended at once: the tab says so, with what it printed
 				// (GET /v1/agents/{id}/exit), instead of a shell in its place.
 				exit["early"] = 1
+			} else if ok && rep.Freed {
+				// Ended to free memory: the tab shows the conversation with
+				// Continue, not a shell in its place.
+				exit["freed"] = 1
 			}
 			_ = t.text(map[string]map[string]int{"exit": exit})
 			_ = c.Close(websocket.StatusNormalClosure, "session ended")

@@ -40,7 +40,10 @@ type ExitReport struct {
 	Agent string `json:"agent,omitempty"`
 	Code  int    `json:"code"`
 	// Early: it ended within EarlyExit of its start with nothing typed.
-	Early bool  `json:"early"`
+	Early bool `json:"early"`
+	// Freed: Caprock ended it to free memory, on the user's click; its
+	// conversation is kept and can be continued.
+	Freed bool  `json:"freed,omitempty"`
 	RanMs int64 `json:"ran_ms"`
 	// Tail is the end of what it printed, as plain text: the screen it left,
 	// ANSI and blank lines stripped, at most exitTailLines lines.
@@ -99,6 +102,7 @@ func (m *Manager) recordExit(a *Agent, code int, at time.Time) ExitReport {
 	rep := ExitReport{
 		SessionID: a.SessionID, Agent: a.Kind, Code: code, RanMs: ran.Milliseconds(), At: at.UnixMilli(),
 		Early: ran < EarlyExit && !a.typedAny.Load() && !a.stopped.Load() && !m.Restarting(a.SessionID),
+		Freed: a.freed.Load(),
 		Tail:  screenTail(a.ring.snapshot(), cols),
 		Retry: a.retry, Binary: a.argv0,
 	}

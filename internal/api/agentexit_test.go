@@ -67,6 +67,26 @@ func TestTermV2SaysAnEarlyExitInsteadOfRefusing(t *testing.T) {
 
 // An exit that was not early, and a session with none recorded, are refused
 // as before: the tab turns into the conversation with Continue here.
+// An agent Caprock ended to free memory is answered with the exit frame,
+// freed, so its tab shows the conversation with Continue at once instead
+// of "Can't connect · next try in 10 s" (owner, 2026-10-25).
+func TestTermV2SaysAFreedSessionEnded(t *testing.T) {
+	_, srv := exitServer(t, map[string]agents.ExitReport{"s1": {SessionID: "s1", Agent: "claude", Code: -1, Freed: true}})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := dialV2(ctx, t, srv, "")
+	f, err := readFrame(ctx, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw := string(f.text["exit"]); raw != `{"code":-1,"freed":1}` {
+		t.Fatalf("first frame %+v", f)
+	}
+	if _, _, err := c.Read(ctx); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Fatalf("close = %v; want 1000", err)
+	}
+}
+
 func TestTermV2StillRefusesALateExitOrAnUnknownSession(t *testing.T) {
 	for _, exits := range []map[string]agents.ExitReport{
 		{"s1": {SessionID: "s1", Code: 0, Early: false}},

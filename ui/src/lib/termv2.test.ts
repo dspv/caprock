@@ -6,6 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CONNECT_TIMEOUT_MS, LIVENESS_CHECK_MS, PROBE_MS, RETRY_OVERDUE_MS, STALL_MS, offersManualRetry } from './reconnect'
 import {
+  FREED,
   BACKOFF_MAX_MS, BACKOFF_MIN_MS, DEAD_MS, FOCUS_DEBOUNCE_MS, HIGH_WATER, OFFLINE_QUEUE_BYTES, TERM_V2_PROTOCOL,
   TermClient, backoff, type TermState,
 } from './termv2'
@@ -276,6 +277,27 @@ describe('TermClient (protocol v2)', () => {
     vi.advanceTimersByTime(60_000)
     expect(seen).toEqual([1, true])
     expect(c.state).toBe('ended')
+    expect(FakeSocket.all).toHaveLength(1)
+    c.dispose()
+  })
+
+  // An agent Caprock ended to free memory: gone at once, with the reason —
+  // the app shows its conversation with Continue (AppShell onPaneGone).
+  it('is gone at once when the agent was ended to free memory', () => {
+    let gone = 0
+    const c = new TermClient({
+      url: 'ws://localhost/v1/agents/s1/term',
+      random: () => 0.5,
+      callbacks: { write: (_d, done) => done(), reset: () => {}, state: () => {}, gone: () => { gone++ } },
+    })
+    c.start()
+    last().accept()
+    last().text({ exit: { code: -1, freed: 1 } })
+    last().drop(1000)
+    vi.advanceTimersByTime(60_000)
+    expect(gone).toBe(1)
+    expect(c.state).toBe('ended')
+    expect(c.link.refusal).toBe(FREED)
     expect(FakeSocket.all).toHaveLength(1)
     c.dispose()
   })
