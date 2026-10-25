@@ -76,7 +76,7 @@ import { moduleAt } from '@/lib/modules'
 import { openBrainCapture } from '@/lib/brain'
 import { SetupStrip } from '@/components/SetupStrip'
 import { ShareMoment } from '@/components/Nudges'
-import { ShareDialog } from '@/components/Share'
+import { SHARE_EVENT, ShareDialog } from '@/components/Share'
 import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
 import { ComputerAsks } from '@/components/ComputerAsks'
@@ -336,6 +336,13 @@ export function AppShell() {
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
   const [sheet, setSheet] = useState<SheetState>(null)
+  // File → Share Your Figures… in the desktop app's menu (app/src-tauri
+  // main.rs, SHARE_JS) opens the share sheet over whatever tab is in front.
+  useEffect(() => {
+    const on = () => setSheet({ kind: 'share' })
+    window.addEventListener(SHARE_EVENT, on)
+    return () => window.removeEventListener(SHARE_EVENT, on)
+  }, [])
   // Offer answers live on the daemon so the app and a browser tab agree.
   usePromptSync()
   const [toast, setToast] = useState('')

@@ -239,10 +239,15 @@ describe('the Today card', () => {
     },
   } as unknown as Summary
 
-  it('has no Share button: sharing stays in ⌘K and on Pipeline', () => {
+  // Owner, 2026-10-25: from a session tab he could not find how to share.
+  // One quiet icon, not the loud corner removed on 2026-10-16.
+  it('has one quiet way to share the week, folded or not', () => {
     setup(mix(), [], { ...route, summary })
     const card = screen.getByRole('region', { name: 'Today' })
-    expect(within(card).queryByRole('button', { name: /share/i })).toBeNull()
+    const share = within(card).getByRole('button', { name: 'Share your week' })
+    expect(share.textContent).toBe('')
+    fireEvent.click(document.querySelector('[data-today-fold]')!)
+    expect(within(screen.getByRole('region', { name: 'Today' })).getByRole('button', { name: 'Share your week' })).toBeTruthy()
   })
 
   it('folds to one line by its chevron, with the waiting count in amber and both windows, and unfolds; the fold is remembered', () => {

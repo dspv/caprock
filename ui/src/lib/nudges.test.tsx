@@ -7,7 +7,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { capNudge, limitNudge, pickNudge, resetNudgeSlots, starEligible, teamEligible, useNudgeSlot, type NudgeId } from './nudges'
 import { hydratePrompts, isDue, markAnswered, resetPrompts } from './prompts'
-import { findMoment } from './shareprompt'
+import { findMoment, weekClosedAt, weekClosedDue } from './shareprompt'
 
 const DAY = 24 * 60 * 60 * 1000
 const T0 = Date.parse('2026-10-07T12:00:00Z') // a Wednesday
@@ -77,18 +77,48 @@ describe('team detection', () => {
 
 describe('share moment', () => {
   const totals = { sessions: 40, owned_sessions: 0, turns: 0, tool_calls: 0, files_touched: 0, cost_usd: 300, avg_session_sec: 0, days: 20 }
-  const week = { sessions: 12, cost_usd: 84.5, savings: { hit_rate: 0.5 } }
-  it('says nothing midweek without a milestone, or on an empty week', () => {
-    expect(findMoment(T0, week, { totals, daily: [] })).toBeNull()
-    expect(findMoment(T0 + 5 * DAY, { ...week, sessions: 0 }, { totals, daily: [] })).toBeNull()
+  const days = Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-0${i + 1}`, prs_opened: 0, cost_usd: 0, active: true }))
+  const week = { sessions: 12, cost_usd: 84.5, prs_merged: 3, days }
+  // Local times, so the rule is the reader's Sunday evening wherever the test runs.
+  const sundayEve = new Date(2026, 9, 25, 19, 0).getTime() // Sun 25 Oct 19:00
+  const closed = new Date(2026, 9, 25, 18, 0).getTime()
+  const wednesday = new Date(2026, 9, 21, 12, 0).getTime()
+  it('closes the week on Sunday at 18:00 local', () => {
+    expect(weekClosedAt(sundayEve)).toBe(closed)
+    expect(weekClosedAt(new Date(2026, 9, 25, 17, 59).getTime())).toBe(new Date(2026, 9, 18, 18, 0).getTime())
+    expect(weekClosedAt(new Date(2026, 9, 27, 9, 0).getTime())).toBe(closed)
   })
-  it('speaks on a Monday, in the reader\'s own figures', () => {
-    const m = findMoment(T0 + 5 * DAY, week, { totals, daily: [] })
-    expect(m?.line).toBe('Another week done. Your week with Claude Code: 12 sessions, $84.50 at API price — share the card?')
+  it('offers the closed week once: Sunday evening or the first open after, until answered', () => {
+    expect(weekClosedDue(sundayEve, undefined)).toBe(true)
+    expect(weekClosedDue(new Date(2026, 9, 26, 8, 0).getTime(), undefined)).toBe(true) // Monday morning, first open
+    expect(weekClosedDue(sundayEve, closed - 1)).toBe(true) // answered before the close: a milestone, not this week
+    expect(weekClosedDue(sundayEve + 60_000, sundayEve)).toBe(false) // answered this week: once
+    expect(weekClosedDue(wednesday, undefined)).toBe(false) // midweek: not about a closed week
+    // Answered last Sunday: due again this Sunday, though fewer than seven days passed.
+    expect(weekClosedDue(sundayEve, new Date(2026, 9, 18, 21, 0).getTime())).toBe(true)
+  })
+  it('says nothing midweek without a milestone, or on an empty week', () => {
+    expect(findMoment(wednesday, week, { totals, daily: [] })).toBeNull()
+    expect(findMoment(sundayEve, { ...week, sessions: 0 }, { totals, daily: [] })).toBeNull()
+  })
+  it('speaks when the week closes, in the card\'s own figures', () => {
+    const m = findMoment(sundayEve, week, { totals, daily: [] })
+    expect(m).toEqual({ kind: 'week-closed', line: 'Your week is done. $84.50 at API price this week · 3 PRs merged' })
+    // A flat plan with a price: the multiple, as on the card.
+    const max = { kind: 'flat' as const, label: 'Max', usdPerMonth: 200 }
+    expect(findMoment(sundayEve, { ...week, cost_usd: 1540 }, { totals, daily: [] }, max)?.line)
+      .toBe('Your week is done. 33× your plan this week · 3 PRs merged')
+    // Not due (answered already): the milestones only.
+    expect(findMoment(sundayEve, week, { totals, daily: [] }, undefined, 0, { weekly: false, milestones: true })).toBeNull()
+  })
+  it('a closed week with nothing merged is not an occasion', () => {
+    expect(findMoment(sundayEve, { ...week, prs_merged: 0 }, { totals, daily: [] })).toBeNull()
   })
   it('names a milestone: 100 sessions, 95% cache hits', () => {
-    expect(findMoment(T0, week, { totals: { ...totals, sessions: 104 }, daily: [] })?.kind).toBe('sessions')
-    expect(findMoment(T0, { ...week, savings: { hit_rate: 0.96 } }, { totals, daily: [] })?.line).toMatch(/^96% cache hits this week\./)
+    expect(findMoment(wednesday, week, { totals: { ...totals, sessions: 104 }, daily: [] })?.kind).toBe('sessions')
+    expect(findMoment(wednesday, week, { totals, daily: [] }, undefined, 0.96)?.line).toMatch(/^96% cache hits\. \$84\.50/)
+    // A milestone snoozed by an answer this week stays quiet.
+    expect(findMoment(wednesday, week, { totals: { ...totals, sessions: 104 }, daily: [] }, undefined, 0, { weekly: false, milestones: false })).toBeNull()
   })
 })
 

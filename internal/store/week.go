@@ -17,8 +17,16 @@ import (
 
 // The Week: what this machine's agents did over seven days, for a card someone
 // can share. Every figure is read from events already stored; nothing here
-// calls GitHub or anything else off the machine (rule 4), which bounds what can
-// be said -- "merged" is a merge the agents ran, not GitHub's state.
+// calls GitHub or anything else off the machine (rule 4). The pull requests
+// counted here are the merges the agents ran; the API puts GitHub's own record
+// beside them where the daemon already holds it (github_prs, read by the
+// Pipeline), per repository (api.buildWeek).
+//
+// Hand-run work only (owner, 2026-10-25): a session whose cwd is a filesystem
+// root or the home directory itself (RootOrHome) is a scheduled script --
+// launchd and cron open `claude -p` in "/" -- and on the owner's machine 480
+// of a week's 1,036 sessions were such runs. They are left out of every
+// figure here and counted in ScheduledSessions instead.
 //
 // Privacy is part of the shape, not of the screen: nothing returned names a
 // repository, a path, a prompt or a session title, so no caller can leak one by
@@ -40,6 +48,8 @@ type WeekOptions struct {
 	Home string
 	// TempDirs are scratch locations whose files are not counted either.
 	TempDirs []string
+	// Windows compares the home directory without case (RootOrHome).
+	Windows bool
 }
 
 // Week is the measured week. Estimates are named as such in their comments and
@@ -49,15 +59,21 @@ type Week struct {
 	ToMs   int64 `json:"to_ms"`
 	// Days are the seven days in order, each with what it opened and cost.
 	Days []WeekDay `json:"days"`
-	// Sessions is every session with a non-internal event in the window.
-	Sessions   int64 `json:"sessions"`
-	ActiveDays int   `json:"active_days"`
-	Turns      int64 `json:"turns"`
+	// Sessions is every hand-run session with a non-internal event in the
+	// window; ScheduledSessions those left out because they ran at a root or
+	// in the home directory itself (RootOrHome).
+	Sessions          int64 `json:"sessions"`
+	ScheduledSessions int64 `json:"scheduled_sessions"`
+	ActiveDays        int   `json:"active_days"`
+	Turns             int64 `json:"turns"`
 	// CostUSD is the stored list-price cost of the window's turns: priced once
 	// per message id and never twice across forks (TurnPaidElsewhere).
 	CostUSD float64 `json:"cost_usd"`
 	// UnpricedTurns carry tokens and no price, so CostUSD leaves them out.
 	UnpricedTurns int64 `json:"unpriced_turns,omitempty"`
+	// Tokens is every token of the window's events: input, output, cache
+	// reads and writes.
+	Tokens int64 `json:"tokens"`
 	// Models is each model's cost and re-read volume, for the context tax.
 	Models []WeekModel `json:"models"`
 
@@ -81,6 +97,33 @@ type Week struct {
 	Agents  []WeekAgent  `json:"agents"`
 	Loop    *WeekLoop    `json:"loop,omitempty"`
 	Biggest *WeekSession `json:"biggest,omitempty"`
+
+	// Repos and AgentPRs are for the API to put GitHub's record beside the
+	// agents' own; neither is sent, since both name repositories.
+	Repos    []WeekRepo    `json:"-"`
+	AgentPRs []WeekAgentPR `json:"-"`
+	// SkipSQL is the hand-run filter, a clause on session_id, for the
+	// API's own reads of the same window (SubagentTokensByModelSkip).
+	SkipSQL string `json:"-"`
+}
+
+// WeekRepo is one repository root the window's hand-run sessions worked in
+// (sessions.repo_root, else the cwd), and what its turns cost in the window.
+type WeekRepo struct {
+	Root    string
+	CostUSD float64
+}
+
+// WeekAgentPR is one pull request the agents opened or merged in the window,
+// as the transcripts say: Repo is "owner/name", or "dir:<root>" for a merge
+// by number in a directory no `gh pr create` printed a URL from.
+type WeekAgentPR struct {
+	Repo   string
+	Number int
+	Opened bool
+	Merged bool
+	// Day is the index into Days the opening fell on, -1 when not opened.
+	Day int
 }
 
 // WeekDay is one local day of the window.
@@ -154,6 +197,12 @@ func WeekStats(ctx context.Context, q Querier, o WeekOptions) (Week, error) {
 		return i, ok
 	}
 
+	skip, skipE, err := scheduledSkip(ctx, q, o)
+	if err != nil {
+		return w, err
+	}
+	w.SkipSQL = skip
+
 	// The two payload readers are most of the time on a long window — all of
 	// history took 7 s and 9 s on a copy of the owner's 1 GB database
 	// (2026-10-04), almost all of it waiting on the disk — and they touch
@@ -168,17 +217,20 @@ func WeekStats(ctx context.Context, q Querier, o WeekOptions) (Week, error) {
 		lw               Week
 	)
 	wg.Add(2)
-	go func() { defer wg.Done(); toolErr = weekTools(ctx, q, from, to, &tw, o, dayOf) }()
-	go func() { defer wg.Done(); loopErr = weekLoop(ctx, q, from, to, &lw, o) }()
-	err := weekActivity(ctx, q, from, to, &w, dayOf)
+	go func() { defer wg.Done(); toolErr = weekTools(ctx, q, from, to, &tw, o, dayOf, skipE) }()
+	go func() { defer wg.Done(); loopErr = weekLoop(ctx, q, from, to, &lw, o, skipE) }()
+	err = weekActivity(ctx, q, from, to, &w, dayOf, skip)
 	if err == nil {
-		err = weekAgents(ctx, q, from, to, &w)
+		err = weekAgents(ctx, q, from, to, &w, skip)
 	}
 	if err == nil {
-		err = weekModels(ctx, q, from, to, &w)
+		err = weekModels(ctx, q, from, to, &w, skip)
 	}
 	if err == nil {
-		err = weekBiggest(ctx, q, from, to, &w, o.Loc)
+		err = weekBiggest(ctx, q, from, to, &w, o.Loc, skipE)
+	}
+	if err == nil {
+		err = weekRepos(ctx, q, from, to, &w, skipE)
 	}
 	wg.Wait()
 	for _, e := range []error{err, toolErr, loopErr} {
@@ -189,6 +241,7 @@ func WeekStats(ctx context.Context, q Querier, o WeekOptions) (Week, error) {
 	w.PRsOpened, w.PRsMerged, w.MergesUnresolved, w.Commits = tw.PRsOpened, tw.PRsMerged, tw.MergesUnresolved, tw.Commits
 	w.FilesEdited, w.LinesAdded, w.LinesRemoved = tw.FilesEdited, tw.LinesAdded, tw.LinesRemoved
 	w.ToolMs, w.CIWaitMs = tw.ToolMs, tw.CIWaitMs
+	w.AgentPRs = tw.AgentPRs
 	for i := range w.Days {
 		w.Days[i].PRsOpened = tw.Days[i].PRsOpened
 	}
@@ -196,14 +249,70 @@ func WeekStats(ctx context.Context, q Querier, o WeekOptions) (Week, error) {
 	return w, nil
 }
 
+// scheduledSkip is the SQL that leaves out the sessions started at a root or
+// in the home directory itself (RootOrHome), against o.Home: the clause on a
+// bare session_id and on e.session_id. Empty when there are none. The cwds
+// are read once from sessions (a few hundred distinct values) and written
+// into the clause as literals, so every query keeps its own arguments.
+func scheduledSkip(ctx context.Context, q Querier, o WeekOptions) (string, string, error) {
+	rows, err := q.QueryContext(ctx, `SELECT DISTINCT cwd FROM sessions WHERE cwd IS NOT NULL AND cwd <> ''`)
+	if err != nil {
+		return "", "", err
+	}
+	defer rows.Close()
+	var lits []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return "", "", err
+		}
+		if rootOrHome(c, o.Home, o.Windows) {
+			lits = append(lits, "'"+strings.ReplaceAll(c, "'", "''")+"'")
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", "", err
+	}
+	if len(lits) == 0 {
+		return "", "", nil
+	}
+	in := ` NOT IN (SELECT session_id FROM sessions WHERE cwd IN (` + strings.Join(lits, ",") + `))`
+	return ` AND session_id` + in, ` AND e.session_id` + in, nil
+}
+
+// weekRepos is the repository roots the window's hand-run turns ran in, with
+// what each cost: one grouped read through the turn index, then the
+// sessions' roots.
+func weekRepos(ctx context.Context, q Querier, from, to int64, w *Week, skipE string) error {
+	rows, err := q.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(s.repo_root,''), s.cwd, ''), COALESCE(SUM(e.cost_usd),0)
+		FROM events e INDEXED BY idx_events_turn_agent JOIN sessions s ON s.session_id = e.session_id
+		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+skipE+`
+		GROUP BY 1 ORDER BY 2 DESC`, from, to)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r WeekRepo
+		if err := rows.Scan(&r.Root, &r.CostUSD); err != nil {
+			return err
+		}
+		if r.Root != "" {
+			w.Repos = append(w.Repos, r)
+		}
+	}
+	return rows.Err()
+}
+
 // weekActivity fills the per-day cost, the active days, the session count and
 // the total. It reads the same covering index Summarize reads.
-func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf func(int64) (int, bool)) error {
+func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf func(int64) (int, bool), skip string) error {
 	rows, err := q.QueryContext(ctx, `
 		SELECT ts, kind, cost_usd,
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)
 		FROM events INDEXED BY idx_events_ts_cover
-		WHERE ts >= ? AND ts < ?`+nonInternalEvent, from, to)
+		WHERE ts >= ? AND ts < ?`+nonInternalEvent+skip, from, to)
 	if err != nil {
 		return err
 	}
@@ -220,6 +329,7 @@ func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf
 			continue
 		}
 		w.Days[i].Active = true
+		w.Tokens += tokens
 		if cost.Valid {
 			w.Days[i].CostUSD += cost.Float64
 			w.CostUSD += cost.Float64
@@ -239,15 +349,28 @@ func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf
 			w.ActiveDays++
 		}
 	}
-	return q.QueryRowContext(ctx,
+	var all int64
+	if err := q.QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ? AND ts < ?`+nonInternalEvent,
-		from, to).Scan(&w.Sessions)
+		from, to).Scan(&all); err != nil {
+		return err
+	}
+	w.Sessions = all
+	if skip != "" {
+		if err := q.QueryRowContext(ctx,
+			`SELECT COUNT(DISTINCT session_id) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ? AND ts < ?`+nonInternalEvent+skip,
+			from, to).Scan(&w.Sessions); err != nil {
+			return err
+		}
+	}
+	w.ScheduledSessions = all - w.Sessions
+	return nil
 }
 
 // weekAgents splits the week's turns by agent, and Claude Code's by main
 // thread and subagent.
-func weekAgents(ctx context.Context, q Querier, from, to int64, w *Week) error {
-	a, err := AgentSplit(ctx, q, from, to)
+func weekAgents(ctx context.Context, q Querier, from, to int64, w *Week, skip string) error {
+	a, err := agentSplit(ctx, q, from, to, skip)
 	if err != nil {
 		return err
 	}
@@ -255,10 +378,10 @@ func weekAgents(ctx context.Context, q Querier, from, to int64, w *Week) error {
 	return nil
 }
 
-func weekModels(ctx context.Context, q Querier, from, to int64, w *Week) error {
+func weekModels(ctx context.Context, q Querier, from, to int64, w *Week, skip string) error {
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(model,''), COALESCE(SUM(cache_read),0), COALESCE(SUM(cost_usd),0)
-		FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ?`+nonInternalEvent+`
+		FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ?`+nonInternalEvent+skip+`
 		GROUP BY 1 ORDER BY 3 DESC`, from, to)
 	if err != nil {
 		return err
@@ -274,12 +397,12 @@ func weekModels(ctx context.Context, q Querier, from, to int64, w *Week) error {
 	return rows.Err()
 }
 
-func weekBiggest(ctx context.Context, q Querier, from, to int64, w *Week, loc *time.Location) error {
+func weekBiggest(ctx context.Context, q Querier, from, to int64, w *Week, loc *time.Location, skipE string) error {
 	var b WeekSession
 	err := q.QueryRowContext(ctx, `
 		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(SUM(e.cost_usd),0), COUNT(*)
 		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
-		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
+		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+skipE+`
 		GROUP BY e.session_id ORDER BY 3 DESC, 4 DESC LIMIT 1`, from, to).Scan(&b.SessionID, &b.Agent, &b.CostUSD, &b.Turns)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -382,7 +505,7 @@ type bashCall struct {
 
 // weekTools reads the successful Bash, Edit, Write and MultiEdit calls: pull
 // requests, commits, files and lines, and the time spent waiting on CI.
-func weekTools(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOptions, dayOf func(int64) (int, bool)) error {
+func weekTools(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOptions, dayOf func(int64) (int, bool), skipE string) error {
 	// Read in slices side by side, then joined in time order: pull requests
 	// are matched to their merges in the order the calls ran.
 	spans, err := weekSpans(ctx, q, "tool.post", from, to, toolScanWorkers)
@@ -396,7 +519,7 @@ func weekTools(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOp
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			parts[i], errs[i] = scanToolPosts(ctx, q, sp[0], sp[1])
+			parts[i], errs[i] = scanToolPosts(ctx, q, sp[0], sp[1], skipE)
 		}()
 	}
 	wg.Wait()
@@ -482,7 +605,7 @@ type toolRow struct {
 // four tools' payloads came to about a gigabyte, all of it decoded and held
 // at once to count lines and find pull requests. Only a Bash call's response
 // is kept, for its output.
-func scanToolPosts(ctx context.Context, q Querier, from, to int64) ([]toolRow, error) {
+func scanToolPosts(ctx context.Context, q Querier, from, to int64, skipE string) ([]toolRow, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT e.session_id, COALESCE(e.key,''), COALESCE(e.tool,''), e.ts,
 		       COALESCE(e.payload ->> '$.hook_event_name', ''),
@@ -494,7 +617,7 @@ func scanToolPosts(ctx context.Context, q Querier, from, to int64) ([]toolRow, e
 		       COALESCE(CASE WHEN json_type(e.payload, '$.tool_response') = 'object'
 		                     THEN CAST(e.payload ->> '$.tool_response.interrupted' AS INTEGER) END, 0)
 		FROM events e
-		WHERE e.kind = 'tool.post' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
+		WHERE e.kind = 'tool.post' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+skipE+`
 		  AND e.tool IN ('Bash','Edit','Write','MultiEdit') AND json_valid(e.payload)
 		ORDER BY e.ts, e.id`, from, to)
 	if err != nil {
@@ -617,6 +740,18 @@ func countPRs(calls []bashCall, w *Week, dayOf func(int64) (int, bool)) {
 		return r
 	}
 	opened := map[prRef]bool{}
+	// Every pull request seen, in the order first seen, for the API to put
+	// GitHub's record beside (Week.AgentPRs).
+	rowOf := map[prRef]int{}
+	row := func(r prRef) *WeekAgentPR {
+		i, ok := rowOf[r]
+		if !ok {
+			i = len(w.AgentPRs)
+			rowOf[r] = i
+			w.AgentPRs = append(w.AgentPRs, WeekAgentPR{Repo: r.slug, Number: r.number, Day: -1})
+		}
+		return &w.AgentPRs[i]
+	}
 	for _, c := range calls {
 		w.Commits += countCommits(c.stmts, c.out)
 		for _, st := range c.stmts {
@@ -627,8 +762,11 @@ func countPRs(calls []bashCall, w *Week, dayOf func(int64) (int, bool)) {
 			for _, r := range refs {
 				if !opened[r] {
 					opened[r] = true
+					p := row(r)
+					p.Opened = true
 					if i, ok := dayOf(c.ts); ok {
 						w.Days[i].PRsOpened++
+						p.Day = i
 					}
 				}
 			}
@@ -668,6 +806,7 @@ func countPRs(calls []bashCall, w *Week, dayOf func(int64) (int, bool)) {
 				}
 			}
 			merged[repo+"#"+itoa(t.number)] = true
+			row(prRef{slug: repo, number: t.number}).Merged = true
 		}
 	}
 	w.PRsMerged = len(merged)
@@ -697,7 +836,7 @@ func itoa(n int) string {
 // repetition: launching eleven subagents in one turn is a panel, not a loop.
 // Where the call carries its message id, repeats from the same message count
 // once.
-func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOptions) error {
+func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOptions, skipE string) error {
 	k, win := o.LoopK, o.LoopWindow
 	if k <= 0 {
 		k = 5
@@ -720,7 +859,7 @@ func weekLoop(ctx context.Context, q Querier, from, to int64, w *Week, o WeekOpt
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			parts[i], errs[i] = scanLoopSeries(ctx, q, sp[0], sp[1])
+			parts[i], errs[i] = scanLoopSeries(ctx, q, sp[0], sp[1], skipE)
 		}()
 	}
 	wg.Wait()
@@ -812,7 +951,7 @@ type loopScan struct {
 // the parent repeating itself. The sidechain test reads the compact
 // `"sidechain":true` the transcript parser writes before parsing anything,
 // so the scan's cost stays where it was.
-func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, error) {
+func scanLoopSeries(ctx context.Context, q Querier, from, to int64, skipE string) (loopScan, error) {
 	out := loopScan{series: map[string]*loopSeries{}}
 	rows, err := q.QueryContext(ctx, `
 		SELECT e.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''),
@@ -820,7 +959,7 @@ func scanLoopSeries(ctx context.Context, q Querier, from, to int64) (loopScan, e
 		            WHEN instr(e.payload, '"sidechain":true') > 0 THEN 'sidechain' ELSE '' END,
 		       COALESCE(CASE WHEN json_valid(e.payload) THEN e.payload -> '$.tool_input' END, '')
 		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
-		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+`
+		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+skipE+`
 		  AND COALESCE(e.tool,'') NOT IN (`+readOnlyList+`)`, from, to)
 	if err != nil {
 		return out, err

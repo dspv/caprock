@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/dspv/caprock/internal/contexttax"
@@ -14,10 +15,13 @@ import (
 // WeekResponse is GET /v1/week: seven local days of what this machine's agents
 // did, for the Week screen's shareable card. Contract: .ai/03-contracts.md.
 //
-// Everything is computed from the local database; nothing here asks GitHub,
-// so "merged" means a merge the agents ran and saw succeed, never GitHub's
-// state. Nothing in it names a repository, a path, a prompt or a session
-// title: the card is made to be posted.
+// Everything is computed from the local database; nothing here asks GitHub.
+// Pull requests are GitHub's record where the daemon already holds it
+// (github_prs, the lists the Pipeline read) and merges the agents ran
+// elsewhere (prs_source). Sessions started at a root or in the home
+// directory itself — scheduled scripts — are left out of every figure
+// (scheduled_sessions counts them). Nothing in it names a repository, a
+// path, a prompt or a session title: the card is made to be posted.
 type WeekResponse struct {
 	store.Week
 	// Period is the named window asked for (today, 7d, 30d, all), or empty
@@ -32,10 +36,21 @@ type WeekResponse struct {
 	// per model exactly as the Lifetime screen prices it. Absent without a
 	// pricing table.
 	Tax *contexttax.Lifetime `json:"tax,omitempty"`
-	// CostPerMergedPR divides all of the week's cost by the merges counted:
-	// an estimate (research, docs and sessions that merged nothing are in the
-	// numerator), and absent when nothing was merged.
+	// PRsSource says where prs_opened and prs_merged came from: "github"
+	// (github_prs, the pull request lists the Pipeline read and the older
+	// ones a Week read, weekbackfill.go, for every repository counted), "agents" (the agents' own `gh pr` commands, no
+	// GitHub record held), or "both". Absent with no pull request counted
+	// and no GitHub record.
+	PRsSource string `json:"prs_source,omitempty"`
+	// CostPerMergedPR is an estimate, absent when nothing was merged: with
+	// GitHub's record, the mean of what the Pipeline charges each pull
+	// request merged in the window (store.KnownPRs; one with no agent work
+	// recorded counts as $0); with the agents' count only, all of the
+	// window's cost over its merges.
 	CostPerMergedPR *float64 `json:"cost_per_merged_pr,omitempty"`
+	// prSlugs are the GitHub repositories counted, for the read that makes
+	// github_prs cover the window (weekbackfill.go). Never sent.
+	prSlugs []string
 	// SubagentSaving is what the window's subagents on a pricier model than
 	// Haiku cost, against the same tokens on Haiku. An estimate at list
 	// prices; absent unless the difference is a dollar or more.
@@ -92,11 +107,18 @@ func (s *Server) weekAnswer(ctx context.Context, period string, from, to time.Ti
 		cache = s.weekLong
 	}
 	key := "week:" + period + ":" + from.Format("2006-01-02") + ":" + to.Format("2006-01-02")
-	return cache.get(ctx, key, func() (any, error) {
+	v, err := cache.get(ctx, key, func() (any, error) {
 		resp, err := s.buildWeek(context.WithoutCancel(ctx), from, to)
 		resp.Period = period
 		return resp, err
 	})
+	// On every ask, not only on a count: the cache keeps an answer while no
+	// event is written, and github_prs is not an event. What is already
+	// covered costs a meta read per repository and sends nothing.
+	if resp, ok := v.(WeekResponse); ok && err == nil {
+		s.fillWeekPRs(ctx, resp.prSlugs, resp.FromMs)
+	}
+	return v, err
 }
 
 // weekPeriod is the window a named period covers, in whole local days ending
@@ -151,7 +173,7 @@ func (s *Server) buildWeek(ctx context.Context, from, to time.Time) (WeekRespons
 	wk, err := store.WeekStats(ctx, s.d.Store.DB(), store.WeekOptions{
 		From: from, To: to, Loc: loc,
 		LoopK: s.d.LoopK, LoopWindow: s.d.LoopWindow,
-		Home: home, TempDirs: store.DefaultTempDirs(),
+		Home: home, TempDirs: store.DefaultTempDirs(), Windows: runtime.GOOS == "windows",
 	})
 	if err != nil {
 		return WeekResponse{}, err
@@ -163,9 +185,19 @@ func (s *Server) buildWeek(ctx context.Context, from, to time.Time) (WeekRespons
 		Partial:   s.d.Now().Before(to),
 		Estimates: []string{"lines_added", "lines_removed"},
 	}
-	if wk.PRsMerged > 0 && wk.CostUSD > 0 {
-		v := wk.CostUSD / float64(wk.PRsMerged)
-		resp.CostPerMergedPR = &v
+	// The agents' own count is replaced by GitHub's record wherever the
+	// daemon holds one (weekprs.go); the transcripts' unresolved merges stay
+	// as they were counted.
+	prs, err := s.countWeekPRs(ctx, wk, loc)
+	if err != nil {
+		return WeekResponse{}, err
+	}
+	resp.PRsOpened, resp.PRsMerged, resp.PRsSource, resp.prSlugs = prs.opened, prs.merged, prs.source, prs.slugs
+	for i := range resp.Days {
+		resp.Days[i].PRsOpened = prs.days[i]
+	}
+	if prs.perMerged != nil {
+		resp.CostPerMergedPR = prs.perMerged
 		resp.Estimates = append(resp.Estimates, "cost_per_merged_pr")
 	}
 	if s.d.Table != nil {
@@ -176,7 +208,7 @@ func (s *Server) buildWeek(ctx context.Context, from, to time.Time) (WeekRespons
 		}
 		lt := contexttax.Sum(models, s.d.Table)
 		resp.Tax = &lt
-		subs, err := store.SubagentTokensByModel(ctx, s.d.Store.DB(), from.UnixMilli(), to.UnixMilli())
+		subs, err := store.SubagentTokensByModelSkip(ctx, s.d.Store.DB(), from.UnixMilli(), to.UnixMilli(), wk.SkipSQL)
 		if err != nil {
 			return WeekResponse{}, err
 		}

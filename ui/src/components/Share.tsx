@@ -1,50 +1,54 @@
 /**
  * Share these numbers — from anywhere, in one click.
  *
- * The card could only be drawn from one panel on one screen, and drawing it
- * only saved a PNG: posting it meant finding the file, opening a social site
- * and writing the words yourself. Three steps, two of them chores.
+ * One card (owner, 2026-10-25): the Week card (WeekCard.tsx), the same
+ * figures in landscape and portrait, from GET /v1/week — GitHub's pull
+ * requests where the daemon holds them, hand-run sessions only. It replaced
+ * two styles (a canvas "Figures" card led by the plan's multiple and the
+ * "Story" card led by PRs), which made the format change the message.
  *
- * What a browser can actually do about that is limited, and the limit shapes
- * this component:
- *
- *  - **Web Share API** (`navigator.share` with `files`) hands the image
- *    straight to the operating system's share sheet — the real thing, on a
- *    phone and on recent desktop Safari. When it exists, that is the whole
- *    interaction: one click, pick an app, done.
- *  - **Everywhere else** a social site cannot be handed an image by URL; no
- *    amount of query string will attach a picture to a tweet. So the fallback
- *    downloads the card and opens the site with the text already written,
- *    leaving one drag to do. Saying that out loud beats a button that appears
- *    to post and does not.
+ * What a browser can do with the picture is limited, and the limit shapes
+ * the buttons (ShareActions.tsx): the Web Share API hands the file to the
+ * operating system's share sheet where it exists; everywhere else a social
+ * site cannot be handed an image by URL, so the card goes on the clipboard
+ * and the site opens with the words written.
  *
  * The card itself carries `caprock.dev`, so the link travels with the image
  * even when someone posts it without the text.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import { useApi } from '@/lib/useApi'
 import { api, type Week } from '@/lib/api'
-import { cardFilename, drawShareCard, PERIOD_LABEL, screenLook, STEP_LABEL, type CardData, type CardLook, type CardStep, type SharePeriod } from './ShareCard'
+import { cardFilename, PERIOD_LABEL, screenLook, type CardLook, type SharePeriod } from './ShareCard'
 import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
 import { Scaled } from './Scaled'
 import { renderCardPNG } from '@/lib/cardimage'
 import { ShareActions, xPostURL } from './ShareActions'
 import { CloseButton, DialogBackdrop } from './Dialog'
-import { periodWords } from '@/lib/week'
-import { currentFigures, currentStory, fetchFigures, fetchStory, FRESH_MS, lastFigures, lastStory, warmShare } from '@/lib/sharecache'
+import { periodWords, planOf, type CardPlan } from '@/lib/week'
+import { currentStory, fetchStory, FRESH_MS, lastStory, warmShare } from '@/lib/sharecache'
+
+/** What the desktop app's File → Share Your Figures… dispatches on the page. */
+export const SHARE_EVENT = 'caprock:share'
+
+/** The share icon: three dots joined. */
+export function ShareGlyph({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
+    </svg>
+  )
+}
 
 export function ShareButton() {
   const [open, setOpen] = useState(false)
   return (
     <>
-      {/* Visible, not loud (owner, 2026-10-10).
-        *
-        * It was a solid amber block, filled after an outline lost to the
-        * premium button beside it — and then it was the loudest thing in the
-        * header, louder than the figures it shares. A tinted pill with the
-        * share icon is found without reading the row and does not shout:
-        * the accent at a sixth of its strength, its border at two fifths,
-        * the label in the accent itself. */}
+      {/* Visible, not loud (owner, 2026-10-10): a tinted pill with the share
+        * icon is found without reading the row and does not outshout the
+        * figures it shares. */}
       <button
         onClick={() => setOpen(true)}
         // The default card's figures start loading on the way to the click.
@@ -53,10 +57,7 @@ export function ShareButton() {
         className="inline-flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/15 px-2.5 py-[3px] text-[12px] font-medium text-accent transition-colors hover:bg-accent/25"
         title="Draw a shareable picture of your figures"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
-          <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
-        </svg>
+        <ShareGlyph />
         Share
       </button>
       {open && <ShareDialog onClose={() => setOpen(false)} />}
@@ -64,9 +65,33 @@ export function ShareButton() {
   )
 }
 
-type Style = 'figures' | 'story'
+/**
+ * The quiet way in from every tab: a small icon on the sidebar's Today card
+ * (owner, 2026-10-25: he works in session tabs and could not find how to
+ * share at all). The dialog is portalled, since a fixed sheet inside the
+ * sidebar is clipped to it.
+ */
+export function ShareWeekIcon({ className = '' }: { className?: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        data-share-week
+        onClick={() => setOpen(true)}
+        onMouseEnter={warmShare}
+        onFocus={warmShare}
+        aria-label="Share your week"
+        title="Share your week"
+        className={`grid h-5 w-6 shrink-0 place-items-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-accent ${className}`}
+      >
+        <ShareGlyph size={11} />
+      </button>
+      {open && createPortal(<ShareDialog onClose={() => setOpen(false)} />, document.body)}
+    </>
+  )
+}
 
-const STYLE_KEY = 'caprock-share-style'
 const LAYOUT_KEY = 'caprock-share-layout'
 const LOOK_KEY = 'caprock-share-look'
 
@@ -86,7 +111,7 @@ function remember(key: string, v: string) {
 /** Two frames, so a card just given new figures has been laid out before it is captured. */
 const settled = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
 
-/** The period as the story card's progress line says it. */
+/** The period as the progress line says it. */
 const PERIOD_WORDS: Record<SharePeriod, string> = {
   today: 'today',
   '7d': 'this week',
@@ -94,150 +119,69 @@ const PERIOD_WORDS: Record<SharePeriod, string> = {
   all: 'all time',
 }
 
+// How many share sheets are open, so the share toast steps aside while one
+// is (it sat over the sheet's backdrop in the app, 2026-10-25).
+let sheetsOpen = 0
+const sheetSubs = new Set<() => void>()
+function sheetChanged(d: number) { sheetsOpen += d; for (const f of sheetSubs) f() }
+/** Whether a share sheet is open anywhere on the page. */
+export function useShareSheetOpen(): boolean {
+  return useSyncExternalStore((f) => { sheetSubs.add(f); return () => { sheetSubs.delete(f) } }, () => sheetsOpen > 0, () => false)
+}
+
 export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => void; initialPeriod?: SharePeriod }) {
-  // The buttons and what they report live in ShareActions, shared with the
-  // Pipeline's card.
+  useEffect(() => { sheetChanged(1); return () => sheetChanged(-1) }, [])
   // Which stretch the card is about. Defaults to the week: a working week is
-  // the thing people actually finish and want to show, and an all-time total
-  // shared on its own reads as a boast rather than a result.
+  // the thing people actually finish and want to show.
   const [period, setPeriod] = useState<SharePeriod>(initialPeriod)
-  // Figures: the dense card of totals. Story: the Week screen's card — a
-  // headline, the money beside it, who did what, the longest loop — for any
-  // of the four periods.
-  const [style, setStyleState] = useState<Style>(() => remembered(STYLE_KEY, ['figures', 'story'] as const, 'figures'))
   const [layout, setLayoutState] = useState<CardLayout>(() => remembered(LAYOUT_KEY, ['land', 'port'] as const, 'land'))
   // The ground the card is drawn on: the screen's by default, remembered once
   // chosen. A dark card stands out in a light feed and the paper one matches
   // caprock.dev, so it is the poster's choice, not the dashboard's theme.
   const [look, setLookState] = useState<CardLook>(() => remembered(LOOK_KEY, ['dark', 'paper'] as const, screenLook()))
   const setLook = (l: CardLook) => { setLookState(l); remember(LOOK_KEY, l) }
-  const setStyle = (s: Style) => { setStyleState(s); remember(STYLE_KEY, s) }
   const setLayout = (l: CardLayout) => { setLayoutState(l); remember(LAYOUT_KEY, l) }
+  // The plan the user stated, for the multiple; the card without it says dollars.
+  const [plan, setPlan] = useState<CardPlan | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    api.settings().then((s) => { if (live) setPlan(planOf(s)) }).catch(() => { /* dollars, then */ })
+    return () => { live = false }
+  }, [])
 
-  // The Figures picture, drawn as soon as the sheet opens and again whenever
-  // the period changes.
-  //
-  // Without it the period buttons are a promise about a file nobody has seen:
-  // you press Save, open your downloads, and only then find out what you
-  // chose. A card is a picture — the way to choose one is to look at it.
-  const [preview, setPreview] = useState<string>('')
-  // The Story card's figures; drawn as a live card rather than an image.
   const [story, setStory] = useState<Week | undefined>(undefined)
   // What is on screen is the last reading, and the current one is on its way.
   const [stale, setStale] = useState<number>(0)
-  // Nothing kept for this period: the card on screen (if any) is another
-  // period's, so the progress is drawn over it until this one lands.
-  const [waiting, setWaiting] = useState(false)
-  // Whether the last fetch gave up with nothing to show, so the box can say so
-  // instead of waiting.
   const [failed, setFailed] = useState(false)
-  // Which ranges have answered, and since when the dialog has been waiting —
-  // the progress shown while there is no card yet.
-  const [steps, setSteps] = useState<Set<CardStep>>(new Set())
   const [startedAt, setStartedAt] = useState(() => Date.now())
   const card = useRef<HTMLElement>(null)
   // The post's words, editable; reset when the period changes.
   const [postText, setPostText] = useState(() => xText(initialPeriod))
   useEffect(() => { setPostText(xText(period)) }, [period])
 
-  // Figures. The last reading for the period is drawn at once (a canvas draw
-  // is milliseconds); the current one is fetched behind it and replaces it.
-  //
-  // The revoke has to happen when the *replacement* is on screen, not when the
-  // effect tears down. Revoking in cleanup looked tidy and broke the feature:
-  // changing period ran the old cleanup immediately, which revoked the URL the
-  // <img> was still pointing at, and a revoked blob leaves the already-decoded
-  // bitmap showing. Every period drew a correct new card that nobody ever saw —
-  // the preview simply never changed.
+  // The last figures for the period at once, the current ones behind them.
   useEffect(() => {
-    if (style !== 'figures') return
-    let live = true
-    let freshShown = false
-    const show = (url: string) => setPreview((prev) => {
-      // The old bitmap is only unreachable once the new src is in place, so
-      // this is the one safe moment to let it go.
-      if (prev && prev !== url) URL.revokeObjectURL(prev)
-      return url
-    })
-    const draw = async (d: CardData, fresh: boolean) => {
-      let blob: Blob | null = null
-      try { blob = await drawShareCard(d, look) } catch { blob = null }
-      if (!live || (!fresh && freshShown)) return false
-      if (!blob) return false
-      if (fresh) freshShown = true
-      show(URL.createObjectURL(blob))
-      return true
-    }
-    const kept = lastFigures(period)
-    setFailed(false)
-    setStartedAt(Date.now())
-    setSteps(new Set())
-    setWaiting(!kept)
-    // With nothing kept, the previous period's card stays under the progress
-    // until this one is drawn: clearing it would release a URL the <img> still
-    // shows, and the swap below is the one safe moment for that.
-    if (kept) void draw(kept.value, false)
-    if (kept && Date.now() - kept.at < FRESH_MS) { setStale(0); return () => { live = false } }
-    setStale(kept ? kept.at : 0)
-    fetchFigures(period, (done) => { if (live) setSteps(done) })
-      .then(async (d) => {
-        const ok = await draw(d, true)
-        if (!live) return
-        setStale(0)
-        setWaiting(false)
-        // "drawing…" is a state that ends. Without this it was also the state
-        // for "this will never draw", which is the same screen forever and no
-        // way to tell the two apart.
-        if (!ok && !kept) setFailed(true)
-      })
-      .catch(() => {
-        if (!live) return
-        setStale(0)
-        setWaiting(false)
-        if (!kept) setFailed(true)
-      })
-    return () => { live = false }
-  }, [period, style, look])
-
-  // Story: the same — last figures at once, current behind them.
-  useEffect(() => {
-    if (style !== 'story') return
     let live = true
     const kept = lastStory(period)
     setStory(kept?.value)
-    setWaiting(false)
     setFailed(false)
     setStartedAt(Date.now())
-    setSteps(new Set())
     if (kept && Date.now() - kept.at < FRESH_MS) { setStale(0); return () => { live = false } }
     setStale(kept ? kept.at : 0)
     fetchStory(period)
       .then((w) => { if (live) { setStory(w); setStale(0) } })
       .catch(() => { if (live) { setStale(0); if (!kept) setFailed(true) } })
     return () => { live = false }
-  }, [period, style])
-
-  // The last URL outlives the effect that made it, so releasing it belongs to
-  // the component's own unmount rather than to any one draw. Held in a ref
-  // because unmount cleanup must not set state — it reads the current value
-  // and frees it, nothing more.
-  const latest = useRef('')
-  latest.current = preview
-  useEffect(() => () => {
-    if (latest.current) URL.revokeObjectURL(latest.current)
-  }, [])
+  }, [period])
 
   const size = CARD_SIZE[layout]
-  const fileName = () => style === 'figures'
-    ? cardFilename()
-    : cardFilename().replace('caprock-', `caprock-${period}-${size.w}x${size.h}-`)
+  const fileName = () => cardFilename().replace('caprock-', `caprock-${period}-${size.w}x${size.h}-`)
 
   /**
    * The image that leaves the machine, always from the current figures. When
    * the screen shows an earlier reading, this waits for the current one first.
    */
   const build = async (): Promise<Blob | null> => {
-    if (style === 'figures') return drawShareCard(await currentFigures(period), look)
     const w = await currentStory(period)
     setStory(w)
     setStale(0)
@@ -247,19 +191,14 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   }
 
   const words = periodWords(period)
-  const storyEmpty = style === 'story' && !!story && story.sessions === 0
-  const aspect = style === 'figures' ? '1200 / 630' : `${size.w} / ${size.h}`
-  const progressSteps = style === 'figures'
-    ? (['totals', 'agents', 'plan'] as CardStep[]).map((k) => ({ label: STEP_LABEL[k], done: steps.has(k) }))
-    : [{ label: `Counting PRs, commits and loops — ${PERIOD_WORDS[period]}`, done: false }]
-
-  const seg = (on: boolean) => `rounded-[5px] px-2.5 py-1 text-[12px] transition-colors ${on ? 'bg-panel text-fg font-medium shadow-sm' : 'text-fg-muted hover:text-fg'}`
+  const empty = !!story && story.sessions === 0
+  const seg = (on: boolean) => `rounded-[5px] px-2 py-1 text-[12px] transition-colors ${on ? 'bg-panel text-fg font-medium shadow-sm' : 'text-fg-muted hover:text-fg'}`
   const group = 'inline-flex items-center gap-0.5 rounded-md border border-border bg-panel-2 p-0.5'
 
   return (
     <DialogBackdrop
       onClose={onClose}
-      className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/55 px-4 py-[6vh]"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/55 px-4 py-[5vh]"
       role="dialog"
       aria-modal="true"
       aria-label="Share your figures"
@@ -282,10 +221,6 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
               ))}
             </div>
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              <div className={group} role="group" aria-label="Card style">
-                <button onClick={() => setStyle('figures')} aria-pressed={style === 'figures'} className={seg(style === 'figures')} title="One figure, said big">Figures</button>
-                <button onClick={() => setStyle('story')} aria-pressed={style === 'story'} className={seg(style === 'story')} title="Who did what, the longest loop, the biggest session">Story</button>
-              </div>
               <div className={group} role="group" aria-label="Card look">
                 {(['dark', 'paper'] as CardLook[]).map((l) => (
                   <button key={l} onClick={() => setLook(l)} aria-pressed={look === l} className={seg(look === l)}>
@@ -293,75 +228,53 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
                   </button>
                 ))}
               </div>
-              {style === 'story' && (
-                <div className={group} role="group" aria-label="Card size">
-                  {(['land', 'port'] as CardLayout[]).map((l) => (
-                    <button key={l} onClick={() => setLayout(l)} aria-pressed={layout === l} className={seg(layout === l)}
-                      title={`${CARD_SIZE[l].w}×${CARD_SIZE[l].h}`}>
-                      {l === 'land' ? 'Landscape' : 'Portrait'}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className={group} role="group" aria-label="Card size">
+                {(['land', 'port'] as CardLayout[]).map((l) => (
+                  <button key={l} onClick={() => setLayout(l)} aria-pressed={layout === l} className={seg(layout === l)}
+                    title={`${CARD_SIZE[l].w}×${CARD_SIZE[l].h} PNG`}>
+                    {l === 'land' ? 'Landscape' : 'Portrait'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* The card, as big as the sheet allows. It is the thing being
-            * decided — the buttons only choose where it goes. A fixed aspect
-            * box so switching period does not make the sheet jump while the
-            * next draw lands. */}
+          {/* The card, as big as the sheet allows: it is the thing being
+            * decided — the buttons only choose where it goes. */}
           <div className="relative mb-4">
-            {style === 'figures' ? (
-              <div className="overflow-hidden rounded-[10px] border border-border bg-panel-2 shadow-[var(--shadow-panel)]" style={{ aspectRatio: aspect }}>
-                {failed ? (
-                  // Before the picture: a card from another period must not
-                  // stand in for one that could not be drawn.
-                  <Failed />
-                ) : preview ? (
-                  <div className="relative">
-                    <img src={preview} alt="Your figures, as they will be shared" className={`block w-full ${waiting ? 'opacity-25' : ''}`} />
-                    {waiting && <div className="absolute inset-0"><Progress steps={progressSteps} startedAt={startedAt} /></div>}
-                  </div>
-                ) : (
-                  <Progress steps={progressSteps} startedAt={startedAt} />
-                )}
-              </div>
-            ) : story && !storyEmpty ? (
-              <Scaled w={size.w} h={size.h} max={layout === 'port' ? 360 : 718}>
-                <WeekCard ref={card} week={story} layout={layout} when={words.when} noun={words.noun} look={look} />
+            {story && !empty ? (
+              <Scaled w={size.w} h={size.h} max={layout === 'port' ? 380 : 718}>
+                <WeekCard ref={card} week={story} layout={layout} when={words.when} noun={words.noun} look={look} plan={plan} />
               </Scaled>
             ) : (
               <div className="mx-auto overflow-hidden rounded-[10px] border border-border bg-panel-2"
-                style={{ aspectRatio: aspect, maxWidth: layout === 'port' ? 360 : undefined }}>
-                {storyEmpty ? (
+                style={{ aspectRatio: `${size.w} / ${size.h}`, maxWidth: layout === 'port' ? 380 : undefined }}>
+                {empty ? (
                   <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-muted">
-                    Nothing ran {words.when.replace('— ', '')} on this machine, so there is no story to tell yet.
+                    Nothing ran {words.when.replace('— ', '')} on this machine, so there is no card yet.
                   </div>
-                ) : failed ? <Failed /> : (
-                  <Progress steps={progressSteps} startedAt={startedAt} />
+                ) : failed ? (
+                  <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
+                    Could not read the figures. Close and open the sheet to try again.
+                  </div>
+                ) : (
+                  <Progress label={`Counting ${PERIOD_WORDS[period]}: PRs, sessions, agents`} startedAt={startedAt} />
                 )}
               </div>
             )}
-            {stale > 0 && (preview || story) && (
+            {stale > 0 && story && (
               <div className="absolute right-2 top-2 rounded-sm bg-panel/90 px-1.5 py-0.5 text-[10.5px] text-fg-muted shadow-sm" role="status">
                 from {new Date(stale).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · updating…
               </div>
             )}
           </div>
 
-          {/* The ways out — Share…, copy, save, post, Telegram — one
-            * component for every card (ShareActions). */}
           <ShareActions build={build} fileName={fileName} text={postText} onText={setPostText} link="https://caprock.dev"
-            disabled={storyEmpty} onShared={onClose} />
+            disabled={!story || empty} onShared={onClose} />
 
-          {/* One claim per line: the reader is scanning for what does and does
-            * not leave the machine, and a sentence makes them read it. */}
-          <ul className="mt-4 grid gap-1 border-t border-border pt-3 text-[12.5px] text-fg-muted">
-            <li>Totals only — no names, no paths, nothing Claude wrote.</li>
-            <li>Drawn on your machine. Uploaded nowhere.</li>
-            <li>{style === 'story' ? `A ${size.w}×${size.h} PNG` : 'A 1200×630 PNG'} · at API list prices — not a bill.</li>
-            {style === 'story' && <li>≈ marks an estimate. Merged means a merge the agents ran; Caprock does not ask GitHub.</li>}
-          </ul>
+          <p className="mt-3 border-t border-border pt-2.5 text-[12px] text-fg-muted">
+            Totals only, no names or paths. Drawn on your machine, uploaded nowhere.
+          </p>
         </div>
       </div>
     </DialogBackdrop>
@@ -378,24 +291,16 @@ export function xIntent(period: SharePeriod): string {
 
 /** The post's first draft for a period: no figure in it. */
 export function xText(period: SharePeriod): string {
-  const what = period === 'all' ? 'My Claude Code, all time' : `My Claude Code ${PERIOD_LABEL[period]}`
+  const what = period === 'all' ? 'My coding agents, all time' : `My coding agents ${PERIOD_LABEL[period]}`
   return `${what}, measured on my own machine with Caprock — free and open source.`
 }
 
-function Failed() {
-  return (
-    <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
-      Could not draw the card here. Save the image still works — it draws again on click.
-    </div>
-  )
-}
-
 /**
- * What the wait looks like: the card's outline, which ranges have answered,
- * and how long it has been. An empty box saying "drawing…" read as stuck after
- * two seconds; the same wait with each step ticking off reads as work.
+ * What the wait looks like: the card's outline and how long it has been. An
+ * empty box saying "drawing…" read as stuck after two seconds; the same wait
+ * with the seconds ticking reads as work.
  */
-function Progress({ steps, startedAt }: { steps: { label: string; done: boolean }[]; startedAt: number }) {
+function Progress({ label, startedAt }: { label: string; startedAt: number }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 200)
@@ -408,18 +313,10 @@ function Progress({ steps, startedAt }: { steps: { label: string; done: boolean 
         <div className="h-2.5 w-24 rounded-sm bg-border" />
         <div className="h-6 w-3/4 rounded-sm bg-border" />
         <div className="h-6 w-1/2 rounded-sm bg-border" />
-        <div className="mt-2 flex gap-2"><div className="h-10 flex-1 rounded-sm bg-border" /><div className="h-10 flex-1 rounded-sm bg-border" /><div className="h-10 flex-1 rounded-sm bg-border" /></div>
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-panel-2/60 px-4">
         <div className="text-[13px] font-medium text-fg">Drawing your card…</div>
-        <ul className="grid gap-0.5 text-[12px]">
-          {steps.map((s) => (
-            <li key={s.label} className={s.done ? 'text-fg-muted' : 'text-fg-faint'}>
-              <span className={`mr-1.5 inline-block w-3 text-center ${s.done ? 'text-ok' : ''}`} aria-hidden>{s.done ? '✓' : '·'}</span>
-              {s.label}{s.done ? '' : '…'}
-            </li>
-          ))}
-        </ul>
+        <div className="text-[12px] text-fg-faint">{label}</div>
         <div className="num text-[11px] text-fg-faint">{secs.toFixed(1)} s</div>
       </div>
     </div>
@@ -436,14 +333,8 @@ export function ShareCard() {
 
   return (
     <>
-      {/* Opens the dialog rather than downloading on the spot.
-        *
-        * It used to draw and save immediately: four API calls, about a second
-        * of nothing, then a file in Downloads with no explanation. The owner
-        * reported it as "saves slowly and it is unclear what is happening",
-        * which is exactly what a silent second followed by a silent file is.
-        *
-        * The dialog is where the two options live and where the work is
+      {/* Opens the dialog rather than downloading on the spot: the dialog is
+        * where the card is seen before it leaves, and where the work is
         * announced while it happens. */}
       <button
         onClick={() => setOpen(true)}

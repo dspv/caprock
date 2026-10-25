@@ -24,6 +24,12 @@ import (
 // turn of a child session, so one turn answers for the session. Reading it per
 // event cost 3.5 s on the owner's database (2026-10-04).
 func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, error) {
+	return agentSplit(ctx, q, from, to, "")
+}
+
+// agentSplit is AgentSplit with a clause on session_id appended: the Week's
+// hand-run filter (scheduledSkip).
+func agentSplit(ctx context.Context, q Querier, from, to int64, skip string) ([]WeekAgent, error) {
 	upper, args := "", []any{from}
 	if to > 0 {
 		upper, args = " AND ts < ?", append(args, to)
@@ -31,7 +37,7 @@ func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, er
 	rows, err := q.QueryContext(ctx, `
 		SELECT session_id, COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,''))
 		FROM events INDEXED BY idx_events_turn_agent
-		WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+`
+		WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+skip+`
 		GROUP BY 1, 2`, args...)
 	if err != nil {
 		return nil, err
@@ -133,12 +139,18 @@ type ModelTokens struct {
 // Haiku" is computed from. Turns with no stored cost are left out (an
 // unpriced model, or a fork's copy of a turn paid elsewhere).
 func SubagentTokensByModel(ctx context.Context, q Querier, from, to int64) ([]ModelTokens, error) {
+	return SubagentTokensByModelSkip(ctx, q, from, to, "")
+}
+
+// SubagentTokensByModelSkip is SubagentTokensByModel with a clause on
+// session_id appended: the Week passes its hand-run filter (Week.SkipSQL).
+func SubagentTokensByModelSkip(ctx context.Context, q Querier, from, to int64, skip string) ([]ModelTokens, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0),
 		       COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0)
 		FROM events INDEXED BY idx_events_turn_agent
 		WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND COALESCE(agent_id,'') <> '' AND cost_usd > 0`+nonInternalEvent+`
-		  AND session_id IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = 'claude')
+		  AND session_id IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = 'claude')`+skip+`
 		GROUP BY 1`, from, to)
 	if err != nil {
 		return nil, err

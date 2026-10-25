@@ -615,6 +615,9 @@ type Server struct {
 	relHist relHistCache
 	// repos answers "which repository, on which host" per directory.
 	repos *repoCache
+	// prsFill reads the older pull requests a period's card needs and
+	// github_prs lacks, once per repository (weekbackfill.go).
+	prsFill prsBackfill
 	// sizes decides which attached terminal a session's PTY is sized for
 	// (termsize.go).
 	sizes *ptySizes

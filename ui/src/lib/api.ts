@@ -1206,14 +1206,21 @@ export interface Week {
   from_ms: number
   to_ms: number
   days: WeekDay[]
+  /** Hand-run sessions: scheduled runs (started at a root or in the home directory itself) are left out of every figure. */
   sessions: number
+  /** The scheduled runs left out. */
+  scheduled_sessions?: number
   active_days: number
   turns: number
   cost_usd: number
   unpriced_turns?: number
+  /** Every token: input, output, cache reads and writes. */
+  tokens?: number
   models: { model: string; cache_read: number; cost_usd: number }[]
   prs_opened: number
   prs_merged: number
+  /** Where the pull request counts came from: GitHub's record (as the Pipeline last read it), the agents' own commands, or both. */
+  prs_source?: 'github' | 'agents' | 'both'
   merges_unresolved: number
   commits: number
   files_edited: number

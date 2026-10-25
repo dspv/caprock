@@ -901,18 +901,60 @@ The Week screen's shareable card. `start` is a local date and the window is
 Cost screen's `7d` range uses, so the two never disagree about which day a
 turn fell on. A `start` that is not `YYYY-MM-DD` is `400`.
 
-`{start, end, partial, from_ms, to_ms, days[], sessions, active_days, turns,
-cost_usd, unpriced_turns?, models[], prs_opened, prs_merged,
-merges_unresolved, commits, files_edited, lines_added, lines_removed,
-ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?, subagent_saving?, cost_per_merged_pr?,
-estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
+`{start, end, partial, from_ms, to_ms, days[], sessions, scheduled_sessions,
+active_days, turns, cost_usd, unpriced_turns?, tokens, models[], prs_opened,
+prs_merged, prs_source?, merges_unresolved, commits, files_edited, lines_added,
+lines_removed, ci_wait_ms, tool_ms, agents[], loop?, biggest?, tax?,
+subagent_saving?, cost_per_merged_pr?, estimates[], pricing_version?}`. `days[]` is `{day, prs_opened, cost_usd,
 active}` × 7; `agents[]` is `{agent, subagent, turns, cost_usd, sessions,
 threads?}`; `loop` is `{agent, tool, kind, calls, first_ms, last_ms, tax_usd?,
 tax_priced_calls?}`; `biggest` is `{agent, cost_usd, turns, active_days}`.
 
 Everything is computed from the local database (`store.WeekStats`); the daemon
-asks nothing of GitHub, so what can be said is bounded by what the agents'
-own tool calls recorded:
+asks nothing of GitHub for it.
+
+**Hand-run sessions only** (owner, 2026-10-25: 480 of a week's 1,036 sessions
+were scheduled scripts). A session whose cwd is a filesystem root or the home
+directory itself (`store.RootOrHome`, the rule Second Brain skips by) is left
+out of every figure — sessions, turns, `tokens`, cost, the per-day cost, the
+models, the agents, the biggest session, the loop, the tool counts and the
+subagent saving — and counted in `scheduled_sessions` instead. The clause is
+built once per request from the distinct `sessions.cwd` values that match.
+
+**Pull requests from GitHub's record where the daemon holds one** (owner,
+2026-10-25: the card said 5 merged in a week GitHub merged 59, because a
+script's or a batch merge is no agent's `gh pr merge`). Each repository root
+the window's hand-run turns ran in (`sessions.repo_root`, else the cwd) is
+mapped to its GitHub `owner/name` as the Pipeline maps a session (the repo
+cache, `github.ParseRemote`). For a repository with any row in `github_prs`
+(migration 0071, the pull request lists the Pipeline read), `prs_merged`
+counts its rows with `merged_at` in the window and `prs_opened` those with
+`created_at` in it, and `days[].prs_opened` buckets those by local day. A
+repository with no such row keeps the agents' own count below, as does a pull
+request the agents ran in a repository no hand-run session worked in.
+`prs_source` says which: `github`, `agents` or `both`; absent with no record
+and nothing counted.
+
+**What `github_prs` lacks of the window is read from GitHub once** (owner,
+2026-10-25: the card said 48 merged in a week GitHub merged 59, and he shares
+the figure publicly). The Pipeline's lists are the newest 50 by update per
+read, from the day the table was made, so a window reaching before that, or
+one busier than 50 between two reads, held only part of it. On every ask for
+a Week, for each repository counted, `meta["prs_read:<owner/name>"]` =
+`"<from>,<at>"` (unix ms) records the span read whole. When it is absent or
+`from` is after the window's start, the daemon reads, in the background, every
+pull request updated since the start (`github.Service.PullsSince`:
+`GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc&per_page=100&page=N`,
+page by page until one reaches past the start or a short page ends the list,
+at most 10 pages) and keeps them in `github_prs` (`store.UpsertGitHubPRs`,
+a fork's pull request without its head branch). A covered window whose `at`
+is 30 minutes old reads only what changed since `at` (less 5 minutes), one
+page as a rule. A complete read rewrites the record; a failed one waits 30
+minutes, one cut at 10 pages six hours; in-flight reads and waits are kept in
+memory. The answer never waits on GitHub: it is the count held so far, and
+the Week caches are dropped when a read kept anything, so the next ask counts
+GitHub's whole window. Nothing is sent while GitHub is not connected. The
+agents' count:
 
 - **Opened** is distinct `github.com/<owner>/<repo>/pull/<n>` URLs printed by
   a successful Bash call that ran `gh pr create`, minus lines saying the pull
@@ -933,8 +975,13 @@ own tool calls recorded:
   counts its whole file.
 - **Cost** is the stored `cost_usd`, priced once per message id and never
   twice across forks; `tax` prices each model's cache reads exactly as
-  `/v1/history` does. `cost_per_merged_pr` divides all of the week's cost by
-  the merges — an estimate, absent when nothing merged.
+  `/v1/history` does. `cost_per_merged_pr` is an estimate, absent when
+  nothing merged: with GitHub's record, the mean of what the Pipeline charges
+  each pull request merged in the window (`store.KnownPRs` over the
+  repository's dearest root — the figure its Most expensive list shows; one
+  with no agent work recorded counts as $0), so the card and the Pipeline
+  never disagree; with the agents' count only, all of the window's cost over
+  its merges.
 - **CI wait** is the hook-plane `duration_ms` of Bash calls whose statement is
   `gh pr checks`, `gh run watch`, or a script named like `wait-ci`. Tool time,
   not wall clock: parallel calls overlap.
@@ -7207,15 +7254,18 @@ CREATE TABLE IF NOT EXISTS github_prs (
 
 The headers of every pull request list the daemon read from GitHub
 (`store.UpsertGitHubPRs`, through `github.Service.OnPulls`; § the Pipeline's
-*Kept headers*): the repository's own pull requests, a fork's left out. A row
+*Kept headers*): in those lists the repository's own pull requests, a fork's
+left out. A row
 is rewritten only by a header whose `updated_at` is at least the one it
 holds, so a list read late never undoes a newer one. The migration only
-creates the table — nothing is filled at startup; it grows as lists are read.
-Read by `store.KnownPRs` (§ Most expensive) for the head branch, title, state
-and stamps of pull requests no agent recorded, and by `store.SpendByPR` to
-match the opening and merge stamps no session recorded to the session acting
-then (§ Pull requests a script made); nothing it matches is written to
-`session_prs`.
+creates the table — nothing is filled at startup; it grows as lists are read,
+and as a Week reads the part of its window the lists missed (§ Week, *What
+`github_prs` lacks*; those rows include a fork's pull requests, with `head`
+empty). Read by `store.KnownPRs` (§ Most expensive) for the head branch,
+title, state and stamps of pull requests no agent recorded, and by
+`store.SpendByPR` to match the opening and merge stamps no session recorded
+to the session acting then (§ Pull requests a script made); nothing it
+matches is written to `session_prs`.
 
 ### Session exits DDL (migration 0072)
 

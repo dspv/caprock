@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import type { Week } from './api'
-import { addDays, biggestSentence, compact, crew, dayBars, headline, loopSentence, money, periodWords, rangeLabel, sideStats, tally, weekWord } from './week'
+import { addDays, biggestSentence, compact, crew, dayBars, footNote, headline, heroes, loopSentence, money, periodWords, planMultiple, rangeLabel, sideStats, tally, weekWord } from './week'
 import { WeekCard } from '@/components/WeekCard'
 
 function week(over: Partial<Week> = {}): Week {
@@ -37,9 +37,10 @@ describe('week card wording', () => {
     expect(tally(busy, h.led).map((t) => `${t.approx ? '≈' : ''}${t.value} ${t.label}`))
       .toEqual(['131 opened', '235 commits', '161 files', '≈13.8k lines'])
     expect(sideStats(busy)).toEqual([
-      { value: '$474', label: 'at API list price' },
       { value: '$3.77', label: 'per merged PR', approx: true },
+      { value: '131', label: 'PRs opened' },
       { value: '61%', label: 'of it re-reading context' },
+      { value: '7.3k', label: 'turns' },
     ])
   })
 
@@ -49,7 +50,7 @@ describe('week card wording', () => {
     const onlySessions = week({ sessions: 2, turns: 50, cost_usd: 1 })
     expect(headline(onlySessions, 'that week').figure).toBe('2 sessions')
     // Nothing merged: no cost per PR, and the free slot goes to a measured count.
-    expect(sideStats(onlySessions).map((s) => s.label)).toEqual(['at API list price', 'turns'])
+    expect(sideStats(onlySessions).map((s) => s.label)).toEqual(['turns'])
     expect(headline(week(), 'this week').led).toBe('none')
   })
 
@@ -79,7 +80,8 @@ describe('week card wording', () => {
     for (const layout of ['land', 'port'] as const) {
       const { container, unmount } = render(<WeekCard week={busy} layout={layout} when="this week" />)
       const text = container.textContent ?? ''
-      expect(text).toContain('126 PRs')
+      expect(text).toContain('126PRs merged')
+      expect(text).toContain('$474at API list prices — not a bill')
       expect(text).toContain('≈$3.77')
       expect(text).toContain('measured locally')
       expect(text).toContain('≈ = estimate · API list prices, not a bill')
@@ -126,7 +128,40 @@ describe('week card wording', () => {
       days: [{ day: '2026-10-04', prs_opened: 3, cost_usd: 12, active: true }],
     })
     const { container } = render(<WeekCard week={day} layout="port" when="today" noun="day" />)
-    expect(container.textContent).toContain('My agents shipped 2 PRs today.')
+    expect(container.textContent).toContain('2PRs merged')
     expect(container.querySelector('.wk-barrow')).toBeNull()
+  })
+
+  it('leads both layouts with the money and the merged PRs: the plan\'s multiple only where it is honest', () => {
+    const max = { kind: 'flat' as const, label: 'Max', usdPerMonth: 200 }
+    const w = week({ ...busy, cost_usd: 1540, period: '7d' })
+    expect(planMultiple(w, max)).toBe('33×')
+    expect(heroes(w, max)).toEqual([
+      { figure: '33×', label: 'the $200/mo Max plan, at API list prices' },
+      { figure: '126', label: 'PRs merged' },
+    ])
+    // The dollars move into the row once the multiple leads.
+    expect(sideStats(w, max)[1]).toEqual({ value: '$1,540', label: 'at API list price' })
+    // A day, all time, metered billing or under 1.5×: the dollars instead.
+    expect(planMultiple({ ...w, period: 'today' }, max)).toBeUndefined()
+    expect(planMultiple({ ...w, period: 'all' }, max)).toBeUndefined()
+    expect(planMultiple(w, { kind: 'metered', label: 'API', usdPerMonth: 0 })).toBeUndefined()
+    expect(planMultiple({ ...w, cost_usd: 60 }, max)).toBeUndefined()
+    expect(heroes(w, undefined)[0]).toEqual({ figure: '$1,540', label: 'at API list prices — not a bill' })
+    // Never a zero: nothing merged leads with what was measured.
+    expect(heroes(week({ sessions: 3, cost_usd: 2, commits: 4 }), undefined)[1]).toEqual({ figure: '4', label: 'commits' })
+    for (const layout of ['land', 'port'] as const) {
+      const { container, unmount } = render(<WeekCard week={w} layout={layout} when="this week" plan={max} />)
+      expect([...container.querySelectorAll('.wk-fig')].map((n) => n.textContent)).toEqual(['33×', '126'])
+      unmount()
+    }
+  })
+
+  it('says where the PRs came from and that scheduled runs are left out', () => {
+    expect(footNote(week({ prs_merged: 3, prs_source: 'github', scheduled_sessions: 480 })))
+      .toBe('measured locally · PRs from GitHub · hand-run sessions · ≈ = estimate · API list prices, not a bill')
+    expect(footNote(week({ prs_merged: 3, prs_source: 'agents' }))).toContain('PRs = merges the agents ran')
+    expect(footNote(week({ prs_merged: 3, prs_source: 'both' }))).toContain('PRs from GitHub + agent merges')
+    expect(footNote(week())).toBe('measured locally · ≈ = estimate · API list prices, not a bill')
   })
 })

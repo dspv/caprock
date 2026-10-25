@@ -102,7 +102,11 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
-const words$ = () => (screen.getByLabelText('The words to post with the card') as HTMLTextAreaElement).value
+// The words are folded away behind Edit post text until asked for.
+const words$ = () => {
+  if (!screen.queryByLabelText('The words to post with the card')) fireEvent.click(screen.getByRole('button', { name: 'Edit post text' }))
+  return (screen.getByLabelText('The words to post with the card') as HTMLTextAreaElement).value
+}
 
 describe('the Pipeline share sheet', () => {
   it('opens anonymous, says so, and the name follows the tick into the words', async () => {
@@ -124,14 +128,12 @@ describe('the Pipeline share sheet', () => {
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Set up Telegram' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Send to my Telegram' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Send to someone in Telegram' })).toBeTruthy()
   })
 
   it('shows Telegram even when the bridge cannot be read at all', async () => {
     telegram.mockRejectedValue(new Error('down'))
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
     expect(await screen.findByRole('button', { name: 'Set up Telegram' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Send to someone in Telegram' })).toBeTruthy()
   })
 
   it('Send to my Telegram sends the card with the anonymous words as the caption', async () => {
@@ -146,20 +148,14 @@ describe('the Pipeline share sheet', () => {
     expect(await screen.findByText('Sent to your Telegram (Me).')).toBeTruthy()
   })
 
-  it('Send to someone in Telegram copies the card and opens Telegram’s share link with the words', async () => {
+  // It only copied the card and opened a chat picker; Copy image does the
+  // copying (owner, 2026-10-25: the sheet was visual chaos).
+  it('has no separate send-to-someone button', async () => {
     telegram.mockResolvedValue({ bot_set: false, chat_set: false, polling: false })
-    const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
     await screen.findByAltText("The Pipeline's figures, as they will be shared")
-    fireEvent.click(screen.getByRole('button', { name: 'Send to someone in Telegram' }))
-    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
-    expect(await screen.findByText(/^Image copied — paste it in the chat\./)).toBeTruthy()
-    expect(write).toHaveBeenCalledTimes(1)
-    const url = new URL(open.mock.calls[0]![0] as string)
-    expect(url.origin + url.pathname).toBe('https://t.me/share/url')
-    expect(url.searchParams.get('url')).toBe('https://caprock.dev')
-    expect(url.searchParams.get('text')).toContain(ANON_REPO)
-    expect(url.searchParams.get('text')).not.toContain(REPO)
+    expect(screen.queryByRole('button', { name: /someone/i })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Copy image' })).toBeTruthy()
   })
 
   it('posts to LinkedIn with the words, the card on the clipboard', async () => {
@@ -170,6 +166,6 @@ describe('the Pipeline share sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Post to LinkedIn' }))
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
     expect(new URL(open.mock.calls[0]![0] as string).searchParams.get('text')).toBe(words$())
-    expect(await screen.findByText(/the card is on your clipboard, paste it in/)).toBeTruthy()
+    expect(await screen.findByText('LinkedIn is open — paste the card in.')).toBeTruthy()
   })
 })
