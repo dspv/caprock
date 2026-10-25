@@ -184,6 +184,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-25 — 0.159.0: an honest week card to share, plan dollars and limit share, one Free up memory button
+
+A minor release, one PR (#825). The week card counts pull requests from GitHub (a one-time backfill reads the period's missing pages), puts the plan multiple beside the PR count, and shows the same figures in landscape and portrait; it is shared from a session, the File menu and the sidebar, with a Sunday reminder. Every API-price figure carries what it is in plan dollars and as a share of a week's limit (ADR-084), and a pull request a script made is charged to the session that ran it, so releases show their cost (0.158.0: – before, $32.09 after). One Free up memory button replaces Clean up and End idle agents, and a tab whose agent it ended shows the conversation with Continue at once. Caprock Mail is no longer offered as a process to stop, and a row's ⋯ menu is no longer clipped by its list.
+
 ### 2026-10-24 — 0.158.0: Pipeline counts a closed pull request right, Second Brain skips root and home sessions
 
 A minor release, one PR (#823). A pull request closed without a merge is no longer drawn in flight as open, its number is not printed twice, and its cost counts once and in the 14-day agent total; with no merge or no cost in 14 days the Flow says "–" and why instead of 0.0/day or $0.00. Second Brain never reads a session started at the disk root or in the home folder itself — scheduled jobs, 975 of them on the owner's machine — and its sidebar line at the daily limit fits a 14-inch screen. The README leads with what Caprock lets you watch.

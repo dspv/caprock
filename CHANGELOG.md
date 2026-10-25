@@ -12,6 +12,86 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.159.0] - 2026-10-25
+
+### Added
+
+- **cost:** every cost at API list price now also says what the work was of
+  your subscription, on a muted line under it: plan dollars and the share of
+  the weekly limit (*$50 at API · ≈$1.65 of plan · ≈2.3% of a week*). On the
+  Cost screen, the session card, a session's page, the Pipeline's rows, its
+  Releases and both Most expensive lists. Each sign-in is priced by its own
+  plan over the last 30 days and calibrated on its own last full week; hover
+  for how, and why use outside Caprock makes the figures run a little high.
+  Nothing is shown on a metered plan, with no plan stated, or before a
+  weekly window has been seen.
+- **share:** share from wherever you work: a small share icon on the
+  sidebar's Today card, File → Share Your Figures… in the macOS app, and the
+  share toast now shows over session tabs too.
+- **share:** your week, every week: when a week closes (Sunday 18:00, or the
+  first time you open Caprock in the two days after) and it merged at least
+  one PR, one quiet toast offers the card in its own figures ("Your week is
+  done. 33× your plan this week · 48 PRs merged") and opens the sheet on this
+  week. Once per week, whichever way you answer.
+- **share:** Threads joins X and LinkedIn as a place to post the card.
+
+### Changed
+
+- **resources:** one **Free up memory** button, in Caprock resources and in
+  the memory popover alike, replaces *Clean up* and *End N idle agents*. It
+  opens a list in two groups — leftovers and idle agents — each line with
+  its own checkbox and size, the total following the ticks, and says first
+  what happens: conversations are kept, and anything an idle agent started
+  in the background stops with it.
+- **resources:** it is stricter about what is safe. A test copy of Caprock
+  is offered only once the agent that started it is gone; one whose agent
+  still runs is kept, with the reason on its row. An idle agent is offered
+  only after 15 minutes idle, with nothing but its own helpers running under
+  it, and never the tab in front; the rest it leaves running are listed with
+  why, and the daemon checks each again at the click.
+- **share:** the share card tells the truth. Pull requests come from GitHub's
+  record where Caprock holds one (the lists the Pipeline reads), not only from
+  the `gh pr merge` commands agents ran — a batch or script merge counts now.
+  Sessions started at `/` or in your home folder (scheduled scripts) are left
+  out of every figure, and the card says "hand-run sessions". The cost per
+  merged PR is the Pipeline's own per-PR figure, averaged, so the two never
+  disagree.
+- **share:** the card's pull request count is GitHub's whole period. When the
+  lists Caprock kept do not reach back to the period's start, the missing
+  older pull requests are read from GitHub once, in the background, and kept;
+  the next card counts them (it read 48 merged where GitHub said 59 before).
+- **share:** one card, two formats. Landscape and portrait lead with the same
+  two big figures — your plan's multiple (or the dollars) and merged PRs —
+  instead of a Figures card and a Story card that said different things.
+- **share:** a calmer sheet: Share…, Copy and Save in one row; My Telegram, X,
+  Threads and LinkedIn in another; the post text behind *Edit post text*; one line on
+  what leaves the machine. *Send to someone in Telegram* is gone — Copy image
+  does that.
+
+### Fixed
+
+- **ui:** a row's ⋯ menu on Chats, Now and the home is no longer cut off by
+  the list's rounded box on a wide window: it is drawn above everything, under
+  the ⋯, and opens upwards when the window has no room below (#816).
+- **terminal:** a tab whose agent **Free up memory** ended shows its
+  conversation with Continue here at once, instead of *Can't connect · next
+  try in 10 s* over a process Caprock itself ended.
+- **resources:** Caprock resources no longer offers to stop Caprock Mail. The
+  separate Mail app was taken for a Caprock command left behind because its
+  process name starts with `caprock`; an app in its own bundle is never listed
+  now, only the `caprock` binary itself.
+- **store:** a pull request a script opened or merged now gets the agent cost
+  of the session that ran the script. Before, only a `gh pr` command the
+  session typed itself counted, so on the PRs & CI board three releases made
+  by a release script showed "–". Now GitHub's own opening and merge times are
+  matched to the one session in the repository that had a Bash call running at
+  that moment. With no such session, or more than one, the pull request stays
+  unattributed. Nothing is stored, and every session is still charged once.
+- **share:** the week card's footer keeps *caprock.dev · What's yours?* on one
+  line in the 1200 × 630 picture; its note reads *PRs: GitHub + agents*.
+- **share:** a pull request merged after `cd ~/dev/<repo>` from another
+  repository's session is no longer counted twice on the share card.
+
 ## [0.158.0] - 2026-10-24
 
 ### Added
