@@ -113,7 +113,9 @@ describe('ShareDialog', () => {
   })
 
   // The owner shares his week on X and Threads (2026-10-25).
-  it('posts to Threads with the words and the site, and the card on the clipboard', async () => {
+  // No link in the post: Threads drew caprock.dev's dark preview in place of
+  // the paper card he chose (2026-10-25); the card itself names the site.
+  it('posts to Threads with the words only, the chosen card on the clipboard, and says to paste it', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<ShareDialog onClose={() => {}} />)
     await card()
@@ -121,9 +123,10 @@ describe('ShareDialog', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
     const url = new URL(String(open.mock.calls[0]![0]))
     expect(url.origin + url.pathname).toBe('https://www.threads.com/intent/post')
-    expect(url.searchParams.get('text')).toMatch(/Caprock.*https:\/\/caprock\.dev$/)
+    expect(url.searchParams.get('text')).toMatch(/Caprock/)
+    expect(url.searchParams.get('text')).not.toMatch(/https?:/)
     expect(write).toHaveBeenCalledTimes(1)
-    expect(await screen.findByText('Threads is open — paste the card in.')).toBeTruthy()
+    expect(await screen.findByText(/This card is on your clipboard: in the Threads post, press (⌘V|Ctrl\+V) to add it\./)).toBeTruthy()
   })
 
   it('offers my Telegram (or its setup) among the destinations, and no copy-only Telegram button', async () => {
@@ -176,7 +179,8 @@ describe('ShareDialog', () => {
 
   it('puts no figure into the post text — the card carries them with their caveat', () => {
     const url = new URL(xIntent('7d'))
-    expect(url.searchParams.get('url')).toBe('https://caprock.dev')
+    // No link: it would bring the site's preview in place of the card.
+    expect(url.searchParams.get('url')).toBeNull()
     expect(url.searchParams.get('text')).not.toMatch(/\d/)
   })
 })

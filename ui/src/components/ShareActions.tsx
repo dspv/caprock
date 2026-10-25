@@ -28,6 +28,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type TelegramStatus } from '@/lib/api'
+import { isMacPlatform } from '@/lib/appmode'
 import { copyImage } from '@/lib/attachments'
 import { openExternal } from '@/lib/nudges'
 import { navigate } from '@/lib/router'
@@ -97,6 +98,11 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   const [locked, setLocked] = useState(false)
   const [note, setNote] = useState('')
   const [editing, setEditing] = useState(false)
+  // After X, Threads or LinkedIn opened: the one step left, said large until
+  // the next action — a web post box cannot be handed a picture, only words.
+  const [paste, setPaste] = useState('')
+  // The paste key is the browser's, not the app's: keys() would say the
+  // terminal's Ctrl+Shift+V off macOS, and the post box is a web page.
   const [tg, setTg] = useState<TelegramStatus | undefined>(undefined)
   useEffect(() => {
     let live = true
@@ -117,7 +123,7 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   /** Draw, run `then` with the card, and say what happened. */
   const act = async (then: (blob: Blob) => Promise<string>, fail: string) => {
     if (locked) return
-    setLocked(true); setDrawing(true); say('')
+    setLocked(true); setDrawing(true); say(''); setPaste('')
     try {
       const blob = await build()
       setDrawing(false)
@@ -159,7 +165,10 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   const post = (site: 'X' | 'Threads' | 'LinkedIn') => act(async (b) => {
     const how = await handOver(b)
     openExternal(site === 'X' ? xPostURL(text, link) : site === 'Threads' ? threadsPostURL(text, link) : linkedInPostURL(text, link))
-    return how === 'copied' ? `${site} is open — paste the card in.` : `${site} is open — drag the card in from your downloads.`
+    setPaste(how === 'copied'
+      ? `This card is on your clipboard: in the ${site} post, press ${isMacPlatform() ? '⌘V' : 'Ctrl+V'} to add it.`
+      : `This card is in your downloads: drag it into the ${site} post.`)
+    return ''
   }, 'Could not read the figures — nothing was posted.')
   const toMe = () => act(async (b) => {
     try {
@@ -206,17 +215,23 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
           </button>
         )}
         <button onClick={() => void post('X')} disabled={off} className={quiet} aria-label="Post to X"
-          title="Opens a post on X with the post text; the card goes on your clipboard to paste in">X</button>
+          title="Opens a post on X with the post text; this card goes on your clipboard — paste it into the post">X</button>
         <button onClick={() => void post('Threads')} disabled={off} className={quiet} aria-label="Post to Threads"
-          title="Opens a Threads post with the post text; the card goes on your clipboard to paste in">Threads</button>
+          title="Opens a Threads post with the post text; this card goes on your clipboard — paste it into the post">Threads</button>
         <button onClick={() => void post('LinkedIn')} disabled={off} className={quiet} aria-label="Post to LinkedIn"
-          title="Opens a LinkedIn post with the post text; the card goes on your clipboard to paste in">LinkedIn</button>
+          title="Opens a LinkedIn post with the post text; this card goes on your clipboard — paste it into the post">LinkedIn</button>
         <button type="button" onClick={() => setEditing((v) => !v)} aria-expanded={editing}
           className="ml-auto text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline"
           title="The words that go with X, LinkedIn and the Telegram caption">
           {editing ? 'Hide post text' : 'Edit post text'}
         </button>
       </div>
+
+      {paste && (
+        <p role="status" data-share-paste className="mt-3 rounded-md border border-accent/50 bg-accent/10 px-3 py-2.5 text-[14px] font-medium text-fg">
+          {paste}
+        </p>
+      )}
 
       {editing && (
         <textarea value={text} onChange={(e) => onText(e.target.value)} rows={2} aria-label="The words to post with the card"

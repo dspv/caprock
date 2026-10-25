@@ -269,7 +269,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
             )}
           </div>
 
-          <ShareActions build={build} fileName={fileName} text={postText} onText={setPostText} link="https://caprock.dev"
+          <ShareActions build={build} fileName={fileName} text={postText} onText={setPostText}
             disabled={!story || empty} onShared={onClose} />
 
           <p className="mt-3 border-t border-border pt-2.5 text-[12px] text-fg-muted">
@@ -282,11 +282,13 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
 }
 
 /**
- * The X post: words and the site, no figures — the card carries those, with
- * their caveat, and a number typed into a tweet travels without it.
+ * The X post: words, no figures — the card carries those, with their caveat,
+ * and a number typed into a tweet travels without it. No link either: the
+ * card says caprock.dev, and a link made X and Threads show the site's own
+ * dark preview in place of the card the user chose (owner, 2026-10-25).
  */
 export function xIntent(period: SharePeriod): string {
-  return xPostURL(xText(period), 'https://caprock.dev')
+  return xPostURL(xText(period))
 }
 
 /** The post's first draft for a period: no figure in it. */
