@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -169,6 +170,15 @@ func isEnvName(s string) bool {
 func resolveDir(base, to string) string {
 	if to == "" || to == "-" || strings.HasPrefix(to, "$") {
 		return base
+	}
+	if to == "~" || strings.HasPrefix(to, "~/") {
+		// The daemon runs as the user whose agents these are, so its home
+		// is theirs: "cd ~/dev/repo" must name the same repository as the
+		// absolute path, or its merges are counted twice (owner's Week,
+		// 2026-10-25: 62 merged where GitHub merged 59).
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			return filepath.Join(home, strings.TrimPrefix(to, "~"))
+		}
 	}
 	if strings.HasPrefix(to, "~") {
 		return to // a home-relative path is still a key; it is never shown

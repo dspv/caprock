@@ -966,7 +966,11 @@ agents' count:
   current-branch form — by the one URL the command printed. A merge whose
   target cannot be read (`$N`, a branch name, several URLs) is counted in
   `merges_unresolved` and nowhere else. It is a merge the agents ran, not
-  GitHub's state.
+  GitHub's state. A `cd ~` or `cd ~/…` before it resolves against the
+  daemon's home (the agents' user's), so the merge maps to the same
+  repository as the absolute path and is not counted again beside GitHub's
+  record (2026-10-25: `cd ~/dev/caprock; gh pr merge 783` from another
+  repository's session read as a fourth repository, 62 merged against 59).
 - **Commits** are `git commit` statements, read with a small shell splitter
   (quotes, heredoc bodies, `cd`, `-C`) so a commit message mentioning a commit
   is not one; output saying "nothing to commit" takes one off.

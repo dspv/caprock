@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -444,5 +445,21 @@ func TestSubagentTokensByModel(t *testing.T) {
 	opus := byModel["claude-opus-5-5"]
 	if len(got) != 2 || opus.In != 200 || opus.Out != 20 || opus.CacheRead != 2000 || opus.CacheWrite != 100 || opus.CacheWrite1h != 40 {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+// A merge run after `cd ~/dev/repo` names the same directory as the absolute
+// path, so the repository it maps to is the one GitHub's record counts.
+func TestMergeAfterCdHomeRunsInTheAbsoluteDir(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no home directory")
+	}
+	st := splitShell(`cd ~/dev/repo; gh pr merge 783 --squash`, "/elsewhere")
+	if len(st) != 1 || ghPR(st[0]) != "merge" {
+		t.Fatalf("not read as a merge: %+v", st)
+	}
+	if m := parseMerge(st[0]); m.dir != filepath.Join(home, "dev", "repo") || m.number != 783 {
+		t.Errorf("got dir %q #%d, want %q #783", m.dir, m.number, filepath.Join(home, "dev", "repo"))
 	}
 }
