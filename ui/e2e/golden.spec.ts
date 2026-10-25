@@ -180,6 +180,12 @@ test('a chat starts in one tap, opens as a conversation, shows its files, and is
   await expect(list.getByRole('link')).toHaveCount(1)
   await expect(page.getByLabel('1 chats')).toBeVisible()
   await list.getByRole('button', { name: /^More for / }).click()
+  // #816: the list clips its rows, so the menu's last item was hidden under
+  // the box's edge; it is the topmost thing at its own centre now.
+  await expect.poll(() => page.getByRole('menuitem', { name: 'Delete…' }).evaluate((el) => {
+    const r = el.getBoundingClientRect()
+    return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
+  })).toBe(true)
   await page.getByRole('menuitem', { name: 'Archive' }).click()
   await expect(page.getByText('No chats yet.')).toBeVisible()
   await page.getByRole('link', { name: 'Archived · 1' }).click()
