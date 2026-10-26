@@ -130,6 +130,23 @@ export function tally(w: Week, led: Headline['led']): TallyItem[] {
   return out
 }
 
+/**
+ * The post that goes with the card: the headline, the other counts, and who
+ * did the work (owner, 2026-10-25: a figure-free line read as dull). Counts
+ * only — the dollars stay on the card, beside their caveat. No link: a link
+ * makes X and Threads show the site's preview in place of the chosen card.
+ */
+export function postText(w: Week, when: string, noun = 'week'): string {
+  const h = headline(w, when, noun)
+  if (h.led === 'none') return ''
+  const lines = [`${h.lead} ${h.figure}${h.tail ? ` ${h.tail}` : ''}`.replace(' — ', ', ')]
+  const counts = tally(w, h.led).map((t) => `${t.approx ? '≈' : ''}${t.value} ${t.label}`)
+  if (counts.length) lines.push(`${counts.join(', ')}${w.active_days > 1 ? `, over ${w.active_days} days` : ''}.`)
+  const names = [...new Set(w.agents.filter((a) => !a.subagent).map((a) => agentName(a.agent)))]
+  const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+  return `${lines.join('\n')}\n\n${who ? `${who}, tracked` : 'Tracked'} on my own machine with Caprock — free and open source.`
+}
+
 /** "One machine · 12 hand-run sessions · 6 days". */
 export function eyebrow(w: Week): string {
   const parts = ['One machine']

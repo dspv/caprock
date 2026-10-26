@@ -26,7 +26,7 @@ import { Scaled } from './Scaled'
 import { renderCardPNG } from '@/lib/cardimage'
 import { ShareActions, xPostURL } from './ShareActions'
 import { CloseButton, DialogBackdrop } from './Dialog'
-import { periodWords, planOf, type CardPlan } from '@/lib/week'
+import { periodWords, planOf, postText, type CardPlan } from '@/lib/week'
 import { currentStory, fetchStory, FRESH_MS, lastStory, warmShare } from '@/lib/sharecache'
 
 /** What the desktop app's File → Share Your Figures… dispatches on the page. */
@@ -155,9 +155,10 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   const [failed, setFailed] = useState(false)
   const [startedAt, setStartedAt] = useState(() => Date.now())
   const card = useRef<HTMLElement>(null)
-  // The post's words, editable; reset when the period changes.
-  const [postText, setPostText] = useState(() => xText(initialPeriod))
-  useEffect(() => { setPostText(xText(period)) }, [period])
+  // The post's words: written from the figures until the person edits them,
+  // and written afresh when the period changes.
+  const [edited, setEdited] = useState<string | undefined>(undefined)
+  useEffect(() => { setEdited(undefined) }, [period])
 
   // The last figures for the period at once, the current ones behind them.
   useEffect(() => {
@@ -192,6 +193,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
 
   const words = periodWords(period)
   const empty = !!story && story.sessions === 0
+  const text = edited ?? ((story && postText(story, words.when, words.noun)) || xText(period))
   const seg = (on: boolean) => `rounded-[5px] px-2 py-1 text-[12px] transition-colors ${on ? 'bg-panel text-fg font-medium shadow-sm' : 'text-fg-muted hover:text-fg'}`
   const group = 'inline-flex items-center gap-0.5 rounded-md border border-border bg-panel-2 p-0.5'
 
@@ -269,7 +271,7 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
             )}
           </div>
 
-          <ShareActions build={build} fileName={fileName} text={postText} onText={setPostText}
+          <ShareActions build={build} fileName={fileName} text={text} onText={setEdited}
             disabled={!story || empty} onShared={onClose} />
 
           <p className="mt-3 border-t border-border pt-2.5 text-[12px] text-fg-muted">
@@ -282,16 +284,16 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
 }
 
 /**
- * The X post: words, no figures — the card carries those, with their caveat,
- * and a number typed into a tweet travels without it. No link either: the
- * card says caprock.dev, and a link made X and Threads show the site's own
- * dark preview in place of the card the user chose (owner, 2026-10-25).
+ * The X post before the figures are read. With them, the words carry the
+ * counts (postText in lib/week.ts). No link: the card says caprock.dev, and
+ * a link made X and Threads show the site's own dark preview in place of the
+ * card the user chose (owner, 2026-10-25).
  */
 export function xIntent(period: SharePeriod): string {
   return xPostURL(xText(period))
 }
 
-/** The post's first draft for a period: no figure in it. */
+/** The post's words while the figures are not there yet. */
 export function xText(period: SharePeriod): string {
   const what = period === 'all' ? 'My coding agents, all time' : `My coding agents ${PERIOD_LABEL[period]}`
   return `${what}, measured on my own machine with Caprock — free and open source.`

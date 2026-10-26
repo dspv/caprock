@@ -108,7 +108,9 @@ describe('ShareDialog', () => {
     await card()
     fireEvent.click(screen.getByRole('button', { name: 'Post to X' }))
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
-    expect(open.mock.calls[0]![0]).toBe(xIntent('7d'))
+    const text = new URL(String(open.mock.calls[0]![0])).searchParams.get('text')
+    expect(text).toMatch(/^My agents shipped 48 PRs this week\./)
+    expect(text).toMatch(/Claude Code, tracked on my own machine with Caprock/)
     expect(write).toHaveBeenCalledTimes(1)
   })
 
@@ -126,7 +128,7 @@ describe('ShareDialog', () => {
     expect(url.searchParams.get('text')).toMatch(/Caprock/)
     expect(url.searchParams.get('text')).not.toMatch(/https?:/)
     expect(write).toHaveBeenCalledTimes(1)
-    expect(await screen.findByText(/This card is on your clipboard: in the Threads post, press (⌘V|Ctrl\+V) to add it\./)).toBeTruthy()
+    expect(await screen.findByText(/In the Threads post, click the text and press (⌘V|Ctrl\+V): the card appears\./)).toBeTruthy()
   })
 
   it('offers my Telegram (or its setup) among the destinations, and no copy-only Telegram button', async () => {
@@ -177,11 +179,11 @@ describe('ShareDialog', () => {
     }
   })
 
-  it('puts no figure into the post text — the card carries them with their caveat', () => {
+  it('puts no link and no dollars into the post text', () => {
     const url = new URL(xIntent('7d'))
     // No link: it would bring the site's preview in place of the card.
     expect(url.searchParams.get('url')).toBeNull()
-    expect(url.searchParams.get('text')).not.toMatch(/\d/)
+    expect(url.searchParams.get('text')).not.toMatch(/\$|https?:/)
   })
 })
 
