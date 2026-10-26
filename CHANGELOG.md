@@ -12,6 +12,16 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.160.0] - 2026-10-26
+
+### Changed
+
+- **ui:** the share sheet writes the post from your figures — "My agents
+  shipped 48 PRs this week.", the other counts and which agents did the work —
+  in place of one line with no number; the dollars stay on the card. After X,
+  Threads or LinkedIn opens, a box lists the steps: the card is on your
+  clipboard, the post is open, and pressing ⌘V in the post adds the card.
+
 ## [0.159.1] - 2026-10-25
 
 ### Fixed

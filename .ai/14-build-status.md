@@ -184,6 +184,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-26 — 0.160.0: the share post says the figures
+
+A minor release, one feature PR (#829) plus three Dependabot bumps (#830 Go modules, #831 GitHub Actions, #832 vite). The share sheet writes the post from the period's figures (postText in ui/src/lib/week.ts): the card's headline, its other counts, the active days and the agents that did the work, with no dollars and no link. After X, Threads or LinkedIn opens, a box lists the steps — the card is on the clipboard, the post is open, press ⌘V (Ctrl+V off macOS) in the post — since a web post box cannot be handed a picture (owner, 2026-10-25: he expected the card in the post).
+
 ### 2026-10-25 — 0.159.1: the post gets the card the user chose
 
 A patch release, one PR (#827). X, Threads and LinkedIn posts no longer carry a caprock.dev link, which made Threads draw the site's dark preview in place of the paper card the owner chose; the card itself says caprock.dev. After the site opens, a large line under the destinations says the card is on the clipboard and to press ⌘V (Ctrl+V off macOS) in the post.
