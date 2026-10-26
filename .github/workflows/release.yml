@@ -220,7 +220,7 @@ jobs:
       # changed, so a stale or missing cache costs minutes, never a different
       # binary; signing, notarization and the updater signature all happen
       # after the compile, on this run's output.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: app/src-tauri -> target
           shared-key: app-macos-universal
@@ -377,7 +377,7 @@ jobs:
       # compiles only the app crate. Read-only (a tag's cache would serve no
       # later tag). Stale or missing costs time only: cargo's fingerprints
       # decide what rebuilds, and the updater signature is made afterwards.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: app/src-tauri -> target
           shared-key: app-${{ matrix.os }}
