@@ -370,7 +370,7 @@ jobs:
       # Cargo's registry and the compiled dependencies, keyed by OS, rustc and
       # Cargo.lock; the app crate itself always rebuilds. Written from master
       # only. release.yml's Windows and Linux app jobs read the same keys.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: app/src-tauri -> target
           shared-key: app-${{ matrix.os }}
@@ -446,7 +446,7 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         id: lookup
         with:
           workspaces: app/src-tauri -> target
@@ -480,7 +480,7 @@ jobs:
           cache-dependency-path: app/package-lock.json
       # Restores an older key's dependencies when there is one, and saves the
       # new key when the job ends.
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: steps.lookup.outputs.cache-hit != 'true'
         with:
           workspaces: app/src-tauri -> target
