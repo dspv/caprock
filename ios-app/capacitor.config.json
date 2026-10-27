@@ -1,0 +1,18 @@
+{
+  "appId": "dev.caprock.ios",
+  "appName": "Caprock",
+  "webDir": "../ui/dist-remote",
+  "ios": {
+    "contentInset": "never",
+    "preferredContentMode": "mobile"
+  },
+  "plugins": {
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "CapacitorHttp": {
+      "enabled": false
+    }
+  }
+}

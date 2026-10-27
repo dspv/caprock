@@ -18,6 +18,7 @@ import { ConnectionState } from './ConnectionState'
 import { FeedbackDialog } from './Feedback'
 import { PremiumModal } from './PremiumModal'
 import { useModules } from '@/lib/modules'
+import { isNativeApp } from '@/native/platform'
 
 export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => number }) {
   const [open, setOpen] = useState(false)
@@ -33,6 +34,8 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
     document.addEventListener('keydown', esc)
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc) }
   }, [open])
+  // The iOS app (ADR-083): its own Settings beside the menu, and no Get premium.
+  const native = isNativeApp()
   const item = 'flex min-h-12 w-full items-center gap-3 px-4 text-left text-[16px] text-fg no-underline hover:no-underline active:bg-panel-2'
   return (
     <header data-shell-header data-phone-bar className="sticky top-0 z-20 flex min-h-12 items-center gap-2 border-b border-border bg-panel px-4 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))]">
@@ -41,7 +44,12 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
         <span className="text-[17px] font-semibold tracking-tight">Caprock</span>
       </a>
       <span className="text-[12px] text-fg-muted"><ConnectionState link={link} heardAt={heardAt} /></span>
-      <div ref={box} className="relative ml-auto">
+      {native && (
+        <a href="#/app-settings" aria-label="App settings" data-app-settings className="ml-auto grid h-11 w-11 place-items-center rounded-full text-fg-muted no-underline active:bg-panel-2">
+          <SettingsIcon size={22} />
+        </a>
+      )}
+      <div ref={box} className={native ? 'relative' : 'relative ml-auto'}>
         <button
           type="button"
           aria-label="More"
@@ -71,9 +79,11 @@ export function PhoneBar({ link, heardAt }: { link: LinkStatus; heardAt: () => n
             <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); setFeedback(true) }}>
               <BugIcon size={18} className="text-accent" /> Feedback
             </button>
-            <button type="button" role="menuitem" className={item.replace("text-fg ", "text-premium-strong ")} onClick={() => { setOpen(false); setPremium(true) }}>
-              <span aria-hidden className="w-[18px] text-center">★</span> Get premium
-            </button>
+            {!native && (
+              <button type="button" role="menuitem" className={item.replace("text-fg ", "text-premium-strong ")} onClick={() => { setOpen(false); setPremium(true) }}>
+                <span aria-hidden className="w-[18px] text-center">★</span> Get premium
+              </button>
+            )}
           </div>
         )}
       </div>

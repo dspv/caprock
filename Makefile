@@ -10,7 +10,8 @@ DOCS := $(shell find . -name '*.md' \
           -not -path './vendor/*' -not -path './ui/node_modules/*' \
           -not -path './ui/dist/*' -not -path './.claude/*' \
           -not -path './app/node_modules/*' -not -path './app/src-tauri/target/*' \
-          -not -path './relay/node_modules/*' -not -path './relay/.wrangler/*' | sort)
+          -not -path './relay/node_modules/*' -not -path './relay/.wrangler/*' \
+          -not -path './ios-app/node_modules/*' -not -path './ios-app/ios/App/App/public/*' | sort)
 
 # Every recipe below is POSIX shell: pipelines, `[ -d ]`, single-quoted
 # -ldflags, `2>/dev/null`. On Windows, GNU make with no `sh` on PATH falls back

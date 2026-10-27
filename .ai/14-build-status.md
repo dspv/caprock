@@ -12,16 +12,16 @@ Since Orchestrate closed, the product has grown one observation surface across s
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                                          |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                              |
-| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                          |
-| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                         |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                               |
-| Phase 3 — Delight               | 0%       | No plan by design                                                                              |
-| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                        |
-| Other computers (ADR-067)       | 40%      | Phase 1 built (PR1–PR3): see and type into another computer's sessions; Phases 2–4 not started |
-| iOS app (ADR-083)               | 0%       | Direction decided, Capacitor chosen; push payload open (OQ-24); nothing built                  |
+| Track                           | Progress | State                                                                                           |
+| ------------------------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                               |
+| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                           |
+| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                          |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                                |
+| Phase 3 — Delight               | 0%       | No plan by design                                                                               |
+| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                         |
+| Other computers (ADR-067)       | 40%      | Phase 1 built (PR1–PR3): see and type into another computer's sessions; Phases 2–4 not started  |
+| iOS app (ADR-083)               | 30%      | Phase 1 built: shell, camera pairing, on-device voice, Face ID, demo; push, signing not started |
 
 ## Milestone status
 
