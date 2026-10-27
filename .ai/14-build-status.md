@@ -184,6 +184,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-27 — 0.161.0: compact a session's context, and events name their session by an integer
+
+A minor release, two PRs. #834 adds the free Compact context button (ADR-085, superseding "compaction is the paid lever"): it types Claude Code's own `/compact` through the message queue into a session Caprock started, and shows the measured before → after from the transcript's `compact_boundary` line (`preTokens`, `postTokens`), stored as a `context.compacted` event. Checked on a real Claude Code session on 2026-10-27: 41.4k → 10.1k tokens, the conversation carried on. #768 (an outside contribution) makes `sessions.sid` the integer key events carry (migration 0073); events move from `events_legacy` in the background. On a copy of the owner's 2.26 GB database the first start took 11.9 s (10.6 s of it the safety copy) and the move about 3 min 15 s, with every compared figure identical.
+
 ### 2026-10-26 — 0.160.0: the share post says the figures
 
 A minor release, one feature PR (#829) plus three Dependabot bumps (#830 Go modules, #831 GitHub Actions, #832 vite). The share sheet writes the post from the period's figures (postText in ui/src/lib/week.ts): the card's headline, its other counts, the active days and the agents that did the work, with no dollars and no link. After X, Threads or LinkedIn opens, a box lists the steps — the card is on the clipboard, the post is open, press ⌘V (Ctrl+V off macOS) in the post — since a web post box cannot be handed a picture (owner, 2026-10-25: he expected the card in the post).
