@@ -32,12 +32,21 @@ vi.mock('@/lib/api', async (orig) => {
       settings: async () => ({ plan_kind: plan.kind, plan_label: plan.label, plan_usd_per_month: plan.usd }),
       telegram: async () => ({ bot_set: false, chat_set: false, polling: false }),
       history: async () => ({ totals: { sessions: 10, cost_usd: 100, days: 3 } }),
+      shareCard: (png: string) => cards.share(png),
+      removeSharedCard: (id: string) => cards.remove(id),
     },
   }
 })
+// caprock.dev as the daemon reports it (POST /v1/share/card, ADR-086): the
+// upload is never real in a test.
+const cards = vi.hoisted(() => ({
+  share: (() => Promise.resolve({ id: 'abc123', url: 'https://caprock.dev/c/abc123', bytes: 3, at: 1 })) as (png: string) => Promise<unknown>,
+  remove: (() => Promise.resolve({ removed: true })) as (id: string) => Promise<unknown>,
+}))
 vi.mock('@/lib/cardimage', () => ({ renderCardPNG: vi.fn(async () => new Blob(['png'], { type: 'image/png' })) }))
 
 import { ShareCard, ShareDialog, xIntent } from './Share'
+import { ApiError } from '@/lib/api'
 import { resetShareCache } from '@/lib/sharecache'
 
 const write = vi.fn(async () => {})
@@ -52,7 +61,13 @@ beforeEach(() => {
   vi.stubGlobal('ClipboardItem', class { constructor(public items: Record<string, Blob>) {} })
   Object.defineProperty(navigator, 'clipboard', { value: { write }, configurable: true })
   write.mockClear()
+  shared.length = 0
+  removed.length = 0
+  cards.share = async (png) => { shared.push(png); return { id: 'abc123', url: 'https://caprock.dev/c/abc123', bytes: 3, at: 1 } }
+  cards.remove = async (id) => { removed.push(id); return { removed: true } }
 })
+const shared: string[] = []
+const removed: string[] = []
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 const card = () => screen.findByRole('img', { name: /PRs merged/ })
@@ -102,22 +117,26 @@ describe('ShareDialog', () => {
     expect(await screen.findByText('Copied — paste it anywhere.')).toBeTruthy()
   })
 
-  it('posts to X with words and the site, and the card on the clipboard', async () => {
+  // The chosen card goes up to caprock.dev and the post links to it, so the
+  // link's preview is that card and nothing is pasted (owner, 2026-10-27).
+  it('posts to X with the words and the uploaded card’s link, nothing on the clipboard', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<ShareDialog onClose={() => {}} />)
     await card()
     fireEvent.click(screen.getByRole('button', { name: 'Post to X' }))
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
-    const text = new URL(String(open.mock.calls[0]![0])).searchParams.get('text')
-    expect(text).toMatch(/^My agents shipped 48 PRs this week\./)
-    expect(text).toMatch(/Claude Code, tracked on my own machine with Caprock/)
-    expect(write).toHaveBeenCalledTimes(1)
+    const url = new URL(String(open.mock.calls[0]![0]))
+    expect(url.searchParams.get('text')).toMatch(/^My agents shipped 48 PRs this week\./)
+    expect(url.searchParams.get('text')).toMatch(/Claude Code, tracked on my own machine with Caprock/)
+    expect(url.searchParams.get('url')).toBe('https://caprock.dev/c/abc123')
+    // The exact PNG the sheet drew, base64 ('png' is cG5n).
+    expect(shared).toEqual(['cG5n'])
+    expect(write).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Post it: X shows this card from the link\. Nothing to paste\./)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'caprock.dev/c/abc123' })).toHaveAttribute('href', 'https://caprock.dev/c/abc123')
   })
 
-  // The owner shares his week on X and Threads (2026-10-25).
-  // No link in the post: Threads drew caprock.dev's dark preview in place of
-  // the paper card he chose (2026-10-25); the card itself names the site.
-  it('posts to Threads with the words only, the chosen card on the clipboard, and says to paste it', async () => {
+  it('appends the link to the Threads text', async () => {
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<ShareDialog onClose={() => {}} />)
     await card()
@@ -125,10 +144,76 @@ describe('ShareDialog', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
     const url = new URL(String(open.mock.calls[0]![0]))
     expect(url.origin + url.pathname).toBe('https://www.threads.com/intent/post')
+    expect(url.searchParams.get('text')).toMatch(/Caprock — free and open source\. https:\/\/caprock\.dev\/c\/abc123$/)
+  })
+
+  it('removes the shared picture from the box after posting, and says the site may keep its copy', async () => {
+    vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<ShareDialog onClose={() => {}} />)
+    await card()
+    fireEvent.click(screen.getByRole('button', { name: 'Post to Threads' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove the shared picture' }))
+    expect(await screen.findByText('Removed from caprock.dev. Threads may keep the preview it already fetched.')).toBeTruthy()
+    expect(removed).toEqual(['abc123'])
+  })
+
+  // The owner shares his week on X and Threads (2026-10-25): with no upload,
+  // today's way — the chosen card on the clipboard and the steps to paste it.
+  it('falls back to the clipboard and the paste steps when the upload fails, and says so in one line', async () => {
+    cards.share = async () => { throw new ApiError(429, '429 Too Many Requests', { error: 'caprock.dev asked to wait' }) }
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<ShareDialog onClose={() => {}} />)
+    await card()
+    fireEvent.click(screen.getByRole('button', { name: 'Post to Threads' }))
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    const url = new URL(String(open.mock.calls[0]![0]))
     expect(url.searchParams.get('text')).toMatch(/Caprock/)
     expect(url.searchParams.get('text')).not.toMatch(/https?:/)
     expect(write).toHaveBeenCalledTimes(1)
     expect(await screen.findByText(/In the Threads post, click the text and press (⌘V|Ctrl\+V): the card appears\./)).toBeTruthy()
+    expect(screen.getByText('The upload to caprock.dev failed (too many pictures shared just now), so paste the card into the post instead.')).toBeTruthy()
+  })
+
+  it('never uploads from Copy image, Save image or Share…', async () => {
+    const nav = navigator as unknown as Record<string, unknown>
+    const origShare = nav.share
+    const origCan = nav.canShare
+    nav.canShare = () => true
+    nav.share = async () => {}
+    try {
+      render(<ShareDialog onClose={() => {}} />)
+      await card()
+      fireEvent.click(screen.getByRole('button', { name: 'Copy image' }))
+      await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+      fireEvent.click(screen.getByRole('button', { name: 'Save image' }))
+      await screen.findByText('Saved to your downloads.')
+      fireEvent.click(screen.getByRole('button', { name: /^share…$/i }))
+      await waitFor(() => expect(screen.getByRole('button', { name: /^share…$/i })).not.toBeDisabled())
+      expect(shared).toEqual([])
+    } finally {
+      nav.share = origShare
+      nav.canShare = origCan
+    }
+  })
+
+  it('names the upload on the buttons that make it', async () => {
+    render(<ShareDialog onClose={() => {}} />)
+    await card()
+    expect(screen.getByRole('button', { name: 'Post to X' }).getAttribute('title')).toMatch(/^Uploads this picture to caprock\.dev so the post shows it/)
+    expect(screen.getByRole('button', { name: 'Copy image' }).getAttribute('title')).not.toMatch(/caprock\.dev/)
+  })
+
+  it('keeps the paste on a paired device: the upload is the machine’s', async () => {
+    localStorage.setItem('caprock.device.token', 'tok')
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<ShareDialog onClose={() => {}} />)
+    await card()
+    expect(screen.getByRole('button', { name: 'Post to X' }).getAttribute('title')).toMatch(/paste it into the post/)
+    fireEvent.click(screen.getByRole('button', { name: 'Post to X' }))
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    expect(shared).toEqual([])
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/upload to caprock\.dev failed/)).toBeNull()
   })
 
   it('offers my Telegram (or its setup) among the destinations, and no copy-only Telegram button', async () => {
@@ -151,7 +236,7 @@ describe('ShareDialog', () => {
     render(<ShareDialog onClose={() => {}} />)
     const c = await card()
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText('Totals only, no names or paths. Drawn on your machine, uploaded nowhere.')).toBeTruthy()
+    expect(within(dialog).getByText('Totals only, no names or paths. Drawn on your machine; only X, Threads and LinkedIn upload it, to caprock.dev.')).toBeTruthy()
     // "not a bill" is on the card itself, not repeated under it.
     const outside = (dialog.textContent ?? '').replace(c.textContent ?? '', '')
     expect(outside).not.toMatch(/not a bill/)
@@ -181,7 +266,9 @@ describe('ShareDialog', () => {
 
   it('puts no link and no dollars into the post text', () => {
     const url = new URL(xIntent('7d'))
-    // No link: it would bring the site's preview in place of the card.
+    // No link of the words' own: the only link a post carries is the
+    // uploaded card's, whose preview is the card; caprock.dev's home page
+    // would bring the site's preview in its place.
     expect(url.searchParams.get('url')).toBeNull()
     expect(url.searchParams.get('text')).not.toMatch(/\$|https?:/)
   })

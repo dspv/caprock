@@ -952,6 +952,20 @@ export interface AssistantNote {
 /** One arm of the handoff comparison: sessions, how many reached a first edit, and the medians to get there. */
 export interface HandoffGroup { sessions: number; reached: number; median_min: number; median_calls: number }
 
+/**
+ * A share card this machine uploaded to caprock.dev (POST /v1/share/card,
+ * ADR-086). `url` is the page the post links to; its preview is the card.
+ * The delete token stays on the daemon.
+ */
+export interface SharedCard {
+  id: string
+  url: string
+  image?: string
+  bytes: number
+  /** Unix ms it was uploaded. */
+  at: number
+}
+
 /** GET /v1/telegram: the bridge to the owner's own bot (ADR-047). */
 /** Where a credential is kept (internal/secret): the macOS login keychain,
  *  a 0600 file (with its path), or still config.json when moving it failed. */
@@ -2300,6 +2314,12 @@ export const api = {
   sendOffer: (a: { offer: string; answers: Record<string, string>; email?: string }) => post<{ status: string }>('/v1/offer', a),
   /** Send one bug report to Caprock support at caprock.dev, through the daemon (ADR-073). Only on the user's click; lib/support.ts builds the body. */
   sendSupport: (r: { text: string; email?: string; screenshots?: { name: string; type: string; data: string }[] }) => post<{ ok: boolean }>('/v1/support', r),
+  /** Upload one share card (base64 PNG) to caprock.dev, through the daemon (ADR-086). Only on the press of X, Threads or LinkedIn. */
+  shareCard: (png: string) => post<SharedCard>('/v1/share/card', { png }),
+  /** The cards this machine uploaded, newest first. */
+  sharedCards: () => get<{ items: SharedCard[] }>('/v1/share/cards'),
+  /** Take an uploaded card down on caprock.dev, then forget it here. */
+  removeSharedCard: (id: string) => post<{ removed: boolean; already_gone?: boolean }>(`/v1/share/cards/${encodeURIComponent(id)}`, {}, 'DELETE'),
   renameSession: (id: string, name: string) => post<{ session_id: string; name: string }>(`/v1/sessions/${encodeURIComponent(id)}/name`, { name }, 'PUT'),
   /** "needs me?" (true) or "not needed" (false) on the turn that ended last; 409 mid-turn. */
   setNeeds: (id: string, needs: boolean) => post<{ session_id: string; needs: boolean }>(`/v1/sessions/${encodeURIComponent(id)}/needs`, { needs }, 'PUT'),

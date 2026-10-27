@@ -60,6 +60,7 @@ import { WindowStopSetting } from '@/components/WindowStopSetting'
 import { Locked } from '@/components/Locked'
 import { BrainAutoSetting } from '@/components/BrainAutoSetting'
 import { McpSetting } from '@/components/McpSetting'
+import { SharedPictures } from '@/components/SharedPictures'
 import { UpdatesSetting } from '@/components/UpdatesSetting'
 import { CloseButton, dialogOpen } from '@/components/Dialog'
 import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
@@ -372,8 +373,10 @@ function PrivacySection() {
       <p className="text-[12px] leading-relaxed text-fg-muted">
         The release check {plan.update_checks ? 'is on' : 'is off'} (Updates, above): it asks GitHub for the latest version number,
         and with Update automatically the app then downloads that version from GitHub. Apart from it, the Telegram messages you set
-        up yourself and GitHub once you connect it, Caprock sends nothing over the internet. Everything else stays on this computer.
+        up yourself and GitHub once you connect it, Caprock sends nothing over the internet — except what you send with a click: a
+        share card to caprock.dev when you press X, Threads or LinkedIn, a survey answer, a bug report. Everything else stays on this computer.
       </p>
+      <SharedPictures />
     </Section>
   )
 }

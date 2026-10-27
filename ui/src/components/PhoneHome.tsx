@@ -16,11 +16,11 @@
  * Light on purpose: the sessions list, the projects, the Inbox, the release
  * plan and the plan windows — no charts. Continue, Releases and Saved fold to
  * one line each, kept per device (owner, 2026-10-21); the Limits line is read
- * on opening and on a pull only. The full dashboard is one link down. Spec:
+ * on opening and on a pull only. Share your week (the Week card to the
+ * phone's share menu) and the full dashboard are the last two rows. Spec:
  * .ai/04-ui.md § The phone home.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { api, errText, isPairedDevice, type ChatList, type InboxItem, type SessionSummary, type SpawnRequest, type Subscription } from '@/lib/api'
 import { chatModelLabel, chatTitle, isChat, startChat as startNewChat } from '@/lib/chats'
 import { ModelChip, useChatChoice } from './ChatStart'
@@ -48,7 +48,8 @@ import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent 
 import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, FileIcon, InboxIcon, PaperclipIcon } from './AppIcons'
 import { PermissionPrompt } from './PermissionPrompt'
 import { EndableRow, useEndedHere, type EndedHere } from './PhoneEnd'
-import { ChipSelect, FoldHeader } from './PhoneParts'
+import { BottomSheet, ChipSelect, FoldHeader } from './PhoneParts'
+import { PhoneShareWeek } from './PhoneShareWeek'
 import { PhoneReleases } from './PhoneReleases'
 import { subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, hasSubscriptions, roomText } from '@/lib/subscriptions'
@@ -263,6 +264,9 @@ export function PhoneHome() {
         folded={folds.continue} onToggle={() => toggle('continue')} />
       <PhoneReleases pull={pull} folded={folds.releases} onToggle={() => toggle('releases')} />
       <Saved items={inbox.items} now={now} canDelete={canControl} folded={folds.saved} onToggle={() => toggle('saved')} />
+      {/* The Week card to the share menu: Threads, X, any app, with the
+        * picture attached and nothing uploaded (components/PhoneShareWeek). */}
+      <PhoneShareWeek />
       <a href="#/home" data-full-dashboard
         className="flex min-h-[56px] min-w-0 items-center gap-3 rounded-[12px] border border-border bg-panel px-3 py-2 text-fg no-underline active:bg-panel-2">
         <span className="min-w-0 flex-1">
@@ -741,28 +745,6 @@ function subText(s: Subscription): string {
   if (s.provider) return s.label
   const room = roomText(s)
   return room ? `${s.label} · ${room}` : s.label
-}
-
-function BottomSheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  return createPortal(
-    <div className="fixed inset-0 z-40 flex items-end bg-black/45" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div role="dialog" aria-modal="true" aria-label={title} className="flex max-h-[94dvh] w-full flex-col rounded-t-[18px] border-t border-border-strong bg-panel text-fg shadow-[0_-24px_64px_-20px_rgba(0,0,0,0.55)]">
-        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border-strong" />
-        <div className="flex items-center px-4 pb-1 pt-2">
-          <h2 className="text-[19px] font-semibold">{title}</h2>
-          <button type="button" aria-label="Close" onClick={onClose} className="ml-auto grid h-10 w-10 place-items-center rounded-full text-fg-muted"><CloseIcon size={20} /></button>
-        </div>
-        <div className="min-h-0 overflow-y-auto px-4 pb-3">{children}</div>
-        <div className="border-t border-border px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3">{footer}</div>
-      </div>
-    </div>,
-    document.body,
-  )
 }
 
 function FieldLabel({ children }: { children: ReactNode }) {

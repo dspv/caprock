@@ -106,7 +106,7 @@ export function PipelineShareDialog({ board, repo, onClose }: { board: PRBoard; 
             } />
           <ul className="mt-4 grid gap-1 border-t border-border pt-3 text-[12.5px] text-fg-muted">
             <li>Aggregate figures only — no pull request titles, branches, authors or paths.</li>
-            <li>Drawn on your machine. Nothing leaves until you press a button.</li>
+            <li>Drawn on your machine. Nothing leaves until you press a button; X, Threads and LinkedIn upload the picture to caprock.dev.</li>
             <li>A 2400×1260 PNG · agent cost at API list price — not a bill.</li>
           </ul>
         </div>

@@ -26,6 +26,14 @@ until you enable it, and each contacts exactly one host:
   created. It carries figures you already see on the dashboard — never a
   prompt, a reply, tool output or a file path. With no bot token configured
   there is no timer at all ([ADR-024](.ai/08-decisions.md)).
+- **What you send to caprock.dev with a click.** Nothing goes automatically;
+  each is one request, only when you press its button, and the screen says
+  what goes first: a survey answer ([ADR-062](.ai/08-decisions.md)), a bug
+  report you wrote ([ADR-073](.ai/08-decisions.md)), and a share card — the
+  picture alone — when you press X, Threads or LinkedIn in a share sheet, so
+  the post's link shows it ([ADR-086](.ai/08-decisions.md)). A shared
+  picture can be removed from caprock.dev under Settings → Privacy; the
+  social site may keep the preview it already fetched.
 - **LAN access** (`caprock up --lan`, or the switch in the dashboard) opens a
   second listener on one private address of this machine, never `0.0.0.0`.
   See [Other devices](#other-devices).

@@ -253,6 +253,17 @@ describe('PhoneHome', () => {
     expect(row.querySelector('svg')).not.toBeNull()
   })
 
+  // Owner, 2026-10-27 (translated: "do both"): the Week card to the phone's
+  // share menu, one quiet row just above Full dashboard.
+  it('offers Share your week as the row before Full dashboard', async () => {
+    stubs()
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    const share = document.querySelector('[data-phone-share-week]')!
+    expect(share.textContent).toContain('Share your week')
+    expect(share.nextElementSibling?.hasAttribute('data-full-dashboard')).toBe(true)
+  })
+
   it('opens Save filled in from another app\'s share', async () => {
     stubs()
     window.history.replaceState(null, '', '/?title=Issue&text=https%3A%2F%2Fexample.com%2F1#/')

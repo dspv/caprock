@@ -133,8 +133,10 @@ export function tally(w: Week, led: Headline['led']): TallyItem[] {
 /**
  * The post that goes with the card: the headline, the other counts, and who
  * did the work (owner, 2026-10-25: a figure-free line read as dull). Counts
- * only — the dollars stay on the card, beside their caveat. No link: a link
- * makes X and Threads show the site's preview in place of the chosen card.
+ * only — the dollars stay on the card, beside their caveat. No link in the
+ * words: a caprock.dev link makes X and Threads show the site's preview in
+ * place of the chosen card. The share sheet adds the uploaded card's own
+ * link, whose preview is that card (ShareActions, ADR-086).
  */
 export function postText(w: Week, when: string, noun = 'week'): string {
   const h = headline(w, when, noun)
