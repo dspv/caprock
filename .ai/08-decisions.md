@@ -6329,6 +6329,23 @@ not the same shell. The desktop app stays Tauri.
 or Caprock's sender can read; building iOS on the owner's Mac; Android in
 this round.
 
+**Amended 2026-10-27 (owner):** 1.0 ships without push to reach the store;
+push follows in 1.1. The first version is the remote, camera pairing,
+on-device voice, Face ID and the demo; it asks for no notification
+permission, registers for no remote notifications and carries no
+`aps-environment` entitlement (the App ID's Push Notifications capability
+may stay ticked; it is unused until 1.1, which adds the entitlement, the
+sender and `OQ-24`'s answer together). The release path skips TestFlight:
+the owner's decision is to go straight to App Store review, so the "3–5 days
+on TestFlight" step above does not apply to 1.0. The upload runs on GitHub's
+macOS runners from a manual workflow (`ios-release.yml`) with the App Store
+Connect API key in the `ios-release` environment; submitting for review stays
+the owner's click. Export compliance: the channel implements standard
+algorithms in the app (Noise_NK_25519_AESGCM_SHA256, `@noble`, not Apple's
+crypto), so `ITSAppUsesNonExemptEncryption` is `true` and App Store Connect
+asks for a French encryption declaration if the app is offered in France
+(ios-app/README.md § Export compliance).
+
 **Revisit if:** Apple rejects the app under 4.2 or 2.1 despite the native
 features and the demo mode (`RISK-11`); the Notification Service Extension
 cannot decrypt reliably within its time budget, which would leave (a) as the

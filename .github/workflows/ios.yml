@@ -2,9 +2,8 @@ name: ios
 
 # The iOS app (ADR-083, ios-app/): the phone's page built in remote mode,
 # synced into the Capacitor project, and compiled for the iOS Simulator with
-# no signing. Builds run here, never on the owner's Mac. Signing and the
-# TestFlight upload are a later job that needs App Store Connect secrets
-# (ios-app/README.md).
+# no signing. Builds run here, never on the owner's Mac. The signed App Store
+# upload is ios-release.yml, run by hand (ios-app/README.md § Release).
 on:
   push:
     branches: [master, 'feat/ios-**']
@@ -65,6 +64,8 @@ jobs:
         working-directory: ios-app
       - name: plugin versions agree between ui/ and ios-app/
         run: node ios-app/scripts/check-versions.mjs
+      - name: the App Store texts fit Apple's limits
+        run: node ios-app/scripts/check-store.mjs
       - name: build the phone's page (remote mode)
         working-directory: ui
         run: npx vite build --mode remote
