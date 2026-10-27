@@ -18,6 +18,7 @@ import { machineLook, machinePageURL, offlineWhy, machinesApi, useMachines, type
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useNow } from '@/lib/useNow'
+import { keys } from '@/lib/appkeys'
 import { basename, fmtAgo } from '@/lib/format'
 import { Empty, Skeleton } from '@/components/ui'
 
@@ -79,7 +80,7 @@ function MachineSessions({ m }: { m: Machine }) {
           <SessionGroup title="Running" items={running} m={m} now={now} empty={`Nothing runs on ${m.name} now.`} />
           {recent.length > 0 && <SessionGroup title="Recent" items={recent} m={m} now={now} />}
           <p className="text-[12px] text-fg-faint">
-            Starting a session on {m.name} from here comes next; for now start it there, or with <span className="mono">caprock</span> over SSH, and it shows up here.
+            To start one on {m.name}, open New agent (<span className="mono">{keys('⇧⌘N')}</span>) and pick {m.name} under Machine.
           </p>
         </>
       )}

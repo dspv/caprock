@@ -268,6 +268,11 @@ func (s *Server) handleMachineProxy(w http.ResponseWriter, r *http.Request) {
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) { machineFail(w, err) },
 	}
 	rp.ServeHTTP(w, r)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		// A start, a stop or an answer there changes what runs there: the
+		// kept list of its sessions is read again next time.
+		s.MachineChanged(id)
+	}
 }
 
 // machineFail answers a request the other computer could not take, with the

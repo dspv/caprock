@@ -38,8 +38,14 @@
  * it; and what the agent will be told — Caprock's instructions and the
  * repository's own CLAUDE.md / AGENTS.md — is a block of its own, each
  * "Set · 12 lines" or "None", a click from being read or edited.
+ *
+ * *Machine* (ADR-067, Phase 2), first, only when this computer reaches
+ * another: This Mac or one of them. Another computer's start is
+ * RemoteAgentSheet, read from and run on that computer.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMachines, machineSessionRoute } from '@/lib/machines'
+import { MachinePicker, RemoteAgentSheet } from './RemoteAgentSheet'
 import { api, errText } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentPicker, isCustomAgent, startable, useAgentCatalog, useAgentChoice } from './AgentPicker'
@@ -78,7 +84,34 @@ function baseName(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path
 }
 
-export function NewAgentSheet({
+type NewAgentProps = Parameters<typeof LocalAgentSheet>[0] & {
+  /** A session started on another computer (ADR-067, Phase 2); by default its route opens. */
+  onStartedOn?: (machine: string, sessionId: string, title: string) => void
+}
+
+/**
+ * New agent, on this computer or — with another one linked — on one of
+ * them (Machine, ADR-067 Phase 2). A single machine's sheet is unchanged.
+ */
+export function NewAgentSheet({ onStartedOn, ...props }: NewAgentProps) {
+  const machines = useMachines().data ?? []
+  const [machine, setMachine] = useState('')
+  if (machine && machines.some((m) => m.id === machine)) {
+    return (
+      <RemoteAgentSheet
+        machines={machines}
+        machine={machine}
+        onMachine={setMachine}
+        prompt={props.prompt}
+        onClose={props.onClose}
+        onStarted={onStartedOn ?? ((id, sid) => { location.hash = machineSessionRoute(id, sid) })}
+      />
+    )
+  }
+  return <LocalAgentSheet {...props} machinePicker={machines.length > 0 ? <MachinePicker machines={machines} value="" onChange={setMachine} /> : undefined} />
+}
+
+function LocalAgentSheet({
   projects,
   projectId,
   cwd: initialCwd,
@@ -92,7 +125,10 @@ export function NewAgentSheet({
   onNewProject,
   onStarted,
   onAttempts,
+  machinePicker,
 }: {
+  /** New agent's Machine field, when this computer reaches another. */
+  machinePicker?: ReactNode
   projects: Project[]
   projectId?: string
   /** A worktree's folder, when the sheet was opened from one. */
@@ -326,6 +362,7 @@ export function NewAgentSheet({
         </p>
       ) : (
         <div className="grid gap-4 px-5 py-4" onKeyDown={(e) => { stepSelect(e) }}>
+          {machinePicker && <div className="grid grid-cols-2 gap-3">{machinePicker}<div /></div>}
           <div className="grid grid-cols-2 gap-3">
             <div className="grid min-w-0 gap-1.5">
               <span className="flex items-baseline gap-2 text-[12px] font-medium text-fg-muted">

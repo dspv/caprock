@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MachineRows } from './MachineRows'
-import { ApiError, type SessionSummary } from '@/lib/api'
+import { type SessionSummary } from '@/lib/api'
 import { machinesApi, type Machine } from '@/lib/machines'
 
 const ID = 'f7kc4QaG4HRPYEjg19Pr-au-FeTljmKHkikFrAmRTzM'
@@ -27,11 +27,11 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
 
   it('lists each computer and the sessions running there, tagged by it', async () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
-    const sessions = vi.spyOn(machinesApi, 'sessions').mockResolvedValue([session('s1', 'Fix the build'), { ...session('s2', 'Old'), status: 'ended' }])
+    const all = vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status: 'online', at: 1, sessions: [session('s1', 'Fix the build'), { ...session('s2', 'Old'), status: 'ended' }] }])
     const onOpen = vi.fn()
     render(<MachineRows onOpen={onOpen} dashboardActive={false} />)
     const row = await screen.findByRole('button', { name: /Fix the build/ })
-    expect(sessions).toHaveBeenCalledWith(ID)
+    expect(all).toHaveBeenCalled()
     expect(row.querySelector('[data-machine-tag]')?.textContent).toBe('Mac mini')
     expect(screen.queryByText('Old')).toBeNull()
     fireEvent.click(row)
@@ -42,10 +42,27 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
 
   it('says offline when the proxy does, and never asks a computer that removed this one', async () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([mini, { ...mini, id: `${ID.slice(0, -1)}B`, name: 'Linux box', status: 'revoked' }])
-    const sessions = vi.spyOn(machinesApi, 'sessions').mockRejectedValue(new ApiError(503, '503', { error: 'the computer is offline', status: 'offline' }))
+    const all = vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([
+      { id: ID, name: 'Mac mini', status: 'offline', error: 'the computer is offline', last_ok: 5 },
+      { id: `${ID.slice(0, -1)}B`, name: 'Linux box', status: 'revoked' },
+    ])
     render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
     await vi.waitFor(() => expect(screen.getAllByText('offline').length).toBe(1))
     expect(screen.getByText('removed there')).toBeTruthy()
-    expect(sessions).toHaveBeenCalledTimes(1)
+    // One request for every computer: the daemon reads each one.
+    expect(all).toHaveBeenCalledTimes(1)
+  })
+
+  it('puts a session there that needs you first, with the warn dot and the reason', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+    const waiting = { ...session('s2', 'Waits'), last_event_at: 2, activity: { health: 'waiting-on-you', need: { reason: 'permission' } } } as unknown as SessionSummary
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status: 'online', at: 1, sessions: [{ ...session('s1', 'Works'), activity: { health: 'working' } } as unknown as SessionSummary, waiting] }])
+    render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
+    const row = await screen.findByRole('button', { name: /Waits/ })
+    const rows = [...document.querySelectorAll('[data-machine-session-row]')].map((r) => r.getAttribute('data-machine-session-row'))
+    expect(rows).toEqual(['s2', 's1'])
+    expect(row.hasAttribute('data-needs-you')).toBe(true)
+    expect(row.getAttribute('title')).toContain('needs you: permission')
+    expect(screen.getByText('1 needs you')).toBeTruthy()
   })
 })

@@ -81,6 +81,12 @@ const (
 	// learns nothing of a module; a dashboard that shows modules re-reads
 	// GET /v1/admin.
 	FrameAdmin FrameType = "admin"
+	// FrameMachines says something changed on one of the computers this
+	// machine reaches (ADR-067, Phase 2): {id, why} — a prompt began or
+	// ended there, a notification arrived, or its channel came up or went
+	// down — so a screen listing their sessions reads GET
+	// /v1/machines/sessions again. Local only.
+	FrameMachines FrameType = "machines"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the
@@ -89,6 +95,10 @@ type Frame struct {
 	Type FrameType `json:"type"`
 	Seq  uint64    `json:"seq,omitempty"`
 	Data any       `json:"data"`
+	// LocalOnly frames go to this machine's own /v1/live clients and to no
+	// paired device: what another computer said (ADR-067, Phase 2) must not
+	// reach a phone paired with this one, or access would be transitive.
+	LocalOnly bool `json:"-"`
 }
 
 // Marshal encodes the frame once for all subscribers.

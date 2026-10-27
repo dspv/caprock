@@ -569,6 +569,9 @@ type Server struct {
 	// compactStats is the machine's compaction figure, read at most once a
 	// minute (compact.go).
 	compactStats compactStatsCache
+	// machSessions is each other computer's running sessions as last read
+	// (machinesessions.go).
+	machSessions machineSessionsCache
 	lanURL       string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
@@ -766,6 +769,7 @@ func New(d Deps) *Server {
 	// Other computers this machine reaches (ADR-067, machines.go). Loopback
 	// only, in the handlers, and on no device's allowlist: not transitive.
 	m.HandleFunc("GET /v1/machines", s.handleMachines)
+	m.HandleFunc("GET /v1/machines/sessions", s.handleMachineSessions)
 	m.HandleFunc("POST /v1/machines", s.handleAddMachine)
 	m.HandleFunc("PATCH /v1/machines/{id}", s.handlePatchMachine)
 	m.HandleFunc("DELETE /v1/machines/{id}", s.handleForgetMachine)
