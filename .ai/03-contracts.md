@@ -545,6 +545,51 @@ tokens are full length and do not expire; revocation takes effect on the next
 request. The guest list lives in `devices.json` at mode 0600, beside the
 licence key and the report bot token, and never in `config.json`.
 
+### A dev server on a phone (/v1/devshare)
+
+[ADR-087](08-decisions.md): a local dev server opened on a phone on the same
+Wi-Fi through a proxy for that one origin (`internal/devshare`). Every route is
+loopback-only in the handler (`403` from a paired device or through the relay)
+and on no device's allowlist; `501` in a build without it.
+
+```
+GET    /v1/devshare        → {shares: [Share], idle_sec, max_sec, max}
+POST   /v1/devshare {url}  → Share; the same origin again → that share, its idle clock restarted
+DELETE /v1/devshare/{id}   → {stopped: bool}
+```
+
+- **`Share`** is `{id, target, path, url, address, tunnelled?, started_at,
+  last_used_at, expires_at}`: `target` the origin forwarded to
+  (`http://localhost:5173`), `path` where the link lands (the address's path
+  and query), `url` the link with its token (the QR), `address` the
+  `host:port` the phone reaches, `tunnelled` when that address is
+  Tailscale's, `expires_at` the earlier of `last_used_at` + `idle_sec` and
+  `started_at` + `max_sec`.
+- **`url` must be local** by `lib/devservers.ts`'s rules: `http(s)` on
+  `localhost`, `*.localhost`, `127.x` or `[::1]`, `0.0.0.0` and `[::]` taken
+  as `localhost`; no user info. Anything else, or the daemon's own port, is
+  `400`. A fourth share is `409`; no private address on this machine is `503`.
+- **The listener** binds one private address (the first RFC 1918 one, else a
+  Tailscale one) on a random port. Idle `1800` s, longest `28800` s, at most
+  `3`; nothing is stored, and every share ends with the daemon.
+- **The link** is `http://<address>/__caprock/open/<token>` (32 random bytes,
+  base64url). It answers `303` to `path` with `Set-Cookie:
+  caprock_share_<id>=<token>; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800`,
+  `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. Any other
+  request without that cookie, or a wrong token, is `403` with a short page; a
+  `Host` other than `address` is `421`; `CONNECT` is `405`; a dev server that
+  does not answer is `502`.
+- **Forwarded** to `target` alone, dialled on loopback only (`127.0.0.1`,
+  then `[::1]` for a name), never through an environment proxy: `Host` set to
+  the target's; `Origin` and `Referer` naming `address` rewritten to the
+  target; the share's cookie removed; `Accept-Encoding` removed; `Via: 1.1
+  caprock-share` added. WebSocket upgrades and streamed answers pass through.
+- **Answers:** `Location` and identity-encoded HTML, CSS, JavaScript and JSON
+  up to 4 MB have the target origin's spellings (`http(s)://`, `ws(s)://` and
+  `//` before `localhost`, `127.0.0.1` or `[::1]` and the port) replaced by
+  `http://<address>` (or `ws://`, `//`); a `Set-Cookie` loses `Secure` and a
+  `Domain` naming localhost.
+
 ### SessionStart handoff
 
 A `SessionStart` hook whose `source` is `startup` is answered with the last
@@ -1240,6 +1285,7 @@ GET  /v1/keepawake                     → whether the computer is kept awake no
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
 POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
+GET/POST/DELETE /v1/devshare…          → a local dev server opened on a phone on the same Wi-Fi; loopback-only (§ A dev server on a phone)
 GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing, and a share card to the paired chat (§ Telegram bridge)
 POST /v1/shutdown                      → 200 (bearer-token gated; `caprock down`)
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check

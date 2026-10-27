@@ -2256,6 +2256,32 @@ export interface PairMe {
   pending?: boolean
 }
 
+/** A local dev server opened on a phone on the same Wi-Fi (ADR-087, GET/POST /v1/devshare). */
+export interface DevShare {
+  id: string
+  /** The origin forwarded to, e.g. http://localhost:5173. */
+  target: string
+  /** Where the link lands. */
+  path: string
+  /** The link for the phone, token included: the QR. */
+  url: string
+  /** host:port the phone reaches, without the token. */
+  address: string
+  /** The address is Tailscale's, not the Wi-Fi's. */
+  tunnelled?: boolean
+  started_at: string
+  last_used_at: string
+  /** When it ends by itself if the phone does nothing. */
+  expires_at: string
+}
+
+export interface DevShareList {
+  shares: DevShare[]
+  idle_sec: number
+  max_sec: number
+  max: number
+}
+
 /** What the owner sees on the pairing panel. */
 export interface PairState {
   /** Whether this daemon is listening on the network at all. */
@@ -2474,6 +2500,11 @@ export const api = {
   setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
   /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
   pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
+  /** The dev servers shared with a phone now (ADR-087). Machine only. */
+  devShares: () => get<DevShareList>('/v1/devshare'),
+  /** Shares a local dev server on the Wi-Fi behind a link; the same origin again gives the same link. */
+  startDevShare: (url: string) => post<DevShare>('/v1/devshare', { url }),
+  stopDevShare: (id: string) => post<{ stopped: boolean }>(`/v1/devshare/${encodeURIComponent(id)}`, {}, 'DELETE'),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Let a computer that waits control this one (ADR-067). Machine only; deny is pairRevoke. */
   pairAllow: (id: string) => post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/allow`, {}),

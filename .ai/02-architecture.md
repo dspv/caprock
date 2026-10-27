@@ -461,6 +461,7 @@ internal/brain/       # Second Brain's automatic extraction: finished sessions r
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
 internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
 internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave
+internal/devshare/    # Open on my phone (ADR-087): a one-origin reverse proxy for a local dev server, on one private address and a random port, behind a token link and cookie; idle and longest-life expiry
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control
 internal/ptyhost/     # `caprock pty-host`: one process per owned session holding its PTY, so it outlives the daemon (ADR-033); orphan verdicts — Control
 internal/keepawake/   # keeps the computer from idle-sleeping while agents work: modes, keeper, per-OS holders (ADR-049)
