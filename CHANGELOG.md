@@ -12,6 +12,15 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.163.1] - 2026-10-28
+
+### Fixed
+
+- **app:** a daemon that answers slowly on a loaded computer no longer flips
+  the window to "The Caprock daemon stopped". A daemon that takes the connection
+  and answers late is kept for 20 seconds; no connection at all, or silence
+  past that, shows it as stopped.
+
 ## [0.163.0] - 2026-10-27
 
 ### Added
