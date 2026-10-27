@@ -54,9 +54,12 @@ type Line struct {
 	// CompactMetadata is on a `system` / `compact_boundary` line: what the
 	// context held before the compaction, and what started it.
 	CompactMetadata *struct {
-		Trigger    string `json:"trigger"`
-		PreTokens  int64  `json:"preTokens"`
-		DurationMs int64  `json:"durationMs"`
+		Trigger   string `json:"trigger"`
+		PreTokens int64  `json:"preTokens"`
+		// PostTokens is the context after, when Claude Code says
+		// (2.1.x since late October 2026); older versions leave it out.
+		PostTokens int64 `json:"postTokens"`
+		DurationMs int64 `json:"durationMs"`
 	} `json:"compactMetadata"`
 	Message *struct {
 		Role    string          `json:"role"`
@@ -328,10 +331,14 @@ func (l *Line) compactedEvent(base func(event.Kind) event.Event) (event.Event, b
 	m := l.CompactMetadata
 	ev := base(event.KindContextCompacted)
 	ev.Key = "compact:" + l.UUID
-	ev.Payload = mustJSON(map[string]any{
+	p := map[string]any{
 		"trigger": m.Trigger, "pre_tokens": nonNegative(m.PreTokens), "duration_ms": nonNegative(m.DurationMs),
 		"session_id": l.SessionID, "sidechain": l.IsSidechain, "_from": "transcript",
-	})
+	}
+	if m.PostTokens > 0 {
+		p["post_tokens"] = m.PostTokens
+	}
+	ev.Payload = mustJSON(p)
 	return ev, true
 }
 

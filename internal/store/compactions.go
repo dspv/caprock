@@ -16,16 +16,19 @@ type Compaction struct {
 	Trigger string `json:"trigger"`
 	// PreTokens is the context before, as Claude Code measured it.
 	PreTokens int64 `json:"pre_tokens"`
-	// PostTokens is the prompt of the first main-thread turn after the
-	// boundary (input + cache read + cache write); 0 while no turn has
-	// followed yet.
+	// PostTokens is the context after: the boundary's own postTokens when
+	// Claude Code wrote one, else the prompt of the first main-thread turn
+	// after the boundary (input + cache read + cache write); 0 while neither
+	// is known.
 	PostTokens int64 `json:"post_tokens,omitempty"`
 	// DurationMs is how long the compaction took, when Claude Code said.
 	DurationMs int64 `json:"duration_ms,omitempty"`
 }
 
 // compactionQuery reads the context.compacted rows `where` picks (newest
-// first, at most limit) and the turn after each. The turn is the first
+// first, at most limit) and the context after each: the boundary's own
+// post_tokens when Claude Code wrote one, otherwise the turn after it. The
+// turn is the first
 // main-thread assistant turn with usage at or after the boundary and before
 // the next boundary of the same session: a turn after the next one measures
 // that one. A message Claude Code copies past a compaction keeps its id and
@@ -40,7 +43,7 @@ type Compaction struct {
 func compactionQuery(where string) string {
 	return `
 	SELECT b.ts, b.trigger, b.pre, b.dur,
-		COALESCE((
+		COALESCE(b.post, (
 			SELECT COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0)
 			FROM events t INDEXED BY idx_events_session_ts
 			WHERE t.sid = b.sid AND t.ts >= b.ts AND t.ts < b.next
@@ -54,6 +57,7 @@ func compactionQuery(where string) string {
 			COALESCE(json_extract(e.payload, '$.trigger'), '') AS trigger,
 			COALESCE(json_extract(e.payload, '$.pre_tokens'), 0) AS pre,
 			COALESCE(json_extract(e.payload, '$.duration_ms'), 0) AS dur,
+			NULLIF(json_extract(e.payload, '$.post_tokens'), 0) AS post,
 			COALESCE((
 				SELECT MIN(n.ts) FROM events n INDEXED BY idx_events_kind_ts
 				WHERE n.kind = 'context.compacted' AND n.ts > e.ts AND n.sid = e.sid

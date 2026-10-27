@@ -103,3 +103,29 @@ func TestRecentCompactionStats(t *testing.T) {
 		t.Fatalf("period %d–%d", st.From, st.To)
 	}
 }
+
+// Claude Code that writes postTokens on the boundary says the after itself:
+// it is shown at once and preferred to the next reply's prompt, and the
+// machine's figure is measured from it.
+func TestCompactionPrefersTheBoundarysPostTokens(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 10, 27, 10, 0, 0, 0, time.UTC)
+	compactRow(t, s, "s1", "compact:1", t0, 41_412, map[string]any{"post_tokens": 10_123})
+	c, _, err := LastCompaction(ctx, s.DB(), "s1")
+	if err != nil || c.PostTokens != 10_123 {
+		t.Fatalf("before any reply: %+v %v", c, err)
+	}
+	turnRow(t, s, "s1", "msg:b", "", t0.Add(time.Second), 8, 12_000, 500)
+	if c, _, _ = LastCompaction(ctx, s.DB(), "s1"); c.PostTokens != 10_123 {
+		t.Fatalf("the reply replaced the boundary's figure: %+v", c)
+	}
+	for i := range 4 {
+		id := "o" + string(rune('a'+i))
+		compactRow(t, s, id, "compact:x", t0.Add(time.Duration(i+1)*time.Minute), 100_000, map[string]any{"post_tokens": 20_000})
+	}
+	st, err := RecentCompactionStats(ctx, s.DB())
+	if err != nil || st.Count != 5 || st.MedianKept != 0.20 {
+		t.Fatalf("stats %+v %v", st, err)
+	}
+}

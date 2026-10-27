@@ -65,7 +65,8 @@ Kinds:
 - **`context.compact`, `context.clear`, `session.continue`** — compaction
   starting, `/clear`, and a `SessionEnd` that left the session running.
 - **`context.compacted`** — a compaction that finished, from the transcript's
-  `compact_boundary` line; `payload.pre_tokens` is the context before it.
+  `compact_boundary` line; `payload.pre_tokens` is the context before it and
+  `payload.post_tokens`, when Claude Code wrote one, the context after.
 - **`task.*`, `approval.requested`, `throttle`** — Caprock's own task runner
   and rate-limit observations.
 

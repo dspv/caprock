@@ -6420,10 +6420,12 @@ was, free, with the saving shown honestly.
   automatic compactions, 2026-09-29 to 2026-10-25, kept a median 15% of the
   context (90th percentile 25%), median 467,121 → 64,388 tokens**; "kept" is
   the first real main-thread turn after each `compact_boundary` against the
-  boundary's `preTokens`. After the press: that session's own boundary and
-  the next turn, *Compacted: 467.1k → 61.4k tokens*; the after waits for the
-  next reply, since a compaction at an idle prompt makes no call. No cost of
-  the next call is shown.
+  boundary's `preTokens`. After the press: that session's own boundary,
+  *Compacted: 41.4k → 10.1k tokens* — its `postTokens` when Claude Code
+  writes one (newer versions do, so the after shows at once, and the
+  machine's own figure is measured from it too), else the next turn's
+  prompt, which waits for the next reply, since a compaction at an idle
+  prompt makes no call. No cost of the next call is shown.
 - **Boundaries are ingested** as `context.compacted` (parser v5), with a
   one-time background backfill from the transcripts on disk, so the
   machine's own figure exists from the day of the upgrade.
@@ -6434,4 +6436,5 @@ the line says "usually" and names its source. The reference figure is one
 machine's and mostly automatic compactions at a large context; a manual one
 at a smaller context may keep a larger share. Until the next reply the
 cockpit's meter still shows the size before (it is measured from the last
-turn), and the after line says so.
+turn); the after line gives the new size when the boundary carries it, and
+on an older Claude Code says it comes with the next reply.

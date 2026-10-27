@@ -9,8 +9,9 @@ kind: Added
   Before the press it says what usually stays and where that comes from:
   your own compactions once five are measured, until then one machine's
   measurement (70 automatic compactions, 2026-09-29 to 2026-10-25, a median
-  15% kept). After it, the measured before and after, *Compacted: 467.1k →
-  61.4k tokens*. A session another terminal holds is never typed into: it
+  15% kept). After it, the measured before and after, *Compacted: 41.4k →
+  10.1k tokens* — at once where Claude Code writes the size after on its
+  compaction boundary, else with the next reply. A session another terminal holds is never typed into: it
   shows the command to type there and Continue here. Compaction boundaries
   are now read from transcripts, including the ones already on disk, once,
   in the background (`GET /v1/sessions/{id}/compaction`,

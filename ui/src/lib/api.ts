@@ -3040,7 +3040,8 @@ export interface Compaction {
   at: number
   trigger: 'auto' | 'manual' | string
   pre_tokens: number
-  /** The next main-thread turn's prompt; absent until a turn has followed. */
+  /** The context after: the boundary's own postTokens when Claude Code wrote one,
+   *  else the next main-thread turn's prompt; absent until either is known. */
   post_tokens?: number
   duration_ms?: number
 }
