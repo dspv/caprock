@@ -94,7 +94,10 @@ without a TestFlight round and without push (ADR-083, amended 2026-10-27).
   1320 × 2868), screen by screen with a throwaway XCUITest walk: first
   launch, paste a link (a wrong one is refused with its line), the scanner,
   the demo's home, a session, dictation, the app's Settings, the chats,
-  leaving the demo. The demo's sample now has the Needs you reasons and the
+  leaving the demo, and the Face ID lock (on, the lock screen, off). Not
+  checkable there: the camera scanner (the Simulator has no camera; the
+  button waits) and on-device English dictation (the Simulator has no
+  on-device model, so the app says so, as designed). The demo's sample now has the Needs you reasons and the
   sample Mac's open tabs that today's phone home reads, and the dashboard's
   sticky headers sit under the demo strip instead of leaving a blank band.
 - **Release:** `.github/workflows/ios-release.yml`, manual only, in the

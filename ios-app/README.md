@@ -62,6 +62,13 @@ xcodebuild -project ios-app/ios/App/App.xcodeproj -scheme App -configuration Deb
   CODE_SIGNING_ALLOWED=NO build
 ```
 
+To run it in the Simulator rather than only compile it, sign it ad hoc
+(`CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=` in place of
+`CODE_SIGNING_ALLOWED=NO`): an unsigned app has no Keychain in the Simulator,
+so turning on the lock fails with *The Keychain did not take the change* and
+the pairing is not kept. The Simulator has no camera, so the scanner opens
+only on a real iPhone; check pairing by the camera on one before submitting.
+
 After changing a plugin, run `npx cap sync ios` and commit the rewritten
 `CapApp-SPM/Package.swift`; CI fails when the committed one is stale. The
 Swift packages the plugins pull in (`capacitor-swift-pm`, `keychain-swift`,

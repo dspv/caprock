@@ -34,9 +34,11 @@ Limits are Apple's; `scripts/check-store.mjs` checks every field against them.
 - **Privacy Policy URL:** `https://caprock.dev/privacy`
 - **Copyright:** `2026 CYBRIX LLC`
 - **What's New:** not shown for a first version.
-- **Screenshots:** iPhone 6.9" display, 1320 × 2868 portrait, in the order of
-  the files the release brief lists (not committed: they are made in the
-  Simulator in demo mode, see ../README.md § Screenshots).
+- **Screenshots:** iPhone 6.9" display, 1320 × 2868 portrait, made in the
+  Simulator in demo mode and not committed (../README.md § Screenshots). In
+  this order: the home with a session that needs you; approving a command in
+  that session; the chats; one chat; Settings with the Face ID lock on; the
+  first screen with pairing.
 - **App Review information:** sign-in required **No** (there is no account);
   notes in [review-notes.txt](review-notes.txt); contact is the owner's.
 

@@ -20,15 +20,20 @@ const App = lazy(() => {
  * The strip already keeps clear of the notch, so the dashboard's own sticky
  * headers, which pad themselves by the same safe area, would leave a blank
  * band under it. In the demo they stick below the strip instead, with their
- * ordinary padding. Unlayered, so it wins over the utilities' layer.
+ * ordinary padding, and the page's own top inset (a session's screen pads
+ * for the notch and pulls its bar back over that padding) shrinks to the
+ * page's ordinary gap. Unlayered, so it wins over the utilities' layer.
  */
 const UNDER_STRIP = `
 html[data-demo] [data-shell-header],
 html[data-demo] [data-phone-bar][data-sticky] {
   top: var(--demo-strip-h, 0px) !important;
-  margin-top: 0 !important;
   padding-top: 0.375rem !important;
-}`
+}
+html[data-demo] [data-shell-header] { margin-top: 0 !important; }
+html[data-demo] main { padding-top: 0.75rem !important; }
+html[data-demo] [data-chat-header] { padding-top: 0 !important; }
+html[data-demo] main [data-phone-bar][data-sticky] { margin-top: -0.75rem !important; }`
 
 /** Lays the dashboard's sticky headers below the strip while the demo is up. */
 function useUnderStrip(strip: RefObject<HTMLDivElement | null>) {
