@@ -2179,6 +2179,7 @@ export function AppShell() {
                           sessionId={focused.sessionId}
                           earlier={clearedBefore}
                           canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
+                          ended={!!focusedSession && (focusedSession.status === 'ended' || !!focusedSession.detached)}
                           foldKeys
                           chat
                           agent={focusedSession?.agent}
@@ -2198,6 +2199,7 @@ export function AppShell() {
                       sessionId={focused.sessionId}
                       earlier={clearedBefore}
                       canType={!!focusedSession && focusedSession.owned && focusedSession.status !== 'ended' && !focusedSession.detached}
+                      ended={!!focusedSession && (focusedSession.status === 'ended' || !!focusedSession.detached)}
                       agent={focusedSession?.agent}
                       prompt
                       desk

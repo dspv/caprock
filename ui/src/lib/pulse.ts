@@ -17,6 +17,7 @@
  */
 import type { Event } from './api'
 import { toolCommand } from './chat'
+import { clip } from './clip'
 
 /** One minute of one session. */
 export interface Bar {
@@ -64,6 +65,10 @@ const REPEAT_WINDOW_MIN = 6
 /** Fields that never carry intent — mirrors internal/loop's Signature. */
 const SKIP_FIELDS = new Set(['description', 'timeout', 'run_in_background'])
 
+/** The body fields signature() compares by their first BODY_PREFIX characters. */
+const BODY_FIELDS = new Set(['content', 'new_string', 'old_string'])
+const BODY_PREFIX = 200
+
 /** Placeholder commands: repeated constantly, meaning nothing. */
 const NOISE_COMMANDS = new Set(['true', ':', 'echo', 'pwd', 'clear'])
 
@@ -100,7 +105,7 @@ export function signature(ev: Event): { sig: string; label: string } | null {
     let value = asString((fields as Record<string, unknown>)[key])
     // Edit/Write bodies: a looping agent rewrites near-identical content, so a
     // prefix is enough and keeps the key short.
-    if (key === 'content' || key === 'new_string' || key === 'old_string') value = value.slice(0, 200)
+    if (BODY_FIELDS.has(key)) value = value.slice(0, BODY_PREFIX)
     parts.push(`${key}=${value}`)
     if (label === tool && (key === 'command' || key === 'file_path' || key === 'pattern')) {
       // A Codex exec's command is a script: the label is what it ran.
@@ -109,6 +114,31 @@ export function signature(ev: Event): { sig: string; label: string } | null {
     }
   }
   return { sig: parts.join('|'), label }
+}
+
+/**
+ * An event as the pulse holds it: what buildPulse reads and nothing else.
+ * The panel keeps up to 4,000 events per track for six tracks, and a stored
+ * event carries the tool's whole answer — a command's output, a file read in
+ * full, an edit's original file. Held as they came, the tracks were 25 MB of
+ * the window's 43 MB heap (2026-10-27, measured). Kept: time, kind, tool,
+ * cost, and for a tool call its input, with bodies cut to the prefix the
+ * signature compares (so the bars and the repeat count are unchanged).
+ */
+export function slimPulseEvent(ev: Event): Event {
+  const slim: Event = { id: ev.id, ts: ev.ts, session_id: ev.session_id, source: ev.source, kind: ev.kind, payload: null }
+  if (ev.tool !== undefined) slim.tool = ev.tool
+  if (ev.cost_usd !== undefined) slim.cost_usd = ev.cost_usd
+  if (ev.kind !== 'tool.pre') return slim
+  const payload = ev.payload as { tool_input?: unknown } | null | undefined
+  const input = payload && typeof payload === 'object' ? payload.tool_input : undefined
+  if (!input || typeof input !== 'object') return slim
+  const kept: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    kept[key] = BODY_FIELDS.has(key) ? clip(asString(value), BODY_PREFIX) : value
+  }
+  slim.payload = { tool_input: kept }
+  return slim
 }
 
 function msOf(ev: Event): number {

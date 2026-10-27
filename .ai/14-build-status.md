@@ -77,6 +77,20 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-10-27 — unreleased: what the window's script keeps
+
+The owner's window was about 490 MB after four hours (peak about 700 MB).
+Measured in Chromium's headless shell against the live daemon, read-only, 30
+minutes moving through the workspace, a long session, History, Pipeline and
+Home: the JS heap went 8.1 → 51.9 MB, and most of it was the Live pulse
+holding every tool's whole answer for up to 4,000 events a track. Slim pulse
+events, a copying clip (a `slice` keeps its source string alive), a chat that
+keeps its newest 120 messages while following, a session timeline capped at
+1,000 live events, and cockpit results held without their bodies: the same
+run ends at 29.5 MB, strings 28.5 → 7.3 MB. Table and method in
+[04-ui.md](04-ui.md) § What the window keeps in memory. WebKit's own share of
+the footprint (layers, caches, WebGL atlases) was not measured.
+
 ### 2026-10-24 — unreleased: Second Brain reads only what matters
 
 - **Two filters before the read** ([ADR-063](08-decisions.md), amended).

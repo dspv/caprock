@@ -244,7 +244,9 @@ describe('a worktree’s pull request', () => {
     render(<GitHubStrip target={target} title="caprock · feat/x" />)
     expect(await screen.findByText('build failed')).toBeTruthy()
     expect(screen.getByText('approved by @grace')).toBeTruthy()
-    expect(screen.getByText('ready to merge')).toBeTruthy()
+    // GitHub calls it clean, but the build is red: never "ready to merge"
+    expect(screen.getByText('mergeable, checks failed')).toBeTruthy()
+    expect(screen.queryByText('ready to merge')).toBeNull()
     expect(screen.getByText('build').getAttribute('href')).toBe('https://ci/1')
   })
 

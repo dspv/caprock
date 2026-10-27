@@ -30,6 +30,7 @@ import { addressOrSearch, BROWSER_EVENT, browserAct, browserKey, cutOff, engineO
 import { deviceOf, fitOf, frameSize, layoutOf, loadPhonePrefs, pageScale, phoneChosen, phoneSpec, savePhonePrefs, setPhoneOn, zoomedSpec, sideKey, sideMain, sideScale, SIDE_DEVICES, SIDE_GAP, SIDE_LABEL, SIDE_MARGIN, type DeviceId, type PhonePrefs, type PhoneSpec } from '@/lib/phonemode'
 import { BackIcon, CloseIcon, CopyIcon, ExternalIcon, ForwardIcon, GlobeIcon, PhoneIcon, ReloadIcon } from './AppIcons'
 import { DeviceBar } from './DeviceBar'
+import { useDevShare } from '@/lib/devshare'
 import { PhoneFrame } from './PhoneFrame'
 import { PhoneRow } from './PhoneRow'
 
@@ -133,6 +134,9 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
   const [loading, setLoading] = useState(false)
   const [note, setNote] = useState('')
   const [nudge, setNudge] = useState<WaitingAgent | null>(null)
+  // A local page shared with a phone (ADR-087): the device bar's button, and
+  // a strip here while phone mode is off, so a share is never out of sight.
+  const devShare = useDevShare(url)
   // A load where nothing answers (browser.rs `probe`): said in place of the
   // page, whose window is a blank white rectangle then. `trying` once Retry
   // or a new address sent it again, until the shell hears back.
@@ -514,7 +518,15 @@ export function BrowserView({ pageKey, url, visible, enabled = true, armed, onAr
           fit={fit}
           scale={fitAt}
           side={side ? { scale: sideAt, devices: trio } : null}
+          url={url}
         />
+      )}
+      {!phone && devShare.share && (
+        <div role="status" data-share-strip className="flex shrink-0 items-center gap-2 border-b border-[var(--app-hairline)] bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] px-3 py-1 text-[12.5px] text-fg">
+          <span aria-hidden className="h-[7px] w-[7px] shrink-0 rounded-full bg-ok" />
+          <span className="min-w-0 flex-1 truncate">This page is shared with your phone on this Wi-Fi at <b className="mono font-medium">{devShare.share.address}</b></span>
+          <button type="button" className="rounded-[6px] border border-[var(--app-hairline)] px-2 py-0.5 text-[12px] hover:border-danger hover:text-danger" onClick={() => { void devShare.stop() }}>Stop sharing</button>
+        </div>
       )}
       <div ref={box} className={`relative min-h-0 flex-1${phone ? ' overflow-hidden' : ''}`} data-page-box>
         {side ? (

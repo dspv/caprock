@@ -1,6 +1,7 @@
 import { describe as d, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, SessionScreen } from './Session'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, SessionScreen, TIMELINE_HELD } from './Session'
+import { live } from '@/lib/live'
 import { SessionCard } from './Now'
 import { writeCache } from '@/lib/swr'
 import type { DiffResult, Event, SessionDetail, SessionSummary } from '@/lib/api'
@@ -427,6 +428,19 @@ d('Timeline order and history', () => {
     // nearly all of it away, which is what this replaced.
     expect(earlierCalls.value[0]?.before).toBe(500)
   })
+
+  it('left open on a busy session it keeps TIMELINE_HELD events, and the cut ones a click away', async () => {
+    setup([ev(1, 'first')])
+    const { container } = render(<SessionScreen id="s" tab="timeline" />)
+    await screen.findByText(/first/)
+    await act(async () => {
+      for (let i = 2; i <= TIMELINE_HELD + 300; i++) live.handle({ type: 'event', data: ev(i, `e${i}`) })
+      await new Promise((r) => setTimeout(r, 80))
+    })
+    await waitFor(() => expect(screen.getByText(/Events · \d+ shown/).textContent).toContain(`${TIMELINE_HELD} shown`))
+    expect(container.textContent).not.toContain('first')
+    expect(screen.getByText('load earlier events')).toBeInTheDocument()
+  }, 20_000)
 
   it('says when there is nothing older left', async () => {
     setup([ev(1, 'only')])
