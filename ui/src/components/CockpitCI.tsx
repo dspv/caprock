@@ -246,7 +246,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
           {leadSum && foldLead && (
             <span data-fold-only data-cockpit-ci-fold={foldLead.number} className="flex min-w-0 items-center gap-1.5">
               <span className="num shrink-0 text-[11.5px] text-fg-muted">#{foldLead.number}</span>
-              <CheckSummary s={leadSum} label={`#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
+              {/* Merged or closed, its checks are history: "#220 merged" says
+                * more than "all 1" (owner, 2026-10-27: "there is zero info here"). */}
+              {foldLead.live.state === 'merged' || foldLead.live.state === 'closed'
+                ? <span className="shrink-0 text-[11.5px] text-fg-muted">{foldLead.live.state}</span>
+                : <CheckSummary s={leadSum} label={`#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />}
             </span>
           )}
           {!folded && (
