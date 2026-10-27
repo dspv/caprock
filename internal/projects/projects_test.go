@@ -26,11 +26,18 @@ func needGit(t *testing.T) {
 	}
 }
 
+// noAutoMaintenance keeps a commit from leaving a git process behind it:
+// each commit starts a detached `git maintenance run --auto` that can still
+// be touching .git when the test returns, and t.TempDir's cleanup lost that
+// race on ubuntu-latest ("unlinkat …/app/.git: directory not empty",
+// TestActivityRealGit, CI run 39789514366).
+var noAutoMaintenance = []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=false"}
+
 // git runs git in dir as a person at a terminal would.
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	c := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	c.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_CONFIG_NOSYSTEM=1")
+	c.Env = append(append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_CONFIG_NOSYSTEM=1"), noAutoMaintenance...)
 	out, err := c.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
