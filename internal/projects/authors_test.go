@@ -32,6 +32,7 @@ func commitAs(t *testing.T, dir, name, file string) {
 		c := exec.Command("git", append([]string{"-C", dir}, args...)...)
 		c.Env = append(os.Environ(), "GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+name+"@x",
 			"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+name+"@x", "GIT_CONFIG_NOSYSTEM=1")
+		c.Env = append(c.Env, noAutoMaintenance...)
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}

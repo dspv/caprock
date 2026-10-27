@@ -276,12 +276,25 @@ describe('ChatView', () => {
     expect(screen.getByText('start of session')).toBeInTheDocument()
   })
 
-  it('a 2,000-message session opens in well under 500 ms', async () => {
+  it('a 2,000-message session opens on its newest window: never more rows drawn, no older page read', async () => {
     store.events = Array.from({ length: 2000 }, (_, i) => msg(i + 1))
-    const t0 = performance.now()
-    render(<ChatView sessionId="s" canType={false} />)
-    await waitFor(() => expect(renderedIds()).toHaveLength(CHAT_WINDOW))
-    expect(performance.now() - t0).toBeLessThan(500)
+    // What keeps the open fast is what it does not do: draw the 2,000 rows
+    // or read pages back. A 500 ms wall-clock bound measured the runner
+    // (1,215 ms on a loaded machine) and passed a slow open on a fast one;
+    // the most rows ever in the log, and the pages asked for, do neither.
+    let peak = 0
+    const seen = new MutationObserver(() => { peak = Math.max(peak, document.querySelectorAll('[data-msg-id]').length) })
+    seen.observe(document.body, { childList: true, subtree: true })
+    try {
+      render(<ChatView sessionId="s" canType={false} />)
+      await waitFor(() => expect(renderedIds()).toHaveLength(CHAT_WINDOW))
+      await act(async () => { await new Promise((r) => setTimeout(r, 40)) })
+    } finally {
+      seen.disconnect()
+    }
+    expect(renderedIds()).toEqual(Array.from({ length: CHAT_WINDOW }, (_, i) => 2000 - CHAT_WINDOW + 1 + i))
+    expect(peak).toBe(CHAT_WINDOW)
+    expect(store.before).toBe(0)
   })
 
   it('types into the session: the text, then Enter, in that order', async () => {
@@ -642,10 +655,12 @@ describe('ChatView: what you send', () => {
       render(<ChatView sessionId="s" canType />)
       await screen.findByText('No messages yet')
       fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'are you there?' } })
-      const at = performance.now()
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-      const bubble = await screen.findByText('are you there?', { selector: '[data-outgoing] div' }, { timeout: 100, interval: 5 })
-      expect(performance.now() - at).toBeLessThan(100)
+      // "At once" is the click's own render, not a wall-clock bound: no
+      // await, no timer, while the gate still holds the send. A 100 ms bound
+      // measured the runner under a full suite (137 and 205 ms), not the
+      // bubble; this one fails the moment the bubble waits for anything.
+      const bubble = screen.getByText('are you there?', { selector: '[data-outgoing] div' })
       expect(bubble.closest('[data-outgoing]')!.textContent).toContain('Sending…')
       await act(async () => { release(); await new Promise((r) => setTimeout(r, 20)) })
       expect(await screen.findByText('Sent ✓')).toBeInTheDocument()
