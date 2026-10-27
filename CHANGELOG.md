@@ -12,6 +12,39 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.164.0] - 2026-10-28
+
+### Added
+
+- **ios:** Caprock for iPhone, version 1.0, ready for the App Store, in
+  `ios-app/`: the phone remote in a Capacitor shell, bundled rather than
+  loaded from `m.caprock.dev`. Pair by scanning the computer's code with the
+  app's own camera, or paste the link; dictate in any language the iPhone
+  recognises on its own, with nothing sent anywhere and a line when a language
+  is not on the device; lock the app behind Face ID; the pairing kept in the
+  Keychain; **Try it without a Mac** on bundled sample data that connects to
+  nothing; the app's own Settings (paired computer, voice language, Face ID,
+  unpair). Nothing in the app is for sale. A manual workflow
+  (`ios-release.yml`) archives, signs and uploads a build to App Store
+  Connect; the listing texts are in `ios-app/store/`. No push notifications
+  in 1.0; they follow in 1.1 (ADR-083).
+- **machines:** start an agent on another computer from this one. New agent
+  gains a Machine field when you have linked a computer: pick it, and the
+  folders, agents and models are read from that computer, the agent runs
+  there, and its tab opens here. A computer that cannot take a start is
+  listed with why (offline, waiting for Allow, removed there), and a refusal
+  is said in words, a folder missing there included.
+- **machines:** one list across your computers. Sessions on the other
+  computers that need you sort first in the sidebar, Now shows them under
+  *On other computers*, and the app tells you when one needs you, naming the
+  computer. A computer that goes away is shown as offline with when it last
+  answered, not with the sessions it had. The daemon reads each computer once
+  for every window (`GET /v1/machines/sessions`) and listens to it for
+  prompts only while a window is open.
+- **machines:** a guide for trying it on two computers,
+  `docs/machines.md`, and an end-to-end test with two real
+  daemons and a local relay in the smoke suite.
+
 ## [0.163.1] - 2026-10-28
 
 ### Fixed
