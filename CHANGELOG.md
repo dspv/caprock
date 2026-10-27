@@ -12,6 +12,35 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.162.0] - 2026-10-27
+
+### Added
+
+- **share:** X, Threads and LinkedIn now put the card you chose in the post
+  itself. Pressing one uploads that exact picture — the picture alone — to
+  caprock.dev and opens the post with its link, whose preview is the card, so
+  there is nothing to paste. The buttons' tooltips and the box after posting
+  say so, and the box can take the picture down again (Remove the shared
+  picture); Settings → Privacy lists every shared picture with Remove. The
+  social site may keep the preview it already fetched. Share…, Copy image,
+  Save image and My Telegram never upload. If the upload fails, the sheet
+  falls back to the clipboard and the ⌘V steps, and says why in one line
+  (ADR-086).
+- **phone:** Share your week on the phone home draws the Week card and opens
+  the phone's own share menu with the picture attached — on an iPhone, pick
+  Threads or X. Nothing is uploaded on the phone.
+
+### Fixed
+
+- **store:** an upgrade that found no disk for the safety copy of the
+  database used to say so only in the log. It is now recorded, and
+  `/v1/status` (`upgrade_copy_skipped`), `caprock status`, Now and Status say
+  that no copy was made, how much disk was free and needed, and that older
+  Caprock versions cannot open the upgraded database.
+- **ui:** while older history moves in after the 0073 upgrade, History,
+  Memory's search and session pages say so in one quiet line, "Older history
+  is still loading — N% moved", gone once the move ends.
+
 ## [0.161.0] - 2026-10-27
 
 ### Added
