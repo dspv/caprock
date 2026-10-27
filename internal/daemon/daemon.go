@@ -599,6 +599,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		d.log.Info("reattached sessions that outlived the last run", "component", "daemon", "count", len(reattached))
 	}
 	d.queue.startup(ctx)
+	// Messages a session never got are kept 7 days, then deleted.
+	d.goBg(func() { d.queue.pruneLoop(ctx) })
 
 	// The projects list: seeded once from the repositories sessions ran in,
 	// then each repository's .git watched for changes (never polled).
@@ -666,8 +668,12 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 	// A /clear in a session Caprock started: its terminal now serves the
 	// session the /clear started (agents/follow.go), so the tab that follows
-	// it attaches and types through the new id.
-	d.rec.OnClear = func(next, prev string) { d.mgr.Follow(next, prev) }
+	// it attaches and types through the new id. Its message queue follows
+	// too, and carries on delivering there (ADR-053, 2026-10-27).
+	d.rec.OnClear = func(next, prev string) {
+		d.mgr.Follow(next, prev)
+		go d.queue.follow(next, prev)
+	}
 
 	// Phase 2 board (opt-in via HiveDir, or turned on later over the API).
 	if d.opt.HiveDir != "" {

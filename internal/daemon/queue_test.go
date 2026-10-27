@@ -31,6 +31,8 @@ type fakeSessions struct {
 	// one whose screen still shows the message in its prompt.
 	paste map[string]bool
 	holds map[string]bool
+	// restarting marks a session stopped to be resumed under its own id.
+	restarting map[string]bool
 }
 
 type fakeWrite struct {
@@ -40,7 +42,7 @@ type fakeWrite struct {
 
 func newFakeSessions() *fakeSessions {
 	return &fakeSessions{owned: map[string]string{}, prompt: map[string]bool{}, typed: map[string]*strings.Builder{},
-		writes: map[string][]fakeWrite{}, paste: map[string]bool{}, holds: map[string]bool{}}
+		writes: map[string][]fakeWrite{}, paste: map[string]bool{}, holds: map[string]bool{}, restarting: map[string]bool{}}
 }
 
 func (f *fakeSessions) PasteMode(id string) bool {
@@ -79,6 +81,11 @@ func (f *fakeSessions) Get(id string) (*agents.Agent, bool) {
 	return &agents.Agent{SessionID: id, Kind: kind}, true
 }
 func (f *fakeSessions) IsShell(string) bool { return false }
+func (f *fakeSessions) Restarting(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.restarting[id]
+}
 func (f *fakeSessions) OwnedRunning() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -129,7 +136,9 @@ func newTestQueue(t *testing.T) (*msgQueue, *fakeSessions, *Daemon) {
 	q := newMsgQueue(d)
 	f := newFakeSessions()
 	q.sess = f
-	q.settle, q.gap, q.confirm = time.Millisecond, time.Millisecond, time.Millisecond
+	q.settle, q.gap, q.confirm, q.startSettle = time.Millisecond, time.Millisecond, time.Millisecond, time.Millisecond
+	// Long enough that no test waits on it; TestQueueResendWithoutHooks sets its own.
+	q.noHooks = time.Hour
 	return q, f, d
 }
 
@@ -320,7 +329,8 @@ func TestQueueOwnershipEndAndUnknownTurns(t *testing.T) {
 		t.Fatalf("send without hooks: %+v %v", res, err)
 	}
 
-	// A session that ends loses its queue.
+	// A session that ends keeps its queue as not delivered
+	// (TestQueueKeptWhenTheProcessEnds).
 	set(f, f.owned, "s1", agents.AgentClaude)
 	hook(t, q, d, "s1", event.KindTurnUser, nil, false)
 	if res, _ := q.Send(ctx, "s1", "later"); res.Queued == nil {
@@ -331,7 +341,10 @@ func TestQueueOwnershipEndAndUnknownTurns(t *testing.T) {
 	f.mu.Unlock()
 	q.ended("s1")
 	if l := queued(t, d, "s1"); len(l) != 0 {
-		t.Fatalf("queue survived the end: %+v", l)
+		t.Fatalf("still waiting after the end: %+v", l)
+	}
+	if v, _ := q.View(ctx, "s1"); len(v.Undelivered) != 1 || v.Undelivered[0].Text != "later" {
+		t.Fatalf("not kept as undelivered: %+v", v)
 	}
 
 	// Full at QueueMax.

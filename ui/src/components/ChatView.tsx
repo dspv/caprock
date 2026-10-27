@@ -28,6 +28,8 @@ import type { TermState } from '@/lib/termv2'
 import { useStickToBottom } from '@/lib/useStickToBottom'
 import { useQueue } from '@/lib/queue'
 import { QueuedList } from './QueuedList'
+import { UndeliveredList } from './UndeliveredList'
+import { navigate } from '@/lib/router'
 import { NewPill } from './NewPill'
 import { LinkedText, Prose } from './Prose'
 import { requestOpenPath } from '@/lib/mdreader'
@@ -104,8 +106,11 @@ async function base64Of(file: File): Promise<string> {
 const nextFrame: (fn: () => void) => void =
   typeof requestAnimationFrame === 'function' ? (fn) => { requestAnimationFrame(fn) } : (fn) => { setTimeout(fn, 16) }
 
-export function ChatView({ sessionId, earlier = NONE, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal }: {
+export function ChatView({ sessionId, earlier = NONE, canType, ended = false, className = '', phone = false, foldKeys, chat = false, footer, boxRef, scrollRef, topInset = 0, agent, prompt = false, desk = false, onOpenTerminal, onResent }: {
   sessionId: string
+  /** Where to go once messages this session never got were sent to a new
+   *  session with another id; the session page by default. */
+  onResent?: (sessionId: string) => void
   /** The sessions this one continues in the same process, oldest first
    *  (lib/clearChain.ts clearedParts): shown read-only above it once its
    *  start is reached, each with the divider a /clear leaves. */
@@ -354,7 +359,9 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   // by the daemon and typed in when the turn ends. The daemon decides — it is
   // the one that sees the turn end — so what is sent goes to it, and a
   // message held while offline reaches it on reconnect the same way.
-  const msgQueue = useQueue(sessionId, canType)
+  // Read while it runs, and once it has ended: an ended one shows the
+  // messages it never got (ADR-053, 2026-10-27).
+  const msgQueue = useQueue(sessionId, canType || ended)
   const applyQueue = msgQueue.apply
   const jumpToEnd = stick.jump
   // What you sent, as your bubble at once (*Sending…*, then *Sent ✓*), until
@@ -422,6 +429,24 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
       return false
     }
   }, [applyQueue])
+  // Send to a new session: the daemon starts it (continuing this
+  // conversation when it can) and the messages wait in its queue. Under
+  // the same id this page becomes the live session; another id is opened.
+  const resend = useCallback(async (ids?: number[]): Promise<boolean> => {
+    try {
+      const r = await api.queueResend(sessionId, ids)
+      applyQueue(r.queue)
+      setQueueError('')
+      if (r.session_id !== sessionId) {
+        if (onResent) onResent(r.session_id)
+        else navigate({ name: 'session', id: r.session_id, tab: 'chat' })
+      }
+      return true
+    } catch (e) {
+      setQueueError(errText(e))
+      return false
+    }
+  }, [sessionId, applyQueue, onResent])
   // Typed while it was live, then it ended: the field stays, so what waited
   // to be sent shows as a draft rather than vanishing with it.
   const [typable, setTypable] = useState(canType)
@@ -516,6 +541,15 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
               onEdit={(m, text) => queueAct(() => api.queueEdit(sessionId, m.id, text))}
               onCancel={(m) => queueAct(() => api.queueCancel(sessionId, m.id))}
               onSendNow={(m) => queueAct(() => api.queueSendNow(sessionId, m.id))}
+            />
+          )}
+          {msgQueue.undelivered.length > 0 && (
+            <UndeliveredList
+              messages={msgQueue.undelivered}
+              live={canType}
+              error={queueError}
+              onResend={resend}
+              onDelete={(m) => queueAct(() => api.queueCancel(sessionId, m.id))}
             />
           )}
         </div>

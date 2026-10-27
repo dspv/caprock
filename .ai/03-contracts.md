@@ -2401,6 +2401,7 @@ DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock starte
 POST   /v1/agents/{id}/input         {data?, paths?}   → 204   (owned PTYs only); paths are saved files (POST /v1/paste) typed in before data as the terminal types a dropped file: each image its own bracketed paste when the session turned paste on, 150 ms after it; anything else quoted with a space
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
 POST   /v1/agents/{id}/queue         {text} → {sent, queued?, queue: QueueView}; typed in now at the prompt, otherwise queued
+POST   /v1/agents/{id}/queue/resend  {ids?} → {session_id, resumed, started, queue: QueueView}; messages an ended session never got, sent to a new session of the same agent in the same folder (§ Queued messages)
 GET    /v1/sessions/{id}/compaction  → CompactionView; the session's last compaction measured, whether one runs or waits, and what this machine's keep (§ Compact context)
 POST   /v1/agents/{id}/compact       → {sent, queued?, queue: QueueView}; /compact typed into an owned Claude Code session now or when its turn ends; 409 not owned, not Claude Code, or compacting already
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill|end} → 204 (owned PTYs only; end = SIGTERM, SIGKILL after 5s)
@@ -5114,8 +5115,9 @@ POST /v1/events/{id}/tldr   (body {}) → 200 {tldr: string, cached: bool} | 404
 ### Queued messages
 
 What the chat field sends to a session Caprock started ([ADR-053](08-decisions.md)).
-Code: `internal/daemon/queue.go`, `internal/api/queue.go`,
-`internal/store/queued.go`, `ui/src/lib/queue.ts`, `ui/src/components/QueuedList.tsx`.
+Code: `internal/daemon/queue.go`, `internal/api/queue.go`, `internal/api/queueresend.go`,
+`internal/store/queued.go`, `ui/src/lib/queue.ts`, `ui/src/components/QueuedList.tsx`,
+`ui/src/components/UndeliveredList.tsx`.
 
 ```
 GET    /v1/agents/{id}/queue                → QueueView
@@ -5123,15 +5125,20 @@ POST   /v1/agents/{id}/queue                {text} → {sent: bool, queued?: Que
 PATCH  /v1/agents/{id}/queue/{qid}          {text} → QueueView
 DELETE /v1/agents/{id}/queue/{qid}          → QueueView
 POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or a question is on the screen
+POST   /v1/agents/{id}/queue/resend         {ids?} → {session_id, resumed, started, queue: QueueView}
 ```
 
-- **`QueueView`** — `{session_id, messages: [QueuedMessage], waiting}`;
-  `QueuedMessage` is `{id, session_id, text, created_at, updated_at, via?}`
-  (unix ms), oldest first; `via` is `"telegram"` for a message forwarded to
-  the paired bot (§ Telegram bridge, migration 0064) and absent otherwise. `waiting` says what holds a message: `"turn"` (the
+- **`QueueView`** — `{session_id, messages: [QueuedMessage], waiting,
+  undelivered?: [QueuedMessage]}`; `QueuedMessage` is `{id, session_id,
+  text, created_at, updated_at, via?, undelivered_at?}` (unix ms), oldest
+  first; `via` is `"telegram"` for a message forwarded to the paired bot (§
+  Telegram bridge, migration 0064) and absent otherwise. `messages` are the
+  ones that wait; `undelivered` the ones the session's process ended before
+  typing in (below), each with `undelivered_at`. `waiting` says what holds a message: `"turn"` (the
   agent is working), `"permission"` (a permission prompt is on the screen),
-  `"question"` (AskUserQuestion), or `""` (nothing; the session is at its
-  prompt).
+  `"question"` (AskUserQuestion), `"start"` (messages handed to a session
+  started for them, before its first hook), or `""` (nothing; the session
+  is at its prompt).
 - **Send or queue.** `POST …/queue` types the text in at once when
   `waiting` is `""` and nothing is queued; otherwise it appends the text
   (`sent: false`, `queued` set). A message typed in counts as a running turn
@@ -5158,7 +5165,11 @@ POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or
   daemon waits 700 ms, reads `waiting` again, and when it is `""` types the
   oldest message in and deletes it: one message per turn. Nothing else
   delivers: not silence, not `StopFailure`. On start the daemon delivers to
-  a surviving session that sits at its prompt.
+  a surviving session that sits at its prompt. A session that has just
+  started — its newest hook a `SessionStart` whose source is not `compact`
+  (a resume, a fresh start, the new id of a `/clear`) — gets its oldest
+  waiting message 1.5 s after that hook, read again as above: that is how a
+  message moved by a `/clear` or by *Send to a new session* goes in.
 - **When `waiting` is known.** Only for Claude Code sessions whose hooks
   record: the newest main-thread hook event among `turn.user`, `tool.pre`,
   `tool.post`, `permission.prompt`, `context.compact` (trigger `auto`),
@@ -5170,9 +5181,39 @@ POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or
   left, be valid UTF-8 without NUL, at most 16 KiB (`400` otherwise). At
   most 20 per session (`409`). An id the session does not hold is `404`.
 - **Rule 7.** Only sessions Caprock started and that still run: anything
-  else is `409` for a write and an empty queue for a read. A session's rows
-  are deleted when its process exits, on `SessionEnd` with an exit reason,
-  and on start for sessions that did not survive.
+  else is `409` for a write and an empty queue for a read (with its
+  `undelivered`, if any). The DELETE and resend below are the exceptions.
+- **`/clear` moves the queue** ([ADR-053](08-decisions.md), 2026-10-27). When
+  the recorder links a new session to the one it replaced in the same
+  process (rollup's `OnClear`: a `/clear`, or a compaction that names a new
+  id), the waiting rows move to the new id in their order and deliver there.
+  A `SessionEnd` hook alone never touches the queue: Claude Code sends one
+  on `/clear` and on Escape as well. A request naming the replaced id is
+  answered for the session the process runs now.
+- **Not delivered.** When the process of a session ends (the manager's
+  `OnExit`, for the spawn's id and every id a `/clear` filed under it), its
+  waiting rows are not deleted: `undelivered_at` is set and they leave
+  `messages` for `undelivered`. Also on start for a session that did not
+  survive, and on a read of a session that no longer runs. Not for a
+  session stopped to be restarted under its own id (ADR-054): its queue
+  waits for the new process. `DELETE …/queue/{qid}` deletes an undelivered
+  row too; Edit and Send now take waiting rows only.
+- **Send to a new session** — `POST …/queue/resend {ids?}`: `ids` (all when
+  absent or empty, `404` when one is not undelivered there) make those rows
+  wait again in a session's queue, keeping their order. A session that runs
+  again takes them back into its own queue (`started: false`). Otherwise
+  the daemon starts one as `POST /v1/agents` would, with the same refusals:
+  the ended conversation continued under its own id (`--resume`, from the
+  folder it began in) when the session's `resume.ok` says it can be (`resumed: true`), else
+  a fresh session of the same agent in its folder (`400` when the folder is
+  gone); the mode it last ran in, the bypass consent (`409`), a controller
+  phone's limits (`403`). The rows then deliver through that session's
+  queue: the first once its `SessionStart` has settled, the rest one per
+  turn. A session started for them that sends no hook within 20 s gets them
+  all typed in at once, in order, as any session whose turns cannot be read.
+  `session_id` is where they now wait.
+- **Kept 7 days.** The daemon deletes undelivered rows 7 days after
+  `undelivered_at`, on start and every hour. A waiting row is never pruned.
 - **Who.** `GET` is open to every paired device; the writes to a
   controller, as `POST /v1/agents/{id}/input` is.
 - **Frames.** Every change publishes a `queue` frame with the QueueView.
@@ -7118,7 +7159,7 @@ CREATE INDEX IF NOT EXISTS idx_queued_messages_session ON queued_messages(sessio
 
 Messages waiting for an owned session's turn to end ([ADR-053](08-decisions.md),
 § Queued messages), sent oldest `id` first. No foreign key: a session's rows
-are deleted when its process exits.
+outlive it as undelivered (migration 0075).
 
 Migration 0064 adds where a message came from ([ADR-081](08-decisions.md)):
 
@@ -7128,6 +7169,17 @@ ALTER TABLE queued_messages ADD COLUMN via TEXT NOT NULL DEFAULT '';
 
 `'telegram'` for a message forwarded to the paired bot, `''` for everything
 typed in Caprock.
+
+Migration 0075 keeps what a session never got ([ADR-053](08-decisions.md),
+amendment of 2026-10-27):
+
+```sql
+ALTER TABLE queued_messages ADD COLUMN undelivered_at INTEGER NOT NULL DEFAULT 0;
+```
+
+`0` for a message that waits; otherwise the unix ms its session's process
+was found gone with it still waiting. Undelivered rows are deleted 7 days
+after it.
 
 ### Attempts DDL (migration 0046)
 

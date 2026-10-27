@@ -3183,7 +3183,8 @@ other half of the same complaint.
   nothing when a turn ends, so their messages are typed in at once, as
   before: a queue that never drains is worse than none.
 - **Only Caprock's sessions** ([rule 7](../CLAUDE.md)): the manager types,
-  and a session that ends loses its queue, whatever ended it.
+  and a session that ends loses its queue, whatever ended it. *Superseded
+  by the amendment of 2026-10-27: the queue is kept as not delivered.*
 - **The keys bar under the terminal is not queued.** What is typed there
   answers what is on the screen, a menu or a question included; a queue
   there would hold the answer. The pickers are in both fields.
@@ -3246,6 +3247,64 @@ screen check reads their input boxes on every layout. Rejected: retrying
 until the text leaves the prompt (a message the user is editing would be
 sent), and a fixed longer pause alone (no pause survives a TUI that reads
 late).
+
+**Amendment, 2026-10-27 — what a session never got is kept, and a /clear
+takes the queue with it.** The owner (translated, "very important, priority
+1"): a message waiting in the queue is lost when its session ends; keep it,
+show it was not delivered, and give a button to send it to a new session.
+Reading the code found it worse than the report: the queue was dropped on
+any `SessionEnd` hook from a session Caprock still ran, and Claude Code
+sends one on `/clear` and on Escape too, so a `/clear` (including one the
+queue itself typed in) threw away every message behind it. And the rows
+were keyed by the id they were sent under, so a queue that survived a
+`/clear` sat under the replaced id, where no `Stop` would ever deliver it.
+
+- **Only the process ending ends a queue.** A `SessionEnd` hook changes
+  nothing. The manager's exit (`OnExit`), a read of a session that no longer
+  runs, and the start-up sweep for a session that did not survive mark the
+  waiting rows *not delivered* (`undelivered_at`, migration 0075) — kept
+  with their text, time and order on the ended session. Not for a session
+  being restarted under its own id in another mode (ADR-054): its new
+  process carries the queue on.
+- **A /clear moves the queue.** When the recorder links the new session to
+  the one it replaced in the same process (`OnClear`, the same hand-over the
+  terminal follows), the waiting rows move to the new id in order, and the
+  oldest is typed in once the new session's `SessionStart` has settled
+  (1.5 s): after a `/clear` the session is at its prompt with no turn to
+  end. A compaction that names a new id moves them too, but nothing is typed
+  until that turn's `Stop`. Every request is keyed by the id the process
+  runs now, so a page still naming the replaced id reaches the same queue
+  and the same lock.
+- **In the chat, under the conversation, where they were.** Each one stays
+  as a dimmed outgoing bubble with *Not sent: the session ended* and three
+  actions: **Send to a new session**, **Copy**, **Delete**; with several,
+  **Send all N to a new session**. The same component on the desktop, the
+  app's chat view and the phone (`ChatView`). Send to a new session starts
+  the same agent in the same folder through the ordinary start path and its
+  checks — continuing the ended conversation with `--resume` under its own
+  id when it can be continued here (the agent then has the context the
+  message was written against), else a fresh session — and the messages wait
+  in that session's queue: the first goes in once it has started, the rest
+  one per turn, as this ADR says. A session started for them that sends
+  no hook within 20 s gets them typed in at once, in order, as any session
+  whose turns cannot be read: a queue that never drains is worse than none. A session that is running again takes them
+  back into its own queue (*Send here*).
+- **Kept 7 days, then deleted by the daemon** (on start and hourly). Long
+  enough to come back after a weekend; the product cleans up after itself
+  and never asks the user to.
+- **No notification.** The alert rules decide on hook events and their own
+  kinds, each with its own switch in Settings and on Telegram; a session's
+  process ending is not one of their events, and the user is usually the
+  one who ended it. A line in the chat is where the messages are and where
+  they can be sent; a new alert kind is not worth its switch for that.
+
+**Rejected.** Typing the messages into the new session as its first prompt,
+joined (the one-per-turn rule above); sending them to a new session by
+itself on exit (a session that ended was often ended on purpose); keeping
+them forever (a queue nobody looks at again is litter on the machine);
+re-arming them on any resume of the conversation (a resume days later would
+type old instructions nobody asked for again — only the button and an
+ADR-054 restart do).
 
 ## ADR-054 — The permission mode changes in a running session: Shift+Tab typed in, or the same conversation restarted in the new mode
 

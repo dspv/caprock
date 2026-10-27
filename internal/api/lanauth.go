@@ -500,6 +500,10 @@ var controllerRoutes = map[string]bool{
 	"PATCH /v1/agents/{id}/queue/{qid}":     true,
 	"DELETE /v1/agents/{id}/queue/{qid}":    true,
 	"POST /v1/agents/{id}/queue/{qid}/send": true,
+	// Send the messages an ended session never got to a new session of the
+	// same agent in the same folder (ADR-053, 2026-10-27): a continue, as
+	// POST /v1/agents with resume is, with the same checks.
+	"POST /v1/agents/{id}/queue/resend": true,
 	// Compact context (ADR-085): /compact through the same queue, typing
 	// as the chat field does.
 	"POST /v1/agents/{id}/compact": true,

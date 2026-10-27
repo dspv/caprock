@@ -698,7 +698,7 @@ function SessionWays({ x, jump }: { x: SessionSummary; jump: SessionJump }) {
   if (queued > 0) {
     return (
       <span className={`${small} text-warn`} data-end-confirm={x.session_id}>
-        {queued} queued message{queued === 1 ? '' : 's'} will be dropped.{' '}
+        {queued} queued message{queued === 1 ? '' : 's'} won't be sent (kept in its chat).{' '}
         <button type="button" onClick={() => { setQueued(0); host.onEndSession?.(x.session_id) }} className="text-danger hover:underline">End anyway</button>{' '}
         <button type="button" onClick={() => setQueued(0)} className="text-fg-muted hover:text-fg">Keep</button>
       </span>
