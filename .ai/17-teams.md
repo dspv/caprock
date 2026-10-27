@@ -28,9 +28,11 @@ off for a cost dashboard.
 
 The three problems the site already names, and the answer to each:
 
-- **The bill arrives as one number.** Cost per person, per repository, per day,
-  across every machine — from the same transcripts the free product already
-  reads, so the figures are the ones each developer sees locally, added up.
+- **The bill arrives as one number.** Cost per repository, per pull request,
+  per release and per day, across every machine — from the same transcripts
+  the free product already reads, so the figures are the ones each developer
+  sees locally, added up. By work unit, not by person, by default
+  ([ADR-088](08-decisions.md)).
 - **A looping session drains a plan in minutes.** The loop detector runs
   per-machine today; the team view surfaces it centrally, so someone other than
   the person at that laptop can see it.
@@ -50,10 +52,21 @@ be had by running the free binary harder:
 | Free (Apache-2.0)             | Teams (paid)                           |
 | ----------------------------- | -------------------------------------- |
 | One machine, all its sessions | Every machine, one screen              |
-| Your cost, your repositories  | Cost per person and per repository     |
+| Your cost, your repositories  | Cost per repository, PR and release    |
 | Your loop alerts              | Loop alerts anyone on the team can see |
 | Your history and prose search | Team history, searchable across people |
 | Task runner on your machine   | (unchanged — no team task runner yet)  |
+
+**The unit is the work, not the person** ([ADR-088](08-decisions.md)). The
+team screen reports by repository, pull request and release by default. A
+per-person view exists only as an explicit, documented switch the team
+turns on knowingly, because a tool that *can* rank people is treated as one
+that does — by works councils in law and by developers in practice — and a
+ranked developer games the number. Every developer's own dashboard shows
+the same aggregates the lead sees, and lists what left the laptop.
+"Aggregates" means sums without content and without per-person rows:
+cost, sessions and stuck-session counts per repository, per PR, per release,
+per week.
 
 ## How it works
 
