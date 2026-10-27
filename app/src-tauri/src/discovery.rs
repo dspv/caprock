@@ -108,9 +108,10 @@ pub fn recheck(dir: &Path, last: &Found) -> Found {
             // beside a test run, 2026-10-28) /healthz took longer than the
             // 800 ms timeout, and the window flipped to "The Caprock daemon
             // stopped" a dozen times an hour while the same daemon ran for
-            // nine hours. A timeout keeps the daemon for `SLOW_GRACE`; a
-            // refused connection, or a daemon that stays silent past the
-            // grace, is gone as before.
+            // nine hours. A daemon that took the connection and has not
+            // answered within the timeout is kept for `SLOW_GRACE`; a
+            // connection that fails, or silence past the grace, is gone as
+            // before.
             Err(e) if is_timeout(&e) && slow_since(true) < SLOW_GRACE => Found::Running {
                 rt,
                 status: status.clone(),
@@ -234,7 +235,11 @@ fn send(
 ) -> std::io::Result<(u16, String)> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let timeout = Duration::from_millis(800);
-    let mut s = TcpStream::connect_timeout(&addr, timeout)?;
+    // A connect that fails is never "slow": on Windows a closed loopback
+    // port does not refuse, it times out, so the kind is changed here and
+    // only a read or write past the timeout reads as a busy daemon.
+    let mut s = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::NotConnected, e))?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;
     let auth = bearer

@@ -137,8 +137,9 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
 4. It polls twice a second: `/healthz`, with `/v1/status` every 10 s while
    `runtime.json` names the same daemon; every 5 s while the window is hidden,
    and at once when it is shown again. A daemon gone for 1.2 s is shown as stopped (the
-   bundled page, with **Start it now**) — gone meaning its port refuses, not that
-   it is slow: a `/healthz` that times out keeps the daemon for 20 s
+   bundled page, with **Start it now**) — gone meaning no connection, not that
+   it is slow: a daemon that takes the connection and answers `/healthz` late
+   is kept for 20 s
    (`SLOW_GRACE`), since a loaded Mac made a running daemon look stopped a dozen
    times an hour (2026-10-28). Silent past that, it is shown as stopped too.
    When one answers again, on any port,
