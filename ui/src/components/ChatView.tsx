@@ -43,6 +43,13 @@ import { PermissionPrompt, usePermission } from './PermissionPrompt'
 export const CHAT_PAGE_EVENTS = 300
 /** Messages in the DOM when the view opens, and revealed per step back. */
 export const CHAT_WINDOW = 120
+/**
+ * Messages held while the reader follows the newest. Past this many the
+ * oldest go, events and rows both, down to CHAT_WINDOW; scrolling back pages
+ * them in again. Without it an open chat on a busy agent kept every event it
+ * was sent, whole payloads included, for as long as it stayed open.
+ */
+export const CHAT_HELD_MAX = CHAT_WINDOW * 2
 /** Pages fetched back to close the hole a reconnect left, before starting over. */
 export const CHAT_GAP_PAGES = 10
 /** How near the top a reader gets before the next page is revealed. */
@@ -267,6 +274,25 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   }, [messages])
 
   const busy = useRef(false)
+  // Following the newest (at the bottom, nothing being paged in), the chat
+  // keeps its newest CHAT_WINDOW messages once it holds CHAT_HELD_MAX. A
+  // result belongs to its call, so cutting at a message's own event leaves
+  // every kept call with its result; a result whose call was cut draws nothing.
+  useEffect(() => {
+    if (!loaded || !stick.atEdge || busy.current || messages.length <= CHAT_HELD_MAX) return
+    const cut = keyOf(messages[messages.length - CHAT_WINDOW])
+    if (!cut) return
+    const held = eventsRef.current
+    let i = 0
+    while (i < held.length && compareEvents(held[i]!, cut) < 0) i++
+    if (i === 0) return
+    const next = held.slice(i)
+    eventsRef.current = next
+    setEvents(next)
+    setStartKey(cut)
+    setExhausted(false)
+  }, [loaded, stick.atEdge, messages])
+
   const revealOlder = useCallback(async () => {
     if (busy.current || !loaded) return
     const msgs = toMessages(eventsRef.current)

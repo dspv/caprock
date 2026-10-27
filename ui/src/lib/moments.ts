@@ -26,6 +26,7 @@
 import type { Event } from '@/lib/api'
 import { codexScript, normalInput, toolCommand } from '@/lib/chat'
 import { commandTarget, shortPath } from '@/lib/cockpit'
+import { clip } from '@/lib/clip'
 
 export type MomentKind =
   | 'edit' | 'test' | 'build' | 'commit' | 'push' | 'pr' | 'release' | 'failed'
@@ -490,7 +491,7 @@ const INPUT_KEYS = ['command', 'file_path', 'notebook_path', 'description', 'sub
 const RESULT_KEYS = ['interrupted', 'backgroundTaskId', 'gitOperation', 'agentId', 'description', 'returnCodeInterpretation']
 
 function clipText(v: unknown, n: number): unknown {
-  return typeof v === 'string' && v.length > n ? v.slice(0, n) : v
+  return typeof v === 'string' ? clip(v, n) : v
 }
 
 /**
@@ -510,8 +511,8 @@ export function slimEvent(e: Event): Event {
     q.tool_input = Object.fromEntries(INPUT_KEYS.filter((k) => k in ti).map((k) => [k, clipText(ti[k], 4000)]))
   }
   const tr = p.tool_response
-  if (typeof tr === 'string') q.tool_response = tr.slice(0, 200)
-  else if (Array.isArray(tr)) q.tool_response = tr.slice(0, 1).map((b) => ({ type: 'text', text: str(rec(b).text).slice(0, 200) }))
+  if (typeof tr === 'string') q.tool_response = clip(tr, 200)
+  else if (Array.isArray(tr)) q.tool_response = tr.slice(0, 1).map((b) => ({ type: 'text', text: clip(str(rec(b).text), 200) }))
   else if (tr && typeof tr === 'object') {
     const r = rec(tr)
     q.tool_response = Object.fromEntries(RESULT_KEYS.filter((k) => k in r).map((k) => [k, r[k]]))

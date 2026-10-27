@@ -9,6 +9,7 @@
  */
 import type { Event, Permission, RateLimits, SessionSummary, Subagent, SubagentsNow, Summary } from './api'
 import { toolCommand } from './chat'
+import { clip } from './clip'
 
 /** What kind of work a tool call is, for its glyph and colour. */
 export type ToolKind = 'edit' | 'read' | 'run' | 'search' | 'web' | 'agent' | 'plan' | 'ask' | 'mcp' | 'other'
@@ -254,6 +255,27 @@ export function resultOutcome(p: Record<string, unknown>): { exit?: number; inte
     if (m) out.exit = Number(m[1])
   }
   return out
+}
+
+/**
+ * A `tool.post` as the cockpit holds it: the result's outcome and nothing of
+ * its body. The payload carries the tool's whole answer (a command's output,
+ * a file read in full, an edit's original file) and the tool list reads only
+ * whether it failed, its exit code and whether it was stopped. Everything
+ * else in the payload stays; `tool_input` goes too (the call's own
+ * `tool.pre` has it). Other kinds pass through untouched.
+ */
+export function slimToolResult(e: Event): Event {
+  if (e.kind !== 'tool.post' || !e.payload || typeof e.payload !== 'object') return e
+  const p = e.payload as Record<string, unknown>
+  const r = p.tool_response
+  const out: Record<string, unknown> = { ...p }
+  delete out.tool_response
+  delete out.tool_input
+  if (r && typeof r === 'object' && !Array.isArray(r) && (r as { interrupted?: unknown }).interrupted === true) out.interrupted = true
+  // The head an erroring result's exit code is read from (resultOutcome).
+  if (p.is_error === true) out.tool_response = clip(resultText(r), 200)
+  return { ...e, payload: out }
 }
 
 function slashes(p: string): string {

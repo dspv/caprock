@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event } from '@/lib/api'
 import { live } from '@/lib/live'
 import type { LinkPhase } from '@/lib/reconnect'
-import { ChatView, CHAT_GAP_PAGES, CHAT_PAGE_EVENTS, CHAT_WINDOW, CLEARED_DIVIDER } from './ChatView'
+import { ChatView, CHAT_GAP_PAGES, CHAT_HELD_MAX, CHAT_PAGE_EVENTS, CHAT_WINDOW, CLEARED_DIVIDER } from './ChatView'
 import { resetPickerCache } from './ChatPicker'
 
 const store = vi.hoisted(() => ({
@@ -250,6 +250,28 @@ describe('ChatView', () => {
     expect(el.scrollHeight - el.scrollTop - VIEW).toBeLessThanOrEqual(4)
     expect(screen.queryByRole('button', { name: /new/ })).toBeNull()
   })
+
+  it('following a busy agent for hours holds at most CHAT_HELD_MAX messages; scrolling back pages the rest in', async () => {
+    store.events = Array.from({ length: 50 }, (_, i) => msg(i + 1))
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toHaveLength(50))
+    const total = 50 + CHAT_HELD_MAX * 3
+    for (let i = 51; i <= total; i += 90) {
+      const batch = Array.from({ length: Math.min(90, total - i + 1) }, (_, k) => msg(i + k))
+      store.events.push(...batch)
+      await deliver(batch)
+      expect(renderedIds().length).toBeLessThanOrEqual(CHAT_HELD_MAX)
+    }
+    expect(renderedIds()[renderedIds().length - 1]).toBe(total)
+    const el = log()
+    expect(el.scrollHeight - el.scrollTop - VIEW).toBeLessThanOrEqual(4)
+    // What was let go comes back from the daemon, in place.
+    const kept = renderedIds()[0]!
+    el.scrollTop = 10
+    await act(async () => { fireEvent.scroll(el); await new Promise((r) => setTimeout(r, 40)) })
+    await waitFor(() => expect(renderedIds()[0]).toBeLessThan(kept))
+    expect(store.before).toBeGreaterThan(0)
+  }, 20_000)
 
   it('an older page revealed at the top keeps the first visible message in place', async () => {
     store.events = Array.from({ length: CHAT_PAGE_EVENTS * 2 }, (_, i) => msg(i + 1))
