@@ -850,6 +850,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("PATCH /v1/agents/{id}/queue/{qid}", s.handleQueueEdit)
 	m.HandleFunc("DELETE /v1/agents/{id}/queue/{qid}", s.handleQueueCancel)
 	m.HandleFunc("POST /v1/agents/{id}/queue/{qid}/send", s.handleQueueSendNow)
+	m.HandleFunc("POST /v1/agents/{id}/queue/resend", s.handleQueueResend)
 	m.HandleFunc("GET /v1/sessions/{id}/compaction", s.handleCompaction)
 	m.HandleFunc("POST /v1/agents/{id}/compact", s.handleCompact)
 	m.HandleFunc("GET /v1/sessions/{id}/commands", s.handleSessionCommands)

@@ -77,7 +77,7 @@ var controllerMayAlso = map[string]bool{
 	"PUT /v1/sessions/{id}/needs": true, // "needs me?" / "not needed": a mark in memory
 	"POST /v1/support":            true,
 	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
-	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true, "POST /v1/agents/{id}/compact": true,
+	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true, "POST /v1/agents/{id}/queue/resend": true, "POST /v1/agents/{id}/compact": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
 	// Save to the Inbox from the phone, and delete from it.
 	"POST /v1/inbox": true, "DELETE /v1/inbox/{id}": true,
