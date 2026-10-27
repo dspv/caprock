@@ -6698,7 +6698,7 @@ treating a private address as a secure context.
 **Date:** 2026-10-27 · **Status:** accepted (owner, 2026-10-27, translated:
 "everything sounds and looks very, very right, I fully agree with this
 approach"). *Amends [17-teams.md](17-teams.md); follows
-[ADR-021](#adr-021--open-core-self-hosted-team-tier-free-product-never-carved-up)
+[ADR-021](#adr-021--the-team-tier-is-self-hosted-and-the-free-product-is-not-carved-up)
 and [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine).*
 The research behind it lives in the private site repository (`.gtm/`), per
 rule 9 of [00-index.md](00-index.md); this entry records what the product
