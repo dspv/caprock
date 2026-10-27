@@ -4899,11 +4899,67 @@ Phase 2's smoke adds a Windows target to the matrix.
   offline ones disabled); permission buttons, the queue, Changes, diff and
   PR for a remote session; a Windows target in the smoke. A shortcut, if
   any, goes through `keys()` and is checked on Windows and Linux (rule 12).
+  - *Amended 2026-10-28 — Phase 2 as built.* The owner's goal (2026-10-27,
+    translated): "put Caprock on a desktop at home and drive it from the
+    laptop — agents run on the home machine"; he approved Phase 2 ("we must
+    do it") and can test it only weeks later, so it is proven without him.
+    His plan moved the merged list and the remote notifications (Phase 3's)
+    into Phase 2; what was decided:
+    - *The Machine picker* is New agent's first field, drawn only with a
+      computer linked. Another computer's start is a sheet of its own
+      (`RemoteAgentSheet`) whose every choice is read from that computer
+      through `/v1/m/{id}/…` — its projects and recent folders, whether a
+      typed folder is there (`GET /v1/browse/stat`), its agent catalog — and
+      whose Start is its `POST /v1/agents`, so rule 7 holds unchanged: the
+      daemon that starts the agent is the one that owns it. New copies,
+      GitHub items, attempts and subscriptions are left to that computer for
+      now; the short path (where, agent, mode, first message) is what the
+      goal needs. No new route on the target, no new scope.
+    - *One list, read once.* `GET /v1/machines/sessions` on the controller
+      reads every computer's running sessions through its channel and keeps
+      each answer 10 s for every window and screen, instead of each window
+      asking each computer every 15 s. A computer that cannot be read lists
+      no sessions — not the ones it had — with its state and `last_ok`.
+    - *Pushed, not polled, and only what is needed.* While a client of the
+      controller's own holds `/v1/live` (and 90 s after), the controller
+      holds one `/v1/live?types=notify,permission` per computer: the new
+      `types` filter means a prompt there costs the relay one frame, not
+      every event of every session (frame coalescing stays Phase 4). Its
+      notify frames are re-published locally with `machine` and
+      `machine_name`, and a `machines` frame says which computer changed, so
+      lists re-read at once.
+    - *Never transitive.* Everything another computer said is a **local
+      only** frame (`bus.Frame.LocalOnly`): a phone or computer paired with
+      the controller never receives it on `/v1/live`, and the controller's
+      watch socket on a target is itself a device's, so it never receives
+      the target's own local-only frames.
+    - *Notifications name the computer and answer nothing here.* The app
+      shows another computer's notification with *· on <name>*, without the
+      session, prompt or buttons the shell would answer on this machine; the
+      click opens the session there, whose prompt card answers it. Approve
+      and Deny on the notification itself for a remote session stay Phase 3.
+    - *Proof without the owner:* `internal/smoke/machines_phase2_test.go`,
+      in the smoke suite on all three OS in CI (about 6 s on a Mac):
+      two real daemons, "home" and "laptop", in their own homes, data
+      directories and ports, paired through relaysrv on loopback (the code
+      `caprock remote relay` and the hosted relay run), the fake claude;
+      pair and allow, the one list, home's folders and a missing one, a
+      start on home from the laptop, typing and the echo, home's permission
+      prompt reaching the laptop's `/v1/live` tagged with home and the list
+      showing it needing its owner, and home stopped — offline on the live
+      socket, in the list, and to a start. A tester's script is
+      [docs/machines.md](../docs/machines.md).
+    - *Not done in Phase 2:* a Windows *target* in the smoke (the smoke runs
+      on Windows, so a Windows controller and target pair there, but no two
+      OS are mixed); permission buttons, the queue, Changes, diff and PR for
+      a remote session are reached through the machine page (the ordinary
+      Session view) rather than anything new.
 - **Phase 3 — one view across computers:** one upstream `/v1/live` per
   computer, re-published locally with `machine`; `?machines=all` on the
   session list and the cost summary, summing what answered and naming what
   did not (never counting it as $0, rule 6), each computer priced by its own
-  `pricing_version`; notifications and Approve/Deny for remote sessions.
+  `pricing_version`; Approve/Deny on a remote session's notification (the
+  merged session list and the notifications themselves came in Phase 2).
 - **Phase 4 — capacity and hardening:** frame coalescing, the token bound to
   the controller's key, and whatever OQ-14's measurements call for (a relay
   of one's own is already `caprock remote relay`).
@@ -6347,7 +6403,10 @@ docs), and the plugin repositories named below. Nothing was built.
   the synced web assets. Capacitor lighter on the macOS runners.
 
 **Recommendation and decision: Capacitor** for the iOS app, in a directory of
-its own (`mobile/`, `webDir` pointing at `ui/dist-remote`). Push and its
+its own (`mobile/`, `webDir` pointing at `ui/dist-remote`). *Amended
+2026-10-22, at phase 1: the directory is `ios-app/` (owner's brief), with the
+Xcode project in `ios-app/ios/`; Android, when it is started, decides its
+own.* Push and its
 extension — the one feature the first version cannot ship without — are
 official and plain on Capacitor and community-only on Tauri; speech has a
 maintained plugin; the Xcode project is ours to add targets to. What it costs:
@@ -6389,6 +6448,23 @@ not the same shell. The desktop app stays Tauri.
 **Rules out:** an in-app purchase or a link to buy; a push whose text Apple
 or Caprock's sender can read; building iOS on the owner's Mac; Android in
 this round.
+
+**Amended 2026-10-27 (owner):** 1.0 ships without push to reach the store;
+push follows in 1.1. The first version is the remote, camera pairing,
+on-device voice, Face ID and the demo; it asks for no notification
+permission, registers for no remote notifications and carries no
+`aps-environment` entitlement (the App ID's Push Notifications capability
+may stay ticked; it is unused until 1.1, which adds the entitlement, the
+sender and `OQ-24`'s answer together). The release path skips TestFlight:
+the owner's decision is to go straight to App Store review, so the "3–5 days
+on TestFlight" step above does not apply to 1.0. The upload runs on GitHub's
+macOS runners from a manual workflow (`ios-release.yml`) with the App Store
+Connect API key in the `ios-release` environment; submitting for review stays
+the owner's click. Export compliance: the channel implements standard
+algorithms in the app (Noise_NK_25519_AESGCM_SHA256, `@noble`, not Apple's
+crypto), so `ITSAppUsesNonExemptEncryption` is `true` and App Store Connect
+asks for a French encryption declaration if the app is offered in France
+(ios-app/README.md § Export compliance).
 
 **Revisit if:** Apple rejects the app under 4.2 or 2.1 despite the native
 features and the demo mode (`RISK-11`); the Notification Service Extension

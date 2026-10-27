@@ -1,0 +1,16 @@
+No account and no computer are needed to review this app.
+
+1. Open the app. On the first screen, tap "Try it without a Mac".
+2. The whole app now runs on bundled sample data. A strip at the top of every screen says "Sample data" and "Sample Mac - connects to nothing". Nothing leaves the device in the demo.
+3. On the home screen, the amber "Needs you" card is a sample session asking for permission to run a command. Tap it to open the session's chat. Approving, replying and starting chats are refused with a line saying the demo sends nothing, because there is no computer behind it.
+4. The gear at the top right, beside the "..." menu, opens the app's own Settings: dictation language (recognised on the device), and the optional Face ID lock (Unpair appears there once a real computer is paired).
+5. The microphone in a session's message bar starts dictation. It asks for microphone and speech recognition access and requires on-device recognition; no audio leaves the iPhone.
+6. "Leave" in the strip returns to the first screen.
+
+What the app is for: Caprock is a free, open-source app for Mac, Windows and Linux that shows the coding-agent sessions on the user's own computer. This iPhone app is its remote. It pairs with the user's computer by scanning a QR code the computer shows (camera used only to read that code) or by pasting the same link. After pairing, it talks only to that computer, through an end-to-end encrypted relay that cannot read the traffic and stores nothing.
+
+Purchases: the app sells nothing and contains no purchase links or calls to action. It is a free companion to Caprock on the computer (guideline 3.1.3(f)). Caprock's optional Premium is bought on caprock.dev for the computer; when the paired computer has it, those features also work in this app.
+
+Encryption: the app's channel to the user's computer uses standard algorithms (X25519, AES-256-GCM, SHA-256, in the Noise protocol) implemented in the app; see the export compliance answers.
+
+Push notifications are not part of this version.

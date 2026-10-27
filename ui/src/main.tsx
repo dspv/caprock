@@ -13,6 +13,7 @@ import { applyUiScale } from '@/lib/uiscale'
 import { markPageVisibility } from '@/lib/visible'
 import { listenForInstall } from '@/remote/install'
 import { installMachineProxy, machinePageId } from '@/lib/machinepage'
+import { isNativeApp } from '@/native/platform'
 
 // The app opens on terminals: start fetching every subset of their face now,
 // while the workspace chunk is still loading (lib/termfont).
@@ -64,8 +65,11 @@ markPageVisibility()
 // echo than a lean one (.ai/21-app.md § Performance budgets).
 // The menu bar popover (macOS) is a third, smaller chunk: no terminal, no dashboard.
 // Mail on its own (`?mail=1`) is a fourth: the inbox and nothing of Caprock.
+// The same remote build inside the iOS app (ADR-083) starts in native/,
+// which puts the pairing back from the Keychain, locks behind Face ID and
+// offers the demo before the phone's page; the web page never loads it.
 const Root = remote
-  ? lazy(() => import('./remote/RemoteRoot'))
+  ? lazy(() => (isNativeApp() ? import('./native/NativeRoot') : import('./remote/RemoteRoot')))
   : machine
   ? lazy(() => import('./screens/MachinePage'))
   : isMailApp()

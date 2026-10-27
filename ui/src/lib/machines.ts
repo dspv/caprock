@@ -10,9 +10,12 @@
  *
  * - **The list** is `GET /v1/machines`, local and cheap; `?check=1` asks
  *   each computer first (Settings → Computers does, on open and on Check).
- * - **Their sessions** are read through the proxy while a window shows them:
- *   one channel per computer stays up while it is read, and closes 90 s
- *   after nothing is (ADR-067, connected on demand).
+ * - **Their sessions** are one list, `GET /v1/machines/sessions` (Phase 2):
+ *   the daemon reads each computer through its channel, keeps the answer a
+ *   few seconds for every window, and says on `/v1/live` (`machines`) when
+ *   something there changed. One channel per computer stays up while a
+ *   window is open, and closes 90 s after none is (ADR-067, connected on
+ *   demand).
  * - **The machine page** is this same dashboard opened at
  *   `/?machine=<id>#/session/<sid>`, in a frame of the local one. Its
  *   requests and sockets for `/v1/…` are rewritten to `/v1/m/<id>/v1/…`
@@ -20,10 +23,11 @@
  *   through its relay (remote/boot.ts): the Session view and its terminal
  *   are the ordinary ones, reading the other computer.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { ApiError, type SessionSummary } from './api'
 import { useApi, type Loaded } from './useApi'
-import { everyWhileVisible } from './visible'
+import { live } from './live'
+import { needsYou } from './needs'
 import { machineBase } from './machinepage'
 
 /** One computer this machine reaches (`GET /v1/machines`). Never a token. */
@@ -86,6 +90,8 @@ export const machinesApi = {
   /** Deletes it and its token here, after asking it to drop this machine. */
   forget: (id: string) => changed(call<{ forgotten: boolean; released: boolean }>(`/v1/machines/${encodeURIComponent(id)}`, { method: 'DELETE' })),
   /** That computer's sessions: the running ones, or every recent one. */
+  /** Every computer's running sessions, kept by the daemon a few seconds, so every window shares one read per computer. */
+  allSessions: () => call<{ machines: MachineSessionsEntry[] }>('/v1/machines/sessions').then((r) => r.machines ?? []),
   sessions: (id: string, activeOnly = true) =>
     call<SessionSummary[]>(`${machineBase(id)}/v1/sessions?${activeOnly ? 'active=true&' : ''}chats=exclude&limit=50`),
 }
@@ -144,7 +150,6 @@ export function offlineWhy(err: string): string {
   if (/closed/i.test(err)) return 'The connection was closed. It reconnects when you open it.'
   return `Not reachable (${err}): asleep, off the internet, Caprock not running there, or its access from anywhere is off.`
 }
-
 /** A computer's sessions as the sidebar and its screen read them. */
 export interface MachineSessions {
   sessions: SessionSummary[]
@@ -153,36 +158,91 @@ export interface MachineSessions {
   /** The proxy's answer when the read failed: offline, revoked, refused. */
   error?: string
   status?: string
+  /** When a read last succeeded, unix ms; 0 never. */
+  lastOk?: number
+}
+
+/** One computer in `GET /v1/machines/sessions` (ADR-067, Phase 2). */
+export interface MachineSessionsEntry {
+  id: string
+  name: string
+  /** online, or why its sessions are not listed: offline, pending, revoked, refused, error. */
+  status: string
+  error?: string
+  /** Absent when the last read failed: a list from before is not what runs there now. */
+  sessions?: SessionSummary[]
+  at?: number
+  last_ok?: number
 }
 
 /**
- * The running sessions of each reachable computer, read every `intervalMs`
- * while the window is in view. A computer that answers with its state
- * (offline, revoked) keeps its last list, marked with the error.
+ * The one list across computers: `GET /v1/machines/sessions`, every
+ * `intervalMs` while the window is in view, and again (debounced) when the
+ * daemon says something changed on one of them — a `machines` frame on
+ * `/v1/live`, sent when a prompt begins or ends there, a notification comes,
+ * or a computer comes up or goes down. Every hook on the page shares one
+ * request (`share`), and the daemon shares one read per computer between
+ * windows, so N windows and M computers are still M reads at most every 10 s.
+ */
+export function useAllMachineSessions(enabled: boolean, intervalMs = 15_000): Loaded<MachineSessionsEntry[]> {
+  const got = useApi(() => (enabled ? machinesApi.allSessions() : Promise.resolve([])), [enabled], { live: false, intervalMs, share: enabled ? 'machine-sessions' : false, keepUnchanged: true })
+  const { refresh } = got
+  useEffect(() => {
+    if (!enabled) return
+    let t: number | undefined
+    const soon = () => { window.clearTimeout(t); t = window.setTimeout(refresh, 300) }
+    const off = live.onFrame((f) => { if (f.type === 'machines') soon() })
+    window.addEventListener(MACHINES_EVENT, soon)
+    return () => { off(); window.clearTimeout(t); window.removeEventListener(MACHINES_EVENT, soon) }
+  }, [enabled, refresh])
+  return got
+}
+
+/**
+ * The running sessions of each computer, by id, as the sidebar reads them.
+ * A computer that answered with its state (offline, revoked) lists none.
  */
 export function useMachineSessions(machines: readonly Machine[] | undefined, intervalMs = 15_000): ReadonlyMap<string, MachineSessions> {
-  const [out, setOut] = useState<ReadonlyMap<string, MachineSessions>>(new Map())
-  const ids = (machines ?? []).filter((m) => machineLook(m).reachable).map((m) => m.id).join(',')
-  const last = useRef(out)
-  last.current = out
-  useEffect(() => {
-    if (!ids) { setOut(new Map()); return }
-    let live = true
-    const read = () => {
-      for (const id of ids.split(',')) {
-        machinesApi.sessions(id).then((sessions) => {
-          if (!live) return
-          setOut((prev) => new Map(prev).set(id, { sessions, at: Date.now() }))
-        }).catch((e: unknown) => {
-          if (!live) return
-          const body = e instanceof ApiError ? (e.body as { error?: string; status?: string } | undefined) : undefined
-          setOut((prev) => new Map(prev).set(id, { sessions: prev.get(id)?.sessions ?? [], at: prev.get(id)?.at ?? 0, error: body?.error ?? (e instanceof Error ? e.message : String(e)), status: body?.status }))
-        })
-      }
+  const got = useAllMachineSessions(!!machines && machines.length > 0, intervalMs)
+  return useMemo(() => {
+    const out = new Map<string, MachineSessions>()
+    for (const e of got.data ?? []) {
+      out.set(e.id, {
+        sessions: e.sessions ?? [],
+        at: e.at ?? 0,
+        lastOk: e.last_ok ?? 0,
+        status: e.status,
+        error: e.sessions ? undefined : e.error,
+      })
     }
-    read()
-    const stop = everyWhileVisible(read, intervalMs)
-    return () => { live = false; stop() }
-  }, [ids, intervalMs])
-  return out
+    return out
+  }, [got.data])
+}
+
+/** A session on another computer, with which computer: what the merged lists draw. */
+export interface RemoteSession {
+  machine: { id: string; name: string }
+  session: SessionSummary
+}
+
+/** Every running session on the other computers, needing you first and oldest first among those, then newest. */
+export function remoteRunning(entries: readonly MachineSessionsEntry[] | undefined): RemoteSession[] {
+  const out: RemoteSession[] = []
+  for (const e of entries ?? []) {
+    for (const s of e.sessions ?? []) {
+      if (s.status !== 'ended') out.push({ machine: { id: e.id, name: e.name }, session: s })
+    }
+  }
+  const waits = (r: RemoteSession) => needsYou(r.session)
+  return out.sort((a, b) => {
+    if (waits(a) !== waits(b)) return waits(a) ? -1 : 1
+    const at = a.session.last_event_at ?? 0
+    const bt = b.session.last_event_at ?? 0
+    return waits(a) ? at - bt : bt - at
+  })
+}
+
+/** The route of a session on another computer. */
+export function machineSessionRoute(machine: string, session: string): string {
+  return `#/m/${machine}/session/${encodeURIComponent(session)}`
 }

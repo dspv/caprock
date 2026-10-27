@@ -19,6 +19,7 @@ import { TeamsModal } from './TeamsModal'
 import { usePromptDue } from '@/lib/prompts'
 import { SetupChip } from './SetupStrip'
 import { extTitle } from '@/lib/externalLinks'
+import { sellsHere } from '@/native/platform'
 
 const REPO = 'https://github.com/dspv/caprock'
 const PREMIUM = 'https://caprock.dev/premium'
@@ -29,6 +30,8 @@ export function SiteFooter() {
   // (StarStrip): a prompt that keeps asking after you have done the thing is
   // how a footer becomes noise. Kept on the daemon (lib/prompts.ts).
   const starred = !usePromptDue('star-done', Date.now())
+  // The iOS app sells nothing and points to no shop (ADR-083).
+  const sells = sellsHere()
 
   return (
     <footer className="mt-6 border-t border-border">
@@ -38,7 +41,7 @@ export function SiteFooter() {
         {/* Opens the explanation in place rather than the website: the
           * reader should not have to leave their numbers to learn what the
           * team version is. The dialog links on to the team page. */}
-        <button
+        {sells && <button
           type="button"
           onClick={() => setTeams(true)}
           className="group inline-flex items-center gap-2"
@@ -49,7 +52,7 @@ export function SiteFooter() {
           <span className="text-accent group-hover:text-accent-strong">
             Caprock for Teams →
           </span>
-        </button>
+        </button>}
         {teams && <TeamsModal onClose={() => setTeams(false)} />}
 
         <span className="ml-auto inline-flex items-center gap-4">
@@ -60,7 +63,7 @@ export function SiteFooter() {
             * the links beside it. Phrased as a place rather than a question —
             * "what should paid add?" was both too quiet to read and too vague
             * to act on, since nothing said where it led. */}
-          <a
+          {sells && <a
             href={PREMIUM}
             target="_blank"
             rel="noreferrer"
@@ -68,7 +71,7 @@ export function SiteFooter() {
             title={extTitle('A daily spend cap — Caprock pauses its own sessions when the day passes a limit you set')}
           >
             premium
-          </a>
+          </a>}
           {!starred && (
             <a
               href={REPO}

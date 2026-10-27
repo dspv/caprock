@@ -111,7 +111,7 @@ export function ChatScreen({ id }: { id: string }) {
   return (
     <div className="mx-auto grid w-full max-w-[900px] grid-cols-1">
       <div ref={fill} className={`flex min-h-0 flex-col overflow-hidden bg-panel ${phone ? '' : 'rounded-[12px] border border-border'}`}>
-        <header className={`flex min-h-12 shrink-0 items-center gap-1 border-b border-border px-1.5 ${phone ? 'pt-[env(safe-area-inset-top)]' : ''}`}>
+        <header data-chat-header className={`flex min-h-12 shrink-0 items-center gap-1 border-b border-border px-1.5 ${phone ? 'pt-[env(safe-area-inset-top)]' : ''}`}>
           <a href={href({ name: 'chats' })} aria-label="All chats" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-fg-muted no-underline hover:text-fg">
             <span className="rotate-180"><ChevronIcon size={18} /></span>
           </a>

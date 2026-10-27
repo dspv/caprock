@@ -75,7 +75,7 @@ func TestAComputerWorksOnAnotherThroughTheRelay(t *testing.T) {
 	// On the target, by its owner: access from anywhere on at this relay,
 	// and a code that pairs a controller.
 	post(t, base+"/v1/pair/remote", `{"on":true,"relay":"`+relayURL+`"}`)
-	waitRemote(t, base, "online", target)
+	waitRemoteOnline(t, base, target)
 	var code struct {
 		Code   string `json:"code"`
 		Remote struct {
@@ -148,7 +148,7 @@ func TestAComputerWorksOnAnotherThroughTheRelay(t *testing.T) {
 		t.Fatalf("still online with the relay down: %+v", got)
 	}
 	relay = startRelay(t, relay.addr)
-	waitRemote(t, base, "online", target)
+	waitRemoteOnline(t, base, target)
 	deadline := time.Now().Add(30 * time.Second)
 	var term2 *channelTerm
 	for term2 == nil {
@@ -250,7 +250,8 @@ func (l *trackingListener) Accept() (net.Conn, error) {
 	return c, err
 }
 
-func waitRemote(t *testing.T, base, want string, p *proc) {
+func waitRemoteOnline(t *testing.T, base string, p *proc) {
+	const want = "online"
 	t.Helper()
 	deadline := time.Now().Add(60 * time.Second)
 	for {

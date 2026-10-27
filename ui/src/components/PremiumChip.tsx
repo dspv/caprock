@@ -30,6 +30,7 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PremiumModal } from './PremiumModal'
+import { sellsHere } from '@/native/platform'
 
 /**
  * `strip`: the app's status strip, where a terminal in front hides the
@@ -38,7 +39,12 @@ import { PremiumModal } from './PremiumModal'
  * the bottom bar). The same control at the strip's size: a short word, no
  * price, the same dialog.
  */
-export function PremiumChip({ variant = 'header' }: { variant?: 'header' | 'strip' } = {}) {
+export function PremiumChip(props: { variant?: 'header' | 'strip' } = {}) {
+  // No price and no buy button in the iOS app (ADR-083).
+  return sellsHere() ? <PremiumChipShown {...props} /> : null
+}
+
+function PremiumChipShown({ variant = 'header' }: { variant?: 'header' | 'strip' }) {
   const strip = variant === 'strip'
   const [open, setOpen] = useState(false)
   const premium = useApi(() => api.premium(), [], { live: false, intervalMs: 300_000 })

@@ -470,7 +470,8 @@ internal/termbuf/     # scrollback ring + terminal-mode tracking, shared by the 
 internal/hive/        # on-disk orchestration state: agents/tasks/mailboxes/ledger, YAML — Orchestrate
 internal/board/       # task board: verification runner, destructive-command policy, approvals — Orchestrate
 internal/orchestrator/ # orchestrator + worker lifecycle, the mailbox-router reconciler — Orchestrate
-ui/                   # React + Vite app; builds into internal/api/dist (go:embed)
+ui/                   # React + Vite app; builds into internal/api/dist (go:embed); `--mode remote` builds the phone's page (ui/dist-remote); src/native/ is the iOS app's half, loaded only inside it
+ios-app/              # the iOS app (ADR-083): Capacitor shell around ui/dist-remote; ios/ is the Xcode project (SPM); built on GitHub's macOS runners only (.github/workflows/ios.yml)
 pricing/              # pricing.json (models) + actions.json (GitHub Actions runners) + embed.go, each versioned
 testdata/             # hook payloads, transcript fixtures + expected totals, loop fixtures, demo/ (caprock.dev's stand: a sanitised real session, scripts/demo-fixture.py), fakeclaude (a Go line-REPL `claude`; with a permission flag it draws the mode footer and cycles it on Shift+Tab)
 ```

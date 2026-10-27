@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -23,6 +24,10 @@ type wsHub struct {
 
 	mu    sync.Mutex
 	conns map[*websocket.Conn]context.CancelFunc
+	// local counts the sockets of this machine's own clients (isLocal):
+	// whether someone at this machine is looking, which is what keeps the
+	// other computers' live sockets open (daemon/machinewatch.go).
+	local int
 	// lanHosts are the network addresses this daemon answers on (the LAN
 	// one, the Tailscale one and its MagicDNS name), empty when off. They
 	// change when LAN access is switched on from the dashboard, and every
@@ -77,6 +82,13 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		since = &n
 	}
+	only, err := liveTypes(r.URL.Query().Get("types"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	local := isLocal(r)
+	skip := func(f bus.Frame) bool { return liveSkips(f, local, only) }
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		OriginPatterns: h.origins(),
 		// A device token arrives as a subprotocol, because a browser's
@@ -92,10 +104,16 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	h.mu.Lock()
 	h.conns[c] = cancel
+	if local {
+		h.local++
+	}
 	h.mu.Unlock()
 	defer func() {
 		h.mu.Lock()
 		delete(h.conns, c)
+		if local {
+			h.local--
+		}
 		h.mu.Unlock()
 		cancel()
 		_ = c.CloseNow()
@@ -118,11 +136,17 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	send := func(f bus.Frame) error {
+		pos = f.Seq
+		if skip(f) {
+			return nil
+		}
+		return writeFrame(ctx, c, f)
+	}
 	for _, f := range missed {
-		if err := writeFrame(ctx, c, f); err != nil {
+		if err := send(f); err != nil {
 			return
 		}
-		pos = f.Seq
 	}
 	var heard atomic.Int64
 	heard.Store(time.Now().UnixNano())
@@ -146,20 +170,18 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				frames = h.catchUp(pos)
 			}
 			for _, f := range frames {
-				if err := writeFrame(ctx, c, f); err != nil {
+				if err := send(f); err != nil {
 					return
 				}
-				pos = f.Seq
 			}
 		case <-sub.Lagged():
 			// This subscriber's buffer overflowed and the bus dropped frames
 			// for it, maybe the newest ones, which no later frame would
 			// reveal: catch up from the ring now.
 			for _, f := range h.catchUp(pos) {
-				if err := writeFrame(ctx, c, f); err != nil {
+				if err := send(f); err != nil {
 					return
 				}
-				pos = f.Seq
 			}
 		case t := <-pings:
 			if err := writeFrame(ctx, c, bus.Frame{Type: "pong", Seq: pos, Data: t}); err != nil {
@@ -183,6 +205,45 @@ func (h *wsHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}()
 		}
 	}
+}
+
+// liveSkips says a frame a client does not get: another computer's, for a
+// paired device (never transitive, ADR-067), or a type it did not ask for.
+// Its seq still counts as sent, so a resume does not ask for it again.
+func liveSkips(f bus.Frame, local bool, only map[bus.FrameType]bool) bool {
+	if f.LocalOnly && !local {
+		return true
+	}
+	return only != nil && !only[f.Type] && !liveControlTypes[f.Type]
+}
+
+// liveControlTypes are the frames every client gets, whatever it asked for:
+// the socket's own housekeeping.
+var liveControlTypes = map[bus.FrameType]bool{"hello": true, "reset": true, "ping": true, "pong": true}
+
+// liveTypes reads ?types=notify,permission: only frames of these types (and
+// the housekeeping ones) are sent. Empty is every type. Another computer's
+// daemon asks this way (ADR-067, Phase 2), so a prompt there costs the relay
+// one frame rather than every event of every session.
+func liveTypes(v string) (map[bus.FrameType]bool, error) {
+	if v == "" {
+		return nil, nil
+	}
+	out := map[bus.FrameType]bool{}
+	for _, t := range strings.Split(v, ",") {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			continue
+		}
+		if len(t) > 32 || strings.IndexFunc(t, func(r rune) bool { return (r < 'a' || r > 'z') && r != '_' }) >= 0 {
+			return nil, errors.New("types is a comma-separated list of frame types")
+		}
+		out[bus.FrameType(t)] = true
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }
 
 // catchUp is every frame after pos from the ring, or a reset when the ring no

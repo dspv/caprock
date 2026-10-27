@@ -47,7 +47,7 @@ var neverAComputer = []string{
 	"GET /v1/pair/state", "POST /v1/footprint/orphans/stop", "POST /v1/resources/reap", "POST /v1/system/memory/end-idle", "POST /v1/system/memory/restart", "POST /v1/shutdown",
 	"POST /v1/update/check", "POST /v1/hooks/install", "POST /v1/sessions/{id}/open-terminal", "GET /v1/editors",
 	"POST /v1/editors/open", "PUT /v1/telegram/token", "POST /v1/github/connect", "PUT /v1/agents/custom",
-	"POST /v1/subscriptions", "GET /v1/machines", "POST /v1/machines", "PATCH /v1/machines/{id}", "DELETE /v1/machines/{id}",
+	"POST /v1/subscriptions", "GET /v1/machines", "GET /v1/machines/sessions", "POST /v1/machines", "PATCH /v1/machines/{id}", "DELETE /v1/machines/{id}",
 }
 
 // pairedComputer adds to ps a computer that redeemed a code for one and,

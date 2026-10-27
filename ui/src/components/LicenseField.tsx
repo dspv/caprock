@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react'
 import { api, errText, isPairedDevice, type PremiumPricing, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { extTitle } from '@/lib/externalLinks'
+import { sellsHere } from '@/native/platform'
 import { announceAdmin, useAdmin } from '@/lib/modules'
 
 /** An admin key (ADR-076) is pasted into the same field and stored apart. */
@@ -86,9 +87,11 @@ export function LicenseField({ plan, save }: { plan: Settings; save: (patch: Par
         {lic && !lic.active && (
           <span className="text-fg-muted">
             {plan.license_key ? lic.reason : 'No key — the free product is unaffected.'}{' '}
-            <a href="https://caprock.dev/premium/" target="_blank" title={extTitle()} rel="noreferrer" className="link">
-              what Premium does
-            </a>
+            {sellsHere() && (
+              <a href="https://caprock.dev/premium/" target="_blank" title={extTitle()} rel="noreferrer" className="link">
+                what Premium does
+              </a>
+            )}
           </span>
         )}
         {adminErr && <span className="block text-danger">{adminErr}</span>}

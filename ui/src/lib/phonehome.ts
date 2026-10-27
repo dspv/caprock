@@ -6,6 +6,7 @@
 import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary, TabsAnswer } from './api'
 import { quotePath } from './xtermInput'
 import { needsYou, oldestFirst } from './needs'
+import { isNativeApp } from '@/native/platform'
 
 /**
  * How many rows Continue lists when the computer's tabs are not known. With
@@ -115,6 +116,8 @@ export function installWay(ua: string, standalone: boolean, touchPoints: number)
 
 /** Whether this page runs as the home-screen app. */
 export function isStandalone(): boolean {
+  // The iOS app is the installed app (ADR-083).
+  if (isNativeApp()) return true
   try {
     if (window.matchMedia?.('(display-mode: standalone)').matches) return true
   } catch { /* an old browser */ }

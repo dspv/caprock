@@ -12,7 +12,13 @@
  * `http://<Wi-Fi or Tailscale address>`, which is not one, so on the phone the
  * usual answer is the keyboard's own dictation key, and the button says that
  * in one line instead of failing silently.
+ *
+ * In the iOS app (ADR-083) the same calls use Apple's recognition on the
+ * iPhone itself instead (native/speech.ts, loaded only there): on-device is
+ * required, so nothing is sent anywhere, and a language the iPhone cannot
+ * recognise on its own is refused with its own line.
  */
+import { isNativeApp } from '@/native/platform'
 
 /** Why voice input is or is not offered here. */
 export type SpeechSupport = 'ok' | 'insecure' | 'missing'
@@ -44,6 +50,7 @@ function ctor(): RecognitionCtor | undefined {
 
 /** Whether this page can dictate: needs the API and a secure context. */
 export function speechSupport(): SpeechSupport {
+  if (isNativeApp()) return 'ok'
   if (!ctor()) return 'missing'
   if (typeof window !== 'undefined' && window.isSecureContext === false) return 'insecure'
   return 'ok'
@@ -65,9 +72,18 @@ export function speechHint(why: SpeechSupport | string): string {
       return "The browser's speech service could not be reached — use the dictation key on your keyboard."
     case 'audio-capture':
       return 'No microphone found — use the dictation key on your keyboard.'
+    case 'on-device-unavailable':
+      return 'This iPhone cannot recognise that language on its own, so nothing was heard or sent. Pick another language, or add it in iOS Settings → General → Keyboard → Keyboards.'
     default:
       return 'Voice input stopped — try again, or use the dictation key on your keyboard.'
   }
+}
+
+/** Where the words are turned into text, for the line shown while it listens. */
+export function speechWhere(): string {
+  return isNativeApp()
+    ? 'Recognised on this iPhone; nothing goes to Apple.'
+    : "Your browser's speech service turns it into text."
 }
 
 /** Joins what was in the field with what was heard, a space between. */
@@ -132,6 +148,7 @@ export function startDictation({ lang, onText, onEnd }: {
   onText: (heard: string) => void
   onEnd: (error?: string) => void
 }): Dictation | null {
+  if (isNativeApp()) return nativeDictation({ lang, onText, onEnd })
   const C = ctor()
   if (!C) return null
   const tag = lang || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en-US'
@@ -226,6 +243,30 @@ export function startDictation({ lang, onText, onEnd }: {
     stop() {
       stopping = true
       try { rec?.stop() } catch { finish() }
+    },
+  }
+}
+
+/**
+ * The iOS app's dictation (native/speech.ts), behind a dynamic import so the
+ * web page and the desktop never load the plugin. A stop() that comes before
+ * the import has finished is carried over.
+ */
+function nativeDictation({ lang, onText, onEnd }: { lang?: string; onText: (heard: string) => void; onEnd: (error?: string) => void }): Dictation {
+  let inner: Dictation | null = null
+  let stopped = false
+  const tag = lang || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en-US'
+  import('@/native/speech').then(
+    (m) => {
+      inner = m.startNativeDictation({ lang: tag, onText, onEnd })
+      if (stopped) inner.stop()
+    },
+    () => onEnd('service-not-allowed'),
+  )
+  return {
+    stop() {
+      stopped = true
+      inner?.stop()
     },
   }
 }

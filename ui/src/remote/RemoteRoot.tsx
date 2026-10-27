@@ -19,6 +19,8 @@ import { provideMachineSwitch } from '@/lib/machineswitch'
 import { ReadyGate } from './ReadyCard'
 import { agoText, classify, offersPairing, retryLine, type Cause } from './linkcause'
 import { extTitle } from '@/lib/externalLinks'
+import { isNativeApp } from '@/native/platform'
+import { ScanButton } from '@/native/ScanButton'
 
 const App = lazy(() => import('../App'))
 
@@ -541,6 +543,7 @@ function SettingsSketch() {
 
 /** Opened from the home screen: an iPhone gives it storage apart from Safari's. */
 function standalone(): boolean {
+  if (isNativeApp()) return true
   return (
     window.matchMedia?.('(display-mode: standalone)').matches === true ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
@@ -557,6 +560,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
   const [error, setError] = useState('')
   const [pasting, setPasting] = useState(() => !first || standalone())
   const offer = useInstallOffer()
+  const native = isNativeApp()
   function applyLink(raw: string) {
     const hash = raw.includes('#') ? raw.slice(raw.indexOf('#')) : ''
     if (!parsePairLink(hash)) {
@@ -615,13 +619,27 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
           Leave <b className="font-semibold text-fg">This phone can type and start agents</b> ticked, and press{' '}
           <b className="font-semibold text-fg">Connect a phone</b>
         </Step>
-        <Step n={3}>
-          Scan the code with this phone&apos;s camera and open the link; the phone pairs
-        </Step>
-        <Step n={4}>
-          Optional: install the app when this page offers it
-        </Step>
+        {/* The iOS app scans in place (native/ScanButton); the page uses the camera app. */}
+        {native ? (
+          <Step n={3}>Tap <b className="font-semibold text-fg">Scan the code</b> and point this phone at it; the phone pairs</Step>
+        ) : (
+          <>
+            <Step n={3}>
+              Scan the code with this phone&apos;s camera and open the link; the phone pairs
+            </Step>
+            <Step n={4}>
+              Optional: install the app when this page offers it
+            </Step>
+          </>
+        )}
       </ol>
+
+      {native && (
+        <div className="mt-8">
+          <ScanButton onError={setError} />
+          {error && !pasting && <p className="mt-3 text-[15px] text-danger">{error}</p>}
+        </div>
+      )}
 
       {pasting ? (
         <form
@@ -632,7 +650,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
           }}
         >
           <label className="text-[15px] text-fg-muted" htmlFor="pair-link">
-            Opened from the home screen? Tap <b className="font-semibold text-fg">Copy link</b> under the code and paste it here.
+            {native ? 'Or tap' : 'Opened from the home screen? Tap'} <b className="font-semibold text-fg">Copy link</b> under the code and paste it here.
           </label>
           <input
             id="pair-link"

@@ -4,7 +4,7 @@ import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
 import { ATTACH_ACCEPT, attachLabels, isImageName } from '@/lib/attach'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
-import { joinDictation, speechHint, speechSupport, startDictation, type Dictation } from '@/lib/speech'
+import { joinDictation, speechHint, speechSupport, speechWhere, startDictation, type Dictation } from '@/lib/speech'
 import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
 
 /** A newline inside the prompt: ESC CR, what a terminal sends for Alt+Enter
@@ -648,7 +648,7 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
         {(listening || voiceNote) && (
           <div role="status" aria-live="polite" className={`text-[13px] leading-snug ${listening ? 'text-fg' : 'text-fg-muted'}`}>
             {listening
-              ? <><span className="text-danger">●</span> Listening in {langName(recLang)} — tap the mic again to stop, then Send. Your browser&apos;s speech service turns it into text.</>
+              ? <><span className="text-danger">●</span> Listening in {langName(recLang)} — tap the mic again to stop, then Send. {speechWhere()}</>
               : voiceNote}
           </div>
         )}

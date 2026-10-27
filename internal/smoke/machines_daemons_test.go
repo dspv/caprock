@@ -72,7 +72,7 @@ func TestTwoDaemonsOneControlsTheOther(t *testing.T) {
 	// On the target, by its owner: access from anywhere at this relay, then
 	// a link for a computer — what `caprock pair --computer` prints.
 	post(t, tBase+"/v1/pair/remote", `{"on":true,"relay":"`+relayURL+`"}`)
-	waitRemote(t, tBase, "online", target)
+	waitRemoteOnline(t, tBase, target)
 	out := runCLI(t, caprock, tEnv, "pair", "--computer", "--no-wait")
 	link := ""
 	for _, f := range strings.Fields(out) {
