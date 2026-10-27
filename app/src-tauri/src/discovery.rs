@@ -97,14 +97,54 @@ pub fn recheck(dir: &Path, last: &Found) -> Found {
     };
     match read_runtime(dir) {
         Some(rt) if rt == *was => match request(rt.port, "GET", "/healthz", None) {
-            Ok((200, _)) => Found::Running {
+            Ok((200, _)) => {
+                slow_since(false);
+                Found::Running {
+                    rt,
+                    status: status.clone(),
+                }
+            }
+            // Slow is not gone. On a Mac at load average 300 (an Xcode build
+            // beside a test run, 2026-10-28) /healthz took longer than the
+            // 800 ms timeout, and the window flipped to "The Caprock daemon
+            // stopped" a dozen times an hour while the same daemon ran for
+            // nine hours. A daemon that took the connection and has not
+            // answered within the timeout is kept for `SLOW_GRACE`; a
+            // connection that fails, or silence past the grace, is gone as
+            // before.
+            Err(e) if is_timeout(&e) && slow_since(true) < SLOW_GRACE => Found::Running {
                 rt,
                 status: status.clone(),
             },
-            _ => Found::Absent,
+            _ => {
+                slow_since(false);
+                Found::Absent
+            }
         },
         _ => find(dir),
     }
+}
+
+/// How long a daemon that accepts but answers slowly still counts as there.
+pub const SLOW_GRACE: Duration = Duration::from_secs(20);
+
+fn is_timeout(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    )
+}
+
+/// How long the daemon has been answering only with timeouts: `slow` true
+/// starts (or continues) the run and returns its length, false ends it.
+fn slow_since(slow: bool) -> Duration {
+    static SINCE: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    let mut g = SINCE.lock().unwrap_or_else(|p| p.into_inner());
+    if !slow {
+        *g = None;
+        return Duration::ZERO;
+    }
+    g.get_or_insert_with(std::time::Instant::now).elapsed()
 }
 
 /// `/healthz` then `/v1/status`; `None` when either fails.
@@ -195,7 +235,11 @@ fn send(
 ) -> std::io::Result<(u16, String)> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let timeout = Duration::from_millis(800);
-    let mut s = TcpStream::connect_timeout(&addr, timeout)?;
+    // A connect that fails is never "slow": on Windows a closed loopback
+    // port does not refuse, it times out, so the kind is changed here and
+    // only a read or write past the timeout reads as a busy daemon.
+    let mut s = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::NotConnected, e))?;
     s.set_read_timeout(Some(timeout))?;
     s.set_write_timeout(Some(timeout))?;
     let auth = bearer
@@ -362,6 +406,46 @@ mod tests {
             recheck(&temp_dir("recheck-none"), &Found::Absent),
             Found::Absent
         );
+    }
+
+    #[test]
+    fn a_slow_daemon_is_kept_and_a_closed_port_is_gone() {
+        // Accepts and never answers: a daemon too busy for the timeout.
+        let ln = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = ln.local_addr().unwrap().port();
+        thread::spawn(move || {
+            let held: Vec<_> = ln.incoming().take(4).collect();
+            thread::sleep(Duration::from_secs(10));
+            drop(held);
+        });
+        let dir = temp_dir("slow");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let rt = read_runtime(&dir).unwrap();
+        let last = Found::Running {
+            rt,
+            status: Status {
+                version: "v1".into(),
+                api_level: 3,
+            },
+        };
+        assert_eq!(recheck(&dir, &last), last, "a timeout is not a stop");
+        // Nothing listens: refused at once, gone at once.
+        let closed = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let dir = temp_dir("slow-closed");
+        write_runtime(&dir, closed, r#","api_level":3"#);
+        let rt = read_runtime(&dir).unwrap();
+        let last = Found::Running {
+            rt,
+            status: Status {
+                version: "v1".into(),
+                api_level: 3,
+            },
+        };
+        assert_eq!(recheck(&dir, &last), Found::Absent);
     }
 
     #[test]
