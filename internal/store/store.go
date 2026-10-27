@@ -109,6 +109,10 @@ const (
 	// parser version, cleared when the repair has run, so a daemon stopped
 	// mid-repair runs it again.
 	MetaEmptyTextRepairPending = "empty_text_repair_pending"
+	// MetaCompactBackfillPending is "1" while the compaction boundaries in
+	// transcripts read before parser v5 still wait to be added
+	// (ingest.BackfillCompactions); cleared once that has run.
+	MetaCompactBackfillPending = "compact_backfill_pending"
 	// MetaPRsBackfilled is "1" once session_prs holds the pull requests of the
 	// events stored before migration 0035.
 	MetaPRsBackfilled = "session_prs_backfilled"

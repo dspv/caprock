@@ -62,8 +62,10 @@ Kinds:
 - **`agent.spawn`, `agent.stop`** — a session or subagent starting and
   finishing a turn.
 - **`session.end`** — the agent process exited.
-- **`context.compact`, `context.clear`, `session.continue`** — compaction,
-  `/clear`, and a `SessionEnd` that left the session running.
+- **`context.compact`, `context.clear`, `session.continue`** — compaction
+  starting, `/clear`, and a `SessionEnd` that left the session running.
+- **`context.compacted`** — a compaction that finished, from the transcript's
+  `compact_boundary` line; `payload.pre_tokens` is the context before it.
 - **`task.*`, `approval.requested`, `throttle`** — Caprock's own task runner
   and rate-limit observations.
 

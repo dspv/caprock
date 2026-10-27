@@ -44,6 +44,16 @@ const (
 	// summarized). Not in the spec's original list; consumers may ignore it.
 	KindContextCompact Kind = "context.compact"
 
+	// KindContextCompacted is a compaction that finished: the transcript's
+	// `system` line with subtype `compact_boundary`. Its payload carries
+	// what Claude Code measured — `pre_tokens` (the context before),
+	// `trigger` ("auto" or "manual"), `duration_ms` — and the context after
+	// is the next main-thread turn's prompt (store.Compactions). Distinct
+	// from context.compact, which is the PreCompact hook: that one says a
+	// compaction is starting, this one that it is done, and narrating the
+	// boundary as "compacting context" would describe something already over.
+	KindContextCompacted Kind = "context.compacted"
+
 	// KindContextClear is emitted for a `SessionEnd` whose reason is `clear` —
 	// the user ran /clear. It is a context reset like a compact, and like a
 	// compact it does not end the session, but it is not the same event and

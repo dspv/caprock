@@ -372,7 +372,7 @@ func BackgroundPhrase(n int) string {
 func MainTurnEnded(events []event.Event, mainLast *event.Event) bool {
 	if mainLast == nil {
 		for i := len(events) - 1; i >= 0; i-- {
-			if !events[i].Subagent() {
+			if !events[i].Subagent() && events[i].Kind != event.KindContextCompacted {
 				mainLast = &events[i]
 				break
 			}
@@ -400,7 +400,14 @@ func Summarize(events []event.Event, opt Options) Activity {
 		}
 		return act
 	}
-	last := events[len(events)-1]
+	// A compaction boundary from the transcript records something already
+	// over (context.compacted); what the session is doing is the event
+	// before it. Read as the last event it fell to the default, "working".
+	li := len(events) - 1
+	for li > 0 && events[li].Kind == event.KindContextCompacted {
+		li--
+	}
+	last := events[li]
 	act.At = last.Ts
 
 	// Plan: last TodoWrite / task list update.

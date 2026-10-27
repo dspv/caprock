@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Event, SessionSummary, SubagentsNow, Summary } from '@/lib/api'
+import type { CompactionView, Event, SessionSummary, SubagentsNow, Summary } from '@/lib/api'
 
 const now = Date.now()
 const iso = (agoMs: number) => new Date(now - agoMs).toISOString()
@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   summaryAsked: [] as string[],
   overlap: { window_minutes: 30, sessions: {} } as unknown,
   events: undefined as Event[] | undefined,
+  compaction: { session_id: 's1', running: false, queued: false } as CompactionView,
+  compacted: [] as string[],
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -32,6 +34,8 @@ vi.mock('@/lib/api', async (orig) => {
       todos: async () => ({ items: [], updated_at: 0 }),
       recentMainEvents: async (_id: string, kinds: string[]) => { h.mainAsked.push(kinds); return h.events ?? events },
       permission: async () => ({ permission: h.permission }),
+      compaction: async () => h.compaction,
+      compact: async (id: string) => { h.compacted.push(id); return { sent: true, queue: { session_id: id, messages: [], waiting: 'turn' } } },
       sessionCalls: async () => [],
       overlap: async () => h.overlap,
       summary: async (range: string) => {
@@ -68,6 +72,8 @@ beforeEach(() => {
   resetLooksForTest()
   resetOrderForTest()
   h.events = undefined
+  h.compaction = { session_id: 's1', running: false, queued: false }
+  h.compacted = []
   h.summaries = {}
   h.summaryAsked = []
 })
@@ -965,5 +971,52 @@ describe('arranging the cockpit', () => {
     localStorage.setItem(ORDER_KEY, '{nope')
     show(agent())
     expect(regions()).toEqual(['Now', 'Context', 'Plan limits', 'Spend', 'Recent tool calls'])
+  })
+})
+
+describe('compact context (ADR-085)', () => {
+  const big = { tokens: 467_121, window: 1_000_000, pct: 46.7, next_call_usd: 0.2 }
+  it('one click types /compact into a session Caprock started, then says the measured before and after', async () => {
+    setLook('context', 'full')
+    const { rerender } = show(agent({ context: big }))
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    expect(within(ctx).getByText('Usually ~15% stays')).toBeInTheDocument()
+    expect(within(ctx).getByText(/Measured on one machine: 70 automatic compactions, 2026-09-29 – 2026-10-25/)).toBeInTheDocument()
+    fireEvent.click(within(ctx).getByRole('button', { name: /Compact context/ }))
+    expect(await within(ctx).findByRole('button', { name: /Compacting…/ })).toBeDisabled()
+    expect(h.compacted).toEqual(['s1'])
+    // The boundary arrives, and the next reply measures what stayed.
+    h.compaction = { session_id: 's1', running: false, queued: false, last: { at: Date.now() + 500, trigger: 'manual', pre_tokens: 467_121, post_tokens: 61_388 } }
+    rerender(<Inspector session={agent({ context: { tokens: 61_388, window: 1_000_000, pct: 6.1, next_call_usd: 0.03 } })} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={summary} />)
+    expect(await within(ctx).findByText('Compacted: 467.1k → 61.4k tokens')).toBeInTheDocument()
+    // Small again: the button is gone, the result stays.
+    expect(within(ctx).queryByRole('button', { name: /Compact context/ })).toBeNull()
+  })
+
+  it('the collapsed line carries the icon from 60% full', () => {
+    show(agent())
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    expect(ctx).toHaveAttribute('data-look', 'compact')
+    fireEvent.click(within(ctx).getByRole('button', { name: 'Compact context' }))
+    expect(h.compacted).toEqual(['s1'])
+  })
+
+  it('not under 60% on the collapsed line, nor under 100k tokens anywhere', () => {
+    const { unmount } = show(agent({ context: big }))
+    expect(within(screen.getByRole('region', { name: 'Context' })).queryByRole('button', { name: 'Compact context' })).toBeNull()
+    unmount()
+    setLook('context', 'full')
+    show(agent({ context: { tokens: 80_000, window: 100_000, pct: 80, next_call_usd: 0 } }))
+    expect(within(screen.getByRole('region', { name: 'Context' })).queryByRole('button', { name: /Compact context/ })).toBeNull()
+  })
+
+  it('never types into a terminal Caprock did not start: the command to type there instead', () => {
+    setLook('context', 'full')
+    show(agent({ owned: false, context: big }))
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    expect(within(ctx).queryByRole('button', { name: /Compact context/ })).toBeNull()
+    expect(within(ctx).getByRole('button', { name: '/compact' })).toBeInTheDocument()
+    expect(within(ctx).getByText(/Caprock does not type into a terminal it did not start/)).toBeInTheDocument()
+    expect(h.compacted).toEqual([])
   })
 })
