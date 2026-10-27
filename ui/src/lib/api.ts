@@ -2707,6 +2707,8 @@ export const api = {
   queueCancel: (id: string, qid: number) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, {}, 'DELETE'),
   /** Type one in now, whatever the turn is doing; 409 while a prompt is on the screen. */
   queueSendNow: (id: string, qid: number) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}/send`, {}),
+  /** Send messages an ended session never got to a new session of the same agent in the same folder (resumed when it can be); no ids is all of them. */
+  queueResend: (id: string, ids?: readonly number[]) => post<QueueResendResult>(`/v1/agents/${encodeURIComponent(id)}/queue/resend`, ids?.length ? { ids } : {}),
   /** A session's last compaction, whether one runs or waits, and what this machine's keep (ADR-085). */
   compaction: (id: string) => get<CompactionView>(`/v1/sessions/${encodeURIComponent(id)}/compaction`),
   /** Compact context: /compact typed into a session Caprock started, now or when its turn ends. */
@@ -2874,15 +2876,29 @@ export interface QueuedMessage {
   updated_at: number
   /** Where it came from: 'telegram' for a forward to the paired bot (ADR-081); absent for Caprock's own field. */
   via?: string
+  /** Unix ms the session's process was found gone with this message still waiting (ADR-053, 2026-10-27); absent while it waits. */
+  undelivered_at?: number
 }
 
-/** What holds a queued message: the turn, a permission prompt, a question; '' nothing. */
-export type QueueWaiting = '' | 'turn' | 'permission' | 'question'
+/** What holds a queued message: the turn, a permission prompt, a question, a session still starting (start); '' nothing. */
+export type QueueWaiting = '' | 'turn' | 'permission' | 'question' | 'start'
 
 export interface QueueView {
   session_id: string
   messages: QueuedMessage[] | null
   waiting: QueueWaiting
+  /** What the session's process ended before typing in, oldest first, kept 7 days. */
+  undelivered?: QueuedMessage[] | null
+}
+
+/** POST /v1/agents/{id}/queue/resend: the session the messages now wait in. */
+export interface QueueResendResult {
+  session_id: string
+  /** It continues the ended conversation (--resume) rather than starting fresh. */
+  resumed: boolean
+  /** A new process was started for them (false: the session runs again and took them back). */
+  started: boolean
+  queue: QueueView
 }
 
 /** An estimate in ms from the board's `now`: median and the p25–p75 range. */
