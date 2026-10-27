@@ -81,13 +81,16 @@ func TestABrainWriteDuringABackfillSucceeds(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("memory %d: %d %s", i, rr.Code, rr.Body.String())
 		}
-		// Windows runners are slower at a write under contention: the first
-		// one took 2.4 s there (2026-10-19) against well under a second here.
-		limit := time.Second
+		// The time is the batch yielding to a waiting writer, bounded where
+		// the disk is not the bottleneck. On windows-latest one write took
+		// 2.4 s (2026-10-19) and one SQLite COMMIT 12.5 s (run 39872401519):
+		// any bound there measures the runner's disk, not Caprock, so there
+		// only the landing is checked. That the batch yields is proved by
+		// order, on every OS, in rollup's TestAHookIsNotDelayedByABackfill.
 		if runtime.GOOS == "windows" {
-			limit = 5 * time.Second
+			continue
 		}
-		if d := time.Since(start); d > limit {
+		if d := time.Since(start); d > time.Second {
 			t.Fatalf("memory %d waited %v for the database", i, d)
 		}
 	}
