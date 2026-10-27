@@ -12,6 +12,7 @@ brew install --cask dspv/tap/caprock-app
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/dspv/caprock/actions/workflows/ci.yml/badge.svg)](https://github.com/dspv/caprock/actions/workflows/ci.yml)
 ![platform](https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-informational)
+[![As seen on Open Source Alternatives](https://www.opensourcealternatives.to/badge-osa.svg)](https://www.opensourcealternatives.to)
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/readme/hero-light.webp">
