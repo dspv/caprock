@@ -148,6 +148,7 @@ export function ChatScreen({ id }: { id: string }) {
         <ChatView
           key={id}
           sessionId={id}
+          onResent={(next) => navigate({ name: 'chat', id: next })}
           canType={canType}
           ended={ended}
           phone={phone}

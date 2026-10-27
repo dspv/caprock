@@ -440,6 +440,14 @@ type Filter = 'all' | 'tools' | 'turns'
  *  worth the round trip, small enough that the page stays responsive. */
 const EARLIER_PAGE = 200
 
+/**
+ * Events the timeline keeps as live ones arrive, plus what "load earlier"
+ * brought back by hand. Each is a whole stored event, drawn as a row, and a
+ * timeline left open on a busy session (the app keeps the dashboard's tab
+ * mounted) used to reach 5,000 of them in about two and a half hours.
+ */
+export const TIMELINE_HELD = 1000
+
 function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now: number; at?: number }) {
   const [events, setEvents] = useState<Event[]>(initial)
   const [filter, setFilter] = useState<Filter>('all')
@@ -452,6 +460,11 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
   // to its timeline showed a peephole of its final seconds with no way back.
   const [loadingEarlier, setLoadingEarlier] = useState(false)
   const [exhausted, setExhausted] = useState(false)
+  // Rows paged in by hand are kept on top of TIMELINE_HELD: a reader who went
+  // back for them must not see them cut by the next live event.
+  const earlier = useRef(0)
+  /** How many events are held, as setEvents will leave them. */
+  const held = useRef(initial.length)
   const loadEarlier = async () => {
     const oldest = events[0]?.id
     if (oldest === undefined || loadingEarlier) return
@@ -463,18 +476,29 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
       // history and threw nearly all of it away.
       const before = await api.eventsBefore(id, oldest, EARLIER_PAGE)
       if (before.length === 0) setExhausted(true)
-      else setEvents((cur) => [...before, ...cur])
+      else {
+        earlier.current += before.length
+        held.current += before.length
+        setEvents((cur) => [...before, ...cur])
+      }
     } catch {
       setExhausted(true)
     } finally {
       setLoadingEarlier(false)
     }
   }
-  useEffect(() => { setEvents(initial); setExhausted(false); lastId.current = initial.length ? initial[initial.length - 1]!.id : 0 }, [initial])
+  useEffect(() => { setEvents(initial); setExhausted(false); earlier.current = 0; held.current = initial.length; lastId.current = initial.length ? initial[initial.length - 1]!.id : 0 }, [initial])
   // Append live events for this session as they arrive, a batch at a time
   // (lib/framebatch): one render per FRAME_BATCH_MS, not one per event.
   const incoming = useFrameBatch<Event>((batch) => {
-    setEvents((evs) => [...evs, ...batch].slice(-5000))
+    const keep = TIMELINE_HELD + earlier.current
+    held.current += batch.length
+    if (held.current > keep) {
+      held.current = keep
+      // What was cut is one "load earlier" away again.
+      setExhausted(false)
+    }
+    setEvents((evs) => [...evs, ...batch].slice(-keep))
     setReceived((n) => n + batch.length)
   })
   useEffect(() => {

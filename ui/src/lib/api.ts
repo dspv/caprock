@@ -2256,6 +2256,32 @@ export interface PairMe {
   pending?: boolean
 }
 
+/** A local dev server opened on a phone on the same Wi-Fi (ADR-087, GET/POST /v1/devshare). */
+export interface DevShare {
+  id: string
+  /** The origin forwarded to, e.g. http://localhost:5173. */
+  target: string
+  /** Where the link lands. */
+  path: string
+  /** The link for the phone, token included: the QR. */
+  url: string
+  /** host:port the phone reaches, without the token. */
+  address: string
+  /** The address is Tailscale's, not the Wi-Fi's. */
+  tunnelled?: boolean
+  started_at: string
+  last_used_at: string
+  /** When it ends by itself if the phone does nothing. */
+  expires_at: string
+}
+
+export interface DevShareList {
+  shares: DevShare[]
+  idle_sec: number
+  max_sec: number
+  max: number
+}
+
 /** What the owner sees on the pairing panel. */
 export interface PairState {
   /** Whether this daemon is listening on the network at all. */
@@ -2474,6 +2500,11 @@ export const api = {
   setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
   /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
   pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
+  /** The dev servers shared with a phone now (ADR-087). Machine only. */
+  devShares: () => get<DevShareList>('/v1/devshare'),
+  /** Shares a local dev server on the Wi-Fi behind a link; the same origin again gives the same link. */
+  startDevShare: (url: string) => post<DevShare>('/v1/devshare', { url }),
+  stopDevShare: (id: string) => post<{ stopped: boolean }>(`/v1/devshare/${encodeURIComponent(id)}`, {}, 'DELETE'),
   pairRevoke: (id: string) => post<{ revoked: number }>(`/v1/pair/devices/${encodeURIComponent(id)}`, {}, 'DELETE'),
   /** Let a computer that waits control this one (ADR-067). Machine only; deny is pairRevoke. */
   pairAllow: (id: string) => post<{ id: string; role: string }>(`/v1/pair/devices/${encodeURIComponent(id)}/allow`, {}),
@@ -2709,6 +2740,8 @@ export const api = {
   queueCancel: (id: string, qid: number) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, {}, 'DELETE'),
   /** Type one in now, whatever the turn is doing; 409 while a prompt is on the screen. */
   queueSendNow: (id: string, qid: number) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}/send`, {}),
+  /** Send messages an ended session never got to a new session of the same agent in the same folder (resumed when it can be); no ids is all of them. */
+  queueResend: (id: string, ids?: readonly number[]) => post<QueueResendResult>(`/v1/agents/${encodeURIComponent(id)}/queue/resend`, ids?.length ? { ids } : {}),
   /** A session's last compaction, whether one runs or waits, and what this machine's keep (ADR-085). */
   compaction: (id: string) => get<CompactionView>(`/v1/sessions/${encodeURIComponent(id)}/compaction`),
   /** Compact context: /compact typed into a session Caprock started, now or when its turn ends. */
@@ -2876,15 +2909,29 @@ export interface QueuedMessage {
   updated_at: number
   /** Where it came from: 'telegram' for a forward to the paired bot (ADR-081); absent for Caprock's own field. */
   via?: string
+  /** Unix ms the session's process was found gone with this message still waiting (ADR-053, 2026-10-27); absent while it waits. */
+  undelivered_at?: number
 }
 
-/** What holds a queued message: the turn, a permission prompt, a question; '' nothing. */
-export type QueueWaiting = '' | 'turn' | 'permission' | 'question'
+/** What holds a queued message: the turn, a permission prompt, a question, a session still starting (start); '' nothing. */
+export type QueueWaiting = '' | 'turn' | 'permission' | 'question' | 'start'
 
 export interface QueueView {
   session_id: string
   messages: QueuedMessage[] | null
   waiting: QueueWaiting
+  /** What the session's process ended before typing in, oldest first, kept 7 days. */
+  undelivered?: QueuedMessage[] | null
+}
+
+/** POST /v1/agents/{id}/queue/resend: the session the messages now wait in. */
+export interface QueueResendResult {
+  session_id: string
+  /** It continues the ended conversation (--resume) rather than starting fresh. */
+  resumed: boolean
+  /** A new process was started for them (false: the session runs again and took them back). */
+  started: boolean
+  queue: QueueView
 }
 
 /** An estimate in ms from the board's `now`: median and the p25–p75 range. */

@@ -87,8 +87,17 @@ vi.mock('@/lib/api', async (orig) => {
         spawned.reqs.push(req)
         spawned.n += 1
         const id = `chat-${spawned.n}`
-        sessions.push(chatSession(id))
-        return { session_id: id, cwd: chatSession(id).cwd }
+        // A quick chat gets its own dated folder; anything started in a
+        // folder (Continue here's fork, an agent) runs there, as the daemon
+        // does. Listing a fork as a quick chat once the session list caught
+        // up turned its tab to the chat view and its terminal inactive: the
+        // Continue here test failed whenever the list answered first.
+        const cwd = typeof req.cwd === 'string' && !req.chat ? req.cwd : ''
+        const s = cwd
+          ? sess({ session_id: id, cwd, repo_root: cwd, project: cwd.split('/').pop(), title: undefined, activity: { phrase: '', at: '', health: spawned.health } })
+          : chatSession(id)
+        sessions.push(s)
+        return { session_id: id, cwd: s.cwd }
       },
       summary: async () => ({ cost_usd: 1.25, savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 }, projects: [{ project: 'app', dir: '/w/app', cost_usd: 1.25, tokens: 0, sessions: 2 }], rate_limits: { five_hour: { used_percentage: 40, resets_at: 0 } } }),
       signal: async (id: string, action: string) => { spawned.signals.push([id, action]) },
@@ -420,9 +429,11 @@ describe('the app workspace', () => {
     await waitFor(() => expect(spawned.reqs).toHaveLength(1))
     expect(spawned.reqs[0]).toMatchObject({ cwd: '/w/other', resume: 'theirs', fork: true })
     const id = `chat-${spawned.n}`
-    // A loaded CI runner took longer than waitFor's one second (2026-10-19),
-    // then longer than three (the v0.140.2 release run, 2026-10-21).
-    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'), { timeout: 10000 })
+    await waitFor(() => expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true'))
+    // Still its terminal once the session list has caught up with the copy:
+    // a copy is not a quick chat, so it never turns to the chat view.
+    await act(() => new Promise((r) => setTimeout(r, 300)))
+    expect(screen.getByTestId(`pane-${id}`)).toHaveAttribute('data-active', 'true')
     // The watched tab stays; nothing was sent to the other terminal's process.
     expect(screen.getByRole('tab', { name: /Started elsewhere/ })).toBeInTheDocument()
     expect(spawned.signals).toEqual([])

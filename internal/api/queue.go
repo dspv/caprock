@@ -24,6 +24,9 @@ const (
 	WaitingTurn       = "turn"       // the agent is working
 	WaitingPermission = "permission" // a permission prompt is on the screen
 	WaitingQuestion   = "question"   // the agent asked a question (AskUserQuestion)
+	// WaitingStart: a session started for messages it never got, before
+	// its first hook (ADR-053, 2026-10-27). Read-only: never refuses.
+	WaitingStart = "start"
 )
 
 // QueueMax is how many messages one session's queue holds.
@@ -48,6 +51,10 @@ type QueueView struct {
 	SessionID string                `json:"session_id"`
 	Messages  []store.QueuedMessage `json:"messages"`
 	Waiting   string                `json:"waiting"`
+	// Undelivered is what the session's process ended before typing in,
+	// oldest first, kept 7 days (ADR-053, 2026-10-27); empty or absent
+	// when there is none.
+	Undelivered []store.QueuedMessage `json:"undelivered,omitempty"`
 }
 
 // SendResult is POST /v1/agents/{id}/queue's answer: typed in, or queued.
@@ -65,6 +72,24 @@ type Queuer interface {
 	Edit(ctx context.Context, sessionID string, id int64, text string) (QueueView, error)
 	Cancel(ctx context.Context, sessionID string, id int64) (QueueView, error)
 	SendNow(ctx context.Context, sessionID string, id int64) (QueueView, error)
+}
+
+// QueueResender sends undelivered messages on (ADR-053, 2026-10-27):
+// Resend makes them wait again in session to's queue, from's own when it
+// runs again; spawned says to was just started for them. Optional: a queue
+// without it answers 501 to POST …/queue/resend.
+type QueueResender interface {
+	Resend(ctx context.Context, from, to string, ids []int64, spawned bool) (QueueView, error)
+}
+
+// ResendResult is POST /v1/agents/{id}/queue/resend's answer: the session
+// the messages now wait in, whether it continues the ended conversation
+// (--resume) or is a fresh one, and its queue.
+type ResendResult struct {
+	SessionID string    `json:"session_id"`
+	Resumed   bool      `json:"resumed"`
+	Started   bool      `json:"started"`
+	Queue     QueueView `json:"queue"`
 }
 
 // cleanMessage checks a message as the chat field sends it: trailing

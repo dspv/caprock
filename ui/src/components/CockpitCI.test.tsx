@@ -378,6 +378,8 @@ describe('the cockpit’s CI block', () => {
     await waitFor(() => expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveAttribute('data-cockpit-ci-fold', '806'))
     expect(head()).not.toHaveTextContent(/running|#801/)
     expect(head()).toHaveTextContent(/^CIjust now#806/)
+    // Merged, the line says so instead of a tally of old checks.
+    expect(head()).toHaveTextContent(/#806merged$/)
   })
 
   it('unfolded, times a kept copy as of its read until it is read again', () => {

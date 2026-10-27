@@ -37,6 +37,11 @@ until you enable it, and each contacts exactly one host:
 - **LAN access** (`caprock up --lan`, or the switch in the dashboard) opens a
   second listener on one private address of this machine, never `0.0.0.0`.
   See [Other devices](#other-devices).
+- **Open on my phone** (phone mode, a local dev server's page) opens a
+  listener for that one dev server on one private address, on a random port,
+  until you stop it, 30 minutes pass unused, 8 hours pass, or Caprock quits.
+  It sends nothing anywhere; it lets a phone on your network in, with the
+  link. See [A dev server on your phone](#a-dev-server-on-your-phone).
 
 The licence key is checked offline; activating it calls nothing
 ([ADR-022](.ai/08-decisions.md)).
@@ -172,6 +177,18 @@ device takes effect on its next request. The decision to listen is not saved:
 a restarted daemon is back on loopback only. Details:
 [`.ai/03-contracts.md` § Who may connect](.ai/03-contracts.md) and
 [ADR-029](.ai/08-decisions.md).
+
+## A dev server on your phone
+
+*Open on my phone* forwards to the one local dev server you pressed it on and
+to nothing else: no other port, host or Caprock route. The QR carries a link
+with 32 random bytes; opening it sets a cookie for that listener and drops the
+token from the address, and every request without the cookie is refused
+before it reaches the dev server. Anyone on the same network who gets the
+link sees what the dev server serves, so share it as you would the page
+itself. It is plain http on the network, as a dev server's `--host` is; it
+listens on one named address, never `0.0.0.0`, and is never remembered across
+a restart. Details: [ADR-087](.ai/08-decisions.md).
 
 ## Supported versions
 

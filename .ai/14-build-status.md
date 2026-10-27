@@ -111,6 +111,20 @@ without a TestFlight round and without push (ADR-083, amended 2026-10-27).
   category, age rating, App Privacy: Data Not Collected, review notes);
   `ios-app/scripts/check-store.mjs` keeps each field inside Apple's limits.
 
+### 2026-10-27 — unreleased: what the window's script keeps
+
+The owner's window was about 490 MB after four hours (peak about 700 MB).
+Measured in Chromium's headless shell against the live daemon, read-only, 30
+minutes moving through the workspace, a long session, History, Pipeline and
+Home: the JS heap went 8.1 → 51.9 MB, and most of it was the Live pulse
+holding every tool's whole answer for up to 4,000 events a track. Slim pulse
+events, a copying clip (a `slice` keeps its source string alive), a chat that
+keeps its newest 120 messages while following, a session timeline capped at
+1,000 live events, and cockpit results held without their bodies: the same
+run ends at 29.5 MB, strings 28.5 → 7.3 MB. Table and method in
+[04-ui.md](04-ui.md) § What the window keeps in memory. WebKit's own share of
+the footprint (layers, caches, WebGL atlases) was not measured.
+
 ### 2026-10-24 — unreleased: Second Brain reads only what matters
 
 - **Two filters before the read** ([ADR-063](08-decisions.md), amended).
@@ -217,6 +231,14 @@ title, about 335,000 characters as the re-tag sends them, so 31 calls. Token
 estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
+
+### 2026-10-28 — 0.163.1: a slow daemon is not a stopped one
+
+A patch release, one PR (#845). On the owner's Mac at load average 280–330 (an Xcode build beside test runs) the app's `/healthz` recheck exceeded its 800 ms timeout, and the window flipped to *The Caprock daemon stopped* dozens of times in an evening while one daemon (the same pid) ran for 8.5 hours. `discovery::recheck` now keeps a daemon whose check times out for 20 s (`SLOW_GRACE`); a refused connection is still gone at once, and silence past the grace is gone too. Covered by a test with a listener that accepts and never answers.
+
+### 2026-10-27 — 0.163.0: a queued message survives its session, a dev server opens on a phone, and the window keeps less
+
+A minor release, one batch PR (#841) of five branches. Queued messages (ADR-053 amended, migration 0075, `POST /v1/agents/{id}/queue/resend`): a process that ends keeps what it was never sent as *Not sent: the session ended* with Send to a new session (resume when possible, else a fresh session in the same folder), Copy and Delete, cleaned after 7 days; SessionEnd alone no longer touches the queue, and `/clear` or a compaction moves it to the successor — before, a `/clear` dropped every message behind it. Checked with a real `claude` on a preview daemon that an exit keeps the message; the resend path is covered by Go tests and an e2e run with the fake `claude`. *Open on my phone* (ADR-087): the phone-mode device bar shares one local dev server on the Mac's Wi-Fi address behind a 32-byte token, through a proxy that rewrites Host, Origin and absolute localhost URLs; HTTP and live reload checked with Vite 6 and Next 15 in headless Chromium, not yet on a physical phone; stops on demand, after 30 min idle or 8 h. The window keeps slim Live pulse events, copies sliced strings and bounds the chat, timeline and agent-panel lists: JS heap after 30 minutes 51.9 → 29.5 MB in headless Chromium against the same live daemon (the WebKit footprint is not yet measured). A pull request with red checks no longer reads *ready to merge*, and the folded CI line says *merged* for a finished one. Two flaky tests fixed: AppShell's *Continue here* raced the session list, and the brain-write time bound is skipped on Windows runners.
 
 ### 2026-10-27 — 0.162.0: the shared post shows the chosen card, the phone shares it, and the upgrade says what it skipped
 

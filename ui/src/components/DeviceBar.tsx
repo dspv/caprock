@@ -1,7 +1,8 @@
 /**
  * Phone mode's device bar, under a browser tab's toolbar (lib/phonemode.ts):
  * the device, a custom size, the browser's bars shown or scrolled away,
- * rotate, side by side, touch, the honest list behind ?, and what the page
+ * rotate, side by side, touch, the honest list behind ?, *Open on my phone*
+ * for a local dev server's page (ADR-087, OpenOnPhone.tsx), and what the page
  * reads. Side by side has no device, size or rotate of its own: it is the
  * three phones, portrait (components/PhoneRow.tsx).
  */
@@ -9,6 +10,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { CUSTOM_MAX, CUSTOM_MIN, DEVICES, TRUTH, clampSide, dprText, hostOs, type Device, type Fit, type HostOs, type Layout, type PhonePrefs } from '@/lib/phonemode'
 import { getUiScale } from '@/lib/uiscale'
 import { QuestionIcon, RotateIcon, TouchIcon } from './AppIcons'
+import { OpenOnPhone } from './OpenOnPhone'
 
 export interface DeviceBarProps {
   prefs: PhonePrefs
@@ -22,12 +24,14 @@ export interface DeviceBarProps {
   side?: { scale: number; devices: readonly Device[] } | null
   /** Tests: the host OS the list opens on. */
   os?: HostOs
+  /** The page's address: a local dev server's gets *Open on my phone* (ADR-087). */
+  url?: string
 }
 
 const OS_NAMES: Record<HostOs, string> = { mac: 'macOS', win: 'Windows', lin: 'Linux' }
 const MARK: Record<string, string> = { real: '✓', approx: '≈', no: '×' }
 
-export function DeviceBar({ prefs, onChange, device, layout, fit, scale = 1, side = null, os = hostOs() }: DeviceBarProps) {
+export function DeviceBar({ prefs, onChange, device, layout, fit, scale = 1, side = null, os = hostOs(), url = '' }: DeviceBarProps) {
   const [help, setHelp] = useState(false)
   const [listOs, setListOs] = useState<HostOs>(os)
   const helpRef = useRef<HTMLDivElement>(null)
@@ -104,6 +108,7 @@ export function DeviceBar({ prefs, onChange, device, layout, fit, scale = 1, sid
           </div>
         )}
       </div>
+      <OpenOnPhone url={url} />
       <span className="min-w-0 flex-1" />
       {side ? (
         <span className="mono truncate text-[11.5px] text-fg-muted" data-phone-readout>

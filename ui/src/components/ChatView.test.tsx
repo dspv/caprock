@@ -12,13 +12,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event } from '@/lib/api'
 import { live } from '@/lib/live'
 import type { LinkPhase } from '@/lib/reconnect'
-import { ChatView, CHAT_GAP_PAGES, CHAT_PAGE_EVENTS, CHAT_WINDOW, CLEARED_DIVIDER } from './ChatView'
+import { ChatView, CHAT_GAP_PAGES, CHAT_HELD_MAX, CHAT_PAGE_EVENTS, CHAT_WINDOW, CLEARED_DIVIDER } from './ChatView'
 import { resetPickerCache } from './ChatPicker'
 
 const store = vi.hoisted(() => ({
   events: [] as Event[], inputs: [] as string[], before: 0, prompt: false, busy: false,
   queued: [] as { id: number; session_id: string; text: string; created_at: number; updated_at: number }[],
   calls: [] as string[],
+  undelivered: [] as { id: number; session_id: string; text: string; created_at: number; updated_at: number; undelivered_at?: number }[],
+  resendTo: 's',
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -68,7 +70,13 @@ vi.mock('@/lib/api', async (orig) => {
       queueCancel: async (id: string, qid: number) => {
         store.calls.push(`cancel ${qid}`)
         store.queued = store.queued.filter((m) => m.id !== qid)
+        store.undelivered = store.undelivered.filter((m) => m.id !== qid)
         return view(id)
+      },
+      queueResend: async (id: string, ids?: readonly number[]) => {
+        store.calls.push(`resend ${ids?.join(',') ?? 'all'}`)
+        store.undelivered = ids ? store.undelivered.filter((m) => !ids.includes(m.id)) : []
+        return { session_id: store.resendTo, resumed: store.resendTo === id, started: true, queue: view(id) }
       },
       queueSendNow: async (id: string, qid: number) => {
         store.calls.push(`now ${qid}`)
@@ -88,7 +96,7 @@ vi.mock('@/lib/api', async (orig) => {
 })
 
 function view(id: string) {
-  return { session_id: id, messages: store.queued.slice(), waiting: store.prompt ? 'permission' : store.busy ? 'turn' : '' }
+  return { session_id: id, messages: store.queued.slice(), waiting: store.prompt ? 'permission' : store.busy ? 'turn' : '', undelivered: store.undelivered.slice() }
 }
 
 const BASE = Date.UTC(2026, 9, 5, 12, 0, 0)
@@ -141,6 +149,8 @@ beforeEach(() => {
   store.busy = false
   store.queued = []
   store.calls = []
+  store.undelivered = []
+  store.resendTo = 's'
   resetPickerCache()
   sessionStorage.clear()
   setPhase('live')
@@ -250,6 +260,28 @@ describe('ChatView', () => {
     expect(el.scrollHeight - el.scrollTop - VIEW).toBeLessThanOrEqual(4)
     expect(screen.queryByRole('button', { name: /new/ })).toBeNull()
   })
+
+  it('following a busy agent for hours holds at most CHAT_HELD_MAX messages; scrolling back pages the rest in', async () => {
+    store.events = Array.from({ length: 50 }, (_, i) => msg(i + 1))
+    render(<ChatView sessionId="s" canType={false} />)
+    await waitFor(() => expect(renderedIds()).toHaveLength(50))
+    const total = 50 + CHAT_HELD_MAX * 3
+    for (let i = 51; i <= total; i += 90) {
+      const batch = Array.from({ length: Math.min(90, total - i + 1) }, (_, k) => msg(i + k))
+      store.events.push(...batch)
+      await deliver(batch)
+      expect(renderedIds().length).toBeLessThanOrEqual(CHAT_HELD_MAX)
+    }
+    expect(renderedIds()[renderedIds().length - 1]).toBe(total)
+    const el = log()
+    expect(el.scrollHeight - el.scrollTop - VIEW).toBeLessThanOrEqual(4)
+    // What was let go comes back from the daemon, in place.
+    const kept = renderedIds()[0]!
+    el.scrollTop = 10
+    await act(async () => { fireEvent.scroll(el); await new Promise((r) => setTimeout(r, 40)) })
+    await waitFor(() => expect(renderedIds()[0]).toBeLessThan(kept))
+    expect(store.before).toBeGreaterThan(0)
+  }, 20_000)
 
   it('an older page revealed at the top keeps the first visible message in place', async () => {
     store.events = Array.from({ length: CHAT_PAGE_EVENTS * 2 }, (_, i) => msg(i + 1))
@@ -714,5 +746,54 @@ describe('ChatView: after /clear', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+})
+
+describe('ChatView: messages the session never got', () => {
+  const und = (id: number, text: string) => ({ id, session_id: 's', text, created_at: BASE, updated_at: BASE, undelivered_at: BASE + 60_000 })
+
+  it('an ended session shows each one as not sent, with Send to a new session, Copy and Delete', async () => {
+    store.undelivered = [und(7, 'run the tests'), und(8, 'then commit')]
+    render(<ChatView sessionId="s" canType={false} ended />)
+    expect(await screen.findAllByText('Not sent: the session ended')).toHaveLength(2)
+    expect(screen.getByText('run the tests')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send to a new session: run the tests' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy the message: run the tests' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send all 2 to a new session' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete the message: then commit' }))
+    await waitFor(() => expect(screen.queryByText('then commit')).toBeNull())
+    expect(store.calls).toContain('cancel 8')
+    // One left: no "send all".
+    expect(screen.queryByRole('button', { name: /Send all/ })).toBeNull()
+  })
+
+  it('Send to a new session asks the daemon for that one; resumed under the same id the page stays', async () => {
+    store.undelivered = [und(7, 'run the tests'), und(8, 'then commit')]
+    render(<ChatView sessionId="s" canType={false} ended />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Send to a new session: run the tests' }))
+    await waitFor(() => expect(store.calls).toContain('resend 7'))
+    await waitFor(() => expect(screen.queryByText('run the tests')).toBeNull())
+    expect(screen.getByText('then commit')).toBeInTheDocument()
+  })
+
+  it('Send all goes in one request, in order; a new id is opened', async () => {
+    store.undelivered = [und(7, 'one'), und(8, 'two')]
+    store.resendTo = 'n1'
+    const opened: string[] = []
+    render(<ChatView sessionId="s" canType={false} ended onResent={(id) => opened.push(id)} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Send all 2 to a new session' }))
+    await waitFor(() => expect(opened).toEqual(['n1']))
+    expect(store.calls).toContain('resend all')
+  })
+
+  it('Copy puts the text on the clipboard', async () => {
+    store.undelivered = [und(7, 'keep this')]
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<ChatView sessionId="s" canType={false} ended />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy the message: keep this' }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('keep this'))
+    expect(await screen.findByText('Copied')).toBeInTheDocument()
   })
 })

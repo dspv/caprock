@@ -722,10 +722,6 @@ SELECT c.parent_session, COALESCE(c.pid, 0), COALESCE(p.pid, 0) FROM sessions c 
 DELETE FROM pending_permissions WHERE session_id = ?
     SEARCH pending_permissions USING INDEX sqlite_autoindex_pending_permissions_1 (session_id=?)
 
-## store.ClearQueued
-DELETE FROM queued_messages WHERE session_id = ?
-    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
-
 ## store.ClearSuccessor
 SELECT c.session_id FROM sessions c JOIN sessions p ON p.session_id = c.parent_session WHERE c.parent_session = ? AND c.pid > 0 AND c.pid = p.pid ORDER BY c.started_at DESC LIMIT 1
     SEARCH p USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
@@ -978,7 +974,7 @@ SELECT id, root, name, kind, source, remote_url, default_branch, added_at, pinne
     SEARCH projects USING INDEX sqlite_autoindex_projects_1 (root=?)
 
 ## store.GetQueued
-SELECT id, session_id, text, created_at, updated_at, via FROM queued_messages WHERE session_id = ? AND id = ?
+SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM queued_messages WHERE session_id = ? AND id = ? AND undelivered_at = 0
     SEARCH queued_messages USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.GetSavedPrompt
@@ -1246,10 +1242,6 @@ SELECT id, root, name, kind, source, remote_url, default_branch, added_at, pinne
     SCAN projects
     USE TEMP B-TREE FOR ORDER BY
 
-## store.ListQueued
-SELECT id, session_id, text, created_at, updated_at, via FROM queued_messages WHERE session_id = ? ORDER BY id
-    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
-
 ## store.ListSavedPrompts
 SELECT s.id, s.kind, s.name, s.text, COALESCE(s.project_id, 0), COALESCE(p.root, ''), COALESCE(p.name, ''), s.sort, s.created_at, s.updated_at FROM saved_prompts s LEFT JOIN projects p ON p.id = s.project_id ORDER BY s.project_id IS NOT NULL, COALESCE(p.name, ''), s.sort, s.name COLLATE NOCASE, s.id
     SCAN s USING INDEX idx_saved_prompts_project
@@ -1397,6 +1389,10 @@ UPDATE sessions SET status = 'idle' WHERE status = 'active' AND last_event_at < 
 UPDATE sessions SET owned = 1, worktree = COALESCE(NULLIF(?, ''), worktree), spawn_command = ?, pid = ?, status = 'active', idle_ended_at = 0, idle_ended_after = 0 WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## store.MarkUndelivered
+UPDATE queued_messages SET undelivered_at = ? WHERE session_id = ? AND undelivered_at = 0
+    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
+
 ## store.MeasureBrainGap
 DELETE FROM brain_gaps WHERE id = ?
     SEARCH brain_gaps USING INTEGER PRIMARY KEY (rowid=?)
@@ -1410,6 +1406,10 @@ SELECT id, payload FROM events WHERE sid = (SELECT sid FROM sessions WHERE sessi
     SEARCH events USING INDEX idx_events_sid_key (sid=? AND key=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.MoveQueued
+UPDATE queued_messages SET session_id = ? WHERE session_id = ? AND undelivered_at = 0
+    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
 
 ## store.MovedOnSince
 SELECT 1 FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts > ? AND kind IN ('tool.post', 'turn.user', 'turn.assistant', 'agent.stop', 'session.end') LIMIT 1
@@ -1488,8 +1488,16 @@ DELETE FROM session_files WHERE last_ts < ?
 SELECT DISTINCT session_id FROM pending_permissions
     SCAN pending_permissions USING COVERING INDEX sqlite_autoindex_pending_permissions_1
 
+## store.PruneUndelivered
+DELETE FROM queued_messages WHERE undelivered_at > 0 AND undelivered_at < ?
+    SCAN queued_messages
+
 ## store.PutEventTLDR
 INSERT INTO event_tldr(event_id, text, model, cost_usd, created_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET text = excluded.text, model = excluded.model, cost_usd = excluded.cost_usd, created_at = excluded.created_at
+
+## store.QueuedSessions
+SELECT DISTINCT session_id FROM queued_messages WHERE undelivered_at = 0 ORDER BY session_id
+    SCAN queued_messages USING INDEX idx_queued_messages_session
 
 ## store.RateLimitHistoryMark, store.RecordRateLimit, store.ReplaceRateLimits
 SELECT MAX(ts) FROM rate_limit_history WHERE window = ?
@@ -1812,6 +1820,14 @@ INSERT INTO rate_limit_latest(window, ts, session_id, used_percentage, resets_at
 ## store.ReplaceRateLimits
 SELECT MAX(ts) FROM rate_limit_latest WHERE substr(window, 1, length(?)) = ?
     SEARCH rate_limit_latest
+
+## store.Requeue
+UPDATE queued_messages SET session_id = ?, undelivered_at = 0, updated_at = ? WHERE session_id = ? AND id = ? AND undelivered_at > 0
+    SEARCH queued_messages USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.Requeue
+UPDATE queued_messages SET session_id = ?, undelivered_at = 0, updated_at = ? WHERE session_id = ? AND undelivered_at > 0
+    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
 
 ## store.ResetForcedContinue
 DELETE FROM forced_continues WHERE session_id = ? AND task_id = ?
@@ -2408,7 +2424,7 @@ UPDATE projects SET name = ?, pinned = ?, sort = ?, defaults = ? WHERE id = ?
     SEARCH projects USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.UpdateQueued
-UPDATE queued_messages SET text = ?, updated_at = ? WHERE session_id = ? AND id = ?
+UPDATE queued_messages SET text = ?, updated_at = ? WHERE session_id = ? AND id = ? AND undelivered_at = 0
     SEARCH queued_messages USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.UpdateSavedPrompt
@@ -2751,6 +2767,14 @@ SELECT ts, kind, COALESCE(json_extract(payload, '$.tool_use_id'), ''), COALESCE(
     SEARCH events USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.listQueued
+SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM queued_messages WHERE session_id = ? AND undelivered_at = 0 ORDER BY id
+    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
+
+## store.listQueued
+SELECT id, session_id, text, created_at, updated_at, via, undelivered_at FROM queued_messages WHERE session_id = ? AND undelivered_at > 0 ORDER BY id
+    SEARCH queued_messages USING INDEX idx_queued_messages_session (session_id=?)
 
 ## store.markBrainVaults
 SELECT EXISTS (SELECT 1 FROM brain_vault_notes)

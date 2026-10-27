@@ -19,7 +19,7 @@ import { useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as
 import { api, errText, type DiffResult, type Event, type SessionCI, type SessionSummary } from '@/lib/api'
 import { live } from '@/lib/live'
 import { useFrameBatch } from '@/lib/framebatch'
-import { buildPulse, costTier, medianCost, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
+import { buildPulse, costTier, medianCost, slimPulseEvent, trackState, windowCost, windowEvents, PULSE_MINUTES, type Pulse as PulseModel } from '@/lib/pulse'
 import { fmtAgo, fmtModel, fmtPct, fmtTokens, fmtUSD, shortId } from '@/lib/format'
 import { AgentCharacter, agentName } from '@/components/Characters'
 import { SessionCharacter } from '@/components/SessionFace'
@@ -115,7 +115,9 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
       const batches = await Promise.all(fresh.map((id) => api.recentEvents(id, SEED_LIMIT).catch(() => [] as Event[])))
       if (cancelled) return
       for (const id of fresh) seeded.current.add(id)
-      const got = new Map(fresh.map((id, i) => [id, batches[i] ?? []]))
+      // Held slim (lib/pulse slimPulseEvent): a stored event carries the
+      // tool's whole answer, and the bars read none of it.
+      const got = new Map(fresh.map((id, i) => [id, (batches[i] ?? []).map(slimPulseEvent)]))
       setEvents((cur) => new Map(list.map((id) => [id, got.get(id) ?? cur.get(id) ?? []])))
     })()
     return () => {
@@ -139,7 +141,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
   })
   useEffect(() => {
     return live.onFrame((f) => {
-      if (f.type === 'event') incoming.push(f.data)
+      if (f.type === 'event') incoming.push(slimPulseEvent(f.data))
     })
   }, [incoming])
 
@@ -696,7 +698,7 @@ function SessionWays({ x, jump }: { x: SessionSummary; jump: SessionJump }) {
   if (queued > 0) {
     return (
       <span className={`${small} text-warn`} data-end-confirm={x.session_id}>
-        {queued} queued message{queued === 1 ? '' : 's'} will be dropped.{' '}
+        {queued} queued message{queued === 1 ? '' : 's'} won't be sent (kept in its chat).{' '}
         <button type="button" onClick={() => { setQueued(0); host.onEndSession?.(x.session_id) }} className="text-danger hover:underline">End anyway</button>{' '}
         <button type="button" onClick={() => setQueued(0)} className="text-fg-muted hover:text-fg">Keep</button>
       </span>

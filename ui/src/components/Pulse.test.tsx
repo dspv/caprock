@@ -554,7 +554,7 @@ describe('a live session row, in the desktop app', () => {
     const onOpenSession = vi.fn()
     const row = await openRow({ onOpenSession, onEndSession, tabDigitOf: () => undefined }, [mine, idleMine])
     fireEvent.click(within(row('b')).getByRole('button', { name: /^End session/ }))
-    expect(await within(row('b')).findByText(/2 queued messages will be dropped/)).toBeInTheDocument()
+    expect(await within(row('b')).findByText(/2 queued messages won't be sent/)).toBeInTheDocument()
     expect(onEndSession).not.toHaveBeenCalled()
     fireEvent.click(within(row('b')).getByRole('button', { name: 'Keep' }))
     expect(onEndSession).not.toHaveBeenCalled()

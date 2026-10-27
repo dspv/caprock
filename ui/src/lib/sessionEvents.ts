@@ -9,13 +9,14 @@
  * events an hour had none of its own among its newest 400. Then followed on
  * the live socket, and fetched again after the socket resets. The entry goes
  * — listener and all — when its last reader does, so a closed deck and a
- * closed inspector cost nothing.
+ * closed inspector cost nothing. A result is held without its body
+ * (cockpit slimToolResult): the panels read only its outcome.
  */
 import { useCallback, useSyncExternalStore } from 'react'
 import { api, type Event } from './api'
 import { live } from './live'
 import { mergeEvents } from './chat'
-import { mainThread } from './cockpit'
+import { mainThread, slimToolResult } from './cockpit'
 import { coalesce } from './visible'
 import { FRAME_BATCH_MS } from './framebatch'
 
@@ -60,7 +61,7 @@ function load(id: string, e: Entry) {
   api.recentMainEvents(id, MAIN_KINDS, EVENTS_HELD)
     .then((list) => {
       if (entries.get(id) !== e || e.gen !== gen || !Array.isArray(list)) return
-      publish(e, mergeEvents(e.events, list.filter(isMainKind)).slice(-EVENTS_HELD), true)
+      publish(e, mergeEvents(e.events, list.filter(isMainKind).map(slimToolResult)).slice(-EVENTS_HELD), true)
     })
     .catch(() => { /* an older daemon or a gone session: the panels show what the row has */ })
 }
@@ -73,7 +74,7 @@ function subscribe(id: string, cb: () => void): () => void {
     entry.off = live.onFrame((f) => {
       if ((f.type === 'event' || f.type === 'event_update') && f.data.session_id === id) {
         if (!isMainKind(f.data)) return
-        const next = mergeEvents(entry.events, [f.data])
+        const next = mergeEvents(entry.events, [slimToolResult(f.data)])
         if (next !== entry.events) publish(entry, next.slice(-EVENTS_HELD))
       } else if (f.type === 'reset' || (f.type === 'hello' && f.data.reset)) {
         load(id, entry)

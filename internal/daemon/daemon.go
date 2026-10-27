@@ -36,6 +36,7 @@ import (
 	"github.com/dspv/caprock/internal/cost"
 	"github.com/dspv/caprock/internal/deepseek"
 	"github.com/dspv/caprock/internal/desktop"
+	"github.com/dspv/caprock/internal/devshare"
 	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gemini"
@@ -310,6 +311,9 @@ type Daemon struct {
 	// machines are the other computers this one reaches (ADR-067).
 	machines   *machinesAdapter
 	remoteStop context.CancelFunc
+	// devShare opens a local dev server on a phone on the same Wi-Fi
+	// (ADR-087); every share ends when the daemon does.
+	devShare *devshare.Manager
 	// ingestErr is the terminal error from the tailer goroutine, if it died.
 	// Ingest is the whole product on Phase 0, so its death is not a log line:
 	// it is reported by /v1/status, `caprock status` and the dashboard.
@@ -599,6 +603,8 @@ func (d *Daemon) run(ctx context.Context) error {
 		d.log.Info("reattached sessions that outlived the last run", "component", "daemon", "count", len(reattached))
 	}
 	d.queue.startup(ctx)
+	// Messages a session never got are kept 7 days, then deleted.
+	d.goBg(func() { d.queue.pruneLoop(ctx) })
 
 	// The projects list: seeded once from the repositories sessions ran in,
 	// then each repository's .git watched for changes (never polled).
@@ -666,8 +672,12 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 	// A /clear in a session Caprock started: its terminal now serves the
 	// session the /clear started (agents/follow.go), so the tab that follows
-	// it attaches and types through the new id.
-	d.rec.OnClear = func(next, prev string) { d.mgr.Follow(next, prev) }
+	// it attaches and types through the new id. Its message queue follows
+	// too, and carries on delivering there (ADR-053, 2026-10-27).
+	d.rec.OnClear = func(next, prev string) {
+		d.mgr.Follow(next, prev)
+		go d.queue.follow(next, prev)
+	}
 
 	// Phase 2 board (opt-in via HiveDir, or turned on later over the API).
 	if d.opt.HiveDir != "" {
@@ -748,6 +758,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	}
 	d.machines = &machinesAdapter{d: d}
 	defer d.machines.close()
+	// The daemon's own port is never shared: a share of the dashboard would
+	// put it on the network behind a link instead of a pairing code.
+	d.devShare = devshare.New(devshare.Options{Log: d.log, Forbid: func(p int) bool { return p == d.port }})
+	defer d.devShare.Close()
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, WindowStop: d.windowStopStatus,
@@ -802,7 +816,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Browsers: &browser.Opener{
 			Env: func() []string { return userenv.Environ(d.log) },
 		},
-		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines,
+		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, DevShare: d.devShare,
 		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
