@@ -12,6 +12,47 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.163.0] - 2026-10-27
+
+### Added
+
+- **browser:** *Open on my phone* in phone mode. A local dev server's page
+  (Vite, Next, webpack on localhost) opens on a real phone on the same Wi-Fi:
+  a QR code, scanned with the phone's camera. Caprock shares that one server
+  through a proxy on this computer's Wi-Fi address and a random port, behind a
+  link only the QR carries; live reload works. Sharing stops on *Stop
+  sharing*, after 30 minutes unused, after 8 hours, or when Caprock quits
+  (ADR-087).
+
+### Changed
+
+- **ui:** folded, the CI section says "#220 merged" (or "closed") for a pull
+  request that is done, instead of a tally of its old checks.
+
+### Fixed
+
+- **queue:** a message waiting in a session's queue is no longer lost when
+  the session ends. When the process ends, the waiting messages are kept for
+  7 days, shown under the conversation as *Not sent: the session ended*,
+  each with **Send to a new session** (the same agent in the same folder,
+  continuing the conversation when it can; the message then goes in through
+  that session's queue), **Copy** and **Delete**, and **Send all** for
+  several, in order, one per turn. A `/clear` no longer empties the queue:
+  it moves to the new session and carries on delivering there. Migration
+  0075 (ADR-053, amendment of 2026-10-27).
+- **ui:** a pull request with failed checks no longer says "ready to merge".
+  GitHub calls it clean when no check is required, and Caprock repeated that
+  beside the red checks; it now says "mergeable, checks failed", or "checks
+  running" while they run.
+- **ui:** the window holds much less memory over a long day. The Live pulse
+  kept every tool's whole answer (command output, files read in full, an
+  edit's original file) for up to 4,000 events a track; it now keeps what the
+  bars read. An open chat following a busy agent no longer grows for as long
+  as it stays open: past 240 messages it keeps the newest 120 and pages the
+  rest back in when scrolled to. A session's timeline left open keeps 1,000
+  live events instead of 5,000. The agent cockpit keeps a result's outcome,
+  not its output, and clipped text no longer keeps the full original alive.
+
 ## [0.162.0] - 2026-10-27
 
 ### Added
