@@ -453,6 +453,11 @@ func (s *share) public(opt Options) Share {
 func (s *share) close() {
 	s.closeOnce.Do(func() {
 		_ = s.srv.Close()
+		// srv.Close closes only the listeners Serve has registered. A Stop
+		// that lands before the Serve goroutine runs left the port
+		// accepting (seen on a Windows runner, 2026-10-27), so the
+		// listener is closed here too.
+		_ = s.ln.Close()
 		s.conns.Range(func(k, _ any) bool {
 			_ = k.(*conn).Conn.Close()
 			return true
