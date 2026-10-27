@@ -932,6 +932,10 @@ SELECT COALESCE(NULLIF(agent,''),'claude'), COALESCE(subscription,''), MIN(start
     SCAN sessions
     USE TEMP B-TREE FOR GROUP BY
 
+## store.ForgetSharedCard
+DELETE FROM shared_cards WHERE id = ?
+    SEARCH shared_cards USING PRIMARY KEY (id=?)
+
 ## store.GetBrainNode
 SELECT n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), n.source_ts, n.project, n.manual, n.pinned, COALESCE(n.run_id, 0), n.created_at, n.updated_at, n.keywords FROM brain_nodes n WHERE n.id = ?
     SEARCH n USING INTEGER PRIMARY KEY (rowid=?)
@@ -983,6 +987,10 @@ SELECT session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), C
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     CORRELATED SCALAR SUBQUERY 1
         SEARCH a USING INDEX sqlite_autoindex_attempts_1 (session_id=?)
+
+## store.GetSharedCard
+SELECT id, url, image, delete_token, bytes, at FROM shared_cards WHERE id = ?
+    SEARCH shared_cards USING PRIMARY KEY (id=?)
 
 ## store.GetStats
 SELECT turns, tool_calls, files_touched, tokens_in, tokens_out, cache_read, cache_write, cost_usd FROM session_stats WHERE session_id = ?
@@ -1672,6 +1680,9 @@ INSERT INTO rate_limit_history(ts, window, used_percentage, resets_at) VALUES(?,
 ## store.RecordRateLimit
 INSERT INTO rate_limit_latest(window, ts, session_id, used_percentage, resets_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(window) DO UPDATE SET ts = excluded.ts, session_id = excluded.session_id, used_percentage = excluded.used_percentage, resets_at = excluded.resets_at
 
+## store.RecordSharedCard
+INSERT INTO shared_cards(id, url, image, delete_token, bytes, at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, image = excluded.image, delete_token = excluded.delete_token, bytes = excluded.bytes, at = excluded.at
+
 ## store.RecordThrottle
 INSERT INTO throttle_observations(ts, session_id, kind, payload) VALUES(?, ?, ?, ?)
 
@@ -1996,6 +2007,10 @@ UPDATE sessions SET subagent_model = ? WHERE session_id = ?
 ## store.SetTitle
 UPDATE sessions SET title = ? WHERE session_id = ? AND title != ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.SharedCards
+SELECT id, url, image, delete_token, bytes, at FROM shared_cards ORDER BY at DESC
+    SCAN shared_cards USING INDEX idx_shared_cards_at
 
 ## store.SpendByBranch
 SELECT s.git_branch, COUNT(*), COALESCE(GROUP_CONCAT(DISTINCT COALESCE(NULLIF(s.agent,''),'claude')),''), COALESCE(SUM(st.cost_usd),0), COALESCE(MAX(s.last_event_at),0) FROM sessions s LEFT JOIN session_stats st ON st.session_id = s.session_id WHERE s.repo_root = ? AND s.git_branch IS NOT NULL AND s.git_branch <> '' GROUP BY s.git_branch

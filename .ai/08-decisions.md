@@ -6438,3 +6438,74 @@ at a smaller context may keep a larger share. Until the next reply the
 cockpit's meter still shows the size before (it is measured from the last
 turn); the after line gives the new size when the boundary carries it, and
 on an older Claude Code says it comes with the next reply.
+
+## ADR-086 — A shared post links to the chosen card on caprock.dev, uploaded on the press of X, Threads or LinkedIn
+
+**Date:** 2026-10-27 · **Status:** accepted (owner, 2026-10-27, translated:
+"do both" — the card link on the computer, the share menu on the phone).
+*Amends rule 4's wording and [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine);
+follows [ADR-062](#adr-062--caprock-may-ask-a-question-and-the-user-may-send-the-answer-to-caprockdev)
+and [ADR-073](#adr-073--report-a-bug-on-a-click-to-caprockdev-never-github-the-sheet-names-every-field).*
+
+**Context.** The share sheet's X, Threads and LinkedIn buttons open a web
+post box, and a web post box can be handed words and a link, never an image.
+So the card went on the clipboard and a box of steps said to press ⌘V — the
+owner expected the card in the post and did not know to paste it
+(2026-10-25). A link was left out on purpose: a caprock.dev link made X and
+Threads draw the site's own dark preview in place of the paper card he had
+chosen. A link whose preview *is* the chosen card removes both problems: the
+post shows the card, and nothing is pasted. That needs the picture on a
+public address, which is a message to caprock.dev — the third of the kind
+rule 4 already allows twice (a survey answer, a bug report).
+
+**Decision.**
+
+- **Only on the press of X, Threads or LinkedIn.** The daemon uploads the
+  exact PNG the sheet drew (`POST /v1/share/card` → `POST
+  https://caprock.dev/api/card`, the raw PNG as the body,
+  `internal/api/sharecard.go`) and the post opens with the returned page,
+  `caprock.dev/c/<id>`: X's `url` parameter, appended to the text on Threads
+  and LinkedIn. Share…, Copy image, Save image and My Telegram never upload.
+- **The picture and nothing else.** No post text, no version, no OS, no
+  identifier: the body is the PNG bytes, checked to be a PNG of at most
+  2 MB before anything is sent. What the card shows is what the person saw
+  in the sheet (the Week card is totals only; the Pipeline card is anonymous
+  unless *Show repo name* was ticked for that share).
+- **Said where it happens, briefly** (the owner hated a cluttered sheet):
+  each of the three buttons' tooltips — *Uploads this picture to caprock.dev
+  so the post shows it, then opens … with the post text and the link* — the
+  box after posting (*This card is on caprock.dev: caprock.dev/c/…*), and
+  the sheet's footer (*Drawn on your machine; only X, Threads and LinkedIn
+  upload it, to caprock.dev.*), which said *uploaded nowhere* until now.
+- **Through the daemon, not from the page.** Every call Caprock makes to
+  caprock.dev stays in one package beside the survey's and the report's,
+  where a review of outbound calls finds it; the desktop app's webview needs
+  no new origin and the site no CORS; and the delete token the site answers
+  with never reaches the page. `CAPROCK_SHARE_URL` replaces the site for a
+  preview stand or a test, which must never upload to the real one.
+- **Taking it down.** The token is kept on the machine (`shared_cards`,
+  migration 0074), and `DELETE /v1/share/cards/{id}` asks the site to delete
+  the picture (`DELETE /api/card/<id>`, `X-Delete-Token`) before the row
+  goes. *Remove the shared picture* is in the box after posting, and
+  Settings → Privacy lists every shared picture with Remove. Both say the
+  social site may keep the preview it already fetched: deleting from
+  caprock.dev cannot reach X's copy.
+- **When the upload fails** — offline, 413, 415, 429, anything — the sheet
+  does what it did before: the card on the clipboard (else in the downloads),
+  the post opened with the words, the ⌘V steps, and one line first saying the
+  upload failed and why. No retry, no queue.
+- **Machine-only.** A paired phone gets `403` (the route is not on a device's
+  list), and the dashboard on a paired device does not try: it keeps the
+  paste. The phone has its own way instead: **Share your week** on the phone
+  home draws the same Week card and hands the PNG to the operating system's
+  share menu (`navigator.share({files})`), where an iPhone lists Threads and
+  X with the card attached — nothing is uploaded on that path.
+
+**Rules out:** uploading on any other button, on opening the sheet or in the
+background; sending the post's words, a version or an identifier with the
+picture; the page calling caprock.dev directly; keeping the delete token
+anywhere the page can read; a link in the post when no card was uploaded.
+
+**Revisit if:** the site has to keep anything beside the picture; the social
+sites stop drawing a link's preview from its page; or people ask for the
+upload to be switched off as a setting rather than chosen per press.

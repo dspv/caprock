@@ -49,12 +49,15 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
    Gemini, and access from anywhere, whose relay carries only end-to-end
    ciphertext ([ADR-058](.ai/08-decisions.md)): each off by default,
    revocable, to a destination the user chose, and saying where it is
-   switched on what it sends ([ADR-047](.ai/08-decisions.md)). Two more,
+   switched on what it sends ([ADR-047](.ai/08-decisions.md)). Three more,
    each only on the user's click, to caprock.dev, after the screen names
-   every field, and nothing sent automatically: a survey answer
-   ([ADR-062](.ai/08-decisions.md)), and a bug report the user wrote, with
+   what goes, and nothing sent automatically: a survey answer
+   ([ADR-062](.ai/08-decisions.md)); a bug report the user wrote, with
    the screenshots they attached, an email if given, the version and the OS
-   — to Caprock support, never GitHub ([ADR-073](.ai/08-decisions.md)).
+   — to Caprock support, never GitHub ([ADR-073](.ai/08-decisions.md)); and
+   the share card the user chose, the picture alone, when they press X,
+   Threads or LinkedIn, so the post's link shows it — removable from
+   Settings ([ADR-086](.ai/08-decisions.md)).
 
 5. **English only, in every file.** Code, comments, docs, data, commits, PR
    titles and descriptions: no Russian and no other language. A quote from a

@@ -855,6 +855,9 @@ PUT  /v1/tabs                          {viewer, sessions} → 204: the sessions 
 GET  /v1/tabs                          → TabsAnswer {known, at, sessions, items}: the computer's tabs the phone home mirrors (§ Open tabs)
 POST /v1/offer                         → {status: "sent"} — forward one offer-survey answer to caprock.dev on the user's click (§ Offer survey, ADR-062)
 POST /v1/support                       → {ok: true} — forward one bug report to Caprock support at caprock.dev on the user's click (§ Report a bug, ADR-073)
+POST   /v1/share/card                  {png} → 201 SharedCard — upload the chosen share card to caprock.dev on the press of X, Threads or LinkedIn (§ Share card link, ADR-086)
+GET    /v1/share/cards                 → {items: SharedCard[]} — the cards this machine uploaded, newest first
+DELETE /v1/share/cards/{id}            → {removed, already_gone} — take one down on caprock.dev, then forget it
 GET  /v1/update                        → cached release status (no network I/O)
 POST /v1/update/check                  → check now (403 unless enabled); ?soon=1 → only if the last check is 10+ min old
 GET  /v1/update/busy                   → {working} — sessions an app restart would interrupt (Update automatically, ADR-042)
@@ -2248,6 +2251,35 @@ address for a preview stand or a test, which must never reach the real site.
 the error never carries the text, the email or the address. Nothing is
 retried and nothing is queued; the handler logs none of the report. The
 machine and a paired controller may send one; a viewer gets `403`.
+
+**Share card link** ([ADR-086](08-decisions.md)). `POST /v1/share/card
+{png}` uploads one share card, and the dashboard calls it only from the
+share sheet's **X**, **Threads** and **LinkedIn** buttons
+(`components/ShareActions.tsx`). `png` is standard base64 of one PNG (the
+first eight bytes are checked) of at most 2 MB decoded; JSON, not raw bytes,
+because every state-changing route is `application/json` (csrf.go). A bad
+body is `400`, a picture over 2 MB `413`, and neither reaches the site. The
+daemon POSTs the decoded bytes alone — no text, no version, no identifier —
+as `Content-Type: image/png` to `https://caprock.dev/api/card` with a 15 s
+limit; `CAPROCK_SHARE_URL` replaces the site's origin (`<origin>/api/card`)
+for a preview stand or a test, which must never reach the real site. The
+site answers `201 {id, url, image, delete_token}`; `id` must be 1–64 of
+`A-Z a-z 0-9 _ -`, `url` must be on the site's own scheme and host (the post
+must never link elsewhere), `image` is dropped unless it is too, and the
+token must be present. The site's `413`, `415` and `429` are passed on as
+themselves; anything else that fails is `502 {error}`, never carrying the
+address. On success the row is kept in `shared_cards` (§ Shared cards DDL)
+and the answer is `201 SharedCard`; a row that cannot be written deletes the
+picture on the site at once and the call fails, so no picture is left that
+nobody can take down. `SharedCard` = `{id, url, image?, bytes, at}` — the
+delete token is never in a response. `GET /v1/share/cards` → `{items}`,
+newest first. `DELETE /v1/share/cards/{id}` sends `DELETE
+<origin>/api/card/<id>` with `X-Delete-Token`; the site's `204` (or `200`)
+forgets the row → `200 {removed: true, already_gone: false}`, its `404` or
+`410` forgets it too → `already_gone: true`, anything else keeps the row →
+`502 {error}`; an unknown id is `404`. All three are machine-only: a paired
+device gets `403`, and the dashboard there does not try (it keeps the
+clipboard steps). Nothing is retried or queued.
 
 `GET /v1/update` returns `{enabled, current, latest, update_available, command, app_command, url, checked_at, error, notes, notes_for}` from cache and **performs no network I/O** — a page load must never cause an outbound call. `POST /v1/update/check` performs one, and returns **403 while `update_checks` is false**: the opt-in is enforced by the server, not merely hidden in the UI, so no page or local script can make Caprock reach the network uninvited. Checks are throttled to once every 15 minutes unless forced (`update.Interval`; releases ship several times a day, hourly until 2026-10-16) — at startup, when the switch is turned on, and on a five-minute tick that asks whether one is due (so a daemon that runs for weeks still hears of a release). `POST /v1/update/check?soon=1` is the page's ask when the window gains focus or is shown: not forced, it runs only when the last check is ten minutes old (`update.SoonInterval`) and otherwise returns the cached status; it shares the last-checked time with the tick, and an unforced check already out answers the next one, so unforced checks never run more than once per ten minutes. The interval is measured on the wall clock, because macOS stops the monotonic clock while the machine sleeps: a check that fell due overnight runs within five minutes of waking. After a failed check the next unforced one waits 15 minutes (`update.FailRetry`), so an offline laptop does not try on every tick. Each repeat is conditional: the request sends the last `ETag` as `If-None-Match`, and a `304` keeps the cached answer and counts as a successful check. The request carries no body or credentials, and a failure is reported in `error` rather than as an error status — not knowing about a release must not read as a broken dashboard. `command` is the upgrade command inferred from the running binary's path (Homebrew, Scoop, `go install`); when no package manager owns the binary it is empty and the UI offers `url` instead. `app_command` is `brew update && brew upgrade --cask caprock-app` when Homebrew's cask installed the desktop app on this machine (`<prefix>/Caskroom/caprock-app` exists, `/opt/homebrew` or `/usr/local`), set only beside `update_available`; the app shows it first and `command` second when both exist, because the cask and the formula are upgraded separately. `notes` is the published release's own description, taken from the same GitHub response as the tag — reading it costs no second request and no further exposure. It is trimmed to a dialog-sized excerpt (long bodies cut at a line boundary) and paired with `notes_for`, the version it describes, so a cached note can never be shown beside a different version after a failed check. `update_available` is never true for a `dev` or `git describe` build. The daemon does not install the update: replacing the running binary would mean the daemon killing the process executing the command, and running a package manager on the user's behalf from a web page is a surface a local tool should not open. The desktop app replaces its own bundle, which carries the daemon (ADR-042).
 
@@ -7492,6 +7524,28 @@ under the same id replaces it) and removed with the session
 (`store.RemoveSession`). The migration only creates the table. Read by
 `GET /v1/agents/{id}/exit` (§ Session exits) once the daemon no longer
 remembers the exit itself.
+
+### Shared cards DDL (migration 0074)
+
+```sql
+CREATE TABLE IF NOT EXISTS shared_cards (
+  id           TEXT    PRIMARY KEY,           -- the site's id: caprock.dev/c/<id>
+  url          TEXT    NOT NULL,              -- the page the post links to
+  image        TEXT    NOT NULL DEFAULT '',   -- the picture's own address, as the site said it
+  delete_token TEXT    NOT NULL,              -- X-Delete-Token for DELETE /api/card/<id>; never in a response
+  bytes        INTEGER NOT NULL DEFAULT 0,    -- the PNG's size
+  at           INTEGER NOT NULL               -- unix ms it was uploaded
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_shared_cards_at ON shared_cards(at);
+```
+
+One row per share card this machine uploaded to caprock.dev (§ Share card
+link, [ADR-086](08-decisions.md)), written by `POST /v1/share/card`
+(`store.RecordSharedCard`), listed newest first by `GET /v1/share/cards`
+(`store.SharedCards`), and removed by `DELETE /v1/share/cards/{id}`
+(`store.ForgetSharedCard`) once the site has deleted the picture or no
+longer has it. The migration only creates the table. The token is the only
+way to take the picture down, so nothing else deletes a row.
 
 ### Touch attribution DDL (migration 0012)
 

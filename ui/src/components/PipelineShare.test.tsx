@@ -81,8 +81,13 @@ const telegram = vi.fn()
 const telegramPhoto = vi.fn(async (_png: string, _caption: string) => ({ sent: true }))
 vi.mock('@/lib/api', async (orig) => ({
   ...(await orig<typeof import('@/lib/api')>()),
-  api: { telegram: () => telegram(), telegramPhoto: (png: string, caption: string) => telegramPhoto(png, caption) },
+  api: {
+    telegram: () => telegram(), telegramPhoto: (png: string, caption: string) => telegramPhoto(png, caption),
+    shareCard: (png: string) => shareCard(png),
+  },
 }))
+// caprock.dev unreachable unless a test says otherwise (ADR-086): the sheet falls back to the paste.
+const shareCard = vi.fn(async (_png: string): Promise<unknown> => { throw new Error('offline') })
 vi.mock('./PipelineShareCard', async (orig) => ({
   ...(await orig<typeof import('./PipelineShareCard')>()),
   drawPipelineCard: vi.fn(async () => new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' })),
@@ -158,7 +163,20 @@ describe('the Pipeline share sheet', () => {
     expect(screen.getByRole('button', { name: 'Copy image' })).toBeTruthy()
   })
 
-  it('posts to LinkedIn with the words, the card on the clipboard', async () => {
+  it('posts to LinkedIn with the uploaded card’s link appended to the words', async () => {
+    telegram.mockResolvedValue({ bot_set: false, chat_set: false, polling: false })
+    shareCard.mockResolvedValueOnce({ id: 'p1', url: 'https://caprock.dev/c/p1', bytes: 4, at: 1 })
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)
+    await screen.findByAltText("The Pipeline's figures, as they will be shared")
+    fireEvent.click(screen.getByRole('button', { name: 'Post to LinkedIn' }))
+    await waitFor(() => expect(open).toHaveBeenCalledTimes(1))
+    expect(new URL(open.mock.calls[0]![0] as string).searchParams.get('text')).toBe(`${words$()} https://caprock.dev/c/p1`)
+    expect(write).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Post it: LinkedIn shows this card from the link/)).toBeTruthy()
+  })
+
+  it('posts to LinkedIn with the words, the card on the clipboard, when the upload fails', async () => {
     telegram.mockResolvedValue({ bot_set: false, chat_set: false, polling: false })
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<PipelineShareDialog board={fixture()} repo={REPO} onClose={() => {}} />)

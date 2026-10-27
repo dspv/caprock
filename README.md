@@ -753,9 +753,10 @@ sessions outlive a service restart (`caprock service status` tells you when it
 differs).
 
 Caprock can also tell you when a release is out: turn on release checks from
-the banner on the Home screen, or under Privacy in settings. That is the only outbound
-call it makes, it is off until you switch it on, and it sends nothing about
-you. It never installs anything by itself — it shows the one command above for
+the banner on the Home screen, or under Privacy in settings. It is off until
+you switch it on, and it sends nothing about you; everything else that leaves
+the machine is an integration you turn on or something you send with a click,
+listed in [SECURITY.md](SECURITY.md#what-leaves-the-machine). It never installs anything by itself — it shows the one command above for
 your install method, and you run it.
 
 Downloaded the binary directly? Replace it with a fresh one from

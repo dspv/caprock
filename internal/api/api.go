@@ -733,6 +733,11 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/offer", s.handleOffer)
 	// Report a bug: forwards one report to caprock.dev support on a click (support.go, ADR-073).
 	m.HandleFunc("POST /v1/support", s.handleSupport)
+	// The share card's link: uploads the chosen card to caprock.dev on the
+	// press of X, Threads or LinkedIn, and takes it down again (sharecard.go, ADR-086).
+	m.HandleFunc("POST /v1/share/card", s.handleShareCard)
+	m.HandleFunc("GET /v1/share/cards", s.handleSharedCards)
+	m.HandleFunc("DELETE /v1/share/cards/{id}", s.handleDeleteSharedCard)
 	m.HandleFunc("GET /v1/update", s.handleUpdate)
 	// Pairing. Only the redeem endpoint is reachable from the network; the
 	// rest are refused off-loopback inside the handlers, so a paired tablet

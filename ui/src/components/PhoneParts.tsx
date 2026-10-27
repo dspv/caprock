@@ -1,9 +1,34 @@
 /**
  * Pieces the phone home's sections share (.ai/04-ui.md § The phone home):
- * a section's label and a chip that is a native select.
+ * a section's label, a chip that is a native select, and the bottom sheet
+ * New chat, Save and Share your week open in.
  */
-import type { ReactNode } from 'react'
-import { ChevronIcon } from './AppIcons'
+import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { ChevronIcon, CloseIcon } from './AppIcons'
+
+/** A sheet that rises from the bottom of the phone: a title, its body, and the buttons in its foot. */
+export function BottomSheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return createPortal(
+    <div className="fixed inset-0 z-40 flex items-end bg-black/45" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div role="dialog" aria-modal="true" aria-label={title} className="flex max-h-[94dvh] w-full flex-col rounded-t-[18px] border-t border-border-strong bg-panel text-fg shadow-[0_-24px_64px_-20px_rgba(0,0,0,0.55)]">
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border-strong" />
+        <div className="flex items-center px-4 pb-1 pt-2">
+          <h2 className="text-[19px] font-semibold">{title}</h2>
+          <button type="button" aria-label="Close" onClick={onClose} className="ml-auto grid h-10 w-10 place-items-center rounded-full text-fg-muted"><CloseIcon size={20} /></button>
+        </div>
+        <div className="min-h-0 overflow-y-auto px-4 pb-3">{children}</div>
+        <div className="border-t border-border px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3">{footer}</div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
 
 /** A section's label, with what it offers on the right. */
 export function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {

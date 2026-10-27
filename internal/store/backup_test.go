@@ -70,7 +70,8 @@ func TestTheUpgradeGoesOnWithoutRoomForACopy(t *testing.T) {
 	}
 	v, err := s.SchemaVersion(context.Background())
 	_ = s.Close()
-	if err != nil || v != 73 {
+	latest, lerr := LatestSchema()
+	if err != nil || lerr != nil || v != latest {
 		t.Fatalf("schema %d after an upgrade with no copy (%v)", v, err)
 	}
 	if got := Backups(path); len(got) != 0 {

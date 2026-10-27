@@ -9,9 +9,10 @@
  *
  * What a browser can do with the picture is limited, and the limit shapes
  * the buttons (ShareActions.tsx): the Web Share API hands the file to the
- * operating system's share sheet where it exists; everywhere else a social
- * site cannot be handed an image by URL, so the card goes on the clipboard
- * and the site opens with the words written.
+ * operating system's share sheet where it exists; a social site's post box
+ * cannot be handed an image, so X, Threads and LinkedIn upload the card to
+ * caprock.dev and the post carries its link, whose preview is the card
+ * (ADR-086) — or, when that fails, the card goes on the clipboard to paste.
  *
  * The card itself carries `caprock.dev`, so the link travels with the image
  * even when someone posts it without the text.
@@ -19,7 +20,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { useApi } from '@/lib/useApi'
-import { api, type Week } from '@/lib/api'
+import { api, isPairedDevice, type Week } from '@/lib/api'
 import { cardFilename, PERIOD_LABEL, screenLook, type CardLook, type SharePeriod } from './ShareCard'
 import { CARD_SIZE, WeekCard, type CardLayout } from './WeekCard'
 import { Scaled } from './Scaled'
@@ -274,8 +275,12 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
           <ShareActions build={build} fileName={fileName} text={text} onText={setEdited}
             disabled={!story || empty} onShared={onClose} />
 
+          {/* True to fact (rule 4): only the three post buttons upload, and
+            * a paired device never does (the route is the machine's). */}
           <p className="mt-3 border-t border-border pt-2.5 text-[12px] text-fg-muted">
-            Totals only, no names or paths. Drawn on your machine, uploaded nowhere.
+            {isPairedDevice()
+              ? 'Totals only, no names or paths. Drawn on your machine, uploaded nowhere.'
+              : 'Totals only, no names or paths. Drawn on your machine; only X, Threads and LinkedIn upload it, to caprock.dev.'}
           </p>
         </div>
       </div>
@@ -285,9 +290,10 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
 
 /**
  * The X post before the figures are read. With them, the words carry the
- * counts (postText in lib/week.ts). No link: the card says caprock.dev, and
- * a link made X and Threads show the site's own dark preview in place of the
- * card the user chose (owner, 2026-10-25).
+ * counts (postText in lib/week.ts). The words carry no link of their own: a
+ * caprock.dev link made X and Threads show the site's dark preview in place
+ * of the card the user chose (owner, 2026-10-25). The one link a post gets is
+ * the uploaded card's page (ShareActions, ADR-086), whose preview IS the card.
  */
 export function xIntent(period: SharePeriod): string {
   return xPostURL(xText(period))
