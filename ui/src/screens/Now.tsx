@@ -25,6 +25,7 @@ import { ReposPanel } from '@/components/ReposPanel'
 import { CICDPanel } from '@/components/CICDPanel'
 import { HooksBanner } from '@/components/HooksBanner'
 import { Attention } from '@/components/Attention'
+import { MachineSessionsPanel } from '@/components/MachineSessionsPanel'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { UnpricedNote } from '@/components/Unpriced'
@@ -248,6 +249,9 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       <UpdateBanner plan={plan} onSave={savePlan} now={now} owned={list.filter((s) => s.owned && s.status !== 'ended' && !s.detached && !s.survives_restart).length} />
       <InterruptedBanner info={status.data?.interrupted} now={now} />
       <Attention items={attention} now={now} onDismiss={(id) => live.dismissAlert(id)} sessions={list} />
+      {/* The sessions on the other computers this one reaches (ADR-067,
+        * Phase 2), needing you first; nothing with none linked. */}
+      <MachineSessionsPanel now={now} />
 
       {/* Above Today because it is the wider frame Today sits inside: what all
         * of this has come to, before what happened in the last few hours. */}

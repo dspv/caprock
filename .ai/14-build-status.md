@@ -12,16 +12,16 @@ Since Orchestrate closed, the product has grown one observation surface across s
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                                          |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                              |
-| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                          |
-| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                         |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                               |
-| Phase 3 — Delight               | 0%       | No plan by design                                                                              |
-| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                        |
-| Other computers (ADR-067)       | 40%      | Phase 1 built (PR1–PR3): see and type into another computer's sessions; Phases 2–4 not started |
-| iOS app (ADR-083)               | 0%       | Direction decided, Capacitor chosen; push payload open (OQ-24); nothing built                  |
+| Track                           | Progress | State                                                                                                |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                    |
+| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                                |
+| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                               |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                                     |
+| Phase 3 — Delight               | 0%       | No plan by design                                                                                    |
+| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                              |
+| Other computers (ADR-067)       | 60%      | Phases 1–2 built: see, start, type into and hear another computer's sessions; Phases 3–4 not started |
+| iOS app (ADR-083)               | 0%       | Direction decided, Capacitor chosen; push payload open (OQ-24); nothing built                        |
 
 ## Milestone status
 
@@ -76,6 +76,33 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-28 — unreleased: start an agent on another computer (ADR-067, Phase 2)
+
+The owner's goal (2026-10-27, translated): "put Caprock on a desktop at home
+and drive it from the laptop — agents run on the home machine". New agent's
+**Machine** picker (with a computer linked) lists This Mac and each computer,
+one that cannot take a start disabled with why; picking one opens *New agent
+on <name>*, whose folders, folder check and agents are read from that computer
+through `/v1/m/{id}/…` and whose Start is its `POST /v1/agents`; refusals are
+said in words (offline, not allowed yet, removed, folder not there, the
+agent's bypass warning). **One list:** `GET /v1/machines/sessions` reads each
+computer once for every window (kept 10 s); the controller holds `/v1/live?types=notify,permission`
+on each computer while one of its own windows is open, and re-publishes its
+notifications (with `machine`, `machine_name`) and a `machines` frame, both
+local only, so a phone paired with the laptop never hears the home computer.
+The sidebar sorts a remote session that needs you first, Now gains *On other
+computers*, and the app's notification names the computer and opens the
+session there. Contract: `?types=` on `/v1/live`, the `machines` frame, the
+notify fields, `GET /v1/machines/sessions` (03-contracts.md); no migration.
+Proven without the owner by `internal/smoke/machines_phase2_test.go` (two real
+daemons, relaysrv on loopback, fake claude: pair, list, start on home from the
+laptop, type, needs-you on the laptop, home gone → offline; about 6 s, in CI's
+smoke on three OS) and a preview with screenshots. Tester's script:
+[docs/machines.md](../docs/machines.md). Left: Approve/Deny on a remote
+notification, cross-computer cost (Phase 3), coalescing and the token bound to
+the controller's key (Phase 4); OQ-17/OQ-18 still unmeasured on two real
+computers.
 
 ### 2026-10-27 — unreleased: what the window's script keeps
 

@@ -60,6 +60,19 @@ describe('Notifier', () => {
     expect(open).toHaveBeenCalledWith(mod)
   })
 
+  it('names another computer’s notification, hands the shell nothing it could answer here, and opens it there', async () => {
+    const { n, invoke, open } = setup({ focused: false })
+    const far = approval({ id: 'approval-s9-1', session_id: 's9', machine: 'mini-id', machine_name: 'Mac mini' })
+    expect(await n.receive(far)).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('notify', { title: 'Needs approval · caprock · on Mac mini', body: far.body, id: 'm-approval-s9-1' })
+    expect(promptRoute(far)).toBe('#/m/mini-id/session/s9')
+    n.focused()
+    expect(open).toHaveBeenCalledWith(far)
+    // Its prompt is not this machine's: answered there, nothing is withdrawn here.
+    n.answered('s9')
+    expect(invoke.mock.calls.filter((c) => (c as unknown[])[0] === 'withdraw_notifications')).toHaveLength(0)
+  })
+
   it('never hands the shell a route that is not a module’s', async () => {
     const { n, invoke, open } = setup({ focused: false })
     await n.receive(approval({ id: 'x', kind: 'module', session_id: '', prompt_id: undefined, actions: undefined, route: '#/settings' }))

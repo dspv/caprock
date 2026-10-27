@@ -27,6 +27,12 @@
  *   refused. A show from the menu bar, tray or hotkey is the user's own
  *   (`caprock:shown`, sent before the window comes up) and opens nothing:
  *   the open waits a moment for that word and drops the notification.
+ * - **Another computer's, by name.** A frame with `machine` was said by a
+ *   computer this one reaches (ADR-067, Phase 2): its title names that
+ *   computer, the shell gets no session or prompt of it (the buttons would
+ *   answer here, where it does not wait), and the click opens it there —
+ *   `#/m/<id>/session/<sid>`, whose prompt card answers it. Whether it still
+ *   waits is asked of that computer, through `/v1/m/<id>/…`.
  * - **Waiting is asked of the daemon, by prompt id.** The workspace's set of
  *   waiting sessions (WP-10) is per session, and during a replay it still
  *   holds a prompt whose answer is a few frames later; the GET is not.
@@ -37,6 +43,7 @@ import { isTauri } from './appmode'
 import { live, type NotifyFrame } from './live'
 import { href } from './router'
 import { OPEN_ROUTE_EVENT, SHOWN_EVENT, notifyRoute } from './shell'
+import { machineBase } from './machinepage'
 
 /** How long after a notification the app coming forward counts as its click. */
 export const CLICK_WINDOW_MS = 2 * 60_000
@@ -72,6 +79,7 @@ export function isWatched(n: NotifyFrame, v: Viewing): boolean {
 
 /** The route that shows a notification's session with its prompt in view. */
 export function promptRoute(n: NotifyFrame): string {
+  if (n.machine) return `#/m/${n.machine}/session/${encodeURIComponent(n.session_id)}`
   return href({ name: 'session', id: n.session_id, tab: 'terminal' })
 }
 
@@ -97,6 +105,12 @@ export class Notifier {
     if (isWatched(n, this.deps.viewing())) return false
     if (!this.deps.viewing().focused) this.pending = { n, at: this.now() }
     try {
+      if (n.machine) {
+        await this.deps.invoke('notify', {
+          title: `${n.title} · on ${n.machine_name || 'another computer'}`, body: n.body, id: `m-${n.id}`,
+        })
+        return true
+      }
       await this.deps.invoke('notify', {
         title: n.title, body: n.body, id: n.id, sessionId: n.session_id, promptId: n.prompt_id, actions: n.actions,
         route: notifyRoute(n.route) ?? undefined,
@@ -157,6 +171,12 @@ function tauriInvoke(): Invoke | null {
 
 async function promptStillWaits(n: NotifyFrame): Promise<boolean> {
   try {
+    if (n.machine) {
+      const res = await fetch(`${machineBase(n.machine)}/v1/agents/${encodeURIComponent(n.session_id)}/permission`, { headers: { Accept: 'application/json' } })
+      if (!res.ok) return true
+      const r = (await res.json()) as { permission?: { id?: string } | null }
+      return r.permission?.id === n.prompt_id
+    }
     const r = await api.permission(n.session_id)
     return r.permission?.id === n.prompt_id
   } catch {

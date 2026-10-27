@@ -51,6 +51,10 @@ export interface NotifyFrame {
   actions?: string[]
   /** The route a click opens when it is about no session: a private module's `#/x/<id>` (ADR-076). */
   route?: string
+  /** Set when another computer said it (ADR-067, Phase 2): its id here, and
+   *  its name. The session and the prompt are that computer's. */
+  machine?: string
+  machine_name?: string
 }
 
 export type Frame = (
@@ -86,6 +90,10 @@ export type Frame = (
   // computer waiting to be allowed (ADR-067). Carries nothing; the machine's
   // own screen re-reads GET /v1/pair/state.
   | { type: 'devices'; data: Record<string, never> }
+  // Something changed on another computer this one reaches (ADR-067, Phase
+  // 2): a prompt began or ended there, a notification came, its channel came
+  // up or went down. The one list (GET /v1/machines/sessions) is read again.
+  | { type: 'machines'; data: { id: string; why: 'online' | 'offline' | 'notify' | 'permission' | 'answered' | 'reset'; session_id?: string } }
   // The admin state changed without the key changing — a private module's
   // attention (ADR-076): it carries nothing; GET /v1/admin is read again.
   | { type: 'admin'; data: Record<string, never> }
