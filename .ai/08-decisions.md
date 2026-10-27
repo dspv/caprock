@@ -6690,3 +6690,75 @@ front end) — then a share names a small set of origins, each on its own
 port; a router's client isolation turns out to be the usual case, which
 would make option B the default rather than the backlog; or browsers start
 treating a private address as a secure context.
+
+---
+
+## ADR-088 — Positioning: the ledger of agent work; the team view counts work units, not people, by default
+
+**Date:** 2026-10-27 · **Status:** accepted (owner, 2026-10-27, translated:
+"everything sounds and looks very, very right, I fully agree with this
+approach"). *Amends [17-teams.md](17-teams.md); follows
+[ADR-021](#adr-021--open-core-self-hosted-team-tier-free-product-never-carved-up)
+and [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine).*
+The research behind it lives in the private site repository (`.gtm/`), per
+rule 9 of [00-index.md](00-index.md); this entry records what the product
+commits to.
+
+**Context.** Caprock began as "mission control for Claude Code" and grew a
+cockpit (terminal, worktrees, phone) beside its observe plane. In 2026 the
+cockpit became a free feature of every vendor's own app — Claude Desktop
+with Remote Control, the Codex app with Codex Remote, Cursor's Agents
+window — each showing the sessions it started, for its own agent. What none
+of them shows, by their own documentation, is any other vendor's agent, a
+session they did not start, usage routed through Bedrock, Vertex or Foundry
+("Claude Code does not send metrics from your cloud back to Anthropic",
+code.claude.com/docs/en/costs, read 2026-10-27), usage inside a seat plan in
+dollars, a stuck or looping agent, or cost per pull request. The products
+that sell measurement to engineering leaders read vendor admin APIs from a
+cloud and identify people; the one with a laptop daemon states it "doesn't
+allocate tokens or cost to individual commits or pull requests". Companies
+answered the gap in 2026 with blunt per-person caps, and the per-person
+leaderboards they tried were gamed and withdrawn.
+
+**Decision.**
+
+- **What Caprock is, in one line:** *the ledger of agent work — every coding
+  agent on every machine, what it is doing now, what it cost per pull
+  request however you pay, kept on machines you own.* The observe plane —
+  sessions recorded whether or not Caprock started them, priced at write
+  time from the versioned table, joined to the repository, PR, CI run and
+  release — is the product; the cockpit is how a developer lives with it.
+  The free product leads with attention and limits (who is waiting on you,
+  who is stuck, how close each subscription is to its limit, across every
+  agent); the team tier leads with cost per pull request however the
+  company pays.
+- **The team view counts work units, not people, by default.** The team
+  server reports cost, sessions and stuck-session counts per repository,
+  per pull request, per release and per week. A per-person dimension is an
+  explicit, documented switch, never the default and never silent, so a
+  works council can see it and a team can refuse it. Chargeback does not
+  need the person: it goes to the project or team.
+- **The developer sees what the lead sees.** A developer's own dashboard
+  shows the same team aggregates the lead sees, and lists what left the
+  laptop. There is no view of a person that the person cannot open.
+- **The payload has no field for content** (unchanged from
+  [17-teams.md](17-teams.md)): session identity, totals, activity phrase,
+  work unit; never prompts, replies or tool output. A misconfiguration
+  cannot leak what the schema cannot carry.
+- **Public claims follow rule 6.** Every dollar is a list-price estimate,
+  said as such beside the plan-dollars line; cloud and CI sessions are not
+  observed and no page says "everything"; no ROI figure, no certification,
+  no competitor number restated as Caprock's own.
+
+**Consequences.** The "cost per person" line in the team spec becomes "per
+repository, PR and release", with the person dimension moved behind a
+switch. The one-liner in [01-product.md](01-product.md) stays as the
+mechanism; the positioning above is what the site, README and outreach say
+about it. Nothing in the free product changes.
+
+**Revisit if:** the first discovery conversations show buyers run a single
+seat plan and call the vendor's dashboard enough; security reviews reject a
+transcript reader on laptops outright (then at-rest encryption of the store,
+secret redaction before aggregation and binary pinning come first); buyers
+prefer a cap to the number; or a vendor prices Bedrock and seat usage per
+pull request across agents in its own dashboard.
