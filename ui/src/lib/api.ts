@@ -1393,6 +1393,11 @@ export interface Status {
   /** How many of the events stored before the 0073 upgrade are in place, of
    *  how many; absent once all are. Until then older history is partial. */
   events_move?: { moved: number; total: number }
+  /** The upgrade before migration `before` went on without the safety copy
+   *  of the database: the disk had `free_bytes` of the `need_bytes` wanted, or
+   *  `error` says what failed. No older Caprock opens the database again.
+   *  Absent when the copy was made, or 30 days after the upgrade. */
+  upgrade_copy_skipped?: { before: number; at: number; free_bytes?: number; need_bytes?: number; error?: string }
   /** Sessions the last stop of Caprock (or of the machine) cut off and nobody
    *  has continued yet; absent when there are none. */
   interrupted?: { stopped_at: number; ids: string[] }

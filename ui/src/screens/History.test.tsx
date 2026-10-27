@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { History } from '@/lib/api'
 import { calendarDays, HistoryScreen, lifetimeFigures } from './History'
+import { clearShared } from '@/lib/refresh'
 
-const data = vi.hoisted(() => ({ value: undefined as unknown }))
+const data = vi.hoisted(() => ({ value: undefined as unknown, status: {} as unknown }))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
-  return { ...actual, api: { ...actual.api, history: async () => data.value } }
+  return { ...actual, api: { ...actual.api, history: async () => data.value, status: async () => data.status } }
 })
 
 const hist = (): History =>
@@ -76,6 +77,20 @@ describe('lifetime figures', () => {
     h.totals.cost_usd = 0
     expect(lifetimeFigures(h).perDay).toBeUndefined()
     expect(lifetimeFigures(undefined).perSession).toBeUndefined()
+  })
+
+  it('says in one line that older history is still loading, only while it is', async () => {
+    data.value = hist()
+    data.status = { events_move: { moved: 400, total: 1000 } }
+    const { unmount } = render(<HistoryScreen />)
+    expect(await screen.findByText(/Older history is still loading/)).toBeTruthy()
+    expect(screen.getByText('40%')).toBeTruthy()
+    unmount()
+    data.status = {}
+    clearShared()
+    render(<HistoryScreen />)
+    await screen.findByText('$15k')
+    expect(screen.queryByText(/Older history is still loading/)).toBeNull()
   })
 
   it('leads with the money and switches the breakdowns to tables', async () => {

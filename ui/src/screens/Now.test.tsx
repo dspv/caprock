@@ -154,6 +154,19 @@ it('says older history is incomplete while the upgrade moves it in', async () =>
 
   await waitFor(() => expect(screen.getByText('Upgrading the database')).toBeInTheDocument())
   expect(screen.getByText('25%')).toBeInTheDocument()
+  expect(document.querySelector('[data-copy-skipped]')).toBeNull()
+})
+
+it('warns beside the move that no safety copy was made', async () => {
+  state.summary = emptySummary()
+  state.status = {
+    claude_available: true,
+    events_move: { moved: 250, total: 1000 },
+    upgrade_copy_skipped: { before: 73, at: 1, free_bytes: 1024 ** 3, need_bytes: 3 * 1024 ** 3 },
+  }
+  render(<NowScreen />)
+  await waitFor(() => expect(document.querySelector('[data-copy-skipped]')).not.toBeNull())
+  expect(screen.getByText(/1.0 GB free, 3.0 GB needed\. Older Caprock versions cannot open the upgraded database/)).toBeInTheDocument()
 })
 
 it('explains a machine with no agent instead of hiding the control that says so', async () => {

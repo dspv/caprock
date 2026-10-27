@@ -1531,8 +1531,13 @@ type Status struct {
 	IngestError string `json:"ingest_error,omitempty"`
 	// EventsMove is how far the move of migration 0073 has come; absent once
 	// every event is in place.
-	EventsMove *MoveStatus   `json:"events_move,omitempty"`
-	Hooks      *hooks.Status `json:"hooks,omitempty"`
+	EventsMove *MoveStatus `json:"events_move,omitempty"`
+	// UpgradeCopySkipped says an upgrade went on without the copy of the
+	// database Open keeps before it (store.CopySkipped): no older Caprock
+	// opens this database again. Reported for as long as the copy would
+	// have been kept (upgradeCopyKeep).
+	UpgradeCopySkipped *store.CopySkip `json:"upgrade_copy_skipped,omitempty"`
+	Hooks              *hooks.Status   `json:"hooks,omitempty"`
 	// ClaudeBypassAccepted says the user accepted Claude Code's one-time
 	// bypass warning, so a bypass session starts without it (ADR-041).
 	ClaudeBypassAccepted bool `json:"claude_bypass_accepted"`
@@ -1676,6 +1681,9 @@ func (d *Daemon) status(ctx context.Context) any {
 	}
 	if moved, total, err := d.store.MoveProgress(ctx); err == nil && total > 0 {
 		st.EventsMove = &MoveStatus{Moved: moved, Total: total}
+	}
+	if c, err := d.store.CopySkipped(ctx); err == nil && c != nil && time.Since(time.UnixMilli(c.At)) < upgradeCopyKeep {
+		st.UpgradeCopySkipped = c
 	}
 	// Read on request from a file the machine already has: no storage, no
 	// polling, and absence is a normal answer rather than an error.

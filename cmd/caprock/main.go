@@ -531,6 +531,9 @@ func statusCmd() *cobra.Command {
 			if m := st.EventsMove; m != nil {
 				fmt.Fprintf(out, "upgrade: moving older events into the upgraded database, %d of %d (%d%%)\n", m.Moved, m.Total, m.Moved*100/max(m.Total, 1))
 			}
+			if c := st.UpgradeCopySkipped; c != nil {
+				fmt.Fprintf(out, "upgrade: WARNING %s\n", daemon.CopySkippedLine(c))
+			}
 			// A machine that runs OpenCode shows those sessions mixed in with
 			// Claude Code's, so "no OpenCode sessions" and "OpenCode is not
 			// being read" look identical on the dashboard. Say which it is.

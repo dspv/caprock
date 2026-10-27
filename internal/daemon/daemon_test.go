@@ -296,3 +296,49 @@ func TestStatusReportsATerminalIngestError(t *testing.T) {
 		t.Fatalf("the status payload has no ingest_error field:\n%s", b)
 	}
 }
+
+// An upgrade with no room for its copy used to say so in the log alone, so
+// nobody learned there was no way back to an older release until they tried.
+func TestStatusSaysNoCopyWasKeptBeforeTheUpgrade(t *testing.T) {
+	st, err := store.Open(context.Background(), ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+	d := &Daemon{
+		store: st, log: log, bus: bus.New(), baseCtx: ctx,
+		mgr:   agents.NewManager(st, t.TempDir(), "", log),
+		opt:   Options{Config: config.Defaults(), DataDir: t.TempDir()},
+		table: &cost.Table{}, det: loop.New(5, time.Minute),
+		start: time.Now(),
+	}
+	if s := d.status(ctx).(Status); s.UpgradeCopySkipped != nil {
+		t.Fatalf("no upgrade, yet a skipped copy: %+v", s.UpgradeCopySkipped)
+	}
+	record := func(at time.Time) {
+		b, _ := json.Marshal(store.CopySkip{Before: 73, At: at.UnixMilli(), FreeBytes: 2 << 30, NeedBytes: 5 << 30})
+		if err := st.SetMeta(ctx, store.MetaCopySkipped, string(b)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record(time.Now())
+	s := d.status(ctx).(Status)
+	if c := s.UpgradeCopySkipped; c == nil || c.FreeBytes != 2<<30 || c.NeedBytes != 5<<30 || c.Before != 73 {
+		t.Fatalf("skipped copy reported as %+v", c)
+	}
+	b, _ := json.Marshal(s)
+	if !strings.Contains(string(b), `"upgrade_copy_skipped":{"before":73,`) {
+		t.Fatalf("not in the JSON: %s", b)
+	}
+	if got := CopySkippedLine(s.UpgradeCopySkipped); !strings.Contains(got, "2.0 GB free, 5.0 GB needed") || !strings.Contains(got, "cannot open") {
+		t.Fatalf("status line %q", got)
+	}
+	// Past the month the copy would have been kept, going back would cost a
+	// month of history anyway: it is no longer reported.
+	record(time.Now().Add(-upgradeCopyKeep - time.Hour))
+	if s := d.status(ctx).(Status); s.UpgradeCopySkipped != nil {
+		t.Fatalf("still reported after %v: %+v", upgradeCopyKeep, s.UpgradeCopySkipped)
+	}
+}
