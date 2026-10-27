@@ -146,3 +146,25 @@ func TestAClearedSessionIsNotNarratedAsCompacting(t *testing.T) {
 		t.Errorf("a cleared session reads as working; it is waiting for a prompt")
 	}
 }
+
+// A compaction boundary from the transcript records something already over;
+// the session's state is the event before it. As the last event it read
+// "working" at a session sitting at its prompt after a /compact.
+func TestCompactedBoundaryIsNotTheState(t *testing.T) {
+	base := time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC)
+	evs := []event.Event{
+		{Kind: event.KindContextClear, Ts: base},
+		{Kind: event.KindContextCompacted, Source: event.SourceTranscript, Ts: base.Add(time.Second)},
+	}
+	act := Summarize(evs, Options{Now: base.Add(2 * time.Second)})
+	if act.Health != HealthIdle || act.Phrase != "context cleared" {
+		t.Fatalf("after a boundary: %+v", act)
+	}
+	stop := []event.Event{
+		{Kind: event.KindAgentStop, Ts: base},
+		{Kind: event.KindContextCompacted, Ts: base.Add(time.Second)},
+	}
+	if !MainTurnEnded(stop, nil) {
+		t.Fatal("a boundary after the Stop hid that the turn ended")
+	}
+}

@@ -2682,6 +2682,10 @@ export const api = {
   queueCancel: (id: string, qid: number) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, {}, 'DELETE'),
   /** Type one in now, whatever the turn is doing; 409 while a prompt is on the screen. */
   queueSendNow: (id: string, qid: number) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}/send`, {}),
+  /** A session's last compaction, whether one runs or waits, and what this machine's keep (ADR-085). */
+  compaction: (id: string) => get<CompactionView>(`/v1/sessions/${encodeURIComponent(id)}/compaction`),
+  /** Compact context: /compact typed into a session Caprock started, now or when its turn ends. */
+  compact: (id: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/compact`, {}),
   /** The `/` picker: the session's slash commands. */
   sessionCommands: (id: string) => get<{ agent: string; commands: SlashCommand[] }>(`/v1/sessions/${encodeURIComponent(id)}/commands`),
   /** The `@` picker: the files in the session's working directory. */
@@ -3028,6 +3032,41 @@ export interface QueueSendResult {
   sent: boolean
   queued?: QueuedMessage
   queue: QueueView
+}
+
+/** One finished compaction, from the transcript's compact_boundary and the turn after it. */
+export interface Compaction {
+  /** unix ms */
+  at: number
+  trigger: 'auto' | 'manual' | string
+  pre_tokens: number
+  /** The context after: the boundary's own postTokens when Claude Code wrote one,
+   *  else the next main-thread turn's prompt; absent until either is known. */
+  post_tokens?: number
+  duration_ms?: number
+}
+
+/** What this machine's own measured compactions kept of the context. */
+export interface CompactionStats {
+  count: number
+  /** Shares of the context before, 0–1. */
+  median_kept: number
+  p90_kept: number
+  median_pre: number
+  median_post: number
+  /** unix ms */
+  from: number
+  to: number
+}
+
+/** GET /v1/sessions/{id}/compaction. */
+export interface CompactionView {
+  session_id: string
+  last?: Compaction
+  running: boolean
+  queued: boolean
+  /** Absent with fewer than five measured on this machine. */
+  typical?: CompactionStats
 }
 
 /** One entry of the chat field's `/` picker. */

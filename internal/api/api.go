@@ -562,7 +562,10 @@ type Server struct {
 	attnMu  sync.Mutex
 	attn    map[string]*ModuleAttention
 	pairing *pairing.Store
-	lanURL  string
+	// compactStats is the machine's compaction figure, read at most once a
+	// minute (compact.go).
+	compactStats compactStatsCache
+	lanURL       string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
 	// and the MagicDNS name (WP-15). Empty when off.
@@ -842,6 +845,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("PATCH /v1/agents/{id}/queue/{qid}", s.handleQueueEdit)
 	m.HandleFunc("DELETE /v1/agents/{id}/queue/{qid}", s.handleQueueCancel)
 	m.HandleFunc("POST /v1/agents/{id}/queue/{qid}/send", s.handleQueueSendNow)
+	m.HandleFunc("GET /v1/sessions/{id}/compaction", s.handleCompaction)
+	m.HandleFunc("POST /v1/agents/{id}/compact", s.handleCompact)
 	m.HandleFunc("GET /v1/sessions/{id}/commands", s.handleSessionCommands)
 	m.HandleFunc("GET /v1/sessions/{id}/files", s.handleSessionFiles)
 	m.HandleFunc("POST /v1/agents/{id}/signal", s.handleAgentSignal)

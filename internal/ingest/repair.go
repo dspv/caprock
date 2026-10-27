@@ -425,6 +425,12 @@ func NeedsEmptyTextRepair(storedVersion string) bool {
 	return olderThan(storedVersion, 4)
 }
 
+// NeedsCompactionBackfill reports whether transcripts were read before
+// compaction boundaries were (BackfillCompactions).
+func NeedsCompactionBackfill(storedVersion string) bool {
+	return olderThan(storedVersion, 5)
+}
+
 func olderThan(storedVersion string, v int) bool {
 	if storedVersion == "" {
 		return false

@@ -351,6 +351,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The messages waiting for an owned session's turn to end (ADR-053);
 	// the live socket carries every change to a viewer too.
 	"GET /v1/agents/{id}/queue": true,
+	// A session's last compaction and what compactions here keep (ADR-085),
+	// as the cockpit's Context shows them; a read.
+	"GET /v1/sessions/{id}/compaction": true,
 	// The Queue view: the queues of every owned session with their rough
 	// estimates and the turns finished lately — the same reads, together.
 	"GET /v1/queue": true,
@@ -497,6 +500,9 @@ var controllerRoutes = map[string]bool{
 	"PATCH /v1/agents/{id}/queue/{qid}":     true,
 	"DELETE /v1/agents/{id}/queue/{qid}":    true,
 	"POST /v1/agents/{id}/queue/{qid}/send": true,
+	// Compact context (ADR-085): /compact through the same queue, typing
+	// as the chat field does.
+	"POST /v1/agents/{id}/compact": true,
 
 	// Start work from the phone (21-app.md decision 8, ADR-034 amended):
 	// add, create or clone a project under home, rename, pin or unlist one

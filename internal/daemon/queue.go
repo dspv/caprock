@@ -291,6 +291,12 @@ func (q *msgQueue) SendVia(ctx context.Context, id, text, via string) (api.SendR
 	if err != nil {
 		return api.SendResult{}, err
 	}
+	return q.sendLocked(ctx, id, text, via, v)
+}
+
+// sendLocked types text in when nothing waits in v, or queues it. Caller
+// holds the session's lock and read v under it.
+func (q *msgQueue) sendLocked(ctx context.Context, id, text, via string, v api.QueueView) (api.SendResult, error) {
 	if v.Waiting == "" && len(v.Messages) == 0 {
 		if err := q.typeLocked(id, text, via); err != nil {
 			return api.SendResult{}, err

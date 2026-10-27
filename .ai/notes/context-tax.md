@@ -366,7 +366,9 @@ the other two came back clean.
    no compliance from anybody. It is also the thing that makes the rest legible:
    a user who cannot see the tax has no reason to want it lowered.
 
-2. **Compaction is the first paid intervention.** Largest measured saving ($578),
+2. **Compaction is the first paid intervention.** *Superseded 2026-10-24 by
+   [ADR-085](../08-decisions.md): compacting is a free button that types
+   Claude Code's own `/compact`.* Largest measured saving ($578),
    confirmed writable mechanism (`autoCompactWindow`), and no dependence on the
    model doing what it is told. It is the one lever whose value does not have an
    asterisk.

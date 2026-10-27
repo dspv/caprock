@@ -46,7 +46,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
 	"GET /v1/agents/{id}/permission": true, "GET /v1/sessions/{id}/permission-mode": true,
 	// The message queue and the chat field's pickers (ADR-053).
-	"GET /v1/agents/{id}/queue": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
+	"GET /v1/agents/{id}/queue": true, "GET /v1/sessions/{id}/compaction": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
 	"GET /v1/inbox": true, "GET /v1/inbox/{id}/files/{n}": true, // the Inbox and its thumbnails
 	"GET /v1/tabs":  true,                                                                    // the computer's open tabs, which the phone home's Continue mirrors
@@ -77,7 +77,7 @@ var controllerMayAlso = map[string]bool{
 	"PUT /v1/sessions/{id}/needs": true, // "needs me?" / "not needed": a mark in memory
 	"POST /v1/support":            true,
 	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
-	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true,
+	"POST /v1/agents/{id}/queue": true, "PATCH /v1/agents/{id}/queue/{qid}": true, "DELETE /v1/agents/{id}/queue/{qid}": true, "POST /v1/agents/{id}/queue/{qid}/send": true, "POST /v1/agents/{id}/compact": true,
 	"POST /v1/tasks/{id}/approve": true, "POST /v1/tasks/{id}/reject": true,
 	// Save to the Inbox from the phone, and delete from it.
 	"POST /v1/inbox": true, "DELETE /v1/inbox/{id}": true,

@@ -29,7 +29,11 @@ import (
 // v4 (2026-10-04): the prose on a response's later lines is folded into its
 // turn (store.MergeAssistantText). Turns stored earlier without their text are
 // filled once by RepairEmptyAssistantText.
-const SchemaVersion = 4
+//
+// v5 (2026-10-27): `system` / `compact_boundary` lines are read as
+// context.compacted events. Boundaries in transcripts read earlier are added
+// once by BackfillCompactions.
+const SchemaVersion = 5
 
 // Line is the subset of a transcript line the parser understands.
 type Line struct {
@@ -47,7 +51,17 @@ type Line struct {
 	AgentID     string `json:"agentId"`
 	Subtype     string `json:"subtype"`
 	DurationMs  int64  `json:"durationMs"`
-	Message     *struct {
+	// CompactMetadata is on a `system` / `compact_boundary` line: what the
+	// context held before the compaction, and what started it.
+	CompactMetadata *struct {
+		Trigger   string `json:"trigger"`
+		PreTokens int64  `json:"preTokens"`
+		// PostTokens is the context after, when Claude Code says
+		// (2.1.x since late October 2026); older versions leave it out.
+		PostTokens int64 `json:"postTokens"`
+		DurationMs int64 `json:"durationMs"`
+	} `json:"compactMetadata"`
+	Message *struct {
 		Role    string          `json:"role"`
 		Model   string          `json:"model"`
 		ID      string          `json:"id"`
@@ -295,9 +309,37 @@ func (l *Line) Events(fallbackTs time.Time) []event.Event {
 			out = append(out, tp)
 		}
 	case "system":
-		// turn_duration etc. are informational; nothing normalized yet.
+		// turn_duration etc. are informational; only a compaction boundary
+		// is normalized.
+		if ev, ok := l.compactedEvent(base); ok {
+			out = append(out, ev)
+		}
 	}
 	return out
+}
+
+// SubtypeCompactBoundary is the `system` line Claude Code writes where a
+// compaction replaced the conversation with its summary.
+const SubtypeCompactBoundary = "compact_boundary"
+
+// compactedEvent is a compact_boundary line as a context.compacted event:
+// keyed on the line's uuid so a re-read or the backfill stores it once.
+func (l *Line) compactedEvent(base func(event.Kind) event.Event) (event.Event, bool) {
+	if l.Type != "system" || l.Subtype != SubtypeCompactBoundary || l.CompactMetadata == nil || l.UUID == "" {
+		return event.Event{}, false
+	}
+	m := l.CompactMetadata
+	ev := base(event.KindContextCompacted)
+	ev.Key = "compact:" + l.UUID
+	p := map[string]any{
+		"trigger": m.Trigger, "pre_tokens": nonNegative(m.PreTokens), "duration_ms": nonNegative(m.DurationMs),
+		"session_id": l.SessionID, "sidechain": l.IsSidechain, "_from": "transcript",
+	}
+	if m.PostTokens > 0 {
+		p["post_tokens"] = m.PostTokens
+	}
+	ev.Payload = mustJSON(p)
+	return ev, true
 }
 
 // MaxAssistantText caps the assistant prose kept per turn. It exists to stop a

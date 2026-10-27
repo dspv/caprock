@@ -46,6 +46,7 @@ import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGEN
 import { SubagentDetail } from './SubagentDetail'
 import { SectionFrames } from './SectionFrames'
 import { FitSummary } from './FitSummary'
+import { CompactAction, CompactIcon, useCompact } from './CompactContext'
 import {
   askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
@@ -916,6 +917,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   const { context: look } = useLooks()
   const full = look === 'full'
   const toggle = () => setLook('context', full ? 'compact' : 'full')
+  const compact = useCompact(s)
   const ctx = s.context
   if (!ctx) {
     return (
@@ -942,6 +944,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
         <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">
           <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span> · <span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}
         </span>
+        <CompactIcon c={compact} />
       </section>
     )
   }
@@ -956,6 +959,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
         <span className={`num font-medium ${ink}`}>{fmtPct(pct)}</span> full
         {ctx.next_call_usd > 0 && <> · every call now re-reads it for <span className="num text-fg">{fmtUSD(ctx.next_call_usd)}</span></>}
       </p>
+      <CompactAction s={s} c={compact} />
     </section>
   )
 }

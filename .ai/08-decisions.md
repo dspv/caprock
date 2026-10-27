@@ -6380,3 +6380,61 @@ Caprock — claude.ai chats, another computer — draws on the same plan and
 limit without being recorded here; every explanation says so. A sign-in
 with no recorded work in 30 days has no plan factor. A month's total on the
 Cost screen can be several hundred percent of a week, and is shown so.
+
+## ADR-085 — Compact context is a free button that types Claude Code's own `/compact`
+
+**Date:** 2026-10-27 · **Status:** accepted (owner's decisions, 2026-10-24 and
+2026-10-27, translated). **Supersedes** the context-tax Stage 0 decision that
+"compaction is the first paid intervention"
+([notes/context-tax.md § What Stage 0 decided](notes/context-tax.md), item 2):
+compacting is free. Builds on [ADR-053](#adr-053--queued-messages-the-daemon-holds-what-the-chat-sends-mid-turn-and-types-it-in-when-the-turn-ends-one-per-turn) (the message queue) and
+rule 7.
+
+**Context.** A long session re-reads its whole context on every call, and
+the cockpit already says how full it is and what each call now costs to
+re-read. The owner asked for the obvious next step beside that figure: a
+button that compacts the context and lets the session carry on where it
+was, free, with the saving shown honestly.
+
+**Decision.**
+
+- **Claude Code's own `/compact`, never `/clear`.** `/compact` replaces the
+  conversation with a summary in the same process and the same session;
+  `/clear` throws the conversation away. Nothing of Caprock's own summarises.
+- **Free**, not Premium: the Stage 0 plan to sell compaction is withdrawn.
+- **Where.** In the cockpit's Context section: a *Compact context* button in
+  the full look, and a small icon at the end of the collapsed line once the
+  context is 60% full. Hidden under 100k tokens of context, where there is
+  little to gain. One click, no confirmation, no field for instructions (not
+  now).
+- **How it is typed.** Through the message queue (`POST
+  /v1/agents/{id}/compact`, [03-contracts.md § Compact context](03-contracts.md)):
+  at once at the prompt, else when the turn ends (its Stop hook), typed as
+  every message is — the text, then a bare CR, which submits. Only a Claude
+  Code session Caprock started (rule 7). A session another terminal holds
+  gets the command to type there and *Continue here*, never a keystroke.
+- **The saving, measured, never promised (rule 6).** Before the press: what
+  usually stays, with its source on screen — this machine's own compactions
+  once five are measured (median and 90th percentile of the share kept),
+  and until then the owner's measurement, labelled as one machine's: **70
+  automatic compactions, 2026-09-29 to 2026-10-25, kept a median 15% of the
+  context (90th percentile 25%), median 467,121 → 64,388 tokens**; "kept" is
+  the first real main-thread turn after each `compact_boundary` against the
+  boundary's `preTokens`. After the press: that session's own boundary,
+  *Compacted: 41.4k → 10.1k tokens* — its `postTokens` when Claude Code
+  writes one (newer versions do, so the after shows at once, and the
+  machine's own figure is measured from it too), else the next turn's
+  prompt, which waits for the next reply, since a compaction at an idle
+  prompt makes no call. No cost of the next call is shown.
+- **Boundaries are ingested** as `context.compacted` (parser v5), with a
+  one-time background backfill from the transcripts on disk, so the
+  machine's own figure exists from the day of the upgrade.
+
+**Consequences.** The share kept depends on what the summary keeps, which
+Claude Code decides, so a session can keep more or less than the median;
+the line says "usually" and names its source. The reference figure is one
+machine's and mostly automatic compactions at a large context; a manual one
+at a smaller context may keep a larger share. Until the next reply the
+cockpit's meter still shows the size before (it is measured from the last
+turn); the after line gives the new size when the boundary carries it, and
+on an older Claude Code says it comes with the next reply.

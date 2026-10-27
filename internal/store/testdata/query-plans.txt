@@ -142,6 +142,10 @@ SELECT COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cac
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## ingest.BackfillCompactions
+SELECT session_id, COALESCE(transcript_path,'') FROM sessions WHERE COALESCE(agent,'claude') = 'claude' AND COALESCE(transcript_path,'') != ''
+    SCAN sessions
+
 ## ingest.BackfillTitles
 SELECT session_id, COALESCE(transcript_path,'') FROM sessions WHERE COALESCE(agent,'claude') = 'claude' AND title = '' AND COALESCE(transcript_path,'') != ''
     SCAN sessions
@@ -233,6 +237,7 @@ WITH shared AS ( SELECT msg_id FROM events INDEXED BY idx_events_turn_msg WHERE 
     CO-ROUTINE shared
         SEARCH events USING COVERING INDEX idx_events_turn_msg (msg_id>?)
     SEARCH e USING INDEX idx_events_kind_id (kind=?)
+    BLOOM FILTER ON shared (msg_id=?)
     SEARCH shared USING AUTOMATIC COVERING INDEX (msg_id=?)
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
     USE TEMP B-TREE FOR ORDER BY
@@ -1122,6 +1127,18 @@ SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.mode
     SCAN r
     SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?) LEFT-JOIN
 
+## store.LastCompaction
+SELECT b.ts, b.trigger, b.pre, b.dur, COALESCE(b.post, ( SELECT COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) FROM events t INDEXED BY idx_events_session_ts WHERE t.sid = b.sid AND t.ts >= b.ts AND t.ts < b.next AND t.kind = 'turn.assistant' AND t.internal = 0 AND t.tokens_in IS NOT NULL AND COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) > 0 AND COALESCE(t.agent_id, '') = '' AND json_extract(t.payload, '$.sidechain') IS NOT 1 ORDER BY t.ts, t.id LIMIT 1 ), 0) FROM ( SELECT e.sid, e.ts, COALESCE(json_extract(e.payload, '$.trigger'), '') AS trigger, COALESCE(json_extract(e.payload, '$.pre_tokens'), 0) AS pre, COALESCE(json_extract(e.payload, '$.duration_ms'), 0) AS dur, NULLIF(json_extract(e.payload, '$.post_tokens'), 0) AS post, COALESCE(( SELECT MIN(n.ts) FROM events n INDEXED BY idx_events_kind_ts WHERE n.kind = 'context.compacted' AND n.ts > e.ts AND n.sid = e.sid AND COALESCE(n.agent_id, '') = '' AND json_extract(n.payload, '$.sidechain') IS NOT 1 ), 9223372036854775807) AS next FROM events e INDEXED BY idx_events_kind_ts WHERE e.kind = 'context.compacted' AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND e.sid = (SELECT sid FROM sessions WHERE session_id = ?) ORDER BY e.ts DESC, e.id DESC LIMIT ? ) b ORDER BY b.ts DESC
+    CO-ROUTINE b
+        SEARCH e USING INDEX idx_events_kind_ts (kind=?)
+        SCALAR SUBQUERY 3
+            SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+        CORRELATED SCALAR SUBQUERY 2
+            SEARCH n USING INDEX idx_events_kind_ts (kind=? AND ts>?)
+    SCAN b
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH t USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
+
 ## store.LastMainTurn
 SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'') FROM ( SELECT * FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) ORDER BY ts DESC, id DESC LIMIT ? ) e WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND e.tokens_in IS NOT NULL AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT 1
     CO-ROUTINE e
@@ -1604,6 +1621,16 @@ SELECT COALESCE((SELECT gen FROM session_gen WHERE session_id = ?1), 0), COALESC
         SEARCH events USING COVERING INDEX idx_events_session_id (sid=?)
         SCALAR SUBQUERY 2
             SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.RecentCompactionStats
+SELECT b.ts, b.trigger, b.pre, b.dur, COALESCE(b.post, ( SELECT COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) FROM events t INDEXED BY idx_events_session_ts WHERE t.sid = b.sid AND t.ts >= b.ts AND t.ts < b.next AND t.kind = 'turn.assistant' AND t.internal = 0 AND t.tokens_in IS NOT NULL AND COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) > 0 AND COALESCE(t.agent_id, '') = '' AND json_extract(t.payload, '$.sidechain') IS NOT 1 ORDER BY t.ts, t.id LIMIT 1 ), 0) FROM ( SELECT e.sid, e.ts, COALESCE(json_extract(e.payload, '$.trigger'), '') AS trigger, COALESCE(json_extract(e.payload, '$.pre_tokens'), 0) AS pre, COALESCE(json_extract(e.payload, '$.duration_ms'), 0) AS dur, NULLIF(json_extract(e.payload, '$.post_tokens'), 0) AS post, COALESCE(( SELECT MIN(n.ts) FROM events n INDEXED BY idx_events_kind_ts WHERE n.kind = 'context.compacted' AND n.ts > e.ts AND n.sid = e.sid AND COALESCE(n.agent_id, '') = '' AND json_extract(n.payload, '$.sidechain') IS NOT 1 ), 9223372036854775807) AS next FROM events e INDEXED BY idx_events_kind_ts WHERE e.kind = 'context.compacted' AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ? ) b ORDER BY b.ts DESC
+    CO-ROUTINE b
+        SEARCH e USING INDEX idx_events_kind_ts (kind=?)
+        CORRELATED SCALAR SUBQUERY 2
+            SEARCH n USING INDEX idx_events_kind_ts (kind=? AND ts>?)
+    SCAN b
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH t USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
 
 ## store.RecentDirs
 SELECT d, COUNT(*), MAX(last_event_at) FROM ( SELECT COALESCE(NULLIF(repo_root,''), cwd) AS d, last_event_at FROM sessions WHERE COALESCE(NULLIF(repo_root,''), cwd) != '' ) GROUP BY d ORDER BY 3 DESC
@@ -2606,6 +2633,17 @@ SELECT * FROM (SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.si
         CORRELATED SCALAR SUBQUERY 1
             SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
     SCAN (subquery-5)
+    USE TEMP B-TREE FOR ORDER BY
+
+## store.eventsBefore
+SELECT * FROM (SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'') FROM events e WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND e.kind IN (?, ?) ORDER BY ts DESC, id DESC LIMIT ?) ORDER BY ts ASC, id ASC
+    CO-ROUTINE (subquery-3)
+        SEARCH e USING INDEX idx_events_session_ts (sid=?)
+        SCALAR SUBQUERY 2
+            SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+        CORRELATED SCALAR SUBQUERY 1
+            SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+    SCAN (subquery-3)
     USE TEMP B-TREE FOR ORDER BY
 
 ## store.eventsBefore

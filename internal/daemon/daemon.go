@@ -457,6 +457,10 @@ func repairTranscripts(ctx context.Context, st *store.Store, log *slog.Logger) {
 		// not wait on history.
 		_ = st.SetMeta(ctx, store.MetaEmptyTextRepairPending, "1")
 	}
+	if ingest.NeedsCompactionBackfill(prevSchema) {
+		// After the port opens (backfillCompactions), for the same reason.
+		_ = st.SetMeta(ctx, store.MetaCompactBackfillPending, "1")
+	}
 	if ingest.NeedsTitleBackfill(prevSchema) {
 		if _, err := ingest.BackfillTitles(ctx, st.DB(), log); err != nil {
 			log.Warn("could not name sessions from their transcripts", "component", "ingest", "err", err)
@@ -949,6 +953,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.goBg(func() { d.weeklyLoop(ctx) })
 	d.afterMove(ctx, func() { d.backfillToolLinks(ctx) })
 	d.afterMove(ctx, func() { d.repairEmptyText(ctx) })
+	d.afterMove(ctx, func() { d.backfillCompactions(ctx) })
 	d.afterMove(ctx, func() { d.backfillPRs(ctx) })
 	d.afterMove(ctx, func() { d.fillToolFields(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
@@ -1369,6 +1374,23 @@ func (d *Daemon) repairEmptyText(ctx context.Context) {
 	}
 	_ = d.store.SetMeta(ctx, store.MetaEmptyTextRepairPending, "0")
 	d.log.Info("filled assistant text dropped with a response's later lines", "component", "ingest",
+		"events", n, "took", time.Since(start).Round(time.Millisecond).String())
+}
+
+// backfillCompactions adds the compaction boundaries of transcripts read
+// before parser v5, once, in the background.
+func (d *Daemon) backfillCompactions(ctx context.Context) {
+	if v, _ := d.store.GetMeta(ctx, store.MetaCompactBackfillPending); v != "1" {
+		return
+	}
+	start := time.Now()
+	n, err := ingest.BackfillCompactions(ctx, d.store.DB(), d.log)
+	if err != nil {
+		d.log.Warn("could not read compactions from transcripts", "component", "ingest", "err", err)
+		return
+	}
+	_ = d.store.SetMeta(ctx, store.MetaCompactBackfillPending, "0")
+	d.log.Info("read compactions from transcripts", "component", "ingest",
 		"events", n, "took", time.Since(start).Round(time.Millisecond).String())
 }
 

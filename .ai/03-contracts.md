@@ -193,7 +193,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/stats/summary`, `/v1/stats/limits`, `/v1/stats/daily`, `/v1/stats/trends`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
-  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/queue`,
+  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/sessions/{id}/compaction`, `/v1/queue`,
   `/v1/chats`, `/v1/chats/{id}/files` and `/v1/chats/{id}/file` (§ Chats),
   `/v1/work` and `/v1/sessions/{id}/ci/stats` (the phone home's Releases:
   the board and one repository's Pipeline answer, composed by the daemon
@@ -2367,6 +2367,8 @@ DELETE /v1/subscriptions/{id}        → 204; 409 while a session Caprock starte
 POST   /v1/agents/{id}/input         {data?, paths?}   → 204   (owned PTYs only); paths are saved files (POST /v1/paste) typed in before data as the terminal types a dropped file: each image its own bracketed paste when the session turned paste on, 150 ms after it; anything else quoted with a space
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
 POST   /v1/agents/{id}/queue         {text} → {sent, queued?, queue: QueueView}; typed in now at the prompt, otherwise queued
+GET    /v1/sessions/{id}/compaction  → CompactionView; the session's last compaction measured, whether one runs or waits, and what this machine's keep (§ Compact context)
+POST   /v1/agents/{id}/compact       → {sent, queued?, queue: QueueView}; /compact typed into an owned Claude Code session now or when its turn ends; 409 not owned, not Claude Code, or compacting already
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill|end} → 204 (owned PTYs only; end = SIGTERM, SIGKILL after 5s)
 GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?, agent_id?, agent_type?, waiting?} | null}; the oldest prompt an owned session waits on, queued = how many more are outstanding, waiting = all of them when two or more
 POST   /v1/agents/{id}/permission    {id, choice: allow|always|deny|dismiss} → 204; 409 when that prompt is not the oldest outstanding, or no permission menu is on screen at all (the prompt is dropped); 422 {error} when the menu on screen has no such option, or more than one prompt is outstanding (nothing typed); dismiss types nothing and drops that prompt, any of them
@@ -5146,6 +5148,55 @@ POST   /v1/agents/{id}/queue/{qid}/send     → QueueView; 409 while a prompt or
   next main-thread `UserPromptSubmit` event as `"via": "telegram"` before it
   is recorded (hookd's `Annotate`). The chat and the queue show *from
   Telegram* under such a message.
+
+### Compact context
+
+The cockpit's **Compact context** ([ADR-085](08-decisions.md)): Claude Code's
+own `/compact`, typed into a session Caprock started, so the session carries
+on in place with a summary of the conversation. Free. Code:
+`internal/api/compact.go`, `internal/daemon/compact_context.go`,
+`internal/store/compactions.go`, `internal/ingest/compactions.go`,
+`ui/src/lib/compact.ts`, `ui/src/components/CompactContext.tsx`.
+
+```
+GET  /v1/sessions/{id}/compaction  → CompactionView
+POST /v1/agents/{id}/compact       → {sent: bool, queued?: QueuedMessage, queue: QueueView}
+```
+
+- **`CompactionView`** — `{session_id, last?: Compaction, running, queued,
+  typical?: CompactionStats}`.
+  - `Compaction` is `{at, trigger, pre_tokens, post_tokens?, duration_ms?}`
+    (unix ms): the session's newest main-thread `context.compacted` — not a
+    subagent's or a sidechain's — with `pre_tokens` as Claude Code measured
+    it, and `post_tokens` the context after: the boundary's own
+    `postTokens` when Claude Code wrote one (it does since late October
+    2026, so the after shows the moment the boundary is read), else the
+    prompt of the first main-thread `turn.assistant` with usage above zero
+    at or after the boundary and before the session's next one; absent
+    until either is known. On an older Claude Code a manual compaction at
+    an idle prompt has no after until the next reply.
+  - `running` — the newest main-thread `context.compact` / `context.compacted`
+    is the `PreCompact` hook, less than 10 minutes old.
+  - `queued` — a message reading exactly `/compact` waits in the session's
+    queue.
+  - `typical` — `{count, median_kept, p90_kept, median_pre, median_post,
+    from, to}` over the newest 500 main-thread compactions on the machine
+    with a measured after: the share kept is `post_tokens / pre_tokens`.
+    Absent with fewer than 5. Read at most once a minute.
+- **The press** goes through the message queue (§ Queued messages) with the
+  text `/compact`: typed in at once when `waiting` is `""` and nothing is
+  queued, else queued and typed in at the turn's end. It is typed like any
+  message: the text, then a bare `\r` 200 ms later, which submits — never
+  ESC CR, which would be a line break in the prompt — and the check 1.5 s
+  later presses Enter once more while the prompt still shows `/compact`. A
+  press while a `/compact` waits answers with that one (`queued`), not a
+  second. `/clear` is never typed.
+- **Refusals** (`409 {error}`): a session Caprock did not start or that has
+  ended (rule 7); an agent other than Claude Code (the boundary that
+  measures a compaction is Claude Code's); a compaction running. `501`
+  without a queue.
+- **Who.** `GET` is open to every paired device; `POST` to a controller, as
+  `POST /v1/agents/{id}/queue` is.
 
 ### Queue
 
@@ -7942,6 +7993,7 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - `user`/`assistant`/`system` lines carry `uuid`, `parentUuid`, `timestamp` (RFC 3339), `sessionId`, `cwd`, `version`, `gitBranch`, `isSidechain`.
 - `assistant` lines: `message.model`, `message.id`, `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`; `message.content[]` blocks (`text`, `tool_use`, …).
 - `system` lines with `subtype: "turn_duration"` carry `durationMs`.
+- **`system` lines with `subtype: "compact_boundary"`** mark where a compaction replaced the conversation with its summary (observed in Claude Code 2.1.295, 2026-10-27): `compactMetadata.{trigger: "auto"|"manual", preTokens, durationMs}`, on newer versions also `postTokens` and `cumulativeDroppedTokens` (seen 2026-10-27 on a real manual compaction: `{"trigger":"manual","preTokens":41412,"postTokens":10123,"cumulativeDroppedTokens":31289,"durationMs":4107}`), plus fields Caprock does not read (`preCompactDiscoveredTools`, `preservedSegment`, `preservedMessages`), `content: "Conversation compacted"`, `parentUuid: null`, `logicalParentUuid`. Since parser v5 each is stored as a `context.compacted` event keyed `compact:<uuid>`, payload `{trigger, pre_tokens, post_tokens?, duration_ms, session_id, sidechain, _from: "transcript"}` (`post_tokens` only when the line carries a `postTokens` above zero); boundaries in transcripts read before v5 are added once, in the background after the port opens (`ingest.BackfillCompactions`, meta `compact_backfill_pending`), straight to the store so they move no session's status. No DDL change: the kind is new, the columns are not. After a boundary Claude Code copies the preserved messages into the file again with the same `message.id`; ingest stores those once (`msg:<id>`), so the first main-thread turn stored after the boundary with usage above zero is a real call — its prompt (input + cache read + cache write) is the context after when the boundary carries no `postTokens` (§ Compact context).
 - The transcript is written asynchronously and may lag the in-memory conversation (Claude Code documents this) — hence hooks are the real-time source and transcripts the accounting source.
 - Files live at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; `transcript_path` in hook payloads points at the exact file. Subagent transcripts live at `<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl` and carry the parent `sessionId` plus `agentId`, `isSidechain: true`.
 - **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
