@@ -326,7 +326,18 @@ tests that pass by skipping the interesting case.
 | PTY spike (real processes) | `go test -tags ptyspike ./...` | CI, informational job              |
 | UI                         | `npm test` in `ui/`            | `make test`, CI                    |
 | Everything (the gate)      | `make check`                   | Locally before every push          |
+| Query plans                | `make plans`                   | CI, Ubuntu leg of the go job       |
 | Performance budgets        | `bench/run-macos.sh` (per OS)  | By hand, on a quiet machine; WP-16 |
+
+The query plan check keeps every statement on its index. CI's Ubuntu leg
+records each statement its `go test` runs, outside test files, then explains
+them on an empty database at the latest schema. With no ANALYZE statistics,
+SQLite plans the same there as on a user's database. A plan that differs from
+`internal/store/testdata/query-plans.txt` fails, and so does a step that reads
+every row of `events` unless `scanAllowed` in `plans_test.go` says why. A
+change that moves a plan runs `make plans` and commits the file, so the review
+sees the new plan. Statements the tests never run are not covered, nor is
+`caprock export`, which opens the database read-only on its own connection.
 
 The budgets of [21-app.md § Budgets](21-app.md#budgets) are measured by
 `bench/` ([bench/README.md](../bench/README.md)), not by CI: CI runners are

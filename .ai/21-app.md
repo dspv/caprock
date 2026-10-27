@@ -1517,6 +1517,14 @@ app had no reload command.
   does, the window starts on the fallback page ("Updating the daemon") and
   the monitor takes it to the dashboard once the new daemon answers. No page
   is ever loaded from the daemon that is about to stop.
+- **A database upgrade is waited out, not failed.** A daemon that keeps a
+  copy of its database before migration 0073 answers only once the copy and
+  the migrations are done: 5.7–9.6 s for a 1.2 GB database (2026-10-23).
+  While `upgrading.json` is fresh ([03-contracts.md § Runtime
+  file](03-contracts.md#runtime-file)), the supervisor shows "Upgrading the
+  database, which can take a minute" and keeps waiting, whether it started
+  the daemon, the login service did, or the daemon was already restarting,
+  and then gives it the 10 s of any start to finish starting.
 - **A late swap reloads.** A daemon that came up after launch is replaced
   when the window may already show its page: the monitor follows the swap's
   state rather than the old daemon, and once the new one answers on the same

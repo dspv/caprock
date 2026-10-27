@@ -52,7 +52,7 @@ func SessionCalls(ctx context.Context, q Querier, sessionID string, n int) ([]Se
 		SELECT * FROM (
 		  SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '')
 		    FROM events e
-		   WHERE e.session_id = ? AND +e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND `+MainThreadWhere+`
+		   WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND `+MainThreadWhere+`
 		   ORDER BY e.ts DESC, e.id DESC LIMIT ?)
 		 ORDER BY 2 ASC, 1 ASC`, sessionID, n)
 	if err != nil {
@@ -91,7 +91,7 @@ func SessionCalls(ctx context.Context, q Querier, sessionID string, n int) ([]Se
 	tools, err := q.QueryContext(ctx, `
 		SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract(e.payload, '$.tool_input'), '')
 		  FROM events e
-		 WHERE e.session_id = ? AND +e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND `+MainThreadWhere+`
+		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND `+MainThreadWhere+`
 		 ORDER BY e.ts ASC, e.id ASC`, sessionID)
 	if err != nil {
 		return nil, err

@@ -12,7 +12,7 @@ import (
 // after fromMs (internal model work left out, as every user total does). A
 // session with nothing priced since is absent.
 //
-// One grouped sum over idx_events_attr_work, which leads on (session_id, ts)
+// One grouped sum over idx_events_attr_work, which leads on (sid, ts)
 // and carries cost_usd and internal, so no table row is read.
 func SpendBySessionSince(ctx context.Context, q Querier, ids []string, fromMs int64) (map[string]float64, error) {
 	out := map[string]float64{}
@@ -25,10 +25,10 @@ func SpendBySessionSince(ctx context.Context, q Querier, ids []string, fromMs in
 	}
 	args = append(args, fromMs)
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, COALESCE(SUM(cost_usd), 0)
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(SUM(cost_usd), 0)
 		  FROM events INDEXED BY idx_events_attr_work
-		 WHERE session_id IN (?`+strings.Repeat(", ?", len(ids)-1)+`) AND ts >= ?`+nonInternalEvent+`
-		 GROUP BY session_id`, args...)
+		 WHERE sid IN (SELECT sid FROM sessions WHERE session_id IN (?`+strings.Repeat(", ?", len(ids)-1)+`)) AND ts >= ?`+nonInternalEvent+`
+		 GROUP BY sid`, args...)
 	if err != nil {
 		return nil, err
 	}

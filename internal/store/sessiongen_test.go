@@ -69,11 +69,11 @@ func TestEventsGenMovesOnEveryChange(t *testing.T) {
 			t.Fatalf("want ErrDuplicate, got %v", err)
 		}
 	}, false, false)
-	step("update", exec(`UPDATE events SET payload = '{"x":1}' WHERE session_id = 'a'`), true, false)
-	step("move to another session", exec(`UPDATE events SET session_id = 'b' WHERE id = (SELECT MIN(id) FROM events WHERE session_id = 'a')`), true, true)
+	step("update", exec(`UPDATE events SET payload = '{"x":1}' WHERE sid = (SELECT sid FROM sessions WHERE session_id = 'a')`), true, false)
+	step("move to another session", exec(`UPDATE events SET sid = (SELECT sid FROM sessions WHERE session_id = 'b') WHERE id = (SELECT MIN(id) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = 'a'))`), true, true)
 	// Deleting the newest row lowers MaxID; the generation still moves on.
-	step("delete newest", exec(`DELETE FROM events WHERE id = (SELECT MAX(id) FROM events WHERE session_id = 'a')`), true, false)
-	step("delete b", exec(`DELETE FROM events WHERE session_id = 'b'`), false, true)
+	step("delete newest", exec(`DELETE FROM events WHERE id = (SELECT MAX(id) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = 'a'))`), true, false)
+	step("delete b", exec(`DELETE FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = 'b')`), false, true)
 	step("delete the rest", exec(`DELETE FROM events`), true, false)
 	// Never reset: a session seen again carries on from where it was.
 	step("b re-seen", func() { insert("b", now) }, false, true)

@@ -21,15 +21,19 @@ func TestActivityBucketsCountsTurnsAndToolsPerSession(t *testing.T) {
 	put("a", event.KindToolPost, 5*time.Minute) // not counted: one call is one mark
 	put("b", event.KindToolPre, -time.Minute)   // before the window
 	put("b", event.KindToolPre, 7*time.Minute)  // after it
+	put("b", event.KindToolPre, 45*time.Second)
 
 	got, err := ActivityBuckets(ctx, f.s.DB(), from.UnixMilli(), 2*60*1000, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("sessions %v, want only a", got)
+	if len(got) != 2 {
+		t.Fatalf("sessions %v, want a and b", got)
 	}
 	if a := got["a"]; len(a) != 3 || a[0] != 2 || a[1] != 0 || a[2] != 1 {
 		t.Fatalf("a = %v, want [2 0 1]", a)
+	}
+	if b := got["b"]; len(b) != 3 || b[0] != 1 || b[1] != 0 || b[2] != 0 {
+		t.Fatalf("b = %v, want [1 0 0]", b)
 	}
 }

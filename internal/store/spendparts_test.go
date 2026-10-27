@@ -38,7 +38,7 @@ func TestSpendPartsBetween(t *testing.T) {
 			t.Fatal(err)
 		}
 		if internal {
-			if _, err := s.db.ExecContext(ctx, `UPDATE events SET internal = 1 WHERE session_id = ?`, id); err != nil {
+			if _, err := s.db.ExecContext(ctx, `UPDATE events SET internal = 1 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)`, id); err != nil {
 				t.Fatal(err)
 			}
 		}

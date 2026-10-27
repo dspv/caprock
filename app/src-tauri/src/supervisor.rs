@@ -31,6 +31,12 @@ use std::time::{Duration, Instant};
 /// poll, a stop is shown in under 2 s (WP-02).
 pub const STOPPED_AFTER: Duration = Duration::from_millis(1200);
 
+const UPGRADING: &str = "Upgrading the database, which can take a minute";
+
+/// How long a daemon that has upgraded its database has to answer, as long
+/// as `caprock up` gives any start.
+const STARTED_WITHIN: Duration = Duration::from_secs(10);
+
 const EXE: &str = if cfg!(windows) {
     "caprock.exe"
 } else {
@@ -138,6 +144,8 @@ struct Inner {
     /// The move of a Homebrew daemon onto the app's own has been tried in
     /// this run; it is tried once, whatever the outcome.
     adopt_tried: bool,
+    /// When `upgrading.json` was last seen fresh.
+    upgrade_seen: Option<Instant>,
 }
 
 impl Supervisor {
@@ -163,6 +171,7 @@ impl Supervisor {
                 autostart: false,
                 last_poll: None,
                 adopt_tried: false,
+                upgrade_seen: None,
             }),
         })
     }
@@ -250,7 +259,20 @@ impl Supervisor {
                 }
             }
             Found::Absent => match &g.state {
+                _ if discovery::upgrading(&self.data_dir) => {
+                    g.upgrade_seen = Some(Instant::now());
+                    State::Starting {
+                        step: UPGRADING.into(),
+                    }
+                }
                 _ if g.busy => g.state.clone(),
+                // The upgrade ended and no daemon answered in a start's time.
+                State::Starting { step }
+                    if step == UPGRADING
+                        && g.upgrade_seen.is_none_or(|t| t.elapsed() >= STARTED_WITHIN) =>
+                {
+                    State::Stopped
+                }
                 State::Connected { .. } | State::TooOld { .. } if absent_for >= STOPPED_AFTER => {
                     State::Stopped
                 }
@@ -574,10 +596,16 @@ impl Supervisor {
     }
 
     fn wait_up(&self, timeout: Duration) -> bool {
-        let deadline = Instant::now() + timeout;
+        let mut deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             if matches!(discovery::find(&self.data_dir), Found::Running { .. }) {
                 return true;
+            }
+            if discovery::upgrading(&self.data_dir) {
+                self.set(State::Starting {
+                    step: UPGRADING.into(),
+                });
+                deadline = Instant::now() + timeout;
             }
             thread::sleep(Duration::from_millis(200));
         }
@@ -963,6 +991,22 @@ mod tests {
             s.observe(running(MIN_API_LEVEL, ""), Duration::ZERO),
             State::Connected { .. }
         ));
+    }
+
+    #[test]
+    fn a_daemon_upgrading_its_database_reads_as_starting() {
+        let s = sup("upgrade");
+        s.observe(running(MIN_API_LEVEL, ""), Duration::ZERO);
+        std::fs::create_dir_all(&s.data_dir).unwrap();
+        std::fs::write(s.data_dir.join("upgrading.json"), "{}").unwrap();
+        let upgrading = State::Starting {
+            step: UPGRADING.into(),
+        };
+        assert_eq!(s.observe(Found::Absent, STOPPED_AFTER), upgrading);
+        std::fs::remove_file(s.data_dir.join("upgrading.json")).unwrap();
+        assert_eq!(s.observe(Found::Absent, STOPPED_AFTER), upgrading);
+        s.lock().upgrade_seen = Instant::now().checked_sub(STARTED_WITHIN);
+        assert_eq!(s.observe(Found::Absent, STOPPED_AFTER), State::Stopped);
     }
 
     #[test]

@@ -147,6 +147,15 @@ it('reports a dead ingest instead of telling the user to wait forever', async ()
   expect(screen.getByText(/permission denied/)).toBeInTheDocument()
 })
 
+it('says older history is incomplete while the upgrade moves it in', async () => {
+  state.summary = emptySummary()
+  state.status = { claude_available: true, events_move: { moved: 250, total: 1000 } }
+  render(<NowScreen />)
+
+  await waitFor(() => expect(screen.getByText('Upgrading the database')).toBeInTheDocument())
+  expect(screen.getByText('25%')).toBeInTheDocument()
+})
+
 it('explains a machine with no agent instead of hiding the control that says so', async () => {
   state.summary = emptySummary()
   state.status = { claude_available: false }

@@ -47,7 +47,7 @@ func kindOf(t *testing.T, s *Store, id string) string {
 	t.Helper()
 	var k string
 	if err := s.db.QueryRowContext(context.Background(),
-		`SELECT kind FROM events WHERE session_id = ?`, id).Scan(&k); err != nil {
+		`SELECT kind FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)`, id).Scan(&k); err != nil {
 		t.Fatal(err)
 	}
 	return k

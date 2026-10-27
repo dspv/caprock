@@ -31,7 +31,7 @@ func LastPermissionMode(ctx context.Context, q Querier, sessionID string) (strin
 		  SELECT ts, id,
 		         CASE WHEN json_valid(payload) THEN json_extract(payload, '$.permission_mode') END AS mode
 		  FROM events INDEXED BY idx_events_session_ts
-		  WHERE session_id = ? AND source = 'hook' AND kind <> 'tool.post'
+		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = 'hook' AND kind <> 'tool.post'
 		  ORDER BY ts DESC, id DESC
 		  LIMIT ?)
 		WHERE typeof(mode) = 'text' AND mode <> ''

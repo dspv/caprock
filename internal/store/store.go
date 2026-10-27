@@ -136,8 +136,11 @@ const maxOpenConns = 8
 
 // Store wraps the database handle.
 type Store struct {
-	db  *sql.DB
-	log *slog.Logger
+	db        *sql.DB
+	log       *slog.Logger
+	path      string
+	onUpgrade func() (done func())
+	moving    atomic.Bool // events_legacy holds rows (move.go)
 }
 
 // Open opens (creating if needed) the SQLite database at path and applies pending
@@ -145,7 +148,7 @@ type Store struct {
 // memSeq names in-memory databases uniquely; see the ":memory:" branch in Open.
 var memSeq atomic.Int64
 
-func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
+func Open(ctx context.Context, path string, log *slog.Logger, opts ...Option) (*Store, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -271,7 +274,10 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 	// them costs a fixed handful of file descriptors and the page cache we
 	// wanted anyway.
 	db.SetConnMaxIdleTime(0)
-	s := &Store{db: db, log: log}
+	s := &Store{db: db, log: log, path: path}
+	for _, o := range opts {
+		o(s)
+	}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
 		var newer *SchemaTooNewError
@@ -279,6 +285,10 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 			newer.Path = path
 		}
 		return nil, err
+	}
+	if err := s.checkMove(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("events left to move: %w", err)
 	}
 	// The database holds prompts and responses in cleartext. Tighten it (and
 	// the WAL/shm siblings SQLite just created) to 0600 — on POSIX the default
@@ -303,23 +313,13 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 		s.log.Warn("repository backfill incomplete; some projects keep their old labels",
 			"component", "store", "err", err)
 	}
-	// Migration 0012's touch_dir is derived in Go for the same reason: the
-	// dirname has to be cut with the SAME path normalization the ingest path
-	// uses, and SQLite has no `reverse` to do it with.
-	if err := s.backfillTouch(ctx); err != nil {
-		// Degraded means "some historical turns report as unattributed", which
-		// is an honest answer, not a wrong one.
-		s.log.Warn("touch backfill incomplete; some historical spend reports as unattributed",
-			"component", "store", "err", err)
-	}
 	// Migration 0056's search column is Unicode-folded in Go (brainsearch.go).
 	if err := s.backfillBrainSearch(ctx); err != nil {
 		s.log.Warn("Second Brain search backfill incomplete; older memories may not be found by search",
 			"component", "store", "err", err)
 	}
-	if err := s.backfillInnerTool(ctx); err != nil {
-		s.log.Warn("inner tool backfill incomplete; some Codex edits still count as commands",
-			"component", "store", "err", err)
+	if !s.Moving() {
+		s.backfillEvents(ctx)
 	}
 	// Migration 0070's fields are filled in the background
 	// (Store.FillToolFields); Open only marks what is pending.
@@ -328,6 +328,25 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Store, error) {
 			"component", "store", "err", err)
 	}
 	return s, nil
+}
+
+// backfillEvents fills the columns of events derived in Go. Each marks itself
+// done, so it waits for a move to end (moveDone): over the newest rows alone
+// it would mark the rest done unread.
+func (s *Store) backfillEvents(ctx context.Context) {
+	// Migration 0012's touch_dir is derived in Go: the dirname has to be cut
+	// with the SAME path normalization the ingest path uses, and SQLite has
+	// no `reverse` to do it with.
+	if err := s.backfillTouch(ctx); err != nil {
+		// Degraded means "some historical turns report as unattributed", which
+		// is an honest answer, not a wrong one.
+		s.log.Warn("touch backfill incomplete; some historical spend reports as unattributed",
+			"component", "store", "err", err)
+	}
+	if err := s.backfillInnerTool(ctx); err != nil {
+		s.log.Warn("inner tool backfill incomplete; some Codex edits still count as commands",
+			"component", "store", "err", err)
+	}
 }
 
 // backfillInnerTool fills events.inner_tool (migration 0038) for Codex `exec`
@@ -622,6 +641,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	// its backfills against tables of an unknown shape.
 	if latest := migs[len(migs)-1].version; current > latest {
 		return &SchemaTooNewError{Database: current, Binary: latest}
+	}
+	if v := backupDue(migs, current); v > 0 && s.path != ":memory:" {
+		if s.onUpgrade != nil {
+			defer s.onUpgrade()()
+		}
+		s.backup(ctx, v)
 	}
 	for _, m := range migs {
 		if m.version <= current {

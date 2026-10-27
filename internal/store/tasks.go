@@ -167,7 +167,7 @@ func OpenAssignment(ctx context.Context, q Querier, taskID, sessionID string, fr
 }
 
 // CloseTaskAssignments closes every open window on a task at to_ts. Windows are
-// keyed by *session* id (AttributeTaskCost joins events.session_id), and the
+// keyed by *session* id (AttributeTaskCost joins events through it), and the
 // board — which finishes a task — only knows the hive *agent* id, not the
 // session the router spawned for it. Closing by task is the identifier both
 // sides already agree on, and it is correct when a task was worked by more than
@@ -183,7 +183,8 @@ func AttributeTaskCost(ctx context.Context, q Querier, taskID string) (float64, 
 	var cost sql.NullFloat64
 	err := q.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(e.cost_usd), 0) FROM task_assignments a
-		JOIN events e ON e.session_id = a.session_id
+		JOIN sessions s ON s.session_id = a.session_id
+		JOIN events e ON e.sid = s.sid
 		 AND e.ts >= a.from_ts AND (a.to_ts IS NULL OR e.ts <= a.to_ts)
 		WHERE a.task_id = ?`, taskID).Scan(&cost)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {

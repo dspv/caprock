@@ -48,7 +48,7 @@ func batchTurn(session string, i int) *event.Event {
 
 func countRows(t *testing.T, db *sql.DB, session string) (events, turns int) {
 	t.Helper()
-	if err := db.QueryRow(`SELECT COUNT(*) FROM events WHERE session_id = ?`, session).Scan(&events); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id = ?`, session).Scan(&events); err != nil {
 		t.Fatal(err)
 	}
 	_ = db.QueryRow(`SELECT COALESCE(turns, 0) FROM session_stats WHERE session_id = ?`, session).Scan(&turns)
@@ -163,7 +163,7 @@ func TestAnAbortedBatchLosesNothingAndCountsNothingTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rowSpend float64
-	if err := db.QueryRow(`SELECT COALESCE(SUM(cost_usd), 0) FROM events WHERE session_id = 's2'`).Scan(&rowSpend); err != nil {
+	if err := db.QueryRow(`SELECT COALESCE(SUM(cost_usd), 0) FROM events JOIN sessions USING (sid) WHERE session_id = 's2'`).Scan(&rowSpend); err != nil {
 		t.Fatal(err)
 	}
 	if spend != rowSpend {

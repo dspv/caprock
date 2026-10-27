@@ -258,7 +258,7 @@ const seekSessionsWithin = 48 * time.Hour
 // strict rule used (a per-turn touch lookup plus a turn scan).
 //
 // Doing the carry in SQL was considered and rejected. A window function could
-// compute `last_value(touch_dir) IGNORE NULLS OVER (PARTITION BY session_id
+// compute `last_value(touch_dir) IGNORE NULLS OVER (PARTITION BY sid
 // ORDER BY ts, id)`, but deciding whether the carried directory is inside the
 // repository needs the same path normalization the ingest path uses — folding
 // separators so a Windows-captured session groups with the same repository read
@@ -285,12 +285,12 @@ const seekSessionsWithin = 48 * time.Hour
 // idx_events_attr makes the plan a covering scan in index order with no sort,
 // measured at ~93 ms on the owner's database (2026-08-22, 30d, Go driver).
 //
-// The index leads on session_id, so `ts >= ?` alone could not seek: every
+// The index leads on sid, so `ts >= ?` alone could not seek: every
 // range scanned the whole index, all of history, to keep the rows in range —
 // 41 ms for ten minutes on a 517,000-event copy of the owner's database
 // (2026-10-14), and today's summary is counted again every two seconds while
 // anything is written. The sessions with rows in range come first, off
-// idx_events_ts_cover, and each is then a seek on (session_id, ts>=); the IN
+// idx_events_ts_cover, and each is then a seek on (sid, ts>=); the IN
 // list is walked in order, so the scan still needs no sort. Only for ranges
 // within seekSessionsWithin.
 //
@@ -305,27 +305,27 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 	// index order with no sort and no table access.
 	// inner_tool, when set, is the tool a Codex `exec` script really ran
 	// (migration 0038) and classifies the call in place of `exec`.
-	inRange, args := "session_id IS NOT NULL", []any{fromMs}
+	inRange, args := "sid IS NOT NULL", []any{fromMs}
 	if nowMs()-fromMs <= seekSessionsWithin.Milliseconds() {
-		inRange = `session_id IN (
-		        SELECT DISTINCT session_id FROM events INDEXED BY idx_events_ts_cover
+		inRange = `sid IN (
+		        SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover
 		         WHERE ts >= ? AND internal = 0 AND kind IN ('tool.pre', 'turn.assistant'))`
 		args = []any{fromMs, fromMs}
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT session_id, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(inner_tool, tool, ''),
+		SELECT sid, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(inner_tool, tool, ''),
 		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
 		FROM events INDEXED BY idx_events_attr_work
 		WHERE `+inRange+` AND ts >= ?
 		  AND internal = 0
 		  AND kind IN ('tool.pre', 'turn.assistant')
-		ORDER BY session_id, ts, id`, args...)
+		ORDER BY sid, ts, id`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-	out := map[string][]turnSpend{}
+	out := map[int64][]turnSpend{}
 	// Tool calls in range with no message id: they exist, they were paid for,
 	// and nothing says which turn paid. Counted so the breakdown can state its
 	// own uncertainty instead of presenting it as absence of tool use.
@@ -345,11 +345,12 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 	// boundaries — one piece of work must never be charged to another's
 	// directory, and the scan's ORDER BY groups sessions so a single variable
 	// suffices.
-	var carrySess, carryDir string
+	var carrySess int64
+	var carryDir string
 	var carried bool
 	for rows.Next() {
-		var sess, kind, dir, msg, tool string
-		var tokens int64
+		var sess, tokens int64
+		var kind, dir, msg, tool string
 		var cost float64
 		if err := rows.Scan(&sess, &kind, &dir, &msg, &tool, &tokens, &cost); err != nil {
 			return nil, 0, err
@@ -401,7 +402,8 @@ func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[strin
 	}
 	// The final session has no successor to trigger its resolution.
 	resolveWork(out[carrySess], kinds)
-	return out, unlinkedCalls, nil
+	bySession, err := sessionIDsOf(ctx, q, out)
+	return bySession, unlinkedCalls, err
 }
 
 // resolveWork stamps each turn with the kind decided from its own tool calls.

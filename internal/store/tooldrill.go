@@ -78,7 +78,7 @@ const drillTrendBuckets = 8
 // ToolDrillStats groups one tool's calls. The pre's group and the post's
 // failure are read from tool_fields, stored when each was written (migration
 // 0070), so no payload is opened; the post is found through the unique
-// (session_id, key) index rather than by scanning results. A call stored
+// (sid, key) index rather than by scanning results. A call stored
 // before tool_fields and not yet filled (toolFieldsPending) is read from its
 // payload, as every call once was, so the screen is the same either way.
 func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, error) {
@@ -88,7 +88,7 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 	if o.Trend <= 0 {
 		o.Trend = drillTrendBuckets
 	}
-	scope, args := o.Agent.sessionScope("pr.session_id")
+	scope, args := o.Agent.eventScope("pr.sid")
 	rows, err := q.QueryContext(ctx, `
 		SELECT pr.ts, COALESCE(f.drill_key, ''), COALESCE(f.drill_by, ''),
 		       CASE WHEN pr.id <= `+toolFieldsPending+` THEN pr.payload END,
@@ -99,7 +99,7 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 		       COALESCE(po.tool_bytes, 0)
 		FROM events pr
 		LEFT JOIN tool_fields f ON f.event_id = pr.id
-		LEFT JOIN events po ON po.session_id = pr.session_id AND po.key = 'post:' || substr(pr.key, 5)
+		LEFT JOIN events po ON po.sid = pr.sid AND po.key = 'post:' || substr(pr.key, 5)
 		LEFT JOIN tool_fields pf ON pf.event_id = po.id
 		WHERE pr.kind = 'tool.pre' AND pr.tool = ? AND pr.ts >= ?`+nonInternalEventPr+scope+`
 		ORDER BY pr.ts`, append([]any{o.Tool, o.FromMs}, args...)...)

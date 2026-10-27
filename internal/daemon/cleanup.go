@@ -45,6 +45,10 @@ const (
 	// staleLogKeep is the age past which a log file nothing writes any more
 	// is removed.
 	staleLogKeep = 30 * 24 * time.Hour
+	// upgradeCopyKeep is how long the copy of the database kept before an
+	// upgrade (store.BackupPath) stays. It is the way back to the older
+	// release; a month on, going back would cost a month of history.
+	upgradeCopyKeep = 30 * 24 * time.Hour
 )
 
 // staleLogs are files in the data directory that no current version writes.
@@ -63,11 +67,11 @@ type sweepLookup interface {
 
 // sweepResult is what one sweep removed.
 type sweepResult struct {
-	Paste, Chats, Gemini, Logs int
-	Bytes                      int64
+	Paste, Chats, Gemini, Logs, Copies int
+	Bytes                              int64
 }
 
-func (r sweepResult) removed() int { return r.Paste + r.Chats + r.Gemini + r.Logs }
+func (r sweepResult) removed() int { return r.Paste + r.Chats + r.Gemini + r.Logs + r.Copies }
 
 // sweepAction is the footprint's line for a sweep that removed something
 // (actions.go): what went, and how much it freed.
@@ -84,6 +88,9 @@ func sweepAction(r sweepResult) string {
 	}
 	if r.Logs > 0 {
 		what = append(what, plural(r.Logs, "unused log"))
+	}
+	if r.Copies > 0 {
+		what = append(what, plural(r.Copies, "copy")+" of the database kept before an upgrade over 30 days ago")
 	}
 	return "removed " + joinAnd(what) + " (" + Bytes(uint64(max(r.Bytes, 0))) + " freed)"
 }
@@ -171,6 +178,16 @@ func sweepDataDir(ctx context.Context, dataDir string, now time.Time, look sweep
 		}
 		if os.Remove(p) == nil {
 			r.Logs++
+			r.Bytes += info.Size()
+		}
+	}
+	for _, p := range store.Backups(config.DBPath(dataDir)) {
+		info, err := os.Stat(p)
+		if err != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) < upgradeCopyKeep {
+			continue
+		}
+		if os.Remove(p) == nil {
+			r.Copies++
 			r.Bytes += info.Size()
 		}
 	}

@@ -93,9 +93,27 @@ func Save(ctx context.Context, st *store.Store, c Conversation, res *Result) err
 		}
 		prompt := ""
 		for _, m := range c.Messages {
-			if m.Role == "user" && prompt == "" {
+			if m.Role == "user" {
 				prompt = clipRunes(m.Text, promptMax)
+				break
 			}
+		}
+		if _, err := q.ExecContext(ctx, `
+			INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, worked_at,
+			                     status, agent, title, prompt, native_id, chat)
+			VALUES(?, '', '', ?, ?, ?, ?, 'ended', ?, ?, ?, ?, 1)
+			ON CONFLICT(session_id) DO UPDATE SET
+			  model         = COALESCE(NULLIF(excluded.model, ''), sessions.model),
+			  title         = COALESCE(NULLIF(excluded.title, ''), sessions.title),
+			  prompt        = COALESCE(NULLIF(sessions.prompt, ''), excluded.prompt),
+			  started_at    = MIN(sessions.started_at, excluded.started_at),
+			  last_event_at = MAX(sessions.last_event_at, excluded.last_event_at),
+			  worked_at     = MAX(sessions.worked_at, excluded.worked_at)`,
+			id, c.Model, c.Created.UnixMilli(), c.Updated.UnixMilli(), c.Updated.UnixMilli(),
+			c.Source, c.Title, prompt, c.ID); err != nil {
+			return err
+		}
+		for _, m := range c.Messages {
 			ev := &event.Event{
 				Ts: m.At, SessionID: id, Source: event.SourceImport,
 				Key: "imp:" + m.ID,
@@ -125,20 +143,7 @@ func Save(ctx context.Context, st *store.Store, c Conversation, res *Result) err
 			}
 			added++
 		}
-		_, err = q.ExecContext(ctx, `
-			INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, worked_at,
-			                     status, agent, title, prompt, native_id, chat)
-			VALUES(?, '', '', ?, ?, ?, ?, 'ended', ?, ?, ?, ?, 1)
-			ON CONFLICT(session_id) DO UPDATE SET
-			  model         = COALESCE(NULLIF(excluded.model, ''), sessions.model),
-			  title         = COALESCE(NULLIF(excluded.title, ''), sessions.title),
-			  prompt        = COALESCE(NULLIF(sessions.prompt, ''), excluded.prompt),
-			  started_at    = MIN(sessions.started_at, excluded.started_at),
-			  last_event_at = MAX(sessions.last_event_at, excluded.last_event_at),
-			  worked_at     = MAX(sessions.worked_at, excluded.worked_at)`,
-			id, c.Model, c.Created.UnixMilli(), c.Updated.UnixMilli(), c.Updated.UnixMilli(),
-			c.Source, c.Title, prompt, c.ID)
-		return err
+		return nil
 	})
 	if err != nil {
 		return fmt.Errorf("import %s conversation %s: %w", SourceName(c.Source), c.ID, err)

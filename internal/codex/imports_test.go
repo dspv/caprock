@@ -70,7 +70,7 @@ func TestSubagentTurnsSurviveBesideTheParents(t *testing.T) {
 			t.Errorf("%v: %d tool calls, want 3", order, n)
 		}
 		if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE agent_id = '`+childID+`'
-			AND json_extract(payload,'$.sidechain') = 1 AND session_id = '`+parentID+`'`); n != 4 {
+			AND json_extract(payload,'$.sidechain') = 1 AND sid = (SELECT sid FROM sessions WHERE session_id = '`+parentID+`')`); n != 4 {
 			// 2 turns, its call, and that call's interrupted mark: the
 			// request completes without the call's output (closeCalls).
 			t.Errorf("%v: %d subagent events marked as its sidechain, want 4", order, n)
@@ -144,10 +144,10 @@ func TestRepairUndoesWhatEarlierVersionsStored(t *testing.T) {
 		h.in.seen[p] = fileState{mod: st.ModTime(), size: st.Size(), session: s.ID}
 	}
 	h.in.loaded = true
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='`+parentID+`' AND kind='turn.assistant'`); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='`+parentID+`' AND kind='turn.assistant'`); n != 2 {
 		t.Fatalf("setup: %d turns in the parent, want 2 (the subagent's, the parent's lost)", n)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='`+importedID+`'`); n != 2 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='`+importedID+`'`); n != 2 {
 		t.Fatalf("setup: %d imported turns, want 2", n)
 	}
 
@@ -157,7 +157,7 @@ func TestRepairUndoesWhatEarlierVersionsStored(t *testing.T) {
 		t.Error("the imported thread's session is still there")
 	}
 	for _, q := range []string{
-		`SELECT COUNT(*) FROM events WHERE session_id='` + importedID + `'`,
+		`SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='` + importedID + `'`,
 		`SELECT COUNT(*) FROM session_stats WHERE session_id='` + importedID + `'`,
 		`SELECT COUNT(*) FROM daily_sessions WHERE session_id='` + importedID + `'`,
 		`SELECT COALESCE(SUM(tokens_total),0) FROM daily_stats WHERE day < '2026-09-01'`,
@@ -167,10 +167,10 @@ func TestRepairUndoesWhatEarlierVersionsStored(t *testing.T) {
 			t.Errorf("%s = %d after the repair, want 0", q, n)
 		}
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='`+parentID+`' AND kind='turn.assistant'`); n != 4 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='`+parentID+`' AND kind='turn.assistant'`); n != 4 {
 		t.Errorf("%d turns in the parent after the repair, want 4", n)
 	}
-	if n := count(t, h.out, `SELECT COUNT(*) FROM events WHERE session_id='`+parentID+`' AND kind='tool.pre'`); n != 3 {
+	if n := count(t, h.out, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE session_id='`+parentID+`' AND kind='tool.pre'`); n != 3 {
 		t.Errorf("%d tool calls in the parent after the repair, want 3", n)
 	}
 	h.assertRollupsMatchEvents()

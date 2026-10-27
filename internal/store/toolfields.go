@@ -176,13 +176,28 @@ func RefreshToolFields(ctx context.Context, q Querier, id int64) error {
 	return putToolFields(ctx, q, id, f)
 }
 
+// agentTaskIndex is idx_events_agent_task (migration 0054) on sid. Migration
+// 0073 rebuilt events without it, so it is put back while a fill is pending,
+// for describeSubagents to seek the results not yet filled.
+const agentTaskIndex = `CREATE INDEX IF NOT EXISTS idx_events_agent_task
+	ON events(sid, ` + agentTaskID + `, ` + agentTaskDesc + `)
+	WHERE kind = 'tool.post' AND tool IN ('Agent', 'Task')`
+
 // markToolFieldsPending runs on Open: when the stored fields were made by
 // another toolFieldsVersion, or the table is new (migration 0070), every
 // event stored so far becomes pending. It reads one value and writes two, so
 // Open stays as fast as before; ToolFieldsStep does the reading, in the
 // background.
 func (s *Store) markToolFieldsPending(ctx context.Context) error {
-	if v, err := s.GetMeta(ctx, metaToolFields); err != nil || v == toolFieldsVersion {
+	v, err := s.GetMeta(ctx, metaToolFields)
+	if err != nil {
+		return err
+	}
+	if v == toolFieldsVersion {
+		if v, err := s.GetMeta(ctx, metaToolFieldsPending); err != nil || v == "" || v == "0" {
+			return err
+		}
+		_, err := s.db.ExecContext(ctx, agentTaskIndex)
 		return err
 	}
 	return s.WithTx(ctx, func(q Querier) error {
@@ -198,7 +213,11 @@ func (s *Store) markToolFieldsPending(ctx context.Context) error {
 		// A database with nothing to fill never runs the step that drops
 		// the index the fill keeps.
 		var pending int64
-		if err := q.QueryRowContext(ctx, `SELECT `+toolFieldsPending).Scan(&pending); err != nil || pending > 0 {
+		if err := q.QueryRowContext(ctx, `SELECT `+toolFieldsPending).Scan(&pending); err != nil {
+			return err
+		}
+		if pending > 0 {
+			_, err := q.ExecContext(ctx, agentTaskIndex)
 			return err
 		}
 		_, err := q.ExecContext(ctx, `DROP INDEX IF EXISTS idx_events_agent_task`)

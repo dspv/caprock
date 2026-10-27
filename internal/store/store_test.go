@@ -90,6 +90,9 @@ func TestInsertEventDedupeAndSessions(t *testing.T) {
 		t.Fatalf("expected ErrDuplicate, got %v", err)
 	}
 	// Different session, same key → not a dup.
+	if err := UpsertSession(ctx, s.db, "s2", SessionPatch{Status: StatusEnded, StartedAt: 1000, LastEventAt: 1000}); err != nil {
+		t.Fatal(err)
+	}
 	other := *ev
 	other.ID, other.SessionID = 0, "s2"
 	if _, err := InsertEvent(ctx, s.db, &other); err != nil {

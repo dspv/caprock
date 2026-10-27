@@ -34,12 +34,12 @@ func (t Turn) Duration() time.Duration { return time.Duration(t.End-t.Start) * t
 // these rows and covering them: 1 ms for the owner's largest project, against
 // 1.6 s cold through idx_events_kind_id (2026-10-12).
 const turnBoundsSQL = `
-	SELECT e.id, e.session_id, e.ts, e.kind
+	SELECT e.id, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), e.ts, e.kind
 	  FROM events e INDEXED BY idx_events_turn_bounds
 	 WHERE e.source = 'hook' AND e.kind IN ('turn.user', 'agent.stop', 'throttle')
 	   AND COALESCE(e.agent_id, '') = '' AND e.ts >= ?
-	   AND e.session_id IN (%s)
-	 ORDER BY e.session_id, e.ts`
+	   AND e.sid IN (SELECT sid FROM sessions WHERE session_id IN (%s))
+	 ORDER BY e.sid, e.ts`
 
 // foldTurns pairs bounds, read in (session, ts) order, into turns: the
 // finished ones oldest-first by end, and each session's open turn.

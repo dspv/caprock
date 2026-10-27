@@ -174,6 +174,10 @@ func (s *Server) handleChatDelete(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusConflict, errors.New("this chat is still active somewhere else — delete it once it has ended"))
 		return
 	}
+	if s.d.Store.Moving() {
+		s.failCode(w, http.StatusServiceUnavailable, errMoving)
+		return
+	}
 	var missed float64
 	err = s.d.Store.WithTx(ctx, func(q store.Querier) error {
 		var err error

@@ -72,7 +72,7 @@ func (p SpendParts) Sorted() SpendParts {
 // for 30 days and 1.0 s for all time on a 2.2 GB copy of the owner's
 // database, in the sqlite shell (2026-10-25), so its callers cache it.
 func SpendPartsBetween(ctx context.Context, q Querier, fromMs, toMs int64, agent AgentFilter) (SpendParts, error) {
-	ev, evArgs := agent.sessionScope("e.session_id")
+	ev, evArgs := agent.eventScope("e.sid")
 	upper, upperArgs := "", []any(nil)
 	if toMs > 0 {
 		upper, upperArgs = " AND e.ts < ?", []any{toMs}
@@ -82,7 +82,7 @@ func SpendPartsBetween(ctx context.Context, q Querier, fromMs, toMs int64, agent
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(s.subscription,''), COALESCE(SUM(e.cost_usd),0)
 		FROM events e INDEXED BY idx_events_ts_cover
-		LEFT JOIN sessions s ON s.session_id = e.session_id
+		LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.ts >= ?`+upper+` AND e.internal = 0 AND e.cost_usd > 0`+ev+`
 		GROUP BY 1, 2`, args...)
 	if err != nil {
@@ -108,7 +108,7 @@ func SpendOn(ctx context.Context, q Querier, agent, subscription string, fromMs,
 	err := q.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(e.cost_usd),0)
 		FROM events e INDEXED BY idx_events_ts_cover
-		JOIN sessions s ON s.session_id = e.session_id
+		JOIN sessions s ON s.sid = e.sid
 		WHERE e.ts >= ? AND e.ts < ? AND e.internal = 0 AND e.cost_usd > 0
 		  AND COALESCE(NULLIF(s.agent,''),'claude') = ? AND COALESCE(s.subscription,'') = ?`,
 		fromMs, toMs, agent, subscription).Scan(&c)

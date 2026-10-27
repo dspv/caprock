@@ -172,7 +172,7 @@ func BrainCandidates(ctx context.Context, q Querier, since, idleBefore int64, li
 			SELECT s.session_id, COALESCE(s.project, '') AS project, COALESCE(s.cwd, '') AS cwd, COALESCE(s.repo_root, '') AS repo_root,
 			       COALESCE(s.last_event_at, 0) AS last_event_at,
 			       `+brainCursorSQL+` AS cursor,
-			       COALESCE((SELECT MAX(e.id) FROM events e WHERE e.session_id = s.session_id), 0) AS max_id,
+			       COALESCE((SELECT MAX(e.id) FROM events e WHERE e.sid = s.sid), 0) AS max_id,
 			       s.status = 'ended' AS ended,
 			       `+brainHeldSQL+` AS held
 			FROM sessions s
@@ -240,7 +240,7 @@ func BrainPassagesBetween(ctx context.Context, q Querier, sessionID string, afte
 			            THEN COALESCE(json_extract(e.payload, '$.prompt'), json_extract(e.payload, '$.text'), '')
 			            ELSE COALESCE(json_extract(e.payload, '$.text'), '') END AS text
 			FROM events e
-			WHERE e.session_id = ? AND e.id > ? AND e.id <= ? AND +e.kind IN ('turn.user', 'turn.assistant')
+			WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.id > ? AND e.id <= ? AND +e.kind IN ('turn.user', 'turn.assistant')
 			  AND e.internal = 0 AND `+MainThreadWhere+`
 		) WHERE text != '' ORDER BY id LIMIT ?`, sessionID, after, through, limit)
 	if err != nil {

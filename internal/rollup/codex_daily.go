@@ -51,7 +51,7 @@ func (r *Recorder) RebuildCodexDaily(ctx context.Context, keepFrom time.Time) (r
 		SELECT e.ts, e.source, COALESCE(e.model,''), COALESCE(s.project,''),
 		       COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0),
 		       COALESCE(e.cost_usd,0)
-		FROM events e LEFT JOIN sessions s ON s.session_id = e.session_id
+		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = ? AND e.internal = 0`, string(event.KindTurnAssistant))
 	if err != nil {
 		return 0, fmt.Errorf("read turns: %w", err)

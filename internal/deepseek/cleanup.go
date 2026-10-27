@@ -82,7 +82,7 @@ func (in *Ingester) dropKeys(ctx context.Context, session string, keys []string)
 			var ts int64
 			err := q.QueryRowContext(ctx, `
 				DELETE FROM events
-				WHERE session_id = ? AND key = ? AND source = ? AND kind = ?
+				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND source = ? AND kind = ?
 				RETURNING ts`,
 				session, k, string(event.SourceDeepseek), string(event.KindTurnUser)).Scan(&ts)
 			if errors.Is(err, sql.ErrNoRows) {
@@ -115,14 +115,14 @@ func (in *Ingester) dropKeys(ctx context.Context, session string, keys []string)
 func repairTimes(ctx context.Context, q store.Querier, session string, ts int64) error {
 	stmts := []string{
 		`UPDATE sessions SET worked_at = COALESCE((SELECT MAX(ts) FROM events
-		   WHERE session_id = ?1 AND kind IN ('turn.user','turn.assistant','tool.pre','tool.post')), 0)
+		   WHERE sid = sessions.sid AND kind IN ('turn.user','turn.assistant','tool.pre','tool.post')), 0)
 		 WHERE session_id = ?1 AND worked_at = ?2`,
-		`UPDATE sessions SET started_at = (SELECT MIN(ts) FROM events WHERE session_id = ?1)
+		`UPDATE sessions SET started_at = (SELECT MIN(ts) FROM events WHERE sid = sessions.sid)
 		 WHERE session_id = ?1 AND started_at = ?2
-		   AND EXISTS (SELECT 1 FROM events WHERE session_id = ?1)`,
-		`UPDATE sessions SET last_event_at = (SELECT MAX(ts) FROM events WHERE session_id = ?1)
+		   AND EXISTS (SELECT 1 FROM events WHERE sid = sessions.sid)`,
+		`UPDATE sessions SET last_event_at = (SELECT MAX(ts) FROM events WHERE sid = sessions.sid)
 		 WHERE session_id = ?1 AND last_event_at = ?2
-		   AND EXISTS (SELECT 1 FROM events WHERE session_id = ?1)`,
+		   AND EXISTS (SELECT 1 FROM events WHERE sid = sessions.sid)`,
 	}
 	for _, s := range stmts {
 		if _, err := q.ExecContext(ctx, s, session, ts); err != nil {

@@ -125,6 +125,17 @@ test: test-go test-ui test-scripts ## All tests
 test-go: ## Go tests
 	go test ./...
 
+# Every statement the Go tests run, explained against the latest schema
+# (internal/store/plans_test.go). The OpenCode database on this machine is
+# left out, as on CI, where the check runs on the go job's own test run.
+PLANS_DIR := bin/plans
+
+.PHONY: plans
+plans: ## Rewrite internal/store/testdata/query-plans.txt from a run of the Go tests; review its diff
+	rm -rf $(PLANS_DIR)
+	CAPROCK_PLAN_LOG=$(CURDIR)/$(PLANS_DIR) OPENCODE_DB=:memory: go test -count=1 ./...
+	CAPROCK_PLANS_FROM=$(CURDIR)/$(PLANS_DIR) CAPROCK_PLANS_UPDATE=1 go test -count=1 -run '^TestQueryPlans$$' ./internal/store
+
 .PHONY: test-scripts
 test-scripts: ## Release script tests (latest.json for the app updater, changelog fragments)
 	python3 -m unittest discover -s scripts -p 'test_*.py'

@@ -108,7 +108,7 @@ func TestDescribeSubagentsReadsTheIndex(t *testing.T) {
 
 	plan := queryPlan(t, f.s.DB(), `SELECT f.agent_desc FROM tool_fields f INDEXED BY idx_tool_fields_agent
 		JOIN events e ON e.id = f.event_id
-		WHERE f.agent_id IN (?) AND e.session_id = ? AND e.kind = 'tool.post'`, "a", "s")
+		WHERE f.agent_id IN (?) AND e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.post'`, "a", "s")
 	if !strings.Contains(plan, "COVERING INDEX idx_tool_fields_agent (agent_id=?)") {
 		t.Fatalf("the agent id is not sought on idx_tool_fields_agent; plan:\n%s", plan)
 	}
@@ -120,10 +120,10 @@ func TestSubagentCountsAreCovered(t *testing.T) {
 	db := openTest(t).DB()
 	for _, c := range []struct{ name, query string }{
 		{"live", `SELECT agent_id, MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) FROM events
-			WHERE session_id = 's' AND ts >= 0 AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id`},
+			WHERE sid = (SELECT sid FROM sessions WHERE session_id = 's') AND ts >= 0 AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id`},
 		{"spend", `SELECT agent_id, MAX(ts), COALESCE(model, ''), COUNT(*), SUM(cost_usd IS NULL AND tokens_in IS NOT NULL), COALESCE(SUM(cost_usd), 0)
 			FROM events INDEXED BY idx_events_subagent_turn
-			WHERE session_id = 's' AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0 GROUP BY agent_id`},
+			WHERE sid = (SELECT sid FROM sessions WHERE session_id = 's') AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0 GROUP BY agent_id`},
 	} {
 		if plan := queryPlan(t, db, c.query); !strings.Contains(plan, "COVERING INDEX") {
 			t.Errorf("%s reads the table; plan:\n%s", c.name, plan)

@@ -150,7 +150,7 @@ func BrainOldWindow(ctx context.Context, q Querier, sessionID string, after, thr
 			            THEN COALESCE(json_extract(e.payload, '$.prompt'), json_extract(e.payload, '$.text'), '')
 			            ELSE COALESCE(json_extract(e.payload, '$.text'), '') END AS text
 			FROM events e
-			WHERE e.session_id = ? AND e.id > ? AND e.id <= ? AND +e.kind IN ('turn.user', 'turn.assistant')
+			WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.id > ? AND e.id <= ? AND +e.kind IN ('turn.user', 'turn.assistant')
 			  AND e.internal = 0 AND `+MainThreadWhere+`
 			ORDER BY e.id DESC LIMIT ?
 		) WHERE text != '' ORDER BY ts, id`, sessionID, after, through, limit)

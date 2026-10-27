@@ -629,9 +629,9 @@ func TestListSessionsMatchingSearchesPromptsAndTitles(t *testing.T) {
 	if err := SetTitle(ctx, db, "a", "Έλεγξε τις ημερομηνίες"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO events(ts, session_id, source, kind, payload, key) VALUES
-		(1, 'b', 'hook', 'turn.user', '{"prompt":"πρώτα ένα"}', 'k1'),
-		(2, 'b', 'hook', 'turn.user', '{"prompt":"μετά δες τους πίνακες στο BigQuery"}', 'k2')`); err != nil {
+	if _, err := db.Exec(`INSERT INTO events(ts, sid, source, kind, payload, key) VALUES
+		(1, (SELECT sid FROM sessions WHERE session_id = 'b'), 'hook', 'turn.user', '{"prompt":"πρώτα ένα"}', 'k1'),
+		(2, (SELECT sid FROM sessions WHERE session_id = 'b'), 'hook', 'turn.user', '{"prompt":"μετά δες τους πίνακες στο BigQuery"}', 'k2')`); err != nil {
 		t.Fatal(err)
 	}
 	ids := func(search string) []string {

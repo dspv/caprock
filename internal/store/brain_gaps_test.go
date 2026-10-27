@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 )
 
@@ -11,35 +10,18 @@ import (
 // the reads keep counting as regular ones.
 func TestMigration0068ListsThePastReadsAsGaps(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "caprock.db")
+	path, raw := openAtSchema(t, 67)
+	if _, err := raw.ExecContext(ctx, `INSERT INTO brain_runs (session_id, from_event_id, through_event_id, status, started_at, finished_at) VALUES
+		('a', 0, 40, 'ok', 1, 1), ('a', 40, 90, 'ok', 2, 2), ('b', 0, 10, 'skipped', 3, 3), ('c', 0, 20, 'failed', 4, 4)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = raw.Close()
 	s, err := Open(ctx, path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := s.DB()
-	// Back to schema 67, as a database from before the migration is: 0069
-	// undone too, so it applies again after 0068.
-	for _, q := range []string{
-		`ALTER TABLE brain_nodes DROP COLUMN keywords`,
-		`ALTER TABLE sessions DROP COLUMN handoff_runes`,
-		`DROP TABLE brain_gaps`,
-		`ALTER TABLE brain_runs DROP COLUMN gap_id`,
-		`ALTER TABLE brain_runs DROP COLUMN held`,
-		`UPDATE meta SET v = '67' WHERE k = 'schema_version'`,
-		`INSERT INTO brain_runs (session_id, from_event_id, through_event_id, status, started_at, finished_at) VALUES
-			('a', 0, 40, 'ok', 1, 1), ('a', 40, 90, 'ok', 2, 2), ('b', 0, 10, 'skipped', 3, 3), ('c', 0, 20, 'failed', 4, 4)`,
-	} {
-		if _, err := db.ExecContext(ctx, q); err != nil {
-			t.Fatalf("%s: %v", q, err)
-		}
-	}
-	_ = s.Close()
-	s, err = Open(ctx, path, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer s.Close()
-	db = s.DB()
+	db := s.DB()
 	gaps, err := UnmeasuredBrainGaps(ctx, db)
 	if err != nil {
 		t.Fatal(err)

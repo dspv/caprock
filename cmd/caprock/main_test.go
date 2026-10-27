@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/hooks"
@@ -88,6 +89,30 @@ func TestLastLogError(t *testing.T) {
 	// A missing file yields "" (best-effort).
 	if got := lastLogError(filepath.Join(dir, "nope.log")); got != "" {
 		t.Fatalf("missing log should yield empty, got %q", got)
+	}
+}
+
+func TestAwaitDaemonWaitsOutAnUpgrade(t *testing.T) {
+	dir := t.TempDir()
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if _, ok := awaitDaemon(cmd, dir, 0); ok || out.Len() > 0 {
+		t.Fatalf("found a daemon in an empty directory, or said %q", out.String())
+	}
+	done := config.MarkUpgrading(dir)
+	ended := make(chan time.Time, 1)
+	time.AfterFunc(500*time.Millisecond, func() { done(); ended <- time.Now() })
+	const wait = 1500 * time.Millisecond
+	if _, ok := awaitDaemon(cmd, dir, wait); ok {
+		t.Fatal("found a daemon that never started")
+	}
+	// A poll is 150 ms, so the upgrade was last seen at most that long before it ended.
+	if after := time.Since(<-ended); after < wait-200*time.Millisecond {
+		t.Fatalf("stopped waiting %v after the upgrade, want the start's %v", after, wait)
+	}
+	if !strings.Contains(out.String(), "Upgrading the database") {
+		t.Fatalf("the wait was not explained: %q", out.String())
 	}
 }
 

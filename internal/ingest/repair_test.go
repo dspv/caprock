@@ -88,7 +88,7 @@ func TestRepairAssistantText(t *testing.T) {
 	}
 
 	var raw string
-	if err := st.DB().QueryRowContext(ctx, `SELECT payload FROM events WHERE session_id='s1'`).Scan(&raw); err != nil {
+	if err := st.DB().QueryRowContext(ctx, `SELECT payload FROM events JOIN sessions USING (sid) WHERE session_id='s1'`).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any

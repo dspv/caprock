@@ -82,7 +82,7 @@ func SubagentTrailOf(ctx context.Context, q Querier, sessionID, agentID string) 
 		       COALESCE(model, ''), tokens_in, COALESCE(tokens_out, 0), COALESCE(cache_read, 0), COALESCE(cache_write, 0),
 		       cost_usd, internal
 		  FROM events
-		 WHERE session_id = ? AND agent_id = ?
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ?
 		 ORDER BY ts, id`, sessionID, agentID)
 	if err != nil {
 		return tr, false, err
@@ -240,7 +240,7 @@ func linkParentCall(ctx context.Context, q Querier, sessionID string, tr *Subage
 		       COALESCE(json_extract(payload, '$.tool_input'), '{}'),
 		       CASE WHEN kind = 'tool.post' THEN json_extract(payload, '$.tool_response') END
 		  FROM events
-		 WHERE session_id = ? AND +kind IN ('tool.pre', 'tool.post') AND tool IN ('Agent', 'Task')
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +kind IN ('tool.pre', 'tool.post') AND tool IN ('Agent', 'Task')
 		   AND COALESCE(agent_id, '') = '' AND ts BETWEEN ? AND ?
 		 ORDER BY ts, id`, sessionID, tr.StartedAt-parentCallSlackMs, tr.LastAt+parentCallSlackMs)
 	if err != nil {

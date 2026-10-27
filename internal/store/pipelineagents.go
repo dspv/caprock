@@ -112,7 +112,7 @@ func repoScope(roots []string) (string, []any) {
 	for i, r := range roots {
 		args[i] = r
 	}
-	return ` AND e.session_id IN (SELECT session_id FROM sessions WHERE repo_root IN (` + ph + `))`, args
+	return ` AND e.sid IN (SELECT sid FROM sessions WHERE repo_root IN (` + ph + `))`, args
 }
 
 // localDays is n local days before today, then today: each day's start and
@@ -259,12 +259,12 @@ func rateFrom(now time.Time) int64 {
 func rateHours(ctx context.Context, q Querier, roots []string, from, to int64) (map[int64]RateSpan, error) {
 	scope, args := repoScope(roots)
 	rows, err := q.QueryContext(ctx, `
-		SELECT e.session_id, (e.ts - ?) / 3600000 AS hr,
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), (e.ts - ?) / 3600000 AS hr,
 		       COALESCE(SUM(e.cost_usd),0), COUNT(e.cost_usd),
 		       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0)
 		FROM events e INDEXED BY idx_events_turn_agent
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+scope+`
-		GROUP BY e.session_id, hr`, append([]any{from, from, to}, args...)...)
+		GROUP BY e.sid, hr`, append([]any{from, from, to}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -342,10 +342,10 @@ func teamDays(ctx context.Context, q Querier, roots []string, kinds map[string]s
 	}
 	scope, args := repoScope(roots)
 	rows, err := q.QueryContext(ctx, `
-		SELECT e.session_id, COALESCE(e.agent_id,''), e.ts / ? AS b
+		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), COALESCE(e.agent_id,''), e.ts / ? AS b
 		FROM events e INDEXED BY idx_events_turn_agent
 		WHERE e.kind = 'turn.assistant' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+scope+`
-		GROUP BY e.session_id, e.agent_id, b`, append([]any{int64(TrendBucketMs), from, to}, args...)...)
+		GROUP BY e.sid, e.agent_id, b`, append([]any{int64(TrendBucketMs), from, to}, args...)...)
 	if err != nil {
 		return nil, err
 	}

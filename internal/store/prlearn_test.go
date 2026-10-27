@@ -48,7 +48,7 @@ func (f *learnFixture) session(id, root, branch string, cost float64) {
 // spend is one paid turn of a session at ts.
 func (f *learnFixture) spend(id string, ts int64, cost float64) {
 	f.t.Helper()
-	f.exec(`INSERT INTO events(ts, session_id, source, kind, payload, cost_usd) VALUES(?,?,?,?,?,?)`, ts, id, "transcript", "turn.assistant", "{}", cost)
+	f.exec(`INSERT INTO events(ts, sid, source, kind, payload, cost_usd) VALUES(?,(SELECT sid FROM sessions WHERE session_id = ?),?,?,?,?)`, ts, id, "transcript", "turn.assistant", "{}", cost)
 }
 
 // bash is a Bash call of a session from pre to post, paired by its id.
@@ -56,8 +56,8 @@ func (f *learnFixture) bash(id string, pre, post int64) {
 	f.t.Helper()
 	f.n++
 	tu := "toolu_" + string(rune('a'+f.n))
-	f.exec(`INSERT INTO events(ts, session_id, source, kind, tool, payload, key) VALUES(?,?,?,?,?,?,?)`, pre, id, "hook", "tool.pre", "Bash", "{}", "pre:"+tu)
-	f.exec(`INSERT INTO events(ts, session_id, source, kind, tool, payload, key) VALUES(?,?,?,?,?,?,?)`, post, id, "hook", "tool.post", "Bash", "{}", "post:"+tu)
+	f.exec(`INSERT INTO events(ts, sid, source, kind, tool, payload, key) VALUES(?,(SELECT sid FROM sessions WHERE session_id = ?),?,?,?,?,?)`, pre, id, "hook", "tool.pre", "Bash", "{}", "pre:"+tu)
+	f.exec(`INSERT INTO events(ts, sid, source, kind, tool, payload, key) VALUES(?,(SELECT sid FROM sessions WHERE session_id = ?),?,?,?,?,?)`, post, id, "hook", "tool.post", "Bash", "{}", "post:"+tu)
 }
 
 // pr is a pull request header GitHub listed for o/r.

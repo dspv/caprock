@@ -205,13 +205,13 @@ func learnMatch(ctx context.Context, q Querier, repoRoot string, stamps []*prSta
 	rows, err := q.QueryContext(ctx, `
 		WITH a(i, at) AS MATERIALIZED (
 		  SELECT CAST(key AS INTEGER), CAST(value AS INTEGER) FROM json_each(?))
-		SELECT a.i, p.session_id, MIN(e.ts)
+		SELECT a.i, s.session_id, MIN(e.ts)
 		FROM a CROSS JOIN events p INDEXED BY idx_events_tool_dist
-		JOIN sessions s ON s.session_id = p.session_id AND s.repo_root = ?
-		JOIN events e ON e.session_id = p.session_id AND e.key = 'post:' || substr(p.key, 5)
+		JOIN sessions s ON s.sid = p.sid AND s.repo_root = ?
+		JOIN events e ON e.sid = p.sid AND e.key = 'post:' || substr(p.key, 5)
 		WHERE p.kind = 'tool.pre' AND p.ts >= a.at - ? AND p.ts < a.at + 1000 AND p.tool = 'Bash' AND p.internal = 0
 		  AND p.key LIKE 'pre:%' AND e.ts >= a.at
-		GROUP BY a.i, p.session_id`, string(js), repoRoot, learnLookback)
+		GROUP BY a.i, p.sid`, string(js), repoRoot, learnLookback)
 	if err != nil {
 		return err
 	}
@@ -311,4 +311,10 @@ func (c *hitMemo) put(key string, h learnHit) {
 		c.m = map[string]learnHit{}
 	}
 	c.m[key] = h
+}
+
+func (c *hitMemo) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m = map[string]learnHit{}
 }

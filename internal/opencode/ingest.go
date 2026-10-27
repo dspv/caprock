@@ -373,7 +373,7 @@ func (in *Ingester) refreshText(ctx context.Context, sid string, s Session, msgs
 		SELECT msg_id, COALESCE(json_extract(payload,'$.text'),''),
 		       COALESCE(json_extract(payload,'$.sidechain'),0)
 		FROM events INDEXED BY idx_events_session_id
-		WHERE session_id = ? AND source = ? AND kind = 'turn.assistant'
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = 'turn.assistant'
 		  AND msg_id IS NOT NULL AND json_valid(payload)`,
 		sid, string(event.SourceOpenCode))
 	if err != nil {
@@ -425,7 +425,7 @@ func (in *Ingester) refreshText(ctx context.Context, sid string, s Session, msgs
 			if _, err := q.ExecContext(ctx, `
 				UPDATE events
 				SET payload = json_set(payload, '$.text', ?, '$.sidechain', json(?))
-				WHERE session_id = ? AND key = ? AND json_valid(payload)`,
+				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND json_valid(payload)`,
 				f.text, side, sid, "oc-msg:"+f.id); err != nil {
 				return fmt.Errorf("refresh text: %w", err)
 			}
@@ -533,12 +533,12 @@ func (in *Ingester) refreshInputs(ctx context.Context, sid string, s Session, ca
 	}
 	db := in.rec.Store.DB()
 	// The key is matched as a range, not with LIKE, so the lookup walks the
-	// (session_id, key) index: with LIKE the planner chose (kind, id) and
+	// (sid, key) index: with LIKE the planner chose (kind, id) and
 	// scanned every tool call in the database once per session, which tripled
 	// a full pass on the owner's database.
 	rows, err := db.QueryContext(ctx, `
 		SELECT key FROM events
-		WHERE session_id = ? AND key >= 'oc-tool:' AND key < 'oc-tool;'
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key >= 'oc-tool:' AND key < 'oc-tool;'
 		  AND source = ? AND kind = 'tool.pre' AND json_valid(payload)
 		  AND NOT EXISTS (
 		    SELECT 1 FROM json_each(payload, '$.tool_input')
@@ -588,7 +588,7 @@ func (in *Ingester) refreshInputs(ctx context.Context, sid string, s Session, ca
 			if _, err := q.ExecContext(ctx, `
 				UPDATE events
 				SET payload = json_set(payload, '$.tool_input', json(?), '$.cwd', ?)
-				WHERE session_id = ? AND key = ? AND json_valid(payload)`,
+				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND json_valid(payload)`,
 				f.input, f.cwd, sid, f.key); err != nil {
 				return fmt.Errorf("refresh input: %w", err)
 			}

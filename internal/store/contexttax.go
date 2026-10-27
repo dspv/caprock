@@ -47,7 +47,7 @@ func LoopTaxCalls(ctx context.Context, q Querier, sessionID string, from, to tim
 		       COALESCE(tokens_in,0), COALESCE(cache_read,0), COALESCE(cache_write,0),
 		       COALESCE(tokens_out,0), COALESCE(model,'')
 		FROM events
-		WHERE session_id = ? AND ts >= ? AND ts <= ?
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND ts <= ?
 		  AND kind IN ('tool.pre','turn.assistant')
 		ORDER BY ts, id`, sessionID, from.UnixMilli(), to.UnixMilli())
 	if err != nil {

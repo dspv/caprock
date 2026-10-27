@@ -51,7 +51,7 @@ func HermesSpend(ctx context.Context, q Querier, fromMs int64) (*HermesCost, err
 		            AND COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0
 		            THEN 1 ELSE 0 END),0)
 		FROM sessions s JOIN events e INDEXED BY idx_events_session_ts
-		  ON e.session_id = s.session_id AND e.ts >= ?
+		  ON e.sid = s.sid AND e.ts >= ?
 		WHERE s.agent = 'hermes' AND e.source = 'hermes' AND e.kind = 'turn.assistant'
 		  AND json_valid(e.payload) AND json_extract(e.payload,'$.cost_basis') IS NOT NULL`+nonInternalEventE+`
 		GROUP BY 1, 2, 3`, fromMs)

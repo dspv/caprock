@@ -109,7 +109,7 @@ func (h *harness) once(t *testing.T) {
 func (h *harness) count(t *testing.T, where string) int {
 	t.Helper()
 	var n int
-	if err := h.st.DB().QueryRowContext(h.ctx, `SELECT COUNT(*) FROM events WHERE source = 'hermes' AND `+where).Scan(&n); err != nil {
+	if err := h.st.DB().QueryRowContext(h.ctx, `SELECT COUNT(*) FROM events JOIN sessions USING (sid) WHERE source = 'hermes' AND `+where).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n
@@ -127,7 +127,7 @@ func (h *harness) sums(t *testing.T, sessionID string) sums {
 	if err := h.st.DB().QueryRowContext(h.ctx, `
 		SELECT COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cache_read),0),
 		       COALESCE(SUM(cache_write),0), COALESCE(SUM(cost_usd),0), COUNT(cost_usd)
-		FROM events WHERE session_id = ? AND kind = 'turn.assistant'`, sessionID).Scan(&s.in, &s.out, &s.cr, &s.cw, &s.cost, &s.priced); err != nil {
+		FROM events JOIN sessions USING (sid) WHERE session_id = ? AND kind = 'turn.assistant'`, sessionID).Scan(&s.in, &s.out, &s.cr, &s.cw, &s.cost, &s.priced); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -347,7 +347,7 @@ func TestSubagentsAndContinuations(t *testing.T) {
 
 	// The children are inside root, each under its own agent id, marked.
 	rows, err := h.st.DB().QueryContext(h.ctx, `SELECT session_id, COALESCE(agent_id,''), COALESCE(json_extract(payload,'$.sidechain'),0)
-		FROM events WHERE kind='turn.assistant' ORDER BY id`)
+		FROM events JOIN sessions USING (sid) WHERE kind='turn.assistant' ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}

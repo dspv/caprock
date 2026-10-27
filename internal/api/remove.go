@@ -80,6 +80,10 @@ func (s *Server) handleRemoveSessions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, res)
 		return
 	}
+	if s.d.Store.Moving() {
+		s.failCode(w, http.StatusServiceUnavailable, errMoving)
+		return
+	}
 	now := s.d.Now().UnixMilli()
 	err = s.d.Store.WithTx(ctx, func(q store.Querier) error {
 		for _, c := range res.Sessions {
@@ -111,6 +115,14 @@ func (s *Server) stillRunning(c store.RemovalCandidate) string {
 	}
 	return ""
 }
+
+// ForgetAnswers drops every cached aggregate: the events stored before
+// migration 0073 are all back.
+func (s *Server) ForgetAnswers() { s.forgetAnswers() }
+
+// errMoving is a removal refused while migration 0073's move runs: the
+// session's older events are not where a removal deletes them yet.
+var errMoving = errors.New("older events are still moving into the upgraded database — try again once `caprock status` no longer shows it")
 
 // forgetAnswers drops every cached aggregate, so the totals reflect a removal
 // on the next read instead of up to one refresh later.

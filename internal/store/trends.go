@@ -109,12 +109,12 @@ func TrendsAt(ctx context.Context, q Querier, now time.Time, agent AgentFilter) 
 	write := make([]int64, len(days))
 	seen := make([]map[string]bool, len(days)) // sessions by the cut
 	windows := map[int64]float64{}             // burn window -> cost
-	ev, evArgs := agent.sessionScope("session_id")
+	ev, evArgs := agent.eventScope("sid")
 	rows, err := q.QueryContext(ctx, `
-		SELECT ts / ? AS b, session_id, kind, COUNT(*),
+		SELECT ts / ? AS b, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), kind, COUNT(*),
 		       COALESCE(SUM(tokens_in),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0),
 		       COALESCE(SUM(cost_usd),0)
-		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY b, session_id, kind`,
+		FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev+` GROUP BY b, sid, kind`,
 		append([]any{int64(TrendBucketMs), from}, evArgs...)...)
 	if err != nil {
 		return nil, err

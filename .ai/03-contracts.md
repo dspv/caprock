@@ -132,7 +132,7 @@ row ended rather than reviving it. `SessionSummary` carries `pid` (omitted when
 unknown), which is how the dashboard tells a `/clear` from a fork
 ([04-ui.md](04-ui.md) § One card per conversation).
 
-**Dedupe keys.** hookd keys events as `pre:<tool_use_id>`, `post:<tool_use_id>`, `prompt:<prompt_id>`; ingest derives the *same* keys from transcript `tool_use` / `tool_result` blocks and `promptId`, and keys assistant turns as `msg:<message.id>`. `(session_id, key)` is unique in the store, so whichever plane arrives first wins and the other is a no-op — this is how "dedupe against hook events by session_id" is implemented, and it also makes re-reading a transcript after restart idempotent. Stop / SubagentStop / SessionStart / SessionEnd / PreCompact are keyless (never deduped).
+**Dedupe keys.** hookd keys events as `pre:<tool_use_id>`, `post:<tool_use_id>`, `prompt:<prompt_id>`; ingest derives the *same* keys from transcript `tool_use` / `tool_result` blocks and `promptId`, and keys assistant turns as `msg:<message.id>`. `(session, key)` is unique in the store, so whichever plane arrives first wins and the other is a no-op — this is how "dedupe against hook events by session_id" is implemented, and it also makes re-reading a transcript after restart idempotent. Stop / SubagentStop / SessionStart / SessionEnd / PreCompact are keyless (never deduped).
 
 **A turn is paid once across sessions.** The key is unique per session only, and a fork's transcript repeats its parent's turns under the fork's own session id (see [Transcript JSONL](#transcript-jsonl-observed-shape)). So a `turn.assistant` whose `msg_id` another session already holds *with usage* is stored with zero tokens and `cost_usd = 0` (`store.TurnPaidElsewhere`, migration 0029): the row stays in the fork's timeline with its prose and counts as a turn there, and the response is billed once, to the session that stored it first. A copy with no usage does not count as the payer, so an empty copy stored first cannot stop the original being priced. `rollup.RepairForkedTurns` applied the same rule once to rows stored before it (meta `forked_turns_repaired`): per message id the row with the most tokens pays, ties to the earliest, and `session_stats` / `daily_stats` move by what is taken off.
 
@@ -1275,7 +1275,7 @@ change is a `permission` frame. The prompts are stored, and a session
 reattached after a daemon restart is waiting on them again under the same ids
 (migrations 0039, 0042, 0043).
 
-`/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). A search that matches nothing scans every note either way; the prompt lookups walk `(session_id, ts)` indexes and cost about the same. The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
+`/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). A search that matches nothing scans every note either way; the prompt lookups walk `(sid, ts)` indexes and cost about the same. The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
 
 `payload.text` on `turn.assistant` is capped at **16000 runes** (`ingest.MaxAssistantText`), clipped on a rune boundary. Parser schema v1 capped at 2000 **bytes** and sliced at an arbitrary offset, which cut multi-byte prose at roughly half the intended length and left `U+FFFD` at the end of about a fifth of clipped rows — disproportionately on closing summaries. `ingest.SchemaVersion` was raised to **2** for this (it is now **3**: v3 reads `ai-title` into `sessions.title`, see § Session title DDL), and a daemon started against a v1 database re-derives the affected rows once from the transcripts still on disk (`ingest.RepairAssistantText`), rewriting only `payload.text` and leaving every other key, event id, and cost untouched. Rows whose transcript is gone keep what they have.
 
@@ -1306,7 +1306,7 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 
 **Codex prompts and tool results are `turn.user` and `tool.post` in Claude Code's shape** (`source = codex`). A prompt: key `codex:user:<line>`, payload `{prompt, cwd}`, from the `item_completed` `UserMessage` item (else the `user_message` event), clipped to 16000 runes; none for imported or subagent threads. A result: key `codex:result:<line>` (`codex:sub:<thread>:result:<line>` in a subagent file, with `agent_id` and `sidechain`), `tool` the call's name, payload `{session_id, cwd, tool_name, tool_use_id, tool_response, is_error, exit_code?}`, `tool_response` text clipped to 8000 runes, `exit_code` only where Codex recorded one (`shell`). A call whose request ended (`task_complete`, `turn_aborted`, or the next `task_started`) with no output record gets one too, key `codex:interrupted:<call line>` (`codex:sub:<thread>:interrupted:<call line>`), `tool_response` empty and `interrupted: true`; the chat shows it as interrupted, not running. Every Codex `tool.pre` carries `tool_use_id` = Codex's `call_id`, and its `tool_input` is the call's argument object (a `function_call`'s JSON-string arguments unwrapped; `shell`'s argv `command` turned into its command line, the array kept as `argv`). Rows stored before carry neither; a one-time pass (`meta.codex_chat_backfilled`) stores the missing prompts and results from the rollouts still on disk and rewrites only `tool_use_id` and `tool_input` on the call whose key and timestamp match. See [19-codex.md § Chat](19-codex.md#chat).
 
-Five indexes were added purely for read speed by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (session_id, id) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) served the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter could not use it — 146ms against 56ms over 30 days on a 190k-event database. Migration 0057 dropped both once later indexes had taken over their queries; see § Superseded indexes DDL. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
+Five indexes were added purely for read speed by migrations 0006 to 0010: `idx_events_kind_ts` (kind, ts) and `idx_events_cost_cover`, which additionally carries `model`, `session_id`, the token/cost columns and (since migration 0026) `internal` so the summary aggregates are answered from the index without touching the table. Together they take `/v1/stats/summary?range=all` from ~820ms to ~340ms and `/v1/history` from ~830ms to ~470ms on a 184k-event database, for roughly 30MB of index on a 306MB file. `idx_events_session_id` (sid, id since migration 0073) serves the per-session event lookup behind Now, and `idx_events_kind_id` (kind, id) serves the Memory screen — both order by id, which the ts-ordered indexes cannot satisfy, so without them SQLite read every matching row and sorted it in a temp B-tree to return the newest few. Migration 0026 rebuilt `idx_events_cost_cover`, `idx_events_tool_dist` and `idx_events_attr_work` with `internal` as their last column: every aggregate filters on `internal = 0` since migration 0024, and without the column none of them covered any more — each query fetched every full row to test one flag, which put `/v1/history?range=all` at 9s on a 300k-event database. It also added `idx_events_ts_cover` (ts, internal, kind, session_id, token/cost columns) for the two range aggregates that group by kind or count distinct sessions; both pin it with `INDEXED BY`, because without ANALYZE statistics SQLite picked `idx_events_kind_id` or `idx_events_session_id` and walked the whole table — 4.8s for today's 772 events. `idx_events_ts_model` (ts, model, cost_usd) served the model mix, which every summary computes: `idx_events_cost_cover` carries `model` but leads on `kind`, so a ts-only filter could not use it — 146ms against 56ms over 30 days on a 190k-event database. Migration 0057 dropped both once later indexes had taken over their queries; see § Superseded indexes DDL. `idx_events_user_turn` (migration 0033) finds a session's first prompts for the sessions list's descriptions; see § First-prompt DDL.
 
 Note-**search** deliberately still scans: an FTS5 index answers in 6ms against ~165ms, but it matches whole words, so searching `chestr` finds 394 rows with LIKE and 0 with FTS. People search their own sessions for fragments — half an error message, part of a path — and a faster search that misses them is not the same feature.
 
@@ -1342,6 +1342,8 @@ held are soon someone else's, and such a session stayed live, with an empty
 terminal, for as long as the stranger ran.
 
 `GET /v1/status` carries `ingest_error` — the terminal error that stopped transcript ingest, when one happened — and omits it while ingest is running. The tailer runs in a goroutine whose failure used to be logged and swallowed, so a fatal ingest error (a read-only `~/.claude` reproduces it) left the daemon reporting healthy, `caprock status` printing `backfill done`, and the dashboard showing its "No sessions yet — start `claude` in any terminal" empty state forever, while nothing was being captured at all. `caprock status` and the Now and Status screens all report it.
+While the events stored before migration 0073 move into place it also
+carries `events_move: {moved, total}` (§ Session key DDL).
 
 `/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
 
@@ -6536,8 +6538,8 @@ CREATE TABLE IF NOT EXISTS session_gen (
   gen        INTEGER NOT NULL
 ) WITHOUT ROWID;
 -- events_gen_update, events_gen_delete: AFTER triggers on events that upsert
--- gen + 1 for NEW.session_id (update; OLD.session_id too when an update moves
--- a row) and for OLD.session_id (delete). No insert trigger.
+-- gen + 1 for the session of NEW.sid (update; of OLD.sid too when an update
+-- moves a row) and of OLD.sid (delete), by its session_id. No insert trigger.
 ```
 
 A session's rewrite generation. `store.EventsGen` pairs it with the session's
@@ -6560,6 +6562,115 @@ events, so a cached value is never older than its key. Rows are never deleted,
 so a removed session id seen again carries on from its old generation instead
 of reusing one. A migration that rebuilds the events table must recreate the
 triggers; `TestEventsGenTriggersExist` fails otherwise.
+
+### Session key DDL (migration 0073)
+
+```sql
+CREATE TABLE sessions (
+  sid        INTEGER PRIMARY KEY,
+  session_id TEXT    NOT NULL UNIQUE,
+  …                                   -- every other column as before
+);
+CREATE TABLE events (
+  id  INTEGER PRIMARY KEY,
+  ts  INTEGER NOT NULL,
+  sid INTEGER NOT NULL REFERENCES sessions(sid),  -- was session_id TEXT
+  …                                   -- every other column as before
+);
+-- The indexes on events keep their names; those that led on session_id
+-- lead on sid, so a section above that indexes events(session_id, …) means
+-- events(sid, …) from this migration on. idx_events_agent_task is back only
+-- while a tool_fields fill is pending (§ Tool fields DDL), and the unique
+-- (sid, key) index is idx_events_sid_key.
+```
+
+An event names its session by `sessions.sid` instead of repeating the
+session's 36-character id in its row and in 14 of the 18 indexes on `events`.
+`sid` is the `INTEGER PRIMARY KEY` of `sessions`, so VACUUM never renumbers it.
+Every reader keeps asking by `session_id`: a filter on one session is
+`sid = (SELECT sid FROM sessions WHERE session_id = ?)`, a constant to the
+planner, and a statement that returns the id joins `sessions` on `sid`. A scan
+that returns many events reads `sid` alone and names the sessions afterwards
+(`store.sessionIDsOf`): naming one on every row took 0.28 s against 0.12 s for
+355,261 rows. `session_gen` stays keyed by `session_id`, the id its readers ask
+by; its triggers look it up by `sid`.
+
+An event needs its session's row. `store.InsertEvent` gives a session with
+none a bare one and inserts the event again, so only a session's first event
+pays for a second statement; a duplicate (a hook and the transcript both
+report every tool call and prompt) still writes nothing. The bare row holds
+what `store.UpsertSession` writes for an empty patch, and NULL in
+`repo_root` and `repo_path`, which the upsert reads as unresolved: the upsert
+`rollup.Recorder.apply` runs next, in the same transaction, fills it exactly
+as its own insert would. The chat import writes the conversation's row
+first, because its upsert sets `chat`, `status`, `agent` and `native_id` only
+on insert.
+
+The migration numbers sessions by `started_at`, and gives each session that
+has events but no row (some older versions wrote events first and never the
+row) one marked `ended`, spanning its events. Copying every row inside the
+migration took 47 s on a contributor's 1 GB database (2026-10-19) and
+105–501 s on copies of real databases (2026-10-21), all of it before the
+daemon answered; VACUUM then made the 1 GB file 128 MiB smaller
+(1,029 → 902 MiB). So the rows move in the background instead:
+
+- **What the migration does.** It renames `events` to `events_legacy`,
+  drops that table's triggers and every index but `idx_events_session_key`,
+  creates `events` in the new shape with its indexes and triggers, and moves
+  the newest 1,000 rows: `id` has no AUTOINCREMENT, so a new event takes the
+  highest id in `events` plus one, which must be above every old one.
+  `meta.events_move_total` is the number of rows to move, `meta.events_moved`
+  how many have.
+- **The move.** `store.MoveEventsStep` moves the newest 500 rows left, and
+  the daemon's `moveEvents` runs it with a 50 ms rest between steps. A step
+  takes its rows out of `events_legacy`, puts them in `events` with their ids
+  and bumps their sessions' `session_gen`, in one transaction: an
+  interrupted move resumes at the next start, and a row is never in both
+  tables or in neither. A row whose session has no row any more is dropped.
+  The step that finds nothing left drops `events_legacy`, its trigger and the
+  two meta keys.
+- **Duplicates.** A row not moved yet still holds its key: the trigger
+  `events_legacy_dedupe` ignores an insert whose `(session, key)` is in
+  `events_legacy`, and `store.InsertEvent` reports it as a duplicate. The new
+  table's unique index is `idx_events_sid_key` because `events_legacy` keeps
+  `idx_events_session_key` for this until it is dropped.
+- **What waits.** While `Store.Moving` is true, `events` holds the newest
+  rows only, so what reads a whole history or marks itself done over one
+  starts after the move (`daemon.afterMove`): the OpenCode, Codex, DeepSeek,
+  Hermes and Gemini importers, which offer their history again on every
+  start; the transcript repairs and Open's `touch_dir` and `inner_tool`
+  backfills; the rollup repairs and pricing corrections; `fillToolFields`,
+  `backfillToolLinks` and `backfillPRs`; the retention prune; payload
+  compaction and the idle vacuum; and Second Brain's reads. Claude Code's
+  hooks and transcripts are recorded throughout. Removing a session or a
+  chat answers 503 until then, and `caprock export --table events` refuses.
+- **What it looks like.** `GET /v1/status` carries `events_move:
+  {moved, total}`, which `caprock status`, the Now screen and Status show.
+  `store.EventsVersion` adds `meta.events_moved`, so the cached aggregates
+  are counted again as rows arrive. When the move ends the API forgets
+  them all, and the store its pull-request memos (`sliceMemo`,
+  `learnMemo`), which keep what was read over the newest rows alone.
+
+On a copy of a contributor's database (1.23 GB, 603,141 events, schema 69,
+Windows 10, 2026-10-23) the start took 3.0 s with migrations 0070, 0071 and 0073,
+and the move 1 min 52 s in steps of 34 ms at the median and 405 ms at most.
+An event written meanwhile waited 21 ms at the median and 396 ms at most for
+the write lock. The file and its write-ahead log grew by 17 MB at the peak,
+where copying every row in the migration had needed 1.58 times the used
+size; 87 MiB of free pages were left for the incremental vacuum to return.
+
+No release before 0073 opens the upgraded database (ADR-082), so before
+migrating a database below it `Open` keeps a copy, `caprock.pre-0073.db`
+beside `caprock.db` (`store.BackupPath`), through SQLite's online backup:
+one snapshot, write-ahead log included, 0600 like the database. It is the
+way back to an older release: stop Caprock, put the copy in place of
+`caprock.db`, remove `caprock.db-wal` and `caprock.db-shm`, and install the
+older one. The volume needs free disk of 1.1 times the database's pages;
+without it the upgrade goes on with no copy, and the log says so. The
+data-directory sweep removes the copy 30 days after it was made. While it
+copies and migrates, the daemon keeps `upgrading.json` fresh (§ Runtime
+file). On the 1.23 GB copy above the copy took 4.8 s and 8.7 s in two
+runs, and the whole start with it 5.7 s and 9.6 s.
 
 ### Worked-at and parent DDL (migration 0027)
 
@@ -7182,8 +7293,10 @@ parse the result JSON.
   `events` for ids at or below the mark; `describeSubagents` seeks the
   agents it did not find on `idx_events_agent_task`, which the migration
   leaves in place for this. The step that empties the mark drops it, and
-  Open drops it at once on a database with nothing to fill. The screens
-  are the same before, during and after the fill.
+  Open drops it at once on a database with nothing to fill. Migration 0073
+  rebuilds `events` without it, and Open puts it back, on `sid`, while a
+  fill is pending (`store.agentTaskIndex`). The screens are the same
+  before, during and after the fill.
 
 Measured on a copy of the owner's database (2026-10-22; 2.0 GB, 431,546
 tool events), through the Go driver, medians of five on a loaded Mac (load
@@ -7702,6 +7815,8 @@ preview stands) never meet. Before it, the port's bind was the only lock,
 which a second daemon on another port walked past.
 
 `<data_dir>/runtime.json` = `{"port": 22776, "token": "<random per run>", "pid": <daemon pid>, "started_at": <unix ms>, "version": "<daemon version>", "api_level": 1, "exe": "<absolute path of the daemon binary>"}`; written 0600 by `caprock up`, deleted by `caprock down`; the shim reads it on every invocation.
+
+`<data_dir>/upgrading.json` = `{"pid": <daemon pid>, "started_at": <unix ms>}`, written 0600 by the daemon before it copies the database ahead of an upgrade (§ Session key DDL) and deleted once the migrations have run, before the daemon listens. Its modification time is touched every 2 s meanwhile; a file older than 10 s was left by a daemon that died and means nothing. While it is fresh, `caprock up` waits for the daemon instead of starting a second one, which would only fail on the lock, or giving up after 10 s, and prints `Upgrading the database, which can take a minute…`; the app's supervisor shows the same as its start step instead of the failure page. Once the file is gone, both give the daemon the 10 s of any start to finish starting and answer.
 
 **`api_level`** (also in `GET /v1/status`) is an integer raised by every change a client must know about and never lowered: `1` is the first level, added for the desktop app ([ADR-038](08-decisions.md#adr-038--the-desktop-app-is-a-thin-tauri-v2-shell-around-the-existing-react-ui-and-xtermjs-on-the-go-daemon)). A client declares the minimum it needs; a daemon below it, or one with no `api_level` (read as `0`), is shown as needing an upgrade. **`exe`** is how the desktop app tells a daemon it installed (`<data_dir>/bin/caprock`, which it may replace) from one a package manager owns (which it must not touch); omitted when the OS cannot say.
 

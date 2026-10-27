@@ -3,6 +3,7 @@ package export
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"os"
@@ -45,14 +46,14 @@ func fixture(t *testing.T) string {
 	      VALUES ('x1', '/w/web', 'web', 'gpt-6', ?, ?, 'ended', 'codex')`, ms(48*time.Hour), ms(49*time.Hour))
 	exec(`INSERT INTO sessions (session_id, cwd, project, model, started_at, last_event_at, status, agent)
 	      VALUES ('r1', '/w/web', 'web', 'codex-auto-review', ?, ?, 'ended', 'codex')`, ms(50*time.Hour), ms(50*time.Hour))
-	exec(`INSERT INTO events (ts, session_id, source, kind, tool, payload, tool_bytes, touch_dir)
-	      VALUES (?, 'c1', 'hook', 'tool.pre', 'Bash', '{"command":"go test\t./...\nok"}', 0, 'svc\api')`, ms(time.Minute))
-	exec(`INSERT INTO events (ts, session_id, source, kind, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, model, msg_id)
-	      VALUES (?, 'c1', 'transcript', 'turn.assistant', '{}', 10, 200, 5000, 300, 0.0425, 'claude-opus-5-5', 'msg_1')`, ms(2*time.Minute))
-	exec(`INSERT INTO events (ts, session_id, source, kind, payload, tokens_in, tokens_out, cost_usd, model)
-	      VALUES (?, 'x1', 'codex', 'turn.assistant', '{}', 50, 60, 0.01, 'gpt-6')`, ms(48*time.Hour))
-	exec(`INSERT INTO events (ts, session_id, source, kind, payload, model, internal)
-	      VALUES (?, 'r1', 'codex', 'turn.assistant', '{}', 'codex-auto-review', 1)`, ms(50*time.Hour))
+	exec(`INSERT INTO events (ts, sid, source, kind, tool, payload, tool_bytes, touch_dir)
+	      VALUES (?, (SELECT sid FROM sessions WHERE session_id = 'c1'), 'hook', 'tool.pre', 'Bash', '{"command":"go test\t./...\nok"}', 0, 'svc\api')`, ms(time.Minute))
+	exec(`INSERT INTO events (ts, sid, source, kind, payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, model, msg_id)
+	      VALUES (?, (SELECT sid FROM sessions WHERE session_id = 'c1'), 'transcript', 'turn.assistant', '{}', 10, 200, 5000, 300, 0.0425, 'claude-opus-5-5', 'msg_1')`, ms(2*time.Minute))
+	exec(`INSERT INTO events (ts, sid, source, kind, payload, tokens_in, tokens_out, cost_usd, model)
+	      VALUES (?, (SELECT sid FROM sessions WHERE session_id = 'x1'), 'codex', 'turn.assistant', '{}', 50, 60, 0.01, 'gpt-6')`, ms(48*time.Hour))
+	exec(`INSERT INTO events (ts, sid, source, kind, payload, model, internal)
+	      VALUES (?, (SELECT sid FROM sessions WHERE session_id = 'r1'), 'codex', 'turn.assistant', '{}', 'codex-auto-review', 1)`, ms(50*time.Hour))
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +205,26 @@ func TestOpenReadOnlyCannotWrite(t *testing.T) {
 	defer db.Close()
 	if _, err := db.Exec(`DELETE FROM events`); err == nil {
 		t.Fatal("delete succeeded on a read-only handle")
+	}
+}
+
+func TestADatabaseNotUpgradedYetIsNamed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE events (id INTEGER PRIMARY KEY, session_id TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	ro, err := OpenReadOnly(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	if _, err := Write(context.Background(), ro, &bytes.Buffer{}, Options{}); err == nil || !strings.Contains(err.Error(), "caprock up") {
+		t.Fatalf("export of a database from before migration 0073: %v", err)
 	}
 }
 
