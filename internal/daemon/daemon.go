@@ -975,6 +975,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.activity.Store(time.Now().UnixMilli())
 	d.goBg(func() { d.idleLoop(ctx) })
 	d.goBg(func() { d.resourceLoop(ctx) })
+	d.goBg(func() { d.machineWatchLoop(ctx) })
 	d.goBg(func() { d.ioLoop(ctx) })
 	if d.config().RetentionDays > 0 {
 		d.afterMove(ctx, func() { d.pruneLoop(ctx) })

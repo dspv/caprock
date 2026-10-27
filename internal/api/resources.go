@@ -186,3 +186,11 @@ func (s *Server) LiveClients() int {
 	defer s.ws.mu.Unlock()
 	return len(s.ws.conns)
 }
+
+// LocalLiveClients is how many /v1/live sockets this machine's own clients
+// hold — the dashboard, the app — not a paired device's.
+func (s *Server) LocalLiveClients() int {
+	s.ws.mu.Lock()
+	defer s.ws.mu.Unlock()
+	return s.ws.local
+}
