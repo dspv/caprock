@@ -355,6 +355,11 @@ export function mergeText(pr: PullRequest): string {
   if (pr.draft) return 'draft'
   if (pr.mergeable === null) return 'checking mergeability'
   if (!pr.mergeable || pr.mergeable_state === 'dirty') return 'has conflicts'
+  // GitHub says "clean" whenever no check is required by a branch rule, red or
+  // not, so "ready to merge" sat beside three failed checks (the site's
+  // Fix CI shot, 2026-10-24). The checks decide before the state does.
+  if (pr.checks.state === 'fail') return 'mergeable, checks failed'
+  if (pr.checks.state === 'pending') return 'mergeable, checks running'
   switch (pr.mergeable_state) {
     case 'clean': return 'ready to merge'
     case 'blocked': return 'blocked by branch rules'

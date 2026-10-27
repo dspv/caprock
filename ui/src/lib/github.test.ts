@@ -20,6 +20,9 @@ describe('GitHub words', () => {
     expect(mergeText({ ...base, mergeable: false, mergeable_state: 'dirty' })).toBe('has conflicts')
     expect(mergeText({ ...base, state: 'merged' })).toBe('merged')
     expect(mergeText({ ...base, draft: true })).toBe('draft')
+    // "clean" with red checks: GitHub requires none, Caprock still says they failed
+    expect(mergeText({ ...base, checks: { ...base.checks, state: 'fail' } })).toBe('mergeable, checks failed')
+    expect(mergeText({ ...base, checks: { ...base.checks, state: 'pending' } })).toBe('mergeable, checks running')
   })
 
   it('tones: a requested change is a failure, merged is its own', () => {
