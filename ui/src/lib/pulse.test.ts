@@ -5,7 +5,7 @@
  * looping and was worthless because of it.
  */
 import { describe, expect, it } from 'vitest'
-import { buildPulse, costTier, medianCost, signature, trackState, PULSE_MINUTES, REPEAT_FLOOR } from './pulse'
+import { buildPulse, costTier, medianCost, signature, slimPulseEvent, trackState, PULSE_MINUTES, REPEAT_FLOOR } from './pulse'
 import type { Event } from './api'
 
 const NOW = Date.parse('2026-08-21T12:00:00Z')
@@ -217,5 +217,27 @@ describe('track state follows the daemon, not the bars', () => {
   it('falls back to the bars when health is unknown', () => {
     expect(trackState(busy, undefined).kind).toBe('working')
     expect(trackState({ bars: [{ n: 0, turns: 0, tools: 0, cost: 0 }], repeats: 0, repeatSample: '' }, undefined).kind).toBe('quiet')
+  })
+})
+
+describe('slimPulseEvent', () => {
+  const body = 'line\n'.repeat(20_000)
+  const events = [
+    ev({ kind: 'turn.assistant', cost_usd: 0.4, payload: { message: { content: body } } }, 3),
+    ev({ kind: 'tool.pre', tool: 'Write', payload: { tool_input: { file_path: '/w/a.go', content: body } } }, 3),
+    ev({ kind: 'tool.post', tool: 'Write', payload: { tool_response: { originalFile: body, content: body } } }, 3),
+    ...Array.from({ length: 9 }, (_, i) => ev({ kind: 'tool.pre', tool: 'Bash', payload: { tool_input: { command: 'go test ./...', description: `run ${i}` }, cwd: '/w' } }, 2)),
+    ev({ kind: 'tool.post', tool: 'Bash', payload: { tool_response: { stdout: body } } }, 1),
+  ]
+
+  it('draws the same bars and repeat count as the events it came from', () => {
+    expect(buildPulse(events.map(slimPulseEvent), NOW)).toEqual(buildPulse(events, NOW))
+    expect(buildPulse(events.map(slimPulseEvent), NOW).repeats).toBe(9)
+  })
+
+  it('keeps none of a result and only the compared prefix of a body', () => {
+    const slim = events.map(slimPulseEvent)
+    expect(JSON.stringify(slim).length).toBeLessThan(5_000)
+    expect(signature(slim[1]!)).toEqual(signature(events[1]!))
   })
 })

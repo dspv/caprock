@@ -171,6 +171,9 @@ export function ActivityFeed({ sessions, now, emptyHint }: { sessions: SessionSu
   useEffect(() => {
     let n = 0
     for (const r of rows) if (!seenIds.current.has(r.id)) { seenIds.current.add(r.id); n++ }
+    // Only the rows on screen can come round again: the set kept every id
+    // the feed ever drew, for as long as the window stayed open.
+    if (seenIds.current.size > ROWS * 4) seenIds.current = new Set(rows.map((r) => r.id))
     if (n) setReceived((v) => v + n)
   }, [rows])
   const stick = useStickToBottom({ edge: 'top', total: received })

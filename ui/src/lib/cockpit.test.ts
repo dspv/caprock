@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, slimToolResult, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -51,6 +51,26 @@ describe('toolRuns', () => {
       ev({ kind: 'tool.pre', ts: T(0), tool: 'Read', agent_id: 'sub-1' }),
       ev({ kind: 'tool.pre', ts: T(0), tool: 'Read', payload: { sidechain: true } }),
     ])).toEqual([])
+  })
+})
+
+describe('slimToolResult', () => {
+  const big = 'x'.repeat(50_000)
+  it('drops a result body and keeps what the tool list reads from it', () => {
+    const events = [
+      ev({ kind: 'tool.pre', ts: T(0), tool: 'Bash', payload: { tool_use_id: 'a', tool_input: { command: 'go test' } } }),
+      ev({ kind: 'tool.post', ts: T(9), tool: 'Bash', payload: { tool_use_id: 'a', is_error: true, tool_input: { command: 'go test' }, tool_response: `Exit code 2\n${big}` } }),
+      ev({ kind: 'tool.pre', ts: T(10), tool: 'Read', payload: { tool_use_id: 'b', tool_input: { file_path: '/w/a.go' } } }),
+      ev({ kind: 'tool.post', ts: T(11), tool: 'Read', payload: { tool_use_id: 'b', tool_response: { file: { content: big } } } }),
+      ev({ kind: 'tool.pre', ts: T(12), tool: 'Bash', payload: { tool_use_id: 'c', tool_input: { command: 'sleep 99' } } }),
+      ev({ kind: 'tool.post', ts: T(20), tool: 'Bash', payload: { tool_use_id: 'c', tool_response: { stdout: big, interrupted: true } } }),
+    ]
+    const slim = events.map(slimToolResult)
+    expect(toolRuns(slim)).toEqual(toolRuns(events))
+    expect(toolRuns(slim).map((r) => [r.exit, r.interrupted])).toEqual([[2, undefined], [undefined, undefined], [undefined, true]])
+    expect(JSON.stringify(slim).length).toBeLessThan(2_000)
+    // A call's own event is left as it came.
+    expect(slim[0]).toBe(events[0])
   })
 })
 
