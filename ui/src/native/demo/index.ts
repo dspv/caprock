@@ -47,6 +47,7 @@ export function answer(f: Fixture, method: string, u: URL): Response {
     case '/v1/inbox': return json(f.inbox)
     case '/v1/stats/limits': return json(f.limits)
     case '/v1/agents/catalog': return json(f.catalog)
+    case '/v1/tabs': return json(f.tabs)
     case '/v1/chats': return json(chatList(f, limit))
     case '/v1/saved-prompts': return json({ items: [], max: 100 })
     case '/v1/sessions': {

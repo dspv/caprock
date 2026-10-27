@@ -63,12 +63,14 @@ describe('demo mode', () => {
     localStorage.setItem('caprock.device.token', 'demo')
     location.hash = '#/'
     render(<App />)
-    expect(await screen.findByRole('region', { name: 'Waiting on you' }, { timeout: 5000 })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Needs you' }, { timeout: 5000 })).toBeInTheDocument()
     expect(screen.getAllByText('Run the migration on a copy of the database first?').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('dotfiles').length).toBeGreaterThan(0)
+    expect((await screen.findAllByText(/Tidy the shell aliases/, {}, { timeout: 5000 })).length).toBeGreaterThan(0)
     await act(async () => { await new Promise((r) => setTimeout(r, 300)) })
     expect(document.querySelector('[data-crash-screen]')).toBeNull()
     expect(screen.queryByText(/hit a snag/i)).toBeNull()
     expect(outside).not.toHaveBeenCalled() // every request the dashboard made was answered here
-  })
+    // Continue mirrors the sample Mac's tabs, not a list still being read.
+    expect(document.querySelector('[data-continue-source="tabs"]')).not.toBeNull()
+  }, 15000)
 })

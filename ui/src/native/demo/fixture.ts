@@ -6,7 +6,7 @@
  *
  * Built once per launch from `now`, so "2m ago" reads right.
  */
-import type { AgentCatalog, ChatList, Event, InboxItem, LimitsAnswer, PairMe, Permission, SessionDetail, SessionSummary, Status } from '@/lib/api'
+import type { AgentCatalog, ChatList, Event, InboxItem, LimitsAnswer, Need, PairMe, Permission, SessionDetail, SessionSummary, Status, TabsAnswer } from '@/lib/api'
 import type { Project } from '@/lib/projects'
 
 export interface Fixture {
@@ -21,6 +21,8 @@ export interface Fixture {
   inbox: { items: InboxItem[]; max: number }
   limits: LimitsAnswer
   catalog: AgentCatalog
+  /** The sample Mac's open tabs, which the phone home's Continue mirrors. */
+  tabs: TabsAnswer
 }
 
 const MIN = 60_000
@@ -37,6 +39,7 @@ interface Spec {
   status?: SessionSummary['status']
   chat?: boolean
   model?: string
+  need?: Need
 }
 
 function summary(s: Spec, now: number): SessionSummary {
@@ -64,7 +67,7 @@ function summary(s: Spec, now: number): SessionSummary {
     description_source: 'title',
     title: s.description,
     stats: { session_id: s.id, turns: 12, tool_calls: 30, files_touched: 4, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
-    activity: { phrase: s.phrase, at: new Date(at).toISOString(), health: s.health },
+    activity: { phrase: s.phrase, at: new Date(at).toISOString(), health: s.health, need: s.need },
     savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
     repo_root: s.chat ? undefined : cwd,
   }
@@ -92,10 +95,10 @@ function conversation(sessionId: string, start: number, turns: [kind: 'user' | '
 
 export function buildFixture(now: number): Fixture {
   const work: Spec[] = [
-    { id: 'demo-mail', project: 'caprock', description: 'Run the migration on a copy of the database first?', health: 'waiting-on-you', phrase: 'asks to run a command', ago: 2 * MIN },
+    { id: 'demo-mail', project: 'caprock', description: 'Run the migration on a copy of the database first?', health: 'waiting-on-you', phrase: 'asks to run a command', ago: 2 * MIN, need: { reason: 'permission' } },
     { id: 'demo-notes', project: 'notes', description: 'Sort the reading list by topic', health: 'working', phrase: 'editing reading-list.md', ago: 1 * MIN },
     { id: 'demo-tests', project: 'caprock', description: 'Running the Windows tests', health: 'working', phrase: 'running go test', ago: 0, agent: 'codex', model: 'gpt-sample' },
-    { id: 'demo-dotfiles', project: 'dotfiles', description: 'Tidy the shell aliases', health: 'idle', phrase: 'done for now', ago: 12 * MIN },
+    { id: 'demo-dotfiles', project: 'dotfiles', description: 'Tidy the shell aliases', health: 'done', phrase: 'done for now', ago: 12 * MIN, need: { reason: 'done' } },
     { id: 'demo-web', project: 'caprock-web', description: 'Rewrite the landing page intro', health: 'ended', phrase: 'finished', ago: 50 * MIN, status: 'ended' },
   ]
   const chatSpecs: Spec[] = [
@@ -196,6 +199,7 @@ export function buildFixture(now: number): Fixture {
         seven_day: { used_percentage: 21, resets_at: Math.floor((now + 4 * 24 * 60 * MIN) / 1000) },
       },
     },
+    tabs: { known: true, at: now, sessions: sessions.filter((x) => x.status !== 'ended').map((x) => x.session_id), items: sessions.filter((x) => x.status !== 'ended') },
     catalog: {
       agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }],
       licensed: true,
