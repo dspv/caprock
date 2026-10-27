@@ -48,6 +48,7 @@ import { NeedChip, NeedMove } from '@/components/NeedChip'
 import { isDone, needsYou, oldestFirst } from '@/lib/needs'
 import { PlanShare } from '@/components/PlanShare'
 import { sessionParts } from '@/lib/planShare'
+import { CopySkipped, movedPct } from '@/components/MoveNotice'
 
 /** How recently a session must have spoken to belong on the Now screen.
  *
@@ -228,11 +229,13 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
           <span className="text-fg font-medium">Upgrading the database</span>
           <span className="text-fg-muted">
             Older history is moving in, newest first:{' '}
-            <span className="num text-fg">{Math.floor((move.moved * 100) / Math.max(move.total, 1))}%</span>. Until it is
+            <span className="num text-fg">{movedPct(move)}%</span>. Until it is
             done, older sessions and totals over them are incomplete. New work is recorded as usual.
           </span>
         </div>
       )}
+      {/* Beside the move it came with; after it, Status keeps saying so. */}
+      {move && status.data?.upgrade_copy_skipped && <CopySkipped skip={status.data.upgrade_copy_skipped} />}
       {/* Tablets and wider (#752). The phone keeps the Home it had in 0.134.0
         * (owner, 2026-10-19: the projects list there showed long-unused ones). */}
       {!inApp && !phone && <BrowserProjects />}

@@ -67,6 +67,7 @@ import { escapeLeavesPage, useCloseSettings } from '@/lib/settingsClose'
 import { CaprockItself } from '@/components/ResourceMeter'
 import { signIns } from '@/lib/subscriptions'
 import { parseHash } from '@/lib/router'
+import { CopySkipped, copySkippedText, movedPct } from '@/components/MoveNotice'
 
 /**
  * The page's own way out (lib/settingsClose.ts): a × beside the heading, and
@@ -425,6 +426,17 @@ function Problems({ s }: { s: Status }) {
           </p>
         </Section>
       )}
+      {/* Without the copy there is no going back to an older release, and the
+        * log was the one place that said so (03-contracts.md § Session key DDL). */}
+      {s.upgrade_copy_skipped && (
+        <Section title="No safety copy was made before the upgrade" explained>
+          <CopySkipped skip={s.upgrade_copy_skipped} />
+          <p className="mt-2 text-fg-muted">
+            Nothing is lost and Caprock works as usual; only installing an older Caprock over this database is not
+            possible.
+          </p>
+        </Section>
+      )}
       {!s.claude_available && (
         <Section title="Claude Code was not found" explained>
           <p className="text-fg-muted">
@@ -484,7 +496,8 @@ function AboutSection({ s }: { s: Status }) {
   // A distinct key: React renders these rows keyed by name, and the live
   // ingest row below uses 'ingest'.
   if (s.ingest_error) rows.push(['ingest error', `STOPPED: ${s.ingest_error} — nothing is being captured`])
-  if (s.events_move) rows.push(['upgrade', `moving older events into the upgraded database: ${s.events_move.moved.toLocaleString()} of ${s.events_move.total.toLocaleString()}`])
+  if (s.events_move) rows.push(['upgrade', `moving older events into the upgraded database: ${s.events_move.moved.toLocaleString()} of ${s.events_move.total.toLocaleString()} (${movedPct(s.events_move)}%)`])
+  if (s.upgrade_copy_skipped) rows.push(['upgrade copy', copySkippedText(s.upgrade_copy_skipped)])
   if (s.ingest) rows.push(['ingest', `${s.ingest.files_known} transcripts · ${s.ingest.events_stored} events stored · ${s.ingest.events_deduped} deduped · ${s.ingest.lines_malformed} malformed lines · backfill ${s.ingest.backfill_done ? 'done' : 'running'}`])
   return (
     <Section title="About this install">

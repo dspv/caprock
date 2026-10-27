@@ -77,6 +77,64 @@ func TestTheUpgradeGoesOnWithoutRoomForACopy(t *testing.T) {
 	if got := Backups(path); len(got) != 0 {
 		t.Fatalf("a copy with no room for it: %v", got)
 	}
+	// And it is recorded, so the daemon can say there is no way back.
+	if s, err = Open(context.Background(), path, nil); err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.CopySkipped(context.Background())
+	_ = s.Close()
+	if err != nil || c == nil || c.Before != 73 || c.FreeBytes != 0 || c.NeedBytes <= 0 || c.At == 0 || c.Error != "" {
+		t.Fatalf("skipped copy recorded as %+v (%v)", c, err)
+	}
+}
+
+func TestACopyMadeClearsASkippedOne(t *testing.T) {
+	ctx := context.Background()
+	path, raw := openAtSchema(t, 72)
+	if _, err := raw.Exec(`INSERT INTO meta(k, v) VALUES (?, '{"before":73,"at":1}')`, MetaCopySkipped); err != nil {
+		t.Fatal(err)
+	}
+	_ = raw.Close()
+	s, err := Open(ctx, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.CopySkipped(ctx)
+	_ = s.Close()
+	if err != nil || c != nil {
+		t.Fatalf("a copy was made, yet a skipped one is still recorded: %+v (%v)", c, err)
+	}
+	if got := Backups(path); len(got) != 1 {
+		t.Fatalf("Backups = %v", got)
+	}
+}
+
+func TestAnUpgradeThatCouldNotReadTheDiskSaysWhy(t *testing.T) {
+	free := diskFree
+	diskFree = func(string) (int64, error) { return 0, errors.New("statfs: no such device") }
+	t.Cleanup(func() { diskFree = free })
+	path, raw := openAtSchema(t, 72)
+	_ = raw.Close()
+	s, err := Open(context.Background(), path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.CopySkipped(context.Background())
+	_ = s.Close()
+	if err != nil || c == nil || c.Error == "" || c.FreeBytes != 0 {
+		t.Fatalf("skipped copy recorded as %+v (%v)", c, err)
+	}
+}
+
+func TestANewDatabaseRecordsNoSkippedCopy(t *testing.T) {
+	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "c.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if c, err := s.CopySkipped(context.Background()); err != nil || c != nil {
+		t.Fatalf("%+v (%v)", c, err)
+	}
 }
 
 func TestANewDatabaseKeepsNoCopy(t *testing.T) {

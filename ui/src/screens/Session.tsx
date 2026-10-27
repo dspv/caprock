@@ -40,6 +40,7 @@ import { PHONE_BAR_PX, PhoneSessionBar } from '@/components/PhoneSessionBar'
 import { endState } from '@/components/PhoneEnd'
 import { PlanShare } from '@/components/PlanShare'
 import { sessionParts } from '@/lib/planShare'
+import { MovingLine } from '@/components/MoveNotice'
 
 type Tab = 'chat' | 'timeline' | 'notes' | 'changes' | 'terminal'
 
@@ -307,6 +308,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         </PhoneSessionBar>
       )}
       {!compact && details}
+      {/* An older session's events may not have moved in yet (0073). */}
+      {!overlay && <MovingLine className="px-0.5" />}
       {/* A session Caprock starts but cannot read — Gemini today — produced six
         * columns of zeros with the reason in 11px grey underneath. Zeros are
         * how this bar shows "nothing happened yet", so it read as broken

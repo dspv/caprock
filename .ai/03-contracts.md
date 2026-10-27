@@ -1346,7 +1346,9 @@ terminal, for as long as the stranger ran.
 
 `GET /v1/status` carries `ingest_error` — the terminal error that stopped transcript ingest, when one happened — and omits it while ingest is running. The tailer runs in a goroutine whose failure used to be logged and swallowed, so a fatal ingest error (a read-only `~/.claude` reproduces it) left the daemon reporting healthy, `caprock status` printing `backfill done`, and the dashboard showing its "No sessions yet — start `claude` in any terminal" empty state forever, while nothing was being captured at all. `caprock status` and the Now and Status screens all report it.
 While the events stored before migration 0073 move into place it also
-carries `events_move: {moved, total}` (§ Session key DDL).
+carries `events_move: {moved, total}`, and after an upgrade that went on
+without its safety copy `upgrade_copy_skipped: {before, at, free_bytes?,
+need_bytes?, error?}` (§ Session key DDL).
 
 `/v1/stats/summary` and `/v1/history` carry `unpriced` — `{turns, tokens, models[]}` — the volume in range whose model has no row in the pricing table, and which models caused it. It is **omitted entirely when everything in range was priced**, which is the normal case. A model missing from the table leaves `cost_usd` NULL (the rollup logs "model not in pricing table; cost left unknown"), and every aggregate flattens NULL with `COALESCE(SUM(cost_usd),0)` — so tens of thousands of tokens of an unpriced model summed to exactly `$0.00` and rendered as a confident, indistinguishable-from-free number. That is an invented number (rule 6), and it is certain to occur the day a model ships newer than the pricing table, or on a gateway whose model ids do not normalise. The models are **named**, not merely counted: an unknown model id is something a user can report or add a pricing override for, whereas "some tokens are unpriced" is not actionable. `cost_usd` continues to mean "the cost we could price", so the two are reported side by side and never summed.
 
@@ -6728,7 +6730,9 @@ daemon answered; VACUUM then made the 1 GB file 128 MiB smaller
   hooks and transcripts are recorded throughout. Removing a session or a
   chat answers 503 until then, and `caprock export --table events` refuses.
 - **What it looks like.** `GET /v1/status` carries `events_move:
-  {moved, total}`, which `caprock status`, the Now screen and Status show.
+  {moved, total}`, which `caprock status`, the Now screen and Status show,
+  and History, Memory's search and a session page in one line
+  ([04-ui.md](04-ui.md) § While older history moves in).
   `store.EventsVersion` adds `meta.events_moved`, so the cached aggregates
   are counted again as rows arrive. When the move ends the API forgets
   them all, and the store its pull-request memos (`sliceMemo`,
@@ -6749,7 +6753,15 @@ one snapshot, write-ahead log included, 0600 like the database. It is the
 way back to an older release: stop Caprock, put the copy in place of
 `caprock.db`, remove `caprock.db-wal` and `caprock.db-shm`, and install the
 older one. The volume needs free disk of 1.1 times the database's pages;
-without it the upgrade goes on with no copy, and the log says so. The
+without it the upgrade goes on with no copy rather than refusing to start.
+That is recorded in `meta.upgrade_copy_skipped` (`store.CopySkip` as JSON:
+`before`, the migration; `at`, unix ms; `free_bytes` and `need_bytes`; or
+`error` when the size, the free space or the copy itself failed), and a copy
+made by a later start deletes it. `GET /v1/status` reports it as
+`upgrade_copy_skipped` for `upgradeCopyKeep` (30 days, as long as a copy
+would have been kept) and `caprock status` prints it as a warning line;
+Now and Status show it ([04-ui.md](04-ui.md) § While older history moves
+in). Until then the log was the one place that said there was no way back. The
 data-directory sweep removes the copy 30 days after it was made. While it
 copies and migrates, the daemon keeps `upgrading.json` fresh (§ Runtime
 file). On the 1.23 GB copy above the copy took 4.8 s and 8.7 s in two

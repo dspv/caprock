@@ -27,6 +27,7 @@ import { Donut, ShareBar, sharePct, sliceColors, topN, type Segment } from '@/co
 import { cacheLevel } from '@/lib/cachelevel'
 import { ToolDrill } from '@/components/ToolDrill'
 import { RetentionNote } from '@/components/RetentionNote'
+import { MovingLine } from '@/components/MoveNotice'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 type View = 'charts' | 'numbers'
@@ -170,6 +171,8 @@ export function HistoryScreen() {
           ))}
         </span>
       </div>
+      {/* Lifetime figures over a history still moving in are the newest of it alone. */}
+      <MovingLine className="px-0.5" />
 
       {/* Below the range row, above the figures: this screen is where someone
         * came to think about what all of this has cost, which is the one

@@ -16,6 +16,7 @@ import { NoteCard } from '@/components/Notes'
 import type { AssistantNote } from '@/lib/api'
 import { Empty, Skeleton } from '@/components/ui'
 import { HandoffEffect } from '@/components/HandoffEffect'
+import { MovingLine } from '@/components/MoveNotice'
 
 /** Notes per page. Large enough to be worth a request, small enough to render. */
 const PAGE = 200
@@ -125,6 +126,8 @@ export function NotesScreen() {
           {since ? `What Claude has told you, since ${since}. Local only.` : 'What Claude has told you. Local only.'}
         </span>
       </form>
+      {/* A search over a history still moving in finds the newest of it alone. */}
+      <MovingLine className="px-0.5" />
 
       {q.error && !q.data && <Empty title="Cannot search">{q.error.message}</Empty>}
 

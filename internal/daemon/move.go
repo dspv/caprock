@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/dspv/caprock/internal/store"
@@ -63,4 +64,14 @@ func (d *Daemon) moving() bool { return d.store != nil && d.store.Moving() }
 type MoveStatus struct {
 	Moved int64 `json:"moved"`
 	Total int64 `json:"total"`
+}
+
+// CopySkippedLine says, for `caprock status`, that an upgrade went on
+// without its copy and what that costs.
+func CopySkippedLine(c *store.CopySkip) string {
+	why := c.Error
+	if why == "" {
+		why = fmt.Sprintf("%s free, %s needed", Bytes(uint64(max(c.FreeBytes, 0))), Bytes(uint64(max(c.NeedBytes, 0))))
+	}
+	return "no safety copy of the database was made before the upgrade (" + why + "). Older Caprock versions cannot open the upgraded database."
 }
