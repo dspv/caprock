@@ -2515,6 +2515,8 @@ export const api = {
   /** `app` reports whether this phone runs as the installed app, for the
    *  owner's checklist on the machine; omitted, nothing is reported. */
   pairMe: (app?: boolean) => get<PairMe>(app === undefined ? '/v1/pair/me' : `/v1/pair/me?app=${app ? 1 : 0}`),
+  /** This device withdraws itself (DELETE /v1/pair/me): the iOS app's Unpair. */
+  pairForgetMe: () => post<unknown>('/v1/pair/me', {}, 'DELETE'),
   settings: () => get<Settings>('/v1/settings'),
   update: () => get<UpdateStatus>('/v1/update'),
   checkUpdate: () => post<UpdateStatus>('/v1/update/check', {}),

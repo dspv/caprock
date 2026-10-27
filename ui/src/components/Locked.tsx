@@ -22,6 +22,7 @@ import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { PremiumModal, type PaidFeature } from './PremiumModal'
 import { Banner, BannerButton } from './Banner'
+import { sellsHere } from '@/native/platform'
 
 export function Locked({
   feature,
@@ -81,7 +82,8 @@ export function Locked({
         art="lock"
         title={title}
         line="Part of Premium."
-        actions={<BannerButton kind="premium" onClick={() => setOpen(true)}>Unlock with Premium</BannerButton>}
+        // The iOS app sells nothing (ADR-083): the lock says what it is, with no button.
+        actions={sellsHere() ? <BannerButton kind="premium" onClick={() => setOpen(true)}>Unlock with Premium</BannerButton> : null}
       />
 
       {open && <PremiumModal feature={feature} onClose={() => setOpen(false)} />}

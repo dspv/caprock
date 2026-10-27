@@ -25,6 +25,8 @@ import { fmtUSD } from '@/lib/format'
 import { AgentCharacter, type Character } from './Characters'
 import { Benefit, Icon, MiniCard, UpsellDialog } from './UpsellDialog'
 import { extTitle } from '@/lib/externalLinks'
+import { sellsHere } from '@/native/platform'
+import { NotSoldHere } from './NotSoldHere'
 
 const TEAMS = 'https://caprock.dev/teams'
 const BOOK = 'https://caprock.dev/book/'
@@ -90,7 +92,13 @@ function TeamPicture() {
   )
 }
 
-export function TeamsModal({ fact, onClose }: { fact?: TeamsFact; onClose: () => void }) {
+export function TeamsModal(props: { fact?: TeamsFact; onClose: () => void }) {
+  // The iOS app sells nothing and links to no shop (ADR-083).
+  if (!sellsHere()) return <NotSoldHere title="Caprock for Teams" onClose={props.onClose} />
+  return <TeamsOffer {...props} />
+}
+
+function TeamsOffer({ fact, onClose }: { fact?: TeamsFact; onClose: () => void }) {
   const measured = !!fact && fact.costUSD > 0 && fact.projects > 0
   return (
     <UpsellDialog

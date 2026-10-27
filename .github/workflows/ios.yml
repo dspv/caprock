@@ -1,0 +1,91 @@
+name: ios
+
+# The iOS app (ADR-083, ios-app/): the phone's page built in remote mode,
+# synced into the Capacitor project, and compiled for the iOS Simulator with
+# no signing. Builds run here, never on the owner's Mac. The signed App Store
+# upload is ios-release.yml, run by hand (ios-app/README.md § Release).
+on:
+  push:
+    branches: [master, 'feat/ios-**']
+    paths:
+      - 'ios-app/**'
+      - 'ui/src/remote/**'
+      - 'ui/src/native/**'
+      - 'ui/src/main.tsx'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
+      - 'ui/vite.config.ts'
+      - '.github/workflows/ios.yml'
+  # Draft pull requests run nothing (ADR-061), as in ci.yml.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'ios-app/**'
+      - 'ui/src/remote/**'
+      - 'ui/src/native/**'
+      - 'ui/src/main.tsx'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
+      - 'ui/vite.config.ts'
+      - '.github/workflows/ios.yml'
+
+concurrency:
+  group: ios-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    if: ${{ !github.event.pull_request.draft }}
+    name: builds for the iOS Simulator
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            ios-app/package-lock.json
+      # Capacitor 8 needs Xcode 26; use the newest one the image has.
+      - name: pick Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+      - run: npm ci
+        working-directory: ui
+      - run: npm ci
+        working-directory: ios-app
+      - name: plugin versions agree between ui/ and ios-app/
+        run: node ios-app/scripts/check-versions.mjs
+      - name: the App Store texts fit Apple's limits
+        run: node ios-app/scripts/check-store.mjs
+      - name: build the phone's page (remote mode)
+        working-directory: ui
+        run: npx vite build --mode remote
+      - name: sync it into the iOS project
+        working-directory: ios-app
+        run: npx cap sync ios
+      - name: the synced plugin list is the committed one
+        run: git diff --exit-code -- ios-app/ios/App/CapApp-SPM/Package.swift
+      - name: build for the iOS Simulator (no signing)
+        working-directory: ios-app/ios/App
+        run: |
+          set -o pipefail
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build | tail -n 200
+      # The Swift packages are pinned by the committed Package.resolved; a
+      # plugin update that needs others fails above, and this prints them.
+      - name: resolved Swift packages
+        if: failure()
+        run: find ios-app/ios -name Package.resolved -exec cat {} \; || true

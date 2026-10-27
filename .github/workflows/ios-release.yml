@@ -1,0 +1,98 @@
+name: ios-release
+
+# Caprock for iPhone to App Store Connect (ADR-083, ios-app/README.md
+# § Release). Manual only: a person presses Run workflow; nothing triggers it
+# on a push, a tag or a schedule. It builds the phone's page in remote mode,
+# syncs it into the Capacitor project, archives a Release build, signs it for
+# App Store distribution and uploads it (ios-app/scripts/app-store.sh). The
+# build then waits in App Store Connect; submitting it for review is a click
+# there, never this workflow's.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Marketing version (CFBundleShortVersionString)
+        required: true
+        default: '1.0'
+      destination:
+        description: upload sends it to App Store Connect; export only makes a signed .ipa (kept 7 days as an artifact)
+        type: choice
+        options: [upload, export]
+        default: upload
+      signing:
+        description: auto uses the Apple Distribution certificate secret when present, else cloud signing with the API key
+        type: choice
+        options: [auto, cloud, certificate]
+        default: auto
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  app-store:
+    name: archive, sign, upload
+    runs-on: macos-latest
+    environment: ios-release
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            ui/package-lock.json
+            ios-app/package-lock.json
+      # Capacitor 8 needs Xcode 26 or later; use the newest one the image has.
+      - name: pick Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          x=$(find /Applications -maxdepth 1 -name "Xcode_2[6-9]*.app" | sort -V | tail -1)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+      - run: npm ci
+        working-directory: ui
+      - run: npm ci
+        working-directory: ios-app
+      - name: plugin versions agree between ui/ and ios-app/
+        run: node ios-app/scripts/check-versions.mjs
+      - name: build the phone's page (remote mode)
+        working-directory: ui
+        run: npx vite build --mode remote
+      - name: sync it into the iOS project
+        working-directory: ios-app
+        run: npx cap sync ios
+      - name: the synced plugin list is the committed one
+        run: git diff --exit-code -- ios-app/ios/App/CapApp-SPM/Package.swift
+      - name: archive, sign and upload
+        run: bash ios-app/scripts/app-store.sh
+        env:
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+          APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Only for signing with a certificate the owner made (README § Signing).
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 || '' }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD || '' }}
+          IOS_PROFILE_B64: ${{ secrets.IOS_PROFILE_B64 || '' }}
+          # The build number only grows: the run number of this workflow.
+          BUILD_NUMBER: ${{ github.run_number }}
+          MARKETING_VERSION: ${{ inputs.version }}
+          DESTINATION: ${{ inputs.destination }}
+          SIGNING: ${{ inputs.signing }}
+          OUT: ${{ runner.temp }}/ios-release
+      - name: keep the logs and the .ipa
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v6.0.0
+        with:
+          name: ios-release-${{ github.run_number }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/ios-release/*.log
+            ${{ runner.temp }}/ios-release/ExportOptions.plist
+            ${{ runner.temp }}/ios-release/export/*.ipa

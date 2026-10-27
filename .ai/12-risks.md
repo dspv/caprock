@@ -88,7 +88,11 @@ elsewhere draws questions under 3.1. Mitigation: native value the page cannot
 have (camera pairing, on-device voice, Face ID, push with an encrypted
 payload); a demo mode on bundled sample data reachable from the first screen,
 named in the review notes; no purchase, price or buy link anywhere in the
-app; TestFlight to the owner first. Residual: review outcomes are not
+app; review notes that walk the reviewer through the demo
+(`ios-app/store/review-notes.txt`) and cite guideline 3.1.3(f) (a free
+companion to a paid tool, no purchase inside). 1.0 goes to review without a
+TestFlight round and without push (owner, 2026-10-27), so it rests on the
+camera, voice and Face ID alone against 4.2. Residual: review outcomes are not
 predictable, and the time a first review takes is not known — any figure for
 it is an estimate.
 

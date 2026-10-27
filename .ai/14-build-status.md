@@ -21,7 +21,7 @@ Percentages are deliberately coarse — they answer "is this track started, half
 | Phase 3 — Delight               | 0%       | No plan by design                                                                              |
 | Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                        |
 | Other computers (ADR-067)       | 40%      | Phase 1 built (PR1–PR3): see and type into another computer's sessions; Phases 2–4 not started |
-| iOS app (ADR-083)               | 0%       | Direction decided, Capacitor chosen; push payload open (OQ-24); nothing built                  |
+| iOS app (ADR-083)               | 70%      | 1.0 built, signed upload workflow ready; owner uploads and submits; push in 1.1                |
 
 ## Milestone status
 
@@ -76,6 +76,40 @@ Percentages are deliberately coarse — they answer "is this track started, half
 - Toolchain versions in [10-infrastructure.md](10-infrastructure.md) were checked on 2026-08-18 and are now exercised in CI.
 
 ## Log
+
+### 2026-10-27 — unreleased: the iOS app, 1.0 ready for the App Store
+
+Phase 1 (2026-10-22, branch `feat/ios-app`) merged onto master as
+`feat/ios-app-store`, with the owner's call to go straight to the App Store
+without a TestFlight round and without push (ADR-083, amended 2026-10-27).
+
+- **What 1.0 is:** a Capacitor 8 project in `ios-app/` (bundle id
+  `dev.caprock.ios`, iPhone, portrait) around today's remote build of `ui/`;
+  pairing by the official barcode scanner or a pasted link; dictation by
+  Apple's recognition with on-device required; an optional Face ID lock; the
+  pairing's durable copy in the Keychain; the first-launch screen and
+  **Try it without a Mac** on bundled sample data; the app's own Settings;
+  nothing for sale. No notification permission and no push entitlement.
+- **Checked in the iOS Simulator** (Xcode 27, iOS 27, iPhone 18 Pro Max,
+  1320 × 2868), screen by screen with a throwaway XCUITest walk: first
+  launch, paste a link (a wrong one is refused with its line), the scanner,
+  the demo's home, a session, dictation, the app's Settings, the chats,
+  leaving the demo, and the Face ID lock (on, the lock screen, off). Not
+  checkable there: the camera scanner (the Simulator has no camera; the
+  button waits) and on-device English dictation (the Simulator has no
+  on-device model, so the app says so, as designed). The demo's sample now has the Needs you reasons and the
+  sample Mac's open tabs that today's phone home reads, and the dashboard's
+  sticky headers sit under the demo strip instead of leaving a blank band.
+- **Release:** `.github/workflows/ios-release.yml`, manual only, in the
+  `ios-release` environment: archive unsigned, then `xcodebuild
+  -exportArchive` (method `app-store-connect`, destination `upload`) signs and
+  uploads with the App Store Connect API key, version 1.0, build number the
+  run number. Cloud signing needs an Admin key; with the owner's App Manager
+  key, an Apple Distribution certificate in two more secrets is the other
+  way (ios-app/README.md § Signing). Not run yet: nothing has been uploaded.
+- **Listing:** `ios-app/store/` (name, subtitle, texts, keywords, URLs,
+  category, age rating, App Privacy: Data Not Collected, review notes);
+  `ios-app/scripts/check-store.mjs` keeps each field inside Apple's limits.
 
 ### 2026-10-27 — unreleased: what the window's script keeps
 
