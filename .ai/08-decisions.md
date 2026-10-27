@@ -5565,6 +5565,11 @@ the shell, so it adds no way for a page to reach Caprock and fakes nothing
 but its own mark. Not verified in the app: the zoom and the callback on each
 engine.
 
+*Amended 2026-10-27 by [ADR-087](#adr-087--a-local-dev-server-opens-on-a-real-phone-on-the-same-wi-fi-through-a-one-origin-proxy-behind-a-link):*
+*open on my phone*, not built when phone mode was, is built: a button on the
+device bar shares a local dev server's origin on the Wi-Fi behind a link,
+shown as a QR.
+
 ---
 
 ## ADR-076 — Private modules: a slot opened by a signed admin key, holding nothing of its own
@@ -6509,3 +6514,120 @@ anywhere the page can read; a link in the post when no card was uploaded.
 **Revisit if:** the site has to keep anything beside the picture; the social
 sites stop drawing a link's preview from its page; or people ask for the
 upload to be switched off as a setting rather than chosen per press.
+
+---
+
+## ADR-087 — A local dev server opens on a real phone on the same Wi-Fi, through a one-origin proxy behind a link
+
+**Date:** 2026-10-27 · **Status:** accepted (owner, 2026-10-27: option A,
+*Open on my phone* with a QR; option B, from anywhere through the relay, is
+backlog and not built). Amends [ADR-075](#adr-075--the-in-app-browser-returns-as-a-window-of-its-own-over-the-tab-off-until-the-user-turns-it-on)
+(phone mode's *open on my phone*, listed there as not built) and leans on
+[ADR-029](#adr-029--a-second-device-gets-in-over-the-lan-with-a-code-or-not-at-all)'s
+reasoning about a socket on the network. Contract:
+[03-contracts.md § A dev server on a phone](03-contracts.md#a-dev-server-on-a-phone-v1devshare);
+screen: [04-ui.md](04-ui.md) § Phone mode, *Open on my phone*.
+
+**Context.** Lena builds mobile-first sites. Phone mode and Side by side
+show her page at a phone's size on the Mac, and say plainly what they cannot
+emulate: the engine, the real touch, the on-screen keyboard, safe areas,
+`devicePixelRatio`. The only true test is the phone in her hand. Her dev
+server (Vite, Next, webpack) listens on `localhost`, so the phone on the
+same Wi-Fi cannot reach it, and the usual fixes — `--host`, `0.0.0.0`,
+editing `allowedHosts` — put the server on every interface with no guard at
+all and are a step most people do not know.
+
+**Decision.**
+
+- **One button, one origin.** *Open on my phone* on the phone-mode device
+  bar, only for a tab whose address is local by `devUrlOf`'s rules
+  (localhost, `*.localhost`, 127.x, `[::1]`; 0.0.0.0 and `[::]` as
+  localhost). The click is the consent, as *Preview on phone*'s is: nothing
+  is shared that the user did not point at, and nothing is probed.
+- **A proxy in the daemon, on demand** (`internal/devshare`). The click asks
+  `POST /v1/devshare` (loopback only, never a paired device or the relay),
+  and the daemon opens a listener of its own for that one origin:
+  - on **one named private address** (`lan.Addresses`: the first RFC 1918
+    one, a Tailscale one only when there is no other), on a **random port**,
+    never `0.0.0.0` and never the daemon's own port — ADR-029's two rules
+    for a socket on the network, for the same reasons;
+  - **at most three** at once, one per origin; asking again for an origin
+    already shared gives the same link back;
+  - forwarding to **that origin and nothing else**: the scheme, host and
+    port are fixed when the share starts; a request names only a path, an
+    absolute-form request line cannot change the host, `CONNECT` is
+    refused, the dialer reaches only loopback (`127.0.0.1` then `[::1]` for
+    a name, since a Node server on macOS often listens on `::1` alone), and
+    no environment proxy is used. The target cannot be the daemon's own
+    port, and every forwarded request carries `Via: 1.1 caprock-share`, so a
+    share of a Caprock port would be a stranger to the API's gate anyway.
+- **An unguessable link, then a cookie, never an open port.** The QR holds
+  `http://<ip>:<port>/__caprock/open/<token>`, 32 random bytes. That path,
+  compared in constant time, sets `caprock_share_<id>=<token>` (HttpOnly,
+  SameSite=Lax, `Path=/`, the share's longest life) and redirects to the
+  page's own path with `Referrer-Policy: no-referrer`, so the page's address
+  bar and its requests never carry the token. Every other request needs the
+  cookie; without it, or with a wrong one, the answer is a short `403` page
+  that says only to scan the QR again. The cookie is removed before the
+  request reaches the dev server. A request whose `Host` is not the share's
+  own address is refused (DNS rebinding, as `checkOrigin`).
+  The token is in the URL once, by design: a QR can carry nothing else, and
+  the token dies with the share, unlike ADR-029's device token, which never
+  expires and therefore never travels in a URL.
+- **Off by itself.** A share ends on **Stop sharing**, after **30 minutes**
+  with no request or WebSocket traffic from a phone that has the cookie
+  (traffic without it does not keep a share alive), after **8 hours**
+  whatever happens, and when the daemon stops. It is never remembered across
+  a restart, as the LAN listener is not (ADR-029). Ending closes the
+  listener and every connection it accepted, open WebSockets included.
+- **Shown while on.** The device bar's button reads *On my phone* with a
+  live dot while its origin is shared, and a browser tab not in phone mode
+  shows a strip naming the address with **Stop sharing**. The sheet says
+  the phone must be on the same Wi-Fi, and what to try when it does not
+  load: a guest network or the router's client isolation keeps devices
+  apart, and a VPN on either side can too.
+- **What a dev server needs, rewritten; the rest said.** `Host` becomes the
+  target's (`localhost:5173`), which is what Vite's `allowedHosts` and
+  Next's checks read; an `Origin` or `Referer` naming the share becomes the
+  target's, which is what Vite's WebSocket and Next's `allowedDevOrigins`
+  read. WebSocket upgrades are forwarded (Vite's HMR, Next's
+  `webpack-hmr`), as are streaming answers (an EventSource). A redirect's
+  `Location` naming the target is turned back into the share's address; a
+  cookie's `Domain=localhost` and `Secure` are dropped so the phone keeps
+  it. A text answer (HTML, JavaScript, CSS, JSON) up to 4 MB has absolute
+  spellings of the target origin (`http://localhost:5173`, `ws://…`,
+  `//127.0.0.1:5173`) replaced by the share's; to read them, the proxy asks
+  the dev server for an uncompressed answer, which costs bytes on the Wi-Fi
+  and nothing else. **Not handled, and documented:** a page that calls a
+  *second* local origin (an API on `localhost:3001`) — that origin is not
+  shared and the phone cannot reach it; a `Content-Security-Policy` naming
+  localhost; `SameSite=None` cookies (they need `Secure`, which plain http
+  on the phone cannot keep); a service worker or anything else that needs a
+  secure context (`http://192.168…` is not one); an `https` dev server is
+  reached over https from the proxy, with its certificate unchecked because
+  it is loopback and usually self-signed, and served to the phone as plain
+  http.
+- **No "Send to my phone".** No channel exists that opens a URL on a paired
+  phone: the phone page shows the dashboard, and *Send the link to my
+  phone* posts Caprock's own phone page to Telegram. Sending this link
+  through Telegram would put a working token on a third party's server, so
+  it is not offered; the QR and the address, for typing, are the way.
+
+**Not a setting, and not the LAN listener.** The share does not need
+`caprock up --lan` and does not turn it on: it serves one dev server and no
+part of Caprock, under a token of its own, and ADR-058 took the LAN
+listener off the screen. Requiring it would hide the feature behind a
+terminal command for no safety it adds.
+
+**Rules out:** binding `0.0.0.0` or more than one address per share;
+forwarding to anything but the one origin chosen; a share without a token;
+a token in a cookie set for any other path or host; a share that survives a
+restart or outlives its 8 hours; starting one from a paired device or
+through the relay; reaching the phone from outside the network (option B,
+backlog: it would ride ADR-058's relay and is a different decision).
+
+**Revisit if:** people need the second local origin (an API beside the
+front end) — then a share names a small set of origins, each on its own
+port; a router's client isolation turns out to be the usual case, which
+would make option B the default rather than the backlog; or browsers start
+treating a private address as a secure context.

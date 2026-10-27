@@ -30,6 +30,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
+	"github.com/dspv/caprock/internal/devshare"
 	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/gitdiff"
@@ -171,6 +172,9 @@ type Deps struct {
 	// Machines are the other computers this machine reaches (ADR-067,
 	// machines.go); nil in a build or test without them.
 	Machines Machines
+	// DevShare opens a local dev server on a phone on the same Wi-Fi
+	// (ADR-087, devshare.go). Nil answers 501.
+	DevShare *devshare.Manager
 	// TLDR is what AI;DR squeezes an answer with (ADR-072): the user's own
 	// claude, through Second Brain's runner. Nil in builds or tests without
 	// it, and POST /v1/events/{id}/tldr answers 503 for a long answer.
@@ -754,6 +758,11 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/pair/lan", s.handleSetLAN)
 	m.HandleFunc("POST /v1/pair/remote", s.handleSetRemote)
 	m.HandleFunc("POST /v1/pair/send-link", s.handlePairSendLink)
+	// A dev server on a phone (ADR-087, devshare.go): loopback only, on no
+	// device's allowlist.
+	m.HandleFunc("GET /v1/devshare", s.handleDevShares)
+	m.HandleFunc("POST /v1/devshare", s.handleStartDevShare)
+	m.HandleFunc("DELETE /v1/devshare/{id}", s.handleStopDevShare)
 	// Other computers this machine reaches (ADR-067, machines.go). Loopback
 	// only, in the handlers, and on no device's allowlist: not transitive.
 	m.HandleFunc("GET /v1/machines", s.handleMachines)
