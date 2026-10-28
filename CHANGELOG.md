@@ -12,6 +12,62 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.165.0] - 2026-10-28
+
+### Added
+
+- **ui:** Files, a two-panel file manager in the spirit of Norton Commander
+  that knows about your agents (⇧⌘X, Ctrl+Shift+X on Windows and Linux; ⌘K
+  → Open Files; Files in a project's menu). Your checkout on the left, an
+  agent's worktree on the right: Compare tints what differs and what is on
+  one side only, What <agent> changed filters to that worktree's changes,
+  View shows the file or its diff with + and − counts. Copy, move or rename,
+  new folder and delete (F5–F8, or ⌥5–⌥8 on a Mac), each confirmed by name;
+  delete only ever moves to the Trash. Reaches only the project's folder and
+  its worktrees, and is read-only from a phone or another computer. A
+  Norton look paints it blue with cyan frames and the F-key bar.
+- **ui:** every figures panel can be shared — Live pulse, Repos, CI/CD, Plan
+  limits, Most expensive, Releases, Plan value and the Cost panels get a share
+  icon in their header: Copy image, Save PNG, Copy as text (Markdown) and Post
+  to X, Threads or LinkedIn through the share card's own sheet. *Hide project
+  names*, on by default and remembered, turns projects, sessions, branches,
+  folders, pull request titles and logins into "project 1", "session 1"… in
+  the picture and the text alike. Drawn on your machine; only the X, Threads
+  and LinkedIn buttons upload the picture, to caprock.dev, as for the share
+  card.
+
+### Changed
+
+- **ci:** the Windows Go leg, the slowest job in a CI run, is split into
+  three jobs that run side by side (lint and smoke, the slowest package's
+  tests, the rest of the tests), and a pull request that touches only the
+  changelog, its fragments or `.ai/` docs — a release pull request — skips the
+  build and test jobs while the docs checks still run.
+- **ui:** the agent cockpit's header names the agent in a small muted label
+  and puts the session's configuration where the big name was: the model
+  and how full its context is (*Opus 5.5 · 62% ctx*). Under it, the
+  subagents working now are counted by type (*3 subagents · 2 Explore,
+  1 general-purpose*), and a type opens the first of its kind in the
+  Subagents section. A figure the daemon does not report is left out.
+- **ui:** the tab in front is framed in the accent on every side, the
+  Dashboard tab in front a step heavier, and behind it keeps an accent
+  outline, so it is the one tab the eye finds. The Pipeline and Mail tabs are
+  quiet beside it now, drawn like a session tab until brought forward. The
+  Pipeline tab closes from behind too (its × on hover), and with ⌘W
+  (Ctrl+Shift+W) while it is in front; it stays closed until ⌘P opens it
+  again.
+
+### Fixed
+
+- **ios:** the iPhone app's upload to App Store Connect is no longer refused
+  over export compliance. The build no longer claims an approved compliance
+  code it does not have; App Store Connect asks the encryption questions on
+  the build instead.
+- **ui:** the Repos panel's last column (Release) no longer runs past the
+  panel's right edge in a mid-width window: a letter-spaced heading wider than
+  its column no longer widens the column, and the table drops to its narrower
+  layout a little earlier.
+
 ## [0.164.1] - 2026-10-28
 
 ### Changed
