@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { contextGone, watchContextLoss } from './termgl'
+import { contextGone, disposeWebgl, watchContextLoss } from './termgl'
 
 const addon = (lost: boolean | (() => boolean) = false) => ({
   _renderer: {
@@ -31,6 +31,22 @@ describe('termgl', () => {
     watchContextLoss(b, lostB)()
     b._renderer._canvas.dispatchEvent(new Event('webglcontextlost'))
     expect(lostB).not.toHaveBeenCalled()
+  })
+
+  it('disposes the addon and gives its context back at once, and never throws', () => {
+    const loseContext = vi.fn()
+    let lost = false
+    const a = { dispose: vi.fn(), _renderer: { _gl: { isContextLost: () => lost, getExtension: (n: string) => (n === 'WEBGL_lose_context' ? { loseContext } : null) } } }
+    disposeWebgl(a)
+    expect(a.dispose).toHaveBeenCalledTimes(1)
+    expect(loseContext).toHaveBeenCalledTimes(1)
+    // A context already gone is not lost again.
+    lost = true
+    disposeWebgl(a)
+    expect(loseContext).toHaveBeenCalledTimes(1)
+    // Another addon version, a throwing dispose, no addon at all.
+    expect(() => disposeWebgl({ dispose: () => { throw new Error('gone') } })).not.toThrow()
+    expect(() => disposeWebgl(undefined)).not.toThrow()
   })
 
   it('watches nothing on an addon whose canvas it cannot find', () => {

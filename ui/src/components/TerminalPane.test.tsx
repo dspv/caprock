@@ -126,7 +126,7 @@ vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 
 import { DESK_WRITE_MS } from '@/lib/termwrite'
 import { PAGE_HIDDEN_SUSPEND_MS } from '@/lib/visible'
-import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, HIDDEN_SCROLLBACK, HIDDEN_TRIM_MS, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SCROLLBACK, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
+import { FOCUS_HEAL_MS, HIDDEN_DISCONNECT_MS, HIDDEN_HOLD_BYTES, HIDDEN_SCROLLBACK, HIDDEN_TRIM_MS, HIDDEN_WEBGL_MS, KEEP_WEBGL_HIDDEN, LONG_HIDDEN_MS, SCROLLBACK, SETTLE_MS, TerminalPane, keptWebglCount } from './TerminalPane'
 import { WEBGL_QUIET_MS } from './Terminal'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { setTerminalPrefs, DEFAULT_PREFS } from '@/lib/termprefs'
@@ -671,6 +671,28 @@ describe('switching tabs shows the terminal as it was', () => {
     panes[0]!.r.rerender(<TerminalPane sessionId="a" active={false} />)
     expect(keptWebglCount()).toBe(KEEP_WEBGL_HIDDEN)
     expect(h.webgl.disposed).toBe(5 - KEEP_WEBGL_HIDDEN + 1)
+  })
+
+  it('a pane hidden past HIDDEN_WEBGL_MS lets its context go, and comes back with a renderer and fresh glyphs in show()', () => {
+    const { rerender } = working('a')
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    act(() => { vi.advanceTimersByTime(HIDDEN_WEBGL_MS - 1) })
+    expect(h.webgl).toEqual({ made: 1, disposed: 0 })
+    expect(keptWebglCount()).toBe(1)
+    act(() => { vi.advanceTimersByTime(2) })
+    expect(h.webgl).toEqual({ made: 1, disposed: 1 })
+    expect(keptWebglCount()).toBe(0)
+    h.steps.length = 0
+    rerender(<TerminalPane sessionId="a" active />)
+    expect(h.webgl.made).toBe(2)
+    expect(h.steps).toContain('atlas')
+    expect(h.steps.indexOf('webgl')).toBeLessThan(h.steps.lastIndexOf('paint'))
+    // Shown again before the spell is over: nothing is let go.
+    rerender(<TerminalPane sessionId="a" active={false} />)
+    act(() => { vi.advanceTimersByTime(HIDDEN_WEBGL_MS / 2) })
+    rerender(<TerminalPane sessionId="a" active />)
+    act(() => { vi.advanceTimersByTime(HIDDEN_WEBGL_MS) })
+    expect(h.webgl).toEqual({ made: 2, disposed: 1 })
   })
 
   it('a pane still waiting for its first output keeps the quiet path', () => {

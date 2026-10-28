@@ -38,6 +38,25 @@ export function contextGone(addon: unknown): boolean {
 }
 
 /**
+ * Disposes the addon and gives its context back to the GPU now.
+ *
+ * The addon's own dispose takes its canvas out of the page and nothing more:
+ * the context, and the drawing buffers WebKit keeps for it (the pane's size
+ * at the screen's pixel ratio, about 20 MB of the window's graphics memory
+ * for a full pane, measured 2026-10-28), stay until the canvas is collected.
+ * `WEBGL_lose_context` lets them go at once. Safe on a context already lost,
+ * and on an addon whose insides are not what this expects.
+ */
+export function disposeWebgl(addon: { dispose: () => void } | undefined): void {
+  if (!addon) return
+  const { gl } = insides(addon)
+  try { addon.dispose() } catch { /* already gone */ }
+  try {
+    if (gl && typeof gl.isContextLost === 'function' && !gl.isContextLost()) gl.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch { /* nothing to give back */ }
+}
+
+/**
  * Calls `lost` once, the moment the addon's canvas loses its context — not
  * three seconds later — and keeps it from the addon's in-place restore.
  * Returns the stop. A no-op stop when the canvas cannot be found.
