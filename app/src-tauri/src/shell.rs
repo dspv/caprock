@@ -507,6 +507,8 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
         let mut resume: Option<Url> = None;
         let mut was_connected = false;
         let mut last = discovery::Found::Absent;
+        // Holds a found daemon through a brief hiccup (discovery::Watch).
+        let mut watch = discovery::Watch::default();
         let mut full_at = Instant::now();
         // The shell replaced the daemon under a page it had served.
         let mut swapped_under_page = false;
@@ -514,12 +516,11 @@ pub fn monitor(app: AppHandle, sup: Arc<Supervisor>) {
         expect_load();
         loop {
             // `/v1/status` every FULL_CHECK; `/healthz` alone in between.
-            let found = if full_at.elapsed() < FULL_CHECK {
-                discovery::recheck(&sup.data_dir, &last)
-            } else {
+            let full = full_at.elapsed() >= FULL_CHECK;
+            if full {
                 full_at = Instant::now();
-                discovery::find(&sup.data_dir)
-            };
+            }
+            let found = watch.check(&sup.data_dir, &last, full);
             last = found.clone();
             let absent_for = match found {
                 discovery::Found::Absent => absent_since.get_or_insert_with(Instant::now).elapsed(),

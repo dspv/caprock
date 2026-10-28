@@ -136,12 +136,21 @@ daemon uses (`$CAPROCK_DATA_DIR`, else `<user config dir>/caprock`):
    without asking. The macOS app menu keeps the switch afterwards.
 4. It polls twice a second: `/healthz`, with `/v1/status` every 10 s while
    `runtime.json` names the same daemon; every 5 s while the window is hidden,
-   and at once when it is shown again. A daemon gone for 1.2 s is shown as stopped (the
-   bundled page, with **Start it now**) — gone meaning no connection, not that
-   it is slow: a daemon that takes the connection and answers `/healthz` late
-   is kept for 20 s
-   (`SLOW_GRACE`), since a loaded Mac made a running daemon look stopped a dozen
-   times an hour (2026-10-28). Silent past that, it is shown as stopped too.
+   and at once when it is shown again. A daemon found running is kept
+   through a hiccup (`discovery::Watch`): refused, reset or garbled checks
+   count as a stop only after 5 s of nothing but failures (`ERROR_GRACE`),
+   and a daemon that takes the connection but answers late only after 20 s
+   (`SLOW_GRACE`); one answer resets both. `/v1/status`, which runs database
+   queries, decides nothing: when `/healthz` answers and it does not, the
+   last status is kept. On the owner's Mac (2026-10-28) a daemon running for
+   15 h was shown as stopped and back dozens of times a day before this. A
+   real stop is still seen at once: `runtime.json` removed or naming another
+   daemon, or, on macOS and Linux, its pid no longer alive (Windows has no
+   pid check and relies on the 5 s). Then, gone for 1.2 s more, it is shown
+   as stopped (the bundled page, with **Start it now**). Every such
+   transition writes its reason to `app.log` (the error kind and message or
+   the HTTP code, how many checks failed over how long); brief failures it
+   recovered from are summed into one line per 10 minutes at most.
    When one answers again, on any port,
    the window returns to the dashboard at the route it was on.
 
