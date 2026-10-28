@@ -171,7 +171,7 @@ secret is there, else cloud):
 
 ## Export compliance
 
-`Info.plist` sets `ITSAppUsesNonExemptEncryption` to **true**. The app's
+`Info.plist` leaves `ITSAppUsesNonExemptEncryption` out. The app's
 channel to the computer is Noise_NK_25519_AESGCM_SHA256 (X25519, AES-256-GCM,
 SHA-256; `ui/src/remote/noise.ts`), implemented in the app with `@noble`, not
 Apple's crypto: it is synchronous on purpose, so WebCrypto is not a drop-in.
@@ -181,21 +181,24 @@ needs no documentation; *an industry standard algorithm, not provided within
 the Apple operating system* needs a **French encryption declaration**
 uploaded in App Store Connect, and only if the app is offered in France;
 proprietary algorithms need a US CCATS as well. Caprock is the middle row,
-which `false` would misstate.
+so `false` would misstate it, and `true` is no better without a code: `true`
+tells the upload that approved documentation exists and its code is in
+`ITSEncryptionExportComplianceCode`, and with no code the upload is refused
+(ITMS-90592, *Invalid Export Compliance Code*, the first upload, 2026-10-28).
+With the key absent the upload goes through and App Store Connect asks the
+questions on the build (*Missing Compliance* until answered).
 
-What follows for 1.0, at the first submission (App Store Connect asks the
-questions because the key is true):
+What follows for 1.0 (owner's call, 2026-10-28: France out of 1.0):
 
 - *Does your app use encryption?* **Yes**. Algorithms: **standard
   algorithms instead of, or in addition to, Apple's operating system**. Not
   proprietary.
-- **France:** either take France out of the app's availability for 1.0 (no
-  document needed), or file the declaration with ANSSI and upload it. The
-  first is the quick path; France can be added back once the declaration is
-  accepted.
-- Once Apple approves any documentation it gives a code; setting it as
-  `ITSEncryptionExportComplianceCode` in `Info.plist` stops the questions on
-  later builds.
+- **France:** taken out of the app's availability for 1.0, so no document is
+  needed. France comes back once a declaration filed with ANSSI is uploaded
+  and accepted.
+- Once Apple approves any documentation it gives a code; setting
+  `ITSAppUsesNonExemptEncryption` to `true` with that code as
+  `ITSEncryptionExportComplianceCode` stops the questions on later builds.
 
 Rule 4 is unchanged: the encryption protects the user's own traffic to the
 user's own computer.
