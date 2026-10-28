@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -48,7 +48,7 @@ import { SectionFrames } from './SectionFrames'
 import { FitSummary } from './FitSummary'
 import { CompactAction, CompactIcon, useCompact } from './CompactContext'
 import {
-  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
+  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentKinds, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
 } from '@/lib/cockpit'
 
@@ -359,8 +359,9 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  * both when work is going on and when it waits"). Three rows:
  *
  * - **The agent's row**, as tall as the avatar: the character, whose ring
- *   carries the state's colour; the agent, its model on a line of its own
- *   (never cut to make room for the figure), and when it started. At its
+ *   carries the state's colour; the agent as a small label, the session's
+ *   configuration (model, context fill) prominent under it — the model never
+ *   cut to make room for the figure — and when it started. At its
  *   right, in a place of its own, the headline figure and what it is
  *   (owner, 2026-10-12: "put it to the right of the agent").
  * - **The detail row**: under the portrait, centred, the state line (dot and
@@ -368,7 +369,8 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  *   2026-10-14: "status and mode can both go under the portrait — then the
  *   figures get better visibility", translated); the two smaller figures at
  *   the right, with the rest of the row to themselves.
- * - **The subagents' row**: a chip per subagent in groups of five, in the
+ * - **The subagents' row**: how many and of which types, each type opening
+ *   the first of its kind below; a chip per subagent in groups of five, in the
  *   order they started, wrapping onto a second line; compact chips when two
  *   lines of full ones would not hold them (lib/cockpit chipLayout); or *no
  *   subagents running*.
@@ -389,6 +391,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const layout = useChipLayout(chipBox, working)
   const strip = subagentChips(subs, permission, layout.room)
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
+  const kinds = useMemo(() => subagentKinds(subs?.working ?? []), [subs])
   const model = s.model_display || s.model
   // One word under the portrait: "Background agents" wrapped to two lines in
   // the narrow column (owner, 2026-10-22). The full phrase is the tooltip and
@@ -402,14 +405,26 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
           className="cockpit-avatar relative grid place-items-center justify-self-center rounded-[15px] [grid-area:av]" data-state={state}>
           <SessionCharacter agent={s.agent} sessionId={sessionId} size={46} className="cockpit-character" />
         </PickableFace>
-        {/* Name, model, since when: the state moved under the portrait, so
-          * the name and the model have the column to themselves. */}
+        {/* The agent a small label, and in its place how it is set up now
+          * (owner, 2026-10-28, translated: "why do I need 'Claude Code' …
+          * a huge thing in the most visible place with zero information. I
+          * need to understand the configuration of the agents that are
+          * working right now"): the model and how full its context is. The
+          * permission mode is the chip under the portrait, the subagents
+          * the last row; what the daemon does not report is left out. */}
         <div className="grid min-w-0 content-start [grid-area:info]">
-          <p className="truncate whitespace-nowrap text-[13px] font-semibold leading-[19px] text-fg">{agentName(s.agent ?? 'claude')}</p>
-          {model ? (
-            <p data-hero-model className="flex min-w-0 items-baseline whitespace-nowrap text-[12px] leading-[17px] text-fg-muted" title={model}>
-              <span className="truncate">{model}</span>
-              <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] text-fg-muted" />
+          <p data-hero-agent className="truncate whitespace-nowrap text-[11px] leading-[16px] text-fg-faint">{agentName(s.agent ?? 'claude')}</p>
+          {model || s.context ? (
+            <p data-hero-config className="flex min-w-0 items-baseline whitespace-nowrap text-[13.5px] font-semibold leading-[20px] text-fg"
+              title={[model, s.context ? `${fmtPct(s.context.pct)} of the context window used (${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)})` : ''].filter(Boolean).join(' · ')}>
+              {model ? <span data-hero-model className="max-w-full shrink-0 truncate">{model}</span> : null}
+              {model ? <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] font-normal text-fg-muted" /> : null}
+              {s.context ? (
+                <span data-hero-context className="min-w-0 truncate text-[12px] font-normal text-fg-muted">
+                  {model ? <span className="whitespace-pre text-fg-faint"> · </span> : null}
+                  <span className={s.context.pct >= 85 ? 'text-danger' : s.context.pct >= 60 ? 'text-warn' : ''}>{fmtPct(s.context.pct)}</span> ctx
+                </span>
+              ) : null}
             </p>
           ) : null}
           {s.started_at > 0 && state !== 'ended' && (
@@ -434,11 +449,32 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
         {/* Always there, at least one line high, so nothing above it moves
           * when subagents start or finish (owner, 2026-10-13: "fix its
           * position and mark the subagents' place when nothing runs"). */}
-        <div data-hero-chips className="flex min-w-0 items-start [grid-area:chips]">
+        <div data-hero-chips className="flex min-w-0 flex-wrap items-start gap-x-2.5 [grid-area:chips]">
+          {/* How many and of which types (*3 subagents · 2 Explore, 1
+            * general-purpose*); a type opens the first of its kind in the
+            * Subagents section, where what it is doing now is. The chips
+            * wrap under the line when both do not fit. */}
           {count > 0 && state !== 'ended' && (
-            <span data-hero-count className="mr-2.5 shrink-0 text-[11px] leading-[22px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>{count} working</span>
+            <span data-hero-count className="flex min-w-0 max-w-full items-baseline whitespace-nowrap text-[11.5px] leading-[22px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>
+              <span className="shrink-0 font-medium text-fg">{count} {count === 1 ? 'subagent' : 'subagents'}</span>
+              {kinds.length > 0 && (
+                <span data-hero-kinds className="min-w-0 truncate">
+                  <span className="whitespace-pre text-fg-faint"> · </span>
+                  {kinds.map((k, i) => (
+                    <Fragment key={k.type}>
+                      {i > 0 && ', '}
+                      <button type="button" data-hero-kind={k.type} onClick={() => onChip(k.first)}
+                        title={`${k.count} ${k.type} working. Open`}
+                        className="rounded-[4px] text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+                        {k.count} {k.type}
+                      </button>
+                    </Fragment>
+                  ))}
+                </span>
+              )}
+            </span>
           )}
-          <div ref={chipBox} className="flex min-w-0 flex-1 items-center">
+          <div ref={chipBox} className="flex min-w-[96px] flex-1 items-center">
             {strip.chips.length > 0
               ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />
               : state !== 'ended' && <span data-hero-nosubs className="text-[11px] leading-[22px] text-fg-faint">no subagents running</span>}

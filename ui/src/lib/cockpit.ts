@@ -544,6 +544,31 @@ export function subagentChips(subs: SubagentsNow | undefined, permission?: Permi
   return { chips: byStart([...shown, ...done]).map((x) => x.chip), more: working.length - shown.length }
 }
 
+/** One kind of working subagent in the hero's line: its type, how many, and the first of them to open. */
+export interface SubagentKind { type: string; count: number; first: string }
+
+/**
+ * The working subagents by type, for the hero's "3 subagents · 2 Explore,
+ * 1 general-purpose" (owner, 2026-10-28, translated: "I need to understand
+ * the configuration of the agents that are working right now"): the most
+ * first, a tie in the order the first of each started. A subagent no hook
+ * named is counted in the total and left out here, never given a type.
+ */
+export function subagentKinds(working: readonly { agent_id: string; agent_type?: string; started_at?: number }[]): SubagentKind[] {
+  const by = new Map<string, SubagentKind & { at: number }>()
+  for (const a of working) {
+    if (!a.agent_type) continue
+    const k = by.get(a.agent_type)
+    const at = a.started_at ?? 0
+    if (!k) by.set(a.agent_type, { type: a.agent_type, count: 1, first: a.agent_id, at })
+    else {
+      k.count++
+      if (at < k.at) { k.at = at; k.first = a.agent_id }
+    }
+  }
+  return [...by.values()].sort((p, q) => q.count - p.count || p.at - q.at).map(({ type, count, first }) => ({ type, count, first }))
+}
+
 /** Chips the cockpit's hero draws at most, compact, in the widest inspector. */
 export const MAX_SUBAGENT_CHIPS = 80
 /** Chips sit in groups of this many, a wider gap between groups: counted by fives at a glance. */
