@@ -6462,9 +6462,11 @@ macOS runners from a manual workflow (`ios-release.yml`) with the App Store
 Connect API key in the `ios-release` environment; submitting for review stays
 the owner's click. Export compliance: the channel implements standard
 algorithms in the app (Noise_NK_25519_AESGCM_SHA256, `@noble`, not Apple's
-crypto), so `ITSAppUsesNonExemptEncryption` is `true` and App Store Connect
-asks for a French encryption declaration if the app is offered in France
-(ios-app/README.md § Export compliance).
+crypto), so the build is not exempt; `ITSAppUsesNonExemptEncryption` is left
+out of `Info.plist` (`true` without an approved code is refused at upload,
+ITMS-90592), App Store Connect asks the questions on each build, and France
+is out of 1.0 until a French encryption declaration is accepted (owner,
+2026-10-28; ios-app/README.md § Export compliance).
 
 **Revisit if:** Apple rejects the app under 4.2 or 2.1 despite the native
 features and the demo mode (`RISK-11`); the Notification Service Extension
