@@ -1355,6 +1355,8 @@ export function AppShell() {
   // are known (openPipeline, pipelineBack). ⇧⌘W the same for Work.
   const expandRef = useRef<(() => void) | undefined>(undefined)
   const workRef = useRef<(() => void) | undefined>(undefined)
+  // ⌘W with the Pipeline tab in front closes it as its × does (closePipeline, further down).
+  const closePipelineRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
       // In the folder of the session in front — its worktree, not the project's root.
@@ -1363,7 +1365,7 @@ export function AppShell() {
       case 'quick-chat': onQuickChatNow(); break
       case 'brain-capture': openBrainCapture(); break
       case 'add-project': onAddProject(); break
-      case 'detach-tab': if (workspaceShown) detach(); break
+      case 'detach-tab': if (workspaceShown) detach(); else closePipelineRef.current?.(); break
       case 'palette': onPalette(); break
       case 'inspector': setPrefs((p) => ({ ...p, inspector: !p.inspector })); showWorkspace(); break
       case 'sidebar': setPrefs((p) => ({ ...p, sidebar: !p.sidebar })); break
@@ -2020,7 +2022,8 @@ export function AppShell() {
   useLayoutEffect(() => {
     expandRef.current = pipelineShown ? pipelineBack : () => openPipeline()
     workRef.current = workShown ? workBack : openWork
-  }, [pipelineShown, pipelineBack, openPipeline, workShown, workBack, openWork])
+    closePipelineRef.current = pipelineShown ? closePipeline : undefined
+  }, [pipelineShown, pipelineBack, openPipeline, workShown, workBack, openWork, closePipeline])
   const onPipelineButton = useCallback(() => run({ kind: 'pipeline' }), [run])
   // A session row on Work or Home's Work strip: its tab, brought forward
   // (opened when it has none); a session not in the list, its page.

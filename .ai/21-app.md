@@ -330,13 +330,17 @@ One window, three regions:
   keeps running* on the rest.
 - **Tab strip** (owner, 2026-10-09: "tabs are barely noticeable", and "the
   + amber, or better a dropdown", translated). The tab in front has a 3px
-  accent top edge over its hairline frame and a bold label, and is the only
+  accent top edge, sides in the accent (a hairline until 2026-10-28) and a bold label, and is the only
   tab that does (2026-10-15: a waiting tab is an amber dot, not a bar)
   (`.app-tab-front`); every other tab is a faintly filled surface with its own
   hairline frame (`.app-tab-back`), 4px apart, so each reads as a tab in both
   themes. The pinned Dashboard tab is not a session and looks it
-  (`.app-tab-dash`): an amber grid icon, an amber-tinted fill and frame
-  while it is behind, and a hairline divider after it. The + is an amber outline (`.app-primary`, like the sidebar's New
+  (`.app-tab-dash`): an amber grid icon, an amber-tinted fill and a
+  three-quarter-accent frame while it is behind, the full accent on every side in
+  front, and a hairline divider after it; the Pipeline and Mail tabs after
+  it stay quiet until brought forward (`.app-tab-sys`), so the Dashboard is
+  the tab the eye finds (owner, 2026-10-28; [04-ui.md](04-ui.md) § The app
+  workspace). The + is an amber outline (`.app-primary`, like the sidebar's New
   agent) that opens a menu (`components/NewMenu.tsx`, portalled): *New
   agent* ⇧⌘N, *Quick chat* ⌥⌘N (at once), *Quick chat with…* (the chooser),
   *New shell* ⌘T, *Open file…*, *New browser tab* (only while the in-app
@@ -801,7 +805,9 @@ One window, three regions:
     stored before (`kind: 'prs'`) comes back as the Pipeline tab at that
     Pipeline, never as a dead pane (`pipelineInStore`). From it, *Back ⌘P*
     in its head, ⌘P, the footer's button or its × bring back the tab or
-    screen it was opened from. Off macOS the key is Ctrl+Shift+P
+    screen it was opened from; its × (on hover while it is behind), a
+    middle click or ⌘W in front take it out of the strip until it is
+    opened again. Off macOS the key is Ctrl+Shift+P
     (rule 12). ⇧⌘B, its key until 2026-10-15, still works and is no longer
     shown (Ctrl+Alt+Shift+B off macOS, where Ctrl+Shift+B was the deck's
     until 2026-10-20). `#/pipeline?…&pr=N` opens pull request N's detail as the page

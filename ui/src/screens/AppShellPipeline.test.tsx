@@ -214,6 +214,30 @@ describe('the Pipeline in the app, and no session deck', () => {
     expect(JSON.parse(localStorage.getItem('caprock.app.workspace.v1') ?? '{}')).toMatchObject({ pipeline: true })
   })
 
+  // Owner, 2026-10-28, translated: "Pipeline should be removable from there".
+  // ⌘W closes it in front, its × closes it from behind, and it stays closed
+  // — across a restart too — until ⌘P opens it again.
+  it('closes on ⌘W in front and on its × from behind, stays closed, and comes back on ⌘P', async () => {
+    await openAgent()
+    cmdP()
+    await pipelinePage()
+    act(() => { fireEvent.keyDown(window, { key: 'w', code: 'KeyW', metaKey: true }) })
+    await waitFor(() => expect(screen.queryByRole('tab', { name: 'Pipeline' })).toBeNull())
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    expect(JSON.parse(localStorage.getItem('caprock.app.workspace.v1') ?? '{}').pipeline).toBeUndefined()
+    // Back, then closed from behind: the × is in the tab while it is not in front.
+    cmdP()
+    await pipelinePage()
+    cmdP()
+    await waitFor(() => expect(pipelineTab()).toHaveAttribute('aria-selected', 'false'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close tab Pipeline' }))
+    expect(screen.queryByRole('tab', { name: 'Pipeline' })).toBeNull()
+    expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'true')
+    cmdP()
+    await pipelinePage()
+    expect(pipelineTab()).toHaveAttribute('aria-selected', 'true')
+  })
+
   it('restores a Pipeline pane tab stored before 2026-10-15 as the pinned Pipeline tab', async () => {
     localStorage.setItem('caprock.app.workspace.v1', JSON.stringify({ version: 1, activeProject: '', activeByProject: {}, tabs: [
       { id: 'tab-p', projectId: 'p', root: { type: 'pane', id: 'pane-p', target: { kind: 'prs', sessionId: 'prs:agent-1', of: 'agent-1' } }, focusedPaneId: 'pane-p', title: 'Pipeline · app' },

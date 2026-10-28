@@ -460,7 +460,11 @@ describe('a file tab', () => {
       draw(false)
       expect(document.querySelector('[data-pipeline-tab] [data-tab-key]')!.textContent).toBe('Ctrl+Shift+P')
       expect(document.querySelector('[data-pipeline-tab]')).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+P')
-      expect(screen.getByRole('button', { name: 'Close tab Pipeline' }).className).toContain('hidden')
+      // Behind, the × shares the key's slot and shows on hover, so it can
+      // be closed without bringing it forward (owner, 2026-10-28).
+      expect(screen.getByRole('button', { name: 'Close tab Pipeline' }).className).toContain('group-hover:visible')
+      expect(document.querySelector('[data-pipeline-tab]')).toHaveClass('app-tab-sys')
+      expect(document.querySelector('[data-pipeline-tab]')).not.toHaveClass('app-tab-dash')
     } finally {
       platform.mockRestore()
     }
