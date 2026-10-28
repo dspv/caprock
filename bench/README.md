@@ -35,6 +35,7 @@ load average and busiest processes before it starts: re-run when it is high.
 | `run-macos.sh`, `run-linux.sh`, `run-windows.ps1` | The one command per OS                                                                                                                                                                                      |
 | `busy-stand.sh`, `busy.mjs`                       | Typing beside busy agents: nine tabs over three projects, one printing, hook events every 200 ms; echo, main-thread share, Long Tasks, React commits                                                        |
 | `peer.mjs`                                        | Another computer's terminal (ADR-067): two throwaway daemons and a relay of their own on loopback; keystroke-to-echo on the target's own socket and through the controller's `/v1/m/{id}/…`                 |
+| `window-memory/`                                  | The app window's memory by process and `footprint` category over a scripted scenario: 1, 4 and 8 terminal tabs, a long chat, the Dashboard, 25 minutes idle                                                 |
 
 ## A session on another computer
 
@@ -82,6 +83,29 @@ node bench/update.mjs --work "$TMPDIR/caprock-update"  # about two minutes; exit
 `update.mjs` writes `result.json` (each check, the state before and after)
 and `before.png` / `after.png`, taken by the app itself. Not part of CI: it
 needs two release builds and a logged-in macOS session.
+
+## The window's memory
+
+```bash
+sqlite3 -readonly "<live caprock.db>" "VACUUM INTO '$TMPDIR/wm/db.db'"   # optional: a copy, never the live file
+bench/window-memory/stand.sh "$TMPDIR/wm/st" 4611 ./caprock-built 8 "$TMPDIR/wm/db.db" > /dev/null
+node bench/window-memory/drive.mjs --stand "$TMPDIR/wm/st" --app "<snapshot .app copy>" --ctl 47311 &
+node bench/window-memory/scenario.mjs --stand "$TMPDIR/wm/st" --out "$TMPDIR/wm/res.jsonl" --long <ended session id>
+curl -X POST http://127.0.0.1:47311/quit; kill "$(cat "$TMPDIR/wm/st/daemon.pid")"; pkill -f "$TMPDIR/wm/st/"
+```
+
+The app copy is the snapshot build of § Method under its own bundle id
+(`run-macos.sh` makes one). `stand.sh` is the preview daemon: `env -i`, its
+own HOME, data directory, port and service label, `CAPROCK_SECRET_STORE=file`,
+`GIT_OPTIONAL_LOCKS=0`, the fake `claude` (`fake-claude` for a session,
+`testdata/fakeclaude` for a `-p` call), eight sessions. `drive.mjs` launches
+the app and serves a control port that runs a script in the page;
+`scenario.mjs` runs the steps and `measure.py` samples after each: every
+process charged to the app, and `footprint -j` per WebKit process grouped
+into graphics, WebKit Malloc, malloc, JavaScriptCore and WebAssembly memory,
+with `vmmap --summary` beside it. One JSON line per step. Results and what
+they found are in
+[.ai/04-ui.md](../.ai/04-ui.md#what-the-window-keeps-in-memory).
 
 ## Method
 

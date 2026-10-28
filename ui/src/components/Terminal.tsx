@@ -21,7 +21,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import '@xterm/xterm/css/xterm.css'
 import { clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges } from '@/lib/termatlas'
-import { contextGone, watchContextLoss } from '@/lib/termgl'
+import { contextGone, disposeWebgl, watchContextLoss } from '@/lib/termgl'
 import { blinkWhileVisible, suspendWhileHidden } from '@/lib/visible'
 
 /**
@@ -274,7 +274,7 @@ export function TerminalView({
           if (gl?.addon !== webgl) return
           gl = undefined
           unwatch()
-          try { webgl.dispose() } catch { /* already gone */ }
+          disposeWebgl(webgl)
           term.refresh(0, term.rows - 1)
           if (!disposed && !webglTimer) webglTimer = window.setTimeout(loadWebgl, WEBGL_QUIET_MS)
         }
@@ -455,6 +455,10 @@ export function TerminalView({
       disposed = true
       window.clearTimeout(silentTimer)
       window.clearTimeout(webglTimer)
+      // The context back to the GPU now, not when the canvas is collected (lib/termgl).
+      const g = gl
+      gl = undefined
+      disposeWebgl(g?.addon)
       inputSub.dispose()
       unwake()
       reconnectRef.current = () => {}

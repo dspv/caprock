@@ -46,7 +46,11 @@
  *   later (WEBGL_QUIET_MS) WebGL was swapped in and the grid refitted. Now
  *   the KEEP_WEBGL_HIDDEN most recently hidden panes keep their context, so
  *   going back and forth never swaps a renderer, and ten tabs still never
- *   hold ten GPU contexts: the pane hidden longest ago lets its go. A pane
+ *   hold ten GPU contexts: the pane hidden longest ago lets its go, and any
+ *   pane hidden past HIDDEN_WEBGL_MS (five minutes) lets its go too, given
+ *   back to the GPU at once (lib/termgl disposeWebgl): three kept contexts
+ *   were about 45 MB of the window's graphics memory left alone (measured
+ *   in the app, 2026-10-28, .ai/04-ui.md). A pane
  *   with output and no WebGL gets it in show() itself, before the first
  *   paint, and is drawn in that same frame (`paintNow`): the quiet wait is
  *   for first output and typing, not for coming back into view. The glyph
@@ -111,7 +115,7 @@ import { getTerminalPrefs, subscribeTerminalPrefs, xtermOptions, type TerminalPr
 import { searchColors, terminalTheme } from '@/lib/termthemes'
 import { checkTerminalCell, clearGlyphAtlas, loadTerminalFont, watchTerminalFont } from '@/lib/termfont'
 import { healAtlasMerges, reuploadGlyphs } from '@/lib/termatlas'
-import { contextGone, watchContextLoss } from '@/lib/termgl'
+import { contextGone, disposeWebgl, watchContextLoss } from '@/lib/termgl'
 import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible'
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
@@ -168,6 +172,17 @@ export const KEEP_WEBGL_HIDDEN = 3
  * free of the work; after a longer spell it costs a few milliseconds, once.
  */
 export const LONG_HIDDEN_MS = 5 * 60_000
+
+/**
+ * A pane hidden this long lets its WebGL context go, whatever its place
+ * among the KEEP_WEBGL_HIDDEN: each kept context held about 20 MB of the
+ * window's graphics memory (a 1440×900 window at 2×, 2026-10-28,
+ * .ai/04-ui.md § What the window keeps in memory). The same spell as
+ * LONG_HIDDEN_MS, past which the glyphs are rasterised again on show
+ * anyway, so the way back looks as it did: a renderer made in show(),
+ * drawn in the frame the pane appears in.
+ */
+export const HIDDEN_WEBGL_MS = LONG_HIDDEN_MS
 
 /**
  * The window back in focus after at least this long in the background
@@ -474,6 +489,7 @@ export function TerminalPane({
     let webglTimer = 0
     let hideTimer = 0
     let trimTimer = 0
+    let glTimer = 0
     // The box last fitted to (refit, below).
     let lastGeom = ''
     // When the pane was last hidden, and whether its atlas is to be
@@ -619,7 +635,7 @@ export function TerminalPane({
           if (gone) return
           gone = true
           if (webgl === addon) { webgl = undefined; webglLost = undefined; unwatchGl(); unwatchGl = () => {} }
-          try { addon.dispose() } catch { /* already gone */ }
+          disposeWebgl(addon)
           releaseWebgl(kept)
           if (disposed || !visible) return
           lastGeom = ''
@@ -655,7 +671,7 @@ export function TerminalPane({
       unwatchGl()
       unwatchGl = () => {}
       webglLost = undefined
-      webgl?.dispose()
+      disposeWebgl(webgl)
       webgl = undefined
     }
     // A context gone without a word (lib/termgl contextGone): dropped as a
@@ -889,6 +905,8 @@ export function TerminalPane({
         hideTimer = 0
         if (trimTimer) window.clearTimeout(trimTimer)
         trimTimer = 0
+        if (glTimer) window.clearTimeout(glTimer)
+        glTimer = 0
         // The full scrollback again before anything held is written (the header).
         if (term.options.scrollback !== SCROLLBACK) term.options.scrollback = SCROLLBACK
         // What was held goes to xterm before anything newer the socket brings.
@@ -902,9 +920,13 @@ export function TerminalPane({
         // with. A pane with output never shows the DOM renderer on its way
         // back (the header); one still waiting for its first output takes
         // the quiet path.
+        const long = hiddenAt > 0 && Date.now() - hiddenAt > LONG_HIDDEN_MS
         if (!webgl) {
           if (!gotOutput || !loadWebgl(true)) scheduleWebgl()
-        } else if (glyphsStale || (hiddenAt > 0 && Date.now() - hiddenAt > LONG_HIDDEN_MS)) {
+          // A context let go after a long hide (HIDDEN_WEBGL_MS) comes back
+          // as a long hide always has: with its glyphs rasterised again.
+          else if (glyphsStale || long) repaintGlyphs()
+        } else if (glyphsStale || long) {
           repaintGlyphs()
         } else if (!reuploadGlyphs(webgl)) {
           // Every other way back into view — a switch, the tab in front
@@ -934,6 +956,12 @@ export function TerminalPane({
         // The WebGL context stays while this is among the few panes hidden
         // last (KEEP_WEBGL_HIDDEN); the socket goes after 30 s as before.
         if (webgl) keepWebgl(kept)
+        // Out of sight for long, it lets its context go too (HIDDEN_WEBGL_MS).
+        if (glTimer) window.clearTimeout(glTimer)
+        glTimer = window.setTimeout(() => {
+          glTimer = 0
+          if (!disposed && !visible) dropWebgl()
+        }, HIDDEN_WEBGL_MS)
         if (hideTimer) window.clearTimeout(hideTimer)
         hideTimer = window.setTimeout(() => conn.suspend(), HIDDEN_DISCONNECT_MS)
         // Out of sight for long, the scrollback beyond the last lines goes
@@ -979,6 +1007,7 @@ export function TerminalPane({
       resultsSub.dispose()
       if (hideTimer) window.clearTimeout(hideTimer)
       if (trimTimer) window.clearTimeout(trimTimer)
+      if (glTimer) window.clearTimeout(glTimer)
       unsuspend()
       out.dispose()
       if (raf) cancelAnimationFrame(raf)
