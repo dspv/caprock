@@ -6648,6 +6648,14 @@ background; sending the post's words, a version or an identifier with the
 picture; the page calling caprock.dev directly; keeping the delete token
 anywhere the page can read; a link in the post when no card was uploaded.
 
+**Later (owner, 2026-10-28: every dashboard block can be shared).** A
+dashboard panel's picture, from the share icon in its header, leaves by the
+same sheet and the same three buttons: the menu's Copy image, Save PNG and
+Copy as text never upload, and the sheet shows the picture before any
+button. No new call: it is the same `POST /v1/share/card` with a PNG, and the
+picture has project, session, branch and folder names replaced unless the
+person turned *Hide project names* off (.ai/04-ui.md § Share, "Any panel").
+
 **Revisit if:** the site has to keep anything beside the picture; the social
 sites stop drawing a link's preview from its page; or people ask for the
 upload to be switched off as a setting rather than chosen per press.

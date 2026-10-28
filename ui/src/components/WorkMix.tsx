@@ -31,6 +31,8 @@ import { type Summary, type WorkKind } from '@/lib/api'
 import { fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Skeleton } from '@/components/ui'
 import { CutDonut, ShareBar, SliceDot, cutSegments, sliceColors } from '@/components/Donut'
+import { ShareWith } from './PanelShare'
+import { mdTable } from '@/lib/panelShare'
 
 /**
  * What each row is called, and the sentence explaining it on hover.
@@ -101,7 +103,9 @@ export function WorkMix({ summary }: { summary?: Summary }) {
   const colors = sliceColors(segs)
   const total = rows.reduce((a, w) => a + w.cost_usd, 0)
   return (
-    <Panel fold="cost.work" title="What it went on" right={<span title={WORK_RULE}>by cost</span>}>
+    <Panel fold="cost.work" title="What it went on" right={<span title={WORK_RULE}>by cost</span>} share="What it went on">
+      {s && <ShareWith toText={() => `${WORK_RULE}\n\n${mdTable(['Work', 'Turns', 'Tokens', 'Cost', 'Share'], rows.map((w) => [
+        LABELS[w.kind]?.label ?? w.kind, w.turns, fmtTokens(w.tokens), fmtUSD(w.cost_usd), total > 0 ? fmtPct((w.cost_usd / total) * 100) : '—']))}`} />}
       {!s ? <Skeleton rows={4} /> : rows.length === 0 && <Empty title="No priced turns in range" />}
       <CutDonut segments={segs} what="kind of work" />
       <table className="w-full text-[12px]">

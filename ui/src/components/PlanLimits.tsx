@@ -14,6 +14,8 @@
 import { useState, type ReactNode } from 'react'
 import type { RateLimits, RateWindow, Settings } from '@/lib/api'
 import { Panel, Stat } from '@/components/ui'
+import { ShareWith } from '@/components/PanelShare'
+import { mdTable } from '@/lib/panelShare'
 import { Ring } from '@/components/Donut'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { AgentCharacter, type Character } from '@/components/Characters'
@@ -288,6 +290,15 @@ function EXPLAIN(codex: boolean): string {
     'A forecast appears only when your pace would reach 100% before the reset' + (codex ? '; Codex is never forecast' : '') + '.'
 }
 
+/** Every window as a Markdown table: how much is used and when it resets. */
+export function limitsText(groups: [string, [string, RateWindow][]][], now: number): string {
+  const rows = groups.flatMap(([who, ws]) => ws.map(([label, w]) => {
+    const r = readWindow(w, now)
+    return [who, label, `${r.pct}%`, r.stale ? 'not current' : r.resetsAt ? `${r.resetsAt} (in ${countdown(w.resets_at * 1000 - now)})` : '–']
+  }))
+  return `Your plan's limits, per 5 hours and per week.\n\n${mdTable(['Agent', 'Window', 'Used', 'Resets'], rows)}`
+}
+
 /** The live window closest to its limit, with what the gauge reads for it. */
 function nearest(l: RateLimits | undefined, now: number) {
   let best: { pct: number; resetMs: number } | undefined
@@ -347,7 +358,8 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
       : null
   return (
     <div id={id} className={`scroll-mt-16 ${className}`}>
-      <Panel fold="plan-limits" title="Plan limits">
+      <Panel fold="plan-limits" title="Plan limits" share="Plan limits">
+        <ShareWith toText={() => limitsText([['Claude', claude], ['Codex', cdx]], now)} />
         <div className={`grid gap-3 px-3 py-3 ${cdx.length > 0 ? 'lg:grid-cols-2' : ''}`}>
           <LimitCard who="lead" name={planName(plan)} l={limits} now={now} source="Claude Code" />
           {cdx.length > 0 && (

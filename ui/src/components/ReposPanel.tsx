@@ -25,6 +25,8 @@ import { href } from '@/lib/router'
 import { openExternal } from '@/lib/nudges'
 import { extProps } from '@/lib/externalLinks'
 import { Panel } from './ui'
+import { ShareWith } from './PanelShare'
+import { mdTable, type Alias, type ShareName } from '@/lib/panelShare'
 import { Bars } from './DayBars'
 import { ChevronIcon } from './AppIcons'
 
@@ -50,7 +52,7 @@ const CACHE_KEY = 'repos:now'
 
 export function ReposPanel() {
   return (
-    <Panel fold="now.repos" title="Repos" right={<span title="Local git, counted at most every 10 minutes; GitHub from what the deck and the Pipeline page already read">local git · GitHub as the deck read it</span>}>
+    <Panel fold="now.repos" title="Repos" share="Repos" right={<span title="Local git, counted at most every 10 minutes; GitHub from what the deck and the Pipeline page already read">local git · GitHub as the deck read it</span>}>
       <ReposBody />
     </Panel>
   )
@@ -145,6 +147,7 @@ function ReposBody() {
   }
   return (
     <div className="@container/repos" data-repos-panel>
+      <ShareWith names={() => repoNames(data.repos)} toText={(alias) => reposText(data, alias)} />
       <div className={`grid ${COLS} items-end gap-x-4 border-b border-border px-3 pb-1.5 pt-2 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint`}>
         <span className="flex min-w-0 items-center gap-2">
           <span>Repository</span>
@@ -165,6 +168,30 @@ function ReposBody() {
       {data.repos.map((r) => <Row key={r.project_id} r={r} connected={data.github_connected} now={now} open={open.has(r.root)} onToggle={() => toggle(r.root)} />)}
     </div>
   )
+}
+
+/** The names a Repos row shows: the repository, its branch, its folder, the newest run's branch. */
+export function repoNames(repos: RepoActivity[]): ShareName[] {
+  return repos.flatMap((r): ShareName[] => [
+    { kind: 'project', value: r.name }, { kind: 'branch', value: r.branch }, { kind: 'folder', value: r.root },
+    { kind: 'branch', value: r.github?.ci?.last?.branch },
+  ])
+}
+
+/** The table as Markdown, the names through `alias`. */
+export function reposText(data: ReposActivity, alias: Alias): string {
+  const gh = data.github_connected
+  const head = ['Repository', 'Today', '7 days', 'Lines · 7d', 'Uncommitted', ...(gh ? ['PRs open', 'CI red · 14d', 'Release'] : [])]
+  const rows = data.repos.map((r) => {
+    const g = gh ? r.github : undefined
+    const red = g?.ci && g.ci.runs > 0 ? `${Math.round((g.ci.red / g.ci.runs) * 100)}%` : '–'
+    return [
+      alias('project', r.name), r.commits.at(-1) ?? 0, sum(r.commits, -7),
+      `+${sum(r.added, -7)} −${sum(r.deleted, -7)}`, r.dirty,
+      ...(gh ? [g?.pulls ? g.pulls.open : '–', red, g?.release?.tag || '–'] : []),
+    ]
+  })
+  return `Commits from local git${gh ? '; GitHub as Caprock last read it' : ''}.\n\n${mdTable(head, rows)}`
 }
 
 function Row({ r, connected, now, open, onToggle }: { r: RepoActivity; connected: boolean; now: number; open: boolean; onToggle: () => void }) {
