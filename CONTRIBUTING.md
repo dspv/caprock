@@ -66,6 +66,9 @@ browser. Install the shell once with
 On a pull request the desktop app's three CI builds run only when it touches
 `app/`, the `Makefile`, `scripts/check-app-mic.sh` or `.github/workflows/ci.yml`;
 otherwise they show as skipped. Every push to `master` builds them.
+A pull request that touches only `CHANGELOG.md`, `changes/` or `.ai/` docs (bar
+`.ai/07-orchestrator.md`, which a test reads) — a release pull request —
+skips every code job and runs the docs checks alone.
 
 ## Making a change
 
