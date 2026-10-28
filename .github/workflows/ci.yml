@@ -25,6 +25,14 @@ jobs:
   # already compiles on every OS; the dashboard is not in it (the window loads
   # it from the daemon). A push to master always runs everything, and so does
   # a pull request whose file list cannot be read.
+  #
+  # `code` is false for a pull request that touches nothing but the changelog,
+  # its fragments and .ai/ — what a release pull request (chore/release-X.Y.Z)
+  # is made of. Every job that builds or tests then shows as skipped rather
+  # than running ten minutes over code that did not change; docs.yml still
+  # checks the files, master's push runs everything after the merge, and the
+  # tag's own release.yml verify re-checks the commit before anything ships.
+  # .ai/07-orchestrator.md is not docs-only: a Go test reads it.
   changes:
     if: ${{ !github.event.pull_request.draft }}
     name: changes
@@ -34,19 +42,27 @@ jobs:
       pull-requests: read
     outputs:
       app: ${{ steps.files.outputs.app }}
+      code: ${{ steps.files.outputs.code }}
     steps:
       - id: files
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then echo "app=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then printf 'app=true\ncode=true\n' >> "$GITHUB_OUTPUT"; exit 0; fi
           if ! files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename'); then
-            echo "could not list the PR's files: running everything"; echo "app=true" >> "$GITHUB_OUTPUT"; exit 0
+            echo "could not list the PR's files: running everything"; printf 'app=true\ncode=true\n' >> "$GITHUB_OUTPUT"; exit 0
           fi
           app=false
           if grep -qE '^(app/|Makefile$|scripts/check-app-mic\.sh$|scripts/check-app-signature\.sh$|scripts/macos-selfsign-keychain\.sh$|\.github/workflows/ci\.yml$)' <<<"$files"; then app=true; fi
+          code=true
+          if [ -n "$files" ] \
+            && ! grep -qvE '^(CHANGELOG\.md|changes/.+|\.ai/.+\.md)$' <<<"$files" \
+            && ! grep -qxF '.ai/07-orchestrator.md' <<<"$files"; then
+            code=false
+          fi
           echo "app=$app" | tee -a "$GITHUB_OUTPUT"
+          echo "code=$code" | tee -a "$GITHUB_OUTPUT"
 
   # A pull request never carries internal/api/dist (ADR-068). The built
   # dashboard is content-hashed, so any two PRs that rebuilt it conflicted
@@ -70,7 +86,8 @@ jobs:
           exit 1
 
   ui:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: ui (typecheck, test, build)
     runs-on: ubuntu-latest
     steps:
@@ -98,7 +115,8 @@ jobs:
   # only: the go matrix already runs the daemon on three OS, and what this adds
   # is the page. The headless shell is cached by the Playwright version.
   e2e:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: e2e (headless shell)
     runs-on: ubuntu-latest
     env:
@@ -170,13 +188,34 @@ jobs:
   # ui job proves it builds, and make-windows runs `make build`, which builds
   # it on Windows too. Building it here would add npm to every leg for nothing
   # a Go test can see.
+  #
+  # Windows is the slow leg (9.7 min median over ten green runs on 2026-10-28,
+  # the run's critical path: 1 min setup and cache, 1.3 min vet and lint, 4.9
+  # min go test, 1.6 min smoke), so it runs as three jobs side by side. `checks`
+  # runs vet, golangci-lint, the build and the smoke, and is the one Windows
+  # writer of the Go cache. `heavy` runs the packages in HEAVY below, one of
+  # which alone takes 2.5 min there; `rest` runs `go list ./...` minus HEAVY,
+  # so a new package always lands in a shard and none runs twice. Lint stays
+  # on Windows because it checks the _windows.go files no other leg compiles.
   go:
-    if: ${{ !github.event.pull_request.draft }}
-    name: go (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    name: ${{ matrix.label && format('go {0}', matrix.label) || 'go' }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: windows-latest
+            part: checks
+            label: lint+smoke
+          - os: windows-latest
+            part: heavy
+            label: test projects
+          - os: windows-latest
+            part: rest
+            label: test rest
     runs-on: ${{ matrix.os }}
     env:
       CGO_ENABLED: "0"
@@ -205,37 +244,60 @@ jobs:
           key: go-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
           restore-keys: go-${{ runner.os }}-
       - name: go vet
+        if: ${{ !matrix.part || matrix.part == 'checks' }}
         run: go vet ./...
       - name: golangci-lint
+        if: ${{ !matrix.part || matrix.part == 'checks' }}
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           # Pinned: `latest` moved to v2.15.0 on 2026-10-16 and turned every PR red
           # over untouched code. Bump on purpose, with the fixes, in one PR.
           version: v2.14.0
       - name: go test
-        run: go test -v -count=1 ./...
+        if: matrix.part != 'checks'
+        shell: bash
         env:
           # Ubuntu records every statement the tests run for the plan check.
           CAPROCK_PLAN_LOG: ${{ matrix.os == 'ubuntu-latest' && format('{0}/plans', runner.temp) || '' }}
+          PART: ${{ matrix.part }}
+          # The Windows `heavy` shard. A path that stops existing fails here.
+          HEAVY: ./internal/projects
+        run: |
+          # Word splitting is the point: $HEAVY and $pkgs are package lists.
+          # shellcheck disable=SC2086
+          case "$PART" in
+            heavy) pkgs=$(go list $HEAVY) ;;
+            rest) pkgs=$(go list ./... | grep -vxF -f <(go list $HEAVY)) ;;
+            *) pkgs=./... ;;
+          esac
+          echo "go test: $(echo "$pkgs" | wc -l) package pattern(s)"
+          # shellcheck disable=SC2086
+          go test -v -count=1 $pkgs
       - name: query plans (make plans updates them)
         if: matrix.os == 'ubuntu-latest'
         run: CAPROCK_PLANS_FROM="$RUNNER_TEMP/plans" go test -count=1 -run '^TestQueryPlans$' ./internal/store
       - name: build
+        if: ${{ !matrix.part || matrix.part == 'checks' }}
         shell: bash
         run: |
           mkdir -p bin
           go build -trimpath -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=${GITHUB_SHA::7}" -o bin/ ./cmd/...
       - name: smoke (Phase 0 DoD scenario)
+        if: ${{ !matrix.part || matrix.part == 'checks' }}
         run: go test -count=1 -tags smoke ./internal/smoke/... ./internal/board/...
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v6.0.0
+        if: ${{ !matrix.part || matrix.part == 'checks' }}
         with:
           name: caprock-${{ matrix.os }}
           path: bin/
           retention-days: 3
       # The one writer of the Go cache: on master, once per go.mod/go.sum, from
-      # the job that compiles everything (vet, tests, -trimpath binaries, smoke).
+      # the job that compiles everything (vet, tests, -trimpath binaries,
+      # smoke); on Windows the `checks` shard, whose vet compiles every
+      # package. The test shards read it and save nothing, so the cache stays
+      # one key per OS (the repository's 10 GB is mostly Rust already).
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: github.event_name == 'push' && steps.gorestore.outputs.cache-hit != 'true'
+        if: ${{ github.event_name == 'push' && steps.gorestore.outputs.cache-hit != 'true' && (!matrix.part || matrix.part == 'checks') }}
         with:
           path: |
             ${{ steps.gocache.outputs.build }}
@@ -245,7 +307,8 @@ jobs:
   # T0 — ConPTY spike. Informational: it must never redden the required jobs
   # (ADR-006 / .ai/09-execution-plan.md T0). Its result is the go/no-go for T11.
   pty-spike:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: pty spike (${{ matrix.os }})
     continue-on-error: true
     strategy:
@@ -274,7 +337,8 @@ jobs:
   # repository, and the only way to keep this fixed is to run the thing a
   # contributor actually runs.
   make-windows:
-    if: ${{ !github.event.pull_request.draft }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     name: make build (windows-latest)
     runs-on: windows-latest
     env:
@@ -321,7 +385,7 @@ jobs:
   app:
     name: app (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.app == 'true'
+    if: needs.changes.outputs.app == 'true' && needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
