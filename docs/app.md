@@ -878,6 +878,52 @@ others. Installing it: [install-app.md](install-app.md).
   sidebar hidden (`⌘\`) it also shows the 5-hour and 7-day plan windows and
   today's spend, which the sidebar's *Today* carries while it is open.
 
+### Files
+
+A two-panel file manager, in the spirit of Norton Commander, that knows
+about your agents. Open it with ⇧⌘X (Ctrl+Shift+X on Windows and Linux),
+⌘K → *Open Files*, or *Files* in a project's menu in the sidebar. It
+opens on the project in front: your checkout on the left and, when an
+agent works in a worktree, that worktree on the right. Each panel's
+header has a menu to put it on the checkout or any of the project's
+worktrees.
+
+- **Moving around.** ↑ ↓, PageUp, PageDown, Home and End move; Enter opens
+  a folder (or the quick view on a file); Backspace goes up; Tab switches
+  panels; Space or Insert marks a file, and the actions then act on every
+  marked one.
+- **Compare** tints a file that differs between the two folders amber and
+  one that is on one side only green, and a folder holding a difference
+  amber too. While it is on, opening a folder in one panel opens it in the
+  other. Folders git ignores (`node_modules`, `build`) are not walked.
+- **What <agent> changed** keeps only the files that worktree changed since
+  it left its base branch — committed or not — in both panels.
+- **Actions.** View (⌥3 or F3) shows the file under the panels, and with
+  Compare on its diff from the left panel to the right with + and −
+  counts; Edit (⌥4) opens it in your editor; Copy (⌥5) and Move (⌥6) go to
+  the other panel's folder (Move also renames); New folder (⌥7); Delete
+  (⌥8). On a Mac the F-keys are media keys unless you hold fn, so the ⌥
+  digits are the everyday keys; F3–F8 work wherever the keyboard sends
+  them. Every action names the files in a dialog before it does anything.
+- **Delete moves to the Trash** (the Recycle Bin on Windows), where you can
+  put the files back; nothing is deleted for good. Where the Trash cannot
+  take an item — a drive with no Recycle Bin, an item over 1 GB on
+  Windows, another disk than your home folder's on Linux — Files says so
+  and leaves it.
+- **Copying from an agent's worktree into your checkout is a plain file
+  copy**: the file arrives as an uncommitted change, and no git command
+  runs. A copy that would replace a file asks first; a move never
+  replaces.
+- **Only your projects.** Files reaches the project's folder and its
+  worktrees, nothing else on the disk, and it never touches `.git` or
+  removes a worktree (that is *Clean up copies*).
+- **The Norton look.** *Norton* at the top right paints the Files tab in
+  the classic blue, cyan frames, yellow marks and the F-key bar; *Caprock*
+  goes back to your theme. The rest of the window keeps your theme.
+- **From the phone or another computer** Files is read-only: you can browse,
+  compare and view, but copy, move, new folder and delete happen only on
+  the computer Caprock runs on. In a browser it is at `#/files`.
+
 ### The in-app browser (beta)
 
 Off until you turn it on: Settings → *In-app browser (beta)*. Then *New
@@ -972,6 +1018,8 @@ On macOS:
 | ⌘,          | Settings                                                                            |
 | ⇧⌘F         | Send feedback                                                                       |
 | ⇧⌘M         | Mail, in a window of its own                                                        |
+| ⇧⌘X         | Files: two panels over the project and its agents’ worktrees                        |
+| ⌥3–⌥8       | In Files: view, editor, copy, move or rename, new folder, delete to the Trash       |
 | ⌘+ ⌘− ⇧⌘0   | Interface size: bigger, smaller, default                                            |
 | ⌘I          | Agent cockpit (the inspector)                                                       |
 | ⌘P          | Pipeline, in a tab of its own; there, back to where you were                        |
@@ -987,7 +1035,8 @@ On Windows and Linux each is Ctrl+Shift with the same letter or arrow
 Ctrl+Alt+Shift+W and Reopen closed tab Ctrl+Alt+Shift+T, since Ctrl+Shift+F, W and T
 are Find, Close and New shell; the theme is Ctrl+Alt+Shift+P; the Dashboard is Ctrl+Shift+D, never Ctrl+D,
 which stays the shell's end of input; tabs are
-Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H; a link opens on
+Ctrl+Shift+1–9; Add to Second Brain is Ctrl+Shift+H; Files is Ctrl+Shift+X and
+its actions Alt+3–Alt+8 (F3–F8 too); a link opens on
 Ctrl+click and its browser chooser on Ctrl+Shift+click). The arrow
 chords are Alt+Shift there (Alt+Shift+↓ ↑ sessions, Alt+Shift+→ ←
 projects), since Ctrl+Shift+← → are

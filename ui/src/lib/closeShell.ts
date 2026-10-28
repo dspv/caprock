@@ -26,7 +26,7 @@ export interface ClosePlan {
 
 /** Whether a pane shows a shell: opened as one, or a session the daemon calls one. */
 export function isShellLeaf(leaf: PaneLeaf, sessions: ReadonlyMap<string, SessionSummary>): boolean {
-  if (leaf.target.kind === 'file') return false
+  if (leaf.target.kind === 'file' || leaf.target.kind === 'files') return false
   return leaf.target.kind === 'shell' || sessions.get(leaf.target.sessionId)?.kind === 'shell'
 }
 

@@ -176,6 +176,7 @@ export function screenName(r: Route): string {
     case 'brain': return 'Second Brain'
     case 'pipeline': return 'Pipeline'
     case 'work': return 'Work'
+    case 'files': return 'Files'
     case 'chats': return 'Chats'
     case 'chat': return 'Chat'
     case 'module': return moduleName(r.id)

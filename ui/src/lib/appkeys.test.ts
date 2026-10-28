@@ -577,3 +577,49 @@ describe('module keys', () => {
   })
 })
 
+// The Files tab (ADR-089, owner 2026-10-28): ⇧⌘X opens it, Ctrl+Shift+X
+// off macOS; inside it ⌥3–⌥8 (Alt+3–8 off macOS) are its actions, and
+// neither OS's spelling is an app chord, so the tab receives them.
+import { FILES_KEY } from './appkeys'
+import { FILES_ACTIONS, filesAction } from './fsapi'
+
+describe('the Files keys, on every OS', () => {
+  const ev = (code: string, key: string, mods: Partial<KeyLike>): KeyLike => ({ key, code, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...mods } as KeyLike)
+  it('opens Files with ⇧⌘X on a Mac and Ctrl+Shift+X on Windows and Linux, and leaves Ctrl+X to the terminal', () => {
+    expect(FILES_KEY).toBe('⇧⌘X')
+    expect(keys(FILES_KEY, false)).toBe('Ctrl+Shift+X')
+    expect(SHORTCUTS.find(([k]) => k === FILES_KEY)?.[1]).toMatch(/^Files/)
+    expect(matchAppShortcut(ev('KeyX', 'X', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'files' })
+    expect(matchAppShortcut(ev('KeyX', 'X', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'files' })
+    expect(matchAppShortcut(ev('KeyX', 'x', { ctrlKey: true }), false)).toBeNull()
+    expect(matchAppShortcut(ev('KeyX', 'x', { metaKey: true }), true)).toBeNull()
+    expect(ownsTerminalKey(ev('KeyX', 'x', { ctrlKey: true }), false)).toBe(false)
+    // Neither collides: Ctrl+Alt+Shift+F stays feedback off macOS.
+    expect(matchAppShortcut(ev('KeyF', 'F', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'feedback' })
+  })
+  it('spells the action keys ⌥3 on a Mac and Alt+3 elsewhere, and both reach the tab', () => {
+    expect(keys('⌥3–⌥8', true)).toBe('⌥3–⌥8')
+    expect(keys('⌥3–⌥8', false)).toBe('Alt+3–Alt+8')
+    for (const a of FILES_ACTIONS) {
+      expect(keys(a.key, true)).toBe(`⌥${a.digit}`)
+      const off = keys(a.key, false)
+      expect(off).toBe(`Alt+${a.digit}`)
+      expect(isPlainKeyLabel(off)).toBe(true)
+      // macOS: Option makes 3 into £; the code is what counts.
+      const m = ev(`Digit${a.digit}`, '£', { altKey: true })
+      expect(matchAppShortcut(m, true)).toBeNull()
+      expect(filesAction(m, true)).toBe(a.id)
+      // Windows and Linux, pressed as the label spells it.
+      const w = ev(`Digit${a.digit}`, String(a.digit), { altKey: true })
+      expect(matchAppShortcut(w, false)).toBeNull()
+      expect(filesAction(w, false)).toBe(a.id)
+      // The real F-key, where the keyboard sends it.
+      expect(filesAction(ev(`F${a.digit}`, `F${a.digit}`, {}), true)).toBe(a.id)
+      expect(filesAction(ev(`F${a.digit}`, `F${a.digit}`, {}), false)).toBe(a.id)
+      // ⌘ or Ctrl with the digit is a tab, never a Files action.
+      expect(filesAction(ev(`Digit${a.digit}`, String(a.digit), { metaKey: true }), true)).toBeNull()
+      expect(filesAction(ev(`Digit${a.digit}`, String(a.digit), { ctrlKey: true, shiftKey: true }), false)).toBeNull()
+    }
+  })
+})
+

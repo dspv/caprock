@@ -58,6 +58,10 @@ export function tabLabels(
       out.set(t.id, { title: pageTitle(url, t.title), page: url, isShell: false, dot: 'idle' })
       continue
     }
+    if (leaf.target.kind === 'files') {
+      out.set(t.id, { title: t.title || 'Files', isShell: false, dot: 'idle' })
+      continue
+    }
     if (leaf.target.kind === 'file') {
       const file = leaf.target.path ?? ''
       out.set(t.id, { title: baseName(file), file, isShell: false, dot: 'idle' })

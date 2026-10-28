@@ -406,6 +406,13 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/projects/{id}/files": true,
 	// A picture a Markdown file shows, from the same folder, by the same rules.
 	"GET /v1/projects/{id}/image": true,
+	// The Files tab's reads (ADR-089): a folder's names, how it differs
+	// between two worktrees, a file's diff across them. Read-only on every
+	// device; its copy, move, mkdir and trash are never listed anywhere.
+	"GET /v1/projects/{id}/fs/list":    true,
+	"GET /v1/projects/{id}/fs/compare": true,
+	"GET /v1/projects/{id}/fs/changed": true,
+	"GET /v1/projects/{id}/fs/diff":    true,
 
 	// GitHub (WP-19): the connection's state (never the token), the clone
 	// picker's lists, and each worktree's pull request with its checks and

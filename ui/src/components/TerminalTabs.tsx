@@ -689,7 +689,7 @@ export const TerminalStack = memo(function TerminalStack({
         return (
         <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={!shown} data-tab-panel={t.id}>
           {t.root.type === 'pane' && t.root.target.kind === 'page' ? renderPage?.(t, t.root, shown)
-            : t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, shown)
+            : t.root.type === 'pane' && (t.root.target.kind === 'file' || t.root.target.kind === 'files') ? renderFile?.(t, t.root, shown)
             : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown) : <PaneView
             node={t.root}
             visible={shown}
