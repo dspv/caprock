@@ -111,8 +111,8 @@ function useRepos(): { data?: ReposActivity; failed: boolean } {
 const sum = (a: number[], from = 0) => a.slice(from).reduce((s, x) => s + x, 0)
 
 // The table's columns, and the fewer it keeps in a narrow panel.
-const COLS = 'grid-cols-[minmax(160px,1.3fr)_150px_52px_60px_110px_minmax(96px,0.7fr)_minmax(120px,0.8fr)_minmax(90px,0.6fr)] @max-[980px]/repos:grid-cols-[minmax(140px,1fr)_52px_60px_minmax(90px,0.7fr)_minmax(110px,0.8fr)_minmax(80px,0.6fr)] @max-[600px]/repos:grid-cols-[minmax(0,1fr)_52px_60px] @max-[340px]/repos:grid-cols-[minmax(0,1fr)_36px_40px] @max-[340px]/repos:gap-x-2'
-const WIDE = '@max-[980px]/repos:hidden'
+const COLS = 'grid-cols-[minmax(160px,1.3fr)_150px_52px_60px_110px_minmax(96px,0.7fr)_minmax(120px,0.8fr)_minmax(90px,0.6fr)] @max-[1060px]/repos:grid-cols-[minmax(140px,1fr)_52px_60px_minmax(90px,0.7fr)_minmax(110px,0.8fr)_minmax(80px,0.6fr)] @max-[600px]/repos:grid-cols-[minmax(0,1fr)_52px_60px] @max-[340px]/repos:grid-cols-[minmax(0,1fr)_36px_40px] @max-[340px]/repos:gap-x-2'
+const WIDE = '@max-[1060px]/repos:hidden'
 const GH = '@max-[600px]/repos:hidden'
 
 function ReposBody() {
@@ -134,7 +134,9 @@ function ReposBody() {
   if (data.repos.length === 0) {
     return <p className="px-3 py-3 text-[12.5px] text-fg-muted">No listed repository has a session running.</p>
   }
-  const H = ({ children, r, cls = '' }: { children: ReactNode; r?: boolean; cls?: string }) => <span className={`${r ? 'text-right' : ''} ${cls}`}>{children}</span>
+  // min-w-0 + truncate: a letter-spaced heading wider than its track must
+  // not widen the track, or the last column runs out of the panel.
+  const H = ({ children, r, cls = '' }: { children: ReactNode; r?: boolean; cls?: string }) => <span className={`min-w-0 truncate ${r ? 'text-right' : ''} ${cls}`}>{children}</span>
   const allOpen = data.repos.every((r) => open.has(r.root))
   const setAll = () => {
     const next = new Set(open)
