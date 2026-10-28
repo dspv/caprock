@@ -17,6 +17,8 @@
 import type { Settings, Summary } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
 import { Panel, Stat } from '@/components/ui'
+import { ShareWith } from '@/components/PanelShare'
+import { mdTable } from '@/lib/panelShare'
 
 const dayWord = (n: number) => (n === 1 ? 'day' : 'days')
 
@@ -39,7 +41,8 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
 
   if (plan.plan_kind === 'metered') {
     return (
-      <Panel fold="cost.plan-value" title="Spend" right={<span className="num text-[12px] text-fg-muted">{plan.plan_label || 'API'} · billed per token</span>}>
+      <Panel fold="cost.plan-value" title="Spend" share="Spend" right={<span className="num text-[12px] text-fg-muted">{plan.plan_label || 'API'} · billed per token</span>}>
+        <ShareWith toText={() => `${fmtUSD(usage)} over the last ${days} ${dayWord(days)}, billed per token (${plan.plan_label || 'API'}), at API list prices ${summary.pricing_version}.`} />
         <div className="px-3 py-3">
           <div className="flex items-baseline gap-2">
             <span className="num text-3xl text-fg">{fmtUSD(usage)}</span>
@@ -60,6 +63,7 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
   return (
     <Panel
       title="Plan value"
+      share="Plan value"
       right={<span className="num text-[12px] text-fg-muted">{plan.plan_label} · {fmtUSD(plan.plan_usd_per_month)}/mo</span>}
     >
       {/* The same row of tiles every other panel on this screen uses.
@@ -71,6 +75,10 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
         * comparison reads left to right as a sentence of its own — you pay
         * this, the same work costs that, which is this many times over — and
         * the width is spent on the numbers rather than on air. */}
+      <ShareWith toText={() => `${mdTable(['Figure', 'Value'], [
+        [`You pay · ${days}d (${plan.plan_label})`, fmtUSD(fee)], [`Same usage at API list prices ${summary.pricing_version}`, fmtUSD(usage)],
+        ['Which is', multiple > 0 ? `${multiple.toFixed(1)}×` : '—'],
+      ])}\n\nNot a discount you received, and not money back — without the plan you would not have run this much.`} />
       <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
         <Stat
           label={`you pay · ${days}d`}

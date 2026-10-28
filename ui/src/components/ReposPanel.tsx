@@ -25,6 +25,8 @@ import { href } from '@/lib/router'
 import { openExternal } from '@/lib/nudges'
 import { extProps } from '@/lib/externalLinks'
 import { Panel } from './ui'
+import { ShareWith } from './PanelShare'
+import { mdTable, type Alias, type ShareName } from '@/lib/panelShare'
 import { Bars } from './DayBars'
 import { ChevronIcon } from './AppIcons'
 
@@ -50,7 +52,7 @@ const CACHE_KEY = 'repos:now'
 
 export function ReposPanel() {
   return (
-    <Panel fold="now.repos" title="Repos" right={<span title="Local git, counted at most every 10 minutes; GitHub from what the deck and the Pipeline page already read">local git · GitHub as the deck read it</span>}>
+    <Panel fold="now.repos" title="Repos" share="Repos" right={<span title="Local git, counted at most every 10 minutes; GitHub from what the deck and the Pipeline page already read">local git · GitHub as the deck read it</span>}>
       <ReposBody />
     </Panel>
   )
@@ -109,8 +111,8 @@ function useRepos(): { data?: ReposActivity; failed: boolean } {
 const sum = (a: number[], from = 0) => a.slice(from).reduce((s, x) => s + x, 0)
 
 // The table's columns, and the fewer it keeps in a narrow panel.
-const COLS = 'grid-cols-[minmax(160px,1.3fr)_150px_52px_60px_110px_minmax(96px,0.7fr)_minmax(120px,0.8fr)_minmax(90px,0.6fr)] @max-[980px]/repos:grid-cols-[minmax(140px,1fr)_52px_60px_minmax(90px,0.7fr)_minmax(110px,0.8fr)_minmax(80px,0.6fr)] @max-[600px]/repos:grid-cols-[minmax(0,1fr)_52px_60px] @max-[340px]/repos:grid-cols-[minmax(0,1fr)_36px_40px] @max-[340px]/repos:gap-x-2'
-const WIDE = '@max-[980px]/repos:hidden'
+const COLS = 'grid-cols-[minmax(160px,1.3fr)_150px_52px_60px_110px_minmax(96px,0.7fr)_minmax(120px,0.8fr)_minmax(90px,0.6fr)] @max-[1060px]/repos:grid-cols-[minmax(140px,1fr)_52px_60px_minmax(90px,0.7fr)_minmax(110px,0.8fr)_minmax(80px,0.6fr)] @max-[600px]/repos:grid-cols-[minmax(0,1fr)_52px_60px] @max-[340px]/repos:grid-cols-[minmax(0,1fr)_36px_40px] @max-[340px]/repos:gap-x-2'
+const WIDE = '@max-[1060px]/repos:hidden'
 const GH = '@max-[600px]/repos:hidden'
 
 function ReposBody() {
@@ -132,7 +134,9 @@ function ReposBody() {
   if (data.repos.length === 0) {
     return <p className="px-3 py-3 text-[12.5px] text-fg-muted">No listed repository has a session running.</p>
   }
-  const H = ({ children, r, cls = '' }: { children: ReactNode; r?: boolean; cls?: string }) => <span className={`${r ? 'text-right' : ''} ${cls}`}>{children}</span>
+  // min-w-0 + truncate: a letter-spaced heading wider than its track must
+  // not widen the track, or the last column runs out of the panel.
+  const H = ({ children, r, cls = '' }: { children: ReactNode; r?: boolean; cls?: string }) => <span className={`min-w-0 truncate ${r ? 'text-right' : ''} ${cls}`}>{children}</span>
   const allOpen = data.repos.every((r) => open.has(r.root))
   const setAll = () => {
     const next = new Set(open)
@@ -145,6 +149,7 @@ function ReposBody() {
   }
   return (
     <div className="@container/repos" data-repos-panel>
+      <ShareWith names={() => repoNames(data.repos)} toText={(alias) => reposText(data, alias)} />
       <div className={`grid ${COLS} items-end gap-x-4 border-b border-border px-3 pb-1.5 pt-2 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint`}>
         <span className="flex min-w-0 items-center gap-2">
           <span>Repository</span>
@@ -165,6 +170,30 @@ function ReposBody() {
       {data.repos.map((r) => <Row key={r.project_id} r={r} connected={data.github_connected} now={now} open={open.has(r.root)} onToggle={() => toggle(r.root)} />)}
     </div>
   )
+}
+
+/** The names a Repos row shows: the repository, its branch, its folder, the newest run's branch. */
+export function repoNames(repos: RepoActivity[]): ShareName[] {
+  return repos.flatMap((r): ShareName[] => [
+    { kind: 'project', value: r.name }, { kind: 'branch', value: r.branch }, { kind: 'folder', value: r.root },
+    { kind: 'branch', value: r.github?.ci?.last?.branch },
+  ])
+}
+
+/** The table as Markdown, the names through `alias`. */
+export function reposText(data: ReposActivity, alias: Alias): string {
+  const gh = data.github_connected
+  const head = ['Repository', 'Today', '7 days', 'Lines · 7d', 'Uncommitted', ...(gh ? ['PRs open', 'CI red · 14d', 'Release'] : [])]
+  const rows = data.repos.map((r) => {
+    const g = gh ? r.github : undefined
+    const red = g?.ci && g.ci.runs > 0 ? `${Math.round((g.ci.red / g.ci.runs) * 100)}%` : '–'
+    return [
+      alias('project', r.name), r.commits.at(-1) ?? 0, sum(r.commits, -7),
+      `+${sum(r.added, -7)} −${sum(r.deleted, -7)}`, r.dirty,
+      ...(gh ? [g?.pulls ? g.pulls.open : '–', red, g?.release?.tag || '–'] : []),
+    ]
+  })
+  return `Commits from local git${gh ? '; GitHub as Caprock last read it' : ''}.\n\n${mdTable(head, rows)}`
 }
 
 function Row({ r, connected, now, open, onToggle }: { r: RepoActivity; connected: boolean; now: number; open: boolean; onToggle: () => void }) {

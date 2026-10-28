@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Event, SessionSummary, Subagent, Summary } from './api'
 import {
-  askLine, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, slimToolResult, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
+  askLine, chipGroups, chipLayout, cockpitState, commandGist, commandTarget, fmtAge, fmtRun, resultOutcome, shortPath, slimToolResult, toolGroups, toolTarget, planWindowsFor, requester, runningTool, subagentChips, subagentDoing, subagentKinds, subagentInitial, subagentWaiting, toolDetail, toolKind, toolRuns, turnCosts,
   MAX_SUBAGENT_CHIPS, RUNNING_STALE_MS,
 } from './cockpit'
 
@@ -354,5 +354,17 @@ describe('the tool list', () => {
     expect(fmtAge(4 * 60_000)).toBe('4m')
     expect(fmtAge(3 * 3_600_000)).toBe('3h')
     expect(fmtAge(72 * 3_600_000)).toBe('3d')
+  })
+})
+
+describe('subagentKinds', () => {
+  it('counts the working subagents by type, the most first, a tie by who started first', () => {
+    const a = (agent_id: string, agent_type: string | undefined, started_at: number) => ({ agent_id, agent_type, started_at })
+    expect(subagentKinds([a('p', 'Plan', 1), a('e1', 'Explore', 5), a('g', 'general-purpose', 0), a('e2', 'Explore', 3), a('x', undefined, 0)])).toEqual([
+      { type: 'Explore', count: 2, first: 'e2' },
+      { type: 'general-purpose', count: 1, first: 'g' },
+      { type: 'Plan', count: 1, first: 'p' },
+    ])
+    expect(subagentKinds([a('x', undefined, 0)])).toEqual([])
   })
 })

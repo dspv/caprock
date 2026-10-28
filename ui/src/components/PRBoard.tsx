@@ -25,6 +25,8 @@ import { fmtRun } from '@/lib/ci'
 import { openExternal } from '@/lib/nudges'
 import type { Bucket } from '@/lib/flowbucket'
 import { Panel, Stat } from './ui'
+import { ShareWith } from './PanelShare'
+import { mdTable } from '@/lib/panelShare'
 import { TrendLine } from './TodayTrend'
 import { extProps } from '@/lib/externalLinks'
 import { planShare, planShareTitle, type SpendPart } from '@/lib/planShare'
@@ -253,7 +255,14 @@ export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?
     </span>
   )
   return (
-    <Panel fold="pipeline.expensive" title={<span title={AGENT_COST_NOTE}>Most expensive</span>} right={picker}>
+    <Panel fold="pipeline.expensive" title={<span title={AGENT_COST_NOTE}>Most expensive</span>} right={picker} share="Most expensive">
+      <ShareWith names={() => data.prs.map((p) => ({ kind: 'pull request' as const, value: p.title }))}
+        toText={(alias) => [
+          `Pull requests · ${span}, agent cost at API list price — not a bill.`,
+          mdTable(['#', 'Pull request', 'Agent cost', 'Sessions'], data.prs.map((p, i) => [i + 1, `#${p.number} ${alias('pull request', p.title || '')}`.trim(), costText(p.spend), sessionsText(p.spend.sessions)])),
+          `Releases · ${span}`,
+          mdTable(['#', 'Release', 'Agent cost', 'Pull requests'], data.releases.map((r, i) => [i + 1, r.tag, `$${r.cost_usd.toFixed(2)}`, r.prs.length])),
+        ].join('\n\n')} />
       <div className="@container/top">
         <div data-board-expensive className="grid grid-cols-1 divide-y divide-border @min-[640px]/top:grid-cols-2 @min-[640px]/top:divide-x @min-[640px]/top:divide-y-0">
           <div data-expensive="prs" className="min-w-0 pb-1">
@@ -321,7 +330,10 @@ export function Releases({ releases, prs, now, onOpen }: { releases: BoardReleas
       <span title={`Each merge into the default branch is matched to the first release published after it, from the newest listed pull requests. ${AGENT_COST_NOTE}`}>
         what each shipped, matched by merge time · agent cost at list price
       </span>
-    }>
+    } share="Releases">
+      <ShareWith names={() => prs.map((p) => ({ kind: 'pull request' as const, value: p.title }))}
+        toText={(alias) => `What each release shipped; agent cost at API list price — not a bill.\n\n${mdTable(['Release', 'Published', 'Pull requests', 'Agent cost'],
+          releases.map((r) => [r.tag, fmtAgo(r.published_at, now), r.prs.map((n) => `#${n}${byNum.get(n)?.title ? ` ${alias('pull request', byNum.get(n)?.title)}` : ''}`).join(', ') || '–', r.cost_usd > 0 ? `$${r.cost_usd.toFixed(2)}` : '–']))}`} />
       <div data-board-releases>
         {releases.length === 0 ? <p className="px-3 py-3 text-[13px] text-fg-muted">No published release read.</p> : (
           <ul>

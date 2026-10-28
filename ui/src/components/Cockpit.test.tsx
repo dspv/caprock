@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CompactionView, Event, SessionSummary, SubagentsNow, Summary } from '@/lib/api'
 
@@ -397,7 +397,7 @@ describe('the agent cockpit', () => {
     expect(screen.getByRole('status')).toHaveAttribute('title', 'Background agents working · 1')
     expect(screen.getByRole('status')).toHaveAccessibleName('Background agents working · 1')
     expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
-    expect(document.querySelector('[data-hero-count]')).toHaveTextContent('1 working')
+    expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^1 subagent$/)
     const nowCard = screen.getByRole('region', { name: 'Now' })
     expect(within(nowCard).getByText('Background agents working · 1')).toBeInTheDocument()
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
@@ -417,10 +417,45 @@ describe('the agent cockpit', () => {
       expect(strip).toHaveAttribute('data-compact', 'true')
       expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
       expect(strip.querySelector('button')).toHaveTextContent('')
-      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 working')
+      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 subagents · 23 general-purpose')
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
+  })
+
+  // Owner, 2026-10-28, translated: "why do I need 'Claude Code' … a huge
+  // thing in the most visible place with zero information. I need to
+  // understand the configuration of the agents that are working right now."
+  it('names the agent small and shows its configuration: model, context, subagents by type', async () => {
+    h.subagents = { working: [
+      { agent_id: 'e1', agent_type: 'Explore', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false },
+      { agent_id: 'g1', agent_type: 'general-purpose', tool_calls: 1, started_at: 1, last_at: 1, running: true, asking: false },
+      { agent_id: 'e2', agent_type: 'Explore', tool_calls: 1, started_at: 3, last_at: 3, running: true, asking: false },
+    ], finished: 0 } as SubagentsNow
+    try {
+      show(agent({ live_subagents: 3 }))
+      expect(document.querySelector('[data-hero-agent]')).toHaveTextContent('Claude Code')
+      expect(document.querySelector('[data-hero-agent]')).toHaveClass('text-fg-faint')
+      const config = document.querySelector('[data-hero-config]')!
+      expect(config).toHaveTextContent('Opus 5.5 · 62% ctx')
+      expect(config.querySelector('[data-hero-context] .text-warn')).toHaveTextContent('62%')
+      const count = await waitFor(() => {
+        const c = document.querySelector('[data-hero-count]')
+        if (!c?.textContent?.includes('Explore')) throw new Error('no kinds yet')
+        return c
+      })
+      expect(count).toHaveTextContent('3 subagents · 2 Explore, 1 general-purpose')
+      // A type opens the first of its kind in the Subagents section.
+      fireEvent.click(within(count as HTMLElement).getByRole('button', { name: /2 Explore/ }))
+      expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+    cleanup()
+    // Nothing the daemon does not report is drawn: no model, no context.
+    show(agent({ model: '', model_display: undefined, context: undefined }))
+    expect(document.querySelector('[data-hero-config]')).toBeNull()
+    expect(document.querySelector('[data-hero-agent]')).toHaveTextContent('Claude Code')
   })
 
   it('still waits on a permission prompt while background agents work', async () => {

@@ -1201,11 +1201,20 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * are filled surfaces of their own with a hairline frame, so each reads as a
  * tab and the gaps between them as separators, in both themes. The edge is
  * the front tab's alone (2026-10-15, translated: "I don't understand where I
- * am"): a tab waiting on you says so with an amber dot, never a bar. */
-[data-app] .app-tab-front { box-shadow: inset 0 3px 0 var(--color-accent), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+ * am"): a tab waiting on you says so with an amber dot, never a bar. Its
+ * sides are drawn in the accent too, not a hairline (owner, 2026-10-28,
+ * translated: "make it more visible, e.g. with a border"), so the tab in
+ * front is framed in every palette, the light ones included. */
+[data-app] .app-tab-front {
+  --app-tab-front-side: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  box-shadow: inset 0 3px 0 var(--color-accent), inset 1px 0 0 var(--app-tab-front-side), inset -1px 0 0 var(--app-tab-front-side);
+}
+/* The Dashboard tab in front: its whole frame in the full accent, a step
+ * heavier, because it is the tab people go back to and look for. */
+[data-app] .app-tab-dash.app-tab-front { --app-tab-front-side: var(--color-accent); box-shadow: inset 0 3px 0 var(--color-accent), inset 1.5px 0 0 var(--app-tab-front-side), inset -1.5px 0 0 var(--app-tab-front-side); }
 /* The glowing palettes: the tab in front's edge throws a little light down
  * into the tab, and the sidebar's primary action glows (see [data-glow]). */
-[data-app][data-glow] .app-tab-front { box-shadow: inset 0 3px 0 var(--color-accent), inset 0 6px 8px -6px var(--glow-color), inset 1px 0 0 var(--app-hairline-strong), inset -1px 0 0 var(--app-hairline-strong); }
+[data-app][data-glow] .app-tab-front { box-shadow: inset 0 3px 0 var(--color-accent), inset 0 6px 8px -6px var(--glow-color), inset 1px 0 0 var(--app-tab-front-side), inset -1px 0 0 var(--app-tab-front-side); }
 [data-app][data-glow] .app-primary { box-shadow: 0 0 12px -3px var(--glow-color); }
 [data-app] .app-tab-back {
   background: color-mix(in srgb, var(--color-fg) 5%, transparent);
@@ -1214,14 +1223,25 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .app-tab-back:hover { background: color-mix(in srgb, var(--color-fg) 9%, transparent); }
 /* The pinned Dashboard tab is not a session (owner, 2026-10-09: "highlight
  * the Dashboard entry", translated): an amber grid icon, an amber-tinted fill
- * of its own, and a divider after it that sets it apart from the sessions. */
+ * of its own, and a divider after it that sets it apart from the sessions.
+ * Behind, its outline is three quarters of the accent, so it stays findable in a strip of
+ * session tabs (owner, 2026-10-28); the Pipeline and Mail tabs beside it are
+ * quiet (.app-tab-sys) so they no longer look like a second and third one. */
 [data-app] .app-tab-dash:not(.app-tab-front) {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-accent) 30%, transparent), inset 1px 0 0 color-mix(in srgb, var(--color-accent) 30%, transparent), inset -1px 0 0 color-mix(in srgb, var(--color-accent) 30%, transparent);
+  --app-tab-dash-line: color-mix(in srgb, var(--color-accent) 75%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: inset 0 1px 0 var(--app-tab-dash-line), inset 1px 0 0 var(--app-tab-dash-line), inset -1px 0 0 var(--app-tab-dash-line);
 }
-[data-app] .app-tab-dash:not(.app-tab-front):hover { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
-[data-app] .app-tab-dash { margin-right: 9px; }
-[data-app] .app-tab-dash::after {
+[data-app] .app-tab-dash:not(.app-tab-front):hover { background: color-mix(in srgb, var(--color-accent) 22%, transparent); }
+/* The Pipeline and Mail tabs: pinned like the Dashboard tab, drawn like a
+ * session tab behind (a faint fill, a hairline), their glyph muted until in front. */
+[data-app] .app-tab-sys:not(.app-tab-front) {
+  background: color-mix(in srgb, var(--color-fg) 5%, transparent);
+  box-shadow: inset 0 1px 0 var(--app-hairline), inset 1px 0 0 var(--app-hairline), inset -1px 0 0 var(--app-hairline);
+}
+[data-app] .app-tab-sys:not(.app-tab-front):hover { background: color-mix(in srgb, var(--color-fg) 9%, transparent); }
+[data-app] .app-tab-dash, [data-app] .app-tab-sys { margin-right: 9px; }
+[data-app] .app-tab-dash::after, [data-app] .app-tab-sys::after {
   content: ""; position: absolute; right: -6px; top: 7px; bottom: 7px; width: 1px;
   background: var(--app-hairline-strong); pointer-events: none;
 }

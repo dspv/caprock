@@ -295,7 +295,7 @@ describe('the hero’s subagent chips', () => {
     const chips = await screen.findByRole('group', { name: 'Subagents, and 5 more working' })
     expect(within(chips).getAllByRole('button')).toHaveLength(40)
     expect(chips).toHaveTextContent('+5')
-    expect(screen.getByText('45 working')).toBeInTheDocument()
+    expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^45 subagents/)
     vi.restoreAllMocks()
   })
 })

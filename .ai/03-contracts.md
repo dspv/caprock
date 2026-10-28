@@ -5806,6 +5806,103 @@ GET /v1/projects/{id}/image?path=<p>[&worktree=] → the picture's bytes
   a controller. On macOS a folder behind a privacy prompt is refused as the
   Changes routes refuse it (`tcc`).
 
+### Files tab: two panels over a checkout and its worktrees
+
+The Files tab's file manager ([ADR-089](08-decisions.md), [04-ui.md §
+Files tab](04-ui.md#files-tab)). Code: `internal/projects/fsops.go`,
+`internal/api/fsfiles.go`, `internal/trash`. A side is a **root**: the
+project's folder (`worktree` absent or empty) or one of its linked
+worktrees by git's name, as in Changes; there is no other root, so nothing
+outside the folders Caprock already tracks is reachable. An unknown project
+or worktree is `404`. A file's text is read with `GET …/file` (§ Files
+above).
+
+```
+GET  /v1/projects/{id}/fs/list?path=<dir>[&worktree=]                  → FsListing
+GET  /v1/projects/{id}/fs/compare?path=<dir>[&worktree=]&other=<wt>    → FsCompare
+GET  /v1/projects/{id}/fs/changed?worktree=<wt>[&base=<wt>]            → FsChanged
+GET  /v1/projects/{id}/fs/diff?path=<p>[&worktree=]&other=<wt>         → FsDiff
+POST /v1/projects/{id}/fs/copy   {from, paths, to, dir, overwrite?}    → {done}
+POST /v1/projects/{id}/fs/move   {from, paths, to, dir, name?}         → {done}
+POST /v1/projects/{id}/fs/mkdir  {worktree, dir, name}                 → {done}
+POST /v1/projects/{id}/fs/trash  {worktree, paths}                     → {done}
+```
+
+- **Paths.** `path`, `dir` and every `paths` entry are relative to the
+  root, in slash form and clean, by the § Files rules (no `.`, `..`,
+  doubled or trailing separator, NUL, absolute path, drive letter, or on
+  Windows backslash; `400`). `path`/`dir` may be `""` for the root. A folder
+  is resolved with every symlink followed and must stay inside the root's
+  own real location (`403` otherwise); an item a write acts on is its folder
+  so resolved joined with its own name, so a write acts on a link itself,
+  never on what it points at. Comparisons on Windows are case-insensitive
+  (`filepath.Rel`). A new `name` (mkdir, move) is one portable element:
+  not empty, `.` or `..`, no `/ \ < > : " | ? *`, control character or
+  trailing dot or space, at most 255 bytes (`400`).
+- **`FsListing`** — `{path, root, entries: [FsEntry], truncated?, git,
+  branch?, writable, trash_off?}`, folders first then by name ignoring
+  case, at most 5,000 (`truncated`). `FsEntry` is `{name, dir?, link?, size,
+  mtime, git?}`: `mtime` in Unix ms, `size` 0 for a folder, `dir` true for
+  a link to a folder, `git` the item's mark from one `git status
+  --porcelain=v2 --untracked-files=all` of the root (`M`, `A`, `D`, `U`
+  conflicted, `?` untracked; `.` on a folder holding a change) or `!` when
+  `git check-ignore` says it is ignored. `writable` is false for a paired
+  device; `trash_off` says why Delete is off on this machine.
+- **`FsCompare`** — `{path, states: {name: "diff" | "left" | "right"},
+  unknown?: [name], partial?}`: the folder `path` of the left root
+  (`worktree`) against the same folder of the right one (`other`). A name
+  on one side only is `left` or `right`; a name in neither `states` nor
+  `unknown` is the same. Both roots are checkouts of one repository, so
+  what can differ is known from git: the paths `git diff --name-only`
+  lists between the two HEADs, plus every path either status lists. A file
+  outside that set is the same without being read; a file in it, or one git
+  ignores, is compared byte for byte (size first). A folder differs when a
+  path of that set under it differs; a folder git ignores is `unknown`, not
+  walked. File reads stop at 64 MB a call (`partial`).
+- **`FsChanged`** — `{base, changes: [{path, status}]}`: what the
+  worktree changed since it left `base`'s HEAD (`base` absent: the main
+  checkout) — `git diff --name-status --no-renames` from the two HEADs'
+  merge base to the worktree's folder (`added`, `modified`, `deleted`,
+  committed or not), plus its untracked files (`untracked`). The other
+  checkout's own uncommitted work is not in it.
+- **`FsDiff`** — `{path, left, right, same?, patch, additions, deletions,
+  binary?, too_large?, truncated?}`: one file, left → right, as unified diff
+  hunks (`@@ -a,b +c,d @@`, three lines of context, a missing side read as
+  empty). Each side at most 512 KB (`too_large`, no patch), a NUL byte or
+  invalid UTF-8 is `binary`, the patch at most 4,000 lines (`truncated`;
+  the counts are the whole). Computed in the daemon from the two files, no
+  git.
+- **Copy** puts each item under `dir` of root `to`, keeping its name: a
+  file with its mode and modification time, a folder entry by entry, a link
+  as a link (never followed). Any taken name refuses the whole call before
+  anything is written: `409 {kind: "exists", exists: [name]}`; with
+  `overwrite` a file is replaced and a folder's entries are copied over its
+  own. Never onto itself or into itself (`400`). Over 50,000 entries or
+  4 GB is `409` before anything is written. No git command runs: a file
+  from an agent's worktree arrives in the checkout as an uncommitted change.
+- **Move** renames each item into `dir` of root `to` (another root on the
+  same disk included); with one item, `name` renames it. It never replaces:
+  a taken name is `409 exists` (a case-only rename of the same file is
+  allowed). A rename the OS refuses — another disk — is `409`.
+- **Mkdir** makes folder `name` in `dir`; taken is `409 exists`.
+- **Trash** moves each item to the operating system's Trash, never deleting
+  anything: macOS `NSFileManager trashItemAtURL` (Put Back works, any
+  volume); Windows `SHFileOperationW` with `FOF_ALLOWUNDO`, only on a fixed
+  local drive and for at most 1 GB a call (the Recycle Bin would delete
+  rather than keep anything else); Linux and the BSDs the freedesktop.org
+  home trash, `$XDG_DATA_HOME/Trash` (else `~/.local/share/Trash`), by
+  rename with a `.trashinfo`, so an item on another file system is refused.
+  A refusal is `409` naming why; items before it stay trashed (`done`).
+- **Guards.** No write acts on the root itself, on anything under `.git`,
+  or on a folder that holds a `.git` — a repository or a worktree; a
+  worktree is removed from Clean up copies. Every write asks the project's
+  git watcher to refresh, so a `project` frame follows.
+- **Who.** The four `GET`s are reads, open to every paired device as the
+  file tab's are. The four `POST`s are this machine's only: no paired
+  device — viewer, controller or computer — may make them (`403`, the gate
+  and the handler both), so nothing over the relay or the LAN changes a
+  file here.
+
 ### Mail (`/v1/mail/*`)
 
 Caprock Mail ([ADR-057](08-decisions.md)). Code: `internal/mail` (HTTP in

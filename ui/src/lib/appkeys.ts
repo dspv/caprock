@@ -50,6 +50,19 @@ export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
 export const PHONE_MODE_KEY = '⌥⌘R'
 
 /**
+ * ⇧⌘X (Ctrl+Shift+X off macOS): the Files tab, two panels over the project
+ * in front and its agents' worktrees (ADR-089). F is Find and ⇧⌘F feedback,
+ * and off macOS Ctrl+Alt+Shift+F is feedback too, so not F; ⌥⌘ letters
+ * off macOS are Ctrl+Alt+Shift, an AltGr chord on Polish layouts for O
+ * (ó), the mockup's placeholder. X has no ⌘ twin among the app's keys, so
+ * off macOS it is plain Ctrl+Shift+X, which no shell, readline, PSReadLine,
+ * Windows Terminal or GNOME Terminal default binds, and no browser either;
+ * on a Mac ⇧⌘X is no item of Tauri's default menu or of a browser's, and ⌘
+ * never reaches a shell.
+ */
+export const FILES_KEY = '⇧⌘X'
+
+/**
  * ⌥⌘G (Ctrl+Alt+Shift+G off macOS): the highlight where you type — the band
  * on Claude Code's input box and the chat field's resting tint — on or off
  * (owner, 2026-10-17, translated: "a toggle to turn the input field
@@ -125,6 +138,8 @@ export type AppCommand =
   | { kind: 'input-highlight' }
   /** ⇧⌘1–⇧⌘9: the Nth private module the admin key opens (ADR-076, moduleKey). */
   | { kind: 'module'; index: number }
+  /** ⇧⌘X: the Files tab of the project in front (FILES_KEY). */
+  | { kind: 'files' }
 
 /**
  * How many private modules have a key (ADR-076): lib/modules sets it from the
@@ -397,6 +412,8 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         // ours, reaches no shell (Ctrl+M is Enter, never typed with Shift
         // to mean it) and no PSReadLine or GNOME default.
         case 'm': return { kind: 'mail' }
+        // X: the Files tab (FILES_KEY).
+        case 'x': return { kind: 'files' }
         default: return null
       }
     }
@@ -413,6 +430,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
     case 'd': return { kind: 'dashboard' }
     case 'g': return { kind: 'changes' }
     case 'm': return { kind: 'mail' }
+    case 'x': return { kind: 'files' }
     // Ctrl+Shift+H: no ⌘H twin among the app's keys, and bound by no
     // shell, readline, zsh's emacs keymap, PSReadLine or GNOME default (Ctrl+
     // Shift+U is GNOME's Unicode entry, so not U).
@@ -508,6 +526,9 @@ function offMac(k: string): string {
   if (k === '⌥→') return 'Ctrl+PageDown'
   // Phone mode: its own letter off macOS (PHONE_MODE_KEY).
   if (k === PHONE_MODE_KEY) return 'Ctrl+Alt+Shift+D'
+  // The Files tab's action keys, ⌥3–⌥8 on a Mac (lib/fsapi FILES_ACTIONS):
+  // Alt with the digit off macOS, where nothing of the app's holds Alt.
+  if (/^⌥\d(–⌥\d)?$/.test(k)) return k.replace(/⌥/g, 'Alt+')
   if (!k.includes('⌘')) return k
   // The arrow chords are Alt+Shift off macOS (arrowCommand).
   if (/[↑↓←→]$/.test(k)) return `Alt+Shift+${k.slice(-1)}`
@@ -631,6 +652,8 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   [THEME_KEY, 'Theme: open the picker'],
   ['⇧⌘F', 'Send feedback: a bug, an idea or a question'],
   ['⇧⌘M', 'Mail, in a window of its own'],
+  [FILES_KEY, 'Files: two panels over the project and its agents’ worktrees'],
+  ['⌥3–⌥8', 'In Files: view, open in the editor, copy, move or rename, new folder, delete to the Trash (F3–F8 too)'],
   ['⌘+, ⌘−, ⇧⌘0', 'Interface size: bigger, smaller, back to the default'],
   ['⌘R', 'Reload the window'],
 ]

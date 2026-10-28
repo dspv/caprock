@@ -1,7 +1,9 @@
 // Small presentational primitives. Every color comes from tokens.css.
-import { useState, useSyncExternalStore } from 'react'
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode, Ref } from 'react'
 import type { Health } from '@/lib/api'
+import type { PanelShareData } from '@/lib/panelShare'
+import { PanelShareButton, PanelShareProvider } from './PanelShare'
 
 /** Which folded panels are closed, by their `fold` key; kept per viewer. */
 export const PANEL_FOLDS_KEY = 'caprock.panel.folds'
@@ -56,21 +58,36 @@ export function resetPanelFolds(): void {
  * body away and back, remembered per viewer (owner, 2026-10-11, translated:
  * "let me hide some blocks").
  */
-export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave, fold, sectionRef }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void; fold?: string; sectionRef?: Ref<HTMLElement> }) {
+export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave, fold, sectionRef, share }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void; fold?: string; sectionRef?: Ref<HTMLElement>
+  /**
+   * The panel's name, to offer a share button in its header (.ai/04-ui.md
+   * § Share, "Any panel"): picture or text, names hidden by default. Opt-in,
+   * for panels whose body is figures; the body adds its names and text with
+   * usePanelShare.
+   */
+  share?: string }) {
   const [open, toggle] = usePanelFold(fold)
+  const own = useRef<HTMLElement | null>(null)
+  const shareData = useRef<PanelShareData | undefined>(undefined)
+  const setRef = useCallback((el: HTMLElement | null) => {
+    own.current = el
+    if (typeof sectionRef === 'function') sectionRef(el)
+    else if (sectionRef) (sectionRef as { current: HTMLElement | null }).current = el
+  }, [sectionRef])
+  const shareButton = share && open ? <PanelShareButton name={share} section={() => own.current} data={shareData} /> : null
   return (
     <section
-      ref={sectionRef}
-      className={`border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}
+      ref={setRef}
+      className={`group/panel border border-border bg-panel rounded-[var(--radius-panel)] shadow-[var(--shadow-panel)] min-w-0 ${className}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       data-panel-fold={fold}
     >
-      {(title || center || right) && (
+      {(title || center || right || shareButton) && (
         // The header sits on panel-2 so chrome reads as a recess rather than
         // as body text with a rule under it.
         <header className={`relative flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 bg-panel-2/60 ${open ? 'border-b border-border rounded-t-[var(--radius-panel)]' : 'rounded-[var(--radius-panel)]'}`}>
-          <h2 className="text-[11px] uppercase tracking-[0.12em] text-fg-muted font-medium">
+          <h2 data-share-keep className="text-[11px] uppercase tracking-[0.12em] text-fg-muted font-medium">
             {fold ? (
               <button type="button" onClick={toggle} aria-expanded={open} title={open ? 'Fold this panel' : 'Unfold this panel'}
                 className="inline-flex items-center gap-1.5 uppercase tracking-[0.12em] hover:text-fg">
@@ -89,10 +106,16 @@ export function Panel({ title, center, right, children, className = '', onMouseE
             // note, so it takes its own row underneath instead of covering them.
             <div className="order-last w-full sm:order-none sm:w-auto sm:absolute sm:left-1/2 sm:-translate-x-1/2">{center}</div>
           ) : null}
-          <div className="min-w-0 text-[11px] text-fg-muted">{right}</div>
+          {shareButton ? (
+            // The share button sits before the note, on the header's right.
+            <div className="ml-auto flex min-w-0 items-center gap-1.5">
+              {shareButton}
+              {right ? <div className="min-w-0 text-[11px] text-fg-muted">{right}</div> : null}
+            </div>
+          ) : <div className="min-w-0 text-[11px] text-fg-muted">{right}</div>}
         </header>
       )}
-      {open && <div>{children}</div>}
+      {open && (share ? <PanelShareProvider value={shareData}><div>{children}</div></PanelShareProvider> : <div>{children}</div>)}
     </section>
   )
 }

@@ -46,6 +46,8 @@ export type Route =
   // Another computer this one reaches (ADR-067): its sessions, or one of
   // them — the Session view and terminal through /v1/m/{id}/… (screens/Machine).
   | { name: 'machine'; id: string; session?: string; tab?: string }
+  // The Files tab on the dashboard (ADR-089): a project's two panels, read-only on a device.
+  | { name: 'files'; project?: string; wt?: string }
 
 export type StartMode = 'clone' | 'new' | 'worktree'
 
@@ -122,6 +124,11 @@ export function parseHash(hash: string): Route {
       if (parts[2] === 'session' && parts[3]) return { name: 'machine', id, session: decodeURIComponent(parts[3]), ...(tab ? { tab } : {}) }
       return { name: 'machine', id }
     }
+    case 'files': {
+      const project = params.get('project') || undefined
+      const wt = params.get('wt') || undefined
+      return { name: 'files', ...(project ? { project } : {}), ...(wt ? { wt } : {}) }
+    }
     case 'start': {
       const mode = params.get('mode')
       return mode === 'clone' || mode === 'new' || mode === 'worktree' ? { name: 'start', mode } : { name: 'start' }
@@ -156,6 +163,13 @@ export function href(r: Route): string {
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
     case 'module': return r.to && isModuleHref(r.to) ? `#/x/${r.id}?to=${encodeURIComponent(r.to)}` : `#/x/${r.id}`
     case 'machine': return r.session ? `#/m/${r.id}/session/${encodeURIComponent(r.session)}${r.tab ? `?tab=${encodeURIComponent(r.tab)}` : ''}` : `#/m/${r.id}`
+    case 'files': {
+      const q = new URLSearchParams()
+      if (r.project) q.set('project', r.project)
+      if (r.wt) q.set('wt', r.wt)
+      const s = q.toString()
+      return `#/files${s ? `?${s}` : ''}`
+    }
     case 'pipeline': {
       const q = new URLSearchParams()
       if (r.repo) q.set('repo', r.repo)

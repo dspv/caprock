@@ -17,7 +17,7 @@
  */
 import { useState } from 'react'
 import { errText, type EditorList } from '@/lib/api'
-import { BranchIcon, CloseIcon, ExternalIcon, EyeIcon, EyeOffIcon, PlusIcon, TrashIcon } from './AppIcons'
+import { BranchIcon, CloseIcon, ExternalIcon, EyeIcon, EyeOffIcon, FolderIcon, PlusIcon, TrashIcon } from './AppIcons'
 import { MenuBox, MenuItem as Item, MenuSeparator as Separator } from './RowMenu'
 
 export interface ProjectMenuAt {
@@ -48,6 +48,8 @@ export interface ProjectMenuProps {
   onCopies?: () => void
   /** Linked worktrees it has, for the hint beside Clean up copies. */
   copies?: number
+  /** Opens its Files tab (components/FilesCommander, ADR-089); absent where there is no folder. */
+  onFiles?: () => void
   /** Unlists it; absent where it cannot be removed (Other folders). */
   onRemove?: () => Promise<void> | void
   onClose: () => void
@@ -117,6 +119,9 @@ export function ProjectMenu(props: ProjectMenuProps) {
               hint={props.repos ? `${props.repos} in it` : 'several in one'}
               onClick={pick(props.onAddRepo)}
             />
+          )}
+          {props.onFiles && (
+            <Item icon={<FolderIcon size={14} />} label="Files" hint="two panels" onClick={pick(props.onFiles)} />
           )}
           {props.onCopies && (
             <Item

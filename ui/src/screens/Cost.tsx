@@ -4,6 +4,8 @@ import { useApi } from '@/lib/useApi'
 import { cacheLevel } from '@/lib/cachelevel'
 import { fmtModel, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
+import { ShareWith } from '@/components/PanelShare'
+import { mdTable } from '@/lib/panelShare'
 import { BarChart, BarReadout } from '@/components/BarChart'
 import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
@@ -127,7 +129,12 @@ export function CostScreen({ section }: { section?: string } = {}) {
       )}
 
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
-      <Panel fold="cost.totals" title={`Totals · ${range}`}>
+      <Panel fold="cost.totals" title={`Totals · ${range}`} share={`Totals · ${range}`}>
+        {measured && <ShareWith toText={() => `${costBasis(plan)}.\n\n${mdTable(['Figure', 'Value'], [
+          [costLabel(plan), fmtUSD(s!.cost_usd)], ['Burn now', `${fmtUSD(s!.burn.usd_per_hour)}/h`], ['Sessions', s!.sessions], ['Turns', s!.turns],
+          ['Input', fmtTokens(s!.tokens_in)], ['Output', fmtTokens(s!.tokens_out)], ['Cache read', `${fmtTokens(s!.cache_read)} · ${fmtPct(s!.savings.hit_rate * 100)} hit rate`],
+          ['Cache write', fmtTokens(s!.cache_write)],
+        ])}`} />}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-border">
           {/* The basis belongs on the tile, not only in the corner note above:
               the misreading happens where the number is. */}
@@ -170,7 +177,11 @@ export function CostScreen({ section }: { section?: string } = {}) {
           orphaned at half width beside dead space. They collapse to two
           columns and then to one as the viewport narrows. */}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Panel fold="cost.models" title="Model mix" right={<span>by cost</span>}>
+        <Panel fold="cost.models" title="Model mix" right={<span>by cost</span>} share="Model mix">
+          {s && <ShareWith toText={() => `By cost, ${range}.\n\n${mdTable(['Model', 'Turns', 'Tokens', 'Cost', 'Share'], s.models.map((m) => {
+            const unpriced = (s.unpriced?.models ?? []).includes(m.model)
+            return [m.model ? fmtModel(m.model) : 'unknown', m.turns, fmtTokens(m.tokens), unpriced ? 'unpriced' : fmtUSD(m.cost_usd), !unpriced && s.cost_usd > 0 ? fmtPct((m.cost_usd / s.cost_usd) * 100) : '—']
+          }))}`} />}
           {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
           <CutDonut segments={modelSegs} what="model" />
           <div className="overflow-x-auto">
@@ -209,7 +220,10 @@ export function CostScreen({ section }: { section?: string } = {}) {
             by the KIND of work each turn did. It sits with its siblings rather
             than on a screen of its own because it answers the same question. */}
         <WorkMix summary={s} />
-        <Panel fold="cost.projects" title="Per project" right={<span>by cost</span>}>
+        <Panel fold="cost.projects" title="Per project" right={<span>by cost</span>} share="Per project">
+          {s && <ShareWith names={() => s.projects.map((p) => ({ kind: 'project' as const, value: p.project }))}
+            toText={(alias) => `By cost, ${range}.\n\n${mdTable(['Project', 'Tokens', 'Cost', 'Share'], s.projects.map((p) => [
+              p.project ? alias('project', p.project) : 'unknown', fmtTokens(p.tokens), fmtUSD(p.cost_usd), s.cost_usd > 0 ? fmtPct((p.cost_usd / s.cost_usd) * 100) : '—']))}`} />}
           {!s ? <Skeleton rows={4} /> : s.projects.length === 0 && <Empty title="No priced turns in range" />}
           <CutDonut segments={projectSegs} what="project" />
           <div className="overflow-x-auto">

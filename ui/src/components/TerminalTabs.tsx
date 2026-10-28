@@ -376,20 +376,29 @@ export function TabStrip(props: TabStripProps) {
             aria-label="Pipeline"
             aria-keyshortcuts={isMacPlatform() ? 'Meta+P' : 'Control+Shift+P'}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.pipeline.active ? 'app-tab-front app-tab-dash bg-bg font-semibold text-fg' : 'app-tab-dash text-fg hover:text-fg'
+              props.pipeline.active ? 'app-tab-front app-tab-sys bg-bg font-semibold text-fg' : 'app-tab-sys text-fg-muted hover:text-fg'
             }`}
           >
-            <PipelineIcon size={15} className="text-accent" />
-            <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass(true)}`}>{stripKey('P')}</kbd>
-            <button
-              type="button"
-              aria-label="Close tab Pipeline"
-              title="Close the Pipeline tab"
-              onClick={(e) => { e.stopPropagation(); props.pipeline!.onClose() }}
-              className={`h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.pipeline.active ? 'flex' : 'hidden'}`}
-            >
-              <CloseIcon size={12} />
-            </button>
+            {/* Quiet while behind, so the Dashboard tab beside it is the one
+              * the eye finds (owner, 2026-10-28, translated: "I constantly
+              * want to look at it and I lose it"); in the accent in front. */}
+            <PipelineIcon size={15} className={props.pipeline.active ? 'text-accent' : undefined} />
+            {/* Closable from behind too (owner, 2026-10-28, translated: "let
+              * it be removable from there"): the key and the × share one
+              * slot as on a session tab — the key at rest, the × on hover —
+              * so the strip never shifts; ⌘W closes it in front. */}
+            <span data-tab-end className="relative flex h-[20px] min-w-[20px] shrink-0 items-center justify-end gap-0.5">
+              <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass(true)} ${props.pipeline.active ? '' : 'group-hover:invisible group-focus-within:invisible'}`}>{stripKey('P')}</kbd>
+              <button
+                type="button"
+                aria-label="Close tab Pipeline"
+                title={`Close the Pipeline tab (${keys('⌘W')} while it is in front); ${keys('⌘P')} opens it again`}
+                onClick={(e) => { e.stopPropagation(); props.pipeline!.onClose() }}
+                className={`flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg ${props.pipeline.active ? '' : 'absolute right-0 top-0 invisible group-hover:visible group-focus-within:visible'}`}
+              >
+                <CloseIcon size={12} />
+              </button>
+            </span>
           </div>
         )}
         {props.mail && (
@@ -408,10 +417,10 @@ export function TabStrip(props: TabStripProps) {
             aria-label="Mail"
             aria-keyshortcuts={isMacPlatform() ? 'Shift+Meta+M' : 'Control+Shift+M'}
             className={`group relative flex h-[32px] shrink-0 cursor-default select-none items-center gap-1 rounded-t-[9px] px-2 text-[12.5px] transition-colors duration-100 motion-reduce:transition-none ${
-              props.mail.active ? 'app-tab-front app-tab-dash bg-bg font-semibold text-fg' : 'app-tab-dash text-fg hover:text-fg'
+              props.mail.active ? 'app-tab-front app-tab-sys bg-bg font-semibold text-fg' : 'app-tab-sys text-fg-muted hover:text-fg'
             }`}
           >
-            <MailIcon size={15} className="text-accent" />
+            <MailIcon size={15} className={props.mail.active ? 'text-accent' : undefined} />
             <kbd data-tab-key aria-hidden className={`app-kbd-sm${heldClass(true)}`}>{mailStripKey()}</kbd>
             <button
               type="button"
@@ -689,7 +698,7 @@ export const TerminalStack = memo(function TerminalStack({
         return (
         <div key={t.id} className={`absolute inset-0 ${t.root.type === 'pane' && ownTab(t.root.target) ? 'bg-bg' : 'app-slab'}`} hidden={!shown} data-tab-panel={t.id}>
           {t.root.type === 'pane' && t.root.target.kind === 'page' ? renderPage?.(t, t.root, shown)
-            : t.root.type === 'pane' && t.root.target.kind === 'file' ? renderFile?.(t, t.root, shown)
+            : t.root.type === 'pane' && (t.root.target.kind === 'file' || t.root.target.kind === 'files') ? renderFile?.(t, t.root, shown)
             : t.root.type === 'pane' && t.root.target.kind === 'observe' ? renderObserve?.(t, t.root, shown) : <PaneView
             node={t.root}
             visible={shown}
