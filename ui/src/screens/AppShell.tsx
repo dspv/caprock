@@ -18,7 +18,7 @@ import { installKeyReveal } from '@/lib/keyreveal'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
 import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
-import { DASHBOARD_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, REOPEN_TAB_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FILES_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, REOPEN_TAB_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -88,6 +88,7 @@ import { ChatView } from '@/components/ChatView'
 import { ChangesView } from '@/components/ChangesView'
 import { AttemptsCompare } from '@/components/AttemptsCompare'
 import { FileView } from '@/components/FileView'
+import { FilesCommander, type FilesRoot } from '@/components/FilesCommander'
 import { BrowserView } from '@/components/BrowserView'
 import { browserAct, browserAvailable, browserOn, looksLikeAddress, newPageKey, OPEN_BROWSER_EVENT, pageId, pageTitle as browserTitle, pageUrl, useBrowserPrefs, type OpenBrowserDetail } from '@/lib/browsertab'
 import { openLink } from '@/lib/termlinks'
@@ -551,6 +552,10 @@ export function AppShell() {
   const openFile = useCallback((projectId: string, worktree: string, path: string) => {
     openTab({ kind: 'file', sessionId: fileKey(projectId, worktree, path), path, worktree }, projectId, baseName(path))
   }, [openTab])
+  /** A project's Files tab (ADR-089), one per project; `worktree` is where its right panel opens. */
+  const openFiles = useCallback((projectId: string, worktree?: string) => {
+    openTab({ kind: 'files', sessionId: `files:${projectId}`, ...(worktree ? { worktree } : {}) }, projectId, `Files · ${projectsById.get(projectId)?.name ?? 'project'}`)
+  }, [openTab, projectsById])
 
   /**
    * Browser tabs: the in-app browser, beta, off until Settings turns it on
@@ -1357,6 +1362,9 @@ export function AppShell() {
   const workRef = useRef<(() => void) | undefined>(undefined)
   // ⌘W with the Pipeline tab in front closes it as its × does (closePipeline, further down).
   const closePipelineRef = useRef<(() => void) | undefined>(undefined)
+  // ⇧⌘X: the Files tab of the project in front, its right panel on the
+  // focused session's worktree — known further down (focusedWorktree).
+  const filesRef = useRef<(() => void) | undefined>(undefined)
   const run = useCallback((c: AppCommand) => {
     switch (c.kind) {
       // In the folder of the session in front — its worktree, not the project's root.
@@ -1385,6 +1393,7 @@ export function AppShell() {
         } else window.dispatchEvent(new Event(THEME_MENU_EVENT))
         break
       case 'reopen-tab': reopenLastClosed(); break
+      case 'files': filesRef.current?.(); break
       case 'changes':
         if (openChangesRef.current) openChangesRef.current()
         else setToast('Changes shows a git project’s diff: bring a session in one to the front.')
@@ -1593,6 +1602,7 @@ export function AppShell() {
       { id: 'a-inspector', group: 'Actions', label: prefs.inspector ? 'Hide the inspector' : 'Show the inspector', hint: keys('⌘I'), icon: <InspectorIcon size={14} />, run: () => run({ kind: 'inspector' }) },
       ...(browserAvailable() ? [{ id: 'a-phone-preview', group: 'Actions' as const, label: 'Preview on phone…', detail: 'a local dev server or an address, beside the terminal as a phone shows it', icon: <PhoneIcon size={14} />, run: () => setSheet({ kind: 'preview', mode: 'list' }) }] : []),
       ...(browserEnabled ? [{ id: 'a-browser', group: 'Actions' as const, label: 'New browser tab', detail: 'an address or a search, in a tab after your agents (beta)', icon: <GlobeIcon size={14} />, run: () => openPage() }] : []),
+      { id: 'a-files', group: 'Actions', label: 'Open Files', detail: 'two panels over the project and its agents’ worktrees: compare, copy, move, trash', hint: keys(FILES_KEY), icon: <FolderIcon size={14} />, run: () => run({ kind: 'files' }) },
       ...(fileScope ? [{ id: 'a-open-file', group: 'Actions' as const, label: 'Open file…', detail: fileScope.title, icon: <FileIcon size={14} />, run: () => setSheet({ kind: 'files', ...fileScope }) }] : []),
       ...(source === 'api' && activeProject?.kind === 'repo'
         ? [{ id: 'a-copies', group: 'Actions' as const, label: 'Clean up copies…', detail: `${activeProject.name}: worktrees, sizes, merged`, icon: <BranchIcon size={14} />, run: () => onCleanCopies(activeProject.id) }]
@@ -1653,7 +1663,7 @@ export function AppShell() {
       const s = sessionsById.get(leaf.target.sessionId)
       const file = leaf.target.kind === 'file' ? leaf.target.path : undefined
       const page = leaf.target.kind === 'page' ? leaf.target.url ?? '' : undefined
-      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : page !== undefined ? browserTitle(page, t.title) : t.title, detail: page || (file ?? projectsById.get(t.projectId)?.name), icon: page !== undefined ? <GlobeIcon size={14} /> : file ? <FileIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
+      items.push({ id: `t-${t.id}`, group: 'Tabs', label: s ? sessionTitle(s) : page !== undefined ? browserTitle(page, t.title) : t.title, detail: page || (file ?? projectsById.get(t.projectId)?.name), icon: page !== undefined ? <GlobeIcon size={14} /> : file ? <FileIcon size={14} /> : leaf.target.kind === 'files' ? <FolderIcon size={14} /> : <TerminalIcon size={14} />, run: () => { dispatch({ type: 'activate', tabId: t.id }); showWorkspace() } })
     }
     for (const n of model.projects) {
       for (const w of n.worktrees) {
@@ -1736,6 +1746,13 @@ export function AppShell() {
   }, [focused, inspectedId, model.projects, source])
 
   useEffect(() => {
+    filesRef.current = () => {
+      const pid = focusedWorktree?.projectId ?? activeProjectId
+      if (source !== 'api' || !projectsById.get(pid)?.root) { setToast('Files opens a project’s folder: bring a project to the front first.'); return }
+      openFiles(pid, focusedWorktree && !focusedWorktree.w.isMain ? focusedWorktree.w.key : undefined)
+    }
+  }, [focusedWorktree, activeProjectId, source, projectsById, openFiles])
+  useEffect(() => {
     openChangesRef.current = focusedWorktree?.repo
       ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w)
       : undefined
@@ -1803,7 +1820,37 @@ export function AppShell() {
     const pid = model.projects.find((n) => n.worktrees.some((w) => w.sessions.some((x) => x.session.session_id === sessionId)))?.project.id
     if (s && pid) openSession(s, pid)
   }, [sessionsById, model.projects, openSession])
+  /** The folders a project's Files tab offers: its checkout, then its worktrees, each with the agent working there. */
+  const filesRoots = useCallback((projectId: string): FilesRoot[] => {
+    const n = model.projects.find((x) => x.project.id === projectId)
+    if (!n) return []
+    const agentIn = (w?: WorktreeNode) => {
+      const x = w?.sessions.find((y) => !y.isShell && y.dot !== 'ended')
+      return x ? { title: x.title, state: x.dot } : undefined
+    }
+    const main = n.worktrees.find((w) => w.isMain && !w.repo)
+    const out: FilesRoot[] = [{ key: '', name: n.project.name, branch: main?.branch ?? n.project.branch ?? '', path: main?.path || n.project.root, agent: agentIn(main) }]
+    for (const w of n.worktrees) {
+      if (w.isMain || w.repo || !w.key) continue
+      out.push({ key: w.key, name: w.path.split(/[\\/]/).filter(Boolean).pop() ?? w.key, branch: w.branch, path: w.path, agent: agentIn(w) })
+    }
+    return out
+  }, [model.projects])
   const renderFile = useCallback((tab: Tab, leaf: PaneLeaf, visible: boolean) => {
+    if (leaf.target.kind === 'files') {
+      // Only the tab in front reads its folders: a tab behind costs nothing.
+      return (
+        <FilesCommander
+          projectId={tab.projectId}
+          projectName={projectsById.get(tab.projectId)?.name ?? 'project'}
+          roots={filesRoots(tab.projectId)}
+          startRight={leaf.target.worktree}
+          visible={visible}
+          editorName={editors ? preferredName(editors) : undefined}
+          onOpenEditor={editors ? (p, label) => openInEditor(p, label) : undefined}
+        />
+      )
+    }
     const wt = leaf.target.worktree ?? ''
     const path = leaf.target.path ?? ''
     const folder = folderOf(tab.projectId, wt)
@@ -1820,7 +1867,7 @@ export function AppShell() {
         onSent={onSentRef}
       />
     )
-  }, [folderOf, openFile, editors, openInEditor, sendTargets, onSentRef])
+  }, [folderOf, openFile, editors, openInEditor, sendTargets, onSentRef, filesRoots, projectsById])
 
   // A `.md` path an agent printed, clicked in its chat or terminal: open it
   // in a file tab when it lies inside a project Caprock knows (lib/mdreader).
@@ -1845,6 +1892,8 @@ export function AppShell() {
   }, [openFile])
   const focusedFile = focused?.kind === 'file'
   const focusedPage = focused?.kind === 'page'
+  // The Files tab has no session to inspect and wants the width for its two panels.
+  const focusedFiles = focused?.kind === 'files'
   // A page's *from* chip and its nudge bring a session forward; that is known further down.
   const openSessionRef = useRef<(id: string) => void>(() => {})
   const waitingAgents = useMemo(() => model.inbox.filter((i) => !i.stale).map((i) => ({ id: i.session.session_id, title: sessionTitle(i.session) })), [model.inbox])
@@ -2102,6 +2151,7 @@ export function AppShell() {
               onOpenInEditor={editors ? onOpenProjectInEditor : undefined}
               onRemoveProject={onRemoveProject}
               onCleanCopies={source === 'api' ? onCleanCopies : undefined}
+              onOpenFiles={source === 'api' ? openFiles : undefined}
               onAddRepo={source === 'api' ? onAddRepo : undefined}
               grouped={grouped}
               onGroupedChange={onGroupedChange}
@@ -2348,7 +2398,7 @@ export function AppShell() {
                 </div>
               )}
             </div>
-            {workspaceShown && prefs.inspector && !focusedPage && (
+            {workspaceShown && prefs.inspector && !focusedPage && !focusedFiles && (
               <div className="h-full shrink-0" style={{ width: 'var(--app-inspector-w)' }}>
                 {/* The cockpit's Release rows open a session's tab, as the Pipeline's do. */}
                 <PipelineHostContext.Provider value={pipelineHost}>

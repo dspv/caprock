@@ -60,6 +60,8 @@ var viewerMay = map[string]bool{
 	"GET /v1/pipeline/agents":        true, // the Pipeline's agent figures: cost per agent-hour and the agent team, from the events
 	"GET /v1/sessions/{id}/ci/stats": true, // the Pipeline's pull requests and figures: the phone's release bars
 	"GET /v1/projects/{id}/file":     true, "GET /v1/projects/{id}/files": true, "GET /v1/projects/{id}/image": true,
+	// The Files tab, read-only on a device (ADR-089); its writes are nobody's but the machine's.
+	"GET /v1/projects/{id}/fs/list": true, "GET /v1/projects/{id}/fs/compare": true, "GET /v1/projects/{id}/fs/changed": true, "GET /v1/projects/{id}/fs/diff": true,
 	// GitHub (WP-19): the connection, the clone picker, pull requests, and
 	// New agent's list of open issues and pull requests.
 	"GET /v1/github": true, "GET /v1/github/owners": true, "GET /v1/github/repos": true,

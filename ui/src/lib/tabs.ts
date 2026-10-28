@@ -31,9 +31,13 @@
  * never an agent: it has no sidebar row and no ⌘1–⌘9, and the strip keeps
  * every browser tab after every other tab, so pages never sit among the
  * agents.
+ *
+ * The Files tab (`files`, ADR-089; components/FilesCommander.tsx) is a tab of
+ * its own, one per project, keyed `files:<project>`; `worktree` is the folder
+ * its right panel opened on. Never split, as a file tab is.
  */
 export interface TabTarget {
-  kind: 'session' | 'shell' | 'file' | 'observe' | 'page'
+  kind: 'session' | 'shell' | 'file' | 'observe' | 'page' | 'files'
   sessionId: string
   /** A file: its path relative to the worktree. */
   path?: string
@@ -471,6 +475,7 @@ function isTarget(v: unknown): v is TabTarget {
   const t = v as TabTarget
   if (!t || typeof t.sessionId !== 'string' || t.sessionId === '') return false
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
+  if (t.kind === 'files') return t.worktree === undefined || typeof t.worktree === 'string'
   if (t.kind === 'page') return typeof t.url === 'string' && (t.url === '' || pageAddress(t.url)) && (t.of === undefined || typeof t.of === 'string') && (t.preview === undefined || typeof t.preview === 'boolean')
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
@@ -483,7 +488,7 @@ function mapLeaf(node: PaneNode, id: string, f: (l: PaneLeaf) => PaneLeaf): Pane
 
 /** A pane that is a whole tab, never split: a file, a session watched read-only, or a web page (a phone preview aside). */
 export function ownTab(t: TabTarget): boolean {
-  return t.kind === 'file' || t.kind === 'observe' || t.kind === 'page'
+  return t.kind === 'file' || t.kind === 'files' || t.kind === 'observe' || t.kind === 'page'
 }
 
 /** An address a page tab may hold: http or https with a host. A stored one is checked as a typed one is. */

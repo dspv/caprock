@@ -6848,3 +6848,67 @@ transcript reader on laptops outright (then at-rest encryption of the store,
 secret redaction before aggregation and binary pinning come first); buyers
 prefer a cap to the number; or a vendor prices Bedrock and seat usage per
 pull request across agents in its own dashboard.
+
+## ADR-089 — Files: a two-panel file manager over a project's checkout and its worktrees, trash-only, read-only from a device
+
+**Date:** 2026-10-28 · **Status:** accepted (owner, 2026-10-28: the
+mockup's variant C, "agent-aware", as the product, and variant A's classic
+Norton Commander look as a selectable look; variant B not built).
+Contract: [03-contracts.md § Files tab](03-contracts.md#files-tab-two-panels-over-a-checkout-and-its-worktrees);
+screen: [04-ui.md § Files tab](04-ui.md#files-tab).
+
+**Context.** An agent works in a worktree; the person reviews it in a diff
+(Changes) or opens files one at a time (file tabs). Neither answers "what
+is different between my checkout and the agent's, folder by folder", and
+neither moves a file across. The owner asked for "Norton Commander in our
+themes". A file manager inside a daemon that agents and paired devices
+also reach is a filesystem-write API, so its scope is the decision.
+
+**Decision.**
+
+- **A tab kind of its own, `files`, one per project.** Two panels, Norton
+  Commander's keys (Tab, arrows, Enter, Backspace, Insert/Space, F3–F8),
+  with ⌥3–⌥8 (Alt+3–8) beside the F-keys because a Mac's top row is media
+  keys without fn. Opened by ⇧⌘X (Ctrl+Shift+X), the palette and the
+  project menu; on the dashboard at `#/files`.
+- **Agent-aware.** Left the checkout, right an agent's worktree; *Compare*
+  marks what differs and what is on one side only, from git's view of the
+  two checkouts plus a byte comparison of the candidates; *What <agent>
+  changed* filters to the worktree's changes since its merge base; View
+  shows a unified diff left → right.
+- **Confined to roots Caprock already tracks.** A path is relative to the
+  project's folder or one of its linked worktrees (by git's name), clean,
+  and resolved with every symlink followed inside that root's real
+  location; anything else is refused. There is no route to the rest of the
+  disk. A write acts on the named item itself, never through a link at its
+  end. `.git`, and a folder holding a `.git` (a nested repository or a
+  worktree), are never copied, moved or trashed.
+- **Delete is the OS Trash, never a permanent delete.** macOS
+  `NSFileManager trashItemAtURL` through purego (no cgo, no Apple Events
+  prompt); Windows `SHFileOperationW` with `FOF_ALLOWUNDO`, refused off a
+  fixed local drive and over 1 GB, where the Recycle Bin would delete
+  instead; Linux and the BSDs the freedesktop.org home trash by rename,
+  refused across file systems. Where the Trash cannot take an item the
+  call is refused with the reason; there is no fallback to `rm`.
+- **No git in v1.** Copying from a worktree into the checkout is a plain
+  file copy, said so in its confirm; it lands as an uncommitted change. A
+  copy that would replace asks first; a move never replaces.
+- **No mutation from another device.** The reads (list, compare, changed,
+  diff) are open to paired devices as the file tab's are; copy, move,
+  mkdir and trash are this machine's only — not a viewer's, not a
+  controller's, not another computer's — refused at the gate and in the
+  handler. So nothing over the relay or the LAN changes a file.
+- **Two looks.** Caprock's, from the palette's tokens, and *Norton*'s, the
+  CGA palette on this view only, kept per viewer.
+
+**Consequences.** A new package `internal/trash` and
+`internal/projects/fsops.go`; eight routes under `/v1/projects/{id}/fs/`;
+no migration. The component fills whatever box hosts it and has a
+one-panel layout under 720px, so the planned right-side drawer on a
+session's page (the owner's open question, 2026-10-28) can host it
+unchanged.
+
+**Revisit if:** people want Copy into the checkout to apply the agent's
+change as git does (a one-file cherry-pick), or mutation from the phone; or
+a platform's Trash proves unreliable for the items people delete (then
+disable Delete there, never `rm`).

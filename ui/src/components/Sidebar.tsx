@@ -220,6 +220,8 @@ export interface SidebarProps {
   onAddRepo?: (projectId: string) => void
   /** Opens Clean up copies for a repository (components/CopiesSheet). */
   onCleanCopies?: (projectId: string) => void
+  /** A project's Files tab (ADR-089). */
+  onOpenFiles?: (projectId: string) => void
   /**
    * Sessions under their projects (Tree, when absent), or every session in one
    * flat list; AppShell keeps it per viewer.
@@ -705,6 +707,7 @@ export function Sidebar(props: SidebarProps) {
           onAddRepo={props.onAddRepo && menuNode.project.root ? () => props.onAddRepo!(menuNode.project.id) : undefined}
           repos={menuNode.project.repos?.length ?? 0}
           onCopies={props.onCleanCopies && menuNode.project.kind === 'repo' ? () => props.onCleanCopies!(menuNode.project.id) : undefined}
+          onFiles={props.onOpenFiles && menuNode.project.root ? () => props.onOpenFiles!(menuNode.project.id) : undefined}
           copies={menuNode.project.worktrees?.length ?? 0}
           onRemove={props.onRemoveProject ? () => props.onRemoveProject!(menuNode.project.id) : undefined}
           onClose={closeMenu}
