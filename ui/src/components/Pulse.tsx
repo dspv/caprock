@@ -27,6 +27,8 @@ import { ProjectTerminal, QUIET } from '@/components/ProjectTerminal'
 import { RepoButtons } from '@/components/RepoLinks'
 import { useApi } from '@/lib/useApi'
 import { Panel } from '@/components/ui'
+import { ShareWith } from '@/components/PanelShare'
+import { mdTable, type ShareName } from '@/lib/panelShare'
 import { href, navigate } from '@/lib/router'
 import { showsAgentMark } from '@/components/Projects'
 import { AgentGlyph } from '@/components/AgentMarks'
@@ -185,6 +187,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
     <Panel
       fold="now.pulse"
       title="Live pulse"
+      share="Live pulse"
       right={
         <span className="inline-flex items-center gap-2 text-[11px] text-fg-faint">
           last {PULSE_MINUTES} minutes · one bar per minute
@@ -197,6 +200,12 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         </span>
       }
     >
+      <ShareWith names={() => pulseNames(rows.map((r) => r.s), sessions, labels)}
+        toText={(alias) => rows.length === 0 ? `Nothing ran in the last ${PULSE_MINUTES} minutes.` : `Last ${PULSE_MINUTES} minutes.\n\n${mdTable(
+          ['Session', 'Project', 'Branch', 'Turns and tools', `Cost · ${PULSE_MINUTES} min`],
+          rows.map(({ s, pulse }) => [alias('session', sessionTitle(s)), alias('project', labels.get(s.session_id) || s.project || 'unknown project'),
+            branchLabel(s.git_branch) ? alias('branch', branchLabel(s.git_branch)) : '–', windowEvents(pulse), fmtUSD(windowCost(pulse))]),
+        )}`} />
       <div>
         {rows.length === 0 ? (
           // Saying the hour was quiet is information; six empty tracks are not.
@@ -238,6 +247,24 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
       </div>}
     </Panel>
   )
+}
+
+/**
+ * Every name the pulse can show, the drawn rows first: each session's title,
+ * its project (and the label that tells two same-named folders apart), its
+ * branch and its folder — the opened row lists the project's other live
+ * sessions, so those are named too.
+ */
+export function pulseNames(shown: SessionSummary[], all: SessionSummary[], labels: Map<string, string>): ShareName[] {
+  const out: ShareName[] = []
+  const seen = new Set(shown.map((s) => s.session_id))
+  for (const s of [...shown, ...all.filter((x) => !seen.has(x.session_id))]) {
+    out.push({ kind: 'session', value: sessionTitle(s) }, { kind: 'session', value: s.name },
+      { kind: 'project', value: labels.get(s.session_id) }, { kind: 'project', value: s.project },
+      { kind: 'branch', value: branchLabel(s.git_branch) },
+      { kind: 'folder', value: s.repo_root }, { kind: 'folder', value: s.cwd })
+  }
+  return out
 }
 
 /**

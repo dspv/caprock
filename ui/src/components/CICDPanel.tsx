@@ -34,6 +34,8 @@ import { usageLine, type ActionsUsage } from '@/lib/runnercost'
 import { AGENT_COST_NOTE } from '@/lib/prboard'
 import { asReposCI, keepWhileReading, loadHiddenRepos, owners, prTokens, quietText, redPct, rowErrorText, saveHiddenRepos, sectionErrorText, sharedTitle, statusLine, stuckText, type ReposCI, type RepoCIQuiet, type RepoCIRow } from '@/lib/reposci'
 import { Panel } from './ui'
+import { ShareWith } from './PanelShare'
+import { mdTable, type Alias, type ShareName } from '@/lib/panelShare'
 import { PipelineCard } from './PipelineCard'
 import { Freshness } from './Freshness'
 import { EyeOffIcon } from './AppIcons'
@@ -65,7 +67,7 @@ interface CICDFresh {
 export function CICDPanel({ sessions = [] }: { sessions?: readonly SessionSummary[] } = {}) {
   const [fresh, setFresh] = useState<CICDFresh>()
   return (
-    <Panel fold="now.cicd" title="CI/CD" right={
+    <Panel fold="now.cicd" title="CI/CD" share="CI/CD" right={
       <span className="flex min-w-0 items-center gap-2">
         {fresh && <Freshness at={fresh.at} loading={fresh.loading} failed={fresh.failed} reason={fresh.reason} confirmed={fresh.confirmed} onRetry={fresh.retry} compact github />}
         <span className="truncate" title="GitHub's runs, pull requests and releases as the Pipeline page reads them, and githubstatus.com; agent cost at API list price">GitHub · agent cost at list price</span>
@@ -203,6 +205,7 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
   if (undo && undoStrip) blocks.splice(Math.min(undo.at, blocks.length), 0, 'undo')
   return (
     <div data-cicd-panel className="@container/cicd flex flex-col">
+      <ShareWith names={() => cicdNames(data.repos, data.quiet)} toText={(alias) => cicdText(data.repos, alias)} />
       {st && (
         <div data-cicd-status={st.tone} title={st.title} className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-border px-3 py-1.5 text-[12px] ${st.tone === 'fail' ? 'bg-danger/10 text-danger' : st.tone === 'warn' ? 'bg-warn/10 text-warn' : 'text-fg-muted'}`}>
           <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${st.tone === 'fail' ? 'bg-danger' : st.tone === 'warn' ? 'bg-warn' : st.tone === 'ok' ? 'bg-ok' : 'bg-fg-faint'}`} />
@@ -260,6 +263,33 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
       )}
     </div>
   )
+}
+
+/** What the section names: each repository (its name, owner/name and owner), its pull requests' titles and who opened them. */
+export function cicdNames(repos: RepoCIRow[], quiet: RepoCIQuiet[]): ShareName[] {
+  const out: ShareName[] = []
+  for (const r of [...repos, ...quiet]) {
+    out.push({ kind: 'project', value: r.repo }, { kind: 'project', value: r.name }, { kind: 'person', value: r.repo.split('/')[0] }, { kind: 'project', value: r.repo.split('/')[1] })
+  }
+  for (const r of repos) {
+    for (const p of r.top_prs) out.push({ kind: 'pull request', value: p.title }, { kind: 'person', value: p.author })
+    for (const a of r.authors) out.push({ kind: 'person', value: a.login })
+    for (const st of r.stuck) out.push({ kind: 'branch', value: st.branch })
+  }
+  return out
+}
+
+/** The section as Markdown: a row per repository, then the dearest pull requests. */
+export function cicdText(repos: RepoCIRow[], alias: Alias): string {
+  const rows = repos.map((r) => {
+    const wf = r.ci?.workflows[0]
+    return [alias('project', r.name || r.repo), wf?.median_ms ? fmtRun(wf.median_ms) : '–', redPct(r.ci) ?? '–', r.stuck.length, r.open, r.merged_7d, r.release?.tag || '–']
+  })
+  const prs = repos.flatMap((r) => r.top_prs.map((p) => [alias('project', r.name || r.repo), `#${p.number} ${alias('pull request', p.title || `#${p.number}`)}`, p.sessions, `$${p.cost_usd.toFixed(2)}`]))
+  return [
+    mdTable(['Repository', 'CI median', 'Red · 14d', 'Stuck', 'PRs open', 'Merged · 7d', 'Release'], rows),
+    prs.length ? `Agent cost per pull request, at API list price — not a bill.\n\n${mdTable(['Repository', 'Pull request', 'Sessions', 'Agent cost'], prs)}` : '',
+  ].filter(Boolean).join('\n\n')
 }
 
 function Cell({ label, children, note, title, data }: { label: string; children: ReactNode; note?: ReactNode; title?: string; data?: string }) {
