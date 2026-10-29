@@ -5,7 +5,9 @@
  * (amber) and what is on one side only (green), and both panels follow each
  * other's folder; *What <agent> changed* keeps only the files that worktree
  * changed since it left its base. View (F3, ⌥3) shows the file under the
- * panels, and in compare mode its diff, main → worktree.
+ * panels, and in compare mode its diff, main → worktree. → expands a folder
+ * in place, as Finder's list view does, and ← folds it or steps to the
+ * folder holding the row; Enter still goes into it.
  *
  * Copy, move, new folder and delete act on the daemon's Files routes,
  * confined to the project's checkout and its worktrees; delete only ever
@@ -17,7 +19,7 @@
  * `look` paints it Caprock's (the app's palette) or Norton's (blue, cyan
  * double frames, yellow marks, the F-key bar), kept per viewer.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { DialogBackdrop, CloseButton } from './Dialog'
 import { BranchIcon, CopyIcon, EyeIcon, FileIcon, FolderIcon, FolderPlusIcon, PencilIcon, TrashIcon } from './AppIcons'
 import { errText } from '@/lib/api'
@@ -59,21 +61,42 @@ interface Panel {
   root: string
   path: string
   cursor: number
+  /** Marked rows, by their path from the root. */
   marked: string[]
+  /** Folders expanded in place (→), by their path from the root; cleared when the path or root changes. */
+  open: string[]
 }
 
 interface Row {
   up?: boolean
   entry: FsEntry
+  /** The row's path from the root ('' and unused on `..`). */
+  rel: string
+  /** 0 for the panel's own folder, 1 and more for rows inside an expanded one. */
+  depth: number
 }
 
+/** `paths` are from the root, as the routes take them. */
 type Dialog =
-  | { kind: 'copy'; names: string[]; from: 0 | 1; overwrite?: string[] }
-  | { kind: 'move'; names: string[]; from: 0 | 1 }
+  | { kind: 'copy'; paths: string[]; from: 0 | 1; overwrite?: string[] }
+  | { kind: 'move'; paths: string[]; from: 0 | 1 }
   | { kind: 'mkdir'; from: 0 | 1 }
-  | { kind: 'delete'; names: string[]; from: 0 | 1 }
+  | { kind: 'delete'; paths: string[]; from: 0 | 1 }
 
 const UP: FsEntry = { name: '..', dir: true, size: 0, mtime: 0 }
+
+/** A path from the root as the panel showing `dir` names it: `src/app.go` in the root, `app.go` inside src. */
+function relTo(dir: string, rel: string): string {
+  return dir && rel.startsWith(`${dir}/`) ? rel.slice(dir.length + 1) : rel
+}
+
+/** The last element of a path from the root. */
+function baseName(rel: string): string {
+  return rel.slice(rel.lastIndexOf('/') + 1)
+}
+
+/** A cache key for an expanded folder's listing or comparison. */
+const subKey = (...parts: string[]) => parts.join('\0')
 
 function pickRight(roots: readonly FilesRoot[], start?: string): string {
   if (start !== undefined && roots.some((r) => r.key === start)) return start
@@ -83,8 +106,8 @@ function pickRight(roots: readonly FilesRoot[], start?: string): string {
 export function FilesCommander({ projectId, projectName, roots, startRight, visible, editorName, onOpenEditor }: FilesCommanderProps) {
   const isMac = isMacPlatform()
   const [panels, setPanels] = useState<[Panel, Panel]>(() => [
-    { root: '', path: '', cursor: 0, marked: [] },
-    { root: pickRight(roots, startRight), path: '', cursor: 0, marked: [] },
+    { root: '', path: '', cursor: 0, marked: [], open: [] },
+    { root: pickRight(roots, startRight), path: '', cursor: 0, marked: [], open: [] },
   ])
   const [active, setActive] = useState<0 | 1>(() => (pickRight(roots, startRight) ? 1 : 0))
   const [listings, setListings] = useState<[FsListing | null, FsListing | null]>([null, null])
@@ -92,6 +115,9 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
   const [tick, setTick] = useState(0)
   const [compareOn, setCompareOn] = useState(true)
   const [cmp, setCmp] = useState<FsCompare | null>(null)
+  // Expanded folders' listings, per panel, keyed by root and path; their comparisons keyed by both roots and path.
+  const [subs, setSubs] = useState<[Record<string, FsEntry[]>, Record<string, FsEntry[]>]>([{}, {}])
+  const [subCmp, setSubCmp] = useState<Record<string, FsCompare>>({})
   const [filterOn, setFilterOn] = useState(false)
   const [changed, setChanged] = useState<string[] | null>(null)
   const [quick, setQuick] = useState(false)
@@ -116,7 +142,7 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
 
   // A root that went (a worktree removed) puts its panel back on the checkout.
   useEffect(() => {
-    setPanels((ps) => (ps.every((p) => roots.some((r) => r.key === p.root)) ? ps : (ps.map((p) => (roots.some((r) => r.key === p.root) ? p : { ...p, root: '', path: '', cursor: 0, marked: [] })) as [Panel, Panel])))
+    setPanels((ps) => (ps.every((p) => roots.some((r) => r.key === p.root)) ? ps : (ps.map((p) => (roots.some((r) => r.key === p.root) ? p : { ...p, root: '', path: '', cursor: 0, marked: [], open: [] })) as [Panel, Panel])))
   }, [roots])
 
   // Read again when the tab comes to the front and when the window gets focus.
@@ -146,6 +172,24 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, l0.root, l0.path, l1.root, l1.path, tick, visible])
 
+  // The folders expanded in place, read on expanding and with the panels.
+  const open0 = l0.open.join('\n')
+  const open1 = l1.open.join('\n')
+  useEffect(() => {
+    if (!visible) return
+    let live = true
+    for (const i of [0, 1] as const) {
+      const p = panels[i]
+      for (const rel of p.open) {
+        const k = subKey(p.root, rel)
+        const put = (es: FsEntry[]) => { if (live) setSubs((cur) => (i === 0 ? [{ ...cur[0], [k]: es }, cur[1]] : [cur[0], { ...cur[1], [k]: es }])) }
+        fsApi.list(projectId, p.root, rel).then((l) => put(l.entries)).catch(() => put([]))
+      }
+    }
+    return () => { live = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, l0.root, l1.root, open0, open1, tick, visible])
+
   const comparing = compareOn && l0.root !== l1.root && l0.path === l1.path
   useEffect(() => {
     if (!visible || !comparing) { setCmp(null); return }
@@ -153,6 +197,18 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
     fsApi.compare(projectId, l0.root, l1.root, l0.path).then((c) => { if (live) setCmp(c) }).catch(() => { if (live) setCmp(null) })
     return () => { live = false }
   }, [projectId, comparing, l0.root, l1.root, l0.path, tick, visible])
+  // An expanded folder is compared on its own, so its rows are tinted as the panel's are.
+  useEffect(() => {
+    if (!visible || !comparing) return
+    let live = true
+    for (const rel of new Set([...l0.open, ...l1.open])) {
+      fsApi.compare(projectId, l0.root, l1.root, rel)
+        .then((c) => { if (live) setSubCmp((cur) => ({ ...cur, [subKey(l0.root, l1.root, rel)]: c })) })
+        .catch(() => { /* a folder on one side only: its rows stay untinted */ })
+    }
+    return () => { live = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, comparing, l0.root, l1.root, open0, open1, tick, visible])
 
   // The agent whose changes the filter shows: the right panel's worktree, else the left's.
   const agentRoot = l1.root || l0.root
@@ -170,23 +226,37 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
   const rowsOf = useCallback((i: 0 | 1): Row[] => {
     const l = listings[i]
     const p = panels[i]
-    const out: Row[] = p.path ? [{ up: true, entry: UP }] : []
+    const out: Row[] = p.path ? [{ up: true, entry: UP, rel: '', depth: 0 }] : []
     if (!l) return out
-    const keep = filtering ? changedNames(changed!, p.path) : null
-    for (const e of l.entries) if (!keep || keep.has(e.name)) out.push({ entry: e })
+    const opened = new Set(p.open)
+    const walk = (dir: string, entries: readonly FsEntry[], depth: number) => {
+      const keep = filtering ? changedNames(changed!, dir) : null
+      for (const e of entries) {
+        if (keep && !keep.has(e.name)) continue
+        const rel = joinRel(dir, e.name)
+        out.push({ entry: e, rel, depth })
+        const kids = e.dir && opened.has(rel) ? subs[i][subKey(p.root, rel)] : undefined
+        if (kids) walk(rel, kids, depth + 1)
+      }
+    }
+    walk(p.path, l.entries, 0)
     return out
-  }, [listings, panels, filtering, changed])
+  }, [listings, panels, filtering, changed, subs])
   const rows: [Row[], Row[]] = useMemo(() => [rowsOf(0), rowsOf(1)], [rowsOf])
 
+  /** The comparison a row's folder has: the panels' own, or its expanded folder's. */
+  const cmpOf = (r: Row): FsCompare | undefined => (!cmp ? undefined : r.depth === 0 ? cmp : subCmp[subKey(l0.root, l1.root, parentRel(r.rel))])
   const stateOf = (i: 0 | 1, r: Row): CompareState | 'only' | undefined => {
-    if (!cmp || r.up) return undefined
-    const s = cmp.states[r.entry.name]
+    const c = r.up ? undefined : cmpOf(r)
+    if (!c) return undefined
+    const s = c.states[r.entry.name]
     if (s === 'diff') return 'diff'
     if ((s === 'left' && i === 0) || (s === 'right' && i === 1)) return 'only'
     return undefined
   }
 
-  const cur = (i: 0 | 1): Row | undefined => rows[i][Math.min(panels[i].cursor, rows[i].length - 1)]
+  const curAt = (i: 0 | 1) => Math.min(panels[i].cursor, rows[i].length - 1)
+  const cur = (i: 0 | 1): Row | undefined => rows[i][curAt(i)]
   const otherOf = (i: 0 | 1): 0 | 1 => (i === 0 ? 1 : 0)
 
   // Moving and opening.
@@ -194,19 +264,19 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
   const go = (i: 0 | 1, path: string, from?: string) => {
     setPanels((ps) => {
       const next = ps.map((p, k) => {
-        if (k === i || (comparing && p.root !== ps[i].root)) return { ...p, path, cursor: 0, marked: [] }
+        if (k === i || (comparing && p.root !== ps[i].root)) return { ...p, path, cursor: 0, marked: [], open: [] }
         return p
       }) as [Panel, Panel]
       return next
     })
-    if (from !== undefined) pendingCursor.current = { i, name: from }
+    if (from !== undefined) pendingCursor.current = { i, rel: from }
   }
   // After going up, the cursor lands on the folder we came from.
-  const pendingCursor = useRef<{ i: 0 | 1; name: string } | null>(null)
+  const pendingCursor = useRef<{ i: 0 | 1; rel: string } | null>(null)
   useEffect(() => {
     const pc = pendingCursor.current
     if (!pc) return
-    const at = rows[pc.i].findIndex((r) => !r.up && r.entry.name === pc.name)
+    const at = rows[pc.i].findIndex((r) => !r.up && r.rel === pc.rel)
     if (at >= 0) { update(pc.i, (p) => ({ ...p, cursor: at })); pendingCursor.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows])
@@ -214,22 +284,50 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
   const open = (i: 0 | 1) => {
     const r = cur(i)
     if (!r) return
-    if (r.up) { const p = panels[i].path; go(i, parentRel(p), p.split('/').pop()); return }
-    if (r.entry.dir) { go(i, joinRel(panels[i].path, r.entry.name)); return }
+    if (r.up) { const p = panels[i].path; go(i, parentRel(p), p); return }
+    if (r.entry.dir) { go(i, r.rel); return }
     setQuick((q) => !q)
   }
-  const goUp = (i: 0 | 1) => { const p = panels[i].path; if (p) go(i, parentRel(p), p.split('/').pop()) }
+  const goUp = (i: 0 | 1) => { const p = panels[i].path; if (p) go(i, parentRel(p), p) }
   const move = (i: 0 | 1, to: number) => update(i, (p) => ({ ...p, cursor: Math.max(0, Math.min(rows[i].length - 1, to)) }))
+  // In place: → opens a folder or steps into an open one, ← folds it or steps out to its folder.
+  const isOpen = (i: 0 | 1, rel: string) => panels[i].open.includes(rel)
+  const setOpen = (i: 0 | 1, rel: string, on: boolean) => update(i, (p) => ({
+    ...p,
+    open: on ? (p.open.includes(rel) ? p.open : [...p.open, rel]) : p.open.filter((x) => x !== rel && !x.startsWith(`${rel}/`)),
+  }))
+  const expand = (i: 0 | 1) => {
+    const r = cur(i)
+    if (!r || r.up || !r.entry.dir) return
+    if (!isOpen(i, r.rel)) { setOpen(i, r.rel, true); return }
+    const j = curAt(i)
+    if ((rows[i][j + 1]?.depth ?? -1) > r.depth) move(i, j + 1)
+  }
+  const collapse = (i: 0 | 1) => {
+    const r = cur(i)
+    if (!r || r.up) return
+    if (r.entry.dir && isOpen(i, r.rel)) { setOpen(i, r.rel, false); return }
+    if (r.depth === 0) return
+    const at = rows[i].findIndex((x) => !x.up && x.rel === parentRel(r.rel))
+    if (at >= 0) move(i, at)
+  }
+  const toggle = (i: 0 | 1, j: number) => {
+    const r = rows[i][j]
+    if (!r || r.up || !r.entry.dir) return
+    update(i, (p) => ({ ...p, cursor: j }))
+    setOpen(i, r.rel, !isOpen(i, r.rel))
+  }
   const mark = (i: 0 | 1) => {
     const r = cur(i)
     if (!r || r.up) { move(i, panels[i].cursor + 1); return }
-    update(i, (p) => ({ ...p, marked: p.marked.includes(r.entry.name) ? p.marked.filter((n) => n !== r.entry.name) : [...p.marked, r.entry.name], cursor: Math.min(rows[i].length - 1, p.cursor + 1) }))
+    update(i, (p) => ({ ...p, marked: p.marked.includes(r.rel) ? p.marked.filter((n) => n !== r.rel) : [...p.marked, r.rel], cursor: Math.min(rows[i].length - 1, p.cursor + 1) }))
   }
+  /** What an action acts on, by path from the root: the marked rows still shown, else the one under the cursor. */
   const selection = (i: 0 | 1): string[] => {
-    const m = panels[i].marked.filter((n) => rows[i].some((r) => !r.up && r.entry.name === n))
+    const m = panels[i].marked.filter((n) => rows[i].some((r) => !r.up && r.rel === n))
     if (m.length) return m
     const r = cur(i)
-    return r && !r.up ? [r.entry.name] : []
+    return r && !r.up ? [r.rel] : []
   }
 
   const writable = listings[0]?.writable !== false && listings[1]?.writable !== false
@@ -237,23 +335,23 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
 
   const run = (id: FilesActionId) => {
     const i = active
-    const names = selection(i)
+    const paths = selection(i)
     const r = cur(i)
     switch (id) {
       case 'view': setQuick((q) => !q); break
       case 'edit': {
         const l = listings[i]
         if (!onOpenEditor || !l || !r || r.up) { setNote(onOpenEditor ? 'Pick a file or folder first.' : 'No editor found on this computer.'); break }
-        onOpenEditor(absPath(l.root, joinRel(panels[i].path, r.entry.name)), r.entry.name)
+        onOpenEditor(absPath(l.root, r.rel), r.entry.name)
         break
       }
       case 'copy':
       case 'move':
       case 'delete':
         if (!writable) { setNote('Files is read-only on this device.'); break }
-        if (!names.length) { setNote('Pick something first: move the cursor onto it, or mark it with Space.'); break }
+        if (!paths.length) { setNote('Pick something first: move the cursor onto it, or mark it with Space.'); break }
         if (id === 'delete' && trashOff) { setNote(`Delete is off here: ${trashOff}.`); break }
-        setDialog({ kind: id, names, from: i })
+        setDialog({ kind: id, paths, from: i })
         break
       case 'mkdir':
         if (!writable) { setNote('Files is read-only on this device.'); break }
@@ -288,6 +386,8 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
       case 'Home': move(i, 0); break
       case 'End': move(i, rows[i].length - 1); break
       case 'Enter': open(i); break
+      case 'ArrowRight': expand(i); break
+      case 'ArrowLeft': collapse(i); break
       case 'Backspace': goUp(i); break
       case 'Insert':
       case ' ': mark(i); break
@@ -298,7 +398,7 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
   }
 
   const swap = () => { setPanels(([a, b]) => [b, a]); setActive((a) => otherOf(a)) }
-  const setRoot = (i: 0 | 1, key: string) => update(i, (p) => ({ ...p, root: key, path: comparing ? p.path : '', cursor: 0, marked: [] }))
+  const setRoot = (i: 0 | 1, key: string) => update(i, (p) => ({ ...p, root: key, path: comparing ? p.path : '', cursor: 0, marked: [], open: [] }))
 
   const agentName = rootOf(agentRoot)?.name ?? 'the agent'
   const rootsDiffer = l0.root !== l1.root
@@ -342,22 +442,39 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
           {list.map((x, j) => {
             const st = stateOf(i, x)
             const isCur = j === Math.min(p.cursor, list.length - 1)
-            const marked = !x.up && p.marked.includes(x.entry.name)
-            const unknown = !x.up && cmp?.unknown?.includes(x.entry.name)
-            const cls = `fc-row${x.entry.dir ? ' dir' : ''}${isCur ? ' cur' : ''}${marked ? ' marked' : ''}${x.entry.git === '!' ? ' ign' : ''}${st ? ` c-${st}` : ''}`
+            const marked = !x.up && p.marked.includes(x.rel)
+            const unknown = !x.up && cmpOf(x)?.unknown?.includes(x.entry.name)
+            const folder = !x.up && !!x.entry.dir
+            const opened = folder && p.open.includes(x.rel)
+            const cls = `fc-row${x.entry.dir ? ' dir' : ''}${isCur ? ' cur' : ''}${marked ? ' marked' : ''}${x.entry.git === '!' ? ' ign' : ''}${st ? ` c-${st}` : ''}${x.depth ? ' nested' : ''}`
             return (
               <div
-                key={x.up ? '..' : x.entry.name}
+                key={x.up ? '..' : x.rel}
                 className={cls}
                 role="option"
                 aria-selected={isCur}
+                aria-level={x.up ? undefined : x.depth + 1}
+                aria-expanded={folder ? opened : undefined}
                 data-name={x.entry.name}
+                data-rel={x.up ? undefined : x.rel}
                 ref={isCur && active === i ? scrollIntoView : undefined}
                 onMouseDown={() => update(i, (pp) => ({ ...pp, cursor: j }))}
                 onDoubleClick={() => open(i)}
               >
                 <span className={`fc-mk mk-${markClass(x.entry.git)}`}>{x.up ? '' : x.entry.git === '!' ? '' : x.entry.git ?? ''}</span>
-                <span className="fc-nm">
+                <span className="fc-nm" style={x.depth ? { '--fc-depth': x.depth } as CSSProperties : undefined}>
+                  {x.up ? null : (
+                    <span
+                      className={`fc-tw${folder ? '' : ' none'}`}
+                      aria-hidden={!folder}
+                      role={folder ? 'button' : undefined}
+                      aria-label={folder ? `${opened ? 'Collapse' : 'Expand'} ${x.entry.name}` : undefined}
+                      title={folder ? `${opened ? 'Collapse' : 'Expand'} · ${keys(opened ? '←' : '→', isMac)}` : undefined}
+                      onMouseDown={(e) => { if (folder) { e.stopPropagation(); setActive(i) } }}
+                      onClick={() => toggle(i, j)}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                    >{!folder ? '' : norton ? (opened ? '▾' : '▸') : <Chevron open={opened} />}</span>
+                  )}
                   <span className="fc-ic">{x.entry.dir ? <FolderIcon size={13} /> : <FileIcon size={13} />}</span>
                   <span className="fc-name">{x.entry.name}{x.entry.link ? ' →' : ''}</span>
                   {st === 'only' ? <span className="fc-tag">{i === 0 ? 'only here' : 'new'}</span> : null}
@@ -407,7 +524,7 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
         {narrow ? switcher : null}
         <button type="button" className={`fc-chip${comparing ? ' on' : ''}`} disabled={!rootsDiffer} aria-pressed={comparing} onClick={() => {
           setCompareOn((c) => !c)
-          if (!compareOn) setPanels((ps) => [ps[0], { ...ps[1], path: ps[0].path, cursor: 0, marked: [] }])
+          if (!compareOn) setPanels((ps) => [ps[0], { ...ps[1], path: ps[0].path, cursor: 0, marked: [], open: [] }])
         }} title={rootsDiffer ? 'Tint what differs between the two folders; each panel follows the other' : 'Pick two different folders to compare'}>⇄ Compare</button>
         {changed !== null ? (
           <button type="button" className={`fc-chip${filtering ? ' on' : ''}`} aria-pressed={filtering} onClick={() => setFilterOn((f) => !f)} title={`Only the files ${agentName} changed since it left its base`}>
@@ -435,7 +552,6 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
             rightRoot={l1.root}
             leftName={rootOf(l0.root)?.branch || projectName}
             rightName={rootOf(l1.root)?.branch || projectName}
-            dir={panels[active].path}
             row={cur(active)}
             sheet={narrow}
             onClose={() => setQuick(false)}
@@ -463,7 +579,7 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
             </button>
           )
         })}
-        <span className="fc-keynote">{isMac ? 'F3–F8 work too (with fn)' : 'F3–F8 work too'} · Tab switches · Space marks</span>
+        <span className="fc-keynote">{isMac ? 'F3–F8 work too (with fn)' : 'F3–F8 work too'} · Tab switches · Space marks · {keys('→', isMac)} {keys('←', isMac)} open and fold a folder</span>
       </div>
       {dialog ? (
         <FilesDialog
@@ -478,6 +594,15 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
         />
       ) : null}
     </div>
+  )
+}
+
+/** The fold mark on a folder row in Caprock's look; Norton's keeps ▸ and ▾. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden style={{ transform: open ? 'rotate(90deg)' : undefined }}>
+      <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
@@ -520,7 +645,7 @@ function ActionIcon({ id }: { id: FilesActionId }) {
 }
 
 /** The file under the cursor: its text, or in compare mode its diff left → right. */
-function QuickView({ projectId, root, other, leftRoot, rightRoot, leftName, rightName, dir, row, sheet, onClose, viewKey }: {
+function QuickView({ projectId, root, other, leftRoot, rightRoot, leftName, rightName, row, sheet, onClose, viewKey }: {
   projectId: string
   root: string
   other?: string
@@ -528,14 +653,13 @@ function QuickView({ projectId, root, other, leftRoot, rightRoot, leftName, righ
   rightRoot: string
   leftName: string
   rightName: string
-  dir: string
   row?: Row
   sheet: boolean
   onClose: () => void
   viewKey: string
 }) {
   const [body, setBody] = useState<{ lines: [string, string][]; head: string; stats?: [number, number] } | null>(null)
-  const rel = row && !row.up ? joinRel(dir, row.entry.name) : ''
+  const rel = row && !row.up ? row.rel : ''
   const isDir = !row || row.up || row.entry.dir
   useEffect(() => {
     if (isDir) {
@@ -600,7 +724,7 @@ function FilesDialog({ dialog, projectId, panels, roots, projectName, onClose, o
 }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [name, setName] = useState(() => (dialog.kind === 'move' && dialog.names.length === 1 ? dialog.names[0]! : ''))
+  const [name, setName] = useState(() => (dialog.kind === 'move' && dialog.paths.length === 1 ? baseName(dialog.paths[0]!) : ''))
   const label = (key: string) => {
     const r = roots.find((x) => x.key === key)
     return r?.key ? `${r.name} (${r.branch})` : `${projectName} (your checkout${r?.branch ? `, ${r.branch}` : ''})`
@@ -629,34 +753,39 @@ function FilesDialog({ dialog, projectId, panels, roots, projectName, onClose, o
     const src = panels[dialog.from]
     const dst = panels[dialog.from === 0 ? 1 : 0]
     const fromAgent = !!src.root && !dst.root
-    const paths = dialog.names.map((n) => joinRel(src.path, n))
-    title = dialog.overwrite ? `Replace ${dialog.overwrite.length === 1 ? dialog.overwrite[0] : `${dialog.overwrite.length} items`}?` : `Copy ${dialog.names.length === 1 ? dialog.names[0] : `${dialog.names.length} items`}`
+    const { paths } = dialog
+    const names = paths.map((x) => relTo(src.path, x))
+    title = dialog.overwrite ? `Replace ${dialog.overwrite.length === 1 ? dialog.overwrite[0] : `${dialog.overwrite.length} items`}?` : `Copy ${names.length === 1 ? names[0] : `${names.length} items`}`
     bodyEl = (
       <>
         <p>From <b>{where(src)}</b><br />to <b>{where(dst)}</b>:</p>
-        {list(dialog.overwrite ?? dialog.names)}
+        {list(dialog.overwrite ?? names)}
         {dialog.overwrite ? <p className="fc-warn">These names are already there. Replacing writes over them; a folder's files are copied over its own.</p> : null}
         {fromAgent ? <p className="fc-faint">A plain file copy: the files land in your checkout as uncommitted changes. No git command runs.</p> : <p className="fc-faint">A plain file copy; no git command runs.</p>}
       </>
     )
-    primary = <button type="button" className="fc-btn primary" disabled={busy} onClick={() => void act(() => fsApi.copy(projectId, { from: src.root, paths, to: dst.root, dir: dst.path, overwrite: !!dialog.overwrite }), `Copied ${dialog.names.length === 1 ? dialog.names[0] : `${dialog.names.length} items`}.`)}>{dialog.overwrite ? 'Replace' : 'Copy'}</button>
+    primary = <button type="button" className="fc-btn primary" disabled={busy} onClick={() => void act(() => fsApi.copy(projectId, { from: src.root, paths, to: dst.root, dir: dst.path, overwrite: !!dialog.overwrite }), `Copied ${names.length === 1 ? names[0] : `${names.length} items`}.`)}>{dialog.overwrite ? 'Replace' : 'Copy'}</button>
   } else if (dialog.kind === 'move') {
     const src = panels[dialog.from]
     const dst = panels[dialog.from === 0 ? 1 : 0]
-    const paths = dialog.names.map((n) => joinRel(src.path, n))
-    const one = dialog.names.length === 1
-    title = one ? `Move or rename ${dialog.names[0]}` : `Move ${dialog.names.length} items`
+    const { paths } = dialog
+    const names = paths.map((x) => relTo(src.path, x))
+    const one = names.length === 1
+    // A rename stays in the item's own folder: the panel's, or an expanded one inside it.
+    const here = parentRel(paths[0]!)
+    const was = baseName(paths[0]!)
+    title = one ? `Move or rename ${names[0]}` : `Move ${names.length} items`
     bodyEl = (
       <>
-        {list(dialog.names)}
+        {list(names)}
         <p>Move to <b>{where(dst)}</b>{one ? ', or rename it where it is:' : '.'} Nothing already there is replaced.</p>
-        {one ? <input className="fc-input" aria-label="New name" value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name && name !== dialog.names[0]) void act(() => fsApi.move(projectId, { from: src.root, paths, to: src.root, dir: src.path, name }), `Renamed to ${name}.`) }} /> : null}
+        {one ? <input className="fc-input" aria-label="New name" value={name} autoFocus onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && name && name !== was) void act(() => fsApi.move(projectId, { from: src.root, paths, to: src.root, dir: here, name }), `Renamed to ${name}.`) }} /> : null}
       </>
     )
     primary = (
       <>
-        {one ? <button type="button" className="fc-btn" disabled={busy || !name || name === dialog.names[0]} onClick={() => void act(() => fsApi.move(projectId, { from: src.root, paths, to: src.root, dir: src.path, name }), `Renamed to ${name}.`)}>Rename</button> : null}
-        <button type="button" className="fc-btn primary" disabled={busy} onClick={() => void act(() => fsApi.move(projectId, { from: src.root, paths, to: dst.root, dir: dst.path }), `Moved ${one ? dialog.names[0] : `${dialog.names.length} items`}.`)}>Move to the other panel</button>
+        {one ? <button type="button" className="fc-btn" disabled={busy || !name || name === was} onClick={() => void act(() => fsApi.move(projectId, { from: src.root, paths, to: src.root, dir: here, name }), `Renamed to ${name}.`)}>Rename</button> : null}
+        <button type="button" className="fc-btn primary" disabled={busy} onClick={() => void act(() => fsApi.move(projectId, { from: src.root, paths, to: dst.root, dir: dst.path }), `Moved ${one ? names[0] : `${names.length} items`}.`)}>Move to the other panel</button>
       </>
     )
   } else if (dialog.kind === 'mkdir') {
@@ -672,16 +801,17 @@ function FilesDialog({ dialog, projectId, panels, roots, projectName, onClose, o
     primary = <button type="button" className="fc-btn primary" disabled={busy || !name} onClick={() => void make()}>Make folder</button>
   } else if (dialog.kind === 'delete') {
     const src = panels[dialog.from]
-    const paths = dialog.names.map((n) => joinRel(src.path, n))
-    title = `Move ${dialog.names.length === 1 ? dialog.names[0] : `${dialog.names.length} items`} to the Trash?`
+    const { paths } = dialog
+    const names = paths.map((x) => relTo(src.path, x))
+    title = `Move ${names.length === 1 ? names[0] : `${names.length} items`} to the Trash?`
     bodyEl = (
       <>
         <p>From <b>{where(src)}</b>:</p>
-        {list(dialog.names)}
+        {list(names)}
         <p className="fc-faint">They go to the Trash, where you can put them back. Nothing is deleted for good.</p>
       </>
     )
-    primary = <button type="button" className="fc-btn danger" autoFocus disabled={busy} onClick={() => void act(() => fsApi.trash(projectId, { worktree: src.root, paths }), `Moved ${dialog.names.length === 1 ? dialog.names[0] : `${dialog.names.length} items`} to the Trash.`)}>Move to Trash</button>
+    primary = <button type="button" className="fc-btn danger" autoFocus disabled={busy} onClick={() => void act(() => fsApi.trash(projectId, { worktree: src.root, paths }), `Moved ${names.length === 1 ? names[0] : `${names.length} items`} to the Trash.`)}>Move to Trash</button>
   }
   return (
     <DialogBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

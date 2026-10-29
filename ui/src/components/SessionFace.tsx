@@ -124,7 +124,7 @@ export function useDuckHint(eligible: boolean, kind: HintKind = 'ducks'): [boole
  * pick from; another agent's portrait is the plain mark, not a button.
  * `hint` says the session may show the "try a duck?" line now.
  */
-export function PickableFace({ agent, sessionId, className, children, hint = false, 'data-state': state }: { agent?: string; sessionId: string; className?: string; children: ReactNode; hint?: boolean; 'data-state'?: string }) {
+export function PickableFace({ agent, sessionId, className, children, hint = false, title, 'data-state': state }: { agent?: string; sessionId: string; className?: string; children: ReactNode; hint?: boolean; title?: string; 'data-state'?: string }) {
   const claude = characterFor(agent ?? 'claude') === 'lead'
   const face = useSessionFace(claude ? sessionId : undefined)
   const [open, setOpen] = useState<Group | null>(null)
@@ -148,11 +148,11 @@ export function PickableFace({ agent, sessionId, className, children, hint = fal
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
   }, [open])
-  if (!claude) return <div className={className} data-state={state}>{children}</div>
+  if (!claude) return <div className={className} data-state={state} title={title}>{children}</div>
   return (
     <div ref={box} className={className} data-state={state}>
       <button ref={btn} type="button" data-face-button aria-haspopup="menu" aria-expanded={!!open}
-        title="Change this session's face" aria-label="Change this session's face"
+        title={title ? `${title} · change this session's face` : "Change this session's face"} aria-label="Change this session's face"
         onClick={() => setOpen((o) => (o ? null : groupOf(face)))}
         className="grid h-full w-full place-items-center rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
         {children}

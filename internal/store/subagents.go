@@ -403,3 +403,78 @@ func SubagentsSpend(ctx context.Context, q Querier, sessionID string) (map[strin
 	}
 	return out, total, rows.Err()
 }
+
+// SubagentSpan is when one subagent of a session was working, unix ms: from
+// its first event read to its SubagentStop, or to now while it still counts
+// as working, or to its newest event when it went quiet past the live window
+// without a stop.
+type SubagentSpan struct {
+	AgentID  string
+	From, To int64
+}
+
+// SubagentSpans returns the spans of a session's subagents heard from since
+// `since`, under the rules SubagentsNow counts by: one whose newest event is
+// not its SubagentStop and that was heard from since liveSince is working
+// (its span runs to now); one that stopped counts only when it made a tool
+// call, which leaves out the small internal agents Claude Code fires a
+// SubagentStop for. The same grouping as SubagentsNow, so it reads the same
+// covering index. Claude Code sends no event when a subagent starts: its
+// first event read is its start.
+func SubagentSpans(ctx context.Context, q Querier, sessionID string, since, liveSince, now int64) ([]SubagentSpan, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT agent_id, MIN(ts), MAX(ts),
+		       MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END),
+		       SUM(kind = 'tool.pre')
+		  FROM events
+		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> ''
+		 GROUP BY agent_id`, sessionID, since)
+	if err != nil {
+		return nil, err
+	}
+	var spans []SubagentSpan
+	for rows.Next() {
+		var sp SubagentSpan
+		var last, stopped int64
+		var calls int
+		if err := rows.Scan(&sp.AgentID, &sp.From, &last, &stopped, &calls); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		switch {
+		case stopped >= last && calls == 0:
+			continue
+		case stopped >= last:
+			sp.To = stopped
+		case last >= liveSince:
+			sp.To = max(now, last)
+		default:
+			sp.To = last
+		}
+		spans = append(spans, sp)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	return spans, rows.Close()
+}
+
+// SubagentCounts is how many of the spans were working in each of n steps of
+// `step` ms from start: a span counts in every step it overlaps, so a
+// subagent that ran for ten seconds still shows in its minute.
+func SubagentCounts(spans []SubagentSpan, start, step int64, n int) []int {
+	counts := make([]int, n)
+	end := start + step*int64(n)
+	for _, sp := range spans {
+		if sp.To < start || sp.From >= end {
+			continue
+		}
+		first := max(0, (sp.From-start)/step)
+		last := min(int64(n-1), (sp.To-start)/step)
+		for i := first; i <= last; i++ {
+			counts[i]++
+		}
+	}
+	return counts
+}

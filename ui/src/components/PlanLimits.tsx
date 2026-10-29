@@ -13,7 +13,7 @@
  */
 import { useState, type ReactNode } from 'react'
 import type { RateLimits, RateWindow, Settings } from '@/lib/api'
-import { Panel, Stat } from '@/components/ui'
+import { Panel, Stat, usePanelOpen } from '@/components/ui'
 import { ShareWith } from '@/components/PanelShare'
 import { mdTable } from '@/lib/panelShare'
 import { Ring } from '@/components/Donut'
@@ -312,6 +312,59 @@ function nearest(l: RateLimits | undefined, now: number) {
 }
 
 /**
+ * One window in the folded header: its short name, a thin bar, the
+ * percentage and when it resets, coloured as the gauge is (calm under 60%,
+ * amber to 85%, red above). Narrow, the reset goes first and the name
+ * next; the bar and the percentage always stay. The whole reading is on
+ * hover and for a screen reader.
+ */
+function FoldedWindow({ label, name, w, now, source, wide }: { label: string; name: string; w: RateWindow; now: number; source: string; wide: { name: string; reset: string } }) {
+  const r = readWindow(w, now)
+  const clock = r.resetsAt ? resetClock(w.resets_at * 1000, now) : null
+  const color = gaugeColor(r.pct)
+  const said = `${source} ${name}: ${r.pct}% used${r.stale ? ', reading is stale' : clock ? `, resets ${clock}` : ''}`
+  return (
+    <span data-folded-window={`${source} ${name}`} title={said} role="img" aria-label={said}
+      className="flex min-w-0 shrink items-center gap-1.5 text-[11.5px] normal-case tracking-normal">
+      <span aria-hidden className={`hidden shrink-0 text-fg-muted ${wide.name}`}>{label}</span>
+      <span aria-hidden className="relative h-[5px] w-[28px] min-w-[12px] shrink overflow-hidden rounded-full" style={{ background: 'color-mix(in srgb, var(--color-fg) 14%, transparent)' }}>
+        <span className="block h-full rounded-full" style={{ width: `${Math.max(4, Math.min(100, r.pct))}%`, background: r.stale ? 'var(--color-fg-faint)' : color }} />
+      </span>
+      <span aria-hidden className={`num shrink-0 font-medium ${r.stale ? 'text-fg-faint' : ''}`} style={r.stale ? undefined : { color }} data-stale={r.stale || undefined}>{r.pct}%</span>
+      {clock && <span aria-hidden className={`num hidden shrink-0 text-fg-faint ${wide.reset}`}>{clock}</span>}
+    </span>
+  )
+}
+
+/**
+ * The folded panel's header row: every window the panel shows, one small bar
+ * each, so folding it leaves a glance rather than an empty row (owner,
+ * 2026-10-29). The breakpoints are the slot's own width (Panel `folded`, a
+ * size container), set per how many windows share it: names and resets
+ * appear only where they fit, and the line never wraps.
+ */
+function FoldedLimits({ claude, cdx, now }: { claude: [string, RateWindow][]; cdx: [string, RateWindow][]; now: number }) {
+  const many = claude.length + cdx.length > 2
+  // Tailwind sees whole class names only, so both tiers are spelled out.
+  const wide = many
+    ? { name: '@[32rem]:inline', reset: '@[44rem]:inline', agent: '@[32rem]:inline' }
+    : { name: '@[13rem]:inline', reset: '@[21rem]:inline', agent: '' }
+  const short = (l: string) => (l === 'Weekly' ? 'Week' : '5h')
+  const group = (who: string, source: string, ws: [string, RateWindow][], tag: boolean) => ws.length === 0 ? null : (
+    <span className="flex min-w-0 shrink items-center gap-2.5" data-folded-agent={who}>
+      {tag && <span aria-hidden className={`hidden shrink-0 text-[11px] normal-case tracking-normal text-fg-faint ${wide.agent}`}>{who}</span>}
+      {ws.map(([l, w]) => <FoldedWindow key={l} label={short(l)} name={l === 'Weekly' ? 'Week' : '5 hours'} w={w} now={now} source={source} wide={wide} />)}
+    </span>
+  )
+  return (
+    <div className="flex min-w-0 items-center gap-4" data-folded-limits>
+      {group('Claude', 'Claude Code', claude, cdx.length > 0)}
+      {group('Codex', 'Codex', cdx, true)}
+    </div>
+  )
+}
+
+/**
  * PLAN LIMITS, on Now under Today and on Cost: every window, grouped by agent,
  * each as a ring and a plain sentence, then one line on what these limits
  * are and — when one is nearly spent — what to do about it.
@@ -334,6 +387,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
 }) {
   const [plan, savePlan] = usePlan()
   const [more, setMore] = useState(false)
+  const open = usePanelOpen('plan-limits')
   const claude: [string, RateWindow][] = []
   if (limits?.five_hour) claude.push(['5-hour window', limits.five_hour])
   if (limits?.seven_day) claude.push(['Weekly', limits.seven_day])
@@ -358,7 +412,8 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
       : null
   return (
     <div id={id} className={`scroll-mt-16 ${className}`}>
-      <Panel fold="plan-limits" title="Plan limits" share="Plan limits">
+      <Panel fold="plan-limits" title="Plan limits" share="Plan limits"
+        folded={open ? undefined : <FoldedLimits claude={claude} cdx={cdx} now={now} />}>
         <ShareWith toText={() => limitsText([['Claude', claude], ['Codex', cdx]], now)} />
         <div className={`grid gap-3 px-3 py-3 ${cdx.length > 0 ? 'lg:grid-cols-2' : ''}`}>
           <LimitCard who="lead" name={planName(plan)} l={limits} now={now} source="Claude Code" />

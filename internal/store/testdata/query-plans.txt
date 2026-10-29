@@ -2177,6 +2177,13 @@ SELECT COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(s.subscription,''), COALE
 SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ? AND internal = 0
     SEARCH events USING COVERING INDEX idx_events_ts_cover (ts>?)
 
+## store.SubagentSpans
+SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END), SUM(kind = 'tool.pre') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id
+    SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    USE TEMP B-TREE FOR GROUP BY
+
 ## store.SubagentTokensByModelSkip
 SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND COALESCE(agent_id,'') <> '' AND cost_usd > 0 AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude') AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY 1
     SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
@@ -2727,6 +2734,12 @@ SELECT * FROM (SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.si
 
 ## store.fillSubagent
 SELECT 1 FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND +kind = 'tool.post' AND ts >= ? AND json_extract(payload, '$.tool_use_id') = ? LIMIT 1
+    SEARCH events USING INDEX idx_events_agent (sid=? AND agent_id=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.fillSubagent
+SELECT COALESCE(json_extract(payload, '$.agent_type'), '') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND ts >= ? AND json_extract(payload, '$.agent_type') <> '' ORDER BY ts DESC LIMIT 1
     SEARCH events USING INDEX idx_events_agent (sid=? AND agent_id=? AND ts>?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
