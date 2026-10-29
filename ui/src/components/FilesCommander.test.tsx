@@ -111,6 +111,77 @@ describe('the Files tab', () => {
     expect(row(1, 'new.go')).toBeTruthy()
   })
 
+  it('expands a folder in place with →, steps in and out, and folds it with ←', async () => {
+    view()
+    await waitFor(() => expect(row(1, 'src')).toBeTruthy())
+    const nested = () => pane(1).querySelector('[data-rel="src/app.go"]')
+    // The right panel is active; src is first. ← at the top does nothing.
+    fireEvent.keyDown(box(), { key: 'ArrowLeft' })
+    expect(row(1, 'src').className).toContain('cur')
+    fireEvent.keyDown(box(), { key: 'ArrowRight' })
+    await waitFor(() => expect(nested()).toBeTruthy())
+    // In place: the panel did not go into src, and the child sits right below it, one level in.
+    expect(pane(1).querySelector('[data-name=".."]')).toBeNull()
+    const order = [...pane(1).querySelectorAll('[data-rel]')].map((el) => el.getAttribute('data-rel'))
+    expect(order.slice(0, 2)).toEqual(['src', 'src/app.go'])
+    expect(nested()!.getAttribute('aria-level')).toBe('2')
+    expect(row(1, 'src').getAttribute('aria-expanded')).toBe('true')
+    // Compare tints the nested row from its own folder's comparison.
+    await waitFor(() => expect(nested()!.className).toContain('c-diff'))
+    // → on an open folder steps onto its first child; → on a file does nothing.
+    fireEvent.keyDown(box(), { key: 'ArrowRight' })
+    expect(nested()!.className).toContain('cur')
+    fireEvent.keyDown(box(), { key: 'ArrowRight' })
+    expect(nested()!.className).toContain('cur')
+    // ← on a nested row goes to its folder; ← again folds it.
+    fireEvent.keyDown(box(), { key: 'ArrowLeft' })
+    expect(row(1, 'src').className).toContain('cur')
+    fireEvent.keyDown(box(), { key: 'ArrowLeft' })
+    await waitFor(() => expect(nested()).toBeNull())
+    expect(row(1, 'src').getAttribute('aria-expanded')).toBe('false')
+    // Alt+arrows are not ours: the browser's Back and Forward off macOS.
+    fireEvent.keyDown(box(), { key: 'ArrowRight', altKey: true })
+    expect(nested()).toBeNull()
+    // The triangle toggles it for the mouse.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Expand src' })[1]!)
+    await waitFor(() => expect(nested()).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse src' }))
+    await waitFor(() => expect(nested()).toBeNull())
+  })
+
+  it('acts on a nested row by its path, and Enter still goes into the folder', async () => {
+    view()
+    await waitFor(() => expect(row(1, 'src')).toBeTruthy())
+    fireEvent.keyDown(box(), { key: 'ArrowRight' })
+    await waitFor(() => expect(pane(1).querySelector('[data-rel="src/app.go"]')).toBeTruthy())
+    fireEvent.keyDown(box(), { key: 'ArrowRight' })
+    // Space marks it by its path; the next row down is README.md, marked too.
+    fireEvent.keyDown(box(), { key: ' ' })
+    fireEvent.keyDown(box(), { key: ' ' })
+    expect(pane(1).querySelector('[data-rel="src/app.go"]')!.className).toContain('marked')
+    fireEvent.keyDown(box(), { key: 'F8' })
+    const dlg = await screen.findByRole('dialog')
+    expect(dlg.textContent).toContain('src/app.go')
+    fireEvent.click(screen.getByRole('button', { name: 'Move to Trash' }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0]).toEqual({ url: '/v1/projects/7/fs/trash', body: { worktree: 'agent-x', paths: ['src/app.go', 'README.md'] } })
+    // Enter on the expanded folder goes into it, and the expansion is gone with the path.
+    fireEvent.keyDown(box(), { key: 'Home' })
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    await waitFor(() => expect(row(1, '..')).toBeTruthy())
+    expect(pane(1).querySelector('[data-rel="src/app.go"]')).toBeTruthy()
+    expect(pane(1).querySelector('[aria-level="2"]')).toBeNull()
+  })
+
+  it('keeps nested rows the agent changed under the filter', async () => {
+    view()
+    await waitFor(() => expect(row(1, 'src')).toBeTruthy())
+    fireEvent.click(await screen.findByRole('button', { name: /What agent-x changed/ }))
+    await waitFor(() => expect(pane(1).querySelector('[data-name="README.md"]')).toBeNull())
+    fireEvent.keyDown(box(), { key: 'ArrowRight' })
+    await waitFor(() => expect(pane(1).querySelector('[data-rel="src/app.go"]')).toBeTruthy())
+  })
+
   it('is read-only on a paired device', async () => {
     writable = false
     view()

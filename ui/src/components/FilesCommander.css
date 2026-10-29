@@ -84,6 +84,11 @@
 .fc-row:hover { background: var(--fc-hover); }
 .fc-nm { display: flex; align-items: center; gap: 7px; overflow: hidden; min-width: 0; }
 .fc-name { overflow: hidden; text-overflow: ellipsis; }
+/* Rows inside a folder expanded in place (→) step in one level each; the triangle toggles it. */
+.fc-nm { padding-left: calc(var(--fc-depth, 0) * 16px); }
+.fc-tw { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; margin-right: -2px; line-height: 1; color: var(--fc-muted); cursor: pointer; }
+.fc-tw.none { cursor: default; }
+.fc-tw:not(.none):hover { color: var(--fc-acc); }
 .fc-ic { color: var(--fc-faint); display: inline-flex; flex: none; }
 .fc-row.dir .fc-ic { color: var(--fc-dir); }
 .fc-row.dir .fc-name { font-weight: 550; }
@@ -208,6 +213,9 @@
 .fc-norton.fc-narrow .fc-row { height: 30px; }
 .fc-norton .fc-rows { scrollbar-width: none; }
 .fc-norton .fc-ic { display: none; }
+.fc-norton .fc-nm { gap: 0; padding-left: calc(var(--fc-depth, 0) * 2ch); }
+.fc-norton .fc-tw { width: 2ch; margin: 0; font-size: inherit; color: var(--nc-c); }
+.fc-norton .fc-pane.active .fc-row.cur .fc-tw { color: var(--nc-k); }
 .fc-norton .fc-row.dir .fc-name { color: var(--nc-w); font-weight: 400; }
 .fc-norton .fc-sz, .fc-norton .fc-dt { font: inherit; color: var(--nc-c); padding-right: .5ch; }
 .fc-norton .fc-row.marked .fc-name, .fc-norton .fc-row.marked .fc-sz, .fc-norton .fc-row.marked .fc-dt { color: var(--nc-y); font-weight: 400; }
