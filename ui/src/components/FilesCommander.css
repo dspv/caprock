@@ -86,7 +86,7 @@
 .fc-name { overflow: hidden; text-overflow: ellipsis; }
 /* Rows inside a folder expanded in place (→) step in one level each; the triangle toggles it. */
 .fc-nm { padding-left: calc(var(--fc-depth, 0) * 16px); }
-.fc-tw { flex: none; width: 10px; margin-right: -3px; text-align: center; font-size: 10px; line-height: 1; color: var(--fc-faint); cursor: pointer; }
+.fc-tw { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; margin-right: -2px; line-height: 1; color: var(--fc-muted); cursor: pointer; }
 .fc-tw.none { cursor: default; }
 .fc-tw:not(.none):hover { color: var(--fc-acc); }
 .fc-ic { color: var(--fc-faint); display: inline-flex; flex: none; }

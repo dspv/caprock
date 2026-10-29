@@ -473,7 +473,7 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
                       onMouseDown={(e) => { if (folder) { e.stopPropagation(); setActive(i) } }}
                       onClick={() => toggle(i, j)}
                       onDoubleClick={(e) => e.stopPropagation()}
-                    >{folder ? (opened ? '▾' : '▸') : ''}</span>
+                    >{!folder ? '' : norton ? (opened ? '▾' : '▸') : <Chevron open={opened} />}</span>
                   )}
                   <span className="fc-ic">{x.entry.dir ? <FolderIcon size={13} /> : <FileIcon size={13} />}</span>
                   <span className="fc-name">{x.entry.name}{x.entry.link ? ' →' : ''}</span>
@@ -594,6 +594,15 @@ export function FilesCommander({ projectId, projectName, roots, startRight, visi
         />
       ) : null}
     </div>
+  )
+}
+
+/** The fold mark on a folder row in Caprock's look; Norton's keeps ▸ and ▾. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden style={{ transform: open ? 'rotate(90deg)' : undefined }}>
+      <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 
