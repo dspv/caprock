@@ -7,7 +7,7 @@ use serde::Deserialize;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The lowest daemon API level this app works with (`api_level` in
 /// `/v1/status`). A daemon below it is shown as needing an upgrade.
@@ -87,46 +87,205 @@ pub fn find(dir: &Path) -> Found {
     }
 }
 
-/// `find` for a daemon already found (`last`): while `runtime.json` names the
-/// same daemon, `/healthz` alone says it is still there and the last
-/// `/v1/status` is kept. One request instead of two, twice a second, is most
-/// of what an idle window costs the shell (WP-16). Anything else is `find`.
-pub fn recheck(dir: &Path, last: &Found) -> Found {
-    let Found::Running { rt: was, status } = last else {
-        return find(dir);
-    };
-    match read_runtime(dir) {
-        Some(rt) if rt == *was => match request(rt.port, "GET", "/healthz", None) {
-            Ok((200, _)) => {
-                slow_since(false);
-                Found::Running {
-                    rt,
-                    status: status.clone(),
-                }
-            }
-            // Slow is not gone. On a Mac at load average 300 (an Xcode build
-            // beside a test run, 2026-10-28) /healthz took longer than the
-            // 800 ms timeout, and the window flipped to "The Caprock daemon
-            // stopped" a dozen times an hour while the same daemon ran for
-            // nine hours. A daemon that took the connection and has not
-            // answered within the timeout is kept for `SLOW_GRACE`; a
-            // connection that fails, or silence past the grace, is gone as
-            // before.
-            Err(e) if is_timeout(&e) && slow_since(true) < SLOW_GRACE => Found::Running {
-                rt,
-                status: status.clone(),
-            },
-            _ => {
-                slow_since(false);
-                Found::Absent
-            }
-        },
-        _ => find(dir),
+/// Follows a daemon already found, for the monitor's poll. A daemon found
+/// running stays running through a hiccup: one failed probe, or a run of
+/// them shorter than the grace, keeps the window on the dashboard. What ends
+/// it at once is proof the daemon has stopped: `runtime.json` gone, naming
+/// another daemon, or (on Unix) its pid no longer alive.
+///
+/// Why: on the owner's Mac (2026-10-28, load ~15) the window flipped to
+/// "the daemon is gone" and back dozens of times a day while the same
+/// daemon ran for 15 h. Every non-timeout error read as a stop on the first
+/// probe, and the full check every `FULL_CHECK` asked `/v1/status`, which
+/// runs database queries that were taking seconds, with no grace at all.
+/// Each transition to absent is now logged with its reason, so the next
+/// report can be answered from `app.log`.
+pub struct Watch {
+    error_grace: Duration,
+    slow_grace: Duration,
+    failing: Option<Failing>,
+    /// Failure runs that ended in an answer, since the last summary line.
+    hiccups: u32,
+    last_hiccup: String,
+    summary_at: Option<Instant>,
+}
+
+/// A run of failed probes of a daemon still counted as running.
+struct Failing {
+    since: Instant,
+    count: u32,
+    timeouts_only: bool,
+    first: String,
+    last: String,
+}
+
+/// How long a daemon that refuses, resets or answers garbage still counts
+/// as there.
+pub const ERROR_GRACE: Duration = Duration::from_secs(5);
+/// How long a daemon that accepts but answers slowly still counts as there.
+pub const SLOW_GRACE: Duration = Duration::from_secs(20);
+/// Brief failures that recovered are summed into one log line at most this
+/// often, so the log stays a few lines a day.
+pub const HICCUP_SUMMARY_EVERY: Duration = Duration::from_secs(600);
+
+impl Default for Watch {
+    fn default() -> Self {
+        Self::with_graces(ERROR_GRACE, SLOW_GRACE)
     }
 }
 
-/// How long a daemon that accepts but answers slowly still counts as there.
-pub const SLOW_GRACE: Duration = Duration::from_secs(20);
+impl Watch {
+    pub fn with_graces(error_grace: Duration, slow_grace: Duration) -> Self {
+        Watch {
+            error_grace,
+            slow_grace,
+            failing: None,
+            hiccups: 0,
+            last_hiccup: String::new(),
+            summary_at: None,
+        }
+    }
+
+    /// One poll. `full` also asks `/v1/status` (a fresh status); otherwise
+    /// `/healthz` alone, and the last status is kept. Without a daemon found
+    /// before, it is `find`.
+    pub fn check(&mut self, dir: &Path, last: &Found, full: bool) -> Found {
+        let Found::Running { rt: was, status } = last else {
+            self.failing = None;
+            return find(dir);
+        };
+        let rt = match read_runtime(dir) {
+            None => return self.gone(dir, "runtime.json is gone or unreadable".into()),
+            Some(rt) if rt != *was => {
+                // Another daemon: find it afresh, with no grace for the old one.
+                self.failing = None;
+                let found = find(dir);
+                if found == Found::Absent {
+                    self.log_gone(
+                        dir,
+                        &format!(
+                            "runtime.json now names port {} pid {} (was port {} pid {}), which does not answer",
+                            rt.port, rt.pid, was.port, was.pid
+                        ),
+                    );
+                }
+                return found;
+            }
+            Some(rt) => rt,
+        };
+        if rt.pid != 0 && pid_alive(rt.pid) == Some(false) {
+            return self.gone(dir, format!("its process (pid {}) has exited", rt.pid));
+        }
+        let probe = match request(rt.port, "GET", "/healthz", None) {
+            Ok((200, _)) => Ok(()),
+            Ok((code, _)) => Err((false, format!("/healthz answered HTTP {code}"))),
+            Err(e) => Err((is_timeout(&e), format!("/healthz: {}", describe(&e)))),
+        };
+        if let Err((timeout, why)) = probe {
+            return self.failed(dir, rt, status, timeout, why);
+        }
+        self.recovered(dir);
+        let mut status = status.clone();
+        if full {
+            // /healthz answered: the daemon is there. /v1/status runs
+            // database queries and may be slow when /healthz is not; a
+            // failure here keeps the status already known.
+            match fetch_status(rt.port) {
+                Ok(s) => status = s,
+                Err(why) => self.hiccup(dir, format!("/v1/status: {why}")),
+            }
+        }
+        Found::Running { rt, status }
+    }
+
+    fn failed(
+        &mut self,
+        dir: &Path,
+        rt: Runtime,
+        status: &Status,
+        timeout: bool,
+        why: String,
+    ) -> Found {
+        let f = self.failing.get_or_insert_with(|| Failing {
+            since: Instant::now(),
+            count: 0,
+            timeouts_only: true,
+            first: why.clone(),
+            last: String::new(),
+        });
+        f.count += 1;
+        f.timeouts_only &= timeout;
+        f.last = why;
+        let grace = if f.timeouts_only {
+            self.slow_grace
+        } else {
+            self.error_grace
+        };
+        let for_ = f.since.elapsed();
+        if for_ < grace {
+            return Found::Running {
+                rt,
+                status: status.clone(),
+            };
+        }
+        let msg = format!(
+            "{} failed checks over {:.1} s (grace {} s); first: {}; last: {}",
+            f.count,
+            for_.as_secs_f64(),
+            grace.as_secs(),
+            f.first,
+            f.last
+        );
+        self.failing = None;
+        self.log_gone(dir, &msg);
+        Found::Absent
+    }
+
+    /// A run of failures ended with an answer: counted, not logged at once.
+    fn recovered(&mut self, dir: &Path) {
+        if let Some(f) = self.failing.take() {
+            let why = format!(
+                "{} failed checks over {:.1} s, first: {}",
+                f.count,
+                f.since.elapsed().as_secs_f64(),
+                f.first
+            );
+            self.hiccup(dir, why);
+        }
+    }
+
+    /// A failure the daemon recovered from. The first is logged at once;
+    /// later ones are counted into one line per `HICCUP_SUMMARY_EVERY`.
+    fn hiccup(&mut self, dir: &Path, why: String) {
+        self.hiccups += 1;
+        self.last_hiccup = why;
+        if self
+            .summary_at
+            .is_some_and(|t| t.elapsed() < HICCUP_SUMMARY_EVERY)
+        {
+            return;
+        }
+        crate::applog::line(
+            dir,
+            &format!(
+                "daemon: {} brief failure(s) since the last such line, the dashboard kept; last: {}",
+                self.hiccups, self.last_hiccup
+            ),
+        );
+        self.hiccups = 0;
+        self.summary_at = Some(Instant::now());
+    }
+
+    fn gone(&mut self, dir: &Path, why: String) -> Found {
+        self.failing = None;
+        self.log_gone(dir, &why);
+        Found::Absent
+    }
+
+    fn log_gone(&self, dir: &Path, why: &str) {
+        crate::applog::line(dir, &format!("daemon: counted as gone: {why}"));
+    }
+}
 
 fn is_timeout(e: &std::io::Error) -> bool {
     matches!(
@@ -135,16 +294,42 @@ fn is_timeout(e: &std::io::Error) -> bool {
     )
 }
 
-/// How long the daemon has been answering only with timeouts: `slow` true
-/// starts (or continues) the run and returns its length, false ends it.
-fn slow_since(slow: bool) -> Duration {
-    static SINCE: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
-    let mut g = SINCE.lock().unwrap_or_else(|p| p.into_inner());
-    if !slow {
-        *g = None;
-        return Duration::ZERO;
+/// An error for the log: its kind and its message.
+fn describe(e: &std::io::Error) -> String {
+    format!("{:?}: {e}", e.kind())
+}
+
+/// `/v1/status` alone, with why it failed.
+fn fetch_status(port: u16) -> Result<Status, String> {
+    match request(port, "GET", "/v1/status", None) {
+        Ok((200, body)) => serde_json::from_str(&body).map_err(|e| format!("unreadable: {e}")),
+        Ok((code, _)) => Err(format!("HTTP {code}")),
+        Err(e) => Err(describe(&e)),
     }
-    g.get_or_insert_with(std::time::Instant::now).elapsed()
+}
+
+/// Whether a process is alive: `Some(false)` only when the OS says there is
+/// no such process. `None` where this is not asked (Windows), and the
+/// error grace alone decides.
+pub fn pid_alive(pid: u32) -> Option<bool> {
+    #[cfg(unix)]
+    {
+        let Ok(p) = i32::try_from(pid) else {
+            return None;
+        };
+        // SAFETY: signal 0 checks only that the process exists and may be
+        // signalled; nothing is delivered.
+        if unsafe { libc::kill(p, 0) } == 0 {
+            return Some(true);
+        }
+        // EPERM: it exists and belongs to someone else.
+        Some(std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = pid;
+        None
+    }
 }
 
 /// `/healthz` then `/v1/status`; `None` when either fails.
@@ -386,30 +571,76 @@ mod tests {
         assert_eq!(find(&temp_dir("none")), Found::Absent);
     }
 
+    fn running(dir: &Path) -> Found {
+        Found::Running {
+            rt: read_runtime(dir).unwrap(),
+            status: Status {
+                version: "v1".into(),
+                api_level: 3,
+            },
+        }
+    }
+
+    /// A port nothing listens on.
+    fn closed_port() -> u16 {
+        TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    fn short() -> Watch {
+        Watch::with_graces(Duration::from_millis(1500), Duration::from_secs(20))
+    }
+
     #[test]
     fn a_recheck_asks_only_healthz_and_keeps_the_last_status() {
         // No /v1/status here: a recheck that asked for it would read absent.
         let port = serve(vec![("/healthz", r#"{"status":"ok"}"#)]);
         let dir = temp_dir("recheck");
         write_runtime(&dir, port, r#","api_level":3"#);
-        let rt = read_runtime(&dir).unwrap();
-        let status = Status {
-            version: "v1".into(),
-            api_level: 3,
-        };
-        let last = Found::Running { rt, status };
-        assert_eq!(recheck(&dir, &last), last);
+        let last = running(&dir);
+        let mut w = Watch::default();
+        assert_eq!(w.check(&dir, &last, false), last);
         // A different daemon in runtime.json: a full find (here, absent).
         write_runtime(&dir, port, r#","api_level":4"#);
-        assert_eq!(recheck(&dir, &last), Found::Absent);
+        assert_eq!(w.check(&dir, &last, false), Found::Absent);
         assert_eq!(
-            recheck(&temp_dir("recheck-none"), &Found::Absent),
+            w.check(&temp_dir("recheck-none"), &Found::Absent, false),
             Found::Absent
         );
     }
 
     #[test]
-    fn a_slow_daemon_is_kept_and_a_closed_port_is_gone() {
+    fn a_full_check_keeps_the_status_when_only_v1_status_fails() {
+        // /healthz answers, /v1/status is a 404: the daemon is there.
+        let port = serve(vec![("/healthz", r#"{"status":"ok"}"#)]);
+        let dir = temp_dir("full-status-fails");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let last = running(&dir);
+        assert_eq!(Watch::default().check(&dir, &last, true), last);
+        let log = std::fs::read_to_string(dir.join(crate::applog::FILE)).unwrap();
+        assert!(log.contains("/v1/status: HTTP 404"), "{log}");
+    }
+
+    #[test]
+    fn a_full_check_takes_the_fresh_status() {
+        let port = serve(vec![
+            ("/healthz", r#"{"status":"ok"}"#),
+            ("/v1/status", r#"{"version":"v2","api_level":3}"#),
+        ]);
+        let dir = temp_dir("full-status");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let Found::Running { status, .. } = Watch::default().check(&dir, &running(&dir), true)
+        else {
+            panic!("expected running");
+        };
+        assert_eq!(status.version, "v2");
+    }
+
+    #[test]
+    fn a_slow_daemon_is_kept() {
         // Accepts and never answers: a daemon too busy for the timeout.
         let ln = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = ln.local_addr().unwrap().port();
@@ -420,32 +651,107 @@ mod tests {
         });
         let dir = temp_dir("slow");
         write_runtime(&dir, port, r#","api_level":3"#);
-        let rt = read_runtime(&dir).unwrap();
-        let last = Found::Running {
-            rt,
-            status: Status {
-                version: "v1".into(),
-                api_level: 3,
-            },
-        };
-        assert_eq!(recheck(&dir, &last), last, "a timeout is not a stop");
-        // Nothing listens: refused at once, gone at once.
-        let closed = TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let dir = temp_dir("slow-closed");
-        write_runtime(&dir, closed, r#","api_level":3"#);
-        let rt = read_runtime(&dir).unwrap();
-        let last = Found::Running {
-            rt,
-            status: Status {
-                version: "v1".into(),
-                api_level: 3,
-            },
-        };
-        assert_eq!(recheck(&dir, &last), Found::Absent);
+        let last = running(&dir);
+        // Past the error grace, inside the slow one: timeouts only.
+        let mut w = Watch::with_graces(Duration::ZERO, Duration::from_secs(20));
+        assert_eq!(w.check(&dir, &last, false), last, "a timeout is not a stop");
+        assert_eq!(w.check(&dir, &last, false), last);
+    }
+
+    #[test]
+    fn a_brief_refusal_is_kept_and_a_lasting_one_is_gone() {
+        let port = closed_port();
+        let dir = temp_dir("refused");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let last = running(&dir);
+        let mut w = short();
+        // Nothing listens: within the grace the daemon is still there.
+        assert_eq!(w.check(&dir, &last, false), last);
+        // The listener comes back within the grace: one answer resets it.
+        let ln = TcpListener::bind(("127.0.0.1", port)).unwrap();
+        let back = thread::spawn(move || {
+            let (mut c, _) = ln.accept().unwrap();
+            let mut buf = [0u8; 512];
+            let mut req = String::new();
+            while !req.contains("\r\n\r\n") {
+                match c.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => req.push_str(&String::from_utf8_lossy(&buf[..n])),
+                }
+            }
+            let _ = c.write_all(b"HTTP/1.1 200 OK\r\n\r\n{}");
+        });
+        assert_eq!(w.check(&dir, &last, false), last);
+        back.join().unwrap();
+        // Closed again, and kept closed past the grace: gone, and logged.
+        assert_eq!(w.check(&dir, &last, false), last);
+        thread::sleep(Duration::from_millis(1600));
+        assert_eq!(w.check(&dir, &last, false), Found::Absent);
+        let log = std::fs::read_to_string(dir.join(crate::applog::FILE)).unwrap();
+        assert!(log.contains("daemon: counted as gone"), "{log}");
+        assert!(log.contains("/healthz: NotConnected"), "{log}");
+    }
+
+    #[test]
+    fn a_reset_or_short_answer_is_kept_within_the_grace() {
+        // Accepts, reads the request, answers garbage or nothing, closes.
+        let ln = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = ln.local_addr().unwrap().port();
+        thread::spawn(move || {
+            for (i, conn) in ln.incoming().take(6).enumerate() {
+                let mut c = conn.unwrap();
+                let mut buf = [0u8; 512];
+                let _ = c.read(&mut buf);
+                if i % 2 == 0 {
+                    let _ = c.write_all(b"HTTP/1.1 2");
+                }
+            }
+        });
+        let dir = temp_dir("short-read");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let last = running(&dir);
+        let mut w = short();
+        assert_eq!(w.check(&dir, &last, false), last);
+        assert_eq!(w.check(&dir, &last, false), last);
+        thread::sleep(Duration::from_millis(1600));
+        assert_eq!(w.check(&dir, &last, false), Found::Absent);
+        let log = std::fs::read_to_string(dir.join(crate::applog::FILE)).unwrap();
+        assert!(log.contains("daemon: counted as gone"), "{log}");
+        assert!(log.contains("first: /healthz: "), "{log}");
+    }
+
+    #[test]
+    fn a_removed_runtime_file_is_gone_at_once() {
+        let port = serve(vec![("/healthz", r#"{"status":"ok"}"#)]);
+        let dir = temp_dir("removed");
+        write_runtime(&dir, port, r#","api_level":3"#);
+        let last = running(&dir);
+        let mut w = Watch::default();
+        assert_eq!(w.check(&dir, &last, false), last);
+        std::fs::remove_file(dir.join("runtime.json")).unwrap();
+        assert_eq!(w.check(&dir, &last, false), Found::Absent);
+        let log = std::fs::read_to_string(dir.join(crate::applog::FILE)).unwrap();
+        assert!(log.contains("runtime.json is gone"), "{log}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_exited_pid_is_gone_at_once() {
+        let mut child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        child.wait().unwrap();
+        assert_eq!(pid_alive(pid), Some(false));
+        assert_eq!(pid_alive(std::process::id()), Some(true));
+        // The port still answers (a stranger on it): the pid decides.
+        let port = serve(vec![("/healthz", r#"{"status":"ok"}"#)]);
+        let dir = temp_dir("exited");
+        std::fs::write(
+            dir.join("runtime.json"),
+            format!(r#"{{"port":{port},"pid":{pid},"api_level":3}}"#),
+        )
+        .unwrap();
+        let last = running(&dir);
+        assert_eq!(Watch::default().check(&dir, &last, false), Found::Absent);
     }
 
     #[test]
