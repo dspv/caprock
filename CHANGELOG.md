@@ -12,6 +12,17 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.165.1] - 2026-10-29
+
+### Fixed
+
+- **app:** the window no longer flips to "the daemon stopped" and back to the
+  dashboard on a brief hiccup. A running daemon is kept through 5 s of failed
+  checks (20 s when it is only slow), and a slow `/v1/status` no longer counts
+  at all; a real stop (its `runtime.json` gone, or its process exited) is
+  still seen at once. When the app does count the daemon as gone, `app.log`
+  says why.
+
 ## [0.165.0] - 2026-10-28
 
 ### Added
