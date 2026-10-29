@@ -12,6 +12,37 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.166.0] - 2026-10-29
+
+### Added
+
+- **ui:** Files: → expands a folder in place, its contents right below it
+  one level in, as Finder's list view does; → again steps onto its first
+  file, ← folds it or steps back to the folder holding the row. A triangle
+  on each folder row does the same with the mouse; Enter still goes into
+  the folder. Nested rows show git marks, size and date, are tinted in
+  compare mode, stay under *What the agent changed*, and can be marked,
+  viewed, edited, copied, moved and sent to the Trash.
+
+### Changed
+
+- **ui:** the top of the Agent panel (⌘I) takes about half the height it
+  did and cuts nothing. One row carries the agent's own mark (a click on it
+  still picks the session's face), the session's name once, the project only
+  when it differs, the branch, the state and the permission mode. Burn rate
+  stays big with tokens and spend on one line under it, beside a new chart of
+  how many subagents worked each minute of the last hour, with how many work
+  now, their types and the hour's peak; with none, the chart says so. The
+  model, the context fill and the start are small chips under them.
+- **api:** `GET /v1/sessions/{id}/subagents?hour=1` adds the last hour's
+  subagent count a minute (`hour: {start, step_ms, counts, peak}`).
+- **ui:** a folded **Plan limits** panel is no longer an empty row. Its header
+  keeps one thin bar per window the panel shows — Claude's 5 hours and week,
+  and Codex's when it reports them — each with its short name, the percentage
+  and the reset time, coloured as the gauges are (amber from 60%, red above
+  85%, grey when the reading is stale). As the row narrows the reset times go
+  first, then the names; the bars and percentages stay, on one line.
+
 ## [0.165.1] - 2026-10-29
 
 ### Fixed
