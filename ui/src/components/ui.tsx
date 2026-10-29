@@ -58,7 +58,15 @@ export function resetPanelFolds(): void {
  * body away and back, remembered per viewer (owner, 2026-10-11, translated:
  * "let me hide some blocks").
  */
-export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave, fold, sectionRef, share }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void; fold?: string; sectionRef?: Ref<HTMLElement>
+export function Panel({ title, center, right, children, className = '', onMouseEnter, onMouseLeave, fold, sectionRef, share, folded }: { title?: ReactNode; center?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; onMouseEnter?: () => void; onMouseLeave?: () => void; fold?: string; sectionRef?: Ref<HTMLElement>
+  /**
+   * What the header row carries while the panel is folded, beside the title:
+   * a glance at the body, so a folded panel is not an empty row (owner,
+   * 2026-10-29, on Plan limits). It takes the rest of the row and never
+   * wraps it; the slot is a size container, so its content can drop parts
+   * with `@[..rem]:` queries as the row narrows.
+   */
+  folded?: ReactNode
   /**
    * The panel's name, to offer a share button in its header (.ai/04-ui.md
    * § Share, "Any panel"): picture or text, names hidden by default. Opt-in,
@@ -101,6 +109,9 @@ export function Panel({ title, center, right, children, className = '', onMouseE
             * not on the space left over between the title and the right-hand
             * note — those two differ in width, and a control that drifts as
             * the note changes reads as a rendering accident. */}
+          {folded && fold && !open ? (
+            <div data-panel-folded className="@container flex min-w-0 flex-1 basis-0 justify-end overflow-hidden">{folded}</div>
+          ) : null}
           {center && open ? (
             // On a phone there is no room to centre it over the title and the
             // note, so it takes its own row underneath instead of covering them.

@@ -83,4 +83,40 @@ describe('plan limits in plain words', () => {
     expect(href({ name: 'cost', section: 'limits' })).toBe('#/cost?section=limits')
     expect(parseHash('#/cost?section=limits')).toEqual({ name: 'cost', section: 'limits' })
   })
+
+  it('folded, keeps a bar per window in the header instead of an empty row', () => {
+    render(
+      <PlanLimitsPanel
+        now={NOW}
+        limits={{ five_hour: { used_percentage: 97, resets_at: at(9) }, seven_day: { used_percentage: 47, resets_at: at(3 * 24 * 60) } }}
+        codex={{ seven_day: { used_percentage: 8, resets_at: at(5 * 24 * 60), observed_at: NOW - 3600_000 } }}
+      />,
+    )
+    expect(document.querySelector('[data-folded-limits]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Plan limits' }))
+    // The body is gone; the header carries every window the body showed.
+    expect(document.querySelector('[data-limit-card]')).toBeNull()
+    const header = document.querySelector('[data-panel-folded]')!
+    expect(header.closest('header')).toBeTruthy()
+    const windows = [...header.querySelectorAll('[data-folded-window]')].map((el) => el.getAttribute('data-folded-window'))
+    expect(windows).toEqual(['Claude Code 5 hours', 'Claude Code Week', 'Codex Week'])
+    expect(screen.getByRole('img', { name: /^Claude Code 5 hours: 97% used, resets / })).toBeTruthy()
+    expect(screen.getByRole('img', { name: /^Codex Week: 8% used, resets / })).toBeTruthy()
+    // Coloured by the gauge's thresholds: red above 85%, calm under 60%.
+    const pct = (name: string) => header.querySelector(`[data-folded-window="${name}"] .num`) as HTMLElement
+    expect(pct('Claude Code 5 hours').style.color).toBe('var(--color-danger)')
+    expect(pct('Claude Code Week').style.color).toBe('var(--color-ok)')
+    // The names and resets give way when narrow; the bar and % never do.
+    expect(header.querySelector('[data-folded-window="Codex Week"] .hidden')?.className).toMatch(/@\[\d+rem\]:inline/)
+    fireEvent.click(screen.getByRole('button', { name: 'Plan limits' }))
+    expect(document.querySelector('[data-folded-limits]')).toBeNull()
+    expect(document.querySelectorAll('[data-limit-card]').length).toBe(2)
+  })
+
+  it('a stale window folds grey, without a reset', () => {
+    render(<PlanLimitsPanel now={NOW} limits={{ five_hour: { used_percentage: 70, resets_at: at(-30) } }} codex={undefined} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Plan limits' }))
+    const el = screen.getByRole('img', { name: 'Claude Code 5 hours: 70% used, reading is stale' })
+    expect(el.querySelector('[data-stale]')?.className).toContain('text-fg-faint')
+  })
 })
