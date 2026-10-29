@@ -6869,7 +6869,9 @@ also reach is a filesystem-write API, so its scope is the decision.
 - **A tab kind of its own, `files`, one per project.** Two panels, Norton
   Commander's keys (Tab, arrows, Enter, Backspace, Insert/Space, F3–F8),
   with ⌥3–⌥8 (Alt+3–8) beside the F-keys because a Mac's top row is media
-  keys without fn. Opened by ⇧⌘X (Ctrl+Shift+X), the palette and the
+  keys without fn. → and ← expand and fold a folder in place, as
+  Finder's list view does (owner, 2026-10-29); Enter still goes into it.
+  Opened by ⇧⌘X (Ctrl+Shift+X), the palette and the
   project menu; on the dashboard at `#/files`.
 - **Agent-aware.** Left the checkout, right an agent's worktree; *Compare*
   marks what differs and what is on one side only, from git's view of the
