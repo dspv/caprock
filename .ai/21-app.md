@@ -604,16 +604,19 @@ One window, three regions:
   the notification and the phone, which keep their buttons.
 - **Agent cockpit (right).** The inspector, open by default (⌘I closes it,
   and closed is remembered per machine), becomes the agent cockpit beside an
-  agent's terminal: the session's project (and its branch when not the
-  default; the path on hover), the agent's character in its state (working,
-  *background agents working · N* once its turn ended with subagents still
-  at work, waiting on you, looping, idle, ended) with three figures at
-  the right that the viewer picks from one list (cost, burn rate, tokens,
-  cache hit rate, turns, time working, last call, tool calls): a big
-  headline and two short lines under it (*$4.08/h burn ▾*, *4.01B tok ▾*),
-  never one twice, burn rate, tokens and cost by default; when the two
-  lines would squeeze the agent's own, they move to the chips' row at its
-  right. Under what it is doing now, the spend details, open on a chart of the
+  agent's terminal, headed by a dense informer (owner, 2026-10-29): the
+  agent's own mark, the session's name, the project only when it is not
+  the name and the branch when not the default (the path on hover), and
+  its state (working, *background agents working · N* once its turn ended
+  with subagents still at work, waiting on you, looping, idle, ended) with
+  the permission mode, on one row; three figures the viewer picks from one
+  list (cost, burn rate, tokens, cache hit rate, turns, time working, last
+  call, tool calls) — a big headline and two short ones on a line under it
+  (*$4.08/h burn ▾*, *4.01B tok ▾*), never one twice, burn rate, tokens
+  and cost by default — beside a chart of how many subagents worked each
+  minute of the last hour, with how many work now and of which types; the
+  model, the context fill and the start as small chips. Nothing in it is
+  cut; rows wrap ([04-ui.md](04-ui.md), Inspector). Under what it is doing now, the spend details, open on a chart of the
   period (*Chart | Numbers*, for the session, today, 7 or 30 days; the
   bars measure cost, tokens or turns, picked from a ▾ after the total;
   Numbers is three more figures the viewer picks), folding to one strip of

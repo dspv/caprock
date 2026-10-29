@@ -114,12 +114,14 @@ func TestDescribeSubagentsReadsTheIndex(t *testing.T) {
 	}
 }
 
-// The live-subagent counts and a subagent's spend read their covering
+// The live-subagent counts, the chart's spans and a subagent's spend read their covering
 // indexes (migration 0054), not the session's rows from the table.
 func TestSubagentCountsAreCovered(t *testing.T) {
 	db := openTest(t).DB()
 	for _, c := range []struct{ name, query string }{
 		{"live", `SELECT agent_id, MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) FROM events
+			WHERE sid = (SELECT sid FROM sessions WHERE session_id = 's') AND ts >= 0 AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id`},
+		{"spans", `SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END), SUM(kind = 'tool.pre') FROM events
 			WHERE sid = (SELECT sid FROM sessions WHERE session_id = 's') AND ts >= 0 AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id`},
 		{"spend", `SELECT agent_id, MAX(ts), COALESCE(model, ''), COUNT(*), SUM(cost_usd IS NULL AND tokens_in IS NOT NULL), COALESCE(SUM(cost_usd), 0)
 			FROM events INDEXED BY idx_events_subagent_turn
@@ -128,5 +130,49 @@ func TestSubagentCountsAreCovered(t *testing.T) {
 		if plan := queryPlan(t, db, c.query); !strings.Contains(plan, "COVERING INDEX") {
 			t.Errorf("%s reads the table; plan:\n%s", c.name, plan)
 		}
+	}
+}
+
+// The subagent chart's counts: a span counts in every minute it overlaps; a
+// stopped agent that made no call (Claude Code's internal ones) is not a
+// subagent; a working one runs to now, one that went quiet without a stop
+// ends at its newest event.
+func TestSubagentSpansAndCounts(t *testing.T) {
+	ctx := context.Background()
+	f := &weekFixture{t: t, s: openTest(t), loc: time.UTC}
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
+	at := func(min int) time.Time { return now.Add(time.Duration(-min) * time.Minute) }
+	ev := func(agent string, kind event.Kind, ts time.Time) {
+		f.put(event.Event{SessionID: "s", AgentID: agent, Source: event.SourceHook, Kind: kind, Tool: "Read", Ts: ts})
+	}
+	ev("done", event.KindToolPre, at(50))
+	ev("done", event.KindAgentStop, at(40))
+	ev("internal", event.KindAgentStop, at(30)) // no call: left out
+	ev("live", event.KindToolPre, at(10))       // still working: runs to now
+	ev("quiet", event.KindToolPre, at(58))      // never stopped, silent past the live window
+	ev("", event.KindToolPre, at(5))            // the main thread is not a subagent
+
+	spans, err := SubagentSpans(ctx, f.s.DB(), "s", at(90).UnixMilli(), at(30).UnixMilli(), now.UnixMilli())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]SubagentSpan{}
+	for _, sp := range spans {
+		got[sp.AgentID] = sp
+	}
+	if len(got) != 3 || got["done"].To != at(40).UnixMilli() || got["live"].To != now.UnixMilli() || got["quiet"].To != at(58).UnixMilli() {
+		t.Fatalf("spans = %+v", spans)
+	}
+
+	start := at(60).UnixMilli()
+	counts := SubagentCounts(spans, start, time.Minute.Milliseconds(), 60)
+	want := map[int]int{0: 0, 2: 1, 9: 0, 10: 1, 20: 1, 21: 0, 49: 0, 50: 1, 59: 1}
+	for i, n := range want {
+		if counts[i] != n {
+			t.Errorf("minute %d: %d subagents, want %d (counts %v)", i, counts[i], n, counts)
+		}
+	}
+	if c := SubagentCounts(nil, start, 60_000, 60); len(c) != 60 || c[0] != 0 {
+		t.Fatalf("no spans: %v", c)
 	}
 }

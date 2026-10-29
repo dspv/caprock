@@ -403,50 +403,53 @@ describe('the agent cockpit', () => {
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
   })
 
-  // "Move the status under the agent's portrait", and the mode with it
-  // (owner, 2026-10-14, translated); the chips in fives, compact past two
-  // full lines.
-  it('puts the state under the portrait and draws many subagents compact, in fives', async () => {
+  // The state and the mode on the name row (owner, 2026-10-29: the panel's
+  // top wasted half its height); the chips in fives, compact past two full
+  // lines, under the figures.
+  it('puts the state on the name row and draws many subagents compact, in fives', async () => {
     h.subagents = { working: Array.from({ length: 23 }, (_, i) => ({ agent_id: `a${i}`, agent_type: 'general-purpose', tool_calls: 1, started_at: i, last_at: i, running: true, asking: false })), finished: 0 } as SubagentsNow
     try {
       show(agent({ live_subagents: 23, started_at: now - 3_600_000 }))
-      const lead = document.querySelector('[data-hero-lead]')!
-      expect(within(lead as HTMLElement).getByRole('status')).toHaveTextContent('Working')
-      expect(document.querySelector('[data-hero-started]')).toBeInTheDocument()
+      const head = document.querySelector('[data-hero-head]') as HTMLElement
+      expect(within(head).getByRole('status')).toHaveTextContent('Working')
+      expect(head.querySelector('[data-hero-mode]')).toBeInTheDocument()
+      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('started 1h ago')
       const strip = await screen.findByRole('group', { name: 'Subagents' })
       expect(strip).toHaveAttribute('data-compact', 'true')
       expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
       expect(strip.querySelector('button')).toHaveTextContent('')
-      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 subagents · 23 general-purpose')
+      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 subagents')
+      expect(document.querySelector('[data-hero-kinds]')).toHaveTextContent('23 general-purpose')
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
   })
 
-  // Owner, 2026-10-28, translated: "why do I need 'Claude Code' … a huge
-  // thing in the most visible place with zero information. I need to
-  // understand the configuration of the agents that are working right now."
-  it('names the agent small and shows its configuration: model, context, subagents by type', async () => {
+  // Owner, 2026-10-29, translated: "'Claude Code' can be replaced entirely
+  // with a native icon" — and the configuration as small chips, nothing cut.
+  it('marks the agent with its own icon and shows its configuration as chips: model, context, start', async () => {
     h.subagents = { working: [
       { agent_id: 'e1', agent_type: 'Explore', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false },
       { agent_id: 'g1', agent_type: 'general-purpose', tool_calls: 1, started_at: 1, last_at: 1, running: true, asking: false },
       { agent_id: 'e2', agent_type: 'Explore', tool_calls: 1, started_at: 3, last_at: 3, running: true, asking: false },
     ], finished: 0 } as SubagentsNow
     try {
-      show(agent({ live_subagents: 3 }))
-      expect(document.querySelector('[data-hero-agent]')).toHaveTextContent('Claude Code')
-      expect(document.querySelector('[data-hero-agent]')).toHaveClass('text-fg-faint')
-      const config = document.querySelector('[data-hero-config]')!
-      expect(config).toHaveTextContent('Opus 5.5 · 62% ctx')
-      expect(config.querySelector('[data-hero-context] .text-warn')).toHaveTextContent('62%')
-      const count = await waitFor(() => {
-        const c = document.querySelector('[data-hero-count]')
+      show(agent({ live_subagents: 3, started_at: now - 6 * 86_400_000 }))
+      expect(document.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
+      expect(document.querySelector('[data-hero-agent] svg')).toBeInTheDocument()
+      expect(screen.queryByText('Claude Code')).toBeNull()
+      expect(document.querySelector('[data-hero-model]')).toHaveTextContent('Opus 5.5')
+      expect(document.querySelector('[data-hero-context] .text-warn')).toHaveTextContent('62%')
+      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('started 6d ago')
+      const kinds = await waitFor(() => {
+        const c = document.querySelector('[data-hero-kinds]')
         if (!c?.textContent?.includes('Explore')) throw new Error('no kinds yet')
         return c
       })
-      expect(count).toHaveTextContent('3 subagents · 2 Explore, 1 general-purpose')
+      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('3 subagents')
+      expect(kinds).toHaveTextContent('2 Explore, 1 general-purpose')
       // A type opens the first of its kind in the Subagents section.
-      fireEvent.click(within(count as HTMLElement).getByRole('button', { name: /2 Explore/ }))
+      fireEvent.click(within(kinds as HTMLElement).getByRole('button', { name: /2 Explore/ }))
       expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
     } finally {
       h.subagents = { working: [], finished: 0 }
@@ -454,8 +457,45 @@ describe('the agent cockpit', () => {
     cleanup()
     // Nothing the daemon does not report is drawn: no model, no context.
     show(agent({ model: '', model_display: undefined, context: undefined }))
-    expect(document.querySelector('[data-hero-config]')).toBeNull()
-    expect(document.querySelector('[data-hero-agent]')).toHaveTextContent('Claude Code')
+    expect(document.querySelector('[data-hero-model]')).toBeNull()
+    expect(document.querySelector('[data-hero-context]')).toBeNull()
+    expect(document.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
+  })
+
+  // The face picker the portrait opened stays one click away, on the mark.
+  it('picks the session’s face from the agent’s mark', () => {
+    show(agent())
+    const mark = screen.getByRole('button', { name: "Change this session's face" })
+    expect(mark).toHaveAttribute('title', "Claude Code · change this session's face")
+    fireEvent.click(mark)
+    expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(0)
+  })
+
+  // The subagent chart: how many worked each minute of the last hour, the
+  // most at once, and in the frame — not a line of its own — when none did.
+  it('charts the subagents over the last hour, and says so in the frame when none ran', async () => {
+    const counts = Array.from({ length: 60 }, (_, i) => (i > 40 ? 3 : i > 20 ? 7 : 0))
+    h.subagents = { working: [{ agent_id: 'e1', agent_type: 'Explore', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false }], finished: 0,
+      hour: { start: now - 59 * 60_000, step_ms: 60_000, counts, peak: 7 } } as SubagentsNow
+    try {
+      show(agent({ live_subagents: 1 }))
+      const peak = await screen.findByText('peak 7 · 1h')
+      expect(peak.closest('[data-hero-subs]')).toBeInTheDocument()
+      expect(screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 7 at once' })).toBeInTheDocument()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+    cleanup()
+    h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
+    try {
+      show(agent())
+      const none = await screen.findByText('no subagents in the last hour')
+      expect(none.closest('[data-hero-subs]')).toBeInTheDocument()
+      expect(screen.getByRole('img', { name: 'No subagents in the last hour' })).toBeInTheDocument()
+      expect(screen.queryByText('peak 0 · 1h')).toBeNull()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
   })
 
   it('still waits on a permission prompt while background agents work', async () => {
@@ -471,18 +511,26 @@ describe('the agent cockpit', () => {
   })
 
   // "feat/app-one-tab-strip …nt-a874ec5240fb37a9d" said neither which
-  // project nor, cut from the left, which folder (owner, 2026-10-09).
-  it('heads the panel with the project, a branch only off the default, the path on hover', () => {
-    const { unmount } = render(<Inspector session={agent({ cwd: '/u/dev/caprock', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'master' })} project={{ name: 'caprock', default_branch: 'master' }} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} />)
+  // project nor, cut from the left, which folder (owner, 2026-10-09); and
+  // "caprock" over "caprock" said the same thing twice (owner, 2026-10-29).
+  it('names the session once, the project only when it differs, a branch only off the default, the path on hover', () => {
+    const inspector = (p: Partial<SessionSummary>) => render(<Inspector session={agent(p)} project={{ name: 'caprock', default_branch: 'master' }} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} />)
+    const { unmount } = inspector({ cwd: '/u/dev/caprock', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'master' })
     const place = screen.getByLabelText('Project caprock')
     expect(place).toHaveTextContent(/^caprock$/)
     expect(place).toHaveAttribute('title', '/u/dev/caprock')
+    expect(screen.getByRole('heading', { name: 'Fix the login bug' })).toBeInTheDocument()
     unmount()
-    render(<Inspector session={agent({ cwd: '/u/dev/caprock/.claude/worktrees/agent-a1', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'feat/x' })} project={{ name: 'caprock', default_branch: 'master' }} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} />)
+    const again = inspector({ cwd: '/u/dev/caprock/.claude/worktrees/agent-a1', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'feat/x' })
     const other = screen.getByLabelText('Project caprock, branch feat/x')
-    expect(other).toHaveTextContent('caprock· feat/x')
+    expect(other).toHaveTextContent('caprockfeat/x')
     expect(other).not.toHaveTextContent('agent-a1')
     expect(other).toHaveAttribute('title', '/u/dev/caprock/.claude/worktrees/agent-a1')
+    again.unmount()
+    // Named after its project: the name once, no place line on the default branch.
+    inspector({ cwd: '/u/dev/caprock', repo_root: '/u/dev/caprock', project: 'caprock', git_branch: 'master', title: 'caprock' })
+    expect(screen.getAllByText('caprock')).toHaveLength(1)
+    expect(screen.queryByLabelText(/^Project caprock/)).toBeNull()
   })
 
   it('leaves a shell tab the plain inspector', () => {
@@ -505,7 +553,7 @@ describe('the figures beside the agent', () => {
     expect(tok).toHaveTextContent('tok')
     // Short, on one line each: no wrapping inside a line.
     expect(tok.className).toMatch(/\bwhitespace-nowrap\b/)
-    expect(tok.className).toMatch(/text-\[13px\]/)
+    expect(tok.className).toMatch(/text-\[12px\]/)
   })
 
   it('lets each of the three pick its metric, swaps rather than repeats, and remembers them', () => {
@@ -542,17 +590,17 @@ describe('the figures beside the agent', () => {
     expect(lines()).toEqual(['burn', 'tokens'])
   })
 
-  // One grid in every state (owner, 2026-10-13): the two smaller figures
-  // always stand under the big one, at any width, never on the chips' row.
+  // The two smaller figures stand under the big one at any width, never
+  // among the subagent chips.
   it('keeps the two lines under the big figure at any width', () => {
     for (const w of [291, 447]) {
       vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(w)
       const { unmount } = show(agent())
-      const hero = document.querySelector('.cockpit-hero')!
-      const sec = hero.querySelector('[data-hero-sec]')!
-      expect(sec.className).toMatch(/\[grid-area:sec\]/)
+      const fig = document.querySelector('[data-hero-fig]')!
+      const sec = fig.querySelector('[data-hero-sec]')!
+      expect(fig.querySelector('[data-headline]')!.compareDocumentPosition(sec) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(within(sec as HTMLElement).getAllByRole('button', { name: /Choose what this line shows/ })).toHaveLength(2)
-      expect(hero.querySelector('[data-hero-chips]')!.contains(sec)).toBe(false)
+      expect(document.querySelector('[data-hero-chips]')!.contains(sec)).toBe(false)
       unmount()
       vi.restoreAllMocks()
     }

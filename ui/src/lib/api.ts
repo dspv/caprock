@@ -2403,7 +2403,14 @@ export const api = {
   /** Every priced model call of the session's main thread, oldest first (the spend scrubber). */
   sessionCalls: (id: string) => get<SessionCall[]>(`/v1/sessions/${encodeURIComponent(id)}/calls`),
   /** The subagents working in a session now, and how many finished lately. */
-  subagents: (id: string, recent = 0) => get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents${recent > 0 ? `?recent=${recent}` : ''}`),
+  /** With `hour`, also how many worked in each minute of the last hour (the cockpit's chart). */
+  subagents: (id: string, recent = 0, hour = false) => {
+    const q = new URLSearchParams()
+    if (recent > 0) q.set('recent', String(recent))
+    if (hour) q.set('hour', '1')
+    const qs = q.toString()
+    return get<SubagentsNow>(`/v1/sessions/${encodeURIComponent(id)}/subagents${qs ? `?${qs}` : ''}`)
+  },
   /** One subagent opened up: its task, its newest `limit` calls (before a call id), its result and numbers. */
   subagent: (id: string, agent: string, opts: { before?: number; limit?: number } = {}) => {
     const q = new URLSearchParams()
@@ -2835,6 +2842,17 @@ export interface SubagentsNow {
   recent?: SubagentDone[]
   /** What every subagent of the session has cost; absent when any is unknown. */
   cost_usd?: number
+  /** Only when asked with `hour`, and absent from a daemon that predates it. */
+  hour?: SubagentHour
+}
+
+/** How many subagents worked in each minute of the last hour, oldest first. */
+export interface SubagentHour {
+  /** The first minute's start, unix ms; the last minute is the one now is in. */
+  start: number
+  step_ms: number
+  counts: number[]
+  peak: number
 }
 
 /** One call in a subagent's activity feed (GET /v1/sessions/{id}/subagents/{agent}). */
