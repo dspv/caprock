@@ -259,6 +259,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-30 — 0.166.0: fold folders in the Files tab, plan limits as bars when folded, a compact Agent panel header with a subagent chart
+
+A minor release, one batch PR (#863) of #860, #861 and #862. The Files tab opens a folder in place with → and folds it with ← (← inside a folder jumps to it), with a chevron for the mouse; nested rows keep git marks, compare tints, marks and every action by their path from the root. The Plan limits panel, folded, keeps one small bar per limit window in its header row (label, percent, reset; labels and resets drop first on narrow widths) instead of an empty row. The Agent panel's header is about half as tall: the agent's own small icon (which opens the face picker), the name once, state and permission on the name row, burn rate beside a framed chart of subagents per minute over the last hour (`GET /v1/sessions/{id}/subagents?hour=1`, no migration), and model, context and start as chips; the separate "no subagents running" line is gone.
+
 ### 2026-10-29 — 0.165.1: the app keeps a running daemon through brief check failures
 
 A patch release, one PR (#858). The desktop app showed "the daemon stopped" and back dozens of times a day while the same daemon ran for 15 h on a loaded Mac: any refused or reset `/healthz` probe, or a slow `/v1/status`, counted as a stop on the first try. A daemon found running is now kept through a run of failures shorter than 5 s (`ERROR_GRACE`), or 20 s of slow answers (`SLOW_GRACE`); `/v1/status` no longer decides anything. A real stop is still seen at once: `runtime.json` gone or naming another daemon, or, on macOS and Linux, its pid no longer alive. Every transition to stopped writes its reason to `app.log`; recovered hiccups are summed into one line per 10 minutes.
