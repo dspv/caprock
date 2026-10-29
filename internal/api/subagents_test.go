@@ -103,3 +103,46 @@ func TestSessionSubagentsSaysWhoIsWorkingOnWhat(t *testing.T) {
 		t.Errorf("a = %+v", a)
 	}
 }
+
+// With ?hour=1 the list carries the subagent count over the last hour, a
+// minute a step: the working ones up to now, the finished one in its minutes,
+// the internal agent that ran no tool nowhere. Without it, nothing is added.
+func TestSessionSubagentsHour(t *testing.T) {
+	e := newEnv(t)
+	n := 0
+	add := func(ago time.Duration, kind event.Kind, agent string) {
+		n++
+		ev := &event.Event{SessionID: "s-hr", Source: event.SourceHook, Kind: kind, Tool: "Read", AgentID: agent,
+			Key: "h" + strconv.Itoa(n), Ts: e.now.Add(-ago), Payload: json.RawMessage(`{}`)}
+		if _, err := store.InsertEvent(context.Background(), e.st.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(5*time.Minute, event.KindToolPre, "live")
+	add(45*time.Minute, event.KindToolPre, "done")
+	add(44*time.Minute, event.KindAgentStop, "done")
+	add(20*time.Minute, event.KindAgentStop, "internal")
+
+	var plain SubagentsResponse
+	e.get(t, "/v1/sessions/s-hr/subagents", &plain)
+	if plain.Hour != nil {
+		t.Fatalf("hour without ?hour=1: %+v", plain.Hour)
+	}
+	var got SubagentsResponse
+	e.get(t, "/v1/sessions/s-hr/subagents?hour=1", &got)
+	h := got.Hour
+	if h == nil || len(h.Counts) != 60 || h.Step != 60_000 || h.Start%60_000 != 0 || h.Peak != 1 {
+		t.Fatalf("hour = %+v", h)
+	}
+	if h.Counts[59] != 1 {
+		t.Errorf("the working subagent is not in the current minute: %v", h.Counts)
+	}
+	total := 0
+	for _, c := range h.Counts {
+		total += c
+	}
+	// live: its minute five ago through now (6); done: two minutes at most.
+	if total < 7 || total > 8 {
+		t.Errorf("counts %v sum %d; want 7-8", h.Counts, total)
+	}
+}

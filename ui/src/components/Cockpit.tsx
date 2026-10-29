@@ -32,7 +32,8 @@ import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValu
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
-import { PickableFace, SessionCharacter } from './SessionFace'
+import { PickableFace } from './SessionFace'
+import { AgentGlyph } from './AgentMarks'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
 import { PermissionModeChip } from './PermissionModeChip'
@@ -68,7 +69,7 @@ const SUBAGENTS_POLL_MS = 20_000
  * finished drops off. The daemon does the counting; thousands of subagent
  * events never reach the page.
  */
-export function useSubagents(sessionId: string, enabled: boolean, recent = 0): SubagentsNow | undefined {
+export function useSubagents(sessionId: string, enabled: boolean, recent = 0, hour = false): SubagentsNow | undefined {
   const [data, setData] = useState<SubagentsNow | undefined>(undefined)
   const [tick, setTick] = useState(0)
   const last = useRef(0)
@@ -77,11 +78,11 @@ export function useSubagents(sessionId: string, enabled: boolean, recent = 0): S
     if (!enabled) return
     let alive = true
     last.current = Date.now()
-    api.subagents(sessionId, recent)
+    api.subagents(sessionId, recent, hour)
       .then((r) => { if (alive && r && Array.isArray(r.working)) setData(r) })
       .catch(() => { /* an older daemon: no section */ })
     return () => { alive = false }
-  }, [sessionId, enabled, tick, recent])
+  }, [sessionId, enabled, tick, recent, hour])
   useEffect(() => {
     if (!enabled) return
     const poll = setInterval(() => setTick((t) => t + 1), SUBAGENTS_POLL_MS)
@@ -119,11 +120,17 @@ const STATE_TEXT: Record<CockpitState, string> = {
 }
 
 /** The cockpit's sections below the permission card, in reading order. */
-export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, release, processes }: {
+export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, release, processes, title, place, headExtra }: {
   s: SessionSummary
   sessionId: string
   hasPermission: boolean
   summary?: Summary
+  /** The session's name, which the hero's first row carries. */
+  title?: string
+  /** Where it works: the project only when it is not the name, a branch off the default. */
+  place?: HeroPlace
+  /** Lines the inspector puts under the name row (another account, the attempts). */
+  headExtra?: ReactNode
   /** The working tree's changes, drawn by the inspector (it owns the diff fetch). */
   changes?: ReactNode
   /** The session's pull requests and their checks (CockpitCI), placed and folded with the rest. */
@@ -148,7 +155,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   const [allFinished, setAllFinished] = useState(false)
   const [reveal, setReveal] = useState(0)
   // Claude Code is the agent with subagents Caprock hears from.
-  const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude', allFinished ? FINISHED_OPEN : 0)
+  const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude', allFinished ? FINISHED_OPEN : 0, true)
   // A chip opens its subagent's row, unfolding the section if it was folded.
   const openFromChip = (id: string) => { setLook('subagents', 'full'); setOpenSub(id); setReveal((n) => n + 1) }
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
@@ -197,7 +204,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   }
   return (
     <>
-      <Hero s={s} sessionId={sessionId} state={state} asking={hasPermission || !!permission} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} />
+      <Hero s={s} sessionId={sessionId} state={state} asking={hasPermission || !!permission} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} title={title} place={place} extra={headExtra} />
       {arranging
         ? <ArrangeSections order={order} onDone={() => setArranging(false)} />
         : <SectionFrames order={order} sections={sections} />}
@@ -354,36 +361,28 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
 }
 
 /**
- * The agent, its figures and its subagents, in one grid that never changes
- * shape when the state does (owner, 2026-10-13: "restore the awesome look —
- * both when work is going on and when it waits"). Three rows:
+ * The top of the Agent panel: the session as a dense informer (owner,
+ * 2026-10-29, translated: "the middle doesn't fit, and a lot of valuable
+ * space is wasted there — it needs a super-efficient informer"; V2 of the
+ * mockups). Nothing in it is cut: a row that does not fit wraps.
  *
- * - **The agent's row**, as tall as the avatar: the character, whose ring
- *   carries the state's colour; the agent as a small label, the session's
- *   configuration (model, context fill) prominent under it — the model never
- *   cut to make room for the figure — and when it started. At its
- *   right, in a place of its own, the headline figure and what it is
- *   (owner, 2026-10-12: "put it to the right of the agent").
- * - **The detail row**: under the portrait, centred, the state line (dot and
- *   word, in the state's colour) and the permission mode under it (owner,
- *   2026-10-14: "status and mode can both go under the portrait — then the
- *   figures get better visibility", translated); the two smaller figures at
- *   the right, with the rest of the row to themselves.
- * - **The subagents' row**: how many and of which types, each type opening
- *   the first of its kind below; a chip per subagent in groups of five, in the
- *   order they started, wrapping onto a second line; compact chips when two
- *   lines of full ones would not hold them (lib/cockpit chipLayout); or *no
- *   subagents running*.
- *
- * A state change recolours the ring, the dot and the state line and changes
- * the chips; nothing moves. A longer figure takes room from the agent's
- * lines, which are left-aligned and cut rather than wrapped; a narrower
- * inspector steps the headline down (.cockpit-hero, a container query). A
- * click on Claude's portrait picks this session's face (SessionFace).
- * Now and then, idle or waiting with no prompt up, a small "try a duck?"
- * line beside the portrait points at the rubber ducks (SessionFace).
+ * - **The name row**: the agent's own mark (AgentGlyph) in a small tile
+ *   tinted by the state — a click on it picks the session's face, as the
+ *   portrait's did, and "try a duck?" now and then points out of it — then the session's name, the project only when it is
+ *   not the name, and a branch off the default; at the right the state (dot
+ *   and word, how long ago when idle) and the permission mode. In a narrow
+ *   inspector the state moves under the name.
+ * - **The figures and the subagents**: the headline figure, burn rate by
+ *   default, big with its comparison, the two smaller figures under it on
+ *   one line; beside it the subagent chart (SubagentChart), under it in a hero
+ *   narrower than 340px. Each figure is still a chooser.
+ * - **The subagent chips**, one per working subagent in groups of five,
+ *   only while some work.
+ * - **The configuration** as small chips: the model and its account, how
+ *   full the context is (a bar and the percent), when it started. What the
+ *   daemon does not report is left out.
  */
-function Hero({ s, sessionId, state, asking, now, background, subs, permission, figures, usual, onChip }: { s: SessionSummary; sessionId: string; state: CockpitState; asking: boolean; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void }) {
+function Hero({ s, sessionId, state, asking, now, background, subs, permission, figures, usual, onChip, title, place, extra }: { s: SessionSummary; sessionId: string; state: CockpitState; asking: boolean; now: number; background: number; subs?: SubagentsNow; permission?: Permission | null; figures: SpendFigures; usual?: Usual; onChip: (id: string) => void; title?: string; place?: HeroPlace; extra?: ReactNode }) {
   const since = s.worked_at || s.last_event_at
   const saysBackground = background > 0 && state === 'working'
   const working = subs?.working.length ?? 0
@@ -393,95 +392,158 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const kinds = useMemo(() => subagentKinds(subs?.working ?? []), [subs])
   const model = s.model_display || s.model
-  // One word under the portrait: "Background agents" wrapped to two lines in
-  // the narrow column (owner, 2026-10-22). The full phrase is the tooltip and
-  // what a screen reader announces.
+  // One word: "Background agents" took two lines (owner, 2026-10-22). The
+  // full phrase is the tooltip and what a screen reader announces.
   const label = saysBackground ? 'Background' : STATE_LABEL[state]
   const ago = (state === 'idle' || state === 'ended') && since ? fmtAgo(since, now) : ''
+  const agent = s.agent ?? 'claude'
+  // The project only when it says something the name does not ("caprock"
+  // over "caprock" was the panel's first two lines).
+  const project = place && title && place.project.trim().toLowerCase() !== title.trim().toLowerCase() ? place.project : ''
   return (
     <div className="@container min-w-0">
-      <div className="cockpit-hero" data-state={state}>
-        <PickableFace agent={s.agent} sessionId={sessionId} hint={!asking && (state === 'idle' || state === 'waiting')}
-          className="cockpit-avatar relative grid place-items-center justify-self-center rounded-[15px] [grid-area:av]" data-state={state}>
-          <SessionCharacter agent={s.agent} sessionId={sessionId} size={46} className="cockpit-character" />
-        </PickableFace>
-        {/* The agent a small label, and in its place how it is set up now
-          * (owner, 2026-10-28, translated: "why do I need 'Claude Code' …
-          * a huge thing in the most visible place with zero information. I
-          * need to understand the configuration of the agents that are
-          * working right now"): the model and how full its context is. The
-          * permission mode is the chip under the portrait, the subagents
-          * the last row; what the daemon does not report is left out. */}
-        <div className="grid min-w-0 content-start [grid-area:info]">
-          <p data-hero-agent className="truncate whitespace-nowrap text-[11px] leading-[16px] text-fg-faint">{agentName(s.agent ?? 'claude')}</p>
-          {model || s.context ? (
-            <p data-hero-config className="flex min-w-0 items-baseline whitespace-nowrap text-[13.5px] font-semibold leading-[20px] text-fg"
-              title={[model, s.context ? `${fmtPct(s.context.pct)} of the context window used (${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)})` : ''].filter(Boolean).join(' · ')}>
-              {model ? <span data-hero-model className="max-w-full shrink-0 truncate">{model}</span> : null}
-              {model ? <SubscriptionTag id={s.subscription} agent={s.agent ?? 'claude'} className="min-w-0 shrink truncate text-[12px] font-normal text-fg-muted" /> : null}
-              {s.context ? (
-                <span data-hero-context className="min-w-0 truncate text-[12px] font-normal text-fg-muted">
-                  {model ? <span className="whitespace-pre text-fg-faint"> · </span> : null}
-                  <span className={s.context.pct >= 85 ? 'text-danger' : s.context.pct >= 60 ? 'text-warn' : ''}>{fmtPct(s.context.pct)}</span> ctx
-                </span>
-              ) : null}
-            </p>
-          ) : null}
-          {s.started_at > 0 && state !== 'ended' && (
-            <p data-hero-started className="truncate text-[11px] leading-[16px] text-fg-faint">started {fmtAgo(s.started_at, now)}</p>
+      <div className="cockpit-hero grid min-w-0 grid-cols-[minmax(0,1fr)] gap-y-2" data-state={state}>
+        <div data-hero-head className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <PickableFace agent={agent} sessionId={sessionId} title={agentName(agent)} hint={!asking && (state === 'idle' || state === 'waiting')}
+            className="cockpit-avatar relative grid h-[24px] w-[24px] shrink-0 place-items-center rounded-[7px]" data-state={state}>
+            <span data-hero-agent aria-label={agentName(agent)} className="grid place-items-center"><AgentGlyph agent={agent} size={15} /></span>
+          </PickableFace>
+          {title && (
+            <h3 className="min-w-0 break-words text-[14.5px] font-semibold leading-[20px] tracking-[-0.01em] text-fg" title={title}>{title}</h3>
           )}
-        </div>
-        {s.stats && <div data-hero-fig className="min-w-0 justify-self-end [grid-area:fig]"><HeadlineFigure figures={figures} usual={usual} /></div>}
-        {/* Under the portrait: the state, then the permission mode and, for
-          * a session Caprock started, the way to change it while it runs
-          * (ADR-054). */}
-        <div data-hero-lead className="grid min-w-0 content-start justify-items-center gap-[4px] text-center [grid-area:lead]">
-          {/* The dot inline with the word, so a label that wraps ("Waiting /
-            * on you" in a narrow inspector) keeps it beside its first line. */}
-          <p data-hero-state className={`max-w-full text-[11.5px] font-medium leading-[14px] ${saysBackground ? 'whitespace-nowrap' : '[text-wrap:balance]'} ${STATE_TEXT[state]}`} role="status"
-            title={saysBackground ? backgroundLabel(background) : undefined} aria-label={saysBackground ? backgroundLabel(background) : undefined}>
-            <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
-            {label}{ago ? <span className="block font-normal text-fg-faint">{ago}</span> : null}
-          </p>
-          {state !== 'ended' && <p data-hero-mode className="flex max-w-full justify-center"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></p>}
-        </div>
-        {s.stats && <div data-hero-sec className="min-w-0 justify-self-end [grid-area:sec]"><HeroSecondaries figures={figures} /></div>}
-        {/* Always there, at least one line high, so nothing above it moves
-          * when subagents start or finish (owner, 2026-10-13: "fix its
-          * position and mark the subagents' place when nothing runs"). */}
-        <div data-hero-chips className="flex min-w-0 flex-wrap items-start gap-x-2.5 [grid-area:chips]">
-          {/* How many and of which types (*3 subagents · 2 Explore, 1
-            * general-purpose*); a type opens the first of its kind in the
-            * Subagents section, where what it is doing now is. The chips
-            * wrap under the line when both do not fit. */}
-          {count > 0 && state !== 'ended' && (
-            <span data-hero-count className="flex min-w-0 max-w-full items-baseline whitespace-nowrap text-[11.5px] leading-[22px] text-fg-muted" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>
-              <span className="shrink-0 font-medium text-fg">{count} {count === 1 ? 'subagent' : 'subagents'}</span>
-              {kinds.length > 0 && (
-                <span data-hero-kinds className="min-w-0 truncate">
-                  <span className="whitespace-pre text-fg-faint"> · </span>
-                  {kinds.map((k, i) => (
-                    <Fragment key={k.type}>
-                      {i > 0 && ', '}
-                      <button type="button" data-hero-kind={k.type} onClick={() => onChip(k.first)}
-                        title={`${k.count} ${k.type} working. Open`}
-                        className="rounded-[4px] text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-                        {k.count} {k.type}
-                      </button>
-                    </Fragment>
-                  ))}
-                </span>
-              )}
+          {place && (project || place.branch) && (
+            <span data-hero-place className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[12px] leading-[20px]" title={place.path}
+              aria-label={`Project ${place.project}${place.branch ? `, branch ${place.branch}` : ''}`}>
+              {project && <span className="break-all font-medium text-fg-muted">{project}</span>}
+              {place.branch && <span className="mono break-all text-[11px] text-fg-faint">{place.branch}</span>}
             </span>
           )}
-          <div ref={chipBox} className="flex min-w-[96px] flex-1 items-center">
-            {strip.chips.length > 0
-              ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />
-              : state !== 'ended' && <span data-hero-nosubs className="text-[11px] leading-[22px] text-fg-faint">no subagents running</span>}
-          </div>
+          <span data-hero-lead className="ml-auto flex shrink-0 items-center gap-1.5">
+            <p data-hero-state className={`whitespace-nowrap text-[11.5px] font-medium leading-[20px] ${STATE_TEXT[state]}`} role="status"
+              title={saysBackground ? backgroundLabel(background) : undefined} aria-label={saysBackground ? backgroundLabel(background) : undefined}>
+              <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
+              {label}{ago ? <span className="font-normal text-fg-faint"> {ago}</span> : null}
+            </p>
+            {state !== 'ended' && <span data-hero-mode className="flex"><PermissionModeChip sessionId={sessionId} agent={s.agent} /></span>}
+          </span>
         </div>
+        {extra}
+        {(s.stats || subs) && (
+          <div data-hero-row className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-x-3 gap-y-2 @[340px]:grid-cols-[auto_minmax(0,1fr)]">
+            {s.stats
+              ? (
+                <div data-hero-fig className="grid min-w-0 content-center gap-[3px]">
+                  <HeadlineFigure figures={figures} usual={usual} />
+                  <div data-hero-sec><HeroSecondaries figures={figures} /></div>
+                </div>
+              )
+              : <span />}
+            {subs && <SubagentChart subs={subs} count={state === 'ended' ? 0 : count} kinds={kinds} onChip={onChip} />}
+          </div>
+        )}
+        {/* Always measured, drawn only while subagents work. */}
+        <div ref={chipBox} data-hero-chips className="flex min-w-0 items-center empty:hidden">
+          {strip.chips.length > 0 && <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />}
+        </div>
+        {(model || s.context || (s.started_at > 0 && state !== 'ended')) && (
+          <div data-hero-config className="flex min-w-0 flex-wrap gap-1"
+            title={[model, s.context ? `${fmtPct(s.context.pct)} of the context window used (${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)})` : ''].filter(Boolean).join(' · ')}>
+            {model ? (
+              <span data-hero-model className={HERO_CHIP}>
+                <span className="font-semibold text-fg">{model}</span>
+                <SubscriptionTag id={s.subscription} agent={agent} className="text-[11px] font-normal text-fg-muted" />
+              </span>
+            ) : null}
+            {s.context ? <ContextChip pct={s.context.pct} /> : null}
+            {s.started_at > 0 && state !== 'ended' && (
+              <span data-hero-started className={HERO_CHIP}>started {fmtAgo(s.started_at, now)}</span>
+            )}
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+/** Where the session works, as the inspector heads it (lib/projects sessionPlace). */
+export type HeroPlace = { project: string; branch: string; path: string }
+
+const HERO_CHIP = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-[5px] bg-[var(--app-row-hover)] px-1.5 text-[11.5px] leading-[20px] text-fg-muted'
+
+/** How full the context is: a short bar and the percent, amber from 60%, red from 85%. */
+function ContextChip({ pct }: { pct: number }) {
+  const p = Math.max(0, Math.min(100, pct))
+  const [bar, ink] = p >= 85 ? ['bg-danger', 'text-danger'] : p >= 60 ? ['bg-warn', 'text-warn'] : ['bg-ok', 'text-fg']
+  return (
+    <span data-hero-context className={HERO_CHIP}>
+      <span aria-hidden className="relative h-[5px] w-[34px] overflow-hidden rounded-full bg-[var(--app-hairline)]">
+        <span className={`absolute inset-y-0 left-0 rounded-full ${bar}`} style={{ width: `${p}%` }} />
+      </span>
+      <span className={`num ${ink}`}>{fmtPct(p)}</span> ctx
+    </span>
+  )
+}
+
+/**
+ * The subagents in a small frame beside the headline figure: how many work
+ * now and of which types (a type opens the first of its kind in the
+ * Subagents section), the most at once in the last hour, and a step line of
+ * how many worked each minute of it (`/subagents?hour=1`). With none in the
+ * hour, a flat line and *no subagents in the last hour*; from a daemon that
+ * sends no hour, the frame without the line (*no subagents running*).
+ */
+function SubagentChart({ subs, count, kinds, onChip }: { subs: SubagentsNow; count: number; kinds: { type: string; count: number; first: string }[]; onChip: (id: string) => void }) {
+  const hour = subs.hour
+  const quiet = count === 0 && (!hour || hour.peak === 0)
+  return (
+    <div data-hero-subs className="grid min-w-0 grid-rows-[auto_1fr] rounded-[7px] bg-[color-mix(in_srgb,var(--color-fg)_3%,transparent)] px-2 pt-1 shadow-[inset_0_0_0_1px_var(--app-hairline)]">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] leading-[16px] text-fg-muted">
+        {quiet ? (
+          <span data-hero-nosubs className="text-fg-faint">{hour ? 'no subagents in the last hour' : 'no subagents running'}</span>
+        ) : (
+          <>
+            <span data-hero-count className="whitespace-nowrap font-semibold text-fg" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>
+              {count} {count === 1 ? 'subagent' : 'subagents'}
+            </span>
+            {hour && hour.peak > 0 && <span data-hero-peak className="num ml-auto whitespace-nowrap text-[10.5px] text-fg-faint" title="The most at work at once in a minute of the last hour">peak {hour.peak} · 1h</span>}
+            {kinds.length > 0 && (
+              <span data-hero-kinds className="basis-full">
+                {kinds.map((k, i) => (
+                  <Fragment key={k.type}>
+                    {i > 0 && ', '}
+                    <button type="button" data-hero-kind={k.type} onClick={() => onChip(k.first)}
+                      title={`${k.count} ${k.type} working. Open`}
+                      className="rounded-[4px] text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+                      {k.count} {k.type}
+                    </button>
+                  </Fragment>
+                ))}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+      {hour && <SubagentSpark counts={hour.counts} peak={hour.peak} />}
+    </div>
+  )
+}
+
+/** The hour's counts as a step line over a faint area, scaled to its peak. */
+function SubagentSpark({ counts, peak }: { counts: number[]; peak: number }) {
+  const W = 300
+  const H = 20
+  const n = Math.max(1, counts.length)
+  const y = (v: number) => (peak > 0 ? H - 2 - (v / peak) * (H - 5) : H - 2)
+  let d = `M0 ${y(counts[0] ?? 0)}`
+  counts.forEach((v, i) => { d += ` L${(i * W) / n} ${y(v)} L${((i + 1) * W) / n} ${y(v)}` })
+  return (
+    <svg data-hero-spark viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" data-empty={peak === 0 || undefined}
+      aria-label={peak > 0 ? `Subagents at work each minute of the last hour, at most ${peak} at once` : 'No subagents in the last hour'}
+      className="cockpit-subspark mt-0.5 block h-[20px] w-full self-end">
+      <line className="base" x1="0" x2={W} y1={H - 0.5} y2={H - 0.5} />
+      {peak > 0 && <path className="area" d={`${d} L${W} ${H} L0 ${H} Z`} />}
+      <path className="line" d={d} />
+    </svg>
   )
 }
 
@@ -577,7 +639,7 @@ const HERO_PLACE = ['the big figure', 'the line under it', 'the second line'] as
 function HeroMenu({ slot, hero, figures, label, onPick }: { slot: number; hero: readonly Metric[]; figures: SpendFigures; label: string; onPick: (m: Metric) => void }) {
   return (
     <div role="menu" aria-label={label} onKeyDown={onMenuKey}
-      className="absolute right-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
+      className="absolute left-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
       {HEADLINES.map((h) => {
         const at = hero.indexOf(h.id)
         const other = at >= 0 && at !== slot
@@ -617,7 +679,7 @@ function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usu
   const vs = versus(headline, figures, usual)
   const days = usual?.days ?? 30
   return (
-    <div ref={box} className="relative grid min-w-0 justify-items-end gap-[5px]" data-headline={headline}>
+    <div ref={box} className="relative grid min-w-0 justify-items-start gap-[3px]" data-headline={headline}>
       <span className="cockpit-hero-num num whitespace-nowrap font-semibold leading-none tracking-[-0.03em] text-fg" data-long={num.length >= 8 ? '' : undefined}
         aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
         {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
@@ -625,12 +687,12 @@ function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usu
       {/* How the headline compares with the viewer's own usual, left of
         * its name; under 340px a long name steps down to its short word
         * beside it, so the agent's name is never the one cut. */}
-      <span className="flex items-center gap-1.5" data-usual-on={vs ? '' : undefined}>
+      <span className="-ml-1 flex items-center gap-1.5" data-usual-on={vs ? '' : undefined}>
       {vs && <UsualDelta v={vs} days={days} />}
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Headline: ${meta.name}. Choose what it shows`}
         onClick={() => setOpen((o) => !o)}
         title="Choose what this figure shows"
-        className="-mr-1 inline-flex items-center gap-1 rounded-[5px] px-1 text-[11.5px] leading-[16px] text-fg-faint outline-none hover:bg-panel-2 hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
+        className="inline-flex items-center gap-1 rounded-[5px] px-1 text-[11.5px] leading-[16px] text-fg-faint outline-none hover:bg-panel-2 hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
         <span data-label-long>{meta.name.toLowerCase()}</span><span data-label-short>{meta.short}</span><span aria-hidden className="text-[9px]">▾</span>
       </button>
       </span>
@@ -654,7 +716,7 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
   useMenuDismiss(open !== null, box, () => setOpen(null))
   const choose = (i: number, m: Metric) => { setSpendPrefs({ hero: pickHero(hero, i, m) }); setOpen(null) }
   return (
-    <div ref={box} className="relative grid justify-items-end gap-[2px]">
+    <div ref={box} className="relative -ml-1 flex flex-wrap items-baseline gap-x-0.5">
       {[1, 2].map((i) => {
         const m = hero[i]!
         const meta = HEADLINES.find((h) => h.id === m)!
@@ -663,9 +725,9 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
           <button key={i} type="button" data-hero-line={m} aria-haspopup="menu" aria-expanded={open === i}
             aria-label={`${meta.name} ${value}. Choose what this line shows`} title={metricTitle(m, figures)}
             onClick={() => setOpen((o) => (o === i ? null : i))}
-            className="-mr-1 inline-flex items-baseline gap-1 whitespace-nowrap rounded-[5px] px-1 text-[13px] leading-[18px] outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
+            className="inline-flex items-baseline gap-1 whitespace-nowrap rounded-[5px] px-1 text-[12px] leading-[18px] outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
             <span className="num font-medium text-fg-muted">{value}</span>
-            <span className="text-[12px] text-fg-faint">{meta.short}</span>
+            <span className="text-[11px] text-fg-faint">{meta.short}</span>
             <span aria-hidden className="text-[9px] text-fg-faint">▾</span>
           </button>
         )

@@ -106,23 +106,28 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
   if (s && !isShell) {
     return (
       <div className="grid grid-cols-[minmax(0,1fr)] gap-[18px] px-4 pb-4 pt-3.5">
-        <header className="grid gap-1">
-          <h3 className="line-clamp-2 text-[14.5px] font-semibold leading-snug tracking-[-0.01em] text-fg" title={sessionTitle(s)}>{sessionTitle(s)}</h3>
-          {s.cwd && <Place place={sessionPlace(s, project)} />}
-          {/* A running session never changes account; with more than one,
-            * a new session on another picks the work up (ADR-048). */}
-          {s.cwd && <p className="flex"><RelayMenu sessionID={sessionId} agent={s.agent} subscription={s.subscription} accountsOnly /></p>}
-          {onCompare && s.attempts && s.attempts > 1 && (
-            <p className="text-[12px] text-fg-muted">
-              Attempt {s.attempt} of {s.attempts} ·{' '}
-              <button type="button" onClick={onCompare} className="text-accent underline-offset-2 hover:underline">Compare</button>
-            </p>
-          )}
-        </header>
-        {showPrompt && <PermissionPrompt sessionId={sessionId} />}
+        {/* The name, the place and the state are the cockpit hero's first
+          * row (owner, 2026-10-29: the name and the project said "caprock"
+          * twice on two lines). */}
         <Cockpit
           s={s}
           sessionId={sessionId}
+          title={sessionTitle(s)}
+          place={s.cwd ? sessionPlace(s, project) : undefined}
+          headExtra={<>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 empty:hidden">
+              {/* A running session never changes account; with more than one,
+                * a new session on another picks the work up (ADR-048). */}
+              {s.cwd && <RelayMenu sessionID={sessionId} agent={s.agent} subscription={s.subscription} accountsOnly />}
+              {onCompare && s.attempts && s.attempts > 1 && (
+                <p className="text-[12px] text-fg-muted">
+                  Attempt {s.attempt} of {s.attempts} ·{' '}
+                  <button type="button" onClick={onCompare} className="text-accent underline-offset-2 hover:underline">Compare</button>
+                </p>
+              )}
+            </div>
+            {showPrompt && <PermissionPrompt sessionId={sessionId} />}
+          </>}
           hasPermission={hasPermission}
           summary={summary}
           // A chat's folder is Caprock's own, never a repository (ADR-071):
@@ -164,16 +169,6 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
 
       <Actions s={s} sessionId={sessionId} isShell={isShell} ended={ended} editor={editor} onDetach={onDetach} />
     </div>
-  )
-}
-
-/** "caprock · feat/x": the project first, a branch only when it is not the default, the path on hover. */
-function Place({ place }: { place: { project: string; branch: string; path: string } }) {
-  return (
-    <p className="flex min-w-0 items-baseline gap-1.5 text-[12px]" title={place.path} aria-label={`Project ${place.project}${place.branch ? `, branch ${place.branch}` : ''}`}>
-      <span className="min-w-0 truncate font-medium text-fg">{place.project}</span>
-      {place.branch && <span className="mono min-w-0 truncate text-[11px] text-fg-faint">· {place.branch}</span>}
-    </p>
   )
 }
 

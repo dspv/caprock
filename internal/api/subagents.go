@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/dspv/caprock/internal/event"
@@ -82,6 +83,43 @@ type SubagentsResponse struct {
 	// CostUSD is what every subagent of the session has cost, over its whole
 	// life; omitted when any of them is unknown.
 	CostUSD *float64 `json:"cost_usd,omitempty"`
+	// Hour is how many subagents worked in each minute of the last hour;
+	// only with ?hour=1 (the cockpit's chart).
+	Hour *SubagentHour `json:"hour,omitempty"`
+}
+
+// SubagentHour is the subagent count over the last hour, a minute a step.
+type SubagentHour struct {
+	// Start is the first step's start (unix ms, on a minute); the last step
+	// is the minute now is in.
+	Start int64 `json:"start"`
+	Step  int64 `json:"step_ms"`
+	// Counts holds how many subagents worked at some moment of each step,
+	// oldest first; Peak is the largest.
+	Counts []int `json:"counts"`
+	Peak   int   `json:"peak"`
+}
+
+// subagentHourSteps is the chart's length: sixty one-minute steps.
+const subagentHourSteps = 60
+
+// subagentHour counts the session's subagents per minute over the last
+// hour. Agents are read from a live window before the hour too, so one that
+// started before it and was still working shows from the first minute.
+func (s *Server) subagentHour(r *http.Request, id string) (*SubagentHour, error) {
+	now := s.d.Now().UnixMilli()
+	step := time.Minute.Milliseconds()
+	start := now - now%step - step*(subagentHourSteps-1)
+	live := s.d.Now().Add(-liveSubagentWindow).UnixMilli()
+	spans, err := store.SubagentSpans(r.Context(), s.d.Store.DB(), id, start-liveSubagentWindow.Milliseconds(), live, now)
+	if err != nil {
+		return nil, err
+	}
+	h := &SubagentHour{Start: start, Step: step, Counts: store.SubagentCounts(spans, start, step, subagentHourSteps)}
+	for _, n := range h.Counts {
+		h.Peak = max(h.Peak, n)
+	}
+	return h, nil
 }
 
 // handleSessionSubagents lists the subagents working in a session, under
@@ -140,6 +178,12 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 			Doing: doing, DoingFrom: from,
 			Running: a.Running, Asking: a.Asking, SubagentModel: model(a.AgentID),
 		})
+	}
+	if r.URL.Query().Get("hour") == "1" {
+		if resp.Hour, err = s.subagentHour(r, id); err != nil {
+			s.fail(w, err)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
