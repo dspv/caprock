@@ -2755,6 +2755,9 @@ export const api = {
   queueResend: (id: string, ids?: readonly number[]) => post<QueueResendResult>(`/v1/agents/${encodeURIComponent(id)}/queue/resend`, ids?.length ? { ids } : {}),
   /** A session's last compaction, whether one runs or waits, and what this machine's keep (ADR-085). */
   compaction: (id: string) => get<CompactionView>(`/v1/sessions/${encodeURIComponent(id)}/compaction`),
+  /** A period's compactions: count, estimated cost, saved and net — a range as /v1/stats/summary reads it, or a window in unix ms. */
+  compactionPeriod: (w: { range: string } | { from: number; to: number }) =>
+    get<CompactionPeriod>('range' in w ? `/v1/stats/compactions?range=${encodeURIComponent(w.range)}` : `/v1/stats/compactions?from=${w.from}&to=${w.to}`),
   /** Compact context: /compact typed into a session Caprock started, now or when its turn ends. */
   compact: (id: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/compact`, {}),
   /** The `/` picker: the session's slash commands. */
@@ -3163,6 +3166,45 @@ export interface CompactionView {
   queued: boolean
   /** Absent with fewer than five measured on this machine. */
   typical?: CompactionStats
+  /** What `last` cost and has saved since — estimates; absent until the daemon's minute pass has made its row. */
+  estimate?: CompactionEstimate
+}
+
+/** One point of a savings series: the cumulative estimated saving at a moment (unix ms). */
+export interface SavingPoint { at: number; saved_usd: number }
+
+/** A compaction's estimated cost and saving (.ai/03-contracts.md § Compaction stats DDL). */
+export interface CompactionEstimate {
+  at: number
+  model?: string
+  /** The context was taken as read from the cache (the previous call within the cache TTL). */
+  warm: boolean
+  /** The summary's length / 4; absent when it was not read, and the cost then leaves the output out. */
+  summary_tokens_est?: number
+  /** Absent when the model is not priced or not known yet. */
+  est_cost_usd?: number
+  est_saved_usd: number
+  turns_after: number
+  /** Cumulative saving, oldest first, at most 24 points: the boundary at 0, the newest call last. */
+  series: SavingPoint[]
+  pricing_version: string
+}
+
+/** GET /v1/stats/compactions: a period's compactions, every figure an estimate. */
+export interface CompactionPeriod {
+  range?: string
+  from: number
+  to: number
+  count: number
+  /** How many have a cost; the sums and medians are over these. */
+  priced: number
+  est_cost_usd: number
+  est_saved_usd: number
+  net_usd: number
+  turns_after: number
+  median_cost_usd: number
+  median_saved_usd: number
+  pricing_version?: string
 }
 
 /** One entry of the chat field's `/` picker. */

@@ -6572,6 +6572,45 @@ was, free, with the saving shown honestly.
   one-time background backfill from the transcripts on disk, so the
   machine's own figure exists from the day of the upgrade.
 
+**Amendment (2026-10-30, owner, translated: "I want to understand the cost
+of each compaction and how much it saves, and it must be written as a stat
+— it matters for the history").** Each main-thread compaction gets a row in
+`compaction_stats` (migration 0077, [03-contracts.md § Compaction stats
+DDL](03-contracts.md)) with its **estimated** cost and saving, kept current
+each minute and filled once for every stored boundary. The Agent panel shows
+the newest one's (*cost ≈ $x*, a small curve to *saved ≈ $y*), and Cost and
+Week a period's count, cost, saving and net (`GET /v1/stats/compactions`).
+Every figure is an estimate from the pricing table and says so (≈), because:
+
+- **The transcript has no usage for the summary call** (Claude Code docs,
+  2026-10-30: only the OpenTelemetry `api_request` with `query_source:
+  "compact"` has its exact cost, and Caprock does not read OTel). The cost
+  is `pre_tokens` at the cache-read price when the cache was warm, else at
+  the input price, plus the summary (its characters / 4) at the output
+  price.
+- **The compacting model is not documented**: the session's own is assumed
+  (its last main-thread call before the boundary).
+- **Warm or cold** is decided by the gap between that call and the start of
+  the compaction against the cache TTL — an hour when the session writes
+  the 1-hour cache, five minutes otherwise. A summary request after a longer
+  gap reprocesses the whole context as uncached input, which is when a
+  compaction costs dollars rather than cents.
+- **The saving** is the dropped context (`pre_tokens − post_tokens`) priced
+  as a cache read for every main-thread call after the boundary until the
+  next one: what those calls did not re-read. It assumes each would have
+  read all of it from the cache — the floor; a call after a cache expiry
+  would have paid more. A compaction also changes what the model remembers,
+  which no figure prices.
+- **A fork's copy of a boundary is not a compaction**: `--fork-session`
+  copies the parent's lines, the boundary among them, and the compaction was
+  made and paid for once.
+
+On a copy of the owner's database (2026-10-30, estimates): 88 compactions
+from 2026-09-30, about $16.27 in total (median $0.19), saving about $1,617
+(median $16.55); all 88 were warm. The summary is the larger part of a
+typical cost: a median of about 4,800 output tokens against a warm read of
+the context.
+
 **Consequences.** The share kept depends on what the summary keeps, which
 Claude Code decides, so a session can keep more or less than the median;
 the line says "usually" and names its source. The reference figure is one

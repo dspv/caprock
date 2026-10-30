@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -50,6 +52,105 @@ type CompactionView struct {
 	// Typical is what this machine's own compactions kept, absent with
 	// fewer than CompactTypicalMin measured.
 	Typical *store.CompactionStats `json:"typical,omitempty"`
+	// Estimate is what the newest compaction cost and has saved since,
+	// from the pricing table: absent until the minute's pass has made its
+	// row (rollup.RefreshCompactionStats).
+	Estimate *CompactionEstimate `json:"estimate,omitempty"`
+}
+
+// CompactionEstimate is the cost and saving of one compaction, estimated
+// (rule 6; 03-contracts.md § Compaction stats DDL).
+type CompactionEstimate struct {
+	At    int64  `json:"at"`
+	Model string `json:"model,omitempty"`
+	// Warm is whether the context was taken as read from the cache.
+	Warm bool `json:"warm"`
+	// SummaryTokensEst is the summary's length / 4; absent when it was not
+	// read, and then the cost leaves the output out.
+	SummaryTokensEst *int64 `json:"summary_tokens_est,omitempty"`
+	// EstCostUSD is absent when the model is not in the pricing table, or
+	// none is known yet.
+	EstCostUSD  *float64 `json:"est_cost_usd,omitempty"`
+	EstSavedUSD float64  `json:"est_saved_usd"`
+	TurnsAfter  int64    `json:"turns_after"`
+	// Series is the saving accumulated since the boundary, at most
+	// CompactSeriesMax points, oldest first; the first is the boundary at 0,
+	// the last the newest call.
+	Series         []SavingPoint `json:"series"`
+	PricingVersion string        `json:"pricing_version"`
+}
+
+// SavingPoint is the cumulative estimated saving at a moment, unix ms.
+type SavingPoint struct {
+	At       int64   `json:"at"`
+	SavedUSD float64 `json:"saved_usd"`
+}
+
+// CompactSeriesMax is the most points a savings series has.
+const CompactSeriesMax = 24
+
+// compactSeriesCalls bounds the calls one series reads.
+const compactSeriesCalls = 50_000
+
+// compactionEstimate is the newest compaction's estimate for a session: the
+// stored row's cost, and the saving counted again from the calls since, so
+// the series and its end are as fresh as the events.
+func (s *Server) compactionEstimate(ctx context.Context, q store.Querier, id string, last store.Compaction) (*CompactionEstimate, error) {
+	row, ok, err := store.LatestCompactionStat(ctx, q, id)
+	if err != nil || !ok || row.At != last.At {
+		return nil, err
+	}
+	e := &CompactionEstimate{At: row.At, Model: row.Model, Warm: row.Warm, TurnsAfter: row.TurnsAfter,
+		EstSavedUSD: row.EstSavedUSD, PricingVersion: row.PricingVersion, Series: []SavingPoint{{At: row.At}}}
+	if row.SummaryTokensEst.Valid {
+		v := row.SummaryTokensEst.Int64
+		e.SummaryTokensEst = &v
+	}
+	if row.EstCostUSD.Valid && !row.CostStale {
+		v := row.EstCostUSD.Float64
+		e.EstCostUSD = &v
+	}
+	if s.d.Table == nil {
+		return e, nil
+	}
+	before := int64(math.MaxInt64)
+	if row.NextAt.Valid {
+		before = row.NextAt.Int64
+	}
+	calls, err := store.MainCallsAfter(ctx, q, row.Sid, row.At, 0, before, compactSeriesCalls)
+	if err != nil {
+		return nil, err
+	}
+	post := row.PostTokens
+	cum := make([]SavingPoint, 0, len(calls))
+	var saved float64
+	for _, c := range calls {
+		if post == 0 {
+			post = c.Prompt()
+		}
+		if v, ok := s.d.Table.CompactionSaving(c.Model, time.UnixMilli(c.Ts), row.PreTokens-post); ok {
+			saved += v
+		}
+		cum = append(cum, SavingPoint{At: c.Ts, SavedUSD: saved})
+	}
+	if len(calls) > 0 {
+		e.EstSavedUSD, e.TurnsAfter = saved, int64(len(calls))
+	}
+	e.Series = append(e.Series, thinSeries(cum, CompactSeriesMax-1)...)
+	return e, nil
+}
+
+// thinSeries keeps at most n points of a cumulative series, evenly spaced
+// by position, the last always among them.
+func thinSeries(pts []SavingPoint, n int) []SavingPoint {
+	if len(pts) <= n {
+		return pts
+	}
+	out := make([]SavingPoint, 0, n)
+	for i := 1; i <= n; i++ {
+		out = append(out, pts[i*len(pts)/n-1])
+	}
+	return out
 }
 
 // Compacter is the daemon's half of POST /v1/agents/{id}/compact: the
@@ -107,6 +208,10 @@ func (s *Server) handleCompaction(w http.ResponseWriter, r *http.Request) {
 	}
 	if ok {
 		v.Last = &last
+		if v.Estimate, err = s.compactionEstimate(ctx, db, id, last); err != nil {
+			s.fail(w, err)
+			return
+		}
 	}
 	if v.Running, err = compactionRunning(ctx, db, id, s.d.Now()); err != nil {
 		s.fail(w, err)
@@ -169,4 +274,48 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// CompactionPeriod is GET /v1/stats/compactions: the compactions of a
+// window, by the boundary's time, with what each cost and has saved to date,
+// all estimates (03-contracts.md § Compaction stats DDL).
+type CompactionPeriod struct {
+	// Range is the range asked for ("today", "7d", "30d", "all"), empty
+	// for an explicit from/to.
+	Range string `json:"range,omitempty"`
+	store.CompactionTotals
+	PricingVersion string `json:"pricing_version,omitempty"`
+}
+
+// handleCompactionPeriod is GET /v1/stats/compactions?range= (as
+// /v1/stats/summary reads it) or ?from=&to= (unix ms, to exclusive, as a
+// Week's window is).
+func (s *Server) handleCompactionPeriod(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var (
+		from, to int64
+		label    string
+	)
+	if q.Get("from") != "" || q.Get("to") != "" {
+		var err1, err2 error
+		from, err1 = strconv.ParseInt(q.Get("from"), 10, 64)
+		to, err2 = strconv.ParseInt(q.Get("to"), 10, 64)
+		if err1 != nil || err2 != nil || to <= from {
+			s.failCode(w, http.StatusBadRequest, errors.New("from and to are unix ms, from before to"))
+			return
+		}
+	} else {
+		from, label = s.rangeFrom(q.Get("range"))
+		to = math.MaxInt64
+	}
+	t, err := store.CompactionTotalsBetween(r.Context(), s.d.Store.DB(), from, to)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	v := CompactionPeriod{Range: label, CompactionTotals: t}
+	if s.d.Table != nil {
+		v.PricingVersion = s.d.Table.Version
+	}
+	writeJSON(w, http.StatusOK, v)
 }

@@ -50,7 +50,12 @@ type Line struct {
 	AITitle     string `json:"aiTitle"` // type "ai-title": Claude Code's own name for the session
 	AgentID     string `json:"agentId"`
 	Subtype     string `json:"subtype"`
-	DurationMs  int64  `json:"durationMs"`
+	// IsCompactSummary marks the user message Claude Code puts in the context
+	// after a compact_boundary: the summary, whose parentUuid is the
+	// boundary's uuid. Its length is the compaction's output estimate
+	// (store.SetCompactionSummary).
+	IsCompactSummary bool  `json:"isCompactSummary"`
+	DurationMs       int64 `json:"durationMs"`
 	// CompactMetadata is on a `system` / `compact_boundary` line: what the
 	// context held before the compaction, and what started it.
 	CompactMetadata *struct {

@@ -193,7 +193,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/stats/summary`, `/v1/stats/limits`, `/v1/stats/daily`, `/v1/stats/trends`, `/v1/window-stop`, `/v1/events`, `/v1/history`,
   `/v1/status`, `/v1/storage`, `/v1/update`, `/v1/settings`, `/v1/premium`, `/v1/gemini`,
   `/v1/pricing`, `/v1/live`, `/v1/tasks`, `/v1/tasks/{id}`, `/v1/approvals`,
-  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/sessions/{id}/compaction`, `/v1/queue`,
+  `/v1/statusline/{id}`, `/v1/agents/{id}/permission`, `/v1/agents/{id}/queue`, `/v1/sessions/{id}/compaction`, `/v1/stats/compactions`, `/v1/queue`,
   `/v1/chats`, `/v1/chats/{id}/files` and `/v1/chats/{id}/file` (§ Chats),
   `/v1/work` and `/v1/sessions/{id}/ci/stats` (the phone home's Releases:
   the board and one repository's Pipeline answer, composed by the daemon
@@ -2491,7 +2491,8 @@ POST   /v1/agents/{id}/input         {data?, paths?}   → 204   (owned PTYs onl
 GET    /v1/agents/{id}/queue         → QueueView; the messages waiting for the turn to end (§ Queued messages)
 POST   /v1/agents/{id}/queue         {text} → {sent, queued?, queue: QueueView}; typed in now at the prompt, otherwise queued
 POST   /v1/agents/{id}/queue/resend  {ids?} → {session_id, resumed, started, queue: QueueView}; messages an ended session never got, sent to a new session of the same agent in the same folder (§ Queued messages)
-GET    /v1/sessions/{id}/compaction  → CompactionView; the session's last compaction measured, whether one runs or waits, and what this machine's keep (§ Compact context)
+GET    /v1/sessions/{id}/compaction  → CompactionView; the session's last compaction measured, its estimated cost and saving with a savings series, whether one runs or waits, and what this machine's keep (§ Compact context)
+GET    /v1/stats/compactions         ?range= | ?from=&to= → CompactionPeriod; a period's compactions: count, estimated cost, saved, net (§ Compact context)
 POST   /v1/agents/{id}/compact       → {sent, queued?, queue: QueueView}; /compact typed into an owned Claude Code session now or when its turn ends; 409 not owned, not Claude Code, or compacting already
 POST   /v1/agents/{id}/signal        {action: pause|resume|kill|end} → 204 (owned PTYs only; end = SIGTERM, SIGKILL after 5s)
 GET    /v1/agents/{id}/permission    → {permission: {id, tool, detail, always?, since, queued?, agent_id?, agent_type?, waiting?} | null}; the oldest prompt an owned session waits on, queued = how many more are outstanding, waiting = all of them when two or more
@@ -5325,6 +5326,7 @@ on in place with a summary of the conversation. Free. Code:
 ```
 GET  /v1/sessions/{id}/compaction  → CompactionView
 POST /v1/agents/{id}/compact       → {sent: bool, queued?: QueuedMessage, queue: QueueView}
+GET  /v1/stats/compactions?range=… | ?from=…&to=…  → CompactionPeriod
 ```
 
 - **`CompactionView`** — `{session_id, last?: Compaction, running, queued,
@@ -5347,6 +5349,17 @@ POST /v1/agents/{id}/compact       → {sent: bool, queued?: QueuedMessage, queu
     from, to}` over the newest 500 main-thread compactions on the machine
     with a measured after: the share kept is `post_tokens / pre_tokens`.
     Absent with fewer than 5. Read at most once a minute.
+  - `estimate` — what `last` cost and has saved since, **estimates** (§
+    Compaction stats DDL): `{at, model?, warm, summary_tokens_est?,
+    est_cost_usd?, est_saved_usd, turns_after, series: [{at, saved_usd}],
+    pricing_version}`. Absent until the minute's pass has made the row for
+    `last`. `est_cost_usd` is the stored row's, absent while it cannot be
+    made; `est_saved_usd`, `turns_after` and `series` are counted again from
+    the calls since the boundary on each read, so they are as fresh as the
+    events. `series` is the cumulative saving, oldest first, at most 24
+    points: the boundary at 0, then evenly spaced calls, the newest last
+    (its `saved_usd` is `est_saved_usd`). What the Agent panel's one line
+    (*cost ≈ $x*) and its small savings curve (*saved ≈ $y*) are drawn from.
 - **The press** goes through the message queue (§ Queued messages) with the
   text `/compact`: typed in at once when `waiting` is `""` and nothing is
   queued, else queued and typed in at the turn's end. It is typed like any
@@ -5359,6 +5372,18 @@ POST /v1/agents/{id}/compact       → {sent: bool, queued?: QueuedMessage, queu
   ended (rule 7); an agent other than Claude Code (the boundary that
   measures a compaction is Claude Code's); a compaction running. `501`
   without a queue.
+- **`CompactionPeriod`** — the compactions of a window, for Cost and Week:
+  `{range?, from, to, count, priced, est_cost_usd, est_saved_usd, net_usd,
+  turns_after, median_cost_usd, median_saved_usd, pricing_version?}`, all
+  estimates (§ Compaction stats DDL). A compaction belongs to the window its
+  boundary falls in (`from <= at < to`, unix ms), with everything it has
+  saved to date, so a period's saving can include calls after its end.
+  `range` is read as `/v1/stats/summary` reads it (`today`, `7d`, `30d`,
+  `all`, `Nd`, a duration), up to now; `from` and `to` (a Week's window)
+  take its place, `400` when either is not a number or `to <= from`. The
+  sums and medians are over the `priced` ones (a cost made, the model
+  priced); `count` is every row. `net_usd = est_saved_usd − est_cost_usd`.
+  Read from the rows; no event is scanned.
 - **Who.** `GET` is open to every paired device; `POST` to a controller, as
   `POST /v1/agents/{id}/queue` is.
 
@@ -6851,6 +6876,103 @@ sessions.effort)`). `Session` carries it as `effort`, omitted when empty, so
 the Agent panel's model chip reads it ([04-ui.md](04-ui.md)). Other agents,
 and sessions observed from their transcript alone, have none.
 
+### Compaction stats DDL (migration 0077)
+
+```sql
+CREATE TABLE IF NOT EXISTS compaction_stats (
+  event_id           INTEGER PRIMARY KEY,         -- the context.compacted events.id
+  sid                INTEGER NOT NULL,            -- sessions.sid
+  at                 INTEGER NOT NULL,            -- the boundary's time, unix ms
+  trigger            TEXT    NOT NULL DEFAULT '', -- 'auto' | 'manual'
+  model              TEXT    NOT NULL DEFAULT '', -- the session's model at the boundary; '' when no call says
+  pre_tokens         INTEGER NOT NULL DEFAULT 0,
+  post_tokens        INTEGER NOT NULL DEFAULT 0,  -- 0 until known
+  summary_chars      INTEGER,                     -- the isCompactSummary message's length; NULL when not read
+  summary_tokens_est INTEGER,                     -- summary_chars / 4; NULL when not read
+  warm               INTEGER NOT NULL DEFAULT 0 CHECK (warm IN (0,1)), -- the prefix was in the cache
+  est_cost_usd       REAL,                        -- NULL when the model is not in the pricing table
+  turns_after        INTEGER NOT NULL DEFAULT 0,  -- main-thread calls counted after the boundary
+  est_saved_usd      REAL    NOT NULL DEFAULT 0,
+  counted_ts         INTEGER NOT NULL DEFAULT 0,  -- the last counted call (ts, events.id): the cursor
+  counted_id         INTEGER NOT NULL DEFAULT 0,
+  next_at            INTEGER,                     -- the session's next main-thread boundary; NULL while none
+  cost_stale         INTEGER NOT NULL DEFAULT 1 CHECK (cost_stale IN (0,1)), -- est_cost_usd to be computed again
+  pricing_version    TEXT    NOT NULL DEFAULT '',
+  updated_at         INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_compaction_stats_at ON compaction_stats(at);
+CREATE INDEX IF NOT EXISTS idx_compaction_stats_sid ON compaction_stats(sid, at);
+CREATE INDEX IF NOT EXISTS idx_compaction_stats_open ON compaction_stats(next_at) WHERE next_at IS NULL;
+```
+
+What each main-thread compaction cost and has saved since, **estimated**
+from the pricing table ([ADR-085](08-decisions.md), amended 2026-10-30).
+One row per `context.compacted` event of a session's main thread (§
+Transcript JSONL); a subagent's or sidechain boundary has none, and neither
+has a boundary another session stored first under the same key — a fork
+copies its parent's lines, and the compaction was made and paid for once. A
+table rather than columns on `events`: a dozen columns for one kind in a
+thousand on a 2 GB table, and the figures are written again as calls land.
+Code: `internal/store/compaction_stats.go`, `internal/rollup/compaction_stats.go`,
+`internal/cost/compaction.go`.
+
+- **The cost** (`est_cost_usd`). The transcript carries no usage for the
+  call that writes the summary (only Claude Code's OpenTelemetry
+  `api_request` with `query_source: "compact"` has it), and the model it
+  runs on is not documented, so it is estimated at the session's model —
+  its last main-thread call before the boundary, else the first after:
+  `pre_tokens × rate + summary_tokens_est × output`, where `rate` is the
+  cache-read price when the cache was warm and the input price when it was
+  not, at the row of the pricing table in force at the boundary. **Warm**
+  means the last main-thread call before the compaction started (the
+  boundary's time less its `duration_ms`) ran within the cache TTL: one
+  hour when the newest of the 20 calls before it that wrote the cache wrote
+  the 1-hour one (`cache_write_1h` above zero), five minutes otherwise; no
+  call before is cold. `summary_tokens_est` is the summary's length in
+  characters / 4 — the `isCompactSummary: true` user message after the
+  boundary, whose text is the summary. With no summary read the output is
+  left out and `summary_tokens_est` is NULL, so the cost is the context read
+  alone; `est_cost_usd` is NULL while no call names a model or the model has
+  no price.
+- **The saving** (`est_saved_usd`): for every main-thread call with usage
+  above zero after the boundary and before the session's next main-thread
+  boundary (or now), `(pre_tokens − post_tokens) × that call's cache-read
+  price` at its own model and time — the dropped context it did not read
+  again. `post_tokens` is the boundary's own `postTokens`, else the first
+  such call's prompt (as § Compact context reads it). It assumes every
+  later call would have read all of the dropped context from the cache,
+  which is the floor of what it would have cost: a call after a cache
+  expiry would have paid more. `turns_after` counts those calls.
+- **The summary's length** is recorded as the line arrives (the tailer,
+  `store.SetCompactionSummary`): the message belongs to the last
+  `compact_boundary` line before it in the file. Its `parentUuid` is the
+  boundary's uuid on newer Claude Code and a line between the two on older
+  ones (2.1.285), and its timestamp can be a moment before the boundary's,
+  so neither alone decides; a uuid with no stored boundary falls back to the
+  session's newest main-thread boundary. The text is not stored: the line's
+  `prompt:<promptId>` key is usually the turn's own and is deduplicated.
+- **Kept current** by `rollup.RefreshCompactionStats`, on the daemon's
+  minute tick: a bare row for every boundary newer than the newest row (a
+  boundary is always stored after the ones before it, so the newest event id
+  is the cursor); a row whose `pricing_version` is not the table's (`''` for
+  a new one) read again from its boundary and counted again from zero, which
+  also closes the session's previous row at it (`next_at`, its count started
+  over when it had counted past it); then, for every row with a stale cost or
+  calls that may still land (`cost_stale = 1 OR next_at IS NULL OR
+  counted_ts < next_at`), the calls after its cursor `(counted_ts,
+  counted_id)` in one index seek. A row closed by the next boundary is
+  settled once counted up to it (`counted_ts = next_at`). A summary read
+  later sets `cost_stale`.
+- **Backfill.** The first start after the migration (meta
+  `compaction_stats_backfilled`, after `compact_backfill_pending`'s pass)
+  makes every row, reads the summaries back from the transcripts still on
+  disk (`ingest.BackfillCompactionSummaries`: one read per main transcript,
+  a substring filter before any line is decoded), and prices them.
+  Idempotent; a transcript that is gone leaves its rows without a summary.
+  On a copy of the owner's database (2026-10-30): 90 boundaries, 88 rows
+  (two were a fork's copies), every summary found, 7 s.
+- `RemoveSession` deletes the session's rows.
+
 ### Idle end DDL (migration 0067)
 
 ```sql
@@ -8317,7 +8439,7 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - `user`/`assistant`/`system` lines carry `uuid`, `parentUuid`, `timestamp` (RFC 3339), `sessionId`, `cwd`, `version`, `gitBranch`, `isSidechain`.
 - `assistant` lines: `message.model`, `message.id`, `message.usage` with `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, and `cache_creation.{ephemeral_5m_input_tokens, ephemeral_1h_input_tokens}`; `message.content[]` blocks (`text`, `tool_use`, …).
 - `system` lines with `subtype: "turn_duration"` carry `durationMs`.
-- **`system` lines with `subtype: "compact_boundary"`** mark where a compaction replaced the conversation with its summary (observed in Claude Code 2.1.295, 2026-10-27): `compactMetadata.{trigger: "auto"|"manual", preTokens, durationMs}`, on newer versions also `postTokens` and `cumulativeDroppedTokens` (seen 2026-10-27 on a real manual compaction: `{"trigger":"manual","preTokens":41412,"postTokens":10123,"cumulativeDroppedTokens":31289,"durationMs":4107}`), plus fields Caprock does not read (`preCompactDiscoveredTools`, `preservedSegment`, `preservedMessages`), `content: "Conversation compacted"`, `parentUuid: null`, `logicalParentUuid`. Since parser v5 each is stored as a `context.compacted` event keyed `compact:<uuid>`, payload `{trigger, pre_tokens, post_tokens?, duration_ms, session_id, sidechain, _from: "transcript"}` (`post_tokens` only when the line carries a `postTokens` above zero); boundaries in transcripts read before v5 are added once, in the background after the port opens (`ingest.BackfillCompactions`, meta `compact_backfill_pending`), straight to the store so they move no session's status. No DDL change: the kind is new, the columns are not. After a boundary Claude Code copies the preserved messages into the file again with the same `message.id`; ingest stores those once (`msg:<id>`), so the first main-thread turn stored after the boundary with usage above zero is a real call — its prompt (input + cache read + cache write) is the context after when the boundary carries no `postTokens` (§ Compact context).
+- **`system` lines with `subtype: "compact_boundary"`** mark where a compaction replaced the conversation with its summary (observed in Claude Code 2.1.295, 2026-10-27): `compactMetadata.{trigger: "auto"|"manual", preTokens, durationMs}`, on newer versions also `postTokens` and `cumulativeDroppedTokens` (seen 2026-10-27 on a real manual compaction: `{"trigger":"manual","preTokens":41412,"postTokens":10123,"cumulativeDroppedTokens":31289,"durationMs":4107}`), plus fields Caprock does not read (`preCompactDiscoveredTools`, `preservedSegment`, `preservedMessages`), `content: "Conversation compacted"`, `parentUuid: null`, `logicalParentUuid`. Since parser v5 each is stored as a `context.compacted` event keyed `compact:<uuid>`, payload `{trigger, pre_tokens, post_tokens?, duration_ms, session_id, sidechain, _from: "transcript"}` (`post_tokens` only when the line carries a `postTokens` above zero); boundaries in transcripts read before v5 are added once, in the background after the port opens (`ingest.BackfillCompactions`, meta `compact_backfill_pending`), straight to the store so they move no session's status. No DDL change: the kind is new, the columns are not. After a boundary Claude Code copies the preserved messages into the file again with the same `message.id`; ingest stores those once (`msg:<id>`), so the first main-thread turn stored after the boundary with usage above zero is a real call — its prompt (input + cache read + cache write) is the context after when the boundary carries no `postTokens` (§ Compact context). The `user` line after a boundary with `isCompactSummary: true` (and `isVisibleInTranscriptOnly: true`) holds the summary as its `message.content`; its `parentUuid` is the boundary's `uuid` on Claude Code 2.1.311 and a line between the two on 2.1.285, and its `timestamp` can be a moment before the boundary's. Its length is recorded on the boundary's compaction_stats row (§ Compaction stats DDL); its text is not stored.
 - The transcript is written asynchronously and may lag the in-memory conversation (Claude Code documents this) — hence hooks are the real-time source and transcripts the accounting source.
 - Files live at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; `transcript_path` in hook payloads points at the exact file. Subagent transcripts live at `<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl` and carry the parent `sessionId` plus `agentId`, `isSidechain: true`.
 - **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
