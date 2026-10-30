@@ -269,7 +269,7 @@ function LimitCard({ who, name, note, l, now, source }: { who: Character; name: 
 function SetPlanBanner({ onSave }: { onSave: (patch: Partial<Settings>) => void }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="mx-3 mb-3" role="note" data-set-plan>
+    <div className="mx-3 mb-3" role="note" data-set-plan data-share-skip>
       <Banner
         id="plan"
         art="plan"
@@ -430,7 +430,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
           * skipped; the details are a click (or a hover) away. */}
         <div className="border-t border-border px-3 py-2 text-[11.5px] leading-relaxed text-fg-muted" title={EXPLAIN(cdx.length > 0)}>
           Your plan's limits, per 5 hours and per week — not Caprock's. At 100% the agent pauses until the reset.{' '}
-          <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="text-fg-faint underline-offset-2 hover:text-fg hover:underline">
+          <button type="button" data-share-skip onClick={() => setMore((v) => !v)} aria-expanded={more} className="text-fg-faint underline-offset-2 hover:text-fg hover:underline">
             {more ? 'less' : 'more'}
           </button>
           {more && <p className="mt-1 text-fg-faint">{EXPLAIN(cdx.length > 0)}</p>}

@@ -33,6 +33,16 @@ func TestMain(m *testing.M) {
 	if err := build.Run(); err != nil {
 		panic("build shim: " + err.Error())
 	}
+	// Launch the fresh binary once, untimed, before any test measures one. The
+	// first start of a just-built executable pays for the OS looking at it — on
+	// Windows CI Defender scans it, and one such first run took 10.5s while the
+	// shim itself never dialled (no runtime.json). That cost is the OS's, not
+	// the shim's, and the timed tests below are about the shim. Empty stdin
+	// makes the shim return before it reads anything, and the data dir points
+	// into the temp directory so nothing touches the real HOME.
+	warm := exec.Command(shimBin)
+	warm.Env = append(os.Environ(), config.EnvDataDir+"="+dir)
+	_ = warm.Run()
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
@@ -63,8 +73,10 @@ func runShim(t *testing.T, dataDir string, stdin string) (stdout string, elapsed
 // a whole process: fork, exec, Go runtime start, then the shim. Under `go test
 // -race ./...` that overhead alone can exceed two seconds on a loaded machine,
 // and the test failed about one run in three while the shim was doing its job
-// in milliseconds. The generous bound still catches the failure that matters —
-// a shim that blocks on a dead or wedged daemon instead of giving up.
+// in milliseconds. A binary's first launch costs more still (Defender's scan on
+// Windows), which is why TestMain runs it once before anything is timed. The
+// generous bound still catches the failure that matters — a shim that blocks
+// on a dead or wedged daemon instead of giving up.
 const shimBudget = 8 * time.Second
 
 func TestShimDaemonDownExitsZeroFastAndSilent(t *testing.T) {

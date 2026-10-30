@@ -153,7 +153,7 @@ function ReposBody() {
       <div className={`grid ${COLS} items-end gap-x-4 border-b border-border px-3 pb-1.5 pt-2 text-[10.5px] uppercase tracking-[0.12em] text-fg-faint`}>
         <span className="flex min-w-0 items-center gap-2">
           <span>Repository</span>
-          <button type="button" data-repos-all aria-pressed={allOpen} onClick={setAll}
+          <button type="button" data-repos-all data-share-skip aria-pressed={allOpen} onClick={setAll}
             title={allOpen ? 'Fold every row back to one line' : 'Open every row: branch, newest CI run, pull requests, release, lines, folder'}
             className="rounded px-1 normal-case tracking-normal text-[11px] text-fg-muted hover:bg-fg/5 hover:text-fg">
             {allOpen ? 'Less' : 'More'}
@@ -205,7 +205,7 @@ function Row({ r, connected, now, open, onToggle }: { r: RepoActivity; connected
         <button type="button" onClick={onToggle} aria-expanded={open} aria-label={`${r.name}: details`}
           title={`${r.root}\n${open ? 'Fold this row' : 'More: branch, newest CI run, pull requests, release, lines'}`}
           className="flex min-w-0 max-w-full items-center gap-1.5 rounded text-left text-[13px] hover:text-fg">
-          <ChevronIcon size={12} className={`shrink-0 text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />
+          <span data-share-skip className="contents"><ChevronIcon size={12} className={`shrink-0 text-fg-faint transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} /></span>
           <span className="inline-block h-[7px] w-[7px] shrink-0 rounded-full bg-ok" title={`${r.sessions} session${r.sessions === 1 ? '' : 's'} running here`} />
           <span className="truncate font-medium">{r.name}</span>
         </button>
@@ -261,13 +261,13 @@ function Details({ r, connected, now }: { r: RepoActivity; connected: boolean; n
   )
   return (
     <div data-repo-details className="col-span-full flex flex-wrap gap-x-5 gap-y-1 pb-1 pl-[31px] pt-1 text-[12px]">
-      <Item k="Branch" d="branch">{r.branch ? <span className="mono">{r.branch}</span> : <span className="text-fg-faint">{r.error ? 'not read' : 'detached'}</span>}</Item>
+      <Item k="Branch" d="branch">{r.branch ? <span data-share-name="branch" className="mono">{r.branch}</span> : <span className="text-fg-faint">{r.error ? 'not read' : 'detached'}</span>}</Item>
       {connected && (
         <Item k="Last CI" d="ci">
           {last && word ? (
             <button type="button" onClick={() => last.url && openExternal(last.url)} disabled={!last.url} {...extProps(`${last.name}${last.branch ? ` on ${last.branch}` : ''}: ${word.text}`)} className="text-left hover:underline disabled:no-underline">
               <span className={word.cls}>{word.text}</span>
-              <span className="text-fg-muted"> · {last.name}{last.branch ? <> on <span className="mono">{last.branch}</span></> : null}{last.at ? ` · ${fmtAgo(last.at, now)}` : ''}</span>
+              <span className="text-fg-muted"> · {last.name}{last.branch ? <> on <span data-share-name="branch" className="mono">{last.branch}</span></> : null}{last.at ? ` · ${fmtAgo(last.at, now)}` : ''}</span>
             </button>
           ) : <span className="text-fg-faint" title={NOT_READ}>{g ? 'not read yet' : 'not on GitHub'}</span>}
         </Item>
@@ -285,7 +285,7 @@ function Details({ r, connected, now }: { r: RepoActivity; connected: boolean; n
       )}
       {g?.release?.tag && <Item k="Release" d="release"><span className="mono">{g.release.tag}</span>{g.release.at ? <span className="text-fg-muted"> {fmtAgo(g.release.at, now)}</span> : null}</Item>}
       <Item k="Lines · 7d" d="lines"><span className="mono"><Lines r={r} /></span></Item>
-      <Item k="Folder" d="root"><span className="mono text-fg-muted" title={r.root}>{r.root}</span></Item>
+      <Item k="Folder" d="root"><span data-share-name="folder" className="mono text-fg-muted" title={r.root}>{r.root}</span></Item>
       {r.error && <Item k="Git" d="error" wrap><span className="text-warn" title={r.error}>{r.error}</span></Item>}
     </div>
   )
@@ -297,7 +297,7 @@ function GitHubCells({ r, connected, now }: { r: RepoActivity; connected: boolea
   if (!connected) {
     return (
       <div data-repo-github="off" className={`col-span-3 text-right text-[11.5px] text-fg-faint ${GH}`}>
-        GitHub not connected · <a href={href({ name: 'settings' })} className="text-accent hover:underline">Settings</a>
+        GitHub not connected<span data-share-skip> · <a href={href({ name: 'settings' })} className="text-accent hover:underline">Settings</a></span>
       </div>
     )
   }

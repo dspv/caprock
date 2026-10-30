@@ -99,7 +99,7 @@ export function Panel({ title, center, right, children, className = '', onMouseE
             {fold ? (
               <button type="button" onClick={toggle} aria-expanded={open} title={open ? 'Fold this panel' : 'Unfold this panel'}
                 className="inline-flex items-center gap-1.5 uppercase tracking-[0.12em] hover:text-fg">
-                <span aria-hidden className={`inline-block transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>›</span>
+                <span aria-hidden data-share-skip className={`inline-block transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>›</span>
                 {title}
               </button>
             ) : title}

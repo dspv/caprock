@@ -45,6 +45,9 @@ type SessionInfo struct {
 	// Subscription is the sign-in the session runs on, when the source knows
 	// it (a Codex profile's importer); empty asks Recorder.SubscriptionOf.
 	Subscription string
+	// Effort is the reasoning effort a main-thread hook named, a known level
+	// only (hookd.EffortLevel); empty leaves the stored one alone.
+	Effort string
 }
 
 // Result reports what Record did, for callers that need to fan out further.
@@ -368,6 +371,7 @@ func (r *Recorder) apply(ctx context.Context, q store.Querier, ev *event.Event, 
 		Title: info.Title,
 
 		Subscription: info.Subscription,
+		Effort:       info.Effort,
 	}
 	if patch.Subscription == "" && r.SubscriptionOf != nil && info.TranscriptPath != "" {
 		patch.Subscription = r.SubscriptionOf(info.TranscriptPath)

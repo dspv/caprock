@@ -174,7 +174,7 @@ export function WorkMixStrip({ summary }: { summary?: Summary }) {
         <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">
           what it went on
         </span>
-        <a href="#/cost" className="text-[10px] text-fg-faint hover:text-accent no-underline">
+        <a data-share-skip href="#/cost" className="text-[10px] text-fg-faint hover:text-accent no-underline">
           details →
         </a>
       </div>

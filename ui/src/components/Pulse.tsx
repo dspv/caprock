@@ -191,7 +191,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
       right={
         <span className="inline-flex items-center gap-2 text-[11px] text-fg-faint">
           last {PULSE_MINUTES} minutes · one bar per minute
-          <button type="button" onClick={() => showLegend(!legend)} aria-expanded={legend}
+          <button type="button" data-share-skip onClick={() => showLegend(!legend)} aria-expanded={legend}
             aria-label={legend ? 'Hide how to read the pulse' : 'How to read the pulse'}
             title={legend ? 'Hide the legend' : 'How to read the pulse'}
             className={`inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border text-[10px] leading-none hover:text-fg hover:border-border-strong ${legend ? 'border-border-strong text-fg-muted' : 'border-border text-fg-faint'}`}>
@@ -240,7 +240,7 @@ export function PulsePanel({ sessions, now }: { sessions: SessionSummary[]; now:
         <span>
           <span className="text-warn">×N same call</span> = most-repeated identical tool call in six minutes
         </span>
-        <button type="button" onClick={() => showLegend(false)} className="ml-auto text-fg-faint hover:text-fg"
+        <button type="button" data-share-skip onClick={() => showLegend(false)} className="ml-auto text-fg-faint hover:text-fg"
           title="The ? beside the panel's title brings it back">
           Hide
         </button>
@@ -458,6 +458,7 @@ function Track({
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onToggle() }}
+              data-share-skip
               aria-expanded={open}
               aria-label={`${open ? 'Hide' : 'Show'} what is running in ${name}`}
               title={`Open or close. Drag the row, or ${keys('⌥⇧↑, ⌥⇧↓')} here, to move it.`}
@@ -472,7 +473,7 @@ function Track({
             <span className="text-fg-muted">{label || s.project || 'unknown project'}</span>
             {branchLabel(s.git_branch) && <> {branchLabel(s.git_branch)}</>}
             {showId && <> · {shortId(s.session_id)}</>}
-            {s.activity?.phrase ? <> · {s.activity.phrase}</> : null}
+            {s.activity?.phrase ? <> · <span data-share-activity>{s.activity.phrase}</span></> : null}
           </div>
         </div>
         {/* At phone width the chart takes its own line under the row: squeezed
@@ -552,7 +553,7 @@ function ProjectNow({ s, all, now, hour }: { s: SessionSummary; all: SessionSumm
         </span>
         {/* The ways in, as quiet words at the line's end. On a phone they
           * wrap under the figures, still left to right. */}
-        <div className="flex flex-wrap items-center gap-0.5 sm:ml-auto -mx-2 sm:mx-0 sm:-mr-2" aria-label="Ways in">
+        <div data-share-skip className="flex flex-wrap items-center gap-0.5 sm:ml-auto -mx-2 sm:mx-0 sm:-mr-2" aria-label="Ways in">
           {dir ? <ProjectTerminal dir={dir} label={s.project || dir} sessions={live} quiet /> : null}
           <RepoButtons repo={detail.data?.repo} cwd={s.cwd} quiet />
           <a href={href({ name: 'session', id: s.session_id })} className={QUIET}>Open session</a>
@@ -647,13 +648,13 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
           {(x.live_subagents ?? 0) > 0 && <span className="text-fg-muted">+{x.live_subagents} subagent{x.live_subagents === 1 ? '' : 's'}</span>}
         </div>
         <div className="flex items-baseline gap-2 pl-[30px] min-w-0 text-fg-muted">
-          <span className="min-w-0 truncate" title={doing}>{doing || <span className="text-fg-faint">nothing yet</span>}</span>
+          <span data-share-activity className="min-w-0 truncate" title={doing}>{doing || <span className="text-fg-faint">nothing yet</span>}</span>
           {plan && plan.total > 0 && (
             <span className="num shrink-0 text-[11px] text-fg-faint" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span>
           )}
           <span className="shrink-0 text-[11px] text-fg-faint whitespace-nowrap">{fmtAgo(x.last_event_at, now)}</span>
-          {jump ? <SessionWays x={x} jump={jump} /> : (
-            <a href={href({ name: 'session', id: x.session_id })} className="shrink-0 text-[11px] text-fg-faint hover:text-fg whitespace-nowrap">open</a>
+          {jump ? <span data-share-skip className="contents"><SessionWays x={x} jump={jump} /></span> : (
+            <a data-share-skip href={href({ name: 'session', id: x.session_id })} className="shrink-0 text-[11px] text-fg-faint hover:text-fg whitespace-nowrap">open</a>
           )}
         </div>
       </div>
@@ -668,7 +669,7 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
         </div>
         {(branch || changes || pr) && (
           <div className="flex items-baseline sm:justify-end gap-1.5 min-w-0 whitespace-nowrap">
-            {branch && <span className="mono min-w-0 truncate max-w-[16rem] text-fg-faint" title={branch}>{branch}</span>}
+            {branch && <span data-share-name="branch" className="mono min-w-0 truncate max-w-[16rem] text-fg-faint" title={branch}>{branch}</span>}
             {changes && (
               <span className="num shrink-0" title={`${changes.files} file${changes.files === 1 ? '' : 's'} changed${diff.data?.base ? ` ${diff.data.base}` : ''}, committed or not`}>
                 <span className="text-ok">+{changes.add}</span> <span className="text-danger">−{changes.del}</span>

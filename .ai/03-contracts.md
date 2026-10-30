@@ -15,7 +15,7 @@ Conventions that apply to every contract here: JSON casing is **snake_case**; al
 
 ### Hook payload (what the shim forwards, verbatim)
 
-Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
+Claude Code sends one JSON object per event on the shim's stdin. Fields common to all events (per the hooks reference, verified 2026-08-18): `session_id`, `prompt_id`, `transcript_path`, `cwd`, `permission_mode`, `hook_event_name`, `effort` (`{level}`; a known level is kept on the session, § Session effort DDL), and for subagents `agent_id`, `agent_type`. The parent's hooks also fire for its subagents' tool calls, under the parent's `session_id`; when such a payload names no `agent_id`, hookd takes it from a `transcript_path` of the form `<session-id>/subagents/…/agent-<id>.jsonl`, so the call is the subagent's and not the main thread's. Event-specific fields the daemon reads:
 
 | Event               | Fields consumed                                              |
 | ------------------- | ------------------------------------------------------------ |
@@ -6830,6 +6830,26 @@ else from the request reaches the environment, no value is passed through, and
 other agents ignore the field. Absent, the user's own environment is left as it
 is. The choice is recorded once on the session row (`subagent_model`, in the
 `Session` JSON as `subagent_model`, omitted when empty) for the session card.
+
+### Session effort DDL (migration 0076)
+
+```sql
+ALTER TABLE sessions ADD COLUMN effort TEXT NOT NULL DEFAULT '';
+```
+
+The reasoning effort a Claude Code session last ran at, from the hook
+payload's `effort.level` (§ Hook payload). hookd takes it from main-thread
+hooks only — a subagent's hook says nothing about the session — and only when
+it is one of `low`, `medium`, `high`, `xhigh`, `max` (`hookd.EffortLevel`;
+`medium` and `high` are the levels seen on a real machine, 2026-10-30); any
+other value, another shape, or no field leaves the column as it is, and an
+`effort` that is not an object never costs the event. A hook that names a
+level replaces the stored one, since `/effort` and `/model` change it
+mid-session (`store.UpsertSession`, `COALESCE(NULLIF(excluded.effort, ''),
+sessions.effort)`). `Session` carries it as `effort`, omitted when empty, so
+`/v1/sessions`, `/v1/sessions/{id}` and the live `session` frame all have it;
+the Agent panel's model chip reads it ([04-ui.md](04-ui.md)). Other agents,
+and sessions observed from their transcript alone, have none.
 
 ### Idle end DDL (migration 0067)
 

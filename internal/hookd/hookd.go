@@ -33,6 +33,7 @@ type Payload struct {
 	Cwd            string          `json:"cwd"`
 	HookEventName  string          `json:"hook_event_name"`
 	PermissionMode string          `json:"permission_mode"`
+	Effort         json.RawMessage `json:"effort"` // {level}; read by effortOf
 	AgentID        string          `json:"agent_id"`
 	AgentType      string          `json:"agent_type"`
 	ToolName       string          `json:"tool_name"`
@@ -48,6 +49,19 @@ type Payload struct {
 	// PermissionSuggestions is what PermissionRequest's "don't ask again"
 	// option would add, verbatim.
 	PermissionSuggestions json.RawMessage `json:"permission_suggestions"`
+}
+
+// effortOf is the level a hook payload's `effort` object, `{level}`, names.
+// It is decoded apart from the rest of the payload so an effort of another
+// shape is only an unknown effort, never a hook event lost.
+func effortOf(raw json.RawMessage) string {
+	var e struct {
+		Level string `json:"level"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &e) != nil {
+		return ""
+	}
+	return e.Level
 }
 
 // permissionRequest is the hook Claude Code fires when it draws a permission
@@ -101,6 +115,20 @@ func subagentOf(transcript string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(base, "agent-"), ".jsonl")
 }
 
+// EffortLevel is level when it is one of the reasoning efforts Claude Code
+// names in a hook payload's `effort.level` — "low", "medium", "high",
+// "xhigh", "max" (its /effort levels; "medium" and "high" are the ones
+// observed on a real machine) — and "" for anything else. Only a known word
+// is stored and shown: the field is Claude Code's, and a value it starts
+// sending tomorrow is not ours to print until it is named here.
+func EffortLevel(level string) string {
+	switch level {
+	case "low", "medium", "high", "xhigh", "max":
+		return level
+	}
+	return ""
+}
+
 // RecordTimeout bounds one hook event's write. Far longer than the shim waits
 // on purpose: the shim's second is about not delaying Claude Code, and has
 // nothing to do with how long the event may take to reach the database.
@@ -133,6 +161,11 @@ func Normalize(raw []byte, now time.Time) (*event.Event, rollup.SessionInfo, err
 	}
 	if ev.AgentID == "" {
 		ev.AgentID = subagentOf(p.TranscriptPath)
+	}
+	if ev.AgentID == "" {
+		// The main thread's effort is the session's; a subagent's hook says
+		// nothing about what the session itself runs at.
+		info.Effort = EffortLevel(effortOf(p.Effort))
 	}
 	ev.Payload, ev.ToolBytes = capBody(raw)
 	switch p.HookEventName {
