@@ -26,7 +26,7 @@ export function OverlapLine({ chip, onMove, className = '' }: { chip: OverlapChi
         <span className="truncate">{chip.label}</span>
       </span>
       {onMove && (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onMove(chip) }} className="link whitespace-nowrap"
+        <button type="button" data-share-skip onClick={(e) => { e.stopPropagation(); onMove(chip) }} className="link whitespace-nowrap"
           title={`Start a new session in a copy of the folder on its own branch, named after ${chip.newer.name}`}>
           Move to a worktree…
         </button>

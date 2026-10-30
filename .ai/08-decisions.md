@@ -6653,8 +6653,10 @@ dashboard panel's picture, from the share icon in its header, leaves by the
 same sheet and the same three buttons: the menu's Copy image, Save PNG and
 Copy as text never upload, and the sheet shows the picture before any
 button. No new call: it is the same `POST /v1/share/card` with a PNG, and the
-picture has project, session, branch and folder names replaced unless the
-person turned *Hide project names* off (.ai/04-ui.md § Share, "Any panel").
+picture has project, session, branch and folder names replaced — also where
+they show in part (a folder's last segment, a slug's halves), and an activity
+line's file names and paths — unless the person turned *Hide project names*
+off (.ai/04-ui.md § Share, "Any panel").
 
 **Revisit if:** the site has to keep anything beside the picture; the social
 sites stop drawing a link's preview from its page; or people ask for the

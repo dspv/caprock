@@ -247,7 +247,7 @@ export function MostExpensive({ data, period, onPeriod, now, onOpenPR }: { data?
   const picker = (
     <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5" role="group" aria-label="Period" data-expensive-period>
       {EXPENSIVE_PERIODS.map((o) => (
-        <button key={o.v} type="button" onClick={() => onPeriod(o.v)} aria-pressed={period === o.v} title={o.title} data-period={o.v}
+        <button key={o.v} type="button" onClick={() => onPeriod(o.v)} aria-pressed={period === o.v} data-share-skip={period === o.v ? undefined : ''} title={o.title} data-period={o.v}
           className={`rounded-[5px] px-2 py-0.5 text-[11px] normal-case tracking-normal ${period === o.v ? 'bg-accent font-medium text-panel' : 'text-fg-muted hover:text-fg'}`}>
           {o.label}
         </button>
