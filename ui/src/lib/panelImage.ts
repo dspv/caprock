@@ -3,8 +3,9 @@
  * (.ai/04-ui.md § Share, "Any panel").
  *
  * The panel on screen is copied, not touched: the copy has the names swept
- * (lib/panelShare.ts, when Hide project names is on), the share button taken
- * out, every canvas (the Live pulse's bars) carried over as its current
+ * (lib/panelShare.ts, when Hide project names is on), its chrome taken out —
+ * the share button, fold chevrons, More and Hide toggles, hover-only buttons,
+ * tooltips (SHARE_CHROME) — so the picture is the title and the content; every canvas (the Live pulse's bars) carried over as its current
  * picture, and images from anywhere but this page (a GitHub avatar) blanked,
  * so drawing fetches nothing off the machine. Under it, one faint line: when
  * it was taken and caprock.dev, as on the share card. html-to-image (already
@@ -16,7 +17,7 @@
  * screen does not carry it.
  */
 import { toBlob } from 'html-to-image'
-import { hideNamesIn, shareStamp, type Aliaser } from './panelShare'
+import { hideNamesIn, isShareChrome, shareStamp, stripChrome, type Aliaser } from './panelShare'
 
 /** The margin round the panel and the gap above the footer, in CSS pixels. */
 const PAD = 16
@@ -30,7 +31,6 @@ export async function renderPanelPNG(section: HTMLElement, aliaser: Aliaser, at 
   const clone = section.cloneNode(true) as HTMLElement
   clone.style.width = `${width}px`
   clone.style.margin = '0'
-  for (const el of clone.querySelectorAll('[data-panel-share]')) el.remove()
   // A canvas copies empty: put each one's current picture in its place.
   const from = section.querySelectorAll('canvas')
   clone.querySelectorAll('canvas').forEach((c, i) => {
@@ -44,6 +44,8 @@ export async function renderPanelPNG(section: HTMLElement, aliaser: Aliaser, at 
     img.className = c.className
     c.replaceWith(img)
   })
+  // After the canvases are matched up by position: a skipped one would shift them.
+  stripChrome(clone)
   // Rule 4: an image from another address would be fetched again to embed it.
   for (const img of clone.querySelectorAll('img')) {
     const src = img.getAttribute('src') ?? ''
@@ -87,6 +89,8 @@ export async function renderPanelPNG(section: HTMLElement, aliaser: Aliaser, at 
       backgroundColor: getComputedStyle(frame).backgroundColor,
       style: { position: 'static', left: '0', top: '0', transform: 'none', margin: '0' },
       cacheBust: false,
+      // The clone is stripped already; this keeps anything added since out too.
+      filter: (node) => !isShareChrome(node),
     })
   } finally {
     frame.remove()

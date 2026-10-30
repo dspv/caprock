@@ -184,7 +184,7 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
   if (!data.github_connected) {
     return (
       <p data-cicd="off" className="px-3 py-3 text-[12.5px] text-fg-muted">
-        CI, releases and what each pull request cost are read from GitHub. <a href={href({ name: 'settings' })} className="text-accent hover:underline">Connect GitHub in Settings</a>
+        CI, releases and what each pull request cost are read from GitHub. <a data-share-skip href={href({ name: 'settings' })} className="text-accent hover:underline">Connect GitHub in Settings</a>
       </p>
     )
   }
@@ -198,7 +198,7 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
     <div key="undo" data-cicd-undo={undo.repo} role="status" className="flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 text-[12px] text-fg-muted last:border-b-0">
       <EyeOffIcon size={13} className="shrink-0 text-fg-faint" />
       <span className="min-w-0 truncate"><span className="text-fg">{undo.name}</span> hidden from CI/CD</span>
-      <button type="button" onClick={() => unhide(undo.repo)} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Undo</button>
+      <button type="button" data-share-skip onClick={() => unhide(undo.repo)} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Undo</button>
     </div>
   ) : null
   const blocks: (RepoCIRow | 'undo')[] = [...data.repos]
@@ -211,7 +211,7 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
           <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${st.tone === 'fail' ? 'bg-danger' : st.tone === 'warn' ? 'bg-warn' : st.tone === 'ok' ? 'bg-ok' : 'bg-fg-faint'}`} />
           <span className="min-w-0">{st.text}</span>
           {data.status?.incidents[0] && <span className="min-w-0 text-fg-muted">· {data.status.incidents[0].name}</span>}
-          <button type="button" onClick={() => openExternal(data.status?.incidents[0]?.url || STATUS_PAGE)} className="ml-auto shrink-0 text-[11.5px] text-fg-faint hover:text-fg-muted hover:underline" title={extTitle()}>githubstatus.com ↗</button>
+          <button type="button" data-share-skip onClick={() => openExternal(data.status?.incidents[0]?.url || STATUS_PAGE)} className="ml-auto shrink-0 text-[11.5px] text-fg-faint hover:text-fg-muted hover:underline" title={extTitle()}>githubstatus.com ↗</button>
         </div>
       )}
       {calm && (
@@ -249,11 +249,11 @@ function CICDBody({ onFresh, sessions }: { onFresh: (f: CICDFresh | undefined) =
                   <span className="truncate text-fg">{q.name || q.repo}</span>
                   <span className="mono truncate text-[11px] text-fg-faint">{q.repo}</span>
                   {q.last_active ? <span className="shrink-0 text-[11px] text-fg-faint">active {fmtAgo(q.last_active, now)}</span> : null}
-                  <button type="button" onClick={() => unhide(q.repo)} aria-label={`Show ${q.name || q.repo} again`} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Show again</button>
+                  <button type="button" data-share-skip onClick={() => unhide(q.repo)} aria-label={`Show ${q.name || q.repo} again`} className="ml-auto shrink-0 text-[11.5px] text-accent hover:underline">Show again</button>
                 </li>
               ))}
               {hiddenRows.length > 1 && (
-                <li className="pt-0.5">
+                <li className="pt-0.5" data-share-skip>
                   <button type="button" data-cicd-show-all onClick={() => { for (const q of hiddenRows) unhide(q.repo); setShowHidden(false) }} className="text-[11.5px] text-accent hover:underline">Show all {hiddenRows.length} again</button>
                 </li>
               )}
@@ -324,7 +324,7 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
         </span>
         {r.live > 0 && <span className="text-[11.5px] text-fg-muted">{r.live} session{r.live === 1 ? '' : 's'} running</span>}
         {r.live === 0 && r.last_active ? <span className="text-[11.5px] text-fg-faint" title={new Date(r.last_active).toLocaleString()}>active {fmtAgo(r.last_active, now)}</span> : null}
-        <button type="button" data-cicd-hide onClick={onHide} aria-label={`Hide ${r.name || r.repo} from CI/CD`}
+        <button type="button" data-cicd-hide data-share-skip onClick={onHide} aria-label={`Hide ${r.name || r.repo} from CI/CD`}
           title="Hide from CI/CD: it folds into the hidden line at the bottom, where Show brings it back"
           className="inline-flex shrink-0 items-center gap-1 rounded px-1 text-[11.5px] text-fg-faint hover:bg-fg/5 hover:text-fg">
           <EyeOffIcon size={12} />Hide
@@ -362,7 +362,7 @@ function RepoBlock({ r, now, usage, calm, onHide }: { r: RepoCIRow; now: number;
         <Cell label="Stuck" data="stuck" title="A run going on more than twice its workflow's median (and 10 minutes over it), or waiting for a runner over 15 minutes"
           note={r.stuck.length === 0 ? 'nothing past its median' : stuckText(r.stuck[0]!, now, spanText)}>
           <span className={`${BIG} ${r.stuck.length > 0 ? 'text-danger' : ''}`}>{r.stuck.length}</span>
-          {r.stuck[0]?.url && <button type="button" onClick={() => openExternal(r.stuck[0]!.url!)} className="shrink-0 text-[11.5px] text-accent hover:underline" title={extTitle()}>open ↗</button>}
+          {r.stuck[0]?.url && <button type="button" data-share-skip onClick={() => openExternal(r.stuck[0]!.url!)} className="shrink-0 text-[11.5px] text-accent hover:underline" title={extTitle()}>open ↗</button>}
         </Cell>
         <Cell label="Pull requests" data="prs" note={`${r.merged_7d} merged in 7 days`} title="Open now, and merged in the last 7 days, among the newest 50 listed">
           <span className={BIG}>{r.open}<span className="ml-1 text-[12px] font-normal text-fg-muted">open</span></span>
