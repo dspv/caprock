@@ -378,7 +378,8 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  *   narrower than 340px. Each figure is still a chooser.
  * - **The subagent chips**, one per working subagent in groups of five,
  *   only while some work.
- * - **The configuration** as small chips: the model and its account, how
+ * - **The configuration** as small chips: the model, its reasoning effort
+ *   when a hook named one ("Opus 5.5 · high") and its account, how
  *   full the context is (a bar and the percent), when it started. What the
  *   daemon does not report is left out.
  */
@@ -392,6 +393,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const kinds = useMemo(() => subagentKinds(subs?.working ?? []), [subs])
   const model = s.model_display || s.model
+  const effort = s.effort
   // One word: "Background agents" took two lines (owner, 2026-10-22). The
   // full phrase is the tooltip and what a screen reader announces.
   const label = saysBackground ? 'Background' : STATE_LABEL[state]
@@ -445,14 +447,16 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
         <div ref={chipBox} data-hero-chips className="flex min-w-0 items-center empty:hidden">
           {strip.chips.length > 0 && <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />}
         </div>
-        {(model || s.context || (s.started_at > 0 && state !== 'ended')) && (
+        {(model || effort || s.context || (s.started_at > 0 && state !== 'ended')) && (
           <div data-hero-config className="flex min-w-0 flex-wrap gap-1"
-            title={[model, s.context ? `${fmtPct(s.context.pct)} of the context window used (${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)})` : ''].filter(Boolean).join(' · ')}>
+            title={[model, effort ? `${effort} reasoning effort` : '', s.context ? `${fmtPct(s.context.pct)} of the context window used (${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)})` : ''].filter(Boolean).join(' · ')}>
             {model ? (
               <span data-hero-model className={HERO_CHIP}>
-                <span className="font-semibold text-fg">{model}</span>
+                <span className="font-semibold text-fg">{model}{effort ? <span data-hero-effort className="font-normal text-fg-muted" aria-label={`${effort} reasoning effort`}> · {effort}</span> : null}</span>
                 <SubscriptionTag id={s.subscription} agent={agent} className="text-[11px] font-normal text-fg-muted" />
               </span>
+            ) : effort ? (
+              <span data-hero-effort className={HERO_CHIP} aria-label={`${effort} reasoning effort`}>{effort} effort</span>
             ) : null}
             {s.context ? <ContextChip pct={s.context.pct} /> : null}
             {s.started_at > 0 && state !== 'ended' && (

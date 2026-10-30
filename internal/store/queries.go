@@ -68,6 +68,10 @@ type Session struct {
 	// on (migration 0065): "haiku", "sonnet" or "opus"; empty when they follow
 	// the session.
 	SubagentModel string `json:"subagent_model,omitempty"`
+	// Effort is the reasoning effort the session last ran at, from its
+	// newest hook that named one (migration 0076): "low", "medium", "high",
+	// "xhigh" or "max"; empty when no hook has said.
+	Effort string `json:"effort,omitempty"`
 	// AttemptGroup, Attempt and Attempts say the session is attempt Attempt
 	// of Attempts started together on one first message (migration 0046,
 	// ADR-052); empty and zero otherwise.
@@ -472,6 +476,11 @@ type SessionPatch struct {
 	// non-empty value is kept: the spawn knows it before any event does, and
 	// a session cannot move from one sign-in to another.
 	Subscription string
+	// Effort is the reasoning effort the event's hook payload named, already
+	// checked to be a known level (hookd.EffortLevel). Empty leaves the
+	// stored one alone; a value replaces it, since /effort changes it
+	// mid-session.
+	Effort string
 }
 
 // resolveRepoFields fills Project/RepoRoot/RepoPath from Cwd. Callers pass a cwd
@@ -518,8 +527,8 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		model = p.SubagentModel
 	}
 	_, err := q.ExecContext(ctx, `
-		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title, worked_at, parent_session, subscription)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?, ?, ?, ?)
+		INSERT INTO sessions(session_id, cwd, project, model, started_at, last_event_at, status, transcript_path, has_hooks, has_transcript, git_branch, version, repo_root, repo_path, agent, pid, title, worked_at, parent_session, subscription, effort)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?, ''), 'claude'), ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(session_id) DO UPDATE SET
 		  -- A subagent's place fills an empty row only (SessionPatch.FromSubagent);
 		  -- the main thread's always wins.
@@ -561,8 +570,9 @@ func UpsertSession(ctx context.Context, q Querier, id string, p SessionPatch) er
 		  title           = COALESCE(NULLIF(excluded.title, ''), sessions.title),
 		  worked_at       = MAX(sessions.worked_at, excluded.worked_at),
 		  parent_session  = COALESCE(NULLIF(excluded.parent_session, ''), sessions.parent_session),
-		  subscription    = COALESCE(NULLIF(sessions.subscription, ''), excluded.subscription)`,
-		id, p.Cwd, project, model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title), p.WorkedAt, p.ParentSession, p.Subscription,
+		  subscription    = COALESCE(NULLIF(sessions.subscription, ''), excluded.subscription),
+		  effort          = COALESCE(NULLIF(excluded.effort, ''), sessions.effort)`,
+		id, p.Cwd, project, model, p.StartedAt, p.LastEventAt, status, p.TranscriptPath, b2i(p.FromHook), b2i(p.FromTranscript), p.GitBranch, p.Version, repoRoot, repoPath, p.Agent, p.PID, strings.TrimSpace(p.Title), p.WorkedAt, p.ParentSession, p.Subscription, p.Effort,
 		p.FromSubagent, p.FromSubagent, repoKnown, repoKnown, p.Model, p.FromSubagent, p.FromSubagent,
 		p.Status, p.Status)
 	if err != nil {
@@ -1010,14 +1020,14 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), COALESCE(sessions.effort,''), ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned, chat int
 	var exit sql.NullInt64
 	var attempt string
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &attempt)
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &s.Effort, &attempt)
 	s.setAttempt(attempt)
 	s.HasHooks, s.HasTranscript, s.Owned, s.Chat = hh != 0, ht != 0, owned != 0, chat != 0
 	if exit.Valid {
