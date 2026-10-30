@@ -67,6 +67,10 @@ export interface Session {
   /** The model its subagents were started to run on: `haiku`, `sonnet` or
    *  `opus`; absent when they follow the session. */
   subagent_model?: string
+  /** The reasoning effort it last ran at, from its newest Claude Code hook
+   *  that named one: `low`, `medium`, `high`, `xhigh` or `max`; absent when
+   *  no hook has said. */
+  effort?: string
   /** The repository the session's folder belongs to (a linked worktree resolves to its main repository). */
   repo_root?: string
   /** The worktree's name when the session runs in a linked worktree. */

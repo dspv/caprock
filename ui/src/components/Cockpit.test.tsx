@@ -459,7 +459,27 @@ describe('the agent cockpit', () => {
     show(agent({ model: '', model_display: undefined, context: undefined }))
     expect(document.querySelector('[data-hero-model]')).toBeNull()
     expect(document.querySelector('[data-hero-context]')).toBeNull()
+    expect(document.querySelector('[data-hero-effort]')).toBeNull()
     expect(document.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
+  })
+
+  // The reasoning effort a hook named rides on the model chip; unknown, the
+  // chip is the model alone.
+  it('shows the reasoning effort beside the model only when the daemon reports one', () => {
+    show(agent({ effort: 'high' }))
+    expect(document.querySelector('[data-hero-model]')).toHaveTextContent('Opus 5.5 · high')
+    expect(document.querySelector('[data-hero-effort]')).toHaveAccessibleName('high reasoning effort')
+    expect(document.querySelector('[data-hero-config]')?.getAttribute('title')).toContain('high reasoning effort')
+    cleanup()
+    show(agent())
+    expect(document.querySelector('[data-hero-model]')).toHaveTextContent('Opus 5.5')
+    expect(document.querySelector('[data-hero-model]')?.textContent).not.toContain('·')
+    expect(document.querySelector('[data-hero-effort]')).toBeNull()
+    cleanup()
+    // No model named, the effort still stands as its own chip.
+    show(agent({ model: '', model_display: undefined, effort: 'xhigh' }))
+    expect(document.querySelector('[data-hero-model]')).toBeNull()
+    expect(document.querySelector('[data-hero-effort]')).toHaveTextContent('xhigh effort')
   })
 
   // The face picker the portrait opened stays one click away, on the mark.

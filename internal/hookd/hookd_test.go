@@ -443,3 +443,35 @@ func TestNormalizeReadsTheSubagentFromItsTranscriptPath(t *testing.T) {
 		t.Fatalf("agent_id lost: %+v %v", ev, err)
 	}
 }
+
+// The effort a main-thread hook names becomes the session's when it is a
+// level Claude Code is known to send; anything else, or a subagent's hook,
+// says nothing.
+func TestNormalizeTakesAKnownEffortFromTheMainThread(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	cases := []struct{ level, agent, want string }{
+		{"high", "", "high"},
+		{"xhigh", "", "xhigh"},
+		{"max", "", "max"},
+		{"medium", "a1", ""},
+		{"ultra", "", ""},
+		{"HIGH", "", ""},
+		{"", "", ""},
+	}
+	for _, c := range cases {
+		m := map[string]any{"session_id": "s", "hook_event_name": "UserPromptSubmit", "prompt_id": "p", "effort": map[string]string{"level": c.level}}
+		if c.agent != "" {
+			m["agent_id"] = c.agent
+		}
+		raw, _ := json.Marshal(m)
+		_, info, err := Normalize(raw, now)
+		if err != nil || info.Effort != c.want {
+			t.Errorf("level %q agent %q: effort %q, %v; want %q", c.level, c.agent, info.Effort, err, c.want)
+		}
+	}
+	// An effort of another shape is an unknown effort, not a lost event.
+	ev, info, err := Normalize([]byte(`{"session_id":"s","hook_event_name":"Stop","effort":"high"}`), now)
+	if err != nil || ev == nil || info.Effort != "" {
+		t.Fatalf("non-object effort: %+v %q %v", ev, info.Effort, err)
+	}
+}
