@@ -259,6 +259,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-30 — 0.167.0: reasoning effort in the Agent panel, cleaner shared panel images
+
+A minor release, one batch PR (#868) of #866, #867 and #865. The daemon keeps the newest reasoning effort Claude Code's hooks report per session (migration 0076) and returns it with the session; the Agent panel shows it beside the model ("Opus 5.5 · xhigh"), nothing when unknown. A shared panel picture leaves out the panel's controls (fold chevrons, help, hide and share buttons, hover-only links), and with project names hidden it also hides name parts (folder, repository and GitHub slug), branch names and, in activity lines, file paths and file names. The shim's timing test starts the built binary once untimed first, so a first-launch scan on Windows is not counted as the shim's time.
+
 ### 2026-10-30 — 0.166.0: fold folders in the Files tab, plan limits as bars when folded, a compact Agent panel header with a subagent chart
 
 A minor release, one batch PR (#863) of #860, #861 and #862. The Files tab opens a folder in place with → and folds it with ← (← inside a folder jumps to it), with a chevron for the mouse; nested rows keep git marks, compare tints, marks and every action by their path from the root. The Plan limits panel, folded, keeps one small bar per limit window in its header row (label, percent, reset; labels and resets drop first on narrow widths) instead of an empty row. The Agent panel's header is about half as tall: the agent's own small icon (which opens the face picker), the name once, state and permission on the name row, burn rate beside a framed chart of subagents per minute over the last hour (`GET /v1/sessions/{id}/subagents?hour=1`, no migration), and model, context and start as chips; the separate "no subagents running" line is gone.

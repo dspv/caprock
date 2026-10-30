@@ -12,6 +12,26 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.167.0] - 2026-10-30
+
+### Added
+
+- **ui:** the Agent panel header shows the session's reasoning effort beside
+  its model, *Opus 5.5 · high*, as Claude Code's own hooks report it. The
+  daemon now keeps the newest known level per session (low, medium, high,
+  xhigh, max; migration 0076) and returns it as `effort`; a session whose
+  hooks never named one shows the model alone.
+
+### Fixed
+
+- **ui:** a shared panel's picture is the title and the content alone: fold
+  chevrons, More/Less and Hide toggles, Settings links, a row's ways in,
+  tooltips and hover-only buttons are left out. With Hide project names on,
+  names no longer slip through in part: a folder's last segment, a GitHub
+  slug's owner and repository and a name in another letter case are hidden
+  too, and an activity line such as "editing caprock/internal/api/x.go"
+  reads "editing path 1", its file names and branches replaced.
+
 ## [0.166.0] - 2026-10-29
 
 ### Added
