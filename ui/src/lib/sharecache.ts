@@ -7,8 +7,9 @@
  * each period is kept — in memory for this tab and in localStorage for the
  * next one — and drawn the moment the dialog opens, marked as the earlier
  * reading while the current one is fetched behind it. Saving or sending
- * always waits for the current one: a card that leaves the machine never
- * carries old figures.
+ * waits for the current one, for a few seconds at most (Share.tsx,
+ * FIGURES_WAIT_MS); past that the card goes as shown, marked as the earlier
+ * reading.
  *
  * One request per period is in flight at a time, shared by everyone who asks,
  * so hovering the Share button (which warms the default period) and then

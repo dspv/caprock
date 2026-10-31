@@ -29,6 +29,10 @@
  *    card and opened a chat picker: Copy image does the copying.
  *  - **Edit post text** — the words, folded away until asked for.
  *
+ * No press waits forever: drawing has DRAW_LIMIT_MS (lib/drawLimit.ts), and
+ * past it the buttons come back with *Could not draw the card — try again.*
+ * (owner, 2026-10-31: the sheet sat on "Drawing…" with every button off).
+ *
  * Nothing leaves before a button is pressed — Share…, Copy image, Save image
  * and My Telegram never upload — and the caller decides what the card and
  * the words contain (the Pipeline's are anonymous by default).
@@ -40,10 +44,16 @@ import { copyImage } from '@/lib/attachments'
 import { extTitle } from '@/lib/externalLinks'
 import { openExternal } from '@/lib/nudges'
 import { navigate } from '@/lib/router'
+import { DRAW_TIMEOUT_TEXT, DrawTimeout, withDrawLimit } from '@/lib/drawLimit'
+import { pageFontCSS } from '@/lib/fontEmbed'
 
 export interface ShareActionsProps {
-  /** The image that leaves, drawn from the current figures. */
-  build: () => Promise<Blob | null>
+  /**
+   * The image that leaves, drawn from the current figures. `busy` changes
+   * what the busy button says while it waits ("Counting this month…").
+   * Given DRAW_LIMIT_MS at most.
+   */
+  build: (busy?: (label: string) => void) => Promise<Blob | null>
   fileName: () => string
   /** The words that go with it: the post's text and the Telegram caption. */
   text: string
@@ -144,6 +154,8 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
     return () => { live = false }
   }, [])
   const tgReady = !!tg?.bot_set && !!tg?.chat_set
+  // The fonts the picture embeds, read while the sheet is looked at.
+  useEffect(() => { void pageFontCSS() }, [])
 
   // A result is said briefly, then the row is quiet again.
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -154,16 +166,19 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
   }
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
+  /** The card, within the time limit; the busy button says what it waits on. */
+  const draw = () => withDrawLimit(build(setBusyLabel))
+
   /** Draw, run `then` with the card, and say what happened. */
   const act = async (then: (blob: Blob) => Promise<string>, fail: string, label = 'Drawing…') => {
     if (locked) return
     setLocked(true); setDrawing(true); setBusyLabel(label); say(''); setPaste(undefined); setPosted(undefined)
     try {
-      const blob = await build()
+      const blob = await draw()
       if (!blob) { setDrawing(false); say('Could not draw the card here.'); return }
       say(await then(blob))
-    } catch {
-      say(fail)
+    } catch (e) {
+      say(e instanceof DrawTimeout ? DRAW_TIMEOUT_TEXT : fail)
     } finally { setDrawing(false); setLocked(false) }
   }
 
@@ -178,7 +193,7 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
     if (locked) return
     setLocked(true); setDrawing(true); setBusyLabel('Drawing…'); say('')
     try {
-      const blob = await build()
+      const blob = await draw()
       if (!blob) { say('Could not draw the card here.'); setLocked(false); return }
       setDrawing(false)
       // The file travels alone: several apps take {files, text} as two
@@ -187,7 +202,8 @@ export function ShareActions({ build, fileName, text, onText, link, disabled, on
       setLocked(false)
       onShared?.()
     } catch (e) {
-      if ((e as Error)?.name !== 'AbortError') say('Sharing was not available — nothing was sent.')
+      if (e instanceof DrawTimeout) say(DRAW_TIMEOUT_TEXT)
+      else if ((e as Error)?.name !== 'AbortError') say('Sharing was not available — nothing was sent.')
       setLocked(false)
     } finally { setDrawing(false) }
   }

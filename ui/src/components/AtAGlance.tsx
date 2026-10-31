@@ -10,12 +10,20 @@
  * Same period as ALL TIME (everything) and, like it, every agent: the agent
  * switch on Today governs Today. Collapsed or open, and charts or numbers, are
  * remembered in this browser.
+ *
+ * It shares like the other figure panels (.ai/04-ui.md § Share, "Any
+ * panel"): the picture leaves out the fold chevron, the Charts/Numbers
+ * switch and the agents' fold toggle; the text is the Numbers view's tables.
+ * It names models, tools and agents, never a project, so Hide project names
+ * has nothing to replace.
  */
 import { useState } from 'react'
 import { api, type Glance, type GlanceWindow, type History, type WeekAgent } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtTool, fmtUSD } from '@/lib/format'
 import { Panel } from '@/components/ui'
+import { ShareWith } from '@/components/PanelShare'
+import { mdTable } from '@/lib/panelShare'
 import { SLOW_LIVE_MS, useOnScreen } from '@/lib/refresh'
 import { AgentCharacter, agentName, characterFor, type Character } from '@/components/Characters'
 import { colorOf, Donut, pointPct, Ring, sharePct, topN, TrendMark, trendDelta, type Segment, type TrendCell } from '@/components/Donut'
@@ -169,6 +177,20 @@ export function glanceTrends(c: GlanceCharts, rows: AgentRow[], g: Glance | unde
   }
 }
 
+/** The panel as Markdown, the Numbers view's tables: what Copy as text puts on the clipboard. */
+export function glanceText(c: GlanceCharts, rows: AgentRow[]): string {
+  const table = (title: string, head: string[], segs: Segment[], total: number) =>
+    `${title}\n\n${mdTable([...head, 'Share'], segs.map((s) => [s.label, s.display, sharePct(s.value, total)]))}`
+  const parts = [table('Where the money went', ['Model', 'Cost'], c.models, c.modelTotal)]
+  if (c.bill.length > 0) parts.push(table('The bill by token type', ['Type', 'Cost'], c.bill, c.billTotal))
+  parts.push(table('Most-used tools', ['Tool', 'Calls'], c.tools, c.toolTotal))
+  if (rows.length > 0) {
+    const total = rows.reduce((a, r) => a + r.cost, 0)
+    parts.push(`Agents\n\n${mdTable(['Agent', 'Turns', 'Cost', 'Share'], rows.map((r) => [r.name, r.turns.toLocaleString('en-US'), fmtUSD(r.cost), sharePct(r.cost, total)]))}`)
+  }
+  return `All time, every agent.\n\n${parts.join('\n\n')}`
+}
+
 export function AtAGlancePanel() {
   const [open, setOpen] = useState(() => read(OPEN_KEY, '1') !== '0')
   const [view, setView] = useState<'charts' | 'numbers'>(() => (read(VIEW_KEY, 'charts') === 'numbers' ? 'numbers' : 'charts'))
@@ -194,15 +216,17 @@ export function AtAGlancePanel() {
   return (
     <Panel
       sectionRef={seen}
+      // Folded, it has nothing to share: the button goes with the body.
+      share={open ? 'At a glance' : undefined}
       title={
         <button type="button" onClick={toggle} aria-expanded={open} className="inline-flex items-center gap-1.5 uppercase tracking-[0.12em] hover:text-fg">
-          <span aria-hidden className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
+          <span aria-hidden data-share-skip className={`inline-block transition-transform ${open ? 'rotate-90' : ''}`}>›</span>
           At a glance
         </button>
       }
       right={
         open ? (
-          <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5" role="group" aria-label="View">
+          <span className="inline-flex items-center gap-0.5 rounded-md bg-panel-2 p-0.5" role="group" aria-label="View" data-share-skip>
             {(['charts', 'numbers'] as const).map((v) => (
               <button key={v} type="button" onClick={() => pick(v)} aria-pressed={view === v}
                 className={`px-2 py-0.5 rounded-[5px] text-[11px] capitalize ${view === v ? 'bg-accent text-panel font-medium' : 'text-fg-muted hover:text-fg'}`}>
@@ -213,6 +237,7 @@ export function AtAGlancePanel() {
         ) : <span className="text-fg-faint">all time · every agent</span>
       }
     >
+      {open && <ShareWith toText={() => glanceText(c, rows)} />}
       {open && view === 'charts' && (
         <>
           {/* Three across only when the panel itself has room for three
@@ -262,12 +287,12 @@ export function AtAGlancePanel() {
                   </span>
                 )
               })}
-              <button type="button" onClick={foldAgents} className="ml-auto text-[12px] text-fg-faint hover:text-accent">show cards</button>
+              <button type="button" onClick={foldAgents} data-share-skip className="ml-auto text-[12px] text-fg-faint hover:text-accent">show cards</button>
             </div>
           )}
           {rows.length > 0 && !agentsSmall && (
             <div className="relative flex flex-wrap gap-2.5 border-t border-border px-3 py-3">
-              <button type="button" onClick={foldAgents} title="Fold the agents to icons" className="absolute right-3 top-1.5 text-[11px] text-fg-faint hover:text-accent">fold to icons</button>
+              <button type="button" onClick={foldAgents} title="Fold the agents to icons" data-share-skip className="absolute right-3 top-1.5 text-[11px] text-fg-faint hover:text-accent">fold to icons</button>
               {rows.map((r) => {
                 // The ring is this agent's share of all-time spend across
                 // every agent. The owner read "81%" and could not tell of
