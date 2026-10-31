@@ -201,7 +201,7 @@ export function SubagentChart({ subs, count, kinds, onChip }: { subs: SubagentsN
   if (quiet) {
     return frame(
       <>
-        <span data-hero-nosubs className="text-[11px] leading-[16px] text-fg-faint">{hour ? 'no subagents in the last hour' : 'no subagents running'}</span>
+        <span data-hero-nosubs className="truncate whitespace-nowrap text-[11px] leading-[16px] text-fg-faint" title={hour ? 'No subagents in the last hour' : undefined}>{hour ? 'no subagents · 1h' : 'no subagents'}</span>
         {hour && <div role="img" aria-label="No subagents in the last hour" className="h-px w-full self-end bg-[var(--app-hairline)]" />}
       </>,
     )
