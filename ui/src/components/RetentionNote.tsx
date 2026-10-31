@@ -77,6 +77,8 @@ export function RetentionNote({ earliest }: {
       <button
         type="button"
         data-retention-keep
+        // A setting, not a figure: left out of a shared picture.
+        data-share-skip
         onClick={keep}
         disabled={state === 'busy'}
         title={`Sets cleanupPeriodDays to ${data.keep_days} in ~/.claude/settings.json, keeping every other setting as it is`}

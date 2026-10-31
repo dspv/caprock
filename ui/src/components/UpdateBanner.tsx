@@ -8,6 +8,12 @@
  * surface a local-first tool should not open. You copy one line and run it in
  * your own terminal, where you can see exactly what it does.
  *
+ * In the desktop app, when this install can replace itself, the banner is
+ * the same one click as the status strip's update line (AppUpdateNotice):
+ * **Update to vX.Y.Z — Restart** downloads with a progress bar, verifies,
+ * installs and relaunches (ADR-042), instead of a link to the release page
+ * (owner, 2026-10-31, translated: "seamless, not through a link to GitHub").
+ *
  * The check reaches GitHub for a version number and nothing else, so it is off until
  * you turn it on — this component is also where you turn it on, and off again.
  */
@@ -19,6 +25,7 @@ import { everyWhileVisible } from '@/lib/visible'
 import { isTauri } from '@/lib/appmode'
 import { Banner, BannerButton, BannerDismiss } from './Banner'
 import { extTitle } from '@/lib/externalLinks'
+import { appUpdate, offerFor, useAppUpdate } from '@/lib/appupdate'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -31,6 +38,7 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
 }) {
   const [st, setSt] = useState<UpdateStatus>()
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) ?? '')
+  const info = useAppUpdate()
 
   // Reading status never triggers a network call — the daemon serves a cached
   // answer — so this is safe to poll gently.
@@ -65,17 +73,29 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
     )
   }
 
-  if (!st?.update_available || !st.latest) return null
-  if (dismissed === st.latest) return null
+  // The app's own updater, when it can replace this install: the strip's
+  // offer, so the banner and the strip never disagree about what a click does.
+  const app = info?.supported ? offerFor(info, st, dismissed) : undefined
+  const busy = app?.kind === 'progress' || app?.kind === 'installing'
+  if (!busy && app?.kind !== 'failed') {
+    if (!st?.update_available || !st.latest) return null
+    if (dismissed === st.latest) return null
+  }
+  if (!st?.latest && !busy && app?.kind !== 'failed') return null
+  const next = app && (app.kind === 'install' || app.kind === 'progress' || app.kind === 'installing') ? app.next : st?.latest ?? ''
+  const notNow = () => { localStorage.setItem(DISMISS_KEY, next); setDismissed(next) }
 
   return (
     <Banner
       id="update"
       art="update"
-      title={<>Caprock {st.latest} is available</>}
+      title={app?.kind === 'progress' ? <>Downloading Caprock {next}</> : app?.kind === 'installing' ? <>Installing Caprock {next} — restarting…</> : app?.kind === 'failed' ? <>The update did not install</> : <>Caprock {next} is available</>}
       line={<>
-        You&apos;re on <span className="mono">{st.current}</span>
-        {st.checked_at ? <span className="text-fg-faint"> · checked {fmtAgo(st.checked_at, now)}</span> : null}
+        {app?.kind === 'failed' ? <span className="text-warn">{app.error}</span> : <>
+          You&apos;re on <span className="mono">{st?.current ?? info?.version}</span>
+          {st?.checked_at ? <span className="text-fg-faint"> · checked {fmtAgo(st.checked_at, now)}</span> : null}
+          {app?.kind === 'install' && <span className="text-fg-faint"> · restarting keeps every session in a terminal running</span>}
+        </>}
         {/* Upgrading restarts the daemon. A session whose terminal is in a
           * pty-host carries on and is picked back up (ADR-033); one in the
           * daemon's own PTY ends with it. Counted, and only shown when there
@@ -85,13 +105,24 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
         )}
       </>}
       actions={<>
-        {st.command ? (
+        {app?.kind === 'install' || app?.kind === 'failed' ? (
+          <BannerButton onClick={() => { void appUpdate.install() }}>{app.kind === 'failed' ? 'Try again' : <>Update to {next} — Restart</>}</BannerButton>
+        ) : app?.kind === 'progress' ? (
+          <span role="status" data-update-banner-progress className="inline-flex items-center gap-2 whitespace-nowrap text-fg-muted" title="Downloading in the background; sessions keep running">
+            <span className="relative h-[6px] w-[140px] overflow-hidden rounded-full bg-[var(--app-hairline-strong)]">
+              <span className="absolute inset-y-0 left-0 rounded-full bg-accent transition-[width] duration-200" style={{ width: `${app.pct ?? 8}%` }} />
+            </span>
+            {app.pct !== null && <span className="num text-fg">{app.pct}%</span>}
+          </span>
+        ) : app?.kind === 'checking' ? (
+          <BannerButton disabled>Checking…</BannerButton>
+        ) : app?.kind === 'installing' ? null : st?.command ? (
           <Copyable command={st.command} className="max-w-full truncate" />
         ) : (
-          <a className="bn-btn bg-accent text-bg no-underline" href={st.url} target="_blank" title={extTitle()} rel="noreferrer">Download it</a>
+          <a className="bn-btn bg-accent text-bg no-underline" href={st?.url} target="_blank" title={extTitle()} rel="noreferrer">Download it</a>
         )}
-        <a className="bn-link no-underline" href={st.url} target="_blank" title={extTitle()} rel="noreferrer">What&apos;s new</a>
-        <BannerDismiss onClick={() => { localStorage.setItem(DISMISS_KEY, st.latest!); setDismissed(st.latest!) }}>Not now</BannerDismiss>
+        {st?.url && <a className="bn-link no-underline" href={st.url} target="_blank" title={extTitle()} rel="noreferrer">What&apos;s new</a>}
+        {!busy && <BannerDismiss onClick={notNow}>Not now</BannerDismiss>}
       </>}
     />
   )

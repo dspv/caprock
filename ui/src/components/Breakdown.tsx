@@ -55,8 +55,10 @@ export function BreakdownPanel() {
       fold="now.all-time"
       sectionRef={seen}
       title="All time"
+      share="All time"
       right={
-        <span className="inline-flex items-center gap-3">
+        // The share-card pill is a way out, not a figure: left out of the picture.
+        <span className="inline-flex items-center gap-3" data-share-skip>
           {/* The one thing here that travels: these figures are the most
             * persuasive part of the product and they are stuck on one
             * machine. */}
@@ -160,7 +162,7 @@ export function BreakdownPanel() {
       {/* The way into the whole breakdown, as a block of its own: as a faint
         * link in the corner the owner called it "very, very important" and
         * nearly missed it (2026-10-11, translated). */}
-      <a href="#/history" data-full-breakdown
+      <a href="#/history" data-full-breakdown data-share-skip
         className="group flex items-center gap-3 border-t border-border px-3 py-2.5 no-underline hover:bg-panel-2">
         <span className="text-[13px] font-medium text-fg group-hover:text-accent">Every tool, model and project</span>
         <span className="text-[12px] text-fg-muted">charts and exact numbers, for any range</span>

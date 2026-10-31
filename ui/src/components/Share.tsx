@@ -29,6 +29,7 @@ import { ShareActions, xPostURL } from './ShareActions'
 import { CloseButton, DialogBackdrop } from './Dialog'
 import { periodWords, planOf, postText, type CardPlan } from '@/lib/week'
 import { currentStory, fetchStory, FRESH_MS, lastStory, warmShare } from '@/lib/sharecache'
+import { pause } from '@/lib/drawLimit'
 
 /** What the desktop app's File → Share Your Figures… dispatches on the page. */
 export const SHARE_EVENT = 'caprock:share'
@@ -109,8 +110,24 @@ function remember(key: string, v: string) {
   try { localStorage.setItem(key, v) } catch { /* a remembered choice is a convenience */ }
 }
 
-/** Two frames, so a card just given new figures has been laid out before it is captured. */
-const settled = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+/**
+ * Two frames, so a card just given new figures has been laid out before it is
+ * captured — or a quarter second, since a window out of sight paints no frames.
+ */
+const settled = () => Promise.race([
+  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  pause(250),
+])
+
+/**
+ * How long a press waits for the current figures when the card on screen is
+ * an earlier reading. A month or all of history can take half a minute to
+ * count on a large database (owner's, 2026-10-31: 28 s for *this month*
+ * while agents worked), and the press waited all of it under "Drawing…"
+ * with every button off. Past this the card goes as it is shown, its corner
+ * still saying which reading it is.
+ */
+export const FIGURES_WAIT_MS = 6000
 
 /** The period as the progress line says it. */
 const PERIOD_WORDS: Record<SharePeriod, string> = {
@@ -180,13 +197,22 @@ export function ShareDialog({ onClose, initialPeriod = '7d' }: { onClose: () => 
   const fileName = () => cardFilename().replace('caprock-', `caprock-${period}-${size.w}x${size.h}-`)
 
   /**
-   * The image that leaves the machine, always from the current figures. When
-   * the screen shows an earlier reading, this waits for the current one first.
+   * The image that leaves the machine: what the sheet shows. When the screen
+   * shows an earlier reading, this waits for the current one first, saying
+   * so on the button, for at most FIGURES_WAIT_MS; still counting then, the
+   * card goes as shown.
    */
-  const build = async (): Promise<Blob | null> => {
-    const w = await currentStory(period)
-    setStory(w)
-    setStale(0)
+  const build = async (busy?: (label: string) => void): Promise<Blob | null> => {
+    const kept = lastStory(period)
+    const current = currentStory(period)
+    if (!kept || Date.now() - kept.at >= FRESH_MS) busy?.(`Counting ${PERIOD_WORDS[period]}…`)
+    const w = story
+      ? await Promise.race([current, pause(FIGURES_WAIT_MS).then(() => undefined)])
+      : await current
+    if (w) { setStory(w); setStale(0) }
+    // The count carries on behind the card and replaces it when it lands.
+    else current.catch(() => { /* the sheet already shows the earlier reading */ })
+    busy?.('Drawing…')
     await settled()
     if (!card.current) return null
     return renderCardPNG(card.current, size)

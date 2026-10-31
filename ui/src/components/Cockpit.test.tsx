@@ -59,6 +59,7 @@ import { resetSpendPrefsForTest } from '@/lib/spendview'
 import { LOOKS_KEY, getLooks, resetLooksForTest, setLook } from '@/lib/cockpitlooks'
 import { ORDER_KEY, resetOrderForTest } from '@/lib/cockpitorder'
 import { getSubagentFields, resetSubagentFieldsForTest, setSubagentFields } from '@/lib/subagentview'
+import { SUBAGENT_LOOK_KEY, clockTime, resetSubagentLookForTest } from '@/lib/subagentfaces'
 
 beforeEach(() => {
   // The clock stands at `now` in every test. The fixtures are stamped when
@@ -69,6 +70,7 @@ beforeEach(() => {
   localStorage.clear()
   resetSpendPrefsForTest()
   resetSubagentFieldsForTest()
+  resetSubagentLookForTest()
   resetLooksForTest()
   resetOrderForTest()
   h.events = undefined
@@ -413,7 +415,7 @@ describe('the agent cockpit', () => {
       const head = document.querySelector('[data-hero-head]') as HTMLElement
       expect(within(head).getByRole('status')).toHaveTextContent('Working')
       expect(head.querySelector('[data-hero-mode]')).toBeInTheDocument()
-      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('started 1h ago')
+      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('uptime 1h')
       const strip = await screen.findByRole('group', { name: 'Subagents' })
       expect(strip).toHaveAttribute('data-compact', 'true')
       expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
@@ -440,7 +442,7 @@ describe('the agent cockpit', () => {
       expect(screen.queryByText('Claude Code')).toBeNull()
       expect(document.querySelector('[data-hero-model]')).toHaveTextContent('Opus 5.5')
       expect(document.querySelector('[data-hero-context] .text-warn')).toHaveTextContent('62%')
-      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('started 6d ago')
+      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('uptime 6d')
       const kinds = await waitFor(() => {
         const c = document.querySelector('[data-hero-kinds]')
         if (!c?.textContent?.includes('Explore')) throw new Error('no kinds yet')
@@ -491,17 +493,24 @@ describe('the agent cockpit', () => {
     expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(0)
   })
 
-  // The subagent chart: how many worked each minute of the last hour, the
-  // most at once, and in the frame — not a line of its own — when none did.
-  it('charts the subagents over the last hour, and says so in the frame when none ran', async () => {
+  // The subagent chart: how many worked in the last hour drawn as the brand
+  // faces (owner, 2026-10-31: the step line "looks poor"), the most at once
+  // and when, and in the frame — not a line of its own — when none did.
+  it('charts the subagents over the last hour as faces, and says so in the frame when none ran', async () => {
     const counts = Array.from({ length: 60 }, (_, i) => (i > 40 ? 3 : i > 20 ? 7 : 0))
     h.subagents = { working: [{ agent_id: 'e1', agent_type: 'Explore', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false }], finished: 0,
       hour: { start: now - 59 * 60_000, step_ms: 60_000, counts, peak: 7 } } as SubagentsNow
     try {
       show(agent({ live_subagents: 1 }))
-      const peak = await screen.findByText('peak 7 · 1h')
-      expect(peak.closest('[data-hero-subs]')).toBeInTheDocument()
-      expect(screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 7 at once' })).toBeInTheDocument()
+      // The latest minute that reached the peak is minute 40, 19 minutes ago.
+      const peak = await screen.findByText(`peak 7 at ${clockTime(now - 19 * 60_000)}`)
+      expect(peak.closest('[data-hero-subs]')).toHaveAttribute('data-look', 'chart')
+      const chart = screen.getByRole('img', { name: 'Subagents at work in each five minutes of the last hour, at most 7 at once' })
+      expect(chart.querySelectorAll('[data-bucket]')).toHaveLength(12)
+      // Seven at the peak is past six: one face stands for two, so the tallest column is four faces.
+      expect(document.querySelector('[data-face-scale]')).toHaveTextContent('1 face = 2')
+      const tallest = Math.max(...Array.from(chart.querySelectorAll('[data-bucket]')).map((c) => c.querySelectorAll('svg').length))
+      expect(tallest).toBe(4)
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
@@ -513,6 +522,46 @@ describe('the agent cockpit', () => {
       expect(none.closest('[data-hero-subs]')).toBeInTheDocument()
       expect(screen.getByRole('img', { name: 'No subagents in the last hour' })).toBeInTheDocument()
       expect(screen.queryByText('peak 0 · 1h')).toBeNull()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  // Three looks, the chart of faces by default; the viewer's pick is kept.
+  it('switches the subagent frame between its three looks and remembers the choice', async () => {
+    const counts = Array.from({ length: 60 }, (_, i) => (i > 50 ? 2 : i > 30 ? 5 : 0))
+    h.subagents = { working: [
+      { agent_id: 'g1', agent_type: 'general-purpose', tool_calls: 1, started_at: 1, last_at: 1, running: true, asking: false },
+      { agent_id: 'g2', agent_type: 'general-purpose', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false },
+    ], finished: 3, recent: [{ agent_id: 'd1', agent_type: 'Explore', tool_calls: 2, started_at: 1, stopped_at: 5 }],
+    hour: { start: now - 59 * 60_000, step_ms: 60_000, counts, peak: 5 } } as SubagentsNow
+    try {
+      show(agent({ live_subagents: 2 }))
+      const frame = await waitFor(() => {
+        const f = document.querySelector('[data-hero-subs]')
+        if (f?.getAttribute('data-look') !== 'chart') throw new Error('not yet')
+        return f as HTMLElement
+      })
+      const looks = within(frame).getByRole('group', { name: 'How the subagents are drawn' })
+      expect(within(looks).getByRole('button', { name: 'Chart of faces' })).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.click(within(looks).getByRole('button', { name: 'Crew' }))
+      expect(frame).toHaveAttribute('data-look', 'crew')
+      expect(frame.querySelectorAll('[data-crew-face]')).toHaveLength(2)
+      expect(frame.querySelectorAll('[data-crew-done]')).toHaveLength(1)
+      expect(frame.querySelector('[data-crew-finished]')).toHaveTextContent('+3 finished')
+      expect(frame.querySelector('[data-hero-peak]')).toHaveTextContent('peak 5 · 1h')
+      expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('crew')
+      fireEvent.click(within(looks).getByRole('button', { name: 'Numbers' }))
+      expect(frame).toHaveAttribute('data-look', 'numbers')
+      expect(frame.querySelector('[data-hero-count]')).toHaveTextContent(/^2$/)
+      expect(frame.querySelector('[data-hero-count]')).toHaveAttribute('title', '2 subagents working')
+      expect(screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 5 at once' })).toBeInTheDocument()
+      expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('numbers')
+      // Read again from storage, as a new window would.
+      cleanup()
+      resetSubagentLookForTest()
+      show(agent({ live_subagents: 2 }))
+      await waitFor(() => expect(document.querySelector('[data-hero-subs]')).toHaveAttribute('data-look', 'numbers'))
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
