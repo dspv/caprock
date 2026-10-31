@@ -15,7 +15,7 @@
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { SLOW_LIVE_MS } from '@/lib/refresh'
-import { StaleNote } from '@/components/ui'
+import { StaleNote, Stat } from '@/components/ui'
 import { fmtUSD } from '@/lib/format'
 import { costBasis, costBasisLong } from '@/components/CostBasis'
 import type { Settings } from '@/lib/api'
@@ -34,42 +34,28 @@ export function LifetimeStrip({ plan }: { plan?: Settings }) {
   // sessions a day"), so it is simply left out there.
   const perDay = t.days > 0 ? t.sessions / t.days : 0
 
+  // Tiles, the Cost screen's Totals row: a label over each figure, five equal
+  // cells that never wrap mid-row (owner, 2026-10-31: the running line spilt
+  // "sessions a day" onto a second line). The stale note and the cap hint
+  // sit under the row only when there is something to say.
   return (
-    <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-[var(--radius-panel)] border border-border bg-panel px-3 py-2.5">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint">all time</span>
-
-      <span className="inline-flex items-baseline gap-2">
-        <span className="num font-semibold tracking-[-0.01em] text-[22px] leading-none text-info">
-          {fmtUSD(t.cost_usd)}
-        </span>
-        <span className="text-[11px] text-fg-faint" title={costBasisLong(plan)}>
-          {costBasis(plan)}
-        </span>
-      </span>
-
-      <Figure value={t.sessions.toLocaleString('en-US')} label="sessions" />
-      <Figure value={t.days.toLocaleString('en-US')} label="active days" />
-      <Figure value={t.turns.toLocaleString('en-US')} label="turns" />
-      {perDay >= 1 && <Figure value={perDay.toFixed(1)} label="sessions a day" />}
-
-      {/* Expands in place rather than sending you to another screen for the
-        * two breakdowns people actually ask for. The Lifetime screen keeps the
-        * full tables — this is the shape of them, where the total already is. */}
-      <span className="ml-auto inline-flex items-baseline gap-4">
+    // Sized by its own width, not the window's: the strip shares its row with
+    // Quick chat and New session, so the window says little about its room.
+    // One row of equal tiles from 520 px, two columns below.
+    <div data-lifetime-strip className="@container h-full overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
+      <div className="grid grid-cols-2 divide-x divide-border @min-[520px]:grid-flow-col @min-[520px]:auto-cols-fr">
+        <Stat data="lifetime-cost" label="all time" size="compact" tone="info" value={fmtUSD(t.cost_usd)}
+          sub={<span title={costBasisLong(plan)}>{costBasis(plan)}</span>} />
+        <Stat data="lifetime-sessions" label="sessions" size="compact" value={t.sessions.toLocaleString('en-US')} />
+        <Stat data="lifetime-days" label="active days" size="compact" value={t.days.toLocaleString('en-US')} />
+        <Stat data="lifetime-turns" label="turns" size="compact" value={t.turns.toLocaleString('en-US')} />
+        {perDay >= 1 && <Stat data="lifetime-per-day" label="sessions a day" size="compact" value={perDay.toFixed(1)} />}
+      </div>
+      <div className="flex items-baseline justify-end gap-4 border-t border-border px-3 py-1.5 text-[11px] empty:hidden">
         {h.stale && <StaleNote at={h.cachedAt} />}
         <CapHint />
-      </span>
+      </div>
     </div>
-  )
-}
-
-/** One figure with its label, repeated across the row. */
-function Figure({ value, label }: { value: string; label: string }) {
-  return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="num text-[13px] text-fg">{value}</span>
-      <span className="text-[11px] text-fg-muted">{label}</span>
-    </span>
   )
 }
 
