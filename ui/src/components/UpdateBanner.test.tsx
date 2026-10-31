@@ -7,8 +7,9 @@
  * a turn they were in the middle of. The banner has to say so before they copy
  * the command, and only when there is actually something to lose.
  */
-import { render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { APP_UPDATE_EVENT, resetAppUpdate, type AppUpdateInfo } from '@/lib/appupdate'
 import { UpdateBanner } from './UpdateBanner'
 import type { Settings } from '@/lib/api'
 
@@ -47,5 +48,51 @@ describe('UpdateBanner', () => {
     render(<UpdateBanner plan={plan} onSave={() => {}} now={Date.now()} owned={0} />)
     await waitFor(() => expect(screen.getByText(/is available/)).toBeInTheDocument())
     expect(screen.queryByText(/will close/)).not.toBeInTheDocument()
+  })
+})
+
+describe('UpdateBanner in the desktop app (owner, 2026-10-31: seamless, not a link)', () => {
+  let app: AppUpdateInfo
+  let invoke: ReturnType<typeof vi.fn>
+  const emit = (over: Record<string, unknown>) => {
+    app = { ...app, ...over } as AppUpdateInfo
+    act(() => { window.dispatchEvent(new CustomEvent(APP_UPDATE_EVENT, { detail: app })) })
+  }
+  beforeEach(() => {
+    localStorage.clear()
+    resetAppUpdate()
+    status.value = { ...status.value, command: '' }
+    app = { version: '0.39.0', supported: true, asked: true, phase: 'idle' }
+    invoke = vi.fn(async (cmd: string) => {
+      if (cmd === 'app_update_status' || cmd === 'app_update_check') return app
+      if (cmd === 'app_update_install') return new Promise(() => { /* restarts; never answers */ })
+      throw new Error(cmd)
+    })
+    ;(window as unknown as { __TAURI_INTERNALS__: unknown }).__TAURI_INTERNALS__ = { invoke }
+  })
+  afterEach(() => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
+  })
+
+  it('updates in place with a progress bar instead of linking to the release page', async () => {
+    render(<UpdateBanner plan={plan} onSave={() => {}} now={Date.now()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Update to v0.40.0 — Restart' }))
+    expect(screen.queryByText('Download it')).toBeNull()
+    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    emit({ phase: 'downloading', next: '0.40.0', downloaded: 420, total: 1000 })
+    expect(screen.getByText('Downloading Caprock v0.40.0')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('42%')
+    expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull()
+    emit({ phase: 'installing', next: '0.40.0' })
+    expect(screen.getByText('Installing Caprock v0.40.0 — restarting…')).toBeInTheDocument()
+  })
+
+  it('says a failed install and offers it again', async () => {
+    render(<UpdateBanner plan={plan} onSave={() => {}} now={Date.now()} />)
+    await screen.findByRole('button', { name: 'Update to v0.40.0 — Restart' })
+    emit({ phase: 'failed', error: 'signature did not verify' })
+    expect(screen.getByText('signature did not verify')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
   })
 })
