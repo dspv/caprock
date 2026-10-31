@@ -12,6 +12,30 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.168.0] - 2026-10-31
+
+### Added
+
+- **compact:** every compaction is now a stat: what it cost and what it has
+  saved since, both estimated from the pricing table and marked ≈. The Agent
+  panel's Context shows the latest one on one line (*32h ago · 442k → 19k ·
+  cost ≈ $0.09*) with a small curve of the saving since and *saved ≈* at its
+  end; the ⓘ beside *~15% stays* says what /compact does and how each figure
+  is estimated. Cost and Week gain a Compactions panel: the count, cost,
+  saved and net for the period. Every compaction already recorded is filled
+  in once on the first start, its summary's length read back from the
+  transcript. New `GET /v1/stats/compactions`; `GET
+  /v1/sessions/{id}/compaction` gains `estimate` (migration 0077).
+
+### Fixed
+
+- **pricing:** Claude Sonnet 5.5 cache reads are priced at $0.10 per million
+  tokens from 7 October 2026, as Anthropic charges (0.05x the input price);
+  the table had kept $0.20. Turns from that day are repriced once, openly,
+  and the session and daily totals move by the difference. GPT-6.1 Terra
+  gets its own row, so its Codex turns are priced instead of counted as
+  unpriced. Table version 2026-10-31.1.
+
 ## [0.167.0] - 2026-10-30
 
 ### Added

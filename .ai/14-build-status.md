@@ -259,6 +259,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-10-31 — 0.168.0: cost and saving of every compaction, Sonnet 5.5 cache-read price
+
+A minor release, one batch PR (#872) of #870 and #871. Every compaction is stored as a stat (migration 0077): its estimated cost (the context before, read from the cache when the last call was within the cache's life and sent again in full when not, plus the summary as output, at the session model's list prices) and its estimated saving since (the dropped tokens at each later call's cache-read price until the next boundary), both marked ≈ because Claude Code records no usage for the summary call. Compactions already recorded are filled in once on the first start. The Agent panel's Context shows the latest one on one line with a curve of the saving since; Cost and Week gain a Compactions panel (count, cost, saved, net). New `GET /v1/stats/compactions`; `GET /v1/sessions/{id}/compaction` gains `estimate`. The pricing table (2026-10-31.1) prices Claude Sonnet 5.5 cache reads at $0.10 per million tokens from 2026-10-07 with a one-time correction, and adds a GPT-6.1 Terra row.
+
 ### 2026-10-30 — 0.167.0: reasoning effort in the Agent panel, cleaner shared panel images
 
 A minor release, one batch PR (#868) of #866, #867 and #865. The daemon keeps the newest reasoning effort Claude Code's hooks report per session (migration 0076) and returns it with the session; the Agent panel shows it beside the model ("Opus 5.5 · xhigh"), nothing when unknown. A shared panel picture leaves out the panel's controls (fold chevrons, help, hide and share buttons, hover-only links), and with project names hidden it also hides name parts (folder, repository and GitHub slug), branch names and, in activity lines, file paths and file names. The shim's timing test starts the built binary once untimed first, so a first-launch scan on Windows is not counted as the shim's time.
