@@ -36,7 +36,7 @@ export function CompactionsPanel({ window: w, title = 'Compactions', fold }: { w
   const p = r.data
   if (!p || p.count === 0) return null
   return (
-    <Panel fold={fold} title={title} right={<span title={COMPACTIONS_HOW}>≈ estimates from list prices</span>}>
+    <Panel fold={fold} title={title} share={title} right={<span title={COMPACTIONS_HOW}>≈ estimates from list prices</span>}>
       <CompactionsFigures p={p} />
     </Panel>
   )

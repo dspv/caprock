@@ -32,6 +32,7 @@ export function HermesSpendPanel({ h, range }: { h?: HermesCost; range: string }
   return (
     <Panel
       fold="cost.hermes"
+      share={`Hermes Agent · ${range}`}
       title={<span className="inline-flex items-center gap-1.5"><AgentGlyph agent="hermes" />Hermes Agent · {range}</span>}
       right={<span title="Hermes prices its own calls; Caprock shows its figures as recorded">Hermes's own figures</span>}
     >

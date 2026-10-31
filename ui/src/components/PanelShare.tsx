@@ -22,6 +22,7 @@
  */
 import { createContext, lazy, Suspense, useContext, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 import { createPortal } from 'react-dom'
+import { withDrawLimit } from '@/lib/drawLimit'
 import { Aliaser, loadHideNames, panelFileName, panelText, saveHideNames, type PanelShareData } from '@/lib/panelShare'
 
 const PanelShareSheet = lazy(() => import('./PanelShareSheet'))
@@ -120,13 +121,14 @@ export function PanelShareButton({ name, section, data }: {
     const el = section()
     if (!el) return null
     const { renderPanelPNG } = await import('@/lib/panelImage')
-    return renderPanelPNG(el, aliaserFor(data.current, hide))
+    // Never a menu stuck on "Drawing…": past the limit it says so.
+    return withDrawLimit(renderPanelPNG(el, aliaserFor(data.current, hide)))
   }
 
   const run = async (job: () => Promise<string>) => {
     if (busy) return
     setBusy(true); say('')
-    try { say(await job()) } catch { say('Could not draw this panel here.') } finally { setBusy(false) }
+    try { say(await job()) } catch { say('Could not draw this panel — try again.') } finally { setBusy(false) }
   }
 
   const copyImg = () => run(async () => {

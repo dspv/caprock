@@ -12,6 +12,7 @@ import { api, isPairedDevice, type History } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, fmtTool } from '@/lib/format'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
+import { ShareWith } from '@/components/PanelShare'
 import { groupDays } from './Cost'
 import { BarChart, BarReadout, type Bar } from '@/components/BarChart'
 import { localDay } from '@/components/Nudges'
@@ -190,7 +191,7 @@ export function HistoryScreen() {
       {/* Money first and largest, on the left: it is what this screen is
         * opened for. Then the two figures that say what it means per unit of
         * work, then the cache, then the counts at reading size below. */}
-      <Panel fold="lifetime.totals" title={`Lifetime · ${range}`} right={<span>everything you ran through Caprock · measured, not estimated</span>}>
+      <Panel fold="lifetime.totals" title={`Lifetime · ${range}`} share={`Lifetime · ${range}`} right={<span>everything you ran through Caprock · measured, not estimated</span>}>
         <div className="grid sm:grid-cols-2 lg:grid-cols-[1.5fr_1fr_1fr_1fr] divide-y sm:divide-y-0 sm:divide-x divide-border">
           <Big hero label={costLabel(plan)} tone="text-accent" value={measured ? <span title={fmtUSD(f.cost)}>{fmtUSDShort(f.cost)}</span> : '—'}
             sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured yet'}</span>} />
@@ -227,9 +228,10 @@ export function HistoryScreen() {
       <Panel
         fold="lifetime.daily"
         title="Daily cost"
+        share="Daily cost"
         right={
           <span className="flex items-center gap-3">
-            <span role="group" aria-label="Daily cost period" className="flex items-center gap-0.5">
+            <span role="group" aria-label="Daily cost period" className="flex items-center gap-0.5" data-share-skip>
               {DAILY_SPANS.map((sp) => (
                 <button key={sp} type="button" aria-pressed={dailySpan === sp} onClick={() => setDailySpan(sp)}
                   className={`rounded-[5px] px-1.5 py-0.5 text-[11.5px] ${dailySpan === sp ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg'}`}>
@@ -237,7 +239,7 @@ export function HistoryScreen() {
                 </button>
               ))}
             </span>
-            <button type="button" aria-pressed={dailyTall} onClick={() => setDailyTall(!dailyTall)} title={dailyTall ? 'Normal height' : 'Twice as tall'}
+            <button type="button" aria-pressed={dailyTall} onClick={() => setDailyTall(!dailyTall)} title={dailyTall ? 'Normal height' : 'Twice as tall'} data-share-skip
               className={`rounded-[5px] px-1.5 py-0.5 text-[11.5px] ${dailyTall ? 'bg-panel-2 text-fg' : 'text-fg-faint hover:text-fg'}`}>
               ×2
             </button>
@@ -257,7 +259,8 @@ export function HistoryScreen() {
       {/* Top projects lead: "which repository did this go into" is the first
         * question after "how much". The donut gives the shape; the table
         * beside it the exact figures, every row with its share. */}
-      <Panel fold="lifetime.projects" title="Top projects" right={<span>by cost</span>}>
+      <Panel fold="lifetime.projects" title="Top projects" right={<span>by cost</span>} share="Top projects">
+        {d && <ShareWith names={() => (d.summary.projects ?? []).map((p) => ({ kind: 'project' as const, value: p.project }))} />}
         {!d ? <Skeleton rows={4} /> : f.projects.length === 0 ? <Empty title="No priced work in a project yet" /> : (
           <div className="grid gap-x-8 gap-y-4 px-3 py-3 md:grid-cols-[auto_1fr] items-center">
             <Donut title="" segments={f.projects} size={168} legend={false}
@@ -329,7 +332,7 @@ export function HistoryScreen() {
           )}
         </Panel>
         <div className="grid gap-3 content-start">
-          <Panel fold="lifetime.models" title="Model mix" right={<span>by cost</span>}>
+          <Panel fold="lifetime.models" title="Model mix" right={<span>by cost</span>} share="Model mix">
             {!d ? <Skeleton rows={3} /> : d.summary.models.length === 0 && <Empty title="No priced turns" />}
             {d && f.models.length > 0 && view === 'charts' && (
               <div className="px-3 py-3">

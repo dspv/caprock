@@ -262,12 +262,13 @@ export function CostScreen({ section }: { section?: string } = {}) {
           fold="cost.month"
           className="lg:col-span-2"
           title="Last 30 days"
+          share="Last 30 days"
           right={
             <span className="flex items-center gap-3">
               <BarReadout bars={days} active={activeDay} total={days.reduce((a, d) => a + d.cost, 0)} />
               {/* Two readings of the same month: the calendar shows the rhythm
                 * — which weekdays you work — and the bars show the amounts. */}
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" data-share-skip>
                 {(['calendar', 'bars'] as const).map((v) => (
                   <button
                     key={v}
