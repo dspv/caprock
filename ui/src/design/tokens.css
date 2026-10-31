@@ -977,12 +977,22 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   .cockpit-hero [data-usual-on] [data-label-long] { display: inline; }
   .cockpit-hero [data-usual-on] [data-label-short] { display: none; }
 }
-/* The subagent chart: a step line of how many worked each minute of the
- * last hour, its area faintly filled; one stroke width at any size. */
-.cockpit-subspark .area { fill: color-mix(in srgb, var(--color-ok) 16%, transparent); }
-.cockpit-subspark .line { fill: none; stroke: var(--color-ok); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.cockpit-subspark .base { stroke: var(--app-hairline); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.cockpit-subspark[data-empty] .line { stroke: var(--color-fg-faint); }
+/* The subagent frame (SubagentFaces.tsx): the brand faces in three looks.
+ * The chart of faces stacks them, a little overlapped, older columns dimmed;
+ * the crew's working faces bob gently, its finished ones fade; the bars are
+ * the hour per minute, green in the crew and the characters' amber in Numbers, in every palette. */
+.cockpit-subframe { --character-outline: transparent; --subfaces-amber: #c26f22; }
+[data-theme="dark"] .cockpit-subframe { --subfaces-amber: #f3a553; }
+.cockpit-subcol-face + .cockpit-subcol-face { margin-bottom: -4px; }
+.cockpit-subcol[data-dim] { opacity: .5; }
+.cockpit-subface-bob { display: block; animation: cockpit-subface-bob 2.4s ease-in-out infinite; }
+.cockpit-subface-done { display: block; opacity: .4; filter: grayscale(.7); }
+@keyframes cockpit-subface-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .cockpit-subface-bob { animation: none; } }
+.cockpit-subbars .base { stroke: var(--app-hairline); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.cockpit-subbars rect { fill: var(--color-ok); }
+.cockpit-subbars[data-tone="amber"] rect { fill: var(--subfaces-amber); }
+.cockpit-subbars rect[data-old] { opacity: .5; }
 /* The agent's mark, the face picker's button: a small tile tinted by state. */
 [data-app] .cockpit-avatar {
   --cockpit-tint: var(--color-fg-faint);

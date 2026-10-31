@@ -11,7 +11,7 @@
  * and the day's summary for the plan windows. Nothing here is estimated, and a
  * figure an agent does not report is left out rather than drawn as a zero.
  */
-import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
@@ -32,6 +32,7 @@ import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValu
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
+import { SubagentChart } from './SubagentFaces'
 import { PickableFace } from './SessionFace'
 import { AgentGlyph } from './AgentMarks'
 import { SubscriptionTag } from './SubscriptionPicker'
@@ -460,7 +461,9 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
             ) : null}
             {s.context ? <ContextChip pct={s.context.pct} /> : null}
             {s.started_at > 0 && state !== 'ended' && (
-              <span data-hero-started className={HERO_CHIP}>started {fmtAgo(s.started_at, now)}</span>
+              // "uptime 8d", not "started 8d ago": short enough to stay on the
+              // model and context row's line (owner, 2026-10-31).
+              <span data-hero-started className={HERO_CHIP} title={`Started ${new Date(s.started_at).toLocaleString()}`}>uptime {fmtAgo(s.started_at, now).replace(/ ago$/, '').replace(/^now$/, '0s')}</span>
             )}
           </div>
         )}
@@ -485,69 +488,6 @@ function ContextChip({ pct }: { pct: number }) {
       </span>
       <span className={`num ${ink}`}>{fmtPct(p)}</span> ctx
     </span>
-  )
-}
-
-/**
- * The subagents in a small frame beside the headline figure: how many work
- * now and of which types (a type opens the first of its kind in the
- * Subagents section), the most at once in the last hour, and a step line of
- * how many worked each minute of it (`/subagents?hour=1`). With none in the
- * hour, a flat line and *no subagents in the last hour*; from a daemon that
- * sends no hour, the frame without the line (*no subagents running*).
- */
-function SubagentChart({ subs, count, kinds, onChip }: { subs: SubagentsNow; count: number; kinds: { type: string; count: number; first: string }[]; onChip: (id: string) => void }) {
-  const hour = subs.hour
-  const quiet = count === 0 && (!hour || hour.peak === 0)
-  return (
-    <div data-hero-subs className="grid min-w-0 grid-rows-[auto_1fr] rounded-[7px] bg-[color-mix(in_srgb,var(--color-fg)_3%,transparent)] px-2 pt-1 shadow-[inset_0_0_0_1px_var(--app-hairline)]">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[11px] leading-[16px] text-fg-muted">
-        {quiet ? (
-          <span data-hero-nosubs className="text-fg-faint">{hour ? 'no subagents in the last hour' : 'no subagents running'}</span>
-        ) : (
-          <>
-            <span data-hero-count className="whitespace-nowrap font-semibold text-fg" title={`${count} ${count === 1 ? 'subagent' : 'subagents'} working`}>
-              {count} {count === 1 ? 'subagent' : 'subagents'}
-            </span>
-            {hour && hour.peak > 0 && <span data-hero-peak className="num ml-auto whitespace-nowrap text-[10.5px] text-fg-faint" title="The most at work at once in a minute of the last hour">peak {hour.peak} · 1h</span>}
-            {kinds.length > 0 && (
-              <span data-hero-kinds className="basis-full">
-                {kinds.map((k, i) => (
-                  <Fragment key={k.type}>
-                    {i > 0 && ', '}
-                    <button type="button" data-hero-kind={k.type} onClick={() => onChip(k.first)}
-                      title={`${k.count} ${k.type} working. Open`}
-                      className="rounded-[4px] text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-                      {k.count} {k.type}
-                    </button>
-                  </Fragment>
-                ))}
-              </span>
-            )}
-          </>
-        )}
-      </div>
-      {hour && <SubagentSpark counts={hour.counts} peak={hour.peak} />}
-    </div>
-  )
-}
-
-/** The hour's counts as a step line over a faint area, scaled to its peak. */
-function SubagentSpark({ counts, peak }: { counts: number[]; peak: number }) {
-  const W = 300
-  const H = 20
-  const n = Math.max(1, counts.length)
-  const y = (v: number) => (peak > 0 ? H - 2 - (v / peak) * (H - 5) : H - 2)
-  let d = `M0 ${y(counts[0] ?? 0)}`
-  counts.forEach((v, i) => { d += ` L${(i * W) / n} ${y(v)} L${((i + 1) * W) / n} ${y(v)}` })
-  return (
-    <svg data-hero-spark viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" data-empty={peak === 0 || undefined}
-      aria-label={peak > 0 ? `Subagents at work each minute of the last hour, at most ${peak} at once` : 'No subagents in the last hour'}
-      className="cockpit-subspark mt-0.5 block h-[20px] w-full self-end">
-      <line className="base" x1="0" x2={W} y1={H - 0.5} y2={H - 0.5} />
-      {peak > 0 && <path className="area" d={`${d} L${W} ${H} L0 ${H} Z`} />}
-      <path className="line" d={d} />
-    </svg>
   )
 }
 

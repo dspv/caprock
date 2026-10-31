@@ -18,6 +18,7 @@
  */
 import { toBlob } from 'html-to-image'
 import { hideNamesIn, isShareChrome, shareStamp, stripChrome, type Aliaser } from './panelShare'
+import { pageFontCSS } from './fontEmbed'
 
 /** The margin round the panel and the gap above the footer, in CSS pixels. */
 const PAD = 16
@@ -82,7 +83,10 @@ export async function renderPanelPNG(section: HTMLElement, aliaser: Aliaser, at 
   document.body.append(frame)
   try {
     const h = Math.ceil(frame.getBoundingClientRect().height)
+    // The faces this page loaded, from the browser's cache (lib/fontEmbed.ts).
+    const fontEmbedCSS = await pageFontCSS()
     return await toBlob(frame, {
+      ...(fontEmbedCSS ? { fontEmbedCSS } : {}),
       width: width + PAD * 2,
       height: h,
       pixelRatio: 2,

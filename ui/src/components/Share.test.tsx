@@ -3,11 +3,22 @@
  * portrait, on screen before any button is pressed; two rows of ways out,
  * each doing what its label says; one line about what leaves the machine.
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const plan = vi.hoisted(() => ({ kind: '' as string, label: '', usd: 0 }))
-const asked = vi.hoisted(() => ({ periods: [] as string[] }))
+const asked = vi.hoisted(() => ({ periods: [] as string[], hang: false }))
+// One week per period, so a card for the wrong period shows.
+const weekOf = vi.hoisted(() => (period: string) => ({
+  period, start: '2026-10-19', end: '2026-10-25', partial: true, from_ms: 0, to_ms: 0,
+  days: Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-${19 + i}`, prs_opened: i, cost_usd: 200, active: true })),
+  sessions: 556, scheduled_sessions: 480, active_days: 7, turns: 9000, cost_usd: 1540, models: [],
+  prs_opened: 54, prs_merged: period === 'today' ? 2 : 48, prs_source: 'github', merges_unresolved: 0,
+  commits: 120, files_edited: 300, lines_added: 9000, lines_removed: 100, ci_wait_ms: 0, tool_ms: 0,
+  cost_per_merged_pr: 21.5,
+  agents: [{ agent: 'claude', subagent: false, turns: 9000, cost_usd: 1540, sessions: 556 }],
+  estimates: ['lines_added', 'lines_removed', 'cost_per_merged_pr'],
+}))
 
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
@@ -15,19 +26,11 @@ vi.mock('@/lib/api', async (orig) => {
     ...actual,
     api: {
       ...actual.api,
-      // One week per period, so a card for the wrong period shows.
+      // A count that never ends when asked to (a month on a large database).
       weekFor: async (period: string) => {
         asked.periods.push(period)
-        return {
-          period, start: '2026-10-19', end: '2026-10-25', partial: true, from_ms: 0, to_ms: 0,
-          days: Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-${19 + i}`, prs_opened: i, cost_usd: 200, active: true })),
-          sessions: 556, scheduled_sessions: 480, active_days: 7, turns: 9000, cost_usd: 1540, models: [],
-          prs_opened: 54, prs_merged: period === 'today' ? 2 : 48, prs_source: 'github', merges_unresolved: 0,
-          commits: 120, files_edited: 300, lines_added: 9000, lines_removed: 100, ci_wait_ms: 0, tool_ms: 0,
-          cost_per_merged_pr: 21.5,
-          agents: [{ agent: 'claude', subagent: false, turns: 9000, cost_usd: 1540, sessions: 556 }],
-          estimates: ['lines_added', 'lines_removed', 'cost_per_merged_pr'],
-        }
+        if (asked.hang) return new Promise(() => {})
+        return weekOf(period)
       },
       settings: async () => ({ plan_kind: plan.kind, plan_label: plan.label, plan_usd_per_month: plan.usd }),
       telegram: async () => ({ bot_set: false, chat_set: false, polling: false }),
@@ -45,7 +48,9 @@ const cards = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/cardimage', () => ({ renderCardPNG: vi.fn(async () => new Blob(['png'], { type: 'image/png' })) }))
 
-import { ShareCard, ShareDialog, xIntent } from './Share'
+import { FIGURES_WAIT_MS, ShareCard, ShareDialog, xIntent } from './Share'
+import { ShareActions } from './ShareActions'
+import { DRAW_LIMIT_MS, DRAW_TIMEOUT_TEXT } from '@/lib/drawLimit'
 import { ApiError } from '@/lib/api'
 import { resetShareCache } from '@/lib/sharecache'
 
@@ -54,6 +59,7 @@ const write = vi.fn(async () => {})
 beforeEach(() => {
   plan.kind = ''; plan.label = ''; plan.usd = 0
   asked.periods = []
+  asked.hang = false
   resetShareCache()
   localStorage.clear()
   URL.createObjectURL = vi.fn(() => 'blob:card')
@@ -68,7 +74,7 @@ beforeEach(() => {
 })
 const shared: string[] = []
 const removed: string[] = []
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 const card = () => screen.findByRole('img', { name: /PRs merged/ })
 
@@ -271,6 +277,44 @@ describe('ShareDialog', () => {
     // would bring the site's preview in its place.
     expect(url.searchParams.get('url')).toBeNull()
     expect(url.searchParams.get('text')).not.toMatch(/\$|https?:/)
+  })
+})
+
+// Owner, 2026-10-31, in the app: this month, Paper, Portrait, the card on
+// screen "from 08:56 · updating…"; Threads left Copy image on "Drawing…"
+// and every button off. The press waited on a month's count (28 s on his
+// database) with nothing said, and nothing bounded the wait.
+describe('a press never hangs', () => {
+  it('waits for the current figures saying so, then sends the card as shown', async () => {
+    localStorage.setItem('caprock-share-story-v2-30d', JSON.stringify({ value: weekOf('30d'), at: Date.now() - 55 * 60_000 }))
+    asked.hang = true
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(<ShareDialog onClose={() => {}} initialPeriod="30d" />)
+    await card()
+    expect(screen.getByText(/updating…/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy image' }))
+    expect(await screen.findByRole('button', { name: 'Counting this month…' })).toBeDisabled()
+    expect(write).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(FIGURES_WAIT_MS + 500) })
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('Copied — paste it anywhere.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Post to Threads' })).not.toBeDisabled()
+    // The corner still says which reading went.
+    expect(screen.getByText(/updating…/)).toBeTruthy()
+  })
+
+  it('gives up on a drawing that never ends: the buttons come back with a plain line', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<ShareActions build={() => new Promise(() => {})} fileName={() => 'x.png'} text="t" onText={() => {}} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Post to Threads' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Post to Threads' })).toBeDisabled())
+    await act(async () => { await vi.advanceTimersByTimeAsync(DRAW_LIMIT_MS + 100) })
+    expect(await screen.findByText(DRAW_TIMEOUT_TEXT)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Post to Threads' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Copy image' })).not.toBeDisabled()
+    expect(open).not.toHaveBeenCalled()
+    expect(shared).toEqual([])
   })
 })
 
