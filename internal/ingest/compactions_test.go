@@ -103,3 +103,93 @@ func TestBackfillCompactions(t *testing.T) {
 		t.Fatal("NeedsCompactionBackfill reads the stored schema wrong")
 	}
 }
+
+// summaryLine is the isCompactSummary user message after a boundary, its
+// parentUuid a line between the two, as Claude Code 2.1.285 wrote it.
+func summaryLine(uuid, ts, text string) string {
+	b, _ := json.Marshal(map[string]any{
+		"parentUuid": "between-" + uuid, "isSidechain": false, "type": "user", "isCompactSummary": true,
+		"isVisibleInTranscriptOnly": true, "uuid": uuid, "timestamp": ts, "sessionId": "s1", "cwd": "/r",
+		"message": map[string]any{"role": "user", "content": text},
+	})
+	return string(b) + "\n"
+}
+
+// The tailer records a summary's length on the boundary it follows as the
+// lines arrive, the first row of compaction_stats made then.
+func TestTailerRecordsCompactionSummary(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "-r", "s1.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := boundaryLine("b-1", "2026-10-11T00:56:49.513Z", "auto", 210092) +
+		summaryLine("u-1", "2026-10-11T00:56:49.000Z", strings.Repeat("s", 1200))
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tl, st := newTailerAt(t, root)
+	if err := tl.discover(nil); err != nil {
+		t.Fatal(err)
+	}
+	tl.pass(context.Background(), false)
+	var chars, toks int64
+	if err := st.DB().QueryRow(`SELECT summary_chars, summary_tokens_est FROM compaction_stats`).Scan(&chars, &toks); err != nil {
+		t.Fatal(err)
+	}
+	if chars != 1200 || toks != 300 {
+		t.Fatalf("summary %d chars, %d tokens", chars, toks)
+	}
+}
+
+// Each summary's length goes to the boundary before it in the file — not
+// the session's newest — and a second run reads nothing new.
+func TestBackfillCompactionSummaries(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	st, err := store.Open(ctx, ":memory:", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	main := filepath.Join(dir, "s1.jsonl")
+	body := boundaryLine("b-1", "2026-10-11T00:56:49.513Z", "auto", 210092) +
+		summaryLine("u-1", "2026-10-11T00:56:49.000Z", strings.Repeat("é", 4000)) +
+		boundaryLine("b-2", "2026-10-11T02:00:00.000Z", "manual", 180000) +
+		summaryLine("u-2", "2026-10-11T02:00:00.100Z", strings.Repeat("a", 800))
+	if err := os.WriteFile(main, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertSession(ctx, st.DB(), "s1", store.SessionPatch{Cwd: "/r", TranscriptPath: main}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BackfillCompactions(ctx, st.DB(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AddCompactionBoundaries(ctx, st.DB()); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := BackfillCompactionSummaries(ctx, st.DB()); err != nil || n != 2 {
+		t.Fatalf("read %d, err %v", n, err)
+	}
+	rows, err := st.DB().Query(`SELECT summary_chars, summary_tokens_est FROM compaction_stats ORDER BY at`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got [][2]int64
+	for rows.Next() {
+		var chars, toks int64
+		_ = rows.Scan(&chars, &toks)
+		got = append(got, [2]int64{chars, toks})
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	_ = rows.Close()
+	if len(got) != 2 || got[0] != [2]int64{4000, 1000} || got[1] != [2]int64{800, 200} {
+		t.Fatalf("summaries %v", got)
+	}
+	if n, err := BackfillCompactionSummaries(ctx, st.DB()); err != nil || n != 0 {
+		t.Fatalf("second run read %d, err %v", n, err)
+	}
+}

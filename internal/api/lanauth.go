@@ -354,6 +354,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// A session's last compaction and what compactions here keep (ADR-085),
 	// as the cockpit's Context shows them; a read.
 	"GET /v1/sessions/{id}/compaction": true,
+	// What a period's compactions cost and saved, estimated, as Cost and
+	// Week show it; a read.
+	"GET /v1/stats/compactions": true,
 	// The Queue view: the queues of every owned session with their rough
 	// estimates and the turns finished lately — the same reads, together.
 	"GET /v1/queue": true,

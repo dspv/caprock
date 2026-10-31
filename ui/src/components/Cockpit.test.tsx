@@ -1083,15 +1083,25 @@ describe('compact context (ADR-085)', () => {
     setLook('context', 'full')
     const { rerender } = show(agent({ context: big }))
     const ctx = screen.getByRole('region', { name: 'Context' })
-    expect(within(ctx).getByText('Usually ~15% stays')).toBeInTheDocument()
-    expect(within(ctx).getByText(/Measured on one machine: 70 automatic compactions, 2026-09-29 – 2026-10-25/)).toBeInTheDocument()
+    expect(within(ctx).getByText('~15% stays')).toBeInTheDocument()
+    // What it is and where the figure comes from sit behind the ⓘ.
+    expect(within(ctx).queryByText(/automatic compactions, 2026-09-29 – 2026-10-25/)).toBeNull()
+    fireEvent.click(within(ctx).getByRole('button', { name: 'About compacting and its estimates' }))
+    expect(within(ctx).getByText(/measured on one machine: 70 automatic compactions, 2026-09-29 – 2026-10-25/)).toBeInTheDocument()
+    expect(within(ctx).getByText(/Claude Code records no usage for the summary call/)).toBeInTheDocument()
     fireEvent.click(within(ctx).getByRole('button', { name: /Compact context/ }))
     expect(await within(ctx).findByRole('button', { name: /Compacting…/ })).toBeDisabled()
     expect(h.compacted).toEqual(['s1'])
-    // The boundary arrives, and the next reply measures what stayed.
-    h.compaction = { session_id: 's1', running: false, queued: false, last: { at: Date.now() + 500, trigger: 'manual', pre_tokens: 467_121, post_tokens: 61_388 } }
+    // The boundary arrives, the next reply measures what stayed, and the
+    // daemon's pass has made the estimate: one line, and the curve to the saving.
+    const at = Date.now() + 500
+    h.compaction = { session_id: 's1', running: false, queued: false, last: { at, trigger: 'manual', pre_tokens: 467_121, post_tokens: 61_388 },
+      estimate: { at, warm: true, est_cost_usd: 0.0934, est_saved_usd: 13.5, turns_after: 3, pricing_version: 'p',
+        series: [{ at, saved_usd: 0 }, { at: at + 1000, saved_usd: 4.5 }, { at: at + 2000, saved_usd: 13.5 }] } }
     rerender(<Inspector session={agent({ context: { tokens: 61_388, window: 1_000_000, pct: 6.1, next_call_usd: 0.03 } })} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={summary} />)
-    expect(await within(ctx).findByText('Compacted: 467.1k → 61.4k tokens')).toBeInTheDocument()
+    expect(await within(ctx).findByText('now · 467k → 61k · cost ≈ $0.09')).toBeInTheDocument()
+    expect(within(ctx).getByText('≈ $13.50')).toBeInTheDocument()
+    expect(within(ctx).getByRole('img', { name: /Saved since the compaction, by time: ≈ \$13\.50 over 3 calls/ })).toBeInTheDocument()
     // Small again: the button is gone, the result stays.
     expect(within(ctx).queryByRole('button', { name: /Compact context/ })).toBeNull()
   })

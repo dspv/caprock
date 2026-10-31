@@ -23,6 +23,7 @@ import { UnpricedNote } from '@/components/Unpriced'
 import { CutDonut, ShareBar, SliceDot, cutSegments, sliceColors } from '@/components/Donut'
 import { WorkMix } from '@/components/WorkMix'
 import { HermesSpendPanel } from '@/components/HermesSpend'
+import { CompactionsPanel } from '@/components/CompactionsPanel'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -172,6 +173,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
         <UnpricedNote u={s?.unpriced} background={s?.background} className="mx-3 mb-2.5" />
       </Panel>
       <HermesSpendPanel h={s?.hermes} range={range} />
+      <CompactionsPanel window={{ range }} title={`Compactions · ${range}`} fold="cost.compactions" />
       {/* Three cuts of one question — by model, by kind of work, by project —
           so they sit as equals in one row rather than leaving the third
           orphaned at half width beside dead space. They collapse to two

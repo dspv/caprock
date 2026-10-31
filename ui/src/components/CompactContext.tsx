@@ -12,11 +12,11 @@
  * Continue here.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { api, errText, type CompactionView, type SessionSummary } from '@/lib/api'
+import { api, errText, type Compaction, type CompactionEstimate, type CompactionView, type SessionSummary } from '@/lib/api'
 import { everyWhileVisible } from '@/lib/visible'
 import { useCanControl } from '@/lib/useCanControl'
 import { setLook } from '@/lib/cockpitlooks'
-import { COMPACT_COMMAND, compactIcon, compactOffer, compactPhase, keptLine, resultLine, type CompactOffer, type CompactPhase, type CompactPress } from '@/lib/compact'
+import { COMPACT_COMMAND, approxUSD, compactIcon, compactInfo, compactLine, compactOffer, compactPhase, keptLine, savingOf, savingsPath, type CompactOffer, type CompactPhase, type CompactPress } from '@/lib/compact'
 import { ContinueSession } from './ContinueSession'
 
 /** How often the view is read again while a press waits for its boundary. */
@@ -105,28 +105,95 @@ export function CompactIcon({ c }: { c: CompactState }) {
   )
 }
 
+/** The ⓘ beside "~15% stays": what /compact is and how every figure is made. */
+function InfoToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" aria-label="About compacting and its estimates" aria-expanded={open} onClick={onToggle}
+      className={`grid size-[15px] shrink-0 place-items-center rounded-full border font-serif text-[9.5px] font-semibold italic leading-none outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${open ? 'border-[var(--color-accent)] text-accent' : 'border-border-strong text-fg-faint hover:text-fg'}`}>
+      i
+    </button>
+  )
+}
+
+function InfoPanel({ c, kept, last }: { c: CompactState; kept: { text: string; source: string }; last?: Compaction }) {
+  return (
+    <div className="grid gap-1.5 rounded-[8px] border border-border-strong bg-panel px-2.5 py-2 text-[11.5px] leading-snug text-fg-muted" data-compact="info">
+      {compactInfo(kept, last, c.view?.estimate).map((p) => (
+        <p key={p.lead}><b className="font-semibold text-fg">{p.lead}</b> — {p.text}</p>
+      ))}
+    </div>
+  )
+}
+
+/** The savings since the compaction, drawn: a step at each call, flat while idle. */
+function SavingsCurve({ est }: { est: CompactionEstimate }) {
+  const W = 300, H = 20
+  const d = savingsPath(est.series, W, H)
+  return (
+    <div className="flex min-w-0 items-center gap-2" data-compact="saved">
+      <svg className="block h-5 min-w-0 flex-1" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
+        aria-label={`Saved since the compaction, by time: ${approxUSD(est.est_saved_usd)} over ${est.turns_after} calls`}>
+        <path d={`${d} L${W} ${H} L0 ${H} Z`} fill="var(--color-ok)" opacity=".16" />
+        <path d={d} fill="none" stroke="var(--color-ok)" strokeWidth="1.4" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">saved <span className="font-medium text-ok">{approxUSD(est.est_saved_usd)}</span></span>
+    </div>
+  )
+}
+
+/** The one line and its curve: the newest compaction, what it cost and has saved. */
+function CompactResult({ c, after, fresh }: { c: CompactState; after: Compaction; fresh: boolean }) {
+  const est = c.view?.estimate
+  const saving = savingOf(after, est)
+  const auto = after.trigger === 'auto'
+  return (
+    <>
+      <div className={`num flex min-w-0 items-center gap-2 text-[11.5px] ${fresh ? 'text-fg' : 'text-fg-muted'}`} data-compact="result">
+        <span title={auto ? 'Automatic: Claude Code ran out of room' : 'Manual: /compact'} aria-label={auto ? 'Automatic' : 'Manual'}
+          className="grid h-[14px] min-w-[14px] shrink-0 place-items-center rounded-[4px] bg-panel-2 px-[3px] text-[9px] font-semibold text-fg-faint">{auto ? 'A' : 'M'}</span>
+        <span className="min-w-0 truncate" title={compactLine(after, est)}>{compactLine(after, est)}</span>
+      </div>
+      {saving && <SavingsCurve est={saving} />}
+    </>
+  )
+}
+
 /** The full look's lines under the meter. */
 export function CompactAction({ s, c }: { s: SessionSummary; c: CompactState }) {
   const [copied, setCopied] = useState(false)
+  const [info, setInfo] = useState(false)
   const last = c.view?.last
   const done = c.phase.kind === 'done' ? c.phase.last : undefined
   const after = done ?? last
-  const afterLine = after ? (
-    <p className={`num text-[11.5px] ${done ? 'text-fg' : 'text-fg-muted'}`} data-compact="result">{resultLine(after, Date.now(), !!done)}</p>
-  ) : null
-  if (c.offer === 'none') return afterLine
   const kept = keptLine(c.view?.typical)
+  const afterLine = after ? <CompactResult c={c} after={after} fresh={!!done} /> : null
+  if (c.offer === 'none') {
+    if (!after) return null
+    return (
+      <div className="grid gap-1.5" data-compact="history">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1 grid gap-1.5">{afterLine}</div>
+          <InfoToggle open={info} onToggle={() => setInfo(!info)} />
+        </div>
+        {info && <InfoPanel c={c} kept={kept} last={after} />}
+      </div>
+    )
+  }
   if (c.offer === 'type') {
     const copy = () => {
       void navigator.clipboard?.writeText(COMPACT_COMMAND).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }, () => {})
     }
     return (
       <div className="grid gap-1.5" data-compact="type">
+        <div className="flex min-w-0 items-start gap-2">
+          <p className="min-w-0 flex-1 text-[11.5px] text-fg-muted">
+            To compact, type <button type="button" onClick={copy} title="Copy" className="num rounded-[4px] bg-panel-2 px-1 text-fg hover:text-accent">{COMPACT_COMMAND}</button>
+            {copied && <span className="ml-1 text-ok">copied</span>} in its terminal: Caprock does not type into a terminal it did not start. {kept.text}.
+          </p>
+          <InfoToggle open={info} onToggle={() => setInfo(!info)} />
+        </div>
+        {info && <InfoPanel c={c} kept={kept} last={after} />}
         {afterLine}
-        <p className="text-[11.5px] text-fg-muted">
-          To compact, type <button type="button" onClick={copy} title="Copy" className="num rounded-[4px] bg-panel-2 px-1 text-fg hover:text-accent">{COMPACT_COMMAND}</button>
-          {copied && <span className="ml-1 text-ok">copied</span>} in its terminal: Caprock does not type into a terminal it did not start. {kept.text} <span className="text-fg-faint">({kept.source})</span>.
-        </p>
         {s.resume && <div><ContinueSession sessionID={s.session_id} cwd={s.cwd} live={s.status !== 'ended' && !s.detached} resume={s.resume} compact /></div>}
       </div>
     )
@@ -141,10 +208,10 @@ export function CompactAction({ s, c }: { s: SessionSummary; c: CompactState }) 
           {busy ? phaseWords(c.phase) : 'Compact context'}
         </button>
         {!busy && <span className="text-[11.5px] text-fg-muted">{kept.text}</span>}
+        <InfoToggle open={info} onToggle={() => setInfo(!info)} />
       </div>
-      {c.error
-        ? <p role="alert" className="text-[11.5px] text-danger">{c.error}</p>
-        : !done && <p className="text-[11px] leading-snug text-fg-faint">Claude Code&apos;s {COMPACT_COMMAND}: it summarises the conversation and the session carries on here. {kept.source[0]!.toUpperCase() + kept.source.slice(1)}.</p>}
+      {c.error && <p role="alert" className="text-[11.5px] text-danger">{c.error}</p>}
+      {info && <InfoPanel c={c} kept={kept} last={after} />}
       {afterLine}
     </div>
   )

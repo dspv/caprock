@@ -3,6 +3,7 @@ package ingest
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -99,6 +100,10 @@ type fileState struct {
 	skipTo int64
 	// mtime-based ordering for backfill
 	backfilled bool
+	// lastBoundary is the uuid of the last compact_boundary line read from
+	// the file: the boundary a compaction summary after it belongs to
+	// (store.SetCompactionSummary).
+	lastBoundary string
 }
 
 // New creates a tailer with defaults.
@@ -614,6 +619,22 @@ func (t *Tailer) handleLine(ctx context.Context, b *rollup.Batch, f *fileState, 
 				return false
 			}
 			t.Log.Warn("record transcript event", "component", "ingest", "err", err, "path", f.path)
+		}
+	}
+	if l.Type == "system" && l.Subtype == SubtypeCompactBoundary {
+		f.lastBoundary = l.UUID
+	}
+	if l.Type == "user" && l.IsCompactSummary {
+		// After the line's own events, so the session and its boundary
+		// (stored a line earlier, in this batch or a committed one) exist.
+		text, _ := l.promptText()
+		if err := b.Exec(func(ctx context.Context, q store.Querier) error {
+			return store.SetCompactionSummary(ctx, q, l.SessionID, cmp.Or(f.lastBoundary, l.ParentUUID), text)
+		}); err != nil {
+			if retryable(ctx, err) {
+				return false
+			}
+			t.Log.Warn("record compaction summary", "component", "ingest", "err", err, "path", f.path)
 		}
 	}
 	return true

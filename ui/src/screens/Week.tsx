@@ -10,6 +10,7 @@
  * the default ends today, and the arrows step a week at a time.
  */
 import { SubagentSavingNote } from '@/components/SubagentSavingNote'
+import { CompactionsPanel } from '@/components/CompactionsPanel'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
@@ -166,6 +167,7 @@ export function WeekScreen({ start: initial }: { start?: string } = {}) {
         </div>
       </Panel>
       {week?.subagent_saving && <SubagentSavingNote saving={week.subagent_saving} />}
+      {week && !empty && <CompactionsPanel window={{ from: week.from_ms, to: week.to_ms }} title="Compactions this week" />}
       <ul aria-label="About the card" className="flex flex-wrap gap-1.5">
         {FINE_PRINT.map((f) => (
           <li key={f.chip} title={f.full}

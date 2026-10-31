@@ -7,8 +7,8 @@
  * started (rule 7), through the message queue: at once at the prompt, else
  * when the turn ends. The session carries on in place. Free.
  */
-import type { Compaction, CompactionStats, CompactionView, SessionSummary } from './api'
-import { fmtAgo, fmtTokens } from './format'
+import type { Compaction, CompactionEstimate, CompactionStats, CompactionView, SavingPoint, SessionSummary } from './api'
+import { fmtAgo, fmtModel, fmtUSD } from './format'
 
 /** Under this much context the action is hidden: there is little to gain. */
 export const COMPACT_MIN_TOKENS = 100_000
@@ -65,22 +65,15 @@ function day(ms: number): string {
 export function keptLine(typical: CompactionStats | undefined): { text: string; source: string } {
   if (typical && typical.count >= 5) {
     return {
-      text: `Usually ~${pct(typical.median_kept)}% stays`,
+      text: `~${pct(typical.median_kept)}% stays`,
       source: `median of ${typical.count} compactions measured here, ${day(typical.from)} – ${day(typical.to)}; 9 in 10 kept ${pct(typical.p90_kept)}% or less`,
     }
   }
   const r = REFERENCE_KEPT
   return {
-    text: `Usually ~${r.medianPct}% stays`,
+    text: `~${r.medianPct}% stays`,
     source: `measured on one machine: ${r.count} automatic compactions, ${r.from} – ${r.to}; 9 in 10 kept ${r.p90Pct}% or less`,
   }
-}
-
-/** The measured before → after of a compaction; the after waits for the next reply. */
-export function resultLine(c: Compaction, now = Date.now(), justPressed = false): string {
-  const head = justPressed ? 'Compacted' : `${c.trigger === 'auto' ? 'Auto-compacted' : 'Compacted'} ${fmtAgo(c.at, now)}`
-  if (c.post_tokens && c.post_tokens > 0) return `${head}: ${fmtTokens(c.pre_tokens)} → ${fmtTokens(c.post_tokens)} tokens`
-  return `${head} from ${fmtTokens(c.pre_tokens)} tokens · the size after shows with the next reply`
 }
 
 /** A press this page made: when, and whether it was typed or is waiting for the turn. */
@@ -107,4 +100,85 @@ export function compactPhase(view: CompactionView | undefined, press: CompactPre
   if (view?.queued) return { kind: 'queued' }
   if (press && now - press.at < COMPACT_WATCH_MS) return press.sent ? { kind: 'running' } : { kind: 'queued' }
   return { kind: 'idle' }
+}
+
+/** Tokens as the one line shows them: 442k, 19k, 1.2M, 950. */
+export function tokShort(v: number): string {
+  if (v >= 999_500) return `${(v / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (v >= 1_000) return `${Math.round(v / 1000)}k`
+  return String(Math.round(v))
+}
+
+/** An estimated dollar figure: always with ≈ (rule 6). */
+export function approxUSD(v: number): string {
+  return `≈ ${fmtUSD(v)}`
+}
+
+/**
+ * The one line under the button (V2, owner 2026-10-30): when, before → after,
+ * and the compaction's estimated cost when the daemon has made it —
+ * *32h ago · 442k → 19k · cost ≈ $0.09*. The after waits for the next reply on
+ * an older Claude Code. The estimate is used only when it is this
+ * compaction's.
+ */
+export function compactLine(c: Compaction, est: CompactionEstimate | undefined, now = Date.now()): string {
+  const when = fmtAgo(c.at, now)
+  const sizes = c.post_tokens && c.post_tokens > 0
+    ? `${tokShort(c.pre_tokens)} → ${tokShort(c.post_tokens)}`
+    : `from ${tokShort(c.pre_tokens)} · the after shows with the next reply`
+  const cost = est && est.at === c.at && est.est_cost_usd !== undefined ? ` · cost ${approxUSD(est.est_cost_usd)}` : ''
+  return `${when} · ${sizes}${cost}`
+}
+
+/** The saving to show under the line: only this compaction's, and once a call has followed it. */
+export function savingOf(c: Compaction | undefined, est: CompactionEstimate | undefined): CompactionEstimate | undefined {
+  return c && est && est.at === c.at && est.turns_after > 0 && est.series.length > 1 ? est : undefined
+}
+
+/**
+ * The cumulative savings curve as an SVG path over a w×h box: a step at each
+ * point, time on x from the boundary to the newest call, the saving on y from
+ * 0 to its end. Empty for fewer than two points.
+ */
+export function savingsPath(series: readonly SavingPoint[], w: number, h: number): string {
+  if (series.length < 2) return ''
+  const t0 = series[0]!.at
+  const span = Math.max(1, series[series.length - 1]!.at - t0)
+  const top = Math.max(...series.map((p) => p.saved_usd))
+  const y = (v: number) => (top > 0 ? h - 1 - (v / top) * (h - 2) : h - 1)
+  const x = (at: number) => ((at - t0) / span) * w
+  let d = `M0 ${y(series[0]!.saved_usd).toFixed(1)}`
+  let prev = y(series[0]!.saved_usd)
+  for (const p of series.slice(1)) {
+    const px = x(p.at).toFixed(1)
+    d += ` L${px} ${prev.toFixed(1)} L${px} ${y(p.saved_usd).toFixed(1)}`
+    prev = y(p.saved_usd)
+  }
+  return d
+}
+
+/**
+ * What the ⓘ says: what /compact is, what usually stays and from where, and
+ * how the cost and the saving are estimated, with the assumptions named.
+ */
+export function compactInfo(kept: { text: string; source: string }, c: Compaction | undefined, est: CompactionEstimate | undefined): { lead: string; text: string }[] {
+  const out = [
+    { lead: COMPACT_COMMAND, text: 'Claude Code summarises the conversation; the session carries on here.' },
+    { lead: kept.text, text: `${kept.source}.` },
+  ]
+  const mine = c && est && est.at === c.at ? est : undefined
+  const model = mine?.model ? fmtModel(mine.model) : "the session's model"
+  const summary = mine?.summary_tokens_est !== undefined ? `the summary (~${tokShort(mine.summary_tokens_est)} tokens) as output` : 'the summary as output when its length is known'
+  out.push({
+    lead: 'Cost ≈',
+    text: `Claude Code records no usage for the summary call, so it is estimated: the context before, read from the cache when the last call was within the cache's life (5 minutes, or 1 hour when the session writes the long cache) and sent again in full when not, plus ${summary}, at ${model}'s list prices.${mine ? ` This one: cache ${mine.warm ? 'warm' : 'cold'}.` : ''}`,
+  })
+  const dropped = c?.post_tokens ? Math.max(0, c.pre_tokens - c.post_tokens) : 0
+  out.push({
+    lead: 'Saved ≈',
+    text: mine && mine.turns_after > 0 && dropped > 0
+      ? `Each of the ${mine.turns_after} calls since re-read ${tokShort(dropped)} fewer tokens, at its model's cache-read price. An estimate; not counted against the cost above.`
+      : "Each call after it re-reads the dropped context no more, at its model's cache-read price. An estimate.",
+  })
+  return out
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { CompactionView, SessionSummary } from './api'
-import { COMPACT_WATCH_MS, compactIcon, compactOffer, compactPhase, keptLine, resultLine } from './compact'
+import type { CompactionEstimate, CompactionView, SessionSummary } from './api'
+import { COMPACT_WATCH_MS, compactIcon, compactInfo, compactLine, compactOffer, compactPhase, keptLine, savingOf, savingsPath, tokShort } from './compact'
 
 type S = Pick<SessionSummary, 'agent' | 'status' | 'owned' | 'detached' | 'context'>
 const s = (p: Partial<S> = {}): S => ({
@@ -31,17 +31,41 @@ describe('who is offered compaction', () => {
 describe('what it says', () => {
   it('names where “usually stays” comes from: the labelled reference, then this machine’s own from five', () => {
     const ref = keptLine(undefined)
-    expect(ref.text).toBe('Usually ~15% stays')
+    expect(ref.text).toBe('~15% stays')
     expect(ref.source).toBe('measured on one machine: 70 automatic compactions, 2026-09-29 – 2026-10-25; 9 in 10 kept 25% or less')
     const own = keptLine({ count: 12, median_kept: 0.183, p90_kept: 0.3, median_pre: 400_000, median_post: 70_000, from: Date.UTC(2026, 9, 1), to: Date.UTC(2026, 9, 26) })
-    expect(own.text).toBe('Usually ~18% stays')
+    expect(own.text).toBe('~18% stays')
     expect(own.source).toBe('median of 12 compactions measured here, 2026-10-01 – 2026-10-26; 9 in 10 kept 30% or less')
   })
-  it('the measured before → after, the after once a reply has measured it', () => {
+  it('one line: when, before → after, and the estimated cost once the daemon has made it', () => {
     const now = Date.UTC(2026, 9, 27, 12)
-    expect(resultLine({ at: now - 1000, trigger: 'manual', pre_tokens: 467_121, post_tokens: 61_388 }, now, true)).toBe('Compacted: 467.1k → 61.4k tokens')
-    expect(resultLine({ at: now - 3 * 3600_000, trigger: 'auto', pre_tokens: 467_121, post_tokens: 61_388 }, now)).toBe('Auto-compacted 3h ago: 467.1k → 61.4k tokens')
-    expect(resultLine({ at: now, trigger: 'manual', pre_tokens: 467_121 }, now, true)).toBe('Compacted from 467.1k tokens · the size after shows with the next reply')
+    const c = { at: now - 32 * 3600_000, trigger: 'auto', pre_tokens: 442_446, post_tokens: 19_177 }
+    expect(compactLine(c, undefined, now)).toBe('32h ago · 442k → 19k')
+    const est: CompactionEstimate = { at: c.at, warm: true, est_cost_usd: 0.0935, est_saved_usd: 13.5, turns_after: 165, series: [], pricing_version: 'p' }
+    expect(compactLine(c, est, now)).toBe('32h ago · 442k → 19k · cost ≈ $0.09')
+    // Another compaction's estimate is never borrowed.
+    expect(compactLine(c, { ...est, at: c.at - 1 }, now)).toBe('32h ago · 442k → 19k')
+    expect(compactLine({ at: now, trigger: 'manual', pre_tokens: 467_121 }, undefined, now)).toBe('now · from 467k · the after shows with the next reply')
+    expect([tokShort(950), tokShort(19_177), tokShort(1_250_000), tokShort(999_600)]).toEqual(['950', '19k', '1.3M', '1M'])
+  })
+  it('the savings curve: this compaction’s, once a call followed, a step per point ending top right', () => {
+    const c = { at: 1000, trigger: 'auto', pre_tokens: 400_000, post_tokens: 20_000 }
+    const series = [{ at: 1000, saved_usd: 0 }, { at: 2000, saved_usd: 1 }, { at: 3000, saved_usd: 2 }]
+    const est: CompactionEstimate = { at: 1000, warm: true, est_saved_usd: 2, turns_after: 2, series, pricing_version: 'p' }
+    expect(savingOf(c, est)).toBe(est)
+    expect(savingOf(c, { ...est, turns_after: 0, series: series.slice(0, 1) })).toBeUndefined()
+    expect(savingOf({ ...c, at: 5 }, est)).toBeUndefined()
+    expect(savingsPath(series, 300, 20)).toBe('M0 19.0 L150.0 19.0 L150.0 10.0 L300.0 10.0 L300.0 1.0')
+    expect(savingsPath(series.slice(0, 1), 300, 20)).toBe('')
+  })
+  it('the ⓘ names the assumptions behind every ≈', () => {
+    const c = { at: 1000, trigger: 'auto', pre_tokens: 400_000, post_tokens: 20_000 }
+    const est: CompactionEstimate = { at: 1000, model: 'claude-opus-5-5', warm: false, summary_tokens_est: 4800, est_cost_usd: 1.7, est_saved_usd: 2, turns_after: 2, series: [], pricing_version: 'p' }
+    const info = compactInfo(keptLine(undefined), c, est)
+    expect(info.map((p) => p.lead)).toEqual(['/compact', '~15% stays', 'Cost ≈', 'Saved ≈'])
+    expect(info[2]!.text).toMatch(/5 minutes, or 1 hour/)
+    expect(info[2]!.text).toMatch(/~5k tokens\) as output, at claude-opus-5-5's list prices\. This one: cache cold\./)
+    expect(info[3]!.text).toBe("Each of the 2 calls since re-read 380k fewer tokens, at its model's cache-read price. An estimate; not counted against the cost above.")
   })
 })
 

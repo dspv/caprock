@@ -5,6 +5,7 @@ package daemon
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -967,7 +968,10 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.goBg(func() { d.weeklyLoop(ctx) })
 	d.afterMove(ctx, func() { d.backfillToolLinks(ctx) })
 	d.afterMove(ctx, func() { d.repairEmptyText(ctx) })
-	d.afterMove(ctx, func() { d.backfillCompactions(ctx) })
+	d.afterMove(ctx, func() {
+		d.backfillCompactions(ctx)
+		d.compactionStatsLoop(ctx)
+	})
 	d.afterMove(ctx, func() { d.backfillPRs(ctx) })
 	d.afterMove(ctx, func() { d.fillToolFields(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
@@ -1407,6 +1411,58 @@ func (d *Daemon) backfillCompactions(ctx context.Context) {
 	_ = d.store.SetMeta(ctx, store.MetaCompactBackfillPending, "0")
 	d.log.Info("read compactions from transcripts", "component", "ingest",
 		"events", n, "took", time.Since(start).Round(time.Millisecond).String())
+}
+
+// compactionStatsInterval is how often compaction_stats takes the calls
+// made since its last pass (rollup.RefreshCompactionStats).
+const compactionStatsInterval = time.Minute
+
+// compactionStatsLoop keeps what each compaction cost and saved current: the
+// first start after migration 0077 fills a row for every stored boundary,
+// reads the summaries' lengths back from the transcripts and prices them
+// (meta compaction_stats_backfilled), then each minute counts the calls
+// made since. After backfillCompactions, so its boundaries are in.
+func (d *Daemon) compactionStatsLoop(ctx context.Context) {
+	if v, _ := d.store.GetMeta(ctx, store.MetaCompactionStatsBackfilled); v != "1" {
+		start := time.Now()
+		n, err := BackfillCompactionStats(ctx, d.rec, d.store.DB())
+		switch {
+		case err != nil && ctx.Err() == nil:
+			d.log.Warn("could not fill compaction stats", "component", "rollup", "err", err)
+		case err == nil:
+			_ = d.store.SetMeta(ctx, store.MetaCompactionStatsBackfilled, "1")
+			d.log.Info("filled compaction stats", "component", "rollup", "summaries", n,
+				"took", time.Since(start).Round(time.Millisecond).String())
+		}
+	}
+	t := time.NewTicker(compactionStatsInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if _, err := d.rec.RefreshCompactionStats(ctx); err != nil && ctx.Err() == nil {
+				d.log.Warn("compaction stats", "component", "rollup", "err", err)
+			}
+		}
+	}
+}
+
+// BackfillCompactionStats is the one-time fill of compaction_stats: a row
+// for every stored boundary, the summaries' lengths read back from the
+// transcripts, then every row priced. It returns how many summaries it read.
+// Idempotent: a second run finds every row made and every summary read.
+func BackfillCompactionStats(ctx context.Context, rec *rollup.Recorder, db *sql.DB) (int, error) {
+	if _, err := rec.RefreshCompactionStats(ctx); err != nil {
+		return 0, err
+	}
+	n, err := ingest.BackfillCompactionSummaries(ctx, db)
+	if err != nil {
+		return n, err
+	}
+	_, err = rec.RefreshCompactionStats(ctx)
+	return n, err
 }
 
 // backfillPRs fills session_prs from the `gh pr` commands stored before

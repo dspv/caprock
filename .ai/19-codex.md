@@ -237,14 +237,15 @@ owner's machine (2026-10-01, CLI 0.156.1) there is no `archived_sessions/`
 and no `CODEX_HOME`: 176 rollouts, all under `~/.codex/sessions`, no two
 sharing a session id.
 
-**Compressed rollouts are not read.** Current codex-rs
+**Compressed rollouts are read.** Current codex-rs
 (`rollout/src/compression.rs`) can rewrite a rollout older than seven days as
-`rollout-….jsonl.zst`, behind a `compression_enabled` setting; the 0.156.1
-binary on the owner's machine contains that code, but **no `.zst` rollout
-exists on it**, so none was built for. A session compressed before Caprock
-first read it would be missed; one already read keeps its events. The DeepSeek
-importer already reads zstd JSONL, so this is a small change once a real
-compressed rollout exists to test against.
+`rollout-….jsonl.zst`, behind a `compression_enabled` setting. `List` takes
+both suffixes and `ParseFile` decodes zstd (above), so a session compressed
+before Caprock first read it is still read, and one already read keeps its
+events. On the owner's machine (2026-10-01, CLI 0.156.1) **no `.zst` rollout
+existed**, so the decoder was built against the DeepSeek importer's zstd path
+and a synthetic file, not a real compressed rollout; the first one seen in
+the wild is worth a look.
 
 ## Plan limits
 

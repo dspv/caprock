@@ -3,6 +3,7 @@ package ingest
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -101,4 +102,68 @@ func backfillCompactionsFrom(ctx context.Context, db *sql.DB, path, sessionID st
 		}
 	}
 	return added, nil
+}
+
+// summaryMarker is the substring every isCompactSummary line holds.
+var summaryMarker = []byte(`"isCompactSummary":true`)
+
+// BackfillCompactionSummaries reads back the length of each compaction's
+// summary — the isCompactSummary user message after its boundary — for the
+// compaction_stats rows that lack it: the summaries are not in the events
+// (the line's prompt key is usually the turn's own and is stored once). One
+// read per main transcript, a substring filter before any line is decoded.
+// A transcript that is gone leaves its rows without one; their cost is then
+// the context read alone, and the row says so (summary_tokens_est NULL).
+func BackfillCompactionSummaries(ctx context.Context, db *sql.DB) (set int, err error) {
+	targets, err := store.CompactionsMissingSummary(ctx, db)
+	if err != nil {
+		return 0, fmt.Errorf("find compactions without a summary: %w", err)
+	}
+	for _, t := range targets {
+		if ctx.Err() != nil {
+			return set, ctx.Err()
+		}
+		n, err := summariesFrom(ctx, db, MainTranscript(t[1], t[0]), t[0])
+		set += n
+		if err != nil {
+			return set, err
+		}
+	}
+	return set, nil
+}
+
+func summariesFrom(ctx context.Context, db *sql.DB, path, sessionID string) (int, error) {
+	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
+	if err != nil {
+		return 0, nil
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
+	set := 0
+	last := "" // the uuid of the last boundary line read
+	for sc.Scan() {
+		raw := sc.Bytes()
+		boundary := bytes.Contains(raw, compactMarker)
+		if !boundary && !bytes.Contains(raw, summaryMarker) {
+			continue
+		}
+		l, err := ParseLine(raw)
+		if err != nil || l.SessionID != sessionID {
+			continue
+		}
+		if l.Type == "system" && l.Subtype == SubtypeCompactBoundary {
+			last = l.UUID
+			continue
+		}
+		if l.Type != "user" || !l.IsCompactSummary {
+			continue
+		}
+		text, _ := l.promptText()
+		if err := store.SetCompactionSummary(ctx, db, sessionID, cmp.Or(last, l.ParentUUID), text); err != nil {
+			return set, err
+		}
+		set++
+	}
+	return set, nil
 }
