@@ -12,6 +12,49 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.169.0] - 2026-10-31
+
+### Added
+
+- **ui:** At a glance has the share button the other figure panels have:
+  picture without the Charts/Numbers switch or fold toggles, and Copy as
+  text with the Numbers view's tables. So do All time on Home, Last 30 days
+  and Compactions on Cost, Hermes Agent on Cost, Compactions on Week, and
+  Lifetime, Daily cost, Top projects (names hidden by default) and Model
+  mix on Lifetime.
+
+### Changed
+
+- **ui:** the Agent panel's session chip says *uptime 8d* instead of
+  *started 8d ago*, so it stays on the model and context line; the start
+  time is in its tooltip.
+- **ui:** the subagent frame in the Agent panel is drawn with the Caprock
+  characters instead of a thin step line. By default the last hour is a
+  chart of faces: twelve five-minute columns, each a stack of faces as tall
+  as the most subagents at once, with the peak and the time it was reached
+  (*peak 5 at 09:42*); past six at once one face stands for several. Two
+  more looks sit behind three small dots in the frame's corner: *Crew*, one
+  face per working subagent with the finished faded, and *Numbers*, the
+  crowd large with *N working now*. The faces follow the one picked for
+  Claude in Settings, and the choice of look is remembered.
+- **app:** the "Caprock vX is available" card on Now updates in place in the
+  desktop app — **Update to vX — Restart**, a progress bar while it
+  downloads, then the restart — the same one click as the status strip,
+  instead of a Download link to the release page. A browser and installs
+  that cannot update themselves still get the command or the release page.
+
+### Fixed
+
+- **ui:** a share button can no longer leave the sheet stuck on "Drawing…"
+  with every button off. A press on a card whose figures are still being
+  counted waits at most six seconds, saying *Counting this month…*, then
+  sends the card as shown (its corner still names the reading); the picture
+  embeds only the fonts the page already loaded, from the browser's cache,
+  instead of fetching eight font files from a daemon busy counting the
+  month; and drawing has a 30-second limit, after which the buttons come
+  back with *Could not draw the card — try again.* Panel pictures get the
+  same limit.
+
 ## [0.168.0] - 2026-10-31
 
 ### Added
