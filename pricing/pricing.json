@@ -1,5 +1,5 @@
 {
-  "version": "2026-10-22.1",
+  "version": "2026-10-31.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-10-08",
   "currency": "USD",
@@ -26,11 +26,25 @@
     "`corrections` name turns an earlier version of this table priced wrongly, as opposed to a price that changed. The daemon reprices those turns once per table version, at the row in force at each turn's own time, and moves the session and daily totals by the difference. 2026-10-01.1 corrects Opus 5.5 (every turn) and Sonnet 5 from 2026-08-31.",
     "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context surcharge applies as to gpt-6-sol and is not modelled.",
     "claude-haiku-5-5 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08. It is priced by prompt length: up to 100,000 tokens $0.10 input, $0.125 5m write, $0.20 1h write, $0.01 cache read, $0.50 output per 1M; over 100,000 tokens $0.50 / $0.625 / $1.00 / $0.05 / $2.50. The row carries the lower tier, so a prompt over 100,000 tokens is under-reported fivefold, as the Gemini rows are over 200k. 1M context (models overview, same date). No correction: no earlier row matched it by prefix, so its turns were unpriced, not mispriced.",
-    "deepseek-flash read from https://api-docs.deepseek.com/quick_start/pricing on 2026-10-13: $0.15 input (cache miss), $0.003 cache hit, $0.60 output per 1M off-peak; peak hours (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays) bill exactly double. The row carries the off-peak rate, so a turn in peak hours is under-reported by half. DeepSeek bills no cache write, so cache_write_* equal input, as on the deepseek-v4-pro row. 1M context. It is the model Caprock's Claude Code on DeepSeek sessions run on. No correction: no earlier row matched it by prefix. The same page lists deepseek-v4-pro at $0.66/$1.98 off-peak, not the $0.435/$0.87 its row carries; the date that price changed is not on DeepSeek's page, so the row is left as it is and the gap is an open question (OQ-13 in .ai/12-risks.md)."
+    "deepseek-flash read from https://api-docs.deepseek.com/quick_start/pricing on 2026-10-13: $0.15 input (cache miss), $0.003 cache hit, $0.60 output per 1M off-peak; peak hours (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays) bill exactly double. The row carries the off-peak rate, so a turn in peak hours is under-reported by half. DeepSeek bills no cache write, so cache_write_* equal input, as on the deepseek-v4-pro row. 1M context. It is the model Caprock's Claude Code on DeepSeek sessions run on. No correction: no earlier row matched it by prefix. The same page lists deepseek-v4-pro at $0.66/$1.98 off-peak, not the $0.435/$0.87 its row carries; the date that price changed is not on DeepSeek's page, so the row is left as it is and the gap is an open question (OQ-13 in .ai/12-risks.md).",
+    "claude-sonnet-5-5 has two rows since 2026-10-31.1: Anthropic's pricing page, read 2026-10-31, prices cache reads on Claude Opus 5.5 and Claude Sonnet 5.5 at 0.05x the base input price ($0.10 per 1M on Sonnet 5.5), and the Amazon Bedrock pricing page dates the Sonnet 5.5 change to October 7, 2026 (\"Starting October 7, 2026, cache read pricing for Claude Sonnet 5.5...\", read the same day). The row through 2026-10-06 keeps $0.20 (0.1x); the current row has $0.10. Opus 5.5 was already $0.20 (0.05x of $4). Turns from 2026-10-07 were priced at the old row until this version, so they are corrected (below).",
+    "gpt-6.1-terra read from https://learn.chatgpt.com/api/docs/pricing on 2026-10-31: $1.00 input, $5.00 output, $0.05 cached input, $1.25 30-minute cache write, $2.50 12-hour cache write per 1M, standard tier. The table has no 12-hour write column, so cache_write_1h carries the 30-minute rate as the other gpt-6 rows do; Codex reports no cache-write tokens (RISK-07), so neither write column is applied to a Codex turn. No correction: the id matched no row by prefix, so its turns were unpriced, not mispriced."
   ],
   "corrections": [
-    { "model": "claude-opus-5-5", "reason": "No row before 2026-10-01.1; priced as claude-opus-5 by prefix." },
-    { "model": "claude-sonnet-5", "from": "2026-08-31", "reason": "The $3/$15 rise announced for 2026-08-31 was cancelled; $2/$10 stayed the price." }
+    {
+      "model": "claude-opus-5-5",
+      "reason": "No row before 2026-10-01.1; priced as claude-opus-5 by prefix."
+    },
+    {
+      "model": "claude-sonnet-5",
+      "from": "2026-08-31",
+      "reason": "The $3/$15 rise announced for 2026-08-31 was cancelled; $2/$10 stayed the price."
+    },
+    {
+      "model": "claude-sonnet-5-5",
+      "from": "2026-10-07",
+      "reason": "Cache reads from 2026-10-07 were priced at $0.20 per 1M; Anthropic charged $0.10 (0.05x) from that day. The 2026-10-31.1 row split puts the right rate at each turn's own date."
+    }
   ],
   "models": [
     {
@@ -160,6 +174,17 @@
       "cache_write_5m": 2.5,
       "cache_write_1h": 4.0,
       "cache_read": 0.2,
+      "output": 10.0,
+      "context_window": 1000000,
+      "until": "2026-10-06"
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "display": "Claude Sonnet 5.5",
+      "input": 2.0,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4.0,
+      "cache_read": 0.1,
       "output": 10.0,
       "context_window": 1000000
     },
@@ -471,6 +496,16 @@
       "cache_write_1h": 2.5,
       "cache_read": 0.1,
       "output": 10.0,
+      "context_window": 1050000
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "display": "GPT-6.1 Terra",
+      "input": 1.0,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 1.25,
+      "cache_read": 0.05,
+      "output": 5.0,
       "context_window": 1050000
     }
   ]

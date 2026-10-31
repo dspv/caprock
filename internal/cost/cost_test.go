@@ -331,3 +331,40 @@ func TestFable51CacheReadsAtItsOwnRate(t *testing.T) {
 		}
 	}
 }
+
+// Sonnet 5.5's cache read dropped from 0.1x to 0.05x of its input price on
+// 2026-10-07 (Anthropic's pricing page; Amazon Bedrock dates the change).
+// The table keeps both rows so a turn is priced at the rate in force on its
+// own day, and 2026-10-31.1 corrects the turns the old single row had
+// overpriced. GPT-6.1 Terra had no row and was unpriced.
+func TestSonnet55CacheReadSplitsOn7October(t *testing.T) {
+	tb, err := Embedded()
+	if err != nil {
+		t.Fatalf("embedded table: %v", err)
+	}
+	for _, tc := range []struct {
+		model string
+		at    time.Time
+		want  float64
+	}{
+		{"claude-sonnet-5-5", time.Date(2026, 10, 6, 23, 0, 0, 0, time.UTC), 0.2},
+		{"claude-sonnet-5-5", time.Date(2026, 10, 7, 1, 0, 0, 0, time.UTC), 0.1},
+		{"claude-sonnet-5-5", time.Time{}, 0.1},
+		{"claude-opus-5-5", time.Date(2026, 10, 7, 1, 0, 0, 0, time.UTC), 0.2},
+		{"gpt-6.1-terra", time.Time{}, 0.05},
+	} {
+		got, ok := tb.PriceAt(tc.model, event.TokenDelta{CacheRead: 1_000_000}, tc.at)
+		if !ok || math.Abs(got-tc.want) > 1e-9 {
+			t.Errorf("%s at %v: 1M cache-read tokens cost $%.3f (ok %v), want $%.3f", tc.model, tc.at, got, ok, tc.want)
+		}
+	}
+	var found bool
+	for _, c := range tb.Corrections {
+		if c.Model == "claude-sonnet-5-5" && c.From == "2026-10-07" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("2026-10-31.1 lists no correction for claude-sonnet-5-5 from 2026-10-07")
+	}
+}
