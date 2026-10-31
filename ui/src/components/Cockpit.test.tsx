@@ -413,7 +413,7 @@ describe('the agent cockpit', () => {
       const head = document.querySelector('[data-hero-head]') as HTMLElement
       expect(within(head).getByRole('status')).toHaveTextContent('Working')
       expect(head.querySelector('[data-hero-mode]')).toBeInTheDocument()
-      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('started 1h ago')
+      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('uptime 1h')
       const strip = await screen.findByRole('group', { name: 'Subagents' })
       expect(strip).toHaveAttribute('data-compact', 'true')
       expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
@@ -440,7 +440,7 @@ describe('the agent cockpit', () => {
       expect(screen.queryByText('Claude Code')).toBeNull()
       expect(document.querySelector('[data-hero-model]')).toHaveTextContent('Opus 5.5')
       expect(document.querySelector('[data-hero-context] .text-warn')).toHaveTextContent('62%')
-      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('started 6d ago')
+      expect(document.querySelector('[data-hero-started]')).toHaveTextContent('uptime 6d')
       const kinds = await waitFor(() => {
         const c = document.querySelector('[data-hero-kinds]')
         if (!c?.textContent?.includes('Explore')) throw new Error('no kinds yet')

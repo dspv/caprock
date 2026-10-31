@@ -460,7 +460,9 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
             ) : null}
             {s.context ? <ContextChip pct={s.context.pct} /> : null}
             {s.started_at > 0 && state !== 'ended' && (
-              <span data-hero-started className={HERO_CHIP}>started {fmtAgo(s.started_at, now)}</span>
+              // "uptime 8d", not "started 8d ago": short enough to stay on the
+              // model and context row's line (owner, 2026-10-31).
+              <span data-hero-started className={HERO_CHIP} title={`Started ${new Date(s.started_at).toLocaleString()}`}>uptime {fmtAgo(s.started_at, now).replace(/ ago$/, '').replace(/^now$/, '0s')}</span>
             )}
           </div>
         )}
