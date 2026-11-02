@@ -1,9 +1,11 @@
 <!doctype html>
 <!--
   The .dmg window's background (bundle.macOS.dmg in tauri.conf.json), in
-  caprock.dev's Paper style: cream ground, the caprock mark and wordmark, a
-  soft arrow from where the app icon sits to where the Applications folder
-  sits, and one line saying what to do.
+  graphite, with Caprock's own characters (ui/src/components/Characters.tsx,
+  inlined as static SVG) gathered round a dotted arrow from where the app
+  icon sits to where the Applications folder sits, a headline and one line
+  saying what to do (owner picked this look, 2026-11-01; it was the Paper
+  style before).
 
   The source of background.png. To re-render after an edit (fonts come from
   the dashboard's own packages, so run `make ui-install` first), draw this
@@ -34,48 +36,65 @@
   html, body { margin: 0; width: 660px; height: 400px; overflow: hidden; }
   body {
     position: relative;
-    background-color: #efe7d6;
-    background-image:
-      radial-gradient(420px 260px at 50% 49%, rgba(235, 154, 62, 0.16), transparent 70%),
-      radial-gradient(500px 300px at 100% 0%, rgba(235, 154, 62, 0.10), transparent 70%);
-    color: #2b251c;
+    background: radial-gradient(560px 340px at 50% 55%, #2a2723, #161513 78%);
+    color: #ece6dc;
     font-family: "Hanken Grotesk", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    /* The characters' outline follows the ground, as in the app. */
+    --character-outline: #1e1c19;
   }
-  .brand {
-    position: absolute; top: 34px; left: 0; right: 0;
-    display: flex; align-items: center; justify-content: center; gap: 10px;
-    font: 700 22px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: -0.01em;
+  .head {
+    position: absolute; top: 26px; left: 0; right: 0; text-align: center;
+    font-weight: 700; font-size: 20px; letter-spacing: -0.01em;
   }
-  .brand b { color: #8a4f0c; font-weight: 700; }
-  /* The two spots the icons sit on: soft cream wells, so the eye reads a
-   * "from" and a "to" before the arrow between them. */
+  .sub {
+    position: absolute; top: 54px; left: 0; right: 0; text-align: center;
+    font-size: 13px; color: #9a938a;
+  }
+  /* The two spots the icons sit on: faint wells, so the eye reads a "from"
+   * and a "to" before the arrow between them. */
   .well {
-    position: absolute; top: 120px; width: 156px; height: 182px; margin-left: -78px;
-    border-radius: 34px; background: rgba(244, 236, 221, 0.85);
-    box-shadow: inset 0 0 0 1px rgba(194, 178, 147, 0.55), 0 10px 24px -18px rgba(60, 45, 20, 0.45);
+    position: absolute; top: 104px; width: 176px; height: 196px; margin-left: -88px;
+    border-radius: 18px; background: rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
   }
   .well.app { left: 170px; }
   .well.apps { left: 490px; }
-  svg.arrow { position: absolute; left: 262px; top: 166px; }
-  .line {
-    position: absolute; left: 0; right: 0; top: 338px; text-align: center;
-    font-weight: 600; font-size: 17px; letter-spacing: -0.005em; color: #4f473b;
+  /* Finder draws the icons' names in black whatever the background, so each
+   * name sits on a pale plate, or it would vanish into the graphite. */
+  .plate {
+    position: absolute; top: 263px; width: 112px; height: 22px; margin-left: -56px;
+    border-radius: 7px; background: #e9e2d4;
   }
-  .line b { color: #2b251c; font-weight: 700; }
+  .plate.app { left: 170px; }
+  .plate.apps { left: 490px; }
+  svg.arrow { position: absolute; left: 266px; top: 186px; }
+  .face { position: absolute; line-height: 0; }
+  .brand {
+    position: absolute; bottom: 22px; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font: 500 11px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0.14em; color: #6f6a62;
+  }
 </style>
 </head>
 <body>
-  <div class="brand">
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21.5 20h-19z" fill="none" stroke="#8a4f0c" stroke-width="2.4" stroke-linejoin="round"/></svg>
-    <span>cap<b>rock</b></span>
-  </div>
+  <div class="head">Your agents are waiting</div>
+  <div class="sub">Drag Caprock onto Applications</div>
   <div class="well app"></div>
   <div class="well apps"></div>
-  <svg class="arrow" width="136" height="60" viewBox="0 0 136 60" aria-hidden="true">
-    <path d="M8 38 C 44 10, 86 10, 114 28" fill="none" stroke="#eb9a3e" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 11"/>
-    <path d="M112 16 L 119 30 L 104 31" fill="none" stroke="#eb9a3e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <div class="plate app"></div>
+  <div class="plate apps"></div>
+  <svg class="arrow" width="128" height="24" viewBox="0 0 128 24" aria-hidden="true">
+    <path d="M4 12h108" stroke="#f3a553" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+    <path d="M106 4l12 8-12 8" fill="none" stroke="#f3a553" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>
-  <div class="line">Drag <b>Caprock</b> to Applications</div>
+  <span class="face" style="left:282px;top:128px"><svg width="46" height="46" viewBox="0 0 80 80" aria-hidden="true"  data-face="cap"><ellipse cx="40" cy="73" rx="22" ry="3.5" fill="#000" opacity=".22"></ellipse><path d="M14 46c0-17 11-28 26-28s26 11 26 28c0 14-11 24-26 24S14 60 14 46z" fill="#f3a553"></path><path d="M22 30c3-10 10-15 18-15s15 5 18 15z" fill="#ebe6dc" stroke="var(--character-outline, transparent)" stroke-width="1.5"></path><rect x="18" y="28.5" width="44" height="5" rx="2.5" fill="#ebe6dc" stroke="var(--character-outline, transparent)" stroke-width="1.5"></rect><rect x="37" y="14" width="6" height="8" rx="2" fill="#bbb4a7"></rect><circle cx="31" cy="46" r="4" fill="#201c16"></circle><circle cx="49" cy="46" r="4" fill="#201c16"></circle><circle cx="32.3" cy="44.6" r="1.3" fill="#fff"></circle><circle cx="50.3" cy="44.6" r="1.3" fill="#fff"></circle><path d="M33 56c4 4 10 4 14 0" stroke="#201c16" stroke-width="3" fill="none" stroke-linecap="round"></path><circle cx="24" cy="53" r="3.2" fill="#e08a2b" opacity=".7"></circle><circle cx="56" cy="53" r="3.2" fill="#e08a2b" opacity=".7"></circle></svg></span>
+  <span class="face" style="left:332px;top:126px"><svg width="44" height="44" viewBox="0 0 80 80" aria-hidden="true"  data-face="duck-headset"><ellipse cx="40" cy="73" rx="25" ry="3.5" fill="#000" opacity=".22"></ellipse><path d="M8 36c5 5 11 6 17 5.5 5-1.6 11-2.5 18-2.5 15 0 25 7 25 17.5 0 9.5-10 15.5-27 15.5H29C16 72 8 65 8 54.5c0-6.5-1-12 0-18.5z" fill="#9fd0e6" stroke="var(--character-outline, transparent)" stroke-width="1.5"></path><path d="M23 51c6-5.5 16-6 22-.5-2.5 7.5-11 10.5-18 8-3-1.2-5-4.2-4-7.5z" fill="#7bb4cf"></path><circle cx="46" cy="29" r="15" fill="#9fd0e6" stroke="var(--character-outline, transparent)" stroke-width="1.5"></circle><path d="M57.5 27.5c6.5-3 13.5-2 16.5 2 1 1.4.2 2.8-1.4 3.3-4 1.6-10 2.6-15 2.2z" fill="#f39a3d" stroke="var(--character-outline, transparent)" stroke-width="1.5"></path><path d="M59.5 33h12" stroke="#d8772a" stroke-width="1.6" stroke-linecap="round"></path><circle cx="51" cy="24.5" r="3.4" fill="#201c16"></circle><circle cx="52.3" cy="23.2" r="1.15" fill="#fff"></circle><ellipse cx="53.5" cy="32.5" rx="2.6" ry="2" fill="#f08a6a" opacity=".55"></ellipse><path d="M39 26c-3-9 2-15.5 10-16.5 4-.4 7.5.6 10 2.5" stroke="#3a3733" stroke-width="3.6" fill="none" stroke-linecap="round"></path><rect x="34" y="22" width="10" height="13" rx="4.5" fill="#3a3733"></rect><rect x="36.5" y="24.5" width="5" height="8" rx="2.5" fill="#ebe6dc"></rect><path d="M40 35c2 5 8 6.5 13 5" stroke="#3a3733" stroke-width="2.2" fill="none" stroke-linecap="round"></path><circle cx="54.5" cy="39.8" r="2.4" fill="#3a3733"></circle></svg></span>
+  <span class="face" style="left:302px;top:232px"><svg width="40" height="40" viewBox="0 0 80 80" aria-hidden="true"  data-face="beanie"><ellipse cx="40" cy="73" rx="22" ry="3.5" fill="#000" opacity=".22"></ellipse><path d="M14 46c0-17 11-28 26-28s26 11 26 28c0 14-11 24-26 24S14 60 14 46z" fill="#8fbc98"></path><path d="M17 34c0-13 10-21 23-21s23 8 23 21z" fill="#e3a0a0" stroke="var(--character-outline, transparent)" stroke-width="1.5"></path><rect x="15" y="29" width="50" height="9" rx="4.5" fill="#c98282" stroke="var(--character-outline, transparent)" stroke-width="1.5"></rect><path d="M22 31v5M28 31v5M34 31v5M40 31v5M46 31v5M52 31v5M58 31v5" stroke="#e8b3b3" stroke-width="1.6" stroke-linecap="round"></path><circle cx="40" cy="12" r="5" fill="#f4d6d6" stroke="var(--character-outline, transparent)" stroke-width="1.5"></circle><path d="M27 47q4-4.5 8 0M45 47q4-4.5 8 0" stroke="#201c16" stroke-width="3" fill="none" stroke-linecap="round"></path><path d="M34 56c3 3 9 3 12 0" stroke="#201c16" stroke-width="3" fill="none" stroke-linecap="round"></path><circle cx="23" cy="53" r="3.2" fill="#6f9e7a" opacity=".75"></circle><circle cx="57" cy="53" r="3.2" fill="#6f9e7a" opacity=".75"></circle></svg></span>
+  <span class="face" style="left:346px;top:236px"><svg width="38" height="38" viewBox="0 0 80 80" aria-hidden="true"  data-face="pumpkin"><ellipse cx="40" cy="73" rx="26" ry="3.5" fill="#000" opacity=".22"></ellipse><path d="M37.5 30c-.5-4.5.5-9 3.5-12l3.5 2c-2 2.5-2.6 6-2 10z" fill="#6b7f45" stroke="var(--character-outline, transparent)" stroke-width="1.5"></path><path d="M44 21c3.5-3 8.5-3 11 .5" stroke="#6b7f45" stroke-width="2" fill="none" stroke-linecap="round"></path><ellipse cx="27" cy="50" rx="15" ry="19" fill="#d4701c" stroke="var(--character-outline, transparent)" stroke-width="1.5"></ellipse><ellipse cx="53" cy="50" rx="15" ry="19" fill="#d4701c" stroke="var(--character-outline, transparent)" stroke-width="1.5"></ellipse><ellipse cx="40" cy="49" rx="16" ry="21" fill="#f08a2e" stroke="var(--character-outline, transparent)" stroke-width="1.5"></ellipse><path d="M26 48l5-8.5 5 8.5zM44 48l5-8.5 5 8.5z" fill="#201c16" stroke-linejoin="round"></path><path d="M26 54c3 6.5 8 9 14 9s11-2.5 14-9c-2 .8-4 1.2-6 1.2l-1.5 3-2-3h-9l-2 3-1.5-3c-2 0-4-.4-6-1.2z" fill="#201c16"></path></svg></span>
+  <div class="brand">
+    <svg width="14" height="13" viewBox="0 0 24 21" aria-hidden="true"><path d="M12 2 22 19H2z" fill="none" stroke="#f3a553" stroke-width="2.6" stroke-linejoin="round"/></svg>
+    <span>CAPROCK</span>
+  </div>
 </body>
 </html>
