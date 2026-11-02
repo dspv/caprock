@@ -180,8 +180,8 @@ e2e: build-go ## The app's golden paths in Playwright's headless shell against a
 APP_SRC    := app/src-tauri
 APP_TRIPLE  = $(shell rustc -vV 2>/dev/null | sed -n 's/^host: //p')
 # Bundle formats for app-bundle; empty means every format tauri.conf.json lists
-# for this OS. `make app-bundle APP_BUNDLES=app` skips the macOS .dmg, whose
-# layout step drives Finder.
+# for this OS. `make app-bundle APP_BUNDLES=app` skips Tauri's macOS .dmg, whose
+# layout step drives Finder (releases and CI make theirs with scripts/app-dmg.sh).
 APP_BUNDLES ?=
 # The app's version for app-bundle (release jobs pass the tag without the v);
 # empty keeps tauri.conf.json's.
