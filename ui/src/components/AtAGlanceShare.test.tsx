@@ -45,6 +45,10 @@ describe('At a glance, shared', () => {
   it('has the share button while open, none folded, and its picture leaves the controls out', async () => {
     render(<AtAGlancePanel />)
     const share = await screen.findByRole('button', { name: 'Share At a glance' })
+    // The text copy is offered once the panel's figures have loaded, and the
+    // menu reads it when it opens; the button can be there first (failed the
+    // v0.170.0 release run once). Open it after the figures are on screen.
+    await screen.findAllByText('Opus 5')
     fireEvent.click(share)
     expect(screen.getByRole('menu', { name: 'Share At a glance' }).textContent).toContain('Copy as text')
 
