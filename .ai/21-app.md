@@ -1048,9 +1048,14 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   icon's name sits on a pale plate, because Finder draws the names in black
   on any background. Before, it was caprock.dev's paper ground. The picture is `app/src-tauri/dmg/background.png`,
   rendered from `background.html` beside it (one image at window size: the
-  bundler takes PNG, JPG or GIF, so no @2x). CI's macOS app job mounts the
-  built `.dmg` and fails without `.background/*.png` in it, and so does
-  `make app-release`.
+  bundler takes PNG, JPG or GIF, so no @2x). The `.dmg` is made by
+  `scripts/app-dmg.sh` with dmgbuild, which writes the window's `.DS_Store`
+  (bounds, background alias to the volume's `.background.png`, icon
+  positions) without Finder; Tauri's own `.dmg` skipped its Finder layout step
+  under `CI=true`, so no Actions-built release before 2026-11-02 had the
+  window (checked: 0.97.0 through 0.170.0 carry no `.DS_Store`). CI's macOS
+  app job and `make app-release` mount the `.dmg` and fail unless
+  `app-dmg.sh check` finds that layout (`scripts/dmg_window.py`).
 - **F13 — Phone v2 Phase A.** The phone (the existing web dashboard on the
   home screen) never needs a manual reconnect, resumes a terminal from the
   byte it last saw, queues a message typed while offline, replays the live

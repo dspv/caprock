@@ -140,11 +140,11 @@ fi
 
 # The one cargo build a release makes, shared with --warm-cache so the cache
 # that writes is the one a release needs (same targets, profile and flags).
-BUNDLES=app,dmg
-[[ "$WARM" == 1 ]] && BUNDLES=app
-echo "→ Caprock.app, bundles $BUNDLES"
+# The .app only: Tauri's own .dmg lays its window out through Finder and
+# skips that when CI=true, so the .dmg is scripts/app-dmg.sh's (below).
+echo "→ Caprock.app"
 (cd app && { [[ -d node_modules ]] || npm ci; } && npx tauri build \
-  --target universal-apple-darwin --bundles "$BUNDLES" \
+  --target universal-apple-darwin --bundles app \
   --config "{\"version\":\"$VERSION\"}" ${UPDATER[@]+"${UPDATER[@]}"})
 if [[ "$WARM" == 1 ]]; then
   echo "  ok: compiled for aarch64 and x86_64 (warm-up: nothing kept)"
@@ -152,10 +152,14 @@ if [[ "$WARM" == 1 ]]; then
 fi
 
 DMG_NAME="Caprock_${VERSION}_universal.dmg"
-BUILT="app/src-tauri/target/universal-apple-darwin/release/bundle/dmg/$DMG_NAME"
-[[ -f "$BUILT" ]] || die "tauri did not produce $BUILT"
-cp "$BUILT" "$OUT/$DMG_NAME"
+BUILT_APP="app/src-tauri/target/universal-apple-darwin/release/bundle/macos/Caprock.app"
+[[ -d "$BUILT_APP" ]] || die "tauri did not produce $BUILT_APP"
 DMG="$OUT/$DMG_NAME"
+# The branded window (bundle.macOS.dmg) written by dmgbuild, no Finder, and
+# the image signed as Tauri signed its own; before notarization, which
+# covers the finished file.
+echo "→ $DMG_NAME"
+bash scripts/app-dmg.sh build "$BUILT_APP" "$DMG"
 
 # Tauri notarizes and staples the .app inside; the .dmg around it is
 # notarized and stapled here, so the first open of a downloaded .dmg is
@@ -191,9 +195,11 @@ trap 'hdiutil detach "$MNT" -quiet || true' EXIT
 APP="$MNT/Caprock.app"
 [[ -d "$APP" ]] || die "no Caprock.app in the .dmg"
 [[ -L "$MNT/Applications" ]] || die "no Applications link in the .dmg"
-# The branded window (bundle.macOS.dmg): the bundler copies the picture into
-# .background/; without it the window opens as a bare white Finder folder.
-ls "$MNT/.background/"*.png >/dev/null 2>&1 || die "no background picture in the .dmg"
+# The branded window (bundle.macOS.dmg): a .DS_Store with the window's size,
+# the background picture (an alias to the volume's .background.png, the
+# repository's picture) and both icons' positions; without it the window
+# opens as a bare white Finder folder.
+bash scripts/app-dmg.sh check "$MNT" || die "the .dmg's window is not laid out"
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist"; }
 [[ "$(plist CFBundleIdentifier)" == dev.caprock.app ]] || die "bundle id is $(plist CFBundleIdentifier)"
 [[ "$(plist CFBundleShortVersionString)" == "$VERSION" ]] || die "app version is $(plist CFBundleShortVersionString)"

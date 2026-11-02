@@ -232,7 +232,9 @@ nothing) and attaches the files after goreleaser has published the release
   `Caprock_<version>_universal.dmg` (arm64 + x86_64; Developer ID signed and
   notarized when the Apple secrets are set, else signed with the self-signed
   identity when its secrets are set, else ad-hoc), checked before upload
-  (`hdiutil verify`; `scripts/check-app-signature.sh`: the signature
+  (`hdiutil verify`; `scripts/app-dmg.sh check`: the `.DS_Store` gives the
+  window `bundle.macOS.dmg`'s size, the repository's background picture and
+  both icons' positions; `scripts/check-app-signature.sh`: the signature
   verifies, every binary has the hardened runtime and its designated
   requirement is `anchor apple generic` with the team (Developer ID, plus a
   secure timestamp, a stapled ticket and Gatekeeper's `Notarized Developer
@@ -308,9 +310,16 @@ and `gh` logged in. It refuses a checkout that is not exactly the tag or has
 uncommitted changes, and refuses to replace a `.dmg` already on the release
 unless given `--clobber`. The `.dmg` and the rendered `caprock-app.rb` land in
 `app/src-tauri/target/app-release/`; merge the cask PR (or push the file to
-`Casks/caprock-app.rb`) to publish it. The `.dmg` step lays out its window
-through Finder; with `CI=true` in the environment it skips that and the window
-keeps Finder's default arrangement.
+`Casks/caprock-app.rb`) to publish it. Tauri builds the `.app` only; the
+`.dmg` around it is `scripts/app-dmg.sh`'s, which runs dmgbuild (pinned with
+hashes in `app/packaging/dmg-requirements.txt`, in a venv under
+`app/src-tauri/target/dmgbuild/`, Python 3.10 or later) to write the window's
+`.DS_Store` directly: no Finder, no AppleScript, the same result in Actions and
+by hand. Tauri's own `.dmg` laid the window out through Finder and skipped that
+whenever `CI=true`, so every Actions-built `.dmg` up to 0.170.0 opened as a
+plain folder. The script signs the image as Tauri did (with
+`APPLE_SIGNING_IDENTITY` unless it is `-`, importing `APPLE_CERTIFICATE` into
+a temporary keychain when that is set) before it is notarized.
 
 **Signing.** Developer ID and notarization (decision 2, the account since
 2026-10-20). `tauri.conf.json` says `signingIdentity: "-"` (ad-hoc); in

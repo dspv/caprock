@@ -390,8 +390,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The .app only: the .dmg is scripts/app-dmg.sh's, as in a release.
           - os: macos-latest
-            bundles: app,dmg
+            bundles: app
           - os: windows-latest
             bundles: nsis
           # 22.04, the image release.yml builds the Linux app on, so the Rust
@@ -458,20 +459,29 @@ jobs:
           MACOS_SELFSIGN_P12_PASSWORD: ${{ secrets.MACOS_SELFSIGN_P12_PASSWORD || '' }}
       - name: bundle
         run: make app-bundle APP_BUNDLES=${{ matrix.bundles }}
-      # The branded .dmg window: the picture has to be inside the image, or
-      # the window opens as a bare Finder folder and nothing else says so.
-      - name: dmg background
+      # dmgbuild (scripts/app-dmg.sh) needs Python 3.10 or later.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: runner.os == 'macOS'
+        with:
+          python-version: "3.13"
+      # The .dmg the way a release makes it, then its branded window: a
+      # .DS_Store with the window's size, the background picture and both
+      # icons' positions, or the window opens as a bare Finder folder and
+      # nothing else says so (Tauri's own .dmg skipped that with CI=true).
+      - name: dmg and its window
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          dmg=$(ls app/src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+          dmg=app/src-tauri/target/release/bundle/dmg/Caprock.dmg
+          bash scripts/app-dmg.sh build app/src-tauri/target/release/bundle/macos/Caprock.app "$dmg"
+          hdiutil verify "$dmg" >/dev/null
           mnt=$(mktemp -d)
           hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mnt" "$dmg" >/dev/null
           trap 'hdiutil detach "$mnt" -quiet || true' EXIT
-          ls -la "$mnt" "$mnt/.background"
-          ls "$mnt/.background/"*.png >/dev/null
+          ls -la "$mnt"
           test -d "$mnt/Caprock.app"
           test -L "$mnt/Applications"
+          bash scripts/app-dmg.sh check "$mnt"
       # The microphone (ADR-045): without the entitlement the hardened
       # runtime refuses an agent's voice mode silently.
       - name: microphone entitlement
