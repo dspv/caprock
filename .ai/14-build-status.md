@@ -259,6 +259,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-02 — 0.170.1: the macOS installer window, styled at last
+
+A patch release, one batch PR (#882). Tauri's bundler skips the Finder AppleScript that lays out the .dmg window whenever `CI=true`, so no .dmg built on GitHub (0.97.0 to 0.170.0, all checked) carried a `.DS_Store`: Finder showed neither the background nor the icon layout. The .dmg is now built with dmgbuild (pinned with hashes), which writes `.DS_Store` directly from `bundle.macOS.dmg`; `scripts/app-dmg.sh check` parses it on the mounted image in CI and in the release, and fails without the window size, the background and both icon positions. Also a test race in At a glance's share test fixed.
+
 ### 2026-11-02 — 0.170.0: the installer window with the characters, the all-time strip as tiles
 
 A minor release, one batch PR (#877) of #876 and feat/dmg-crew. The macOS `.dmg` opens on graphite, headed *Your agents are waiting* / *Drag Caprock onto Applications*, with four of the app's characters round the dotted arrow and a pale plate under each icon's name, since Finder draws the names in black (owner's pick of three looks, 2026-11-01). The all-time strip on Now is a row of tiles like Cost's Totals, sized by its own width, with the buttons wrapping under it on a phone; the empty subagent frame says *no subagents · 1h* on one line.
