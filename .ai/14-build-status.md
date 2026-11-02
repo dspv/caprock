@@ -259,6 +259,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-02 — 0.170.0: the installer window with the characters, the all-time strip as tiles
+
+A minor release, one batch PR (#877) of #876 and feat/dmg-crew. The macOS `.dmg` opens on graphite, headed *Your agents are waiting* / *Drag Caprock onto Applications*, with four of the app's characters round the dotted arrow and a pale plate under each icon's name, since Finder draws the names in black (owner's pick of three looks, 2026-11-01). The all-time strip on Now is a row of tiles like Cost's Totals, sized by its own width, with the buttons wrapping under it on a phone; the empty subagent frame says *no subagents · 1h* on one line.
+
 ### 2026-10-31 — 0.169.0: subagents as faces, the update card updates in place, share never hangs
 
 A minor release, one batch PR (#874). The Agent panel's subagent frame is drawn with the brand characters: Chart of faces (the default — the hour as twelve five-minute columns of stacked faces, the peak with its time, one face standing for several above a peak of six), Crew and Numbers, switched by three dots and remembered per viewer. In the desktop app the "Caprock vX is available" card on Now is the status strip's one click — Update — Restart with a progress bar, Try again on a failure — instead of a link to the release page. The session chip reads *uptime 8d*. The share sheet no longer hangs on Drawing…: it waits at most 6 s for the period's figures and says so, embeds fonts from the page instead of fetching them from the daemon, and every share drawing gives up after 30 s with a message; At a glance, All time, Last 30 days, Compactions, Hermes Agent and the Lifetime panels gain the panel share button.
