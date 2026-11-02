@@ -259,8 +259,10 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
         * as the strip beside them and read as ragged when they are shorter.
         * Stretching makes their height follow the strip's rather than being a
         * second padding value kept in sync by hand. */}
-      <div className="flex items-stretch gap-3">
-        <div className="min-w-0 flex-1"><LifetimeStrip plan={plan} /></div>
+      {/* Wraps on a phone: the buttons go under the strip rather than
+        * squeezing it to a column of clipped figures. */}
+      <div className="flex flex-wrap items-stretch gap-3">
+        <div className="min-w-0 flex-1 basis-[320px]"><LifetimeStrip plan={plan} /></div>
         {/* Starting a session is the only thing on this screen that DOES
           * something, and it used to sit at the very bottom in 11px grey,
           * sharing a row with a checkbox and a "refreshed 3s ago" timestamp —

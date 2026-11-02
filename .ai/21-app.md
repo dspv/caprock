@@ -1040,10 +1040,13 @@ are stable and referenced by [22-app-plan.md](22-app-plan.md).
   6 hours before), conditionally
   ([04-ui.md § Update notice](04-ui.md#update-notice); § Updates).
   The `.dmg` opens on a branded window (`bundle.macOS.dmg` in
-  `tauri.conf.json`, 2026-10-10): 660×400, caprock.dev's paper ground, the
-  mark and wordmark, the app icon at (170, 196) and the Applications folder
-  at (490, 196) in two soft wells with a dotted arrow between, and *Drag
-  Caprock to Applications*. The picture is `app/src-tauri/dmg/background.png`,
+  `tauri.conf.json`, 2026-10-10): 660×400, the app icon at (170, 196) and
+  the Applications folder at (490, 196) in two wells with a dotted arrow
+  between. Since 2026-11-01 (owner's pick of three looks) the ground is
+  graphite, headed *Your agents are waiting* / *Drag Caprock onto
+  Applications*, with four of the app's characters round the arrow; each
+  icon's name sits on a pale plate, because Finder draws the names in black
+  on any background. Before, it was caprock.dev's paper ground. The picture is `app/src-tauri/dmg/background.png`,
   rendered from `background.html` beside it (one image at window size: the
   bundler takes PNG, JPG or GIF, so no @2x). CI's macOS app job mounts the
   built `.dmg` and fails without `.background/*.png` in it, and so does

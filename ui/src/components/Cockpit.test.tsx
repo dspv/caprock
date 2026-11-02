@@ -518,7 +518,7 @@ describe('the agent cockpit', () => {
     h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
     try {
       show(agent())
-      const none = await screen.findByText('no subagents in the last hour')
+      const none = await screen.findByText('no subagents · 1h')
       expect(none.closest('[data-hero-subs]')).toBeInTheDocument()
       expect(screen.getByRole('img', { name: 'No subagents in the last hour' })).toBeInTheDocument()
       expect(screen.queryByText('peak 0 · 1h')).toBeNull()
