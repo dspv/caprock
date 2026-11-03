@@ -46,6 +46,7 @@ type recentEntry struct {
 	mainLast lazy[[]event.Event]
 	mainTurn lazy[foundEvent]
 	prompts  lazy[[]string]
+	unpriced lazy[int64]
 }
 
 // lazy is one value of an entry, and whether it has been read.

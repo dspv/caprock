@@ -92,7 +92,47 @@ export interface Session {
    *  window that did it (ms); absent otherwise, and again once it is continued. */
   idle_ended_at?: number
   idle_ended_after_ms?: number
+  /** Set while the session's last call was refused at its plan's usage
+   *  limit, null once a reply came after it (migration 0078, ADR-090). */
+  limit_hit?: LimitHit | null
 }
+
+/** A session stopped at its plan's usage limit (`Session.limit_hit`). */
+export interface LimitHit {
+  /** When the call was refused (unix ms). */
+  at: number
+  /** When the plan says the window reopens (unix ms); absent when not stated. */
+  resets_at?: number
+  /** The window that refused it, as Claude Code names it: 'five_hour', 'seven_day', … */
+  window?: string
+}
+
+/** Where a session can be continued (`POST /v1/sessions/{id}/continue-on`):
+ *  a subscription id, 'default', 'deepseek', 'kimi' or 'codex'. */
+export type ContinueTarget = string
+
+/** What continue-on answers, and what the `continued` live frame carries. */
+export interface ContinueOnResult {
+  /** The session now carrying the work: show it in place of continued_from's tab. */
+  session_id: string
+  cwd: string
+  continued_from: string
+  target: ContinueTarget
+  /** What continued_from ran on: Undo continues session_id back on this. */
+  from: ContinueTarget
+  /** 'resume' and 'copy' carry the same conversation; 'summary' is a new Codex session with a brief. */
+  how: 'resume' | 'copy' | 'summary'
+  same_conversation: boolean
+  stopped_original: boolean
+  /** Caprock moved it by itself (limit_action 'auto'). */
+  auto?: boolean
+  /** When an automatic move goes back to `from` (unix ms). */
+  return_at?: number
+  note: string
+}
+
+/** Settings → When a limit is reached (`limit_action`). */
+export type LimitAction = 'ask' | 'auto' | 'wait'
 
 /** Settings' idle window for an untabbed session Caprock started (`end_idle_after`). */
 export type EndIdleAfter = '2h' | '12h' | '24h' | 'never'
@@ -138,6 +178,9 @@ export interface Stats {
   cache_read: number
   cache_write: number
   cost_usd: number
+  /** Assistant turns whose model has no row in the pricing table: their cost
+   *  is unknown and not in cost_usd. Absent when zero, and on daemons before it. */
+  unpriced_turns?: number
 }
 
 export interface Plan { done: number; total: number; next?: string }
@@ -1105,6 +1148,17 @@ export interface Settings {
   deepseek_key_where?: SecretWhere
   /** Write-only: an empty string removes it. */
   deepseek_api_key?: string
+  /** The same three for the Kimi platform key, and the write-only key. */
+  kimi_key_set?: boolean
+  kimi_key_hint?: string
+  kimi_key_where?: SecretWhere
+  kimi_api_key?: string
+  /** What happens when a session Caprock started hits its limit (ADR-090). */
+  limit_action?: LimitAction
+  /** The targets 'auto' tries, in order; unavailable ones are skipped. */
+  limit_fallbacks?: ContinueTarget[]
+  /** Take an automatically moved session back once its own window resets. */
+  limit_return_after_reset?: boolean
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
@@ -1922,8 +1976,9 @@ export interface Subscription {
   created_at?: number
   /** Set on an entry that is not a sign-in but a model provider Claude Code
    *  runs on with the user's own key ("deepseek", id "deepseek"): offered in
-   *  the pickers, never renamed, removed, made the default or counted. */
-  provider?: 'deepseek'
+   *  the pickers, never renamed, removed, made the default or counted;
+   *  "kimi" (id "kimi") is the same for Kimi (ADR-090). */
+  provider?: 'deepseek' | 'kimi'
 }
 
 export interface SubscriptionsResponse {
@@ -2639,6 +2694,11 @@ export const api = {
    *  configured default. Empty for the other agents. */
   /** The proposed brief for carrying a session on in a new one (a relay). */
   relayBrief: (id: string) => get<RelayBrief>(`/v1/sessions/${encodeURIComponent(id)}/relay`),
+  /** Continue an owned Claude Code session on another provider or sign-in
+   *  (ADR-090). The machine only: 403 from a paired device, 409 for a session
+   *  Caprock did not start, 400 with the reason when the target cannot take it. */
+  continueOn: (id: string, target: ContinueTarget) =>
+    post<ContinueOnResult>(`/v1/sessions/${encodeURIComponent(id)}/continue-on`, { target }),
   /** GET /v1/agents/catalog: every agent here, installed or not, with its models and what it is missing. */
   agentCatalog: () => get<AgentCatalog>('/v1/agents/catalog'),
   customAgents: () => get<{ agents: CustomAgent[]; licensed: boolean }>('/v1/agents/custom'),

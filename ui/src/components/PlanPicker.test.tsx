@@ -14,6 +14,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { UpdateBanner } from './UpdateBanner'
+import { PlanChip } from './PlanPicker'
 import type { Settings } from '@/lib/api'
 
 const sent = vi.hoisted(() => ({ bodies: [] as Record<string, unknown>[] }))
@@ -53,5 +54,20 @@ describe('saving one setting', () => {
     expect(saves[0]).toEqual({ update_checks: true })
     expect(saves[0]).not.toHaveProperty('plan_label')
     expect(saves[0]).not.toHaveProperty('plan_usd_per_month')
+  })
+})
+
+describe('the plan presets', () => {
+  // Anthropic renamed Max 5× to Max and Max 20× to Ultra at the end of
+  // October 2026 (claude.com/pricing, read 2026-11-03). The daemon reads a
+  // stored old preset back under its new name; the picker offers only these.
+  it('offer Max and Ultra under their current names, and the chip says Ultra', () => {
+    const saves: Partial<Settings>[] = []
+    const plan = { update_checks: false, plan_kind: 'flat', plan_label: 'Ultra', plan_usd_per_month: 200 } as Settings
+    render(<PlanChip plan={plan} onSave={(p) => saves.push(p)} />)
+    fireEvent.click(screen.getByRole('button', { name: /Ultra · \$200\.00\/mo/ }))
+    expect(screen.queryByText(/Max 5×|Max 20×/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /^Max\s*\$100/ }))
+    expect(saves).toEqual([{ plan_kind: 'flat', plan_label: 'Max', plan_usd_per_month: 100 }])
   })
 })

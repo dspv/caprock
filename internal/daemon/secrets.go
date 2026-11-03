@@ -10,11 +10,12 @@ import (
 	"github.com/dspv/caprock/internal/secret"
 )
 
-// The two credentials the daemon keeps besides the GitHub token, where that
+// The credentials the daemon keeps besides the GitHub token, where that
 // token is kept (ADR-024 amendment): the macOS login keychain, or a 0600 file
 // in the data directory. Never config.json, the database or a log.
 var (
 	deepSeekSecret = secret.Item{Service: "dev.caprock.deepseek", Label: "Caprock DeepSeek API key", File: "deepseek-api-key", Noun: "key"}
+	kimiSecret     = secret.Item{Service: "dev.caprock.kimi", Label: "Caprock Kimi API key", File: "kimi-api-key", Noun: "key"}
 	telegramSecret = secret.Item{Service: "dev.caprock.telegram", Label: "Caprock Telegram bot token", File: "telegram-bot-token", Noun: "token"}
 )
 
@@ -103,7 +104,9 @@ func (d *Daemon) loadSecrets(ctx context.Context) {
 	}
 	cfg.DeepSeekAPIKey = read(deepSeekSecret, cfg.DeepSeekKeyStored, cfg.DeepSeekAPIKey)
 	cfg.ReportBotToken = read(telegramSecret, cfg.ReportBotStored, cfg.ReportBotToken)
+	cfg.KimiAPIKey = read(kimiSecret, cfg.KimiKeyStored, cfg.KimiAPIKey)
 	d.cfgMu.Lock()
+	d.opt.Config.KimiAPIKey = cfg.KimiAPIKey
 	d.opt.Config.LegacyDeepSeekAPIKey, d.opt.Config.DeepSeekAPIKey, d.opt.Config.DeepSeekKeyStored = cfg.LegacyDeepSeekAPIKey, cfg.DeepSeekAPIKey, cfg.DeepSeekKeyStored
 	d.opt.Config.LegacyReportBotToken, d.opt.Config.ReportBotToken, d.opt.Config.ReportBotStored = cfg.LegacyReportBotToken, cfg.ReportBotToken, cfg.ReportBotStored
 	d.cfgMu.Unlock()
@@ -125,6 +128,8 @@ func applySecret(c *config.Config, item secret.Item, v string) {
 	switch item.Service {
 	case deepSeekSecret.Service:
 		c.DeepSeekAPIKey, c.DeepSeekKeyStored, c.LegacyDeepSeekAPIKey = v, v != "", ""
+	case kimiSecret.Service:
+		c.KimiAPIKey, c.KimiKeyStored = v, v != ""
 	case telegramSecret.Service:
 		c.ReportBotToken, c.ReportBotStored, c.LegacyReportBotToken = v, v != "", ""
 	}
@@ -136,12 +141,22 @@ func applySecret(c *config.Config, item secret.Item, v string) {
 // copy (one the move out of config.json could not place, or a test's).
 func (d *Daemon) deepSeekKey(ctx context.Context) (string, error) {
 	cfg := d.config()
-	if !cfg.DeepSeekKeyStored {
-		return strings.TrimSpace(cfg.DeepSeekAPIKey), nil
+	return d.providerKey(ctx, deepSeekSecret, "DeepSeek", cfg.DeepSeekKeyStored, cfg.DeepSeekAPIKey)
+}
+
+// kimiKey is deepSeekKey for the Kimi key.
+func (d *Daemon) kimiKey(ctx context.Context) (string, error) {
+	cfg := d.config()
+	return d.providerKey(ctx, kimiSecret, "Kimi", cfg.KimiKeyStored, cfg.KimiAPIKey)
+}
+
+func (d *Daemon) providerKey(ctx context.Context, item secret.Item, name string, stored bool, mem string) (string, error) {
+	if !stored {
+		return strings.TrimSpace(mem), nil
 	}
-	v, err := d.secretStore(deepSeekSecret).Get(ctx)
+	v, err := d.secretStore(item).Get(ctx)
 	if err != nil {
-		return "", errors.New("could not read the DeepSeek key from the " + d.secretStore(deepSeekSecret).Kind() + ": " + err.Error())
+		return "", errors.New("could not read the " + name + " key from the " + d.secretStore(item).Kind() + ": " + err.Error())
 	}
 	return strings.TrimSpace(v), nil
 }

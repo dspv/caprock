@@ -969,6 +969,70 @@ func TestContextNoteSaysWhyContextIsMissing(t *testing.T) {
 	}
 }
 
+// A turn on a model the pricing table does not carry leaves its cost unknown,
+// and the session's stats count it, so the Cost tile can say "price unknown"
+// instead of a $0.00 that claims the work was free. A session with no such
+// turn omits the field.
+func TestSessionStatsCountUnpricedTurns(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	rec := func(sid, key, model string, tok *event.TokenDelta) {
+		t.Helper()
+		if _, err := e.rec.Record(ctx, &event.Event{SessionID: sid, Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Key: key, Ts: base, Model: model, Tokens: tok, Payload: json.RawMessage(`{"text":"hi"}`)}, rollup.SessionInfo{Cwd: t.TempDir()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec("kimi", "msg:k1", "kimi-k3", &event.TokenDelta{In: 10, Out: 20})
+	rec("kimi", "msg:k2", "kimi-k3", &event.TokenDelta{In: 30, Out: 5})
+	rec("kimi", "msg:k0", "kimi-k3", &event.TokenDelta{}) // nothing to price
+	rec("mixed", "msg:m1", "claude-opus-5", &event.TokenDelta{In: 1000, Out: 200})
+	rec("mixed", "msg:m2", "kimi-k3", &event.TokenDelta{In: 10, Out: 20})
+	rec("priced", "msg:p1", "claude-opus-5", &event.TokenDelta{In: 1000, Out: 200})
+
+	for _, tc := range []struct {
+		id      string
+		want    int64
+		costPos bool
+	}{{"kimi", 2, false}, {"mixed", 1, true}, {"priced", 0, true}} {
+		var raw map[string]json.RawMessage
+		if code := e.get(t, "/v1/sessions/"+tc.id, &raw); code != 200 {
+			t.Fatalf("%s: %d", tc.id, code)
+		}
+		var st struct {
+			CostUSD       float64 `json:"cost_usd"`
+			UnpricedTurns *int64  `json:"unpriced_turns"`
+		}
+		if err := json.Unmarshal(raw["stats"], &st); err != nil {
+			t.Fatal(err)
+		}
+		var got int64
+		if st.UnpricedTurns != nil {
+			got = *st.UnpricedTurns
+		}
+		if got != tc.want {
+			t.Errorf("%s: unpriced_turns = %d, want %d", tc.id, got, tc.want)
+		}
+		if tc.want == 0 && st.UnpricedTurns != nil {
+			t.Errorf("%s: unpriced_turns sent as zero, want it omitted", tc.id)
+		}
+		if (st.CostUSD > 0) != tc.costPos {
+			t.Errorf("%s: cost_usd = %v, want positive %v", tc.id, st.CostUSD, tc.costPos)
+		}
+	}
+
+	// The list carries it too: the Now card reads the same summary.
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	for _, s := range list {
+		if s.SessionID == "kimi" && s.Stats.UnpricedTurns != 2 {
+			t.Errorf("list: kimi unpriced_turns = %d, want 2", s.Stats.UnpricedTurns)
+		}
+	}
+}
+
 // GET /v1/statusline/{id} serves the session counters the status line prints:
 // bearer-gated, and zeros rather than a 404 for a session with nothing yet
 // (the first call of a session races its first turn being recorded).

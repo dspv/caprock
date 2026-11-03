@@ -6955,3 +6955,74 @@ unchanged.
 change as git does (a one-file cherry-pick), or mutation from the phone; or
 a platform's Trash proves unreliable for the items people delete (then
 disable Delete there, never `rm`).
+
+## ADR-090 — At a usage limit, a session continues on another provider or sign-in: the same conversation where it can be, a summary where it cannot
+
+**Date:** 2026-11-03 · **Status:** accepted (owner, 2026-11-02 and
+2026-11-03, translated: "on a rate limit switch right there to Codex,
+DeepSeek or Kimi with the context; more choice is better", then "of course,
+do it all"; UI variants V1, a one-line strip under the terminal, as the
+default "Ask me", and V3, Settings → *When a limit is reached* with an
+automatic order, a return after the reset and a toast with Undo, picked
+2026-11-03). Amends ADR-048 (a resume stays on its
+subscription). Contract: [03-contracts.md § Continue on another
+provider](03-contracts.md#continue-on-another-provider), § Session limit
+DDL (migration 0078).
+
+**Context.** When a Claude plan's five-hour or weekly window runs out,
+Claude Code ends the turn with a synthetic "You've hit your … limit" line
+and the session sits idle until the reset — hours, or days for the weekly
+one. The user may have another way to run the same work: an added Claude
+sign-in (ADR-048), DeepSeek on their own key, now Kimi on theirs, or Codex.
+Until now each was a fresh start, and ADR-048 kept a resumed session on the
+subscription it ran on, because its conversation is in that directory and
+nowhere else.
+
+**Decision.**
+
+- **The limit is read from the transcript.** The synthetic line carries the
+  structured refusal (`error: "rate_limit"`, `quotaLimits.resetsAt`,
+  `rateLimitType`), not only its text; Caprock stores it on the session
+  (`limit_hit`) and clears it at the next real reply. Not the status line's
+  windows: they are per sign-in, sampled, and say nothing about which
+  session was refused.
+- **Same directory, same conversation: a fork.** DeepSeek and Kimi run
+  Claude Code itself, so `claude --resume <id> --fork-session` in the
+  directory the conversation is in, with the provider's environment, carries
+  the whole context. A fork, not a resume under the old id: the new session
+  is its own row, on its own subscription and spend, with `parent_session`
+  the original, and the original's history stays where it was.
+- **Another Claude sign-in: copy the transcript, never move it.** Claude
+  Code finds a conversation only under the configuration directory's
+  `projects/<encoded folder>/`. The transcript is copied there under a new
+  id (the `sessionId` fields rewritten as bytes, nothing re-encoded) and
+  resumed. Copying under the old id was rejected: the target's tailer would
+  read a second transcript of the same session and, since a session's
+  subscription is set once, could file the original's history under the
+  target. The copy's turns are priced once by the cross-session check that
+  forks already need.
+- **Codex: a summary, and it says so.** Codex cannot read a Claude Code
+  conversation, so it gets the relay brief (ADR-032) as its first message,
+  and every answer says `same_conversation: false` and "not the same
+  conversation".
+- **The original is stopped, only if it is ours.** Caprock started it, so
+  ending its idle process is within rule 7; a session Caprock did not start
+  is `409`, never signalled. The original ends only after the new process
+  has started.
+- **Automatic only when asked.** `limit_action` is `"ask"` by default; with
+  `"auto"` the first available target of an ordered list takes the session,
+  once per limit, and the app is told so it can show the move and Undo
+  (continue-on back). The optional return after the reset runs only when the
+  moved session is not mid-turn, and is held in memory — a restart forgets
+  it rather than moving work later by a stale plan.
+- **Kimi is DeepSeek's twin,** on Moonshot's published Claude Code variables
+  and model ids (platform.kimi.ai, read 2026-11-03), with no price shown
+  (rule 6).
+
+**Consequences.** A conversation can now leave its subscription, which
+ADR-048 forbade for a plain resume; it still cannot through `POST
+/v1/agents`. A moved conversation exists twice on disk (the original and
+the copy or fork); neither is deleted. Continue-on is a machine-only write:
+a phone or another computer cannot move a session to another account. The
+plan-window stop is untouched: it pauses below 100% to keep a turn alive,
+which is a different job from carrying on after a turn has already failed.

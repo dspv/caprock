@@ -180,6 +180,24 @@ type Config struct {
 	DeepSeekAPIKey       string `json:"-"`
 	DeepSeekKeyStored    bool   `json:"deepseek_key_stored,omitempty"`
 	LegacyDeepSeekAPIKey string `json:"deepseek_api_key,omitempty"`
+	// KimiAPIKey is the user's Kimi platform key, kept exactly as the
+	// DeepSeek key is (never in this file; KimiKeyStored records that the
+	// secret store holds one). Set, it offers "Kimi" beside the Claude Code
+	// sign-ins (internal/agents/provider.go).
+	KimiAPIKey    string `json:"-"`
+	KimiKeyStored bool   `json:"kimi_key_stored,omitempty"`
+	// LimitAction is what Caprock does when a Claude Code session it started
+	// hits its plan's usage limit (ADR-090): "ask" (the default; the session
+	// shows the limit and the choices), "auto" (continue it on the first of
+	// LimitFallbacks that is available), or "wait" (leave it until the
+	// window resets). LimitFallbacks is the order "auto" tries, as
+	// subscription ids ("default", an added sign-in's id, "deepseek",
+	// "kimi", "codex"); one that is not available is skipped.
+	// LimitReturnAfterReset continues an automatically moved session back on
+	// the sign-in it left once that sign-in's window has reset.
+	LimitAction           string   `json:"limit_action,omitempty"`
+	LimitFallbacks        []string `json:"limit_fallbacks,omitempty"`
+	LimitReturnAfterReset bool     `json:"limit_return_after_reset,omitempty"`
 	// CustomAgents are coding agents the user added by command (ADR-046), a
 	// paid feature: kept whatever the licence says, offered and started only
 	// while it is active. Edited through PUT /v1/agents/custom, which
@@ -342,6 +360,22 @@ func NormalizeEndIdle(v string) string {
 	return EndIdle12h
 }
 
+// The choices for Config.LimitAction.
+const (
+	LimitAsk  = "ask"
+	LimitAuto = "auto"
+	LimitWait = "wait"
+)
+
+// NormalizeLimitAction is v when it is one of the choices, else "ask".
+func NormalizeLimitAction(v string) string {
+	switch v {
+	case LimitAuto, LimitWait:
+		return v
+	}
+	return LimitAsk
+}
+
 // EndIdleWindow is how long a session may sit idle under choice v; 0 for
 // "never".
 func EndIdleWindow(v string) time.Duration {
@@ -486,6 +520,7 @@ func Load(dir string) (Config, error) {
 	if cfg.LoopTMinutes <= 0 {
 		cfg.LoopTMinutes = 3
 	}
+	cfg.renamePlanPresets()
 	return cfg, nil
 }
 

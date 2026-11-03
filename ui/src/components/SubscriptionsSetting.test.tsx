@@ -87,16 +87,16 @@ describe('Settings → Subscriptions', () => {
     expect(screen.getByRole('button', { name: 'Plan for Personal' })).toHaveTextContent('Pro · $20.00/mo')
     expect(screen.getByText(/No plan of its own/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Plan for Personal' }))
-    fireEvent.click(screen.getByRole('button', { name: /Max 5×/ }))
-    await waitFor(() => expect(m.update).toHaveBeenCalledWith('b2', { plan: { kind: 'flat', label: 'Max 5×', usd_per_month: 100 } }))
+    fireEvent.click(screen.getByRole('button', { name: /^Max\s*\$100/ }))
+    await waitFor(() => expect(m.update).toHaveBeenCalledWith('b2', { plan: { kind: 'flat', label: 'Max', usd_per_month: 100 } }))
     // Back to the main plan.
     fireEvent.click(screen.getByRole('button', { name: 'Plan for Work' }))
     fireEvent.click(screen.getByRole('button', { name: /The main plan/ }))
     await waitFor(() => expect(m.update).toHaveBeenCalledWith('a1', { plan: null }))
     // The own sign-in's is the main plan.
     fireEvent.click(screen.getByRole('button', { name: 'Plan for Own sign-in' }))
-    fireEvent.click(screen.getByRole('button', { name: /Max 20×/ }))
-    expect(saveMain).toHaveBeenCalledWith({ plan_kind: 'flat', plan_label: 'Max 20×', plan_usd_per_month: 200 })
+    fireEvent.click(screen.getByRole('button', { name: /^Ultra/ }))
+    expect(saveMain).toHaveBeenCalledWith({ plan_kind: 'flat', plan_label: 'Ultra', plan_usd_per_month: 200 })
   })
 
   it('adds one and types its sign-in into a shell tab', async () => {
@@ -184,15 +184,29 @@ describe('DeepSeek', () => {
     expect(input).toHaveAttribute('type', 'password')
     // It says where the work goes before anything is set.
     expect(screen.getAllByText(/api\.deepseek\.com/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/Caprock itself sends nothing/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Caprock itself sends nothing/).length).toBeGreaterThan(0)
     fireEvent.change(input, { target: { value: '  sk-pasted-key-0000  ' } })
     m.settings.mockResolvedValue({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0, deepseek_key_set: true, deepseek_key_hint: 'sk-…0000' })
-    fireEvent.click(screen.getByRole('button', { name: 'Save key' }))
+    fireEvent.click(within(screen.getByLabelText('DeepSeek')).getByRole('button', { name: 'Save key' }))
     await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: 'sk-pasted-key-0000' }))
     expect(await screen.findByText('sk-…0000')).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/sk-pasted/)).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(m.save).toHaveBeenCalledWith({ deepseek_api_key: '' }))
+  })
+
+  // Kimi is DeepSeek's twin (ADR-090): the same write-only field, its own key.
+  it('saves a Kimi key write-only and says it goes to api.moonshot.ai', async () => {
+    m.save.mockClear()
+    m.settings.mockResolvedValue({ update_checks: false, plan_kind: '', plan_label: '', plan_usd_per_month: 0, kimi_key_set: false })
+    m.list.mockResolvedValue(response([sub({})]))
+    render(<SubscriptionsSetting />)
+    const input = await screen.findByLabelText('Kimi API key')
+    expect(input).toHaveAttribute('type', 'password')
+    expect(within(screen.getByLabelText('Kimi')).getAllByText(/api\.moonshot\.ai/).length).toBeGreaterThan(0)
+    fireEvent.change(input, { target: { value: 'sk-kimi-0000' } })
+    fireEvent.click(within(screen.getByLabelText('Kimi')).getByRole('button', { name: 'Save key' }))
+    await waitFor(() => expect(m.save).toHaveBeenCalledWith({ kimi_api_key: 'sk-kimi-0000' }))
   })
 
   it('is not a sign-in: no row, no Make default or Remove, and not counted toward the free number', async () => {

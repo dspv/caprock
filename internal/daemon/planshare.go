@@ -31,7 +31,7 @@ type planShareCache struct {
 
 // planShareSignIns is every sign-in the plan figures price: the own sign-in
 // and each added subscription of Claude Code and Codex, and Claude Code on
-// DeepSeek while a key is set.
+// DeepSeek and on Kimi while a key is set.
 //
 // The main plan (Settings → Plan) is how the user pays for Claude Code, as
 // that setting says, so it stands for the own Claude Code sign-in and for an
@@ -56,6 +56,10 @@ func planShareSignIns(cfg config.Config) []planshare.SignIn {
 	if strings.TrimSpace(cfg.DeepSeekAPIKey) != "" {
 		out = append(out, planshare.SignIn{Agent: subs.AgentClaude, Subscription: subs.DeepSeekID, Label: "DeepSeek",
 			Plan: planshare.Plan{Kind: "metered", Label: "DeepSeek API"}})
+	}
+	if strings.TrimSpace(cfg.KimiAPIKey) != "" {
+		out = append(out, planshare.SignIn{Agent: subs.AgentClaude, Subscription: subs.KimiID, Label: "Kimi",
+			Plan: planshare.Plan{Kind: "metered", Label: "Kimi API"}})
 	}
 	out = append(out, planshare.SignIn{Agent: subs.AgentCodex, Label: cfg.OwnLabel(subs.AgentCodex), Window: store.CodexRateLimitPrefix + "seven_day"})
 	for _, s := range cfg.Subscriptions {

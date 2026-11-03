@@ -211,7 +211,9 @@ type Daemon struct {
 	// subIn reads the transcripts of each subscription's configuration
 	// directory (ADR-048, subscriptions.go).
 	subIn subIngest
-	mgr   *agents.Manager
+	// limits is the usage-limit watcher's state (limitwatch.go, ADR-090).
+	limits limitWatch
+	mgr    *agents.Manager
 	// queue holds what the chat field sends while a turn runs (ADR-053).
 	queue *msgQueue
 	// endDone ends the sessions started with end_when_done once their turn
@@ -557,6 +559,8 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.queueDoneC = make(chan queuedDoneMsg, 16)
 	alerts := d.bus.Subscribe(1024)
 	d.goBg(func() { d.alertLoop(ctx, alerts) })
+	// When a limit is reached (ADR-090): the automatic move and the return.
+	d.goBg(func() { d.limitLoop(ctx) })
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
@@ -1890,6 +1894,13 @@ func (a *settingsAdapter) Get() api.Settings {
 		DeepSeekKeyHint:  api.MaskKey(c.DeepSeekAPIKey),
 		DeepSeekAPIKey:   c.DeepSeekAPIKey,
 		DeepSeekKeyWhere: a.d.secretWhere(deepSeekSecret, c.DeepSeekAPIKey != "", c.DeepSeekKeyStored),
+		KimiKeySet:       c.KimiAPIKey != "",
+		KimiKeyHint:      api.MaskKey(c.KimiAPIKey),
+		KimiAPIKey:       c.KimiAPIKey,
+		KimiKeyWhere:     a.d.secretWhere(kimiSecret, c.KimiAPIKey != "", c.KimiKeyStored),
+		LimitAction:      config.NormalizeLimitAction(c.LimitAction),
+		LimitFallbacks:   append([]string{}, c.LimitFallbacks...),
+		LimitReturn:      c.LimitReturnAfterReset,
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
 		AlertApproval:    c.AlertApprovalOn(),
@@ -1919,6 +1930,8 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	cur := a.d.config()
 	botToken, dsKey := strings.TrimSpace(in.ReportBotToken), strings.TrimSpace(in.DeepSeekAPIKey)
 	botChanged, dsChanged := botToken != cur.ReportBotToken, dsKey != cur.DeepSeekAPIKey
+	kimiKey := strings.TrimSpace(in.KimiAPIKey)
+	kimiChanged := kimiKey != cur.KimiAPIKey
 	ctx := context.Background()
 	if botChanged {
 		if err := a.d.putSecret(ctx, telegramSecret, botToken); err != nil {
@@ -1930,6 +1943,11 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 			return fmt.Errorf("could not keep the DeepSeek key in the %s: %w", a.d.secretStore(deepSeekSecret).Kind(), err)
 		}
 	}
+	if kimiChanged {
+		if err := a.d.putSecret(ctx, kimiSecret, kimiKey); err != nil {
+			return fmt.Errorf("could not keep the Kimi key in the %s: %w", a.d.secretStore(kimiSecret).Kind(), err)
+		}
+	}
 	a.d.cfgMu.Lock()
 	if botChanged {
 		applySecret(&a.d.opt.Config, telegramSecret, botToken)
@@ -1937,6 +1955,15 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	if dsChanged {
 		applySecret(&a.d.opt.Config, deepSeekSecret, dsKey)
 	}
+	if kimiChanged {
+		applySecret(&a.d.opt.Config, kimiSecret, kimiKey)
+	}
+	a.d.opt.Config.LimitAction = config.NormalizeLimitAction(in.LimitAction)
+	if a.d.opt.Config.LimitAction == config.LimitAsk {
+		a.d.opt.Config.LimitAction = ""
+	}
+	a.d.opt.Config.LimitFallbacks = slices.Clone(in.LimitFallbacks)
+	a.d.opt.Config.LimitReturnAfterReset = in.LimitReturn
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	// Stored as a pointer so "never set" stays distinguishable from "turned

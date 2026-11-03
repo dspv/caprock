@@ -183,7 +183,7 @@ func retryOf(req SpawnRequest, cwd string) *SpawnRequest {
 	r.Cwd = cwd
 	r.Create = false
 	r.Worktree, r.WorktreeBase, r.WorktreePull, r.WorktreePR = "", "", false, 0
-	r.NativeResume, r.GeminiKey, r.DeepSeekKey, r.ConfigDir = "", "", "", ""
+	r.NativeResume, r.GeminiKey, r.DeepSeekKey, r.KimiKey, r.ConfigDir = "", "", "", "", ""
 	return &r
 }
 

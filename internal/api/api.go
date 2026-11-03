@@ -376,6 +376,19 @@ type Settings struct {
 	DeepSeekKeySet  bool   `json:"deepseek_key_set"`
 	DeepSeekKeyHint string `json:"deepseek_key_hint,omitempty"`
 	DeepSeekAPIKey  string `json:"-"`
+	// KimiKeySet, KimiKeyHint and KimiKeyWhere are the same three for the
+	// Kimi platform key; the key itself is write-only (kimi_api_key in PUT).
+	KimiKeySet   bool         `json:"kimi_key_set"`
+	KimiKeyHint  string       `json:"kimi_key_hint,omitempty"`
+	KimiAPIKey   string       `json:"-"`
+	KimiKeyWhere *SecretWhere `json:"kimi_key_where,omitempty"`
+	// LimitAction, LimitFallbacks and LimitReturn are Settings → When a
+	// limit is reached (ADR-090): "ask", "auto" or "wait"; the targets
+	// "auto" tries, in order; and whether a moved session goes back on its
+	// own sign-in once that sign-in's window resets.
+	LimitAction    string   `json:"limit_action"`
+	LimitFallbacks []string `json:"limit_fallbacks"`
+	LimitReturn    bool     `json:"limit_return_after_reset"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -845,6 +858,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
 	m.HandleFunc("GET /v1/sessions/{id}/relay", s.handleRelayBrief)
+	m.HandleFunc("POST /v1/sessions/{id}/continue-on", s.handleContinueOn)
 	m.HandleFunc("GET /v1/attempts/{group}", s.handleAttempts)
 	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("GET /v1/agents/catalog", s.handleAgentCatalog)
@@ -1208,6 +1222,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	if act.Health == narrate.HealthWorking && act.Background == 0 && !act.FromInput && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
+	}
+	// Turns the pricing table could not price are counted beside the cost, so
+	// a session on a model with no published price reads "unknown", not $0.00.
+	// Kept per generation: a turn priced late is an update, which moves it.
+	if st.UnpricedTurns, err = readOnce(&rec.mu, &rec.unpriced, func() (int64, error) {
+		return store.SessionUnpricedTurns(ctx, q, sess.SessionID)
+	}); err != nil {
+		return SessionSummary{}, nil, err
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
 	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
@@ -1749,18 +1771,22 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		AppUpdate    *string              `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
-		ReportBotToken *string `json:"report_bot_token"`
-		ReportChatID   *string `json:"report_chat_id"`
-		GeminiAPIKey   *string `json:"gemini_api_key"`
-		DeepSeekAPIKey *string `json:"deepseek_api_key"`
-		AlertApproval  *bool   `json:"alert_approval"`
-		AlertFinished  *bool   `json:"alert_finished"`
-		AlertReply     *bool   `json:"alert_reply"`
-		AlertDone      *bool   `json:"alert_done"`
-		TelegramChat   *bool   `json:"telegram_chat"`
-		TelegramCode   *bool   `json:"telegram_code"`
-		NotifyApproval *bool   `json:"notify_approval"`
-		NotifyFinished *bool   `json:"notify_finished"`
+		ReportBotToken *string   `json:"report_bot_token"`
+		ReportChatID   *string   `json:"report_chat_id"`
+		GeminiAPIKey   *string   `json:"gemini_api_key"`
+		DeepSeekAPIKey *string   `json:"deepseek_api_key"`
+		KimiAPIKey     *string   `json:"kimi_api_key"`
+		LimitAction    *string   `json:"limit_action"`
+		LimitFallbacks *[]string `json:"limit_fallbacks"`
+		LimitReturn    *bool     `json:"limit_return_after_reset"`
+		AlertApproval  *bool     `json:"alert_approval"`
+		AlertFinished  *bool     `json:"alert_finished"`
+		AlertReply     *bool     `json:"alert_reply"`
+		AlertDone      *bool     `json:"alert_done"`
+		TelegramChat   *bool     `json:"telegram_chat"`
+		TelegramCode   *bool     `json:"telegram_code"`
+		NotifyApproval *bool     `json:"notify_approval"`
+		NotifyFinished *bool     `json:"notify_finished"`
 		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
@@ -1918,6 +1944,33 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.DeepSeekAPIKey = k
+	}
+	if patch.KimiAPIKey != nil {
+		k := strings.TrimSpace(*patch.KimiAPIKey)
+		if strings.ContainsAny(k, "\r\n\x00") || len(k) > 512 {
+			s.failCode(w, http.StatusBadRequest, errors.New("that does not look like a Kimi API key"))
+			return
+		}
+		in.KimiAPIKey = k
+	}
+	if patch.LimitAction != nil {
+		v := *patch.LimitAction
+		if v != config.LimitAsk && v != config.LimitAuto && v != config.LimitWait {
+			s.failCode(w, http.StatusBadRequest, errors.New(`limit_action is "ask", "auto" or "wait"`))
+			return
+		}
+		in.LimitAction = v
+	}
+	if patch.LimitFallbacks != nil {
+		list, err := cleanLimitFallbacks(*patch.LimitFallbacks)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.LimitFallbacks = list
+	}
+	if patch.LimitReturn != nil {
+		in.LimitReturn = *patch.LimitReturn
 	}
 	if patch.AlertApproval != nil {
 		in.AlertApproval = *patch.AlertApproval
@@ -2339,9 +2392,13 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 	q := s.d.Store.DB()
 	var out RateLimits
 	any := false
+	week, weekOK, _ := store.LatestRateLimit(ctx, q, "seven_day")
 	for _, window := range []string{"five_hour", "seven_day"} {
 		snap, ok, err := store.LatestRateLimit(ctx, q, window)
 		if err != nil || !ok {
+			continue
+		}
+		if window == "five_hour" && weekOK && FiveHourEnded(snap, week, s.d.Now().UnixMilli()) {
 			continue
 		}
 		rw := &RateWindow{UsedPercentage: snap.UsedPercentage, ResetsAt: snap.ResetsAt}
@@ -2357,6 +2414,17 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 		return nil
 	}
 	return &out
+}
+
+// FiveHourEnded reports that a stored five-hour window no longer exists: its
+// reset has passed and Claude Code has reported the weekly window since
+// without one. That is a verified Ultra account, which has no five-hour limit
+// (the help centre's "What is the Ultra plan?", read 2026-11-03) — an account
+// moved up from Max 20× would otherwise show its last five-hour reading as
+// stale forever. Both windows of one status line share a timestamp, so a
+// weekly reading newer than the five-hour one came without it.
+func FiveHourEnded(five, week store.RateLimitSnapshot, nowMs int64) bool {
+	return week.Ts > five.Ts && five.ResetsAt*1000 <= nowMs
 }
 
 // paceForecast returns "~Nh to limit at current pace", and when that is (unix

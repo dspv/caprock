@@ -29,6 +29,8 @@ import { NewMenu, type NewMenuItem } from './NewMenu'
 import { heldClass, keyChipMode, keys, revealClass, stripKey, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
+import { LimitStrip } from './LimitStrip'
+import { atLimit } from '@/lib/continueOn'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
 export interface DashboardTab {
@@ -784,6 +786,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} onPaneGone={ctx.onPaneGone} onPaneEarlyExit={ctx.onPaneEarlyExit}
       composer={withComposer} quick={quick} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
       inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} shellHint={node.target.kind === 'shell'} />
+    // A session stopped at its plan's limit: the one-line strip under it (ADR-090).
+    const limited = node.target.kind === 'session' && own && atLimit(own) ? <LimitStrip session={own} /> : null
     const chat = ctx.chats?.get(id)
     const ended = chat?.ended && (
       <ChatEnded visible={visible && focused} onClose={() => ctx.onChatClose?.(node.id)} onRestart={() => ctx.onChatRestart?.(id)} />
@@ -799,6 +803,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
             {term}
             {ended}
           </div>
+          {limited}
         </div>
       )
     }
@@ -833,6 +838,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
           {/* The focused pane carries a ring; the others dim a little, as in Ghostty. */}
           <div aria-hidden className={`pointer-events-none absolute inset-0 ${focused ? 'shadow-[inset_0_0_0_1px_rgba(231,187,99,0.45)]' : 'bg-black/15'}`} />
         </div>
+        {limited}
       </div>
     )
   }

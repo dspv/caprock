@@ -155,12 +155,12 @@ export { countdown, resetClock }
 
 /**
  * What the Claude heading calls the plan: the one the user picked ("Claude
- * Max 5×"), or just "Claude Code" when they have not said. Never guessed from
- * the percentages — the status line does not say which plan it is.
+ * Max", "Claude Ultra"), or just "Claude Code" when they have not said. Never
+ * guessed from the percentages — the status line does not say which plan it is.
  */
 export function planName(plan: Settings | undefined): string {
   const label = plan?.plan_kind === 'flat' ? plan.plan_label : ''
-  return /^(pro|max)/i.test(label) ? `Claude ${label}` : 'Claude Code'
+  return /^(pro|max|ultra)/i.test(label) ? `Claude ${label}` : 'Claude Code'
 }
 
 function gaugeColor(pct: number): string {
@@ -244,8 +244,15 @@ export function LimitGauge({ label, w, now, source }: { label: string; w: RateWi
   )
 }
 
-/** One agent's windows: its character and name, then 5 hours and the week side by side. */
-function LimitCard({ who, name, note, l, now, source }: { who: Character; name: string; note?: ReactNode; l: RateLimits | undefined; now: number; source: string }) {
+/**
+ * One agent's windows: its character and name, then 5 hours and the week side
+ * by side. A window the agent did not report keeps its place, except with
+ * `weekOnly`: Claude Code reporting the week without a five-hour window is a
+ * plan that has none — a verified Ultra account (help centre, "What is the
+ * Ultra plan?", read 2026-11-03) — so its card shows the week alone rather
+ * than an empty ring for a limit that does not exist.
+ */
+function LimitCard({ who, name, note, l, now, source, weekOnly = false }: { who: Character; name: string; note?: ReactNode; l: RateLimits | undefined; now: number; source: string; weekOnly?: boolean }) {
   return (
     <section className="min-w-0 rounded-xl border border-border bg-panel-2/40 p-3" data-limit-card={source}>
       <div className="mb-3 flex items-center gap-2.5">
@@ -253,8 +260,8 @@ function LimitCard({ who, name, note, l, now, source }: { who: Character; name: 
         <span className="text-[15px] font-semibold text-fg">{name}</span>
         {note && <span className="ml-auto text-[12px] text-fg-faint">{note}</span>}
       </div>
-      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-        <LimitGauge label="5 hours" w={l?.five_hour} now={now} source={source} />
+      <div className={`grid grid-cols-1 gap-x-6 gap-y-3 ${weekOnly ? '' : 'sm:grid-cols-2'}`}>
+        {!weekOnly && <LimitGauge label="5 hours" w={l?.five_hour} now={now} source={source} />}
         <LimitGauge label="Week" w={l?.seven_day} now={now} source={source} />
       </div>
     </section>
@@ -416,7 +423,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
         folded={open ? undefined : <FoldedLimits claude={claude} cdx={cdx} now={now} />}>
         <ShareWith toText={() => limitsText([['Claude', claude], ['Codex', cdx]], now)} />
         <div className={`grid gap-3 px-3 py-3 ${cdx.length > 0 ? 'lg:grid-cols-2' : ''}`}>
-          <LimitCard who="lead" name={planName(plan)} l={limits} now={now} source="Claude Code" />
+          <LimitCard who="lead" name={planName(plan)} l={limits} now={now} source="Claude Code" weekOnly={!limits?.five_hour && !!limits?.seven_day} />
           {cdx.length > 0 && (
             <LimitCard who="codex" name="Codex" l={codex} now={now} source="Codex"
               note={observed ? <>as of {fmtObserved(observed, now)}</> : undefined} />

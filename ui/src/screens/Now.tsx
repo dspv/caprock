@@ -4,6 +4,7 @@ import { navigate } from '@/lib/router'
 import { live, useLiveAlerts } from '@/lib/live'
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
+import { sessionCost } from '@/lib/sessionCost'
 import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
 import { InterruptedBanner } from '@/components/Interrupted'
@@ -759,6 +760,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
   // place the answer lives — and the text is already here.
   const waiting = s.activity?.health === 'waiting-on-you'
   const need = s.status !== 'ended' && (waiting || s.activity?.health === 'done') ? s.activity.need : undefined
+  const cost = sessionCost(s.stats, s.model)
   return (
     <a href={href({ name: 'session', id: s.session_id })} className="block border border-border bg-panel rounded-[var(--radius-panel)] hover:border-border-strong no-underline hover:no-underline text-fg">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
@@ -854,7 +856,10 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
       {/* data-session-figures: one session's own figures, where $0.00 can be
         * true (scripts/shots.py tells it from a screen still loading). */}
       <div data-session-figures className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border border-t border-border">
-        <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />} sub={s.model || '—'} tone="info" />
+        <Stat label="Cost" data="session-cost" value={cost.value} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />}
+          sub={cost.note
+            ? <span title={cost.title}>{cost.state === 'unknown' ? `${cost.note} · ${s.model || '—'}` : `${s.model || '—'} · ${cost.note}`}</span>
+            : s.model || '—'} tone="info" />
         <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
         {/* The caption carries the price of the NEXT call, not the window size
           * the percentage above already states. Every call re-reads the whole

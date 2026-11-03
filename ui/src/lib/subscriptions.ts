@@ -19,6 +19,9 @@ export function hasSubscriptions(agent: string): agent is 'claude' | 'codex' {
  *  Code setup whose model calls go to DeepSeek on the user's DeepSeek key. */
 export const DEEPSEEK_ID = 'deepseek'
 
+/** The id of Claude Code on Kimi, DeepSeek's twin (ADR-090). */
+export const KIMI_ID = 'kimi'
+
 /** The real sign-ins in a list, without a provider entry such as DeepSeek:
  *  what Settings manages, plans are set for, and the free number counts. */
 export function signIns(list: readonly Subscription[]): Subscription[] {

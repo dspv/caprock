@@ -242,6 +242,56 @@ d('SessionCard', () => {
   })
 })
 
+/**
+ * A model with no published price (Claude Code on Kimi) leaves its turns'
+ * cost unknown. The stored total sums only what was priced, and printed alone
+ * it read "$0.00": that the work was free.
+ */
+d('Cost tile on an unpriced model', () => {
+  const kimi = (stats: Partial<SessionDetail['stats']>, events: Event[] = []) => {
+    detail.value = {
+      session_id: 'cap-1', cwd: '/r', project: 'p', model: 'kimi-k3', status: 'ended',
+      started_at: Date.now() - 60_000, last_event_at: Date.now(), git_branch: '',
+      has_hooks: true, has_transcript: true, owned: false, agent: 'claude',
+      files: [], events,
+      stats: { session_id: 'cap-1', turns: 2, tool_calls: 0, files_touched: 0, cost_usd: 0, tokens_in: 30, tokens_out: 10, cache_read: 0, cache_write: 0, ...stats },
+      savings: { hit_rate: 0 },
+      activity: { health: 'idle', phrase: 'idle', at: new Date().toISOString() },
+    } as unknown as SessionDetail
+  }
+  const turn = (id: number, cost?: number): Event => ({
+    id, ts: new Date().toISOString(), session_id: 'cap-1', source: 'transcript', kind: 'turn.assistant',
+    tokens: { in: 10, out: 5, cache_read: 0, cache_write: 0 }, ...(cost === undefined ? {} : { cost_usd: cost }), payload: {},
+  } as unknown as Event)
+
+  it('every turn unpriced: a dash and "price unknown", never $0.00', async () => {
+    kimi({ unpriced_turns: 2 }, [turn(1), turn(2)])
+    render(<SessionScreen id="cap-1" tab="timeline" />)
+    const tile = (await screen.findByText('price unknown · kimi-k3')).closest('[data-stat="session-cost"]') as HTMLElement
+    expect(tile).toHaveTextContent('—')
+    expect(tile).not.toHaveTextContent('$0.00')
+    expect(screen.getByText('price unknown · kimi-k3').getAttribute('title')).toMatch(/kimi-k3 has no published price/)
+    expect(screen.getByText('2 turns · price unknown')).toBeInTheDocument()
+    expect(screen.queryByText(/priced turns · \$0\.00/)).not.toBeInTheDocument()
+  })
+
+  it('some turns unpriced: the priced sum, and how many were left out', async () => {
+    kimi({ cost_usd: 1.25, unpriced_turns: 1 }, [turn(1, 1.25), turn(2)])
+    render(<SessionScreen id="cap-1" tab="timeline" />)
+    const tile = (await screen.findByText('kimi-k3 · + 1 unpriced turn')).closest('[data-stat="session-cost"]') as HTMLElement
+    expect(tile).toHaveTextContent('$1.25')
+    expect(screen.getByText('1 priced turn · $1.25 · + 1 unpriced')).toBeInTheDocument()
+  })
+
+  it('the Now card says the same', () => {
+    kimi({ unpriced_turns: 4 })
+    render(<SessionCard s={detail.value as unknown as SessionSummary} now={Date.now()} />)
+    const tile = screen.getByText('price unknown · kimi-k3').closest('[data-stat="session-cost"]') as HTMLElement
+    expect(tile).toHaveTextContent('—')
+    expect(tile).not.toHaveTextContent('$0.00')
+  })
+})
+
 
 /**
  * "Live diff" and "Files" were two tabs answering one question between them —

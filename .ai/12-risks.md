@@ -318,6 +318,18 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   page height *est.* until they are measured. Decided by: a test page
   opened on each real phone reporting `innerHeight`, `visualViewport` and
   the safe-area insets, bars shown and scrolled away.
+- `OQ-26` — **What does Claude Code report for an Ultra account?** Anthropic
+  renamed Max 5× to Max and Max 20× to Ultra at the end of October 2026; a
+  verified Ultra account has no five-hour limit (https://claude.com/pricing,
+  https://support.claude.com/en/articles/17728952, read 2026-11-03). Caprock
+  reads no plan identifier from Claude Code — the user picks the plan, and
+  old preset labels map to the new names on load — so no tier string is
+  mapped or invented. Not known: whether the status line's `rate_limits`
+  then omits `five_hour`, sends it as null, or sends a 0% window with no
+  reset, and what an unverified account's temporary limit looks like there.
+  Caprock omits an absent or ended five-hour window and drops an implausible
+  one; a live 0% window with a plausible reset would still be drawn. Decided
+  by: one status-line payload from an Ultra account, read on a real session.
 - `OQ-24` — **What may an iOS push carry?** Push on iOS goes through APNs
   and through a Caprock sender that holds the APNs key (ADR-083), so under
   rule 4 nothing readable may be in it. Two ways, not yet decided:
@@ -329,6 +341,17 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   shared Keychain group; and what a push still reveals by its timing alone,
   which (a) and (b) share and the settings screen must say. Decided by: the
   owner, after a TestFlight build shows (b) working on his iPhone, or failing.
+- `OQ-25` — **Kimi's model ids and price.** Claude Code on Kimi uses the
+  model ids Moonshot's own Claude Code guide publishes
+  (platform.kimi.ai/docs/guide/claude-code-kimi, read 2026-11-03):
+  `kimi-k3[1m]` for every tier but Haiku and `kimi-k2.7-code` for Haiku.
+  Not known: whether `kimi-k2.7-code` (thinking forced on, per the same
+  page) answers Claude Code's background Haiku calls, which may not ask for
+  thinking; and the price, which the page does not state, so Caprock shows
+  none and prices no Kimi turn until a dated official figure exists (rule 6).
+  The owner's "Kimi 3.1" is not the id the guide names for Claude Code
+  (`kimi-k3.1-pro` appears only in its curl check). Decided by: a real
+  session on the owner's key, and Moonshot's pricing page.
 
 ## What would falsify the whole plan
 

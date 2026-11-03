@@ -7,6 +7,7 @@ import { live, useLiveLink } from '@/lib/live'
 import { LoopAlertCard } from '@/components/LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
+import { cumulativeCaption, sessionCost } from '@/lib/sessionCost'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { href, navigate } from '@/lib/router'
 import { useNowFor } from '@/lib/useNow'
@@ -147,6 +148,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   }
   const setTab = (t: Tab) => navigate({ name: 'session', id, tab: t })
   const total = s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write
+  const sc = sessionCost(s.stats, s.model)
   // Nothing measured, and no source that could measure it. Both halves matter:
   // a Claude session in its first second also has zeros, but it has hooks, so
   // its bar is about to fill in and the zeros are true.
@@ -299,7 +301,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-fg-muted">
               {!detail.stale && <Badge health={s.activity.health} />}
               <span className="num">{s.model || 'unknown model'}</span>
-              <span className="num">{fmtUSD(s.stats.cost_usd)}</span>
+              <span className="num" title={sc.title}>{sc.value}</span>
               <ConnectionState link={link} heardAt={live.heardAt} className="text-[12px]" />
             </div>
             <div className="flex flex-wrap items-center gap-3">{controls}</div>
@@ -346,7 +348,10 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               name without truncating — and it is the basis that would be cut.
               The model stays visible; the basis is on hover, and stated in
               full on the screens whose whole subject is money. */}
-          <Stat label="Cost" value={fmtUSD(s.stats.cost_usd)} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />} sub={<span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
+          <Stat label="Cost" data="session-cost" value={sc.value} trend={<PlanShare parts={sessionParts(s)} className="mt-0.5" />}
+            sub={sc.note
+              ? <span title={sc.title}>{sc.state === 'unknown' ? `${sc.note} · ${s.model || 'unknown model'}` : `${s.model || 'unknown model'} · ${sc.note}`}</span>
+              : <span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
           {/* The total includes cache reads, which are usually 99% of it. Breaking
               out only in/out made the subtitle contradict the number above it. */}
           <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
@@ -513,6 +518,9 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     let acc = 0
     return events.filter((e) => e.kind === 'turn.assistant').map((e) => (acc += e.cost_usd ?? 0))
   }, [events])
+  // Priced turns and their sum, with the unpriced ones beside them: a
+  // session on a model with no published price is not $0.00.
+  const costCaption = useMemo(() => cumulativeCaption(events), [events])
   // tool.post rows from transcripts carry no tool name; resolve it via the matching tool.pre.
   const toolByUse = useMemo(() => {
     const m = new Map<string, string>()
@@ -573,7 +581,7 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
       <div className="grid gap-3 content-start">
         <Panel title="Cost, cumulative">
           <div className="px-3 py-2"><Sparkline values={cost.length ? cost : [0, 0]} width={230} height={40} tone="accent" /></div>
-          <div className="px-3 pb-2 text-[11px] text-fg-muted num">{cost.length} priced turns · {fmtUSD(cost[cost.length - 1] ?? 0)}</div>
+          <div className="px-3 pb-2 text-[11px] text-fg-muted num">{costCaption}</div>
         </Panel>
         <Panel title="Tokens per turn">
           <div className="px-3 py-2"><Sparkline values={events.filter((e) => e.tokens).map((e) => (e.tokens!.in + e.tokens!.cache_read + e.tokens!.cache_write))} width={230} height={40} /></div>
