@@ -43,11 +43,14 @@ export function sessionCost(stats: Pick<Stats, 'cost_usd' | 'unpriced_turns'>, m
   }
 }
 
+function hasTokens(e: Pick<Event, 'tokens'>): boolean {
+  const t = e.tokens
+  return !!t && t.in + t.out + t.cache_read + t.cache_write > 0
+}
+
 /** An assistant turn with tokens and no cost: its model is not in the pricing table. */
 export function isUnpricedTurn(e: Pick<Event, 'kind' | 'cost_usd' | 'tokens'>): boolean {
-  if (e.kind !== 'turn.assistant' || typeof e.cost_usd === 'number' || !e.tokens) return false
-  const t = e.tokens
-  return t.in + t.out + t.cache_read + t.cache_write > 0
+  return e.kind === 'turn.assistant' && typeof e.cost_usd !== 'number' && hasTokens(e)
 }
 
 /**
@@ -59,7 +62,9 @@ export function cumulativeCaption(events: Pick<Event, 'kind' | 'cost_usd' | 'tok
   let priced = 0, unpriced = 0, sum = 0
   for (const e of events) {
     if (e.kind !== 'turn.assistant') continue
-    if (typeof e.cost_usd === 'number') { priced++; sum += e.cost_usd } else if (isUnpricedTurn(e)) unpriced++
+    // A turn with no tokens and no cost (the replayed history a resumed
+    // session starts with) was neither priced nor unpriced: it is not counted.
+    if (typeof e.cost_usd === 'number' && (e.cost_usd > 0 || hasTokens(e))) { priced++; sum += e.cost_usd } else if (isUnpricedTurn(e)) unpriced++
   }
   if (unpriced > 0 && priced === 0) return `${unpriced} turn${unpriced === 1 ? '' : 's'} · price unknown`
   const head = `${priced} priced turn${priced === 1 ? '' : 's'} · ${fmtUSD(sum)}`

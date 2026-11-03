@@ -38,6 +38,12 @@ describe('the cumulative cost caption', () => {
     expect(cumulativeCaption([unpriced, unpriced])).toBe('2 turns · price unknown')
   })
 
+  it('leaves out a resumed session\'s replayed turn, which has no tokens and $0', () => {
+    const replayed = { kind: 'turn.assistant', cost_usd: 0, tokens: tok(0) }
+    expect(cumulativeCaption([replayed, unpriced])).toBe('1 turn · price unknown')
+    expect(cumulativeCaption([replayed, priced])).toBe('1 priced turn · $0.50')
+  })
+
   it('a turn with no tokens has nothing to price', () => {
     expect(isUnpricedTurn({ kind: 'turn.assistant', tokens: tok(0) })).toBe(false)
     expect(isUnpricedTurn({ kind: 'tool.pre', tokens: tok(5) })).toBe(false)
