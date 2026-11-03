@@ -126,6 +126,12 @@ type Stats struct {
 	CacheRead    int64   `json:"cache_read"`
 	CacheWrite   int64   `json:"cache_write"`
 	CostUSD      float64 `json:"cost_usd"`
+	// UnpricedTurns counts the session's assistant turns that carry tokens but
+	// no cost: their model has no row in the pricing table, so CostUSD left
+	// them out. Filled by the session summary only (SessionUnpricedTurns);
+	// omitted when zero. A session whose every turn is unpriced has CostUSD 0,
+	// which is not "free" but "unknown".
+	UnpricedTurns int64 `json:"unpriced_turns,omitempty"`
 }
 
 // DailyStat mirrors daily_stats.
@@ -1652,6 +1658,22 @@ func GetStats(ctx context.Context, q Querier, sessionID string) (Stats, error) {
 		return s, nil
 	}
 	return s, err
+}
+
+// SessionUnpricedTurns counts one session's assistant turns that carry tokens
+// but no cost — the rollup's "model not in pricing table; cost left unknown"
+// path, as queryUnpriced counts them for a range. Internal model calls are left
+// out, as session_stats leaves them out. One covering read of the session's
+// rows of idx_events_attr_work, which carries every column tested.
+func SessionUnpricedTurns(ctx context.Context, q Querier, sessionID string) (int64, error) {
+	var n int64
+	err := q.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM events INDEXED BY idx_events_attr_work
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)
+		  AND kind = 'turn.assistant' AND cost_usd IS NULL AND internal = 0
+		  AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
+		       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0`, sessionID).Scan(&n)
+	return n, err
 }
 
 // EventsGen identifies the state of a session's events: equal values mean

@@ -1223,6 +1223,14 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
+	// Turns the pricing table could not price are counted beside the cost, so
+	// a session on a model with no published price reads "unknown", not $0.00.
+	// Kept per generation: a turn priced late is an update, which moves it.
+	if st.UnpricedTurns, err = readOnce(&rec.mu, &rec.unpriced, func() (int64, error) {
+		return store.SessionUnpricedTurns(ctx, q, sess.SessionID)
+	}); err != nil {
+		return SessionSummary{}, nil, err
+	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
 	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
 		return readOnce(&rec.mu, &rec.prompts, func() ([]string, error) {

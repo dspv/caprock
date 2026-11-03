@@ -2019,6 +2019,12 @@ SELECT ts, tool, COALESCE(agent_id, ''), payload FROM events INDEXED BY idx_even
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## store.SessionUnpricedTurns
+SELECT COUNT(*) FROM events INDEXED BY idx_events_attr_work WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NULL AND internal = 0 AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
+    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## store.SetAttemptTotal
 UPDATE attempts SET total = ? WHERE group_id = ?
     SEARCH attempts USING INDEX idx_attempts_group (group_id=?)

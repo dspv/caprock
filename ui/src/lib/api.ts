@@ -178,6 +178,9 @@ export interface Stats {
   cache_read: number
   cache_write: number
   cost_usd: number
+  /** Assistant turns whose model has no row in the pricing table: their cost
+   *  is unknown and not in cost_usd. Absent when zero, and on daemons before it. */
+  unpriced_turns?: number
 }
 
 export interface Plan { done: number; total: number; next?: string }
