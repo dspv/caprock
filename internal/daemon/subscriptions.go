@@ -355,9 +355,21 @@ func (a *subsAdapter) windows(ctx context.Context, sub config.Subscription) []ap
 			}
 		}
 	}
+	// A five-hour window that ended with the weekly one still reported is a
+	// verified Ultra account's, which has none (api.FiveHourEnded).
+	var week *store.RateLimitSnapshot
+	for i := range snaps {
+		if snaps[i].Window == "seven_day" {
+			week = &snaps[i]
+		}
+	}
+	nowMs := time.Now().UnixMilli()
 	out := []api.SubscriptionWindow{}
 	for _, s := range snaps {
 		if s.Window != "five_hour" && s.Window != "seven_day" {
+			continue
+		}
+		if s.Window == "five_hour" && week != nil && api.FiveHourEnded(s, *week, nowMs) {
 			continue
 		}
 		out = append(out, api.SubscriptionWindow{Window: s.Window, UsedPercentage: s.UsedPercentage, ResetsAt: s.ResetsAt, ObservedAt: s.Ts})

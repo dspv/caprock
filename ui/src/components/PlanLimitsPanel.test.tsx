@@ -16,7 +16,7 @@ vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
     ...actual,
-    api: { ...actual.api, settings: async () => ({ update_checks: false, plan_kind: 'flat', plan_label: 'Max 5×', plan_usd_per_month: 100 }) },
+    api: { ...actual.api, settings: async () => ({ update_checks: false, plan_kind: 'flat', plan_label: 'Max', plan_usd_per_month: 100 }) },
   }
 })
 
@@ -32,7 +32,8 @@ describe('plan limits in plain words', () => {
   })
 
   it('names the plan the user picked, and never guesses one', () => {
-    expect(planName({ plan_kind: 'flat', plan_label: 'Max 5×' } as Settings)).toBe('Claude Max 5×')
+    expect(planName({ plan_kind: 'flat', plan_label: 'Max' } as Settings)).toBe('Claude Max')
+    expect(planName({ plan_kind: 'flat', plan_label: 'Ultra' } as Settings)).toBe('Claude Ultra')
     expect(planName({ plan_kind: 'metered', plan_label: 'API / Bedrock' } as Settings)).toBe('Claude Code')
     expect(planName(undefined)).toBe('Claude Code')
   })
@@ -55,7 +56,16 @@ describe('plan limits in plain words', () => {
     fireEvent.click(screen.getByRole('button', { name: 'more' }))
     expect(text()).toContain('rolling 5-hour window')
     expect(text()).toMatch(/Claude is near its limit\. Wait for the reset at .+ \(in 9 min\), or switch to Codex — its weekly window is at 8%\./)
-    await waitFor(() => expect(screen.getByText('Claude Max 5×')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Claude Max')).toBeTruthy())
+  })
+
+  it('shows a verified Ultra account, which has no five-hour limit, its week alone', () => {
+    render(<PlanLimitsPanel now={NOW} limits={{ seven_day: { used_percentage: 12, resets_at: at(3 * 24 * 60) } }} codex={undefined} />)
+    expect(screen.getByRole('img', { name: /Claude Code Week: 12% used/ })).toBeTruthy()
+    // No empty ring, no "not reported", no 0% for a window that does not exist.
+    expect(screen.queryByText('5 hours')).toBeNull()
+    expect(document.querySelector('[data-limit-empty]')).toBeNull()
+    expect(screen.queryByText('0%')).toBeNull()
   })
 
   it('draws a forecast as a plain sentence, amber unless it is close', () => {

@@ -318,6 +318,18 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   page height *est.* until they are measured. Decided by: a test page
   opened on each real phone reporting `innerHeight`, `visualViewport` and
   the safe-area insets, bars shown and scrolled away.
+- `OQ-26` — **What does Claude Code report for an Ultra account?** Anthropic
+  renamed Max 5× to Max and Max 20× to Ultra at the end of October 2026; a
+  verified Ultra account has no five-hour limit (https://claude.com/pricing,
+  https://support.claude.com/en/articles/17728952, read 2026-11-03). Caprock
+  reads no plan identifier from Claude Code — the user picks the plan, and
+  old preset labels map to the new names on load — so no tier string is
+  mapped or invented. Not known: whether the status line's `rate_limits`
+  then omits `five_hour`, sends it as null, or sends a 0% window with no
+  reset, and what an unverified account's temporary limit looks like there.
+  Caprock omits an absent or ended five-hour window and drops an implausible
+  one; a live 0% window with a plausible reset would still be drawn. Decided
+  by: one status-line payload from an Ultra account, read on a real session.
 - `OQ-24` — **What may an iOS push carry?** Push on iOS goes through APNs
   and through a Caprock sender that holds the APNs key (ADR-083), so under
   rule 4 nothing readable may be in it. Two ways, not yet decided:
