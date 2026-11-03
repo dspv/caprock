@@ -12,6 +12,51 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.171.0] - 2026-11-03
+
+### Added
+
+- **agents:** when a Claude Code session Caprock started hits its plan's usage
+  limit, it can be continued elsewhere: on DeepSeek or Kimi as the same
+  conversation, on another Claude Code sign-in as the same conversation (its
+  transcript copied there, never moved), or on Codex with a summary of the
+  work. `POST /v1/sessions/{id}/continue-on`; sessions carry `limit_hit`
+  with the reset time; Settings can move a session automatically and bring
+  it back after the reset (ADR-090).
+- **terminal:** at the limit, one quiet line under the session's terminal
+  says which window and when it reopens ("5-hour limit · back at 18:40"),
+  with a small chip for each place it can go on — another Claude sign-in,
+  DeepSeek or Kimi when their keys are set, Codex — and Wait. A click moves
+  it; the tab follows the new session, and a note says where it went, with
+  Undo.
+- **settings:** *When a limit is reached*: Ask me, Continue automatically on
+  an ordered list of targets, or Wait for the reset, and Back on Claude after
+  the reset.
+- **subscriptions:** Claude Code on Kimi, on your own Kimi platform key, kept
+  in the keychain like the DeepSeek key, with Moonshot's published settings
+  for Claude Code; its key field sits under DeepSeek's.
+
+### Changed
+
+- **plan:** Claude's plans carry Anthropic's new names: Max 5× is now **Max**
+  ($100) and Max 20× is now **Ultra** ($200), as renamed at the end of
+  October 2026 (claude.com/pricing, read 2026-11-03). The plan picker offers
+  Pro, Max and Ultra, and a plan Caprock's picker stored under an old name
+  reads back under the new one, so the header chip that said *Max 20× ·
+  $200.00/mo* now says *Ultra · $200.00/mo*. A plan name you typed yourself
+  is left as you wrote it. A verified Ultra account has no five-hour limit,
+  so the Plan limits card shows its week alone, and a five-hour reading left
+  from before the move is no longer shown as a stale window forever.
+
+### Fixed
+
+- **session:** a session on a model with no published price (Claude Code on
+  Kimi, `kimi-k3`) no longer reads "Cost $0.00". The Cost tile, the session
+  header and the Now card show "—" and "price unknown", or the priced sum
+  with "+ N unpriced turns" when only some turns could be priced, and the
+  cumulative cost panel counts priced turns only. The session API carries
+  `stats.unpriced_turns`.
+
 ## [0.170.1] - 2026-11-02
 
 ### Fixed
