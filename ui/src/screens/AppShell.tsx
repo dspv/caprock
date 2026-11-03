@@ -79,6 +79,9 @@ import { ShareMoment } from '@/components/Nudges'
 import { SHARE_EVENT, ShareDialog } from '@/components/Share'
 import { usePromptSync } from '@/lib/nudges'
 import { AppUpdateToast } from '@/components/AppUpdateToast'
+import { ContinuedToast } from '@/components/ContinuedToast'
+import { announceContinued, movedAway, onContinued } from '@/lib/continueOn'
+import { live } from '@/lib/live'
 import { ComputerAsks } from '@/components/ComputerAsks'
 import { AppUpdateAsk } from '@/components/AppUpdateAsk'
 import { AppAutoUpdate } from '@/components/AppAutoUpdate'
@@ -902,6 +905,10 @@ export function AppShell() {
    */
   const onPaneExit = useCallback(async (sessionId: string) => {
     const s = sessionsById.get(sessionId)
+    // Stopped at its limit and continued elsewhere (ADR-090): the original's
+    // process is ended once the new one has started, and the move may land
+    // a moment after the exit. The tab follows the move, never a shell.
+    if (s?.limit_hit && await movedAway(sessionId, 3000)) return
     // A quick chat's folder is Caprock's own, under its data directory: a
     // shell there is a terminal in a place nobody chose, and it looked just
     // like the chat (owner, 2026-10-12: "now I can't get out of there",
@@ -922,6 +929,15 @@ export function AppShell() {
       dispatch({ type: 'drop-session', sessionId })
     }
   }, [sessionsById, refresh])
+
+  // A session continued on another provider or sign-in (ADR-090), by the
+  // limit strip or by Caprock: its tab shows the new session in its place.
+  useEffect(() => live.onFrame((f) => { if (f.type === 'continued') announceContinued(f.data) }), [])
+  useEffect(() => onContinued((r) => {
+    const tab = findTabBySession(wsRef.current, r.continued_from)
+    if (tab) dispatch({ type: 'replace-session', sessionId: r.continued_from, target: { kind: 'session', sessionId: r.session_id }, title: tab.title })
+    refresh()
+  }), [refresh])
 
   /**
    * A pane whose session the daemon no longer holds — its process died, say
@@ -2439,6 +2455,7 @@ export function AppShell() {
       <ShareMoment />
       <StatusStrip summary={data.summary} pane={focused ? paneStatus[focused.sessionId] : undefined} session={focused?.kind === 'session' && workspaceShown ? focusedSession : undefined} front={focused?.kind === 'session' ? focused.sessionId : undefined} version={version} figures={!prefs.sidebar} sessions={data.sessions} onOpenSession={openSessionById} />
       <AppUpdateToast />
+      <ContinuedToast />
       {/* Another computer asking to control this one (ADR-067). */}
       <ComputerAsks />
       {isTauri() && <AppUpdateAsk />}

@@ -20,7 +20,7 @@ import { useState, type ReactNode } from 'react'
 import { api, errText, type Settings, type Subscription, type SubscriptionAgentId, type SubscriptionsResponse, ApiError } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { fmtUSD } from '@/lib/format'
-import { currentWindows, forgetAgentPicks, forgetSubscription, resetText, signIns, windowLabel, DEEPSEEK_ID, NEAR_PCT } from '@/lib/subscriptions'
+import { currentWindows, forgetAgentPicks, forgetSubscription, resetText, signIns, windowLabel, DEEPSEEK_ID, KIMI_ID, NEAR_PCT } from '@/lib/subscriptions'
 import { planFields, planText } from './AccountPlan'
 import { subscriptionsChanged, useSubscriptionsChanged } from './SubscriptionPicker'
 import { useSetupShell } from '@/lib/setupShell'
@@ -64,6 +64,7 @@ function SubscriptionsBody({ data, refresh }: { data: SubscriptionsResponse; ref
       {groups.map((g) => (
         <AgentGroup key={g.agent} agent={g.agent} list={signIns(g.subscriptions)} ignoredEnv={g.ignored_env ?? []} onSignIn={signIn} onSignOut={signOut} refresh={refresh}>
           {g.agent === 'claude' && <DeepSeekKey entry={g.subscriptions.find((s) => s.id === DEEPSEEK_ID)} refresh={refresh} />}
+          {g.agent === 'claude' && <KimiKey entry={g.subscriptions.find((s) => s.id === KIMI_ID)} refresh={refresh} />}
         </AgentGroup>
       ))}
       {toRun && <CommandToRun what={toRun.what} command={toRun.command} onClose={() => setToRun(null)} />}
@@ -121,38 +122,82 @@ export const DEEPSEEK_PROVIDER: SecretProvider = {
 }
 
 export function DeepSeekKey({ entry, refresh }: { entry?: Subscription; refresh: () => void }) {
+  return (
+    <ProviderKey
+      name="DeepSeek" entry={entry} refresh={refresh} provider={DEEPSEEK_PROVIDER} placeholder="sk-…"
+      read={(st) => ({ set: !!st?.deepseek_key_set, hint: st?.deepseek_key_hint, where: st?.deepseek_key_where })}
+      write={(key) => ({ deepseek_api_key: key })}
+      keyPage={{ href: 'https://platform.deepseek.com/api_keys', text: 'platform.deepseek.com' }}
+    />
+  )
+}
+
+/** Claude Code on Kimi (ADR-090): DeepSeek's twin, on Moonshot's Anthropic-compatible API. */
+export const KIMI_PROVIDER: SecretProvider = {
+  name: 'Kimi',
+  host: 'api.moonshot.ai',
+  sentWhen: 'from the environment of a session you start on Kimi, when that session talks to the model.',
+  revokeAt: 'platform.kimi.ai',
+  revokeHow: 'delete the key under API keys there.',
+}
+
+export function KimiKey({ entry, refresh }: { entry?: Subscription; refresh: () => void }) {
+  return (
+    <ProviderKey
+      name="Kimi" entry={entry} refresh={refresh} provider={KIMI_PROVIDER} placeholder="sk-…"
+      read={(st) => ({ set: !!st?.kimi_key_set, hint: st?.kimi_key_hint, where: st?.kimi_key_where })}
+      write={(key) => ({ kimi_api_key: key })}
+      keyPage={{ href: 'https://platform.kimi.ai', text: 'platform.kimi.ai' }}
+    />
+  )
+}
+
+/**
+ * One provider's key block: what it sends where, the write-only field, and
+ * the provider's entry figures. Shared by DeepSeek and Kimi.
+ */
+function ProviderKey({ name, entry, refresh, provider, placeholder, read, write, keyPage }: {
+  name: string
+  entry?: Subscription
+  refresh: () => void
+  provider: SecretProvider
+  placeholder: string
+  read: (st: Settings | undefined) => { set: boolean; hint?: string; where?: Settings['deepseek_key_where'] }
+  write: (key: string) => Partial<Settings>
+  keyPage: { href: string; text: string }
+}) {
   const st = useApi(() => api.settings(), [], { live: false })
-  const set = !!st.data?.deepseek_key_set
+  const { set, hint, where } = read(st.data)
   const save = async (key: string) => {
-    await api.saveSettings({ deepseek_api_key: key } as Partial<Settings> as Settings)
+    await api.saveSettings(write(key) as Settings)
     st.refresh?.()
     refresh()
     subscriptionsChanged()
   }
   return (
-    <div className="grid gap-1.5 rounded-[8px] border border-border px-3 py-2" aria-label="DeepSeek">
+    <div className="grid gap-1.5 rounded-[8px] border border-border px-3 py-2" aria-label={name}>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="text-[13px] font-medium text-fg">DeepSeek</span>
+        <span className="text-[13px] font-medium text-fg">{name}</span>
         <span className="text-[12px] text-fg-muted">{set ? 'key saved' : 'off'}</span>
         {entry && entry.running > 0 && <span className="text-[12px] text-fg-faint">· {entry.running} running</span>}
         {entry && entry.sessions_7d > 0 && <span className="mono text-[11.5px] text-fg-faint">· 7 days: {entry.sessions_7d} session{entry.sessions_7d === 1 ? '' : 's'}, {fmtUSD(entry.cost_7d_usd)}</span>}
       </div>
       {/* What it sends where stays visible with explanations off (rule 4). */}
       <p data-keep className="text-[12px] leading-snug text-fg-muted">
-        Claude Code on your DeepSeek key: a session on it sends its prompts, files and tool output to api.deepseek.com. Caprock itself sends nothing.
+        Claude Code on your {name} key: a session on it sends its prompts, files and tool output to {provider.host}. Caprock itself sends nothing.
       </p>
       <p className="text-[12px] leading-snug text-fg-muted">
-        Pick <span className="text-fg">DeepSeek</span> under Subscription in New agent or Quick chat. DeepSeek bills your key; the session does not use your Claude plan or its limits, and the key goes only into that session&rsquo;s environment. Get a key at{' '}
-        <a className="link" href="https://platform.deepseek.com/api_keys" target="_blank" title={extTitle()} rel="noreferrer">platform.deepseek.com</a>.
+        Pick <span className="text-fg">{name}</span> under Subscription in New agent or Quick chat, or continue a session there when it reaches its limit. {name} bills your key; the session does not use your Claude plan or its limits, and the key goes only into that session&rsquo;s environment. Get a key at{' '}
+        <a className="link" href={keyPage.href} target="_blank" title={extTitle()} rel="noreferrer">{keyPage.text}</a>.
       </p>
       <SecretField
-        label="DeepSeek API key"
-        what="DeepSeek key"
+        label={`${name} API key`}
+        what={`${name} key`}
         set={set}
-        hint={st.data?.deepseek_key_hint}
-        where={st.data?.deepseek_key_where}
-        provider={DEEPSEEK_PROVIDER}
-        placeholder={set ? 'Paste the new key' : 'sk-…'}
+        hint={hint}
+        where={where}
+        provider={provider}
+        placeholder={set ? 'Paste the new key' : placeholder}
         saveLabel="Save key"
         removeLabel="Remove"
         onSave={async (k) => {

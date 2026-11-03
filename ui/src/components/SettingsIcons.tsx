@@ -58,6 +58,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/worktree/i, 'branch'],
   [/folder|projects/i, 'folder'],
   [/subscription/i, 'key'],
+  [/when a limit/i, 'refresh'],
   [/custom agents/i, 'bot'],
   [/notification|alert/i, 'bell'],
   [/shortcut|hotkey/i, 'keyboard'],

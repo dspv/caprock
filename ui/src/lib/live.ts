@@ -7,7 +7,7 @@
 // a ping every 10 s, and 25 s of silence means the socket is dead.
 // Retries follow lib/reconnect.ts, the policy every socket shares (WP-13).
 import { useRef, useSyncExternalStore } from 'react'
-import type { Event, LoopAlert, Permission, QueueView, Session, Stats, TaskFrame } from './api'
+import type { ContinueOnResult, Event, LoopAlert, Permission, QueueView, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { ApiShell, OpFrame, ProjectFrame } from './projects'
 import type { Footprint } from './footprint'
@@ -102,6 +102,9 @@ export type Frame = (
   | { type: 'footprint'; data: Footprint }
   // Every running shell, as GET /v1/shells answers, when the list changed.
   | { type: 'shells'; data: { shells?: ApiShell[] } }
+  // A session was continued on another provider or sign-in, by a button or
+  // by Caprock (auto): the tab follows it and a toast offers Undo (ADR-090).
+  | { type: 'continued'; data: ContinueOnResult }
 ) & { seq?: number }
 
 /**

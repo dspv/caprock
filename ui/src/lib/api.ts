@@ -1973,8 +1973,9 @@ export interface Subscription {
   created_at?: number
   /** Set on an entry that is not a sign-in but a model provider Claude Code
    *  runs on with the user's own key ("deepseek", id "deepseek"): offered in
-   *  the pickers, never renamed, removed, made the default or counted. */
-  provider?: 'deepseek'
+   *  the pickers, never renamed, removed, made the default or counted;
+   *  "kimi" (id "kimi") is the same for Kimi (ADR-090). */
+  provider?: 'deepseek' | 'kimi'
 }
 
 export interface SubscriptionsResponse {

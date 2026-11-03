@@ -52,6 +52,7 @@ const SYNONYMS: [words: string[], title: RegExp][] = [
   [['git', 'pull', 'ci', 'actions'], /github/i],
   [['ide', 'vscode', 'code', 'zed', 'open'], /^editor$/i],
   [['limit', 'quota', 'pause', 'window'], /plan limit/i],
+  [['limit', 'rate', 'quota', 'kimi', 'deepseek', 'fallback', 'switch', 'continue'], /when a limit is reached/i],
   [['brain', 'graph', 'notes'], /second brain/i],
   [['memory', 'remember'], /memory between sessions/i],
   [['prompt', 'prompts', 'snippet', 'command', 'commands'], /saved prompts/i],
