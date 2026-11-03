@@ -278,6 +278,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-03 — 0.171.0: continue at a usage limit on another provider, Claude's new plan names
+
+A minor release, one batch PR (#884). When a Claude Code session Caprock started stops at its 5-hour or weekly limit, a quiet line under the terminal says when the limit reopens and offers to continue on another Claude sign-in, DeepSeek or Kimi — the same conversation, resumed with its full context — or Codex, a new session that starts from a summary ([ADR-090](08-decisions.md)). Settings → When a limit is reached can do it automatically in an order the user sets, with a note and Undo, and move the session back after the reset. Kimi joins DeepSeek as a Claude Code provider on the user's own key (api.moonshot.ai, the model ids from Moonshot's Claude Code guide, no price shown because none is published). Checked live with a Kimi key on 2026-11-03: a session continued on Kimi answered with what was said before the move. Claude's plans read Max and Ultra (formerly Max 5× and Max 20×), and an account with no five-hour window shows the week alone. A session on a model with no published price shows its cost as unknown rather than $0.00.
+
 ### 2026-11-02 — 0.170.1: the macOS installer window, styled at last
 
 A patch release, one batch PR (#882). Tauri's bundler skips the Finder AppleScript that lays out the .dmg window whenever `CI=true`, so no .dmg built on GitHub (0.97.0 to 0.170.0, all checked) carried a `.DS_Store`: Finder showed neither the background nor the icon layout. The .dmg is now built with dmgbuild (pinned with hashes), which writes `.DS_Store` directly from `bundle.macOS.dmg`; `scripts/app-dmg.sh check` parses it on the mounted image in CI and in the release, and fails without the window size, the background and both icon positions. Also a test race in At a glance's share test fixed.
