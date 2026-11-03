@@ -44,6 +44,10 @@ const (
 	// Telegram would say, as plain text, with the prompt's answers when there
 	// is one Caprock can give.
 	FrameNotify FrameType = "notify"
+	// FrameContinued says a session was continued on another provider or
+	// sign-in (api.ContinueOnResult): by a button, or by Caprock itself on
+	// a usage limit (auto true) — the app's toast, with Undo.
+	FrameContinued FrameType = "continued"
 	// FrameResources is the resource meter's sample (daemon.ResourceReport),
 	// every few seconds while a dashboard is connected.
 	FrameResources FrameType = "resources"

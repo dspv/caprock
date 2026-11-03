@@ -1,13 +1,10 @@
 package api
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/chatimport"
@@ -241,16 +238,8 @@ func transcriptOnDisk(sess store.Session) bool {
 }
 
 // projectDirName is Claude Code's name for a cwd's folder under
-// ~/.claude/projects: every character that is not a letter or digit becomes
-// "-" (so "/Users/a/my.app" is "-Users-a-my-app").
-func projectDirName(cwd string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
-			return r
-		}
-		return '-'
-	}, cwd)
-}
+// ~/.claude/projects (ingest.ProjectDirName).
+func projectDirName(cwd string) string { return ingest.ProjectDirName(cwd) }
 
 // claudeStartDir is the folder `claude --resume <id>` has to start in to
 // find the session's conversation, given the folder a request names.
@@ -299,24 +288,6 @@ func claudeStartDir(sess store.Session, cwd string) string {
 	return cwd
 }
 
-// transcriptCwd is the first working directory a transcript's lines name:
-// the folder its session was started in. "" when none of the first lines
-// says one.
-func transcriptCwd(path string) string {
-	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = f.Close() }()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
-	for n := 0; n < 200 && sc.Scan(); n++ {
-		var line struct {
-			Cwd string `json:"cwd"`
-		}
-		if json.Unmarshal(sc.Bytes(), &line) == nil && line.Cwd != "" {
-			return line.Cwd
-		}
-	}
-	return ""
-}
+// transcriptCwd is the folder a transcript's session was started in
+// (ingest.TranscriptCwd).
+func transcriptCwd(path string) string { return ingest.TranscriptCwd(path) }

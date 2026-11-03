@@ -62,6 +62,49 @@ func withDeepSeek(env []string, key string) []string {
 	return withEnv(withoutEnv(env, providerConflicts), deepSeekEnv(key))
 }
 
+// Claude Code on Kimi: the same shape as DeepSeek, on Moonshot's
+// Anthropic-compatible API with the user's own Kimi platform key (subs.KimiID).
+//
+// The variables are Moonshot's own published set for Claude Code
+// (platform.kimi.ai/docs/guide/claude-code-kimi, read 2026-11-03), less
+// CLAUDE_CODE_EFFORT_LEVEL=max for the reason DeepSeek's set is without it.
+// The page names kimi-k3[1m] for every tier but Haiku, and kimi-k2.7-code
+// for Haiku; it states no price, and Caprock states none either.
+
+// KimiBaseURL is Moonshot's Anthropic-compatible endpoint
+// (platform.kimi.ai/docs/api/overview and the guide above, read 2026-11-03).
+const KimiBaseURL = "https://api.moonshot.ai/anthropic"
+
+// KimiModel is the model the guide maps every tier but Haiku to; the `[1m]`
+// suffix is the guide's own. KimiFastModel is its Haiku tier.
+const (
+	KimiModel     = "kimi-k3[1m]"
+	KimiFastModel = "kimi-k2.7-code"
+)
+
+// kimiEnv is the environment a Claude Code session on Kimi adds. The key
+// goes here and nowhere else, as DeepSeek's does.
+func kimiEnv(key string) []string {
+	return []string{
+		"ANTHROPIC_BASE_URL=" + KimiBaseURL,
+		"ANTHROPIC_AUTH_TOKEN=" + key,
+		"ANTHROPIC_MODEL=" + KimiModel,
+		"ANTHROPIC_DEFAULT_OPUS_MODEL=" + KimiModel,
+		"ANTHROPIC_DEFAULT_SONNET_MODEL=" + KimiModel,
+		"ANTHROPIC_DEFAULT_HAIKU_MODEL=" + KimiFastModel,
+		"ANTHROPIC_DEFAULT_FABLE_MODEL=" + KimiModel,
+		"CLAUDE_CODE_SUBAGENT_MODEL=" + KimiModel,
+		// The guide's figure: compact inside the 1M context.
+		"CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000",
+	}
+}
+
+// withKimi is env for a session on Kimi: the conflicting variables removed,
+// then Moonshot's set over whatever the login shell exported.
+func withKimi(env []string, key string) []string {
+	return withEnv(withoutEnv(env, providerConflicts), kimiEnv(key))
+}
+
 // withoutEnv drops the named variables. Case-insensitive, because Windows
 // environment names are.
 func withoutEnv(env []string, names []string) []string {

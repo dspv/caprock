@@ -104,7 +104,18 @@ type fileState struct {
 	// the file: the boundary a compaction summary after it belongs to
 	// (store.SetCompactionSummary).
 	lastBoundary string
+	// limit is what this file has said about a usage limit since the tailer
+	// opened it: limitUnknown until a refusal or a real reply is read,
+	// limitOpen after a refusal, limitClear once a reply has cleared it.
+	// It keeps the clearing UPDATE to one per limit, not one per reply.
+	limit int8
 }
+
+const (
+	limitUnknown int8 = iota
+	limitOpen
+	limitClear
+)
 
 // New creates a tailer with defaults.
 func New(root string, rec *rollup.Recorder, st *store.Store, log *slog.Logger) *Tailer {
@@ -606,6 +617,9 @@ func (t *Tailer) handleLine(ctx context.Context, b *rollup.Batch, f *fileState, 
 	if f.sessionID == "" {
 		f.sessionID = l.SessionID
 	}
+	if !t.trackLimit(ctx, b, f, l, raw, fallbackTs) {
+		return false
+	}
 	info := rollup.SessionInfo{Cwd: l.Cwd, TranscriptPath: f.path, GitBranch: lineBranch(l, fallbackTs, time.Now()), Version: l.Version}
 	if l.Message != nil {
 		info.Model = l.Message.Model
@@ -637,6 +651,44 @@ func (t *Tailer) handleLine(ctx context.Context, b *rollup.Batch, f *fileState, 
 			t.Log.Warn("record compaction summary", "component", "ingest", "err", err, "path", f.path)
 		}
 	}
+	return true
+}
+
+// trackLimit keeps sessions.limit_hit_* (migration 0078) in step with the
+// file: a usage-limit refusal sets it, and the first real reply after one
+// clears it — the session has made progress. A reply read while the file's
+// state is unknown (the tailer was restarted mid-file) clears too, under the
+// same "only an older limit" condition. false means retry the line.
+func (t *Tailer) trackLimit(ctx context.Context, b *rollup.Batch, f *fileState, l *Line, raw []byte, fallbackTs time.Time) bool {
+	if l.Type != "assistant" || l.Message == nil || l.SessionID == "" {
+		return true
+	}
+	if hit, ok := LimitHit(l, bytes.TrimRight(raw, "\r\n"), fallbackTs); ok {
+		if err := b.Exec(func(ctx context.Context, q store.Querier) error {
+			return store.SetLimitHit(ctx, q, l.SessionID, hit)
+		}); err != nil {
+			if retryable(ctx, err) {
+				return false
+			}
+			t.Log.Warn("record usage limit", "component", "ingest", "err", err, "path", f.path)
+		}
+		f.limit = limitOpen
+		return true
+	}
+	if l.Message.Model == "<synthetic>" || f.limit == limitClear {
+		return true
+	}
+	at := l.Ts(fallbackTs).UnixMilli()
+	if err := b.Exec(func(ctx context.Context, q store.Querier) error {
+		_, err := store.ClearLimitHit(ctx, q, l.SessionID, at)
+		return err
+	}); err != nil {
+		if retryable(ctx, err) {
+			return false
+		}
+		t.Log.Warn("clear usage limit", "component", "ingest", "err", err, "path", f.path)
+	}
+	f.limit = limitClear
 	return true
 }
 

@@ -100,6 +100,9 @@ type SpawnRequest struct {
 	// DeepSeek (Subscription subs.DeepSeekID). Like GeminiKey it is never
 	// accepted from the browser: the daemon fills it in from its settings.
 	DeepSeekKey string `json:"-"`
+	// KimiKey is the user's Kimi platform key, for a Claude Code session on
+	// Kimi (Subscription subs.KimiID); filled by the daemon like DeepSeekKey.
+	KimiKey string `json:"-"`
 	// SubagentModel is the model Claude Code's subagents run on:
 	// "haiku", "sonnet" or "opus" (SubagentModels), or "" to follow the
 	// session. It becomes CLAUDE_CODE_SUBAGENT_MODEL in the child's
@@ -332,6 +335,16 @@ func (m *Manager) binary(agent string) string {
 		return p
 	}
 	return agent
+}
+
+// SetBinary points agent at the binary at path, for a test's fake.
+func (m *Manager) SetBinary(agent, path string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.bins == nil {
+		m.bins = map[string]string{}
+	}
+	m.bins[agent] = path
 }
 
 // AgentAvailable reports whether an agent's binary can be launched, so the
@@ -674,11 +687,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	if sub == "default" {
 		sub = ""
 	}
-	onDeepSeek := sub == subs.DeepSeekID
+	onDeepSeek, onKimi := sub == subs.DeepSeekID, sub == subs.KimiID
 	switch {
 	case onDeepSeek && (agent != AgentClaude || req.DeepSeekKey == ""):
 		return nil, fmt.Errorf("DeepSeek runs Claude Code sessions on your DeepSeek key: set the key in Settings → Subscriptions")
-	case !onDeepSeek && sub != "" && (req.ConfigDir == "" || (agent != AgentClaude && agent != AgentCodex)):
+	case onKimi && (agent != AgentClaude || req.KimiKey == ""):
+		return nil, fmt.Errorf("a session on Kimi is Claude Code on your Kimi key: set the key in Settings → Subscriptions")
+	case !onDeepSeek && !onKimi && sub != "" && (req.ConfigDir == "" || (agent != AgentClaude && agent != AgentCodex)):
 		return nil, fmt.Errorf("subscription %q cannot start a %s session", sub, agent)
 	}
 	if agent == AgentClaude {
@@ -703,6 +718,9 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	// the user's key, which reaches this child's environment and nothing else.
 	if onDeepSeek {
 		env = withDeepSeek(env, req.DeepSeekKey)
+	}
+	if onKimi {
+		env = withKimi(env, req.KimiKey)
 	}
 	// The Gemini CLI reads GEMINI_API_KEY from its environment, and the key the
 	// user pasted into the dashboard lives in the daemon's config — so it has

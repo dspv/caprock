@@ -95,6 +95,24 @@ type Session struct {
 	// session is continued.
 	IdleEndedAt    int64 `json:"idle_ended_at,omitempty"`
 	IdleEndedAfter int64 `json:"idle_ended_after_ms,omitempty"`
+	// LimitHit is set while the session's last model call was refused at its
+	// plan's usage limit (migration 0078), and nil once a reply came after
+	// it. Never omitted: a live frame patches the held copy, and a frame
+	// without the key would leave a cleared limit standing.
+	LimitHit *LimitHit `json:"limit_hit"`
+}
+
+// LimitHit is a session stopped at its plan's usage limit, from the
+// synthetic line Claude Code writes into its transcript for the refusal.
+type LimitHit struct {
+	// At is when the call was refused (unix ms).
+	At int64 `json:"at"`
+	// ResetsAt is when the plan says the window reopens (unix ms); omitted
+	// when the line did not say.
+	ResetsAt int64 `json:"resets_at,omitempty"`
+	// Window is the plan window that refused it, as Claude Code names it
+	// ("five_hour", "seven_day", ...); omitted when the line did not say.
+	Window string `json:"window,omitempty"`
 }
 
 // Stats mirrors session_stats.
@@ -1020,15 +1038,19 @@ func updateStatusByID(ctx context.Context, q Querier, ids []string, status strin
 	return nil
 }
 
-const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), COALESCE(sessions.effort,''), ` + attemptCol
+const sessionCols = `session_id, COALESCE(cwd,''), COALESCE(project,''), COALESCE(model,''), COALESCE(started_at,0), COALESCE(last_event_at,0), status, COALESCE(transcript_path,''), has_hooks, has_transcript, COALESCE(git_branch,''), COALESCE(version,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(owned,0), COALESCE(worktree,''), COALESCE(spawn_command,''), COALESCE(pid,0), exit_code, COALESCE(agent,'claude'), COALESCE(title,''), COALESCE(prompt,''), COALESCE(worked_at,0), COALESCE(parent_session,''), COALESCE(native_id,''), COALESCE(relay_from,''), COALESCE(subscription,''), COALESCE(sessions.name,''), COALESCE(sessions.chat,0), COALESCE(sessions.archived_at,0), COALESCE(sessions.subagent_model,''), COALESCE(sessions.idle_ended_at,0), COALESCE(sessions.idle_ended_after,0), COALESCE(sessions.effort,''), COALESCE(sessions.limit_hit_at,0), COALESCE(sessions.limit_resets_at,0), COALESCE(sessions.limit_window,''), ` + attemptCol
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	var hh, ht, owned, chat int
 	var exit sql.NullInt64
 	var attempt string
-	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &s.Effort, &attempt)
+	var lim LimitHit
+	err := sc.Scan(&s.SessionID, &s.Cwd, &s.Project, &s.Model, &s.StartedAt, &s.LastEventAt, &s.Status, &s.TranscriptPath, &hh, &ht, &s.GitBranch, &s.Version, &s.RepoRoot, &s.RepoPath, &owned, &s.Worktree, &s.SpawnCommand, &s.PID, &exit, &s.Agent, &s.Title, &s.Prompt, &s.WorkedAt, &s.ParentSession, &s.NativeID, &s.RelayFrom, &s.Subscription, &s.Name, &chat, &s.ArchivedAt, &s.SubagentModel, &s.IdleEndedAt, &s.IdleEndedAfter, &s.Effort, &lim.At, &lim.ResetsAt, &lim.Window, &attempt)
 	s.setAttempt(attempt)
+	if lim.At > 0 {
+		s.LimitHit = &lim
+	}
 	s.HasHooks, s.HasTranscript, s.Owned, s.Chat = hh != 0, ht != 0, owned != 0, chat != 0
 	if exit.Valid {
 		v := int(exit.Int64)

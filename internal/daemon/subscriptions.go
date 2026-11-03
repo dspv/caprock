@@ -154,6 +154,15 @@ func (d *Daemon) startSubscriptions() {
 // the default in Settings → Subscriptions; "default" is the user's own
 // sign-in, whichever is the default.
 func (d *Daemon) resolveSubscription(sr *agents.SpawnRequest, prev *store.Session) error {
+	return d.resolveSubscriptionIn(sr, prev, "")
+}
+
+// resolveSubscriptionIn is resolveSubscription with the configuration
+// directory a provider session (DeepSeek, Kimi) runs in: dir, when the
+// conversation it continues is kept there (continue-on, ADR-090), else the
+// directory a continued provider session's own transcript is under, else the
+// user's own.
+func (d *Daemon) resolveSubscriptionIn(sr *agents.SpawnRequest, prev *store.Session, dir string) error {
 	agent := sr.Agent
 	if agent == "" {
 		agent = agents.AgentClaude
@@ -176,7 +185,22 @@ func (d *Daemon) resolveSubscription(sr *agents.SpawnRequest, prev *store.Sessio
 		if err != nil {
 			return err
 		}
-		return resolveDeepSeek(sr, agent, key, prev != nil)
+		if err := resolveDeepSeek(sr, agent, key, prev != nil); err != nil {
+			return err
+		}
+		sr.ConfigDir = d.providerDir(prev, dir)
+		return nil
+	}
+	if id == subs.KimiID {
+		key, err := d.kimiKey(context.Background())
+		if err != nil {
+			return err
+		}
+		if err := resolveKimi(sr, agent, key, prev != nil); err != nil {
+			return err
+		}
+		sr.ConfigDir = d.providerDir(prev, dir)
+		return nil
 	}
 	sub, ok := subs.Find(d.config().Subscriptions, id)
 	if !ok {
@@ -219,6 +243,45 @@ func resolveDeepSeek(sr *agents.SpawnRequest, agent, key string, resumed bool) e
 		sr.Model = ""
 	}
 	return nil
+}
+
+// resolveKimi is resolveDeepSeek for Kimi: the key from the daemon's
+// settings, and a model the launcher picked from Claude's list dropped, so
+// the session runs on the model Moonshot's published set names.
+func resolveKimi(sr *agents.SpawnRequest, agent, key string, resumed bool) error {
+	if agent != agents.AgentClaude {
+		return fmt.Errorf("on Kimi only Claude Code runs, not %s", agentName(agent))
+	}
+	if strings.TrimSpace(key) == "" {
+		if resumed {
+			return fmt.Errorf("this session ran on Kimi and no Kimi key is set; add it in Settings → Subscriptions to continue it")
+		}
+		return fmt.Errorf("no Kimi key is set; add it in Settings → Subscriptions")
+	}
+	sr.ConfigDir = ""
+	sr.KimiKey = strings.TrimSpace(key)
+	if !strings.HasPrefix(strings.ToLower(sr.Model), "kimi-") {
+		sr.Model = ""
+	}
+	return nil
+}
+
+// providerDir is the configuration directory a DeepSeek or Kimi session
+// runs in: dir when the caller named one of Caprock's (continue-on), else
+// the added sign-in's directory a continued session's transcript is under,
+// else "" — the user's own. The provider's key replaces the sign-in's
+// credential either way (agents.withDeepSeek, withKimi); the directory is
+// only where the conversation and its settings are.
+func (d *Daemon) providerDir(prev *store.Session, dir string) string {
+	if dir != "" && subs.OfDir(d.opt.DataDir, dir) != "" {
+		return dir
+	}
+	if prev != nil {
+		if id := subs.Of(d.opt.DataDir, prev.TranscriptPath); id != "" {
+			return subs.Dir(d.opt.DataDir, id)
+		}
+	}
+	return ""
 }
 
 func agentName(agent string) string {
@@ -278,6 +341,9 @@ func (a *subsAdapter) List(ctx context.Context) (api.SubscriptionsResponse, erro
 		if agent == subs.AgentClaude && strings.TrimSpace(cfg.DeepSeekAPIKey) != "" {
 			g.Subscriptions = append(g.Subscriptions, deepSeekView(spend, running))
 		}
+		if agent == subs.AgentClaude && strings.TrimSpace(cfg.KimiAPIKey) != "" {
+			g.Subscriptions = append(g.Subscriptions, kimiView(spend, running))
+		}
 		out.Agents = append(out.Agents, g)
 	}
 	return out, nil
@@ -297,6 +363,21 @@ func deepSeekView(spend map[string]store.SubscriptionSpend, running map[string]i
 		v.Sessions7d, v.Cost7dUSD = s.Sessions, s.CostUSD
 	}
 	v.Running = running[subs.AgentClaude+"|"+subs.DeepSeekID]
+	return v
+}
+
+// kimiView is Claude Code on Kimi, shown as deepSeekView shows DeepSeek.
+func kimiView(spend map[string]store.SubscriptionSpend, running map[string]int) api.Subscription {
+	v := api.Subscription{
+		ID: subs.KimiID, Agent: subs.AgentClaude, Label: "Kimi", Provider: subs.KimiID,
+		SignedIn: true, Account: "your Kimi API key",
+		Plan:    &api.SubscriptionPlan{Kind: "metered", Label: "Kimi API"},
+		Windows: []api.SubscriptionWindow{},
+	}
+	if s, ok := spend[subs.AgentClaude+"|"+subs.KimiID]; ok {
+		v.Sessions7d, v.Cost7dUSD = s.Sessions, s.CostUSD
+	}
+	v.Running = running[subs.AgentClaude+"|"+subs.KimiID]
 	return v
 }
 

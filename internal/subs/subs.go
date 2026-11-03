@@ -71,6 +71,15 @@ const DefaultID = "default"
 // spell it.
 const DeepSeekID = "deepseek"
 
+// KimiID names Claude Code on Kimi: the same as DeepSeekID, on Moonshot's
+// Anthropic-compatible API with the user's Kimi platform key. Not hex, so
+// it cannot collide with a subscription id either.
+const KimiID = "kimi"
+
+// IsProvider reports whether id is one of the entries that are an API key
+// rather than a sign-in (DeepSeekID, KimiID).
+func IsProvider(id string) bool { return id == DeepSeekID || id == KimiID }
+
 // FreePerAgent is how many subscriptions per agent are free, the Default one
 // included; a fourth and more need a licence (owner decision, 2026-10-10).
 const FreePerAgent = 3

@@ -77,6 +77,25 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-03 — unreleased: continue a session on another provider at a usage limit (ADR-090)
+
+Backend and API only (branch `feat/continue-on-limit`); the strip and the
+settings card are the owner's V1 and V3, not built yet.
+
+- **Limit detection:** the transcript's synthetic refusal is stored on the
+  session as `limit_hit {at, resets_at?, window?}` (migration 0078) and
+  cleared by the next real reply.
+- **Kimi:** a provider entry beside DeepSeek, key in the secret store
+  (`dev.caprock.kimi`), Moonshot's published Claude Code set.
+- **Continue-on:** `POST /v1/sessions/{id}/continue-on` — fork in the same
+  directory for DeepSeek and Kimi, a copied transcript for another Claude
+  sign-in, the relay brief for Codex; the original is ended; a `continued`
+  frame for the toast and Undo.
+- **Automatic:** `limit_action` ask / auto / wait, `limit_fallbacks`,
+  `limit_return_after_reset`; the return is in memory only.
+- **Not done:** the UI; a live end-to-end run against real `claude` on a
+  second account; Kimi's Haiku tier under Claude Code (OQ-25).
+
 ### 2026-10-27 — unreleased: the iOS app, 1.0 ready for the App Store
 
 Phase 1 (2026-10-22, branch `feat/ios-app`) merged onto master as

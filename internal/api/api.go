@@ -376,6 +376,19 @@ type Settings struct {
 	DeepSeekKeySet  bool   `json:"deepseek_key_set"`
 	DeepSeekKeyHint string `json:"deepseek_key_hint,omitempty"`
 	DeepSeekAPIKey  string `json:"-"`
+	// KimiKeySet, KimiKeyHint and KimiKeyWhere are the same three for the
+	// Kimi platform key; the key itself is write-only (kimi_api_key in PUT).
+	KimiKeySet   bool         `json:"kimi_key_set"`
+	KimiKeyHint  string       `json:"kimi_key_hint,omitempty"`
+	KimiAPIKey   string       `json:"-"`
+	KimiKeyWhere *SecretWhere `json:"kimi_key_where,omitempty"`
+	// LimitAction, LimitFallbacks and LimitReturn are Settings → When a
+	// limit is reached (ADR-090): "ask", "auto" or "wait"; the targets
+	// "auto" tries, in order; and whether a moved session goes back on its
+	// own sign-in once that sign-in's window resets.
+	LimitAction    string   `json:"limit_action"`
+	LimitFallbacks []string `json:"limit_fallbacks"`
+	LimitReturn    bool     `json:"limit_return_after_reset"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -845,6 +858,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/orchestrator/stop", s.handleStopOrchestrator)
 	m.HandleFunc("POST /v1/agents", s.handleSpawn)
 	m.HandleFunc("GET /v1/sessions/{id}/relay", s.handleRelayBrief)
+	m.HandleFunc("POST /v1/sessions/{id}/continue-on", s.handleContinueOn)
 	m.HandleFunc("GET /v1/attempts/{group}", s.handleAttempts)
 	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("GET /v1/agents/catalog", s.handleAgentCatalog)
@@ -1749,18 +1763,22 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		AppUpdate    *string              `json:"app_update"`
 		// The bot token goes in and never comes back out. An empty string is a
 		// deliberate clear, which is why it is a pointer like everything else.
-		ReportBotToken *string `json:"report_bot_token"`
-		ReportChatID   *string `json:"report_chat_id"`
-		GeminiAPIKey   *string `json:"gemini_api_key"`
-		DeepSeekAPIKey *string `json:"deepseek_api_key"`
-		AlertApproval  *bool   `json:"alert_approval"`
-		AlertFinished  *bool   `json:"alert_finished"`
-		AlertReply     *bool   `json:"alert_reply"`
-		AlertDone      *bool   `json:"alert_done"`
-		TelegramChat   *bool   `json:"telegram_chat"`
-		TelegramCode   *bool   `json:"telegram_code"`
-		NotifyApproval *bool   `json:"notify_approval"`
-		NotifyFinished *bool   `json:"notify_finished"`
+		ReportBotToken *string   `json:"report_bot_token"`
+		ReportChatID   *string   `json:"report_chat_id"`
+		GeminiAPIKey   *string   `json:"gemini_api_key"`
+		DeepSeekAPIKey *string   `json:"deepseek_api_key"`
+		KimiAPIKey     *string   `json:"kimi_api_key"`
+		LimitAction    *string   `json:"limit_action"`
+		LimitFallbacks *[]string `json:"limit_fallbacks"`
+		LimitReturn    *bool     `json:"limit_return_after_reset"`
+		AlertApproval  *bool     `json:"alert_approval"`
+		AlertFinished  *bool     `json:"alert_finished"`
+		AlertReply     *bool     `json:"alert_reply"`
+		AlertDone      *bool     `json:"alert_done"`
+		TelegramChat   *bool     `json:"telegram_chat"`
+		TelegramCode   *bool     `json:"telegram_code"`
+		NotifyApproval *bool     `json:"notify_approval"`
+		NotifyFinished *bool     `json:"notify_finished"`
 		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
@@ -1918,6 +1936,33 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.DeepSeekAPIKey = k
+	}
+	if patch.KimiAPIKey != nil {
+		k := strings.TrimSpace(*patch.KimiAPIKey)
+		if strings.ContainsAny(k, "\r\n\x00") || len(k) > 512 {
+			s.failCode(w, http.StatusBadRequest, errors.New("that does not look like a Kimi API key"))
+			return
+		}
+		in.KimiAPIKey = k
+	}
+	if patch.LimitAction != nil {
+		v := *patch.LimitAction
+		if v != config.LimitAsk && v != config.LimitAuto && v != config.LimitWait {
+			s.failCode(w, http.StatusBadRequest, errors.New(`limit_action is "ask", "auto" or "wait"`))
+			return
+		}
+		in.LimitAction = v
+	}
+	if patch.LimitFallbacks != nil {
+		list, err := cleanLimitFallbacks(*patch.LimitFallbacks)
+		if err != nil {
+			s.failCode(w, http.StatusBadRequest, err)
+			return
+		}
+		in.LimitFallbacks = list
+	}
+	if patch.LimitReturn != nil {
+		in.LimitReturn = *patch.LimitReturn
 	}
 	if patch.AlertApproval != nil {
 		in.AlertApproval = *patch.AlertApproval

@@ -912,6 +912,7 @@ GET  /v1/sessions?active=true          → SessionSummary[]
 GET  /v1/sessions?dir=<path>           → SessionSummary[] — one Projects row's sessions, each with `resume`
 GET  /v1/sessions/{id}                 → SessionDetail (stats + last N events)
 GET  /v1/sessions/{id}/relay           → RelayBrief (the proposed first message for a relay)
+POST /v1/sessions/{id}/continue-on     → ContinueOnResult — continue an owned Claude Code session on another provider or sign-in (§ Continue on another provider)
 GET  /v1/sessions/{id}/events?after=…  → Event[] (paginated; newest=1 returns the tail; with newest=1, main=1 keeps the main thread only and kind=a,b those kinds, both before the limit)
 GET  /v1/sessions/{id}/subagents       → {working: SubagentNow[], finished, hour?} — the subagents working in it now; ?hour=1 adds the last hour's count a minute (§ Subagents now)
 GET  /v1/sessions/{id}/subagents/{agent} → SubagentDetail — one subagent opened: task, calls, result, numbers (§ One subagent)
@@ -1334,7 +1335,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "machines" frame carries {id, why, session_id?} when something changed on another computer this one reaches, local only (§ Other computers); `?types=a,b` sends only those types and the housekeeping ones (§ Live socket, replay); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "machines" frame carries {id, why, session_id?} when something changed on another computer this one reaches, local only (§ Other computers); `?types=a,b` sends only those types and the housekeeping ones (§ Live socket, replay); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "continued" frame carries a ContinueOnResult when a session was continued on another provider or sign-in, by a button or by Caprock (auto true) — the toast and its Undo (§ Continue on another provider); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -2085,6 +2086,10 @@ page acts on it; the daemon never installs anything (ADR-042 as amended
 `PUT /v1/settings` also accepts `gemini_api_key`, write-only and stored in `config.json` (unlike the two credentials below, which the secret store keeps). `GET` reports `gemini_key_set` and `gemini_key_from_env` instead of the value; `GEMINI_API_KEY` in the daemon's environment takes precedence over the stored key when both exist ([ADR-025](08-decisions.md)).
 
 `PUT /v1/settings` also accepts `deepseek_api_key`, the user's DeepSeek key for Claude Code on DeepSeek (see **Subscriptions** below), write-only and kept in the secret store (below), never in `config.json`. `GET` reports `deepseek_key_set`, `deepseek_key_where` and `deepseek_key_hint` — the first three and last four characters (`sk-…1a2b`), or `…` for a key under 16 characters — never the value. Trimmed on the way in; `""` clears it; `400` for a value with a line break or a NUL, or over 512 bytes, because it becomes one environment variable of a child process. Caprock never sends it anywhere and never logs it.
+
+`PUT /v1/settings` also accepts `kimi_api_key`, the user's Kimi platform key for Claude Code on Kimi (see **Subscriptions** below), held to exactly the rules of `deepseek_api_key`: write-only, kept in the secret store under `dev.caprock.kimi` (file `kimi-api-key`; `kimi_key_stored` in `config.json` records that one is kept), `GET` reports `kimi_key_set`, `kimi_key_where` and `kimi_key_hint`, `""` clears it, `400` for a line break, a NUL or over 512 bytes. There is no older `config.json` copy to move.
+
+`PUT /v1/settings` also accepts Settings → *When a limit is reached* ([ADR-090](08-decisions.md), § Continue on another provider): `limit_action` — `"ask"` (the default, stored as absent), `"auto"` or `"wait"`, anything else `400`; `limit_fallbacks` — the targets `"auto"` tries, in order: `"default"`, `"deepseek"`, `"kimi"`, `"codex"` or a well-formed subscription id, duplicates dropped, at most 16, anything else `400` (whether one exists or is usable is decided when it is tried); and `limit_return_after_reset` (bool). `GET` always reports all three (`limit_fallbacks` `[]` when none).
 
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is kept in the secret store (below) and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_bot_where`, `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally. `report_last_error` is the last send's failure, kept in `meta` so it survives a restart; a send that goes through (scheduled or *Send one now*) clears it, and so does saving a different bot token or chat — through `PUT /v1/settings`, `PUT /v1/telegram/token` or pairing — because the failure was the old bot's (a stale *Unauthorized* sat under a fresh *sent — check Telegram*, owner, 2026-10-22). The Weekly report panel reads settings again after *Send one now*, whichever way it went.
 
@@ -3328,6 +3333,75 @@ session opened, from Claude Code's `tool_response.gitOperation.pr` with
 `action = "created"` (other agents record none, so none are listed). Nothing
 is sent anywhere by this call. Not open to paired devices.
 
+#### Continue on another provider
+
+**`POST /v1/sessions/{id}/continue-on`** `{target}` carries a Claude Code
+session Caprock started on somewhere else — what the limit strip's buttons
+and the automatic move call ([ADR-090](08-decisions.md),
+`internal/daemon/continueon.go`). `target` is a subscription id (a Claude
+Code or a Codex sign-in), `"default"` (the own Claude Code sign-in),
+`"deepseek"`, `"kimi"` or `"codex"` (the own Codex sign-in).
+
+- **DeepSeek or Kimi**: `claude --resume <id> --fork-session --session-id
+  <new>` in the configuration directory the conversation is in (the own one,
+  or an added sign-in's), with the provider's environment (§ Subscriptions).
+  `how: "resume"`.
+- **Another Claude Code sign-in**: Claude Code finds a conversation only
+  under `<config dir>/projects/<the folder it began in, every character not
+  an ASCII letter or digit made "-">/<id>.jsonl` (`ingest.ProjectDirName`;
+  measured with 2.1.309 on 2026-10-24). The transcript is copied — never
+  moved, never over an existing file, written beside and renamed — to the
+  target's `projects/<the same folder name>/<new>.jsonl` with each line's
+  `"sessionId":"<id>"` and `"session_id":"<id>"` rewritten to the new id and
+  nothing else changed, then `claude --resume <new>` starts there. `how:
+  "copy"`. Its earlier turns are the original's: the cross-session check
+  prices each `message.id` once. When the target's directory is the one the
+  conversation is already in (a DeepSeek session going back to the own
+  sign-in), it is a fork there instead, `how: "resume"`.
+- **Codex** (`"codex"` or a Codex subscription id): a new Codex session in
+  the same folder whose first message is the relay brief (`internal/relay`,
+  clipped to the first message's limit), `relay_from` the original. `how:
+  "summary"`, `same_conversation: false`: a summary, not the conversation.
+
+Either Claude path starts in the folder the conversation began in (the
+session's when its folder name matches the transcript's, else the
+transcript's first `cwd`), carries the permission mode the session last ran
+in (else the spawn preference), keeps a `claude-*` model for another Claude
+sign-in and drops it for a provider, and records `parent_session` = the
+original on the new session. Once the new process has started, the
+original's is ended (`Manager.End`); a failed start leaves it running.
+
+`ContinueOnResult` is `{session_id, cwd, continued_from, target, from, how,
+same_conversation, stopped_original, auto?, return_at?, note}`: the new
+session (the tab to show in the old one's place), what it continues, what
+it ran on (`from`, in the same terms — Undo is continue-on of `session_id`
+back to `from`), and a sentence for the user. Every move, by a button or by
+Caprock, is also published as a `continued` live frame with the same body.
+
+`409` for a session Caprock did not start (rule 7: its process is not ours
+to stop), `404` for an unknown one, `400` with the reason for a target that
+cannot take it (no key, not installed, unknown id, already on it, no
+transcript, the folder gone, another agent's session), `403` from any paired
+device (a phone or an allowed computer: it is not in the controller routes),
+`501` without an agent manager.
+
+**When a limit is reached** (`limit_action`, `internal/daemon/limitwatch.go`).
+Every 15 s the daemon lists the owned, not-ended sessions with a
+`limit_hit` (`store.OwnedAtLimit`). With `"auto"`, each one whose terminal
+this daemon holds is continued on the first of `limit_fallbacks` that takes
+it — skipping its own and any refused with a reason — once per limit (by
+`limit_hit.at`), published with `auto: true`. With
+`limit_return_after_reset` on and the limit's reset known, `return_at` is
+the reset plus a minute; once it passes, the moved session, if it is still
+held and not mid-turn (as the sleep keeper reads a turn), is continued back
+on `from` and published again with `auto: true`. The return list lives in
+memory: a daemon restart drops it and the session stays where it is.
+`"ask"` and `"wait"` move nothing: the session shows `limit_hit` and the
+app offers the choices. `"wait"` does not use the plan-window stop
+(Premium): that pauses at a share below 100% so a turn survives, while at
+the limit Claude Code has already ended the turn and there is nothing to
+pause.
+
 **`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
 `codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
 `priority` order, and `default` from the top-level `model` in `config.toml`.
@@ -3413,6 +3487,10 @@ while agents work; every other field is read on each request.
   counts toward `free_per_agent`, and `PATCH` and `DELETE` on it are `404`
   (the key is removed in `PUT /v1/settings`). The id cannot collide with a
   real one, which is hex.
+- **`provider: "kimi"`** is the same entry for Claude Code on Kimi: `id:
+  "kimi"`, `label: "Kimi"`, listed after DeepSeek under `claude` while a
+  Kimi key is set (`kimi_api_key`), `account: "your Kimi API key"`, `plan:
+  {kind: "metered", label: "Kimi API"}`, and otherwise exactly as DeepSeek's.
 
 - **`preferred`** marks, per agent, the one a new session starts on when the
   request names none — *Make default*, stored as `default_subscription:
@@ -3497,7 +3575,11 @@ it). A session on the own sign-in keeps them, except
 starts inherits (Claude Code sets it for its teammates; it moves the
 Keychain entry off the configuration directory's). A `resume` runs on the subscription the session ran on,
 whatever the request says, and is refused when that subscription has been
-removed. An unknown id, or a subscription of the other agent, is `400`.
+removed: a conversation is in its directory and nowhere else. The one way
+to carry a conversation onto another subscription is `POST
+/v1/sessions/{id}/continue-on` (§ Continue on another provider, ADR-090),
+which forks or copies it there first. An unknown id, or a subscription of
+the other agent, is `400`.
 
 `subscription: "deepseek"` starts Claude Code on DeepSeek: the user's own
 configuration directory (no `CLAUDE_CONFIG_DIR` is set), with the stored key
@@ -3519,7 +3601,26 @@ for an agent other than `claude`; a `resume` of a DeepSeek session stays on
 DeepSeek and is refused, saying why, once the key is removed. The session
 records `sessions.subscription = "deepseek"`, so its plan windows, if Claude
 Code ever reports any for it, go under `sub:deepseek:` and the plan-window
-stop never pauses it.
+stop never pauses it. A DeepSeek session started by continue-on from a
+session on an added sign-in runs in that sign-in's directory (its
+conversation is there), with the DeepSeek key over the sign-in's
+credential; continuing it, or restarting it in another permission mode,
+uses the directory its transcript is under.
+
+`subscription: "kimi"` starts Claude Code on Kimi the same way, with
+Moonshot's published set for Claude Code (platform.kimi.ai/docs/guide/claude-code-kimi,
+read 2026-11-03): `ANTHROPIC_BASE_URL=https://api.moonshot.ai/anthropic`
+(also on platform.kimi.ai/docs/api/overview, 2026-11-03),
+`ANTHROPIC_AUTH_TOKEN` the stored key, `ANTHROPIC_MODEL`,
+`ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
+`ANTHROPIC_DEFAULT_FABLE_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL`
+`=kimi-k3[1m]`, `ANTHROPIC_DEFAULT_HAIKU_MODEL=kimi-k2.7-code`, and
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` — less
+`CLAUDE_CODE_EFFORT_LEVEL=max`, as for DeepSeek. The same variables are
+removed from the login-shell environment; a `model` that does not start with
+`kimi-` is dropped; `400` with no key set or for another agent; the session
+records `sessions.subscription = "kimi"`. The page states no price, and
+Caprock shows none (rule 6; `12-risks.md` OQ-25).
 
 The daemon reads each subscription's transcripts as it reads the Default
 one's: Claude Code's under `<dir>/projects/`, Codex's under
@@ -6876,6 +6977,33 @@ sessions.effort)`). `Session` carries it as `effort`, omitted when empty, so
 the Agent panel's model chip reads it ([04-ui.md](04-ui.md)). Other agents,
 and sessions observed from their transcript alone, have none.
 
+### Session limit DDL (migration 0078)
+
+```sql
+ALTER TABLE sessions ADD COLUMN limit_hit_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN limit_resets_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sessions ADD COLUMN limit_window TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_sessions_limit_hit ON sessions(limit_hit_at) WHERE limit_hit_at > 0;
+```
+
+A Claude Code session stopped at its plan's usage limit, from its
+transcript (§ Transcript JSONL, *A usage limit*): `limit_hit_at` the
+refusal's time (unix ms; 0 = none), `limit_resets_at` when the plan says the
+window reopens (unix ms; 0 = not stated), `limit_window` the window that
+refused it as Claude Code names it (`five_hour`, `seven_day`, …; `''` = not
+stated). The tailer sets them from the refusal line (`store.SetLimitHit`;
+an older refusal never replaces a newer one) and clears all three on the
+first real assistant line after it (`store.ClearLimitHit`, only when the
+stored limit is not newer than the line) — the session has made progress.
+Each file clears at most once per limit, and once after a tailer start.
+Not backfilled: no parser version bump; a transcript the tailer reads again
+from the start sets and clears in order. `Session` carries it as
+`limit_hit: {at, resets_at?, window?}`, `null` when there is none — never
+omitted, so a live `session` frame clears a held copy — on
+`/v1/sessions`, `/v1/sessions/{id}` and the live `session` frame. The
+refusal line is synthetic and stores no event, so the frame that shows it is
+the next one the session sends (its Stop hook, normally at once).
+
 ### Compaction stats DDL (migration 0077)
 
 ```sql
@@ -8443,7 +8571,8 @@ Not a public contract — the parser is schema-versioned and degrades to hooks-o
 - The transcript is written asynchronously and may lag the in-memory conversation (Claude Code documents this) — hence hooks are the real-time source and transcripts the accounting source.
 - Files live at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; `transcript_path` in hook payloads points at the exact file. Subagent transcripts live at `<encoded-cwd>/<session-id>/subagents/agent-<id>.jsonl` and carry the parent `sessionId` plus `agentId`, `isSidechain: true`.
 - **One API response is written as several `assistant` lines** (thinking / text / tool_use blocks split across lines), each repeating the *same* `message.id`, `requestId` and `usage`. Verified 2026-08-18 across 16,210 such groups in local transcripts: usage never differs within a `message.id`. Ingest therefore counts usage once per `message.id` (dedupe key `msg:<id>`); summing per line would over-count cache tokens 2–3×.
-- Lines with `message.model == "<synthetic>"` are Claude Code's own notices, not turns; ignored.
+- Lines with `message.model == "<synthetic>"` are Claude Code's own notices, not turns; ignored, except a usage limit.
+- **A usage limit** is a synthetic `assistant` line (observed in 20 lines from 2.1.285 to 2.1.316, 2026-10-04 to 2026-11-02): `"error": "rate_limit"`, `"isApiErrorMessage": true`, `"apiErrorStatus": 429`, `quotaLimits: {status: "rejected", resetsAt: <unix seconds>, rateLimitType: "five_hour" | "seven_day", overageStatus, …}`, from 2.1.312 also `"apiError": "usage_limit_reached"` and `apiErrorParams.rate_limit_info` with the same `resetsAt` and `rateLimitType`, and the text `You've hit your session limit · resets 3:20pm (Asia/Jerusalem)` (weekly: `your weekly limit`). Older Claude Code wrote the reset into the text, `Claude AI usage limit reached|<unix seconds>`, read too. Other API errors (`authentication_failed`, `server_error`, …) are not limits. `ingest.LimitHit` reads it into migration 0078's columns.
 - **A fork copies its parent's turns.** `claude --resume <id> --fork-session` writes the parent's history since its last `compact_boundary` into the new file: the same `uuid`, `message.id` and `usage`, with `sessionId` rewritten to the fork's. Observed 2026-10-03 on a Caprock-started fork: 827 of the parent's assistant messages, all of them still in the parent's file. Ingest prices each message id once across sessions (see **A turn is paid once across sessions** under Hook shim).
 - **The first messages a compaction preserves are copied with zeroed usage.** `input_tokens`, `output_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens` are 0, but `cache_creation.ephemeral_1h_input_tokens` keeps the original figure. The 1h write is part of `cache_creation_input_tokens`, so ingest bounds it by that total; read raw, each such copy was priced at a 1h cache write that never happened. On 2026-10-03, 6 of 24,239 local lines carrying the breakdown had it above the total, every one of them zeroed this way.
 - **A record is at most 16 MiB** (`Tailer.MaxLine`), counting the bytes before its newline. The longest line in 4.0 GB of local transcripts (702 files, 593,686 lines) was 2.1 MB on 2026-10-18. A longer record is never held whole. It is read in fragments of the 256 KiB reader buffer, so a read keeps at most the limit plus one buffer however long the record is, and once the record passes the limit its bytes are dropped as they are read. It is counted once in `lines_malformed` and logged once with its path and offset, and reading resumes after its newline. Until that newline is written, the tailer remembers how far into the record it has read (`skipTo`) and the next read continues from there. The persisted offset stays on the record's first byte, so after a restart the record is read from its start and skipped again. A file that shrinks below the point already read counts as truncated and is read from the start. Records up to the limit are read as before. Until 2026-10-18 a complete record of any length went to the parser, after a read that allocated twice its size. Only an unfinished record over the limit was dropped, by moving the offset into its middle. The next read took that for a rewritten file and read the whole transcript again.
