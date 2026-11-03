@@ -520,6 +520,7 @@ func Load(dir string) (Config, error) {
 	if cfg.LoopTMinutes <= 0 {
 		cfg.LoopTMinutes = 3
 	}
+	cfg.renamePlanPresets()
 	return cfg, nil
 }
 

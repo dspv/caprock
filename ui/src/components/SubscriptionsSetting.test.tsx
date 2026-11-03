@@ -87,16 +87,16 @@ describe('Settings → Subscriptions', () => {
     expect(screen.getByRole('button', { name: 'Plan for Personal' })).toHaveTextContent('Pro · $20.00/mo')
     expect(screen.getByText(/No plan of its own/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Plan for Personal' }))
-    fireEvent.click(screen.getByRole('button', { name: /Max 5×/ }))
-    await waitFor(() => expect(m.update).toHaveBeenCalledWith('b2', { plan: { kind: 'flat', label: 'Max 5×', usd_per_month: 100 } }))
+    fireEvent.click(screen.getByRole('button', { name: /^Max\s*\$100/ }))
+    await waitFor(() => expect(m.update).toHaveBeenCalledWith('b2', { plan: { kind: 'flat', label: 'Max', usd_per_month: 100 } }))
     // Back to the main plan.
     fireEvent.click(screen.getByRole('button', { name: 'Plan for Work' }))
     fireEvent.click(screen.getByRole('button', { name: /The main plan/ }))
     await waitFor(() => expect(m.update).toHaveBeenCalledWith('a1', { plan: null }))
     // The own sign-in's is the main plan.
     fireEvent.click(screen.getByRole('button', { name: 'Plan for Own sign-in' }))
-    fireEvent.click(screen.getByRole('button', { name: /Max 20×/ }))
-    expect(saveMain).toHaveBeenCalledWith({ plan_kind: 'flat', plan_label: 'Max 20×', plan_usd_per_month: 200 })
+    fireEvent.click(screen.getByRole('button', { name: /^Ultra/ }))
+    expect(saveMain).toHaveBeenCalledWith({ plan_kind: 'flat', plan_label: 'Ultra', plan_usd_per_month: 200 })
   })
 
   it('adds one and types its sign-in into a shell tab', async () => {

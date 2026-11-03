@@ -29,10 +29,51 @@ type Subscription struct {
 type Plan struct {
 	// Kind is "flat" (Pro, Max, a Team seat) or "metered" (API, Bedrock).
 	Kind string `json:"kind"`
-	// Label is the user's own words for it ("Max 20×").
+	// Label is the user's own words for it ("Ultra").
 	Label string `json:"label,omitempty"`
 	// USDPerMonth is what one seat costs a month; 0 = not stated.
 	USDPerMonth float64 `json:"usd_per_month,omitempty"`
+}
+
+// renamedPresets are the plan names Caprock's own plan picker once wrote,
+// with the price it wrote beside them, and what Anthropic calls that plan now.
+// At the end of October 2026 Max 5× became Max and Max 20× became Ultra, at
+// the same prices (claude.com/pricing and the help centre's "What is the Ultra
+// plan?", both read 2026-11-03).
+var renamedPresets = []struct {
+	old string
+	usd float64
+	now string
+}{
+	{"Max 5×", 100, "Max"},
+	{"Max 20×", 200, "Ultra"},
+}
+
+// CurrentPlanLabel is label under the plan's current name when it is exactly
+// what an old preset of Caprock's picker wrote — that name, flat, at that
+// price — and label unchanged otherwise. A name the user typed is their own
+// words and is never rewritten.
+func CurrentPlanLabel(kind, label string, usd float64) string {
+	if kind != "flat" {
+		return label
+	}
+	for _, p := range renamedPresets {
+		if label == p.old && usd == p.usd {
+			return p.now
+		}
+	}
+	return label
+}
+
+// renamePlanPresets moves every stored plan an old preset wrote to the plan's
+// current name: the main plan and each subscription's own.
+func (c *Config) renamePlanPresets() {
+	c.PlanLabel = CurrentPlanLabel(c.PlanKind, c.PlanLabel, c.PlanUSDPerMonth)
+	for i := range c.Subscriptions {
+		if p := c.Subscriptions[i].Plan; p != nil {
+			p.Label = CurrentPlanLabel(p.Kind, p.Label, p.USDPerMonth)
+		}
+	}
 }
 
 // OwnLabel is the name of the user's own sign-in to agent: what they renamed

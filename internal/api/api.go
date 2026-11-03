@@ -2384,9 +2384,13 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 	q := s.d.Store.DB()
 	var out RateLimits
 	any := false
+	week, weekOK, _ := store.LatestRateLimit(ctx, q, "seven_day")
 	for _, window := range []string{"five_hour", "seven_day"} {
 		snap, ok, err := store.LatestRateLimit(ctx, q, window)
 		if err != nil || !ok {
+			continue
+		}
+		if window == "five_hour" && weekOK && FiveHourEnded(snap, week, s.d.Now().UnixMilli()) {
 			continue
 		}
 		rw := &RateWindow{UsedPercentage: snap.UsedPercentage, ResetsAt: snap.ResetsAt}
@@ -2402,6 +2406,17 @@ func (s *Server) rateLimits(ctx context.Context) *RateLimits {
 		return nil
 	}
 	return &out
+}
+
+// FiveHourEnded reports that a stored five-hour window no longer exists: its
+// reset has passed and Claude Code has reported the weekly window since
+// without one. That is a verified Ultra account, which has no five-hour limit
+// (the help centre's "What is the Ultra plan?", read 2026-11-03) — an account
+// moved up from Max 20× would otherwise show its last five-hour reading as
+// stale forever. Both windows of one status line share a timestamp, so a
+// weekly reading newer than the five-hour one came without it.
+func FiveHourEnded(five, week store.RateLimitSnapshot, nowMs int64) bool {
+	return week.Ts > five.Ts && five.ResetsAt*1000 <= nowMs
 }
 
 // paceForecast returns "~Nh to limit at current pace", and when that is (unix

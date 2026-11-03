@@ -18,12 +18,15 @@ import { api, type Settings, type Subscription } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
 
 /** The common flat plans, as published by Anthropic (claude.com/pricing, read
- *  2026-10-03: a Team standard seat is $25 billed monthly, $20 annually). The
- *  user can type any price. */
+ *  2026-10-03: a Team standard seat is $25 billed monthly, $20 annually; read
+ *  2026-11-03: Max $100, Ultra $200). Max was "Max 5×" and Ultra "Max 20×"
+ *  until the end of October 2026; a plan stored under an old name is read
+ *  back under the new one (config.CurrentPlanLabel). The user can type any
+ *  price. */
 const PRESETS: { label: string; kind: 'flat' | 'metered'; usd: number; note: string }[] = [
   { label: 'Pro', kind: 'flat', usd: 20, note: '$20/mo' },
-  { label: 'Max 5×', kind: 'flat', usd: 100, note: '$100/mo' },
-  { label: 'Max 20×', kind: 'flat', usd: 200, note: '$200/mo' },
+  { label: 'Max', kind: 'flat', usd: 100, note: '$100/mo' },
+  { label: 'Ultra', kind: 'flat', usd: 200, note: '$200/mo' },
   { label: 'Team seat', kind: 'flat', usd: 25, note: '$25/seat/mo' },
   { label: 'API / Bedrock', kind: 'metered', usd: 0, note: 'billed per token' },
 ]
