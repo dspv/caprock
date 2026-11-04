@@ -1278,6 +1278,12 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	if ok {
 		sum.Context, sum.ContextNote = s.contextFill(turn, sess.Model)
+		// A compaction after that turn replaced the context it measured: the
+		// meter read the size before /compact until the model answered again.
+		// The boundary carries the size after, when Claude Code wrote it.
+		if post, ok := compactedSince(last); ok && sum.Context != nil {
+			sum.Context = s.fill(sum.Context.Window, post, firstNonEmpty(turn.Model, sess.Model))
+		}
 	}
 	return sum, last, nil
 }
@@ -1298,13 +1304,42 @@ func (s *Server) contextFill(e event.Event, sessionModel string) (*ContextFill, 
 		// thing a user can report and we can fix.
 		return nil, model + " not in pricing table"
 	}
-	toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
-	return &ContextFill{
-		Tokens:      toks,
-		Window:      row.ContextWindow,
-		Pct:         100 * float64(toks) / float64(row.ContextWindow),
-		NextCallUSD: contexttax.NextCall(toks, contexttax.PricesOf(row)),
-	}, ""
+	return s.fill(row.ContextWindow, e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite, model), ""
+}
+
+// fill is toks of a window, priced at model's cache-read rate.
+func (s *Server) fill(window, toks int64, model string) *ContextFill {
+	f := &ContextFill{Tokens: toks, Window: window, Pct: 100 * float64(toks) / float64(window)}
+	if row, ok := s.d.Table.Lookup(model); ok {
+		f.NextCallUSD = contexttax.NextCall(toks, contexttax.PricesOf(row))
+	}
+	return f
+}
+
+// compactedSince is the context left by a main-thread compaction newer than
+// every main-thread turn in the window: the boundary's post_tokens. False
+// when a turn followed it (the turn measures the context then) or the
+// boundary did not say.
+func compactedSince(evs []event.Event) (int64, bool) {
+	for i := len(evs) - 1; i >= 0; i-- {
+		e := evs[i]
+		if e.Subagent() {
+			continue
+		}
+		switch {
+		case e.Kind == event.KindTurnAssistant && e.Tokens != nil && e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite > 0:
+			return 0, false
+		case e.Kind == event.KindContextCompacted:
+			var p struct {
+				Post int64 `json:"post_tokens"`
+			}
+			if json.Unmarshal(e.Payload, &p) != nil || p.Post <= 0 {
+				return 0, false
+			}
+			return p.Post, true
+		}
+	}
+	return 0, false
 }
 
 // lastContextTurn is the newest assistant turn with usage in a window of

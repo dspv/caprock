@@ -61,3 +61,47 @@ func TestContextFillIgnoresSubagentTurns(t *testing.T) {
 		t.Errorf("child context %+v, want its own 5000 of 200000", c.Context)
 	}
 }
+
+// After /compact the meter shows the context the compaction left, from the
+// boundary's post_tokens, until the next turn measures it again. It read the
+// size before the compaction for as long as the model had not answered.
+func TestContextFillAfterCompaction(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	cwd := t.TempDir()
+	turn := func(key string, at time.Duration, cache int64) *event.Event {
+		return &event.Event{SessionID: "s", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Key: key, Ts: base.Add(at), Model: "claude-opus-5",
+			Tokens: &event.TokenDelta{In: 1000, CacheRead: cache}, Payload: json.RawMessage(`{"sidechain":false}`)}
+	}
+	record := func(ev *event.Event) {
+		t.Helper()
+		if _, err := e.rec.Record(ctx, ev, rollup.SessionInfo{Cwd: cwd}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func() *ContextFill {
+		t.Helper()
+		var list []SessionSummary
+		if code := e.get(t, "/v1/sessions", &list); code != 200 {
+			t.Fatalf("sessions: %d", code)
+		}
+		for _, s := range list {
+			if s.SessionID == "s" {
+				return s.Context
+			}
+		}
+		t.Fatal("session missing")
+		return nil
+	}
+	record(turn("msg:1", 0, 310_000))
+	record(&event.Event{SessionID: "s", Source: event.SourceTranscript, Kind: event.KindContextCompacted, Key: "compact:b1", Ts: base.Add(time.Second),
+		Payload: json.RawMessage(`{"trigger":"manual","pre_tokens":311000,"post_tokens":8832,"sidechain":false}`)})
+	if c := read(); c == nil || c.Tokens != 8832 || c.Window != 1_000_000 {
+		t.Fatalf("after compaction %+v, want 8832 of 1000000", c)
+	}
+	record(turn("msg:2", 2*time.Second, 12_000))
+	if c := read(); c == nil || c.Tokens != 13_000 {
+		t.Fatalf("after the next turn %+v, want its 13000", c)
+	}
+}
