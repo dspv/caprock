@@ -6,6 +6,11 @@ same React screens as `m.caprock.dev`, built from `ui/` with
 shell, plus what only an app can do. Free; nothing in it is for sale. What
 each screen does is in [`.ai/04-ui.md` § The iOS app](../.ai/04-ui.md#the-ios-app).
 
+**On the App Store:** <https://apps.apple.com/app/caprock/id6827747312>
+(1.0 approved by Apple on 2026-11-05). The desktop app links it from
+Settings → *Use on your phone* (`IPHONE_APP_URL` in
+`ui/src/components/Pairing.tsx`); caprock.dev shows Apple's badge.
+
 **Never build this on the owner's Mac.** The Simulator build runs on GitHub's
 macOS runners (`.github/workflows/ios.yml`) on every push to `master` or a
 `feat/ios-*` branch, and every pull request, that touches this folder,
@@ -81,7 +86,7 @@ it resolved.
 
 ## Version 1.0: what is in it and what is not
 
-1.0 goes straight to App Store review, with no TestFlight round, and without
+1.0 went straight to App Store review, with no TestFlight round, and without
 push (owner, 2026-10-27; ADR-083 amended). It asks for no notification
 permission, registers for no remote notifications and has no
 `aps-environment` entitlement; the App ID's Push Notifications capability is
@@ -91,7 +96,9 @@ Not in 1.0:
 
 - **Push notifications** ("Claude is waiting for your answer", "task done"):
   1.1, with `OQ-24` (what a push may carry) and the sender service.
-- **Get the app** on `m.caprock.dev`, once the app is in the App Store.
+- **Get the app** on `m.caprock.dev`: the app is in the App Store now, but
+  the phone page does not offer it yet (the desktop's Settings → *Use on
+  your phone* does).
 
 ## Release
 

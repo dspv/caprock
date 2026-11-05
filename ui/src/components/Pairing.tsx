@@ -24,6 +24,8 @@
  *   tick that decides whether the phone can control sessions (ADR-034,
  *   amended 2026-10-14): the code carries the role, decided here, never by
  *   the phone.
+ * - **One quiet line**, *iPhone: get Caprock on the App Store*, a plain link
+ *   to Caprock for iPhone (ADR-083) that opens in the default browser.
  * - **How it works**, folded: what happens when you scan, why it works on
  *   any network and what the relay can and cannot see, the link for an
  *   iPhone home-screen app, the way back to the page for a phone already
@@ -52,6 +54,8 @@ import { fmtWhen } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { encodeQR, qrPath } from '@/lib/qr'
 import type { SettingsSection } from '@/lib/router'
+import { openExternal } from '@/lib/nudges'
+import { extTitle } from '@/lib/externalLinks'
 
 /** The phone section's id: the palette's *Open Caprock on your phone* scrolls to it. */
 export const PHONE_SECTION = 'settings-phone'
@@ -433,6 +437,8 @@ export function Pairing() {
           </div>
         )}
 
+        <IPhoneAppLine />
+
         {error && <div className="text-[12px] text-danger">{error}</div>}
 
         <Devices devices={s.devices} now={now} busy={busy} onRemove={(ids) => void remove(ids)} onRole={(id, r) => void setRole(id, r)} onRepair={remote ? () => void showCode() : undefined} />
@@ -447,6 +453,36 @@ export function Pairing() {
         />
       </div>
     </Section>
+  )
+}
+
+/**
+ * Caprock for iPhone on the App Store (ADR-083; approved 2026-11-05). A plain
+ * link: pressing it opens the listing in the default browser, and nothing is
+ * sent anywhere by showing it (rule 4).
+ */
+export const IPHONE_APP_URL = 'https://apps.apple.com/app/caprock/id6827747312'
+
+/**
+ * One quiet line under the button or the code: an iPhone can pair from the
+ * app instead of the camera and Safari. `data-keep`, so Settings'
+ * explanations switch never hides it.
+ */
+function IPhoneAppLine() {
+  return (
+    <p data-testid="iphone-app" data-keep className="text-[12px] leading-snug text-fg-muted">
+      iPhone:{' '}
+      <a
+        href={IPHONE_APP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => { e.preventDefault(); openExternal(IPHONE_APP_URL) }}
+        title={extTitle('Caprock for iPhone on the App Store')}
+        className="text-accent hover:underline"
+      >
+        get Caprock on the App Store
+      </a>
+    </p>
   )
 }
 
@@ -588,7 +624,7 @@ function HowItWorks({
         <ol className="grid gap-1 text-fg">
           <li>1. Press <b className="font-medium">Connect a phone</b> and point the phone&apos;s camera at the code.</li>
           <li>2. Tap the link it shows. The phone opens {host} and connects by itself.</li>
-          <li>3. Optional: keep it as an app. On an iPhone, Share → Add to Home Screen; on Android, ⋮ → Install app.</li>
+          <li>3. Optional: keep it as an app. On an iPhone, Caprock for iPhone from the App Store scans the code itself, or Share → Add to Home Screen; on Android, ⋮ → Install app.</li>
         </ol>
         {remote && (
           <div data-testid="pair-reach">
