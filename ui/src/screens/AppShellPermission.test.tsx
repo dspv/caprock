@@ -57,6 +57,8 @@ beforeEach(() => {
   localStorage.clear()
   // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
+  // Unfolded, as these were written; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem('caprock.app.project-open', JSON.stringify(['dir:/w/app', 'dir:/w/other', '1', 'other-folders']))
   sessionStorage.clear()
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
   location.hash = '#/app'

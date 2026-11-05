@@ -69,6 +69,8 @@ beforeEach(() => {
   rename.mockClear()
   localStorage.clear()
   sessionStorage.clear()
+  // alpha unfolded: a project is folded by default since 2026-11-05 (sidebar V1).
+  localStorage.setItem('caprock.app.project-open', JSON.stringify(['alpha']))
 })
 
 describe('renaming a session', () => {

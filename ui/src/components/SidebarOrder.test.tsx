@@ -13,7 +13,7 @@ import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
 import { ROW_ORDER_KEY } from '@/lib/rowOrder'
 import { Sidebar, type SidebarProps } from './Sidebar'
-import { sessionStops } from './ProjectRow'
+import { sessionStops, PROJECT_OPEN_KEY } from './ProjectRow'
 
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
 
@@ -57,7 +57,12 @@ const three = () => [
   live({ session_id: 'c', title: 'Third', started_at: 3 }),
 ]
 
-beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
+beforeEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+  // These tests read the projects unfolded; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem(PROJECT_OPEN_KEY, JSON.stringify(['alpha', 'beta', 'stale', 'gamma', 'p1', 'p2', 'p3', 'other-folders']))
+})
 
 const li = (k: string) => document.querySelector(`[data-row-key="${k}"]`) as HTMLElement
 

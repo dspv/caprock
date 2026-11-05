@@ -500,25 +500,26 @@ One window, three regions:
   `.claude/worktrees` (§ contracts, `/v1/recent-dirs`). Keys, shown on the
   buttons: ⌘↩ Add / Create / Clone from anywhere in the sheet, Esc Cancel,
   ⌘1 ⌘2 ⌘3 the modes, ⌘B Recent ⇄ Browse (Ctrl off macOS).
-- **Today strip** (owner, 2026-10-08: "useful data on the left too",
-  translated). Under *New agent*: today's spend across every agent, agents
-  running and waiting on you, and Claude Code's 5-hour and weekly windows
-  as thin bars with % and reset time. Every figure is one the workspace
+- **Today line** (owner, 2026-10-08: "useful data on the left too",
+  translated; one thin line above the footer since 2026-11-05, mockup V1,
+  [04-ui.md](04-ui.md) § Sidebar). Today's spend across every agent, agents
+  running, what waits on you when anything does, and the fuller of Claude
+  Code's 5-hour and weekly windows as a short bar and its %. Until
+  2026-11-05 it was a card under *New agent* with both windows as bars and
+  their reset times. Every figure is one the workspace
   already holds — `summary.cost_usd` and `rate_limits` from the day's
   summary the status strip and cockpit read (`planWindowsFor('claude')`,
   `readWindow`'s staleness rule and the cockpit's tone thresholds), the
   counts from the sidebar model (`agents`, `working`, the Inbox's non-stale
   items). Spend is a dash until the summary answers; no plan windows, no
-  bars. Clicks: spend → `#/cost`, a window → `#/cost?section=limits`,
-  *Running* → `#/now`, *Waiting* → the first Inbox item. Code:
-  `components/TodayStrip.tsx`, `lib/today.ts`. While the sidebar is open
+  bar. Clicks: spend → `#/cost`, the window → `#/cost?section=limits`,
+  *running* → `#/now`, *waiting* → the first Inbox item. Code:
+  `components/TodayLine.tsx`, `lib/today.ts`. While the sidebar is open
   the status strip drops its plan windows, so the same figures are never
-  on screen twice; the strip never shows the spend (owner, 2026-10-23). It folds to one line (spend, running, what
-  waits, the 5h and 7d percentages) by its chevron and hides by a hover ×;
-  its right-click menu offers Full card, One line and Hide; Settings →
-  Appearance shows it again, and while hidden the list's heading counts
-  what waits (a user, 2026-10-15; `lib/todayCard.ts`, [04-ui.md](04-ui.md)
-  § Sidebar). No Share button since 2026-10-16.
+  on screen twice; the strip never shows the spend (owner, 2026-10-23). Its
+  × hides it; Settings → Appearance or the sidebar's ⋯ shows it again
+  (a user, 2026-10-15; `lib/todayCard.ts`, [04-ui.md](04-ui.md) §
+  Sidebar).
 - **Project menu** (owner, same day: "a way to hide or close projects";
   the hover-only eye was not found). The row's ⋯ — on hover or focus — a
   right-click on the row, or
@@ -881,7 +882,7 @@ One window, three regions:
   an ended one in a new tab, *Open* a running one. The sidebar is for what
   runs; this is the way back to what ended.
 - **Status strip (bottom).** Service things only. Connection state, plan
-  limits (5-hour and 7-day) while the sidebar is hidden (its Today strip
+  limits (5-hour and 7-day) while the sidebar is hidden (its Today line
   carries them otherwise), with an agent in front what its processes use (*agent
   cpu 8.1% ram 413 MB*, which opens the last hour's CPU and memory charts
   and who uses the most, [04-ui.md § Status strip](04-ui.md)), what Caprock
@@ -1568,7 +1569,7 @@ app had no reload command.
   *New Browser Tab*, opens the share sheet over the tab in front: the menu
   evaluates `caprock:share` in the main window and the page opens the sheet
   (`SHARE_EVENT`, `components/Share.tsx`). No key, so nothing to check on
-  other systems; there the Today card's share icon and ⌘K *Share my numbers*
+  other systems; there the sidebar's ⋯ → *Share your week* and ⌘K *Share my numbers*
   do the same (owner, 2026-10-25: from a session tab he could not find how to
   share).
 

@@ -61,6 +61,8 @@ beforeEach(() => {
   localStorage.clear()
   // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
+  // Unfolded, as these were written; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem('caprock.app.project-open', JSON.stringify(['dir:/w/app', 'dir:/w/other', '1', 'other-folders']))
   sessionStorage.clear()
   h.asked = 0
   vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
@@ -350,6 +352,8 @@ describe('reopening a closed tab', () => {
 
   it('lists the closed tab under Recently closed and brings it back on ⇧⌘T, then on a click', async () => {
     localStorage.setItem('caprock.app.agent-close', 'keep')
+    // Recently closed unfolded (folded to one line by default since 2026-11-05).
+    localStorage.setItem('caprock.app.recently-closed-open', 'open')
     await openAgent()
     closeFront()
     await waitFor(() => expect(tab()).toBeNull())
