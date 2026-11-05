@@ -328,6 +328,7 @@ var pairedDeviceRoutes = map[string]bool{
 	"GET /v1/approvals":                       true,
 	"GET /v1/statusline/{id}":                 true,
 	"GET /v1/pair/me":                         true, // which role this device holds, so its screens draw the right controls
+	"GET /v1/folder-labels":                   true, // Work / Personal tags on the Chats list (ADR-091)
 	"GET /v1/glance":                          true, // Now's At a glance
 	"GET /v1/week":                            true, // the Week screen
 	"GET /v1/tools/drill":                     true, // the tool drill-down; its Premium half is gated in the handler
@@ -485,6 +486,9 @@ var controllerRoutes = map[string]bool{
 	// Rename a session, as its tab and sidebar row do on the machine: a
 	// label in Caprock's own database, which runs nothing.
 	"PUT /v1/sessions/{id}/name": true,
+	// Work / Personal on a folder under home, from New chat's Where step
+	// (ADR-091): a label in Caprock's own database, which runs nothing.
+	"PUT /v1/folder-labels": true,
 
 	// "needs me?" / "not needed" on a guessed turn: a mark in the daemon's
 	// memory, which runs nothing and types nothing.

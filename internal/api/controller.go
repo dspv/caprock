@@ -44,13 +44,12 @@ func (s *Server) controllerSpawnRefusal(req map[string]any) string {
 		return "a phone starts one of the coding agents Caprock knows, not a custom one — start it on the machine Caprock runs on"
 	}
 	cwd, _ := req["cwd"].(string)
-	// A chat (ADR-071): the daemon picks its folder, a new one in its own
-	// chats workspace, so a phone names none. Carrying a chat on names the
-	// chat's folder, which is Caprock's, wherever the data directory is.
-	if chat, _ := req["chat"].(bool); chat {
-		if cwd != "" {
-			return "a chat's folder is Caprock's to pick — start it without one"
-		}
+	// A chat (ADR-071): with no folder the daemon picks one, a new one in its
+	// own chats workspace. Carrying a chat on names the chat's folder, which
+	// is Caprock's, wherever the data directory is. A chat in a folder the
+	// user picked (ADR-091) is held to the same rule as any session below:
+	// an existing folder under home.
+	if chat, _ := req["chat"].(bool); chat && cwd == "" {
 		return ""
 	}
 	if cwd != "" && agents.IsChatDirIn(s.d.DataDir, cwd) {

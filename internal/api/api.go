@@ -970,6 +970,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/saved-prompts", s.handleAddSavedPrompt)
 	m.HandleFunc("PATCH /v1/saved-prompts/{id}", s.handlePatchSavedPrompt)
 	m.HandleFunc("DELETE /v1/saved-prompts/{id}", s.handleDeleteSavedPrompt)
+	// Work / Personal on a folder (folderlabels.go, ADR-091).
+	m.HandleFunc("GET /v1/folder-labels", s.handleFolderLabels)
+	m.HandleFunc("PUT /v1/folder-labels", s.handleSetFolderLabel)
 	// The Inbox (03-contracts.md § Inbox): what the phone's Save keeps.
 	m.HandleFunc("GET /v1/inbox", s.handleInbox)
 	m.HandleFunc("POST /v1/inbox", s.handleAddInbox)
