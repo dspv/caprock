@@ -55,6 +55,7 @@ import (
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/mail"
 	"github.com/dspv/caprock/internal/mcpreg"
+	"github.com/dspv/caprock/internal/morning"
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/obsidian"
 	"github.com/dspv/caprock/internal/opencode"
@@ -179,6 +180,8 @@ type Daemon struct {
 	report reportState
 	// phone holds the phone alerts' last outcome, for the settings screen.
 	phone phoneAlertState
+	// morningState holds the Morning summary's last outcome (ADR-091).
+	morningState morningOutcome
 	// tg is the Telegram bridge (ADR-047); nil in tests that build a daemon
 	// by hand, which then send alerts the old way.
 	tg *telegram.Bridge
@@ -768,7 +771,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.devShare = devshare.New(devshare.Options{Log: d.log, Forbid: func(p int) bool { return p == d.port }})
 	defer d.devShare.Close()
 	d.api = api.New(api.Deps{
-		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, PhoneLink: d, Telegram: d.tg,
+		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Morning: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, WindowStop: d.windowStopStatus,
 		Resources:       func(ctx context.Context) any { return d.resources(ctx) },
 		ResourceHistory: func(since int64) any { return d.resourceHistory(since) },
@@ -970,6 +973,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.startKeepAwake(ctx)
 	d.loadReportState(ctx)
 	d.goBg(func() { d.weeklyLoop(ctx) })
+	d.goBg(func() { d.morningLoop(ctx) })
 	d.afterMove(ctx, func() { d.backfillToolLinks(ctx) })
 	d.afterMove(ctx, func() { d.repairEmptyText(ctx) })
 	d.afterMove(ctx, func() {
@@ -1866,7 +1870,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	defer a.d.cfgMu.RUnlock()
 	c := a.d.opt.Config
 	alertErr, alertSent := a.d.phone.get()
-	return api.Settings{
+	out := api.Settings{
 		UpdateChecks:     c.UpdateChecks,
 		Memory:           c.MemoryOn(),
 		MemoryHoldoutPct: c.MemoryHoldoutPct,
@@ -1922,6 +1926,9 @@ func (a *settingsAdapter) Get() api.Settings {
 		QuickReplies:     config.EffectiveQuickReplies(c.QuickReplies),
 		AppUpdate:        config.NormalizeAppUpdate(c.AppUpdate),
 	}
+	out.MorningSummary, out.MorningSummaryAt = c.MorningSummaryOn(), morning.NormalizeAt(c.MorningSummaryAt)
+	out.MorningSummaryLastError, out.MorningSummaryLastMs = a.d.morningState.get()
+	return out
 }
 
 func (a *settingsAdapter) Set(in api.Settings) error {
@@ -2004,6 +2011,14 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	tgChat, tgCode := in.TelegramChat, in.TelegramCode
 	a.d.opt.Config.TelegramChat = &tgChat
 	a.d.opt.Config.TelegramCode = &tgCode
+	// The Morning summary: stored once switched, like the alerts; its time
+	// only when it differs from the one in use, so 08:00 stays the default
+	// until chosen.
+	morningOn := in.MorningSummary
+	a.d.opt.Config.MorningSummary = &morningOn
+	if at := morning.NormalizeAt(in.MorningSummaryAt); in.MorningSummaryAt != "" && at != morning.NormalizeAt(a.d.opt.Config.MorningSummaryAt) {
+		a.d.opt.Config.MorningSummaryAt = at
+	}
 	notifyApproval, notifyFinished := in.NotifyApproval, in.NotifyFinished
 	a.d.opt.Config.NotifyApproval = &notifyApproval
 	a.d.opt.Config.NotifyFinished = &notifyFinished

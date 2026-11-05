@@ -149,6 +149,12 @@ type Config struct {
 	// of a one-line note; off unless switched on.
 	TelegramChat *bool `json:"telegram_chat,omitempty"`
 	TelegramCode *bool `json:"telegram_code,omitempty"`
+	// MorningSummary sends one Telegram message each morning through the
+	// same bot (ADR-091): important mail by sender and subject, the sessions
+	// that finished per project, and what waits for the owner. Off unless
+	// switched on. MorningSummaryAt is when, local "HH:MM"; empty is 08:00.
+	MorningSummary   *bool  `json:"morning_summary,omitempty"`
+	MorningSummaryAt string `json:"morning_summary_at,omitempty"`
 	// NotifyApproval and NotifyFinished switch the desktop app's OS
 	// notifications (WP-09), apart from Telegram's: a notification stays on
 	// the machine. Approval is on unless switched off — a blocked agent is
@@ -722,6 +728,10 @@ func (c Config) TelegramChatOn() bool { return c.TelegramChat != nil && *c.Teleg
 
 // TelegramCodeOn reports whether replies sent to Telegram keep their code.
 func (c Config) TelegramCodeOn() bool { return c.TelegramCode != nil && *c.TelegramCode }
+
+// MorningSummaryOn reports whether the Morning summary is switched on; off
+// unless turned on (ADR-091).
+func (c Config) MorningSummaryOn() bool { return c.MorningSummary != nil && *c.MorningSummary }
 
 // AlertReplyOn reports whether a finished alert carries the first line of the
 // final reply. On unless switched off.

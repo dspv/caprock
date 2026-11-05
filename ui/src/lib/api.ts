@@ -1124,6 +1124,13 @@ export interface Settings {
   telegram_chat?: boolean
   /** Replies sent to Telegram keep their code blocks; off unless turned on. */
   telegram_code?: boolean
+  /** The Morning summary (ADR-091): one Telegram message a day, off unless
+   *  turned on; its local time, "HH:MM", 08:00 until chosen. The last send's
+   *  time and error are read-only. */
+  morning_summary?: boolean
+  morning_summary_at?: string
+  morning_summary_last_sent_ms?: number
+  morning_summary_last_error?: string
   /** The desktop app's OS notifications, apart from Telegram's (WP-09):
    *  approval (every "Needs you") on unless turned off. finished is no longer
    *  read: a Done turn raises no OS notification. */
@@ -2525,6 +2532,8 @@ export const api = {
    *  indistinguishable from a quiet week. */
   testReport: () => post<{ sent: string }>('/v1/report/test', {}),
   testAlert: () => post<{ sent: string }>('/v1/alerts/test', {}),
+  /** Sends the Morning summary as it would read now; not counted as today's. */
+  testMorning: () => post<{ sent: string }>('/v1/morning/test', {}),
   /** The Telegram bridge (ADR-047): bot, paired chat, a pairing in progress. Never the token. */
   telegram: () => get<TelegramStatus>('/v1/telegram'),
   /** Checks a token with Telegram (getMe) and stores it only when Telegram knows it. */
