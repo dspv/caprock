@@ -5,8 +5,8 @@
  * one in a frame that runs nothing.
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api, type CatalogEntry, type ChatFile, type SessionDetail, type SessionSummary } from '@/lib/api'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { api, type CatalogEntry, type ChatFile, type FolderLabel, type SessionDetail, type SessionSummary } from '@/lib/api'
 import { ChatsScreen } from './Chats'
 import { ChatScreen } from './Chat'
 import { resetQuickReplies } from '@/lib/quickReplies'
@@ -107,6 +107,75 @@ describe('ChatsScreen', () => {
     fireEvent.change(screen.getByLabelText('Chat name'), { target: { value: '  Monads ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(rename).toHaveBeenCalledWith('c1', 'Monads'))
+  })
+})
+
+describe('New chat in a folder (ADR-091)', () => {
+  const phoneScreen = () => vi.stubGlobal('matchMedia', ((q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} })) as unknown as typeof matchMedia)
+  const subsResponse = {
+    agents: [
+      { agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [
+        { id: 'default', agent: 'claude', label: 'Own', default: true, dir: '/h/.claude', signed_in: true, login_command: '', windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0 },
+        { id: 'kimi', agent: 'claude', label: 'Kimi', default: false, dir: '', provider: 'kimi', signed_in: true, login_command: '', windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0 },
+      ] },
+      { agent: 'codex', label: 'Codex', installed: false, subscriptions: [] },
+    ],
+    licensed: false, free_per_agent: 3, home: '/h',
+  } as unknown as Awaited<ReturnType<typeof api.subscriptions>>
+
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('on a phone, asks who works and where, labels a folder, then opens the chat there', async () => {
+    phoneScreen()
+    vi.spyOn(api, 'chats').mockResolvedValue({ items: [], total: 0, chats: 0, archived: 0 })
+    vi.spyOn(api, 'subscriptions').mockResolvedValue(subsResponse)
+    vi.spyOn(api, 'recentDirs').mockResolvedValue([{ dir: '/h/dev/acme', name: 'acme', sessions: 3, last_event_at: NOW - 60_000 }])
+    let stored: FolderLabel[] = []
+    vi.spyOn(api, 'folderLabels').mockImplementation(async () => ({ labels: stored }))
+    const label = vi.spyOn(api, 'setFolderLabel').mockImplementation(async (dir, l) => {
+      stored = l ? [{ dir, label: l, updated_at: 1 }] : []
+      return { labels: stored }
+    })
+    const spawn = vi.spyOn(api, 'spawn').mockResolvedValue({ session_id: 'fresh', cwd: '/h/dev/acme' })
+    render(<ChatsScreen />)
+    fireEvent.click(await screen.findByRole('button', { name: /New chat/ }))
+    const who = await screen.findByRole('dialog', { name: 'Who works' })
+    expect(spawn).not.toHaveBeenCalled()
+    const rows = await within(who).findAllByRole('button', { name: /Claude|Kimi/ })
+    expect(rows.map((r) => r.querySelector('.font-medium')?.textContent)).toEqual(['Claude', 'Kimi'])
+    fireEvent.click(within(who).getByRole('button', { name: /Kimi/ }))
+    const where = await screen.findByRole('dialog', { name: 'Where' })
+    expect(within(where).getByRole('button', { name: /Just a chat/ })).toBeTruthy()
+    fireEvent.click(await within(where).findByRole('button', { name: 'Label acme' }))
+    fireEvent.click(within(where).getByRole('button', { name: 'Work' }))
+    await waitFor(() => expect(label).toHaveBeenCalledWith('/h/dev/acme', 'work'))
+    expect(await within(where).findByText('Work')).toBeTruthy()
+    fireEvent.click(within(where).getByRole('button', { name: /^acme/ }))
+    await waitFor(() => expect(spawn).toHaveBeenCalledWith({ chat: true, cwd: '/h/dev/acme', subscription: 'kimi' }))
+    await waitFor(() => expect(location.hash).toBe('#/chats/fresh'))
+    expect(localStorage.getItem('caprock.newchat.who')).toBe('claude:kimi')
+  })
+
+  it('tags a chat by its folder’s label and filters the list by it', async () => {
+    vi.spyOn(api, 'chats').mockResolvedValue({ items: [chat('c1', { cwd: '/h/dev/acme' }), chat('c2')], total: 2, chats: 2, archived: 0 })
+    vi.spyOn(api, 'folderLabels').mockResolvedValue({ labels: [{ dir: '/h/dev', label: 'work', updated_at: 1 }] })
+    render(<ChatsScreen />)
+    const list = await screen.findByRole('list', { name: 'Chats' })
+    await waitFor(() => expect(list.querySelector('[data-label="work"]')).toBeTruthy())
+    expect(within(list).getAllByRole('link')[0]!.textContent).toContain('acme')
+    fireEvent.click(screen.getByRole('radio', { name: 'Work' }))
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Chats' })).getAllByRole('link')).toHaveLength(1))
+    fireEvent.click(screen.getByRole('radio', { name: 'Personal' }))
+    expect(await screen.findByText('No Personal chats here.')).toBeTruthy()
+  })
+
+  it('says in the chat what it sees and who gets what it reads', async () => {
+    vi.spyOn(api, 'session').mockResolvedValue({ ...chat('c1', { cwd: '/h/dev/acme' }), events: [], files: [], prs: [] } as unknown as SessionDetail)
+    vi.spyOn(api, 'chatFiles').mockResolvedValue({ files: [] })
+    vi.spyOn(api, 'recentEvents').mockResolvedValue([])
+    vi.spyOn(api, 'agentCatalog').mockResolvedValue({ agents: [claude], licensed: false, home: '/h' } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
+    render(<ChatScreen id="c1" />)
+    await waitFor(() => expect(document.querySelector('[data-chat-context]')?.textContent).toBe('Sees ~/dev/acme · only Anthropic gets what it reads'))
   })
 })
 

@@ -13,6 +13,8 @@ import { useEffect, useState } from 'react'
 import { OPEN_PATH_EVENT, type OpenPathDetail } from '@/lib/mdreader'
 import { api, ApiError, errText, type ChatFile, type SessionDetail } from '@/lib/api'
 import { chatModelLabel, chatTitle, importedFrom } from '@/lib/chats'
+import { contextLine, inProjectFolder } from '@/lib/newChat'
+import { useAgentCatalog } from '@/components/AgentPicker'
 import { href, navigate } from '@/lib/router'
 import { useApi } from '@/lib/useApi'
 import { useCanControl } from '@/lib/useCanControl'
@@ -48,6 +50,7 @@ export function ChatScreen({ id }: { id: string }) {
   const [confirm, setConfirm] = useState(false)
   const [endSheet, setEndSheet] = useState(false)
   const fill = useFillViewport<HTMLDivElement>(true, phone ? 0 : 12)
+  const { home } = useAgentCatalog()
   // A file the reply names (`report.md`) opens in the viewer when it is one
   // of the chat's own files (ChatView's links, lib/mdreader).
   useEffect(() => {
@@ -144,6 +147,10 @@ export function ChatScreen({ id }: { id: string }) {
             </>
           )}
         </header>
+        {/* What the agent sees, and who gets what it reads (ADR-091, rule 4). */}
+        {s && !source && s.cwd && (
+          <p data-chat-context title={s.cwd} className="shrink-0 truncate border-b border-border px-3 py-1 text-[12px] text-fg-faint">{contextLine(s, home)}</p>
+        )}
         {error && <p role="alert" className="shrink-0 px-3 py-1.5 text-[13px] text-danger">{error}</p>}
         <ChatView
           key={id}
@@ -179,7 +186,7 @@ export function ChatScreen({ id }: { id: string }) {
               <button type="button" className={`${SHEET_BASE} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
             ) : (
               <button type="button" disabled={busy} className={`${SHEET_BASE} border-danger font-semibold text-danger`} onClick={() => void act(() => api.deleteChat(id), () => { setSheet(null); navigate({ name: 'chats' }) })}>
-                {busy ? 'Deleting…' : source ? `Delete this copy (it stays in ${source})` : `Delete for good, with its ${n === 1 ? 'file' : `${n} files`}`}
+                {busy ? 'Deleting…' : source ? `Delete this copy (it stays in ${source})` : inProjectFolder(s) ? 'Delete for good (its folder stays)' : `Delete for good, with its ${n === 1 ? 'file' : `${n} files`}`}
               </button>
             )}
             </>}

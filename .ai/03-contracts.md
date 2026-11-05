@@ -203,7 +203,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
   `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status`,
-  `/v1/brain/spend` and `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/brain/spend`, `/v1/brain/nodes/{id}` and `/v1/folder-labels`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -248,7 +248,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `GET /v1/browse`, `GET /v1/browse/stat` and `GET /v1/browse/repos` (rooted inside home, see below), `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
   `POST /v1/agents/{id}/permission`, `PUT /v1/sessions/{id}/name` (a label in
-  Caprock's own database), `PUT /v1/sessions/{id}/needs` (a mark in the
+  Caprock's own database), `PUT /v1/folder-labels` (Work / Personal on a
+  folder under home, § Folder labels, ADR-091), `PUT /v1/sessions/{id}/needs` (a mark in the
   daemon's memory, § Needs you and Done), the message queue (`POST /v1/agents/{id}/queue`,
   `PATCH` and `DELETE /v1/agents/{id}/queue/{qid}`, `POST /v1/agents/{id}/queue/{qid}/send`),
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
@@ -276,7 +277,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   or below it — a project outside home is refused even where sessions have run. With `create: true` a missing `cwd` passes when its
   parent resolves inside home (the agent manager makes one level). `command`
   and `args` are refused unless empty. `chat: true` is allowed with no `cwd`
-  (the daemon picks the chat's folder) and refused with one; a `cwd` that is
+  (the daemon picks the chat's folder); with one it is held to the rules
+  above, as any start (a chat in a project folder, ADR-091); a `cwd` that is
   one of Caprock's chat folders passes, so a phone can continue a chat in
   place (ADR-071, amending ADR-034). Every
   `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
@@ -3663,7 +3665,15 @@ A chat is a session Caprock started in one of its own chat folders,
 `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>[-N]` ([ADR-071](08-decisions.md)).
 `Session` carries `chat: true` and `archived_at` (unix ms, omitted while 0);
 both are omitted on any other session. `Spawn` marks a session whose `cwd` is
-such a folder (`agents.IsChatDir`: a direct child of `chats/`, not a dot name).
+such a folder (`agents.IsChatDir`: a direct child of `chats/`, not a dot name),
+one started with `chat: true` in a folder the request names — a chat in a
+project folder ([ADR-091](08-decisions.md)) — and one that continues a chat
+(`resume` naming a session marked a chat, `store.CarryChat`). `POST
+/v1/agents {chat: true}` with no `cwd` makes a new chat folder; with a `cwd`
+it runs there and makes nothing (a controller's `cwd` is held to the same
+rule as any start: an existing folder under home). Deleting a chat removes
+its folder only when it is a chat folder: a chat in a project folder leaves
+the folder alone.
 
 ```
 GET    /v1/chats?q=&archived=1&limit=     → ChatList {items: [SessionSummary], total, chats, archived}
@@ -3704,6 +3714,23 @@ GET    /v1/chats/{id}/file?path=&download=1 → the file's bytes
 - **Who.** A paired viewer may list chats and read their files; a controller
   may also archive and delete them (§ Who may connect). Import is the
   machine's only.
+
+**Folder labels** ([ADR-091](08-decisions.md)). *Work* or *Personal* on a
+folder, set from New chat's Where step and drawn on the Chats list:
+
+```
+GET /v1/folder-labels                 → {labels: [{dir, label, updated_at}]}
+PUT /v1/folder-labels {dir, label}    → {labels: [...]}   label: "work" | "personal" | "" (remove)
+```
+
+- `dir` is an absolute path (cleaned; at most 4096 bytes, one line), `400`
+  otherwise, or for any other `label` or a body without one. Nothing on disk
+  is read or written; the folder need not exist for the machine. A label
+  covers the folders under it: the UI takes the longest labelled prefix
+  (`labelFor`, `lib/newChat.ts`).
+- **Who.** Every paired device reads them (`pairedDeviceRoutes`); a
+  controller sets them for a folder under home (`403` otherwise); the machine
+  for any folder.
 
 **Imported chats** ([ADR-074](08-decisions.md)). A conversation from a
 Claude.ai or ChatGPT export the user downloaded is stored as a chat that
@@ -6639,7 +6666,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`GET /v1/premium` is what the paid plan costs**, so the dashboard can state a price without an outbound call and without a second copy of the figure. It is compiled in — rule 4 forbids fetching it — but it lives once, in `internal/premium`, and `TestPricingMatchesTheSite` reads the site's `src/content/pricing.ts` and fails when the two disagree. A price copied into the UI eventually contradicts the one that charges the card; this makes that a red build rather than a support email. The response carries `yearly` and `monthly` (`per_month_usd`, `charged_usd`, `period`, `url`) plus `info_url`. Changing a price means changing both files in the same commit.
 
-**`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set. One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
+**`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set; `chat` with a `cwd` runs the chat in that folder instead ([ADR-091](08-decisions.md)). One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
@@ -6902,6 +6929,22 @@ CREATE INDEX IF NOT EXISTS idx_sessions_chat ON sessions(last_event_at) WHERE ch
 every session already in a chat folder by its name, so chats from before the
 column are chats. The partial index serves the Chats list; the work list's
 `chat = 0` reads the table as before.
+
+### Folder labels DDL (migration 0079)
+
+```sql
+CREATE TABLE IF NOT EXISTS folder_labels (
+  dir        TEXT PRIMARY KEY,
+  label      TEXT NOT NULL CHECK (label IN ('work', 'personal')),
+  updated_at INTEGER NOT NULL
+);
+```
+
+A label the user put on a folder (§ Chats, *Folder labels*;
+[ADR-091](08-decisions.md)): `dir` the folder's absolute path as a session's
+`cwd` holds it, `label` `work` or `personal`, `updated_at` unix ms. Removing a
+label deletes the row (`store.SetFolderLabel` with `""`). Nothing is
+backfilled.
 
 ### AI;DR DDL (migration 0060)
 

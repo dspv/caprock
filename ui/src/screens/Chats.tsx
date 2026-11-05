@@ -14,12 +14,18 @@
  * second, explicit tap. An ended chat stays listed, *ended*, and can be
  * continued. Archived chats are one link away.
  *
+ * **New chat in a folder** (ADR-091): on a phone *New chat* opens three
+ * steps — who works, where, then the chat (components/NewChatSteps); on a
+ * desktop *New chat* still starts at once and *In a folder…* opens the same
+ * steps. A chat's folder may carry a Work or Personal tag, shown on its row,
+ * and the list filters by it once any folder has one.
+ *
  * **Import** (on the machine, ADR-074) files the conversations of a Claude.ai
  * or ChatGPT export the user downloaded as read-only chats, marked with the
  * service's mark and name. The file is read on this computer; nothing is sent.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { api, errText, isPairedDevice, type SessionSummary } from '@/lib/api'
+import { api, errText, isPairedDevice, type FolderLabelKind, type SessionSummary } from '@/lib/api'
 import { chatModelLabel, chatTitle, importSummary, startChat } from '@/lib/chats'
 import { idleEndedText } from '@/lib/idleEnd'
 import { fmtAgo } from '@/lib/format'
@@ -29,6 +35,8 @@ import { useCanControl } from '@/lib/useCanControl'
 import { useNarrowScreen } from '@/lib/phone'
 import { useNow } from '@/lib/useNow'
 import { ModelChip, useChatChoice } from '@/components/ChatStart'
+import { LabelTag, NewChatSteps } from '@/components/NewChatSteps'
+import { filterByLabel, inProjectFolder, LABEL_TEXT, labelFor, type LabelFilter } from '@/lib/newChat'
 import { AgentGlyph } from '@/components/AgentMarks'
 import { ChatIcon, PlusIcon, SearchIcon } from '@/components/AppIcons'
 import { EndableRow, ROW_MENU_BASE, ROW_MENU_ITEM as MENU_ITEM, useEndedHere } from '@/components/PhoneEnd'
@@ -93,6 +101,11 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
   const endedHere = useEndedHere()
   const items = (list.data?.items ?? []).filter((s) => !gone.includes(s.session_id)).map(endedHere.view)
   const fresh = useNewChat()
+  const [steps, setSteps] = useState(false)
+  const labels = useApi(() => api.folderLabels(), [], { live: false, share: 'folder-labels' })
+  const [filter, setFilter] = useState<LabelFilter>('all')
+  const labelled = (labels.data?.labels.length ?? 0) > 0
+  const shown = labelled ? filterByLabel(items, filter, labels.data?.labels) : items
   const counts = list.data
 
   const header = (
@@ -130,13 +143,29 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
         <button
           type="button"
           disabled={fresh.busy}
-          onClick={() => void fresh.start()}
+          data-new-chat
+          onClick={() => (phone ? setSteps(true) : void fresh.start())}
           className={`inline-flex items-center justify-center gap-2 rounded-[12px] bg-accent font-semibold text-bg disabled:opacity-60 ${phone ? 'min-h-12 flex-1 text-[17px]' : 'h-9 px-4 text-[14px]'}`}
         >
           <PlusIcon size={phone ? 18 : 14} /> {fresh.busy ? 'Starting…' : 'New chat'}
         </button>
         <ModelChip chat={fresh.chat} big={phone} />
+        {!phone && (
+          <button type="button" onClick={() => setSteps(true)} className="h-8 shrink-0 rounded-full px-2 text-[13px] text-fg-muted hover:text-fg">
+            In a folder…
+          </button>
+        )}
       </div>
+    </div>
+  )
+
+  const filters = labelled && !archived && (
+    <div role="radiogroup" aria-label="Show" className="flex items-center gap-1.5">
+      {(['all', 'work', 'personal'] as const).map((f) => (
+        <button key={f} type="button" role="radio" aria-checked={filter === f} onClick={() => setFilter(f)} className={`min-h-9 rounded-full border px-3.5 text-[14px] ${filter === f ? 'border-accent bg-accent/15 font-medium text-accent' : 'border-border-strong bg-bg text-fg-muted'}`}>
+          {f === 'all' ? 'All' : LABEL_TEXT[f]}
+        </button>
+      ))}
     </div>
   )
 
@@ -146,19 +175,20 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
       {!phone && starter}
       {!archived && !isPairedDevice() && <ImportChats onDone={list.refresh} />}
       {search}
+      {filters}
       {list.error && !list.data && <p role="alert" className="text-[14px] text-danger">{errText(list.error)}</p>}
       {!list.data && !list.error ? (
         <div className="rounded-[12px] border border-border bg-panel px-3 py-4 text-[14px] text-fg-muted">Reading your chats…</div>
-      ) : items.length === 0 ? (
+      ) : shown.length === 0 ? (
         <div className="grid justify-items-center gap-2 rounded-[12px] border border-border bg-panel px-4 py-8 text-center">
           <ChatIcon size={22} className="text-fg-faint" />
-          <p className="text-[15px] text-fg">{q ? 'No chat matches that.' : archived ? 'No archived chats.' : 'No chats yet.'}</p>
-          {!q && !archived && <p className="max-w-[40ch] text-[13.5px] text-fg-muted">A chat is a conversation with an agent that needs no project: ask, look something up, have it write a page or a report. They are kept here.</p>}
+          <p className="text-[15px] text-fg">{q ? 'No chat matches that.' : archived ? 'No archived chats.' : items.length > 0 ? `No ${LABEL_TEXT[filter as FolderLabelKind]} chats here.` : 'No chats yet.'}</p>
+          {!q && !archived && items.length === 0 && <p className="max-w-[40ch] text-[13.5px] text-fg-muted">A chat is a conversation with an agent that needs no project: ask, look something up, have it write a page or a report. They are kept here.</p>}
         </div>
       ) : (
         <ul aria-label="Chats" className="overflow-hidden rounded-[12px] border border-border bg-panel">
-          {items.map((s) => (
-            <ChatRow key={s.session_id} s={s} now={now} canControl={canControl} onGone={() => setGone((g) => [...g, s.session_id])} onChanged={list.refresh} onEnded={() => { endedHere.mark(s.session_id); list.refresh() }} />
+          {shown.map((s) => (
+            <ChatRow key={s.session_id} s={s} tag={labelFor(s.cwd, labels.data?.labels)} now={now} canControl={canControl} onGone={() => setGone((g) => [...g, s.session_id])} onChanged={list.refresh} onEnded={() => { endedHere.mark(s.session_id); list.refresh() }} />
           ))}
         </ul>
       )}
@@ -166,11 +196,12 @@ export function ChatsScreen({ archived = false }: { archived?: boolean }) {
         <p className="text-center text-[12.5px] text-fg-faint">Showing the newest {items.length} of {counts.total}. Search to find an older one.</p>
       )}
       {phone && starter}
+      {steps && <NewChatSteps chat={fresh.chat} onClose={() => { setSteps(false); labels.refresh() }} />}
     </div>
   )
 }
 
-function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: SessionSummary; now: number; canControl: boolean; onGone: () => void; onChanged: () => void; onEnded: () => void }) {
+function ChatRow({ s, tag, now, canControl, onGone, onChanged, onEnded }: { s: SessionSummary; tag?: FolderLabelKind; now: number; canControl: boolean; onGone: () => void; onChanged: () => void; onEnded: () => void }) {
   const [renaming, setRenaming] = useState(false)
   const [confirm, setConfirm] = useState(false)
   const [error, setError] = useState('')
@@ -181,7 +212,9 @@ function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: Sessio
     setError('')
     try { await fn(); after() } catch (e) { setError(errText(e)) }
   }
-  const sub = useMemo(() => [chatModelLabel(s), word].filter(Boolean).join(' · '), [s, word])
+  // A chat in a folder the user picked says which (ADR-091).
+  const folder = inProjectFolder(s) ? s.cwd!.split(/[\\/]/).filter(Boolean).pop() : ''
+  const sub = useMemo(() => [chatModelLabel(s), folder, word].filter(Boolean).join(' · '), [s, folder, word])
 
   if (renaming) {
     return (
@@ -206,7 +239,7 @@ function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: Sessio
         <button type="button" role="menuitem" className={`${ROW_MENU_BASE} text-danger`} onClick={() => setConfirm(true)}>Delete…</button>
       ) : (
         <button type="button" role="menuitem" className={`${ROW_MENU_BASE} font-semibold text-danger`} onClick={() => { close(); void act(() => api.deleteChat(s.session_id), onGone) }}>
-          Delete for good — and its files
+          {inProjectFolder(s) ? 'Delete for good (its folder stays)' : 'Delete for good — and its files'}
         </button>
       )}
     </>
@@ -229,6 +262,7 @@ function ChatRow({ s, now, canControl, onGone, onChanged, onEnded }: { s: Sessio
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-baseline gap-2">
             <span className="truncate text-[15.5px] font-medium">{title}</span>
+            {tag && <LabelTag label={tag} />}
             <span className="ml-auto shrink-0 text-[12px] text-fg-faint">{fmtAgo(when, now)}</span>
           </span>
           <span className="block truncate text-[13px] text-fg-muted">{sub}</span>

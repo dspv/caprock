@@ -1556,6 +1556,9 @@ export interface BrowseResponse { dir: string; parent: string; root: string; ent
 export interface BrowseStat { path: string; exists: boolean; is_dir: boolean; empty: boolean; parent_exists: boolean; guarded?: boolean; project_id?: number; project_name?: string }
 /** A directory Caprock has already seen sessions run in. */
 export interface RecentDir { dir: string; name: string; sessions: number; last_event_at: number }
+/** Work or Personal on a folder (`GET /v1/folder-labels`, ADR-091); it covers the folders under it. */
+export type FolderLabelKind = 'work' | 'personal'
+export interface FolderLabel { dir: string; label: FolderLabelKind; updated_at: number }
 
 /** `GET /v1/browse/repos`: what the daemon found under the default folder. */
 export interface LocalRepos { root: string; home?: string; scanned_at: number; truncated?: boolean; repos: { name: string; path: string }[] }
@@ -2617,6 +2620,10 @@ export const api = {
   /** Whether a path exists, is a folder, is empty, is already a project. */
   browseStat: (path: string) => get<BrowseStat>(`/v1/browse/stat?path=${encodeURIComponent(path)}`),
   recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
+  /** Every labelled folder (ADR-091). */
+  folderLabels: () => get<{ labels: FolderLabel[] }>('/v1/folder-labels'),
+  /** Labels a folder, or with '' removes its label; the whole list back. */
+  setFolderLabel: (dir: string, label: FolderLabelKind | '') => post<{ labels: FolderLabel[] }>('/v1/folder-labels', { dir, label }, 'PUT'),
   /** GET /v1/browse/repos: the git repositories under the default folder, two levels deep (the project search). */
   localRepos: () => get<LocalRepos>('/v1/browse/repos'),
   history: (range: 'today' | '7d' | '30d' | 'all' = 'all') => get<History>(`/v1/history?range=${range}`),

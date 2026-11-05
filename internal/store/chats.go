@@ -39,6 +39,16 @@ func MarkChat(ctx context.Context, q Querier, id string) error {
 	return err
 }
 
+// CarryChat marks session to a chat when from, the session it continues, is
+// one: a chat started in a project folder (ADR-091) is told apart by the mark
+// alone, so its continuation has to inherit it. Idempotent; nothing when from
+// is no chat or unknown.
+func CarryChat(ctx context.Context, q Querier, to, from string) error {
+	_, err := q.ExecContext(ctx, `UPDATE sessions SET chat = 1 WHERE session_id = ? AND chat = 0
+		AND EXISTS (SELECT 1 FROM sessions WHERE session_id = ? AND chat = 1)`, to, from)
+	return err
+}
+
 // SetChatArchived archives a chat at `at` (unix ms), or brings it back when
 // at is 0. sql.ErrNoRows when id is not a chat: a work session is not
 // archived from the Chats list.

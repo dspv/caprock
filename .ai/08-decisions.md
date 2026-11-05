@@ -5225,6 +5225,11 @@ the flag is set on spawn, not derived from the folder); a chat's files need
 scripts to be useful (an opt-in per file, never by default); or the sync in
 OQ-22 is decided.
 
+*Amended 2026-11-05 by [ADR-091](#adr-091--new-chat-asks-who-works-and-where-a-chat-may-run-in-a-folder-the-user-picked-marked-by-the-request-and-a-folder-may-be-labelled-work-or-personal):*
+a chat may run in a folder the user picked; the flag is then set on spawn
+(`chat: true` with a `cwd`), as *Revisit if* above foresaw, and a
+continuation of a chat inherits it.
+
 *Amended 2026-10-17 by [ADR-074](#adr-074--chats-from-claudeai-and-chatgpt-are-imported-from-an-export-the-user-downloaded-never-synced):*
 a chat may also be a conversation imported from a Claude.ai or ChatGPT
 export — a session with no folder and no process, read-only.
@@ -7026,3 +7031,65 @@ the copy or fork); neither is deleted. Continue-on is a machine-only write:
 a phone or another computer cannot move a session to another account. The
 plan-window stop is untouched: it pauses below 100% to keep a turn alive,
 which is a different job from carrying on after a turn has already failed.
+
+---
+
+## ADR-091 — New chat asks who works and where: a chat may run in a folder the user picked, marked by the request, and a folder may be labelled Work or Personal
+
+**Date:** 2026-11-05 · **Status:** accepted (owner approved the mockup,
+2026-11-05: on the phone New chat becomes three steps — who works, where,
+the chat — with Work / Personal labels on folders). Amends
+[ADR-071](#adr-071--chats-are-a-kind-of-session-marked-listed-apart-started-in-one-tap-read-as-a-conversation)
+(and, for chats, ADR-034's spawn rule). Screens: [04-ui.md §
+Chats](04-ui.md#chats); routes and DDL: [03-contracts.md § Chats
+(HTTP)](03-contracts.md#chats-http), § Folder labels DDL (migration 0079).
+
+**Context.** A chat always ran in a new folder of Caprock's own
+(`chats/<stamp>`), so asking about a repository meant opening it as a work
+session, read as a terminal and listed with the work. ADR-071 named the way
+out in its *Revisit if*: "users want chats in a project folder of their
+choosing (then the flag is set on spawn, not derived from the folder)". The
+provider choice that ADR-090 added for a limit (DeepSeek and Kimi on the
+user's key, Codex, other sign-ins) was not offered at the start of a chat.
+
+**Decision.**
+
+- **The flag comes from the request.** `POST /v1/agents {chat: true, cwd}`
+  runs a chat in that folder and marks the session a chat; with no `cwd` it
+  makes a chat folder as before. A session that continues a chat (`resume`)
+  is marked too (`store.CarryChat`), since the folder can no longer tell.
+  The path check stays for the chats workspace and for rows from before.
+- **A phone may name the folder.** A controller's `chat: true` with a `cwd`
+  is held to the rule every start from a phone is: an existing folder under
+  home. Without a `cwd` it is unchanged.
+- **Deleting such a chat never deletes its folder.** The folder is removed
+  only when it is a chat folder (unchanged code); the confirm says *its
+  folder stays*.
+- **Who works reuses the limit strip's availability** (`continueChoices`,
+  ADR-090): Claude on the own sign-in and any other signed-in one, DeepSeek
+  and Kimi only while their keys are set, Codex when installed, then the
+  other agents Caprock starts. A provider runs as `claude` with the
+  provider's environment from the secret store, exactly as `subscription:
+  "kimi"` always has; no key goes anywhere but that process's environment.
+- **Labels are a small table, not settings.** Settings writes are the
+  machine's only (ADR-067), and labelling is done from the phone, so
+  `folder_labels` (migration 0079) has its own route that a controller may
+  write for a folder under home and every device may read. A label covers
+  the folders under it.
+- **The desktop keeps one tap.** *New chat* still starts at once there;
+  *In a folder…* beside it opens the same steps as a dialog.
+- **The context line is true to rule 4.** The chat says which folder the
+  agent sees and that only its model's provider gets what it reads — not
+  "nothing leaves your Mac", since the agent sends what it reads to its
+  model.
+
+**Rules out:** a separate kind of session for project chats (a chat is a
+session, ADR-071); labels in settings (a phone could not set them); labelling
+a project-less chat (its folder is Caprock's; a label covers folders the user
+chose); a model picker inside the steps (the model chip stays beside New
+chat).
+
+**Revisit if:** users want labels beyond Work and Personal, or on
+project-less chats; or a chat in a project folder should show with the work
+as well as in Chats.
+
