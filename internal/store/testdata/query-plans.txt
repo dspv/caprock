@@ -947,6 +947,14 @@ SELECT s.session_id, COALESCE(s.cwd,''), COALESCE(s.project,''), COALESCE(s.agen
     SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     SEARCH st USING INDEX sqlite_autoindex_session_stats_1 (session_id=?) LEFT-JOIN
 
+## store.FinishedSince
+SELECT COALESCE(s.project, ''), COALESCE(s.exit_code, 0), COALESCE(s.limit_hit_at, 0) FROM (SELECT DISTINCT session_id FROM daily_sessions WHERE day >= ?) d JOIN sessions s ON s.session_id = d.session_id WHERE s.status = 'ended' AND s.last_event_at >= ? AND s.last_event_at < ? AND COALESCE(s.chat, 0) = 0
+    CO-ROUTINE d
+        SEARCH daily_sessions USING PRIMARY KEY (day>?)
+        USE TEMP B-TREE FOR DISTINCT
+    SCAN d
+    SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## store.FirstEventTs
 SELECT COALESCE(MIN(ts),0) FROM events WHERE 1=1 AND internal = 0
     SEARCH events USING COVERING INDEX idx_events_ts_cover

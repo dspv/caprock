@@ -77,6 +77,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-05 — unreleased: the Morning summary (ADR-092)
+
+Branch `feat/morning-summary`. One Telegram message a day through the
+bridge's bot, off until switched on in Settings → Telegram (08:00 local by
+default): Mail's important conversations by sender and subject (from the
+triage's stored labels, no model call), the sessions that ended per project
+with those at a usage limit or exited with an error, and the sessions and
+tasks waiting for the owner. Sent once a day, on waking until noon after
+sleep; `meta.morning_day` written before the send. A test button.
+
+- **Checked:** unit tests for the text (golden), the window and the once-a-day
+  marker across a restart, the settings round trip; a preview daemon with a
+  stand-in Telegram API sent it from the Settings button.
+- **Not done:** failed CI and pull requests waiting for the owner's review
+  (both would be a new scheduled GitHub call); a real bot and phone.
+
 ### 2026-11-03 — unreleased: continue a session on another provider at a usage limit (ADR-090)
 
 Backend and API only (branch `feat/continue-on-limit`); the strip and the

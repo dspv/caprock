@@ -1330,6 +1330,7 @@ GET  /v1/window-stop                   → the plan-window stop's state (§ Pric
 GET  /v1/keepawake                     → whether the computer is kept awake now (§ Keep awake); 501 when the daemon has no keeper
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
+POST /v1/morning/test                  → sends the Morning summary as it reads now, on or off, not counted as today's → {sent:"ok"}; 502 with Telegram's error or no bot, 501 without a sender (§ Morning summary)
 POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
 GET/POST/DELETE /v1/devshare…          → a local dev server opened on a phone on the same Wi-Fi; loopback-only (§ A dev server on a phone)
 GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing, and a share card to the paired chat (§ Telegram bridge)
@@ -2314,6 +2315,50 @@ premium_note_at, module_pins: {module_id: message_id}, forward_reply}` — the l
 private modules) they were about, so a reply finds its session, and a module
 its own message, across a restart. The
 token stays in `config.json`.
+
+#### Morning summary
+
+One Telegram message a day through the bridge's bot ([ADR-092](08-decisions.md)).
+`PUT /v1/settings` accepts `morning_summary` (bool, off unless turned on,
+stored as a pointer in `config.json`) and `morning_summary_at` (`"HH:MM"`,
+24-hour local time; anything else is `400`; stored only once it differs from
+the time in use, so `08:00` stays the default until chosen). `GET` returns
+both — `morning_summary_at` always filled — with the read-only
+`morning_summary_last_sent_ms` (the last scheduled send) and
+`morning_summary_last_error` (why the last send, scheduled or test, failed;
+`not sent: the chat is muted with /mute all` under `/mute all`). State in the
+`meta` table, no DDL: `morning_day` (the local date of the last day one
+went, written before the send), `morning_last_sent` (unix ms) and
+`morning_last_error`.
+
+- **When.** Checked every minute (`daemon.morningLoop`): on, a bot and chat
+  set, `morning_day` not today, and now in `[at, noon)` — or `[at, at+4h)`
+  capped at midnight for a time at or after noon (`morning.Window`).
+- **Since.** `morning_last_sent`, at most 24 h back.
+- **Mail** — `mail.Service.Digest`: only while Mail is open with an
+  account, not in sample mode, and `ai_enabled` is on. Inbox conversations
+  with a message dated at or after since, less the junk filter's catch and
+  the triage's `spam`, are `M`; those labelled `important` are `N`; the
+  newest five give `from_name` (else `from_addr`) and `subject` of their
+  newest inbox message. No model call; no body read.
+- **Agents overnight** — `store.FinishedSince`: sessions with
+  `status = 'ended'`, `last_event_at` in the window, `chat = 0`, and a
+  `daily_sessions` row on or after since's local date (that key's range
+  leads the plan), per `project`, busiest first, eight shown. `limit_hit_at
+  > 0` counts as *at a usage limit*; otherwise an `exit_code` from 1 to 127
+  as *exited with an error*.
+- **Waiting for you** — `api.Server.WaitingSessions` (live sessions whose
+  activity is `waiting-on-you`, with `need.reason`), five shown, and the
+  count of tasks in `needs_you`.
+- **Message** (`morning.Message`, HTML): `<b>Good morning · <Weekday></b>`,
+  then `<b>Mail</b> — N important of M new`, `<b>Agents overnight</b>`,
+  `<b>Waiting for you</b>`, each only when it has something; with nothing,
+  `Nothing new since the last summary.` Sent through the outbox; held back
+  under `/mute all`. URL buttons *Open mail* (with the mail section),
+  *Answer agents*, *More* → `<base>/#/mail`, `<base>/#/`, `<base>/#/history`,
+  where `<base>` is the phone page (`remote.app`) while access from anywhere
+  is on, else the LAN or Tailscale address while phone access is on, else
+  there are no buttons.
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 

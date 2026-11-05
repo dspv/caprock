@@ -17,6 +17,7 @@ import { fmtAgo } from '@/lib/format'
 import { useNow } from '@/lib/useNow'
 import { Details, Section, Toggle } from '@/components/SettingsParts'
 import { TelegramBotFields } from '@/components/TelegramBot'
+import { MorningSummary } from '@/components/MorningSummary'
 
 /**
  * Telegram refusing the bot's token ("Unauthorized", or "Not Found" for a
@@ -45,6 +46,10 @@ export function PhoneAlerts() {
   const toggle = (key: 'alert_approval' | 'alert_finished' | 'alert_reply' | 'alert_done', on: boolean) => {
     setPatch((p) => ({ ...p, [key]: on }))
     void api.saveSettings({ [key]: on } as Partial<Settings> as Settings).catch((e) => setError(errText(e)))
+  }
+  const save = (change: Partial<Settings>) => {
+    setPatch((p) => ({ ...p, ...change }))
+    void api.saveSettings(change as Settings).catch((e) => setError(errText(e)))
   }
 
   async function sendTest() {
@@ -150,6 +155,7 @@ export function PhoneAlerts() {
             Each message has a <span className="text-fg-muted">Mute this session</span> button; <span className="mono">/mute all</span> in
             the chat silences everything until <span className="mono">/unmute</span>.
           </p>
+          <MorningSummary s={s} now={now} save={save} refresh={settings.refresh} />
         </>
       ) : null}
     </Section>

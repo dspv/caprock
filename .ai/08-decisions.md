@@ -7093,3 +7093,71 @@ chat).
 project-less chats; or a chat in a project folder should show with the work
 as well as in Chats.
 
+## ADR-092 — A Morning summary: one Telegram message a day, off until switched on, from data Caprock already holds
+
+**Date:** 2026-11-05 · **Status:** accepted (owner approved the mockup,
+2026-11-05). Builds on [ADR-047](#adr-047--the-owner-talks-to-his-agents-through-his-own-telegram-bot-integrations-he-turns-on-may-leave-the-machine)
+(the bot, the paired chat) and [ADR-057](#adr-057--caprock-mail-an-imap-client-inside-the-daemon-off-until-the-user-adds-an-account)
+(Caprock Mail and its AI triage). Contract: [03-contracts.md § Morning
+summary](03-contracts.md#morning-summary).
+
+**Context.** The owner starts the day by opening three screens — Mail, Home,
+History — to learn what came in and what ran overnight. Every figure he
+reads there is already in the daemon. A single message in the chat he
+already reads in the morning answers the question before he reaches the
+computer.
+
+**Decision.**
+
+- **One message, three sections, each left out when empty.** A header *Good
+  morning · Thursday*; **Mail** — *N important of M new*, then up to five
+  `Sender: subject` lines, newest first; **Agents overnight** — per project,
+  the sessions that ended since the last summary, with how many stopped at a
+  usage limit or exited with an error; **Waiting for you** — the live
+  sessions Home shows under Needs you (permission, question, plan, an error
+  stop, an ask) and the tasks in the board's needs-you column. Nothing at
+  all is one line: *Nothing new since the last summary.*
+- **No new judgement, and no model call.** Mail's "important" is the label
+  its triage already stored; the section is left out when Mail has no
+  account, shows its sample inbox, or its AI sorting is off. "Finished" is a
+  session row ended in the window with work that day (`daily_sessions`
+  leads, so the query never reads all of `sessions` or `events`). "Exited
+  with an error" is an exit code from 1 to 127: 128 and above, and -1, are a
+  signal — a stop someone asked for — and are not called failures. "Waiting"
+  is the Home screen's own reading (`api.Server.WaitingSessions`). Every
+  number is a count from those rows (rule 6).
+- **Off until switched on, at a time the owner picks.** Settings → Telegram,
+  under the alerts: a switch, a time (08:00 local until chosen), the
+  sentence of what is sent, and *Send a test summary now*. Free, like the
+  alerts: it reads nothing the free product does not already show.
+- **Once a day, and late rather than never — but not in the afternoon.** The
+  daemon asks every minute whether it is due: switched on, a bot and chat
+  set up, not sent today, and now inside today's window — from the set time
+  to noon, or four hours for a time set at noon or later. A Mac asleep at
+  08:00 sends on waking that morning; opened after noon it sends nothing
+  that day. The day is written (`meta.morning_day`) before the send, as the
+  weekly report's week is, so a failing network or a restart costs at most
+  that morning's message and never sends two. "Since the last summary" is
+  the last one's time, a day back at most. A test send counts for neither.
+- **Through the bridge's outbox, under `/mute all`.** The message goes at
+  Telegram's pace with the alerts; `/mute all` holds it back and Settings
+  says so. Never `getUpdates`: only the existing poller reads the bot.
+- **Buttons only where they open something.** *Open mail* (when the mail
+  section is there), *Answer agents* and *More* open `#/mail`, `#/` and
+  `#/history` on the phone's page: m.caprock.dev (or the owner's own) while
+  access from anywhere is on, else the dashboard's Wi-Fi or Tailscale
+  address while phone access is on, else no buttons.
+
+**Rule 4.** Not a new destination and not a new integration: the message
+goes to the Telegram chat the owner paired, through the bot he created —
+the integration rule 4 already names, off by default, revocable, to a
+destination he chose. What is new is the content: the sender names and
+subjects of mail the triage marked important. ADR-047 asks that the switch
+say what it sends, so the Settings row names exactly that — sender names and
+subjects, project names, session counts — and that a mail's body and what an
+agent wrote are never sent. CLAUDE.md's rule 4 paragraph is unchanged.
+
+**Not built.** Failed CI and pull requests waiting for the owner's review:
+the daemon holds no stored review requests and reads CI from GitHub on
+demand, so either would be a new call on a schedule. A later version can
+add them under the GitHub integration's own switch.
