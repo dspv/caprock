@@ -2,8 +2,12 @@
  * One project in the app's sidebar (WP-06), as an accordion (owner,
  * 2026-10-09: "which one is active, which to pick, unclear", translated).
  *
- * A project is one line: its name, a green dot with how many sessions and
- * shells run in it, and how many wait on you. Under it, every agent session
+ * A project is one line: its name and, at its right, a short grey summary —
+ * "● 1 needs you" (amber), else "● 2 running" (green), else "3 idle"
+ * (lib/phase.ts projectSummary; owner, 2026-11-05, mockup V1). It is
+ * folded by default, since the sidebar's Open section above lists every
+ * open tab with its phase; the chevron unfolds it and the choice is kept per
+ * project (`PROJECT_OPEN_KEY`). Unfolded, under it, every agent session
  * of the project, working, waiting or idle (owner, 2026-10-13, translated:
  * "show ONLY the agent sessions there; let the user hide or close them
  * himself; but don't move anything, don't add any of these extra
@@ -31,7 +35,8 @@
  * Projects"). Never with a fill or an edge: those are the tab in front's,
  * the one selected row (a user, 2026-10-15, translated: "which tab am I
  * working in?" — the waiting row and the front tab both looked selected).
- * A project folded by hand still lists what waits in it.
+ * A folded project still lists what waits in it with no tab (a tab that
+ * waits is in Open, with its amber chip).
  *
  * A session row is 38px, its title 14px (a user, 2026-10-15: the 28px rows
  * at 12.5px could not be read). It says its state as a dot and a word —
@@ -68,7 +73,7 @@ import type { TabLabel } from '@/lib/tablabels'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { fmtUSD } from '@/lib/format'
 import { agentGlyphLabel } from './AgentMarks'
-import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, MoreIcon, PencilIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
+import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, FolderIcon, GlobeIcon, MoreIcon, PencilIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
 import { InlineRename } from './InlineRename'
 import { renamable } from '@/lib/sessionNames'
 import { sessionAbout } from '@/lib/sidebar'
@@ -84,6 +89,7 @@ import { instructionsSummary } from '@/lib/projectWizard'
 import { rowRepo } from '@/lib/multirepo'
 import { chatRowSuffix, isQuickChat } from '@/lib/quickchat'
 import { idleEndedRecently, idleEndedText, idleEndedWord } from '@/lib/idleEnd'
+import { PHASE_WORD, phaseOf, projectSummary, type Phase } from '@/lib/phase'
 
 const DOT_CLASS: Record<Dot, string> = {
   working: 'bg-ok',
@@ -119,6 +125,34 @@ const ROW_DOT_CLASS: Record<Dot, string> = {
 
 function RowDot({ dot, asks }: { dot: Dot; asks?: boolean }) {
   return <span role="img" data-row-dot={dot} aria-label={dot === 'waiting' && asks ? 'asks permission' : DOT_LABEL[dot]} className={`inline-block h-[8px] w-[8px] shrink-0 rounded-full ${ROW_DOT_CLASS[dot]}`} />
+}
+
+/** An Open row's dot, in its phase's colour: working breathes, needs you wears its halo. */
+const PHASE_DOT_CLASS: Record<Phase, string> = {
+  'working': 'bg-ok app-dot-working',
+  'needs-you': 'bg-warn app-dot-waiting',
+  'done': 'app-dot-done',
+  'failed': 'bg-danger',
+  'idle': 'bg-fg-faint/60',
+}
+
+function PhaseDot({ phase, asks }: { phase: Phase; asks?: boolean }) {
+  return <span role="img" data-row-dot={phase} aria-label={phase === 'needs-you' && asks ? 'asks permission' : PHASE_WORD[phase]} className={`inline-block h-[8px] w-[8px] shrink-0 rounded-full ${PHASE_DOT_CLASS[phase]}`} />
+}
+
+/**
+ * An Open row's phase as a chip (lib/phase.ts). What needs you and what
+ * failed always say it; idle gives its room to the title on a narrow row
+ * (under 230px), where the grey dot says it alone.
+ */
+function PhaseChip({ phase, asks }: { phase: Phase; asks?: boolean }) {
+  const drop = phase === 'idle' ? '@max-[230px]/srow:hidden' : phase === 'needs-you' || phase === 'failed' ? '' : '@max-[200px]/srow:hidden'
+  return (
+    <span data-phase-chip={phase} className={`app-phase ${drop} shrink-0 whitespace-nowrap rounded-full px-[7px] text-[11px] font-semibold leading-[17px]`} data-phase={phase}
+      title={phase === 'needs-you' ? (asks ? 'Needs you: it asks permission' : 'Needs you: your turn') : undefined}>
+      {PHASE_WORD[phase]}
+    </span>
+  )
 }
 
 /** The one word a row says about its state. */
@@ -247,7 +281,8 @@ export const ProjectRow = memo(function ProjectRow({
   const items = useMemo(() => agentRows(tabs, labels, nodes, live, rowOrder, hiddenSessions).map((it) => ({ ...it, projectId: id, ownBranch: p.branch, repo: rowRepo(p, (it.node?.session ?? it.label?.session)?.cwd) })), [tabs, labels, nodes, live, rowOrder, hiddenSessions, id, p])
   const open = !folded
   const waitingOnly = folded && node.waiting > 0
-  const visible = waitingOnly ? items.filter((it) => !!it.node?.waiting) : items
+  const visible = waitingOnly ? items.filter((it) => !!it.node?.waiting && !it.tab) : items
+  const summary = projectSummary(node)
   // Other folders is a group, not a folder: no menu, no new agent in it.
   const isGroup = p.root === ''
   const menu = !isGroup && onMenu
@@ -298,19 +333,10 @@ export const ProjectRow = memo(function ProjectRow({
             {/* A multi-repo project (ADR-055) says how many it holds. */}
             {!!p.repos?.length && <span className="ml-1.5 text-[11px] font-normal text-fg-faint">{p.repos.length} repos</span>}
           </span>
-          {node.activity && <Spark values={node.activity} working={node.working > 0} />}
-          {node.live > 0 && (
-            <span className="num inline-flex shrink-0 items-center gap-[4px] text-[11px] text-fg-muted group-hover:invisible" aria-label={runningLabel(node.live)} title={runningLabel(node.live)}>
-              <span aria-hidden className="inline-block h-[6px] w-[6px] rounded-full bg-ok" />
-              {node.live}
-            </span>
-          )}
-          {node.waiting > 0 && (
-            <span
-              className="num inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-warn px-1 text-[10.5px] font-semibold text-panel group-hover:invisible"
-              aria-label={`${node.waiting} waiting on you`}
-            >
-              {node.waiting}
+          {summary && (
+            <span data-project-summary className="inline-flex min-w-0 shrink items-center gap-[5px] whitespace-nowrap text-[11.5px] text-fg-faint group-hover:invisible" title={summary.text}>
+              {summary.tone && <span aria-hidden className={`inline-block h-[6px] w-[6px] shrink-0 rounded-full ${summary.tone === 'warn' ? 'bg-warn' : 'bg-ok'}`} />}
+              <span className={`truncate ${summary.tone === 'warn' ? 'text-warn' : ''}`}>{summary.text}</span>
             </span>
           )}
         </button>
@@ -406,8 +432,14 @@ export type SidebarRow = LeadItem & {
  * ⌥⇧↑ ⌥⇧↓ (Ctrl+Shift off macOS) on a focused row; the order is kept
  * under `orderId`.
  */
-export function SessionList({ items, visible = items, orderId, ariaLabel, activeTabId, onActivateTab, onCloseTab, onOpenLive, onHideSession, onReorder, digits, untabbedHeading }: {
+export function SessionList({ items, visible = items, orderId, ariaLabel, activeTabId, onActivateTab, onCloseTab, onOpenLive, onHideSession, onReorder, digits, untabbedHeading, variant }: {
   items: readonly SidebarRow[]
+  /**
+   * `open`: the sidebar's Open section (owner, 2026-11-05, mockup V1) — every
+   * tab on two lines, its title and its project under it in grey, with its
+   * phase as a coloured chip (lib/phase.ts) and its ⌘ digit.
+   */
+  variant?: 'open'
   /**
    * A quiet line above the rows with no tab, where the tabbed ones end: the
    * flat list's "Running, no tab" (owner, 2026-10-14). There the tabbed rows
@@ -638,6 +670,7 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
           digit={digit}
           tab={t}
           label={l}
+          variant={variant}
           repo={it.repo}
           waiting={!!it.node?.waiting}
           asks={!!it.node?.asks}
@@ -789,8 +822,10 @@ function dragProps(drag?: RowDrag) {
   }
 }
 
-function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, flat, digit }: {
+function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMenu, onRename, drag, project, flat, digit, variant }: {
   tab: Tab
+  /** The Open section's two-line row with its phase chip (SessionList). */
+  variant?: 'open'
   /** Its repository in a project of several (ADR-077). */
   repo?: string
   /** In the flat list: no indent under a project. */
@@ -816,6 +851,50 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
   const word = !isFile && !label?.isShell && label?.session ? label.dot : undefined
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
+  if (variant === 'open') {
+    // A file, a page or the Files tab has no phase; an agent's tab before the list answers is idle.
+    const kind = namingLeaf(tab).target.kind
+    const phase = kind === 'session' || kind === 'shell' || kind === 'observe' ? phaseOf(label?.dot ?? 'idle') : undefined
+    const under = [project?.name, label?.branch, chatModelName].filter(Boolean).join(' · ')
+    return (
+      <li className="@container/srow group/row relative" {...dragProps(drag)}>
+        <button
+          type="button"
+          data-nav-row
+          data-tab-row={tab.id}
+          data-open-row={tab.id}
+          data-session-id={label?.session?.session_id}
+          data-waiting={waiting || undefined}
+          data-selected={active || undefined}
+          aria-current={active ? 'true' : undefined}
+          aria-haspopup="menu"
+          aria-keyshortcuts="Shift+F10"
+          onClick={onOpen}
+          onDoubleClick={onRename}
+          {...menuHandlers(onMenu)}
+          className={`app-row flex min-h-[42px] w-full min-w-0 items-center gap-2 rounded-[7px] py-1 pl-[10px] text-left ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
+          title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', repo, label?.branch, project?.name, phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ')}
+        >
+          {phase !== undefined ? <PhaseDot phase={phase} asks={asks} />
+            : kind === 'page' ? <GlobeIcon size={12} className="shrink-0 text-fg-faint" />
+            : kind === 'files' ? <FolderIcon size={12} className="shrink-0 text-fg-faint" />
+            : <FileIcon size={12} className="shrink-0 text-fg-faint" />}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span data-row-title className={`truncate text-[13.5px] leading-[18px] ${active ? 'font-semibold text-fg' : 'font-medium text-fg'}`}>{title}</span>
+            {under && <span data-row-project-name className="truncate text-[11.5px] leading-[15px] text-fg-faint">{under}</span>}
+          </span>
+          {!isFile && <HotMark sessionId={label?.session?.session_id} />}
+          {phase && <PhaseChip phase={phase} asks={asks} />}
+          {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-key shrink-0${heldClass()} ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
+        </button>
+        {onClose && (
+          <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${active ? 'flex' : ACTIONS_ON_HOVER}`}>
+            <RowAction label={`${closeWord(isFile, !!label?.isShell)} ${title}`} title={closeTip} onClick={onClose}><CloseIcon size={14} /></RowAction>
+          </span>
+        )}
+      </li>
+    )
+  }
   return (
     <li className="@container/srow group/row relative" {...dragProps(drag)}>
       <button
@@ -1003,7 +1082,6 @@ function RowAction({ label, title, onClick, popup, children }: { label: string; 
   )
 }
 
-const FOLDED_KEY = 'caprock-sidebar-folded'
 function readIds(store: Storage, key: string): Set<string> {
   try { return new Set(JSON.parse(store.getItem(key) ?? '[]') as string[]) } catch { return new Set() }
 }
@@ -1022,9 +1100,17 @@ function useIdFlag(store: () => Storage, key: string, id: string): [boolean, (v:
   return [v, set]
 }
 
-/** A project folded by hand, kept per viewer. */
+/**
+ * The projects unfolded by hand, kept per viewer: folded is the default
+ * since 2026-11-05 (mockup V1), so the key that kept the ones folded by hand
+ * (`caprock-sidebar-folded`) is no longer read.
+ */
+export const PROJECT_OPEN_KEY = 'caprock.app.project-open'
+
+/** A project folded (the default) or unfolded by hand. */
 function useFolded(id: string): [boolean, (v: boolean) => void] {
-  return useIdFlag(() => localStorage, FOLDED_KEY, id)
+  const [open, setOpen] = useIdFlag(() => localStorage, PROJECT_OPEN_KEY, id)
+  return [!open, (folded) => setOpen(!folded)]
 }
 
 /** A row under a project: a tab (with the session it shows, if any), or a live session or shell with no tab. */
@@ -1111,28 +1197,6 @@ function Chevron({ open }: { open: boolean }) {
   return (
     <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden className={`transition-transform duration-100 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>
       <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-/**
- * The project's last hour as a small area line: turns and tool calls per two
- * minutes, scaled to its own peak. Amber while something works in it, grey
- * after. Nothing is drawn for an hour with nothing in it.
- */
-export function Spark({ values, working }: { values: number[]; working: boolean }) {
-  const peak = Math.max(...values)
-  if (!(peak > 0)) return null
-  const w = 40, h = 12
-  const step = values.length > 1 ? w / (values.length - 1) : w
-  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 1 - (v / peak) * (h - 2)).toFixed(1)}`)
-  const total = values.reduce((a, b) => a + b, 0)
-  return (
-    <svg data-project-spark width={w} height={h} viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${total} turns and tool calls in the last hour`}
-      className={`shrink-0 group-hover:invisible ${working ? 'text-accent' : 'text-fg-faint'}`}>
-      <title>{`${total} turns and tool calls in the last hour`}</title>
-      <polygon points={`0,${h} ${pts.join(' ')} ${w},${h}`} fill="currentColor" opacity="0.18" />
-      <polyline points={pts.join(' ')} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   )
 }

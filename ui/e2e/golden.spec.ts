@@ -15,7 +15,7 @@ test('the dashboard and the app workspace load with no console errors', async ({
   // Home lists the running sessions, each a card that links to it.
   for (const s of app.stand.sessions) await expect(page.locator(`a[href="#/session/${s.id}"]`).first()).toBeVisible()
   await app.open()
-  await expect(app.sidebar.getByRole('heading', { name: 'Sessions' })).toBeVisible()
+  await expect(app.sidebar.getByRole('group', { name: 'Running, no tab' })).toBeVisible()
   await expect(app.sidebar.getByRole('button', { name: /agents? running/ })).toContainText('2')
 })
 
@@ -26,7 +26,7 @@ test('a session appears in the sidebar and its tab opens on its terminal', async
   await expect(app.tabs.getByRole('tab', { selected: true })).toHaveAccessibleName(new RegExp(`^${s.name}`))
 })
 
-test('every open tab has a sidebar row, in Tree and in Flat', async ({ app }) => {
+test('every open tab has a row in Open, with its phase, in Tree and in Flat; projects fold by default', async ({ app, page }) => {
   await app.open()
   await app.openSession('alpha')
   await app.openSession('beta')
@@ -34,11 +34,21 @@ test('every open tab has a sidebar row, in Tree and in Flat', async ({ app }) =>
     els.filter((e) => !e.hasAttribute('data-dashboard-tab')).map((e) => e.getAttribute('aria-label') ?? e.textContent ?? ''))
   const titles = app.stand.sessions.map((s) => s.name)
   for (const t of titles) expect(names.some((n) => n.startsWith(t)), `a tab for ${t} in ${JSON.stringify(names)}`).toBe(true)
-  const sw = app.sidebar.getByRole('radiogroup', { name: 'List sessions by' })
-  for (const mode of ['Projects', 'Tabs', 'Projects']) {
-    await sw.getByRole('radio', { name: mode }).click()
-    await expect(sw.getByRole('radio', { name: mode })).toBeChecked()
-    for (const t of titles) await expect(app.row(t).first(), `${mode}: a row for ${t}`).toBeVisible()
+  // Settings → Appearance → Sidebar, as the page keeps it (lib/sidebarMode).
+  for (const mode of ['off', 'on', 'off']) {
+    await page.evaluate((m) => localStorage.setItem('caprock.app.sidebar-grouped', m), mode)
+    await page.reload()
+    const open = app.sidebar.getByRole('group', { name: 'Open tabs' })
+    for (const t of titles) {
+      const row = open.locator('[data-open-row]').filter({ hasText: t })
+      await expect(row, `${mode}: an Open row for ${t}`).toBeVisible()
+      await expect(row.locator('[data-phase-chip]')).toHaveText(/^(working|needs you|idle|done|failed)$/)
+    }
+    if (mode === 'on') {
+      // Tree: each project folded to a line, nothing listed under it but what asks.
+      await expect(app.sidebar.locator('[data-project-row]').first()).toBeVisible()
+      await expect(app.sidebar.locator('[data-project-row][aria-expanded="true"]')).toHaveCount(0)
+    }
   }
 })
 

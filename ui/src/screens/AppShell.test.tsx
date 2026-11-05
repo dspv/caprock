@@ -122,6 +122,8 @@ beforeEach(() => {
   localStorage.clear()
   // Most of these were written for the Tree sidebar; Flat, a new viewer's default, has its own tests.
   localStorage.setItem('caprock.app.sidebar-grouped', 'on')
+  // Unfolded, as these were written; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem('caprock.app.project-open', JSON.stringify(['dir:/w/app', 'dir:/w/other', '1', 'other-folders']))
   sessionStorage.clear()
   // A test may give the daemon a project list (daemonProjects); the rest have none.
   fetchMock.mockImplementation(async () => new Response('', { status: 404 }))
@@ -171,9 +173,8 @@ describe('the app workspace', () => {
     const today = screen.getByRole('region', { name: 'Today' })
     expect(await within(today).findByText('$1.25')).toBeInTheDocument()
     expect(within(document.querySelector('footer')!).queryByText('$1.25')).toBeNull()
-    expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
-    // A project's row: what runs in it, nothing else.
-    expect(screen.getByLabelText('2 running')).toBeInTheDocument()
+    // A project's row: its one-word summary, what needs you first (2026-11-05).
+    expect([...document.querySelectorAll('[data-project-summary]')].map((e) => e.textContent)).toContain('1 needs you')
     // With the sidebar closed the status strip carries the limits again, but
     // never the spend: it holds service things only (owner, 2026-10-23).
     await act(() => { fireEvent.keyDown(window, { key: '\\', code: 'Backslash', metaKey: true }) })
@@ -470,7 +471,7 @@ describe('the app workspace', () => {
     expect(screen.getByRole('tab', { name: 'Fix the login bug · app' }).getAttribute('title')).toContain('· app')
     expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
     expect(within(screen.getByRole('group', { name: 'app: sessions' })).getByText('Fix the login bug')).toBeInTheDocument()
-    expect(within(appRow()).getByLabelText(/running/)).toBeInTheDocument()
+    expect(appRow().querySelector('[data-project-summary]')).toBeTruthy()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(0)
     // One click back on the tab, and its project is current again.
     fireEvent.click(screen.getByRole('tab', { name: /Fix the login bug/ }))
@@ -871,8 +872,8 @@ describe('the app workspace', () => {
     await waitFor(() => expect(stripNames()).toEqual(['Fix the login bug · app', 'Waiting one · app', 'Started elsewhere · other']))
     expect(stripKeys()).toEqual(['⌘1', '⌘2', '⌘3'])
     expect(rowKey('Started elsewhere')).toBe('⌘3')
-    // The Flat list is the strip, in its order.
-    const list = screen.getByRole('group', { name: 'Sessions' })
+    // Open is the strip, in its order.
+    const list = screen.getByRole('group', { name: 'Open tabs' })
     expect([...list.querySelectorAll('[data-tab-row]')].map((r) => r.querySelector('[data-row-title]')?.textContent ?? r.textContent)).toEqual([
       expect.stringContaining('Fix the login bug'), expect.stringContaining('Waiting one'), expect.stringContaining('Started elsewhere'),
     ])
@@ -900,26 +901,29 @@ describe('the app workspace', () => {
     expect(rowKey('Waiting one')).toBe('⌘1')
   })
 
-  it('lists Flat for a new viewer, Tree once chosen (Settings → Appearance or the Projects | Tabs switch), and a click on a project opens its page', async () => {
+  // Since 2026-11-05 (sidebar V1): Open lists the tabs for everyone, and a
+  // viewer who never chose gets the projects under it, each folded.
+  it('lists Tree for a new viewer, projects folded, Flat once chosen in Settings, and a click on a project opens its page', async () => {
     localStorage.clear()
     render(<AppShell />)
-    await screen.findByRole('heading', { name: 'Sessions' })
-    expect(document.querySelector('[data-project-row]')).toBeNull()
-    act(() => saveSidebarMode('tree'))
+    await screen.findByRole('heading', { name: 'Projects' })
     await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+    expect(screen.queryByRole('radiogroup', { name: 'List sessions by' })).toBeNull()
     // No digit on a project, ever.
     expect(document.querySelector('[data-project-key]')).toBeNull()
+    const appRow = () => [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('app'))!
+    expect(appRow()).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold app' }))
     await openRowOf('agent-1', /Fix the login bug/)
     expect(frontPane()).toEqual(['agent-1'])
-    const appRow = [...document.querySelectorAll<HTMLElement>('[data-project-row]')].find((b) => b.textContent?.startsWith('app'))!
-    fireEvent.click(appRow)
+    fireEvent.click(appRow())
     await waitFor(() => expect(frontPane()).toEqual([]))
     expect(screen.getByRole('tab', { name: /Fix the login bug/ })).toHaveAttribute('aria-selected', 'false')
-    expect(screen.getByRole('radio', { name: 'Projects' })).toHaveAttribute('aria-checked', 'true')
-    fireEvent.click(screen.getByRole('radio', { name: 'Tabs' }))
+    act(() => saveSidebarMode('flat'))
     await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeNull())
     expect(localStorage.getItem('caprock.app.sidebar-grouped')).toBe('off')
-    expect(screen.getByRole('radio', { name: 'Tabs' })).toHaveAttribute('aria-checked', 'true')
+    // The tab is still listed, in Open.
+    expect(screen.getByRole('group', { name: 'Open tabs' })).toHaveTextContent('Fix the login bug')
   })
 
   // A user, 2026-10-14 (translated): "a project folder with its worktrees

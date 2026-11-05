@@ -129,7 +129,7 @@ Every test gets a fresh page and fails on any console error, uncaught
 exception or request that leaves the stand. The scenarios
 (`ui/e2e/golden.spec.ts`): the dashboard and the app workspace load; a session
 appears in the sidebar and its tab opens on its terminal; every open tab has a
-sidebar row in Tree and in Flat; typing reaches the pty (the fake claude
+row in the sidebar's Open, with its phase, in Tree and in Flat; typing reaches the pty (the fake claude
 answers `you-said:<line>`); pasted text reaches it line by line; a native drop
 (`caprock:drop-paths`, as the app's shell sends it) types the quoted path into
 the terminal under the point, and a drop on the sidebar into the terminal

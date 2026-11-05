@@ -26,6 +26,13 @@ export class App {
 
   /** The desktop app's workspace, as the native shell loads it. */
   async open(): Promise<void> {
+    // The scenarios find a session's row in one list, the Flat one (Settings
+    // → Appearance → Sidebar: Tabs): under Tree, the default since
+    // 2026-11-05, a project is folded until unfolded. A scenario that sets
+    // the mode itself keeps its own.
+    await this.page.addInitScript(() => {
+      try { if (localStorage.getItem('caprock.app.sidebar-grouped') === null) localStorage.setItem('caprock.app.sidebar-grouped', 'off') } catch { /* no storage */ }
+    })
     await this.page.goto(`${this.stand.pageURL}/?app=1#/app`)
     await expect(this.page.getByRole('status', { name: /Last heard from the daemon/ })).toBeVisible()
   }
@@ -39,9 +46,9 @@ export class App {
     return s
   }
 
-  /** The sidebar row of a session, by its name: under a project, in the Flat list's tabbed rows or under Running, no tab. */
+  /** The sidebar row of a session, by its name: in Open, under a project or under Running, no tab. */
   row(title: string): Locator {
-    return this.sidebar.getByRole('group', { name: /sessions|running, no tab/i }).getByRole('button', { name: new RegExp(`\\b${title}\\b`) })
+    return this.sidebar.getByRole('group', { name: /open tabs|sessions|running, no tab/i }).getByRole('button', { name: new RegExp(`\\b${title}\\b`) })
   }
 
   /** Opens a session's tab from its sidebar row and waits for the fake claude. */

@@ -331,21 +331,21 @@ function SidebarModeSetting() {
         onChange={setMode}
       />
       <p className="text-[12px] text-fg-muted">
-        Projects lists the sessions under their projects; Tabs puts them in one list in the tabs&rsquo; order, each with its tab&rsquo;s key. The same switch sits beside the sidebar&rsquo;s heading.
+        What sits under Open, which lists every tab in the tabs&rsquo; order: Projects, each folded to a line that unfolds to its sessions; or Tabs, the sessions running with no tab as one list.
       </p>
     </div>
   )
 }
 
-/** The sidebar's Today card, hidden from its own menu and brought back here (lib/todayCard.ts). */
+/** The sidebar's Today line, hidden by its × and brought back here or from the sidebar's ⋯ (lib/todayCard.ts). */
 function TodayCardSetting() {
   const [card, setCard] = useTodayCard()
   return (
     <Toggle
       checked={!card.hidden}
       onChange={(v) => setCard({ hidden: !v })}
-      label="Today card in the sidebar"
-      hint="Spend, running, waiting and the plan windows above the session list; its chevron folds it to one line. Hidden, what waits on you is counted beside the list's heading."
+      label="Today line in the sidebar"
+      hint="Today's spend, what runs and the fuller plan window, one thin line above Dashboard. Hidden, what waits on you still shows as the amber needs you on its row."
     />
   )
 }

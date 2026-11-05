@@ -1,16 +1,43 @@
 /**
- * The app's sidebar (WP-06): New agent, Quick chat and Add project, the Today
- * strip (spend, agents running and waiting, the plan windows), then the
- * projects, then the way into the dashboard. There is no separate Waiting on
- * you block (owner, 2026-10-11, translated: "not needed at all — everything
- * is already visible in Projects"): what waits is marked on its own row under
- * its project, and the Today strip's Waiting count opens the first of them.
+ * The app's sidebar (WP-06), laid out as mockup V1 since 2026-11-05 (the
+ * owner and a designer, translated: "the left part is overloaded and it's
+ * unclear what is open where and in which phase … Recently closed should
+ * fold … the Today indicator isn't needed there — at least closable or
+ * shrunk to a minimum … visually separate the New agent / Add project
+ * block"; the owner chose V1 of three the same day). Top to bottom:
+ *
+ * - The actions block, a band of its own (.app-sidebar-actions): the brand
+ *   and search, one prominent New agent (⇧⌘N), and one row of three equal
+ *   small buttons — Chat (Quick chat, ⌥⌘N), Project (Add project, ⌘O) and
+ *   ⋯ (New shell, Search, History, Share your week, and Show the Today
+ *   line while it is hidden). The keys are the ones they always had.
+ * - Open · N: exactly the open tabs, in the strip's order, each with its
+ *   project in grey under the title, its phase as a coloured chip
+ *   (lib/phase.ts: working, needs you, idle, done, failed) and its ⌘ digit.
+ *   The tab in front is the one highlighted row in the whole sidebar.
+ * - Projects, each folded to one line with a short summary ("● 1 needs
+ *   you", "● 2 running", "3 idle"); unfolding one lists its sessions as
+ *   before (ProjectRow). Settings → Appearance → Sidebar: Tabs lists the
+ *   sessions running with no tab as one list here instead.
+ * - Recently closed, one folded line (RecentlyClosed).
+ * - Second Brain and the modules, then the Today line (TodayLine: spend,
+ *   running, what waits, the fuller plan window; its × hides it), then the
+ *   footer.
+ *
+ * The Projects | Tabs switch that sat beside the list's heading
+ * (2026-10-14 to 2026-11-05) is gone: what it was for — the tabs in their
+ * order, each with its key — is Open now, above either list.
+ *
+ * There is no separate Waiting on you block (owner, 2026-10-11, translated:
+ * "not needed at all — everything is already visible in Projects"): what
+ * waits says needs you on its Open row, or is marked on its own row under
+ * its project, and the Today line's waiting count opens the first of them.
  *
  * The projects are an accordion (owner, 2026-10-09: "which one is active,
- * which to pick, unclear", translated): under each project every agent
- * session it has, working, waiting or idle, and nothing else — no shells,
- * files or "+N more" line (owner, 2026-10-13; ProjectRow decides it). The
- * one highlighted row in the sidebar is the tab in front.
+ * which to pick, unclear", translated): under each unfolded project every
+ * agent session it has, working, waiting or idle, and nothing else — no
+ * shells, files or "+N more" line (owner, 2026-10-13; ProjectRow decides
+ * it).
  *
  * Keyboard: Tab reaches every row; ↑ and ↓ move between rows, Enter opens
  * what the row names, ⌥⇧↑ ⌥⇧↓ move a session row within its project. A
@@ -50,7 +77,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { groupProjects, isBackgroundSession, OTHER_FOLDERS_ID, rowHidden, type HiddenProjects, type HiddenSessions, type InboxItem, type ProjectNode, type SidebarModel } from '@/lib/sidebar'
-import { leaves, type Tab } from '@/lib/tabs'
+import { leaves, namingLeaf, type Tab } from '@/lib/tabs'
 import { loadRecentlyClosed, RECENTLY_CLOSED_EVENT, shownClosed, type ClosedTab } from '@/lib/recentlyClosed'
 import { RecentlyClosed } from './RecentlyClosed'
 import type { SettingsSection } from '@/lib/router'
@@ -60,13 +87,15 @@ import type { ProjectShellsOutcome } from '@/lib/closeShell'
 import type { EditorList, SessionSummary, Summary } from '@/lib/api'
 import { buildToday } from '@/lib/today'
 import { useNow } from '@/lib/useNow'
-import { FLAT_ORDER, flatRows, keepsProject, leadKey, ProjectRow, SessionList } from './ProjectRow'
+import { FLAT_ORDER, flatRows, keepsProject, leadKey, ProjectRow, SessionList, type SidebarRow } from './ProjectRow'
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
-import { TodayStrip } from './TodayStrip'
+import { TodayLine } from './TodayLine'
 import { useTodayCard } from '@/lib/todayCard'
+import { ShareDialog, ShareGlyph } from './Share'
+import { createPortal } from 'react-dom'
 import { SidebarFooter } from './SidebarFooter'
-import { CaprockMark, ChatIcon, EyeIcon, FolderIcon, FolderPlusIcon, PlusIcon, SearchIcon } from './AppIcons'
+import { CaprockMark, ChatIcon, EyeIcon, ListIcon, FolderIcon, FolderPlusIcon, MoreIcon, PlusIcon, SearchIcon, TerminalIcon } from './AppIcons'
 import { ModuleRows } from './ModuleRows'
 import { MachineRows } from './MachineRows'
 import { BrainSidebar } from './BrainSidebar'
@@ -227,8 +256,6 @@ export interface SidebarProps {
    * flat list; AppShell keeps it per viewer.
    */
   grouped?: boolean
-  /** The heading's Projects | Tabs switch: true lists by project (Tree), false in the tabs' order (Flat). */
-  onGroupedChange?: (grouped: boolean) => void
   /** Each tab's ⌘1–⌘9, by tab id, as the strip shows it: drawn on that tab's row too. */
   tabDigits?: ReadonlyMap<string, number>
   /** The flat list's tabbed rows, dragged into this order: the strip takes it (AppShell). */
@@ -340,7 +367,6 @@ export function Sidebar(props: SidebarProps) {
   // no tab* what the user started by hand, then one folded Background · N
   // row for scouts, ops runs and helpers (lib/sidebar.ts isBackgroundSession).
   const flatParts = useMemo(() => {
-    const tabbedRows = flat.filter((r) => r.tab)
     const fg: typeof flat = []
     const bg: typeof flat = []
     // A tab just closed is listed once, under Recently closed, unless it
@@ -353,8 +379,25 @@ export function Sidebar(props: SidebarProps) {
       if (x && isBackgroundSession(x.session, { now, hasPermission: !!x.asks, inProject: r.projectId !== OTHER_FOLDERS_ID })) bg.push(r)
       else fg.push(r)
     }
-    return { tabbedRows, fg, bg, bgWaiting: bg.filter((r) => r.node?.waiting).length }
+    return { fg, bg, bgWaiting: bg.filter((r) => r.node?.waiting).length }
   }, [flat, now, closed])
+  // The Open section: every tab, in the strip's order, with its project's
+  // name and its phase (mockup V1, owner, 2026-11-05).
+  const openRows = useMemo<SidebarRow[]>(() => {
+    const names = new Map(model.projects.map((n) => [n.project.id, n.project.name] as const))
+    const nodes = new Map(model.projects.flatMap((n) => n.worktrees.flatMap((w) => w.sessions)).map((x) => [x.session.session_id, x] as const))
+    return (allTabs ?? []).map((t) => {
+      const label = props.tabLabels?.get(t.id)
+      const node = nodes.get(namingLeaf(t).target.sessionId)
+      return { key: t.id, tab: t, label, node, projectId: t.projectId, projectName: label?.chat ? 'Quick chat' : names.get(t.projectId) ?? '' }
+    })
+  }, [allTabs, props.tabLabels, model.projects])
+  const { onOrderTabs } = props
+  const onOpenReorder = useCallback((_: string, keys: string[]) => {
+    const byKey = new Map(openRows.map((r) => [leadKey(r), r.tab!.id] as const))
+    const tabIds = keys.map((k) => byKey.get(k)).filter((id): id is string => !!id)
+    if (tabIds.length) onOrderTabs?.(tabIds)
+  }, [openRows, onOrderTabs])
   const backgroundOpen = folds.has('background')
   const [menuAt, setMenuAt] = useState<ProjectMenuAt | null>(null)
   const menuFrom = useRef<HTMLElement | null>(null)
@@ -450,7 +493,8 @@ export function Sidebar(props: SidebarProps) {
         rowOrder={rowOrders[n.project.id]}
         onReorder={onReorder}
         labels={props.tabLabels ?? noLabels}
-        activeTabId={props.dashboardActive ? undefined : props.activeTabId}
+        // The tab in front is highlighted once, in Open: the one selected row.
+        activeTabId={undefined}
         onSelect={props.onSelectProject}
         onActivateTab={props.onActivateTab ?? noop}
         onOpenLive={props.onOpenLive}
@@ -482,61 +526,85 @@ export function Sidebar(props: SidebarProps) {
     }
   }
 
+  // The ⋯ beside Chat and Project: what else lived up there, and the way
+  // back to the Today line once hidden.
+  const [actionsAt, setActionsAt] = useState<MenuAt | null>(null)
+  const [sharing, setSharing] = useState(false)
+  const pickAction = (fn: () => void) => () => { setActionsAt(null); fn() }
+  const smallAction = 'relative flex h-[28px] min-w-0 items-center justify-center gap-1.5 rounded-[7px] border border-[var(--app-hairline)] bg-[var(--color-panel)] px-1.5 text-[12px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg'
+  // Off macOS a key chip shows above its button on focus or held Ctrl; on a
+  // Mac the buttons are too narrow for one, and the key is in the tooltip.
+  const reveal = revealClass()
+
   return (
     <aside className="app-sidebar flex h-full min-h-0 flex-col border-r border-[var(--app-hairline)]" aria-label="Projects">
-      <div
-        data-tauri-drag-region
-        className={`flex h-[44px] shrink-0 items-center gap-2 pr-2 pl-[max(14px,calc(var(--caprock-traffic-lights-inset,0px)+2px))]`}
-      >
-        <span data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2">
-          <CaprockMark size={15} />
-          <span data-tauri-drag-region className="text-[13px] font-semibold tracking-[-0.01em] text-fg">Caprock</span>
-        </span>
-        <IconButton label={`Search projects, sessions and actions (${keys('⌘K')})`} onClick={props.onPalette}><SearchIcon size={15} /></IconButton>
-      </div>
-
-      {/* The app's main action, where the eye lands first: starting an agent
-          was a 13px plus that appears on hover, and adding a project a word
-          in a section header. */}
-      <div className="shrink-0 px-2 pb-2">
+      {/* The actions block, a band of its own (owner and a designer,
+        * 2026-11-05, translated: "visually separate the New agent / Add
+        * project block"): the brand and search, one prominent New agent,
+        * and one row of small equal buttons under it. */}
+      <div data-sidebar-actions className="app-sidebar-actions shrink-0 px-2 pb-2">
+        <div
+          data-tauri-drag-region
+          className="flex h-[44px] items-center gap-2 pl-[max(6px,calc(var(--caprock-traffic-lights-inset,0px)-6px))]"
+        >
+          <span data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2">
+            <CaprockMark size={15} />
+            <span data-tauri-drag-region className="text-[13px] font-semibold tracking-[-0.01em] text-fg">Caprock</span>
+          </span>
+          <IconButton label={`Search projects, sessions and actions (${keys('⌘K')})`} onClick={props.onPalette}><SearchIcon size={15} /></IconButton>
+        </div>
         <button
           type="button"
           onClick={() => props.onNewAgent(activeProjectId)}
           aria-label="New agent"
           aria-keyshortcuts="Shift+Meta+N"
           title={`Start an agent in the project in front (${keys('⇧⌘N')})`}
-          className="app-primary relative flex h-[32px] w-full items-center gap-2 rounded-[8px] border pl-2.5 pr-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
+          className="app-primary relative flex h-[34px] w-full items-center gap-2 rounded-[8px] border pl-2.5 pr-2 text-left text-[13px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
           <PlusIcon size={15} />
           <span className="flex-1">New agent</span>
           <kbd className={`app-kbd ${revealClass()}`}>{keys('⇧⌘N')}</kbd>
         </button>
-        {props.onQuickChat && (
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+          {props.onQuickChat ? (
+            <button
+              type="button"
+              onClick={props.onQuickChat}
+              aria-label="Quick chat"
+              aria-keyshortcuts="Alt+Meta+N"
+              title={`Quick chat: ask Claude something without picking a folder (${keys('⌥⌘N')})`}
+              className={smallAction}
+            >
+              <ChatIcon size={13} />
+              <span className="truncate">Chat</span>
+              {reveal && <kbd className={`app-kbd ${reveal}`}>{keys('⌥⌘N')}</kbd>}
+            </button>
+          ) : <span />}
           <button
             type="button"
-            onClick={props.onQuickChat}
-            aria-label="Quick chat"
-            aria-keyshortcuts="Alt+Meta+N"
-            title={`Ask Claude something without picking a folder (${keys('⌥⌘N')})`}
-            className="relative mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
+            onClick={props.onAddProject}
+            aria-label="Add project"
+            aria-keyshortcuts="Meta+O"
+            title={`Add a project — a folder, a new one, or a clone (${keys('⌘O')})`}
+            className={smallAction}
           >
-            <ChatIcon size={14} />
-            <span className="flex-1">Quick chat</span>
-            <kbd className={`app-kbd ${revealClass()}`}>{keys('⌥⌘N')}</kbd>
+            <FolderPlusIcon size={13} />
+            <span className="truncate">Project</span>
+            {reveal && <kbd className={`app-kbd ${reveal}`}>{keys('⌘O')}</kbd>}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={props.onAddProject}
-          aria-label="Add project"
-          aria-keyshortcuts="Meta+O"
-          title={`Add a project — a folder, a new one, or a clone (${keys('⌘O')})`}
-          className="relative mt-1 flex h-[26px] w-full items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[12.5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
-        >
-          <FolderPlusIcon size={14} />
-          <span className="flex-1">Add project</span>
-          <kbd className={`app-kbd ${revealClass()}`}>{keys('⌘O')}</kbd>
-        </button>
+          <button
+            type="button"
+            data-sidebar-actions-more
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={!!actionsAt}
+            title="More: a new shell, search, history, share your week"
+            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setActionsAt({ x: r.left, y: r.bottom + 4 }) }}
+            className={smallAction}
+          >
+            <MoreIcon size={15} />
+          </button>
+        </div>
       </div>
 
       {/* The list scrolls here and ends above Second Brain and the footer,
@@ -545,43 +613,35 @@ export function Sidebar(props: SidebarProps) {
         * by its content (flex-auto), so a long list presses on Second Brain,
         * which shrinks its orb first (components/BrainSidebar.tsx). */}
       <div data-sidebar-scroll className="app-scroll min-h-0 flex-auto overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
-        {props.onRoute && !todayCard.hidden && (
-          <TodayStrip
-            today={today}
-            loaded={props.loaded ?? true}
-            onSpend={() => props.onRoute!('#/cost')}
-            onWindows={() => props.onRoute!('#/cost?section=limits')}
-            onRunning={() => props.onRoute!('#/home')}
-            onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
-            folded={todayCard.folded}
-            onFold={(folded) => setTodayCard({ folded })}
-            onHide={() => setTodayCard({ hidden: true })}
-          />
+        {/* Open: exactly the open tabs, in the strip's order, each with its
+          * project, its phase and its ⌘ digit (mockup V1). */}
+        {openRows.length > 0 && (
+          <section data-open-section aria-label="Open">
+            <SectionHead label={`Open · ${openRows.length}`} />
+            <SessionList
+              items={openRows}
+              variant="open"
+              orderId="open"
+              ariaLabel="Open tabs"
+              digits={props.tabDigits}
+              activeTabId={props.dashboardActive ? undefined : props.activeTabId}
+              onActivateTab={props.onActivateTab ?? noop}
+              onCloseTab={props.onCloseTab}
+              onHideSession={onHideSession}
+              onReorder={props.onOrderTabs ? onOpenReorder : undefined}
+            />
+          </section>
         )}
 
         {/* How many, and how many have something running, so the heading
           * says something (owner, 2026-10-11: "nothing on the right"). */}
-        <SectionHead label={grouped ? 'Projects' : 'Sessions'} action={projectCount > 0 ? (
-          <span className="flex items-center gap-1">
-            {/* The Today card hidden, what waits on you is still counted here. */}
-            {props.onRoute && todayCard.hidden && today.waiting > 0 && (
-              <button
-                type="button"
-                data-head-waiting
-                onClick={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
-                title={`${today.waiting} waiting on you. Opens the one that has waited longest.`}
-                aria-label={`${today.waiting} waiting on you`}
-                className="num inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-warn px-1 text-[10.5px] font-semibold text-panel"
-              >
-                {today.waiting}
-              </button>
-            )}
+        {grouped && (
+          <SectionHead label="Projects" action={projectCount > 0 ? (
             <span className="num whitespace-nowrap text-[11.5px] text-fg-faint" title={`${projectCount} ${projectCount === 1 ? 'project' : 'projects'}, ${busyCount} with something running`}>
               {busyCount > 0 && <><span aria-hidden className="mr-1 inline-block h-[6px] w-[6px] rounded-full bg-ok align-middle" />{busyCount} of </>}{projectCount}
             </span>
-            {props.onGroupedChange && <ListSwitch grouped={grouped} onChange={props.onGroupedChange} />}
-          </span>
-        ) : undefined} />
+          ) : undefined} />
+        )}
         {model.projects.length === 0 ? (
           <div className="px-2 py-2 text-[12.5px] leading-relaxed text-fg-muted">
             No projects yet.{' '}
@@ -591,16 +651,13 @@ export function Sidebar(props: SidebarProps) {
         ) : (
           <>
             {grouped ? (
-              <>
-                <ul className="grid grid-cols-1 gap-px">{listed.map(row)}</ul>
-                {closedSection}
-              </>
+              <ul className="grid grid-cols-1 gap-px">{listed.map(row)}</ul>
             ) : (
               <>
-                {/* Each part is a view of the one flat order (`visible`), so a
-                  * row moved in any of them keeps the whole order. */}
-                {flatParts.tabbedRows.length > 0 && <SessionList items={flat} visible={flatParts.tabbedRows} ariaLabel="Sessions" {...flatListProps} />}
-                {closedSection}
+                {/* Settings → Appearance → Sidebar: Tabs. Open carries the
+                  * tabs; below it, what runs with no tab as one list, not by
+                  * project. Each part is a view of the one flat order
+                  * (`visible`), so a row moved in any of them keeps it. */}
                 {flatParts.fg.length > 0 ? (
                   <SessionList items={flat} visible={flatParts.fg} ariaLabel="Running, no tab" untabbedHeading="Running, no tab" {...flatListProps} />
                 ) : flatParts.bg.length > 0 && (
@@ -627,7 +684,7 @@ export function Sidebar(props: SidebarProps) {
                     {backgroundOpen && <SessionList items={flat} visible={flatParts.bg} ariaLabel="Background" {...flatListProps} />}
                   </div>
                 )}
-                {flat.length === 0 && !closedSection && <p className="px-2 py-1 text-[12px] text-fg-faint">No agent sessions running.</p>}
+                {flat.length === 0 && openRows.length === 0 && !closedSection && <p className="px-2 py-1 text-[12px] text-fg-faint">No agent sessions running.</p>}
               </>
             )}
             {/* One quiet line for the rest: other projects, and what was
@@ -648,6 +705,8 @@ export function Sidebar(props: SidebarProps) {
             )}
           </>
         )}
+        {/* Recently closed, folded to one line under the list (mockup V1). */}
+        {closedSection}
         {props.source === 'derived' && model.projects.length > 0 && (
           <p className="px-2 pt-3 text-[11px] leading-snug text-fg-faint">
             Listed from where your sessions ran. Git state and clone arrive with the projects API.
@@ -666,6 +725,20 @@ export function Sidebar(props: SidebarProps) {
       {/* Private modules an admin key opens (ADR-076); nothing without one. */}
       {props.onRoute && <ModuleRows onOpen={props.onRoute} dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive} />}
 
+      {/* Today as one thin line above the footer, with its × (mockup V1). */}
+      {props.onRoute && !todayCard.hidden && (
+        <TodayLine
+          today={today}
+          now={now}
+          loaded={props.loaded ?? true}
+          onSpend={() => props.onRoute!('#/cost')}
+          onWindows={() => props.onRoute!('#/cost?section=limits')}
+          onRunning={() => props.onRoute!('#/home')}
+          onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
+          onHide={() => setTodayCard({ hidden: true })}
+        />
+      )}
+
       <SidebarFooter
         folded={folds.has('footer')}
         onToggleFold={() => toggleFold('footer')}
@@ -678,6 +751,21 @@ export function Sidebar(props: SidebarProps) {
         onPipeline={props.onPipeline}
         pipelineActive={props.pipelineActive}
       />
+      {actionsAt && (
+        <MenuBox at={actionsAt} label="More actions" width={240} onClose={() => setActionsAt(null)}>
+          <MenuItem icon={<TerminalIcon size={14} />} label="New shell" hint={keys('⌘T')} onClick={pickAction(() => props.onNewShell(activeProjectId))} />
+          <MenuItem icon={<SearchIcon size={14} />} label="Search…" hint={keys('⌘K')} onClick={pickAction(props.onPalette)} />
+          {props.onRoute && <MenuItem icon={<ListIcon size={14} />} label="History" onClick={pickAction(() => props.onRoute!('#/history'))} />}
+          <MenuItem icon={<ShareGlyph size={13} />} label="Share your week" onClick={pickAction(() => setSharing(true))} />
+          {props.onRoute && todayCard.hidden && (
+            <>
+              <MenuSeparator />
+              <MenuItem icon={<EyeIcon size={14} />} label="Show the Today line" onClick={pickAction(() => setTodayCard({ hidden: false }))} />
+            </>
+          )}
+        </MenuBox>
+      )}
+      {sharing && createPortal(<ShareDialog onClose={() => setSharing(false)} />, document.body)}
       {moreAt && (
         <MenuBox at={moreAt} label="More projects and hidden rows" width={260} onClose={() => setMoreAt(null)}>
           {moreProjects.map((n) => (
@@ -714,40 +802,6 @@ export function Sidebar(props: SidebarProps) {
         />
       )}
     </aside>
-  )
-}
-
-/** A folded group at the bottom of the projects: Quiet or Hidden, closed until opened. */
-/**
- * The heading's switch between the two lists, in words (owner, 2026-10-14,
- * translated: "make a switch with words, like this way or that way"): the
- * bare folder icon before it said nothing, and a user moved to the flat
- * list did not find the way back. Projects is Tree, Tabs is Flat; Settings
- * → Appearance holds the same choice (lib/sidebarMode.ts).
- */
-function ListSwitch({ grouped, onChange }: { grouped: boolean; onChange: (grouped: boolean) => void }) {
-  const options = [
-    { value: true, label: 'Projects', title: 'Sessions under their projects (also in Settings → Appearance)' },
-    { value: false, label: 'Tabs', title: 'One list in the tabs’ order, each row with its tab’s key (also in Settings → Appearance)' },
-  ]
-  return (
-    <span data-group-switch role="radiogroup" aria-label="List sessions by" className="ml-1 inline-flex h-[20px] items-center rounded-[6px] border border-[var(--app-hairline)] p-[1px]">
-      {options.map((o) => (
-        <button
-          key={o.label}
-          type="button"
-          role="radio"
-          aria-checked={grouped === o.value}
-          title={o.title}
-          onClick={() => { if (grouped !== o.value) onChange(o.value) }}
-          className={`h-[16px] rounded-[4px] px-1.5 text-[11px] leading-[16px] ${
-            grouped === o.value ? 'bg-[var(--app-row-active)] font-medium text-fg' : 'text-fg-faint hover:text-fg-muted'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </span>
   )
 }
 

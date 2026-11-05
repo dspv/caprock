@@ -777,6 +777,26 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
+/* The Open rows' phase chip (lib/phase.ts; owner, 2026-11-05, mockup V1):
+ * the phase's colour as the word on a 16% tint of it. Done is blue, a colour
+ * no palette's tokens carry (--color-info is the brand amber), so it has its
+ * own, one step darker on a light ground. */
+[data-app] { --phase-done: #7fa9e3; }
+[data-app][data-theme="light"] { --phase-done: #2b62b8; }
+[data-app] .app-phase { --phase: var(--color-fg-faint); color: var(--phase); background: color-mix(in srgb, var(--phase) 16%, transparent); }
+[data-app] .app-phase[data-phase="working"] { --phase: var(--color-ok); }
+[data-app] .app-phase[data-phase="needs-you"] { --phase: var(--color-warn); }
+[data-app] .app-phase[data-phase="done"] { --phase: var(--phase-done); }
+[data-app] .app-phase[data-phase="failed"] { --phase: var(--color-danger); }
+[data-app] .app-phase[data-phase="idle"] { color: var(--color-fg-muted); background: color-mix(in srgb, var(--color-fg) 8%, transparent); }
+[data-app] .app-dot-done { background: var(--phase-done); }
+/* The actions block on top (components/Sidebar.tsx): a band of its own, as
+ * the footer is below, so New agent, Chat and Project read apart from the
+ * list (owner, 2026-11-05). */
+[data-app] .app-sidebar-actions {
+  background: color-mix(in srgb, var(--color-fg) 2.5%, transparent);
+  border-bottom: 1px solid var(--app-hairline);
+}
 /* A session row's dot (components/ProjectRow.tsx RowDot): working breathes,
  * slowly; waiting wears an amber halo. Both still under reduced motion. */
 [data-app] .app-dot-working { animation: appDotBreathe 2.4s ease-in-out infinite; }
@@ -944,14 +964,6 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-/* The sidebar's Today strip (components/TodayStrip.tsx): the cockpit's bars
- * and numerals on a faint card under New agent. */
-[data-app] .today-strip { background: color-mix(in srgb, var(--color-fg) 2.5%, transparent); }
-[data-app] .today-dot[data-working="true"] { position: relative; }
-[data-app] .today-dot[data-working="true"]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: var(--color-ok); opacity: 0; animation: cockpitPulse 1.6s var(--app-ease) infinite; }
-@media (prefers-reduced-motion: reduce) {
-  [data-app] .today-dot::after { animation: none !important; }
 }
 /* The agent cockpit (components/Cockpit.tsx): the inspector beside an agent.
  * State is carried by data-state on the avatar, its dot and the "now" card,

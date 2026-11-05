@@ -5,10 +5,27 @@
  * while its process runs, continued with --resume once it ended — as ⇧⌘T
  * does for the newest (lib/recentlyClosed.ts). The last row opens History,
  * where every session is. Nothing is drawn while the list is empty.
+ *
+ * Folded to one line by default — "› Recently closed  N" — and unfolded by
+ * a click on it (owner and a designer, 2026-11-05, translated: "Recently
+ * closed should fold"; mockup V1). The viewer's choice is kept in this
+ * browser (`RECENTLY_CLOSED_OPEN_KEY`). ⇧⌘T reopens the newest either way.
  */
+import { useState } from 'react'
 import { closedAgo, type ClosedTab } from '@/lib/recentlyClosed'
 import { keys, REOPEN_TAB_KEY } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
+
+/** `open` when unfolded by hand; absent or anything else, folded to its one line. */
+export const RECENTLY_CLOSED_OPEN_KEY = 'caprock.app.recently-closed-open'
+
+function loadOpen(): boolean {
+  try { return localStorage.getItem(RECENTLY_CLOSED_OPEN_KEY) === 'open' } catch { return false }
+}
+
+function saveOpen(open: boolean) {
+  try { localStorage.setItem(RECENTLY_CLOSED_OPEN_KEY, open ? 'open' : 'closed') } catch { /* private window: for this page only */ }
+}
 
 export function RecentlyClosed({ items, now, flat, onReopen, onShowAll }: {
   items: readonly ClosedTab[]
@@ -19,11 +36,28 @@ export function RecentlyClosed({ items, now, flat, onReopen, onShowAll }: {
   /** Opens History; absent, no last row. */
   onShowAll?: () => void
 }) {
+  const [open, setOpen] = useState(loadOpen)
   if (items.length === 0) return null
   const pad = flat ? 'pl-[10px]' : 'pl-[22px]'
+  const toggle = () => { setOpen(!open); saveOpen(!open) }
   return (
     <section data-recently-closed aria-label="Recently closed" className="pb-1">
-      <h3 className={`${pad} pb-0.5 pr-2 pt-2.5 text-[10.5px] font-medium uppercase tracking-[0.06em] text-fg-faint`}>Recently closed</h3>
+      <button
+        type="button"
+        data-nav-row
+        data-closed-toggle
+        aria-expanded={open}
+        title={open ? 'Fold Recently closed to one line' : `Show the ${items.length} tabs closed last. ${keys(REOPEN_TAB_KEY)} reopens the newest.`}
+        onClick={toggle}
+        className="mt-1 flex h-[28px] w-full min-w-0 items-center gap-1.5 rounded-[6px] pl-[6px] pr-2 text-left text-[12.5px] text-fg-faint hover:bg-[var(--app-row-hover)] hover:text-fg-muted"
+      >
+        <svg width="11" height="11" viewBox="0 0 10 10" aria-hidden className={`shrink-0 transition-transform duration-100 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>
+          <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="min-w-0 flex-1 truncate">Recently closed</span>
+        <span data-closed-count className="num shrink-0 text-[11.5px]">{items.length}</span>
+      </button>
+      {open && (
       <ul className="grid grid-cols-1">
         {items.map((e, i) => {
           const ago = closedAgo(e.closedAt, now)
@@ -59,6 +93,7 @@ export function RecentlyClosed({ items, now, flat, onReopen, onShowAll }: {
           </li>
         )}
       </ul>
+      )}
     </section>
   )
 }

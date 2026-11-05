@@ -745,10 +745,9 @@ export function AppShell() {
       window.removeEventListener(ROW_ORDER_EVENT, bump)
     }
   }, [])
-  // Flat by default; Tree from the folder toggle or Settings → Appearance.
-  const [sidebarMode, setSidebarMode] = useSidebarMode()
+  // Tree (projects under Open) unless Settings → Appearance says Tabs (lib/sidebarMode.ts).
+  const [sidebarMode] = useSidebarMode()
   const grouped = sidebarMode === 'tree'
-  const onGroupedChange = useCallback((g: boolean) => setSidebarMode(g ? 'tree' : 'flat'), [setSidebarMode])
   const tabbedProjects = useMemo(() => new Set(ws.tabs.map((t) => t.projectId)), [ws.tabs])
   // What the sidebar lists, as it lists it (components/Sidebar.tsx `listed`).
   const sidebarState = useMemo(() => {
@@ -2170,7 +2169,6 @@ export function AppShell() {
               onOpenFiles={source === 'api' ? openFiles : undefined}
               onAddRepo={source === 'api' ? onAddRepo : undefined}
               grouped={grouped}
-              onGroupedChange={onGroupedChange}
               tabDigits={stripDigits}
               onOrderTabs={onOrderTabs}
               onReopenClosed={reopenClosed}
