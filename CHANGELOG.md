@@ -12,6 +12,89 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.173.0] - 2026-11-06
+
+### Added
+
+- **sidebar:** on a large database with *Compress tool output* off, the
+  sidebar's bottom block says so in one quiet line — for example *Database 2.5GB ·
+  compressing frees about 1.0GB*, both figures from your own database, the
+  saving an estimate from a sample of your tool calls. It shows only when the
+  estimate is at least 300 MB. A click opens the switch in Settings → Storage,
+  lit, and turns nothing on; × hides it for 30 days. Folded, it is a database
+  icon with a dot. It goes as soon as compression is on.
+- **storage:** *Compress tool output*, under Status → Storage, stores tool
+  calls and their results older than a day zstd-compressed, a few hundred
+  rows at a time while Caprock is idle — never at start and never while
+  anything is being recorded. Prompts and replies stay as they are, so search
+  is unchanged. Off until you turn it on; the panel says how much smaller
+  your own database would be (an estimate from 2,000 of your tool calls), and
+  once it runs, how much it is. On a copy of a 2.5 GB database it saved
+  818 MiB of tool output, and the file went to 1.5 GB after the one VACUUM
+  that follows, which runs only when the disk has room for it. Turned off, the
+  same job restores the rows. An older Caprock refuses to open the database
+  after this upgrade (with a one-line message, changing nothing). Proposed
+  and measured by [@SergeAx](https://github.com/SergeAx) in #672.
+- **ios:** scanning the computer's pairing code with the iPhone's own Camera
+  app now opens Caprock for iPhone and pairs it, instead of opening Safari
+  and asking you to scan again inside the app. Only the pairing link opens
+  the app; every other `m.caprock.dev` address still opens in Safari, and
+  without the app the link opens the phone's page as before. The link is
+  read on the phone; nothing new is sent anywhere. Needs the next App Store
+  build of the app.
+- **phone:** m.caprock.dev in Safari on an iPhone shows Apple's banner,
+  *Caprock · Open in the App Store*, so someone who scanned the pairing code
+  with the camera learns that Caprock for iPhone exists. Only the phone's page
+  carries it; other browsers, the app itself and a home-screen copy never
+  show it.
+- **ui:** Settings → Use on your phone offers Caprock for iPhone in a clear
+  row, *iPhone? Caprock for iPhone adds notifications, voice and photos.*
+  **Get it on the App Store** shows a QR the iPhone's camera opens the App
+  Store with; before, a small grey link opened the listing on the computer,
+  where it installs nothing on the phone.
+
+### Changed
+
+- **cockpit:** the Context meter says what a compaction is doing. While one
+  runs — started from Caprock, typed in the terminal or Claude Code's own —
+  stripes move over the bar and the line reads *Compacting · 0:16 · usually
+  ~1 min*, the time since it began and this machine's median (no "usually"
+  until five compactions were timed; Claude Code reports no progress, so
+  there is no percent). The moment it ends the meter shows the size it
+  left, *2% full · was 332k*, the old fill shrinking away once. The empty
+  track is tinted where the bar turns amber (60%) and red (85%), and the
+  quarter marks read the same over the fill and the track.
+- **ui:** Settings on a computer is large and easy to read, the way the phone's
+  is: section titles 19px, every option's name 15.5px with its explanation
+  under it, every on/off a switch, fields and buttons at least 34–36px tall,
+  and a step up for all the small print in every section. Nothing moved and no
+  setting changed; the phone layout is as it was.
+- **ui:** the Agent panel's subagents take far less room. By default the
+  subagent chips under the figures are now the subagents' faces — in colour
+  and pulsing while one works, grey once it finished — with *1 working · peak
+  4* beside them, which opens the last hour's chart under the row; there is
+  no framed block. A *Strip* look draws one line instead: the working faces
+  big, the finished small and grey, and the hour as a small sparkline that
+  shows the peak on hover and opens the full chart on a click. The *Crew*
+  look stays, with less padding and a shorter chart. The *Chart of faces* and
+  *Numbers* looks are gone; a viewer who had picked one gets the new default.
+  With no subagents in the session, nothing is drawn.
+
+### Fixed
+
+- **ios:** dictation in the iPhone app waits up to two seconds for the final
+  words after you stop it, instead of dropping the recogniser at once (the
+  speech plugin 8.4.6, on Capacitor 8.6.0).
+- **cockpit:** the Context meter drops to the size a compaction left as soon as `/compact` finishes, instead of showing the size before it until the model answers again.
+- **ui:** attaching on a phone offers two clear choices. The Attach button
+  (the phone's New chat and Save, a chat, and a session's chat on the Full
+  dashboard) opens a menu with **Photos**, the photo library or the camera,
+  and **Files**, which opens the Files browser straight away; before, one
+  picker left both to iOS's own sheet. With a mouse it opens the file dialog
+  as before. A HEIC photo is now always sent as JPEG, so one picked from
+  Files is no longer refused. The iOS app names why it opens the photo
+  library, from its next App Store build.
+
 ## [0.172.0] - 2026-11-06
 
 ### Added
