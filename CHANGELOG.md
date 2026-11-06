@@ -12,6 +12,51 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.172.0] - 2026-11-06
+
+### Added
+
+- **ui:** Settings → *Use on your phone* has one line under **Connect a
+  phone**, *iPhone: get Caprock on the App Store*, linking to Caprock for
+  iPhone, now on the App Store; it opens in the default browser and sends
+  nothing. *How it works* names the app as a way to keep Caprock on an
+  iPhone, and the iOS README, `docs/app.md` and `.ai/` no longer call the
+  app ready for review.
+- **telegram:** a Morning summary — one Telegram message each morning from
+  your bot: how many of the new mail conversations Caprock Mail's sorting
+  marked important, with the sender and subject of the newest five; the
+  sessions that finished overnight per project, with those that stopped at a
+  usage limit or exited with an error; and the sessions and tasks waiting
+  for you. Buttons open mail, Home and History on your phone when it can
+  reach this computer. Off until turned on in Settings → Telegram, at 08:00
+  unless you pick another time; a computer asleep then sends it on waking,
+  until noon, and never twice in a day. Settings says what it sends, and
+  *Send a test summary now* shows it at once. Free (ADR-092).
+- **chats:** on a phone, New chat asks who works — Claude on your
+  subscription, another Claude sign-in, DeepSeek or Kimi on your key (only
+  while it is set), Codex — and where: a chat of its own, a recent folder or
+  any other folder under home. The chat then works in that folder, opens as
+  a chat and is listed in Chats, with a line saying what it sees and that
+  only its model's provider gets what it reads. On a desktop New chat still
+  starts at once, and *In a folder…* opens the same steps. Folders can be
+  labelled Work or Personal from the Where step; the tags show on the Chats
+  list, which filters by them (ADR-091).
+
+### Changed
+
+- **ui:** the app's sidebar is calmer and says what is open and in which
+  phase. New agent sits in its own band at the top, with Chat, Project and a
+  ⋯ menu (New shell, Search, History, Share your week) in one row under it;
+  the keys are the ones they always had. A new **Open** section lists exactly
+  your open tabs in tab order, each with its project, its ⌘ key and a coloured
+  phase: working, needs you, idle, done or failed. Projects are folded to one
+  line with a short summary ("1 needs you", "2 running", "3 idle") and unfold
+  to their sessions as before. Recently closed folds to one line. The Today
+  card became one thin line above Dashboard — spend, running, what waits and
+  the fuller plan window — with a × to hide it; Settings or the ⋯ menu brings
+  it back. The Projects | Tabs switch left the heading, since Open lists the
+  tabs; Settings → Appearance keeps the choice of what sits under Open.
+
 ## [0.171.0] - 2026-11-03
 
 ### Added
