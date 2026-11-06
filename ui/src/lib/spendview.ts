@@ -350,9 +350,22 @@ export interface SpendFigures {
   timeMs?: number
   /** What the newest priced model call cost. */
   last?: number
+  /**
+   * Turns on a model with no price in the pricing table: their cost is not
+   * in `cost`, so a positive count makes `cost` partial, or unknown when
+   * nothing was priced (costNote). Absent or 0 when every turn was priced.
+   */
+  unpriced?: number
+  /** The models those turns ran on, when known. */
+  unpricedModels?: string[]
 }
 
-export function spendFigures(s: SessionSummary, calls: readonly CallPoint[]): SpendFigures {
+/**
+ * The session's figures. `unpricedModels` names the models of the unpriced
+ * turns the cockpit holds; with none, a session that priced nothing falls
+ * back to its own model, since every turn of it ran unpriced.
+ */
+export function spendFigures(s: SessionSummary, calls: readonly CallPoint[], unpricedModels: readonly string[] = []): SpendFigures {
   const st = s.stats
   const tokens = st ? st.tokens_in + st.cache_read + st.cache_write : undefined
   const end = s.worked_at || s.last_event_at
@@ -366,7 +379,50 @@ export function spendFigures(s: SessionSummary, calls: readonly CallPoint[]): Sp
     cache: tokens ? (s.savings?.hit_rate ?? 0) * 100 : undefined,
     timeMs: s.started_at > 0 && end > s.started_at ? end - s.started_at : undefined,
     last: calls.length > 0 ? calls[calls.length - 1]!.cost : undefined,
+    ...(st?.unpriced_turns && st.unpriced_turns > 0
+      ? { unpriced: st.unpriced_turns, unpricedModels: unpricedModels.length > 0 ? [...unpricedModels] : !(st.cost_usd > 0) ? [s.model || s.model_display || ''].filter(Boolean) : [] }
+      : {}),
   }
+}
+
+/**
+ * What a cost figure is when some turns had no price (rule 6: never a
+ * $0.00 that says the work was free). `partial`: the figure is what could
+ * be priced, drawn with a trailing `+`; `unknown`: nothing was priced, drawn
+ * as a dash. `short` is a sentence for where the figure would be, `title`
+ * the hover. Undefined when every turn was priced.
+ */
+export interface CostNote {
+  state: 'partial' | 'unknown'
+  short: string
+  title: string
+}
+
+export function costNote(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels'>): CostNote | undefined {
+  const n = f.unpriced ?? 0
+  if (n <= 0) return undefined
+  const models = (f.unpricedModels ?? []).filter(Boolean).join(', ')
+  if (!(f.cost !== undefined && f.cost > 0)) {
+    const who = models || 'this model'
+    return {
+      state: 'unknown',
+      short: `No price for ${who}: the cost is unknown, not $0.00.`,
+      title: `No price for ${who} in Caprock’s pricing table, so the cost is unknown — not $0.00`,
+    }
+  }
+  const turns = `${n.toLocaleString('en-US')} turn${n === 1 ? '' : 's'}${models ? ` on ${models}` : ''}`
+  return {
+    state: 'partial',
+    short: `Partial: ${turns} with no price ${n === 1 ? 'is' : 'are'} not in it.`,
+    title: `Partial: ${fmtUSD(f.cost)} is what could be priced; ${turns} with no price in Caprock’s pricing table ${n === 1 ? 'is' : 'are'} not in it`,
+  }
+}
+
+/** A cost as the figures draw it: a dash when unknown, a trailing + when partial. */
+export function costText(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels'>, v = f.cost): string {
+  const c = costNote(f)
+  if (v === undefined || c?.state === 'unknown') return '—'
+  return c ? `${fmtUSD(v)}+` : fmtUSD(v)
 }
 
 /** A short duration: "1h 12m", "14m", "40s". */
@@ -380,7 +436,7 @@ export function fmtSpan(ms: number): string {
 /** A metric's value as a figure or the headline draws it; a dash when unknown. */
 export function metricValue(m: Metric, f: PeriodFigures): string {
   switch (m) {
-    case 'cost': return f.cost === undefined ? '—' : fmtUSD(f.cost)
+    case 'cost': return costText(f)
     case 'burn': return f.burn ? `${fmtUSD(f.burn.perHour)}/h` : '—'
     case 'tokens': return f.tokens === undefined ? '—' : fmtTokens(f.tokens)
     case 'turns': return f.turns === undefined ? '—' : f.turns.toLocaleString('en-US')
@@ -393,6 +449,14 @@ export function metricValue(m: Metric, f: PeriodFigures): string {
 
 /** What hovering a metric explains; for a Caprock-wide period, whose figure it is. */
 export function metricTitle(m: Metric, f: PeriodFigures, period: SpendPeriod = 'session'): string {
+  const base = metricTitleBase(m, f, period)
+  const c = costNote(f)
+  // Burn and the last call are summed from priced calls only.
+  if (!c || !(m === 'cost' || (period === 'session' && (m === 'burn' || m === 'last')))) return base
+  return `${base} · ${m === 'cost' ? c.title : c.state === 'unknown' ? c.title : 'priced calls only'}`
+}
+
+function metricTitleBase(m: Metric, f: PeriodFigures, period: SpendPeriod): string {
   if (period !== 'session') {
     const when = periodScope(period).split(' · ')[0]!.toLowerCase()
     if (SESSION_ONLY.has(m)) return 'A session’s own figure: pick session to see it'
@@ -521,7 +585,8 @@ export function foldedFigures(first: ChartMetric, f: PeriodFigures): { id: Metri
   const out: { id: Metric; label: string; value: string }[] = []
   for (const m of order) {
     if (out.length >= 3 || out.some((x) => x.id === m)) continue
-    const value = m === first ? chartValueText(first, chartTotal(first, f)) : metricValue(m, f)
+    // Cost's chart total is its figure; metricValue marks it partial or unknown.
+    const value = m === first && m !== 'cost' ? chartValueText(first, chartTotal(first, f)) : metricValue(m, f)
     if (value === '—') continue
     out.push({ id: m, label: METRICS.find((x) => x.id === m)!.label, value })
   }
@@ -536,7 +601,7 @@ export function foldedFigures(first: ChartMetric, f: PeriodFigures): { id: Metri
  */
 export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined {
   switch (m) {
-    case 'cost': return f.cost
+    case 'cost': return costNote(f)?.state === 'unknown' ? undefined : f.cost
     case 'burn': return f.activeBurn ?? periodBurn(f.series?.bars)
     case 'tokens': return f.tokens
     case 'turns': return f.turns
@@ -611,5 +676,6 @@ export function periodFigures(p: SpendPeriod, f: SpendFigures, summary: Summary 
     turns: summary.turns,
     tools: summary.tool_calls,
     series,
+    ...(summary.unpriced && summary.unpriced.turns > 0 ? { unpriced: summary.unpriced.turns, unpricedModels: summary.unpriced.models } : {}),
   }
 }

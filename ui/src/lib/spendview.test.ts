@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { getSpendPeriod, periodChip, resetSpendPrefsForTest, setSpendPeriod, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
+import { costNote, metricTitle, spendFigures, getSpendPeriod, periodChip, resetSpendPrefsForTest, setSpendPeriod, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
-import type { Summary } from './api'
+import type { SessionSummary, Summary } from './api'
 
 const call = (id: number, ts: number, cost: number): CallPoint => ({ id, ts, cost })
 const H = 3_600_000
@@ -235,5 +235,33 @@ describe('the period of each tab', () => {
     expect(localStorage.getItem('caprock.app.cockpit.spend') ?? '').not.toMatch(/period/)
     resetSpendPrefsForTest()
     expect(getSpendPeriod('b')).toBe('session')
+  })
+})
+
+describe('a cost with unpriced turns', () => {
+  it('is a dash when nothing was priced, a lower bound with + when some was', () => {
+    const unknown = { cost: 0, unpriced: 3, unpricedModels: ['kimi-k3'] }
+    expect(costNote(unknown)?.state).toBe('unknown')
+    expect(metricValue('cost', unknown)).toBe('—')
+    expect(chartTotal('cost', unknown)).toBeUndefined()
+    expect(metricTitle('cost', unknown)).toContain('No price for kimi-k3')
+    expect(foldedFigures('cost', { ...unknown, tokens: 10 }).map((f) => f.id)).toEqual(['tokens'])
+    const partial = { cost: 2.5, unpriced: 1, unpricedModels: ['kimi-k3'] }
+    expect(metricValue('cost', partial)).toBe('$2.50+')
+    expect(costNote(partial)?.title).toContain('1 turn on kimi-k3')
+    expect(foldedFigures('cost', partial)[0]).toMatchObject({ id: 'cost', value: '$2.50+' })
+    expect(metricValue('cost', { cost: 2.5 })).toBe('$2.50')
+    expect(costNote({ cost: 0 })).toBeUndefined()
+  })
+
+  it('reads the session’s unpriced turns and, with no named model, its own', () => {
+    const s = { session_id: 's', model: 'kimi-k3', started_at: 0, last_event_at: 0, stats: { session_id: 's', turns: 2, tool_calls: 0, files_touched: 0, tokens_in: 1, tokens_out: 1, cache_read: 0, cache_write: 0, cost_usd: 0, unpriced_turns: 2 } } as unknown as SessionSummary
+    expect(spendFigures(s, [])).toMatchObject({ unpriced: 2, unpricedModels: ['kimi-k3'] })
+    expect(spendFigures({ ...s, stats: { ...s.stats, unpriced_turns: undefined } }, []).unpriced).toBeUndefined()
+  })
+
+  it('counts a period’s unpriced turns from its summary', () => {
+    const sum = { tokens_in: 0, cache_read: 0, cache_write: 0, cost_usd: 4, turns: 3, tool_calls: 0, projects: [], unpriced: { turns: 2, tokens: 9, models: ['deepseek-v9'] } } as unknown as Summary
+    expect(metricValue('cost', periodFigures('today', { cost: 0 }, sum))).toBe('$4.00+')
   })
 })

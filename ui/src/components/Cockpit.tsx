@@ -17,6 +17,7 @@ import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDShort } from '@/lib/format'
+import { isUnpricedTurn } from '@/lib/sessionCost'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
@@ -28,7 +29,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodChip, periodFigures, periodScope, pickHero, pickSlot, setSpendPeriod, setSpendPrefs, shownSlots, spendFigures, useSpendPeriod, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, costNote, costText, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodChip, periodFigures, periodScope, pickHero, pickSlot, setSpendPeriod, setSpendPrefs, shownSlots, spendFigures, useSpendPeriod, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
@@ -168,7 +169,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   const acct = useSessionPlan(s.agent, s.subscription)
   const plan = s.subscription ? windowsOf(acct.account) : planWindowsFor(s.agent, summary)
   const calls = useMemo(() => callsFromEvents(main), [main])
-  const figures = spendFigures(s, calls)
+  const unpricedModels = useMemo(() => [...new Set(main.filter(isUnpricedTurn).map((e) => e.model ?? '').filter(Boolean))], [main])
+  const figures = spendFigures(s, calls, unpricedModels)
   // The order is what the people using it look at (owner, 2026-10-12): the
   // agent and its headline figure, what it is doing now, then the context
   // and the plan limits, compact by default (owner, 2026-10-14: "you moved
@@ -661,7 +663,7 @@ function HeadlineFigure({ figures, usual, end }: { figures: SpendFigures; usual?
   const tweened = useTweened(figures.cost)
   const meta = HEADLINES.find((h) => h.id === headline) ?? HEADLINES[0]!
   useMenuDismiss(open, box, () => setOpen(false))
-  const value = headline === 'cost' ? fmtUSD(tweened) : metricValue(headline, figures)
+  const value = headline === 'cost' ? costText(figures, tweened) : metricValue(headline, figures)
   const [num, unit] = value.endsWith('/h') ? [value.slice(0, -2), '/h'] : [value, '']
   const choose = (m: Metric) => { setSpendPrefs({ hero: pickHero(hero, 0, m) }); setOpen(false) }
   const vs = versus(headline, figures, usual)
@@ -757,6 +759,8 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   // The usual is the last 30 days whatever the period; today's summary carries it.
   const usual = range?.usual ?? summary?.usual
   const chooser = <ChartChooser metric={chartBy} figures={pf} />
+  // Turns with no price: the cost total says partial, or unknown, never $0.00.
+  const cost = chartBy === 'cost' ? costNote(pf) : undefined
   return (
     <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-period={folded ? undefined : period} className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -780,12 +784,12 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
       </div>
       {!folded && view === 'numbers' && <SpendNumbers period={period} hero={hero} slots={slots} figures={pf} scope={scope} />}
       {!folded && view === 'chart' && (period === 'session'
-        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} />
+        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} cost={cost} />
         : !range
           ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">Reading {scope.split(' · ')[0]!.toLowerCase()}…</p>
           : !pf.series
             ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">This range’s summary has no spend by time to draw.</p>
-            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} />)}
+            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} cost={cost} />)}
     </section>
   )
 }

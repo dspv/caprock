@@ -60,7 +60,7 @@ func (a *agentAdapter) ContinueOn(ctx context.Context, id, target string) (api.C
 	if err != nil {
 		return res, err
 	}
-	a.d.limits.forget(id)
+	a.d.forgetReturn(ctx, id)
 	a.d.publishContinued(res)
 	return res, nil
 }
