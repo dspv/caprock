@@ -86,7 +86,7 @@ export function TerminalSettings() {
       />
       <p className="flex flex-wrap items-center gap-x-3 text-[12px] text-fg-muted">
         Every open terminal changes as you choose. The appearance and the composer are saved in this browser only.
-        <button type="button" onClick={() => set(DEFAULT_PREFS)} className="text-fg-muted underline-offset-2 hover:text-fg hover:underline">
+        <button type="button" onClick={() => set(DEFAULT_PREFS)} className="text-fg underline underline-offset-2 hover:text-fg hover:underline">
           Reset to the defaults
         </button>
       </p>
@@ -105,8 +105,8 @@ function Slider({ label, value, min, max, step, format, onChange }: {
   onChange: (v: number) => void
 }) {
   return (
-    <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      <span className="w-24 shrink-0 text-fg-muted">{label}</span>
+    <label className="flex min-h-9 flex-wrap items-center gap-x-4 gap-y-2">
+      <span className="w-40 shrink-0 text-[15.5px] font-medium text-fg">{label}</span>
       <input
         type="range"
         min={min}
@@ -116,7 +116,7 @@ function Slider({ label, value, min, max, step, format, onChange }: {
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-48 accent-[var(--color-accent)]"
       />
-      <span className="num w-14 text-[12px] text-fg">{format(value)}</span>
+      <span className="num w-16 text-[13.5px] text-fg">{format(value)}</span>
     </label>
   )
 }

@@ -66,29 +66,33 @@ export function Section({ id, title, aside, children, explained }: { id?: string
     <section id={sid} hidden={filteredOut || undefined} data-settings-section={title} data-explain={explain || explained ? 'on' : undefined} className="min-w-0 scroll-mt-16 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
       {/* Wraps rather than squeezing: on a phone the status beside a long
         * title drops under it instead of pushing the page sideways. */}
-      <header className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 ${folded ? 'py-3' : 'pt-3.5'}`}>
-        <button type="button" onClick={fold} aria-expanded={!folded} className="flex min-w-0 items-center gap-2.5 text-left">
-          <span aria-hidden className={`text-[13px] text-fg-faint transition-transform ${folded ? '' : 'rotate-90'}`}>›</span>
-          <SectionIcon title={title} size={18} />
-          <h2 className="text-[17px] font-semibold text-fg">{title}</h2>
+      <header className={`flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 ${folded ? 'py-3' : 'pt-4'}`}>
+        <button type="button" onClick={fold} aria-expanded={!folded} className="flex min-h-9 min-w-0 items-center gap-3 text-left">
+          <span aria-hidden className={`text-[16px] leading-none text-fg-muted transition-transform ${folded ? '' : 'rotate-90'}`}>›</span>
+          <SectionIcon title={title} size={20} />
+          <h2 className="text-[19px] font-semibold tracking-[-0.005em] text-fg">{title}</h2>
         </button>
         <span className="flex items-center gap-2">
           {aside}
           {!folded && !explained && (
             <button type="button" data-explain-toggle onClick={() => setExplain((v) => !v)} aria-pressed={explain}
               title={explain ? 'Hide the explanations' : 'What do these do?'}
-              className={`flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-semibold ${explain ? 'border-accent text-accent' : 'border-border-strong text-fg-faint hover:text-fg'}`}>
+              className={`flex h-8 w-8 items-center justify-center rounded-full border text-[15px] font-semibold ${explain ? 'border-accent text-accent' : 'border-border-strong text-fg-muted hover:text-fg'}`}>
               ?
             </button>
           )}
         </span>
       </header>
-      {!folded && <div className="grid grid-cols-[minmax(0,1fr)] gap-3.5 px-4 pb-4 pt-3 text-[14px]">{children}</div>}
+      {!folded && <div className="grid grid-cols-[minmax(0,1fr)] gap-4 px-5 pb-5 pt-3.5 text-[15px] leading-normal">{children}</div>}
     </section>
   )
 }
 
-/** A checkbox with its label and one plain line about what it does. */
+/**
+ * A checkbox with its label and one plain line about what it does. Drawn as
+ * a switch (the phone's: tokens.css § Settings, readable), still a checkbox
+ * to the keyboard, screen readers and tests.
+ */
 export function Toggle({
   checked,
   onChange,
@@ -101,16 +105,16 @@ export function Toggle({
   hint: ReactNode
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2.5">
+    <label className="flex min-h-9 cursor-pointer items-start gap-3">
       <input
         type="checkbox"
-        className="mt-[2px] h-[18px] w-[18px] shrink-0 accent-[var(--color-accent)]"
+        className="mt-[1px] h-[18px] w-[18px] shrink-0 accent-[var(--color-accent)]"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
       />
       <span className="min-w-0">
-        <span className="block text-[14.5px] text-fg">{label}</span>
-        <span data-help className="block text-[12.5px] leading-relaxed text-fg-muted">{hint}</span>
+        <span className="block text-[15.5px] font-medium leading-snug text-fg">{label}</span>
+        <span data-help className="mt-0.5 block text-[14px] leading-normal text-fg-muted">{hint}</span>
       </span>
     </label>
   )
@@ -129,9 +133,9 @@ export function Choice<T extends string>({
   onChange: (v: T) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" role="radiogroup" aria-label={label}>
-      <span className="w-28 shrink-0 text-[14px] text-fg-muted">{label}</span>
-      <span className="inline-flex flex-wrap gap-1 rounded-lg bg-panel-2 p-1">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2" role="radiogroup" aria-label={label}>
+      <span className="w-40 shrink-0 text-[15.5px] font-medium text-fg">{label}</span>
+      <span className="inline-flex flex-wrap gap-1 rounded-[10px] border border-border bg-panel-2 p-1">
         {options.map((o) => (
           <button
             key={o.value}
@@ -139,8 +143,8 @@ export function Choice<T extends string>({
             role="radio"
             aria-checked={value === o.value}
             onClick={() => onChange(o.value)}
-            className={`rounded-md px-3.5 py-1.5 text-[14px] ${
-              value === o.value ? 'bg-accent font-medium text-panel' : 'text-fg hover:text-accent'
+            className={`min-h-9 rounded-[7px] px-4 py-1.5 text-[15px] ${
+              value === o.value ? 'bg-accent font-medium text-panel' : 'text-fg hover:bg-panel hover:text-accent'
             }`}
           >
             {o.label}
@@ -155,10 +159,10 @@ export function Choice<T extends string>({
 export function Details({ summary, children }: { summary: string; children: ReactNode }) {
   return (
     <details className="group min-w-0">
-      <summary className="cursor-pointer list-none select-none text-[12px] text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-8 cursor-pointer list-none select-none items-center gap-1.5 text-[14.5px] font-medium text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden">
         <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span> {summary}
       </summary>
-      <div className="mt-2.5 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">{children}</div>
+      <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3.5">{children}</div>
     </details>
   )
 }

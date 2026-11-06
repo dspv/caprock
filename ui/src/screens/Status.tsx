@@ -96,10 +96,10 @@ function useExplain(): [boolean, (v: boolean) => void] {
 function SettingsHeading({ onClose, explain, onExplain }: { onClose: () => void; explain?: boolean; onExplain?: (v: boolean) => void }) {
   return (
     <div data-settings-keep="" className="flex items-center gap-3 px-1 pt-1">
-      <h1 className="min-w-0 flex-1 text-[24px] font-semibold text-fg">Settings</h1>
+      <h1 className="min-w-0 flex-1 text-[28px] font-semibold tracking-[-0.01em] text-fg">Settings</h1>
       {onExplain && (
-        <label className="flex cursor-pointer items-center gap-2 text-[13.5px] text-fg-muted">
-          <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={!!explain} onChange={(e) => onExplain(e.target.checked)} />
+        <label className="flex min-h-9 cursor-pointer items-center gap-2.5 text-[15px] text-fg">
+          <input type="checkbox" data-settings-switch="" className="h-4 w-4 accent-[var(--color-accent)]" checked={!!explain} onChange={(e) => onExplain(e.target.checked)} />
           Show explanations
         </label>
       )}
@@ -151,9 +151,9 @@ export function StatusScreen() {
   const owner = !isPairedDevice()
   return (
     <SettingsFilterContext.Provider value={shown}>
-    <div className="flex w-full justify-center gap-6">
+    <div data-settings-page="" className="flex w-full justify-center gap-6">
     <SettingsNav root={page} search={search} />
-    <div ref={page} data-settings-explain={explain ? 'on' : 'off'} data-settings-filtering={shown ? '' : undefined} className="grid w-full max-w-3xl gap-3">
+    <div ref={page} data-settings-explain={explain ? 'on' : 'off'} data-settings-filtering={shown ? '' : undefined} className="grid w-full max-w-3xl gap-4">
       {head}
       {/* Where the menu is not drawn, its search sits above the sections. */}
       <SettingsSearchField search={search} className="xl:hidden" />

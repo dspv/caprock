@@ -1347,6 +1347,86 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   display: none;
 }
 
+/* Settings, readable (owner, 2026-11-06, translated: "review the whole
+ * Settings menu and all its elements so they are all large and clear, the way
+ * it was done for the phone"). The page stays one long sheet; what changes is
+ * the size of everything on it, brought to the phone's own Settings
+ * (native/Settings.tsx: 15.5px rows, a 46px row, a switch, a 16px field).
+ *
+ * Section, Toggle, Choice and Details (SettingsParts) carry their own new
+ * sizes. The thirty-odd sections built from them also hand-set their own
+ * small type — 11 to 13.5px, a 28px button, a 12px mono field — and many of
+ * those pieces (the plan picker, the theme cards, the faces, the resource
+ * meter) are drawn on other screens too, where they must stay as they are.
+ * So the page carries `data-settings-page` and this one block lifts its type
+ * a step and its controls to a hand's size, there and nowhere else.
+ * Unlayered, so it beats the text-[…] utilities, as the phone's 16px fields
+ * rule above does. From `sm` only: under it the phone layout keeps what it
+ * had, its fields already 16px. */
+@media (min-width: 640px) {
+  /* One step up the type scale: the smallest print becomes a readable hint,
+   * a hint a body line, a body line a label. */
+  [data-settings-page] :is(.text-\[10px\], .text-\[10\.5px\], .text-\[11px\]) { font-size: 12.5px; }
+  [data-settings-page] :is(.text-\[11\.5px\], .text-\[12px\]) { font-size: 13.5px; }
+  [data-settings-page] .text-\[12\.5px\] { font-size: 14px; }
+  [data-settings-page] :is(.text-\[13px\], .text-\[13\.5px\]) { font-size: 14.5px; }
+  [data-settings-page] .text-\[14px\] { font-size: 15px; }
+  [data-settings-page] .text-\[14\.5px\] { font-size: 15.5px; }
+  /* An explanation in faint ink reads as muted: on a page of reading, the
+   * faintest grey was the one most of the words were in. */
+  [data-settings-page] [data-settings-section] p.text-fg-faint { color: var(--color-fg-muted); }
+
+  /* Fields: 14px, a 36px row, room around the text. */
+  [data-settings-page] [data-settings-section] :is(.input, input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]), select, textarea) {
+    font-size: 14px;
+    min-height: 36px;
+  }
+  [data-settings-page] [data-settings-section] .input { padding: 7px 10px; }
+  [data-settings-page] [data-settings-section] :is(input, select).h-\[26px\],
+  [data-settings-page] [data-settings-section] :is(input, select).h-\[30px\] { height: 36px; }
+
+  /* Buttons: a framed or filled one is at least 34px tall (28px before) with
+   * room either side; a round icon button keeps its circle. */
+  [data-settings-page] [data-settings-section] button:is(.border, .bg-accent, .bg-panel-2):not(.rounded-full, [role="radio"], [role="tab"]) {
+    min-height: 34px;
+  }
+  [data-settings-page] [data-settings-section] button:is(.h-\[28px\], .h-\[30px\]) { height: 34px; padding-inline: 14px; }
+  [data-settings-page] [data-settings-section] button:is(.h-\[22px\], .h-\[26px\]).w-\[22px\],
+  [data-settings-page] [data-settings-section] button.h-\[26px\].w-\[26px\] { height: 30px; width: 30px; }
+  [data-settings-page] [data-settings-section] :is(button, label).rounded-full.h-6.w-6 { height: 28px; width: 28px; }
+
+  /* Every on/off is the phone's switch: a pill with a white knob, green when
+   * on. Still an <input type="checkbox">, so a label click, the space bar,
+   * screen readers and the tests all treat it as before. */
+  [data-settings-page] :is([data-settings-section] input[type="checkbox"], input[data-settings-switch]) {
+    appearance: none;
+    -webkit-appearance: none;
+    flex-shrink: 0;
+    width: 40px;
+    height: 24px;
+    margin: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    background-color: var(--color-border-strong);
+    background-image: radial-gradient(circle, #fff 0 9px, transparent 9.5px);
+    background-size: 24px 24px;
+    background-repeat: no-repeat;
+    background-position: left center;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-fg) 8%, transparent);
+    transition: background-color 150ms ease, background-position 150ms ease;
+  }
+  [data-settings-page] :is([data-settings-section] input[type="checkbox"], input[data-settings-switch]):checked {
+    background-color: var(--color-ok);
+    background-position: right center;
+  }
+  [data-settings-page] :is([data-settings-section] input[type="checkbox"], input[data-settings-switch]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  [data-settings-page] :is([data-settings-section] input[type="checkbox"], input[data-settings-switch]):disabled { opacity: 0.4; cursor: default; }
+  [data-settings-page] [data-settings-section] input[type="radio"] { width: 18px; height: 18px; flex-shrink: 0; }
+}
+
 /* Settings search (components/SettingsSearch.tsx): the words a query finds,
  * marked through the CSS Custom Highlight API so the page's text is never
  * rewritten, and the control a jump lands on, lit for a moment. */
