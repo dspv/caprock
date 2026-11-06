@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { INPUT_HIGHLIGHT_KEY, keys } from '@/lib/appkeys'
 import type { TermState } from '@/lib/termv2'
 import { useSavedPromptsFor } from '@/lib/saved'
-import { ATTACH_ACCEPT, attachLabels, isImageName } from '@/lib/attach'
+import { attachLabels, isImageName } from '@/lib/attach'
+import { AttachPicker } from './AttachPicker'
 import { ChatPickerList, useChatPicker } from './ChatPicker'
 import { joinDictation, speechHint, speechSupport, speechWhere, startDictation, type Dictation } from '@/lib/speech'
 import { COMMON_SPEECH_LANGS, langChip, langIntroDue, langName, markLangIntroSeen, myLangs, nextSpeechLang, setSpeechLang, speechLang } from '@/lib/speechlang'
@@ -308,7 +309,6 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
     el.focus()
     el.setSelectionRange(initial.length, initial.length)
   }, [initial])
-  const picker = useRef<HTMLInputElement>(null)
 
   // The `/` and `@` pickers. A pick sets the text; the caret goes after
   // what was inserted once the field has it.
@@ -352,7 +352,6 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
       }
     } finally {
       setAttaching(false)
-      if (picker.current) picker.current.value = ''
     }
   }
 
@@ -572,23 +571,6 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
     <AttachedChips attached={attached} onRemove={(i) => { dropAttached(i); field.current?.focus() }} />
   )
 
-  const photoInput = attach && (
-    /* Photos and the documents the daemon keeps (lib/attach ATTACH_ACCEPT):
-     * iOS offers Photo Library, Take Photo and Choose File. No `capture`:
-     * with it iOS opens only the camera. */
-    <input
-      ref={picker}
-      type="file"
-      accept={ATTACH_ACCEPT}
-      multiple
-      hidden
-      aria-hidden="true"
-      tabIndex={-1}
-      data-testid="photo-picker"
-      onChange={(e) => void onPicked([...(e.target.files ?? [])])}
-    />
-  )
-
   return (
     <div className="grid gap-2 border-t border-border px-2 py-2">
       {heldList}
@@ -666,19 +648,16 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
           </button>
         )}
         {attach && (
-          <>
-            {photoInput}
-            <button
-              type="button"
-              disabled={attaching}
-              onClick={() => picker.current?.click()}
-              title="Attach a photo or a file: the camera, the library or Files"
-              aria-label="Attach a photo or file"
-              className="shrink-0 rounded-sm border border-border-strong bg-panel-2 px-3 py-2 min-h-[44px] text-[14px] text-fg hover:border-accent disabled:opacity-50"
-            >
-              {attaching ? 'Adding…' : 'Attach'}
-            </button>
-          </>
+          <AttachPicker
+            onFiles={(files) => void onPicked(files)}
+            disabled={attaching}
+            title="Attach a photo or a file: Photos or Files"
+            testId="photo-picker"
+            up
+            className="shrink-0 rounded-sm border border-border-strong bg-panel-2 px-3 py-2 min-h-[44px] text-[14px] text-fg hover:border-accent disabled:opacity-50"
+          >
+            {attaching ? 'Adding…' : 'Attach'}
+          </AttachPicker>
         )}
         {voice && (
           <span className="relative shrink-0">

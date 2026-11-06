@@ -25,11 +25,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Caprock uses the camera only to read the pairing code your computer shows. Nothing is recorded.</string>
+	<string>Caprock uses the camera to read the pairing code your computer shows, and to take a photo when you attach one to a message.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID unlocks Caprock when you turn on the lock in Settings.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Caprock listens only while you hold or tap the microphone, to turn what you say into text on this iPhone.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Caprock opens your photo library only when you tap Photos to attach a picture to a message. Only the photos you pick are sent, to your own computer.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Your words are recognised on this iPhone and typed into the message. Caprock never sends audio anywhere.</string>
 	<key>UIApplicationSceneManifest</key>

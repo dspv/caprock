@@ -26,15 +26,41 @@ export const PASTE_EXTS: readonly string[] = [
 ]
 
 /**
- * The file picker's `accept`: every image (a phone photo is HEIC, which the
- * downscale turns into JPEG) plus each allowed extension, so iOS Safari's
- * sheet offers *Choose File* beside Photo Library and Take Photo and the
- * Files browser lets a document be picked; with `image/*` alone only images
- * could be. Not an empty `accept`: that would let anything be picked only for
- * the daemon to refuse it. No `capture`: with it iOS opens the camera and
- * nothing else.
+ * The one picker's `accept`, where a mouse attaches (components/AttachPicker):
+ * every image (a phone photo is HEIC, which the downscale turns into JPEG)
+ * plus each allowed extension. A touch screen splits it into PHOTOS_ACCEPT
+ * and FILES_ACCEPT instead. Not an empty `accept`: that would let anything
+ * be picked only for the daemon to refuse it. No `capture`: with it iOS
+ * opens the camera and nothing else.
  */
 export const ATTACH_ACCEPT = ['image/*', ...PASTE_EXTS.map((e) => `.${e}`)].join(',')
+
+/** The images among PASTE_EXTS: what Photos offers, and what Files leaves out. */
+export const IMAGE_EXTS: readonly string[] = ['png', 'jpg', 'jpeg', 'gif', 'webp']
+
+/**
+ * What Files leaves out besides the images: extensions iOS reads as media.
+ * To Apple `.ts` is an MPEG-2 transport stream (public.mpeg-2-transport-stream,
+ * a movie), not TypeScript; in ATTACH_ACCEPT it was why the iPhone's sheet
+ * said *Take Photo or Video* and its library offered videos (2026-11-06).
+ * A `.ts` file still attaches from a computer.
+ */
+export const MEDIA_LOOKALIKE_EXTS: readonly string[] = ['ts']
+
+/** The Photos choice on a phone: every image, so iOS offers its library and camera. */
+export const PHOTOS_ACCEPT = 'image/*'
+
+/**
+ * The Files choice on a phone: the documents the daemon keeps, and nothing
+ * iOS takes for an image or a video. iOS shows its Photo Library / Take Photo
+ * sheet whenever a photo or a video may be picked; with neither it opens the
+ * Files browser straight away, which is what a button named Files should do.
+ * Images go through Photos.
+ */
+export const FILES_ACCEPT = PASTE_EXTS
+  .filter((e) => !IMAGE_EXTS.includes(e) && !MEDIA_LOOKALIKE_EXTS.includes(e))
+  .map((e) => `.${e}`)
+  .join(',')
 
 /** Whether a name or a saved path is an image Claude Code shows as `[Image #N]`. */
 export function isImageName(name: string): boolean {
