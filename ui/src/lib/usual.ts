@@ -83,6 +83,9 @@ export function versus(m: Metric, f: SpendFigures, u: Usual | undefined): Versus
     const delta = f.cache - u.cache
     return { metric: m, now: f.cache, usual: u.cache, delta, near: Math.abs(delta) < 2, higherIsGood: true }
   }
+  // A cost or burn rate with unpriced turns left out is a lower bound: set
+  // against the usual it could read as "below" when it is not.
+  if ((m === 'cost' || m === 'burn') && (f.unpriced ?? 0) > 0) return undefined
   const now = m === 'burn' ? f.burn?.perHour : m === 'cost' ? f.cost : m === 'tokens' ? f.tokens : undefined
   const dist = m === 'burn' ? u.burn : m === 'cost' ? u.cost : m === 'tokens' ? u.tokens : undefined
   if (now === undefined || !dist || dist.q.length !== 11 || dist.n < (MIN_SAMPLES[m] ?? Infinity)) return undefined

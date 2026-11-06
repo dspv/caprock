@@ -509,7 +509,7 @@ func TestMigration0080IsTheFence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := st.SchemaVersion(ctx); v != 80 {
+	if v, _ := st.SchemaVersion(ctx); v < 80 {
 		t.Fatalf("schema %d after the upgrade", v)
 	}
 	if c, err := st.GetMeta(ctx, MetaPayloadZstdCursor); err != nil || c != "0" {

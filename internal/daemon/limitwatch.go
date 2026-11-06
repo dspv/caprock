@@ -28,8 +28,10 @@ import (
 //
 // With limit_return_after_reset on, a session moved automatically goes back
 // to the sign-in it left once that sign-in's window has reset — when it is
-// not in the middle of a turn. The return list is held in memory: a daemon
-// restart forgets it, and the session stays where it is.
+// not in the middle of a turn. The return list is kept in limit_returns
+// (migration 0081) and read back on the first tick after a start, so a
+// daemon restart keeps it; one due more than returnStale before that start
+// is dropped as a stale plan, and the session stays where it is.
 
 // limitPoll is how often the watcher looks. A limit stops a session for
 // hours; a few seconds more before it moves is nothing.
@@ -38,6 +40,10 @@ const limitPoll = 15 * time.Second
 // returnGrace is how long after a reset the return waits: the window has
 // to have reopened by the plan's clock, not only by ours.
 const returnGrace = time.Minute
+
+// returnStale is how long past due a stored return may be when a starting
+// daemon reads it back: older than this, the plan is stale and is dropped.
+const returnStale = time.Hour
 
 // limitWatch is the watcher's state.
 type limitWatch struct {
@@ -48,6 +54,8 @@ type limitWatch struct {
 	// returns are the automatic moves to undo after the reset, by the
 	// session now carrying the work.
 	returns map[string]limitReturn
+	// restored is set once the stored returns were read back.
+	restored bool
 }
 
 type limitReturn struct {
@@ -61,11 +69,49 @@ func (w *limitWatch) init() {
 	}
 }
 
-// forget drops a pending return for id: the user moved it by hand.
-func (w *limitWatch) forget(id string) {
+// forget drops a pending return for id — the user moved it by hand, it went
+// back, or its session is gone — here and in the database.
+func (d *Daemon) forgetReturn(ctx context.Context, id string) {
+	w := &d.limits
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	_, had := w.returns[id]
 	delete(w.returns, id)
+	w.mu.Unlock()
+	if !had {
+		return
+	}
+	if err := store.DeleteLimitReturn(ctx, d.store.DB(), id); err != nil {
+		d.log.Warn("could not forget a return after the reset", "component", "continue-on", "session", id, "err", err)
+	}
+}
+
+// restoreReturns reads the stored returns back once per daemon, dropping
+// the stale ones and the ones whose session has ended.
+func (d *Daemon) restoreReturns(ctx context.Context, now time.Time) {
+	w := &d.limits
+	w.mu.Lock()
+	w.init()
+	done := w.restored
+	w.restored = true
+	w.mu.Unlock()
+	if done {
+		return
+	}
+	list, err := store.RestoreLimitReturns(ctx, d.store.DB(), now.Add(-returnStale).UnixMilli())
+	if err != nil {
+		d.log.Warn("could not read the returns after the reset", "component", "continue-on", "err", err)
+		return
+	}
+	w.mu.Lock()
+	for _, r := range list {
+		if _, set := w.returns[r.SessionID]; !set {
+			w.returns[r.SessionID] = limitReturn{to: r.To, at: r.At}
+		}
+	}
+	w.mu.Unlock()
+	if len(list) > 0 {
+		d.log.Info("returns after the reset read back", "component", "continue-on", "count", len(list))
+	}
 }
 
 func (d *Daemon) limitLoop(ctx context.Context) {
@@ -86,6 +132,7 @@ func (d *Daemon) limitTick(ctx context.Context, now time.Time) {
 	if d.mgr == nil {
 		return
 	}
+	d.restoreReturns(ctx, now)
 	cfg := d.config()
 	if config.NormalizeLimitAction(cfg.LimitAction) == config.LimitAuto {
 		list, err := store.OwnedAtLimit(ctx, d.store.DB())
@@ -137,6 +184,9 @@ func (d *Daemon) autoContinue(ctx context.Context, cfg config.Config, s store.Se
 			w.mu.Lock()
 			w.returns[res.SessionID] = limitReturn{to: from, at: res.ReturnAt}
 			w.mu.Unlock()
+			if err := store.SetLimitReturn(ctx, d.store.DB(), store.LimitReturn{SessionID: res.SessionID, To: from, At: res.ReturnAt}); err != nil {
+				d.log.Warn("could not keep the return after the reset", "component", "continue-on", "session", res.SessionID, "err", err)
+			}
 		}
 		d.publishContinued(res)
 		return
@@ -159,13 +209,13 @@ func (d *Daemon) dueReturns(ctx context.Context, now time.Time) {
 	w.mu.Unlock()
 	for id, r := range due {
 		if _, held := d.mgr.Get(id); !held {
-			w.forget(id)
+			d.forgetReturn(ctx, id)
 			continue
 		}
 		if d.sessionBusy(ctx, id, now) {
 			continue
 		}
-		w.forget(id)
+		d.forgetReturn(ctx, id)
 		res, err := d.continueOn(ctx, id, r.to, true)
 		if err != nil {
 			d.log.Warn("could not take a session back after the reset", "component", "continue-on", "session", id, "target", r.to, "err", err)

@@ -389,6 +389,8 @@ describe('the agent cockpit', () => {
   // The daemon now narrates it as working with `background`; the cockpit says
   // so, and the Now card does not name the parent's last call as running.
   it('says background agents are working, not waiting on you, after the turn ended', async () => {
+    // The count beside the chips (the matrix draws faces only).
+    localStorage.setItem(SUBAGENT_LOOK_KEY, 'chips')
     show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
     await screen.findByRole('region', { name: 'Recent tool calls' })
     // The state line is one word on one line (owner, 2026-10-22: "Background /
@@ -410,6 +412,7 @@ describe('the agent cockpit', () => {
   // lines, under the figures.
   it('puts the state on the name row and draws many subagents compact, in fives', async () => {
     h.subagents = { working: Array.from({ length: 23 }, (_, i) => ({ agent_id: `a${i}`, agent_type: 'general-purpose', tool_calls: 1, started_at: i, last_at: i, running: true, asking: false })), finished: 0 } as SubagentsNow
+    localStorage.setItem(SUBAGENT_LOOK_KEY, 'chips')
     try {
       show(agent({ live_subagents: 23, started_at: now - 3_600_000 }))
       const head = document.querySelector('[data-hero-head]') as HTMLElement
@@ -435,26 +438,22 @@ describe('the agent cockpit', () => {
       { agent_id: 'e2', agent_type: 'Explore', tool_calls: 1, started_at: 3, last_at: 3, running: true, asking: false },
     ], finished: 0 } as SubagentsNow
     try {
-      // The types are the crew's (V3) pills.
-      localStorage.setItem(SUBAGENT_LOOK_KEY, 'crew')
       show(agent({ live_subagents: 3, started_at: now - 6 * 86_400_000 }))
+      // One mark, the matrix's large tile, never a second one on the name row.
+      expect(document.querySelectorAll('[data-hero-agent]')).toHaveLength(1)
       expect(document.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
       expect(document.querySelector('[data-hero-agent] svg')).toBeInTheDocument()
+      expect(document.querySelector('[data-hero-head] [data-hero-agent]')).toBeNull()
+      expect(document.querySelector('[data-hero-pics] [data-hero-agent]')).toBeInTheDocument()
       expect(screen.queryByText('Claude Code')).toBeNull()
       expect(document.querySelector('[data-hero-model]')).toHaveTextContent('Opus 5.5')
       expect(document.querySelector('[data-hero-context] .text-warn')).toHaveTextContent('62%')
       expect(document.querySelector('[data-hero-started]')).toHaveTextContent('uptime 6d')
-      const kinds = await waitFor(() => {
-        const c = document.querySelector('[data-hero-kinds]')
-        if (!c?.textContent?.includes('Explore')) throw new Error('no kinds yet')
-        return c
-      })
-      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('3 subagents')
-      expect(kinds).toHaveTextContent('2 Explore')
-      expect(kinds).toHaveTextContent('1 general-purpose')
-      // A type opens the first of its kind in the Subagents section.
-      fireEvent.click(within(kinds as HTMLElement).getByRole('button', { name: /2 Explore/ }))
-      expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
+      const grid = await screen.findByRole('group', { name: 'Subagents' })
+      expect(grid.querySelectorAll('[data-matrix-face]')).toHaveLength(3)
+      // No types, no "N subagents" words in the picture.
+      expect(document.querySelector('[data-hero-kinds]')).toBeNull()
+      expect(document.querySelector('[data-hero-row]')).not.toHaveTextContent(/subagents|Explore/)
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
@@ -496,8 +495,8 @@ describe('the agent cockpit', () => {
   })
 
   // Owner, 2026-11-06 (translated): the old three looks were "fun, but take
-  // far too much space". The faces are the chips by default; one working,
-  // three finished, a peak of four at once in the hour.
+  // far too much space". One working, three finished, a peak of four at
+  // once in the hour.
   const crowd = (counts: number[]) => ({
     working: [{ agent_id: 'g1', agent_type: 'general-purpose', description: 'Find the pricing table', tool_calls: 1, started_at: 4, last_at: 4, running: true, asking: false }],
     finished: 3,
@@ -510,7 +509,8 @@ describe('the agent cockpit', () => {
   }) as SubagentsNow
   const hourOf = () => Array.from({ length: 60 }, (_, i) => (i > 50 ? 1 : i > 30 ? 4 : 0))
 
-  it('draws the subagents as face chips by default, the summary opening the hour, a chip opening its subagent', async () => {
+  it('draws the subagents as face chips, the summary opening the hour, a chip opening its subagent', async () => {
+    localStorage.setItem(SUBAGENT_LOOK_KEY, 'chips')
     h.subagents = crowd(hourOf())
     try {
       show(agent({ live_subagents: 1 }))
@@ -541,7 +541,7 @@ describe('the agent cockpit', () => {
     }
   })
 
-  it('draws nothing for the subagents in the default look or the strip when the session never had one', async () => {
+  it('draws nothing for the subagents in the chips or the strip when the session never had one', async () => {
     h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
     try {
       for (const look of ['chips', 'strip']) {
@@ -592,59 +592,121 @@ describe('the agent cockpit', () => {
     }
   })
 
-  it('keeps the crew as the framed block, and its quiet line when none ran', async () => {
-    localStorage.setItem(SUBAGENT_LOOK_KEY, 'crew')
+  // Owner, 2026-11-06 (translated): "on the right I just want a matrix of
+  // agent thumbnails and the main agent's icon, that's all — and swap:
+  // pictures on the left, figures on the right." The default look.
+  it('draws the matrix by default: the agent’s large tile and the faces at the left, the figures at the right', async () => {
     h.subagents = crowd(hourOf())
     try {
       show(agent({ live_subagents: 1 }))
-      const frame = await waitFor(() => {
-        const f = document.querySelector('[data-hero-subs]')
-        if (f?.getAttribute('data-look') !== 'crew') throw new Error('not yet')
-        return f as HTMLElement
-      })
-      expect(frame.querySelectorAll('[data-crew-face]')).toHaveLength(1)
-      expect(frame.querySelectorAll('[data-crew-done]')).toHaveLength(3)
-      expect(frame.querySelector('[data-crew-finished]')).toHaveTextContent('+3 finished')
-      expect(frame.querySelector('[data-hero-peak]')).toHaveTextContent('peak 4 · 1h')
-      expect(frame.querySelector('[data-hero-kinds]')).toHaveTextContent('1 general-purpose')
-      // The letter chips stay under the figures in the crew.
-      expect(within(screen.getByRole('group', { name: 'Subagents' })).getAllByRole('button')[0]).toHaveTextContent('G')
-    } finally {
-      h.subagents = { working: [], finished: 0 }
-    }
-    cleanup()
-    h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
-    try {
-      show(agent())
-      const none = await screen.findByText('no subagents · 1h')
-      expect(none.closest('[data-hero-subs]')).toBeInTheDocument()
-      expect(screen.getByRole('img', { name: 'No subagents in the last hour' })).toBeInTheDocument()
+      const grid = await screen.findByRole('group', { name: 'Subagents' })
+      const row = grid.closest('[data-hero-row]') as HTMLElement
+      expect(row).toHaveAttribute('data-look', 'matrix')
+      // Pictures first, figures after them, right-aligned.
+      const pics = row.querySelector('[data-hero-pics]')!
+      const fig = row.querySelector('[data-hero-fig]')!
+      expect(pics.compareDocumentPosition(fig) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(fig).toHaveAttribute('data-align', 'end')
+      // The large tile is the agent's mark, and still picks the face.
+      const tile = within(pics as HTMLElement).getByRole('button', { name: "Change this session's face" })
+      expect(tile.parentElement).toHaveClass('h-[52px]')
+      fireEvent.click(tile)
+      expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(0)
+      fireEvent.keyDown(document, { code: 'Escape' })
+      // Three finished in grey, one working in colour, by start.
+      const faces = Array.from(grid.querySelectorAll<HTMLElement>('[data-matrix-face]'))
+      expect(faces.map((f) => f.getAttribute('data-state'))).toEqual(['done', 'done', 'done', 'working'])
+      expect(faces.slice(0, 3).every((f) => f.querySelector('.cockpit-subface-done svg[data-face]'))).toBe(true)
+      expect(faces[3]!.querySelector('.cockpit-subface-breathe svg[data-face]')).toBeInTheDocument()
+      expect(faces[3]).toHaveAttribute('title', 'general-purpose · Find the pricing table · working')
+      expect(grid).toHaveAttribute('title', `1 working · 3 finished lately · peak 4 at ${clockTime(now - 9 * 60_000)}`)
+      // Nothing else in the picture: no chips row, no frame.
+      expect(document.querySelector('[data-hero-chips]')).toBeEmptyDOMElement()
+      expect(document.querySelector('[data-hero-subs]')).toBeNull()
+      // The summary under the grid (shown on hover) opens the hour under the row.
+      const sum = within(row).getByRole('button', { name: '1 working · peak 4' })
+      expect(screen.queryByRole('img', { name: /at most 4 at once/ })).toBeNull()
+      fireEvent.click(sum)
+      expect(sum).toHaveAttribute('aria-expanded', 'true')
+      const chart = screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 4 at once' })
+      expect(row.contains(chart)).toBe(false)
+      fireEvent.click(sum)
+      expect(screen.queryByRole('img', { name: /at most 4 at once/ })).toBeNull()
+      // A face opens its subagent in the Subagents section.
+      fireEvent.click(faces[3]!)
+      expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
   })
 
-  // Three looks, the faces as chips by default; the viewer's pick is kept.
+  it('draws eight faces then a +N tile, each face fixed to its subagent', async () => {
+    const work = (ids: number[]) => ({
+      working: ids.map((i) => ({ agent_id: `w${i}`, agent_type: 'Explore', tool_calls: 1, started_at: i, last_at: i, running: true, asking: false })),
+      finished: 0,
+    }) as SubagentsNow
+    h.subagents = work(Array.from({ length: 11 }, (_, i) => i))
+    try {
+      show(agent({ live_subagents: 11 }))
+      const grid = await screen.findByRole('group', { name: 'Subagents, and 3 more working' })
+      expect(grid.querySelectorAll('[data-matrix-face]')).toHaveLength(8)
+      expect(grid.querySelector('[data-matrix-more]')).toHaveTextContent('+3')
+      const faceOf = () => new Map(Array.from(document.querySelectorAll('[data-matrix-face]')).map((b) => [b.getAttribute('data-matrix-face'), b.querySelector('svg')!.getAttribute('data-face')]))
+      const before = faceOf()
+      cleanup()
+      // The daemon sends them in another order, two gone: no one changes face.
+      h.subagents = work([7, 3, 5, 1, 0, 2, 4, 6, 8])
+      show(agent({ live_subagents: 9 }))
+      await screen.findByRole('group', { name: 'Subagents, and 1 more working' })
+      for (const [id, face] of faceOf()) expect(face).toBe(before.get(id))
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  it('draws only the agent’s tile and the figures when the session had no subagent', async () => {
+    h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
+    try {
+      show(agent())
+      await screen.findByRole('region', { name: 'Recent tool calls' })
+      const pics = document.querySelector('[data-hero-pics]') as HTMLElement
+      expect(within(pics).getByRole('button', { name: "Change this session's face" })).toBeInTheDocument()
+      expect(pics.querySelector('[data-hero-matrix]')).toBeNull()
+      expect(document.querySelector('[data-hero-fig]')).toBeInTheDocument()
+      expect(document.querySelector('[data-hero-count]')).toBeNull()
+      expect(screen.queryByRole('group', { name: 'How the subagents are drawn' })).toBeNull()
+      expect(document.querySelector('[data-hero-head] [data-hero-agent]')).toBeNull()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  // At most three looks (owner), the matrix first and the default; the
+  // viewer's pick is kept, and a stored crew reads as the matrix.
   it('switches between the three looks and remembers the choice', async () => {
     h.subagents = crowd(hourOf())
     try {
       show(agent({ live_subagents: 1 }))
       const looks = await screen.findByRole('group', { name: 'How the subagents are drawn' })
-      expect(within(looks).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Faces as chips', 'Strip', 'Crew'])
-      expect(within(looks).getByRole('button', { name: 'Faces as chips' })).toHaveAttribute('aria-pressed', 'true')
+      expect(within(looks).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Matrix', 'Faces as chips', 'Strip'])
+      expect(within(looks).getByRole('button', { name: 'Matrix' })).toHaveAttribute('aria-pressed', 'true')
       fireEvent.click(within(looks).getByRole('button', { name: 'Strip' }))
       expect(document.querySelector('[data-hero-strip]')).toBeInTheDocument()
-      expect(document.querySelector('[data-hero-chipline]')).toBeNull()
+      expect(document.querySelector('[data-hero-matrix]')).toBeNull()
+      // Out of the matrix the small mark is back on the name row, the only one.
+      expect(document.querySelector('[data-hero-head] [data-hero-agent]')).toBeInTheDocument()
+      expect(document.querySelectorAll('[data-hero-agent]')).toHaveLength(1)
       expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('strip')
-      fireEvent.click(within(screen.getByRole('group', { name: 'How the subagents are drawn' })).getByRole('button', { name: 'Crew' }))
-      expect(document.querySelector('[data-hero-subs]')).toHaveAttribute('data-look', 'crew')
+      fireEvent.click(within(screen.getByRole('group', { name: 'How the subagents are drawn' })).getByRole('button', { name: 'Matrix' }))
+      expect(document.querySelector('[data-hero-matrix]')).toBeInTheDocument()
       expect(document.querySelector('[data-hero-strip]')).toBeNull()
-      expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('crew')
-      // Read again from storage, as a new window would.
+      expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('matrix')
+      // Read again from storage, as a new window would: the dropped crew is the matrix.
       cleanup()
+      localStorage.setItem(SUBAGENT_LOOK_KEY, 'crew')
       resetSubagentLookForTest()
       show(agent({ live_subagents: 1 }))
-      await waitFor(() => expect(document.querySelector('[data-hero-subs]')).toHaveAttribute('data-look', 'crew'))
+      await waitFor(() => expect(document.querySelector('[data-hero-matrix]')).toBeInTheDocument())
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
@@ -1311,5 +1373,46 @@ describe('compact context (ADR-085)', () => {
     expect(within(ctx).getByRole('button', { name: '/compact' })).toBeInTheDocument()
     expect(within(ctx).getByText(/Caprock does not type into a terminal it did not start/)).toBeInTheDocument()
     expect(h.compacted).toEqual([])
+  })
+})
+
+// A model with no price in the pricing table (Claude Code on Kimi, after a
+// limit moved it there) left the panel saying $0.00 — that the work was
+// free. Rule 6: the cost is unknown, or partial when some turns were priced.
+describe('turns with no price', () => {
+  const unpriced: Event[] = [
+    { id: 11, ts: iso(30_000), session_id: 's1', source: 'transcript', kind: 'turn.assistant', model: 'kimi-k3', payload: {}, tokens: { in: 10, out: 20, cache_read: 0, cache_write: 0 } },
+    { id: 12, ts: iso(10_000), session_id: 's1', source: 'transcript', kind: 'turn.assistant', model: 'kimi-k3', payload: {}, tokens: { in: 30, out: 5, cache_read: 0, cache_write: 0 } },
+  ]
+  const kimi = (p: Partial<SessionSummary['stats']> = {}) => agent({
+    model: 'kimi-k3', model_display: undefined,
+    stats: { session_id: 's1', turns: 2, tool_calls: 0, files_touched: 0, tokens_in: 40, tokens_out: 25, cache_read: 0, cache_write: 0, cost_usd: 0, unpriced_turns: 2, ...p },
+  })
+
+  it('says the cost is unknown, never $0.00, in the figures and the Spend section', async () => {
+    h.events = unpriced
+    show(kimi())
+    const line = screen.getByRole('button', { name: /^Cost —\. Choose what this line shows/ })
+    expect(line).toHaveAttribute('title', expect.stringContaining('No price for kimi-k3'))
+    const region = screen.getByRole('region', { name: 'Spend' })
+    await waitFor(() => expect(region.querySelector('[data-spend-total]')).toHaveTextContent('—'))
+    expect(region.querySelector('[data-spend-total]')).toHaveAttribute('data-cost-state', 'unknown')
+    expect(region).toHaveTextContent('No price for kimi-k3: the cost is unknown, not $0.00.')
+    expect(document.querySelector('[data-hero-line="cost"]')).not.toHaveTextContent('$')
+    // The headline too, when it is the cost.
+    fireEvent.click(screen.getByRole('button', { name: /Headline: Burn rate/ }))
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Headline figure' })).getByRole('menuitemradio', { name: /Cost/ }))
+    expect(screen.getByLabelText('Cost —')).toHaveAttribute('title', expect.stringContaining('No price for kimi-k3'))
+  })
+
+  it('marks a cost that left unpriced turns out as partial', async () => {
+    h.events = [...events, ...unpriced]
+    show(kimi({ cost_usd: 1.84, unpriced_turns: 2 }))
+    const line = screen.getByRole('button', { name: /^Cost \$1\.84\+\. Choose what this line shows/ })
+    // The unpriced turns' model is named once the cockpit holds them.
+    await waitFor(() => expect(line).toHaveAttribute('title', expect.stringContaining('Partial: $1.84 is what could be priced; 2 turns on kimi-k3')))
+    const region = screen.getByRole('region', { name: 'Spend' })
+    await waitFor(() => expect(region.querySelector('[data-spend-total]')).toHaveTextContent('$1.84+'))
+    expect(region.querySelector('[data-spend-total]')).toHaveAttribute('data-cost-state', 'partial')
   })
 })

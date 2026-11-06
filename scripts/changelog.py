@@ -18,6 +18,11 @@ Usage:
     changelog.py preview                 # print the next release's section
     changelog.py assemble X.Y.Z YYYY-MM-DD   # write it into CHANGELOG.md, delete the fragments
 
+Assemble also writes X.Y.Z into the Claude Code plugin's manifest
+(plugins/caprock/.claude-plugin/plugin.json): Claude Code keeps a user on the
+cached plugin until that string changes, so the plugin's version is the
+release's, set here and nowhere by hand.
+
 Order: kinds in Keep a Changelog order; within a kind, fragments in the order
 git first added them (oldest first), then any not yet committed, each tie
 broken by file name. Never by mtime, which a checkout rewrites.
@@ -31,6 +36,8 @@ import sys
 KINDS = ["Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"]
 FRAGMENTS = os.path.join("changes", "unreleased")
 CHANGELOG = "CHANGELOG.md"
+PLUGIN_MANIFEST = os.path.join("plugins", "caprock", ".claude-plugin", "plugin.json")
+PLUGIN_VERSION = re.compile(r'^(\s*"version":\s*")[^"]*(")', re.MULTILINE)
 CYRILLIC = re.compile("[\u0400-\u04ff\u0500-\u052f\u1c80-\u1c8f\u2de0-\u2dff\ua640-\ua69f]")
 VERSION = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 
@@ -189,9 +196,19 @@ def cmd_assemble(root, version, date):
         text = f.read()
     if re.search(r"^## \[" + re.escape(version) + r"\]", text, re.MULTILINE):
         raise FragmentError(f"{CHANGELOG} already has a [{version}] section")
+    manifest = os.path.join(root, PLUGIN_MANIFEST)
+    plugin = None
+    if os.path.exists(manifest):
+        with open(manifest, encoding="utf-8", newline="") as f:
+            plugin = f.read()
+        if not PLUGIN_VERSION.search(plugin):
+            raise FragmentError(f'{PLUGIN_MANIFEST} has no "version" line to set')
     section = f"## [{version}] - {date}\n\n" + render(entries)
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(insert(text, section))
+    if plugin is not None:
+        with open(manifest, "w", encoding="utf-8", newline="") as f:
+            f.write(PLUGIN_VERSION.sub(lambda m: m.group(1) + version + m.group(2), plugin, count=1))
     for p, _, _ in entries:
         os.remove(os.path.join(root, p))
     print(f"changelog: {len(entries)} fragment(s) assembled into [{version}] - {date}")

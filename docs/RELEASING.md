@@ -160,7 +160,10 @@ install command that is missing.
    python3 scripts/changelog.py assemble X.Y.Z YYYY-MM-DD   # CHANGELOG.md gets ## [X.Y.Z] - date
    ```
 
-   Edit the assembled section by hand afterwards if it needs an intro line;
+   `assemble` also writes X.Y.Z into the Claude Code plugin's
+   `plugins/caprock/.claude-plugin/plugin.json`, so users of the plugin get
+   the release with `claude plugin update`; commit that file with the
+   changelog. Edit the assembled section by hand afterwards if it needs an intro line;
    `release-notes.py` reads it at tag time as before.
 3. After the release PR merges: `git pull`, confirm the `dist` workflow has
    no run in progress (`gh run list -w dist -L 3`), run `make release-ready`

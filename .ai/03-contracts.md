@@ -3464,8 +3464,11 @@ it — skipping its own and any refused with a reason — once per limit (by
 `limit_return_after_reset` on and the limit's reset known, `return_at` is
 the reset plus a minute; once it passes, the moved session, if it is still
 held and not mid-turn (as the sleep keeper reads a turn), is continued back
-on `from` and published again with `auto: true`. The return list lives in
-memory: a daemon restart drops it and the session stays where it is.
+on `from` and published again with `auto: true`. Each return is kept in
+`limit_returns` (§ Limit returns DDL, migration 0081) as well as in memory
+and read back on the first tick after a start, so a daemon restart keeps
+it; one due more than an hour before that start (a stale plan), or whose
+session has ended, is dropped there and the session stays where it is.
 `"ask"` and `"wait"` move nothing: the session shows `limit_hit` and the
 app offers the choices. `"wait"` does not use the plan-window stop
 (Premium): that pauses at a share below 100% so a turn survives, while at
@@ -5208,6 +5211,15 @@ per line, `\n` on every OS (a trailing `\r` on input is ignored). It opens no
 listener. Stdout carries the protocol and nothing else. Code:
 `internal/mcp` (`server.go` the protocol, `client.go` the daemon reads,
 `tools.go` the tools, `redact.go`), `cmd/caprock/mcp.go`.
+
+- **Claude Code plugin.** `.claude-plugin/marketplace.json` (marketplace
+  `caprock`) lists one plugin, `caprock`, at `./plugins/caprock`. Its
+  `.claude-plugin/plugin.json` declares `mcpServers.caprock` as command
+  `${CLAUDE_PLUGIN_ROOT}/scripts/caprock-mcp`, no arguments; the launcher
+  execs `<caprock> mcp` or, with none found, writes three lines to stderr
+  naming https://caprock.dev/install and exits 1. `version` is the release
+  version, written by `scripts/changelog.py assemble`. The plugin name
+  `caprock` is permanent: it is the install id `caprock@caprock`.
 
 - **Methods.** `initialize` (answers the client's `protocolVersion` when it
   is one of `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, else the
@@ -7177,6 +7189,28 @@ sessions.effort)`). `Session` carries it as `effort`, omitted when empty, so
 `/v1/sessions`, `/v1/sessions/{id}` and the live `session` frame all have it;
 the Agent panel's model chip reads it ([04-ui.md](04-ui.md)). Other agents,
 and sessions observed from their transcript alone, have none.
+
+### Limit returns DDL (migration 0081)
+
+```sql
+CREATE TABLE IF NOT EXISTS limit_returns (
+  session_id TEXT PRIMARY KEY,
+  to_target  TEXT NOT NULL,
+  return_at  INTEGER NOT NULL
+);
+```
+
+A return after the reset ([ADR-090](08-decisions.md), § Continue on
+another provider, *When a limit is reached*): `session_id` the session an
+automatic move started, now carrying the work; `to_target` the move's
+`from`, in continue-on's terms (`default`, a subscription id, `deepseek`,
+`kimi`, `codex`); `return_at` when to go back (unix ms: the limit's reset
+plus a minute). Written with the move (`store.SetLimitReturn`, one row per
+session, a later move replaces it), deleted when the session goes back, is
+moved by hand or is no longer held (`store.DeleteLimitReturn`). On the
+watcher's first tick after a start, `store.RestoreLimitReturns` deletes the
+rows due more than an hour before then and those whose session has ended or
+is unknown, and the rest are watched again. Nothing reads it over HTTP.
 
 ### Session limit DDL (migration 0078)
 

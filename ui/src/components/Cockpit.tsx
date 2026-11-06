@@ -17,6 +17,7 @@ import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDShort } from '@/lib/format'
+import { isUnpricedTurn } from '@/lib/sessionCost'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { readWindow } from './PlanLimits'
@@ -28,12 +29,12 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodChip, periodFigures, periodScope, pickHero, pickSlot, setSpendPeriod, setSpendPrefs, shownSlots, spendFigures, useSpendPeriod, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, costNote, costText, METRICS, SPEND_PERIODS, chartTotal, chartValueText, foldedFigures, metricTitle, metricValue, periodChip, periodFigures, periodScope, pickHero, pickSlot, setSpendPeriod, setSpendPrefs, shownSlots, spendFigures, useSpendPeriod, useSpendPrefs, type ChartMetric, type Metric, type PeriodFigures, type SpendBar, type SpendFigures, type SpendPeriod, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
-import { SubFace, SubagentChart, SubagentChipsLine, SubagentStripLine, anySubagents } from './SubagentFaces'
-import { subagentFace, useSubagentLook } from '@/lib/subagentfaces'
+import { HourChart, SubFace, SubagentChipsLine, SubagentMatrix, SubagentStripLine, anySubagents } from './SubagentFaces'
+import { MATRIX_FACES, subagentFace, useSubagentLook } from '@/lib/subagentfaces'
 import { useFaceDefault } from '@/lib/faces'
 import { PickableFace } from './SessionFace'
 import { AgentGlyph } from './AgentMarks'
@@ -53,7 +54,7 @@ import { FitSummary } from './FitSummary'
 import { CompactAction, CompactIcon, CompactingLine, ContextBar, useCompact } from './CompactContext'
 import { shownContext, tokShort } from '@/lib/compact'
 import {
-  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentKinds, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
+  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
 } from '@/lib/cockpit'
 
@@ -168,7 +169,8 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   const acct = useSessionPlan(s.agent, s.subscription)
   const plan = s.subscription ? windowsOf(acct.account) : planWindowsFor(s.agent, summary)
   const calls = useMemo(() => callsFromEvents(main), [main])
-  const figures = spendFigures(s, calls)
+  const unpricedModels = useMemo(() => [...new Set(main.filter(isUnpricedTurn).map((e) => e.model ?? '').filter(Boolean))], [main])
+  const figures = spendFigures(s, calls, unpricedModels)
   // The order is what the people using it look at (owner, 2026-10-12): the
   // agent and its headline figure, what it is doing now, then the context
   // and the plan limits, compact by default (owner, 2026-10-14: "you moved
@@ -370,21 +372,25 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  * space is wasted there — it needs a super-efficient informer"; V2 of the
  * mockups). Nothing in it is cut: a row that does not fit wraps.
  *
- * - **The name row**: the agent's own mark (AgentGlyph) in a small tile
- *   tinted by the state — a click on it picks the session's face, as the
- *   portrait's did, and "try a duck?" now and then points out of it — then the session's name, the project only when it is
+ * - **The name row**: the session's name, the project only when it is
  *   not the name, and a branch off the default; at the right the state (dot
  *   and word, how long ago when idle) and the permission mode. In a narrow
- *   inspector the state moves under the name.
- * - **The figures and the subagents**: the headline figure, burn rate by
- *   default, big with its comparison, the two smaller figures under it on
- *   one line. Each figure is still a chooser. In the crew look the subagent
- *   frame (SubagentChart) stands beside it, under it in a hero narrower than
- *   340px.
- * - **The subagents' row**, in the viewer's look (SubagentFaces): by default
- *   the chips, one per subagent in groups of five, as faces with *1 working ·
- *   peak 4* beside them; the strip, one line of faces and a sparkline; in the
- *   crew, the chips as letters. Nothing when the session had no subagent.
+ *   inspector the state moves under the name. In the chips and the strip the
+ *   agent's own mark (AgentGlyph) leads it in a small tile tinted by the
+ *   state — a click on it picks the session's face, and "try a duck?" now
+ *   and then points out of it.
+ * - **The pictures and the figures** (the matrix, the default look; owner,
+ *   2026-11-06): at the left the same mark in a large tile, the same button,
+ *   and the subagents' faces in a grid beside it (SubagentMatrix); at the
+ *   right the headline figure, burn rate by default, big with its
+ *   comparison, the two smaller figures under it, right-aligned. In a hero
+ *   narrower than 280px, where the two no longer fit side by side, the
+ *   figures go under the pictures. In the other two looks the figures stand
+ *   alone. Each figure is still a chooser.
+ * - **The subagents' row**, in the chips and the strip (SubagentFaces): the
+ *   chips, one per subagent in groups of five, as faces with *1 working ·
+ *   peak 4* beside them; or the strip, one line of faces and a sparkline.
+ *   Nothing when the session had no subagent.
  * - **The configuration** as small chips: the model, its reasoning effort
  *   when a hook named one ("Opus 5.5 · high") and its account, how
  *   full the context is (a bar and the percent), when it started. What the
@@ -396,12 +402,13 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const working = subs?.working.length ?? 0
   const chipBox = useRef<HTMLDivElement>(null)
   const layout = useChipLayout(chipBox, working)
-  const strip = subagentChips(subs, permission, layout.room)
-  const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
-  const kinds = useMemo(() => subagentKinds(subs?.working ?? []), [subs])
   const look = useSubagentLook()
+  const matrix = look === 'matrix'
+  const strip = subagentChips(subs, permission, matrix ? MATRIX_FACES : layout.room)
+  const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const shown = state === 'ended' ? 0 : count
   const any = anySubagents(subs, shown)
+  const [hourOpen, setHourOpen] = useState(false)
   const model = s.model_display || s.model
   const effort = s.effort
   // One word: "Background agents" took two lines (owner, 2026-10-22). The
@@ -412,14 +419,20 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   // The project only when it says something the name does not ("caprock"
   // over "caprock" was the panel's first two lines).
   const project = place && title && place.project.trim().toLowerCase() !== title.trim().toLowerCase() ? place.project : ''
+  // The agent's mark: a small tile on the name row, or, in the matrix, the
+  // large one at the left of the figures — never both.
+  const mark = (big: boolean) => (
+    <PickableFace agent={agent} sessionId={sessionId} title={agentName(agent)} hint={!asking && (state === 'idle' || state === 'waiting')}
+      className={`cockpit-avatar relative grid shrink-0 place-items-center ${big ? 'h-[52px] w-[52px] rounded-[14px]' : 'h-[24px] w-[24px] rounded-[7px]'}`} data-state={state}>
+      <span data-hero-agent aria-label={agentName(agent)} className="grid place-items-center"><AgentGlyph agent={agent} size={big ? 28 : 15} /></span>
+    </PickableFace>
+  )
+  const faces = matrix && subs && any && strip.chips.length + strip.more > 0
   return (
     <div className="@container min-w-0">
       <div className="cockpit-hero grid min-w-0 grid-cols-[minmax(0,1fr)] gap-y-2" data-state={state}>
         <div data-hero-head className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <PickableFace agent={agent} sessionId={sessionId} title={agentName(agent)} hint={!asking && (state === 'idle' || state === 'waiting')}
-            className="cockpit-avatar relative grid h-[24px] w-[24px] shrink-0 place-items-center rounded-[7px]" data-state={state}>
-            <span data-hero-agent aria-label={agentName(agent)} className="grid place-items-center"><AgentGlyph agent={agent} size={15} /></span>
-          </PickableFace>
+          {!matrix && mark(false)}
           {title && (
             <h3 className="min-w-0 break-words text-[14.5px] font-semibold leading-[20px] tracking-[-0.01em] text-fg" title={title}>{title}</h3>
           )}
@@ -440,29 +453,40 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
           </span>
         </div>
         {extra}
-        {(s.stats || (subs && look === 'crew')) && (
-          <div data-hero-row className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-x-3 gap-y-2 @[340px]:grid-cols-[auto_minmax(0,1fr)]">
-            {s.stats
-              ? (
-                <div data-hero-fig className="grid min-w-0 content-center gap-[3px]">
-                  <HeadlineFigure figures={figures} usual={usual} />
-                  <div data-hero-sec><HeroSecondaries figures={figures} /></div>
-                </div>
-              )
-              : <span />}
-            {subs && look === 'crew' && <SubagentChart subs={subs} count={shown} kinds={kinds} onChip={onChip} />}
+        {matrix ? (
+          // The matrix (owner, 2026-11-06): pictures at the left, the agent's
+          // large tile and its subagents' faces; the figures at the right,
+          // under the pictures in a hero narrower than 280px, where the two
+          // no longer fit side by side.
+          <div data-hero-row data-look="matrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-2 @[280px]:grid-cols-[auto_minmax(0,1fr)]">
+            <div data-hero-pics className="flex min-w-0 items-start gap-2.5">
+              {mark(true)}
+              {subs && faces && <SubagentMatrix subs={subs} count={shown} chips={strip.chips} more={strip.more} open={hourOpen} onToggle={() => setHourOpen((v) => !v)} onChip={onChip} />}
+            </div>
+            {s.stats && (
+              <div data-hero-fig data-align="end" className="grid min-w-0 content-center gap-[3px] @[280px]:justify-items-end @[280px]:text-right">
+                <HeadlineFigure figures={figures} usual={usual} end />
+                <div data-hero-sec><HeroSecondaries figures={figures} end /></div>
+              </div>
+            )}
+          </div>
+        ) : s.stats && (
+          <div data-hero-row className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-x-3 gap-y-2">
+            <div data-hero-fig className="grid min-w-0 content-center gap-[3px]">
+              <HeadlineFigure figures={figures} usual={usual} />
+              <div data-hero-sec><HeroSecondaries figures={figures} /></div>
+            </div>
           </div>
         )}
+        {faces && hourOpen && subs?.hour && <HourChart hour={subs.hour} />}
         {/* Always measured; empty, and so hidden, while there is nothing to draw. */}
         <div ref={chipBox} data-hero-chips className="grid min-w-0 empty:hidden">
           {look === 'strip'
             ? subs && any && <SubagentStripLine subs={subs} count={shown} chips={strip.chips} more={strip.more} onChip={onChip} />
-            : look === 'chips'
-              ? subs && any && (
-                <SubagentChipsLine subs={subs} count={shown}
-                  chips={strip.chips.length > 0 ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} faces onChip={onChip} /> : null} />
-              )
-              : strip.chips.length > 0 && <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />}
+            : look === 'chips' && subs && any && (
+              <SubagentChipsLine subs={subs} count={shown}
+                chips={strip.chips.length > 0 ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} /> : null} />
+            )}
         </div>
         {(model || effort || s.context || (s.started_at > 0 && state !== 'ended')) && (
           <div data-hero-config className="flex min-w-0 flex-wrap gap-1"
@@ -508,18 +532,16 @@ function ContextChip({ pct }: { pct: number }) {
 }
 
 /**
- * One mini-avatar per subagent on the hero's last row: its type's initial
- * in a tint fixed per type, pulsing while it works, accent while it waits
- * on you, muted once finished. In groups of five, a wider gap between
- * groups, wrapping between groups onto a second line, so the count reads by
- * fives (owner, 2026-10-14). Compact, when there are more than two full
- * lines' worth: a smaller square with no letter, its tint and state kept.
- * Then "+N" for the working left out. A chip opens its subagent's row in
- * the Subagents section below. With `faces` (the default look, *Faces as
- * chips*), a full-size chip is its subagent's face in place of the letter:
- * in colour and pulsing while it works, grey once finished.
+ * One mini-avatar per subagent on the hero's last row (*Faces as chips*):
+ * its subagent's face in a tint fixed per type, pulsing while it works,
+ * accent while it waits on you, grey once finished. In groups of five, a
+ * wider gap between groups, wrapping between groups onto a second line, so
+ * the count reads by fives (owner, 2026-10-14). Compact, when there are
+ * more than two full lines' worth: a smaller square with no face, its tint
+ * and state kept. Then "+N" for the working left out. A chip opens its
+ * subagent's row in the Subagents section below.
  */
-function SubagentStrip({ chips, more, compact, faces, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; faces?: boolean; onChip: (id: string) => void }) {
+function SubagentStrip({ chips, more, compact, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; onChip: (id: string) => void }) {
   const groups = chipGroups(chips)
   const [d] = useFaceDefault()
   const box = compact ? 'h-[10px] w-[10px] rounded-[3px]' : 'h-[18px] w-[18px] rounded-[5px] text-[10px] font-semibold'
@@ -531,9 +553,9 @@ function SubagentStrip({ chips, more, compact, faces, onChip }: { chips: Subagen
           {g.map((c) => (
             <button key={c.id} type="button" title={c.label} aria-label={`${c.label}. Open`} data-state={c.state} data-tone={c.tone}
               onClick={() => onChip(c.id)}
-              data-chip-face={faces && !compact ? c.id : undefined}
+              data-chip-face={compact ? undefined : c.id}
               className={`cockpit-subchip num relative grid place-items-center outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${box}`}>
-              {compact ? null : faces ? <SubFace face={subagentFace(c.id, d)} size={16} className="cockpit-subchip-face" /> : c.initial}
+              {compact ? null : <SubFace face={subagentFace(c.id, d)} size={16} className="cockpit-subchip-face" />}
             </button>
           ))}
           {i === groups.length - 1 && more > 0 && (
@@ -595,15 +617,18 @@ function onMenuKey(e: ReactKeyboardEvent<HTMLDivElement>) {
 
 const HERO_PLACE = ['the big figure', 'the line under it', 'the second line'] as const
 
+/** A figure's menu under right-aligned figures (the matrix): it opens leftwards from 280px. */
+const END_MENU = '@[280px]:left-auto @[280px]:right-0'
+
 /**
  * What one of the three figures beside the agent can show: every metric
  * with its value and what it is. One another figure shows is marked, and
  * picking it swaps the two, so none is shown twice.
  */
-function HeroMenu({ slot, hero, figures, label, onPick }: { slot: number; hero: readonly Metric[]; figures: SpendFigures; label: string; onPick: (m: Metric) => void }) {
+function HeroMenu({ slot, hero, figures, label, end, onPick }: { slot: number; hero: readonly Metric[]; figures: SpendFigures; label: string; end?: boolean; onPick: (m: Metric) => void }) {
   return (
     <div role="menu" aria-label={label} onKeyDown={onMenuKey}
-      className="absolute left-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg">
+      className={`absolute left-0 top-full z-30 mt-1 grid w-[min(16rem,calc(100vw-32px))] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1.5 shadow-lg ${end ? END_MENU : ''}`}>
       {HEADLINES.map((h) => {
         const at = hero.indexOf(h.id)
         const other = at >= 0 && at !== slot
@@ -627,9 +652,10 @@ function HeroMenu({ slot, hero, figures, label, onPick }: { slot: number; hero: 
  * The headline figure beside the agent, and what it is: burn rate by default, or
  * whatever the viewer picked from the ▾, remembered per viewer (owner,
  * 2026-10-12: "the number is cool but says nothing; let me switch what
- * matters more to me").
+ * matters more to me"). With `end` (the matrix), right-aligned from 280px,
+ * its menu opening leftwards.
  */
-function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usual }) {
+function HeadlineFigure({ figures, usual, end }: { figures: SpendFigures; usual?: Usual; end?: boolean }) {
   const { hero } = useSpendPrefs()
   const headline = hero[0]!
   const [open, setOpen] = useState(false)
@@ -637,13 +663,13 @@ function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usu
   const tweened = useTweened(figures.cost)
   const meta = HEADLINES.find((h) => h.id === headline) ?? HEADLINES[0]!
   useMenuDismiss(open, box, () => setOpen(false))
-  const value = headline === 'cost' ? fmtUSD(tweened) : metricValue(headline, figures)
+  const value = headline === 'cost' ? costText(figures, tweened) : metricValue(headline, figures)
   const [num, unit] = value.endsWith('/h') ? [value.slice(0, -2), '/h'] : [value, '']
   const choose = (m: Metric) => { setSpendPrefs({ hero: pickHero(hero, 0, m) }); setOpen(false) }
   const vs = versus(headline, figures, usual)
   const days = usual?.days ?? 30
   return (
-    <div ref={box} className="relative grid min-w-0 justify-items-start gap-[3px]" data-headline={headline}>
+    <div ref={box} className={`relative grid min-w-0 justify-items-start gap-[3px] ${end ? '@[280px]:justify-items-end' : ''}`} data-headline={headline}>
       <span className="cockpit-hero-num num whitespace-nowrap font-semibold leading-none tracking-[-0.03em] text-fg" data-long={num.length >= 8 ? '' : undefined}
         aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
         {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
@@ -651,7 +677,7 @@ function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usu
       {/* How the headline compares with the viewer's own usual, left of
         * its name; under 340px a long name steps down to its short word
         * beside it, so the agent's name is never the one cut. */}
-      <span className="-ml-1 flex items-center gap-1.5" data-usual-on={vs ? '' : undefined}>
+      <span className={`-ml-1 flex items-center gap-1.5 ${end ? '@[280px]:-mr-1 @[280px]:ml-0' : ''}`} data-usual-on={vs ? '' : undefined}>
       {vs && <UsualDelta v={vs} days={days} />}
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`Headline: ${meta.name}. Choose what it shows`}
         onClick={() => setOpen((o) => !o)}
@@ -660,7 +686,7 @@ function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usu
         <span data-label-long>{meta.name.toLowerCase()}</span><span data-label-short>{meta.short}</span><span aria-hidden className="text-[9px]">▾</span>
       </button>
       </span>
-      {open && <HeroMenu slot={0} hero={hero} figures={figures} label="Headline figure" onPick={choose} />}
+      {open && <HeroMenu slot={0} hero={hero} figures={figures} label="Headline figure" end={end} onPick={choose} />}
     </div>
   )
 }
@@ -669,18 +695,19 @@ function HeadlineFigure({ figures, usual }: { figures: SpendFigures; usual?: Usu
  * The two smaller figures under the headline, one line each in 13px —
  * the value, then a short word for it and a ▾ (*$4.08/h burn ▾*, *4.01B
  * tok ▾*). Moved under the agent, they stand side by side on a row of
- * their own, or stacked at the right of the subagent chips. Each line is its own chooser over the same metrics as the
- * headline, swapping rather than repeating; tokens and cost until a
- * viewer picks, remembered per viewer.
+ * their own, right-aligned with `end` (the matrix) from 280px. Each line is
+ * its own chooser over the same metrics as the headline, swapping rather
+ * than repeating; tokens and cost until a viewer picks, remembered per
+ * viewer.
  */
-function HeroSecondaries({ figures }: { figures: SpendFigures }) {
+function HeroSecondaries({ figures, end }: { figures: SpendFigures; end?: boolean }) {
   const { hero } = useSpendPrefs()
   const [open, setOpen] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
   useMenuDismiss(open !== null, box, () => setOpen(null))
   const choose = (i: number, m: Metric) => { setSpendPrefs({ hero: pickHero(hero, i, m) }); setOpen(null) }
   return (
-    <div ref={box} className="relative -ml-1 flex flex-wrap items-baseline gap-x-0.5">
+    <div ref={box} className={`relative -ml-1 flex flex-wrap items-baseline gap-x-0.5 ${end ? '@[280px]:-mr-1 @[280px]:ml-0 @[280px]:justify-end' : ''}`}>
       {[1, 2].map((i) => {
         const m = hero[i]!
         const meta = HEADLINES.find((h) => h.id === m)!
@@ -696,7 +723,7 @@ function HeroSecondaries({ figures }: { figures: SpendFigures }) {
           </button>
         )
       })}
-      {open !== null && <HeroMenu slot={open} hero={hero} figures={figures} label={`What line ${open} shows`} onPick={(m) => choose(open, m)} />}
+      {open !== null && <HeroMenu slot={open} hero={hero} figures={figures} label={`What line ${open} shows`} end={end} onPick={(m) => choose(open, m)} />}
     </div>
   )
 }
@@ -732,6 +759,8 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   // The usual is the last 30 days whatever the period; today's summary carries it.
   const usual = range?.usual ?? summary?.usual
   const chooser = <ChartChooser metric={chartBy} figures={pf} />
+  // Turns with no price: the cost total says partial, or unknown, never $0.00.
+  const cost = chartBy === 'cost' ? costNote(pf) : undefined
   return (
     <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-period={folded ? undefined : period} className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -755,12 +784,12 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
       </div>
       {!folded && view === 'numbers' && <SpendNumbers period={period} hero={hero} slots={slots} figures={pf} scope={scope} />}
       {!folded && view === 'chart' && (period === 'session'
-        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} />
+        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} cost={cost} />
         : !range
           ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">Reading {scope.split(' · ')[0]!.toLowerCase()}…</p>
           : !pf.series
             ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">This range’s summary has no spend by time to draw.</p>
-            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} />)}
+            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={scope.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} cost={cost} />)}
     </section>
   )
 }

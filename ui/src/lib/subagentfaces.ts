@@ -2,37 +2,55 @@
  * The hero's subagents drawn with the brand characters (.ai/04-ui.md §
  * Inspector, the subagent chart). Three looks, per viewer:
  *
- * - **chips** (the default), *Faces as chips*: no frame; the row of chips
- *   under the figures are the subagents' faces, *1 working · peak 4* beside
- *   them opens the hour's chart;
+ * - **matrix** (the default), *Matrix*: no frame; at the left of the
+ *   figures the agent's mark in a large tile and the subagents' faces in a
+ *   grid of four columns beside it, the working in colour, the finished
+ *   grey, *+N* past eight;
+ * - **chips**, *Faces as chips*: the row of chips under the figures are the
+ *   subagents' faces, *1 working · peak 4* beside them opens the hour's
+ *   chart;
  * - **strip**, *Strip*: one line, the working faces big and breathing, the
- *   finished small and grey, a sparkline of the hour at the right;
- * - **crew**, *Crew*: the framed block beside the figures, one face per
- *   working subagent, the finished faded, the types, the hour as bars.
+ *   finished small and grey, a sparkline of the hour at the right.
  *
  * Owner, 2026-10-31 (translated): the old step line "looks poor"; build it
  * from our characters. 2026-11-06 (translated): "fun, but takes far too much
  * space": the chart of faces and the numbers look were dropped for the
- * strip and the chips, the crew tightened. The arithmetic lives here so it
+ * strip and the chips. Later that day (translated): "on the right I just
+ * want a matrix of agent thumbnails and the main agent's icon, that's all —
+ * and swap: pictures on the left, figures on the right": the matrix took
+ * the crew's place and became the default. The arithmetic lives here so it
  * is tested apart from the component.
  */
 import { useSyncExternalStore } from 'react'
 import { hashedFace, isPool, type Face, type FaceDefault } from '@/lib/faces'
 import type { SubagentHour } from '@/lib/api'
 
-export type SubagentLook = 'chips' | 'strip' | 'crew'
+export type SubagentLook = 'matrix' | 'chips' | 'strip'
 
 export const SUBAGENT_LOOKS: readonly { id: SubagentLook; name: string }[] = [
+  { id: 'matrix', name: 'Matrix' },
   { id: 'chips', name: 'Faces as chips' },
   { id: 'strip', name: 'Strip' },
-  { id: 'crew', name: 'Crew' },
 ]
 
-export const DEFAULT_SUBAGENT_LOOK: SubagentLook = 'chips'
+export const DEFAULT_SUBAGENT_LOOK: SubagentLook = 'matrix'
 export const SUBAGENT_LOOK_KEY = 'caprock.app.subagent-look'
 
+/** The most faces the matrix draws before its *+N* tile: two rows of four. */
+export const MATRIX_FACES = 8
+
 export function isSubagentLook(v: unknown): v is SubagentLook {
-  return v === 'chips' || v === 'strip' || v === 'crew'
+  return v === 'matrix' || v === 'chips' || v === 'strip'
+}
+
+/**
+ * A stored look as it reads today: the crew, dropped on 2026-11-06, became
+ * the matrix that replaced it; anything else unknown (the chart of faces,
+ * the numbers, garbage) is the default.
+ */
+export function readSubagentLook(v: unknown): SubagentLook {
+  if (v === 'crew') return 'matrix'
+  return isSubagentLook(v) ? v : DEFAULT_SUBAGENT_LOOK
 }
 
 let current: SubagentLook | undefined
@@ -41,8 +59,7 @@ const listeners = new Set<() => void>()
 export function getSubagentLook(): SubagentLook {
   if (current) return current
   try {
-    const v = localStorage.getItem(SUBAGENT_LOOK_KEY)
-    current = isSubagentLook(v) ? v : DEFAULT_SUBAGENT_LOOK
+    current = readSubagentLook(localStorage.getItem(SUBAGENT_LOOK_KEY))
   } catch {
     current = DEFAULT_SUBAGENT_LOOK
   }

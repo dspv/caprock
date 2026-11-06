@@ -257,7 +257,8 @@ func TestContinueOnRefusesASessionCaprockDidNotStart(t *testing.T) {
 }
 
 // limit_action "auto": a session at its limit moves to the first fallback
-// that is available, once; with the return on, it goes back after the reset.
+// that is available, once; with the return on, it goes back after the reset,
+// even when the daemon restarted in between.
 func TestAutoContinueAndReturnAfterTheReset(t *testing.T) {
 	d := continueDaemon(t)
 	ctx := context.Background()
@@ -311,9 +312,15 @@ func TestAutoContinueAndReturnAfterTheReset(t *testing.T) {
 	if err := store.UpsertSession(ctx, d.store.DB(), moved.SessionID, store.SessionPatch{TranscriptPath: tp}); err != nil {
 		t.Fatal(err)
 	}
+	// A restart in between: the return is read back from the database.
+	d.limits = limitWatch{}
 	d.limitTick(ctx, time.UnixMilli(moved.ReturnAt+1))
 	back := next()
 	if !back.Auto || back.Target != subs.DefaultID || back.ContinuedFrom != moved.SessionID || back.How != "resume" {
 		t.Fatalf("back: %+v", back)
+	}
+	var left int
+	if err := d.store.DB().QueryRow(`SELECT COUNT(*) FROM limit_returns`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("%d returns left after going back (%v)", left, err)
 	}
 }

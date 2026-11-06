@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  DEFAULT_SUBAGENT_LOOK, SUBAGENT_LOOK_KEY, clockTime, getSubagentLook, isSubagentLook, peakMinute, resetSubagentLookForTest,
+  DEFAULT_SUBAGENT_LOOK, SUBAGENT_LOOKS, SUBAGENT_LOOK_KEY, clockTime, getSubagentLook, isSubagentLook, peakMinute, readSubagentLook, resetSubagentLookForTest,
   setSubagentLook, sparkPoints, subagentFace, subagentSummary,
 } from './subagentfaces'
 import { FACES, DUCKS } from './faces'
@@ -60,28 +60,37 @@ describe('subagentFace', () => {
 describe('the look a viewer picked', () => {
   beforeEach(() => { localStorage.clear(); resetSubagentLookForTest() })
 
-  it('is the faces as chips until one is picked, then the pick, kept in storage', () => {
-    expect(DEFAULT_SUBAGENT_LOOK).toBe('chips')
-    expect(getSubagentLook()).toBe('chips')
-    setSubagentLook('crew')
-    expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('crew')
+  // Owner, 2026-11-06: at most three looks, the matrix (B) first and the default.
+  it('is the matrix until one is picked, then the pick, kept in storage', () => {
+    expect(SUBAGENT_LOOKS.map((l) => l.id)).toEqual(['matrix', 'chips', 'strip'])
+    expect(DEFAULT_SUBAGENT_LOOK).toBe('matrix')
+    expect(getSubagentLook()).toBe('matrix')
+    setSubagentLook('strip')
+    expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('strip')
     resetSubagentLookForTest()
-    expect(getSubagentLook()).toBe('crew')
+    expect(getSubagentLook()).toBe('strip')
   })
 
   it('reads garbage in storage as the default', () => {
     localStorage.setItem(SUBAGENT_LOOK_KEY, 'sparkline')
-    expect(getSubagentLook()).toBe('chips')
+    expect(getSubagentLook()).toBe('matrix')
   })
 
-  // The two looks dropped on 2026-11-06 fall back to the default; the crew is kept.
-  it('reads a dropped look as the default and keeps the crew', () => {
-    expect(isSubagentLook('chart')).toBe(false)
-    expect(isSubagentLook('numbers')).toBe(false)
-    localStorage.setItem(SUBAGENT_LOOK_KEY, 'numbers')
-    expect(getSubagentLook()).toBe('chips')
-    resetSubagentLookForTest()
+  // The crew, dropped when the matrix replaced it, reads as the matrix; the
+  // two looks dropped earlier that day as the default.
+  it('reads a stored crew as the matrix and a dropped look as the default', () => {
+    expect(isSubagentLook('crew')).toBe(false)
+    expect(readSubagentLook('crew')).toBe('matrix')
+    expect(readSubagentLook('chips')).toBe('chips')
+    expect(readSubagentLook(null)).toBe('matrix')
     localStorage.setItem(SUBAGENT_LOOK_KEY, 'crew')
-    expect(getSubagentLook()).toBe('crew')
+    expect(getSubagentLook()).toBe('matrix')
+    resetSubagentLookForTest()
+    for (const gone of ['chart', 'numbers']) {
+      expect(isSubagentLook(gone)).toBe(false)
+      localStorage.setItem(SUBAGENT_LOOK_KEY, gone)
+      resetSubagentLookForTest()
+      expect(getSubagentLook()).toBe('matrix')
+    }
   })
 })

@@ -6093,6 +6093,36 @@ status above the copy commands (which stay as the fallback).
   anywhere. What the agents later ask is the condition stated in Settings'
   first paragraph, unchanged.
 
+**Amended 2026-11-06: a Claude Code plugin** (owner approved). Plugin
+catalogs crawl public marketplaces, and a user who never opens Settings
+should still find Caprock there and add it with one command. So the
+repository is a marketplace (`.claude-plugin/marketplace.json`) holding one
+plugin, `plugins/caprock/`, whose manifest declares the same `caprock mcp`
+server; `claude plugin marketplace add dspv/caprock`, then
+`claude plugin install caprock@caprock`.
+
+- **A launcher, not a bare `caprock`.** The desktop app puts no `caprock`
+  on PATH, so a bare command fails for the most common macOS install with
+  Claude Code's generic "failed". `scripts/caprock-mcp` (sh) and
+  `scripts/caprock-mcp.cmd` try PATH, then the app's copy in the data
+  directory (ADR-040), Homebrew, `~/.local/bin`, Scoop, WinGet and Go's
+  bin, and otherwise print where to install Caprock on stderr and exit 1.
+  No network. Claude Code starts stdio servers through cross-spawn, which
+  on Windows resolves the extensionless command to the `.cmd` by PATHEXT.
+  The folder is `scripts/`, not `bin/`, because claude.ai refuses a plugin
+  with a `bin/` directory.
+- **Its version is the release's.** Claude Code keeps a user on the cached
+  plugin until `version` changes, and `claude plugin validate --strict`
+  wants one, so `scripts/changelog.py assemble` writes X.Y.Z into the
+  manifest with the changelog; nobody edits it by hand.
+- **Plugin or Connect, not both.** Each adds a server and Claude Code would
+  start two; docs/mcp.md says so. Connect's status reads only
+  `~/.claude.json`, so the plugin shows as *not connected* there.
+- **Codex** reads this marketplace too (`codex plugin marketplace add`
+  lists and installs it), but whether it expands `${CLAUDE_PLUGIN_ROOT}` in
+  an MCP command was not verified, so Codex keeps `codex mcp add` and
+  Connect.
+
 **Revisit if:** an agent needs to write into Second Brain from a session
 (a `remember` tool), a client that only speaks HTTP matters, or the SDK
 becomes a dependency for another reason.
@@ -6972,7 +7002,7 @@ automatic order, a return after the reset and a toast with Undo, picked
 2026-11-03). Amends ADR-048 (a resume stays on its
 subscription). Contract: [03-contracts.md § Continue on another
 provider](03-contracts.md#continue-on-another-provider), § Session limit
-DDL (migration 0078).
+DDL (migration 0078), § Limit returns DDL (migration 0081).
 
 **Context.** When a Claude plan's five-hour or weekly window runs out,
 Claude Code ends the turn with a synthetic "You've hit your … limit" line
@@ -7018,8 +7048,10 @@ nowhere else.
   `"auto"` the first available target of an ordered list takes the session,
   once per limit, and the app is told so it can show the move and Undo
   (continue-on back). The optional return after the reset runs only when the
-  moved session is not mid-turn, and is held in memory — a restart forgets
-  it rather than moving work later by a stale plan.
+  moved session is not mid-turn. It was held in memory at first; since
+  2026-11-06 it is kept in `limit_returns` (migration 0081) and read back
+  after a restart, and one due more than an hour before the restart is
+  dropped rather than moving work later by a stale plan.
 - **Kimi is DeepSeek's twin,** on Moonshot's published Claude Code variables
   and model ids (platform.kimi.ai, read 2026-11-03), with no price shown
   (rule 6).

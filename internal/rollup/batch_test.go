@@ -257,6 +257,7 @@ func TestAHookIsNotDelayedByABackfill(t *testing.T) {
 		inBatch    atomic.Int64 // events in the open batch, 0 when none is open
 		stepAsides atomic.Int64 // batches committed because a writer waited
 		ignored    atomic.Int64 // events a batch took with a writer waiting, staying open
+		spurious   atomic.Int64 // batches due with no writer waiting
 	)
 	go func() {
 		defer wg.Done()
@@ -270,11 +271,19 @@ func TestAHookIsNotDelayedByABackfill(t *testing.T) {
 			imported.Add(1)
 			inBatch.Add(1)
 			// The batch holds the lock, so a writer counted as waiting stays
-			// waiting until the batch commits: Due must say so now.
+			// waiting until the batch commits: the count only grows here. A
+			// waiter seen before Due must make it due. Due may also see one
+			// that arrived after that first look, so a due batch is counted
+			// by what Due said, not by the first look: with the limits
+			// unbounded, only a waiter makes it due. (Counting by the first
+			// look lost the step-aside of a hook that arrived between the two
+			// reads: 19 for 20 hooks on ubuntu-latest, run 41683805495.)
 			waiter := r.waiting.Load() > 0
 			due := b.Due()
 			switch {
-			case waiter && due:
+			case due && r.waiting.Load() == 0:
+				spurious.Add(1) // due with nobody waiting: a limit misread
+			case due:
 				stepAsides.Add(1)
 			case waiter:
 				ignored.Add(1)
@@ -318,6 +327,9 @@ func TestAHookIsNotDelayedByABackfill(t *testing.T) {
 	wg.Wait()
 	if n := ignored.Load(); n > 0 {
 		t.Fatalf("a batch took %d events while a hook waited for it, instead of committing", n)
+	}
+	if n := spurious.Load(); n > 0 {
+		t.Fatalf("%d batches were due with no writer waiting and unbounded limits", n)
 	}
 	// Every hook was sent behind an open batch, and every one ended a batch
 	// (more than one when the import took the lock back first).

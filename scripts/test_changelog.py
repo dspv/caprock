@@ -109,6 +109,28 @@ class Commands(Repo):
         self.write(os.path.join("changes", "unreleased", "x.txt"), "x")
         self.assertEqual(self.run_main("check")[0], 1)
 
+    def test_assemble_sets_the_plugin_version(self):
+        rel = os.path.join("plugins", "caprock", ".claude-plugin")
+        os.makedirs(os.path.join(self.dir, rel))
+        manifest = '{\n  "name": "caprock",\n  "version": "0.1.0",\n  "mcpServers": {}\n}\n'
+        self.write(os.path.join(rel, "plugin.json"), manifest)
+        self.fragment("a.md", "Added", "- **a:** added.")
+        code, _, err = self.run_main("assemble", "v0.2.0", "2026-10-16")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.read(os.path.join(rel, "plugin.json")), manifest.replace("0.1.0", "0.2.0"))
+
+    def test_assemble_refuses_a_plugin_manifest_without_a_version(self):
+        rel = os.path.join("plugins", "caprock", ".claude-plugin")
+        os.makedirs(os.path.join(self.dir, rel))
+        self.write(os.path.join(rel, "plugin.json"), '{\n  "name": "caprock"\n}\n')
+        self.fragment("a.md", "Added", "- **a:** added.")
+        self.assertEqual(self.run_main("assemble", "0.2.0", "2026-10-16")[0], 1)
+        self.assertEqual(self.read("CHANGELOG.md"), CHANGELOG)
+
+    def test_the_real_plugin_manifest_has_a_version_line(self):
+        with open(os.path.join(HERE, "..", mod.PLUGIN_MANIFEST), encoding="utf-8") as f:
+            self.assertRegex(f.read(), mod.PLUGIN_VERSION)
+
     def test_assemble_groups_by_kind_in_keep_a_changelog_order(self):
         self.fragment("b.md", "Fixed", "- **b:** fixed.")
         self.fragment("a.md", "Security", "- **a:** secured.")

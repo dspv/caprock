@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event, SessionSummary, Subagent, SubagentDetail, SubagentsNow } from '@/lib/api'
 import type { Frame } from '@/lib/live'
 
@@ -45,6 +45,7 @@ vi.mock('@/lib/live', async (orig) => {
 
 import { Inspector } from './Inspector'
 import { live } from '@/lib/live'
+import { SUBAGENT_LOOK_KEY, resetSubagentLookForTest } from '@/lib/subagentfaces'
 
 function emit(f: Frame) {
   const subs = (live as unknown as { frameSubs: Set<(f: Frame) => void> }).frameSubs
@@ -243,6 +244,10 @@ describe('opening a subagent', () => {
 // 12 in one row, then a second row; move the text with how many subagents
 // are running higher" (owner, 2026-10-12, translated).
 describe('the hero’s subagent chips', () => {
+  // The chips are the *Faces as chips* look; the matrix, the default, draws its own grid.
+  beforeEach(() => { localStorage.setItem(SUBAGENT_LOOK_KEY, 'chips'); resetSubagentLookForTest() })
+  afterEach(() => { localStorage.removeItem(SUBAGENT_LOOK_KEY); resetSubagentLookForTest() })
+
   it('puts the count above the chips, groups them by five, and a chip opens its row', async () => {
     h.subagents = { working: Array.from({ length: 14 }, (_, i) => working(`w${i}`, { agent_type: i % 2 ? 'Explore' : 'general-purpose' })), finished: 0 }
     h.details = { w9: detail('w9') }

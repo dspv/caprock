@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/gitremote"
+	"github.com/dspv/caprock/internal/relplan"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -114,26 +115,51 @@ func TestSessionCostliest(t *testing.T) {
 	if asked != 0 {
 		t.Fatalf("GitHub was asked %d times", asked)
 	}
+}
 
-	// A tag made since shows once the history's key is read again, at most
-	// relHistRecheck later; the git reads are not repeated before that.
-	clock := time.Now().Add(relHistRecheck) // past the reads above
-	s.relHist.now = func() time.Time { return clock }
-	git(now, "commit", "-q", "--allow-empty", "-m", "feat: four (#4)")
-	git(now, "tag", "v1.3.0")
-	rels, err := s.relHist.history(ctx, repo)
-	if err != nil || len(rels) != 3 || rels[0].Tag != "v1.3.0" {
-		t.Fatalf("first read with the clock: %+v %v", rels, err)
+// A tag made since shows once the history's key is read again, at most
+// relHistRecheck later; the git reads are not repeated before that, and the
+// history is read again only when its key changed.
+//
+// The cache is driven by its own clock and reads that count themselves:
+// with real git, each read is bounded by relplan's 3 s gitTimeout, and on a
+// loaded windows-latest runner one of them ran past it, so the history came
+// back empty (run 41015419190, 2026-10-30). That git reads tags and keys
+// correctly is relplan's TestReleaseHistoryFromAGitCheckout.
+func TestReleaseHistoryCache(t *testing.T) {
+	ctx := context.Background()
+	clock := time.Unix(1_800_000_000, 0)
+	key, keys, reads := "tags-1", 0, 0
+	c := relHistCache{
+		now: func() time.Time { return clock },
+		readKey: func(_ context.Context, dir string) (string, string, string, error) {
+			if dir != "/repo" {
+				t.Fatalf("key read for %q", dir)
+			}
+			keys++
+			return key, "HEAD", "tags of " + key, nil
+		},
+		readHistory: func(_ context.Context, _, ref, tagsOut string) ([]relplan.Release, error) {
+			reads++
+			return []relplan.Release{{Tag: tagsOut + " on " + ref}}, nil
+		},
 	}
-	git(now, "commit", "-q", "--allow-empty", "-m", "feat: five (#5)")
-	git(now, "tag", "v1.4.0")
-	if rels, _ := s.relHist.history(ctx, repo); len(rels) != 3 {
-		t.Fatalf("read again before relHistRecheck: %+v", rels)
+	check := func(step, tag string, wantKeys, wantReads int) {
+		t.Helper()
+		rels, err := c.history(ctx, "/repo")
+		if err != nil || len(rels) != 1 || rels[0].Tag != tag || keys != wantKeys || reads != wantReads {
+			t.Fatalf("%s: %+v %v, %d key reads, %d history reads; want %q, %d and %d", step, rels, err, keys, reads, tag, wantKeys, wantReads)
+		}
 	}
+	check("first read", "tags of tags-1 on HEAD", 1, 1)
+	key = "tags-2" // a tag made since
+	check("at once", "tags of tags-1 on HEAD", 1, 1)
+	clock = clock.Add(relHistRecheck - time.Nanosecond)
+	check("just before relHistRecheck", "tags of tags-1 on HEAD", 1, 1)
+	clock = clock.Add(time.Nanosecond)
+	check("at relHistRecheck", "tags of tags-2 on HEAD", 2, 2)
 	clock = clock.Add(relHistRecheck)
-	if rels, _ := s.relHist.history(ctx, repo); len(rels) != 4 || rels[0].Tag != "v1.4.0" || rels[0].PRs[0] != 5 {
-		t.Fatalf("after relHistRecheck: %+v", rels)
-	}
+	check("key unchanged", "tags of tags-2 on HEAD", 3, 2)
 }
 
 // Dearest first, five at most; a tie goes to more sessions (pull requests)

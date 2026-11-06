@@ -4,21 +4,26 @@
  * as a document (Prose.tsx ProseDoc) at a reading measure, with its contents
  * beside it on a wide window (a dropdown on a narrow one), a reading
  * progress line, anchors, and its relative pictures read through the
- * daemon; a Source switch shows the text. Anything else is monospace with
- * line numbers and a soft-wrap switch — no highlighting, so the bundle stays
- * as it was. A binary or an over-large file gets one calm line and "Open in
- * editor". The header's toolbar (FileTools.tsx) hands the file on: its path,
- * an agent's `@` reference, its contents, a download, a running session.
+ * daemon; Rendered / Source / Split shows the page, the text, or both side
+ * by side with their scrolling kept together. An HTML file the same, drawn
+ * in a sandboxed frame that loads nothing from the network (FileRich.tsx);
+ * a CSV or TSV file as a table; a picture as itself. Other text is
+ * monospace with line numbers and a soft-wrap switch, highlighted by a
+ * chunk loaded only when such a file is opened (lib/highlight.ts), so the
+ * app's own chunks stay as they were. A binary or an over-large file gets
+ * one calm line and "Open in editor". The header's toolbar (FileTools.tsx)
+ * hands the file on: its path, an agent's `@` reference, its contents, a
+ * download, a running session.
  *
  * Kept current without a timer: read when the tab comes to the front, when
  * the window regains focus while it is in front, and when the live socket
  * says the file may have moved (its project's git state, or an agent's edit
  * of this path). ⌘F finds in the file.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { FIND_EVENT } from '@/lib/appkeys'
 import { failureOf } from '@/lib/changes'
-import { baseName, filesApi, fmtBytes, isMarkdown, resolveLink, type FileContent } from '@/lib/files'
+import { baseName, filesApi, fmtBytes, HIGHLIGHT_MAX_BYTES, highlightLang, IMAGE_MAX_BYTES, resolveLink, viewKind, type FileContent, type HlSeg, type ViewKind } from '@/lib/files'
 import { live } from '@/lib/live'
 import { imageUrl, outlineOf, type OutlineItem } from '@/lib/mdreader'
 import { docHeadings, parseDoc, ProseDoc, type DocImage, type DocLink } from './Prose'
@@ -35,9 +40,53 @@ const CHUNK = 400
 export const RAIL_MIN_WIDTH = 960
 /** A document needs this many headings before it gets contents at all. */
 const MIN_OUTLINE = 3
+/** From this body width a Markdown or HTML file may show Split; below it, the switch alone. */
+export const SPLIT_MIN_WIDTH = 900
+
+const HtmlPreview = lazy(() => import('./FileRich').then((m) => ({ default: m.HtmlPreview })))
+const DelimitedTable = lazy(() => import('./FileRich').then((m) => ({ default: m.DelimitedTable })))
+const SplitPanes = lazy(() => import('./FileRich').then((m) => ({ default: m.SplitPanes })))
+const ImageFile = lazy(() => import('./FileRich').then((m) => ({ default: m.ImageFile })))
 
 function loadFlag(key: string): boolean {
   try { return localStorage.getItem(key) !== '0' } catch { return true }
+}
+
+type Mode = 'rendered' | 'source' | 'split' | 'table' | 'image'
+const PAGE_MODES: [Mode, string][] = [['rendered', 'Rendered'], ['source', 'Source'], ['split', 'Split']]
+/** What the switch offers for each kind of file; the first is the default. */
+function modesOf(kind: ViewKind, path: string): [Mode, string][] {
+  if (kind === 'markdown' || kind === 'html') return PAGE_MODES
+  if (kind === 'table') return [['table', 'Table'], ['source', 'Source']]
+  if (kind === 'image') return /\.svg$/i.test(path) ? [['image', 'Image'], ['source', 'Source']] : [['image', 'Image']]
+  return []
+}
+/** The last choice for this kind of file, kept per browser in `caprock.file.view.<kind>`. */
+function loadMode(kind: ViewKind, options: [Mode, string][]): Mode | undefined {
+  try {
+    const v = localStorage.getItem(`caprock.file.view.${kind}`)
+    return options.find(([m]) => m === v)?.[0]
+  } catch { return undefined }
+}
+
+/**
+ * The file's lines highlighted, once the highlighter's chunk is here; null
+ * until then, for a language it does not know, and past HIGHLIGHT_MAX_BYTES.
+ * Only while the tab is in front: a tab behind does no work.
+ */
+function useHighlight(visible: boolean, text: string | null, lang: string | null): HlSeg[][] | null {
+  const [out, setOut] = useState<{ text: string; lang: string; lines: HlSeg[][] | null } | null>(null)
+  const want = visible && text !== null && lang !== null && text.length <= HIGHLIGHT_MAX_BYTES
+  useEffect(() => {
+    if (!want || text === null || lang === null) return
+    if (out && out.text === text && out.lang === lang) return
+    let alive = true
+    import('@/lib/highlight')
+      .then((m) => { if (alive) setOut({ text, lang, lines: m.highlightLines(text, lang) }) })
+      .catch(() => { /* stays plain */ })
+    return () => { alive = false }
+  }, [want, text, lang, out])
+  return out && out.text === text && out.lang === lang ? out.lines : null
 }
 
 export interface FileViewProps {
@@ -75,7 +124,7 @@ const NO_TARGETS: readonly SendTarget[] = []
 export const FileView = memo(function FileView({ projectId, worktree, path, visible, onOpenFile, editor, absPath, sendTargets = NO_TARGETS, onSent }: FileViewProps) {
   const [file, setFile] = useState<FileContent | null>(null)
   const [error, setError] = useState<{ message: string; status?: number } | null>(null)
-  const [source, setSource] = useState(false)
+  const [chosen, setChosen] = useState<Partial<Record<ViewKind, Mode>>>({})
   const [wrap, setWrap] = useState(() => loadFlag(WRAP_KEY))
   const [rail, setRail] = useState(() => loadFlag(TOC_KEY))
   const [find, setFind] = useState<{ open: boolean; token: number }>({ open: false, token: 0 })
@@ -85,6 +134,7 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
   const [contentsMenu, setContentsMenu] = useState(false)
   const contentsButton = useRef<HTMLButtonElement>(null)
   const body = useRef<HTMLDivElement>(null)
+  const [docPane, setDocPane] = useState<HTMLDivElement | null>(null)
   const seq = useRef(0)
 
   const load = useCallback(() => {
@@ -145,14 +195,30 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
     return () => ro.disconnect()
   }, [])
 
-  const md = isMarkdown(path, file?.lang)
-  const rendered = md && !source
-  const blocks = useMemo(() => (rendered && file && !file.binary ? parseDoc(file.text) : null), [rendered, file])
+  const kind = viewKind(path, file?.lang)
+  const md = kind === 'markdown'
+  const canSplit = width >= SPLIT_MIN_WIDTH
+  const allModes = modesOf(kind, path)
+  const modes = canSplit ? allModes : allModes.filter(([m]) => m !== 'split')
+  const mode: Mode = chosen[kind] ?? loadMode(kind, allModes) ?? allModes[0]?.[0] ?? 'source'
+  // Split on a narrow tab falls back to the switch's first choice.
+  const view: Mode = mode === 'split' && !canSplit ? (allModes[0]?.[0] ?? 'source') : mode
+  const split = view === 'split'
+  const choose = (m: Mode) => {
+    setChosen((c) => ({ ...c, [kind]: m }))
+    try { localStorage.setItem(`caprock.file.view.${kind}`, m) } catch { /* not kept */ }
+  }
+  const text = file && !file.binary ? file.text : null
+  // The source's lines are on screen: plain text, a Source choice, or Split's left side.
+  const showLines = text !== null && (kind === 'text' || view === 'source' || split)
+  const rendered = md && (view === 'rendered' || split)
+  const hl = useHighlight(visible, showLines ? text : null, highlightLang(path, file?.lang))
+  const blocks = useMemo(() => (rendered && text !== null ? parseDoc(text) : null), [rendered, text])
   const outline = useMemo<OutlineItem[]>(() => {
     const h = blocks ? docHeadings(blocks) : []
     return h.length >= MIN_OUTLINE ? outlineOf(h) : []
   }, [blocks])
-  const wide = width >= RAIL_MIN_WIDTH
+  const wide = width >= RAIL_MIN_WIDTH && !split
   const showRail = wide && rail && outline.length > 0
 
   /** Scrolls the heading with this anchor to the top of the body. */
@@ -164,7 +230,7 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
 
   // Reading progress and the heading being read, from one scroll handler.
   useEffect(() => {
-    const el = body.current
+    const el = split ? docPane : body.current
     if (!el || !blocks) { setProgress(0); return }
     let frame = 0
     const measure = () => {
@@ -184,7 +250,7 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
     el.addEventListener('scroll', onScroll, { passive: true })
     measure()
     return () => { el.removeEventListener('scroll', onScroll); cancelAnimationFrame(frame) }
-  }, [blocks, outline])
+  }, [blocks, outline, split, docPane])
 
   // Through a ref, so a parent's new callback does not parse the document again.
   const openFile = useRef(onOpenFile)
@@ -252,10 +318,10 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
             ))}
           </Popover>
         )}
-        {md && file && !file.binary && (
-          <Segmented label="Show" value={source ? 'source' : 'rendered'} onChange={(v) => setSource(v === 'source')} options={[['rendered', 'Rendered'], ['source', 'Source']]} />
+        {text !== null && modes.length > 1 && (
+          <Segmented label="Show" value={view} onChange={choose} options={modes} />
         )}
-        {file && !file.binary && !rendered && (
+        {showLines && (
           <button
             type="button"
             aria-pressed={wrap}
@@ -296,13 +362,30 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
             <div className="h-full origin-left bg-accent/70" style={{ transform: `scaleX(${progress})` }} />
           </div>
         )}
-        <div ref={body} className="app-scroll absolute inset-0 overflow-auto" tabIndex={-1}>
+        <div ref={body} className={`app-scroll absolute inset-0 ${split || (kind === 'html' && view === 'rendered') ? 'overflow-hidden' : 'overflow-auto'}`} tabIndex={-1}>
           {error && !file ? (
             <Calm text={error.status === 404 ? 'This file is not there any more.' : error.message} editor={error.status === 404 ? undefined : editor} />
           ) : !file ? (
             <p className="px-4 py-3 text-[12px] text-fg-faint">Reading…</p>
-          ) : file.binary ? (
+          ) : kind === 'image' && view !== 'source' ? (
+            file.size > IMAGE_MAX_BYTES
+              ? <Calm text={`A picture of ${fmtBytes(file.size)}, too large to show here.`} editor={editor} />
+              : <Suspense fallback={null}><ImageFile key={`${file.size}:${text?.length ?? 0}`} projectId={projectId} worktree={worktree} path={path} size={file.size} /></Suspense>
+          ) : file.binary || text === null ? (
             <Calm text={`${file.truncated ? 'A large' : 'A'} binary file of ${fmtBytes(file.size)}; it is not shown here.`} editor={editor} />
+          ) : split ? (
+            <Suspense fallback={null}><SplitPanes
+              sync={md}
+              onPage={setDocPane}
+              left={<Lines lines={lines} wrap={wrap} hl={hl} />}
+              right={md ? (
+                <div className="flex w-full justify-center px-8 pb-24 pt-9">
+                  <article data-doc className="min-w-0 max-w-[72ch] flex-1 text-[15px]">{doc}</article>
+                </div>
+              ) : (
+                <Suspense fallback={null}><HtmlPreview text={text} projectId={projectId} worktree={worktree} path={path} /></Suspense>
+              )}
+            /></Suspense>
           ) : doc ? (
             <div className="flex w-full justify-center gap-10 px-8 pb-24 pt-9">
               <article data-doc className="min-w-0 max-w-[72ch] flex-1 text-[15px]">
@@ -310,8 +393,12 @@ export const FileView = memo(function FileView({ projectId, worktree, path, visi
               </article>
               {showRail && <Contents outline={outline} current={current} onJump={jump} />}
             </div>
+          ) : kind === 'html' && view === 'rendered' ? (
+            <Suspense fallback={null}><HtmlPreview text={text} projectId={projectId} worktree={worktree} path={path} /></Suspense>
+          ) : kind === 'table' && view === 'table' ? (
+            <Suspense fallback={null}><DelimitedTable text={text} tsv={/\.tsv$/i.test(path)} /></Suspense>
           ) : (
-            <Lines lines={lines} wrap={wrap} />
+            <Lines lines={lines} wrap={wrap} hl={hl} />
           )}
         </div>
       </div>
@@ -380,24 +467,43 @@ function Calm({ text, editor }: { text: string; editor?: { name: string; open: (
   )
 }
 
-/** The text with its line numbers; blocks off screen are skipped by layout. */
-const Lines = memo(function Lines({ lines, wrap }: { lines: string[]; wrap: boolean }) {
+/** A highlighted segment's colour, from the palette's tokens so it holds in every theme. */
+const HL_STYLE: Record<string, CSSProperties> = {
+  kw: { color: 'var(--color-accent)' },
+  str: { color: 'var(--color-ok)' },
+  num: { color: 'var(--color-warn)' },
+  com: { color: 'var(--color-fg-faint)', fontStyle: 'italic' },
+  fn: { color: 'var(--color-accent-strong)' },
+  type: { color: 'color-mix(in srgb, var(--color-info) 55%, var(--color-fg))' },
+  tag: { color: 'var(--color-danger)' },
+  attr: { color: 'color-mix(in srgb, var(--color-warn) 60%, var(--color-fg))' },
+  meta: { color: 'var(--color-fg-muted)' },
+}
+
+/** The text with its line numbers, highlighted when `hl` has come; blocks off screen are skipped by layout. */
+const Lines = memo(function Lines({ lines, wrap, hl }: { lines: string[]; wrap: boolean; hl?: HlSeg[][] | null }) {
   const digits = String(lines.length).length
+  const segs = hl && hl.length === lines.length ? hl : null
   const chunks = useMemo(() => {
     const out: { start: number; rows: string[] }[] = []
     for (let i = 0; i < lines.length; i += CHUNK) out.push({ start: i, rows: lines.slice(i, i + CHUNK) })
     return out
   }, [lines])
   return (
-    <div className={`mono py-2 text-[12.5px] leading-[1.6] ${wrap ? '' : 'w-max min-w-full'}`} data-lines>
+    <div className={`mono py-2 text-[12.5px] leading-[1.6] ${wrap ? '' : 'w-max min-w-full'}`} data-lines data-highlighted={segs ? '' : undefined}>
       {chunks.map((c) => (
         <div key={c.start} style={{ contentVisibility: 'auto', containIntrinsicSize: `auto ${c.rows.length * 20}px` }}>
-          {c.rows.map((l, i) => (
-            <div key={i} className="flex hover:bg-[var(--app-row-hover)]">
-              <span data-gutter aria-hidden className="shrink-0 select-none pr-4 text-right text-fg-faint" style={{ width: `calc(${digits}ch + 2rem)` }}>{c.start + i + 1}</span>
-              <span className={`min-w-0 flex-1 pr-4 ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'}`}>{l || '​'}</span>
-            </div>
-          ))}
+          {c.rows.map((l, i) => {
+            const s = segs?.[c.start + i]
+            return (
+              <div key={i} data-row className="flex hover:bg-[var(--app-row-hover)]">
+                <span data-gutter aria-hidden className="shrink-0 select-none pr-4 text-right text-fg-faint" style={{ width: `calc(${digits}ch + 2rem)` }}>{c.start + i + 1}</span>
+                <span className={`min-w-0 flex-1 pr-4 ${wrap ? 'whitespace-pre-wrap [overflow-wrap:anywhere]' : 'whitespace-pre'}`}>
+                  {s && s.length ? s.map((g, k) => (g.r ? <span key={k} style={HL_STYLE[g.r]}>{g.t}</span> : g.t)) : l || '​'}
+                </span>
+              </div>
+            )
+          })}
         </div>
       ))}
     </div>
@@ -419,7 +525,11 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
 /** Matches past this are not marked; the count says so. */
 const MAX_MATCHES = 5000
 
-/** Every match of q in the container's text, skipping the line numbers. */
+/**
+ * Every match of q in the container's text, skipping the line numbers. The
+ * text nodes of one source line (`[data-row]`, split by highlighting) are
+ * searched as one string, so a match may cross a coloured token.
+ */
 export function findRanges(container: HTMLElement, q: string): Range[] {
   if (!q) return []
   const needle = q.toLowerCase()
@@ -427,15 +537,34 @@ export function findRanges(container: HTMLElement, q: string): Range[] {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
     acceptNode: (n) => ((n.parentElement?.closest('[data-gutter]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT)),
   })
-  for (let n = walker.nextNode(); n && out.length < MAX_MATCHES; n = walker.nextNode()) {
-    const hay = (n.nodeValue ?? '').toLowerCase()
+  let group: Node[] = []
+  let key: Node | null = null
+  const search = () => {
+    if (group.length === 0) return
+    const starts: number[] = []
+    let hay = ''
+    for (const n of group) { starts.push(hay.length); hay += n.nodeValue ?? '' }
+    hay = hay.toLowerCase()
+    // The node holding the character at `pos` (as an end, the one it closes).
+    const locate = (pos: number, end: boolean): [Node, number] => {
+      let i = group.length - 1
+      while (i > 0 && (end ? starts[i]! >= pos : starts[i]! > pos)) i--
+      return [group[i]!, pos - starts[i]!]
+    }
     for (let at = hay.indexOf(needle); at >= 0 && out.length < MAX_MATCHES; at = hay.indexOf(needle, at + needle.length)) {
       const r = document.createRange()
-      r.setStart(n, at)
-      r.setEnd(n, at + needle.length)
+      r.setStart(...locate(at, false))
+      r.setEnd(...locate(at + needle.length, true))
       out.push(r)
     }
+    group = []
   }
+  for (let n = walker.nextNode(); n && out.length < MAX_MATCHES; n = walker.nextNode()) {
+    const row = n.parentElement?.closest('[data-row]') ?? n
+    if (row !== key) { search(); key = row }
+    group.push(n)
+  }
+  search()
   return out
 }
 

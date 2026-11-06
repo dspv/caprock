@@ -144,3 +144,50 @@ export function fmtBytes(n: number): string {
   if (n >= 1024) return `${Math.round(n / 1024)} KB`
   return `${n} bytes`
 }
+
+/** How the file tab shows a file: its own reader for each, monospace text for the rest. */
+export type ViewKind = 'markdown' | 'html' | 'table' | 'image' | 'text'
+
+/** Pictures the tab shows as pictures, by extension: what `GET …/image` serves. */
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i
+
+export function viewKind(path: string, lang?: string): ViewKind {
+  if (isMarkdown(path, lang)) return 'markdown'
+  if (/\.html?$/i.test(path)) return 'html'
+  if (/\.(csv|tsv)$/i.test(path)) return 'table'
+  if (IMAGE_EXT.test(path)) return 'image'
+  return 'text'
+}
+
+/** A picture past this is refused by `GET …/image` (MaxImageBytes). */
+export const IMAGE_MAX_BYTES = 10 << 20
+
+/** A file past this many bytes stays plain monospace: highlighting it would cost more than it shows. */
+export const HIGHLIGHT_MAX_BYTES = 256 * 1024
+
+/** The highlight.js language for a file, or null to leave it plain. */
+export function highlightLang(path: string, lang?: string): string | null {
+  const base = baseName(path).toLowerCase()
+  if (base === 'makefile' || base.endsWith('.mk')) return 'makefile'
+  if (base === 'dockerfile' || base.startsWith('dockerfile.')) return 'dockerfile'
+  const ext = base.includes('.') ? base.slice(base.lastIndexOf('.') + 1) : ''
+  switch (ext) {
+    case 'css': case 'scss': return 'css'
+    case 'js': case 'jsx': case 'mjs': case 'cjs': return 'javascript'
+    case 'ts': case 'tsx': case 'mts': case 'cts': return 'typescript'
+    case 'json': case 'jsonc': return 'json'
+    case 'html': case 'htm': case 'xml': case 'svg': return 'xml'
+    case 'go': return 'go'
+    case 'py': return 'python'
+    case 'sh': case 'bash': case 'zsh': return 'bash'
+    case 'yaml': case 'yml': return 'yaml'
+    case 'toml': case 'ini': case 'cfg': return 'ini'
+    case 'sql': return 'sql'
+    case 'md': case 'mdx': case 'markdown': return 'markdown'
+  }
+  return lang === 'markdown' ? 'markdown' : null
+}
+
+/** A colour role of a highlighted segment; '' is plain text. */
+export type HlRole = 'kw' | 'str' | 'num' | 'com' | 'fn' | 'type' | 'tag' | 'attr' | 'meta'
+export interface HlSeg { r: HlRole | ''; t: string }
