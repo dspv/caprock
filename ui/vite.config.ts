@@ -16,8 +16,19 @@ import { fileURLToPath, URL } from 'node:url'
 // sandboxed daemon on a free port (ui/e2e/stand.ts).
 const daemon = process.env.CAPROCK_DAEMON_URL || 'http://127.0.0.1:22776'
 
+// The phone's page in Safari on an iPhone offers Caprock for iPhone (ADR-083)
+// through Apple's Smart App Banner: a person who scanned the pairing code with
+// the camera lands here and would otherwise never learn the app exists. Only
+// the remote build carries it; Safari alone draws it, never the app's own web
+// view, a home-screen copy or any other browser.
+const appBanner = {
+  name: 'caprock-app-banner',
+  transformIndexHtml: (html: string) =>
+    html.replace('</head>', '    <meta name="apple-itunes-app" content="app-id=6827747312" />\n  </head>'),
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), ...(mode === 'remote' ? [appBanner] : [])],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   define: mode === 'remote' ? { 'import.meta.env.VITE_CAPROCK_REMOTE': JSON.stringify('1') } : {},
   build: {
