@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/aymanbagabas/go-pty v0.2.3
 	github.com/coder/websocket v1.8.15
-	github.com/ebitengine/purego v0.11.2
+	github.com/ebitengine/purego v0.11.3
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
@@ -17,8 +17,8 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
-	modernc.org/libc v1.79.1
-	modernc.org/sqlite v1.61.0
+	modernc.org/libc v1.80.0
+	modernc.org/sqlite v1.61.1
 )
 
 require (
