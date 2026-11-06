@@ -12,6 +12,52 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.174.0] - 2026-11-06
+
+### Added
+
+- **plugin:** Caprock is a Claude Code plugin. `claude plugin marketplace add
+  dspv/caprock`, then `claude plugin install caprock@caprock`, adds the
+  read-only `caprock mcp` server for every project. Its launcher finds
+  `caprock` even when the desktop app put none on your `PATH`, and when
+  Caprock is not installed it says so, with the install link, instead of a
+  bare "failed". It downloads and sends nothing.
+- **ui:** the file tab reads more kinds of file. Markdown and HTML get
+  *Rendered* / *Source* / *Split*, Split showing the source and the page side
+  by side, their scrolling kept together for Markdown; the choice is
+  remembered. An HTML page is drawn in a sandboxed frame that runs no script
+  and loads nothing from the network, its own stylesheets and pictures read
+  from the project. CSV and TSV files show as a table, pictures (SVG too) as
+  themselves, and code and config files are syntax-highlighted by a part of
+  the app loaded only when such a file is opened; a file over 256 KB stays
+  plain.
+
+### Changed
+
+- **ui:** the Agent panel's header puts the pictures at the left and the
+  figures at the right. The agent's mark is a large tile (still the button
+  that picks the session's face), and beside it the subagents' faces in a
+  grid of four columns: the working in colour, the recently finished grey,
+  a *+N* tile past eight. The small mark on the name row is gone in this
+  look, so the agent is drawn once. Burn, tokens and cost stand
+  right-aligned, under the pictures in a narrow panel. Hovering the grid
+  shows *1 working · peak 4*, which opens the last hour's chart, and the
+  three dots that switch looks. This *Matrix* look is the default and
+  replaces *Crew*; a viewer who had picked the crew gets the matrix.
+  *Faces as chips* and *Strip* stay.
+
+### Fixed
+
+- **ui:** the Agent panel (⌘I) no longer says $0.00 for a session on a
+  model Caprock has no price for, such as Kimi or DeepSeek after a limit
+  moved the session there. Its cost figures read — with the model named on
+  hover; a session with some turns priced shows the priced sum with a +
+  (*$1.84+*) and says on hover how many turns are not in it.
+- **daemon:** "Return after the reset" survives a restart. A session that
+  Caprock moved to another provider or sign-in at a usage limit still goes
+  back once the limit resets, even when Caprock restarted in between; a
+  return more than an hour overdue at the restart is dropped.
+
 ## [0.173.0] - 2026-11-06
 
 ### Added
