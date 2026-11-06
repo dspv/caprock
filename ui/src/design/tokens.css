@@ -1100,6 +1100,41 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 [data-app] .cockpit-fill[data-tone="accent"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 55%, transparent), var(--color-accent)); }
 [data-app] .cockpit-fill[data-tone="warn"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-warn) 55%, transparent), var(--color-warn)); }
 [data-app] .cockpit-fill[data-tone="danger"] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-danger) 55%, transparent), var(--color-danger)); }
+/* The Context meter (CompactContext ContextBar). The empty track is tinted
+ * faintly where the fill turns warn (60%) and danger (85%), so where the
+ * colour changes shows before the fill gets there; the quarter marks are
+ * one ink over fill and track alike, not a cut in the fill that read as a
+ * step of its gradient. */
+[data-app] .cockpit-track.cockpit-ctx-track {
+  background-color: color-mix(in srgb, var(--color-fg) 8%, transparent);
+  background-image: linear-gradient(90deg, transparent 60%,
+    color-mix(in srgb, var(--color-warn) 16%, transparent) 60% 85%,
+    color-mix(in srgb, var(--color-danger) 20%, transparent) 85%);
+}
+[data-app] .cockpit-quarter { background: color-mix(in srgb, var(--color-fg) 24%, transparent); }
+/* While a compaction runs: stripes moving over the fill, one period a step,
+ * still under reduced motion. Nothing measures progress: they say "busy". */
+[data-app] .cockpit-stripes {
+  background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.38) 0 3px, transparent 3px 6px);
+  animation: cockpitStripes 700ms linear infinite;
+}
+@keyframes cockpitStripes { from { background-position: 0 0; } to { background-position: 8.485px 0; } }
+/* After a compaction: the fill before it, faint, shrinking once to the new one. */
+[data-app] .cockpit-ghost {
+  width: var(--ghost-to);
+  background: color-mix(in srgb, var(--color-fg) 22%, transparent);
+  animation: cockpitGhost 2400ms var(--app-ease) 1 both;
+}
+/* Held at the old size long enough to be seen, then shrunk onto the fill. */
+@keyframes cockpitGhost {
+  0%, 30% { width: var(--ghost-from); opacity: 1; }
+  92% { width: var(--ghost-to); opacity: 0.6; }
+  100% { width: var(--ghost-to); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-app] .cockpit-stripes { animation: none; }
+  [data-app] .cockpit-ghost { display: none; }
+}
 [data-app] .cockpit-now { border-color: var(--app-hairline); background: color-mix(in srgb, var(--color-fg) 3%, transparent); }
 [data-app] .cockpit-now[data-state="working"] {
   border-color: color-mix(in srgb, var(--color-ok) 30%, transparent);

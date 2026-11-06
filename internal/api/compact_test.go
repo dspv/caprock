@@ -49,8 +49,8 @@ func TestCompactionEndpoints(t *testing.T) {
 	// press is refused rather than typing a second /compact.
 	e.event(t, event.Event{SessionID: "s1", Source: event.SourceHook, Kind: event.KindContextCompact, Ts: now.Add(-time.Minute),
 		Payload: json.RawMessage(`{"trigger":"manual"}`)})
-	if e.get(t, "/v1/sessions/s1/compaction", &v); !v.Running {
-		t.Fatalf("running not seen: %+v", v)
+	if e.get(t, "/v1/sessions/s1/compaction", &v); !v.Running || v.RunningSince != now.Add(-time.Minute).UnixMilli() {
+		t.Fatalf("running not seen, or not since the hook: %+v", v)
 	}
 	if code := e.send(t, http.MethodPost, "/v1/agents/s1/compact", ``, nil); code != http.StatusConflict || len(q.compacted) != 0 {
 		t.Fatalf("press while compacting: %d, compacted %v", code, q.compacted)
@@ -63,7 +63,7 @@ func TestCompactionEndpoints(t *testing.T) {
 		Key: "msg:m1", Model: "claude-sonnet-4-6", Tokens: &event.TokenDelta{In: 10, CacheRead: 50_000, CacheWrite: 11_000}})
 	v = CompactionView{}
 	e.get(t, "/v1/sessions/s1/compaction", &v)
-	if v.Running || v.Last == nil || v.Last.PreTokens != 467121 || v.Last.PostTokens != 61_010 || v.Last.Trigger != "manual" {
+	if v.Running || v.RunningSince != 0 || v.Last == nil || v.Last.PreTokens != 467121 || v.Last.PostTokens != 61_010 || v.Last.Trigger != "manual" {
 		t.Fatalf("after the boundary: %+v %+v", v, v.Last)
 	}
 	// One measured compaction is not a typical figure.
@@ -83,15 +83,17 @@ func TestCompactionEndpoints(t *testing.T) {
 	}
 }
 
-// From the fifth measured compaction on this machine, its own median.
+// From the fifth measured compaction on this machine, its own median. How
+// long one takes is a median of the timed ones alone, absent below five.
 func TestCompactionTypicalFromFive(t *testing.T) {
 	e := newEnv(t)
 	base := e.api.d.Now().Add(-time.Hour)
+	durs := []string{`,"duration_ms":40000`, `,"duration_ms":70000`, ``, `,"duration_ms":55000`, `,"duration_ms":0`}
 	for i := range CompactTypicalMin {
 		id := "s" + string(rune('a'+i))
 		at := base.Add(time.Duration(i) * time.Minute)
 		e.event(t, event.Event{SessionID: id, Source: event.SourceTranscript, Kind: event.KindContextCompacted, Ts: at,
-			Key: "compact:x", Payload: json.RawMessage(`{"trigger":"auto","pre_tokens":200000}`)})
+			Key: "compact:x", Payload: json.RawMessage(`{"trigger":"auto","pre_tokens":200000` + durs[i] + `}`)})
 		e.event(t, event.Event{SessionID: id, Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Ts: at.Add(time.Second),
 			Key: "msg:x", Model: "claude-sonnet-4-6", Tokens: &event.TokenDelta{CacheRead: 30_000}})
 	}
@@ -99,6 +101,29 @@ func TestCompactionTypicalFromFive(t *testing.T) {
 	e.get(t, "/v1/sessions/sa/compaction", &v)
 	if v.Typical == nil || v.Typical.Count != CompactTypicalMin || v.Typical.MedianKept != 0.15 {
 		t.Fatalf("typical %+v", v.Typical)
+	}
+	// Three of five timed: no "usually".
+	if v.Typical.MedianDurationMs != 0 {
+		t.Fatalf("median duration from three: %+v", v.Typical)
+	}
+	var raw map[string]any
+	e.get(t, "/v1/sessions/sa/compaction", &raw)
+	if _, ok := raw["typical"].(map[string]any)["median_duration_ms"]; ok {
+		t.Fatalf("median_duration_ms present below the minimum: %v", raw["typical"])
+	}
+
+	// Two more timed (and measured) ones: five timed, median of 40, 55, 70, 80, 90 s.
+	e.api.compactStats.at = time.Time{}
+	for i, d := range []string{"80000", "90000"} {
+		id := "t" + string(rune('a'+i))
+		at := base.Add(time.Duration(10+i) * time.Minute)
+		e.event(t, event.Event{SessionID: id, Source: event.SourceTranscript, Kind: event.KindContextCompacted, Ts: at,
+			Key: "compact:x", Payload: json.RawMessage(`{"trigger":"auto","pre_tokens":200000,"post_tokens":30000,"duration_ms":` + d + `}`)})
+	}
+	v = CompactionView{}
+	e.get(t, "/v1/sessions/sa/compaction", &v)
+	if v.Typical == nil || v.Typical.MedianDurationMs != 70_000 {
+		t.Fatalf("median duration of five: %+v", v.Typical)
 	}
 }
 

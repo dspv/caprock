@@ -231,6 +231,8 @@ export interface ContextFill {
   pct: number
   /** What the next tool call costs at this context, before it does any work. */
   next_call_usd: number
+  /** When what it measured happened, unix ms: the main-thread turn, or the compaction boundary it reads. */
+  at?: number
 }
 
 export interface SessionSummary extends Session {
@@ -3232,6 +3234,8 @@ export interface CompactionStats {
   /** unix ms */
   from: number
   to: number
+  /** Median time a compaction took, over the ones Claude Code timed; absent with fewer than five timed. */
+  median_duration_ms?: number
 }
 
 /** GET /v1/sessions/{id}/compaction. */
@@ -3239,6 +3243,8 @@ export interface CompactionView {
   session_id: string
   last?: Compaction
   running: boolean
+  /** The PreCompact hook's time while running, unix ms. */
+  running_since?: number
   queued: boolean
   /** Absent with fewer than five measured on this machine. */
   typical?: CompactionStats

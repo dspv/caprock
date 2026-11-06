@@ -103,6 +103,11 @@ type CompactionStats struct {
 	P90Kept    float64 `json:"p90_kept"`
 	MedianPre  int64   `json:"median_pre"`
 	MedianPost int64   `json:"median_post"`
+	// MedianDurationMs is the median time a compaction took, over the
+	// scanned ones Claude Code timed (duration_ms > 0); DurationCount is how
+	// many those are. The API leaves the median out below its minimum.
+	MedianDurationMs int64 `json:"median_duration_ms,omitempty"`
+	DurationCount    int   `json:"-"`
 	// From and To bound the measured compactions, unix ms.
 	From int64 `json:"from"`
 	To   int64 `json:"to"`
@@ -117,6 +122,7 @@ func RecentCompactionStats(ctx context.Context, q Querier) (CompactionStats, err
 	}
 	defer func() { _ = rows.Close() }()
 	var cs []Compaction
+	var durs []int64
 	for rows.Next() {
 		c, err := scanCompaction(rows)
 		if err != nil {
@@ -125,11 +131,19 @@ func RecentCompactionStats(ctx context.Context, q Querier) (CompactionStats, err
 		if c.PreTokens > 0 && c.PostTokens > 0 {
 			cs = append(cs, c)
 		}
+		if c.DurationMs > 0 {
+			durs = append(durs, c.DurationMs)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return CompactionStats{}, err
 	}
-	return compactionStats(cs), nil
+	st := compactionStats(cs)
+	if len(durs) > 0 {
+		sort.Slice(durs, func(i, j int) bool { return durs[i] < durs[j] })
+		st.MedianDurationMs, st.DurationCount = medianI(durs), len(durs)
+	}
+	return st, nil
 }
 
 func compactionStats(cs []Compaction) CompactionStats {

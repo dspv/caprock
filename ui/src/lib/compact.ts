@@ -7,7 +7,7 @@
  * started (rule 7), through the message queue: at once at the prompt, else
  * when the turn ends. The session carries on in place. Free.
  */
-import type { Compaction, CompactionEstimate, CompactionStats, CompactionView, SavingPoint, SessionSummary } from './api'
+import type { Compaction, CompactionEstimate, CompactionStats, CompactionView, ContextFill, SavingPoint, SessionSummary } from './api'
 import { fmtAgo, fmtModel, fmtUSD } from './format'
 
 /** Under this much context the action is hidden: there is little to gain. */
@@ -181,4 +181,57 @@ export function compactInfo(kept: { text: string; source: string }, c: Compactio
       : "Each call after it re-reads the dropped context no more, at its model's cache-read price. An estimate.",
   })
   return out
+}
+
+/**
+ * What the Context meter shows: the summary's measurement, or — when the
+ * newest compaction is at or after what that measured (`ctx.at`) — the size
+ * the compaction left, with the size before it as `was`. The next measured
+ * call takes over as usual: its time is after the boundary. A daemon that
+ * sends no `at` keeps the summary's figure.
+ */
+export interface ShownContext {
+  tokens: number
+  pct: number
+  /** The context before the compaction, while the meter shows the size it left. */
+  was?: number
+}
+
+export function shownContext(ctx: ContextFill, last: Compaction | undefined): ShownContext {
+  const post = last?.post_tokens ?? 0
+  if (last && post > 0 && ctx.at !== undefined && last.at >= ctx.at && ctx.window > 0) {
+    return { tokens: post, pct: (100 * post) / ctx.window, was: last.pre_tokens > post ? last.pre_tokens : undefined }
+  }
+  return { tokens: ctx.tokens, pct: ctx.pct }
+}
+
+/** Elapsed as a clock: "0:16", "1:05", "12:40". */
+export function fmtElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/**
+ * A median duration as "usually" reads it: "~40 s" under a minute (to five
+ * seconds), "~1 min", "~2 min" from there (to the minute).
+ */
+export function fmtUsually(ms: number): string {
+  const s = ms / 1000
+  if (s < 55) return `~${Math.max(5, Math.round(s / 5) * 5)} s`
+  return `~${Math.max(1, Math.round(s / 60))} min`
+}
+
+/**
+ * The line under the meter while a compaction runs. Claude Code reports no
+ * progress, so: the time since its PreCompact hook and, from this machine's
+ * own timed compactions, how long one usually takes — *Compacting · 0:16 ·
+ * usually ~1 min*. Without the hook's time, no clock; without the median
+ * (fewer than five timed), no "usually" (rule 6).
+ */
+export function compactingLine(view: CompactionView | undefined, now = Date.now()): string {
+  const parts = ['Compacting']
+  if (view?.running && view.running_since) parts.push(fmtElapsed(now - view.running_since))
+  const median = view?.typical?.median_duration_ms
+  if (median && median > 0) parts.push(`usually ${fmtUsually(median)}`)
+  return parts.join(' · ')
 }

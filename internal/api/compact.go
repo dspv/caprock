@@ -47,6 +47,9 @@ type CompactionView struct {
 	// Running is true from the PreCompact hook until the boundary it ends
 	// with (at most compactRunningFor).
 	Running bool `json:"running"`
+	// RunningSince is that PreCompact hook's time, unix ms, while Running;
+	// Claude Code reports no progress, so elapsed is all there is to show.
+	RunningSince int64 `json:"running_since,omitempty"`
 	// Queued is true while a /compact waits in the session's message queue.
 	Queued bool `json:"queued"`
 	// Typical is what this machine's own compactions kept, absent with
@@ -184,15 +187,19 @@ func (s *Server) typicalCompaction(ctx context.Context) (store.CompactionStats, 
 }
 
 // compactionRunning reports whether the newest main-thread compaction event
-// of a session is a PreCompact hook less than compactRunningFor old.
-func compactionRunning(ctx context.Context, q store.Querier, id string, now time.Time) (bool, error) {
+// of a session is a PreCompact hook less than compactRunningFor old, and
+// when that hook came, unix ms (0 when not running).
+func compactionRunning(ctx context.Context, q store.Querier, id string, now time.Time) (int64, bool, error) {
 	evs, err := store.LastEventsFiltered(ctx, q, id, 1, store.EventFilter{MainOnly: true,
 		Kinds: []string{string(event.KindContextCompact), string(event.KindContextCompacted)}})
 	if err != nil || len(evs) == 0 {
-		return false, err
+		return 0, false, err
 	}
 	e := evs[len(evs)-1]
-	return e.Kind == event.KindContextCompact && e.Source == event.SourceHook && now.Sub(e.Ts) < compactRunningFor, nil
+	if e.Kind == event.KindContextCompact && e.Source == event.SourceHook && now.Sub(e.Ts) < compactRunningFor {
+		return e.Ts.UnixMilli(), true, nil
+	}
+	return 0, false, nil
 }
 
 // handleCompaction is GET /v1/sessions/{id}/compaction.
@@ -213,7 +220,7 @@ func (s *Server) handleCompaction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if v.Running, err = compactionRunning(ctx, db, id, s.d.Now()); err != nil {
+	if v.RunningSince, v.Running, err = compactionRunning(ctx, db, id, s.d.Now()); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -232,6 +239,11 @@ func (s *Server) handleCompaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if st.Count >= CompactTypicalMin {
+		// How long one takes is a median of its own: of the compactions
+		// Claude Code timed, and only from CompactTypicalMin of them (rule 6).
+		if st.DurationCount < CompactTypicalMin {
+			st.MedianDurationMs = 0
+		}
 		v.Typical = &st
 	}
 	writeJSON(w, http.StatusOK, v)
@@ -255,7 +267,7 @@ func (s *Server) handleCompact(w http.ResponseWriter, r *http.Request) {
 	if s.refuseShellToDevice(w, r, id) {
 		return
 	}
-	running, err := compactionRunning(r.Context(), s.d.Store.DB(), id, s.d.Now())
+	_, running, err := compactionRunning(r.Context(), s.d.Store.DB(), id, s.d.Now())
 	if err != nil {
 		s.fail(w, err)
 		return

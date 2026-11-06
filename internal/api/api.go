@@ -1162,6 +1162,10 @@ type ContextFill struct {
 	// one that makes a full context legible: a percentage says the window is
 	// nearly full, this says what that is charging per call.
 	NextCallUSD float64 `json:"next_call_usd"`
+	// At is when what it measured happened, unix ms: the main-thread turn,
+	// or the compaction boundary whose post_tokens it reads. A compaction
+	// in GET /v1/sessions/{id}/compaction at or after it replaced it.
+	At int64 `json:"at,omitempty"`
 }
 
 // SessionDetail is /v1/sessions/{id}.
@@ -1300,8 +1304,9 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 		// A compaction after that turn replaced the context it measured: the
 		// meter read the size before /compact until the model answered again.
 		// The boundary carries the size after, when Claude Code wrote it.
-		if post, ok := compactedSince(last); ok && sum.Context != nil {
+		if post, at, ok := compactedSince(last); ok && sum.Context != nil {
 			sum.Context = s.fill(sum.Context.Window, post, firstNonEmpty(turn.Model, sess.Model))
+			sum.Context.At = at
 		}
 	}
 	return sum, last, nil
@@ -1323,7 +1328,9 @@ func (s *Server) contextFill(e event.Event, sessionModel string) (*ContextFill, 
 		// thing a user can report and we can fix.
 		return nil, model + " not in pricing table"
 	}
-	return s.fill(row.ContextWindow, e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite, model), ""
+	f := s.fill(row.ContextWindow, e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite, model)
+	f.At = e.Ts.UnixMilli()
+	return f, ""
 }
 
 // fill is toks of a window, priced at model's cache-read rate.
@@ -1336,10 +1343,10 @@ func (s *Server) fill(window, toks int64, model string) *ContextFill {
 }
 
 // compactedSince is the context left by a main-thread compaction newer than
-// every main-thread turn in the window: the boundary's post_tokens. False
-// when a turn followed it (the turn measures the context then) or the
-// boundary did not say.
-func compactedSince(evs []event.Event) (int64, bool) {
+// every main-thread turn in the window: the boundary's post_tokens and its
+// time, unix ms. False when a turn followed it (the turn measures the
+// context then) or the boundary did not say.
+func compactedSince(evs []event.Event) (int64, int64, bool) {
 	for i := len(evs) - 1; i >= 0; i-- {
 		e := evs[i]
 		if e.Subagent() {
@@ -1347,18 +1354,18 @@ func compactedSince(evs []event.Event) (int64, bool) {
 		}
 		switch {
 		case e.Kind == event.KindTurnAssistant && e.Tokens != nil && e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite > 0:
-			return 0, false
+			return 0, 0, false
 		case e.Kind == event.KindContextCompacted:
 			var p struct {
 				Post int64 `json:"post_tokens"`
 			}
 			if json.Unmarshal(e.Payload, &p) != nil || p.Post <= 0 {
-				return 0, false
+				return 0, 0, false
 			}
-			return p.Post, true
+			return p.Post, e.Ts.UnixMilli(), true
 		}
 	}
-	return 0, false
+	return 0, 0, false
 }
 
 // lastContextTurn is the newest assistant turn with usage in a window of

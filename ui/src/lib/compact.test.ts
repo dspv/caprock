@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CompactionEstimate, CompactionView, SessionSummary } from './api'
-import { COMPACT_WATCH_MS, compactIcon, compactInfo, compactLine, compactOffer, compactPhase, keptLine, savingOf, savingsPath, tokShort } from './compact'
+import { COMPACT_WATCH_MS, compactIcon, compactInfo, compactLine, compactOffer, compactPhase, compactingLine, fmtElapsed, fmtUsually, keptLine, savingOf, savingsPath, shownContext, tokShort } from './compact'
 
 type S = Pick<SessionSummary, 'agent' | 'status' | 'owned' | 'detached' | 'context'>
 const s = (p: Partial<S> = {}): S => ({
@@ -86,5 +86,37 @@ describe('the phase', () => {
     const press = { at: Date.UTC(2026, 9, 27, 11, 59), sent: true }
     expect(compactPhase(v({ last: { at: press.at - 60_000, trigger: 'auto', pre_tokens: 1 } }), press, press.at + 1000).kind).toBe('running')
     expect(compactPhase(v(), press, press.at + COMPACT_WATCH_MS + 1).kind).toBe('idle')
+  })
+})
+
+describe('the meter around a compaction', () => {
+  const ctx = { tokens: 332_046, window: 1_000_000, pct: 33.2, next_call_usd: 0.1, at: 1_000 }
+  const last = { at: 2_000, trigger: 'manual', pre_tokens: 332_046, post_tokens: 20_541, duration_ms: 62_977 }
+
+  it('shows the size a compaction left until a call measures it, and the size before', () => {
+    expect(shownContext(ctx, last)).toEqual({ tokens: 20_541, pct: 2.0541, was: 332_046 })
+    // The boundary the summary itself read: the same moment.
+    expect(shownContext({ ...ctx, tokens: 20_541, pct: 2.0541, at: 2_000 }, last).was).toBe(332_046)
+    // The next measured call takes over.
+    expect(shownContext({ ...ctx, tokens: 31_000, pct: 3.1, at: 3_000 }, last)).toEqual({ tokens: 31_000, pct: 3.1 })
+    // No after yet, or a daemon that sends no time: the summary's figure.
+    expect(shownContext(ctx, { ...last, post_tokens: undefined })).toEqual({ tokens: 332_046, pct: 33.2 })
+    expect(shownContext({ ...ctx, at: undefined }, last)).toEqual({ tokens: 332_046, pct: 33.2 })
+  })
+
+  it('says how long it has run and, from five timed, how long one usually takes', () => {
+    expect(fmtElapsed(16_400)).toBe('0:16')
+    expect(fmtElapsed(65_000)).toBe('1:05')
+    expect(fmtUsually(62_977)).toBe('~1 min')
+    expect(fmtUsually(41_000)).toBe('~40 s')
+    expect(fmtUsually(2_000)).toBe('~5 s')
+    expect(fmtUsually(150_000)).toBe('~3 min')
+    const typical = { count: 103, median_kept: 0.1, p90_kept: 0.2, median_pre: 1, median_post: 1, from: 0, to: 0 }
+    const running: CompactionView = { session_id: 's', running: true, running_since: 10_000, queued: false }
+    expect(compactingLine({ ...running, typical: { ...typical, median_duration_ms: 62_977 } }, 26_000)).toBe('Compacting · 0:16 · usually ~1 min')
+    // No median (fewer than five timed): no "usually" (rule 6).
+    expect(compactingLine({ ...running, typical }, 26_000)).toBe('Compacting · 0:16')
+    // A press typed before the hook came: the word alone.
+    expect(compactingLine({ ...running, running: false, running_since: undefined })).toBe('Compacting')
   })
 })

@@ -48,7 +48,8 @@ import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGEN
 import { SubagentDetail } from './SubagentDetail'
 import { SectionFrames } from './SectionFrames'
 import { FitSummary } from './FitSummary'
-import { CompactAction, CompactIcon, useCompact } from './CompactContext'
+import { CompactAction, CompactIcon, CompactingLine, ContextBar, useCompact } from './CompactContext'
+import { shownContext, tokShort } from '@/lib/compact'
 import {
   askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentKinds, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
@@ -954,6 +955,8 @@ function LookLabel({ name, full, onToggle, children }: { name: string; full: boo
  * How full the context is. Compact: one line, the label, a thin bar and
  * *14% · 140k / 1M*. Full: the meter with quarter marks and what every call
  * now pays to re-read it. Switched on the label, remembered per viewer.
+ * After a compaction, the size it left (and *was 332k*) until a call
+ * measures it; while one runs, stripes and *Compacting · 0:16* (CompactContext).
  */
 function ContextMeter({ s }: { s: SessionSummary }) {
   const { context: look } = useLooks()
@@ -968,23 +971,23 @@ function ContextMeter({ s }: { s: SessionSummary }) {
       </section>
     )
   }
-  const pct = Math.max(0, Math.min(100, ctx.pct))
+  const last = compact.view?.last
+  const shown = shownContext(ctx, last)
+  const pct = Math.max(0, Math.min(100, shown.pct))
   const tone = pct >= 85 ? 'danger' : pct >= 60 ? 'warn' : 'ok'
   const ink = tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
-  const meter = (h: string) => (
-    <div className={`cockpit-track relative ${h} overflow-hidden rounded-full`} role="meter" aria-label="Context used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-      <div className="cockpit-fill h-full rounded-full" data-tone={tone} style={{ width: `${Math.max(pct, 1.5)}%` }} />
-      {[25, 50, 75].map((m) => <span key={m} aria-hidden className="absolute top-0 h-full w-px bg-[var(--app-chrome-bg)] opacity-70" style={{ left: `${m}%` }} />)}
-    </div>
-  )
+  const running = compact.phase.kind === 'running'
+  const nextCall = shown.tokens === ctx.tokens ? ctx.next_call_usd : 0
+  const ghost = shown.was && last ? { id: `${s.session_id}:${last.at}`, from: Math.min(100, (100 * shown.was) / ctx.window) } : undefined
+  const meter = (h: string) => <ContextBar h={h} pct={pct} tone={tone} running={running} ghost={ghost} />
   if (!full) {
     return (
       <section aria-label="Context" data-look="compact" className="flex min-w-0 items-center gap-2"
-        title={ctx.next_call_usd > 0 ? `Every call now re-reads it for ${fmtUSD(ctx.next_call_usd)}` : undefined}>
+        title={nextCall > 0 ? `Every call now re-reads it for ${fmtUSD(nextCall)}` : undefined}>
         <LookLabel name="Context" full={false} onToggle={toggle} />
         <div className="min-w-[24px] flex-1">{meter('h-[5px]')}</div>
         <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">
-          <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span> · <span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}
+          {running ? <CompactingLine view={compact.view} brief /> : <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span>} · <span className="text-fg">{fmtTokens(shown.tokens)}</span> / {fmtTokens(ctx.window)}
         </span>
         <CompactIcon c={compact} />
       </section>
@@ -994,12 +997,13 @@ function ContextMeter({ s }: { s: SessionSummary }) {
     <section aria-label="Context" data-look="full" className="grid gap-2">
       <div className="flex items-center gap-2">
         <LookLabel name="Context" full onToggle={toggle} />
-        <span className="num ml-auto text-[11.5px] text-fg-muted"><span className="text-fg">{fmtTokens(ctx.tokens)}</span> / {fmtTokens(ctx.window)}</span>
+        <span className="num ml-auto text-[11.5px] text-fg-muted"><span className="text-fg">{fmtTokens(shown.tokens)}</span> / {fmtTokens(ctx.window)}</span>
       </div>
       {meter('h-[9px]')}
       <p className="text-[11.5px] text-fg-muted">
-        <span className={`num font-medium ${ink}`}>{fmtPct(pct)}</span> full
-        {ctx.next_call_usd > 0 && <> · every call now re-reads it for <span className="num text-fg">{fmtUSD(ctx.next_call_usd)}</span></>}
+        {running ? <CompactingLine view={compact.view} /> : <><span className={`num font-medium ${ink}`}>{fmtPct(pct)}</span> full</>}
+        {!running && shown.was && <> · was <span className="num">{tokShort(shown.was)}</span></>}
+        {!running && !shown.was && nextCall > 0 && <> · every call now re-reads it for <span className="num text-fg">{fmtUSD(nextCall)}</span></>}
       </p>
       <CompactAction s={s} c={compact} />
     </section>

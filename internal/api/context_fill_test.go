@@ -97,11 +97,11 @@ func TestContextFillAfterCompaction(t *testing.T) {
 	record(turn("msg:1", 0, 310_000))
 	record(&event.Event{SessionID: "s", Source: event.SourceTranscript, Kind: event.KindContextCompacted, Key: "compact:b1", Ts: base.Add(time.Second),
 		Payload: json.RawMessage(`{"trigger":"manual","pre_tokens":311000,"post_tokens":8832,"sidechain":false}`)})
-	if c := read(); c == nil || c.Tokens != 8832 || c.Window != 1_000_000 {
+	if c := read(); c == nil || c.Tokens != 8832 || c.Window != 1_000_000 || c.At != base.Add(time.Second).UnixMilli() {
 		t.Fatalf("after compaction %+v, want 8832 of 1000000", c)
 	}
 	record(turn("msg:2", 2*time.Second, 12_000))
-	if c := read(); c == nil || c.Tokens != 13_000 {
+	if c := read(); c == nil || c.Tokens != 13_000 || c.At != base.Add(2*time.Second).UnixMilli() {
 		t.Fatalf("after the next turn %+v, want its 13000", c)
 	}
 }

@@ -1155,6 +1155,54 @@ describe('compact context (ADR-085)', () => {
     expect(within(ctx).queryByRole('button', { name: /Compact context/ })).toBeNull()
   })
 
+  it('after a compaction the header and the line read the size it left, until a call measures it', async () => {
+    setLook('context', 'full')
+    const before = { tokens: 332_046, window: 1_000_000, pct: 33.2, next_call_usd: 0.1, at: now - 120_000 }
+    h.compaction = { session_id: 's1', running: false, queued: false,
+      last: { at: now - 60_000, trigger: 'manual', pre_tokens: 332_046, post_tokens: 20_541, duration_ms: 62_977 } }
+    const { rerender } = show(agent({ context: before }))
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    expect(await within(ctx).findByText(/was/)).toHaveTextContent('2% full · was 332k')
+    expect(ctx).toHaveTextContent('20.5k / 1.00M')
+    expect(within(ctx).getByRole('meter', { name: 'Context used' })).toHaveAttribute('aria-valuenow', '2')
+    // The re-read price was the size before's: not shown against the size after.
+    expect(ctx).not.toHaveTextContent('re-reads')
+    // The next call measures it: its own figure, no "was".
+    rerender(<Inspector session={agent({ context: { tokens: 31_000, window: 1_000_000, pct: 3.1, next_call_usd: 0.01, at: now - 1_000 } })} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={summary} />)
+    await waitFor(() => expect(ctx).toHaveTextContent('31.0k / 1.00M'))
+    expect(ctx).toHaveTextContent('3% full')
+    expect(ctx).not.toHaveTextContent('was 332k')
+  })
+
+  it('while one runs: stripes on the meter, the time since it began and how long one usually takes', async () => {
+    setLook('context', 'full')
+    const typical = { count: 103, median_kept: 0.06, p90_kept: 0.2, median_pre: 300_000, median_post: 20_000, from: now - 86_400_000, to: now }
+    h.compaction = { session_id: 's1', running: true, running_since: now - 16_000, queued: false, typical: { ...typical, median_duration_ms: 62_977 } }
+    const { unmount } = show(agent({ context: { tokens: 332_046, window: 1_000_000, pct: 33.2, next_call_usd: 0.1, at: now - 30_000 } }))
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    expect(await within(ctx).findByText('Compacting · 0:16 · usually ~1 min')).toBeInTheDocument()
+    expect(within(ctx).getByRole('meter', { name: 'Context used' })).toHaveAttribute('data-compacting', 'true')
+    expect(ctx).not.toHaveTextContent('% full')
+    unmount()
+    // No median from this machine (fewer than five timed): no "usually".
+    h.compaction = { session_id: 's1', running: true, running_since: now - 16_000, queued: false, typical }
+    show(agent({ context: { tokens: 332_046, window: 1_000_000, pct: 33.2, next_call_usd: 0.1, at: now - 30_000 } }))
+    const again = screen.getByRole('region', { name: 'Context' })
+    expect(await within(again).findByText('Compacting · 0:16')).toBeInTheDocument()
+    expect(again).not.toHaveTextContent('usually')
+  })
+
+  it('a compaction started in the terminal shows as soon as the session narrates it', async () => {
+    setLook('context', 'full')
+    const big = { tokens: 332_046, window: 1_000_000, pct: 33.2, next_call_usd: 0.1, at: now - 30_000 }
+    const { rerender } = show(agent({ context: big }))
+    const ctx = screen.getByRole('region', { name: 'Context' })
+    await within(ctx).findByText(/33%/)
+    h.compaction = { session_id: 's1', running: true, running_since: now - 3_000, queued: false }
+    rerender(<Inspector session={agent({ context: big, activity: { phrase: 'compacting context', at: iso(3_000), health: 'working' } })} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={summary} />)
+    expect(await within(ctx).findByText('Compacting · 0:03')).toBeInTheDocument()
+  })
+
   it('the collapsed line carries the icon from 60% full', () => {
     show(agent())
     const ctx = screen.getByRole('region', { name: 'Context' })
