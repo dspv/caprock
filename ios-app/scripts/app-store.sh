@@ -120,6 +120,23 @@ xcodebuild -project "$PROJECT" -scheme App -configuration Release \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
   archive 2>&1 | tee "$OUT/archive.log" | tail -n 40
 
+# 1b. The entitlements go into the archive by an ad-hoc signature. The export
+#     re-signs with the entitlements it finds on the archived app, and an
+#     unsigned build carries none, so without this the store build would lose
+#     applinks:m.caprock.dev (App.entitlements) and the pairing QR would open
+#     Safari. Nested frameworks first: codesign refuses a bundle whose nested
+#     code is unsigned. The export replaces every one of these signatures.
+APP="$OUT/Caprock.xcarchive/Products/Applications/App.app"
+ENTITLEMENTS="$(dirname "$PROJECT")/App/App.entitlements"
+[[ -d "$APP" ]] || die "the archive has no App.app (see archive.log)"
+if [[ -d "$APP/Frameworks" ]]; then
+  find "$APP/Frameworks" -mindepth 1 -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) \
+    -exec codesign --force --sign - --timestamp=none {} \;
+fi
+codesign --force --sign - --timestamp=none --generate-entitlement-der --entitlements "$ENTITLEMENTS" "$APP"
+[[ "$(codesign -d --entitlements - --xml "$APP" 2>/dev/null)" == *'applinks:m.caprock.dev'* ]] \
+  || die "the archived app does not carry applinks:m.caprock.dev"
+
 # 2. The export: signed for App Store Connect and, with destination upload,
 #    sent there (the build then appears under the app's builds after
 #    processing). ExportOptions.plist is written here, not committed, so the
@@ -158,5 +175,13 @@ if [[ "$DESTINATION" == upload ]]; then
   echo "app-store: uploaded Caprock $MARKETING_VERSION ($BUILD_NUMBER) to App Store Connect"
 else
   ls -l "$OUT/export"
+  # The signed app must still open the pairing link (step 1b).
+  IPA="$(find "$OUT/export" -maxdepth 1 -name '*.ipa' | head -n 1)"
+  if [[ -n "$IPA" ]]; then
+    rm -rf "$OUT/ipa" && mkdir -p "$OUT/ipa" && unzip -q "$IPA" -d "$OUT/ipa"
+    [[ "$(codesign -d --entitlements - --xml "$OUT/ipa/Payload/App.app" 2>/dev/null)" == *'applinks:m.caprock.dev'* ]] \
+      || die "the signed .ipa lost applinks:m.caprock.dev: is Associated Domains ticked on the App ID dev.caprock.ios?"
+    echo "app-store: the signed app carries applinks:m.caprock.dev"
+  fi
   echo "app-store: signed .ipa in $OUT/export, nothing uploaded"
 fi

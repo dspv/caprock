@@ -15,6 +15,7 @@ on:
       - 'ui/package.json'
       - 'ui/package-lock.json'
       - 'ui/vite.config.ts'
+      - 'ui/public-remote/**'
       - '.github/workflows/ios.yml'
   # Draft pull requests run nothing (ADR-061), as in ci.yml.
   pull_request:
@@ -27,6 +28,7 @@ on:
       - 'ui/package.json'
       - 'ui/package-lock.json'
       - 'ui/vite.config.ts'
+      - 'ui/public-remote/**'
       - '.github/workflows/ios.yml'
 
 concurrency:
@@ -69,6 +71,8 @@ jobs:
       - name: build the phone's page (remote mode)
         working-directory: ui
         run: npx vite build --mode remote
+      - name: the pairing link opens the app (entitlement, association file, build)
+        run: node ios-app/scripts/check-applinks.mjs --built
       - name: sync it into the iOS project
         working-directory: ios-app
         run: npx cap sync ios

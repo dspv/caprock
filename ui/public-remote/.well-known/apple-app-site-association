@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["47538322FW.dev.caprock.ios"],
+        "components": [
+          {
+            "/": "/",
+            "#": "/pair*",
+            "comment": "The computer's pairing QR (https://m.caprock.dev/#/pair?...) opens Caprock for iPhone; every other address stays in Safari."
+          }
+        ]
+      }
+    ]
+  }
+}
