@@ -32,7 +32,9 @@ import { CHART_METRICS, HEADLINES, METRICS, SPEND_PERIODS, chartTotal, chartValu
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
-import { SubagentChart } from './SubagentFaces'
+import { SubFace, SubagentChart, SubagentChipsLine, SubagentStripLine, anySubagents } from './SubagentFaces'
+import { subagentFace, useSubagentLook } from '@/lib/subagentfaces'
+import { useFaceDefault } from '@/lib/faces'
 import { PickableFace } from './SessionFace'
 import { AgentGlyph } from './AgentMarks'
 import { SubscriptionTag } from './SubscriptionPicker'
@@ -375,10 +377,13 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  *   inspector the state moves under the name.
  * - **The figures and the subagents**: the headline figure, burn rate by
  *   default, big with its comparison, the two smaller figures under it on
- *   one line; beside it the subagent chart (SubagentChart), under it in a hero
- *   narrower than 340px. Each figure is still a chooser.
- * - **The subagent chips**, one per working subagent in groups of five,
- *   only while some work.
+ *   one line. Each figure is still a chooser. In the crew look the subagent
+ *   frame (SubagentChart) stands beside it, under it in a hero narrower than
+ *   340px.
+ * - **The subagents' row**, in the viewer's look (SubagentFaces): by default
+ *   the chips, one per subagent in groups of five, as faces with *1 working ·
+ *   peak 4* beside them; the strip, one line of faces and a sparkline; in the
+ *   crew, the chips as letters. Nothing when the session had no subagent.
  * - **The configuration** as small chips: the model, its reasoning effort
  *   when a hook named one ("Opus 5.5 · high") and its account, how
  *   full the context is (a bar and the percent), when it started. What the
@@ -393,6 +398,9 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const strip = subagentChips(subs, permission, layout.room)
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const kinds = useMemo(() => subagentKinds(subs?.working ?? []), [subs])
+  const look = useSubagentLook()
+  const shown = state === 'ended' ? 0 : count
+  const any = anySubagents(subs, shown)
   const model = s.model_display || s.model
   const effort = s.effort
   // One word: "Background agents" took two lines (owner, 2026-10-22). The
@@ -431,7 +439,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
           </span>
         </div>
         {extra}
-        {(s.stats || subs) && (
+        {(s.stats || (subs && look === 'crew')) && (
           <div data-hero-row className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-x-3 gap-y-2 @[340px]:grid-cols-[auto_minmax(0,1fr)]">
             {s.stats
               ? (
@@ -441,12 +449,19 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
                 </div>
               )
               : <span />}
-            {subs && <SubagentChart subs={subs} count={state === 'ended' ? 0 : count} kinds={kinds} onChip={onChip} />}
+            {subs && look === 'crew' && <SubagentChart subs={subs} count={shown} kinds={kinds} onChip={onChip} />}
           </div>
         )}
-        {/* Always measured, drawn only while subagents work. */}
-        <div ref={chipBox} data-hero-chips className="flex min-w-0 items-center empty:hidden">
-          {strip.chips.length > 0 && <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />}
+        {/* Always measured; empty, and so hidden, while there is nothing to draw. */}
+        <div ref={chipBox} data-hero-chips className="grid min-w-0 empty:hidden">
+          {look === 'strip'
+            ? subs && any && <SubagentStripLine subs={subs} count={shown} chips={strip.chips} more={strip.more} onChip={onChip} />
+            : look === 'chips'
+              ? subs && any && (
+                <SubagentChipsLine subs={subs} count={shown}
+                  chips={strip.chips.length > 0 ? <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} faces onChip={onChip} /> : null} />
+              )
+              : strip.chips.length > 0 && <SubagentStrip chips={strip.chips} more={strip.more} compact={layout.compact} onChip={onChip} />}
         </div>
         {(model || effort || s.context || (s.started_at > 0 && state !== 'ended')) && (
           <div data-hero-config className="flex min-w-0 flex-wrap gap-1"
@@ -499,10 +514,13 @@ function ContextChip({ pct }: { pct: number }) {
  * fives (owner, 2026-10-14). Compact, when there are more than two full
  * lines' worth: a smaller square with no letter, its tint and state kept.
  * Then "+N" for the working left out. A chip opens its subagent's row in
- * the Subagents section below.
+ * the Subagents section below. With `faces` (the default look, *Faces as
+ * chips*), a full-size chip is its subagent's face in place of the letter:
+ * in colour and pulsing while it works, grey once finished.
  */
-function SubagentStrip({ chips, more, compact, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; onChip: (id: string) => void }) {
+function SubagentStrip({ chips, more, compact, faces, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; faces?: boolean; onChip: (id: string) => void }) {
   const groups = chipGroups(chips)
+  const [d] = useFaceDefault()
   const box = compact ? 'h-[10px] w-[10px] rounded-[3px]' : 'h-[18px] w-[18px] rounded-[5px] text-[10px] font-semibold'
   return (
     <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`} data-compact={compact || undefined}
@@ -512,8 +530,9 @@ function SubagentStrip({ chips, more, compact, onChip }: { chips: SubagentChip[]
           {g.map((c) => (
             <button key={c.id} type="button" title={c.label} aria-label={`${c.label}. Open`} data-state={c.state} data-tone={c.tone}
               onClick={() => onChip(c.id)}
+              data-chip-face={faces && !compact ? c.id : undefined}
               className={`cockpit-subchip num relative grid place-items-center outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${box}`}>
-              {compact ? null : c.initial}
+              {compact ? null : faces ? <SubFace face={subagentFace(c.id, d)} size={16} className="cockpit-subchip-face" /> : c.initial}
             </button>
           ))}
           {i === groups.length - 1 && more > 0 && (

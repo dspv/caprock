@@ -277,7 +277,8 @@ describe('the hero’s subagent chips', () => {
     let chips = await screen.findByRole('group', { name: 'Subagents' })
     expect(within(chips).getAllByRole('button')).toHaveLength(20)
     expect(chips).not.toHaveAttribute('data-compact')
-    expect(within(chips).getAllByRole('button')[0]).toHaveTextContent('G')
+    // The default look: a full-size chip is its subagent's face, not a letter.
+    expect(within(chips).getAllByRole('button')[0]!.querySelector('svg[data-face]')).toBeInTheDocument()
     unmount()
     h.subagents = { working: Array.from({ length: 21 }, (_, i) => working(`w${i}`)), finished: 0 }
     show(agent({ live_subagents: 21, activity: { phrase: 'editing', at: new Date().toISOString(), health: 'working' } }))
@@ -295,7 +296,7 @@ describe('the hero’s subagent chips', () => {
     const chips = await screen.findByRole('group', { name: 'Subagents, and 5 more working' })
     expect(within(chips).getAllByRole('button')).toHaveLength(40)
     expect(chips).toHaveTextContent('+5')
-    expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^45 subagents/)
+    expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^45 working/)
     vi.restoreAllMocks()
   })
 })
