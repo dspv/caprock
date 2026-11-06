@@ -464,25 +464,63 @@ export function Pairing() {
 export const IPHONE_APP_URL = 'https://apps.apple.com/app/caprock/id6827747312'
 
 /**
- * One quiet line under the button or the code: an iPhone can pair from the
- * app instead of the camera and Safari. `data-keep`, so Settings'
- * explanations switch never hides it.
+ * Caprock for iPhone, under the button or the code: a line in body size with
+ * what the app adds, and a button that shows the App Store's QR. The person is
+ * at the computer with the phone in hand, and the listing opened here installs
+ * nothing on the phone (owner, 2026-11-06: no dead-end click), so the code
+ * comes first and opening the listing on this computer is the quiet second
+ * choice. Folded until pressed: no QR stands beside the pairing button before
+ * Connect a phone, and one shown while a pairing code is up says it opens the
+ * App Store. `data-keep`, so Settings' explanations switch never hides it.
  */
 function IPhoneAppLine() {
+  const [open, setOpen] = useState(false)
+  const qr = useMemo(() => qrPath(encodeQR(IPHONE_APP_URL)), [])
   return (
-    <p data-testid="iphone-app" data-keep className="text-[12px] leading-snug text-fg-muted">
-      iPhone:{' '}
-      <a
-        href={IPHONE_APP_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => { e.preventDefault(); openExternal(IPHONE_APP_URL) }}
-        title={extTitle('Caprock for iPhone on the App Store')}
-        className="text-accent hover:underline"
-      >
-        get Caprock on the App Store
-      </a>
-    </p>
+    <div data-testid="iphone-app" data-keep className="grid gap-3 rounded-[10px] border border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="min-w-0 text-[14px] leading-snug text-fg">
+          <b className="font-medium">iPhone?</b> <span className="text-fg-muted">Caprock for iPhone adds notifications, voice and photos.</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="h-9 shrink-0 rounded-[10px] border border-border px-4 text-[14px] font-medium text-fg hover:border-accent"
+        >
+          {open ? 'Hide the code' : 'Get it on the App Store'}
+        </button>
+      </div>
+      {open && (
+        <div data-testid="iphone-app-qr" className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          {/* Black on white whatever the theme, as the pairing QR. */}
+          <svg
+            viewBox={qr.viewBox}
+            role="img"
+            aria-label="QR code that opens Caprock for iPhone on the App Store"
+            data-qr-text={IPHONE_APP_URL}
+            className="h-auto w-full max-w-[132px] shrink-0 rounded-md bg-white p-1.5"
+            shapeRendering="crispEdges"
+          >
+            <path d={qr.d} fill="#000" />
+          </svg>
+          <div className="grid min-w-0 flex-1 basis-[200px] gap-2 text-[13px] leading-snug text-fg-muted">
+            <p className="text-[14px] text-fg">Point the iPhone&apos;s camera here: it opens the App Store.</p>
+            <p>Then press Connect a phone above and scan its code from the app.</p>
+            <a
+              href={IPHONE_APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => { e.preventDefault(); openExternal(IPHONE_APP_URL) }}
+              title={extTitle('Caprock for iPhone on the App Store')}
+              className="w-fit text-accent hover:underline"
+            >
+              Open the listing on this computer
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

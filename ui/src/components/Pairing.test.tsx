@@ -99,18 +99,25 @@ describe('Pairing panel (owner, 2026-10-18: "not one clear piece of info")', () 
     expect((screen.getByTestId('phone-how') as HTMLDetailsElement).open).toBe(false)
   })
 
-  it('offers Caprock for iPhone on the App Store, opened outside the dashboard', async () => {
+  it('offers Caprock for iPhone as a QR for the phone, the listing here second', async () => {
     stubState([{ enabled: false, devices: [], remote: remoteOn }])
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     render(<Pairing />)
-    const line = await screen.findByTestId('iphone-app')
-    expect(line.textContent).toBe('iPhone: get Caprock on the App Store')
-    expect(line.hasAttribute('data-keep')).toBe(true)
-    const a = within(line).getByRole('link', { name: 'get Caprock on the App Store' })
-    expect(a.getAttribute('href')).toBe(IPHONE_APP_URL)
+    const block = await screen.findByTestId('iphone-app')
+    expect(block.hasAttribute('data-keep')).toBe(true)
+    expect(block.textContent).toContain('Caprock for iPhone adds notifications, voice and photos.')
+    // Folded: no QR beside Connect a phone until it is asked for.
+    expect(screen.queryByTestId('iphone-app-qr')).toBeNull()
+    fireEvent.click(within(block).getByRole('button', { name: 'Get it on the App Store' }))
+    const qr = within(block).getByRole('img', { name: 'QR code that opens Caprock for iPhone on the App Store' })
+    expect(qr.getAttribute('data-qr-text')).toBe(IPHONE_APP_URL)
     expect(IPHONE_APP_URL).toBe('https://apps.apple.com/app/caprock/id6827747312')
+    const a = within(block).getByRole('link', { name: 'Open the listing on this computer' })
+    expect(a.getAttribute('href')).toBe(IPHONE_APP_URL)
     fireEvent.click(a)
     expect(open).toHaveBeenCalledWith(IPHONE_APP_URL, '_blank', 'noopener')
+    fireEvent.click(within(block).getByRole('button', { name: 'Hide the code' }))
+    expect(screen.queryByTestId('iphone-app-qr')).toBeNull()
   })
 
   it('keeps the App Store line while a code is on screen', async () => {
