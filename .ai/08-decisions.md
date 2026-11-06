@@ -4963,6 +4963,11 @@ Phase 2's smoke adds a Windows target to the matrix.
 - **Phase 4 — capacity and hardening:** frame coalescing, the token bound to
   the controller's key, and whatever OQ-14's measurements call for (a relay
   of one's own is already `caprock remote relay`).
+- *Audit, 2026-11-06:* what each phase promised against master, the fixes
+  it led to (the watch resuming a restarted computer, Allow noticed
+  unasked, the one list not keeping a read a word overtook, relay
+  `traffic` in `GET /v1/machines`) and what is next with and without the
+  owner: [14-build-status.md, 2026-11-06](14-build-status.md).
 
 **What is claimed, and what it costs.**
 

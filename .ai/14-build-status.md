@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-10-18** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-11-06** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
@@ -12,16 +12,16 @@ Since Orchestrate closed, the product has grown one observation surface across s
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                                                |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                    |
-| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                                |
-| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                               |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                                     |
-| Phase 3 — Delight               | 0%       | No plan by design                                                                                    |
-| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                              |
-| Other computers (ADR-067)       | 60%      | Phases 1–2 built: see, start, type into and hear another computer's sessions; Phases 3–4 not started |
-| iOS app (ADR-083)               | 70%      | 1.0 built, signed upload workflow ready; owner uploads and submits; push in 1.1                      |
+| Track                           | Progress | State                                                                                                      |
+| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                          |
+| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                                      |
+| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                                     |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                                           |
+| Phase 3 — Delight               | 0%       | No plan by design                                                                                          |
+| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                                    |
+| Other computers (ADR-067)       | 65%      | Phases 1–2 built and hardened (2026-11-06); Phase 3 cost view and remote Approve/Deny, Phase 4 not started |
+| iOS app (ADR-083)               | 70%      | 1.0 built, signed upload workflow ready; owner uploads and submits; push in 1.1                            |
 
 ## Milestone status
 
@@ -161,6 +161,58 @@ without a TestFlight round and without push (ADR-083, amended 2026-10-27).
 - **Listing:** `ios-app/store/` (name, subtitle, texts, keywords, URLs,
   category, age rating, App Privacy: Data Not Collected, review notes);
   `ios-app/scripts/check-store.mjs` keeps each field inside Apple's limits.
+
+### 2026-11-06 — unreleased: other computers audited and hardened (ADR-067)
+
+The owner approved (2026-11-06, translated) "Machines Phase 2 — do what you
+can where I'm not needed". An audit of ADR-067's phases against master:
+
+- **Phase 1** (PR1 #678, PR2 #690, PR3 in #741): built as written. The
+  New-agent *busy* line is not drawn, as the ADR says, because OQ-19 has no
+  measurement to set its thresholds.
+- **Phase 2** (#849, amended 2026-10-28): the Machine picker, the one list,
+  the watch and the tagged notifications are built and in the three-OS
+  smoke. Permission buttons, the queue, Changes, diff and PR for a remote
+  session are the ordinary Session view on the machine page. A *mixed-OS*
+  pair (a Windows target with a Mac controller) is not in any test: CI runs
+  each OS on its own runner.
+- **Phase 3**: the merged list and notifications moved into Phase 2; the
+  rest — `?machines=all` on the session list and the cost summary, and
+  Approve/Deny on a remote notification — is not started.
+- **Phase 4**: frame coalescing and the token bound to the controller's key
+  are not started. The relay counters existed but were in no answer.
+
+Found and fixed (each with tests, contracts in the same commit):
+
+- After the other computer restarted, the watch asked it for frames past
+  its new count, got a `reset` on every reconnect and lost what was said
+  while the link was down: it now resumes from that computer's own
+  position. A socket let in and dropped at once backs off instead of being
+  re-dialled every 2 s.
+- After Allow on the other computer, this one said *pending* until
+  Settings → Computers was opened, and looked again only after 60 s. A
+  computer that lets this one in is now asked again by itself, and a
+  pending one is looked at after 5 s doubling; the smoke now waits for the
+  laptop to learn of the Allow unasked (2.8 s on a loaded Mac).
+- A prompt said there while the one list was being read could be missed
+  for 10 s: such a read is no longer kept as fresh.
+- `GET /v1/machines` carries each computer's relay `traffic` (OQ-14), and
+  `bench/peer.mjs --idle N` measures a window left open.
+- A test holds that a Windows target's folder (`C:\Users\…`, a space, an
+  accent) crosses the proxy as the string it is, in a query and in a start.
+
+Measured: a keystroke's echo through `relay.caprock.dev` with both ends on
+one Mac (the same-home case for a Mac served from Tel Aviv) — 132 ms
+median, against 1.5 ms through a loopback relay
+([21-app.md](21-app.md), OQ-17/OQ-18).
+
+**Next, no owner decision needed:** the Host's relay counters in `GET
+/v1/pair/state`; OQ-14's idle figure through the hosted relay over an hour;
+frame coalescing only if OQ-14 says so. **Needs
+the owner:** Approve/Deny on a remote notification, the cross-computer
+cost view, what to do about the hosted relay's same-home latency, how the
+token gets bound to the controller's key for computers already paired, and
+a real task on two of his computers for OQ-19/OQ-20.
 
 ### 2026-10-28 — unreleased: start an agent on another computer (ADR-067, Phase 2)
 
