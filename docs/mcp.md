@@ -22,6 +22,38 @@ It is read-only and free.
 
 Caprock has to be running (`caprock up`, or the desktop app).
 
+**Claude Code plugin.** This repository is a Claude Code plugin marketplace
+holding one plugin, `caprock`, which adds the server for your user, in every
+project:
+
+```bash
+claude plugin marketplace add dspv/caprock
+claude plugin install caprock@caprock
+```
+
+Inside a session it is `/plugin marketplace add dspv/caprock`, then
+`/plugin install caprock@caprock`. Check it with `claude mcp list` (it is
+listed as `plugin:caprock:caprock`) or `/mcp`. `claude plugin update
+caprock@caprock` picks up a newer plugin: its version is Caprock's release,
+which the release writes into the plugin's manifest. `claude plugin
+uninstall caprock@caprock` takes it out.
+
+The plugin starts `caprock mcp` through a small launcher in the plugin
+(`plugins/caprock/scripts/`: `caprock-mcp` for macOS and Linux,
+`caprock-mcp.cmd` for Windows), because the desktop app puts no `caprock` on
+your `PATH`. It runs the first of: `caprock` on the `PATH` Claude Code was
+started with; the app's own copy in Caprock's data directory
+(`$CAPROCK_DATA_DIR/bin`, else `~/Library/Application Support/caprock/bin`
+on macOS, `~/.config/caprock/bin` on Linux, `%APPDATA%\caprock\bin` on
+Windows); Homebrew's `bin`, `~/.local/bin`, Scoop's shims, WinGet's links,
+then Go's `bin`. If none is there it starts nothing and says on stderr —
+which `/mcp` shows when the server failed — that Caprock is not installed,
+with a link to <https://caprock.dev/install>. It downloads nothing and sends
+nothing. A caprock somewhere else: use **By hand** below with the full path.
+
+Use the plugin or **Connect**, not both: each adds a server, and Claude Code
+would start two.
+
 **One click.** Open Second Brain: the row on top, *Let your agents ask Second
 Brain*, has a **Connect** button for each agent installed on this computer
 (Claude Code, Codex). Settings → *Use Caprock from your agents (MCP)* has the
@@ -69,7 +101,8 @@ full path to the binary instead. Settings → *Use Caprock from your agents
 caprock*. On Windows the path ends in `caprock.exe`; quote it if it holds a
 space.
 
-To turn it off, press **Disconnect**, or remove it from the agent yourself:
+To turn it off, uninstall the plugin, press **Disconnect**, or remove it from
+the agent yourself:
 `claude mcp remove caprock` (add `-s user` if you added it for every
 project), `codex mcp remove caprock`, or delete the lines. Nothing in
 Caprock changes either way.

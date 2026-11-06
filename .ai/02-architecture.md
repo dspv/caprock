@@ -178,6 +178,12 @@ Registering the server is the agent's own CLI, run by the daemon
 (`internal/mcpreg`) only when the user clicks Connect on the machine: status
 is read from the agents' config files, `mcp add` / `mcp remove` run with the
 login shell's environment through `hidewin`.
+The repository is also a Claude Code plugin marketplace
+(`.claude-plugin/marketplace.json`) with one plugin, `plugins/caprock/`,
+whose manifest declares the same server. Claude Code starts it through
+`plugins/caprock/scripts/caprock-mcp` (`.cmd` on Windows), which finds
+`caprock` on PATH or in the app's and package managers' install places and
+otherwise prints where to install it and exits 1 — no network.
 The tool list and protocol belong to
 [03-contracts.md § MCP server](03-contracts.md#mcp-server); rationale is in
 [ADR-078](08-decisions.md), setup in [docs/mcp.md](../docs/mcp.md).

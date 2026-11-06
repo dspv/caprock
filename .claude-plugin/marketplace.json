@@ -1,0 +1,17 @@
+{
+  "name": "caprock",
+  "description": "Caprock for Claude Code: ask the Caprock app on your computer about past sessions, memories, spend and CI. Read-only and local.",
+  "owner": {
+    "name": "Dmitriy Solodukha",
+    "url": "https://caprock.dev"
+  },
+  "plugins": [
+    {
+      "name": "caprock",
+      "source": "./plugins/caprock",
+      "description": "Ask Caprock from Claude Code: Second Brain memories and decisions, what past sessions did, spend and tokens per repo, CI status, stuck sessions. Read-only, local; needs the Caprock app running.",
+      "category": "developer-tools",
+      "tags": ["memory", "session-history", "cost-tracking", "ci", "local-first", "mcp"]
+    }
+  ]
+}

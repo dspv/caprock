@@ -5209,6 +5209,15 @@ listener. Stdout carries the protocol and nothing else. Code:
 `internal/mcp` (`server.go` the protocol, `client.go` the daemon reads,
 `tools.go` the tools, `redact.go`), `cmd/caprock/mcp.go`.
 
+- **Claude Code plugin.** `.claude-plugin/marketplace.json` (marketplace
+  `caprock`) lists one plugin, `caprock`, at `./plugins/caprock`. Its
+  `.claude-plugin/plugin.json` declares `mcpServers.caprock` as command
+  `${CLAUDE_PLUGIN_ROOT}/scripts/caprock-mcp`, no arguments; the launcher
+  execs `<caprock> mcp` or, with none found, writes three lines to stderr
+  naming https://caprock.dev/install and exits 1. `version` is the release
+  version, written by `scripts/changelog.py assemble`. The plugin name
+  `caprock` is permanent: it is the install id `caprock@caprock`.
+
 - **Methods.** `initialize` (answers the client's `protocolVersion` when it
   is one of `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, else the
   first; `capabilities: {tools: {listChanged: false}}`, `serverInfo`

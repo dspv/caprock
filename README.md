@@ -122,7 +122,8 @@ you hit the limit.
   notes is a separate choice, off by default ([guide](docs/obsidian.md)).
 - **Your agents can ask it.** `caprock mcp` lets Claude Code, Codex or any MCP
   client read Second Brain, past sessions and what they wrote, cost and CI —
-  read-only ([details](#ask-caprock-from-your-agents)).
+  read-only; for Claude Code it is also a plugin
+  ([details](#ask-caprock-from-your-agents)).
 - **On your phone, from anywhere.** Pair once with a QR code; an encrypted
   relay carries only ciphertext ([details](#open-it-on-your-phone)).
 - **Local.** One SQLite file on your disk, loopback only. No account, no cloud,
@@ -364,6 +365,16 @@ caprock sessions rm --cwd-prefix /private/tmp/scratch --yes  # remove them
 the agent you are working with can look things up instead of you pasting them:
 "did we decide this before?", "which session explained the SSO change?", "what
 has this repository cost this week?", "is CI green?".
+
+It is also a **Claude Code plugin**, from the plugin marketplace in this
+repository:
+
+```bash
+claude plugin marketplace add dspv/caprock
+claude plugin install caprock@caprock
+```
+
+Or add the server yourself:
 
 ```bash
 claude mcp add caprock -- caprock mcp      # Claude Code
