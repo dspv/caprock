@@ -198,16 +198,24 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   is stated anywhere public before then (rule 6). *2026-10-18:* the local
   half only — both daemons and the relay on one busy Mac, the hop added
   0.33 ms at the median and 9 ms at p95 to a terminal echo
-  ([21-app.md § A session on another computer](21-app.md)). Two real
-  computers and `relay.caprock.dev` are still unmeasured, so this stays
-  open.
+  ([21-app.md § A session on another computer](21-app.md)). *2026-11-06:*
+  through `relay.caprock.dev` with both ends on one Mac served from
+  Cloudflare's Tel Aviv edge — the same-home case for that location — a
+  keystroke's echo took 132 ms at the median and 213 ms at p95 (126 ms at
+  best), against 1.5 ms through a loopback relay; the trip to the relay's
+  Durable Object, twice per keystroke, is the cost
+  ([21-app.md § The hosted relay, both ends on one Mac](21-app.md)). From
+  abroad, and other locations, are still unmeasured, so this stays open.
 - `OQ-18` — **Terminal echo through a link.** Keystroke-to-echo for a
   session on another computer, through the controller's `/v1/m/{id}/…`
   proxy and the relay, against the same session typed into locally. Decided
   by: the same bench, through `/v1/m/…`, with a date. Until then a remote
   terminal is not described as "instant" or "like local". *2026-10-18:*
   measured through `/v1/m/…` on loopback only (above, OQ-17); open until
-  two computers are measured.
+  two computers are measured. *2026-11-06:* through `/v1/m/…` and the hosted
+  relay from one Mac, 132 ms median (above, OQ-17): a remote terminal over
+  the hosted relay is visibly slower than a local one here, so "instant" is
+  ruled out for it, not only unproven.
 - `OQ-19` — **What running a task elsewhere frees on this machine.** The
   case for a second computer is that this Mac stays responsive and runs
   more agents (or works with the lid closed), not that anything is faster.

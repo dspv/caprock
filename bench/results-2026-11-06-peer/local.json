@@ -1,0 +1,43 @@
+{
+  "bench": "peer",
+  "date": "2026-11-06T22:07:22.908Z",
+  "relay": "local (caprock remote relay on 127.0.0.1)",
+  "keys_per_leg": 400,
+  "gap_ms": 40,
+  "local": {
+    "n": 400,
+    "median_ms": 0.88,
+    "p95_ms": 3.49,
+    "max_ms": 24.46,
+    "min_ms": 0.38
+  },
+  "peer": {
+    "n": 400,
+    "median_ms": 1.47,
+    "p95_ms": 6.46,
+    "max_ms": 40.53,
+    "min_ms": 0.77
+  },
+  "added_ms": {
+    "median": 0.6,
+    "p95": 2.97
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 10,
+    "cpu_model": "Apple M1 Pro",
+    "mem_gb": 16,
+    "os": "Darwin 27.0.0",
+    "load": [
+      29.19,
+      17.4,
+      16.41
+    ]
+  },
+  "controller_view": {
+    "status": "online",
+    "version": "dev",
+    "streams": 0
+  }
+}
