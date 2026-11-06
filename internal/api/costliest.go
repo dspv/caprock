@@ -87,8 +87,13 @@ type CostlyRelease struct {
 type relHistCache struct {
 	mu sync.Mutex
 	m  map[string]relHistEntry
-	// now is the clock; nil is time.Now (tests set it).
-	now func() time.Time
+	// now is the clock; nil is time.Now. readKey and readHistory are the
+	// git reads; nil is relplan.HistoryKey and relplan.ReleaseHistory. Tests
+	// set them, so what the cache decides is not timed by git processes on a
+	// loaded machine (each read is bounded by relplan's gitTimeout).
+	now         func() time.Time
+	readKey     func(ctx context.Context, dir string) (key, ref, tagsOut string, err error)
+	readHistory func(ctx context.Context, dir, ref, tagsOut string) ([]relplan.Release, error)
 }
 
 type relHistEntry struct {
@@ -119,13 +124,20 @@ func (c *relHistCache) history(ctx context.Context, dir string) ([]relplan.Relea
 	if ok && now.Sub(e.checked) < relHistRecheck {
 		return e.rels, nil
 	}
-	key, ref, tagsOut, err := relplan.HistoryKey(ctx, dir)
+	readKey, readHistory := c.readKey, c.readHistory
+	if readKey == nil {
+		readKey = relplan.HistoryKey
+	}
+	if readHistory == nil {
+		readHistory = relplan.ReleaseHistory
+	}
+	key, ref, tagsOut, err := readKey(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
 	rels := e.rels
 	if !ok || e.key != key {
-		if rels, err = relplan.ReleaseHistory(ctx, dir, ref, tagsOut); err != nil {
+		if rels, err = readHistory(ctx, dir, ref, tagsOut); err != nil {
 			return nil, err
 		}
 	}
