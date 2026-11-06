@@ -457,10 +457,14 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   or a drop), `refused` (the target hung up on the handshake: another key)
   and `closed`; `internal/peers` adds `revoked` when `GET /v1/pair/me`
   answers 401, cleared when a later check answers 200, and `pending` while
-  it answers `pending: true`.
+  it answers `pending: true`. A computer recorded as `pending` or `revoked`
+  that then lets this machine in — a socket opens there, or a `/v1/…`
+  request outside `/v1/pair` is answered below 400 — is asked `GET
+  /v1/pair/me` again by itself, so the state clears without Settings'
+  Check; the watch below does it before it says `online`.
 - **`GET /v1/machines`** answers `{machines: [{id, name, relay, added_at,
-  status, error?, version?, role?, kind?, last_seen?, streams}]}`, in the
-  order added, never a token. `?check=1` first asks each computer `GET
+  status, error?, version?, role?, kind?, last_seen?, streams,
+  traffic}]}`, in the order added, never a token. `?check=1` first asks each computer `GET
   /v1/pair/me` through its channel, at once, for 12 s at most. **`POST
   /v1/machines`** `{link}` pairs (60 s at most) and answers that computer's
   entry: `400` for a link that does not parse, carries no code, names this
@@ -527,15 +531,24 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   (unix ms, this machine's clock; `at` when `sessions` was read). A kept
   list is dropped at once by a request through `/v1/m/{id}/…` that is not
   a `GET` or `HEAD` (a start, a stop, an answer there) and by a word from
-  that computer (below).
+  that computer (below); a read that was on the wire when such a word came
+  is answered to its callers but not kept, so the next caller reads again.
 - **Watching the other computers** (Phase 2, `internal/daemon/machinewatch.go`).
   While a client of this machine's own holds `/v1/live` — and for 90 s
   after the last one leaves — the daemon holds one `/v1/live?types=notify,permission`
   on each computer it reaches that is not `revoked` or `refused`, through
   that computer's channel, as its paired device there; checked every 3 s.
-  A socket that fails waits 2 s doubling to 60 s; one refused with `4401`
-  or `4403` (not allowed there yet, or removed) asks `GET /v1/pair/me` and
-  waits 60 s. A dropped socket reopens with `since=` the last frame heard.
+  A socket that fails waits 2 s doubling to 60 s, and so does one that
+  opened but dropped within 10 s (a computer that lets it in and hangs up
+  at once is not re-dialled every 2 s); one that stood longer reopens after
+  2 s. One refused with `4401` or `4403` asks `GET /v1/pair/me`: still
+  waiting for Allow there, it looks again after 5 s doubling to 60 s (the
+  owner is usually at that computer right then); anything else (removed)
+  waits 60 s. A dropped socket reopens
+  with `since=` the computer's position in the last frame heard — `hello`,
+  `reset`, `ping` and `pong` carry it too — not the highest seq ever heard,
+  so a computer that restarted and counts from 1 again resumes rather than
+  answering every reconnect with a `reset`.
   What arrives is re-published on this machine's `/v1/live`, local only:
   - a `notify` frame becomes `{type: "notify", data: {…its own fields,
     machine, machine_name}}` — `machine` the computer's id here, `machine_name`
@@ -551,8 +564,11 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   no socket is opened while no one at this machine is looking.
 - **Relay counters.** `remote.State` (the Host) and `remote.ClientState`
   count relay messages and bytes each way (`msgs_in`, `msgs_out`,
-  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. Not in any
-  API answer yet.
+  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. The
+  controller's side is in `GET /v1/machines` as each computer's `traffic`
+  (`{msgs_out, msgs_in, bytes_out, bytes_in}`, the relay's own pings
+  included, since this daemon started or paired that computer; local only,
+  like the rest of the route). The Host's is in no API answer yet.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.

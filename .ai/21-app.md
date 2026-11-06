@@ -1311,6 +1311,52 @@ What it says, and what it does not:
 - The p95 of both legs is the busy machine's; re-run on a quiet one before
   reading the tail.
 
+### The hosted relay, both ends on one Mac (2026-11-06)
+
+The same bench, run twice back to back on 2026-11-06 (22:05–22:07 UTC):
+once with `--relay wss://relay.caprock.dev`, once with the relay on
+loopback. Same Mac as above (Apple M1 Pro, 10 cores, 16 GB, Darwin 27.0.0),
+again busy: one-minute load 13.5 and 29.2 at the end of each run. Both
+daemons are throwaways in their own HOMEs with fresh relay identities,
+never the owner's. Cloudflare served the Mac from its Tel Aviv edge
+(`cf-ray` …`-TLV`, TCP connect to the edge 8–20 ms). Raw JSON:
+[bench/results-2026-11-06-peer/](../bench/results-2026-11-06-peer/).
+
+| Relay             | Leg   | Keys | Median    | p95       | Max       | Min       |
+| ----------------- | ----- | ---- | --------- | --------- | --------- | --------- |
+| relay.caprock.dev | local | 400  | 0.55 ms   | 2.99 ms   | 19.8 ms   | 0.36 ms   |
+| relay.caprock.dev | peer  | 400  | 131.53 ms | 213.39 ms | 292.74 ms | 125.91 ms |
+| loopback relaysrv | local | 400  | 0.88 ms   | 3.49 ms   | 24.46 ms  | 0.38 ms   |
+| loopback relaysrv | peer  | 400  | 1.47 ms   | 6.46 ms   | 40.53 ms  | 0.77 ms   |
+
+What it says, and what it does not:
+
+- Through the hosted relay a keystroke's echo took 126 ms at best and 132
+  ms at the median, against about 1.5 ms through a relay on loopback: the
+  relay's own path (proxy, Noise, Host) is not the cost; the trip to the
+  relay is. A keystroke crosses the relay twice (controller → relay →
+  target, and the echo back), each time through the Durable Object named
+  for the target (`relay/src/index.ts`, `idFromName`), which Cloudflare
+  places in a region of its own choosing; the edge itself answered in
+  under 20 ms.
+- This is the **same home** case of OQ-17/OQ-18 for this location: two
+  computers on one network both reach the relay as this Mac did, so their
+  link costs about what this one did, plus their LAN. It is one location
+  (served from Tel Aviv), one evening, a busy Mac. Another country's edge
+  and Durable Object region give another figure; *from abroad* is still
+  unmeasured.
+- What a linked computer costs the relay while a window is open and nobody
+  types (OQ-14): `bench/peer.mjs --idle 600`, the same night (22:13–22:23
+  UTC, loopback relay, one-minute load 4.6 at the end), counted on the
+  controller's channel — 22 messages out and 82 in over 600 s, 4,976 bytes:
+  about 620 relay messages and 30 KB an hour per linked computer. The
+  relay's own pings (every 25 s) and the target's `/v1/live` pings and
+  pongs are most of it; the target's pings to the relay are not in this
+  count. Raw JSON: `idle.json` in the same folder.
+- Rule 6: a public page that cites it says the date, where it was measured
+  and that both ends were one Mac; a remote terminal is still not called
+  "instant" or "like local" ([12-risks.md](12-risks.md) OQ-17/OQ-18).
+
 ### A hidden window does no work (2026-10-13)
 
 The owner measured the WebContent process of an app window with nothing

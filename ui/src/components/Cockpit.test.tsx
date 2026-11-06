@@ -439,10 +439,11 @@ describe('the agent cockpit', () => {
     ], finished: 0 } as SubagentsNow
     try {
       show(agent({ live_subagents: 3, started_at: now - 6 * 86_400_000 }))
-      // One mark, the matrix's large tile, never a second one on the name row.
+      // One mark, the badge on the matrix's portrait, never a second one on the name row.
       expect(document.querySelectorAll('[data-hero-agent]')).toHaveLength(1)
       expect(document.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
       expect(document.querySelector('[data-hero-agent] svg')).toBeInTheDocument()
+      expect(document.querySelector('.cockpit-portrait [data-hero-agent]')).toBeInTheDocument()
       expect(document.querySelector('[data-hero-head] [data-hero-agent]')).toBeNull()
       expect(document.querySelector('[data-hero-pics] [data-hero-agent]')).toBeInTheDocument()
       expect(screen.queryByText('Claude Code')).toBeNull()
@@ -607,12 +608,17 @@ describe('the agent cockpit', () => {
       const fig = row.querySelector('[data-hero-fig]')!
       expect(pics.compareDocumentPosition(fig) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       expect(fig).toHaveAttribute('data-align', 'end')
-      // The large tile is the agent's mark, and still picks the face.
+      // The large tile is the session's portrait (owner, 2026-11-06,
+      // translated: "bring the big icon back as it was, where you can set
+      // the little agent's portrait"), the mark a badge on its corner; it
+      // still picks the face, and wears the one picked.
       const tile = within(pics as HTMLElement).getByRole('button', { name: "Change this session's face" })
-      expect(tile.parentElement).toHaveClass('h-[52px]')
+      expect(tile.parentElement).toHaveClass('cockpit-portrait')
+      expect(tile.querySelector('[data-hero-portrait] svg[data-face]')).toBeInTheDocument()
+      expect(tile.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
       fireEvent.click(tile)
-      expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(0)
-      fireEvent.keyDown(document, { code: 'Escape' })
+      fireEvent.click(screen.getByRole('menuitemradio', { name: 'Crown' }))
+      expect(tile.querySelector('[data-hero-portrait] svg')).toHaveAttribute('data-face', 'crown')
       // Three finished in grey, one working in colour, by start.
       const faces = Array.from(grid.querySelectorAll<HTMLElement>('[data-matrix-face]'))
       expect(faces.map((f) => f.getAttribute('data-state'))).toEqual(['done', 'done', 'done', 'working'])
@@ -623,15 +629,21 @@ describe('the agent cockpit', () => {
       // Nothing else in the picture: no chips row, no frame.
       expect(document.querySelector('[data-hero-chips]')).toBeEmptyDOMElement()
       expect(document.querySelector('[data-hero-subs]')).toBeNull()
-      // The summary under the grid (shown on hover) opens the hour under the row.
+      // The summary floated under the grid (shown on hover, taking no room)
+      // opens the hour under the row, and stands over the chart while open.
       const sum = within(row).getByRole('button', { name: '1 working · peak 4' })
+      expect(sum.closest('[data-matrix-float]')).toBeInTheDocument()
       expect(screen.queryByRole('img', { name: /at most 4 at once/ })).toBeNull()
       fireEvent.click(sum)
-      expect(sum).toHaveAttribute('aria-expanded', 'true')
       const chart = screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 4 at once' })
       expect(row.contains(chart)).toBe(false)
-      fireEvent.click(sum)
+      const opened = screen.getByRole('button', { name: '1 working · peak 4' })
+      expect(opened).toHaveAttribute('aria-expanded', 'true')
+      expect(row.contains(opened)).toBe(false)
+      expect(opened.closest('[data-hero-hourbox]')).toContainElement(chart)
+      fireEvent.click(opened)
       expect(screen.queryByRole('img', { name: /at most 4 at once/ })).toBeNull()
+      expect(within(row).getByRole('button', { name: '1 working · peak 4' })).toHaveAttribute('aria-expanded', 'false')
       // A face opens its subagent in the Subagents section.
       fireEvent.click(faces[3]!)
       expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
@@ -640,7 +652,9 @@ describe('the agent cockpit', () => {
     }
   })
 
-  it('draws eight faces then a +N tile, each face fixed to its subagent', async () => {
+  // Two rows of four at most, so the grid is never taller than the portrait:
+  // eight faces fit, past eight seven and a +N tile.
+  it('draws two rows of faces at most, seven and a +N tile past eight, each face fixed to its subagent', async () => {
     const work = (ids: number[]) => ({
       working: ids.map((i) => ({ agent_id: `w${i}`, agent_type: 'Explore', tool_calls: 1, started_at: i, last_at: i, running: true, asking: false })),
       finished: 0,
@@ -648,23 +662,30 @@ describe('the agent cockpit', () => {
     h.subagents = work(Array.from({ length: 11 }, (_, i) => i))
     try {
       show(agent({ live_subagents: 11 }))
-      const grid = await screen.findByRole('group', { name: 'Subagents, and 3 more working' })
-      expect(grid.querySelectorAll('[data-matrix-face]')).toHaveLength(8)
-      expect(grid.querySelector('[data-matrix-more]')).toHaveTextContent('+3')
+      const grid = await screen.findByRole('group', { name: 'Subagents, and 4 more working' })
+      expect(grid.querySelectorAll('[data-matrix-face]')).toHaveLength(7)
+      expect(grid.querySelector('[data-matrix-more]')).toHaveTextContent('+4')
       const faceOf = () => new Map(Array.from(document.querySelectorAll('[data-matrix-face]')).map((b) => [b.getAttribute('data-matrix-face'), b.querySelector('svg')!.getAttribute('data-face')]))
       const before = faceOf()
       cleanup()
       // The daemon sends them in another order, two gone: no one changes face.
       h.subagents = work([7, 3, 5, 1, 0, 2, 4, 6, 8])
       show(agent({ live_subagents: 9 }))
-      await screen.findByRole('group', { name: 'Subagents, and 1 more working' })
+      await screen.findByRole('group', { name: 'Subagents, and 2 more working' })
       for (const [id, face] of faceOf()) expect(face).toBe(before.get(id))
+      cleanup()
+      // Eight working fill the two rows with no +N.
+      h.subagents = work(Array.from({ length: 8 }, (_, i) => i))
+      show(agent({ live_subagents: 8 }))
+      const full = await screen.findByRole('group', { name: 'Subagents' })
+      expect(full.querySelectorAll('[data-matrix-face]')).toHaveLength(8)
+      expect(full.querySelector('[data-matrix-more]')).toBeNull()
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
   })
 
-  it('draws only the agent’s tile and the figures when the session had no subagent', async () => {
+  it('draws only the agent’s portrait and the figures when the session had no subagent', async () => {
     h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
     try {
       show(agent())

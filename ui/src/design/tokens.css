@@ -1014,6 +1014,12 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cockpit-tint) 30%, var(--app-hairline));
   transition: box-shadow 300ms var(--app-ease), background 300ms var(--app-ease);
 }
+/* The matrix's portrait (Cockpit Hero): the session's face large, the
+ * agent's mark as a badge on the tile's corner, cut out of the panel. */
+[data-app] .cockpit-portrait-badge {
+  background: var(--color-panel);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cockpit-tint) 30%, var(--app-hairline));
+}
 /* A pale hat (the cream hard hat, the pompom) keeps an edge on a light ground. */
 [data-theme="light"] .cockpit-avatar, [data-theme="light"] [data-face-picker] { --character-outline: var(--color-border-strong); }
 /* "try a duck?" (SessionFace DuckHint): a speech line out of the portrait,

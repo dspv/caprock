@@ -15,7 +15,7 @@
 //          and the target's Host — what the app does for another computer.
 //
 // usage: node bench/peer.mjs --bin ./bin/caprock --claude ./bin/claude
-//          [--work DIR] [--keys 200] [--gap 40] [--relay wss://…] [--out FILE]
+//          [--work DIR] [--keys 200] [--gap 40] [--relay wss://…] [--idle SECONDS] [--out FILE]
 //
 // Writes one JSON object (stdout, and --out): median, p95 and max for each
 // leg, the relay used, the machine and the date. Exit 1 when a leg fails.
@@ -33,6 +33,7 @@ const KEYS = Number(opt('keys', '200'))
 const GAP = Number(opt('gap', '40'))
 const OUT = opt('out')
 const RELAY = opt('relay', '')
+const IDLE = Number(opt('idle', '0'))
 if (!BIN || !CLAUDE) {
   console.error('usage: node bench/peer.mjs --bin ./bin/caprock --claude ./bin/claude [--work DIR] [--keys 200] [--gap 40] [--relay wss://…] [--out FILE]')
   process.exit(2)
@@ -214,13 +215,34 @@ try {
     peer.push(...await leg(peerURL, 'peer'))
   }
   const counters = (await http(C, 'GET', '/v1/machines')).json.machines[0]
+  // --idle N: a dashboard window left open on the controller for N seconds
+  // with the session idle on the target — what one linked computer costs the
+  // relay while nobody types (OQ-14). The controller's own count: what it
+  // sent and got through the relay, its pings included; the target's relay
+  // pings are not in it.
+  let idle
+  if (IDLE > 0) {
+    const win = new WebSocket(`ws://127.0.0.1:${cp}/v1/live`)
+    await new Promise((res, rej) => { win.onopen = res; win.onerror = () => rej(new Error('the controller window did not open')) })
+    await sleep(10_000) // the watch on the target comes up (checked every 3 s)
+    const before = (await http(C, 'GET', '/v1/machines')).json.machines[0]?.traffic
+    log(`idle ${IDLE} s with a window open`)
+    await sleep(IDLE * 1000)
+    const after = (await http(C, 'GET', '/v1/machines')).json.machines[0]?.traffic
+    win.close()
+    if (before && after) {
+      const d = Object.fromEntries(Object.keys(after).map((k) => [k, after[k] - before[k]]))
+      idle = { seconds: IDLE, ...d, msgs_per_hour: Math.round(((d.msgs_out + d.msgs_in) * 3600) / IDLE), bytes_per_hour: Math.round(((d.bytes_out + d.bytes_in) * 3600) / IDLE) }
+    }
+  }
   const result = {
     bench: 'peer', date: new Date().toISOString(),
     relay: RELAY ? relay : 'local (caprock remote relay on 127.0.0.1)',
     keys_per_leg: KEYS * 2, gap_ms: GAP,
     local: summary(local), peer: summary(peer),
     added_ms: { median: round(pct(peer, 50) - pct(local, 50)), p95: round(pct(peer, 95) - pct(local, 95)) },
-    machine: machine(), controller_view: { status: counters?.status, version: counters?.version, streams: counters?.streams },
+    machine: machine(), controller_view: { status: counters?.status, version: counters?.version, streams: counters?.streams, traffic: counters?.traffic },
+    ...(idle ? { idle } : {}),
   }
   await http(T, 'POST', `/v1/agents/${sid}/signal`, { action: 'kill' })
   const text = JSON.stringify(result, null, 2)

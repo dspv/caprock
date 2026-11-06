@@ -33,10 +33,10 @@ import { CHART_METRICS, HEADLINES, costNote, costText, METRICS, SPEND_PERIODS, c
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
-import { HourChart, SubFace, SubagentChipsLine, SubagentMatrix, SubagentStripLine, anySubagents } from './SubagentFaces'
-import { MATRIX_FACES, subagentFace, useSubagentLook } from '@/lib/subagentfaces'
+import { HourChart, MatrixControls, SubFace, SubagentChipsLine, SubagentMatrix, SubagentStripLine, anySubagents } from './SubagentFaces'
+import { matrixRoom, subagentFace, useSubagentLook } from '@/lib/subagentfaces'
 import { useFaceDefault } from '@/lib/faces'
-import { PickableFace } from './SessionFace'
+import { PickableFace, SessionCharacter } from './SessionFace'
 import { AgentGlyph } from './AgentMarks'
 import { SubscriptionTag } from './SubscriptionPicker'
 import { TodoBlock } from './SessionTodos'
@@ -367,6 +367,30 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
 }
 
 /**
+ * Whether the hero's state and mode wrapped onto a line of their own under
+ * the name: then they stand at the left, the header's last line, not at the
+ * right over the figures. Measured, as only layout knows where a wrap falls.
+ */
+function useLeadWrapped(lead: RefObject<HTMLSpanElement | null>): boolean {
+  const [wrapped, setWrapped] = useState(false)
+  useLayoutEffect(() => {
+    const el = lead.current
+    const head = el?.parentElement
+    if (!el || !head) return
+    const check = () => {
+      const prev = el.previousElementSibling as HTMLElement | null
+      setWrapped(!!prev && el.offsetTop > prev.offsetTop + prev.offsetHeight / 2)
+    }
+    check()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(check)
+    ro.observe(head)
+    return () => ro.disconnect()
+  }, [lead])
+  return wrapped
+}
+
+/**
  * The top of the Agent panel: the session as a dense informer (owner,
  * 2026-10-29, translated: "the middle doesn't fit, and a lot of valuable
  * space is wasted there — it needs a super-efficient informer"; V2 of the
@@ -380,9 +404,10 @@ function useChipLayout(box: RefObject<HTMLDivElement | null>, working: number): 
  *   state — a click on it picks the session's face, and "try a duck?" now
  *   and then points out of it.
  * - **The pictures and the figures** (the matrix, the default look; owner,
- *   2026-11-06): at the left the same mark in a large tile, the same button,
- *   and the subagents' faces in a grid beside it (SubagentMatrix); at the
- *   right the headline figure, burn rate by default, big with its
+ *   2026-11-06): at the left the session's portrait (its face, the same
+ *   button) large, as tall as the figures, the mark a badge on its corner,
+ *   and the subagents' faces in a grid centred beside it (SubagentMatrix);
+ *   at the right the headline figure, burn rate by default, big with its
  *   comparison, the two smaller figures under it, right-aligned. In a hero
  *   narrower than 280px, where the two no longer fit side by side, the
  *   figures go under the pictures. In the other two looks the figures stand
@@ -404,7 +429,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const layout = useChipLayout(chipBox, working)
   const look = useSubagentLook()
   const matrix = look === 'matrix'
-  const strip = subagentChips(subs, permission, matrix ? MATRIX_FACES : layout.room)
+  const strip = subagentChips(subs, permission, matrix ? matrixRoom(working) : layout.room)
   const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
   const shown = state === 'ended' ? 0 : count
   const any = anySubagents(subs, shown)
@@ -419,14 +444,35 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   // The project only when it says something the name does not ("caprock"
   // over "caprock" was the panel's first two lines).
   const project = place && title && place.project.trim().toLowerCase() !== title.trim().toLowerCase() ? place.project : ''
-  // The agent's mark: a small tile on the name row, or, in the matrix, the
-  // large one at the left of the figures — never both.
-  const mark = (big: boolean) => (
+  // The agent: its mark in a small tile on the name row, or, in the matrix,
+  // its portrait large at the left of the figures (the face picked for the
+  // session, else its own from the default; owner, 2026-11-06, translated:
+  // "bring the big icon back as it was, where you can set the little
+  // agent's portrait") with the mark as a badge on the tile's corner, so
+  // Claude and Codex still tell apart — never both.
+  const mark = (big: boolean) => big ? (
     <PickableFace agent={agent} sessionId={sessionId} title={agentName(agent)} hint={!asking && (state === 'idle' || state === 'waiting')}
-      className={`cockpit-avatar relative grid shrink-0 place-items-center ${big ? 'h-[52px] w-[52px] rounded-[14px]' : 'h-[24px] w-[24px] rounded-[7px]'}`} data-state={state}>
-      <span data-hero-agent aria-label={agentName(agent)} className="grid place-items-center"><AgentGlyph agent={agent} size={big ? 28 : 15} /></span>
+      className="cockpit-avatar cockpit-portrait relative grid min-h-[64px] w-[64px] shrink-0 place-items-center self-stretch rounded-[16px] @[340px]:min-h-[72px] @[340px]:w-[72px] @[340px]:rounded-[18px]" data-state={state}>
+      <span data-hero-portrait className="grid place-items-center">
+        <SessionCharacter agent={agent} sessionId={sessionId} size={62} className="cockpit-character @[340px]:h-[70px] @[340px]:w-[70px]" />
+      </span>
+      <span data-hero-agent aria-label={agentName(agent)}
+        className="cockpit-portrait-badge pointer-events-none absolute -bottom-[3px] -right-[3px] grid h-[20px] w-[20px] place-items-center rounded-full">
+        <AgentGlyph agent={agent} size={12} />
+      </span>
+    </PickableFace>
+  ) : (
+    <PickableFace agent={agent} sessionId={sessionId} title={agentName(agent)} hint={!asking && (state === 'idle' || state === 'waiting')}
+      className="cockpit-avatar relative grid h-[24px] w-[24px] shrink-0 place-items-center rounded-[7px]" data-state={state}>
+      <span data-hero-agent aria-label={agentName(agent)} className="grid place-items-center"><AgentGlyph agent={agent} size={15} /></span>
     </PickableFace>
   )
+  // The state and the mode stand at the right of the name; when they wrap
+  // under it (a long name and place), at the left, the header's last line,
+  // so the figures' column never starts higher than the pictures' (owner,
+  // 2026-11-06: the lopsided hero).
+  const lead = useRef<HTMLSpanElement>(null)
+  const wrapped = useLeadWrapped(lead)
   const faces = matrix && subs && any && strip.chips.length + strip.more > 0
   return (
     <div className="@container min-w-0">
@@ -443,7 +489,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
               {place.branch && <span className="mono break-all text-[11px] text-fg-faint">{place.branch}</span>}
             </span>
           )}
-          <span data-hero-lead className="ml-auto flex shrink-0 items-center gap-1.5">
+          <span ref={lead} data-hero-lead data-wrapped={wrapped || undefined} className="ml-auto flex shrink-0 items-center gap-1.5 data-[wrapped]:ml-0">
             <p data-hero-state className={`whitespace-nowrap text-[11.5px] font-medium leading-[20px] ${STATE_TEXT[state]}`} role="status"
               title={saysBackground ? backgroundLabel(background) : undefined} aria-label={saysBackground ? backgroundLabel(background) : undefined}>
               <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
@@ -455,11 +501,13 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
         {extra}
         {matrix ? (
           // The matrix (owner, 2026-11-06): pictures at the left, the agent's
-          // large tile and its subagents' faces; the figures at the right,
-          // under the pictures in a hero narrower than 280px, where the two
-          // no longer fit side by side.
-          <div data-hero-row data-look="matrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-2 @[280px]:grid-cols-[auto_minmax(0,1fr)]">
-            <div data-hero-pics className="flex min-w-0 items-start gap-2.5">
+          // portrait and its subagents' faces centred on it; the figures at
+          // the right. The portrait stretches to the figures' height, so the
+          // two columns share their top and bottom edges (owner, 2026-11-06:
+          // the lopsided hero). Under the pictures in a hero narrower than
+          // 280px, where the two no longer fit side by side.
+          <div data-hero-row data-look="matrix" className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-stretch gap-x-3 gap-y-2 @[280px]:grid-cols-[auto_minmax(0,1fr)]">
+            <div data-hero-pics className="flex min-w-0 items-center gap-2">
               {mark(true)}
               {subs && faces && <SubagentMatrix subs={subs} count={shown} chips={strip.chips} more={strip.more} open={hourOpen} onToggle={() => setHourOpen((v) => !v)} onChip={onChip} />}
             </div>
@@ -478,7 +526,12 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
             </div>
           </div>
         )}
-        {faces && hourOpen && subs?.hour && <HourChart hour={subs.hour} />}
+        {faces && hourOpen && subs?.hour && (
+          <div data-hero-hourbox className="grid min-w-0 gap-1">
+            <MatrixControls subs={subs} count={shown} open onToggle={() => setHourOpen(false)} />
+            <HourChart hour={subs.hour} />
+          </div>
+        )}
         {/* Always measured; empty, and so hidden, while there is nothing to draw. */}
         <div ref={chipBox} data-hero-chips className="grid min-w-0 empty:hidden">
           {look === 'strip'
