@@ -1,35 +1,38 @@
 /**
- * The hero's subagent frame drawn with the brand characters (.ai/04-ui.md §
+ * The hero's subagents drawn with the brand characters (.ai/04-ui.md §
  * Inspector, the subagent chart). Three looks, per viewer:
  *
- * - **chart** (the default), *Chart of faces*: the hour in five-minute
- *   columns, each a stack of faces as tall as the most subagents at once in
- *   it;
- * - **crew**, *Crew*: one face per working subagent, the finished faded;
- * - **numbers**, *Numbers*: the crowd large and the figures big.
+ * - **chips** (the default), *Faces as chips*: no frame; the row of chips
+ *   under the figures are the subagents' faces, *1 working · peak 4* beside
+ *   them opens the hour's chart;
+ * - **strip**, *Strip*: one line, the working faces big and breathing, the
+ *   finished small and grey, a sparkline of the hour at the right;
+ * - **crew**, *Crew*: the framed block beside the figures, one face per
+ *   working subagent, the finished faded, the types, the hour as bars.
  *
  * Owner, 2026-10-31 (translated): the old step line "looks poor"; build it
- * from our characters, three variants, the chart by default, "maybe someone
- * will like another one". The arithmetic lives here so it is tested apart
- * from the component.
+ * from our characters. 2026-11-06 (translated): "fun, but takes far too much
+ * space": the chart of faces and the numbers look were dropped for the
+ * strip and the chips, the crew tightened. The arithmetic lives here so it
+ * is tested apart from the component.
  */
 import { useSyncExternalStore } from 'react'
 import { hashedFace, isPool, type Face, type FaceDefault } from '@/lib/faces'
 import type { SubagentHour } from '@/lib/api'
 
-export type SubagentLook = 'chart' | 'crew' | 'numbers'
+export type SubagentLook = 'chips' | 'strip' | 'crew'
 
 export const SUBAGENT_LOOKS: readonly { id: SubagentLook; name: string }[] = [
-  { id: 'chart', name: 'Chart of faces' },
+  { id: 'chips', name: 'Faces as chips' },
+  { id: 'strip', name: 'Strip' },
   { id: 'crew', name: 'Crew' },
-  { id: 'numbers', name: 'Numbers' },
 ]
 
-export const DEFAULT_SUBAGENT_LOOK: SubagentLook = 'chart'
+export const DEFAULT_SUBAGENT_LOOK: SubagentLook = 'chips'
 export const SUBAGENT_LOOK_KEY = 'caprock.app.subagent-look'
 
 export function isSubagentLook(v: unknown): v is SubagentLook {
-  return v === 'chart' || v === 'crew' || v === 'numbers'
+  return v === 'chips' || v === 'strip' || v === 'crew'
 }
 
 let current: SubagentLook | undefined
@@ -69,36 +72,8 @@ export function useSubagentLook(): SubagentLook {
   )
 }
 
-/** Minutes per column of the chart of faces. */
-export const BUCKET_MINUTES = 5
-/** Columns in the chart: an hour of five-minute columns. */
-export const BUCKETS = 12
-/** The tallest stack of faces; past it one face stands for several subagents. */
-export const MAX_STACK = 6
-
-/** One column of the chart: its first minute (unix ms) and the most at work at once in it. */
-export interface FaceBucket { start: number; most: number }
-
-/**
- * The hour's per-minute counts as twelve five-minute columns on the clock
- * (:00, :05, … — so a minute stays in its column as the hour moves on and
- * the faces stand still), the newest the one now is in, possibly partial.
- * Each holds the most at work in any of its minutes. Minutes older than the
- * first column (at most four) are left out.
- */
-export function faceBuckets(hour: Pick<SubagentHour, 'start' | 'step_ms' | 'counts'>): FaceBucket[] {
-  const step = hour.step_ms > 0 ? hour.step_ms : 60_000
-  const span = step * BUCKET_MINUTES
-  const lastMinute = hour.start + Math.max(0, hour.counts.length - 1) * step
-  const first = (Math.floor(lastMinute / span) - (BUCKETS - 1)) * span
-  const out: FaceBucket[] = Array.from({ length: BUCKETS }, (_, j) => ({ start: first + j * span, most: 0 }))
-  hour.counts.forEach((v, i) => {
-    const at = hour.start + i * step
-    const j = Math.floor((at - first) / span)
-    if (j >= 0 && j < BUCKETS && v > out[j]!.most) out[j]!.most = v
-  })
-  return out
-}
+/** Minutes in the newest stretch of the hour's chart drawn in full; the older are dimmed. */
+export const FRESH_MINUTES = 10
 
 /** The minute of the peak (unix ms): the latest minute that reached it; undefined with no peak. */
 export function peakMinute(hour: Pick<SubagentHour, 'start' | 'step_ms' | 'counts' | 'peak'>): number | undefined {
@@ -113,14 +88,26 @@ export function clockTime(ms: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** How many subagents one face stands for: one, or ceil(peak / 6) past a peak of six. */
-export function faceScale(peak: number): number {
-  return peak > MAX_STACK ? Math.ceil(peak / MAX_STACK) : 1
+/**
+ * The hour's per-minute counts as a sparkline's points in a box `w` by `h`,
+ * scaled to the peak, oldest at the left; a flat line along the bottom when
+ * none worked.
+ */
+export function sparkPoints(counts: readonly number[], peak: number, w: number, h: number): string {
+  const n = counts.length
+  if (n === 0) return `0,${h} ${w},${h}`
+  const top = Math.max(1, peak)
+  const x = (i: number) => (n === 1 ? w : (i / (n - 1)) * w)
+  return counts.map((v, i) => `${round(x(i))},${round(h - (Math.max(0, v) / top) * (h - 1) - 0.5)}`).join(' ')
 }
 
-/** How many faces a column of `most` subagents stacks at that scale (any at all shows one). */
-export function stackHeight(most: number, scale: number): number {
-  return most > 0 ? Math.ceil(most / Math.max(1, scale)) : 0
+function round(v: number): number {
+  return Math.round(v * 10) / 10
+}
+
+/** "1 working · peak 4": the working now and, when any worked in the hour, the most at once. */
+export function subagentSummary(working: number, hour: Pick<SubagentHour, 'peak'> | undefined): string {
+  return hour && hour.peak > 0 ? `${working} working · peak ${hour.peak}` : `${working} working`
 }
 
 /**

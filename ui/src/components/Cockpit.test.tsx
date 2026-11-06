@@ -399,7 +399,7 @@ describe('the agent cockpit', () => {
     expect(screen.getByRole('status')).toHaveAttribute('title', 'Background agents working · 1')
     expect(screen.getByRole('status')).toHaveAccessibleName('Background agents working · 1')
     expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
-    expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^1 subagent$/)
+    expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^1 working$/)
     const nowCard = screen.getByRole('region', { name: 'Now' })
     expect(within(nowCard).getByText('Background agents working · 1')).toBeInTheDocument()
     expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
@@ -420,8 +420,7 @@ describe('the agent cockpit', () => {
       expect(strip).toHaveAttribute('data-compact', 'true')
       expect(Array.from(strip.querySelectorAll('[data-chip-group]')).map((g) => g.querySelectorAll('button').length)).toEqual([5, 5, 5, 5, 3])
       expect(strip.querySelector('button')).toHaveTextContent('')
-      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 subagents')
-      expect(document.querySelector('[data-hero-kinds]')).toHaveTextContent('23 general-purpose')
+      expect(document.querySelector('[data-hero-count]')).toHaveTextContent('23 working')
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
@@ -436,6 +435,8 @@ describe('the agent cockpit', () => {
       { agent_id: 'e2', agent_type: 'Explore', tool_calls: 1, started_at: 3, last_at: 3, running: true, asking: false },
     ], finished: 0 } as SubagentsNow
     try {
+      // The types are the crew's (V3) pills.
+      localStorage.setItem(SUBAGENT_LOOK_KEY, 'crew')
       show(agent({ live_subagents: 3, started_at: now - 6 * 86_400_000 }))
       expect(document.querySelector('[data-hero-agent]')).toHaveAccessibleName('Claude Code')
       expect(document.querySelector('[data-hero-agent] svg')).toBeInTheDocument()
@@ -449,7 +450,8 @@ describe('the agent cockpit', () => {
         return c
       })
       expect(document.querySelector('[data-hero-count]')).toHaveTextContent('3 subagents')
-      expect(kinds).toHaveTextContent('2 Explore, 1 general-purpose')
+      expect(kinds).toHaveTextContent('2 Explore')
+      expect(kinds).toHaveTextContent('1 general-purpose')
       // A type opens the first of its kind in the Subagents section.
       fireEvent.click(within(kinds as HTMLElement).getByRole('button', { name: /2 Explore/ }))
       expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
@@ -493,24 +495,120 @@ describe('the agent cockpit', () => {
     expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(0)
   })
 
-  // The subagent chart: how many worked in the last hour drawn as the brand
-  // faces (owner, 2026-10-31: the step line "looks poor"), the most at once
-  // and when, and in the frame — not a line of its own — when none did.
-  it('charts the subagents over the last hour as faces, and says so in the frame when none ran', async () => {
-    const counts = Array.from({ length: 60 }, (_, i) => (i > 40 ? 3 : i > 20 ? 7 : 0))
-    h.subagents = { working: [{ agent_id: 'e1', agent_type: 'Explore', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false }], finished: 0,
-      hour: { start: now - 59 * 60_000, step_ms: 60_000, counts, peak: 7 } } as SubagentsNow
+  // Owner, 2026-11-06 (translated): the old three looks were "fun, but take
+  // far too much space". The faces are the chips by default; one working,
+  // three finished, a peak of four at once in the hour.
+  const crowd = (counts: number[]) => ({
+    working: [{ agent_id: 'g1', agent_type: 'general-purpose', description: 'Find the pricing table', tool_calls: 1, started_at: 4, last_at: 4, running: true, asking: false }],
+    finished: 3,
+    recent: [
+      { agent_id: 'd1', agent_type: 'general-purpose', tool_calls: 2, started_at: 1, stopped_at: 5 },
+      { agent_id: 'd2', agent_type: 'Explore', tool_calls: 2, started_at: 2, stopped_at: 5 },
+      { agent_id: 'd3', agent_type: 'general-purpose', tool_calls: 2, started_at: 3, stopped_at: 5 },
+    ],
+    hour: { start: now - 59 * 60_000, step_ms: 60_000, counts, peak: Math.max(...counts) },
+  }) as SubagentsNow
+  const hourOf = () => Array.from({ length: 60 }, (_, i) => (i > 50 ? 1 : i > 30 ? 4 : 0))
+
+  it('draws the subagents as face chips by default, the summary opening the hour, a chip opening its subagent', async () => {
+    h.subagents = crowd(hourOf())
     try {
       show(agent({ live_subagents: 1 }))
-      // The latest minute that reached the peak is minute 40, 19 minutes ago.
-      const peak = await screen.findByText(`peak 7 at ${clockTime(now - 19 * 60_000)}`)
-      expect(peak.closest('[data-hero-subs]')).toHaveAttribute('data-look', 'chart')
-      const chart = screen.getByRole('img', { name: 'Subagents at work in each five minutes of the last hour, at most 7 at once' })
-      expect(chart.querySelectorAll('[data-bucket]')).toHaveLength(12)
-      // Seven at the peak is past six: one face stands for two, so the tallest column is four faces.
-      expect(document.querySelector('[data-face-scale]')).toHaveTextContent('1 face = 2')
-      const tallest = Math.max(...Array.from(chart.querySelectorAll('[data-bucket]')).map((c) => c.querySelectorAll('svg').length))
-      expect(tallest).toBe(4)
+      const chips = await screen.findByRole('group', { name: 'Subagents' })
+      const line = chips.closest('[data-hero-chipline]') as HTMLElement
+      expect(line).toHaveAttribute('data-look', 'chips')
+      // No frame beside the figures.
+      expect(document.querySelector('[data-hero-subs]')).toBeNull()
+      const buttons = within(chips).getAllByRole('button')
+      expect(buttons).toHaveLength(4)
+      expect(buttons.every((b) => b.querySelector('svg[data-face]'))).toBe(true)
+      expect(buttons.map((b) => b.getAttribute('data-state'))).toEqual(['done', 'done', 'done', 'working'])
+      expect(buttons[3]).toHaveAttribute('title', 'general-purpose · Find the pricing table · working')
+      // The summary: how many work and the peak; a click opens the hour, a second folds it.
+      const sum = within(line).getByRole('button', { name: '1 working · peak 4' })
+      expect(sum.getAttribute('title')).toContain(`peak 4 at ${clockTime(now - 9 * 60_000)}`)
+      expect(screen.queryByRole('img', { name: /at most 4 at once/ })).toBeNull()
+      fireEvent.click(sum)
+      expect(sum).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 4 at once' })).toBeInTheDocument()
+      fireEvent.click(sum)
+      expect(screen.queryByRole('img', { name: /at most 4 at once/ })).toBeNull()
+      // A chip opens its subagent in the Subagents section.
+      fireEvent.click(buttons[3]!)
+      expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  it('draws nothing for the subagents in the default look or the strip when the session never had one', async () => {
+    h.subagents = { working: [], finished: 0, hour: { start: now - 59 * 60_000, step_ms: 60_000, counts: Array(60).fill(0), peak: 0 } } as SubagentsNow
+    try {
+      for (const look of ['chips', 'strip']) {
+        localStorage.setItem(SUBAGENT_LOOK_KEY, look)
+        resetSubagentLookForTest()
+        const { unmount } = show(agent())
+        await screen.findByRole('region', { name: 'Recent tool calls' })
+        expect(document.querySelector('[data-hero-chips]')).toBeEmptyDOMElement()
+        expect(document.querySelector('[data-hero-subs]')).toBeNull()
+        expect(document.querySelector('[data-hero-count]')).toBeNull()
+        expect(screen.queryByRole('group', { name: 'How the subagents are drawn' })).toBeNull()
+        unmount()
+      }
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  it('draws the strip on one line: the working big, the finished grey, a sparkline that opens the hour', async () => {
+    localStorage.setItem(SUBAGENT_LOOK_KEY, 'strip')
+    h.subagents = crowd(hourOf())
+    try {
+      show(agent({ live_subagents: 1 }))
+      const strip = await waitFor(() => {
+        const s = document.querySelector('[data-hero-strip]')
+        if (!s?.querySelector('[data-strip-face]')) throw new Error('not yet')
+        return s as HTMLElement
+      })
+      expect(strip.querySelectorAll('[data-strip-face]')).toHaveLength(1)
+      expect(strip.querySelectorAll('[data-strip-done]')).toHaveLength(3)
+      expect(strip.querySelector('[data-strip-finished]')).toBeNull()
+      expect(strip.querySelector('[data-hero-count]')).toHaveTextContent('1 working · peak 4')
+      const spark = strip.querySelector('[data-hero-spark]') as HTMLElement
+      expect(spark).toHaveAttribute('title', `peak 4 at ${clockTime(now - 9 * 60_000)}`)
+      expect(spark.querySelector('polyline')).toBeInTheDocument()
+      fireEvent.click(spark)
+      expect(spark).toHaveAttribute('aria-expanded', 'true')
+      expect(within(strip).getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 4 at once' })).toBeInTheDocument()
+      fireEvent.click(spark)
+      expect(within(strip).queryByRole('img')).toBeNull()
+      // No chip row beside it: the strip's faces are the subagents.
+      expect(document.querySelector('[data-hero-chips] .cockpit-subchip')).toBeNull()
+      // A face opens its subagent.
+      fireEvent.click(strip.querySelector('[data-strip-face]') as HTMLElement)
+      expect(await screen.findByRole('region', { name: 'Subagents' })).toBeInTheDocument()
+    } finally {
+      h.subagents = { working: [], finished: 0 }
+    }
+  })
+
+  it('keeps the crew as the framed block, and its quiet line when none ran', async () => {
+    localStorage.setItem(SUBAGENT_LOOK_KEY, 'crew')
+    h.subagents = crowd(hourOf())
+    try {
+      show(agent({ live_subagents: 1 }))
+      const frame = await waitFor(() => {
+        const f = document.querySelector('[data-hero-subs]')
+        if (f?.getAttribute('data-look') !== 'crew') throw new Error('not yet')
+        return f as HTMLElement
+      })
+      expect(frame.querySelectorAll('[data-crew-face]')).toHaveLength(1)
+      expect(frame.querySelectorAll('[data-crew-done]')).toHaveLength(3)
+      expect(frame.querySelector('[data-crew-finished]')).toHaveTextContent('+3 finished')
+      expect(frame.querySelector('[data-hero-peak]')).toHaveTextContent('peak 4 · 1h')
+      expect(frame.querySelector('[data-hero-kinds]')).toHaveTextContent('1 general-purpose')
+      // The letter chips stay under the figures in the crew.
+      expect(within(screen.getByRole('group', { name: 'Subagents' })).getAllByRole('button')[0]).toHaveTextContent('G')
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
@@ -521,47 +619,32 @@ describe('the agent cockpit', () => {
       const none = await screen.findByText('no subagents · 1h')
       expect(none.closest('[data-hero-subs]')).toBeInTheDocument()
       expect(screen.getByRole('img', { name: 'No subagents in the last hour' })).toBeInTheDocument()
-      expect(screen.queryByText('peak 0 · 1h')).toBeNull()
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
   })
 
-  // Three looks, the chart of faces by default; the viewer's pick is kept.
-  it('switches the subagent frame between its three looks and remembers the choice', async () => {
-    const counts = Array.from({ length: 60 }, (_, i) => (i > 50 ? 2 : i > 30 ? 5 : 0))
-    h.subagents = { working: [
-      { agent_id: 'g1', agent_type: 'general-purpose', tool_calls: 1, started_at: 1, last_at: 1, running: true, asking: false },
-      { agent_id: 'g2', agent_type: 'general-purpose', tool_calls: 1, started_at: 2, last_at: 2, running: true, asking: false },
-    ], finished: 3, recent: [{ agent_id: 'd1', agent_type: 'Explore', tool_calls: 2, started_at: 1, stopped_at: 5 }],
-    hour: { start: now - 59 * 60_000, step_ms: 60_000, counts, peak: 5 } } as SubagentsNow
+  // Three looks, the faces as chips by default; the viewer's pick is kept.
+  it('switches between the three looks and remembers the choice', async () => {
+    h.subagents = crowd(hourOf())
     try {
-      show(agent({ live_subagents: 2 }))
-      const frame = await waitFor(() => {
-        const f = document.querySelector('[data-hero-subs]')
-        if (f?.getAttribute('data-look') !== 'chart') throw new Error('not yet')
-        return f as HTMLElement
-      })
-      const looks = within(frame).getByRole('group', { name: 'How the subagents are drawn' })
-      expect(within(looks).getByRole('button', { name: 'Chart of faces' })).toHaveAttribute('aria-pressed', 'true')
-      fireEvent.click(within(looks).getByRole('button', { name: 'Crew' }))
-      expect(frame).toHaveAttribute('data-look', 'crew')
-      expect(frame.querySelectorAll('[data-crew-face]')).toHaveLength(2)
-      expect(frame.querySelectorAll('[data-crew-done]')).toHaveLength(1)
-      expect(frame.querySelector('[data-crew-finished]')).toHaveTextContent('+3 finished')
-      expect(frame.querySelector('[data-hero-peak]')).toHaveTextContent('peak 5 · 1h')
+      show(agent({ live_subagents: 1 }))
+      const looks = await screen.findByRole('group', { name: 'How the subagents are drawn' })
+      expect(within(looks).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Faces as chips', 'Strip', 'Crew'])
+      expect(within(looks).getByRole('button', { name: 'Faces as chips' })).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.click(within(looks).getByRole('button', { name: 'Strip' }))
+      expect(document.querySelector('[data-hero-strip]')).toBeInTheDocument()
+      expect(document.querySelector('[data-hero-chipline]')).toBeNull()
+      expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('strip')
+      fireEvent.click(within(screen.getByRole('group', { name: 'How the subagents are drawn' })).getByRole('button', { name: 'Crew' }))
+      expect(document.querySelector('[data-hero-subs]')).toHaveAttribute('data-look', 'crew')
+      expect(document.querySelector('[data-hero-strip]')).toBeNull()
       expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('crew')
-      fireEvent.click(within(looks).getByRole('button', { name: 'Numbers' }))
-      expect(frame).toHaveAttribute('data-look', 'numbers')
-      expect(frame.querySelector('[data-hero-count]')).toHaveTextContent(/^2$/)
-      expect(frame.querySelector('[data-hero-count]')).toHaveAttribute('title', '2 subagents working')
-      expect(screen.getByRole('img', { name: 'Subagents at work each minute of the last hour, at most 5 at once' })).toBeInTheDocument()
-      expect(localStorage.getItem(SUBAGENT_LOOK_KEY)).toBe('numbers')
       // Read again from storage, as a new window would.
       cleanup()
       resetSubagentLookForTest()
-      show(agent({ live_subagents: 2 }))
-      await waitFor(() => expect(document.querySelector('[data-hero-subs]')).toHaveAttribute('data-look', 'numbers'))
+      show(agent({ live_subagents: 1 }))
+      await waitFor(() => expect(document.querySelector('[data-hero-subs]')).toHaveAttribute('data-look', 'crew'))
     } finally {
       h.subagents = { working: [], finished: 0 }
     }
