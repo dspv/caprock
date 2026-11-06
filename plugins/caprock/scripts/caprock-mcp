@@ -1,0 +1,44 @@
+#!/bin/sh
+# Starts `caprock mcp` for the Caprock plugin on macOS and Linux.
+#
+# The desktop app puts no `caprock` on PATH, and an agent started from the
+# Dock or a launcher often has a bare PATH, so after PATH this tries the
+# places Caprock is installed: the app's own copy in its data directory,
+# then Homebrew, ~/.local/bin and Go's bin. Nothing is downloaded and
+# nothing is sent; when no caprock is found it says where to get one, on
+# stderr, and exits 1. On Windows, caprock-mcp.cmd does the same.
+
+find_caprock() {
+	if p=$(command -v caprock 2>/dev/null) && [ -n "$p" ]; then
+		echo "$p"
+		return 0
+	fi
+	case "$(uname -s 2>/dev/null)" in
+	Darwin) config="$HOME/Library/Application Support" ;;
+	*) config="${XDG_CONFIG_HOME:-$HOME/.config}" ;;
+	esac
+	for p in \
+		"${CAPROCK_DATA_DIR:+$CAPROCK_DATA_DIR/bin/caprock}" \
+		"$config/caprock/bin/caprock" \
+		/opt/homebrew/bin/caprock \
+		/usr/local/bin/caprock \
+		/home/linuxbrew/.linuxbrew/bin/caprock \
+		"$HOME/.local/bin/caprock" \
+		"${GOBIN:+$GOBIN/caprock}" \
+		"${GOPATH:-$HOME/go}/bin/caprock"; do
+		if [ -n "$p" ] && [ -x "$p" ] && [ ! -d "$p" ]; then
+			echo "$p"
+			return 0
+		fi
+	done
+	return 1
+}
+
+if exe=$(find_caprock); then
+	exec "$exe" mcp "$@"
+fi
+
+echo "caprock: Caprock is not installed on this computer (or not where the plugin looks)." >&2
+echo "Install it from https://caprock.dev/install and open it once, then restart Claude Code." >&2
+echo "Installed somewhere else? Add the server by hand with the full path: https://github.com/dspv/caprock/blob/master/docs/mcp.md" >&2
+exit 1

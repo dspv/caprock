@@ -10,6 +10,8 @@
 *.tsx text eol=lf
 *.css text eol=lf
 *.sh text eol=lf
+# cmd.exe misreads labels in a batch file with bare LF line ends.
+*.cmd text eol=crlf
 *.png binary
 *.jpg binary
 *.gif binary

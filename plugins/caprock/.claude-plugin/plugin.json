@@ -1,0 +1,36 @@
+{
+  "name": "caprock",
+  "displayName": "Caprock",
+  "version": "0.173.0",
+  "description": "Ask Caprock from Claude Code: Second Brain memories and decisions, what past sessions did, spend and tokens per repo, CI status, stuck sessions. Read-only, local; needs the Caprock app running.",
+  "author": {
+    "name": "Dmitriy Solodukha",
+    "url": "https://caprock.dev"
+  },
+  "homepage": "https://caprock.dev",
+  "repository": "https://github.com/dspv/caprock",
+  "license": "Apache-2.0",
+  "keywords": [
+    "claude-code",
+    "mcp",
+    "memory",
+    "session-history",
+    "cost-tracking",
+    "ci",
+    "local-first",
+    "cost",
+    "usage",
+    "sessions",
+    "codex"
+  ],
+  "icon": ".claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/dspv/caprock/blob/master/docs/mcp.md",
+  "supportUrl": "https://github.com/dspv/caprock/issues",
+  "privacyPolicyUrl": "https://caprock.dev/privacy",
+  "mcpServers": {
+    "caprock": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/caprock-mcp",
+      "args": []
+    }
+  }
+}
