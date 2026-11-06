@@ -33,7 +33,8 @@ import { fmtAgo } from '@/lib/format'
 import { projectLabels } from '@/lib/sessionLabels'
 import { projectsApi, type Project } from '@/lib/projects'
 import { downscalePhoto } from '@/lib/downscale'
-import { ATTACH_ACCEPT, attachRefusal, attachRefusalOf, isPhotoFile } from '@/lib/attach'
+import { attachRefusal, attachRefusalOf, isPhotoFile } from '@/lib/attach'
+import { AttachPicker } from './AttachPicker'
 import { isInboxImage, useInbox, useInboxThumb } from '@/lib/inbox'
 import {
   continueCounts, continueRows, INSTALL_HINT_KEY, installWay, isStandalone, keepFolds, limitsGlance, messageWith, openFromHash,
@@ -598,7 +599,7 @@ function usePhotos(initial: Picked[] = []) {
   const latest = useRef(photos)
   latest.current = photos
   useEffect(() => () => { for (const p of latest.current) if (p.url) URL.revokeObjectURL(p.url) }, [])
-  const add = (files: FileList | null) => {
+  const add = (files: Iterable<File> | null) => {
     if (!files) return
     const next = [...files].map((file) => ({ file, url: isPhotoFile(file) ? URL.createObjectURL(file) : '' }))
     setPhotos((p) => [...p, ...next].slice(0, 4))
@@ -658,7 +659,6 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
   const { photos, add, remove, take } = usePhotos()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const file = useRef<HTMLInputElement>(null)
   const field = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { if (saved) setText('') }, [saved])
   // The field grows with what is typed, to five lines.
@@ -712,10 +712,9 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
           </div>
           <PhotoRow photos={photos} onRemove={remove} />
           <div className="flex items-end gap-2">
-            <button type="button" aria-label="Attach a photo or file" onClick={() => file.current?.click()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border-strong bg-bg text-fg-muted">
+            <AttachPicker onFiles={add} testId="dock-picker" className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border-strong bg-bg text-fg-muted">
               <PaperclipIcon size={20} />
-            </button>
-            <input ref={file} type="file" accept={ATTACH_ACCEPT} multiple hidden data-testid="dock-picker" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
+            </AttachPicker>
             <textarea
               ref={field}
               rows={1}
@@ -890,7 +889,6 @@ export function SaveSheet({ projects, text: initialText, photos: initialPhotos, 
   const [to, setTo] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const file = useRef<HTMLInputElement>(null)
   const listed = projects.filter((p) => projectNumber(p) > 0)
   const chips = listed.slice(0, 4)
   const rest = listed.slice(4)
@@ -942,11 +940,10 @@ export function SaveSheet({ projects, text: initialText, photos: initialPhotos, 
           </span>
         ))}
         {photos.length < 4 && (
-          <button type="button" aria-label="Attach a photo or file" onClick={() => file.current?.click()} className="grid h-[72px] w-[72px] place-items-center rounded-[10px] border border-dashed border-border-strong text-fg-muted">
+          <AttachPicker onFiles={add} testId="save-picker" className="grid h-[72px] w-[72px] place-items-center rounded-[10px] border border-dashed border-border-strong text-fg-muted">
             <span className="grid justify-items-center gap-0.5 text-[12px]"><PaperclipIcon size={20} />Add</span>
-          </button>
+          </AttachPicker>
         )}
-        <input ref={file} type="file" accept={ATTACH_ACCEPT} multiple hidden data-testid="save-picker" onChange={(e) => { add(e.target.files); e.target.value = '' }} />
       </div>
       <FieldLabel>Save to</FieldLabel>
       <div className="flex flex-wrap gap-2">

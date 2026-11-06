@@ -114,3 +114,37 @@ it('says a new measurement is running beside the age of the figures shown', () =
   rerender(<StorageView report={report()} now={now} />)
   expect(screen.queryByText(/· measuring…/)).toBeNull()
 })
+
+const zc = {
+  rows: 0, stored_bytes: 0, plain_bytes: 0, eligible_rows: 550_000, eligible_bytes: 1_480_000_000,
+  sample_rows: 2000, sample_plain_bytes: 5_100_000, sample_stored_bytes: 2_200_000, est_saving_bytes: 850_000_000,
+}
+
+it('offers Compress tool output off, with the saving on this database labelled as an estimate', () => {
+  const r = report()
+  r.database!.compression = zc
+  render(<StorageView report={{ ...r, compression: { on: false } }} now={now} compress={{ on: false, set: () => {} }} />)
+  const box = screen.getByRole('checkbox', { name: /Compress tool output/ }) as HTMLInputElement
+  expect(box.checked).toBe(false)
+  const t = document.body.textContent ?? ''
+  expect(t).toMatch(/prompts and replies stay as they are, so search is unchanged/)
+  expect(t).toMatch(/about 850\.0MB smaller \(an estimate from 2,000 of your tool calls\)/)
+})
+
+it('once on, shows what is stored and how far the idle-time job is, measured rather than estimated', () => {
+  const r = report()
+  r.database!.compression = { ...zc, rows: 540_000, plain_bytes: 1_475_000_000, stored_bytes: 617_000_000, est_saving_bytes: 0 }
+  render(<StorageView report={{ ...r, compression: { on: true, through_ms: Date.UTC(2026, 8, 30, 9) } }} now={now} compress={{ on: true, set: () => {} }} />)
+  const t = document.body.textContent ?? ''
+  expect(t).toMatch(/Now 1\.5GB of tool output takes 617\.0MB — done through 30 Sep/)
+  expect(t).not.toMatch(/estimate from/)
+})
+
+it('says the compressed rows are being restored after it is turned off, and hides the switch from a paired device', () => {
+  const r = report()
+  r.database!.compression = { ...zc, rows: 10, plain_bytes: 30_000, stored_bytes: 12_000 }
+  const { rerender } = render(<StorageView report={{ ...r, compression: { on: false, restoring: true } }} now={now} compress={{ on: false, set: () => {} }} />)
+  expect(document.body.textContent).toMatch(/Restoring the compressed rows while idle/)
+  rerender(<StorageView report={{ ...r, compression: { on: false, restoring: true } }} now={now} />)
+  expect(screen.queryByRole('checkbox', { name: /Compress tool output/ })).toBeNull()
+})

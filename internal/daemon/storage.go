@@ -103,6 +103,9 @@ type StorageReport struct {
 	// little to scale by.
 	GrowthBytesPerDayEst int64 `json:"growth_bytes_per_day_est"`
 	RetentionDays        int   `json:"retention_days"`
+	// Compression is the Compress tool output switch and where its idle-time
+	// job is (ADR-093); what it saved is Database.Compression.
+	Compression CompressionReport `json:"compression"`
 }
 
 // FileSize is one top-level entry of the data directory; a directory is the
@@ -145,6 +148,7 @@ func (d *Daemon) storageReport(ctx context.Context) any {
 	d.storage.mu.Unlock()
 	r.Error = errText
 	r.Measuring = measuring
+	r.Compression = d.compressionReport(ctx)
 	if d.store != nil {
 		if m, err := d.store.AutoVacuum(ctx); err == nil {
 			r.ReturnsFreeSpace = m == store.AutoVacuumIncremental
@@ -219,4 +223,39 @@ func dataDirSizes(dir string) ([]FileSize, int64) {
 		return out[i].Name < out[j].Name
 	})
 	return out, total
+}
+
+// CompressOffer is what the sidebar's hint to turn Compress tool output on
+// says (ADR-093; 03-contracts.md § Storage): the database's size and the
+// saving estimated on it, both from the cached daily measurement. It reads
+// nothing: a status request copies four numbers out of the cache.
+type CompressOffer struct {
+	// DBBytes is the database file as measured: page_count × page_size.
+	DBBytes int64 `json:"db_bytes"`
+	// EstSavingBytes is database.compression.est_saving_bytes: an estimate
+	// from SampleRows of the user's own tool calls, and named as one.
+	EstSavingBytes int64 `json:"est_saving_bytes"`
+	SampleRows     int   `json:"sample_rows"`
+	MeasuredAt     int64 `json:"measured_at"`
+}
+
+// compressOffer is the offer while there is one: the switch is off, nothing
+// is compressed (someone who has used the switch knows where it is), and the
+// last measurement estimated a saving. How large a saving is worth a line is
+// the client's call. Nil before the first measurement of this run.
+func (d *Daemon) compressOffer() *CompressOffer {
+	if d.config().CompressToolOutputOn() {
+		return nil
+	}
+	d.storage.mu.Lock()
+	db, at := d.storage.db, d.storage.at
+	d.storage.mu.Unlock()
+	if db == nil {
+		return nil
+	}
+	z := db.Compression
+	if z.Rows > 0 || z.SampleRows == 0 || z.EstSavingBytes <= 0 {
+		return nil
+	}
+	return &CompressOffer{DBBytes: db.PageCount * db.PageSize, EstSavingBytes: z.EstSavingBytes, SampleRows: z.SampleRows, MeasuredAt: at.UnixMilli()}
 }

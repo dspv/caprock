@@ -7,9 +7,20 @@ vi.mock('@aparajita/capacitor-secure-storage', () => ({
   SecureStorage: { setKeyPrefix: vi.fn(), setSynchronize: vi.fn(), setDefaultKeychainAccess: vi.fn(), get: vi.fn(async () => null), set: vi.fn(), remove: vi.fn() },
 }))
 vi.mock('@aparajita/capacitor-biometric-auth', () => ({ BiometryType: { faceId: 2, touchId: 1 }, BiometricAuth: { checkBiometry: vi.fn(), authenticate: vi.fn() } }))
+const app = vi.hoisted(() => ({ urlOpen: undefined as undefined | ((e: { url: string }) => void), launch: undefined as undefined | string, removed: 0 }))
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn(async (_name: string, fn: (e: { url: string }) => void) => {
+      app.urlOpen = fn
+      return { remove: async () => { app.removed++ } }
+    }),
+    getLaunchUrl: vi.fn(async () => (app.launch ? { url: app.launch } : undefined)),
+  },
+}))
 
 import { isNativeApp, sellsHere } from './platform'
-import { NOT_A_LINK, pairHash } from './pairing'
+import { DEMO_KEY, NOT_A_LINK, OPENED_KEY, openOpenedLink, openPairLink, pairHash } from './pairing'
+import { listenForOpenedLinks } from './opened'
 import { startPhase, Welcome } from './NativeRoot'
 import { roleWords } from './Settings'
 import { scanFailure } from './scan'
@@ -52,6 +63,66 @@ describe('pairing links', () => {
     expect(startPhase({ demo: true, machines: 2, pairLink: false })).toBe('demo')
     expect(startPhase({ demo: false, machines: 0, pairLink: false })).toBe('welcome')
     expect(startPhase({ demo: false, machines: 1, pairLink: false })).toBe('remote')
+  })
+
+  function fakeLoc() {
+    return { pathname: '/index.html', replace: vi.fn(), reload: vi.fn() } as unknown as Location & { replace: ReturnType<typeof vi.fn>; reload: ReturnType<typeof vi.fn> }
+  }
+
+  function fakeStore(init: Record<string, string> = {}) {
+    const m = new Map(Object.entries(init))
+    return {
+      m,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => { m.set(k, v) },
+      removeItem: (k: string) => { m.delete(k) },
+    }
+  }
+
+  it('opens a link iOS opened the app with exactly as a scanned one, once, and leaves the demo', () => {
+    const scanned = fakeLoc()
+    expect(openPairLink(LINK, scanned)).toBe(true)
+    const opened = fakeLoc()
+    const store = fakeStore({ [DEMO_KEY]: '1' })
+    expect(openOpenedLink(LINK, opened, store)).toBe(true)
+    expect(opened.replace.mock.calls).toEqual(scanned.replace.mock.calls)
+    expect(opened.reload).toHaveBeenCalledOnce()
+    expect(store.m.get(OPENED_KEY)).toBe(LINK)
+    expect(store.m.has(DEMO_KEY)).toBe(false)
+    // After the reload iOS still reports the same launch link: it is not opened again.
+    const again = fakeLoc()
+    expect(openOpenedLink(LINK, again, store)).toBe(false)
+    expect(again.reload).not.toHaveBeenCalled()
+    // A new code from the computer is a new link.
+    const next = LINK.replace('c=123456', 'c=654321')
+    expect(openOpenedLink(next, fakeLoc(), store)).toBe(true)
+  })
+
+  it('ignores an opened link that is not a pairing link, and still opens one when storage is refused', () => {
+    const loc = fakeLoc()
+    const store = fakeStore()
+    expect(openOpenedLink('https://m.caprock.dev/', loc, store)).toBe(false)
+    expect(openOpenedLink('https://m.caprock.dev/#/sessions', loc, store)).toBe(false)
+    expect(loc.replace).not.toHaveBeenCalled()
+    expect(store.m.size).toBe(0)
+    const refusing = { getItem: () => { throw new Error('no') }, setItem: () => {}, removeItem: () => {} }
+    expect(openOpenedLink(LINK, loc, refusing)).toBe(true)
+    expect(openOpenedLink(LINK, fakeLoc(), null)).toBe(true)
+  })
+
+  it('hands both a launch link and a link opened later to the same opener', async () => {
+    app.launch = LINK
+    const open = vi.fn()
+    const stop = await listenForOpenedLinks(open)
+    expect(open).toHaveBeenCalledWith(LINK)
+    app.urlOpen?.({ url: 'https://m.caprock.dev/#/pair?x' })
+    expect(open).toHaveBeenLastCalledWith('https://m.caprock.dev/#/pair?x')
+    stop()
+    expect(app.removed).toBe(1)
+    app.launch = undefined
+    const quiet = vi.fn()
+    await listenForOpenedLinks(quiet)
+    expect(quiet).not.toHaveBeenCalled()
   })
 
   it('tells a closed scanner from a refused camera', () => {

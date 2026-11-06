@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
-import { ATTACH_ACCEPT, ATTACH_LIMIT_BYTES, PASTE_EXTS, attachLabels, attachRefusal, attachRefusalOf, baseName, isPhotoFile } from './attach'
+import { ATTACH_ACCEPT, ATTACH_LIMIT_BYTES, FILES_ACCEPT, IMAGE_EXTS, MEDIA_LOOKALIKE_EXTS, PASTE_EXTS, PHOTOS_ACCEPT, attachLabels, attachRefusal, attachRefusalOf, baseName, isPhotoFile } from './attach'
 
 /** The extensions in paste.go's pasteKinds, in order. */
 function goExts(): string[] {
@@ -29,6 +29,25 @@ describe('attach — what a phone may attach', () => {
     expect(parts).toContain('.pdf')
     expect(parts).not.toContain('.exe')
     expect(parts).toHaveLength(PASTE_EXTS.length + 1)
+  })
+
+  // iOS opens the Files browser straight away only when no image may be
+  // picked; with one it shows its Photo Library / Take Photo sheet first.
+  it('splits the phone picker: Photos takes images, Files the rest with no image type', () => {
+    expect(PHOTOS_ACCEPT).toBe('image/*')
+    const files = FILES_ACCEPT.split(',')
+    expect(files).toContain('.pdf')
+    expect(files).toContain('.md')
+    expect(files).toContain('.docx')
+    expect(files.some((p) => p.startsWith('image/'))).toBe(false)
+    for (const e of IMAGE_EXTS) {
+      expect(PASTE_EXTS).toContain(e)
+      expect(files).not.toContain(`.${e}`)
+    }
+    // `.ts` is a video to iOS (MPEG-2 transport stream): it would bring the sheet back.
+    expect(files).not.toContain('.ts')
+    expect(files).toContain('.tsx')
+    expect(files).toHaveLength(PASTE_EXTS.length - IMAGE_EXTS.length - MEDIA_LOOKALIKE_EXTS.length)
   })
 
   it('numbers images among images only; any other file is its name', () => {

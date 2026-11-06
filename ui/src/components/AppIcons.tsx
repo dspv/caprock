@@ -98,5 +98,7 @@ export const AtIcon = (p: P) => <Icon {...p}><circle cx="12" cy="12" r="3.75" />
 export const DownloadIcon = (p: P) => <Icon {...p}><path d="M12 4v11M7 10.5l5 5 5-5M5 19.5h14" /></Icon>
 /** A paper plane: hand something to a session. */
 export const SendIcon = (p: P) => <Icon {...p}><path d="M20.5 3.5 10 14M20.5 3.5 14 20.5l-4-6.5-6.5-4z" /></Icon>
+/** A stack of disks: the database (the sidebar's hint to compress it). */
+export const DatabaseIcon = (p: P) => <Icon {...p}><ellipse cx="12" cy="5.5" rx="7.5" ry="2.75" /><path d="M4.5 5.5v13c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75v-13M4.5 12c0 1.5 3.4 2.75 7.5 2.75s7.5-1.25 7.5-2.75" /></Icon>
 /** Lines of differing length: a document's contents. */
 export const ListIcon = (p: P) => <Icon {...p}><path d="M4 6h16M7 12h13M10 18h10" /></Icon>

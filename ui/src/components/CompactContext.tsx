@@ -11,12 +11,13 @@
  * holds is never typed into (rule 7): the command to type there, and
  * Continue here.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import { api, errText, type Compaction, type CompactionEstimate, type CompactionView, type SessionSummary } from '@/lib/api'
 import { everyWhileVisible } from '@/lib/visible'
 import { useCanControl } from '@/lib/useCanControl'
+import { useNow } from '@/lib/useNow'
 import { setLook } from '@/lib/cockpitlooks'
-import { COMPACT_COMMAND, approxUSD, compactIcon, compactInfo, compactLine, compactOffer, compactPhase, keptLine, savingOf, savingsPath, type CompactOffer, type CompactPhase, type CompactPress } from '@/lib/compact'
+import { COMPACT_COMMAND, approxUSD, compactIcon, compactInfo, compactLine, compactOffer, compactPhase, compactingLine, fmtElapsed, keptLine, savingOf, savingsPath, type CompactOffer, type CompactPhase, type CompactPress } from '@/lib/compact'
 import { ContinueSession } from './ContinueSession'
 
 /** How often the view is read again while a press waits for its boundary. */
@@ -33,8 +34,9 @@ export interface CompactState {
 
 /**
  * The session's compaction as the daemon reads it — on open, whenever the
- * context's size changes, and every three seconds while a press waits for
- * its boundary — and the press itself.
+ * context's size changes, when the session starts compacting, and every
+ * three seconds while a compaction or a press waits for its boundary — and
+ * the press itself.
  */
 export function useCompact(s: SessionSummary): CompactState {
   const canControl = useCanControl()
@@ -48,7 +50,12 @@ export function useCompact(s: SessionSummary): CompactState {
     api.compaction(id).then((v) => { if (v && v.session_id === id) setView(v) }).catch(() => { /* the line stays as it was */ })
   }, [id])
   useEffect(() => { setView(undefined); setPressed(undefined); setError('') }, [id])
-  useEffect(() => { if (claude) load() }, [claude, load, s.context?.tokens])
+  // A compaction started anywhere — /compact typed in the terminal, or
+  // Claude Code's own when it ran out of room — narrates as "compacting
+  // context" from its PreCompact hook: read the view then, and the watch
+  // below follows it to the boundary.
+  const compacting = s.activity?.phrase === 'compacting context'
+  useEffect(() => { if (claude) load() }, [claude, load, s.context?.tokens, compacting])
   const phase = compactPhase(view, pressed)
   const watching = phase.kind === 'queued' || phase.kind === 'running'
   useEffect(() => {
@@ -64,6 +71,61 @@ export function useCompact(s: SessionSummary): CompactState {
       .catch((e) => { setError(errText(e)); load() })
   }
   return { offer, icon: compactIcon(s, canControl), view, phase, error, press }
+}
+
+/** Compactions whose ghost has shrunk on this page already: it plays once. */
+const ghostsPlayed = new Set<string>()
+
+/**
+ * The Context meter's bar. The empty track is tinted faintly by the zones
+ * the fill turns warn (60%) and danger (85%) in, and the quarter marks read
+ * the same over fill and track. While a compaction runs, stripes move over
+ * the fill — Claude Code reports no progress, so nothing measures it. After
+ * one, `ghost` is the fill before it, faint, shrinking once to the new one.
+ */
+export function ContextBar({ h, pct, tone, running, ghost }: {
+  h: string
+  pct: number
+  tone: 'ok' | 'warn' | 'danger'
+  running: boolean
+  /** The compaction's key and the fill before it, percent. */
+  ghost?: { id: string; from: number }
+}) {
+  const width = Math.max(pct, 1.5)
+  return (
+    <div className={`cockpit-track cockpit-ctx-track relative ${h} overflow-hidden rounded-full`} role="meter" aria-label="Context used"
+      aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-busy={running || undefined} data-compacting={running || undefined}>
+      {ghost && ghost.from > width && <ContextGhost key={ghost.id} id={ghost.id} from={ghost.from} to={width} />}
+      <div className="cockpit-fill relative h-full overflow-hidden rounded-full" data-tone={tone} style={{ width: `${width}%` }}>
+        {running && <span aria-hidden className="cockpit-stripes absolute inset-0" />}
+      </div>
+      {[25, 50, 75].map((m) => <span key={m} aria-hidden className="cockpit-quarter absolute top-0 h-full w-px" style={{ left: `${m}%` }} />)}
+    </div>
+  )
+}
+
+function ContextGhost({ id, from, to }: { id: string; from: number; to: number }) {
+  const [play] = useState(() => !ghostsPlayed.has(id))
+  const [gone, setGone] = useState(false)
+  useEffect(() => { ghostsPlayed.add(id) }, [id])
+  if (!play || gone) return null
+  return (
+    <span aria-hidden data-ghost className="cockpit-ghost absolute inset-y-0 left-0 rounded-full"
+      style={{ '--ghost-from': `${from}%`, '--ghost-to': `${to}%` } as CSSProperties}
+      onAnimationEnd={() => setGone(true)} />
+  )
+}
+
+/**
+ * What runs instead of "% full" while a compaction does: *Compacting · 0:16
+ * · usually ~1 min* (lib/compact compactingLine); `brief`, the collapsed
+ * line's *compacting 0:16*.
+ */
+export function CompactingLine({ view, brief = false }: { view?: CompactionView; brief?: boolean }) {
+  const now = useNow(1000)
+  const since = view?.running ? view.running_since : undefined
+  const text = brief ? `compacting${since ? ` ${fmtElapsed(now - since)}` : '…'}` : compactingLine(view, now)
+  return <span data-compact="running" className="font-medium tabular-nums text-accent">{text}</span>
 }
 
 /** Two arrows meeting: the context pressed together. */

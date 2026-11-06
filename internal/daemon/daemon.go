@@ -1686,6 +1686,10 @@ type Status struct {
 	// Desktop is the Claude desktop app's own plan usage, when it has any on
 	// this machine. Omitted entirely otherwise — most people do not use it.
 	Desktop *desktop.Reading `json:"desktop,omitempty"`
+	// CompressOffer is the sidebar's hint to turn Compress tool output on,
+	// copied from the cached storage measurement; absent while the switch is
+	// on, once anything is compressed, or before the first measurement.
+	CompressOffer *CompressOffer `json:"compress_offer,omitempty"`
 }
 
 // PricingStatus summarizes the table in force.
@@ -1780,6 +1784,7 @@ func (d *Daemon) status(ctx context.Context) any {
 	d.mu.Unlock()
 	st.Interrupted = d.interrupted(context.Background())
 	st.RetentionDays = d.config().RetentionDays
+	st.CompressOffer = d.compressOffer()
 	if n, ok := d.events.get(context.Background(), d.store); ok {
 		st.Events = n
 	}
@@ -1928,6 +1933,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	}
 	out.MorningSummary, out.MorningSummaryAt = c.MorningSummaryOn(), morning.NormalizeAt(c.MorningSummaryAt)
 	out.MorningSummaryLastError, out.MorningSummaryLastMs = a.d.morningState.get()
+	out.CompressToolOutput = c.CompressToolOutputOn()
 	return out
 }
 
@@ -2018,6 +2024,11 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	a.d.opt.Config.MorningSummary = &morningOn
 	if at := morning.NormalizeAt(in.MorningSummaryAt); in.MorningSummaryAt != "" && at != morning.NormalizeAt(a.d.opt.Config.MorningSummaryAt) {
 		a.d.opt.Config.MorningSummaryAt = at
+	}
+	// Compress tool output: written only once someone switches it, so an
+	// install that never did follows the default when it changes (ADR-093).
+	if compress := in.CompressToolOutput; a.d.opt.Config.CompressToolOutput != nil || compress != a.d.opt.Config.CompressToolOutputOn() {
+		a.d.opt.Config.CompressToolOutput = &compress
 	}
 	notifyApproval, notifyFinished := in.NotifyApproval, in.NotifyFinished
 	a.d.opt.Config.NotifyApproval = &notifyApproval

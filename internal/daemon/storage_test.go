@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/store"
 )
@@ -67,5 +68,44 @@ func TestGrowthPerDayScalesRecentPayloadByTheOnDiskRatio(t *testing.T) {
 	noDbstat.Tables = nil
 	if got := growthPerDay(&noDbstat); got != 0 {
 		t.Fatalf("without table sizes: %d", got)
+	}
+}
+
+// The sidebar's offer to compress is copied from the cached measurement: none
+// before one, none with the switch on, none once anything is compressed or
+// with no estimate, and otherwise the measured size and the estimate.
+func TestCompressOfferFollowsTheSwitchAndTheMeasurement(t *testing.T) {
+	d := &Daemon{}
+	if o := d.compressOffer(); o != nil {
+		t.Fatalf("offer before any measurement: %+v", o)
+	}
+	at := time.UnixMilli(1_790_000_000_000)
+	measured := store.Storage{PageSize: 4096, PageCount: 610_000, Compression: store.ToolCompression{
+		EligibleBytes: 1_400_000_000, SampleRows: 2000, SamplePlain: 10_000_000, SampleStored: 4_000_000, EstSavingBytes: 840_000_000,
+	}}
+	d.storage.db, d.storage.at = &measured, at
+	o := d.compressOffer()
+	want := CompressOffer{DBBytes: 4096 * 610_000, EstSavingBytes: 840_000_000, SampleRows: 2000, MeasuredAt: at.UnixMilli()}
+	if o == nil || *o != want {
+		t.Fatalf("offer %+v, want %+v", o, want)
+	}
+	on := true
+	d.opt.Config.CompressToolOutput = &on
+	if o := d.compressOffer(); o != nil {
+		t.Fatalf("offer with the switch on: %+v", o)
+	}
+	off := false
+	d.opt.Config.CompressToolOutput = &off
+	used := measured
+	used.Compression.Rows = 10
+	d.storage.db = &used
+	if o := d.compressOffer(); o != nil {
+		t.Fatalf("offer once something is compressed: %+v", o)
+	}
+	none := measured
+	none.Compression.EstSavingBytes, none.Compression.SampleRows = 0, 0
+	d.storage.db = &none
+	if o := d.compressOffer(); o != nil {
+		t.Fatalf("offer with no estimate: %+v", o)
 	}
 }

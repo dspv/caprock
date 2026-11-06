@@ -231,6 +231,8 @@ export interface ContextFill {
   pct: number
   /** What the next tool call costs at this context, before it does any work. */
   next_call_usd: number
+  /** When what it measured happened, unix ms: the main-thread turn, or the compaction boundary it reads. */
+  at?: number
 }
 
 export interface SessionSummary extends Session {
@@ -1131,6 +1133,9 @@ export interface Settings {
   morning_summary_at?: string
   morning_summary_last_sent_ms?: number
   morning_summary_last_error?: string
+  /** Store older tool calls and results compressed, done while idle
+   *  (ADR-093); off unless turned on. */
+  compress_tool_output?: boolean
   /** The desktop app's OS notifications, apart from Telegram's (WP-09):
    *  approval (every "Needs you") on unless turned off. finished is no longer
    *  read: a Done turn raises no OS notification. */
@@ -1517,6 +1522,12 @@ export interface Status {
     /** The app only writes while running, so an old reading describes the past. */
     stale: boolean
   }
+  /** The sidebar's hint to turn Compress tool output on (ADR-093): the
+   *  database's measured size and the saving estimated from `sample_rows` of
+   *  the user's own tool calls, copied from the daily storage measurement.
+   *  Absent while the switch is on, once anything is compressed, before the
+   *  first measurement, and from older daemons. */
+  compress_offer?: { db_bytes: number; est_saving_bytes: number; sample_rows: number; measured_at: number }
 }
 
 /** What Caprock keeps on disk: GET /v1/storage. The database composition is
@@ -1539,7 +1550,12 @@ export interface StorageReport {
     kinds: StorageSlice[]
     recent: StorageWindow[]
     older: StorageWindow[]
+    /** Tool payloads by how they are stored (ADR-093). est_saving_bytes is an
+     *  estimate from compressing sample_rows of the plain ones in memory. */
+    compression?: StorageCompression
   }
+  /** Compress tool output: the switch, and how far the idle-time job is. */
+  compression?: { on: boolean; through_ms?: number; restoring?: boolean }
   measured_at?: number
   measure_ms?: number
   /** A measurement is running; the figures are the previous one's. */
@@ -1552,6 +1568,17 @@ export interface StorageReport {
   /** An estimate, and named as one: see 03-contracts.md § Storage. */
   growth_bytes_per_day_est: number
   retention_days: number
+}
+export interface StorageCompression {
+  rows: number
+  stored_bytes: number
+  plain_bytes: number
+  eligible_rows: number
+  eligible_bytes: number
+  sample_rows: number
+  sample_plain_bytes: number
+  sample_stored_bytes: number
+  est_saving_bytes: number
 }
 export interface StorageSlice { name: string; events: number; payload_bytes: number }
 export interface StorageWindow { days: number; events: number; payload_bytes: number }
@@ -3232,6 +3259,8 @@ export interface CompactionStats {
   /** unix ms */
   from: number
   to: number
+  /** Median time a compaction took, over the ones Claude Code timed; absent with fewer than five timed. */
+  median_duration_ms?: number
 }
 
 /** GET /v1/sessions/{id}/compaction. */
@@ -3239,6 +3268,8 @@ export interface CompactionView {
   session_id: string
   last?: Compaction
   running: boolean
+  /** The PreCompact hook's time while running, unix ms. */
+  running_since?: number
   queued: boolean
   /** Absent with fewer than five measured on this machine. */
   typical?: CompactionStats

@@ -63,6 +63,10 @@ type Config struct {
 	MemoryHoldoutPct int `json:"memory_holdout_pct,omitempty"`
 	// OpenBrowser controls whether `caprock up` opens the dashboard.
 	OpenBrowser bool `json:"open_browser"`
+	// CompressToolOutput stores tool calls and their results older than a
+	// day zstd-compressed, done while idle (ADR-093). Off unless turned on;
+	// turning it off restores the rows while idle.
+	CompressToolOutput *bool `json:"compress_tool_output,omitempty"`
 	// RetentionDays prunes events older than this many days (0 = keep forever).
 	// The database grows ~1 KB per event; set this if you run Caprock constantly.
 	RetentionDays int `json:"retention_days"`
@@ -732,6 +736,12 @@ func (c Config) TelegramCodeOn() bool { return c.TelegramCode != nil && *c.Teleg
 // MorningSummaryOn reports whether the Morning summary is switched on; off
 // unless turned on (ADR-092).
 func (c Config) MorningSummaryOn() bool { return c.MorningSummary != nil && *c.MorningSummary }
+
+// CompressToolOutputOn reports whether older tool payloads are compressed
+// while idle; off unless turned on (ADR-093).
+func (c Config) CompressToolOutputOn() bool {
+	return c.CompressToolOutput != nil && *c.CompressToolOutput
+}
 
 // AlertReplyOn reports whether a finished alert carries the first line of the
 // final reply. On unless switched off.

@@ -15,7 +15,7 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { CaprockMark } from '@/components/AppIcons'
 import { machines, parsePairLink } from '@/remote/boot'
 import { ScanButton } from './ScanButton'
-import { NOT_A_LINK, openPairLink } from './pairing'
+import { DEMO_KEY, NOT_A_LINK, openPairLink } from './pairing'
 import { keepPairing, lockWanted, restorePairing } from './keychain'
 
 const RemoteRoot = lazy(() => import('@/remote/RemoteRoot'))
@@ -23,8 +23,7 @@ const DemoApp = lazy(() => import('./demo/DemoApp'))
 const AppSettings = lazy(() => import('./Settings'))
 const LockScreen = lazy(() => import('./LockScreen'))
 
-/** The demo lasts until it is left or the app is closed (sessionStorage). */
-export const DEMO_KEY = 'caprock.ios.demo'
+export { DEMO_KEY }
 /** The token the demo puts where the dashboard reads one; never a real one. */
 export const DEMO_TOKEN = 'demo'
 /** Away this long, the lock asks again on return. */
@@ -92,6 +91,18 @@ export default function NativeRoot() {
       setPhase(startPhase({ demo, machines: machines().length, pairLink: !!parsePairLink(window.location.hash) }))
     })()
     return () => { live = false }
+  }, [])
+
+  // A pairing link iOS opened the app with (the QR read by the Camera app)
+  // pairs as a scanned one does (native/opened).
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    let live = true
+    void import('./opened')
+      .then(({ listenForOpenedLinks }) => listenForOpenedLinks())
+      .then((s) => { if (live) stop = s; else s() })
+      .catch(() => { /* no plugin: such links open in Safari */ })
+    return () => { live = false; stop?.() }
   }, [])
 
   // The app's Settings, laid over the page.

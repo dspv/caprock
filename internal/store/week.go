@@ -608,17 +608,17 @@ type toolRow struct {
 func scanToolPosts(ctx context.Context, q Querier, from, to int64, skipE string) ([]toolRow, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), COALESCE(e.key,''), COALESCE(e.tool,''), e.ts,
-		       COALESCE(e.payload ->> '$.hook_event_name', ''),
-		       COALESCE(CAST(e.payload ->> '$.is_error' AS INTEGER), 0),
-		       COALESCE(e.payload ->> '$.cwd', ''),
-		       COALESCE(CAST(e.payload ->> '$.duration_ms' AS INTEGER), 0),
-		       COALESCE(e.payload -> '$.tool_input', ''),
-		       CASE WHEN e.tool = 'Bash' THEN COALESCE(e.payload -> '$.tool_response', '') ELSE '' END,
-		       COALESCE(CASE WHEN json_type(e.payload, '$.tool_response') = 'object'
-		                     THEN CAST(e.payload ->> '$.tool_response.interrupted' AS INTEGER) END, 0)
+		       COALESCE(`+ZPayloadE+`->> '$.hook_event_name', ''),
+		       COALESCE(CAST(`+ZPayloadE+`->> '$.is_error' AS INTEGER), 0),
+		       COALESCE(`+ZPayloadE+`->> '$.cwd', ''),
+		       COALESCE(CAST(`+ZPayloadE+`->> '$.duration_ms' AS INTEGER), 0),
+		       COALESCE(`+ZPayloadE+`-> '$.tool_input', ''),
+		       CASE WHEN e.tool = 'Bash' THEN COALESCE(`+ZPayloadE+`-> '$.tool_response', '') ELSE '' END,
+		       COALESCE(CASE WHEN json_type(`+ZPayloadE+`,'$.tool_response') = 'object'
+		                     THEN CAST(`+ZPayloadE+`->> '$.tool_response.interrupted' AS INTEGER) END, 0)
 		FROM events e
 		WHERE e.kind = 'tool.post' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+skipE+`
-		  AND e.tool IN ('Bash','Edit','Write','MultiEdit') AND json_valid(e.payload)
+		  AND e.tool IN ('Bash','Edit','Write','MultiEdit') AND json_valid(`+ZPayloadE+`)
 		ORDER BY e.ts, e.id`, from, to)
 	if err != nil {
 		return nil, err
@@ -672,7 +672,7 @@ func preInput(ctx context.Context, q Querier, session, postKey string) (json.Raw
 		return nil, nil
 	}
 	var payload []byte
-	err := q.QueryRowContext(ctx, `SELECT payload FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?`, session, "pre:"+id).Scan(&payload)
+	err := q.QueryRowContext(ctx, `SELECT `+ZPayload+` FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?`, session, "pre:"+id).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -956,8 +956,8 @@ func scanLoopSeries(ctx context.Context, q Querier, from, to int64, skipE string
 	rows, err := q.QueryContext(ctx, `
 		SELECT s.session_id, COALESCE(s.agent,'claude'), COALESCE(e.tool,''), e.ts, COALESCE(e.msg_id,''),
 		       CASE WHEN COALESCE(e.agent_id,'') != '' THEN e.agent_id
-		            WHEN instr(e.payload, '"sidechain":true') > 0 THEN 'sidechain' ELSE '' END,
-		       COALESCE(CASE WHEN json_valid(e.payload) THEN e.payload -> '$.tool_input' END, '')
+		            WHEN instr(`+ZPayloadE+`,'"sidechain":true') > 0 THEN 'sidechain' ELSE '' END,
+		       COALESCE(CASE WHEN json_valid(`+ZPayloadE+`) THEN `+ZPayloadE+`-> '$.tool_input' END, '')
 		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = 'tool.pre' AND e.ts >= ? AND e.ts < ?`+nonInternalEventE+skipE+`
 		  AND COALESCE(e.tool,'') NOT IN (`+readOnlyList+`)`, from, to)

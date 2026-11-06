@@ -37,6 +37,13 @@
  * clear enough boundary between the tools and what's above … its caption
  * can't even be seen"). The list scrolls inside its own area and ends above
  * the band, its last line whole when scrolled to the end.
+ *
+ * On a large database with Compress tool output off, a quiet line comes
+ * first: *Database 2.5GB · compressing frees about 1.0GB*, both figures the
+ * user's own (lib/compressHint, ADR-093). A click opens the switch in
+ * Settings → Storage; × hides it for 30 days. Folded, it is the database
+ * glyph with a dot, on a line of its own above the icons, the sentence in its
+ * tooltip: a seventh column did not fit a 240px sidebar.
  */
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { MouseEvent, ReactNode, RefObject } from 'react'
@@ -48,6 +55,8 @@ import { isMacPlatform } from '@/lib/appmode'
 import { useChipFit, useFoldedChipFit } from '@/lib/keyChipFit'
 import { ThemeMenu } from './ThemePicker'
 import { FEEDBACK_KEY, FeedbackButton } from './Feedback'
+import { CompressHintIcon, CompressHintRow } from './CompressHint'
+import { useCompressHint, type CompressOffer } from '@/lib/compressHint'
 import { ChevronIcon, PipelineIcon, DashboardIcon, MailIcon, MoonIcon, SettingsIcon, SunIcon } from './AppIcons'
 
 export interface SidebarFooterProps {
@@ -112,10 +121,12 @@ export function splitModeRow(isMac = isMacPlatform()): boolean {
 export function SidebarFooter(props: SidebarFooterProps) {
   const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
   const hasBar = !!props.onPipeline
-  if (props.folded) return <FoldedFooter {...props} />
+  const offer = useCompressHint()
+  if (props.folded) return <FoldedFooter {...props} offer={offer} />
   const split = splitModeRow() && hasBar
   return (
     <div data-sidebar-footer className="app-sidebar-footer grid shrink-0 grid-cols-[minmax(0,1fr)] gap-1.5 px-2 py-2">
+      {offer && <CompressHintRow offer={offer} />}
       {/* Feedback on a labelled row of its own: on screen whatever tab is in
         * front, where the header's button is only on the dashboard. As a bare
         * icon beside Settings and the theme switch it read as a volume
@@ -226,7 +237,7 @@ function SettingsRow({ onPhone, onSettingsSection }: { onPhone: () => void; onSe
  * On a Mac a column is as wide as its chip; the ones that do not fit are
  * left out, the widest first, and a row with none left draws no key line.
  */
-function FoldedFooter(props: SidebarFooterProps) {
+function FoldedFooter(props: SidebarFooterProps & { offer?: CompressOffer }) {
   const toPhone = () => (props.onSettingsSection ? props.onSettingsSection('phone') : props.onSettings?.())
   const hasBar = !!props.onPipeline
   const chips = foldedKeys()
@@ -247,12 +258,21 @@ function FoldedFooter(props: SidebarFooterProps) {
   ]
   const [ref, fit] = useFoldedChipFit<HTMLDivElement>(slots.length, chips === 'shown')
   const anyShown = chips === 'shown' && slots.some((s, i) => s.key && fit[i] !== false)
-  return (
-    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer data-folded-keys={chips} className="app-sidebar-footer flex shrink-0 items-end gap-0.5 px-1 pb-1.5 pt-2">
+  const row = (
+    <div ref={ref as RefObject<HTMLDivElement>} data-sidebar-footer={props.offer ? undefined : ''} data-folded-keys={chips} className={`${props.offer ? '' : 'app-sidebar-footer '}flex shrink-0 items-end gap-0.5 px-1 pb-1.5 ${props.offer ? 'pt-0.5' : 'pt-2'}`}>
       {slots.map((s, i) => (
         <KeySlot key={i} keyLabel={s.key} chips={chips} edge={s.edge} fits={fit[i] !== false} line={anyShown}>{s.node}</KeySlot>
       ))}
       <FooterToggle open={false} onToggle={props.onToggleFold} />
+    </div>
+  )
+  if (!props.offer) return row
+  return (
+    <div data-sidebar-footer className="app-sidebar-footer flex shrink-0 flex-col pt-1.5">
+      <div className="flex px-1">
+        <CompressHintIcon offer={props.offer} size={GLYPH} className={`${SQUARE} h-[32px] w-[32px] rounded-[7px]`} />
+      </div>
+      {row}
     </div>
   )
 }

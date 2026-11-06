@@ -17,21 +17,90 @@
  * room for a second copy, and from then on gives free pages back to the disk
  * as they appear (internal/daemon/compact.go). The panel says which of those
  * is true; there is nothing for the user to run.
+ *
+ * **One switch: Compress tool output** (ADR-093), off until the owner turns
+ * it on, with what it would save on this database or what it has saved.
  */
-import { api, type StorageReport, type StorageSlice } from '@/lib/api'
+import { useState, type ReactNode } from 'react'
+import { api, errText, type Settings, type StorageReport, type StorageSlice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { fmtAgo, fmtBytes } from '@/lib/format'
-import { Details, Section } from '@/components/SettingsParts'
+import { noteCompressChanged } from '@/lib/compressHint'
+import { fmtAgo, fmtBytes, fmtWhen } from '@/lib/format'
+import { Details, Section, Toggle } from '@/components/SettingsParts'
 import { Bars } from '@/components/Breakdown'
 import { agentName } from '@/components/Projects'
 
-export function StoragePanel() {
+export function StoragePanel({ owner = true }: { owner?: boolean }) {
   // The composition is measured when this panel finds it a day old (and once
   // a day while the daemon is idle); polling faster only re-reads the file
   // sizes, which is all that can move in between.
   const r = useApi(() => api.storage(), [], { live: false, intervalMs: 60000 })
+  const [picked, setPicked] = useState<boolean | null>(null)
+  const [error, setError] = useState('')
   if (!r.data) return null
-  return <StorageView report={r.data} now={Date.now()} />
+  const setCompress = async (on: boolean) => {
+    setError('')
+    setPicked(on)
+    try {
+      await api.saveSettings({ compress_tool_output: on } as Partial<Settings> as Settings)
+      r.refresh()
+      // The sidebar's hint (lib/compressHint) goes as soon as it is on.
+      noteCompressChanged(on)
+    } catch (e) {
+      setPicked(null)
+      setError(errText(e))
+    }
+  }
+  return (
+    <StorageView
+      report={r.data}
+      now={Date.now()}
+      compress={owner ? { on: picked ?? r.data.compression?.on === true, set: (on) => void setCompress(on), error } : undefined}
+    />
+  )
+}
+
+/** The Compress tool output switch (ADR-093) and the one line under it: what
+ *  it does, then what it did or would do on this database — measured when
+ *  something is compressed, an estimate from a sample of the user's own tool
+ *  calls before, and labelled as one. */
+export function CompressToggle({ s, on, set, error, now }: { s: StorageReport; on: boolean; set: (on: boolean) => void; error?: string; now: number }) {
+  const z = s.database?.compression
+  const job = s.compression
+  let figure: ReactNode = null
+  if (z && z.rows > 0) {
+    figure = (
+      <>
+        {' '}Now <span className="num text-fg">{fmtBytes(z.plain_bytes)}</span> of tool output takes{' '}
+        <span className="num text-fg">{fmtBytes(z.stored_bytes)}</span>
+        {on && job?.through_ms ? <> — done through {fmtWhen(job.through_ms, now)}</> : null}.
+      </>
+    )
+  } else if (z && z.est_saving_bytes > 0 && z.sample_rows > 0) {
+    figure = (
+      <>
+        {' '}On this database: about <span className="num text-fg">{fmtBytes(z.est_saving_bytes)}</span> smaller (an estimate from{' '}
+        {z.sample_rows.toLocaleString('en-US')} of your tool calls).
+      </>
+    )
+  }
+  return (
+    <div className="grid gap-1" data-compress-tool-output="">
+      <Toggle
+        checked={on}
+        onChange={set}
+        label="Compress tool output"
+        hint={
+          <>
+            Tool calls and their output older than a day are stored compressed, while Caprock is idle; prompts and replies stay as they
+            are, so search is unchanged.{figure}
+            {!on && job?.restoring ? ' Restoring the compressed rows while idle.' : null}
+          </>
+        }
+      />
+      {error && <p className="text-[12px] text-warn">{error}</p>}
+    </div>
+  )
 }
 
 /** Below this, free space inside the database is not worth a sentence. */
@@ -101,7 +170,16 @@ function sliceRows(xs: StorageSlice[], label: (n: string) => string): Row[] {
   return xs.map((x) => ({ key: x.name, label: label(x.name), bytes: x.payload_bytes }))
 }
 
-export function StorageView({ report: s, now }: { report: StorageReport; now: number }) {
+export function StorageView({
+  report: s,
+  now,
+  compress,
+}: {
+  report: StorageReport
+  now: number
+  /** The switch, for the machine's owner; absent, it is not shown. */
+  compress?: { on: boolean; set: (on: boolean) => void; error?: string }
+}) {
   const db = s.database
   const disk = diskRows(s)
   const older = db?.older.find((w) => w.days === 90)
@@ -134,6 +212,8 @@ export function StorageView({ report: s, now }: { report: StorageReport; now: nu
           </span>
         )}
       </div>
+
+      {compress && <CompressToggle s={s} on={compress.on} set={compress.set} error={compress.error} now={now} />}
 
       <Details summary="Details">
       <div className="grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-5 md:grid-cols-2">

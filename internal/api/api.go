@@ -420,8 +420,11 @@ type Settings struct {
 	// MorningSummary is the daily Telegram summary (ADR-092), off unless
 	// turned on; MorningSummaryAt its local time, "HH:MM" (08:00 until
 	// chosen). The last send's time and error are read-only.
-	MorningSummary          bool   `json:"morning_summary"`
-	MorningSummaryAt        string `json:"morning_summary_at"`
+	MorningSummary   bool   `json:"morning_summary"`
+	MorningSummaryAt string `json:"morning_summary_at"`
+	// CompressToolOutput stores older tool payloads compressed, done while
+	// idle (ADR-093); off unless turned on.
+	CompressToolOutput      bool   `json:"compress_tool_output"`
 	MorningSummaryLastMs    int64  `json:"morning_summary_last_sent_ms,omitempty"`
 	MorningSummaryLastError string `json:"morning_summary_last_error,omitempty"`
 	// NotifyApproval and NotifyFinished are the desktop app's OS
@@ -1162,6 +1165,10 @@ type ContextFill struct {
 	// one that makes a full context legible: a percentage says the window is
 	// nearly full, this says what that is charging per call.
 	NextCallUSD float64 `json:"next_call_usd"`
+	// At is when what it measured happened, unix ms: the main-thread turn,
+	// or the compaction boundary whose post_tokens it reads. A compaction
+	// in GET /v1/sessions/{id}/compaction at or after it replaced it.
+	At int64 `json:"at,omitempty"`
 }
 
 // SessionDetail is /v1/sessions/{id}.
@@ -1297,6 +1304,13 @@ func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSumm
 	}
 	if ok {
 		sum.Context, sum.ContextNote = s.contextFill(turn, sess.Model)
+		// A compaction after that turn replaced the context it measured: the
+		// meter read the size before /compact until the model answered again.
+		// The boundary carries the size after, when Claude Code wrote it.
+		if post, at, ok := compactedSince(last); ok && sum.Context != nil {
+			sum.Context = s.fill(sum.Context.Window, post, firstNonEmpty(turn.Model, sess.Model))
+			sum.Context.At = at
+		}
 	}
 	return sum, last, nil
 }
@@ -1317,13 +1331,44 @@ func (s *Server) contextFill(e event.Event, sessionModel string) (*ContextFill, 
 		// thing a user can report and we can fix.
 		return nil, model + " not in pricing table"
 	}
-	toks := e.Tokens.In + e.Tokens.CacheRead + e.Tokens.CacheWrite
-	return &ContextFill{
-		Tokens:      toks,
-		Window:      row.ContextWindow,
-		Pct:         100 * float64(toks) / float64(row.ContextWindow),
-		NextCallUSD: contexttax.NextCall(toks, contexttax.PricesOf(row)),
-	}, ""
+	f := s.fill(row.ContextWindow, e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite, model)
+	f.At = e.Ts.UnixMilli()
+	return f, ""
+}
+
+// fill is toks of a window, priced at model's cache-read rate.
+func (s *Server) fill(window, toks int64, model string) *ContextFill {
+	f := &ContextFill{Tokens: toks, Window: window, Pct: 100 * float64(toks) / float64(window)}
+	if row, ok := s.d.Table.Lookup(model); ok {
+		f.NextCallUSD = contexttax.NextCall(toks, contexttax.PricesOf(row))
+	}
+	return f
+}
+
+// compactedSince is the context left by a main-thread compaction newer than
+// every main-thread turn in the window: the boundary's post_tokens and its
+// time, unix ms. False when a turn followed it (the turn measures the
+// context then) or the boundary did not say.
+func compactedSince(evs []event.Event) (int64, int64, bool) {
+	for i := len(evs) - 1; i >= 0; i-- {
+		e := evs[i]
+		if e.Subagent() {
+			continue
+		}
+		switch {
+		case e.Kind == event.KindTurnAssistant && e.Tokens != nil && e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite > 0:
+			return 0, 0, false
+		case e.Kind == event.KindContextCompacted:
+			var p struct {
+				Post int64 `json:"post_tokens"`
+			}
+			if json.Unmarshal(e.Payload, &p) != nil || p.Post <= 0 {
+				return 0, 0, false
+			}
+			return p.Post, e.Ts.UnixMilli(), true
+		}
+	}
+	return 0, 0, false
 }
 
 // lastContextTurn is the newest assistant turn with usage in a window of
@@ -1806,6 +1851,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		TelegramCode   *bool     `json:"telegram_code"`
 		MorningSummary *bool     `json:"morning_summary"`
 		MorningAt      *string   `json:"morning_summary_at"`
+		CompressTools  *bool     `json:"compress_tool_output"`
 		NotifyApproval *bool     `json:"notify_approval"`
 		NotifyFinished *bool     `json:"notify_finished"`
 		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
@@ -2013,6 +2059,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.MorningSummary != nil {
 		in.MorningSummary = *patch.MorningSummary
+	}
+	if patch.CompressTools != nil {
+		in.CompressToolOutput = *patch.CompressTools
 	}
 	if patch.MorningAt != nil {
 		at := strings.TrimSpace(*patch.MorningAt)

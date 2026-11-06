@@ -24,10 +24,11 @@ ios-app/
   capacitor.config.json   # appId dev.caprock.ios, webDir ../ui/dist-remote, keyboard, insets
   scripts/check-versions.mjs  # ui/ and ios-app/ pin the same plugin versions (CI runs it)
   scripts/check-store.mjs     # the store texts fit Apple's limits (CI runs it)
+  scripts/check-applinks.mjs  # entitlement, association file and build agree (CI runs it)
   scripts/app-store.sh        # archive, sign, upload (ios-release.yml runs it; CI only)
   store/                  # the App Store listing, pasted into App Store Connect by hand
   ios/                    # the Xcode project, committed (Swift Package Manager, no CocoaPods)
-    App/App/              # AppDelegate, Info.plist (permission strings), icon, launch screen
+    App/App/              # AppDelegate, Info.plist (permission strings), App.entitlements, icon, launch screen
     App/CapApp-SPM/       # Package.swift that `cap sync` writes from the plugins
     App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved  # Swift packages, pinned
 ui/src/native/            # the app's half of the UI, loaded only inside the app
@@ -43,17 +44,50 @@ CI when they drift.
 
 | Package                               | Version | For                                                                 |
 | ------------------------------------- | ------- | ------------------------------------------------------------------- |
-| `@capacitor/core`, `cli`, `ios`       | 8.5.3   | the shell                                                           |
+| `@capacitor/core`, `cli`, `ios`       | 8.6.0   | the shell                                                           |
 | `@capacitor/barcode-scanner`          | 3.1.3   | pairing by the camera (official)                                    |
-| `@capgo/capacitor-speech-recognition` | 8.4.4   | dictation with on-device recognition required                       |
+| `@capgo/capacitor-speech-recognition` | 8.4.6   | dictation with on-device recognition required                       |
 | `@aparajita/capacitor-biometric-auth` | 10.0.0  | the Face ID lock, passcode fallback                                 |
 | `@aparajita/capacitor-secure-storage` | 8.0.1   | the pairing and the lock setting in the Keychain (this device only) |
 | `@capacitor/keyboard`                 | 8.0.6   | the WebView resized natively above the keyboard                     |
-| `@capacitor/app`                      | 8.1.2   | app lifecycle, needed by the biometric and secure-storage plugins   |
+| `@capacitor/app`                      | 8.1.2   | app lifecycle; the pairing link the Camera app opens the app with   |
 
 The bundle id is `dev.caprock.ios`, beside the desktop app's `dev.caprock.app`
 (`app/src-tauri/tauri.conf.json`), under CYBRIX LLC's developer account.
 iPhone only, portrait, iOS 15 or later.
+
+## The pairing link opens the app
+
+The QR the computer shows holds `https://m.caprock.dev/#/pair?…`. Read by
+the iPhone's own Camera app, that link opens Caprock for iPhone, which pairs
+by itself, instead of Safari (a universal link). Three pieces:
+
+- **The entitlement:** `ios/App/App/App.entitlements` holds
+  `com.apple.developer.associated-domains` = `applinks:m.caprock.dev`,
+  wired in by `CODE_SIGN_ENTITLEMENTS` in both configurations of
+  `project.pbxproj`. The release archive is unsigned, and the export
+  re-signs with the entitlements it finds on the archived app, so
+  `scripts/app-store.sh` signs the archived app ad hoc with this file
+  before the export (step 1b) and fails when the archive, or a signed
+  `.ipa` with *destination: export*, lacks the domain.
+- **The association file:** `ui/public-remote/.well-known/apple-app-site-association`,
+  copied into `ui/dist-remote` by `vite build --mode remote` only (never into
+  the dashboard), and served by `m.caprock.dev` (`relay/m`, Cloudflare
+  Workers assets) as `application/json` through `ui/public-remote/_headers`,
+  with no redirect. It names `47538322FW.dev.caprock.ios` (the team in
+  `project.pbxproj`'s `DEVELOPMENT_TEAM`, which is also the `APPLE_TEAM_ID`
+  the release uses) and matches path `/` with a fragment starting `/pair`
+  only: every other `m.caprock.dev` address stays in Safari.
+- **The app:** `ui/src/native/opened.ts` takes the link from
+  `@capacitor/app` and opens it through `ui/src/native/pairing.ts`, the
+  in-app scanner's own path ([`.ai/04-ui.md` § The iOS app](../.ai/04-ui.md#the-ios-app)).
+
+iOS reads the association file from Apple's CDN when the app is installed
+or updated, so a change to it reaches phones only after the CDN refetches it (on
+Apple's schedule, not ours) and the app is installed or updated. Check what Apple
+holds with `curl -sI https://app-site-association.cdn-apple.com/a/v1/m.caprock.dev`.
+Nothing new leaves the phone or the computer (rule 4): the link is read on
+the phone, as a scanned one is.
 
 ## Build (CI, or a Mac that is not the owner's)
 
@@ -73,6 +107,14 @@ To run it in the Simulator rather than only compile it, sign it ad hoc
 so turning on the lock fails with *The Keychain did not take the change* and
 the pairing is not kept. The Simulator has no camera, so the scanner opens
 only on a real iPhone; check pairing by the camera on one before submitting.
+
+**Permission strings.** `Info.plist` names why the app wants the camera,
+the photo library, the microphone, speech recognition and Face ID. Attaching
+a photo or a file is the page's own `<input type=file>` in the WebView (no
+plugin): *Photos* opens iOS's Photo Library / Take Photo sheet, *Files* the
+Files browser (`.ai/04-ui.md` § From a phone, *Attach*). A change to these
+strings reaches iPhones only with the next App Store build; check Photos
+(library and camera) and Files on a real iPhone before submitting.
 
 After changing a plugin, run `npx cap sync ios` and commit the rewritten
 `CapApp-SPM/Package.swift`; CI fails when the committed one is stale. The
@@ -249,3 +291,23 @@ Still his:
 5. **Export compliance and France:** as under
    [Export compliance](#export-compliance).
 6. **Submit for Review.**
+
+For the pairing link to open the app ([above](#the-pairing-link-opens-the-app)),
+before the first build that carries it:
+
+1. **Associated Domains on the App ID.** developer.apple.com → Certificates,
+   Identifiers & Profiles → Identifiers → `dev.caprock.ios` → tick
+   **Associated Domains** → Save. Automatic signing at the export may try
+   to turn it on by itself with the API key, but that depends on the key's
+   role and is not something the workflow can check first, so tick it by
+   hand. Without it the export fails, or (with *destination: export*) the
+   script stops on
+   *the signed .ipa lost applinks:m.caprock.dev*. Once it is ticked, an App
+   Store profile made earlier by hand (`IOS_PROFILE_B64`) must be made
+   again, since it lacks the capability; automatic signing makes a new one.
+2. **Deploy `m.caprock.dev`** after the merge (`relay/m`, `npx wrangler
+   deploy` after `vite build --mode remote`), then check
+   `curl -sI https://m.caprock.dev/.well-known/apple-app-site-association`
+   answers `200` with `content-type: application/json`.
+3. **Release a build** with the entitlement (ios-release) and ship it;
+   versions already installed keep opening Safari until updated.

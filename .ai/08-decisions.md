@@ -7161,3 +7161,71 @@ agent wrote are never sent. CLAUDE.md's rule 4 paragraph is unchanged.
 the daemon holds no stored review requests and reads CI from GitHub on
 demand, so either would be a new call on a schedule. A later version can
 add them under the GitHub integration's own switch.
+
+## ADR-093 — Older tool output is stored zstd-compressed while idle, off until switched on, with no dictionary
+
+**Date:** 2026-11-06 · **Status:** accepted (owner, 2026-11-06: "do the
+compression ourselves, but so that other users don't suffer", translated);
+off by default in its first release. Proposed by SergeAx in
+[#672](https://github.com/dspv/caprock/issues/672); stage 1, moving the
+fields the Tools screen reads out of the payload, was #798, and #768 gave
+events an integer session key. Contract: [03-contracts.md § Compressed tool
+payloads](03-contracts.md#compressed-tool-payloads-migration-0080).
+
+**Context.** Keeping every session is the product, so deleting history is
+not the answer to a growing file. On the owner's database (2.5 GB, 886,532
+events, 2026-11-06) the payloads are 1.6 GiB, and tool calls and their
+results 1.4 GiB of it; the prose is under 0.2 GiB.
+
+**Decision.**
+
+- **Only `tool.pre` and `tool.post`, only older than a day.** The prose stays
+  plain, so prose search, Second Brain and the handoff read exactly what they
+  read before and cost what they cost. A row that would not shrink by a tenth
+  stays plain.
+- **zstd in pure Go, no dictionary.** `klauspost/compress/zstd` (already a
+  dependency, no cgo), level 3. On 10,000 of the owner's newest tool rows a
+  64 KiB dictionary trained on 20,000 of that install's own older rows gave
+  3.07×, against 2.40× without (2026-11-06): about 130 MiB more on that file.
+  It would cost a training step, a table of dictionaries every compressed row
+  names, and a single row whose loss makes every compressed payload
+  unreadable; a copied database would need its dictionary to be read outside
+  Caprock. A dictionary trained on other people's rows and shipped in the
+  binary is ruled out by rule 4: it is made of their strings. The library's
+  next level (`SpeedBetterCompression`) gave 2.42×, for a fifth less speed.
+- **A JSONB string around a standard frame, in the same column.** `0xEA`,
+  four bytes of length, the frame. SQLite's JSON functions read it as a
+  string with no fields, so a statement that does not decompress gets NULL,
+  never an error that fails the query. That is what lets the prose readers
+  stay bare and free; the readers of tool rows go through `store.ZPayload`,
+  where a plain row never leaves SQLite. A test fails on any statement that
+  reads the column bare without a stated reason.
+- **Only while idle, never at start or on the write path.** After 30 quiet
+  minutes, 500 ids a step, each step's writes and cursor in one short
+  transaction, resting twice as long as the step took, stopping at the first
+  write. Turned off, the same job restores every row, when the disk has room.
+- **The space comes back.** Incremental vacuum returns the freed overflow
+  pages; after a pass that saved 256 MiB or more, one VACUUM under the
+  existing free-disk rule packs the rest. Measured on the copy: 2,524 MiB →
+  1,945 MiB with incremental vacuum alone → 1,511 MiB after the VACUUM.
+- **An older Caprock refuses the database.** Migration 0080 moves the schema
+  version, so ADR-082's guard refuses it with its one-line message instead
+  of an older binary reading compressed rows as empty — or overwriting one
+  through a repair's `json_set`.
+- **Off by default, and Storage says what it would do.** The switch is under
+  Status → Storage with the saving on the user's own database: measured from
+  the frame headers once something is compressed, and before that an
+  estimate from 2,000 of their own tool rows compressed in memory, labelled
+  as one. The owner turns it on first; the default changes in a later
+  release, after it has been measured on his machine.
+
+**Rules out:** compressing on the write path (the owner's condition, and it
+would slow every hook a little for a saving that waits a day anyway);
+compressing the prose (search would read through a decompression for about
+a tenth more saving); a dictionary, for the reasons above; a new column or
+table for the compressed form (a rewrite of `events`, which #768 just did).
+
+**Revisit if:** the saving measured on the owner's database falls well short
+of the estimate; the Week screen or a session's events become noticeably
+slower on compressed weeks; or a per-install dictionary is wanted for the
+last 130 MiB — the format leaves room for one (the frame names it).

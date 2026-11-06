@@ -539,9 +539,9 @@ func (in *Ingester) refreshInputs(ctx context.Context, sid string, s Session, ca
 	rows, err := db.QueryContext(ctx, `
 		SELECT key FROM events
 		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key >= 'oc-tool:' AND key < 'oc-tool;'
-		  AND source = ? AND kind = 'tool.pre' AND json_valid(payload)
+		  AND source = ? AND kind = 'tool.pre' AND json_valid(`+store.ZPayload+`)
 		  AND NOT EXISTS (
-		    SELECT 1 FROM json_each(payload, '$.tool_input')
+		    SELECT 1 FROM json_each(`+store.ZPayload+`, '$.tool_input')
 		    WHERE json_each.key != 'file_path')`,
 		sid, string(event.SourceOpenCode))
 	if err != nil {
@@ -587,8 +587,8 @@ func (in *Ingester) refreshInputs(ctx context.Context, sid string, s Session, ca
 		for _, f := range fixes {
 			if _, err := q.ExecContext(ctx, `
 				UPDATE events
-				SET payload = json_set(payload, '$.tool_input', json(?), '$.cwd', ?)
-				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND json_valid(payload)`,
+				SET payload = json_set(`+store.ZPayload+`, '$.tool_input', json(?), '$.cwd', ?)
+				WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND json_valid(`+store.ZPayload+`)`,
 				f.input, f.cwd, sid, f.key); err != nil {
 				return fmt.Errorf("refresh input: %w", err)
 			}

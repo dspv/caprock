@@ -77,6 +77,22 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-06 — unreleased: compressed tool output (ADR-093, #672 stage 2)
+
+Branch `feat/compress-tool-output`. Status → Storage gains *Compress tool
+output*, off by default: with it on, the idle-time job stores the payloads
+of `tool.pre`/`tool.post` rows older than a day as a zstd frame in a JSONB
+string envelope, in the same column; prose stays plain. Readers of tool rows
+decompress through `store.ZPayload`; `TestEveryPayloadReadKnowsCompression`
+holds every statement that names the column to it. Turned off, the job
+restores the rows when the disk has room. Migration 0080 is the downgrade
+fence (ADR-082). No dictionary: 2.40× without against 3.07× with one trained
+per install, about 130 MiB on the owner's file. Measured on a copy of the
+owner's 2,524 MiB database: 818 MiB of payload saved in 52 s of steps, file
+1,945 MiB after incremental vacuum and 1,511 MiB after the one VACUUM; every
+reader compared gave identical results. Next: the owner turns it on and we
+measure on his machine before the default changes.
+
 ### 2026-11-05 — unreleased: the Morning summary (ADR-092)
 
 Branch `feat/morning-summary`. One Telegram message a day through the

@@ -1460,7 +1460,7 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 `GET /v1/storage` reports what Caprock keeps on disk: `{data_dir,
 total_bytes, files[], database?, measured_at?, measure_ms?, error?, measuring?,
 reclaimable_bytes, returns_free_space, growth_bytes_per_day_est,
-retention_days}`.
+retention_days, compression}`.
 
 - **`files`** is every top-level entry of the data directory, `{name, bytes,
   dir?}`, largest first; a directory is the sum of the regular files under it.
@@ -1501,6 +1501,29 @@ retention_days}`.
   payload recorded over the last 30 days, per day, times the events table's
   on-disk bytes (data and indexes) over the payload it holds. `0` when there is
   nothing to scale by.
+- **`database.compression`** counts the tool payloads by how they are stored
+  (§ Compressed tool payloads): `rows`, `stored_bytes` and `plain_bytes` of
+  the compressed ones — the plain size read from each frame's header, not by
+  decompressing — and `eligible_rows`/`eligible_bytes`, the plain `tool.pre`
+  and `tool.post` payloads older than a day. `sample_rows` of those, picked by
+  id with a fixed seed, are compressed in memory (`sample_plain_bytes` →
+  `sample_stored_bytes`), and **`est_saving_bytes` is `eligible_bytes` scaled
+  by that ratio: an estimate, and named as one** wherever it is shown.
+- **`compression`** is the switch and the idle-time job: `{on, through_ms?,
+  restoring?}` — `through_ms` the time of the event at the job's cursor,
+  `restoring` true while it is off and compressed rows remain. Read per
+  request from `config.json` and `meta`.
+- **`GET /v1/status` carries `compress_offer`** — `{db_bytes,
+  est_saving_bytes, sample_rows, measured_at}` — for the sidebar's hint to
+  turn the switch on ([04-ui.md](04-ui.md) § The sidebar footer). It is copied
+  from the cached measurement above, never measured for the request:
+  `db_bytes` is `page_count × page_size`, `est_saving_bytes` and
+  `sample_rows` are `database.compression`'s (the estimate, named as one),
+  `measured_at` the measurement's time. **Omitted** while the switch is on,
+  once any row is compressed (`database.compression.rows > 0`), when the
+  measurement has no estimate, and until the first measurement of this
+  daemon's run (the panel, or the daily idle one). How large a saving is worth
+  a line is the client's call (300 MB, `lib/compressHint.ts`).
 - **A paired device may read it** — sizes and counts only; the data directory
   path is already in `/v1/status`.
 
@@ -2432,7 +2455,7 @@ clipboard steps). Nothing is retried or queued.
 
 `GET`/`PUT /v1/settings` carry `{plan_kind, plan_label, plan_usd_per_month}` — how the user pays for Claude Code. Caprock **cannot detect this and never guesses**: Claude Code does not report the plan, and inferring one from usage would be an invented number (rule 6), so the user states it and it is stored in `config.json` like every other setting. `plan_kind` is `""` (not stated), `"flat"` (Pro/Max/Team seat — usage at API list price is an *equivalent*, so comparing it to the fee is meaningful), or `"metered"` (API key, Bedrock, Vertex, or Enterprise usage billed at API rates — the API-list figure **is** approximately the bill, so it is never framed as a saving). `plan_label` is read back as stored, with one exception: what Caprock's own picker wrote under a plan's old name — exactly `Max 5×` at 100 or `Max 20×` at 200, `flat` — is returned as `Max` or `Ultra`, Anthropic's names since the end of October 2026 (claude.com/pricing, read 2026-11-03; `config.CurrentPlanLabel`, applied on load to the main plan and to each subscription's `plan.label`). `PUT` validates rather than coerces: an unknown `plan_kind` or a negative/non-finite price is a 400, because a typo would otherwise drive a wrong headline figure. Both return 501 when the daemon has no settings controller.
 
-`SessionSummary` = the `sessions` row + `stats` (session_stats, plus `unpriced_turns`: the session's assistant turns with tokens and a NULL `cost_usd` — their model has no row in the pricing table, so `cost_usd` left them out — counted by `store.SessionUnpricedTurns` off `idx_events_attr_work` and kept per events generation like the other reads of the session's events; omitted when zero, so a client reads `cost_usd` alone as before. `cost_usd` 0 with `unpriced_turns` set is *unknown*, never free) + `activity` ({phrase, tool, at, health, plan, repeats, background, provisional, need} from `internal/narrate`; `need` beside health `waiting-on-you` or `done` — § Needs you and Done; `provisional` while a submit nudge, not an event, says working — § Nudges) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct} — the main thread's last turn's prompt size vs that turn's model's context window from `pricing.json`; a subagent's turn is used only when the session has no main-thread turn at all, as in an OpenCode child session). When `context` is absent, **`context_note` says why**: `no turn yet` (the session has not answered, so there is no prompt to measure), `<id> not in pricing table` (naming the id, which is the one thing a user can report and we can fix), `unknown model`, or `no pricing table`. The reasons call for opposite reactions — one resolves itself in seconds, the other never will — and the client cannot tell them apart from the session row alone; captioning every empty Context "unknown model" put those words beside a Cost stat naming `claude-opus-5` in the same row. `SessionDetail` adds `files`, the last 60 `events`, `repo` and `prs` (see **Repository and pull-request links** under Phase 1 additions), and the relay chain: `relayed_from` (`{session_id, agent, title?, started_at}`, absent when none) and `relayed_to` (a list of the same, oldest first, `[]` when none). `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, dir?, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `dir` is the directory the row is keyed on — the repository root, or the session's own directory for work outside any repository — and is absent only on the row for spend whose session was deleted. `GET /v1/sessions?dir=<dir>` lists exactly that row's sessions: an **exact** match on `repo_root`, plus sessions with no repository whose `cwd` is the directory — the same grouping the summary uses, never the free-text search (`?q=`), which also reads prompts and would pull in every session that mentioned the name. Each entry there carries `resume` for live sessions too, not only ended ones, because the caller (1-click terminal, see [04-ui.md](04-ui.md)) offers to open, continue or branch from the list; `resume` is `null` for a session Caprock holds the terminal of. `paths` is the per-directory breakdown: `{path, tokens, cost_usd, turns, unattributed?, outside?, tokens_pct, cost_pct}`, charged by **carry-forward** from the files the repository's turns touched rather than by the directory a session was launched from (see § Touch attribution DDL). Two entries are not directories and must be rendered as their own thing: `unattributed` (turns before their session touched any file) and `outside` (turns whose most recent touch was outside the repository); a bucket row that cost $0 is omitted. `path` is the full directory relative to the repository root, written from it (`/`, `/services/api`). It is **omitted for a repository with fewer than two rows**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6). `turns` replaces a session count because a session touches many directories while a turn is charged to exactly one, so turns partition and add up. `tokens_pct` and `cost_pct` are shares of the **repository total including the unattributed row**, so each column sums to 100% and the share nothing could be attributed to is visible as its own number rather than hidden in the denominator; both are sent because cost per token varies by model and the two genuinely differ. Each entry may also carry `spark` — `{from_ms, width_ms, cost[], tokens[], input[], turns[], active_hours[], active_cost[]}`, the row's spend over time, where bucket `i` covers `[from_ms + i*width_ms, from_ms + (i+1)*width_ms)`. All six are parallel arrays over the **same** buckets, from the same scan, so which one a picture plots stays a display choice rather than a request — changing the basis must never cost a round-trip on a polled endpoint. `tokens` is input plus output; `input` is the input side alone (fresh input, cache reads and cache writes — the cockpit's own *tokens*), and `turns` the assistant turns, the summary's own `turns` per bucket. `active_hours` counts the bucket's **active session-hours** — clock hours (from the grid's start, so an hour never straddles two buckets) in which one session made at least five priced calls costing more than nothing, the same rule as `usual.burn` — and `active_cost` what those hours cost, so `active_cost / active_hours` is the bucket's burn rate per hour actually worked, and a bucket with no active hour has no rate rather than $0/h; the scan groups by (session, bucket, hour) instead of (session, bucket), 0.032 s → 0.033 s warm for 30 days on a 2.3 GB copy of the owner's database (2026-10-13), off the same covering index. A daemon from before `input` and `turns` sends neither, and one from before `active_hours` and `active_cost` sends neither of those; a client draws that series as unknown, never as zeros. The Projects panel plots tokens; the cockpit's spend chart sums every row's series bucket by bucket and plots cost, burn rate, input or turns (see [04-ui.md](04-ui.md)). The grid follows the range and starts at the same calendar-aligned instant: `today` → 24 hourly buckets, `7d` → 7 daily, `30d` → 30 daily, a typed `<n>d` (n ≤ 90) → n daily. `spark` is **absent for `range=all`**, whose start is the first event ever captured — a fixed bucket count would make a column mean a different span on every machine. The columns sum to at most the row total and never more: spend inside the range but outside the bucket grid still counts toward the row, because dropping it would understate the bill (rule 6). `paths` entries carry no series — a sparkline per directory would multiply a polled payload for a picture hidden until the row is expanded. The summary also carries `work` and `work_unlinked_calls` — what the money was spent **on**, by the kind of work each turn did (see § Work attribution DDL).
+`SessionSummary` = the `sessions` row + `stats` (session_stats, plus `unpriced_turns`: the session's assistant turns with tokens and a NULL `cost_usd` — their model has no row in the pricing table, so `cost_usd` left them out — counted by `store.SessionUnpricedTurns` off `idx_events_attr_work` and kept per events generation like the other reads of the session's events; omitted when zero, so a client reads `cost_usd` alone as before. `cost_usd` 0 with `unpriced_turns` set is *unknown*, never free) + `activity` ({phrase, tool, at, health, plan, repeats, background, provisional, need} from `internal/narrate`; `need` beside health `waiting-on-you` or `done` — § Needs you and Done; `provisional` while a submit nudge, not an event, says working — § Nudges) + `savings` (cache math) + `loop` (active alert, if any) + `context` ({tokens, window, pct, next_call_usd, at} — the main thread's last turn's prompt size vs that turn's model's context window from `pricing.json`; a subagent's turn is used only when the session has no main-thread turn at all, as in an OpenCode child session. A main-thread `context.compacted` newer than that turn whose boundary carries `post_tokens` measures it instead, until the next turn. `at` is the time of the turn or boundary measured, unix ms, so a client holding a newer compaction from `/v1/sessions/{id}/compaction` knows the figure is the size before it — § Compact context). When `context` is absent, **`context_note` says why**: `no turn yet` (the session has not answered, so there is no prompt to measure), `<id> not in pricing table` (naming the id, which is the one thing a user can report and we can fix), `unknown model`, or `no pricing table`. The reasons call for opposite reactions — one resolves itself in seconds, the other never will — and the client cannot tell them apart from the session row alone; captioning every empty Context "unknown model" put those words beside a Cost stat naming `claude-opus-5` in the same row. `SessionDetail` adds `files`, the last 60 `events`, `repo` and `prs` (see **Repository and pull-request links** under Phase 1 additions), and the relay chain: `relayed_from` (`{session_id, agent, title?, started_at}`, absent when none) and `relayed_to` (a list of the same, oldest first, `[]` when none). `?range=` on `/v1/stats/summary` accepts `today` (default), `7d`, `30d`, `all`, or a Go duration; ranges are calendar-aware in the daemon's local time zone. The summary carries `burn` ($/h and tokens/min over the last 10 minutes) and `pricing_version`. Each entry in `projects` is `{project, tokens, cost_usd, sessions, dir?, paths?}` — one row per **repository** (see § Repository grouping DDL), where `sessions` counts the distinct sessions that touched it in the range, so a per-repo roll-up can state both what a repo cost and how many sessions worked in it. `dir` is the directory the row is keyed on — the repository root, or the session's own directory for work outside any repository — and is absent only on the row for spend whose session was deleted. `GET /v1/sessions?dir=<dir>` lists exactly that row's sessions: an **exact** match on `repo_root`, plus sessions with no repository whose `cwd` is the directory — the same grouping the summary uses, never the free-text search (`?q=`), which also reads prompts and would pull in every session that mentioned the name. Each entry there carries `resume` for live sessions too, not only ended ones, because the caller (1-click terminal, see [04-ui.md](04-ui.md)) offers to open, continue or branch from the list; `resume` is `null` for a session Caprock holds the terminal of. `paths` is the per-directory breakdown: `{path, tokens, cost_usd, turns, unattributed?, outside?, tokens_pct, cost_pct}`, charged by **carry-forward** from the files the repository's turns touched rather than by the directory a session was launched from (see § Touch attribution DDL). Two entries are not directories and must be rendered as their own thing: `unattributed` (turns before their session touched any file) and `outside` (turns whose most recent touch was outside the repository); a bucket row that cost $0 is omitted. `path` is the full directory relative to the repository root, written from it (`/`, `/services/api`). It is **omitted for a repository with fewer than two rows**, which would merely restate the row's own total, and it always sums exactly to the parent row — the panel must never state two different totals for one repository (rule 6). `turns` replaces a session count because a session touches many directories while a turn is charged to exactly one, so turns partition and add up. `tokens_pct` and `cost_pct` are shares of the **repository total including the unattributed row**, so each column sums to 100% and the share nothing could be attributed to is visible as its own number rather than hidden in the denominator; both are sent because cost per token varies by model and the two genuinely differ. Each entry may also carry `spark` — `{from_ms, width_ms, cost[], tokens[], input[], turns[], active_hours[], active_cost[]}`, the row's spend over time, where bucket `i` covers `[from_ms + i*width_ms, from_ms + (i+1)*width_ms)`. All six are parallel arrays over the **same** buckets, from the same scan, so which one a picture plots stays a display choice rather than a request — changing the basis must never cost a round-trip on a polled endpoint. `tokens` is input plus output; `input` is the input side alone (fresh input, cache reads and cache writes — the cockpit's own *tokens*), and `turns` the assistant turns, the summary's own `turns` per bucket. `active_hours` counts the bucket's **active session-hours** — clock hours (from the grid's start, so an hour never straddles two buckets) in which one session made at least five priced calls costing more than nothing, the same rule as `usual.burn` — and `active_cost` what those hours cost, so `active_cost / active_hours` is the bucket's burn rate per hour actually worked, and a bucket with no active hour has no rate rather than $0/h; the scan groups by (session, bucket, hour) instead of (session, bucket), 0.032 s → 0.033 s warm for 30 days on a 2.3 GB copy of the owner's database (2026-10-13), off the same covering index. A daemon from before `input` and `turns` sends neither, and one from before `active_hours` and `active_cost` sends neither of those; a client draws that series as unknown, never as zeros. The Projects panel plots tokens; the cockpit's spend chart sums every row's series bucket by bucket and plots cost, burn rate, input or turns (see [04-ui.md](04-ui.md)). The grid follows the range and starts at the same calendar-aligned instant: `today` → 24 hourly buckets, `7d` → 7 daily, `30d` → 30 daily, a typed `<n>d` (n ≤ 90) → n daily. `spark` is **absent for `range=all`**, whose start is the first event ever captured — a fixed bucket count would make a column mean a different span on every machine. The columns sum to at most the row total and never more: spend inside the range but outside the bucket grid still counts toward the row, because dropping it would understate the bill (rule 6). `paths` entries carry no series — a sparkline per directory would multiply a polled payload for a picture hidden until the row is expanded. The summary also carries `work` and `work_unlinked_calls` — what the money was spent **on**, by the kind of work each turn did (see § Work attribution DDL).
 
 **The session's `model` is its main thread's.** `sessions.model` is the model of the newest event from the session's main thread (`rollup.Record`); a subagent's event — `agent_id` set, or `payload.sidechain` true, the same test the notes query uses (`event.Event.Subagent`, `store.MainThreadWhere`) — fills it only while it is empty, through `SessionPatch.SubagentModel`. An Opus session whose Explore subagent runs on Haiku is an Opus session on its card, in every list and in the window its context fill is measured against; the subagent's turns are still priced by their own model and counted in `session_stats` and `daily_stats` (keyed by the turn's model) exactly as before. A session whose every turn is a subagent's (an OpenCode child session) is named by them. Earlier versions let a subagent's turn overwrite the column; `rollup.RepairSessionModels` sets each session's model once (`meta.session_model_repaired`) to that of its newest main-thread `turn.assistant` (by `ts`, internal turns excluded) where the stored value differs, and leaves sessions with no main-thread turn alone. Measured on a copy of the owner's database (2026-10-01): 6 of the 140 sessions with a main-thread turn were wrong, all six named after a subagent's model; the pass took 3.3 s on an 879 MB file, once, in the background after the port opens. The context badge looks for the main thread's last turn among the session's newest 5000 events when the newest 60 hold none (`store.LastMainTurn`, about 20 ms on a 51k-event session).
 
@@ -5502,8 +5525,8 @@ POST /v1/agents/{id}/compact       → {sent: bool, queued?: QueuedMessage, queu
 GET  /v1/stats/compactions?range=… | ?from=…&to=…  → CompactionPeriod
 ```
 
-- **`CompactionView`** — `{session_id, last?: Compaction, running, queued,
-  typical?: CompactionStats}`.
+- **`CompactionView`** — `{session_id, last?: Compaction, running,
+  running_since?, queued, typical?: CompactionStats}`.
   - `Compaction` is `{at, trigger, pre_tokens, post_tokens?, duration_ms?}`
     (unix ms): the session's newest main-thread `context.compacted` — not a
     subagent's or a sidechain's — with `pre_tokens` as Claude Code measured
@@ -5515,13 +5538,19 @@ GET  /v1/stats/compactions?range=… | ?from=…&to=…  → CompactionPeriod
     until either is known. On an older Claude Code a manual compaction at
     an idle prompt has no after until the next reply.
   - `running` — the newest main-thread `context.compact` / `context.compacted`
-    is the `PreCompact` hook, less than 10 minutes old.
+    is the `PreCompact` hook, less than 10 minutes old. `running_since` is
+    that hook's time (unix ms), present only while `running`: Claude Code
+    reports no progress, so the time since it began is what the Agent panel
+    shows.
   - `queued` — a message reading exactly `/compact` waits in the session's
     queue.
   - `typical` — `{count, median_kept, p90_kept, median_pre, median_post,
-    from, to}` over the newest 500 main-thread compactions on the machine
-    with a measured after: the share kept is `post_tokens / pre_tokens`.
-    Absent with fewer than 5. Read at most once a minute.
+    median_duration_ms?, from, to}` over the newest 500 main-thread
+    compactions on the machine with a measured after: the share kept is
+    `post_tokens / pre_tokens`. Absent with fewer than 5. Read at most once
+    a minute. `median_duration_ms` is the median `duration_ms` over those
+    500 scanned whose boundary carried one above zero, measured or not;
+    absent with fewer than 5 such (rule 6) — the panel's *usually ~1 min*.
   - `estimate` — what `last` cost and has saved since, **estimates** (§
     Compaction stats DDL): `{at, model?, warm, summary_tokens_est?,
     est_cost_usd?, est_saved_usd, turns_after, series: [{at, saved_usd}],
@@ -6628,6 +6657,90 @@ Two things about the key are load-bearing:
   recent days on the owner's database match a `COUNT(DISTINCT session_id)` over
   the events themselves.
 
+### Compressed tool payloads (migration 0080)
+
+With **Compress tool output** on (Status → Storage; `PUT /v1/settings`
+`compress_tool_output`, a bool, off unless turned on, stored as a pointer in
+`config.json` only once switched), the daemon stores the `payload` of older
+`tool.pre` and `tool.post` rows compressed, in the same column
+([ADR-093](08-decisions.md); `internal/store/zpayload.go`,
+`internal/daemon/zstd.go`). Every other kind stays plain JSON text.
+
+- **The stored form.** A BLOB: byte `0xEA`, then the length of what follows
+  as four big-endian bytes, then one standard zstd frame (level 3, no
+  dictionary, with its content size and checksum). `typeof(payload) =
+  'blob'` tells it apart; every plain payload is TEXT. To SQLite's JSON
+  functions it is a well-formed JSONB string, so a statement that does not
+  decompress gets `NULL` from `json_extract` and `->>`, `0` from `json_valid`
+  and no rows from `json_each`: never the `malformed JSON` error a bare zstd
+  frame raises. Outside Caprock, `substr(payload, 6)` is the frame:
+  `zstd -d` reads it.
+- **Reading it.** `store.ZPayload` (and `ZPayloadE`, `ZPayloadOf(alias)`) is
+  `CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END`;
+  `zjson` is a deterministic SQL function the store registers with the
+  driver. A plain row never leaves SQLite, so a reader of plain rows costs
+  what it did. Every statement that may read a tool row's payload reads it
+  this way — the in-place repairs' `json_set` included, which then write
+  plain JSON — and `TestEveryPayloadReadKnowsCompression` fails on one that
+  does not; the readers of prose and lifecycle rows read the column bare and
+  are listed in that test with why. `caprock export --payload` decompresses.
+  A frame that cannot be decompressed reads as `{}` and is left as stored.
+- **What is compressed.** `tool.pre` and `tool.post` rows whose `ts` is more
+  than a day old (`store.CompressAge`), and only when that saves at least a
+  tenth of the row: a small row stays plain. A row stamped more than an hour
+  in the future counts as old, so a skewed clock cannot hold the job back.
+- **The job.** Only while idle, after the base64 compaction and the one
+  VACUUM below have finished and `tool_fields` is filled, never during start
+  and never on the write path. One cursor, `meta.payload_zstd_cursor`: every
+  compressed row has an id at or below it. On, `CompressPayloadsStep` reads
+  the next 500 ids above it outside any transaction, compresses the tool
+  rows old enough, and writes them and the new cursor in one short
+  transaction, each update matching the payload it read so a concurrent
+  rewrite wins; it stops at the first row younger than a day. Off,
+  `DecompressPayloadsStep` restores the compressed rows in the 500 ids at and
+  below the cursor and lowers it, until it is 0. Between steps the daemon
+  rests twice as long as the step took (at least 50 ms) and stops as soon as
+  anything is to be recorded. Interrupted anywhere, it resumes at the cursor.
+  A row passed and later rewritten by a repair stays plain.
+- **The space.** The overflow pages compression frees go back by
+  incremental vacuum. Once a compression pass has finished having saved at
+  least 256 MiB since the last time (`meta.payload_zstd_repacked`), the
+  daemon runs one VACUUM to pack the leaf pages it left half empty — the
+  VACUUM below, under the same rules: free disk of 2.2 × the used size,
+  10 minutes at most, rolled back by anything that wants to write, tried
+  again a day later.
+- **Restoring needs room.** Off, the job first checks free disk on the data
+  directory's volume for `meta.payload_zstd_saved` — the payload bytes
+  compression has saved, added to by each step and taken from by each
+  restoring one; rows deleted since are not taken off, so it is an upper
+  bound — plus 512 MiB. Without it nothing is restored and the footprint says
+  so once.
+- **An older Caprock refuses the database.** Migration 0080 creates nothing;
+  it initializes the two `meta` rows and moves the schema version past every
+  release that cannot read the stored form, so ADR-082's guard has an older
+  binary refuse to open it, untouched, with its one-line message. Such a
+  binary would read a compressed row as a string with no fields, and its
+  repairs' `json_set` would overwrite one with that string.
+
+```sql
+INSERT OR IGNORE INTO meta(k, v) VALUES ('payload_zstd_cursor', '0');
+INSERT OR IGNORE INTO meta(k, v) VALUES ('payload_zstd_saved', '0');
+```
+
+Measured on a copy of the owner's database (2,524 MiB, 886,532 events,
+2026-11-06; macOS, a loaded machine), steps run back to back:
+
+- **Before:** 556,947 tool payloads older than a day, 1,413 MiB. The sample
+  estimate said 812 MiB of payload saved.
+- **Compression:** 542,499 rows compressed, 818 MiB of payload saved, in
+  1,741 steps and 52 s; slowest step 242 ms. File and WAL never grew.
+- **The space:** incremental vacuum returned 578 MiB in 19 s (file 1,945
+  MiB); the VACUUM after it took the file to 1,511 MiB in 48 s, 1,520 MiB
+  of extra disk at its peak.
+- **Restoring** all of it: 31 s. Every reader compared — prose, a session's
+  events, the Tools drill-down over 30 and 90 days, the Week, todos — gave
+  identical results compressed, after the VACUUM and after restoring.
+
 ### Payload compaction and auto-vacuum (no migration)
 
 Two changes to stored state that no migration can make: a migration runs in a
@@ -6778,7 +6891,7 @@ CREATE TABLE events (
   source      TEXT NOT NULL,                -- 'hook' | 'transcript' | 'opencode' | 'gemini'
   kind        TEXT NOT NULL,                -- see 02-architecture.md § Event model
   tool        TEXT,
-  payload     TEXT NOT NULL,                -- raw JSON
+  payload     TEXT NOT NULL,                -- raw JSON; an older tool row's may be a compressed BLOB (§ Compressed tool payloads)
   tokens_in   INTEGER, tokens_out INTEGER,
   cache_read  INTEGER, cache_write INTEGER,
   cost_usd    REAL,

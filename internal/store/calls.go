@@ -89,9 +89,9 @@ func SessionCalls(ctx context.Context, q Querier, sessionID string, n int) ([]Se
 		return out, nil
 	}
 	tools, err := q.QueryContext(ctx, `
-		SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract(e.payload, '$.tool_input'), '')
+		SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract(`+ZPayloadE+`, '$.tool_input'), '')
 		  FROM events e
-		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND `+MainThreadWhere+`
+		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND `+mainThreadToolWhere+`
 		 ORDER BY e.ts ASC, e.id ASC`, sessionID)
 	if err != nil {
 		return nil, err

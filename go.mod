@@ -12,7 +12,7 @@ require (
 	github.com/emersion/go-smtp v0.25.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/klauspost/compress v1.20.3
-	github.com/shirou/gopsutil/v4 v4.26.9
+	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.49.0
