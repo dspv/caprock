@@ -1513,6 +1513,17 @@ retention_days, compression}`.
   restoring?}` — `through_ms` the time of the event at the job's cursor,
   `restoring` true while it is off and compressed rows remain. Read per
   request from `config.json` and `meta`.
+- **`GET /v1/status` carries `compress_offer`** — `{db_bytes,
+  est_saving_bytes, sample_rows, measured_at}` — for the sidebar's hint to
+  turn the switch on ([04-ui.md](04-ui.md) § The sidebar footer). It is copied
+  from the cached measurement above, never measured for the request:
+  `db_bytes` is `page_count × page_size`, `est_saving_bytes` and
+  `sample_rows` are `database.compression`'s (the estimate, named as one),
+  `measured_at` the measurement's time. **Omitted** while the switch is on,
+  once any row is compressed (`database.compression.rows > 0`), when the
+  measurement has no estimate, and until the first measurement of this
+  daemon's run (the panel, or the daily idle one). How large a saving is worth
+  a line is the client's call (300 MB, `lib/compressHint.ts`).
 - **A paired device may read it** — sizes and counts only; the data directory
   path is already in `/v1/status`.
 

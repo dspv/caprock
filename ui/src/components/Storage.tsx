@@ -24,6 +24,7 @@
 import { useState, type ReactNode } from 'react'
 import { api, errText, type Settings, type StorageReport, type StorageSlice } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
+import { noteCompressChanged } from '@/lib/compressHint'
 import { fmtAgo, fmtBytes, fmtWhen } from '@/lib/format'
 import { Details, Section, Toggle } from '@/components/SettingsParts'
 import { Bars } from '@/components/Breakdown'
@@ -43,6 +44,8 @@ export function StoragePanel({ owner = true }: { owner?: boolean }) {
     try {
       await api.saveSettings({ compress_tool_output: on } as Partial<Settings> as Settings)
       r.refresh()
+      // The sidebar's hint (lib/compressHint) goes as soon as it is on.
+      noteCompressChanged(on)
     } catch (e) {
       setPicked(null)
       setError(errText(e))

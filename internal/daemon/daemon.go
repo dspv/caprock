@@ -1686,6 +1686,10 @@ type Status struct {
 	// Desktop is the Claude desktop app's own plan usage, when it has any on
 	// this machine. Omitted entirely otherwise — most people do not use it.
 	Desktop *desktop.Reading `json:"desktop,omitempty"`
+	// CompressOffer is the sidebar's hint to turn Compress tool output on,
+	// copied from the cached storage measurement; absent while the switch is
+	// on, once anything is compressed, or before the first measurement.
+	CompressOffer *CompressOffer `json:"compress_offer,omitempty"`
 }
 
 // PricingStatus summarizes the table in force.
@@ -1780,6 +1784,7 @@ func (d *Daemon) status(ctx context.Context) any {
 	d.mu.Unlock()
 	st.Interrupted = d.interrupted(context.Background())
 	st.RetentionDays = d.config().RetentionDays
+	st.CompressOffer = d.compressOffer()
 	if n, ok := d.events.get(context.Background(), d.store); ok {
 		st.Events = n
 	}

@@ -1522,6 +1522,12 @@ export interface Status {
     /** The app only writes while running, so an old reading describes the past. */
     stale: boolean
   }
+  /** The sidebar's hint to turn Compress tool output on (ADR-093): the
+   *  database's measured size and the saving estimated from `sample_rows` of
+   *  the user's own tool calls, copied from the daily storage measurement.
+   *  Absent while the switch is on, once anything is compressed, before the
+   *  first measurement, and from older daemons. */
+  compress_offer?: { db_bytes: number; est_saving_bytes: number; sample_rows: number; measured_at: number }
 }
 
 /** What Caprock keeps on disk: GET /v1/storage. The database composition is
