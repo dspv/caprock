@@ -28,7 +28,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { api, type Event } from '@/lib/api'
 import { barLabel, barLabelShort, callsFromEvents, callsFromSeries, mergeCalls, stepText, timeBars, topTools, type CallPoint } from '@/lib/scrub'
-import { CHART_METRICS, barCarries, barValue, chartValueText, periodBurn, type ChartMetric, type SpendBar } from '@/lib/spendview'
+import { CHART_METRICS, barCarries, barValue, chartValueText, periodBurn, type ChartMetric, type CostNote, type SpendBar } from '@/lib/spendview'
 import { barPace, paceLabel, paceOf, paceSentence, paceTitle, type Pace, type Usual } from '@/lib/usual'
 
 /** The bars' height: with the top line and the axis, the chart stays under 96px. */
@@ -88,7 +88,7 @@ export function SpendBars({ bars, metric, height, at, pace }: { bars: readonly S
 }
 
 /** A period by time as bars, in flow, as wide as the cockpit. */
-export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost', chooser, usual }: {
+export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost', chooser, usual, cost }: {
   id: string
   bars: readonly ChartBar[]
   step: number
@@ -102,6 +102,8 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   chooser?: ReactNode
   /** The viewer's own 30-day baseline, for the burn rate's pace line. */
   usual?: Usual
+  /** For cost: some turns had no price, so the total is partial or unknown (lib/spendview costNote). */
+  cost?: CostNote
 }) {
   const pace = useMemo(() => paceOf(metric, bars, usual), [metric, bars, usual])
   const { values, max, known } = barValues(bars, metric, pace)
@@ -129,12 +131,14 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
     e.preventDefault()
   }
 
-  const totalText = chartValueText(metric, total)
+  const partial = metric === 'cost' && cost?.state === 'partial'
+  const totalText = chartValueText(metric, total) + (partial && total !== undefined ? '+' : '')
   const big = 'num shrink-0 text-[15px] font-semibold leading-[18px] tracking-[-0.02em] text-fg'
   // The top line at rest: the figure, the ▾ that picks it, whose it is.
   const rest = (
     <>
-      {total !== undefined && <span data-spend-total className={big}>{totalText}</span>}
+      {total !== undefined && <span data-spend-total data-cost-state={metric === 'cost' ? cost?.state : undefined} className={big} title={metric === 'cost' ? cost?.title : undefined}>{totalText}</span>}
+      {total === undefined && metric === 'cost' && cost?.state === 'unknown' && <span data-spend-total data-cost-state="unknown" className={big} title={cost.title}>—</span>}
       {chooser}
       <span className="ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] text-fg-faint" title={scope}>{scope}</span>
     </>
@@ -143,7 +147,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
     const why = !known && bars.length > 0
       ? `No ${name} by time from this daemon: update Caprock to draw it.`
       : metric === 'burn' ? `No active hour ${scope} (five or more calls in one hour): no rate to draw.`
-        : metric !== 'cost' ? `Nothing to draw, ${scope}.` : total !== undefined && total > 0 ? 'No spend by time to draw for this period.' : `Nothing spent, ${scope}.`
+        : metric !== 'cost' ? `Nothing to draw, ${scope}.` : cost?.state === 'unknown' ? cost.short : total !== undefined && total > 0 ? 'No spend by time to draw for this period.' : `Nothing spent, ${scope}.`
     return (
       <div id={id} data-spend-time data-spend-empty data-metric={metric} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1">
         <div data-spend-top className={TOP_LINE}>{rest}</div>
@@ -254,11 +258,12 @@ export function SpendOverTime({ sessionId, events, now, total, metric = 'cost', 
 }
 
 /** The session's chart from bars already read: "No priced calls yet." until there are some. */
-export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual }: {
-  sessionId: string; bars: readonly ChartBar[]; step: number; now: number; total?: number; metric?: ChartMetric; chooser?: ReactNode; usual?: Usual
+export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost }: {
+  sessionId: string; bars: readonly ChartBar[]; step: number; now: number; total?: number; metric?: ChartMetric; chooser?: ReactNode; usual?: Usual; cost?: CostNote
 }) {
-  if (bars.length === 0) {
+  // A session whose every turn ran unpriced has no priced call, and says why.
+  if (bars.length === 0 && cost?.state !== 'unknown') {
     return <p id={`spend-time-${sessionId}`} data-spend-time data-spend-empty className="text-[12px] text-fg-muted">No priced calls yet.</p>
   }
-  return <SpendChart id={`spend-time-${sessionId}`} bars={bars} step={step} now={now} total={total} scope="this session" metric={metric} chooser={chooser} usual={usual} />
+  return <SpendChart id={`spend-time-${sessionId}`} bars={bars} step={step} now={now} total={total} scope="this session" metric={metric} chooser={chooser} usual={usual} cost={cost} />
 }

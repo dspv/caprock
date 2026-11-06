@@ -1313,3 +1313,44 @@ describe('compact context (ADR-085)', () => {
     expect(h.compacted).toEqual([])
   })
 })
+
+// A model with no price in the pricing table (Claude Code on Kimi, after a
+// limit moved it there) left the panel saying $0.00 — that the work was
+// free. Rule 6: the cost is unknown, or partial when some turns were priced.
+describe('turns with no price', () => {
+  const unpriced: Event[] = [
+    { id: 11, ts: iso(30_000), session_id: 's1', source: 'transcript', kind: 'turn.assistant', model: 'kimi-k3', payload: {}, tokens: { in: 10, out: 20, cache_read: 0, cache_write: 0 } },
+    { id: 12, ts: iso(10_000), session_id: 's1', source: 'transcript', kind: 'turn.assistant', model: 'kimi-k3', payload: {}, tokens: { in: 30, out: 5, cache_read: 0, cache_write: 0 } },
+  ]
+  const kimi = (p: Partial<SessionSummary['stats']> = {}) => agent({
+    model: 'kimi-k3', model_display: undefined,
+    stats: { session_id: 's1', turns: 2, tool_calls: 0, files_touched: 0, tokens_in: 40, tokens_out: 25, cache_read: 0, cache_write: 0, cost_usd: 0, unpriced_turns: 2, ...p },
+  })
+
+  it('says the cost is unknown, never $0.00, in the figures and the Spend section', async () => {
+    h.events = unpriced
+    show(kimi())
+    const line = screen.getByRole('button', { name: /^Cost —\. Choose what this line shows/ })
+    expect(line).toHaveAttribute('title', expect.stringContaining('No price for kimi-k3'))
+    const region = screen.getByRole('region', { name: 'Spend' })
+    await waitFor(() => expect(region.querySelector('[data-spend-total]')).toHaveTextContent('—'))
+    expect(region.querySelector('[data-spend-total]')).toHaveAttribute('data-cost-state', 'unknown')
+    expect(region).toHaveTextContent('No price for kimi-k3: the cost is unknown, not $0.00.')
+    expect(document.querySelector('[data-hero-line="cost"]')).not.toHaveTextContent('$')
+    // The headline too, when it is the cost.
+    fireEvent.click(screen.getByRole('button', { name: /Headline: Burn rate/ }))
+    fireEvent.click(within(screen.getByRole('menu', { name: 'Headline figure' })).getByRole('menuitemradio', { name: /Cost/ }))
+    expect(screen.getByLabelText('Cost —')).toHaveAttribute('title', expect.stringContaining('No price for kimi-k3'))
+  })
+
+  it('marks a cost that left unpriced turns out as partial', async () => {
+    h.events = [...events, ...unpriced]
+    show(kimi({ cost_usd: 1.84, unpriced_turns: 2 }))
+    const line = screen.getByRole('button', { name: /^Cost \$1\.84\+\. Choose what this line shows/ })
+    // The unpriced turns' model is named once the cockpit holds them.
+    await waitFor(() => expect(line).toHaveAttribute('title', expect.stringContaining('Partial: $1.84 is what could be priced; 2 turns on kimi-k3')))
+    const region = screen.getByRole('region', { name: 'Spend' })
+    await waitFor(() => expect(region.querySelector('[data-spend-total]')).toHaveTextContent('$1.84+'))
+    expect(region.querySelector('[data-spend-total]')).toHaveAttribute('data-cost-state', 'partial')
+  })
+})
