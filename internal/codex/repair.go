@@ -45,7 +45,7 @@ type storedRow struct {
 func (in *Ingester) codexRows(ctx context.Context, session string) ([]storedRow, error) {
 	rows, err := in.rec.Store.DB().QueryContext(ctx, `
 		SELECT id, ts, COALESCE(key,''), kind, COALESCE(model,''), internal,
-		       CASE WHEN json_valid(payload) THEN COALESCE(json_extract(payload,'$.cwd'),'') ELSE '' END,
+		       CASE WHEN json_valid(`+store.ZPayload+`) THEN COALESCE(json_extract(`+store.ZPayload+`,'$.cwd'),'') ELSE '' END,
 		       COALESCE(tokens_in,0), COALESCE(tokens_out,0), COALESCE(cache_read,0), COALESCE(cache_write,0),
 		       COALESCE(cost_usd,0)
 		  FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ?`, session, string(event.SourceCodex))

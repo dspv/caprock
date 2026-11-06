@@ -43,6 +43,29 @@ type Storage struct {
 	// 30 and 90 days — what a retention setting of that length would delete.
 	Recent []WindowSize `json:"recent"`
 	Older  []WindowSize `json:"older"`
+	// Compression is what the tool-output compression has done, and what it
+	// would do (ADR-093).
+	Compression ToolCompression `json:"compression"`
+}
+
+// ToolCompression counts the tool payloads by how they are stored.
+type ToolCompression struct {
+	// Rows are stored compressed: StoredBytes on disk, PlainBytes before.
+	Rows        int64 `json:"rows"`
+	StoredBytes int64 `json:"stored_bytes"`
+	PlainBytes  int64 `json:"plain_bytes"`
+	// EligibleRows are plain tool payloads old enough to be compressed, of
+	// EligibleBytes.
+	EligibleRows  int64 `json:"eligible_rows"`
+	EligibleBytes int64 `json:"eligible_bytes"`
+	// SampleRows of them were compressed in memory to measure the ratio
+	// (SampleStored of SamplePlain bytes, rows not worth it counted plain).
+	// EstSavingBytes is EligibleBytes scaled by that: an estimate, and named
+	// as one wherever it is shown.
+	SampleRows     int   `json:"sample_rows"`
+	SamplePlain    int64 `json:"sample_plain_bytes"`
+	SampleStored   int64 `json:"sample_stored_bytes"`
+	EstSavingBytes int64 `json:"est_saving_bytes"`
 }
 
 // TableSize is one table's footprint on disk.
@@ -92,6 +115,11 @@ func MeasureStorage(ctx context.Context, db *sql.DB, now time.Time) (Storage, er
 	st.Tables = tables
 	if err := eventBreakdown(ctx, db, now, &st); err != nil {
 		return st, err
+	}
+	if st.Compression.EligibleRows > 0 {
+		if err := sampleCompression(ctx, db, now.Add(-CompressAge).UnixMilli(), &st.Compression); err != nil {
+			return st, err
+		}
 	}
 	return st, nil
 }
@@ -170,10 +198,19 @@ func eventBreakdown(ctx context.Context, db *sql.DB, now time.Time, st *Storage)
 	if err != nil {
 		return fmt.Errorf("events breakdown: %w", err)
 	}
-	rows, err := db.QueryContext(ctx, `SELECT sid, kind, ts, COALESCE(octet_length(payload), 0) FROM events`)
+	//
+	// A compressed payload (ADR-093) is counted at its stored size, and its
+	// frame header — the first bytes, never the whole value — says how large
+	// it was before.
+	rows, err := db.QueryContext(ctx, `
+		SELECT sid, kind, ts, COALESCE(octet_length(payload), 0),
+		       CASE WHEN typeof(payload) = 'blob' THEN substr(payload, 1, ?) END
+		  FROM events`, zHeaderLen+18)
 	if err != nil {
 		return fmt.Errorf("events breakdown: %w", err)
 	}
+	cutoff := nowMs - CompressAge.Milliseconds()
+	zc := &st.Compression
 	defer func() { _ = rows.Close() }()
 	agents, kinds := map[string]*SliceSize{}, map[string]*SliceSize{}
 	st.Recent = []WindowSize{{Days: recentWindows[0]}, {Days: recentWindows[1]}}
@@ -193,10 +230,20 @@ func eventBreakdown(ctx context.Context, db *sql.DB, now time.Time, st *Storage)
 	}
 	defaultAgent := []byte("claude")
 	for rows.Next() {
-		var kind sql.RawBytes
+		var kind, head sql.RawBytes
 		var sid, ts, b int64
-		if err := rows.Scan(&sid, &kind, &ts, &b); err != nil {
+		if err := rows.Scan(&sid, &kind, &ts, &b, &head); err != nil {
 			return err
+		}
+		if head != nil {
+			if n, ok := PlainSize(head); ok {
+				zc.Rows++
+				zc.StoredBytes += b
+				zc.PlainBytes += n
+			}
+		} else if ts < cutoff && isToolKind(kind) {
+			zc.EligibleRows++
+			zc.EligibleBytes += b
 		}
 		agent := defaultAgent
 		if a, ok := agentOf[sid]; ok {

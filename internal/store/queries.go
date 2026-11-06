@@ -1238,7 +1238,7 @@ func searchVariants(s string) []string {
 	return out
 }
 
-const eventCols = `id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), payload, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
+const eventCols = `id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), ` + ZPayloadE + `, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
 
 func scanEvent(sc interface{ Scan(...any) error }) (event.Event, error) {
 	var ev event.Event
@@ -1308,6 +1308,11 @@ var sessionAssistantTextWhere = strings.Replace(assistantTextWhere, "e.kind = 't
 // subagents', for a query over `events e`. It is the SQL twin of
 // event.Event.Subagent and must say the same thing.
 const MainThreadWhere = `COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1`
+
+// mainThreadToolWhere is MainThreadWhere for a query over tool rows, whose
+// payload may be stored compressed (ADR-093). MainThreadWhere reads the
+// payload bare, which is right for the prose it serves and free.
+const mainThreadToolWhere = `COALESCE(e.agent_id, '') = '' AND json_extract(` + ZPayloadE + `, '$.sidechain') IS NOT 1`
 
 // SessionNotes returns what Claude said in a session, newest first. Sidechains
 // are excluded; the caller gets main-thread prose only.

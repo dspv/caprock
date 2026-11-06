@@ -84,7 +84,7 @@ func (s *Store) CompactPayloadsStep(ctx context.Context, window int) (CompactSte
 	// "base64" or "image", or is a data: URI, somewhere in its JSON.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, payload FROM events
-		 WHERE id > ? AND id <= ?
+		 WHERE id > ? AND id <= ? AND typeof(payload) = 'text'
 		   AND (instr(payload, 'base64') > 0 OR instr(payload, '"image"') > 0 OR instr(payload, '"data:') > 0)`,
 		from, to)
 	if err != nil {

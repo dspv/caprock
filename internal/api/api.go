@@ -420,8 +420,11 @@ type Settings struct {
 	// MorningSummary is the daily Telegram summary (ADR-092), off unless
 	// turned on; MorningSummaryAt its local time, "HH:MM" (08:00 until
 	// chosen). The last send's time and error are read-only.
-	MorningSummary          bool   `json:"morning_summary"`
-	MorningSummaryAt        string `json:"morning_summary_at"`
+	MorningSummary   bool   `json:"morning_summary"`
+	MorningSummaryAt string `json:"morning_summary_at"`
+	// CompressToolOutput stores older tool payloads compressed, done while
+	// idle (ADR-093); off unless turned on.
+	CompressToolOutput      bool   `json:"compress_tool_output"`
 	MorningSummaryLastMs    int64  `json:"morning_summary_last_sent_ms,omitempty"`
 	MorningSummaryLastError string `json:"morning_summary_last_error,omitempty"`
 	// NotifyApproval and NotifyFinished are the desktop app's OS
@@ -1806,6 +1809,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		TelegramCode   *bool     `json:"telegram_code"`
 		MorningSummary *bool     `json:"morning_summary"`
 		MorningAt      *string   `json:"morning_summary_at"`
+		CompressTools  *bool     `json:"compress_tool_output"`
 		NotifyApproval *bool     `json:"notify_approval"`
 		NotifyFinished *bool     `json:"notify_finished"`
 		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
@@ -2013,6 +2017,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.MorningSummary != nil {
 		in.MorningSummary = *patch.MorningSummary
+	}
+	if patch.CompressTools != nil {
+		in.CompressToolOutput = *patch.CompressTools
 	}
 	if patch.MorningAt != nil {
 		at := strings.TrimSpace(*patch.MorningAt)

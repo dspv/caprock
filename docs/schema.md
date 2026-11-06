@@ -151,6 +151,16 @@ ORDER BY e.ts, e.id;
 Over many events, group by `e.sid` first and join `sessions` to the groups:
 the join then runs once per session instead of once per event.
 
+With **Compress tool output** on (Status → Storage, off unless turned on),
+the `payload` of a `tool.pre` or `tool.post` row older than a day may be
+stored compressed: a BLOB instead of JSON text. `typeof(payload) = 'blob'`
+finds those rows, and `substr(payload, 6)` is a standard zstd frame with no
+dictionary, which `zstd -d` reads. To SQLite's JSON functions such a value
+is a JSON string with no fields, so `json_extract(payload, '$.tool_input')`
+on it is `NULL`. Prompts, replies and every other kind are always plain
+JSON. `caprock export --payload` writes every payload as plain JSON, however
+it is stored.
+
 For a few minutes after the upgrade to this layout, `events` holds the newest
 events only: the rest wait in `events_legacy`, in the old layout, and move
 over in the background. `caprock status` shows how far it has come.

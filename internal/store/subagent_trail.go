@@ -73,12 +73,12 @@ func SubagentTrailOf(ctx context.Context, q Querier, sessionID, agentID string) 
 	tr.AgentID = agentID
 	rows, err := q.QueryContext(ctx, `
 		SELECT id, ts, kind, COALESCE(tool, ''),
-		       COALESCE(json_extract(payload, '$.tool_use_id'), ''),
-		       CASE WHEN kind = 'tool.pre' THEN json_extract(payload, '$.tool_input') END,
-		       COALESCE(json_extract(payload, '$.is_error'), 0),
-		       COALESCE(json_extract(payload, '$.agent_type'), ''),
-		       CASE WHEN kind = 'agent.stop' THEN json_extract(payload, '$.last_assistant_message') END,
-		       CASE WHEN kind = 'turn.assistant' THEN json_extract(payload, '$.tools') END,
+		       COALESCE(json_extract(`+ZPayload+`,'$.tool_use_id'), ''),
+		       CASE WHEN kind = 'tool.pre' THEN json_extract(`+ZPayload+`,'$.tool_input') END,
+		       COALESCE(json_extract(`+ZPayload+`,'$.is_error'), 0),
+		       COALESCE(json_extract(`+ZPayload+`,'$.agent_type'), ''),
+		       CASE WHEN kind = 'agent.stop' THEN json_extract(`+ZPayload+`,'$.last_assistant_message') END,
+		       CASE WHEN kind = 'turn.assistant' THEN json_extract(`+ZPayload+`,'$.tools') END,
 		       COALESCE(model, ''), tokens_in, COALESCE(tokens_out, 0), COALESCE(cache_read, 0), COALESCE(cache_write, 0),
 		       cost_usd, internal
 		  FROM events
@@ -236,9 +236,9 @@ const parentCallSlackMs = 10 * 60_000
 // SubagentStop carried one.
 func linkParentCall(ctx context.Context, q Querier, sessionID string, tr *SubagentTrail) error {
 	rows, err := q.QueryContext(ctx, `
-		SELECT ts, kind, COALESCE(json_extract(payload, '$.tool_use_id'), ''),
-		       COALESCE(json_extract(payload, '$.tool_input'), '{}'),
-		       CASE WHEN kind = 'tool.post' THEN json_extract(payload, '$.tool_response') END
+		SELECT ts, kind, COALESCE(json_extract(`+ZPayload+`,'$.tool_use_id'), ''),
+		       COALESCE(json_extract(`+ZPayload+`,'$.tool_input'), '{}'),
+		       CASE WHEN kind = 'tool.post' THEN json_extract(`+ZPayload+`,'$.tool_response') END
 		  FROM events
 		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +kind IN ('tool.pre', 'tool.post') AND tool IN ('Agent', 'Task')
 		   AND COALESCE(agent_id, '') = '' AND ts BETWEEN ? AND ?

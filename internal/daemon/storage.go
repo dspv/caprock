@@ -103,6 +103,9 @@ type StorageReport struct {
 	// little to scale by.
 	GrowthBytesPerDayEst int64 `json:"growth_bytes_per_day_est"`
 	RetentionDays        int   `json:"retention_days"`
+	// Compression is the Compress tool output switch and where its idle-time
+	// job is (ADR-093); what it saved is Database.Compression.
+	Compression CompressionReport `json:"compression"`
 }
 
 // FileSize is one top-level entry of the data directory; a directory is the
@@ -145,6 +148,7 @@ func (d *Daemon) storageReport(ctx context.Context) any {
 	d.storage.mu.Unlock()
 	r.Error = errText
 	r.Measuring = measuring
+	r.Compression = d.compressionReport(ctx)
 	if d.store != nil {
 		if m, err := d.store.AutoVacuum(ctx); err == nil {
 			r.ReturnsFreeSpace = m == store.AutoVacuumIncremental

@@ -375,7 +375,7 @@ func (s *Store) backfillInnerTool(ctx context.Context) error {
 	const batch = 5000
 	for {
 		rows, err := s.db.QueryContext(ctx,
-			`SELECT id, payload FROM events
+			`SELECT id, `+ZPayload+` FROM events
 			  WHERE kind = 'tool.pre' AND tool = 'exec' AND inner_tool IS NULL
 			  LIMIT ?`, batch)
 		if err != nil {
@@ -445,7 +445,7 @@ func (s *Store) backfillTouch(ctx context.Context) error {
 	var lastID int64
 	for {
 		rows, err := s.db.QueryContext(ctx,
-			`SELECT id, payload FROM events
+			`SELECT id, `+ZPayload+` FROM events
 			  WHERE kind = 'tool.pre' AND touch_dir IS NULL AND id > ?
 			  ORDER BY id LIMIT ?`, lastID, batch)
 		if err != nil {

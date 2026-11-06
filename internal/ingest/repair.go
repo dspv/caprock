@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/dspv/caprock/internal/store"
 )
 
 // RepairAssistantText re-derives the stored prose of assistant turns from the
@@ -488,7 +490,7 @@ func HasReplacementChar(s string) bool {
 func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger, after int64, limit int) (linked int, lastID int64, err error) {
 	lastID = after
 	rows, err := db.QueryContext(ctx, `
-		SELECT e.id, COALESCE(json_extract(e.payload,'$.tool_use_id'),''),
+		SELECT e.id, COALESCE(json_extract(`+store.ZPayloadE+`,'$.tool_use_id'),''),
 		       COALESCE(se.transcript_path,'')
 		FROM events e JOIN sessions se ON se.sid = e.sid
 		WHERE e.kind = 'tool.pre' AND e.msg_id IS NULL

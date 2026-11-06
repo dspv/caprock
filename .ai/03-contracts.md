@@ -1460,7 +1460,7 @@ What that file holds bounds what may ever be said about it: a timestamp and two 
 `GET /v1/storage` reports what Caprock keeps on disk: `{data_dir,
 total_bytes, files[], database?, measured_at?, measure_ms?, error?, measuring?,
 reclaimable_bytes, returns_free_space, growth_bytes_per_day_est,
-retention_days}`.
+retention_days, compression}`.
 
 - **`files`** is every top-level entry of the data directory, `{name, bytes,
   dir?}`, largest first; a directory is the sum of the regular files under it.
@@ -1501,6 +1501,18 @@ retention_days}`.
   payload recorded over the last 30 days, per day, times the events table's
   on-disk bytes (data and indexes) over the payload it holds. `0` when there is
   nothing to scale by.
+- **`database.compression`** counts the tool payloads by how they are stored
+  (§ Compressed tool payloads): `rows`, `stored_bytes` and `plain_bytes` of
+  the compressed ones — the plain size read from each frame's header, not by
+  decompressing — and `eligible_rows`/`eligible_bytes`, the plain `tool.pre`
+  and `tool.post` payloads older than a day. `sample_rows` of those, picked by
+  id with a fixed seed, are compressed in memory (`sample_plain_bytes` →
+  `sample_stored_bytes`), and **`est_saving_bytes` is `eligible_bytes` scaled
+  by that ratio: an estimate, and named as one** wherever it is shown.
+- **`compression`** is the switch and the idle-time job: `{on, through_ms?,
+  restoring?}` — `through_ms` the time of the event at the job's cursor,
+  `restoring` true while it is off and compressed rows remain. Read per
+  request from `config.json` and `meta`.
 - **A paired device may read it** — sizes and counts only; the data directory
   path is already in `/v1/status`.
 
@@ -6628,6 +6640,90 @@ Two things about the key are load-bearing:
   recent days on the owner's database match a `COUNT(DISTINCT session_id)` over
   the events themselves.
 
+### Compressed tool payloads (migration 0080)
+
+With **Compress tool output** on (Status → Storage; `PUT /v1/settings`
+`compress_tool_output`, a bool, off unless turned on, stored as a pointer in
+`config.json` only once switched), the daemon stores the `payload` of older
+`tool.pre` and `tool.post` rows compressed, in the same column
+([ADR-093](08-decisions.md); `internal/store/zpayload.go`,
+`internal/daemon/zstd.go`). Every other kind stays plain JSON text.
+
+- **The stored form.** A BLOB: byte `0xEA`, then the length of what follows
+  as four big-endian bytes, then one standard zstd frame (level 3, no
+  dictionary, with its content size and checksum). `typeof(payload) =
+  'blob'` tells it apart; every plain payload is TEXT. To SQLite's JSON
+  functions it is a well-formed JSONB string, so a statement that does not
+  decompress gets `NULL` from `json_extract` and `->>`, `0` from `json_valid`
+  and no rows from `json_each`: never the `malformed JSON` error a bare zstd
+  frame raises. Outside Caprock, `substr(payload, 6)` is the frame:
+  `zstd -d` reads it.
+- **Reading it.** `store.ZPayload` (and `ZPayloadE`, `ZPayloadOf(alias)`) is
+  `CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END`;
+  `zjson` is a deterministic SQL function the store registers with the
+  driver. A plain row never leaves SQLite, so a reader of plain rows costs
+  what it did. Every statement that may read a tool row's payload reads it
+  this way — the in-place repairs' `json_set` included, which then write
+  plain JSON — and `TestEveryPayloadReadKnowsCompression` fails on one that
+  does not; the readers of prose and lifecycle rows read the column bare and
+  are listed in that test with why. `caprock export --payload` decompresses.
+  A frame that cannot be decompressed reads as `{}` and is left as stored.
+- **What is compressed.** `tool.pre` and `tool.post` rows whose `ts` is more
+  than a day old (`store.CompressAge`), and only when that saves at least a
+  tenth of the row: a small row stays plain. A row stamped more than an hour
+  in the future counts as old, so a skewed clock cannot hold the job back.
+- **The job.** Only while idle, after the base64 compaction and the one
+  VACUUM below have finished and `tool_fields` is filled, never during start
+  and never on the write path. One cursor, `meta.payload_zstd_cursor`: every
+  compressed row has an id at or below it. On, `CompressPayloadsStep` reads
+  the next 500 ids above it outside any transaction, compresses the tool
+  rows old enough, and writes them and the new cursor in one short
+  transaction, each update matching the payload it read so a concurrent
+  rewrite wins; it stops at the first row younger than a day. Off,
+  `DecompressPayloadsStep` restores the compressed rows in the 500 ids at and
+  below the cursor and lowers it, until it is 0. Between steps the daemon
+  rests twice as long as the step took (at least 50 ms) and stops as soon as
+  anything is to be recorded. Interrupted anywhere, it resumes at the cursor.
+  A row passed and later rewritten by a repair stays plain.
+- **The space.** The overflow pages compression frees go back by
+  incremental vacuum. Once a compression pass has finished having saved at
+  least 256 MiB since the last time (`meta.payload_zstd_repacked`), the
+  daemon runs one VACUUM to pack the leaf pages it left half empty — the
+  VACUUM below, under the same rules: free disk of 2.2 × the used size,
+  10 minutes at most, rolled back by anything that wants to write, tried
+  again a day later.
+- **Restoring needs room.** Off, the job first checks free disk on the data
+  directory's volume for `meta.payload_zstd_saved` — the payload bytes
+  compression has saved, added to by each step and taken from by each
+  restoring one; rows deleted since are not taken off, so it is an upper
+  bound — plus 512 MiB. Without it nothing is restored and the footprint says
+  so once.
+- **An older Caprock refuses the database.** Migration 0080 creates nothing;
+  it initializes the two `meta` rows and moves the schema version past every
+  release that cannot read the stored form, so ADR-082's guard has an older
+  binary refuse to open it, untouched, with its one-line message. Such a
+  binary would read a compressed row as a string with no fields, and its
+  repairs' `json_set` would overwrite one with that string.
+
+```sql
+INSERT OR IGNORE INTO meta(k, v) VALUES ('payload_zstd_cursor', '0');
+INSERT OR IGNORE INTO meta(k, v) VALUES ('payload_zstd_saved', '0');
+```
+
+Measured on a copy of the owner's database (2,524 MiB, 886,532 events,
+2026-11-06; macOS, a loaded machine), steps run back to back:
+
+- **Before:** 556,947 tool payloads older than a day, 1,413 MiB. The sample
+  estimate said 812 MiB of payload saved.
+- **Compression:** 542,499 rows compressed, 818 MiB of payload saved, in
+  1,741 steps and 52 s; slowest step 242 ms. File and WAL never grew.
+- **The space:** incremental vacuum returned 578 MiB in 19 s (file 1,945
+  MiB); the VACUUM after it took the file to 1,511 MiB in 48 s, 1,520 MiB
+  of extra disk at its peak.
+- **Restoring** all of it: 31 s. Every reader compared — prose, a session's
+  events, the Tools drill-down over 30 and 90 days, the Week, todos — gave
+  identical results compressed, after the VACUUM and after restoring.
+
 ### Payload compaction and auto-vacuum (no migration)
 
 Two changes to stored state that no migration can make: a migration runs in a
@@ -6778,7 +6874,7 @@ CREATE TABLE events (
   source      TEXT NOT NULL,                -- 'hook' | 'transcript' | 'opencode' | 'gemini'
   kind        TEXT NOT NULL,                -- see 02-architecture.md § Event model
   tool        TEXT,
-  payload     TEXT NOT NULL,                -- raw JSON
+  payload     TEXT NOT NULL,                -- raw JSON; an older tool row's may be a compressed BLOB (§ Compressed tool payloads)
   tokens_in   INTEGER, tokens_out INTEGER,
   cache_read  INTEGER, cache_write INTEGER,
   cost_usd    REAL,

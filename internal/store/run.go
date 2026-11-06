@@ -48,8 +48,8 @@ func LastRun(ctx context.Context, q Querier, sessionID string, until int64) (Run
 func runFiles(ctx context.Context, q Querier, sessionID string, from, until int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `
 		SELECT p FROM (
-			SELECT COALESCE(json_extract(payload, '$.tool_input.file_path'),
-			                json_extract(payload, '$.tool_input.notebook_path'), '') AS p,
+			SELECT COALESCE(json_extract(`+ZPayload+`, '$.tool_input.file_path'),
+			                json_extract(`+ZPayload+`, '$.tool_input.notebook_path'), '') AS p,
 			       MIN(ts) AS first
 			FROM events INDEXED BY idx_events_attr_work
 			WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre' AND ts >= ? AND ts <= ? AND internal = 0
