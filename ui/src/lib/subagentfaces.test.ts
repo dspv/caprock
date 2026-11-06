@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  DEFAULT_SUBAGENT_LOOK, SUBAGENT_LOOKS, SUBAGENT_LOOK_KEY, clockTime, getSubagentLook, isSubagentLook, peakMinute, readSubagentLook, resetSubagentLookForTest,
-  setSubagentLook, sparkPoints, subagentFace, subagentSummary,
+  DEFAULT_SUBAGENT_LOOK, MATRIX_TILES, SUBAGENT_LOOKS, SUBAGENT_LOOK_KEY, clockTime, getSubagentLook, isSubagentLook, peakMinute, readSubagentLook, resetSubagentLookForTest,
+  matrixRoom, setSubagentLook, sparkPoints, subagentFace, subagentSummary,
 } from './subagentfaces'
 import { FACES, DUCKS } from './faces'
 
@@ -15,6 +15,17 @@ describe('sparkPoints', () => {
   it('draws a flat line along the bottom when none worked', () => {
     expect(sparkPoints([0, 0], 0, 80, 16)).toBe('0,15.5 80,15.5')
     expect(sparkPoints([], 0, 80, 16)).toBe('0,16 80,16')
+  })
+})
+
+describe('matrixRoom', () => {
+  // Two rows of four, the +N included: the grid is never taller than the portrait.
+  it('gives eight faces, or seven and room for +N when more than eight work', () => {
+    expect(MATRIX_TILES).toBe(8)
+    expect(matrixRoom(0)).toBe(8)
+    expect(matrixRoom(8)).toBe(8)
+    expect(matrixRoom(9)).toBe(7)
+    expect(matrixRoom(40)).toBe(7)
   })
 })
 

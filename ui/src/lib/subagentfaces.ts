@@ -3,9 +3,9 @@
  * Inspector, the subagent chart). Three looks, per viewer:
  *
  * - **matrix** (the default), *Matrix*: no frame; at the left of the
- *   figures the agent's mark in a large tile and the subagents' faces in a
- *   grid of four columns beside it, the working in colour, the finished
- *   grey, *+N* past eight;
+ *   figures the session's portrait large and the subagents' faces in a
+ *   grid of four columns and two rows beside it, the working in colour,
+ *   the finished grey, seven and *+N* past eight;
  * - **chips**, *Faces as chips*: the row of chips under the figures are the
  *   subagents' faces, *1 working · peak 4* beside them opens the hour's
  *   chart;
@@ -36,8 +36,18 @@ export const SUBAGENT_LOOKS: readonly { id: SubagentLook; name: string }[] = [
 export const DEFAULT_SUBAGENT_LOOK: SubagentLook = 'matrix'
 export const SUBAGENT_LOOK_KEY = 'caprock.app.subagent-look'
 
-/** The most faces the matrix draws before its *+N* tile: two rows of four. */
-export const MATRIX_FACES = 8
+/**
+ * The most tiles the matrix draws, its *+N* included: two rows of four, so
+ * the grid is never taller than the portrait beside it (owner, 2026-11-06,
+ * translated: "this needs to be made symmetric"). Past eight, seven faces
+ * and *+N*.
+ */
+export const MATRIX_TILES = 8
+
+/** How many faces the matrix draws: eight, or seven and *+N* when more than eight work. */
+export function matrixRoom(working: number): number {
+  return working > MATRIX_TILES ? MATRIX_TILES - 1 : MATRIX_TILES
+}
 
 export function isSubagentLook(v: unknown): v is SubagentLook {
   return v === 'matrix' || v === 'chips' || v === 'strip'

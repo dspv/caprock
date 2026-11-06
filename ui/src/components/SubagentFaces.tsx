@@ -6,11 +6,12 @@
  * matrix of agent thumbnails and the main agent's icon, that's all — and
  * swap: pictures on the left, figures on the right"):
  *
- * - **Matrix**: no frame; beside the agent's large tile (drawn by the
- *   caller) the subagents' faces in a grid of four columns, the working in
- *   colour, the finished grey, a *+N* tile past eight. Hovering the grid, or
- *   a key into it, shows *1 working · peak 4*, which opens the hour's chart
- *   under the row, and the three dots.
+ * - **Matrix**: no frame; beside the agent's portrait (drawn by the
+ *   caller) the subagents' faces in a grid of four columns and two rows,
+ *   centred on the portrait, the working in colour, the finished grey, seven
+ *   and a *+N* tile past eight. Hovering the grid, or a key into it, floats
+ *   *1 working · peak 4*, which opens the hour's chart under the row, and
+ *   the three dots.
  * - **Faces as chips**: the chips under the figures are the subagents'
  *   faces (SubagentStrip in Cockpit), *1 working · peak 4* beside them, a
  *   click on it opens the hour's chart under the row.
@@ -218,17 +219,19 @@ export function SubagentChipsLine({ subs, count, chips }: { subs: SubagentsNow; 
 
 /**
  * The matrix (the default look): the subagents' faces in a grid of four
- * columns beside the agent's large tile, which the caller draws. The working
- * (and the waiting) in colour and breathing gently, still under
+ * columns and at most two rows beside the agent's portrait, which the
+ * caller draws, centred on the portrait's middle so one face or eight sit
+ * level with it (owner, 2026-11-06, translated: "this needs to be made
+ * symmetric"). The working (and
+ * the waiting) in colour and breathing gently, still under
  * prefers-reduced-motion; the recently finished grey and faded; past eight,
- * a *+N* tile for the working left out. Each face opens its subagent, as a
- * chip does. Under the grid, shown on hover, when a key moves into it, or
- * while the chart is open: *1 working · peak 4*, whose click opens the
- * hour's chart under the hero's row (the caller draws it from `open`), and
- * the three dots. Nothing else: the picture is the faces.
+ * seven faces and a *+N* tile for the working left out. Each face opens its
+ * subagent, as a chip does. Hovering the grid, or a key moving into it,
+ * floats MatrixControls under it, over what is below and taking no room, so
+ * the row keeps its height; while the hour is open the caller draws them
+ * above the chart instead. Nothing else: the picture is the faces.
  */
 export function SubagentMatrix({ subs, count, chips, more, open, onToggle, onChip }: { subs: SubagentsNow; count: number; chips: SubagentChip[]; more: number; open: boolean; onToggle: () => void; onChip: (id: string) => void }) {
-  const look = useSubagentLook()
   const [d] = useFaceDefault()
   const hour = subs.hour
   const peak = hour && hour.peak > 0 ? peakWords(hour) : ''
@@ -236,7 +239,7 @@ export function SubagentMatrix({ subs, count, chips, more, open, onToggle, onChi
   const finished = chips.length - busy
   const said = [`${busy + more} working`, finished > 0 ? `${finished} finished lately` : '', peak].filter(Boolean).join(' · ')
   return (
-    <div data-hero-matrix data-look="matrix" className="group/matrix grid min-w-0 content-start gap-1">
+    <div data-hero-matrix data-look="matrix" className="group/matrix relative grid min-w-0 self-center">
       <div role="group" aria-label={`Subagents${more > 0 ? `, and ${more} more working` : ''}`} title={said}
         className="grid w-max grid-cols-[repeat(4,24px)] gap-[3px]">
         {chips.map((c, i) => (
@@ -253,19 +256,37 @@ export function SubagentMatrix({ subs, count, chips, more, open, onToggle, onChi
             className="num grid h-[24px] w-[24px] place-items-center rounded-[6px] bg-[var(--app-row-hover)] text-[10px] font-medium text-fg-muted">+{more}</span>
         )}
       </div>
-      <div data-matrix-controls data-open={open || undefined}
-        className="flex min-w-0 items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/matrix:opacity-100 data-[open]:opacity-100">
-        {hour ? (
-          <button type="button" data-hero-count aria-expanded={open} onClick={onToggle}
-            title={`${subagents(count)} working${peak ? `; ${peak}, the most at once in a minute of the last hour` : ''}. ${open ? 'Hide' : 'Show'} the last hour`}
-            className="whitespace-nowrap rounded-[4px] px-0.5 text-[10.5px] leading-[14px] text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-            {subagentSummary(count, hour)}
-          </button>
-        ) : (
-          <span data-hero-count className="whitespace-nowrap text-[10.5px] leading-[14px] text-fg-muted" title={`${subagents(count)} working`}>{subagentSummary(count, hour)}</span>
-        )}
-        <LookSwitch look={look} />
-      </div>
+      {!open && (
+        <div data-matrix-float
+          className="pointer-events-none absolute left-[-5px] top-[calc(100%+3px)] z-20 rounded-[6px] border border-border bg-panel px-1 py-px opacity-0 shadow-sm transition-opacity duration-150 focus-within:pointer-events-auto focus-within:opacity-100 group-hover/matrix:pointer-events-auto group-hover/matrix:opacity-100">
+          <MatrixControls subs={subs} count={count} open={open} onToggle={onToggle} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The matrix's line: *1 working · peak 4*, whose click opens or folds the
+ * hour's chart under the hero's row, and the three dots. Floated under the
+ * grid on hover; above the chart, in the flow, while the chart is open.
+ */
+export function MatrixControls({ subs, count, open, onToggle }: { subs: SubagentsNow; count: number; open: boolean; onToggle: () => void }) {
+  const look = useSubagentLook()
+  const hour = subs.hour
+  const peak = hour && hour.peak > 0 ? peakWords(hour) : ''
+  return (
+    <div data-matrix-controls data-open={open || undefined} className="flex min-w-0 items-center gap-1">
+      {hour ? (
+        <button type="button" data-hero-count aria-expanded={open} onClick={onToggle}
+          title={`${subagents(count)} working${peak ? `; ${peak}, the most at once in a minute of the last hour` : ''}. ${open ? 'Hide' : 'Show'} the last hour`}
+          className="whitespace-nowrap rounded-[4px] px-0.5 text-[10.5px] leading-[14px] text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+          {subagentSummary(count, hour)}
+        </button>
+      ) : (
+        <span data-hero-count className="whitespace-nowrap text-[10.5px] leading-[14px] text-fg-muted" title={`${subagents(count)} working`}>{subagentSummary(count, hour)}</span>
+      )}
+      <LookSwitch look={look} />
     </div>
   )
 }
