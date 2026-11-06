@@ -25,12 +25,17 @@ export function fitWithin(width: number, height: number, max = PHOTO_MAX_SIDE): 
  * canvas at PHOTO_MAX_SIDE and re-encoded as JPEG; the camera's rotation is
  * applied by the decoder, so the result stands the right way up.
  *
+ * A HEIC photo is always re-encoded, small or not: the daemon keeps no HEIC
+ * (paste.go pasteKinds), and one picked in Files arrives as it is, where the
+ * Photo Library would have handed over a JPEG.
+ *
  * Anything that cannot be decoded here — a GIF (it would lose its frames), a
  * format this browser does not read — goes as it is, and the daemon says
  * whether it accepts it.
  */
 export async function downscalePhoto(file: File): Promise<File> {
-  if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(file.type) || typeof createImageBitmap !== 'function') return file
+  const heic = isHeic(file)
+  if ((!heic && !/^image\/(jpeg|png|webp)$/.test(file.type)) || typeof createImageBitmap !== 'function') return file
   let bitmap: ImageBitmap
   try {
     bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
@@ -38,7 +43,7 @@ export async function downscalePhoto(file: File): Promise<File> {
     return file
   }
   try {
-    if (!needsDownscale(bitmap.width, bitmap.height, file.size)) return file
+    if (!heic && !needsDownscale(bitmap.width, bitmap.height, file.size)) return file
     const { width, height } = fitWithin(bitmap.width, bitmap.height)
     const canvas = document.createElement('canvas')
     canvas.width = width
@@ -53,4 +58,9 @@ export async function downscalePhoto(file: File): Promise<File> {
   } finally {
     bitmap.close()
   }
+}
+
+/** Whether a file is HEIC/HEIF, by type or, where the type is empty, by name. */
+export function isHeic(file: { name: string; type: string }): boolean {
+  return /^image\/hei[cf](-sequence)?$/.test(file.type) || (!file.type && /\.hei[cf]$/i.test(file.name))
 }

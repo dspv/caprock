@@ -74,6 +74,14 @@ so turning on the lock fails with *The Keychain did not take the change* and
 the pairing is not kept. The Simulator has no camera, so the scanner opens
 only on a real iPhone; check pairing by the camera on one before submitting.
 
+**Permission strings.** `Info.plist` names why the app wants the camera,
+the photo library, the microphone, speech recognition and Face ID. Attaching
+a photo or a file is the page's own `<input type=file>` in the WebView (no
+plugin): *Photos* opens iOS's Photo Library / Take Photo sheet, *Files* the
+Files browser (`.ai/04-ui.md` § From a phone, *Attach*). A change to these
+strings reaches iPhones only with the next App Store build; check Photos
+(library and camera) and Files on a real iPhone before submitting.
+
 After changing a plugin, run `npx cap sync ios` and commit the rewritten
 `CapApp-SPM/Package.swift`; CI fails when the committed one is stale. The
 Swift packages the plugins pull in (`capacitor-swift-pm`, `keychain-swift`,
