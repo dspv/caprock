@@ -533,9 +533,15 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   after the last one leaves — the daemon holds one `/v1/live?types=notify,permission`
   on each computer it reaches that is not `revoked` or `refused`, through
   that computer's channel, as its paired device there; checked every 3 s.
-  A socket that fails waits 2 s doubling to 60 s; one refused with `4401`
-  or `4403` (not allowed there yet, or removed) asks `GET /v1/pair/me` and
-  waits 60 s. A dropped socket reopens with `since=` the last frame heard.
+  A socket that fails waits 2 s doubling to 60 s, and so does one that
+  opened but dropped within 10 s (a computer that lets it in and hangs up
+  at once is not re-dialled every 2 s); one that stood longer reopens after
+  2 s. One refused with `4401` or `4403` (not allowed there yet, or
+  removed) asks `GET /v1/pair/me` and waits 60 s. A dropped socket reopens
+  with `since=` the computer's position in the last frame heard — `hello`,
+  `reset`, `ping` and `pong` carry it too — not the highest seq ever heard,
+  so a computer that restarted and counts from 1 again resumes rather than
+  answering every reconnect with a `reset`.
   What arrives is re-published on this machine's `/v1/live`, local only:
   - a `notify` frame becomes `{type: "notify", data: {…its own fields,
     machine, machine_name}}` — `machine` the computer's id here, `machine_name`
