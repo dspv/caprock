@@ -457,7 +457,11 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   or a drop), `refused` (the target hung up on the handshake: another key)
   and `closed`; `internal/peers` adds `revoked` when `GET /v1/pair/me`
   answers 401, cleared when a later check answers 200, and `pending` while
-  it answers `pending: true`.
+  it answers `pending: true`. A computer recorded as `pending` or `revoked`
+  that then lets this machine in — a socket opens there, or a `/v1/…`
+  request outside `/v1/pair` is answered below 400 — is asked `GET
+  /v1/pair/me` again by itself, so the state clears without Settings'
+  Check; the watch below does it before it says `online`.
 - **`GET /v1/machines`** answers `{machines: [{id, name, relay, added_at,
   status, error?, version?, role?, kind?, last_seen?, streams}]}`, in the
   order added, never a token. `?check=1` first asks each computer `GET

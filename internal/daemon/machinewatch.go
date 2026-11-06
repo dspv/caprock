@@ -184,6 +184,14 @@ func (d *Daemon) watchMachine(ctx context.Context, m watchedMachines, id string,
 			continue
 		}
 		opened := time.Now()
+		if st, err := m.Get(id); err == nil && (st.Status == peers.StatusPending || st.Status == peers.StatusRevoked) {
+			// The socket opened, so that computer lets this one in: learn it
+			// before saying "online", or the lists re-read now would still
+			// say "waiting for Allow".
+			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
+			_, _ = m.Check(cctx, id)
+			ccancel()
+		}
 		d.machineChanged(id, "online")
 		since = d.readMachineLive(ctx, m, id, ws, since)
 		_ = ws.Close(websocket.StatusNormalClosure, "")

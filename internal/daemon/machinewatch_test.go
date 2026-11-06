@@ -44,13 +44,28 @@ type watchFake struct {
 	at      []time.Time
 	scripts [][][]byte
 	opened  chan struct{}
+	// status is what Get says until Check is asked; Check makes it online.
+	status string
+	checks int
 }
 
 func (f *watchFake) List() []peers.Status { return []peers.Status{{ID: "m1", Name: "home"}} }
 func (f *watchFake) Get(string) (peers.Status, error) {
-	return peers.Status{ID: "m1", Name: "home", Status: "online"}, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	st := f.status
+	if st == "" {
+		st = "online"
+	}
+	return peers.Status{ID: "m1", Name: "home", Status: st}, nil
 }
-func (f *watchFake) Check(context.Context, string) (peers.Status, error) { return f.Get("m1") }
+func (f *watchFake) Check(context.Context, string) (peers.Status, error) {
+	f.mu.Lock()
+	f.checks++
+	f.status = "online"
+	f.mu.Unlock()
+	return f.Get("m1")
+}
 func (f *watchFake) OpenWS(_ context.Context, _, path string, _ []string) (api.MachineSocket, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -168,5 +183,39 @@ func TestMachineWatchRetriesAStableSocketSoon(t *testing.T) {
 	defer f.mu.Unlock()
 	if len(f.at) < 6 {
 		t.Fatalf("only %d opens in 400 ms at a 20 ms wait: a stable socket was backed off", len(f.at))
+	}
+}
+
+// A computer recorded as waiting for Allow whose socket opens has let this
+// machine in: the watch asks who this machine is there before it says
+// "online", so the lists that re-read on that word no longer say pending.
+func TestMachineWatchLearnsAnAllowBeforeSayingOnline(t *testing.T) {
+	d := &Daemon{bus: bus.New()}
+	sub := d.bus.Subscribe(16)
+	defer sub.Unsubscribe()
+	f := &watchFake{status: peers.StatusPending}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.watchMachine(ctx, f, "m1", watchPace{min: time.Hour, max: time.Hour, stable: time.Hour})
+	for {
+		select {
+		case fr := <-sub.C:
+			mf, ok := fr.Data.(machinesFrame)
+			if fr.Type != bus.FrameMachines || !ok || mf.Why != "online" {
+				continue
+			}
+			if !fr.LocalOnly {
+				t.Fatal("a word about another computer reached past this machine")
+			}
+			f.mu.Lock()
+			checks, st := f.checks, f.status
+			f.mu.Unlock()
+			if checks != 1 || st != "online" {
+				t.Fatalf("said online with %d checks, status %q", checks, st)
+			}
+			return
+		case <-time.After(5 * time.Second):
+			t.Fatal("the watch never said online")
+		}
 	}
 }

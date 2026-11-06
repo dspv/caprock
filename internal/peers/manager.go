@@ -400,6 +400,27 @@ func (m *Manager) seen(p *peer) {
 	m.mu.Unlock()
 }
 
+// letIn is a computer that let this machine in — a socket opened there, or a
+// request outside pairing answered below 400. A computer recorded as pending
+// or revoked has changed its mind (its owner allowed this machine, or knows
+// it again), so it is asked who this machine is now, in the background:
+// without this, nothing but Settings' Check cleared a pending state, and the
+// sidebar, Now and New agent said "waiting for Allow" long after the owner
+// pressed it.
+func (m *Manager) letIn(id string, p *peer) {
+	m.mu.Lock()
+	stale := p.pending || p.revoked
+	m.mu.Unlock()
+	if !stale {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, _ = m.Check(ctx, id)
+	}()
+}
+
 // Do carries req to computer id as this machine's paired device there. Only
 // the path and query travel. Whatever identifies the caller here — cookies,
 // Origin, a device token of this machine's own — is removed, and this
@@ -423,6 +444,9 @@ func (m *Manager) Do(id string, req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	m.seen(p)
+	if res.StatusCode < 400 && strings.HasPrefix(r.URL.Path, "/v1/") && !strings.HasPrefix(r.URL.Path, "/v1/pair") {
+		m.letIn(id, p)
+	}
 	// A 401 anywhere but pairing may mean this machine was removed there:
 	// ask, rather than believe one answer (ADR-058's phone does the same).
 	if res.StatusCode == http.StatusUnauthorized && !strings.HasPrefix(r.URL.Path, "/v1/pair") {
@@ -450,6 +474,7 @@ func (m *Manager) OpenWS(ctx context.Context, id, path string, protocols []strin
 		return nil, err
 	}
 	m.seen(p)
+	m.letIn(id, p)
 	return ws, nil
 }
 
