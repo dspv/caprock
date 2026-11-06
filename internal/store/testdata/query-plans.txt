@@ -921,6 +921,10 @@ SELECT dst FROM brain_edges WHERE src = ? UNION SELECT src FROM brain_edges WHER
 DELETE FROM inbox WHERE id = ?
     SEARCH inbox USING INTEGER PRIMARY KEY (rowid=?)
 
+## store.DeleteLimitReturn
+DELETE FROM limit_returns WHERE session_id = ?
+    SEARCH limit_returns USING INDEX sqlite_autoindex_limit_returns_1 (session_id=?)
+
 ## store.DeleteModuleDoc
 DELETE FROM module_docs WHERE module = ? AND collection = ? AND doc_id = ?
     SEARCH module_docs USING PRIMARY KEY (module=? AND collection=? AND doc_id=?)
@@ -1952,6 +1956,17 @@ UPDATE queued_messages SET session_id = ?, undelivered_at = 0, updated_at = ? WH
 DELETE FROM forced_continues WHERE session_id = ? AND task_id = ?
     SEARCH forced_continues USING INDEX sqlite_autoindex_forced_continues_1 (session_id=? AND task_id=?)
 
+## store.RestoreLimitReturns
+DELETE FROM limit_returns WHERE return_at < ? OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.session_id = limit_returns.session_id AND s.status != 'ended')
+    SCAN limit_returns
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.RestoreLimitReturns
+SELECT session_id, to_target, return_at FROM limit_returns ORDER BY return_at
+    SCAN limit_returns
+    USE TEMP B-TREE FOR ORDER BY
+
 ## store.RunningAt
 SELECT session_id, COALESCE(agent,'claude') FROM sessions WHERE COALESCE(worked_at,0) >= ? AND (status != 'ended' OR (last_event_at >= ? AND last_event_at <= ?)) ORDER BY worked_at DESC
     SCAN sessions
@@ -2128,6 +2143,9 @@ UPDATE sessions SET handoff_runes = ? WHERE session_id = ?
 ## store.SetLimitHit
 UPDATE sessions SET limit_hit_at = ?, limit_resets_at = ?, limit_window = ? WHERE session_id = ? AND limit_hit_at <= ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.SetLimitReturn
+INSERT INTO limit_returns (session_id, to_target, return_at) VALUES (?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET to_target = excluded.to_target, return_at = excluded.return_at
 
 ## store.SetModuleDoc
 INSERT INTO module_docs (module, collection, doc_id, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (module, collection, doc_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at

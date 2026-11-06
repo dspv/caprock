@@ -6972,7 +6972,7 @@ automatic order, a return after the reset and a toast with Undo, picked
 2026-11-03). Amends ADR-048 (a resume stays on its
 subscription). Contract: [03-contracts.md § Continue on another
 provider](03-contracts.md#continue-on-another-provider), § Session limit
-DDL (migration 0078).
+DDL (migration 0078), § Limit returns DDL (migration 0081).
 
 **Context.** When a Claude plan's five-hour or weekly window runs out,
 Claude Code ends the turn with a synthetic "You've hit your … limit" line
@@ -7018,8 +7018,10 @@ nowhere else.
   `"auto"` the first available target of an ordered list takes the session,
   once per limit, and the app is told so it can show the move and Undo
   (continue-on back). The optional return after the reset runs only when the
-  moved session is not mid-turn, and is held in memory — a restart forgets
-  it rather than moving work later by a stale plan.
+  moved session is not mid-turn. It was held in memory at first; since
+  2026-11-06 it is kept in `limit_returns` (migration 0081) and read back
+  after a restart, and one due more than an hour before the restart is
+  dropped rather than moving work later by a stale plan.
 - **Kimi is DeepSeek's twin,** on Moonshot's published Claude Code variables
   and model ids (platform.kimi.ai, read 2026-11-03), with no price shown
   (rule 6).
