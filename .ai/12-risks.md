@@ -173,6 +173,11 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   pattern a phone does not have — an app left open all day — so both ends
   of the channel count relay messages and bytes (`remote.State`,
   `remote.ClientState`) and channels close after 90 s with nothing open.
+  *2026-11-06:* the controller's count is in `GET /v1/machines`
+  (`traffic`); a window left open with nothing typed cost about 620 relay
+  messages and 30 KB an hour per linked computer, the target's own relay
+  pings not included (`bench/peer.mjs --idle 600`, [21-app.md](21-app.md)).
+  Still open: the free plan's allowance against real users' hours.
 - `OQ-15` — **Is a per-PR merge range calibrated?** The Work board
   (ADR-064) could say how long an open pull request has left until it
   merges, from the Pipeline's open → merge median. Nobody has checked that a

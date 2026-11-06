@@ -1345,6 +1345,14 @@ What it says, and what it does not:
   (served from Tel Aviv), one evening, a busy Mac. Another country's edge
   and Durable Object region give another figure; *from abroad* is still
   unmeasured.
+- What a linked computer costs the relay while a window is open and nobody
+  types (OQ-14): `bench/peer.mjs --idle 600`, the same night (22:13–22:23
+  UTC, loopback relay, one-minute load 4.6 at the end), counted on the
+  controller's channel — 22 messages out and 82 in over 600 s, 4,976 bytes:
+  about 620 relay messages and 30 KB an hour per linked computer. The
+  relay's own pings (every 25 s) and the target's `/v1/live` pings and
+  pongs are most of it; the target's pings to the relay are not in this
+  count. Raw JSON: `idle.json` in the same folder.
 - Rule 6: a public page that cites it says the date, where it was measured
   and that both ends were one Mac; a remote terminal is still not called
   "instant" or "like local" ([12-risks.md](12-risks.md) OQ-17/OQ-18).

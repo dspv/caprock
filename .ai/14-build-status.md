@@ -207,7 +207,7 @@ median, against 1.5 ms through a loopback relay
 ([21-app.md](21-app.md), OQ-17/OQ-18).
 
 **Next, no owner decision needed:** the Host's relay counters in `GET
-/v1/pair/state`; OQ-14's idle figure through the hosted relay over an hour;
+/v1/pair/state`; OQ-14 over an hour through the hosted relay, the target side counted too (10 min on loopback: about 620 messages an hour);
 frame coalescing only if OQ-14 says so. **Needs
 the owner:** Approve/Deny on a remote notification, the cross-computer
 cost view, what to do about the hosted relay's same-home latency, how the

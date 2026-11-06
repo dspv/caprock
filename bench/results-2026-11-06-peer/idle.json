@@ -1,0 +1,58 @@
+{
+  "bench": "peer",
+  "date": "2026-11-06T22:23:18.746Z",
+  "relay": "local (caprock remote relay on 127.0.0.1)",
+  "keys_per_leg": 40,
+  "gap_ms": 40,
+  "local": {
+    "n": 40,
+    "median_ms": 0.69,
+    "p95_ms": 17.49,
+    "max_ms": 19.63,
+    "min_ms": 0.47
+  },
+  "peer": {
+    "n": 40,
+    "median_ms": 1.16,
+    "p95_ms": 12.3,
+    "max_ms": 27.21,
+    "min_ms": 0.84
+  },
+  "added_ms": {
+    "median": 0.47,
+    "p95": -5.19
+  },
+  "machine": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 10,
+    "cpu_model": "Apple M1 Pro",
+    "mem_gb": 16,
+    "os": "Darwin 27.0.0",
+    "load": [
+      4.56,
+      5.53,
+      9.16
+    ]
+  },
+  "controller_view": {
+    "status": "online",
+    "version": "dev",
+    "streams": 0,
+    "traffic": {
+      "msgs_out": 57,
+      "msgs_in": 63,
+      "bytes_out": 2279,
+      "bytes_in": 3379
+    }
+  },
+  "idle": {
+    "seconds": 600,
+    "msgs_out": 22,
+    "msgs_in": 82,
+    "bytes_out": 88,
+    "bytes_in": 4888,
+    "msgs_per_hour": 624,
+    "bytes_per_hour": 29856
+  }
+}
