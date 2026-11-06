@@ -123,7 +123,7 @@ func countSubagentCalls(ctx context.Context, q Querier, sessionID string, workin
 		args = append(args, a.AgentID)
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT agent_id, COUNT(DISTINCT COALESCE(json_extract(payload, '$.tool_use_id'), 'event:' || id))
+		SELECT agent_id, COUNT(DISTINCT COALESCE(json_extract(`+ZPayload+`, '$.tool_use_id'), 'event:' || id))
 		  FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +kind = 'tool.pre'
 		   AND agent_id IN (?`+strings.Repeat(`, ?`, len(working)-1)+`)
 		 GROUP BY agent_id`, args...)
@@ -244,7 +244,7 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 	var payload []byte
 	var use sql.NullString
 	err = q.QueryRowContext(ctx, `
-		SELECT COALESCE(tool, ''), ts, payload, json_extract(payload, '$.tool_use_id')
+		SELECT COALESCE(tool, ''), ts, `+ZPayload+`, json_extract(`+ZPayload+`, '$.tool_use_id')
 		  FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND +kind = 'tool.pre'
 		 ORDER BY ts DESC, id DESC LIMIT 1`, sessionID, a.AgentID).Scan(&a.Tool, &a.ToolAt, &payload, &use)
 	switch {
@@ -263,7 +263,7 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 			var one int
 			err := q.QueryRowContext(ctx, `
 				SELECT 1 FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND +kind = 'tool.post' AND ts >= ?
-				   AND json_extract(payload, '$.tool_use_id') = ? LIMIT 1`, sessionID, a.AgentID, a.ToolAt, use.String).Scan(&one)
+				   AND json_extract(`+ZPayload+`, '$.tool_use_id') = ? LIMIT 1`, sessionID, a.AgentID, a.ToolAt, use.String).Scan(&one)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
@@ -273,8 +273,8 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 	if a.AgentType == "" {
 		// A subagent that made no call yet: its type is on whatever it sent.
 		_ = q.QueryRowContext(ctx, `
-			SELECT COALESCE(json_extract(payload, '$.agent_type'), '') FROM events
-			 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND ts >= ? AND json_extract(payload, '$.agent_type') <> ''
+			SELECT COALESCE(json_extract(`+ZPayload+`, '$.agent_type'), '') FROM events
+			 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND ts >= ? AND json_extract(`+ZPayload+`, '$.agent_type') <> ''
 			 ORDER BY ts DESC LIMIT 1`, sessionID, a.AgentID, a.StartedAt).Scan(&a.AgentType)
 	}
 	return nil
@@ -340,9 +340,9 @@ func typeSubagents(ctx context.Context, q Querier, sessionID string, since int64
 	for i := range list {
 		var t string
 		err := q.QueryRowContext(ctx, `
-			SELECT json_extract(payload, '$.agent_type') FROM events
+			SELECT json_extract(`+ZPayload+`, '$.agent_type') FROM events
 			 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND agent_id = ? AND ts >= ?
-			   AND json_extract(payload, '$.agent_type') <> ''
+			   AND json_extract(`+ZPayload+`, '$.agent_type') <> ''
 			 ORDER BY ts DESC, id DESC LIMIT 1`, sessionID, list[i].AgentID, since).Scan(&t)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err

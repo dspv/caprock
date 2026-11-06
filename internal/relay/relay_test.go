@@ -26,6 +26,38 @@ func openStore(t *testing.T) *store.Store {
 
 var seq int
 
+// A pull request recorded on a Bash result that is now stored compressed
+// (ADR-093) is still found.
+func TestPullRequestsReadCompressedResults(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	if err := store.UpsertSession(ctx, st.DB(), "pr", store.SessionPatch{Cwd: "/w"}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)
+	put(t, st, "pr", event.KindToolPost, at, map[string]any{
+		"tool_response": map[string]any{
+			"stdout":       strings.Repeat("https://github.com/o/r/pull/12\n", 40),
+			"gitOperation": map[string]any{"pr": map[string]any{"number": 12, "url": "https://github.com/o/r/pull/12", "action": "created"}},
+		},
+	})
+	var p []byte
+	if err := st.DB().QueryRow(`SELECT payload FROM events WHERE kind = 'tool.post'`).Scan(&p); err != nil {
+		t.Fatal(err)
+	}
+	z, ok := store.CompressPayload(p)
+	if !ok {
+		t.Fatal("did not compress")
+	}
+	if _, err := st.DB().Exec(`UPDATE events SET payload = ? WHERE kind = 'tool.post'`, z); err != nil {
+		t.Fatal(err)
+	}
+	prs, err := PullRequests(ctx, st.DB(), "pr")
+	if err != nil || len(prs) != 1 || prs[0].Number != 12 {
+		t.Fatalf("PullRequests = %+v, %v", prs, err)
+	}
+}
+
 func put(t *testing.T, st *store.Store, sid string, kind event.Kind, at time.Time, payload any) {
 	t.Helper()
 	b, _ := json.Marshal(payload)

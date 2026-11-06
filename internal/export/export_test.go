@@ -176,6 +176,33 @@ func TestJSONLPayload(t *testing.T) {
 	}
 }
 
+// A tool call stored compressed (ADR-093) is exported as the JSON it was,
+// never as the stored form.
+func TestJSONLPayloadOfACompressedRow(t *testing.T) {
+	path := fixture(t)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := `{"command":"go test\t./...\nok","out":"` + strings.Repeat("ok  pkg 0.1s ", 200) + `"}`
+	z, ok := store.CompressPayload([]byte(plain))
+	if !ok {
+		t.Fatal("did not compress")
+	}
+	if _, err := db.Exec(`UPDATE events SET payload = ? WHERE kind = 'tool.pre'`, z); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	out, _ := run(t, path, Options{Format: "jsonl", Payload: true, Agent: "claude"})
+	var m map[string]any
+	if err := json.Unmarshal([]byte(strings.SplitN(out, "\n", 2)[0]), &m); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := m["payload"].(map[string]any); !ok || !strings.Contains(p["out"].(string), "ok  pkg") {
+		t.Fatalf("payload of a compressed row: %.120v", m["payload"])
+	}
+}
+
 func TestRejects(t *testing.T) {
 	path := fixture(t)
 	db, err := OpenReadOnly(path)

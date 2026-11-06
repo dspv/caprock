@@ -91,10 +91,10 @@ func ToolDrillStats(ctx context.Context, q Querier, o DrillOptions) (ToolDrill, 
 	scope, args := o.Agent.eventScope("pr.sid")
 	rows, err := q.QueryContext(ctx, `
 		SELECT pr.ts, COALESCE(f.drill_key, ''), COALESCE(f.drill_by, ''),
-		       CASE WHEN pr.id <= `+toolFieldsPending+` THEN pr.payload END,
+		       CASE WHEN pr.id <= `+toolFieldsPending+` THEN `+zPayloadPr+` END,
 		       po.id IS NOT NULL,
 		       CASE WHEN po.id <= `+toolFieldsPending+`
-		            THEN json_valid(po.payload) AND COALESCE(json_extract(po.payload, '$.is_error'), 0) <> 0
+		            THEN json_valid(`+zPayloadPo+`) AND COALESCE(json_extract(`+zPayloadPo+`, '$.is_error'), 0) <> 0
 		            ELSE COALESCE(pf.is_error, 0) END,
 		       COALESCE(po.tool_bytes, 0)
 		FROM events pr

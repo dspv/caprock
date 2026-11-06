@@ -47,7 +47,7 @@ var todoTools = []string{"TodoWrite", "TaskCreate", "TaskUpdate", "update_plan"}
 // partial index only when it can see the query's WHERE implies the index's.
 func SessionTodos(ctx context.Context, q Querier, sessionID string) (TodoList, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT ts, tool, COALESCE(agent_id, ''), payload
+		SELECT ts, tool, COALESCE(agent_id, ''), `+ZPayload+`
 		  FROM events INDEXED BY idx_events_todo
 		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre'
 		   AND tool IN ('TodoWrite', 'TaskCreate', 'TaskUpdate', 'update_plan')

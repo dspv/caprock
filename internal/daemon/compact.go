@@ -17,7 +17,7 @@ import (
 
 // Making the database smaller on its own, while nobody is working.
 //
-// Three steps, each only after the daemon has been idle for idleFor, each
+// Four steps, each only after the daemon has been idle for idleFor, each
 // standing down the moment something is to be recorded:
 //
 //  1. **Payload compaction** (store.CompactPayloadsStep): rows stored before
@@ -29,7 +29,10 @@ import (
 //     the disk to spare (vacuumRoom) and under a time limit; a write that
 //     arrives meanwhile interrupts it, and an interrupted VACUUM changes
 //     nothing. Tried again a day later if it could not run or finish.
-//  3. **Incremental vacuum** from then on: free pages — from the retention
+//  3. **Compressed tool output** (zstd.go, ADR-093), only with the setting
+//     on: tool rows older than a day are compressed a window at a time; with
+//     it off, rows compressed before are restored the same way.
+//  4. **Incremental vacuum** from then on: free pages — from the retention
 //     prune, from rows that shrank — are given back a few megabytes at a
 //     time.
 //
@@ -129,6 +132,11 @@ func (d *Daemon) quiet(now time.Time) bool {
 type compactState struct {
 	vacuumTried time.Time
 	roomWarned  bool
+	// restoreWarned is set once the footprint has said why compressed rows
+	// are not being restored (not enough free disk).
+	restoreWarned bool
+	// repackTried is when the VACUUM after a compression pass last started.
+	repackTried time.Time
 }
 
 // compactDB runs the three steps as far as the quiet lasts.
@@ -148,10 +156,13 @@ func (d *Daemon) compactDB(ctx context.Context, cs *compactState) {
 	if mode != store.AutoVacuumIncremental {
 		if time.Since(cs.vacuumTried) >= vacuumRetry && d.quiet(time.Now()) {
 			cs.vacuumTried = time.Now()
-			d.vacuumOnce(ctx, cs)
+			_ = d.vacuumOnce(ctx, cs)
 		}
 		return
 	}
+	// After the one VACUUM, so the space compression frees goes back to the
+	// disk as incremental vacuum finds it.
+	d.zstdPayloads(ctx, cs)
 	d.incrementalVacuum(ctx)
 }
 
@@ -205,11 +216,14 @@ func compactAction(rows int, freed int64, done bool) string {
 }
 
 // vacuumOnce runs the VACUUM that switches the database to incremental
-// vacuuming, when the disk has room for it.
-func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) {
+// vacuuming, when the disk has room for it, and reports whether it ran to the
+// end. On a database already incremental it is the same VACUUM: compressed
+// tool output uses it once, to repack the pages compression left half
+// empty (zstd.go).
+func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) bool {
 	before, err := d.store.Pages(ctx)
 	if err != nil {
-		return
+		return false
 	}
 	used := before.Bytes() - before.FreeBytes()
 	needData, needTemp := vacuumRoom(used)
@@ -223,7 +237,7 @@ func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) {
 		}
 		d.log.Info("database not compacted: not enough free disk", "component", "daemon",
 			"need", needData, "free", freeData, "need_temp", needTemp, "free_temp", freeTemp, "err_data", errData, "err_temp", errTemp)
-		return
+		return false
 	}
 	wal := config.DBPath(d.opt.DataDir) + "-wal"
 	start := time.Now()
@@ -237,7 +251,7 @@ func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) {
 		why := "it failed"
 		switch {
 		case ctx.Err() != nil:
-			return
+			return false
 		case errors.Is(vctx.Err(), context.DeadlineExceeded):
 			why = fmt.Sprintf("it ran past %d minutes", int(vacuumTimeout/time.Minute))
 		case vctx.Err() != nil:
@@ -245,7 +259,7 @@ func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) {
 		}
 		d.actions.add("stopped compacting the database after " + took.String() + " because " + why + "; nothing changed, tried again tomorrow")
 		d.log.Info("database compaction stopped", "component", "daemon", "why", why, "took", took, "err", err)
-		return
+		return false
 	}
 	walPeak := int64(0)
 	if st, err := os.Stat(wal); err == nil {
@@ -258,6 +272,7 @@ func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) {
 		Bytes(uint64(before.Bytes())), Bytes(uint64(after.Bytes())), Bytes(uint64(max(freed, 0))), took))
 	d.log.Info("database compacted", "component", "daemon",
 		"before", before.Bytes(), "after", after.Bytes(), "freed", freed, "took", took, "wal_peak", walPeak)
+	return true
 }
 
 // incrementalVacuum gives the freelist back to the disk a step at a time,

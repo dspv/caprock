@@ -412,6 +412,16 @@ what and how many bytes it freed, and is listed in the footprint's `actions`
     to incremental auto-vacuum — only with free disk of 2.2 × the database's
     used size, within 10 minutes, and rolled back unchanged if anything wants
     to write meanwhile. Tried again daily until it has run.
+  - **Compressed tool output**, only with Compress tool output on (Status →
+    Storage, off by default; [ADR-093](08-decisions.md)): the payloads of
+    tool calls and results older than a day are stored zstd-compressed, 500
+    event ids per step, resting twice as long as a step took; prose and every
+    other kind stay plain JSON. Turned off, the same job restores them, when
+    the disk has room for what they grow back to. After a pass that saved
+    256 MiB or more, one VACUUM under the rule above packs the pages it left
+    half empty. Readers of tool rows decompress through `store.ZPayload`
+    (details and measurements in [03-contracts.md § Compressed tool
+    payloads](03-contracts.md#compressed-tool-payloads-migration-0080)).
   - **Incremental vacuum** from then on returns free pages — from the retention
     prune, from rows that shrank — 4 MiB at a time. A database created since
     2026-10-13 is incremental from the start.

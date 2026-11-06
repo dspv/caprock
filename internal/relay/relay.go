@@ -164,11 +164,11 @@ func gitSummary(ctx context.Context, cwd string) *Git {
 // action "created"). Subagents' are included: the session opened them too.
 func PullRequests(ctx context.Context, q store.Querier, sessionID string) ([]PR, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT CAST(COALESCE(json_extract(payload, '$.tool_response.gitOperation.pr.number'), 0) AS INTEGER),
-		       COALESCE(json_extract(payload, '$.tool_response.gitOperation.pr.url'), '')
-		FROM events
-		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.post'
-		  AND json_extract(payload, '$.tool_response.gitOperation.pr.action') = 'created'
+		SELECT CAST(COALESCE(json_extract(p, '$.tool_response.gitOperation.pr.number'), 0) AS INTEGER),
+		       COALESCE(json_extract(p, '$.tool_response.gitOperation.pr.url'), '')
+		FROM (SELECT ts, `+store.ZPayload+` AS p FROM events
+		      WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.post')
+		WHERE json_extract(p, '$.tool_response.gitOperation.pr.action') = 'created'
 		ORDER BY ts`, sessionID)
 	if err != nil {
 		return nil, err

@@ -160,7 +160,7 @@ func nullTrue(b bool) any {
 func RefreshToolFields(ctx context.Context, q Querier, id int64) error {
 	var kind, tool string
 	var payload []byte
-	err := q.QueryRowContext(ctx, `SELECT kind, COALESCE(tool, ''), payload FROM events WHERE id = ?`, id).
+	err := q.QueryRowContext(ctx, `SELECT kind, COALESCE(tool, ''), `+ZPayload+` FROM events WHERE id = ?`, id).
 		Scan(&kind, &tool, &payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -243,7 +243,7 @@ func (s *Store) ToolFieldsStep(ctx context.Context, window int) (filled int, don
 	}
 	lo := max(hi-int64(window), 0)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, kind, COALESCE(tool, ''), payload FROM events
+		SELECT id, kind, COALESCE(tool, ''), `+ZPayload+` FROM events
 		 WHERE id > ? AND id <= ? AND kind IN ('tool.pre', 'tool.post')`, lo, hi)
 	if err != nil {
 		return 0, false, err

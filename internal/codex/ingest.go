@@ -1144,10 +1144,10 @@ func (in *Ingester) syncTools(ctx context.Context, s *Session) (int, error) {
 	}
 	rows, err := in.rec.Store.DB().QueryContext(ctx,
 		`SELECT id, COALESCE(key,''), ts,
-		        COALESCE(json_extract(payload,'$.tool_use_id'),''),
-		        COALESCE(json_extract(payload,'$.tool_input'),'{}')
+		        COALESCE(json_extract(`+store.ZPayload+`,'$.tool_use_id'),''),
+		        COALESCE(json_extract(`+store.ZPayload+`,'$.tool_input'),'{}')
 		   FROM events
-		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = ? AND json_valid(payload)`,
+		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = ? AND json_valid(`+store.ZPayload+`)`,
 		s.ID, string(event.SourceCodex), string(event.KindToolPre))
 	if err != nil {
 		return 0, err
@@ -1189,12 +1189,12 @@ func (in *Ingester) syncTools(ctx context.Context, s *Session) (int, error) {
 		for _, f := range todo {
 			if f.useID == "" {
 				if _, err := q.ExecContext(ctx,
-					`UPDATE events SET payload = json_set(payload, '$.tool_input', json(?)) WHERE id = ?`,
+					`UPDATE events SET payload = json_set(`+store.ZPayload+`, '$.tool_input', json(?)) WHERE id = ?`,
 					string(f.input), f.id); err != nil {
 					return err
 				}
 			} else if _, err := q.ExecContext(ctx,
-				`UPDATE events SET payload = json_set(payload, '$.tool_use_id', ?, '$.tool_input', json(?)) WHERE id = ?`,
+				`UPDATE events SET payload = json_set(`+store.ZPayload+`, '$.tool_use_id', ?, '$.tool_input', json(?)) WHERE id = ?`,
 				f.useID, string(f.input), f.id); err != nil {
 				return err
 			}

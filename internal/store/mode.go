@@ -29,7 +29,7 @@ func LastPermissionMode(ctx context.Context, q Querier, sessionID string) (strin
 	err := q.QueryRowContext(ctx, `
 		SELECT mode FROM (
 		  SELECT ts, id,
-		         CASE WHEN json_valid(payload) THEN json_extract(payload, '$.permission_mode') END AS mode
+		         CASE WHEN json_valid(`+ZPayload+`) THEN json_extract(`+ZPayload+`, '$.permission_mode') END AS mode
 		  FROM events INDEXED BY idx_events_session_ts
 		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = 'hook' AND kind <> 'tool.post'
 		  ORDER BY ts DESC, id DESC

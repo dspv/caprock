@@ -26,6 +26,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // the driver the store uses
+
+	"github.com/dspv/caprock/internal/store" // ZPayloadE, and the zjson function it calls
 )
 
 // Tables and formats the command accepts.
@@ -84,7 +86,9 @@ var eventCols = []column{
 	{"msg_id", "e.msg_id", kText},
 }
 
-var payloadCol = column{"payload", "e.payload", kText}
+// payloadCol is the payload as JSON text: decompressed when a tool row's is
+// stored compressed (ADR-093), so an export never carries the stored form.
+var payloadCol = column{"payload", store.ZPayloadE, kText}
 
 var sessionCols = []column{
 	{"session_id", "s.session_id", kText},
