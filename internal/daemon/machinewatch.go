@@ -52,15 +52,19 @@ const (
 	// failed one does, so a computer that accepts and hangs up at once is
 	// not re-dialled, and its lists re-read, every 2 s.
 	machineWatchStable = 10 * time.Second
+	// machineWatchAllow is the first wait for a computer that waits for its
+	// owner's Allow: the owner is usually at it right then, so the answer is
+	// looked for after 5 s, 10 s, 20 s… rather than a minute later.
+	machineWatchAllow = 5 * time.Second
 	// machineWatchTypes are the frames asked of another computer.
 	machineWatchTypes = "notify,permission"
 )
 
 // watchPace is how long watchMachine waits between attempts; a test passes
 // shorter ones.
-type watchPace struct{ min, max, stable time.Duration }
+type watchPace struct{ min, max, stable, allow time.Duration }
 
-var machineWatchPace = watchPace{min: machineWatchRetryMin, max: machineWatchRetryMax, stable: machineWatchStable}
+var machineWatchPace = watchPace{min: machineWatchRetryMin, max: machineWatchRetryMax, stable: machineWatchStable, allow: machineWatchAllow}
 
 // watchedMachines is what the watch needs of the computers this machine
 // reaches: api.Machines, narrowed, so a test can stand in for the channels.
@@ -171,11 +175,17 @@ func (d *Daemon) watchMachine(ctx context.Context, m watchedMachines, id string,
 			var ce websocket.CloseError
 			if errors.As(err, &ce) && (ce.Code == 4401 || ce.Code == 4403) {
 				// Not let in there (waiting for Allow, or removed): ask who
-				// this machine is there, and wait long.
+				// this machine is there. Removed is waited out long (the tick
+				// stops the watch once it reads revoked); waiting for Allow is
+				// looked at again soon, then less often.
 				cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
-				_, _ = m.Check(cctx, id)
+				st, _ := m.Check(cctx, id)
 				ccancel()
-				wait = pace.max
+				if st.Status == peers.StatusPending {
+					wait = min(max(wait, pace.allow), pace.max)
+				} else {
+					wait = pace.max
+				}
 			}
 			if !sleepCtx(ctx, wait) {
 				return

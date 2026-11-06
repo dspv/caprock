@@ -47,6 +47,12 @@ type watchFake struct {
 	// status is what Get says until Check is asked; Check makes it online.
 	status string
 	checks int
+	// refuse is how many opens are refused with 4403, as a computer that
+	// waits for its owner's Allow refuses them.
+	refuse int
+	// refusing is true while the last open was refused: a check then
+	// still hears "pending".
+	refusing bool
 }
 
 func (f *watchFake) List() []peers.Status { return []peers.Status{{ID: "m1", Name: "home"}} }
@@ -62,7 +68,9 @@ func (f *watchFake) Get(string) (peers.Status, error) {
 func (f *watchFake) Check(context.Context, string) (peers.Status, error) {
 	f.mu.Lock()
 	f.checks++
-	f.status = "online"
+	if !f.refusing {
+		f.status = "online"
+	}
 	f.mu.Unlock()
 	return f.Get("m1")
 }
@@ -71,6 +79,11 @@ func (f *watchFake) OpenWS(_ context.Context, _, path string, _ []string) (api.M
 	defer f.mu.Unlock()
 	f.paths = append(f.paths, path)
 	f.at = append(f.at, time.Now())
+	f.refusing = f.refuse > 0
+	if f.refusing {
+		f.refuse--
+		return nil, websocket.CloseError{Code: 4403, Reason: "waiting to be allowed"}
+	}
 	var frames [][]byte
 	if len(f.scripts) > 0 {
 		frames, f.scripts = f.scripts[0], f.scripts[1:]
@@ -217,5 +230,36 @@ func TestMachineWatchLearnsAnAllowBeforeSayingOnline(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("the watch never said online")
 		}
+	}
+}
+
+// A computer that waits for its owner's Allow is looked at again soon — the
+// owner is usually at it — not a minute later as a removed one is.
+func TestMachineWatchLooksSoonForAnAllow(t *testing.T) {
+	d := &Daemon{bus: bus.New()}
+	f := &watchFake{status: peers.StatusPending, refuse: 2, opened: make(chan struct{}, 8)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.watchMachine(ctx, f, "m1", watchPace{min: time.Millisecond, max: time.Hour, stable: time.Hour, allow: 20 * time.Millisecond})
+	// Two refusals, then the open that is let in.
+	select {
+	case <-f.opened:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a computer waiting for Allow was not looked at again soon")
+	}
+	// The check the watch makes before it says "online".
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		if st, _ := f.Get("m1"); st.Status == "online" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("still pending after the socket opened")
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	// 20 ms, then 40 ms: the allow wait, doubling.
+	if g := f.at[1].Sub(f.at[0]); g < 20*time.Millisecond {
+		t.Fatalf("first look again after %v, want at least 20 ms", g)
 	}
 }

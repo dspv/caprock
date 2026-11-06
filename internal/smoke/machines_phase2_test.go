@@ -118,6 +118,18 @@ func TestLaptopDrivesTheHomeMachine(t *testing.T) {
 		t.Fatalf("no computer waits on home: %+v", waiting)
 	}
 	runCLI(t, caprock, hEnv, "machines", "allow", name)
+	// The laptop learns of the Allow by itself — its watch on home is let in
+	// — with nobody opening Settings (no ?check=1).
+	allowed := time.Now()
+	for deadline := allowed.Add(45 * time.Second); ; time.Sleep(250 * time.Millisecond) {
+		if got := machineSessionsOf(t, lBase, mid); got.Status == "online" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the laptop still says %q 45 s after home allowed it%s", machineSessionsOf(t, lBase, mid).Status, logs())
+		}
+	}
+	t.Logf("the laptop learned of the Allow %v after it, unasked", time.Since(allowed).Round(time.Millisecond))
 	var list struct {
 		Machines []machineStatus `json:"machines"`
 	}
