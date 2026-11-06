@@ -57,6 +57,9 @@ type machineSessionsEntry struct {
 	read time.Time
 	// reading is closed when the read in flight ends; nil when none is.
 	reading chan struct{}
+	// changed counts the words that something changed there: a read that
+	// began before one is kept, but not as fresh.
+	changed uint64
 }
 
 // machineSessionsCache is each computer's last read.
@@ -72,6 +75,7 @@ func (s *Server) MachineChanged(id string) {
 	s.machSessions.mu.Lock()
 	if e := s.machSessions.m[id]; e != nil {
 		e.read = time.Time{}
+		e.changed++
 	}
 	s.machSessions.mu.Unlock()
 }
@@ -155,7 +159,7 @@ func (s *Server) machineSessionsOf(ctx context.Context, m peers.Status) MachineS
 	}
 	done := make(chan struct{})
 	e.reading = done
-	lastOK := e.LastOK
+	lastOK, gen := e.LastOK, e.changed
 	c.mu.Unlock()
 
 	got := s.readMachineSessions(ctx, base)
@@ -165,7 +169,14 @@ func (s *Server) machineSessionsOf(ctx context.Context, m peers.Status) MachineS
 	got.LastOK = lastOK
 	c.mu.Lock()
 	e.MachineSessions = got
-	e.read = time.Now()
+	if e.changed == gen {
+		e.read = time.Now()
+	} else {
+		// A prompt began, or a start landed, while this read was on the
+		// wire: what it says may be from before, so the next caller reads
+		// again rather than being served it for 10 s.
+		e.read = time.Time{}
+	}
 	e.reading = nil
 	c.mu.Unlock()
 	close(done)

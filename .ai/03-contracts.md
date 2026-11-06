@@ -531,7 +531,8 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   (unix ms, this machine's clock; `at` when `sessions` was read). A kept
   list is dropped at once by a request through `/v1/m/{id}/…` that is not
   a `GET` or `HEAD` (a start, a stop, an answer there) and by a word from
-  that computer (below).
+  that computer (below); a read that was on the wire when such a word came
+  is answered to its callers but not kept, so the next caller reads again.
 - **Watching the other computers** (Phase 2, `internal/daemon/machinewatch.go`).
   While a client of this machine's own holds `/v1/live` — and for 90 s
   after the last one leaves — the daemon holds one `/v1/live?types=notify,permission`

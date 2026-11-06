@@ -164,3 +164,41 @@ func TestLiveTypesOnTheSocket(t *testing.T) {
 		t.Fatalf("got %+v", f)
 	}
 }
+
+// A word from the computer that arrives while its list is being read means
+// the list may be from before it: the next caller reads again rather than
+// being served it as fresh for 10 s (a prompt said there would otherwise
+// not show in the one list until the cache ran out).
+func TestMachineSessionsAWordDuringARead(t *testing.T) {
+	var hits atomic.Int32
+	inRead, release := make(chan struct{}), make(chan struct{})
+	fm := &fakeMachines{status: "online", far: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			inRead <- struct{}{}
+			<-release
+		}
+		_, _ = w.Write([]byte(`[]`))
+	})}
+	s := machinesServer(t, fm)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		readMachineSessions(t, s)
+	}()
+	select {
+	case <-inRead:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the read never reached the computer")
+	}
+	s.MachineChanged("mini")
+	close(release)
+	<-done
+	readMachineSessions(t, s)
+	if n := hits.Load(); n != 2 {
+		t.Fatalf("after a word during the read: %d asks, want 2", n)
+	}
+	readMachineSessions(t, s)
+	if n := hits.Load(); n != 2 {
+		t.Fatalf("a quiet read after it: %d asks, want 2 (kept)", n)
+	}
+}
