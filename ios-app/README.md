@@ -38,9 +38,9 @@ CI when they drift.
 
 | Package                               | Version | For                                                                 |
 | ------------------------------------- | ------- | ------------------------------------------------------------------- |
-| `@capacitor/core`, `cli`, `ios`       | 8.5.3   | the shell                                                           |
+| `@capacitor/core`, `cli`, `ios`       | 8.6.0   | the shell                                                           |
 | `@capacitor/barcode-scanner`          | 3.1.3   | pairing by the camera (official)                                    |
-| `@capgo/capacitor-speech-recognition` | 8.4.4   | dictation with on-device recognition required                       |
+| `@capgo/capacitor-speech-recognition` | 8.4.6   | dictation with on-device recognition required                       |
 | `@aparajita/capacitor-biometric-auth` | 10.0.0  | the Face ID lock, passcode fallback                                 |
 | `@aparajita/capacitor-secure-storage` | 8.0.1   | the pairing and the lock setting in the Keychain (this device only) |
 | `@capacitor/keyboard`                 | 8.0.6   | the WebView resized natively above the keyboard                     |
