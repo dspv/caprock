@@ -12,6 +12,44 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.174.1] - 2026-11-07
+
+### Added
+
+- **machines:** `GET /v1/machines` says what each linked computer's channel
+  has cost the relay (`traffic`: messages and bytes each way since the daemon
+  started or paired it), and `bench/peer.mjs --idle N` measures a window left
+  open — so the hosted relay's free-plan headroom is read, not guessed.
+
+### Fixed
+
+- **ui:** the Agent panel's header shows the session's portrait again: the
+  face you picked for it (a duck, a crown, a pumpkin…) or its own, large,
+  where 0.174.0 drew only the agent's mark. A click on it still picks the
+  face, and the mark is a small badge on its corner, so Claude and Codex
+  still tell apart. The header is symmetric: the portrait is as tall as the
+  figures beside it, so both columns start and end on the same lines; the
+  subagents' faces sit centred beside the portrait in at most two rows (past
+  eight, seven and a *+N*); and when the state and the permission mode wrap
+  under a long name they stand at the left, not over the figures. The
+  *1 working · peak 4* line now floats under the faces on hover instead of
+  holding empty room under them.
+- **machines:** after the other computer's owner pressed Allow, the sidebar,
+  Now and New agent kept saying "waiting for Allow" until Settings → Computers
+  was opened, and the next look came a minute later. A computer that lets this
+  one in — a socket opens, a request is answered — is now asked again by
+  itself, one that waits for Allow is looked at again after 5 s, 10 s, 20 s…,
+  and the same clears "removed" when that computer knows this one again. In
+  the two-daemon smoke the laptop learned of the Allow about 3 s after it.
+- **machines:** a prompt said on another computer while its sessions were
+  being read could miss the one list for up to 10 s: the read from just before
+  it was kept as fresh. Such a read is now answered but not kept.
+- **machines:** after another computer's Caprock restarted, this one kept
+  asking it for frames past its new count, got a reset on every reconnect, and
+  lost the prompts said there while the link was down; it now resumes from
+  where that computer stands. A computer that lets the watch in and hangs up at
+  once is waited out (2 s doubling to 60 s) instead of re-dialled every 2 s.
+
 ## [0.174.0] - 2026-11-06
 
 ### Added

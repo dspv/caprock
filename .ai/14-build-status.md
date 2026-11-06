@@ -362,6 +362,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-07 — 0.174.1: the agent's portrait back in the hero, linked computers that recover by themselves
+
+A patch release, one batch PR (#895). The Agent panel's matrix look draws the session's character portrait in its tile again — the face picker kept, the agent's mark as a badge on the corner — and the picture block and the figures share one height. Linked computers: a restarted computer no longer loses the prompts raised while the link was down, a computer let in with Allow stops reading "waiting for Allow" by itself, a stale session list read during a prompt is no longer cached, and `GET /v1/machines` reports each computer's relay traffic; the hosted relay was measured at 132 ms median per keystroke between two machines in one home.
+
 ### 2026-11-06 — 0.174.0: the agent's pictures left and its figures right, a richer file viewer, an unknown cost said as unknown, Caprock as a Claude Code plugin
 
 A minor release, one batch PR (#892). The Agent panel's header puts the agent's tile and its subagents' faces as a grid on the left and the figures on the right, the new default look. A file tab shows Markdown and HTML side by side with their source, highlights code in a chunk loaded only when a code file is open, draws CSV as a table and shows pictures. A session on a model with no price shows its cost as unknown, or as a partial figure with a "+", never $0.00. The return to the original provider after a usage limit resets survives a restart (migration 0081). Caprock's MCP server installs as a Claude Code plugin from this repository's marketplace, with a launcher that finds the app's binary or says where to get it. Two tests that failed under load were made deterministic, and the Go dependencies were bumped (SQLite among them).
