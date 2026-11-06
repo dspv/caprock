@@ -40,6 +40,7 @@ import (
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
 	"github.com/dspv/caprock/internal/modules"
+	"github.com/dspv/caprock/internal/morning"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/obsidian"
@@ -77,6 +78,8 @@ type Deps struct {
 	// Alerts sends a test phone alert on demand (ADR-036). Nil disables the
 	// endpoint.
 	Alerts AlertSender
+	// Morning sends the Morning summary on demand (ADR-092).
+	Morning MorningSender
 	// PhoneLink sends the phone's page address to the owner's Telegram chat
 	// ("Send the link to my phone", Settings → Use on your phone). Nil
 	// answers 501.
@@ -414,6 +417,13 @@ type Settings struct {
 	// unless turned on.
 	TelegramChat bool `json:"telegram_chat"`
 	TelegramCode bool `json:"telegram_code"`
+	// MorningSummary is the daily Telegram summary (ADR-092), off unless
+	// turned on; MorningSummaryAt its local time, "HH:MM" (08:00 until
+	// chosen). The last send's time and error are read-only.
+	MorningSummary          bool   `json:"morning_summary"`
+	MorningSummaryAt        string `json:"morning_summary_at"`
+	MorningSummaryLastMs    int64  `json:"morning_summary_last_sent_ms,omitempty"`
+	MorningSummaryLastError string `json:"morning_summary_last_error,omitempty"`
 	// NotifyApproval and NotifyFinished are the desktop app's OS
 	// notifications, apart from Telegram's: approval on unless turned off,
 	// finished off unless turned on (WP-09).
@@ -498,6 +508,11 @@ type ReportSender interface {
 // AlertSender sends one test phone alert through the configured bot.
 type AlertSender interface {
 	SendAlertCheck(ctx context.Context) error
+}
+
+// MorningSender sends the Morning summary now, for its test button.
+type MorningSender interface {
+	SendMorningNow(ctx context.Context) error
 }
 
 // PhoneLinkSender sends the address of the phone's page — no code, no key —
@@ -801,6 +816,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/tabs", s.handleGetTabs)
 	m.HandleFunc("POST /v1/report/test", s.handleTestReport)
 	m.HandleFunc("POST /v1/alerts/test", s.handleTestAlert)
+	m.HandleFunc("POST /v1/morning/test", s.handleTestMorning)
 	m.HandleFunc("GET /v1/telegram", s.handleTelegram)
 	m.HandleFunc("PUT /v1/telegram/token", s.handleTelegramToken)
 	m.HandleFunc("POST /v1/telegram/pair", s.handleTelegramPair)
@@ -970,6 +986,9 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/saved-prompts", s.handleAddSavedPrompt)
 	m.HandleFunc("PATCH /v1/saved-prompts/{id}", s.handlePatchSavedPrompt)
 	m.HandleFunc("DELETE /v1/saved-prompts/{id}", s.handleDeleteSavedPrompt)
+	// Work / Personal on a folder (folderlabels.go, ADR-091).
+	m.HandleFunc("GET /v1/folder-labels", s.handleFolderLabels)
+	m.HandleFunc("PUT /v1/folder-labels", s.handleSetFolderLabel)
 	// The Inbox (03-contracts.md § Inbox): what the phone's Save keeps.
 	m.HandleFunc("GET /v1/inbox", s.handleInbox)
 	m.HandleFunc("POST /v1/inbox", s.handleAddInbox)
@@ -1785,6 +1804,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		AlertDone      *bool     `json:"alert_done"`
 		TelegramChat   *bool     `json:"telegram_chat"`
 		TelegramCode   *bool     `json:"telegram_code"`
+		MorningSummary *bool     `json:"morning_summary"`
+		MorningAt      *string   `json:"morning_summary_at"`
 		NotifyApproval *bool     `json:"notify_approval"`
 		NotifyFinished *bool     `json:"notify_finished"`
 		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
@@ -1989,6 +2010,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.TelegramCode != nil {
 		in.TelegramCode = *patch.TelegramCode
+	}
+	if patch.MorningSummary != nil {
+		in.MorningSummary = *patch.MorningSummary
+	}
+	if patch.MorningAt != nil {
+		at := strings.TrimSpace(*patch.MorningAt)
+		if _, _, ok := morning.ParseAt(at); !ok {
+			s.failCode(w, http.StatusBadRequest, errors.New("morning_summary_at is a time, HH:MM"))
+			return
+		}
+		in.MorningSummaryAt = at
 	}
 	if patch.NotifyApproval != nil {
 		in.NotifyApproval = *patch.NotifyApproval
@@ -3157,6 +3189,21 @@ func (s *Server) handleTestAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.d.Alerts.SendAlertCheck(r.Context()); err != nil {
+		s.failCode(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"sent": "ok"})
+}
+
+// handleTestMorning sends the Morning summary now (ADR-092), whether or not
+// it is switched on, so the owner sees what it says without waiting for
+// tomorrow. It does not count as today's: the scheduled one still goes.
+func (s *Server) handleTestMorning(w http.ResponseWriter, r *http.Request) {
+	if s.d.Morning == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("the morning summary is unavailable"))
+		return
+	}
+	if err := s.d.Morning.SendMorningNow(r.Context()); err != nil {
 		s.failCode(w, http.StatusBadGateway, err)
 		return
 	}

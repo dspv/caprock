@@ -43,7 +43,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/history": true, "GET /v1/status": true, "GET /v1/storage": true, "GET /v1/resources": true, "GET /v1/resources/history": true, "GET /v1/footprint": true, "GET /v1/system/memory": true, "GET /v1/update": true,
 	"GET /v1/settings": true, "GET /v1/premium": true, "GET /v1/gemini": true, "GET /v1/pricing": true,
 	"GET /v1/window-stop": true, "GET /v1/live": true, "GET /v1/tasks": true, "GET /v1/tasks/{id}": true, "GET /v1/approvals": true,
-	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true,
+	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true, "GET /v1/folder-labels": true,
 	"GET /v1/agents/{id}/permission": true, "GET /v1/sessions/{id}/permission-mode": true,
 	// The message queue and the chat field's pickers (ADR-053).
 	"GET /v1/agents/{id}/queue": true, "GET /v1/sessions/{id}/compaction": true, "GET /v1/stats/compactions": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
@@ -75,7 +75,7 @@ var controllerMayAlso = map[string]bool{
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true, "GET /v1/agents/{id}/exit": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
 	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true,
-	"PUT /v1/sessions/{id}/name":  true,
+	"PUT /v1/sessions/{id}/name": true, "PUT /v1/folder-labels": true,
 	"PUT /v1/sessions/{id}/needs": true, // "needs me?" / "not needed": a mark in memory
 	"POST /v1/support":            true,
 	"PUT /v1/chats/{id}/archived": true, "DELETE /v1/chats/{id}": true, // archive and delete a chat (ADR-071)
@@ -423,7 +423,10 @@ func TestAControllerStartsAgentsUnderHome(t *testing.T) {
 		{"controller, any flags", testPhone, controller.Token, `{"cwd":"` + fresh + `","args":["--x"]}`, 403},
 		// A chat (ADR-071): the daemon picks its folder, so a phone names none.
 		{"controller, a chat", testPhone, controller.Token, `{"chat":true}`, 200},
-		{"controller, a chat in a folder of its own choosing", testPhone, controller.Token, `{"chat":true,"cwd":"` + outside + `"}`, 403},
+		// A chat in a folder the user picked (ADR-091): under home, as any start.
+		{"controller, a chat in a folder under home", testPhone, controller.Token, `{"chat":true,"cwd":"` + fresh + `"}`, 200},
+		{"controller, a chat in a folder outside home", testPhone, controller.Token, `{"chat":true,"cwd":"` + outside + `"}`, 403},
+		{"controller, a chat in a missing folder", testPhone, controller.Token, `{"chat":true,"cwd":"` + fresh + `/missing"}`, 403},
 		{"controller, a chat with a binary", testPhone, controller.Token, `{"chat":true,"command":"sh"}`, 403},
 		{"controller, bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","permission_mode":"bypassPermissions"}`, 200},
 		{"controller, codex in bypass mode", testPhone, controller.Token, `{"cwd":"` + fresh + `","agent":"codex","permission_mode":"bypassPermissions"}`, 200},

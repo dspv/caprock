@@ -446,6 +446,41 @@ func TestSpawnMarksChats(t *testing.T) {
 	}
 }
 
+// A chat started in a folder the user picked (ADR-091) is marked by the
+// request, not the folder: it runs there, it is a chat, and a session
+// continuing it is one too; a plain session in the same folder is not.
+func TestSpawnMarksAChatInAProjectFolder(t *testing.T) {
+	m, st, _ := newMgr(t)
+	defer m.Shutdown()
+	ctx := context.Background()
+	ids := []string{"chat-here", "chat-forked", "work-here"}
+	n := 0
+	m.NewSessionID = func() string { n++; return ids[n-1] }
+	project := t.TempDir()
+	a, err := m.Spawn(ctx, SpawnRequest{Chat: true, Cwd: project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Cwd != project {
+		t.Fatalf("the chat runs in %q, want the folder picked %q", a.Cwd, project)
+	}
+	if _, err := m.Spawn(ctx, SpawnRequest{Cwd: project, Resume: "chat-here", Fork: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Spawn(ctx, SpawnRequest{Cwd: project}); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]bool{"chat-here": true, "chat-forked": true, "work-here": false} {
+		s, err := store.GetSession(ctx, st.DB(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.Chat != want {
+			t.Errorf("%s: chat = %v, want %v", id, s.Chat, want)
+		}
+	}
+}
+
 // A quick chat is "I want to ask something", not "I want to work on a repo".
 // It must not demand a directory, and each one needs its own.
 func TestChatDirectories(t *testing.T) {

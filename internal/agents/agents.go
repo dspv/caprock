@@ -33,7 +33,7 @@ import (
 // SpawnRequest describes a session to launch.
 type SpawnRequest struct {
 	Cwd      string `json:"cwd"`
-	Chat     bool   `json:"chat,omitempty"`     // a quick chat: Caprock picks the directory, no repository needed
+	Chat     bool   `json:"chat,omitempty"`     // a chat: Caprock picks the directory when Cwd is empty (ADR-071), else it runs in Cwd (ADR-091)
 	Create   bool   `json:"create,omitempty"`   // make Cwd if it does not exist (one level, under an existing parent)
 	Worktree string `json:"worktree,omitempty"` // git worktree name to create under the repo
 	// WorktreeBase is the branch a new worktree starts from (HEAD when empty);
@@ -815,10 +815,16 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		if err := store.MarkOwned(ctx, q, sessionID, worktree, a.Command, sess.PID()); err != nil {
 			return err
 		}
-		// A chat is a session started in a folder of the chats workspace:
-		// a new chat, or one carried on there (ADR-071).
-		if m.IsChatDir(cwd) {
+		// A chat is a session started in a folder of the chats workspace
+		// (ADR-071), one started as a chat in a folder the user picked
+		// (ADR-091), or one continuing a chat.
+		if req.Chat || m.IsChatDir(cwd) {
 			if err := store.MarkChat(ctx, q, sessionID); err != nil {
+				return err
+			}
+		}
+		if req.Resume != "" && req.Resume != sessionID {
+			if err := store.CarryChat(ctx, q, sessionID, req.Resume); err != nil {
 				return err
 			}
 		}

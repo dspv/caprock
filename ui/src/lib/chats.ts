@@ -62,9 +62,10 @@ export function chatTitle(s: SessionSummary): string {
 }
 
 /** "Claude · Opus 5.5": the agent, and the model it answers with or was started on. */
-export function chatModelLabel(s: Pick<SessionSummary, 'session_id' | 'agent' | 'model_display'>): string {
+export function chatModelLabel(s: Pick<SessionSummary, 'session_id' | 'agent' | 'model_display' | 'subscription'>): string {
   const started = startedChat(s.session_id)
-  const agent = chatAgentName(s.agent ?? started?.agent)
+  // Claude Code on DeepSeek or Kimi (ADR-090, ADR-091) is named by its provider.
+  const agent = s.subscription === 'kimi' ? 'Kimi' : s.subscription === 'deepseek' ? 'DeepSeek' : chatAgentName(s.agent ?? started?.agent)
   const model = s.model_display || started?.label || ''
   return model ? `${agent} · ${model}` : agent
 }

@@ -1561,8 +1561,12 @@ appeared:
 
 Your phone opens the same Caprock in its browser and keeps it on the home
 screen like an app — on any network, Wi-Fi or mobile data, with nothing to
-install from an app store. It reaches this computer through an encrypted
-relay that passes bytes it cannot read
+install. On an iPhone you can use the app instead: Caprock for iPhone is
+free on the App Store (<https://apps.apple.com/app/caprock/id6827747312>;
+the same link is under **Connect a phone** in Settings → *Use on your
+phone*), and it scans the code from **Pair with your Mac**. Either way the
+phone reaches this computer through an encrypted relay that passes bytes it
+cannot read
 ([how it works](../README.md#from-anywhere-through-an-encrypted-relay)).
 
 1. **Open it.** In the app, click **phone** beside *Settings* in the

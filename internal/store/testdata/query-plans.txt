@@ -705,6 +705,12 @@ SELECT id, vault_id, path, node_id, title, aliases, keys, links, tags, project, 
     SEARCH brain_vault_notes USING INDEX sqlite_autoindex_brain_vault_notes_1 (vault_id=?)
     USE TEMP B-TREE FOR ORDER BY
 
+## store.CarryChat
+UPDATE sessions SET chat = 1 WHERE session_id = ? AND chat = 0 AND EXISTS (SELECT 1 FROM sessions WHERE session_id = ? AND chat = 1)
+    SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## store.ClaudeTokensSince
 SELECT COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)), 0) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude')
     SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
@@ -946,6 +952,14 @@ SELECT s.session_id, COALESCE(s.cwd,''), COALESCE(s.project,''), COALESCE(s.agen
 SELECT s.session_id, COALESCE(s.cwd,''), COALESCE(s.project,''), COALESCE(s.agent,''), s.status, COALESCE(s.owned,0), COALESCE(s.last_event_at,0), COALESCE(st.turns,0), COALESCE(st.cost_usd,0) FROM sessions s LEFT JOIN session_stats st ON st.session_id = s.session_id WHERE s.session_id IN (?) ORDER BY s.last_event_at
     SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     SEARCH st USING INDEX sqlite_autoindex_session_stats_1 (session_id=?) LEFT-JOIN
+
+## store.FinishedSince
+SELECT COALESCE(s.project, ''), COALESCE(s.exit_code, 0), COALESCE(s.limit_hit_at, 0) FROM (SELECT DISTINCT session_id FROM daily_sessions WHERE day >= ?) d JOIN sessions s ON s.session_id = d.session_id WHERE s.status = 'ended' AND s.last_event_at >= ? AND s.last_event_at < ? AND COALESCE(s.chat, 0) = 0
+    CO-ROUTINE d
+        SEARCH daily_sessions USING PRIMARY KEY (day>?)
+        USE TEMP B-TREE FOR DISTINCT
+    SCAN d
+    SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.FirstEventTs
 SELECT COALESCE(MIN(ts),0) FROM events WHERE 1=1 AND internal = 0
@@ -1246,6 +1260,10 @@ SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), sou
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     CORRELATED SCALAR SUBQUERY 1
         SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.ListFolderLabels
+SELECT dir, label, updated_at FROM folder_labels ORDER BY dir
+    SCAN folder_labels USING INDEX sqlite_autoindex_folder_labels_1
 
 ## store.ListInbox
 SELECT i.id, i.text, i.files, COALESCE(i.project_id, 0), COALESCE(p.root, ''), COALESCE(p.name, ''), i.from_device, i.created_at FROM inbox i LEFT JOIN projects p ON p.id = i.project_id ORDER BY i.created_at DESC, i.id DESC
@@ -2062,6 +2080,13 @@ WITH s AS (SELECT sid FROM sessions WHERE session_id = ?) INSERT INTO compaction
 ## store.SetExit
 UPDATE sessions SET exit_code = ?, status = 'ended', pid = 0 WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.SetFolderLabel
+DELETE FROM folder_labels WHERE dir = ?
+    SEARCH folder_labels USING INDEX sqlite_autoindex_folder_labels_1 (dir=?)
+
+## store.SetFolderLabel
+INSERT INTO folder_labels (dir, label, updated_at) VALUES (?, ?, ?) ON CONFLICT(dir) DO UPDATE SET label = excluded.label, updated_at = excluded.updated_at
 
 ## store.SetHandoff
 UPDATE sessions SET handoff = ? WHERE session_id = ?

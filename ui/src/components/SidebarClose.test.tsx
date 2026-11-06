@@ -9,6 +9,7 @@
  */
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PROJECT_OPEN_KEY } from './ProjectRow'
 import type { Project } from '@/lib/projects'
 import type { SessionSummary } from '@/lib/api'
 
@@ -75,19 +76,26 @@ const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!
 beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
+  // These tests read the projects unfolded; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem(PROJECT_OPEN_KEY, JSON.stringify(['alpha', 'beta', 'other-folders']))
   signal.mockClear()
 })
 
 describe('closing in the sidebar', () => {
   it('gives every agent row a × that closes its tab as the strip does, shown always on the tab in front; shells and files have no row', () => {
     const { props } = setup([live({ session_id: 'a1', title: 'Fix the login' }), live({ session_id: 'sh1', kind: 'shell' })], [agentTab, shellTab, fileTab])
-    const agentX = screen.getByRole('button', { name: 'Close tab Fix the login' })
+    // The tab in front is highlighted in Open (2026-11-05): its × shows there always.
+    const open = screen.getByRole('group', { name: 'Open tabs' })
+    const agentX = within(open).getByRole('button', { name: 'Close tab Fix the login' })
     expect(agentX).toHaveAttribute('title', 'Close tab (⌘W) — keep the agent running or end it')
     // On the tab in front always; on the others, on hover or focus.
     expect(agentX.parentElement!.className).toMatch(/^absolute .* flex$/)
-    // Shells and files live in the tab strip (owner, 2026-10-13).
-    expect(tabRow('t2')).toBeNull()
-    expect(tabRow('t3')).toBeNull()
+    // Under the project, shells and files have no row (owner, 2026-10-13);
+    // Open lists every tab, theirs too.
+    const tree = screen.getByRole('group', { name: 'alpha: sessions' })
+    expect(tree.querySelector('[data-tab-row="t2"]')).toBeNull()
+    expect(tree.querySelector('[data-tab-row="t3"]')).toBeNull()
+    expect([...open.querySelectorAll('[data-open-row]')].map((r) => r.getAttribute('data-open-row'))).toEqual(['t1', 't2', 't3'])
     expect(document.querySelector('[data-live-row="sh1"]')).toBeNull()
     fireEvent.click(agentX)
     expect(props.onCloseTab).toHaveBeenCalledWith('t1')
@@ -202,7 +210,7 @@ describe('closing in the sidebar', () => {
       live({ session_id: 'sh1', kind: 'shell' }),
     ]
     const { rerender, props } = setup(sessions, [agentTab, shellTab])
-    const words = () => [...document.querySelectorAll('[data-tab-row], [data-live-row]')].map((r) => [
+    const words = () => [...screen.getByRole('group', { name: 'alpha: sessions' }).querySelectorAll('[data-tab-row], [data-live-row]')].map((r) => [
       r.querySelector('[data-row-title]')!.textContent,
       r.querySelector('[data-state]')?.textContent ?? '',
     ])

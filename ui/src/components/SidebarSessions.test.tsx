@@ -12,8 +12,10 @@ import { buildSidebar } from '@/lib/sidebar'
 import { tabLabels } from '@/lib/tablabels'
 import type { Tab } from '@/lib/tabs'
 import { HIDDEN_KEY, HIDDEN_SESSIONS_KEY, Sidebar, type SidebarProps } from './Sidebar'
-import { flatRows } from './ProjectRow'
-import { saveTodayCard, TODAY_FOLD_KEY, TODAY_SHOWN_KEY } from '@/lib/todayCard'
+import { flatRows, PROJECT_OPEN_KEY } from './ProjectRow'
+import { saveTodayCard, TODAY_SHOWN_KEY } from '@/lib/todayCard'
+import { lineWindow } from './TodayLine'
+import { RECENTLY_CLOSED_OPEN_KEY } from './RecentlyClosed'
 import { recordClosed } from '@/lib/recentlyClosed'
 
 Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true })
@@ -65,7 +67,12 @@ const mix = () => [
   live({ session_id: 'b1', title: 'Beta work', cwd: '/w/beta', project: 'beta', started_at: 7 }),
 ]
 
-beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
+beforeEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+  // These tests read the projects unfolded; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem(PROJECT_OPEN_KEY, JSON.stringify(['alpha', 'beta', 'stale', 'gamma', 'p1', 'p2', 'p3', 'other-folders']))
+})
 
 describe('the sessions under a project', () => {
   it('lists every agent session, working, waiting or idle, in the order they started; no shells, no ended ones, no "+N more"', () => {
@@ -137,10 +144,10 @@ describe('every open tab has a row', () => {
 
 describe('group by project, off', () => {
   it('lists every session in one flat list; a row names its project only in its tooltip and accessible name', () => {
-    const onGroupedChange = vi.fn()
-    setup(mix(), [], { grouped: false, onGroupedChange })
+    setup(mix(), [], { grouped: false })
     expect(document.querySelector('[data-project-row]')).toBeNull()
-    expect(screen.getByRole('heading', { name: 'Sessions' })).toBeInTheDocument()
+    // No Projects heading in Flat; Open lists the tabs above it in both.
+    expect(screen.queryByRole('heading', { name: 'Projects' })).toBeNull()
     // No tab open: every row is under Running, no tab.
     const list = screen.getByRole('group', { name: 'Running, no tab' })
     expect([...list.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['w1', 'wt', 'i1', 'b1'])
@@ -154,14 +161,9 @@ describe('group by project, off', () => {
     expect(b1.title).toContain('beta')
     // Every row has its state dot, as under a project.
     expect(list.querySelectorAll('[data-row-dot]')).toHaveLength(4)
-    // The switch says both choices in words, the one shown checked.
-    const sw = screen.getByRole('radiogroup', { name: 'List sessions by' })
-    expect(sw.textContent).toBe('ProjectsTabs')
-    expect(screen.getByRole('radio', { name: 'Tabs' })).toHaveAttribute('aria-checked', 'true')
-    fireEvent.click(screen.getByRole('radio', { name: 'Tabs' }))
-    expect(onGroupedChange).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('radio', { name: 'Projects' }))
-    expect(onGroupedChange).toHaveBeenCalledWith(true)
+    // The Projects | Tabs switch left the heading on 2026-11-05: Open is
+    // the tabs' list now, and Settings → Appearance keeps the choice.
+    expect(screen.queryByRole('radiogroup', { name: 'List sessions by' })).toBeNull()
   })
 
   it('keeps its own order by hand, apart from each project\'s', () => {
@@ -189,11 +191,11 @@ describe('group by project, off', () => {
 
   // A user, 2026-10-14 (translated): "chats don't disappear when I close
   // them" — the closed tabs' agents ran on, and read as open chats.
-  it('heads the sessions with no tab "Running, no tab", once, where the tabbed rows end; Tree has no such line', () => {
+  it('heads the sessions with no tab "Running, no tab", once, under Open; Tree has no such line', () => {
     const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
     setup(mix(), tabs, { grouped: false, tabDigits: new Map([['tb', 1]]) })
-    // The tabbed rows, then the heading and the rows with no tab: two views of one order.
-    const lists = [screen.getByRole('group', { name: 'Sessions' }), screen.getByRole('group', { name: 'Running, no tab' })]
+    // Open's tab, then the heading and the rows with no tab.
+    const lists = [screen.getByRole('group', { name: 'Open tabs' }), screen.getByRole('group', { name: 'Running, no tab' })]
     const order = lists.flatMap((list) => [...list.children]).map((li) => li.hasAttribute('data-untabbed-heading') ? 'HEAD' : li.querySelector('[data-tab-row]') ? 'tab' : 'live')
     expect(order).toEqual(['tab', 'HEAD', 'live', 'live', 'live'])
     expect(document.querySelectorAll('[data-untabbed-heading]')).toHaveLength(1)
@@ -227,8 +229,10 @@ describe('one selected row', () => {
   })
 })
 
-// A user, 2026-10-15 (translated): "can this be hidden? it's in the way".
-describe('the Today card', () => {
+// A user, 2026-10-15 (translated): "can this be hidden? it's in the way";
+// the owner and a designer, 2026-11-05: "at least closable or shrunk to a
+// minimum". One thin line above the footer, its × hiding it.
+describe('the Today line', () => {
   const route = { onRoute: vi.fn(), loaded: true }
 
   const summary = {
@@ -239,48 +243,32 @@ describe('the Today card', () => {
     },
   } as unknown as Summary
 
-  // Owner, 2026-10-25: from a session tab he could not find how to share.
-  // One quiet icon, not the loud corner removed on 2026-10-16.
-  it('has one quiet way to share the week, folded or not', () => {
-    setup(mix(), [], { ...route, summary })
-    const card = screen.getByRole('region', { name: 'Today' })
-    const share = within(card).getByRole('button', { name: 'Share your week' })
-    expect(share.textContent).toBe('')
-    fireEvent.click(document.querySelector('[data-today-fold]')!)
-    expect(within(screen.getByRole('region', { name: 'Today' })).getByRole('button', { name: 'Share your week' })).toBeTruthy()
+  it('is one line: spend, running, what waits in amber and the fuller plan window', () => {
+    const { props } = setup(mix(), [], { ...route, summary })
+    const line = screen.getByRole('region', { name: 'Today' })
+    expect(line.textContent).toBe('$19.99 today·4 running·1 waiting7d 74%')
+    expect(line.querySelector('[data-today-waiting]')!.className).toContain('text-warn')
+    fireEvent.click(line.querySelector('[data-today-waiting]')!)
+    expect(props.onOpenInbox).toHaveBeenCalled()
+    // 74% of the week is past the amber line; the calmer 5-hour window is in the tooltip.
+    const w = line.querySelector<HTMLElement>('[data-today-window]')!
+    expect(w).toHaveAttribute('data-today-window', '7d')
+    expect(w.querySelector('.num')!.className).toContain('text-warn')
+    expect(w.title).toContain('5-hour window: 6% used')
   })
 
-  it('folds to one line by its chevron, with the waiting count in amber and both windows, and unfolds; the fold is remembered', () => {
-    setup(mix(), [], { ...route, summary })
-    fireEvent.click(document.querySelector('[data-today-fold]')!)
-    const card = screen.getByRole('region', { name: 'Today' })
-    expect(card).toHaveAttribute('data-today-folded')
-    expect(within(card).getByRole('button', { name: /Unfold the card/ }).textContent).toBe('$19.99 · 4 running · 1 waiting · 5h 6% · 7d 74%')
-    expect(card.querySelector('[data-today-waiting]')!.className).toContain('text-warn')
-    // 74% of the week is past the amber line, as the full card colours it.
-    expect(card.querySelector('[data-today-window="7d"]')!.className).toContain('text-warn')
-    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('closed')
-    cleanup()
+  it('draws the fuller window, the weekly one on a tie', () => {
+    const win = (label: string, pct: number) => ({ label, name: label, pct, stale: false, tone: 'accent' as const })
+    expect(lineWindow([win('5h', 90), win('7d', 30)])!.label).toBe('5h')
+    expect(lineWindow([win('5h', 40), win('7d', 40)])!.label).toBe('7d')
+    expect(lineWindow([])).toBeUndefined()
+  })
+
+  it('hides by its ×, stays hidden, and comes back from Settings or the ⋯ menu', () => {
     setup(mix(), [], route)
-    expect(screen.getByRole('region', { name: 'Today' })).toHaveAttribute('data-today-folded')
-    fireEvent.click(document.querySelector('[data-today-unfold]')!)
-    expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
-    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('open')
-  })
-
-  it('hides from its menu, keeps what waits counted on the list heading, and comes back from Settings', () => {
-    const { props } = setup(mix(), [], route)
-    expect(document.querySelector('[data-head-waiting]')).toBeNull()
-    fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Hide/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide the Today line' }))
     expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
     expect(localStorage.getItem(TODAY_SHOWN_KEY)).toBe('off')
-    // Nothing that needs you is lost: the count is beside the heading, and opens it.
-    const head = document.querySelector<HTMLElement>('[data-head-waiting]')!
-    expect(head.textContent).toBe('1')
-    expect(head.className).toContain('bg-warn')
-    fireEvent.click(head)
-    expect(props.onOpenInbox).toHaveBeenCalled()
     // Hidden stays hidden on the next load.
     cleanup()
     setup(mix(), [], route)
@@ -288,42 +276,21 @@ describe('the Today card', () => {
     // Settings → Appearance's toggle (lib/todayCard) brings it back at once.
     act(() => saveTodayCard({ hidden: false }))
     expect(screen.getByRole('region', { name: 'Today' })).toBeInTheDocument()
-    expect(document.querySelector('[data-head-waiting]')).toBeNull()
+    // So does the ⋯ beside Chat and Project, which offers it only while hidden.
+    act(() => saveTodayCard({ hidden: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show the Today line' }))
+    expect(screen.getByRole('region', { name: 'Today' })).toBeInTheDocument()
+    expect(localStorage.getItem(TODAY_SHOWN_KEY)).toBe('on')
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.queryByRole('menuitem', { name: 'Show the Today line' })).toBeNull()
   })
 
-  it('closes by its ×, from the full card and from the line, and stays closed', () => {
-    setup(mix(), [], route)
-    fireEvent.click(screen.getByRole('button', { name: 'Hide the Today card' }))
-    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
-    expect(localStorage.getItem(TODAY_SHOWN_KEY)).toBe('off')
-    act(() => saveTodayCard({ hidden: false, folded: true }))
-    const card = screen.getByRole('region', { name: 'Today' })
-    expect(card).toHaveAttribute('data-today-folded')
-    fireEvent.click(within(card).getByRole('button', { name: 'Hide the Today card' }))
-    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
-    cleanup()
-    setup(mix(), [], route)
-    expect(screen.queryByRole('region', { name: 'Today' })).toBeNull()
-  })
-
-  it('offers Full card, One line and Hide on right-click, and remembers the pick', () => {
+  // Owner, 2026-10-25: from a session tab he could not find how to share.
+  it('leaves sharing the week in the ⋯ menu, one click from any tab', () => {
     setup(mix(), [], { ...route, summary })
-    fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
-    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Full cardshown', 'One line', 'HideSettings shows it'])
-    fireEvent.click(screen.getByRole('menuitem', { name: /^One line/ }))
-    expect(screen.getByRole('region', { name: 'Today' })).toHaveAttribute('data-today-folded')
-    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('closed')
-    fireEvent.contextMenu(screen.getByRole('region', { name: 'Today' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Full card/ }))
-    expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
-    expect(localStorage.getItem(TODAY_FOLD_KEY)).toBe('open')
-  })
-
-  it('shows the full card to a viewer who never chose', () => {
-    localStorage.removeItem(TODAY_FOLD_KEY)
-    localStorage.removeItem(TODAY_SHOWN_KEY)
-    setup(mix(), [], route)
-    expect(screen.getByRole('region', { name: 'Today' })).not.toHaveAttribute('data-today-folded')
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['New shell⌘T', 'Search…⌘K', 'History', 'Share your week'])
   })
 })
 
@@ -353,7 +320,7 @@ describe('a quick chat row', () => {
   it('with a tab: its title and model, no time', () => {
     const t: Tab = { id: 't1', projectId: 'other-folders', title: 'Quick chat', focusedPaneId: 'a', root: pane('a', 'session', 'c3') }
     setup([chat({ session_id: 'c3', title: 'Monads, explained' })], [t])
-    const row = document.querySelector('[data-tab-row="t1"]')!
+    const row = screen.getByRole('group', { name: 'Outside projects: sessions' }).querySelector('[data-tab-row="t1"]')!
     expect(row.querySelector('[data-row-title]')!.textContent).toBe('Monads, explained')
     expect(row.querySelector('[data-row-when]')).toBeNull()
     expect(row.querySelector('[data-row-branch]')!.textContent).toBe('Opus 5.5')
@@ -412,6 +379,10 @@ describe('Recently closed', () => {
       const onRoute = vi.fn()
       setup(mix(), [], { grouped, onReopenClosed, onRoute })
       const section = screen.getByRole('region', { name: 'Recently closed' })
+      // Folded to one line until a click (2026-11-05).
+      expect(section.querySelectorAll('[data-closed-row]')).toHaveLength(0)
+      expect(section.querySelector('[data-closed-count]')!.textContent).toBe('5')
+      fireEvent.click(within(section).getByRole('button', { name: /^Recently closed/ }))
       const rowsHere = [...section.querySelectorAll('[data-closed-row]')]
       expect(rowsHere.map((r) => r.getAttribute('data-closed-row'))).toEqual(['c1', 'c2', 'c3', 'c4', 'c5'])
       expect(rowsHere[0]!.querySelector('[data-closed-ago]')!.textContent).toBe('2 min')
@@ -425,13 +396,34 @@ describe('Recently closed', () => {
     })
   }
 
-  it('sits above Running, no tab in the Flat list, after the tabbed rows', () => {
+  it('sits under the list, one folded line, in Tree and in Flat', () => {
     store([closed('c1', 'Fix login', 2)])
     const tabs: Tab[] = [{ id: 'tb', projectId: 'beta', root: pane('pb', 'session', 'b1'), focusedPaneId: 'pb', title: 'Beta work' }]
     setup(mix(), tabs, { grouped: false, onReopenClosed: vi.fn() })
-    const order = [...document.querySelectorAll('[data-tab-row], [data-recently-closed], [data-untabbed-heading]')]
-      .map((el) => el.hasAttribute('data-tab-row') ? 'tab' : el.hasAttribute('data-recently-closed') ? 'closed' : 'running')
-    expect(order).toEqual(['tab', 'closed', 'running'])
+    const order = [...document.querySelectorAll('[data-open-row], [data-recently-closed], [data-untabbed-heading]')]
+      .map((el) => el.hasAttribute('data-open-row') ? 'open' : el.hasAttribute('data-recently-closed') ? 'closed' : 'running')
+    expect(order).toEqual(['open', 'running', 'closed'])
+    cleanup()
+    setup(mix(), tabs, { grouped: true, onReopenClosed: vi.fn() })
+    const tree = [...document.querySelectorAll('[data-open-row], [data-project-row], [data-recently-closed]')]
+      .map((el) => el.hasAttribute('data-open-row') ? 'open' : el.hasAttribute('data-project-row') ? 'project' : 'closed')
+    expect(tree).toEqual(['open', 'project', 'project', 'closed'])
+  })
+
+  it('remembers being unfolded, and folds again on a click', () => {
+    store([closed('c1', 'Fix login', 2)])
+    setup(mix(), [], { onReopenClosed: vi.fn() })
+    const toggle = () => document.querySelector<HTMLElement>('[data-closed-toggle]')!
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(toggle())
+    expect(document.querySelector('[data-closed-row="c1"]')).not.toBeNull()
+    expect(localStorage.getItem(RECENTLY_CLOSED_OPEN_KEY)).toBe('open')
+    cleanup()
+    setup(mix(), [], { onReopenClosed: vi.fn() })
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(toggle())
+    expect(document.querySelector('[data-closed-row="c1"]')).toBeNull()
+    expect(localStorage.getItem(RECENTLY_CLOSED_OPEN_KEY)).toBe('closed')
   })
 
   it('is hidden when empty, and leaves out a session that has a tab again', () => {
@@ -447,7 +439,10 @@ describe('Recently closed', () => {
   it('follows the list as tabs close', () => {
     setup(mix(), [], { grouped: false, onReopenClosed: vi.fn() })
     act(() => { recordClosed([closed('c9', 'Just closed', 0)]) })
-    expect(screen.getByRole('region', { name: 'Recently closed' }).textContent).toContain('Just closed')
+    const section = screen.getByRole('region', { name: 'Recently closed' })
+    expect(section.querySelector('[data-closed-count]')!.textContent).toBe('1')
+    fireEvent.click(within(section).getByRole('button', { name: /^Recently closed/ }))
+    expect(section.textContent).toContain('Just closed')
   })
 })
 

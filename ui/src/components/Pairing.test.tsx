@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react'
-import { ALLOW_TYPE_KEY, Pairing, isOldDevice, needsRepair, offersOpenAgain, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phonePage, phoneSummary, seenAgo, takeCodeOnArrival } from './Pairing'
+import { ALLOW_TYPE_KEY, IPHONE_APP_URL, Pairing, isOldDevice, needsRepair, offersOpenAgain, PHONE_SECTION, TELEGRAM_SECTION, openSettingsSection, pairLink, phonePage, phoneSummary, seenAgo, takeCodeOnArrival } from './Pairing'
 import { Section } from './SettingsParts'
 import { PairScreen, codeFromHash, defaultDeviceName } from '@/screens/Pair'
 import { api, type PairState } from '@/lib/api'
@@ -97,6 +97,27 @@ describe('Pairing panel (owner, 2026-10-18: "not one clear piece of info")', () 
     expect(screen.queryByRole('img')).toBeNull()
     // The how is folded away.
     expect((screen.getByTestId('phone-how') as HTMLDetailsElement).open).toBe(false)
+  })
+
+  it('offers Caprock for iPhone on the App Store, opened outside the dashboard', async () => {
+    stubState([{ enabled: false, devices: [], remote: remoteOn }])
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<Pairing />)
+    const line = await screen.findByTestId('iphone-app')
+    expect(line.textContent).toBe('iPhone: get Caprock on the App Store')
+    expect(line.hasAttribute('data-keep')).toBe(true)
+    const a = within(line).getByRole('link', { name: 'get Caprock on the App Store' })
+    expect(a.getAttribute('href')).toBe(IPHONE_APP_URL)
+    expect(IPHONE_APP_URL).toBe('https://apps.apple.com/app/caprock/id6827747312')
+    fireEvent.click(a)
+    expect(open).toHaveBeenCalledWith(IPHONE_APP_URL, '_blank', 'noopener')
+  })
+
+  it('keeps the App Store line while a code is on screen', async () => {
+    stubState([{ enabled: false, code: '482913', expires_in_sec: 300, devices: [], remote: remoteOn }])
+    render(<Pairing />)
+    await screen.findByTestId('pair-code')
+    expect(screen.getByTestId('iphone-app')).toBeTruthy()
   })
 
   it('Connect a phone turns on access from anywhere, says so first, and shows the QR with one line', async () => {

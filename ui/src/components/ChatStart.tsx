@@ -28,12 +28,12 @@ function useChatAgents() {
   const catalog = useAgentCatalog()
   const paired = isPairedDevice()
   const agents = startable(catalog.entries).filter((a) => !(paired && isCustomAgent(a)))
-  return { agents, entries: catalog.entries, loaded: catalog.loaded }
+  return { agents, entries: catalog.entries, loaded: catalog.loaded, home: catalog.home }
 }
 
 /** The vendor and model the next chat starts on, and a way to change it. */
 export function useChatChoice() {
-  const { agents, entries, loaded } = useChatAgents()
+  const { agents, entries, loaded, home } = useChatAgents()
   const key = agents.join(',')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const initial = useMemo(() => rememberedQuickChoice(agents), [key])
@@ -41,7 +41,7 @@ export function useChatChoice() {
   const choice = picked && (agents.length === 0 || agents.includes(picked.agent)) ? picked : initial
   const entry = entries.find((e) => e.id === choice.agent)
   const pick = (c: QuickChoice) => { rememberQuickChoice(c); setPicked(c) }
-  return { choice, pick, agents, entries, loaded, label: choiceLabel(choice, agentLabel(choice.agent, entries), quickChoiceLabel(choice, entry)) }
+  return { choice, pick, agents, entries, loaded, home, label: choiceLabel(choice, agentLabel(choice.agent, entries), quickChoiceLabel(choice, entry)) }
 }
 
 function choiceLabel(c: QuickChoice, agent: string, model: string): string {

@@ -94,7 +94,9 @@ companion to a paid tool, no purchase inside). 1.0 goes to review without a
 TestFlight round and without push (owner, 2026-10-27), so it rests on the
 camera, voice and Face ID alone against 4.2. Residual: review outcomes are not
 predictable, and the time a first review takes is not known — any figure for
-it is an estimate.
+it is an estimate. **Outcome for 1.0:** approved on 2026-11-05 and released
+to the App Store; the risk stays open for every later version, 1.1's push
+first.
 
 ## Open questions
 

@@ -203,7 +203,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
   `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status`,
-  `/v1/brain/spend` and `/v1/brain/nodes/{id}`. Everything else is `403` — every `POST`, `PUT` and
+  `/v1/brain/spend`, `/v1/brain/nodes/{id}` and `/v1/folder-labels`. Everything else is `403` — every `POST`, `PUT` and
   `DELETE` (spawn, input, signal, paste, settings, tasks, approvals,
   orchestrator, hive, licence, pairing, shutdown), and three `GET`s that are
   not reads: `/v1/agents/{id}/term` (its socket types into the session), and
@@ -248,7 +248,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   `GET /v1/browse`, `GET /v1/browse/stat` and `GET /v1/browse/repos` (rooted inside home, see below), `GET /v1/sessions/{id}/relay`, `GET /v1/agents/{id}/term`,
   `POST /v1/agents/{id}/input`, `POST /v1/agents/{id}/signal`,
   `POST /v1/agents/{id}/permission`, `PUT /v1/sessions/{id}/name` (a label in
-  Caprock's own database), `PUT /v1/sessions/{id}/needs` (a mark in the
+  Caprock's own database), `PUT /v1/folder-labels` (Work / Personal on a
+  folder under home, § Folder labels, ADR-091), `PUT /v1/sessions/{id}/needs` (a mark in the
   daemon's memory, § Needs you and Done), the message queue (`POST /v1/agents/{id}/queue`,
   `PATCH` and `DELETE /v1/agents/{id}/queue/{qid}`, `POST /v1/agents/{id}/queue/{qid}/send`),
   `POST /v1/paste`, `POST /v1/tasks/{id}/approve` and `/reject`, saving to
@@ -276,7 +277,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   or below it — a project outside home is refused even where sessions have run. With `create: true` a missing `cwd` passes when its
   parent resolves inside home (the agent manager makes one level). `command`
   and `args` are refused unless empty. `chat: true` is allowed with no `cwd`
-  (the daemon picks the chat's folder) and refused with one; a `cwd` that is
+  (the daemon picks the chat's folder); with one it is held to the rules
+  above, as any start (a chat in a project folder, ADR-091); a `cwd` that is
   one of Caprock's chat folders passes, so a phone can continue a chat in
   place (ADR-071, amending ADR-034). Every
   `permission_mode` is allowed, `bypassPermissions` included (ADR-034).
@@ -1328,6 +1330,7 @@ GET  /v1/window-stop                   → the plan-window stop's state (§ Pric
 GET  /v1/keepawake                     → whether the computer is kept awake now (§ Keep awake); 501 when the daemon has no keeper
 POST /v1/report/test                   → sends this week's report now → {sent:"ok"}; 502 with Telegram's error, 501 when reporting is unavailable
 POST /v1/alerts/test                   → sends a test phone alert now, no licence needed → {sent:"ok"}; 502 with Telegram's error or "no bot configured"
+POST /v1/morning/test                  → sends the Morning summary as it reads now, on or off, not counted as today's → {sent:"ok"}; 502 with Telegram's error or no bot, 501 without a sender (§ Morning summary)
 POST /v1/pair/send-link                → sends the phone's page address to the owner's Telegram chat → {sent:"telegram", link}; loopback-only, 409 with no bot (§ Pairing endpoints)
 GET/POST/DELETE /v1/devshare…          → a local dev server opened on a phone on the same Wi-Fi; loopback-only (§ A dev server on a phone)
 GET/PUT/POST/DELETE /v1/telegram…      → the Telegram bridge's setup and pairing, and a share card to the paired chat (§ Telegram bridge)
@@ -2312,6 +2315,50 @@ premium_note_at, module_pins: {module_id: message_id}, forward_reply}` — the l
 private modules) they were about, so a reply finds its session, and a module
 its own message, across a restart. The
 token stays in `config.json`.
+
+#### Morning summary
+
+One Telegram message a day through the bridge's bot ([ADR-092](08-decisions.md)).
+`PUT /v1/settings` accepts `morning_summary` (bool, off unless turned on,
+stored as a pointer in `config.json`) and `morning_summary_at` (`"HH:MM"`,
+24-hour local time; anything else is `400`; stored only once it differs from
+the time in use, so `08:00` stays the default until chosen). `GET` returns
+both — `morning_summary_at` always filled — with the read-only
+`morning_summary_last_sent_ms` (the last scheduled send) and
+`morning_summary_last_error` (why the last send, scheduled or test, failed;
+`not sent: the chat is muted with /mute all` under `/mute all`). State in the
+`meta` table, no DDL: `morning_day` (the local date of the last day one
+went, written before the send), `morning_last_sent` (unix ms) and
+`morning_last_error`.
+
+- **When.** Checked every minute (`daemon.morningLoop`): on, a bot and chat
+  set, `morning_day` not today, and now in `[at, noon)` — or `[at, at+4h)`
+  capped at midnight for a time at or after noon (`morning.Window`).
+- **Since.** `morning_last_sent`, at most 24 h back.
+- **Mail** — `mail.Service.Digest`: only while Mail is open with an
+  account, not in sample mode, and `ai_enabled` is on. Inbox conversations
+  with a message dated at or after since, less the junk filter's catch and
+  the triage's `spam`, are `M`; those labelled `important` are `N`; the
+  newest five give `from_name` (else `from_addr`) and `subject` of their
+  newest inbox message. No model call; no body read.
+- **Agents overnight** — `store.FinishedSince`: sessions with
+  `status = 'ended'`, `last_event_at` in the window, `chat = 0`, and a
+  `daily_sessions` row on or after since's local date (that key's range
+  leads the plan), per `project`, busiest first, eight shown. `limit_hit_at
+  > 0` counts as *at a usage limit*; otherwise an `exit_code` from 1 to 127
+  as *exited with an error*.
+- **Waiting for you** — `api.Server.WaitingSessions` (live sessions whose
+  activity is `waiting-on-you`, with `need.reason`), five shown, and the
+  count of tasks in `needs_you`.
+- **Message** (`morning.Message`, HTML): `<b>Good morning · <Weekday></b>`,
+  then `<b>Mail</b> — N important of M new`, `<b>Agents overnight</b>`,
+  `<b>Waiting for you</b>`, each only when it has something; with nothing,
+  `Nothing new since the last summary.` Sent through the outbox; held back
+  under `/mute all`. URL buttons *Open mail* (with the mail section),
+  *Answer agents*, *More* → `<base>/#/mail`, `<base>/#/`, `<base>/#/history`,
+  where `<base>` is the phone page (`remote.app`) while access from anywhere
+  is on, else the LAN or Tailscale address while phone access is on, else
+  there are no buttons.
 
 `GET /v1/gemini` reports whether asking Gemini is possible here: `{available, env_var, licensed, model}`. It performs **no network I/O** and **never returns the key** — `available` says only that one is present. `POST /v1/gemini/ask` takes `{prompt, model?}` and answers `{text, model, usage}`, where `usage` carries the response's own `promptTokenCount` / `candidatesTokenCount` / `cachedContentTokenCount` / `thoughtsTokenCount`. It is the one endpoint in the product that checks the licence **server-side** (402 without an active key) rather than leaving the paywall to the UI, because the call spends the user's Gemini quota and opens an outbound connection — the reasoning and its limits are in [ADR-023](08-decisions.md). With no key set it answers 412 with the variable to set, which is a different problem from 402 and is reported separately so the screen can say which. The key is read from `GEMINI_API_KEY` in the daemon's environment at call time; it is never stored, never accepted by `PUT /v1/settings`, and never present in `GET /v1/settings`.
 
@@ -3663,7 +3710,15 @@ A chat is a session Caprock started in one of its own chat folders,
 `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>[-N]` ([ADR-071](08-decisions.md)).
 `Session` carries `chat: true` and `archived_at` (unix ms, omitted while 0);
 both are omitted on any other session. `Spawn` marks a session whose `cwd` is
-such a folder (`agents.IsChatDir`: a direct child of `chats/`, not a dot name).
+such a folder (`agents.IsChatDir`: a direct child of `chats/`, not a dot name),
+one started with `chat: true` in a folder the request names — a chat in a
+project folder ([ADR-091](08-decisions.md)) — and one that continues a chat
+(`resume` naming a session marked a chat, `store.CarryChat`). `POST
+/v1/agents {chat: true}` with no `cwd` makes a new chat folder; with a `cwd`
+it runs there and makes nothing (a controller's `cwd` is held to the same
+rule as any start: an existing folder under home). Deleting a chat removes
+its folder only when it is a chat folder: a chat in a project folder leaves
+the folder alone.
 
 ```
 GET    /v1/chats?q=&archived=1&limit=     → ChatList {items: [SessionSummary], total, chats, archived}
@@ -3704,6 +3759,23 @@ GET    /v1/chats/{id}/file?path=&download=1 → the file's bytes
 - **Who.** A paired viewer may list chats and read their files; a controller
   may also archive and delete them (§ Who may connect). Import is the
   machine's only.
+
+**Folder labels** ([ADR-091](08-decisions.md)). *Work* or *Personal* on a
+folder, set from New chat's Where step and drawn on the Chats list:
+
+```
+GET /v1/folder-labels                 → {labels: [{dir, label, updated_at}]}
+PUT /v1/folder-labels {dir, label}    → {labels: [...]}   label: "work" | "personal" | "" (remove)
+```
+
+- `dir` is an absolute path (cleaned; at most 4096 bytes, one line), `400`
+  otherwise, or for any other `label` or a body without one. Nothing on disk
+  is read or written; the folder need not exist for the machine. A label
+  covers the folders under it: the UI takes the longest labelled prefix
+  (`labelFor`, `lib/newChat.ts`).
+- **Who.** Every paired device reads them (`pairedDeviceRoutes`); a
+  controller sets them for a folder under home (`403` otherwise); the machine
+  for any folder.
 
 **Imported chats** ([ADR-074](08-decisions.md)). A conversation from a
 Claude.ai or ChatGPT export the user downloaded is stored as a chat that
@@ -6639,7 +6711,7 @@ measured and is quietly skewed is worse than one that is not there;
 
 **`GET /v1/premium` is what the paid plan costs**, so the dashboard can state a price without an outbound call and without a second copy of the figure. It is compiled in — rule 4 forbids fetching it — but it lives once, in `internal/premium`, and `TestPricingMatchesTheSite` reads the site's `src/content/pricing.ts` and fails when the two disagree. A price copied into the UI eventually contradicts the one that charges the card; this makes that a red build rather than a support email. The response carries `yearly` and `monthly` (`per_month_usd`, `charged_usd`, `period`, `url`) plus `info_url`. Changing a price means changing both files in the same commit.
 
-**`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set. One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
+**`chat` starts a session without a working directory**, for asking something rather than working on a repository — Caprock creates one under `<data_dir>/chats/<YYYY-MM-DD-HHMMSS>/` and spawns there. `cwd` is required unless `chat` is set; `chat` with a `cwd` runs the chat in that folder instead ([ADR-091](08-decisions.md)). One directory **per chat**, never a shared `chats/` folder: Claude Code keys a transcript by working directory, so a shared folder would collapse every conversation into one project row and one transcript. The name carries a counter when two chats start inside the same second. Chats live under the data directory rather than a second `~/.caprock` — one place holding Caprock's state is one place to back up, clean out and explain.
 
 **`create` makes the working directory, one level, under a parent that already exists.** Starting a new project otherwise meant leaving the dashboard, creating the folder in a terminal, and returning to type its path — a path the user had already typed. It is opt-in and defaults to false: this endpoint executes a command from its body, so a missing directory stays an error unless the caller explicitly asked for it to be made. Deliberately `Mkdir`, never `MkdirAll` — the parent must exist, so a typo in an absolute path fails loudly instead of materialising a chain of directories somewhere the user has never been. The path is cleaned before the parent is checked, so a path that climbs out with `..` is verified against where it actually lands. An existing directory is not an error.
 
@@ -6902,6 +6974,22 @@ CREATE INDEX IF NOT EXISTS idx_sessions_chat ON sessions(last_event_at) WHERE ch
 every session already in a chat folder by its name, so chats from before the
 column are chats. The partial index serves the Chats list; the work list's
 `chat = 0` reads the table as before.
+
+### Folder labels DDL (migration 0079)
+
+```sql
+CREATE TABLE IF NOT EXISTS folder_labels (
+  dir        TEXT PRIMARY KEY,
+  label      TEXT NOT NULL CHECK (label IN ('work', 'personal')),
+  updated_at INTEGER NOT NULL
+);
+```
+
+A label the user put on a folder (§ Chats, *Folder labels*;
+[ADR-091](08-decisions.md)): `dir` the folder's absolute path as a session's
+`cwd` holds it, `label` `work` or `personal`, `updated_at` unix ms. Removing a
+label deletes the row (`store.SetFolderLabel` with `""`). Nothing is
+backfilled.
 
 ### AI;DR DDL (migration 0060)
 

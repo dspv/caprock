@@ -103,6 +103,15 @@ const (
 	MetaInterrupted = "interrupted"
 	// MetaReportLastSent is when a report last went out, unix ms as a string.
 	MetaReportLastSent = "report_last_sent"
+	// MetaMorningDay is the local date ("2026-11-05") of the last day the
+	// Morning summary went (ADR-092), written before the send so a restart
+	// or a failing network never sends a second one that day.
+	// MetaMorningLastSent is when one last went out, unix ms as a string —
+	// where the next one's "since the last summary" starts — and
+	// MetaMorningLastError why the last send failed, empty when it did not.
+	MetaMorningDay       = "morning_day"
+	MetaMorningLastSent  = "morning_last_sent"
+	MetaMorningLastError = "morning_last_error"
 	// MetaEmptyTextRepairPending is "1" while assistant turns stored before
 	// parser v4 still wait to have their prose read back from the transcripts
 	// (ingest.RepairEmptyAssistantText). Set when a start finds an older

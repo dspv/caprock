@@ -23,13 +23,16 @@ test('a closed tab is listed under Recently closed and comes back on a click and
 
   await app.chord('w')
   await expect(tab).toHaveCount(0)
+  // Folded to one line until a click (2026-11-05); kept unfolded after.
+  await expect(closed.locator('[data-closed-count]')).toHaveText('1')
+  await closed.locator('[data-closed-toggle]').click()
   const row = closed.locator(`[data-closed-row="${s.id}"]`)
   await expect(row).toBeVisible()
   await expect(row).toContainText(s.name)
   await expect(row.locator('[data-closed-ago]')).toHaveText(/^(now|\d+ min)$/)
-  // Above Running, no tab, after the tabbed rows (none open now).
+  // Under the list, after Running, no tab.
   const order = await app.sidebar.locator('[data-recently-closed], [data-untabbed-heading]').evaluateAll((els) => els.map((e) => (e.hasAttribute('data-recently-closed') ? 'closed' : 'running')))
-  expect(order).toEqual(['closed', 'running'])
+  expect(order).toEqual(['running', 'closed'])
 
   await row.click()
   await expect(tab).toHaveAttribute('aria-selected', 'true')
@@ -85,6 +88,8 @@ test('an agent ended with its tab comes back from its Recently closed row, read-
   await expect(tab).toHaveAttribute('aria-selected', 'true')
   await app.chord('w')
   await expect(tab).toHaveCount(0)
+  // Recently closed is one folded line until a click (2026-11-05).
+  await app.sidebar.locator('[data-closed-toggle][aria-expanded="false"]').click()
   const row = app.sidebar.locator(`[data-closed-row="${s.id}"]`)
   await expect(row).toBeVisible()
   // Once the daemon says it ended, the row continues it rather than reopening a live tab.

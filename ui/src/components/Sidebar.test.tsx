@@ -8,6 +8,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PROJECT_OPEN_KEY } from './ProjectRow'
+import { tabKey } from '@/lib/appkeys'
 import type { Project } from '@/lib/projects'
 import type { SessionSummary, Summary } from '@/lib/api'
 import { buildSidebar } from '@/lib/sidebar'
@@ -55,7 +57,12 @@ const top = () => [...document.querySelectorAll('.app-scroll > ul [data-project-
 /** The project ids hidden by hand, as stored (id → when). */
 const hiddenIds = () => Object.keys(JSON.parse(localStorage.getItem(HIDDEN_KEY)!) as Record<string, number>)
 
-beforeEach(() => { localStorage.clear(); sessionStorage.clear() })
+beforeEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+  // These tests read the projects unfolded; folded is the default since 2026-11-05 (sidebar V1).
+  localStorage.setItem(PROJECT_OPEN_KEY, JSON.stringify(['alpha', 'beta', 'stale', 'gamma', 'p1', 'p2', 'p3', 'other-folders']))
+})
 
 describe('the sidebar', () => {
   it('lists every agent session under its project and no shells, the tab in front the one highlighted row', () => {
@@ -84,10 +91,11 @@ describe('the sidebar', () => {
     expect(onActivateTab).toHaveBeenCalledWith('t1')
     fireEvent.click(document.querySelector('[data-project-row="beta"]')!)
     expect(props.onSelectProject).toHaveBeenCalledWith('beta')
-    // Beta current: alpha's sessions stay listed, nothing moves.
+    // Beta current: alpha's sessions stay listed, nothing moves; the shell's
+    // tab in front is highlighted in Open, which lists every tab.
     rerender(<Sidebar {...props} activeProjectId="beta" activeTabId="t2" />)
     expect(titles()).toEqual(['Fix the login', 'Write the docs'])
-    expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(0)
+    expect([...document.querySelectorAll('[aria-current="true"]')].map((r) => r.getAttribute('data-open-row'))).toEqual(['t2'])
     // No Waiting on you block: what waits is marked on its own row.
     expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull()
   })
@@ -338,33 +346,35 @@ describe('the sidebar', () => {
     renderSidebar({ model: m })
     const alpha = document.querySelector('[data-project-row="alpha"]') as HTMLElement
     const beta = document.querySelector('[data-project-row="beta"]') as HTMLElement
-    expect(within(alpha).getByLabelText('2 running')).toHaveTextContent('2')
+    // The summary says what runs (mockup V1): one working, one idle.
+    expect(alpha.querySelector('[data-project-summary]')).toHaveTextContent('1 running')
     expect(within(alpha).queryByLabelText(/today/)).toBeNull()
-    expect(within(beta).queryByLabelText(/running/)).toBeNull()
+    expect(beta.querySelector('[data-project-summary]')).toBeNull()
   })
 
-  it('leads with the Today strip, each figure a way in', () => {
+  it('ends with the Today line above the footer, each figure a way in', () => {
     const onRoute = vi.fn()
     const summary = { cost_usd: 48.2, rate_limits: { five_hour: { used_percentage: 62, resets_at: Date.now() / 1000 + 3600 } } } as unknown as Summary
     const { props } = renderSidebar({ onRoute, summary, loaded: true })
     const today = screen.getByRole('region', { name: 'Today' })
+    // Below the list, just above the footer: not at the top any more.
+    expect(today.nextElementSibling).toHaveClass('app-sidebar-footer')
+    expect(today).toHaveTextContent('$48.20 today·0 running5h 62%')
     fireEvent.click(within(today).getByRole('button', { name: /Spent today, every agent: \$48\.20/ }))
     expect(onRoute).toHaveBeenLastCalledWith('#/cost')
-    fireEvent.click(within(today).getByRole('button', { name: /Claude 5-hour window: 62% used/ }))
+    fireEvent.click(within(today).getByRole('button', { name: /5-hour window 62% used/ }))
     expect(onRoute).toHaveBeenLastCalledWith('#/cost?section=limits')
     fireEvent.click(within(today).getByRole('button', { name: /0 agents running/ }))
     expect(onRoute).toHaveBeenLastCalledWith('#/home')
-    // Nothing waits: the cell is a figure, not a button that does nothing.
-    expect(within(today).getByRole('button', { name: 'Nothing is waiting on you' })).toBeDisabled()
+    // Nothing waits: no waiting figure at all.
+    expect(today.querySelector('[data-today-waiting]')).toBeNull()
     expect(props.onOpenInbox).not.toHaveBeenCalled()
-    // No weekly window reported: no weekly bar, rather than an empty one.
-    expect(within(today).queryByRole('meter', { name: 'Weekly window used' })).toBeNull()
   })
 
-  it('shows a dash for spend until the summary answers', () => {
+  it('shows a dash for spend until the summary answers, and no window without a plan', () => {
     renderSidebar({ onRoute: vi.fn(), loaded: false })
     const today = screen.getByRole('region', { name: 'Today' })
-    expect(within(today).getByRole('button', { name: /not known yet/ })).toHaveTextContent('—')
+    expect(within(today).getByRole('button', { name: /Spent today.*not known yet/ })).toHaveTextContent('— today')
     expect(within(today).queryByRole('meter')).toBeNull()
   })
 
@@ -381,8 +391,8 @@ describe('the sidebar', () => {
     // Both are listed; only the one waiting now is marked.
     expect(document.querySelector('[data-live-row="now1"]')).toHaveAttribute('data-waiting', 'true')
     expect(document.querySelector('[data-live-row="old1"]')).not.toHaveAttribute('data-waiting')
-    // The project row still counts only what waits now.
-    expect(screen.getByLabelText('1 waiting on you')).toBeInTheDocument()
+    // The project row's summary counts only what waits now.
+    expect(document.querySelector('[data-project-row="alpha"] [data-project-summary]')).toHaveTextContent('1 needs you')
   })
 
   it('keeps what waits under a project folded by hand, and nothing else', () => {
@@ -398,7 +408,7 @@ describe('the sidebar', () => {
     expect([...document.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['asking'])
   })
 
-  it('draws a project’s last hour, offers a new agent at rest, and folds a working project by hand', () => {
+  it('sums a project up in a word, offers a new agent at rest, and folds a working project by hand', () => {
     const live = { session_id: 'a1', cwd: '/w/alpha', project: 'alpha', model: '', started_at: 1, last_event_at: Date.now(), status: 'active', git_branch: '', owned: true, title: 'Fix the login', activity: { phrase: '', at: '', health: 'working' } } as unknown as SessionSummary
     const ended = { ...live, session_id: 'a0', status: 'ended', title: 'old' } as unknown as SessionSummary
     const m = buildSidebar({
@@ -407,7 +417,9 @@ describe('the sidebar', () => {
     })
     expect(m.projects.find((n) => n.project.id === 'alpha')?.activity).toEqual([1, 2, 3])
     const { props } = renderSidebar({ model: m })
-    expect(document.querySelector('[data-project-spark]')).not.toBeNull()
+    // No sparkline since 2026-11-05 (mockup V1): the summary says it.
+    expect(document.querySelector('[data-project-spark]')).toBeNull()
+    expect(document.querySelector('[data-project-summary]')).toHaveTextContent('1 running')
     fireEvent.click(document.querySelector('[data-project-new]')!)
     expect(props.onNewAgent).toHaveBeenCalledWith('alpha')
     const row = () => document.querySelector('[data-project-row="alpha"]')!
@@ -756,5 +768,97 @@ describe('the sidebar', () => {
     expect(onSettingsSection).toHaveBeenCalledTimes(3)
     expect(onSettingsSection).toHaveBeenLastCalledWith('phone')
     expect(onSettings).not.toHaveBeenCalled()
+  })
+})
+
+// Owner and a designer, 2026-11-05 (translated): "the left part is
+// overloaded and it's unclear what is open where and in which phase".
+// Mockup V1: actions on top, Open with phases, projects folded.
+describe('the sidebar, V1', () => {
+  const iso = new Date(Date.now() - 60_000).toISOString()
+  const s = (id: string, cwd: string, title: string, health: string, p: Partial<SessionSummary> = {}) => ({
+    session_id: id, cwd, project: '', model: '', started_at: 1, last_event_at: Date.now(), status: 'active', git_branch: '', owned: true,
+    title, activity: { phrase: '', at: iso, health }, ...p,
+  }) as unknown as SessionSummary
+  const sessions = [
+    s('w', '/w/alpha', 'Retry webhook sender', 'working'),
+    s('n', '/w/beta', 'Paginate orders table', 'waiting-on-you'),
+    s('d', '/w/beta', 'Fix login redirect', 'done'),
+    s('i', '/w/stale', 'Morning summary', 'idle'),
+    s('f', '/w/stale', 'Stuck in a loop', 'looping'),
+    s('u', '/w/alpha', 'Untabbed and asking', 'waiting-on-you'),
+  ]
+  const pane = (id: string, kind: 'session' | 'shell' | 'file', sessionId: string) => ({ type: 'pane' as const, id, target: { kind, sessionId, ...(kind === 'file' ? { path: 'src/a.ts' } : {}) } })
+  const tab = (id: string, projectId: string, sessionId: string, kind: 'session' | 'shell' | 'file' = 'session'): Tab => ({ id, projectId, root: pane(`p${id}`, kind, sessionId), focusedPaneId: `p${id}`, title: id })
+  const tabs = [tab('t1', 'alpha', 'w'), tab('t2', 'beta', 'n'), tab('t3', 'beta', 'd'), tab('t4', 'stale', 'i'), tab('t5', 'stale', 'f'), tab('t6', 'alpha', 'x', 'file')]
+  const m = buildSidebar({ projects: [proj('alpha', 1, true), proj('beta', 2, true), proj('stale', 3, true)], sessions, permissions: new Set(), costs: new Map(), openSessions: new Set(tabs.map((t) => (t.root.type === 'pane' ? t.root.target.sessionId : ''))) })
+  const labels = tabLabels(tabs, new Map(sessions.map((x) => [x.session_id, x])), new Set(), () => undefined)
+  const digits = new Map(tabs.map((t, i) => [t.id, i + 1]))
+
+  beforeEach(() => localStorage.removeItem(PROJECT_OPEN_KEY))
+
+  it('separates the actions block: New agent, then Chat, Project and ⋯ in one row', () => {
+    const onQuickChat = vi.fn()
+    const { props } = renderSidebar({ onQuickChat, activeProjectId: 'beta' })
+    const block = document.querySelector<HTMLElement>('[data-sidebar-actions]')!
+    expect(block).toHaveClass('app-sidebar-actions')
+    expect(within(block).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(
+      [expect.stringMatching(/^Search/), 'New agent', 'Quick chat', 'Add project', 'More actions'])
+    // Their keys are unchanged, said in the tooltips through keys().
+    expect(within(block).getByRole('button', { name: 'Quick chat' })).toHaveAttribute('aria-keyshortcuts', 'Alt+Meta+N')
+    expect(within(block).getByRole('button', { name: 'Add project' })).toHaveAttribute('aria-keyshortcuts', 'Meta+O')
+    fireEvent.click(within(block).getByRole('button', { name: 'Quick chat' }))
+    expect(onQuickChat).toHaveBeenCalled()
+    fireEvent.click(within(block).getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^New shell/ }))
+    expect(props.onNewShell).toHaveBeenCalledWith('beta')
+  })
+
+  it('lists exactly the open tabs in Open, in tab order, each with its project, phase chip and key; the front tab highlighted', () => {
+    const onActivateTab = vi.fn()
+    renderSidebar({ model: m, tabs, tabLabels: labels, tabDigits: digits, activeTabId: 't2', activeProjectId: 'beta', dashboardActive: false, onActivateTab })
+    const open = screen.getByRole('region', { name: 'Open' })
+    expect(within(open).getByRole('heading').textContent).toBe('Open · 6')
+    const rows = [...open.querySelectorAll<HTMLElement>('[data-open-row]')]
+    expect(rows.map((r) => [
+      r.querySelector('[data-row-title]')!.textContent,
+      r.querySelector('[data-row-project-name]')?.textContent,
+      r.querySelector('[data-phase-chip]')?.textContent,
+      r.querySelector('[data-row-key-digit]')!.textContent,
+    ])).toEqual([
+      ['Retry webhook sender', 'alpha', 'working', tabKey(1)],
+      ['Paginate orders table', 'beta', 'needs you', tabKey(2)],
+      ['Fix login redirect', 'beta', 'done', tabKey(3)],
+      ['Morning summary', 'stale', 'idle', tabKey(4)],
+      ['Stuck in a loop', 'stale', 'failed', tabKey(5)],
+      ['a.ts', 'alpha', undefined, tabKey(6)],
+    ])
+    // One highlighted row in the whole sidebar: the tab in front, in Open.
+    expect([...document.querySelectorAll('.app-row-selected')]).toEqual([rows[1]])
+    fireEvent.click(rows[2]!)
+    expect(onActivateTab).toHaveBeenCalledWith('t3')
+  })
+
+  it('folds every project by default with a short summary, keeps an unfold, and still lists what asks with no tab', () => {
+    const { unmount } = renderSidebar({ model: m, tabs, tabLabels: labels })
+    const summary = (id: string) => document.querySelector(`[data-project-row="${id}"] [data-project-summary]`)?.textContent
+    expect(['alpha', 'beta', 'stale'].map((id) => document.querySelector(`[data-project-row="${id}"]`)!.getAttribute('aria-expanded'))).toEqual(['false', 'false', 'false'])
+    expect(summary('alpha')).toBe('1 needs you')
+    expect(summary('beta')).toBe('1 needs you')
+    // A waiting tab is in Open; folded, a project lists only what asks with no tab.
+    expect([...document.querySelectorAll('[data-live-row]')].map((r) => r.getAttribute('data-live-row'))).toEqual(['u'])
+    expect(screen.queryByRole('group', { name: 'beta: sessions' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Unfold beta' }))
+    expect(screen.getByRole('group', { name: 'beta: sessions' })).toBeInTheDocument()
+    unmount()
+    renderSidebar({ model: m, tabs, tabLabels: labels })
+    expect(document.querySelector('[data-project-row="beta"]')).toHaveAttribute('aria-expanded', 'true')
+    expect(document.querySelector('[data-project-row="alpha"]')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('has no Projects | Tabs switch: Open is the tabs’ list now', () => {
+    renderSidebar({ model: m, tabs, tabLabels: labels })
+    expect(screen.queryByRole('radiogroup', { name: 'List sessions by' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Projects' })).toBeInTheDocument()
   })
 })
