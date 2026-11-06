@@ -52,6 +52,9 @@ export interface Machine {
   kind?: 'machine'
   last_seen?: number
   streams: number
+  /** What the channel to it has cost the relay since the daemon started or
+   *  paired it (OQ-14); not shown anywhere yet. Absent from an older daemon. */
+  traffic?: { msgs_out: number; msgs_in: number; bytes_out: number; bytes_in: number }
 }
 
 export type MachineStatus = 'idle' | 'connecting' | 'online' | 'offline' | 'refused' | 'closed' | 'pending' | 'revoked'

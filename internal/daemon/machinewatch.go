@@ -13,6 +13,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/dspv/caprock/internal/alerts"
+	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/peers"
 )
@@ -46,9 +47,33 @@ const (
 	// asleep or off is waited out, not hammered.
 	machineWatchRetryMin = 2 * time.Second
 	machineWatchRetryMax = 60 * time.Second
+	// machineWatchStable is how long a socket has to stay up to count as a
+	// connection rather than a refusal: one that drops sooner backs off as a
+	// failed one does, so a computer that accepts and hangs up at once is
+	// not re-dialled, and its lists re-read, every 2 s.
+	machineWatchStable = 10 * time.Second
+	// machineWatchAllow is the first wait for a computer that waits for its
+	// owner's Allow: the owner is usually at it right then, so the answer is
+	// looked for after 5 s, 10 s, 20 s… rather than a minute later.
+	machineWatchAllow = 5 * time.Second
 	// machineWatchTypes are the frames asked of another computer.
 	machineWatchTypes = "notify,permission"
 )
+
+// watchPace is how long watchMachine waits between attempts; a test passes
+// shorter ones.
+type watchPace struct{ min, max, stable, allow time.Duration }
+
+var machineWatchPace = watchPace{min: machineWatchRetryMin, max: machineWatchRetryMax, stable: machineWatchStable, allow: machineWatchAllow}
+
+// watchedMachines is what the watch needs of the computers this machine
+// reaches: api.Machines, narrowed, so a test can stand in for the channels.
+type watchedMachines interface {
+	List() []peers.Status
+	Get(id string) (peers.Status, error)
+	Check(ctx context.Context, id string) (peers.Status, error)
+	OpenWS(ctx context.Context, id, path string, protocols []string) (api.MachineSocket, error)
+}
 
 // MachineNotification is a notify frame from another computer: its own
 // fields, and which computer said it.
@@ -129,14 +154,14 @@ func (d *Daemon) machineWatchTick(ctx context.Context, w *machineWatch) {
 		}
 		mctx, cancel := context.WithCancel(ctx)
 		w.running[id] = cancel
-		go d.watchMachine(mctx, id)
+		go d.watchMachine(mctx, d.machines, id, machineWatchPace)
 	}
 }
 
 // watchMachine keeps one /v1/live open on computer id until ctx ends,
 // reopening it after a drop from the last frame it heard.
-func (d *Daemon) watchMachine(ctx context.Context, id string) {
-	wait := machineWatchRetryMin
+func (d *Daemon) watchMachine(ctx context.Context, m watchedMachines, id string, pace watchPace) {
+	wait := pace.min
 	var since uint64
 	for ctx.Err() == nil {
 		path := "/v1/live?types=" + machineWatchTypes
@@ -144,35 +169,54 @@ func (d *Daemon) watchMachine(ctx context.Context, id string) {
 			path += "&since=" + strconv.FormatUint(since, 10)
 		}
 		octx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		ws, err := d.machines.OpenWS(octx, id, path, nil)
+		ws, err := m.OpenWS(octx, id, path, nil)
 		cancel()
 		if err != nil {
 			var ce websocket.CloseError
 			if errors.As(err, &ce) && (ce.Code == 4401 || ce.Code == 4403) {
 				// Not let in there (waiting for Allow, or removed): ask who
-				// this machine is there, and wait long.
+				// this machine is there. Removed is waited out long (the tick
+				// stops the watch once it reads revoked); waiting for Allow is
+				// looked at again soon, then less often.
 				cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
-				_, _ = d.machines.Check(cctx, id)
+				st, _ := m.Check(cctx, id)
 				ccancel()
-				wait = machineWatchRetryMax
+				if st.Status == peers.StatusPending {
+					wait = min(max(wait, pace.allow), pace.max)
+				} else {
+					wait = pace.max
+				}
 			}
 			if !sleepCtx(ctx, wait) {
 				return
 			}
-			wait = min(wait*2, machineWatchRetryMax)
+			wait = min(wait*2, pace.max)
 			continue
 		}
-		wait = machineWatchRetryMin
+		opened := time.Now()
+		if st, err := m.Get(id); err == nil && (st.Status == peers.StatusPending || st.Status == peers.StatusRevoked) {
+			// The socket opened, so that computer lets this one in: learn it
+			// before saying "online", or the lists re-read now would still
+			// say "waiting for Allow".
+			cctx, ccancel := context.WithTimeout(ctx, 10*time.Second)
+			_, _ = m.Check(cctx, id)
+			ccancel()
+		}
 		d.machineChanged(id, "online")
-		since = d.readMachineLive(ctx, id, ws, since)
+		since = d.readMachineLive(ctx, m, id, ws, since)
 		_ = ws.Close(websocket.StatusNormalClosure, "")
 		if ctx.Err() != nil {
 			return
 		}
 		d.machineChanged(id, "offline")
-		if !sleepCtx(ctx, machineWatchRetryMin) {
+		if time.Since(opened) >= pace.stable {
+			// It stood: a drop now is the network's, retried soon.
+			wait = pace.min
+		}
+		if !sleepCtx(ctx, wait) {
 			return
 		}
+		wait = min(wait*2, pace.max)
 	}
 }
 
@@ -184,8 +228,12 @@ type liveFrame struct {
 }
 
 // readMachineLive re-publishes what computer id sends until its socket
-// ends, and answers the seq it got to.
-func (d *Daemon) readMachineLive(ctx context.Context, id string, ws interface {
+// ends, and answers the seq it got to: the computer's own position, taken
+// from every frame (hello, reset, ping and pong carry it too), never the
+// highest ever heard. A computer that restarted counts from 1 again, and a
+// since past its newest frame would earn a reset on every reconnect, losing
+// what was said there while the socket was down.
+func (d *Daemon) readMachineLive(ctx context.Context, m watchedMachines, id string, ws interface {
 	Read(context.Context) (websocket.MessageType, []byte, error)
 }, since uint64) uint64 {
 	for {
@@ -197,9 +245,7 @@ func (d *Daemon) readMachineLive(ctx context.Context, id string, ws interface {
 		if json.Unmarshal(msg, &f) != nil {
 			continue
 		}
-		if f.Seq > since {
-			since = f.Seq
-		}
+		since = f.Seq
 		switch f.Type {
 		case bus.FrameNotify:
 			var n alerts.Notification
@@ -207,7 +253,7 @@ func (d *Daemon) readMachineLive(ctx context.Context, id string, ws interface {
 				continue
 			}
 			name := id
-			if st, err := d.machines.Get(id); err == nil {
+			if st, err := m.Get(id); err == nil {
 				name = st.Name
 			}
 			if d.api != nil {

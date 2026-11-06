@@ -470,6 +470,70 @@ func TestPendingThenAllowedThenLeft(t *testing.T) {
 	}
 }
 
+// A computer recorded as waiting for Allow, or as having removed this one,
+// that then lets this machine in — a request answered, a socket opened — is
+// asked again by itself: the state clears without anyone pressing Check.
+func TestAComputerThatLetsThisOneInIsCheckedAgain(t *testing.T) {
+	tg := newTarget(t)
+	tg.mu.Lock()
+	tg.pending = true
+	tg.mu.Unlock()
+	m := open(t, t.TempDir())
+	st, err := m.Pair(ctx5(t), tg.link("314159"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Status != peers.StatusPending {
+		t.Fatalf("while waiting: %+v", st)
+	}
+	waitFor := func(what string, ok func(peers.Status) bool) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			got, _ := m.Get(st.ID)
+			if ok(got) {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: still %+v", what, got)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	// The owner allows it there; this machine's next request is answered.
+	tg.mu.Lock()
+	tg.pending = false
+	tg.mu.Unlock()
+	req, _ := http.NewRequestWithContext(ctx5(t), "GET", "http://machine/v1/echo", nil)
+	res, err := m.Do(st.ID, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	waitFor("after a request was answered", func(s peers.Status) bool { return s.Status != peers.StatusPending && s.Role == "controller" })
+
+	// Removed, then known again: a socket that opens clears "revoked".
+	tg.revoke()
+	if s, _ := m.Check(ctx5(t), st.ID); s.Status != peers.StatusRevoked {
+		t.Fatalf("after revoke: %+v", s)
+	}
+	tg.mu.Lock()
+	tg.tokens["tok-1"] = "controller"
+	tg.mu.Unlock()
+	ws, err := m.OpenWS(ctx5(t), st.ID, "/v1/live", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ws.Close(websocket.StatusNormalClosure, "")
+	waitFor("after a socket opened", func(s peers.Status) bool { return s.Status != peers.StatusRevoked })
+
+	// What the channel cost the relay is counted, each way (OQ-14).
+	got, _ := m.Get(st.ID)
+	if tr := got.Traffic; tr.MsgsOut == 0 || tr.MsgsIn == 0 || tr.BytesOut < tr.MsgsOut || tr.BytesIn < tr.MsgsIn {
+		t.Fatalf("relay traffic after requests and a socket: %+v", tr)
+	}
+}
+
 func TestABadLinkSaysWhy(t *testing.T) {
 	m := open(t, t.TempDir())
 	_, err := m.Pair(ctx5(t), "hello")

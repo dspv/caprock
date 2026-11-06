@@ -54,7 +54,11 @@ controller's proxy. Each leg sends `--keys` keys (default 200) twice,
 alternating, `--gap` ms apart, each timed from the send to the frame that
 echoes it. One JSON object: median, p95, max per leg, what the proxy added,
 the relay, the machine and its load. It stops the terminal holders its
-daemons started, by the pids they recorded. Results and what they say are in
+daemons started, by the pids they recorded. `--idle N` then leaves a
+dashboard window (a `/v1/live`) open on the controller for N seconds with the
+session idle, and adds `idle`: the relay messages and bytes the controller's
+channel sent and got in that time (`GET /v1/machines` → `traffic`), and per
+hour (OQ-14). Results and what they say are in
 [.ai/21-app.md](../.ai/21-app.md#a-session-on-another-computer-2026-10-18).
 
 ## Typing beside busy agents

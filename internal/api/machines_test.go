@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -247,6 +249,31 @@ func TestMachineProxyHTTP(t *testing.T) {
 	fm.far = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`[]`)) })
 	if w := serve(s, local("GET", "/v1/m/mini/v1/sessions", "")); w.Code != 200 {
 		t.Fatalf("after coming back: %d %s", w.Code, w.Body)
+	}
+}
+
+// A Windows computer's paths are its own (ADR-067, the Windows host): a
+// folder like C:\Users\ada\work with a space and a non-ASCII name crosses
+// the proxy as the string it is, in a query and in a body, never read as a
+// path of this machine.
+func TestMachineProxyCarriesAWindowsPathUntouched(t *testing.T) {
+	const win = `C:\Users\ada\my work\café`
+	var query, body string
+	fm := &fakeMachines{status: "online", far: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query().Get("path")
+		if r.Body != nil {
+			b, _ := io.ReadAll(r.Body)
+			body = string(b)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	})}
+	s := machinesServer(t, fm)
+	if w := serve(s, local("GET", "/v1/m/mini/v1/browse/stat?path="+url.QueryEscape(win), "")); w.Code != 200 || query != win {
+		t.Fatalf("a Windows folder in a query: %d, the other computer read %q", w.Code, query)
+	}
+	start := `{"cwd":` + strconv.Quote(win) + `}`
+	if w := serve(s, local("POST", "/v1/m/mini/v1/agents", start)); w.Code != 200 || body != start {
+		t.Fatalf("a Windows folder in a start: %d, the other computer read %s", w.Code, body)
 	}
 }
 
