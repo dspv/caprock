@@ -526,6 +526,12 @@ func TestAComputerThatLetsThisOneInIsCheckedAgain(t *testing.T) {
 	}
 	_ = ws.Close(websocket.StatusNormalClosure, "")
 	waitFor("after a socket opened", func(s peers.Status) bool { return s.Status != peers.StatusRevoked })
+
+	// What the channel cost the relay is counted, each way (OQ-14).
+	got, _ := m.Get(st.ID)
+	if tr := got.Traffic; tr.MsgsOut == 0 || tr.MsgsIn == 0 || tr.BytesOut < tr.MsgsOut || tr.BytesIn < tr.MsgsIn {
+		t.Fatalf("relay traffic after requests and a socket: %+v", tr)
+	}
 }
 
 func TestABadLinkSaysWhy(t *testing.T) {

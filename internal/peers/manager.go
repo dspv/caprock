@@ -95,6 +95,18 @@ type Status struct {
 	LastSeen int64 `json:"last_seen,omitempty"`
 	// Streams is how many requests and sockets are open to it.
 	Streams int `json:"streams"`
+	// Traffic is what this machine's channel to it has cost the relay since
+	// this daemon started or paired it (OQ-14): the relay messages and their
+	// bytes each way, the relay's own pings included.
+	Traffic Traffic `json:"traffic"`
+}
+
+// Traffic counts relay messages and bytes, each way.
+type Traffic struct {
+	MsgsOut  uint64 `json:"msgs_out"`
+	MsgsIn   uint64 `json:"msgs_in"`
+	BytesOut uint64 `json:"bytes_out"`
+	BytesIn  uint64 `json:"bytes_in"`
 }
 
 // Manager keeps the computers and a channel, opened on demand, to each.
@@ -205,6 +217,7 @@ func (m *Manager) statusLocked(mach Machine) Status {
 	}
 	st := p.client.State()
 	s.Status, s.Error, s.Version, s.Streams = st.Status, st.Error, st.Version, st.Streams
+	s.Traffic = Traffic{MsgsOut: st.MsgsOut, MsgsIn: st.MsgsIn, BytesOut: st.BytesOut, BytesIn: st.BytesIn}
 	s.Role, s.Kind = p.role, p.kind
 	if !p.lastSeen.IsZero() {
 		s.LastSeen = p.lastSeen.UnixMilli()

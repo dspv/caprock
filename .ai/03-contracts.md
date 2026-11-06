@@ -463,8 +463,8 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   /v1/pair/me` again by itself, so the state clears without Settings'
   Check; the watch below does it before it says `online`.
 - **`GET /v1/machines`** answers `{machines: [{id, name, relay, added_at,
-  status, error?, version?, role?, kind?, last_seen?, streams}]}`, in the
-  order added, never a token. `?check=1` first asks each computer `GET
+  status, error?, version?, role?, kind?, last_seen?, streams,
+  traffic}]}`, in the order added, never a token. `?check=1` first asks each computer `GET
   /v1/pair/me` through its channel, at once, for 12 s at most. **`POST
   /v1/machines`** `{link}` pairs (60 s at most) and answers that computer's
   entry: `400` for a link that does not parse, carries no code, names this
@@ -564,8 +564,11 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   no socket is opened while no one at this machine is looking.
 - **Relay counters.** `remote.State` (the Host) and `remote.ClientState`
   count relay messages and bytes each way (`msgs_in`, `msgs_out`,
-  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. Not in any
-  API answer yet.
+  `bytes_in`, `bytes_out`) since the daemon started, for OQ-14. The
+  controller's side is in `GET /v1/machines` as each computer's `traffic`
+  (`{msgs_out, msgs_in, bytes_out, bytes_in}`, the relay's own pings
+  included, since this daemon started or paired that computer; local only,
+  like the rest of the route). The Host's is in no API answer yet.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
