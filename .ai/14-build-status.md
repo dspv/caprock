@@ -395,6 +395,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-07 — 0.175.0: compression while agents work, packing the database on request, cost and approvals across computers
+
+A minor release, one batch PR (#899). Compressed tool output (ADR-093, amended) never ran on the owner's Mac: every idle-time database job waited for 30 quiet minutes, and agents working around the clock left at most 11. Row compression, payload compaction and incremental vacuum now run in small steps after a 5-second pause in writes, at most a tenth of one core, yielding to any write; on a copy of the owner's database (2,596 MiB) that compressed 552,525 rows for 838 MiB in 48 s of steps. The window's status bar gains a database item with the progress and a user-started Pack now (`/v1/storage/pack`) with a measured time estimate and a real progress bar; events wait in memory during a pack and none were lost in the test. Linked computers (ADR-067, amended): Approve/Deny on a remote session's notification, This Mac / All computers on Cost (a computer that did not answer is named, never counted as $0), the controller's token bound to its key automatically, and how to run your own relay. OQ-17–20 stay open.
+
 ### 2026-11-07 — 0.174.1: the agent's portrait back in the hero, linked computers that recover by themselves
 
 A patch release, one batch PR (#895). The Agent panel's matrix look draws the session's character portrait in its tile again — the face picker kept, the agent's mark as a badge on the corner — and the picture block and the figures share one height. Linked computers: a restarted computer no longer loses the prompts raised while the link was down, a computer let in with Allow stops reading "waiting for Allow" by itself, a stale session list read during a prompt is no longer cached, and `GET /v1/machines` reports each computer's relay traffic; the hosted relay was measured at 132 ms median per keystroke between two machines in one home.
