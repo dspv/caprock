@@ -109,8 +109,28 @@ UPDATE daily_stats SET tokens_total = tokens_total - ?, cost_usd = cost_usd - ? 
     SEARCH daily_stats USING INDEX sqlite_autoindex_daily_stats_1 (day=? AND project=? AND model=?)
 
 ## daemon.(*Daemon).compressionReport
+SELECT COALESCE( (SELECT MAX(id) FROM events WHERE id < (SELECT MIN(id) FROM events WHERE ts >= ? AND ts <= ?)), (SELECT MAX(id) FROM events WHERE NOT EXISTS (SELECT 1 FROM events WHERE ts >= ? AND ts <= ?)), 0)
+    SCAN CONSTANT ROW
+    SCALAR SUBQUERY 2
+        SEARCH events USING INTEGER PRIMARY KEY (rowid<?)
+        SCALAR SUBQUERY 1
+            SEARCH events USING COVERING INDEX idx_events_ts (ts>? AND ts<?)
+    SCALAR SUBQUERY 4
+        SEARCH events
+        SCALAR SUBQUERY 3
+            SEARCH events USING COVERING INDEX idx_events_ts (ts>? AND ts<?)
+
+## daemon.(*Daemon).compressionReport
 SELECT ts FROM events WHERE id <= ? ORDER BY id DESC LIMIT 1
     SEARCH events USING INTEGER PRIMARY KEY (rowid<?)
+
+## daemon.(*Daemon).compressionReport
+SELECT ts FROM events WHERE id > ? ORDER BY id LIMIT 1
+    SEARCH events USING INTEGER PRIMARY KEY (rowid>?)
+
+## daemon.(*Daemon).zstdFinished, store.(*Store).backup
+DELETE FROM meta WHERE k = ?
+    SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
 
 ## deepseek.(*Ingester).dropKeys.func1
 DELETE FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ? AND source = ? AND kind = ? RETURNING ts
@@ -385,10 +405,6 @@ SELECT id, (CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload 
 ## store.(*Store).backfillTouch.func1
 UPDATE events SET touch_dir = ? WHERE id = ?
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
-
-## store.(*Store).backup
-DELETE FROM meta WHERE k = ?
-    SEARCH meta USING INDEX sqlite_autoindex_meta_1 (k=?)
 
 ## store.(*Store).backup
 SELECT page_count * page_size FROM pragma_page_count, pragma_page_size
