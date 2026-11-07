@@ -12,6 +12,45 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.175.0] - 2026-11-07
+
+### Added
+
+- **machines:** a prompt on another of your computers can be approved or
+  denied from the app's notification, as one on this computer can (macOS and
+  Linux); the answer goes to that computer through the link, and a prompt
+  answered there first takes the notification away.
+- **machines:** the Cost screen has **This Mac / All computers**: with
+  another computer linked, *All computers* shows each computer's spend,
+  priced with its own table, and the total of those that answered. A
+  computer that did not answer is named as not counted, never as $0.
+- **machines:** a linked computer's access is now bound to that computer's
+  own key, with nothing to do: a copy of it taken off that computer works
+  from nowhere else.
+- **docs:** `docs/machines.md` says what the hosted relay
+  measured, how and when to run your own relay, and how to measure a link
+  between two computers.
+- **storage:** The status strip at the bottom of the window shows how far
+  compression has got (*Compressing · 40% · 224.6MB saved*), and once it has
+  caught up and packing the file would free a meaningful amount, offers *Pack
+  database · ~85 s*. A click opens the details: how long it takes and what it
+  frees, both estimated from this database, that sessions keep running and new
+  events wait, and **Pack now**. Every event that arrives during the pack is
+  recorded when it ends. The pack shows a progress bar measured from what
+  SQLite has written. `GET /v1/storage/pack` reports the job and the pack,
+  `POST` starts one, and `GET /v1/storage`'s `compression` gains the job's
+  progress.
+
+### Fixed
+
+- **storage:** Compress tool output now works on a computer whose agents never
+  stop. It waited for 30 minutes with nothing recorded, which agents running
+  around the clock never leave, so with the setting on all night it compressed
+  nothing. Its steps — and the base64 compaction's, and incremental vacuum's,
+  which give free space back to the disk — now run whenever writes pause for
+  5 seconds, give way to any write that arrives, and rest nine times as long
+  as each step took, so they use at most a tenth of one core.
+
 ## [0.174.1] - 2026-11-07
 
 ### Added
