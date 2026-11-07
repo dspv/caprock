@@ -100,11 +100,11 @@ it('says Caprock compacts on its own, never asks the user to run anything', () =
   expect(t).not.toMatch(/VACUUM|sqlite3|caprock down/)
 })
 
-it('once the database returns free space, says it goes back to the disk while idle', () => {
+it('once the database returns free space, says it goes back to the disk in the background', () => {
   render(<StorageView report={report({ reclaimable_bytes: 200_000_000, returns_free_space: true })} now={now} />)
   const t = document.body.textContent ?? ''
-  expect(t).toMatch(/The space deleted events leave goes back to the disk while Caprock is idle/)
-  expect(t).toMatch(/Caprock gives it back to the disk the next time it is idle/)
+  expect(t).toMatch(/The space deleted events leave goes back to the disk in the background/)
+  expect(t).toMatch(/Caprock gives it back to the disk in small steps/)
 })
 
 it('says a new measurement is running beside the age of the figures shown', () => {
@@ -144,7 +144,7 @@ it('says the compressed rows are being restored after it is turned off, and hide
   const r = report()
   r.database!.compression = { ...zc, rows: 10, plain_bytes: 30_000, stored_bytes: 12_000 }
   const { rerender } = render(<StorageView report={{ ...r, compression: { on: false, restoring: true } }} now={now} compress={{ on: false, set: () => {} }} />)
-  expect(document.body.textContent).toMatch(/Restoring the compressed rows while idle/)
+  expect(document.body.textContent).toMatch(/Restoring the compressed rows in the background/)
   rerender(<StorageView report={{ ...r, compression: { on: false, restoring: true } }} now={now} />)
   expect(screen.queryByRole('checkbox', { name: /Compress tool output/ })).toBeNull()
 })

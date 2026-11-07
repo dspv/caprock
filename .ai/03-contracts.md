@@ -1340,6 +1340,8 @@ Added during T6 (same conventions; not in the spec's list):
 GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
 GET  /v1/status                        → daemon status: version, api_level, pid, uptime, data dir, executable, pricing, ingest, hooks
 GET  /v1/storage                       → what the data directory holds; see § Storage below
+GET  /v1/storage/pack                  → the compression job and the pack (offered, running, last); see § Storage, "Packing"
+POST /v1/storage/pack                  → packs the database now → 202 and the same report; 409 while one runs, 507 without disk room (§ Storage, "Packing")
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
 GET  /v1/window-stop                   → the plan-window stop's state (§ Pricing table, "The plan-window stop"); 501 when the daemon has no guard
@@ -1525,10 +1527,24 @@ retention_days, compression}`.
   id with a fixed seed, are compressed in memory (`sample_plain_bytes` →
   `sample_stored_bytes`), and **`est_saving_bytes` is `eligible_bytes` scaled
   by that ratio: an estimate, and named as one** wherever it is shown.
-- **`compression`** is the switch and the idle-time job: `{on, through_ms?,
-  restoring?}` — `through_ms` the time of the event at the job's cursor,
-  `restoring` true while it is off and compressed rows remain. Read per
-  request from `config.json` and `meta`.
+- **`compression`** is the switch and the background job: `{on, through_ms?,
+  restoring?, cursor_id, target_id, restore_from_id?, progress, pending,
+  saved_bytes}` — `through_ms` the time of the event at the job's cursor,
+  `restoring` true while it is off and compressed rows remain. `cursor_id` is
+  `meta.payload_zstd_cursor`; `target_id` the last existing id before the
+  first event younger than a day, which a pass has to reach (ids, not rows:
+  an id whose row was deleted is passed too, so the share is close rather than
+  exact). `progress` is `cursor_id / target_id` while compressing, and how far
+  the cursor has come down from `restore_from_id`
+  (`meta.payload_zstd_restore_from`, set when restoring starts, removed when
+  it ends) while restoring. `pending` is true while the job is under way:
+  on, the next row it would examine is more than an hour past the day (rows
+  turn a day old all the time, and a finished pass looks again every ten
+  minutes, so without that hour the job would count as running for ever);
+  off, while compressed rows remain. `saved_bytes` is
+  `meta.payload_zstd_saved`, an upper bound. Read per request from
+  `config.json` and `meta`, plus two lookups by id and one by `ts` on an
+  index.
 - **`GET /v1/status` carries `compress_offer`** — `{db_bytes,
   est_saving_bytes, sample_rows, measured_at}` — for the sidebar's hint to
   turn the switch on ([04-ui.md](04-ui.md) § The sidebar footer). It is copied
@@ -1540,6 +1556,65 @@ retention_days, compression}`.
   measurement has no estimate, and until the first measurement of this
   daemon's run (the panel, or the daily idle one). How large a saving is worth
   a line is the client's call (300 MB, `lib/compressHint.ts`).
+- **Packing** (`internal/daemon/pack.go`, [ADR-093](08-decisions.md)'s
+  2026-11-07 amendment). `GET /v1/storage/pack` is what the status
+  strip's database indicator polls: `{compression, pack: {db_bytes, running?, offer?,
+  estimating?, last?}}`, `compression` as above. It never measures for the
+  request: a few `meta` reads and `PRAGMA`s, and the page sample behind
+  `offer`, which is read in the background and reused for 15 minutes
+  (`estimating` while it is read).
+  - **`offer`** — `{used_bytes, free_bytes_est, sampled_pages, est_seconds,
+    hold_seconds_est, rate_measured?, worth}` — is what a pack would do now.
+    `free_bytes_est` is an estimate, named as one: 4,000 random pages read
+    through `sqlite_dbpage` (`store.EstimatePack`), the empty space of each
+    b-tree page among them scaled to the file, less the 15% of each rebuilt
+    b-tree page a VACUUM leaves empty, plus the freelist. On copies of the
+    owner's database (2026-11-07) it said 387–397 MiB where the VACUUM freed
+    442 MiB, 115–125 MiB where it freed 118, and 0 on a packed file.
+    `est_seconds` is `used_bytes` over the rate of the last pack on this
+    machine (`meta.pack_rate_bps`, used bytes per second of the whole run;
+    `rate_measured`), or else over 24 MiB/s, the slowest of three packs
+    measured on the owner's machine (2,001 MiB in 49 s and 56 s, 2,595 MiB in
+    108 s). `hold_seconds_est` is 78% of it: the part during which new events
+    wait (43 s of 56 and 84 s of 108). `worth` is true when `free_bytes_est`
+    is at least 256 MiB and compression is not under way (`pending`).
+  - **`running`** — `{phase, progress, started_ms, elapsed_ms, est_seconds,
+    events_wait}` — is a pack in progress, read every 500 ms. `phase` is
+    `waiting` (for the background step or a write in flight), `copying`
+    (SQLite builds the packed copy in a temporary file), `writing` (the copy
+    goes into the write-ahead log), `finishing` (the log is folded back).
+    `progress` is measured, a third per phase: the temporary file's size —
+    the largest open file of the process with no name, which is how SQLite
+    keeps its temporary files on macOS and Linux — against the expected
+    packed size; the log's growth against that copy's size; the bytes the
+    process has written (`procstat.SelfDiskIO`) against the log. `-1` where
+    the OS gives no reading (both on Windows): the bar then moves with the
+    phases only. `events_wait` is true until the VACUUM has committed.
+  - **`last`** — `{at_ms, ok, why?, before_bytes, after_bytes?, took_ms,
+    hold_ms?}` — is how the last pack of this daemon's run ended.
+  - **`POST /v1/storage/pack`** starts one and answers `202` with the report;
+    `409` while one runs or while migration 0073's move does, `507` without
+    the free disk the idle VACUUM needs (2.2 × the used size on the data
+    directory's volume, 1.1 × on the temporary directory's). It is the same
+    VACUUM, 10 minutes at most, switching an older database to incremental
+    on the way, with two differences. **Writes do not interrupt it**: the
+    recorder (`rollup.Recorder.Exclusive`) is held from just before the
+    VACUUM until it commits, so every hook, transcript line and import waits
+    in memory, on a context nothing cancels, and is written when it ends; the
+    shim gives up after its usual budget and exits 0, so a session never
+    waits, and loses only an answer that comes after the write — a task
+    runner's Stop decision or a SessionStart handoff. Other writes (a
+    setting saved, a queued message) wait SQLite's 5 s and may answer `503`,
+    which the dashboard retries. **The fold happens after**: the pack's
+    connection runs the VACUUM with its automatic checkpoint off, then a
+    `PASSIVE` checkpoint, which holds no writer up, and a `TRUNCATE` that
+    waits at most 200 ms for readers; the minute-by-minute WAL checkpoint
+    (`checkpointWAL`) keeps out of its way while it runs, and itself now runs
+    `PASSIVE` first and gives its `TRUNCATE` the same 200 ms — with 30 s it
+    held every writer up behind a long read, and on a preview every write in
+    that time failed. A finished pack stores its rate and sets
+    `meta.payload_zstd_repacked`, so compression's own VACUUM does not repeat
+    it. Machine only: not in `pairedDeviceRoutes`.
 - **A paired device may read it** — sizes and counts only; the data directory
   path is already in `/v1/status`.
 
@@ -6717,26 +6792,29 @@ With **Compress tool output** on (Status → Storage; `PUT /v1/settings`
   than a day old (`store.CompressAge`), and only when that saves at least a
   tenth of the row: a small row stays plain. A row stamped more than an hour
   in the future counts as old, so a skewed clock cannot hold the job back.
-- **The job.** Only while idle, after the base64 compaction and the one
-  VACUUM below have finished and `tool_fields` is filled, never during start
-  and never on the write path. One cursor, `meta.payload_zstd_cursor`: every
+- **The job.** In the background, after the base64 compaction has finished
+  and `tool_fields` is filled, never during start and never on the write
+  path, one step at a time whenever writes pause (§ Payload compaction and
+  auto-vacuum, "The steps"). One cursor, `meta.payload_zstd_cursor`: every
   compressed row has an id at or below it. On, `CompressPayloadsStep` reads
   the next 500 ids above it outside any transaction, compresses the tool
   rows old enough, and writes them and the new cursor in one short
   transaction, each update matching the payload it read so a concurrent
   rewrite wins; it stops at the first row younger than a day. Off,
   `DecompressPayloadsStep` restores the compressed rows in the 500 ids at and
-  below the cursor and lowers it, until it is 0. Between steps the daemon
-  rests twice as long as the step took (at least 50 ms) and stops as soon as
-  anything is to be recorded. Interrupted anywhere, it resumes at the cursor.
-  A row passed and later rewritten by a repair stays plain.
+  below the cursor and lowers it, until it is 0. A finished compression pass
+  looks for rows that have turned a day old every 10 minutes. Interrupted
+  anywhere, it resumes at the cursor. A row passed and later rewritten by a
+  repair stays plain.
 - **The space.** The overflow pages compression frees go back by
-  incremental vacuum. Once a compression pass has finished having saved at
-  least 256 MiB since the last time (`meta.payload_zstd_repacked`), the
-  daemon runs one VACUUM to pack the leaf pages it left half empty — the
-  VACUUM below, under the same rules: free disk of 2.2 × the used size,
-  10 minutes at most, rolled back by anything that wants to write, tried
-  again a day later.
+  incremental vacuum, in the same background steps. Once a compression pass
+  has finished having saved at least 256 MiB since the last time
+  (`meta.payload_zstd_repacked`), the daemon runs one VACUUM to pack the leaf
+  pages it left half empty — the VACUUM below, under the same rules: 30
+  minutes idle, free disk of 2.2 × the used size, 10 minutes at most, rolled
+  back by anything that wants to write, tried again a day later. Where that
+  idle half hour never comes, the status strip offers the same VACUUM as a pack
+  the user starts (§ Storage, "Packing").
 - **Restoring needs room.** Off, the job first checks free disk on the data
   directory's volume for `meta.payload_zstd_saved` — the payload bytes
   compression has saved, added to by each step and taken from by each
@@ -6769,14 +6847,46 @@ Measured on a copy of the owner's database (2,524 MiB, 886,532 events,
   events, the Tools drill-down over 30 and 90 days, the Week, todos — gave
   identical results compressed, after the VACUUM and after restoring.
 
+Measured again on 2026-11-07, after "Compress tool output" had been on all
+night on the owner's machine and compressed nothing (`payload_zstd_cursor`
+still 0: the 30 idle minutes never came; in the last 24 hours of his events
+the longest gap was 11 minutes). On a copy (2,596 MiB, 911,345 events),
+steps back to back:
+
+- **Compression:** 552,525 rows, 838 MiB of payload saved, in 1,773 steps
+  and 48 s: 27 ms a step on average, 24 ms median, 50 ms at the 95th
+  percentile, 98 ms at most.
+- **Incremental vacuum:** 593 MiB in 149 steps of 4 MiB, 14 s: 96 ms median,
+  157 ms at the 95th percentile, 183 ms at most. File 2,001 MiB.
+- **VACUUM:** 2,001 MiB to 1,559 MiB in 49 s, and again in 56 s; on the
+  uncompressed copy, 2,595 MiB to 2,477 MiB in 108 s. The temporary copy grew
+  steadily over the first half, then the log to the packed size, then the
+  fold took the last fifth (on the 56 s run: 28 s, 15 s, 12 s).
+- **Gaps to step in:** in those 24 hours (25,197 events), gaps of at least
+  5 s left 14.7 hours past their first 5 s; at 2 s 17.3 h, at 10 s 13.0 h,
+  at 30 s 9.2 h, at 30 minutes none.
+
 ### Payload compaction and auto-vacuum (no migration)
 
 Two changes to stored state that no migration can make: a migration runs in a
 transaction, and VACUUM cannot; and rewriting every payload inside one would
-hold the write lock for minutes on a large database. Both run in the daemon,
-only while it is idle (nothing recorded, and no request that may write, for
-30 minutes), and both are recorded in `meta` so they finish once
-(`internal/store/compact.go`, `vacuum.go`, `internal/daemon/compact.go`).
+hold the write lock for minutes on a large database. Both run in the daemon
+and are recorded in `meta` so they finish once (`internal/store/compact.go`,
+`vacuum.go`, `internal/daemon/compact.go`, `maintain.go`).
+
+- **The steps** — this compaction, compressed tool output and incremental
+  vacuum — run in the background whenever writes pause, not when the daemon
+  is idle: on a machine whose agents run around the clock the idle half hour
+  never comes (2026-11-07). A step waits for 5 s with nothing recorded and
+  no request that may write (`calmFor`); runs on a context the write gate
+  cancels, so a hook, a transcript line or a request that may write
+  interrupts it and SQLite rolls it back, to be done again at the next pause;
+  and is followed by a rest of nine times its own length (at least 50 ms), so
+  the job uses at most a tenth of one core. One job at a time with the
+  VACUUMs. With nothing to do it sleeps 5 minutes.
+- **The VACUUM** waits for real quiet: nothing recorded, and no request that
+  may write, for 30 minutes. The user can also start one from the sidebar
+  (§ Storage, "Packing").
 
 - **Payload compaction.** Events stored before `event.CapToolField` still
   hold base64. `store.CompactPayloadsStep` replaces it with the same marker the
@@ -6789,8 +6899,8 @@ only while it is idle (nothing recorded, and no request that may write, for
   handed back. Each step reads 500 event ids outside any transaction, then
   rewrites the rows that changed and moves the cursor in one short write
   transaction, matching each row on the payload it read so a concurrent
-  rewrite (an assistant turn's merged prose) wins; the daemon pauses 50 ms
-  between steps and stops as soon as anything is recorded.
+  rewrite (an assistant turn's merged prose) wins; between steps the daemon
+  rests as the steps above do.
   - `meta.payload_compact_until` — the highest event id when the pass began;
     later rows were written capped and are never examined.
   - `meta.payload_compact_cursor` — the highest id examined, then `done`.
@@ -6806,8 +6916,9 @@ only while it is idle (nothing recorded, and no request that may write, for
   recorder's `OnWrite`, any API request but GET, HEAD and OPTIONS); an
   interrupted VACUUM rolls back and changes nothing, and is tried again a day
   later. The WAL it leaves is checkpointed with `TRUNCATE` at once. From then
-  on `PRAGMA incremental_vacuum(1024)` (4 MiB at a time, 50 ms apart) gives
-  the freelist back whenever it passes 8 MiB on an idle tick.
+  on `PRAGMA incremental_vacuum(1024)` (4 MiB a step) gives the freelist back
+  whenever it passes 8 MiB, in the background steps above; past 64 MiB its
+  steps come between compression steps rather than after the pass.
 
 Measured on a copy of the owner's database (2.2 GB, 484,842 events,
 2026-10-13), with a concurrent writer committing every 20 ms throughout:

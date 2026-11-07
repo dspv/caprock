@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // Giving free pages back to the disk.
@@ -104,5 +105,81 @@ func (s *Store) IncrementalVacuum(ctx context.Context, n int) (int64, error) {
 func (s *Store) CheckpointTruncate(ctx context.Context) (busy int64, err error) {
 	var frames, done int64
 	err = s.db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &frames, &done)
+	return busy, err
+}
+
+// Pack runs the VACUUM a user asked for (internal/daemon/pack.go): the same
+// rewrite as EnableIncrementalVacuum, switching the database to INCREMENTAL
+// on the way, but with this connection's automatic checkpoint off, so the
+// statement returns as soon as the packed database is committed to the
+// write-ahead log. Folding that log back into the file is the caller's next
+// step (CheckpointPassive), which holds no lock a writer needs: on a copy of
+// the owner's database the fold was a fifth of the run, 12 s of 56
+// (2026-11-07), and writers no longer wait for it.
+//
+// The connection goes back to the pool with its automatic checkpoint as it
+// was. Cancelling ctx interrupts the VACUUM, which then rolls back and
+// leaves the database as it was.
+func (s *Store) Pack(ctx context.Context) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	var auto int64
+	if err := conn.QueryRowContext(ctx, `PRAGMA wal_autocheckpoint`).Scan(&auto); err != nil {
+		return fmt.Errorf("read wal_autocheckpoint: %w", err)
+	}
+	// Restored on a context the caller cannot cancel: a pooled connection
+	// left with no automatic checkpoint would let the log grow unbounded.
+	defer func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), fmt.Sprintf(`PRAGMA wal_autocheckpoint = %d`, auto))
+	}()
+	if _, err := conn.ExecContext(ctx, `PRAGMA wal_autocheckpoint = 0`); err != nil {
+		return fmt.Errorf("set wal_autocheckpoint: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `PRAGMA auto_vacuum = INCREMENTAL`); err != nil {
+		return fmt.Errorf("set auto_vacuum: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, `VACUUM`); err != nil {
+		return fmt.Errorf("vacuum: %w", err)
+	}
+	return nil
+}
+
+// CheckpointPassive copies as much of the write-ahead log into the database
+// as no reader still needs, without waiting for anyone and without blocking
+// a writer. It returns the log's frames and how many were copied.
+func (s *Store) CheckpointPassive(ctx context.Context) (frames, done int64, err error) {
+	var busy int64
+	err = s.db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&busy, &frames, &done)
+	return frames, done, err
+}
+
+// CheckpointTruncateWithin is CheckpointTruncate on a connection that waits
+// at most wait for the readers in its way. A TRUNCATE checkpoint holds the
+// write lock while it waits, so with the pool's five seconds every writer
+// waits that long behind it; after a pack the log is large and a running
+// read is likely, so the pack gives it a fraction of a second and leaves the
+// rest to SQLite's own checkpoints (journal_size_limit trims the file when
+// the log next starts over).
+func (s *Store) CheckpointTruncateWithin(ctx context.Context, wait time.Duration) (busy int64, err error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	var prev int64
+	if err := conn.QueryRowContext(ctx, `PRAGMA busy_timeout`).Scan(&prev); err != nil {
+		return 0, err
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), fmt.Sprintf(`PRAGMA busy_timeout = %d`, prev))
+	}()
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(`PRAGMA busy_timeout = %d`, max(wait.Milliseconds(), 1))); err != nil {
+		return 0, err
+	}
+	var frames, done int64
+	err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &frames, &done)
 	return busy, err
 }

@@ -7199,7 +7199,7 @@ the daemon holds no stored review requests and reads CI from GitHub on
 demand, so either would be a new call on a schedule. A later version can
 add them under the GitHub integration's own switch.
 
-## ADR-093 — Older tool output is stored zstd-compressed while idle, off until switched on, with no dictionary
+## ADR-093 — Older tool output is stored zstd-compressed in the background, off until switched on, with no dictionary
 
 **Date:** 2026-11-06 · **Status:** accepted (owner, 2026-11-06: "do the
 compression ourselves, but so that other users don't suffer", translated);
@@ -7266,3 +7266,57 @@ table for the compressed form (a rewrite of `events`, which #768 just did).
 of the estimate; the Week screen or a session's events become noticeably
 slower on compressed weeks; or a per-install dictionary is wanted for the
 last 130 MiB — the format leaves room for one (the frame names it).
+
+**Amended 2026-11-07: the steps run while agents work; the pack is the
+user's.** Status: accepted (owner, 2026-11-07). The setting was on all night
+on the owner's machine and compressed nothing (`payload_zstd_cursor` 0): his
+agents run around the clock, 300 to 700 events an hour overnight, the longest
+gap 11 minutes, so "after 30 quiet minutes" never came — and, he says, more
+and more users keep agents running all day.
+
+- **The short steps need a pause, not idleness.** Compression (and restoring),
+  the base64 compaction and incremental vacuum run one step at a time after
+  5 s with no write (`calmFor`). In his last 24 hours (25,197 events) gaps of
+  5 s or more left 14.7 hours to work in; gaps of 30 minutes, none. A step is
+  short — 27 ms on average, 98 ms at most for 500 rows of compression, 96 ms
+  median for 4 MiB of incremental vacuum, on a copy of his database — and it
+  **yields**: it runs on a context the write gate cancels, so a hook or a
+  transcript line that wants the database interrupts it, SQLite rolls it
+  back, and it is done again at the next pause. After each step the job rests
+  **nine times** as long as the step took, so it uses at most a tenth of one
+  core (it rested twice as long before, a third). 5 s rather than 2: a turn's
+  hooks come within a second or two, and 5 s still leaves most of the day.
+- **The VACUUM stays off the background path** unless the real 30 minutes
+  come: it holds the write lock for about a minute on a 2 GB file. Measured on
+  the copy after compression and incremental vacuum: 2,001 MiB to 1,559 MiB
+  in 49 s and in 56 s; 2,595 MiB to 2,477 MiB in 108 s uncompressed.
+- **"Pack database" is offered in the window's status strip** once compression has
+  caught up and a pack would free at least 256 MiB, with an estimate of the
+  time (used size over the rate of the last pack on this machine, or 24 MiB/s,
+  the slowest measured) and of the saving (a sample of 4,000 pages; 387–397
+  MiB estimated where 442 were freed, 115–125 where 118 were). The user
+  starts it (`POST /v1/storage/pack`).
+- **During the user's pack, events wait instead of interrupting it.** The
+  recorder — the one path every hook event, transcript line and import takes
+  — is held from just before the VACUUM until it commits; what arrives is
+  kept in memory and written after, on a context nothing cancels. The shim
+  still exits 0 within its budget (rule 3): a session never waits, and loses
+  only an answer that comes after the write (a task runner's Stop decision,
+  a SessionStart handoff). Other writes wait SQLite's 5 s and may get a 503
+  the dashboard retries; the strip's popover says new events wait before
+  the user starts. The log is folded back after the recorder is let go, by checkpoints
+  that never hold a writer up for more than 200 ms.
+- **Progress is measured, not timed**: the temporary copy's size, then the
+  log's, then the bytes written while folding, a third each; where the OS
+  gives no reading (Windows, for the first and last), the bar moves with the
+  phases only.
+
+**Rules out:** buffering hook events on disk in the shim during a pack (a
+second write path, for a minute the recorder already covers in memory);
+running the VACUUM in the background step by step (SQLite has no such
+VACUUM); a timer-driven progress bar.
+
+**Revisit if:** steps measurably slow a session's hooks (the recorder's write
+latency rises while compression runs); a pack's hold proves too long for
+someone's agents (then: `VACUUM INTO` a copy while events flow, and a swap);
+or the estimate of the saving errs high on someone's database.

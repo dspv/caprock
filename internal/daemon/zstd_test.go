@@ -57,15 +57,14 @@ func blobs(t *testing.T, d *Daemon) int {
 	return n
 }
 
-// On: the idle pass compresses every tool result older than a day, says so
-// in the footprint, and leaves the one from now plain. Off: the next idle pass
+// On: the background job compresses every tool result older than a day,
+// says so in the footprint once, and leaves the one from now plain. Off: it
 // restores them all.
-func TestIdleJobCompressesAndRestores(t *testing.T) {
+func TestBackgroundJobCompressesAndRestores(t *testing.T) {
 	withFreeSpace(t, 1<<50)
 	d := zstdDaemon(t, true, 1200)
 	ctx := context.Background()
-	var cs compactState
-	d.compactDB(ctx, &cs)
+	drainSteps(t, d)
 	if got := blobs(t, d); got != 1200 {
 		t.Fatalf("%d of 1200 old rows compressed", got)
 	}
@@ -73,21 +72,63 @@ func TestIdleJobCompressesAndRestores(t *testing.T) {
 		t.Errorf("actions %+v", d.actions.all())
 	}
 	r := d.compressionReport(ctx)
-	if !r.On || r.ThroughMs == 0 || r.Restoring {
+	if !r.On || r.ThroughMs == 0 || r.Restoring || r.Pending || r.Progress != 1 || r.SavedBytes <= 0 || r.CursorID < r.TargetID {
 		t.Errorf("report %+v", r)
 	}
 
 	off := false
 	d.opt.Config.CompressToolOutput = &off
-	d.compactDB(ctx, &cs)
+	if r := d.compressionReport(ctx); !r.Restoring || !r.Pending {
+		t.Errorf("report before restoring %+v", r)
+	}
+	drainSteps(t, d)
 	if got := blobs(t, d); got != 0 {
 		t.Fatalf("%d rows still compressed after turning it off", got)
 	}
 	if !hasAction(d, "none is compressed now") {
 		t.Errorf("actions %+v", d.actions.all())
 	}
-	if r := d.compressionReport(ctx); r.On || r.Restoring || r.ThroughMs != 0 {
+	if r := d.compressionReport(ctx); r.On || r.Restoring || r.Pending || r.ThroughMs != 0 {
 		t.Errorf("report after restoring %+v", r)
+	}
+	if v, _ := d.store.GetMeta(ctx, metaRestoreFrom); v != "" {
+		t.Errorf("restore_from left behind: %q", v)
+	}
+}
+
+// Part-way through a pass the report says how far: the cursor against the
+// id before the first row younger than a day.
+func TestCompressionReportProgress(t *testing.T) {
+	withFreeSpace(t, 1<<50)
+	d := zstdDaemon(t, true, 1000)
+	ctx := context.Background()
+	r := d.compressionReport(ctx)
+	if !r.Pending || r.Progress != 0 || r.TargetID != 1000 || r.CursorID != 0 {
+		t.Fatalf("before: %+v", r)
+	}
+	var ms maintainState
+	if did, err := d.zstdStep(ctx, &ms); !did || err != nil {
+		t.Fatalf("step did=%v err=%v", did, err)
+	}
+	r = d.compressionReport(ctx)
+	if !r.Pending || r.CursorID != zstdWindow || r.Progress != 0.5 || r.SavedBytes <= 0 {
+		t.Fatalf("after one step: %+v", r)
+	}
+	if did, _ := d.zstdStep(ctx, &ms); !did {
+		t.Fatal("no second step")
+	}
+	if r = d.compressionReport(ctx); r.Pending || r.Progress != 1 {
+		t.Fatalf("after the pass: %+v", r)
+	}
+	// Restoring counts down from where it began.
+	off := false
+	d.opt.Config.CompressToolOutput = &off
+	if did, _ := d.zstdStep(ctx, &ms); !did {
+		t.Fatal("no restoring step")
+	}
+	r = d.compressionReport(ctx)
+	if !r.Restoring || r.RestoreFromID != 2*zstdWindow || r.Progress != 0.5 {
+		t.Fatalf("restoring: %+v", r)
 	}
 }
 
@@ -97,14 +138,14 @@ func TestRestoreWaitsForDiskRoom(t *testing.T) {
 	withFreeSpace(t, 1<<50)
 	d := zstdDaemon(t, true, 600)
 	ctx := context.Background()
-	var cs compactState
-	d.compactDB(ctx, &cs)
+	drainSteps(t, d)
 	before := blobs(t, d)
 	off := false
 	d.opt.Config.CompressToolOutput = &off
 	withFreeSpace(t, 1024)
-	d.compactDB(ctx, &cs)
-	d.compactDB(ctx, &cs)
+	var ms maintainState
+	drainWith(t, d, &ms)
+	drainWith(t, d, &ms)
 	if got := blobs(t, d); got != before || before == 0 {
 		t.Fatalf("restored without room: %d of %d", got, before)
 	}
@@ -122,28 +163,31 @@ func TestRestoreWaitsForDiskRoom(t *testing.T) {
 	}
 }
 
-// Off by default, and nothing runs while the daemon is not quiet.
-func TestCompressionWaitsForTheSettingAndForQuiet(t *testing.T) {
+// Off by default, and no step runs within calmFor of a write.
+func TestCompressionWaitsForTheSettingAndForAPause(t *testing.T) {
 	withFreeSpace(t, 1<<50)
 	d := zstdDaemon(t, false, 50)
 	d.opt.Config.CompressToolOutput = nil
 	ctx := context.Background()
-	var cs compactState
-	d.compactDB(ctx, &cs)
+	drainSteps(t, d)
 	if got := blobs(t, d); got != 0 {
 		t.Fatalf("compressed %d rows with the setting never touched", got)
 	}
 	on := true
 	d.opt.Config.CompressToolOutput = &on
 	d.activity.Store(time.Now().UnixMilli())
-	d.zstdPayloads(ctx, &cs)
+	var ms maintainState
+	rest := d.maintainOnce(ctx, &ms)
 	if got := blobs(t, d); got != 0 {
-		t.Fatalf("compressed %d rows while not quiet", got)
+		t.Fatalf("compressed %d rows right after an event", got)
+	}
+	if rest <= 0 || rest > calmFor {
+		t.Errorf("rest %s: want the rest of the pause", rest)
 	}
 }
 
-// A finished pass that saved enough runs one VACUUM, and not a second one
-// for the same saving.
+// A finished pass that saved enough runs one VACUUM once the daemon is
+// really idle, and not a second one for the same saving.
 func TestRepackRunsOnceAfterAPass(t *testing.T) {
 	withFreeSpace(t, 1<<50)
 	old := zstdRepackMin
@@ -151,6 +195,7 @@ func TestRepackRunsOnceAfterAPass(t *testing.T) {
 	t.Cleanup(func() { zstdRepackMin = old })
 	d := zstdDaemon(t, true, 300)
 	ctx := context.Background()
+	drainSteps(t, d)
 	var cs compactState
 	d.compactDB(ctx, &cs)
 	if v, _ := d.store.GetMeta(ctx, store.MetaPayloadZstdRepacked); v == "" || v == "0" {
@@ -166,11 +211,8 @@ func TestRepackRunsOnceAfterAPass(t *testing.T) {
 	}
 }
 
-func TestZstdPacing(t *testing.T) {
-	if zstdPause(time.Millisecond) != compactPause || zstdPause(200*time.Millisecond) != 400*time.Millisecond {
-		t.Error("the rest after a step is not max(compactPause, twice the step)")
-	}
-	if s := zstdAction(true, 2, 1<<20, false); !strings.Contains(s, "compressed 2 older tool calls") || !strings.Contains(s, "continues") {
+func TestZstdAction(t *testing.T) {
+	if s := zstdAction(true, 2, 1<<20, false); !strings.Contains(s, "compressed 2 older tool calls") || !strings.Contains(s, "continues in the background") {
 		t.Errorf("action %q", s)
 	}
 }

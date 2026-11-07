@@ -112,11 +112,27 @@ func (d *Daemon) checkpointWAL(ctx context.Context, last *time.Time) {
 	if err != nil || info.Size() <= footprintWALWarn || time.Since(*last) < walCheckpointEvery {
 		return
 	}
+	// A pack writes the whole database into the log and folds it back
+	// itself, without holding writers up. A TRUNCATE here would wait for
+	// readers with the write lock held, for up to its 30 s: measured on a
+	// preview, every write in that time failed with SQLITE_BUSY
+	// (2026-11-07).
+	if d.packRunning() {
+		return
+	}
 	*last = time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	var busy, frames, done int64
-	if err := d.store.DB().QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &frames, &done); err != nil {
+	// PASSIVE first: it copies what no reader needs and never holds a writer
+	// up. The TRUNCATE after it holds the write lock while it waits for
+	// readers, so it waits a fraction of a second, not the pool's five: a
+	// hook's write behind it would otherwise fail (2026-11-07).
+	if _, _, err := d.store.CheckpointPassive(ctx); err != nil {
+		d.log.Warn("could not checkpoint the write-ahead log", "component", "daemon", "err", err)
+		return
+	}
+	busy, err := d.store.CheckpointTruncateWithin(ctx, packTruncateWait)
+	if err != nil {
 		d.log.Warn("could not checkpoint the write-ahead log", "component", "daemon", "err", err)
 		return
 	}
