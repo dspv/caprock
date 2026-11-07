@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"net"
 	"os"
@@ -183,6 +184,26 @@ func (d *Daemon) RemoteState(code string) api.RemoteState {
 		}
 	}
 	return st
+}
+
+// remoteIdentity is this machine's relay signing key, which every channel
+// to another computer proves (ADR-067, Phase 4); nil when remote.json cannot
+// be read. Read under the daemon's lock, as RemoteState reads it.
+func (d *Daemon) remoteIdentity() ed25519.PrivateKey {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.remoteSet == nil {
+		set, err := remote.Load(d.opt.DataDir)
+		if err != nil {
+			return nil
+		}
+		d.remoteSet = set
+	}
+	keys, err := d.remoteSet.Keys()
+	if err != nil {
+		return nil
+	}
+	return keys.Sign
 }
 
 // machineName is what a phone calls this machine until told otherwise: the

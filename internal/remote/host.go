@@ -299,6 +299,12 @@ type phone struct {
 
 	mu      sync.Mutex
 	streams map[uint32]*stream
+	// proven is the key this channel proved (KindProve), "" for a phone or
+	// a computer that sent no proof; set once, read by every request after.
+	proven atomic.Pointer[string]
+	// framed counts the frames after the handshake: a proof is taken only
+	// as the first, so nothing sent before it is served unbound.
+	framed int
 }
 
 type stream struct {
@@ -375,6 +381,20 @@ func (p *phone) loop() {
 		}
 		kind, id, body, err := ParseFrame(pt)
 		if err != nil {
+			continue
+		}
+		p.framed++
+		if kind == KindProve {
+			if p.framed != 1 {
+				continue // only as the first frame
+			}
+			key, err := checkProof(body, p.sess.HandshakeHash())
+			if err != nil {
+				p.h.log.Info("a computer's proof of its key failed; dropping it", "component", "remote", "err", err)
+				p.hangUp()
+				return
+			}
+			p.proven.Store(&key)
 			continue
 		}
 		p.dispatch(kind, id, body)
@@ -547,6 +567,14 @@ func (p *phone) finish(id uint32) {
 	}
 }
 
+// markPeer writes the key this channel proved onto a replayed request, so
+// the gate can hold a computer's token to it; nothing for a phone.
+func (p *phone) markPeer(h http.Header) {
+	if k := p.proven.Load(); k != nil {
+		SetPeerKey(h, *k)
+	}
+}
+
 // validPath admits the daemon's own paths and nothing that could make the
 // replayed request leave loopback.
 func validPath(p string) bool {
@@ -571,6 +599,7 @@ func (p *phone) serveHTTP(ctx context.Context, id uint32, head reqHead, body []b
 		}
 	}
 	req.Header.Set("Via", viaHeader)
+	p.markPeer(req.Header)
 	res, err := p.h.opt.Client.Do(req)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -615,6 +644,7 @@ func (p *phone) openWS(ctx context.Context, id uint32, s *stream, open wsOpen) {
 	u := "ws" + strings.TrimPrefix(p.h.opt.Local, "http") + open.Path
 	hdr := http.Header{}
 	hdr.Set("Via", viaHeader)
+	p.markPeer(hdr)
 	c, res, err := websocket.Dial(ctx, u, &websocket.DialOptions{
 		HTTPHeader:   hdr,
 		Subprotocols: open.Protocols,

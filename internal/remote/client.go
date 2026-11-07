@@ -3,6 +3,7 @@ package remote
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -153,6 +154,10 @@ type ClientOptions struct {
 	HTTPClient *http.Client
 	// Idle overrides ClientIdle; zero keeps it.
 	Idle time.Duration
+	// Identity is this machine's own relay key: given, every channel opens
+	// with a proof of it (KindProve), so the target can hold this machine's
+	// token there to it (ADR-067, Phase 4). nil sends none.
+	Identity ed25519.PrivateKey
 }
 
 // ClientState is where the channel to one machine stands.
@@ -398,6 +403,13 @@ func (c *Client) dial() (*clientConn, error) {
 			streams: map[uint32]*cstream{}, nextID: 1, lastActive: time.Now(),
 		}
 		cc.heard.Store(time.Now().UnixNano())
+		if c.opt.Identity != nil {
+			// First, before any stream: the target takes a proof only as the
+			// first frame. One from before this existed ignores the kind.
+			if err := cc.send(KindProve, 0, proveBody(c.opt.Identity, sess.HandshakeHash())); err != nil {
+				return fail(err)
+			}
+		}
 		return cc, nil
 	}
 }

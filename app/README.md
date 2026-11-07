@@ -283,15 +283,19 @@ a daemon that moved port or was replaced, and may call `open_external` alone
 (`capabilities/mail.json`). Only when both answer `false`, or the shell is
 older than these commands, does the page open its Mail tab.
 `notify` shows one OS notification (`{title, body, id?, sessionId?,
-promptId?, actions?}`); the page decides when (`ui/src/lib/notify.ts`,
+promptId?, actions?, machine?}`); the page decides when (`ui/src/lib/notify.ts`,
 WP-09). On macOS, inside the `.app`, it goes through UNUserNotificationCenter
 (`src-tauri/src/notify_macos.rs`): an approval with `actions`
 `["allow","deny"]` carries **Approve** and **Deny**, one with `["deny"]`
 **Open in Caprock** and **Deny**. The shell answers a button itself with
 `POST /v1/agents/{sessionId}/permission` `{id: promptId, choice}` to the
 loopback daemon it is connected to, so the window stays where it is; a 409
-is followed by an "Already answered" notification. A click on the body opens
-the session as the tray does. macOS asks for permission on the first
+is followed by an "Already answered" notification. With `machine` (a prompt on
+another computer this one reaches, ADR-067) the same button posts to
+`/v1/m/{machine}/v1/agents/{sessionId}/permission` instead, answered there
+through the daemon's link, and a click opens `#/m/{machine}/session/{sessionId}`
+through `caprock:open-route`. A click on the body opens the session as the
+tray does. macOS asks for permission on the first
 notification. `withdraw_notifications` (`{ids}`) removes delivered ones by
 their notify id: the page calls it when a session's prompt goes away, so a
 prompt answered in the terminal or on the card leaves no Approve button behind

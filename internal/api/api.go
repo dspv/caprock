@@ -603,7 +603,10 @@ type Server struct {
 	// machSessions is each other computer's running sessions as last read
 	// (machinesessions.go).
 	machSessions machineSessionsCache
-	lanURL       string
+	// machAll is each other computer's answer for a ?machines=all view
+	// (machinesall.go).
+	machAll machinesAllCache
+	lanURL  string
 	// altURLs are the other addresses network access answers on, beside
 	// lanURL: the Tailscale one when lanURL is the LAN one, or the reverse,
 	// and the MagicDNS name (WP-15). Empty when off.
@@ -1409,6 +1412,14 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	active := r.URL.Query().Get("active") == "true"
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	search := r.URL.Query().Get("q")
+	across, ok := s.machinesAll(w, r)
+	if !ok {
+		return
+	}
+	if across && r.URL.Query().Get("dir") != "" {
+		s.failCode(w, http.StatusBadRequest, errors.New("dir is a folder on this machine; machines=all does not take it"))
+		return
+	}
 	// ?dir= lists one Projects row's sessions — an exact match on the
 	// directory the row is keyed on, not a search (see ListSessionsInDir).
 	if dir := r.URL.Query().Get("dir"); dir != "" {
@@ -1460,6 +1471,13 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	// 200, and a screen that labels a truncated array "Ended · 200" states a
 	// count of what it fetched as though it were a count of what there is —
 	// while the lifetime strip on the same screen says otherwise.
+	if across {
+		// One list across computers (ADR-067, Phase 3): an object, not the
+		// plain array, so the computers that did not answer are named.
+		rows, listed := s.sessionsAcross(ctx, r.URL.Query(), limit, out)
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": rows, "machines": listed})
+		return
+	}
 	if total, err := store.CountSessionsQuery(ctx, s.d.Store.DB(), f); err == nil {
 		w.Header().Set("X-Total-Count", strconv.Itoa(total))
 	}
@@ -1689,6 +1707,11 @@ type SummaryResponse struct {
 	// session's headline against (store.Usual); absent with too little
 	// history, so a new user sees nothing rather than a guess.
 	Usual *store.Usual `json:"usual,omitempty"`
+	// Machines and All answer ?machines=all (ADR-067, Phase 3): every other
+	// computer's figures for the same range and agent, and the sum of this
+	// machine and those that answered. Absent without it.
+	Machines []MachineCost   `json:"machines,omitempty"`
+	All      *AcrossMachines `json:"all,omitempty"`
 }
 
 // RateLimits is the current plan-limit window state (from the statusline feed).
@@ -2204,6 +2227,10 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusBadRequest, err)
 		return
 	}
+	across, ok := s.machinesAll(w, r)
+	if !ok {
+		return
+	}
 	sum, err := s.rangeSummary(ctx, from, label, agent)
 	if err != nil {
 		s.fail(w, err)
@@ -2255,6 +2282,13 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	resp.RateLimits = s.rateLimits(ctx)
 	resp.CodexRateLimits = s.codexRateLimits(ctx)
 	resp.Usual = s.usualFor(ctx, agent)
+	if across {
+		rng := r.URL.Query().Get("range")
+		if rng == "" {
+			rng = label
+		}
+		resp.Machines, resp.All = s.costAcross(ctx, rng, r.URL.Query().Get("agent"), &resp)
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

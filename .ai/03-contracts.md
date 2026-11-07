@@ -569,6 +569,70 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   (`{msgs_out, msgs_in, bytes_out, bytes_in}`, the relay's own pings
   included, since this daemon started or paired that computer; local only,
   like the rest of the route). The Host's is in no API answer yet.
+- **Across computers** (Phase 3, `internal/api/machinesall.go`).
+  `?machines=all` on **`GET /v1/sessions`** and **`GET
+  /v1/stats/summary`** asks every computer this one reaches the same
+  question through its channel, at once (8 s at most each), and answers
+  with this machine's own and what each computer said. Loopback only: from
+  a paired phone or computer it is `403` (the gate's `401` for a relayed
+  request with network access off), `501` in a build without computers,
+  and any other value of `machines` is `400`. A computer known to be
+  `pending`, `revoked` or `refused` is named with that state and not
+  asked. Each computer's answer to each question is kept here **30 s**
+  (in memory; dropped by the same words that drop the one list, above, so
+  a computer that went offline is not shown with its last figures), so a
+  screen that polls costs the relay one read per computer in that time.
+  - *The summary* carries, beside this machine's own figures (unchanged),
+    `machines: [{id, name, status, error?, cost_usd?, tokens?, sessions?,
+    turns?, pricing_version?, unpriced?, at?}]` in the order added — the
+    figures that computer stated for the same `range` and `agent`, priced
+    there with its own table (`pricing_version`; nothing is re-priced
+    here), `tokens` its input, output, cache reads and cache writes
+    summed, `unpriced` its own `unpriced` as it sent it, `at` when read
+    (unix ms, this machine's clock). A computer that did not answer has
+    `status` (`offline`, `pending`, `revoked`, `refused`, `error`) and
+    `error`, and **no figure at all** — unknown, never `0` (rule 6); one
+    that answered with something that is not a summary is `error`. And
+    `all: {cost_usd, tokens, sessions, turns, answered, of, unpriced?}`:
+    this machine plus every computer that answered; `answered` counts what
+    the sum holds and `of` every computer, this one included in both, so
+    `answered < of` says the sum is not the whole; `unpriced` that some
+    part had volume its own table could not price. `range` is each
+    computer's own: *today* is its calendar day in its own time zone.
+  - *The session list* is then an object, not the plain array: `{sessions,
+    machines}`. `sessions` is this machine's rows as usual and every
+    computer's rows for the same query (`machines` removed), each of theirs
+    with `machine` (its id here) and `machine_name` added, newest first by
+    `last_event_at` as each machine stated it (clocks are not corrected),
+    cut to `limit` when one was asked. `machines` is `[{id, name, status,
+    error?, count?, at?}]`: `count` how many rows it answered with, absent
+    when it did not answer. `?dir=` with `machines=all` is `400` (a folder
+    is this machine's). No `X-Total-Count`.
+- **A computer's token bound to its key** (Phase 4,
+  `internal/remote/prove.go`). A daemon reaching another computer proves its
+  own relay key (`remote.json`'s Ed25519 key, the same one its relay id
+  is) on every channel it opens: its first transport frame, before any
+  stream, is `KindProve` (`0x0e`), stream 0, body `{"k": <public key,
+  base64url, as its relay id>, "s": <Ed25519 signature, base64url, over
+  "caprock-computer-proof-v1:" followed by the Noise handshake hash>}`.
+  The hash is the handshake's final `h`, the same on both ends and on no
+  other channel, so a proof cannot be replayed on another. The Host takes a
+  proof only as the first frame; one that does not verify hangs the
+  channel up. It marks every request and socket it replays from a channel
+  that proved a key with `X-Caprock-Peer: <key>.<HMAC>` — the HMAC under a
+  secret made at each start of this process, so nothing a phone sends (its
+  headers are allowlisted) and nothing else on loopback can claim a key.
+  The gate binds a computer's token (`kind: "machine"`) to the first key it
+  is seen with — `key` on that device in `devices.json`, saved at once —
+  with no step by anyone, on pairing (its first `GET /v1/pair/me`) or, for
+  a computer paired before, its first request after both ends run this.
+  From then that token on a channel that proved another key, or none, is
+  `401` *this computer's token is bound to another key* (the controller
+  reads `revoked` and says so). A token never bound and seen with no key
+  still works: a controller from before the proof. Phones send no proof
+  and are never bound. `GET /v1/pair/state` lists such a device with
+  `bound: true`. A controller whose keys are reset (`caprock remote
+  reset`) is refused by every computer it had reached and pairs again.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
@@ -913,11 +977,11 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 
 `{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?, route?}}` — an alert for the desktop app (kind `module`, with an empty `session_id`, is a private module's `POST /v1/x/<id>/notify` — `id` `module-<id>-<ns>`, `title` `<module name> · <title>`, `body` the module's, `route` `#/x/<id>`, which a click opens: the `notify` command's `route`, kept only when it is `#/x/<module id>`, then `caprock:open-route` on macOS and Linux, the app coming forward elsewhere; published only while `notify_approval` or `notify_finished` is on, § Private modules; kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
 
-- **From another computer** (ADR-067, Phase 2). A frame with `machine` and `machine_name` was decided on a computer this one reaches and re-published here, local only (§ Other computers). Its `session_id`, `prompt_id` and `actions` are that computer's. The app shows it with ` · on <machine_name>` after the title and hands the shell only `{title, body, id: "m-<id>"}` — no session, prompt or actions, since a button would answer here, where nothing waits; whether it still waits is asked with `GET /v1/m/{machine}/v1/agents/{session_id}/permission`, and the app coming forward opens `#/m/<machine>/session/<session_id>`, whose prompt card answers it there. Telegram here never sends it.
+- **From another computer** (ADR-067, Phase 2; buttons Phase 3, 2026-11-07). A frame with `machine` and `machine_name` was decided on a computer this one reaches and re-published here, local only (§ Other computers). Its `session_id`, `prompt_id` and `actions` are that computer's. The app shows it with ` · on <machine_name>` after the title and hands the shell `{title, body, id: "m-<id>", sessionId, promptId, actions, machine}`: with `machine` set the shell's Approve and Deny answer **there**, with `POST /v1/m/{machine}/v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to its loopback daemon, which carries it through its link (a 409 there is *Already answered*; a `403`, `502` or `503` from the link is *Could not answer*, *the other computer could not be reached*), and a click on the body opens `#/m/<machine>/session/<session_id>` (the shell's `caprock:open-route`, which the page takes only in that shape, ids of letters, digits, `_`, `-` and `.`). Whether it still waits is asked with `GET /v1/m/{machine}/v1/agents/{session_id}/permission`; when a `machines` frame says `why: "answered"` for that computer and session, the page withdraws it (`withdraw_notifications`). On Windows, as for this machine's, the click opens the session, whose prompt card answers it. A shell from before `machine` ignores it and would answer on this machine, where no such session waits: the daemon refuses it and the shell says *Could not answer*. Telegram here never sends it.
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off; every "Needs you": a dialog, and since 2026-10-21 a turn that ended on a question or an error) and `notify_finished` (accepted and returned, no longer read: a Done turn raises no notification, § Needs you and Done), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.
 - **Fields.** `id` is `<alert kind>-<session_id>-<trigger ms>`, unique per alert and the same on a replay. `kind`: `approval`, `finished`, `question` for a turn whose last message asks something (§ Needs you and Done), or `error` for a turn that ended on a StopFailure. `project` is the session's project, else its folder's name. `title` is plain text, `Needs approval · <project>` (`Needs your answer`, `Finished`, `Queued message done` — § Queue —, `Stopped: <error>`); `body` is lines of plain text: the session's name, branch and a non-Claude agent (left out when it would only repeat the project), then for a dialog the tool and its command, file, URL or question (100 characters), for a finished run its duration, cost, tool calls, changed files and — while `alert_reply` is on — the reply's first line; the twentieth of an hour adds that the rest wait. Nothing is HTML-escaped; the frame never leaves the machine except to a paired dashboard, which already sees the same tool inputs on `event` frames.
 - **Prompt and actions.** For an approval in an owned Claude Code session waiting on exactly one ADR-035 prompt, `prompt_id` is that prompt's `id`; with two or more outstanding neither field is set, since which dialog the terminal shows is unknown (amended 2026-10-09). A subagent's request says so in the body: `Subagent (general-purpose) · Bash: …`. With one, `actions` lists `choice` values of `POST /v1/agents/{id}/permission`, which answers only while that prompt waits (409 otherwise): `["allow","deny"]` when the body shows the whole request (the command, file, URL or query on one line, not clipped), else `["deny"]` — a notification does not approve what it did not show; the prompt card does. `always` is never offered. The hook sets the prompt before the event is stored, so it is there when the alert is decided. No prompt (a session Caprock did not start, another agent, AskUserQuestion's menu): neither field.
-- **The app.** In the Tauri shell only, `ui/src/lib/notify.ts` shows each new `id` once through the `notify` command (`{title, body, id, sessionId, promptId, actions, route}`; a shell that predates the last five ignores them), unless the window has focus and that session is in front, or an approval's prompt (checked with `GET /v1/agents/{id}/permission`) no longer waits. On macOS, in the app bundle, the shell shows it through UNUserNotificationCenter: `["allow","deny"]` becomes **Approve** and **Deny**, `["deny"]` becomes **Open in Caprock** and **Deny**. The shell answers a button itself, from Rust, with `POST /v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to the loopback daemon it is attached to (the supervisor's connected port; never another host), without bringing the window forward; a 409 is followed by an "Already answered" notification, any other failure by "Could not answer" with the reason, and a click on either opens the session. A click on a notification's body, or Open, brings the window up and opens the session as the tray does (`caprock:shown`, then `caprock:open-session`). When a `permission` frame says a session no longer waits, the page withdraws the approval notifications it showed for that session with `withdraw_notifications` (`{ids}`, the notify ids; macOS removes them from Notification Center, other OSes ignore it). Elsewhere the official notification plugin shows a title and body and reports neither clicks nor actions, so Approve and Deny are the prompt card's buttons: the app coming forward within 2 minutes of a notification it showed while in the background opens `#/session/<id>?tab=terminal` (the session's tab, its prompt card in view), unless the prompt was answered meanwhile or the shell brought the window up itself: the menu bar, tray and hotkey (WP-10) dispatch `caprock:shown` before showing it, and the open waits 300 ms for that event and drops the notification when it comes. A browser tab shows no notification of its own.
+- **The app.** In the Tauri shell only, `ui/src/lib/notify.ts` shows each new `id` once through the `notify` command (`{title, body, id, sessionId, promptId, actions, route, machine}`; a shell that predates the last six ignores them; `machine` above), unless the window has focus and that session is in front, or an approval's prompt (checked with `GET /v1/agents/{id}/permission`) no longer waits. On macOS, in the app bundle, the shell shows it through UNUserNotificationCenter: `["allow","deny"]` becomes **Approve** and **Deny**, `["deny"]` becomes **Open in Caprock** and **Deny**. The shell answers a button itself, from Rust, with `POST /v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to the loopback daemon it is attached to (the supervisor's connected port; never another host), without bringing the window forward; a 409 is followed by an "Already answered" notification, any other failure by "Could not answer" with the reason, and a click on either opens the session. A click on a notification's body, or Open, brings the window up and opens the session as the tray does (`caprock:shown`, then `caprock:open-session`). When a `permission` frame says a session no longer waits, the page withdraws the approval notifications it showed for that session with `withdraw_notifications` (`{ids}`, the notify ids; macOS removes them from Notification Center, other OSes ignore it). Elsewhere the official notification plugin shows a title and body and reports neither clicks nor actions, so Approve and Deny are the prompt card's buttons: the app coming forward within 2 minutes of a notification it showed while in the background opens `#/session/<id>?tab=terminal` (the session's tab, its prompt card in view), unless the prompt was answered meanwhile or the shell brought the window up itself: the menu bar, tray and hotkey (WP-10) dispatch `caprock:shown` before showing it, and the open waits 300 ms for that event and drops the notification when it comes. A browser tab shows no notification of its own.
 
 `GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
 
@@ -951,7 +1015,7 @@ GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs
 GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's picker: which folders are git repositories on GitHub
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo — a shell tab's id gives its folder's diff (machine only; 403 to a paired device)
-GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
+GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models; &machines=all adds machines[] and all (§ Other computers)
 GET  /v1/stats/limits                  → {rate_limits?, codex_rate_limits?} — the plan windows alone, as the summary carries them
 GET  /v1/plan-share                    → PlanShare — per sign-in, plan dollars and share of a week per API dollar (§ Plan figures)
 GET  /v1/settings                      → user-stated settings (plan, update checks)

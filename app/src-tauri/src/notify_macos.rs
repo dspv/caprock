@@ -28,6 +28,7 @@ const SESSION: &str = "session_id";
 const PROMPT: &str = "prompt_id";
 const TITLE: &str = "title";
 const ROUTE: &str = "route";
+const MACHINE: &str = "machine";
 
 struct Hooks {
     reply: Box<dyn Fn(Reply, Origin) + Send + Sync>,
@@ -180,6 +181,7 @@ fn add(note: &Note) {
         (SESSION, &note.session_id),
         (PROMPT, &note.prompt_id),
         (ROUTE, &note.route),
+        (MACHINE, &note.machine),
     ] {
         if let Some(v) = v {
             keys.push(NSString::from_str(k));
@@ -239,6 +241,7 @@ fn received(response: &UNNotificationResponse) {
         prompt_id: get(PROMPT),
         title: get(TITLE).unwrap_or_default(),
         route: get(ROUTE),
+        machine: get(MACHINE),
     };
     (hooks.reply)(reply, origin);
 }

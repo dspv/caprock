@@ -24,6 +24,8 @@ import { CutDonut, ShareBar, SliceDot, cutSegments, sliceColors } from '@/compon
 import { WorkMix } from '@/components/WorkMix'
 import { HermesSpendPanel } from '@/components/HermesSpend'
 import { CompactionsPanel } from '@/components/CompactionsPanel'
+import { CostAcrossPanel, CostScopeToggle, useCostScope } from '@/components/CostAcross'
+import { thisComputer } from '@/components/RemoteAgentSheet'
 
 type Range = 'today' | '7d' | '30d' | 'all'
 
@@ -37,7 +39,11 @@ export function CostScreen({ section }: { section?: string } = {}) {
   // render is enough — a ticking clock would repaint the whole screen to move
   // a staleness threshold that is eight days wide.
   const now = Date.now()
-  const summary = useApi(() => api.summary(range), [range], { intervalMs: 5000 })
+  // This Mac / All computers (ADR-067, Phase 3): offered only with another
+  // computer linked; All asks the same summary with ?machines=all.
+  const [scope, setScope, canAcross] = useCostScope()
+  const across = canAcross && scope === 'all'
+  const summary = useApi(() => api.summary(range, undefined, across ? 'all' : undefined), [range, across], { intervalMs: 5000 })
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
   const [plan] = usePlan()
   const [activeDay, setActiveDay] = useState<string | null>(null)
@@ -66,12 +72,14 @@ export function CostScreen({ section }: { section?: string } = {}) {
   const capSuggestion = suggestCap(days.map((d) => d.cost))
   return (
     <div className="grid gap-3">
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         {(['today', '7d', '30d', 'all'] as Range[]).map((r) => (
           <button key={r} onClick={() => setRange(r)} className={`px-2 py-1 text-[12px] rounded-sm ${range === r ? 'bg-panel-2 text-fg' : 'text-fg-muted hover:text-fg'}`}>{r}</button>
         ))}
+        {canAcross && <CostScopeToggle scope={scope} onChange={setScope} />}
         <span className="ml-auto text-[11px] text-fg-faint">{costBasisLong(plan)}{s ? ` (table ${s.pricing_version})` : ''}</span>
       </div>
+      {across && <CostAcrossPanel summary={s} range={range} />}
       {summary.error && !s && <Empty title="Cannot reach the daemon">{summary.error.message}</Empty>}
       {/* Not on `today`: one day of one machine is too thin a fact to open
         * an offer with. Teams, not Premium, on this screen: it is the screen
@@ -130,7 +138,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
       )}
 
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
-      <Panel fold="cost.totals" title={`Totals · ${range}`} share={`Totals · ${range}`}>
+      <Panel fold="cost.totals" title={`Totals · ${range}${across ? ` · ${thisComputer()}` : ''}`} share={`Totals · ${range}`}>
         {measured && <ShareWith toText={() => `${costBasis(plan)}.\n\n${mdTable(['Figure', 'Value'], [
           [costLabel(plan), fmtUSD(s!.cost_usd)], ['Burn now', `${fmtUSD(s!.burn.usd_per_hour)}/h`], ['Sessions', s!.sessions], ['Turns', s!.turns],
           ['Input', fmtTokens(s!.tokens_in)], ['Output', fmtTokens(s!.tokens_out)], ['Cache read', `${fmtTokens(s!.cache_read)} · ${fmtPct(s!.savings.hit_rate * 100)} hit rate`],

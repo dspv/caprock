@@ -475,7 +475,7 @@ internal/slashcmd/    # the slash commands an agent offers in a folder, for the 
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
 internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063); AI;DR's squeeze of one answer through the same runner (ADR-072)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
-internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
+internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with and the proof of its key a token is bound to (ADR-067); relaysrv/ is `caprock remote relay`
 internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave
 internal/devshare/    # Open on my phone (ADR-087): a one-origin reverse proxy for a local dev server, on one private address and a random port, behind a token link and cookie; idle and longest-life expiry
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control

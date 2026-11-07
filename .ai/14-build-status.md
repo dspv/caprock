@@ -2,7 +2,7 @@
 
 The running log: what is done, what is not, what is next. **Update this file and § Current State in [00-index.md](00-index.md) whenever the state of the world changes.** Dates in absolute form, never "last week". What "done" means per task is defined in [09-execution-plan.md](09-execution-plan.md).
 
-**Last updated: 2026-11-06** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
+**Last updated: 2026-11-07** · Phase **2 — Orchestrate, complete** · every phase is tagged and published (`brew install dspv/tap/caprock`, or Scoop on Windows via `dspv/scoop-bucket`). The live unattended orchestrator run — the Phase 2 tag gate — is done: a real `claude` orchestrator assigned a task, spawned a worker, and drove it to green verification with nobody watching.
 
 **What shipped in which release is answered by `CHANGELOG.md`, `git describe` and the releases page, and is deliberately not restated here.** This paragraph used to carry a hand-written list of them; it stopped at v0.10.0 and stayed there for eighty-four releases, which is [rule 9](../CLAUDE.md) demonstrating itself. What belongs here is the state of the world, not its version history.
 
@@ -12,16 +12,16 @@ Since Orchestrate closed, the product has grown one observation surface across s
 
 Percentages are deliberately coarse — they answer "is this track started, half-built, or done", nothing finer. "90%" means "works, not hardened"; never 100% for anything that has not run in the environment it was built for.
 
-| Track                           | Progress | State                                                                                                      |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
-| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                          |
-| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                                      |
-| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                                     |
-| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                                           |
-| Phase 3 — Delight               | 0%       | No plan by design                                                                                          |
-| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                                    |
-| Other computers (ADR-067)       | 65%      | Phases 1–2 built and hardened (2026-11-06); Phase 3 cost view and remote Approve/Deny, Phase 4 not started |
-| iOS app (ADR-083)               | 70%      | 1.0 built, signed upload workflow ready; owner uploads and submits; push in 1.1                            |
+| Track                           | Progress | State                                                                                                               |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| Documentation (`.ai/`)          | 90%      | Corpus built, audit green, kept current with code                                                                   |
+| Phase 0 — Observe (T0–T10)      | 100%     | Works on macOS + CI (macos/ubuntu/windows); v0.1.0 tagged + published                                               |
+| Phase 1 — Control (T11–T16)     | 100%     | v0.2.0 tagged + published; green on the 3-OS CI matrix                                                              |
+| Phase 2 — Orchestrate (T17–T25) | 100%     | v0.3.0 tagged + published; live unattended run with hooks passed                                                    |
+| Phase 3 — Delight               | 0%       | No plan by design                                                                                                   |
+| Desktop app (ADR-038)           | 80%      | P0 merged, shipped from 0.77.0; real-device checks open                                                             |
+| Other computers (ADR-067)       | 85%      | Phases 1–3 built (2026-11-07); Phase 4 token binding built, frame coalescing not; OQ-17–OQ-20 on real hardware open |
+| iOS app (ADR-083)               | 70%      | 1.0 built, signed upload workflow ready; owner uploads and submits; push in 1.1                                     |
 
 ## Milestone status
 
@@ -161,6 +161,39 @@ without a TestFlight round and without push (ADR-083, amended 2026-10-27).
 - **Listing:** `ios-app/store/` (name, subtitle, texts, keywords, URLs,
   category, age rating, App Privacy: Data Not Collected, review notes);
   `ios-app/scripts/check-store.mjs` keeps each field inside Apple's limits.
+
+### 2026-11-07 — unreleased: answer and count across computers (ADR-067, Phase 3)
+
+The owner picked variant A of each question on the prototype (2026-11-07,
+translated: "all variant A"); built on `feat/machines-phase3`:
+
+- **Approve and Deny on another computer's notification.** The app hands the
+  shell that prompt's session, id, actions and `machine`; its buttons post
+  to `/v1/m/{id}/v1/agents/{sid}/permission` on the local daemon, answered
+  there through the link; a click opens the session there; a prompt answered
+  there first withdraws it (the `machines` frame's `answered`). macOS and
+  Linux; Windows keeps click-to-open.
+- **Cost: This Mac / All computers.** `?machines=all` on `GET
+  /v1/stats/summary` and `GET /v1/sessions`: each computer asked at once,
+  kept 30 s in memory, summed only when it answered, named with why when it
+  did not, priced by its own table. The Cost screen's toggle and *All
+  computers* panel (`components/CostAcross.tsx`).
+- **The token bound to the controller's key** with no step (Phase 4's item):
+  `KindProve` as the first frame, `X-Caprock-Peer` on what the Host
+  replays, `key` on the device in `devices.json`, `bound` in `GET
+  /v1/pair/state`.
+- **The relay's latency:** [docs/machines.md](../docs/machines.md) now says
+  what the hosted relay measured (2026-11-06), how to run one's own and when
+  it is worth it, and the steps for OQ-17 to OQ-20 on two real computers.
+
+Contract changes in [03-contracts.md](03-contracts.md) (§ Other computers,
+§ Notify frame); no migration (nothing about another computer in SQLite).
+Proven by unit tests (`internal/remote/prove*_test.go`,
+`internal/api/machinesall_test.go`, the binding in `computer_test.go`, the
+shell's `notify.rs`, `notify.test.tsx`, `CostAcross.test.tsx`) and the
+two-daemon smoke, and seen in a browser against two linked preview daemons.
+**Left for the owner:** OQ-19 and OQ-20 on two real computers (steps in
+docs/machines.md); a mixed-OS pair; frame coalescing only if OQ-14 asks.
 
 ### 2026-11-06 — unreleased: other computers audited and hardened (ADR-067)
 

@@ -879,6 +879,38 @@ export interface Summary {
   hermes?: HermesCost
   /** The viewer's own usual over the last 30 days (lib/usual.ts); absent with too little history. */
   usual?: Usual
+  /** `?machines=all` (ADR-067, Phase 3): every other computer's figures for the same range, in the order added. */
+  machines?: MachineCost[]
+  /** `?machines=all`: this machine and every computer that answered, summed. */
+  all?: AcrossMachines
+}
+
+/** One other computer's line in the cost summary across computers. The
+ *  figures are absent when it did not answer: unknown, never $0 (rule 6). */
+export interface MachineCost {
+  id: string
+  name: string
+  status: string
+  error?: string
+  cost_usd?: number
+  tokens?: number
+  sessions?: number
+  turns?: number
+  /** Its own pricing table: each computer prices its own sessions. */
+  pricing_version?: string
+  unpriced?: Unpriced
+  at?: number
+}
+
+/** This machine and every computer that answered. `answered < of` means the sum is not the whole. */
+export interface AcrossMachines {
+  cost_usd: number
+  tokens: number
+  sessions: number
+  turns: number
+  answered: number
+  of: number
+  unpriced?: boolean
 }
 
 /** Hermes Agent's spend in a range (store.HermesCost). Every figure is
@@ -2633,8 +2665,8 @@ export const api = {
   putTabs: (viewer: string, sessions: string[]) => post<void>('/v1/tabs', { viewer, sessions }, 'PUT'),
   /** The computer's open tabs in strip order (GET /v1/tabs), for the phone home's Continue. */
   tabs: () => get<TabsAnswer>('/v1/tabs'),
-  summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
-    get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
+  summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string, machines?: 'all') =>
+    get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}${machines ? `&machines=${machines}` : ''}`),
   /** The plan windows alone (`GET /v1/stats/limits`): the summary's rate_limits and codex_rate_limits without the rest. */
   limits: () => get<LimitsAnswer>('/v1/stats/limits'),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),

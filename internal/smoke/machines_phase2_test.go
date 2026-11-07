@@ -33,8 +33,17 @@ import (
 //   - types into it and reads the echo;
 //   - hears home's permission prompt as a notify frame tagged with home, on
 //     its own /v1/live, and sees that session needing its owner in the list;
+//   - answers that prompt on home as the app's notification button does
+//     (Phase 3): POST /v1/m/<home>/v1/agents/<sid>/permission with the
+//     prompt's id; a stale id is refused there, and the end of the prompt
+//     reaches the laptop as a machines frame (why "answered");
+//   - lists home's session in /v1/sessions?machines=all, tagged with home,
+//     and adds home's cost to its own in /v1/stats/summary?machines=all;
+//   - its token on home is bound to its own key with nobody doing anything
+//     (Phase 4: home's device list says bound);
 //   - with home's daemon gone, says offline — in the list, on its live
-//     socket, and to a start — instead of showing a stale list.
+//     socket, to a start, and in the cost across computers, which then
+//     names home as not counted — instead of showing a stale list.
 func TestLaptopDrivesTheHomeMachine(t *testing.T) {
 	started := time.Now()
 	root := t.TempDir()
@@ -204,6 +213,70 @@ func TestLaptopDrivesTheHomeMachine(t *testing.T) {
 	}
 	waitListed(t, lBase, mid, sid, func(s listedSession) bool { return s.Activity.Health == "waiting-on-you" }, logs)
 
+	// Phase 3: Approve from the laptop, as the app's notification button does
+	// — through the laptop's link to home, with home's prompt id.
+	promptID := waitPermission(t, proxy, sid, true)
+	if promptID != n.PromptID {
+		t.Fatalf("home's prompt is %q, the notification named %q", promptID, n.PromptID)
+	}
+	if code := answerPermission(t, proxy, sid, "not-"+promptID); code != http.StatusConflict {
+		t.Fatalf("a stale prompt id answered through the link: %d", code)
+	}
+	if code := answerPermission(t, proxy, sid, promptID); code != http.StatusNoContent {
+		t.Fatalf("Approve through the link: %d%s", code, logs())
+	}
+	waitPermission(t, hBase, sid, false)
+	lv.waitMachines(t, mid, "answered", logs)
+	// The answer pressed "1" into the session on home.
+	term.send(t, "next\r")
+	term.waitFor(t, "you-said:1next")
+
+	// One view across computers: home's session in the merged list, tagged.
+	var across struct {
+		Sessions []struct {
+			SessionID   string `json:"session_id"`
+			Machine     string `json:"machine"`
+			MachineName string `json:"machine_name"`
+		} `json:"sessions"`
+		Machines []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+			Count  *int   `json:"count"`
+		} `json:"machines"`
+	}
+	if code := callJSON(t, "GET", lBase+"/v1/sessions?active=true&machines=all", "", &across); code != 200 || len(across.Machines) != 1 || across.Machines[0].Status != "online" {
+		t.Fatalf("sessions across computers: %d %+v%s", code, across, logs())
+	}
+	tagged := false
+	for _, s := range across.Sessions {
+		tagged = tagged || (s.SessionID == sid && s.Machine == mid && s.MachineName != "")
+	}
+	if !tagged {
+		t.Fatalf("home's session is not in the merged list, tagged: %+v", across.Sessions)
+	}
+	var cost costAcross
+	if code := callJSON(t, "GET", lBase+"/v1/stats/summary?range=today&machines=all", "", &cost); code != 200 || cost.All == nil || cost.All.Answered != 2 || cost.All.Of != 2 ||
+		len(cost.Machines) != 1 || cost.Machines[0].Status != "online" || cost.Machines[0].CostUSD == nil || cost.Machines[0].PricingVersion == "" {
+		t.Fatalf("cost across computers: %d %+v%s", code, cost, logs())
+	}
+
+	// Phase 4: the laptop's token on home is bound to the laptop's key, with
+	// no step by anyone.
+	var bound struct {
+		Devices []struct {
+			Kind  string `json:"kind"`
+			Bound bool   `json:"bound"`
+		} `json:"devices"`
+	}
+	getJSONAt(t, hBase+"/v1/pair/state", &bound)
+	isBound := false
+	for _, d := range bound.Devices {
+		isBound = isBound || (d.Kind == "machine" && d.Bound)
+	}
+	if !isBound {
+		t.Fatalf("the laptop's token on home is not bound to its key: %+v", bound)
+	}
+
 	// Home goes away: its daemon is stopped. The laptop says so — on its live
 	// socket, in the list, and to a start — rather than show what ran.
 	home.stop(t, false)
@@ -226,9 +299,29 @@ func TestLaptopDrivesTheHomeMachine(t *testing.T) {
 	if code := callJSON(t, "POST", proxy+"/v1/agents", `{"cwd":`+strconv.Quote(proj)+`}`, &off); code != http.StatusServiceUnavailable || off.Status != "offline" {
 		t.Fatalf("a start with home gone: %d %+v", code, off)
 	}
+	// The cost across computers names home as not counted: no figure, not $0.
+	cost = costAcross{}
+	if code := callJSON(t, "GET", lBase+"/v1/stats/summary?range=today&machines=all", "", &cost); code != 200 || cost.All == nil || cost.All.Answered != 1 || cost.All.Of != 2 ||
+		len(cost.Machines) != 1 || cost.Machines[0].Status != "offline" || cost.Machines[0].CostUSD != nil {
+		t.Fatalf("cost across computers with home gone: %d %+v", code, cost)
+	}
 	t.Logf("whole run %v", time.Since(started).Round(time.Millisecond))
 	relay.stop()
 	laptop.stop(t, true)
+}
+
+// costAcross is GET /v1/stats/summary?machines=all, the parts this test reads.
+type costAcross struct {
+	Machines []struct {
+		ID             string   `json:"id"`
+		Status         string   `json:"status"`
+		CostUSD        *float64 `json:"cost_usd"`
+		PricingVersion string   `json:"pricing_version"`
+	} `json:"machines"`
+	All *struct {
+		Answered int `json:"answered"`
+		Of       int `json:"of"`
+	} `json:"all"`
 }
 
 // machineEntry is one computer in GET /v1/machines/sessions.

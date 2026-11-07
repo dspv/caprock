@@ -34,7 +34,7 @@ func (a *machinesAdapter) mgr() *peers.Manager {
 		// pairing panel reads it (never a second load of remote.json, which
 		// could write keys of its own).
 		self := a.d.RemoteState("").HostID
-		m, err := peers.Open(peers.Options{Dir: a.d.opt.DataDir, Self: self, Name: machineName(), Log: a.d.log})
+		m, err := peers.Open(peers.Options{Dir: a.d.opt.DataDir, Self: self, Name: machineName(), Log: a.d.log, Identity: a.d.remoteIdentity()})
 		if err != nil {
 			a.d.log.Warn("could not read the computers this one reaches; listing none", "component", "peers", "err", err)
 		}

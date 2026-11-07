@@ -187,7 +187,14 @@ func dh(priv *ecdh.PrivateKey, pub []byte) ([]byte, error) {
 // direction; the caller orders its own sends.
 type Session struct {
 	send, recv *cipherState
+	// hash is the handshake's final hash, the same on both ends and on no
+	// other channel: what a computer signs to bind its token to its key
+	// (ADR-067, Phase 4).
+	hash []byte
 }
+
+// HandshakeHash is the handshake's final hash (a copy).
+func (s *Session) HandshakeHash() []byte { return append([]byte(nil), s.hash...) }
 
 // Encrypt seals one transport message.
 func (s *Session) Encrypt(plaintext []byte) ([]byte, error) {
@@ -254,9 +261,10 @@ func Respond(static *ecdh.PrivateKey, msg1, replyPayload []byte, e *ecdh.Private
 	if len(reply) > MaxMessage {
 		return nil, nil, nil, errTooLong
 	}
+	h := append([]byte(nil), s.h...)
 	toPhone, fromPhone := s.split()
 	// The initiator sends with the first key; this side receives with it.
-	return reply, payload, &Session{send: fromPhone, recv: toPhone}, nil
+	return reply, payload, &Session{send: fromPhone, recv: toPhone, hash: h}, nil
 }
 
 // Initiator is the phone's half of NK, kept in Go for the tests and for
@@ -308,6 +316,7 @@ func (i *Initiator) Finish(msg2 []byte) ([]byte, *Session, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	h := append([]byte(nil), i.s.h...)
 	send, recv := i.s.split()
-	return payload, &Session{send: send, recv: recv}, nil
+	return payload, &Session{send: send, recv: recv, hash: h}, nil
 }

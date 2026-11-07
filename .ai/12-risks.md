@@ -231,13 +231,16 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   date. *2026-10-18:* `/v1/resources` now reports the machine as a whole
   (`machine`: cores, one-minute load, total and available memory), which
   the measurement and the New-agent busy line need; the line stays off
-  until this sets its thresholds.
+  until this sets its thresholds. *2026-11-07:* the owner runs it on his
+  two computers; the steps are in [docs/machines.md](../docs/machines.md)
+  (§ Measuring a link).
 - `OQ-20` — **Is another computer actually quicker at the work?** Whether a
   linked machine finishes the same work sooner depends on that machine, not
   on Caprock. Decided by: `go test ./...` and the UI build of this
   repository on both machines, timed, with a date. The pitch is "this Mac
   stays responsive / more agents / lid closed", never "faster", until this
-  says otherwise for the machines named.
+  says otherwise for the machines named. *2026-11-07:* the owner's to run;
+  steps in [docs/machines.md](../docs/machines.md).
 - `OQ-21` — **A session's spend across several repositories (plan, not
   built).** One agent session can work in more than one repository — it
   `cd`s into a sibling checkout, edits the site repo beside the app repo,

@@ -27,12 +27,15 @@
  *   refused. A show from the menu bar, tray or hotkey is the user's own
  *   (`caprock:shown`, sent before the window comes up) and opens nothing:
  *   the open waits a moment for that word and drops the notification.
- * - **Another computer's, by name.** A frame with `machine` was said by a
- *   computer this one reaches (ADR-067, Phase 2): its title names that
- *   computer, the shell gets no session or prompt of it (the buttons would
- *   answer here, where it does not wait), and the click opens it there —
- *   `#/m/<id>/session/<sid>`, whose prompt card answers it. Whether it still
- *   waits is asked of that computer, through `/v1/m/<id>/…`.
+ * - **Another computer's, by name, answered there.** A frame with `machine`
+ *   was said by a computer this one reaches (ADR-067): its title names that
+ *   computer, and the shell gets its session, prompt, actions and `machine`
+ *   (Phase 3), so Approve and Deny answer on that computer through this
+ *   daemon's link (`/v1/m/<id>/v1/agents/<sid>/permission`, with the
+ *   prompt's id, so a stale one is refused there); the click opens it there —
+ *   `#/m/<id>/session/<sid>`. Whether it still waits is asked of that
+ *   computer, through `/v1/m/<id>/…`, and when its prompt ends there (a
+ *   `machines` frame, `why: "answered"`) the notification is withdrawn.
  * - **Waiting is asked of the daemon, by prompt id.** The workspace's set of
  *   waiting sessions (WP-10) is per session, and during a replay it still
  *   holds a prompt whose answer is a few frames later; the GET is not.
@@ -77,6 +80,11 @@ export function isWatched(n: NotifyFrame, v: Viewing): boolean {
   return v.focused && v.sessionId === n.session_id
 }
 
+/** A session on another computer, as the shell asks to open it: `#/m/<id>/session/<sid>`, ids only. */
+export function machineSessionHash(route: unknown): string | null {
+  return typeof route === 'string' && /^#\/m\/[A-Za-z0-9_-]{16,128}\/session\/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$/.test(route) ? route : null
+}
+
 /** The route that shows a notification's session with its prompt in view. */
 export function promptRoute(n: NotifyFrame): string {
   if (n.machine) return `#/m/${n.machine}/session/${encodeURIComponent(n.session_id)}`
@@ -87,7 +95,10 @@ export function promptRoute(n: NotifyFrame): string {
 export class Notifier {
   private seen = new Set<string>()
   private pending: { n: NotifyFrame; at: number } | null = null
-  /** Approval notifications shown, by session, until their prompt goes away. */
+  /**
+   * Approval notifications shown, by session — another computer's under
+   * `<machine>/<session>` — until their prompt goes away.
+   */
   private shownFor = new Map<string, string[]>()
 
   constructor(private deps: NotifierDeps) {}
@@ -106,20 +117,28 @@ export class Notifier {
     if (!this.deps.viewing().focused) this.pending = { n, at: this.now() }
     try {
       if (n.machine) {
+        // Its buttons answer there, through the link (the shell's `machine`).
+        const id = `m-${n.id}`
         await this.deps.invoke('notify', {
-          title: `${n.title} · on ${n.machine_name || 'another computer'}`, body: n.body, id: `m-${n.id}`,
+          title: `${n.title} · on ${n.machine_name || 'another computer'}`, body: n.body, id,
+          sessionId: n.session_id, promptId: n.prompt_id, actions: n.actions, machine: n.machine,
         })
+        if (n.prompt_id) this.remember(`${n.machine}/${n.session_id}`, id)
         return true
       }
       await this.deps.invoke('notify', {
         title: n.title, body: n.body, id: n.id, sessionId: n.session_id, promptId: n.prompt_id, actions: n.actions,
         route: notifyRoute(n.route) ?? undefined,
       })
-      if (n.prompt_id) this.shownFor.set(n.session_id, [...(this.shownFor.get(n.session_id) ?? []), n.id])
+      if (n.prompt_id) this.remember(n.session_id, n.id)
       return true
     } catch {
       return false
     }
+  }
+
+  private remember(key: string, id: string): void {
+    this.shownFor.set(key, [...(this.shownFor.get(key) ?? []), id])
   }
 
   /**
@@ -154,11 +173,13 @@ export class Notifier {
    * a phone or the notification itself: coming forward no longer opens it, and
    * its notifications are withdrawn so none keeps a stale Approve button.
    */
-  answered(sessionId: string): void {
-    if (this.pending?.n.kind === 'approval' && this.pending.n.session_id === sessionId) this.pending = null
-    const ids = this.shownFor.get(sessionId)
+  answered(sessionId: string, machine?: string): void {
+    const p = this.pending?.n
+    if (p?.kind === 'approval' && p.session_id === sessionId && (p.machine ?? '') === (machine ?? '')) this.pending = null
+    const key = machine ? `${machine}/${sessionId}` : sessionId
+    const ids = this.shownFor.get(key)
     if (!ids) return
-    this.shownFor.delete(sessionId)
+    this.shownFor.delete(key)
     this.deps.invoke('withdraw_notifications', { ids }).catch(() => {}) // an older shell has no such command
   }
 }
@@ -203,12 +224,15 @@ export function useOsNotifications(sessionId: string | undefined): void {
     const off = live.onFrame((f) => {
       if (f.type === 'notify') void notifier.receive(f.data)
       else if (f.type === 'permission' && !f.data.permission) notifier.answered(f.data.session_id)
+      else if (f.type === 'machines' && f.data.why === 'answered' && f.data.session_id) notifier.answered(f.data.session_id, f.data.id)
     })
     const onFocus = () => notifier.focused()
     const onShown = () => notifier.shown()
-    // macOS and Linux: the shell opens a module's notification itself.
+    // macOS and Linux: the shell opens a module's notification itself, and
+    // a session on another computer at its machine page.
     const onRoute = (e: Event) => {
-      const route = notifyRoute((e as CustomEvent<unknown>).detail)
+      const detail = (e as CustomEvent<unknown>).detail
+      const route = notifyRoute(detail) ?? machineSessionHash(detail)
       if (route) location.hash = route
     }
     window.addEventListener('focus', onFocus)
