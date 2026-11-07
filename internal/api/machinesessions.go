@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +79,15 @@ func (s *Server) MachineChanged(id string) {
 		e.changed++
 	}
 	s.machSessions.mu.Unlock()
+	// The same word drops what ?machines=all kept of it (machinesall.go):
+	// a computer that went offline is not shown with its last figures.
+	s.machAll.mu.Lock()
+	for k := range s.machAll.m {
+		if strings.HasPrefix(k, id+" ") {
+			delete(s.machAll.m, k)
+		}
+	}
+	s.machAll.mu.Unlock()
 }
 
 // handleMachineSessions answers every computer's running sessions.
@@ -187,27 +197,50 @@ func (s *Server) machineSessionsOf(ctx context.Context, m peers.Status) MachineS
 // answered, in the words the proxy uses.
 func (s *Server) readMachineSessions(ctx context.Context, base MachineSessions) MachineSessions {
 	out := base
-	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), machineSessionsWait)
+	got := s.askMachine(ctx, base.ID, machineSessionsPath, machineSessionsWait)
+	out.Status, out.Error = got.Status, got.Error
+	if got.Body != nil {
+		out.Sessions, out.At = got.Body, time.Now().UnixMilli()
+	}
+	return out
+}
+
+// machineAnswer is one computer's answer to a GET through its channel: its
+// state in the proxy's words, and the JSON body when it answered 200.
+type machineAnswer struct {
+	Status string
+	Error  string
+	Body   json.RawMessage
+}
+
+// askMachineMax bounds one answer read from another computer.
+const askMachineMax = 8 << 20
+
+// askMachine GETs path on computer id through its channel, for at most wait,
+// and says how it went: online with the body, or offline, pending, revoked,
+// refused or error with why.
+func (s *Server) askMachine(ctx context.Context, id, path string, wait time.Duration) machineAnswer {
+	var out machineAnswer
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), wait)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(rctx, http.MethodGet, "http://machine"+machineSessionsPath, nil)
+	req, _ := http.NewRequestWithContext(rctx, http.MethodGet, "http://machine"+path, nil)
 	req.Header.Set("Accept", "application/json")
-	res, err := s.d.Machines.Do(base.ID, req)
+	res, err := s.d.Machines.Do(id, req)
 	if err != nil {
 		out.Status, out.Error = machineState(err), err.Error()
 		return out
 	}
 	defer res.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
+	b, err := io.ReadAll(io.LimitReader(res.Body, askMachineMax))
 	switch {
 	case err != nil:
 		out.Status, out.Error = "offline", err.Error()
 	case res.StatusCode == http.StatusOK && json.Valid(b):
-		out.Status, out.Error = "online", ""
-		out.Sessions, out.At = json.RawMessage(b), time.Now().UnixMilli()
+		out.Status, out.Error, out.Body = "online", "", json.RawMessage(b)
 	case res.StatusCode == http.StatusUnauthorized:
 		// Ask once, through a channel only it can speak on.
 		cctx, ccancel := context.WithTimeout(context.WithoutCancel(ctx), machineLeaveWait)
-		st, _ := s.d.Machines.Check(cctx, base.ID)
+		st, _ := s.d.Machines.Check(cctx, id)
 		ccancel()
 		out.Status, out.Error = st.Status, st.Error
 	case res.StatusCode == http.StatusForbidden:

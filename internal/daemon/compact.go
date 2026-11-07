@@ -15,29 +15,32 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
-// Making the database smaller on its own, while nobody is working.
+// Making the database smaller on its own, while agents work.
 //
-// Four steps, each only after the daemon has been idle for idleFor, each
-// standing down the moment something is to be recorded:
+// Two rules decide when, because the work comes in two sizes
+// (ADR-093, amended 2026-11-07):
 //
-//  1. **Payload compaction** (store.CompactPayloadsStep): rows stored before
-//     event.CapToolField still hold screenshots as base64; they get the
-//     marker new rows get. A few hundred ids per step, a short pause between
-//     steps, resumable, finished once.
-//  2. **One VACUUM**, after the compaction: it gives the freed pages back to
-//     the disk and switches the database to auto_vacuum=INCREMENTAL. Only with
-//     the disk to spare (vacuumRoom) and under a time limit; a write that
-//     arrives meanwhile interrupts it, and an interrupted VACUUM changes
-//     nothing. Tried again a day later if it could not run or finish.
-//  3. **Compressed tool output** (zstd.go, ADR-093), only with the setting
-//     on: tool rows older than a day are compressed a window at a time; with
-//     it off, rows compressed before are restored the same way.
-//  4. **Incremental vacuum** from then on: free pages — from the retention
-//     prune, from rows that shrank — are given back a few megabytes at a
-//     time.
+//   - **Short steps run whenever writes pause** (maintain.go): a few hundred
+//     rows or 4 MiB of free pages at a time, each step yielding to any write,
+//     after calmFor without one, resting nine times as long as the step took.
+//     They are the payload compaction (store.CompactPayloadsStep: rows
+//     stored before event.CapToolField still hold screenshots as base64, and
+//     get the marker new rows get, once); compressed tool output (zstd.go),
+//     only with the setting on, and restoring it with the setting off; and
+//     incremental vacuum, which gives free pages — from the retention prune,
+//     from rows that shrank — back to the disk 4 MiB at a time.
+//   - **The VACUUM waits for real quiet** (idleFor, here): the one that
+//     switches an older database to auto_vacuum=INCREMENTAL, and the one
+//     that repacks after a compression pass. It holds the write lock for
+//     a minute on a large database, so it runs only after idleFor with
+//     nothing recorded, with the disk to spare (vacuumRoom) and under a time
+//     limit; a write that arrives meanwhile interrupts it, and an
+//     interrupted VACUUM changes nothing. Tried again a day later if it
+//     could not run or finish. The user can also start one (pack.go), which
+//     does not stand down for writes: the recorder's writes wait for it.
 //
-// Each step that did something is said in the footprint's actions
-// (`caprock doctor`) and logged.
+// Each job that did something is said in the footprint's actions (`caprock
+// doctor`) and logged.
 const (
 	// compactWindow is how many event ids one compaction step examines.
 	compactWindow = 500
@@ -128,27 +131,29 @@ func (d *Daemon) quiet(now time.Time) bool {
 	return now.Sub(time.UnixMilli(last)) >= idleFor
 }
 
-// compactState is what the idle-time database work remembers between runs.
+// compactState is what the idle-time VACUUM remembers between runs.
 type compactState struct {
 	vacuumTried time.Time
 	roomWarned  bool
-	// restoreWarned is set once the footprint has said why compressed rows
-	// are not being restored (not enough free disk).
-	restoreWarned bool
 	// repackTried is when the VACUUM after a compression pass last started.
 	repackTried time.Time
 }
 
-// compactDB runs the three steps as far as the quiet lasts.
+// compactDB runs the VACUUMs that wait for real quiet: the one that switches
+// an older database to incremental vacuuming, after the payload compaction
+// has finished, and the one that repacks after a compression pass
+// (zstdRepack). The short steps run on their own rule (maintain.go); this
+// takes the same lock, so the two never run at once.
 func (d *Daemon) compactDB(ctx context.Context, cs *compactState) {
-	// Not while migration 0073's move runs: compaction would mark the rows
-	// not moved yet as done, and a VACUUM would hold the move up.
+	// Not while migration 0073's move runs: a VACUUM would hold the move up.
 	if d.moving() {
 		return
 	}
-	if !d.compactPayloads(ctx) {
+	if done, err := d.store.PayloadCompactFinished(ctx); err != nil || !done {
 		return
 	}
+	d.dbMu.Lock()
+	defer d.dbMu.Unlock()
 	mode, err := d.store.AutoVacuum(ctx)
 	if err != nil {
 		return
@@ -156,53 +161,13 @@ func (d *Daemon) compactDB(ctx context.Context, cs *compactState) {
 	if mode != store.AutoVacuumIncremental {
 		if time.Since(cs.vacuumTried) >= vacuumRetry && d.quiet(time.Now()) {
 			cs.vacuumTried = time.Now()
-			_ = d.vacuumOnce(ctx, cs)
+			if d.vacuumOnce(ctx, cs) {
+				d.packEstimateStale()
+			}
 		}
 		return
 	}
-	// After the one VACUUM, so the space compression frees goes back to the
-	// disk as incremental vacuum finds it.
-	d.zstdPayloads(ctx, cs)
-	d.incrementalVacuum(ctx)
-}
-
-// compactPayloads runs compaction steps while the daemon stays quiet and
-// reports whether the compaction is finished.
-func (d *Daemon) compactPayloads(ctx context.Context) bool {
-	if done, err := d.store.PayloadCompactFinished(ctx); err != nil || done {
-		return err == nil
-	}
-	start := time.Now()
-	var rows int
-	var freed int64
-	done := false
-	for ctx.Err() == nil && d.quiet(time.Now()) {
-		st, err := d.store.CompactPayloadsStep(ctx, compactWindow)
-		if err != nil {
-			if ctx.Err() == nil {
-				d.log.Warn("payload compaction step failed; tried again when idle", "component", "daemon", "err", err)
-			}
-			break
-		}
-		rows += st.Rewritten
-		freed += st.Freed
-		if st.Done {
-			done = true
-			break
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.After(compactPause):
-		}
-	}
-	if rows > 0 {
-		d.actions.add(compactAction(rows, freed, done))
-	}
-	if rows > 0 || done {
-		d.log.Info("compacted stored payloads", "component", "daemon",
-			"rows", rows, "freed_bytes", freed, "done", done, "took", time.Since(start).Round(time.Millisecond))
-	}
-	return done
+	d.zstdRepack(ctx, cs)
 }
 
 // compactAction is the footprint's line for a compaction run.
@@ -212,7 +177,7 @@ func compactAction(rows int, freed int64, done bool) string {
 	if done {
 		return s + "; every older event is done"
 	}
-	return s + "; continues the next time Caprock is idle"
+	return s + "; continues in the background"
 }
 
 // vacuumOnce runs the VACUUM that switches the database to incremental
@@ -273,35 +238,4 @@ func (d *Daemon) vacuumOnce(ctx context.Context, cs *compactState) bool {
 	d.log.Info("database compacted", "component", "daemon",
 		"before", before.Bytes(), "after", after.Bytes(), "freed", freed, "took", took, "wal_peak", walPeak)
 	return true
-}
-
-// incrementalVacuum gives the freelist back to the disk a step at a time,
-// while the daemon stays quiet.
-func (d *Daemon) incrementalVacuum(ctx context.Context) {
-	p, err := d.store.Pages(ctx)
-	if err != nil || p.FreeBytes() < incrementalMin {
-		return
-	}
-	var pages int64
-	for ctx.Err() == nil && d.quiet(time.Now()) {
-		n, err := d.store.IncrementalVacuum(ctx, incrementalStep)
-		if err != nil || n == 0 {
-			break
-		}
-		pages += n
-		if n < incrementalStep {
-			break
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.After(compactPause):
-		}
-	}
-	if pages == 0 {
-		return
-	}
-	_, _ = d.store.CheckpointTruncate(ctx)
-	freed := pages * p.PageSize
-	d.actions.add("gave " + Bytes(uint64(freed)) + " of free space inside the database back to the disk")
-	d.log.Info("returned free pages to the disk", "component", "daemon", "pages", pages, "freed_bytes", freed)
 }

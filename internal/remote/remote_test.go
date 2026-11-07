@@ -34,9 +34,20 @@ func fakeDaemon(t *testing.T) *httptest.Server {
 			"via":    r.Header.Get("Via"),
 			"origin": r.Header.Get("Origin"),
 			"device": r.Header.Get("X-Caprock-Device"),
+			"peer":   remote.PeerKey(r),
 			"body":   string(body),
 			"query":  r.URL.RawQuery,
 		})
+	})
+	mux.HandleFunc("/v1/peer-ws", func(w http.ResponseWriter, r *http.Request) {
+		// Says which key the channel proved, as its first message.
+		peer := remote.PeerKey(r)
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = c.Write(r.Context(), websocket.MessageText, []byte("peer="+peer))
+		_, _, _ = c.Read(r.Context())
 	})
 	mux.HandleFunc("/v1/ws-deny", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not paired", http.StatusUnauthorized)

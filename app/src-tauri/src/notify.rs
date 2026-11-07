@@ -12,6 +12,11 @@
 //! Approve and Deny are answered in the app: a click on the notification
 //! brings the app forward, and the page opens the prompt
 //! (`ui/src/lib/notify.ts`).
+//!
+//! A prompt on another computer this one reaches (ADR-067, Phase 3) carries
+//! the same buttons with `machine` set: they answer on that computer, through
+//! this daemon's link to it (`/v1/m/{machine}/v1/agents/{id}/permission`),
+//! with that prompt's id, and a click opens the session there.
 
 use std::io::Write;
 use tauri::{AppHandle, Manager, Runtime};
@@ -45,6 +50,9 @@ pub struct Note {
     /// The dashboard route a click opens when it is about no session: a
     /// private module's `#/x/<id>` (ADR-076).
     pub route: Option<String>,
+    /// The other computer the session and prompt are on (ADR-067), as this
+    /// machine names it in `/v1/m/{id}/…`; None for this machine's own.
+    pub machine: Option<String>,
 }
 
 /// What the reader did with a notification.
@@ -62,6 +70,7 @@ pub struct Origin {
     pub prompt_id: Option<String>,
     pub title: String,
     pub route: Option<String>,
+    pub machine: Option<String>,
 }
 
 /// How an answer from a notification went.
@@ -97,6 +106,20 @@ fn is_id(s: &str) -> bool {
     (1..=128).contains(&s.len())
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+}
+
+/// A computer's id as this machine names it: its relay id, base64url (an
+/// Ed25519 key is 43 characters), never dots, so it cannot climb out of
+/// `/v1/m/{id}/`.
+fn is_machine(s: &str) -> bool {
+    (16..=128).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+}
+
+/// The route of a session on another computer: its machine page.
+pub fn machine_route(machine: &str, session: &str) -> String {
+    format!("#/m/{machine}/session/{session}")
 }
 
 /// A route a notification may open: a private module's screen, `#/x/<id>`
@@ -143,12 +166,14 @@ pub fn notify<R: Runtime>(
     prompt_id: Option<String>,
     actions: Option<Vec<String>>,
     route: Option<String>,
+    machine: Option<String>,
     app: AppHandle<R>,
 ) -> Result<(), String> {
     let (title, body) = prepare(&title, &body)?;
     let route = route.filter(|r| is_route(r));
     let session_id = session_id.filter(|s| is_id(s));
     let prompt_id = prompt_id.filter(|s| is_id(s));
+    let machine = machine.filter(|s| is_machine(s));
     let buttons = buttons(
         session_id.as_deref(),
         prompt_id.as_deref(),
@@ -167,6 +192,7 @@ pub fn notify<R: Runtime>(
             prompt_id,
             buttons,
             route,
+            machine,
         },
     )
 }
@@ -218,6 +244,7 @@ fn show<R: Runtime>(app: &AppHandle<R>, note: Note) -> Result<(), String> {
             "prompt_id": note.prompt_id,
             "buttons": format!("{:?}", note.buttons),
             "route": note.route,
+            "machine": note.machine,
         })
         .to_string();
         return std::fs::OpenOptions::new()
@@ -256,19 +283,27 @@ fn unique() -> u128 {
 }
 
 /// A click or a button on a notification. Approve and Deny answer on the
-/// daemon this app is attached to, off the main thread, and say so only when
-/// the answer did not land; a click opens the session, or a module's route.
+/// daemon this app is attached to — for another computer's prompt, through
+/// it on that computer — off the main thread, and say so only when the answer
+/// did not land; a click opens the session, here or there, or a module's
+/// route.
 pub fn respond<R: Runtime>(app: &AppHandle<R>, reply: Reply, origin: Origin) {
     let Origin {
         session_id,
         prompt_id,
         title,
         route,
+        machine,
     } = origin;
+    let machine = machine.filter(|m| is_machine(m));
     let (Reply::Allow | Reply::Deny, Some(session), Some(prompt)) =
         (reply, session_id.clone(), prompt_id)
     else {
         match (session_id, route.filter(|r| is_route(r))) {
+            (Some(s), _) if is_id(&s) && machine.is_some() => crate::tray::open_route(
+                app,
+                &machine_route(machine.as_deref().unwrap_or_default(), &s),
+            ),
             (Some(s), _) => crate::tray::open_session(app, &s),
             (None, Some(r)) => crate::tray::open_route(app, &r),
             (None, None) => crate::hotkey::show(app),
@@ -281,7 +316,7 @@ pub fn respond<R: Runtime>(app: &AppHandle<R>, reply: Reply, origin: Origin) {
             crate::supervisor::State::Connected { port, .. } => Some(port),
             _ => None,
         };
-        let outcome = answer(port, &session, &prompt, reply);
+        let outcome = answer(port, machine.as_deref(), &session, &prompt, reply);
         if let Some((t, b)) = follow_up(&outcome, &title) {
             let note = Note {
                 id: format!("caprock-answer-{}", unique()),
@@ -291,6 +326,7 @@ pub fn respond<R: Runtime>(app: &AppHandle<R>, reply: Reply, origin: Origin) {
                 prompt_id: None,
                 buttons: Buttons::None,
                 route: None,
+                machine,
             };
             let _ = show(&app, note);
         }
@@ -298,12 +334,21 @@ pub fn respond<R: Runtime>(app: &AppHandle<R>, reply: Reply, origin: Origin) {
 }
 
 /// `POST /v1/agents/{id}/permission` on loopback, with the prompt's id, so a
-/// prompt that has since changed is refused (409) rather than answered.
-pub fn answer(port: Option<u16>, session: &str, prompt: &str, reply: Reply) -> Outcome {
+/// prompt that has since changed is refused (409) rather than answered. With
+/// `machine`, the same request through this daemon's link to that computer,
+/// `/v1/m/{machine}/v1/agents/{id}/permission`: answered there, and refused
+/// there when stale.
+pub fn answer(
+    port: Option<u16>,
+    machine: Option<&str>,
+    session: &str,
+    prompt: &str,
+    reply: Reply,
+) -> Outcome {
     let Some(port) = port else {
         return Outcome::Failed("Caprock's daemon is not running".into());
     };
-    if !is_id(session) || !is_id(prompt) {
+    if !is_id(session) || !is_id(prompt) || machine.is_some_and(|m| !is_machine(m)) {
         return Outcome::Failed("the notification does not name a prompt".into());
     }
     let choice = if reply == Reply::Allow {
@@ -312,10 +357,18 @@ pub fn answer(port: Option<u16>, session: &str, prompt: &str, reply: Reply) -> O
         "deny"
     };
     let body = serde_json::json!({ "id": prompt, "choice": choice }).to_string();
-    let path = format!("/v1/agents/{session}/permission");
+    let path = match machine {
+        Some(m) => format!("/v1/m/{m}/v1/agents/{session}/permission"),
+        None => format!("/v1/agents/{session}/permission"),
+    };
     match crate::discovery::post_json(port, &path, &body) {
         Ok((200..=299, _)) => Outcome::Answered,
         Ok((409, _)) => Outcome::Stale,
+        // The link to that computer: offline, removed there, refused.
+        Ok((code @ (403 | 502 | 503), text)) if machine.is_some() => Outcome::Failed(format!(
+            "the other computer could not be reached ({code}: {})",
+            clip(text.trim(), 120)
+        )),
         Ok((code, text)) => Outcome::Failed(format!(
             "the daemon answered {code}: {}",
             clip(text.trim(), 120)
@@ -403,7 +456,11 @@ mod tests {
             assert!(!is_id(bad), "{bad}");
         }
         assert_eq!(
-            answer(Some(1), "../x", "p", Reply::Allow),
+            answer(Some(1), None, "../x", "p", Reply::Allow),
+            Outcome::Failed("the notification does not name a prompt".into())
+        );
+        assert_eq!(
+            answer(Some(1), Some(".."), "s", "p", Reply::Allow),
             Outcome::Failed("the notification does not name a prompt".into())
         );
     }
@@ -433,7 +490,7 @@ mod tests {
     fn approve_posts_the_prompt_id_as_json() {
         let (port, h) = daemon(204);
         assert_eq!(
-            answer(Some(port), "s1", "p1", Reply::Allow),
+            answer(Some(port), None, "s1", "p1", Reply::Allow),
             Outcome::Answered
         );
         let req = h.join().unwrap();
@@ -446,9 +503,51 @@ mod tests {
     }
 
     #[test]
+    fn another_computers_prompt_is_answered_there_through_the_link() {
+        let (port, h) = daemon(204);
+        assert_eq!(
+            answer(
+                Some(port),
+                Some("Mini_ID-123456789"),
+                "s9",
+                "p9",
+                Reply::Allow
+            ),
+            Outcome::Answered
+        );
+        let req = h.join().unwrap();
+        assert!(
+            req.starts_with("POST /v1/m/Mini_ID-123456789/v1/agents/s9/permission HTTP/1.0\r\n"),
+            "{req}"
+        );
+        assert!(req.ends_with(r#"{"choice":"allow","id":"p9"}"#), "{req}");
+        assert_eq!(
+            machine_route("Mini_ID-123456789", "s9"),
+            "#/m/Mini_ID-123456789/session/s9"
+        );
+    }
+
+    #[test]
+    fn an_unreachable_computer_says_so() {
+        let (port, h) = daemon(503);
+        let outcome = answer(
+            Some(port),
+            Some("Mini_ID-123456789"),
+            "s9",
+            "p9",
+            Reply::Deny,
+        );
+        h.join().unwrap();
+        let Outcome::Failed(why) = &outcome else {
+            panic!("{outcome:?}");
+        };
+        assert!(why.contains("other computer"), "{why}");
+    }
+
+    #[test]
     fn a_stale_prompt_says_already_answered() {
         let (port, h) = daemon(409);
-        let outcome = answer(Some(port), "s1", "p1", Reply::Deny);
+        let outcome = answer(Some(port), None, "s1", "p1", Reply::Deny);
         assert!(h.join().unwrap().contains(r#""choice":"deny""#));
         assert_eq!(outcome, Outcome::Stale);
         let (t, b) = follow_up(&outcome, "Needs approval · api").unwrap();
@@ -458,7 +557,7 @@ mod tests {
 
     #[test]
     fn a_failed_answer_says_why_and_a_landed_one_says_nothing() {
-        let gone = answer(None, "s1", "p1", Reply::Allow);
+        let gone = answer(None, None, "s1", "p1", Reply::Allow);
         let (t, b) = follow_up(&gone, "Needs approval · api").unwrap();
         assert_eq!(t, "Could not answer");
         assert!(b.contains("not running"), "{b}");

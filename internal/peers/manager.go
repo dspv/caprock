@@ -3,6 +3,7 @@ package peers
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +70,10 @@ type Options struct {
 	HTTPClient *http.Client
 	// Idle overrides how long a channel with nothing open stays up.
 	Idle time.Duration
+	// Identity is this machine's relay key, proved on every channel so each
+	// computer holds this machine's token there to it (remote.KindProve,
+	// ADR-067 Phase 4); nil proves nothing.
+	Identity ed25519.PrivateKey
 }
 
 // Status is one computer as the dashboard and the CLI see it. No token.
@@ -161,6 +166,7 @@ func (m *Manager) newPeer(mach Machine) (*peer, error) {
 		Log:        m.log,
 		HTTPClient: m.opt.HTTPClient,
 		Idle:       m.opt.Idle,
+		Identity:   m.opt.Identity,
 	})
 	if err != nil {
 		return nil, err

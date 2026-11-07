@@ -4765,7 +4765,8 @@ and travels in its pairing link, so two machines may use different relays.
 - *A compromised controller* holds its tokens to every target that let it
   in, with full scope there. The cure is **Remove** on each target. Binding
   the token to the controller's own key (a signature over the handshake hash
-  in the first frame) is Phase 4 hardening; Go-only, phones unaffected.
+  in the first frame) is Phase 4 hardening; Go-only, phones unaffected —
+  built 2026-11-07, bound with no step by the owner (amendment below).
 - *No hosted code in the path.* Federation runs inside the two daemons; the
   desktop window still loads only `127.0.0.1`, and `m.caprock.dev` is a
   phone-only concern.
@@ -4961,13 +4962,64 @@ Phase 2's smoke adds a Windows target to the matrix.
   `pricing_version`; Approve/Deny on a remote session's notification (the
   merged session list and the notifications themselves came in Phase 2).
 - **Phase 4 — capacity and hardening:** frame coalescing, the token bound to
-  the controller's key, and whatever OQ-14's measurements call for (a relay
-  of one's own is already `caprock remote relay`).
+  the controller's key (built 2026-11-07, below), and whatever OQ-14's
+  measurements call for (a relay of one's own is already `caprock remote
+  relay`).
 - *Audit, 2026-11-06:* what each phase promised against master, the fixes
   it led to (the watch resuming a restarted computer, Allow noticed
   unasked, the one list not keeping a read a word overtook, relay
   `traffic` in `GET /v1/machines`) and what is next with and without the
   owner: [14-build-status.md, 2026-11-06](14-build-status.md).
+- *Amended 2026-11-07 — Phase 3 and the token binding, the owner's picks.*
+  He chose variant A of each question on a clickable prototype (translated:
+  "all variant A"):
+  - *Approve and Deny on a remote notification.* The app's notification for
+    a prompt on another computer carries the buttons a prompt here gets, and
+    they answer **there**: the shell posts to its own daemon's
+    `/v1/m/{id}/v1/agents/{sid}/permission` with that prompt's id, so a
+    stale one is refused there (ADR-035) and rule 7 holds — the daemon that
+    started the agent is the one that types the answer. No new route on the
+    target, no new scope: answering was already in `controllerRoutes`.
+    Rejected: buttons in the sidebar's remote row (B) and leaving it to the
+    prompt card (C). Telegram is unchanged, and a phone paired with the
+    controller still never hears the other computer (not transitive): the
+    phone has no notification with actions to extend, and passing it the
+    other computer's prompts would make access transitive.
+  - *Cost: a This Mac / All computers toggle on Cost* (A), not rows without
+    a total (B) or waiting for the team tier (C). `?machines=all` on the
+    summary and on the session list as this ADR's Phase 3 said: what
+    answered is summed, what did not is named with why and has no figure —
+    never $0 — and the total says how many of how many it holds. Each
+    computer prices its own sessions with its own `pricing_version` and the
+    row names it; nothing is re-priced here. Each answer is kept 30 s in
+    memory: still nothing about another computer in SQLite, so still no
+    migration.
+  - *The hosted relay's latency* is documented, not engineered around: the
+    measured figure of 2026-11-06 (both ends on one Mac, 132 ms median)
+    and how and when to run one's own relay (`caprock remote relay`) are in
+    [docs/machines.md](../docs/machines.md). No "faster" claim: a
+    self-hosted relay between two real computers is unmeasured.
+  - *The token bound to the controller's key, automatically* (Phase 4's
+    item, brought forward). A controller proves its relay key on every
+    channel (a signature over the handshake hash, the first frame); the
+    target binds the computer's token to the first key it is proven with —
+    on pairing, or for a computer paired before, on its first request once
+    both ends run this — and refuses the token from any other channel. No
+    step for the owner. The cost of *trust on first use* for an old pairing:
+    a token stolen before the controller's first proven request could be
+    bound to the thief's key first; the real controller then reads
+    *removed there*, which is visible and cured by pairing again — no worse
+    than the unbound token it replaces. A controller whose keys are reset
+    (`caprock remote reset`) pairs again with each computer.
+  - *Left open, by decision:* OQ-19 and OQ-20 need two real computers and
+    are the owner's to run; the steps are in
+    [docs/machines.md](../docs/machines.md), and the New-agent *busy* line
+    stays undrawn until they are measured.
+  - Proof without the owner: `internal/smoke/machines_phase2_test.go` grew
+    to answer home's prompt through the link as the button does (and a
+    stale id refused there), read both `?machines=all` views, see home's
+    device list say `bound`, and name home *offline* in the cost across
+    computers once it is gone.
 
 **What is claimed, and what it costs.**
 
@@ -7199,7 +7251,7 @@ the daemon holds no stored review requests and reads CI from GitHub on
 demand, so either would be a new call on a schedule. A later version can
 add them under the GitHub integration's own switch.
 
-## ADR-093 — Older tool output is stored zstd-compressed while idle, off until switched on, with no dictionary
+## ADR-093 — Older tool output is stored zstd-compressed in the background, off until switched on, with no dictionary
 
 **Date:** 2026-11-06 · **Status:** accepted (owner, 2026-11-06: "do the
 compression ourselves, but so that other users don't suffer", translated);
@@ -7266,3 +7318,57 @@ table for the compressed form (a rewrite of `events`, which #768 just did).
 of the estimate; the Week screen or a session's events become noticeably
 slower on compressed weeks; or a per-install dictionary is wanted for the
 last 130 MiB — the format leaves room for one (the frame names it).
+
+**Amended 2026-11-07: the steps run while agents work; the pack is the
+user's.** Status: accepted (owner, 2026-11-07). The setting was on all night
+on the owner's machine and compressed nothing (`payload_zstd_cursor` 0): his
+agents run around the clock, 300 to 700 events an hour overnight, the longest
+gap 11 minutes, so "after 30 quiet minutes" never came — and, he says, more
+and more users keep agents running all day.
+
+- **The short steps need a pause, not idleness.** Compression (and restoring),
+  the base64 compaction and incremental vacuum run one step at a time after
+  5 s with no write (`calmFor`). In his last 24 hours (25,197 events) gaps of
+  5 s or more left 14.7 hours to work in; gaps of 30 minutes, none. A step is
+  short — 27 ms on average, 98 ms at most for 500 rows of compression, 96 ms
+  median for 4 MiB of incremental vacuum, on a copy of his database — and it
+  **yields**: it runs on a context the write gate cancels, so a hook or a
+  transcript line that wants the database interrupts it, SQLite rolls it
+  back, and it is done again at the next pause. After each step the job rests
+  **nine times** as long as the step took, so it uses at most a tenth of one
+  core (it rested twice as long before, a third). 5 s rather than 2: a turn's
+  hooks come within a second or two, and 5 s still leaves most of the day.
+- **The VACUUM stays off the background path** unless the real 30 minutes
+  come: it holds the write lock for about a minute on a 2 GB file. Measured on
+  the copy after compression and incremental vacuum: 2,001 MiB to 1,559 MiB
+  in 49 s and in 56 s; 2,595 MiB to 2,477 MiB in 108 s uncompressed.
+- **"Pack database" is offered in the window's status strip** once compression has
+  caught up and a pack would free at least 256 MiB, with an estimate of the
+  time (used size over the rate of the last pack on this machine, or 24 MiB/s,
+  the slowest measured) and of the saving (a sample of 4,000 pages; 387–397
+  MiB estimated where 442 were freed, 115–125 where 118 were). The user
+  starts it (`POST /v1/storage/pack`).
+- **During the user's pack, events wait instead of interrupting it.** The
+  recorder — the one path every hook event, transcript line and import takes
+  — is held from just before the VACUUM until it commits; what arrives is
+  kept in memory and written after, on a context nothing cancels. The shim
+  still exits 0 within its budget (rule 3): a session never waits, and loses
+  only an answer that comes after the write (a task runner's Stop decision,
+  a SessionStart handoff). Other writes wait SQLite's 5 s and may get a 503
+  the dashboard retries; the strip's popover says new events wait before
+  the user starts. The log is folded back after the recorder is let go, by checkpoints
+  that never hold a writer up for more than 200 ms.
+- **Progress is measured, not timed**: the temporary copy's size, then the
+  log's, then the bytes written while folding, a third each; where the OS
+  gives no reading (Windows, for the first and last), the bar moves with the
+  phases only.
+
+**Rules out:** buffering hook events on disk in the shim during a pack (a
+second write path, for a minute the recorder already covers in memory);
+running the VACUUM in the background step by step (SQLite has no such
+VACUUM); a timer-driven progress bar.
+
+**Revisit if:** steps measurably slow a session's hooks (the recorder's write
+latency rises while compression runs); a pack's hold proves too long for
+someone's agents (then: `VACUUM INTO` a copy while events flow, and a swap);
+or the estimate of the saving errs high on someone's database.

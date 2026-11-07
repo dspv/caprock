@@ -8,6 +8,7 @@ import (
 
 	"github.com/dspv/caprock/internal/lan"
 	"github.com/dspv/caprock/internal/pairing"
+	"github.com/dspv/caprock/internal/remote"
 )
 
 // Who is allowed in, and from where.
@@ -243,6 +244,20 @@ func (s *Server) gateDevice(r *http.Request) (status int, reason string, dev *pa
 		// One message for an unknown token and a revoked one. Telling them
 		// apart tells a stranger which of their guesses was once real.
 		return http.StatusUnauthorized, "this device is not paired with Caprock", nil
+	}
+	if dev.Kind == pairing.KindMachine {
+		// A computer's token is held to the key its channel proved
+		// (remote.KindProve, ADR-067 Phase 4): bound on the first request
+		// that carries a proof, refused from then on any channel that proved
+		// another key or none, so a token copied off that computer reaches
+		// nothing from anywhere else.
+		ok, bound := ps.HoldKey(tok, remote.PeerKey(r))
+		if bound {
+			s.saveDevices()
+		}
+		if !ok {
+			return http.StatusUnauthorized, "this computer's token is bound to another key", nil
+		}
 	}
 	if dev.Pending {
 		// A computer that redeemed a code and waits for the owner's Allow

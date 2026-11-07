@@ -569,6 +569,70 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   (`{msgs_out, msgs_in, bytes_out, bytes_in}`, the relay's own pings
   included, since this daemon started or paired that computer; local only,
   like the rest of the route). The Host's is in no API answer yet.
+- **Across computers** (Phase 3, `internal/api/machinesall.go`).
+  `?machines=all` on **`GET /v1/sessions`** and **`GET
+  /v1/stats/summary`** asks every computer this one reaches the same
+  question through its channel, at once (8 s at most each), and answers
+  with this machine's own and what each computer said. Loopback only: from
+  a paired phone or computer it is `403` (the gate's `401` for a relayed
+  request with network access off), `501` in a build without computers,
+  and any other value of `machines` is `400`. A computer known to be
+  `pending`, `revoked` or `refused` is named with that state and not
+  asked. Each computer's answer to each question is kept here **30 s**
+  (in memory; dropped by the same words that drop the one list, above, so
+  a computer that went offline is not shown with its last figures), so a
+  screen that polls costs the relay one read per computer in that time.
+  - *The summary* carries, beside this machine's own figures (unchanged),
+    `machines: [{id, name, status, error?, cost_usd?, tokens?, sessions?,
+    turns?, pricing_version?, unpriced?, at?}]` in the order added — the
+    figures that computer stated for the same `range` and `agent`, priced
+    there with its own table (`pricing_version`; nothing is re-priced
+    here), `tokens` its input, output, cache reads and cache writes
+    summed, `unpriced` its own `unpriced` as it sent it, `at` when read
+    (unix ms, this machine's clock). A computer that did not answer has
+    `status` (`offline`, `pending`, `revoked`, `refused`, `error`) and
+    `error`, and **no figure at all** — unknown, never `0` (rule 6); one
+    that answered with something that is not a summary is `error`. And
+    `all: {cost_usd, tokens, sessions, turns, answered, of, unpriced?}`:
+    this machine plus every computer that answered; `answered` counts what
+    the sum holds and `of` every computer, this one included in both, so
+    `answered < of` says the sum is not the whole; `unpriced` that some
+    part had volume its own table could not price. `range` is each
+    computer's own: *today* is its calendar day in its own time zone.
+  - *The session list* is then an object, not the plain array: `{sessions,
+    machines}`. `sessions` is this machine's rows as usual and every
+    computer's rows for the same query (`machines` removed), each of theirs
+    with `machine` (its id here) and `machine_name` added, newest first by
+    `last_event_at` as each machine stated it (clocks are not corrected),
+    cut to `limit` when one was asked. `machines` is `[{id, name, status,
+    error?, count?, at?}]`: `count` how many rows it answered with, absent
+    when it did not answer. `?dir=` with `machines=all` is `400` (a folder
+    is this machine's). No `X-Total-Count`.
+- **A computer's token bound to its key** (Phase 4,
+  `internal/remote/prove.go`). A daemon reaching another computer proves its
+  own relay key (`remote.json`'s Ed25519 key, the same one its relay id
+  is) on every channel it opens: its first transport frame, before any
+  stream, is `KindProve` (`0x0e`), stream 0, body `{"k": <public key,
+  base64url, as its relay id>, "s": <Ed25519 signature, base64url, over
+  "caprock-computer-proof-v1:" followed by the Noise handshake hash>}`.
+  The hash is the handshake's final `h`, the same on both ends and on no
+  other channel, so a proof cannot be replayed on another. The Host takes a
+  proof only as the first frame; one that does not verify hangs the
+  channel up. It marks every request and socket it replays from a channel
+  that proved a key with `X-Caprock-Peer: <key>.<HMAC>` — the HMAC under a
+  secret made at each start of this process, so nothing a phone sends (its
+  headers are allowlisted) and nothing else on loopback can claim a key.
+  The gate binds a computer's token (`kind: "machine"`) to the first key it
+  is seen with — `key` on that device in `devices.json`, saved at once —
+  with no step by anyone, on pairing (its first `GET /v1/pair/me`) or, for
+  a computer paired before, its first request after both ends run this.
+  From then that token on a channel that proved another key, or none, is
+  `401` *this computer's token is bound to another key* (the controller
+  reads `revoked` and says so). A token never bound and seen with no key
+  still works: a controller from before the proof. Phones send no proof
+  and are never bound. `GET /v1/pair/state` lists such a device with
+  `bound: true`. A controller whose keys are reset (`caprock remote
+  reset`) is refused by every computer it had reached and pairs again.
 
 **The way back to a paired phone (2026-10-15).** `GET /v1/pair/state`
 carries `telegram: true` when a Telegram bot and chat are set up.
@@ -913,11 +977,11 @@ One policy for both sockets, `ui/src/lib/reconnect.ts` (WP-13, [21-app.md § Pha
 
 `{type:"notify", seq, data:{id, kind, session_id, project?, title, body, prompt_id?, actions?, route?}}` — an alert for the desktop app (kind `module`, with an empty `session_id`, is a private module's `POST /v1/x/<id>/notify` — `id` `module-<id>-<ns>`, `title` `<module name> · <title>`, `body` the module's, `route` `#/x/<id>`, which a click opens: the `notify` command's `route`, kept only when it is `#/x/<module id>`, then `caprock:open-route` on macOS and Linux, the app coming forward elsewhere; published only while `notify_approval` or `notify_finished` is on, § Private modules; kinds `ci` and `review`, with an empty `session_id`, come from GitHub, § GitHub; kind `window`, also with an empty `session_id`, is the plan-window stop pausing or resuming sessions — `id` `window-paused-<ms>` or `window-resumed-<ms>`, `title` `Paused 2 sessions · Claude's 5-hour limit at 91%` or `Resumed 2 sessions · Claude's plan window reset`, `body` one session per line (project · title) and, for a pause, `They resume after it resets at 19:00.`; published whenever the stop acts, not behind a notify switch) (WP-09, [21-app.md § Notifications](21-app.md#notifications)). Code: `internal/alerts` (`Notify`), `internal/daemon/phonealerts.go`, `ui/src/lib/notify.ts`, `app/src-tauri/src/notify.rs`, `app/src-tauri/src/notify_macos.rs`.
 
-- **From another computer** (ADR-067, Phase 2). A frame with `machine` and `machine_name` was decided on a computer this one reaches and re-published here, local only (§ Other computers). Its `session_id`, `prompt_id` and `actions` are that computer's. The app shows it with ` · on <machine_name>` after the title and hands the shell only `{title, body, id: "m-<id>"}` — no session, prompt or actions, since a button would answer here, where nothing waits; whether it still waits is asked with `GET /v1/m/{machine}/v1/agents/{session_id}/permission`, and the app coming forward opens `#/m/<machine>/session/<session_id>`, whose prompt card answers it there. Telegram here never sends it.
+- **From another computer** (ADR-067, Phase 2; buttons Phase 3, 2026-11-07). A frame with `machine` and `machine_name` was decided on a computer this one reaches and re-published here, local only (§ Other computers). Its `session_id`, `prompt_id` and `actions` are that computer's. The app shows it with ` · on <machine_name>` after the title and hands the shell `{title, body, id: "m-<id>", sessionId, promptId, actions, machine}`: with `machine` set the shell's Approve and Deny answer **there**, with `POST /v1/m/{machine}/v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to its loopback daemon, which carries it through its link (a 409 there is *Already answered*; a `403`, `502` or `503` from the link is *Could not answer*, *the other computer could not be reached*), and a click on the body opens `#/m/<machine>/session/<session_id>` (the shell's `caprock:open-route`, which the page takes only in that shape, ids of letters, digits, `_`, `-` and `.`). Whether it still waits is asked with `GET /v1/m/{machine}/v1/agents/{session_id}/permission`; when a `machines` frame says `why: "answered"` for that computer and session, the page withdraws it (`withdraw_notifications`). On Windows, as for this machine's, the click opens the session, whose prompt card answers it. A shell from before `machine` ignores it and would answer on this machine, where no such session waits: the daemon refuses it and the shell says *Could not answer*. Telegram here never sends it.
 - **One decision, two senders.** The alert rules (below, § Phone alerts) run once over the stored events; a kind is decided while Telegram's switch or the app's is on, and the 3-minute per-session cooldown and the 20-an-hour cap count each decision once for both. Each sender then delivers it only if its own switch is on. `PUT /v1/settings` takes `notify_approval` (on unless turned off; every "Needs you": a dialog, and since 2026-10-21 a turn that ended on a question or an error) and `notify_finished` (accepted and returned, no longer read: a Done turn raises no notification, § Needs you and Done), stored as pointers in `config.json`; `GET` returns both. Telegram's `alert_*` switches are untouched and stay off unless turned on.
 - **Fields.** `id` is `<alert kind>-<session_id>-<trigger ms>`, unique per alert and the same on a replay. `kind`: `approval`, `finished`, `question` for a turn whose last message asks something (§ Needs you and Done), or `error` for a turn that ended on a StopFailure. `project` is the session's project, else its folder's name. `title` is plain text, `Needs approval · <project>` (`Needs your answer`, `Finished`, `Queued message done` — § Queue —, `Stopped: <error>`); `body` is lines of plain text: the session's name, branch and a non-Claude agent (left out when it would only repeat the project), then for a dialog the tool and its command, file, URL or question (100 characters), for a finished run its duration, cost, tool calls, changed files and — while `alert_reply` is on — the reply's first line; the twentieth of an hour adds that the rest wait. Nothing is HTML-escaped; the frame never leaves the machine except to a paired dashboard, which already sees the same tool inputs on `event` frames.
 - **Prompt and actions.** For an approval in an owned Claude Code session waiting on exactly one ADR-035 prompt, `prompt_id` is that prompt's `id`; with two or more outstanding neither field is set, since which dialog the terminal shows is unknown (amended 2026-10-09). A subagent's request says so in the body: `Subagent (general-purpose) · Bash: …`. With one, `actions` lists `choice` values of `POST /v1/agents/{id}/permission`, which answers only while that prompt waits (409 otherwise): `["allow","deny"]` when the body shows the whole request (the command, file, URL or query on one line, not clipped), else `["deny"]` — a notification does not approve what it did not show; the prompt card does. `always` is never offered. The hook sets the prompt before the event is stored, so it is there when the alert is decided. No prompt (a session Caprock did not start, another agent, AskUserQuestion's menu): neither field.
-- **The app.** In the Tauri shell only, `ui/src/lib/notify.ts` shows each new `id` once through the `notify` command (`{title, body, id, sessionId, promptId, actions, route}`; a shell that predates the last five ignores them), unless the window has focus and that session is in front, or an approval's prompt (checked with `GET /v1/agents/{id}/permission`) no longer waits. On macOS, in the app bundle, the shell shows it through UNUserNotificationCenter: `["allow","deny"]` becomes **Approve** and **Deny**, `["deny"]` becomes **Open in Caprock** and **Deny**. The shell answers a button itself, from Rust, with `POST /v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to the loopback daemon it is attached to (the supervisor's connected port; never another host), without bringing the window forward; a 409 is followed by an "Already answered" notification, any other failure by "Could not answer" with the reason, and a click on either opens the session. A click on a notification's body, or Open, brings the window up and opens the session as the tray does (`caprock:shown`, then `caprock:open-session`). When a `permission` frame says a session no longer waits, the page withdraws the approval notifications it showed for that session with `withdraw_notifications` (`{ids}`, the notify ids; macOS removes them from Notification Center, other OSes ignore it). Elsewhere the official notification plugin shows a title and body and reports neither clicks nor actions, so Approve and Deny are the prompt card's buttons: the app coming forward within 2 minutes of a notification it showed while in the background opens `#/session/<id>?tab=terminal` (the session's tab, its prompt card in view), unless the prompt was answered meanwhile or the shell brought the window up itself: the menu bar, tray and hotkey (WP-10) dispatch `caprock:shown` before showing it, and the open waits 300 ms for that event and drops the notification when it comes. A browser tab shows no notification of its own.
+- **The app.** In the Tauri shell only, `ui/src/lib/notify.ts` shows each new `id` once through the `notify` command (`{title, body, id, sessionId, promptId, actions, route, machine}`; a shell that predates the last six ignores them; `machine` above), unless the window has focus and that session is in front, or an approval's prompt (checked with `GET /v1/agents/{id}/permission`) no longer waits. On macOS, in the app bundle, the shell shows it through UNUserNotificationCenter: `["allow","deny"]` becomes **Approve** and **Deny**, `["deny"]` becomes **Open in Caprock** and **Deny**. The shell answers a button itself, from Rust, with `POST /v1/agents/{session_id}/permission` `{id: prompt_id, choice}` to the loopback daemon it is attached to (the supervisor's connected port; never another host), without bringing the window forward; a 409 is followed by an "Already answered" notification, any other failure by "Could not answer" with the reason, and a click on either opens the session. A click on a notification's body, or Open, brings the window up and opens the session as the tray does (`caprock:shown`, then `caprock:open-session`). When a `permission` frame says a session no longer waits, the page withdraws the approval notifications it showed for that session with `withdraw_notifications` (`{ids}`, the notify ids; macOS removes them from Notification Center, other OSes ignore it). Elsewhere the official notification plugin shows a title and body and reports neither clicks nor actions, so Approve and Deny are the prompt card's buttons: the app coming forward within 2 minutes of a notification it showed while in the background opens `#/session/<id>?tab=terminal` (the session's tab, its prompt card in view), unless the prompt was answered meanwhile or the shell brought the window up itself: the menu bar, tray and hotkey (WP-10) dispatch `caprock:shown` before showing it, and the open waits 300 ms for that event and drops the notification when it comes. A browser tab shows no notification of its own.
 
 `GET`/`HEAD`/`OPTIONS` are otherwise permissive because every `GET` route on the router is a query. The two that reach a live process — `WS /v1/live` and `WS /v1/agents/{id}/term` — are WebSocket upgrades guarded by coder/websocket's `OriginPatterns`, which already refuses a missing or foreign `Origin`. **A new `GET` with a side effect belongs behind a `POST`**, not on the safe-method list.
 
@@ -951,7 +1015,7 @@ GET  /v1/repos/ci                      → ReposCI — Now's CI/CD section: runs
 GET  /v1/repos/remotes?dir=…&dir=…     → ReposRemotes — the Pipeline's picker: which folders are git repositories on GitHub
 GET  /v1/notes?q=…&before=…            → AssistantNote[] — search that prose across sessions, paged
 GET  /v1/sessions/{id}/diff            → { files: FileDiff[] } | 409 not-a-git-repo — a shell tab's id gives its folder's diff (machine only; 403 to a paired device)
-GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models
+GET  /v1/stats/summary?range=today     → totals: tokens, cost, sessions, models; &machines=all adds machines[] and all (§ Other computers)
 GET  /v1/stats/limits                  → {rate_limits?, codex_rate_limits?} — the plan windows alone, as the summary carries them
 GET  /v1/plan-share                    → PlanShare — per sign-in, plan dollars and share of a week per API dollar (§ Plan figures)
 GET  /v1/settings                      → user-stated settings (plan, update checks)
@@ -1340,6 +1404,8 @@ Added during T6 (same conventions; not in the spec's list):
 GET  /v1/events?after=…&limit=…        → Event[] across all sessions (live-feed catch-up)
 GET  /v1/status                        → daemon status: version, api_level, pid, uptime, data dir, executable, pricing, ingest, hooks
 GET  /v1/storage                       → what the data directory holds; see § Storage below
+GET  /v1/storage/pack                  → the compression job and the pack (offered, running, last); see § Storage, "Packing"
+POST /v1/storage/pack                  → packs the database now → 202 and the same report; 409 while one runs, 507 without disk room (§ Storage, "Packing")
 GET  /v1/pricing                       → the pricing table in force
 GET  /v1/premium                       → what the paid plan costs and where to buy it
 GET  /v1/window-stop                   → the plan-window stop's state (§ Pricing table, "The plan-window stop"); 501 when the daemon has no guard
@@ -1525,10 +1591,24 @@ retention_days, compression}`.
   id with a fixed seed, are compressed in memory (`sample_plain_bytes` →
   `sample_stored_bytes`), and **`est_saving_bytes` is `eligible_bytes` scaled
   by that ratio: an estimate, and named as one** wherever it is shown.
-- **`compression`** is the switch and the idle-time job: `{on, through_ms?,
-  restoring?}` — `through_ms` the time of the event at the job's cursor,
-  `restoring` true while it is off and compressed rows remain. Read per
-  request from `config.json` and `meta`.
+- **`compression`** is the switch and the background job: `{on, through_ms?,
+  restoring?, cursor_id, target_id, restore_from_id?, progress, pending,
+  saved_bytes}` — `through_ms` the time of the event at the job's cursor,
+  `restoring` true while it is off and compressed rows remain. `cursor_id` is
+  `meta.payload_zstd_cursor`; `target_id` the last existing id before the
+  first event younger than a day, which a pass has to reach (ids, not rows:
+  an id whose row was deleted is passed too, so the share is close rather than
+  exact). `progress` is `cursor_id / target_id` while compressing, and how far
+  the cursor has come down from `restore_from_id`
+  (`meta.payload_zstd_restore_from`, set when restoring starts, removed when
+  it ends) while restoring. `pending` is true while the job is under way:
+  on, the next row it would examine is more than an hour past the day (rows
+  turn a day old all the time, and a finished pass looks again every ten
+  minutes, so without that hour the job would count as running for ever);
+  off, while compressed rows remain. `saved_bytes` is
+  `meta.payload_zstd_saved`, an upper bound. Read per request from
+  `config.json` and `meta`, plus two lookups by id and one by `ts` on an
+  index.
 - **`GET /v1/status` carries `compress_offer`** — `{db_bytes,
   est_saving_bytes, sample_rows, measured_at}` — for the sidebar's hint to
   turn the switch on ([04-ui.md](04-ui.md) § The sidebar footer). It is copied
@@ -1540,6 +1620,65 @@ retention_days, compression}`.
   measurement has no estimate, and until the first measurement of this
   daemon's run (the panel, or the daily idle one). How large a saving is worth
   a line is the client's call (300 MB, `lib/compressHint.ts`).
+- **Packing** (`internal/daemon/pack.go`, [ADR-093](08-decisions.md)'s
+  2026-11-07 amendment). `GET /v1/storage/pack` is what the status
+  strip's database indicator polls: `{compression, pack: {db_bytes, running?, offer?,
+  estimating?, last?}}`, `compression` as above. It never measures for the
+  request: a few `meta` reads and `PRAGMA`s, and the page sample behind
+  `offer`, which is read in the background and reused for 15 minutes
+  (`estimating` while it is read).
+  - **`offer`** — `{used_bytes, free_bytes_est, sampled_pages, est_seconds,
+    hold_seconds_est, rate_measured?, worth}` — is what a pack would do now.
+    `free_bytes_est` is an estimate, named as one: 4,000 random pages read
+    through `sqlite_dbpage` (`store.EstimatePack`), the empty space of each
+    b-tree page among them scaled to the file, less the 15% of each rebuilt
+    b-tree page a VACUUM leaves empty, plus the freelist. On copies of the
+    owner's database (2026-11-07) it said 387–397 MiB where the VACUUM freed
+    442 MiB, 115–125 MiB where it freed 118, and 0 on a packed file.
+    `est_seconds` is `used_bytes` over the rate of the last pack on this
+    machine (`meta.pack_rate_bps`, used bytes per second of the whole run;
+    `rate_measured`), or else over 24 MiB/s, the slowest of three packs
+    measured on the owner's machine (2,001 MiB in 49 s and 56 s, 2,595 MiB in
+    108 s). `hold_seconds_est` is 78% of it: the part during which new events
+    wait (43 s of 56 and 84 s of 108). `worth` is true when `free_bytes_est`
+    is at least 256 MiB and compression is not under way (`pending`).
+  - **`running`** — `{phase, progress, started_ms, elapsed_ms, est_seconds,
+    events_wait}` — is a pack in progress, read every 500 ms. `phase` is
+    `waiting` (for the background step or a write in flight), `copying`
+    (SQLite builds the packed copy in a temporary file), `writing` (the copy
+    goes into the write-ahead log), `finishing` (the log is folded back).
+    `progress` is measured, a third per phase: the temporary file's size —
+    the largest open file of the process with no name, which is how SQLite
+    keeps its temporary files on macOS and Linux — against the expected
+    packed size; the log's growth against that copy's size; the bytes the
+    process has written (`procstat.SelfDiskIO`) against the log. `-1` where
+    the OS gives no reading (both on Windows): the bar then moves with the
+    phases only. `events_wait` is true until the VACUUM has committed.
+  - **`last`** — `{at_ms, ok, why?, before_bytes, after_bytes?, took_ms,
+    hold_ms?}` — is how the last pack of this daemon's run ended.
+  - **`POST /v1/storage/pack`** starts one and answers `202` with the report;
+    `409` while one runs or while migration 0073's move does, `507` without
+    the free disk the idle VACUUM needs (2.2 × the used size on the data
+    directory's volume, 1.1 × on the temporary directory's). It is the same
+    VACUUM, 10 minutes at most, switching an older database to incremental
+    on the way, with two differences. **Writes do not interrupt it**: the
+    recorder (`rollup.Recorder.Exclusive`) is held from just before the
+    VACUUM until it commits, so every hook, transcript line and import waits
+    in memory, on a context nothing cancels, and is written when it ends; the
+    shim gives up after its usual budget and exits 0, so a session never
+    waits, and loses only an answer that comes after the write — a task
+    runner's Stop decision or a SessionStart handoff. Other writes (a
+    setting saved, a queued message) wait SQLite's 5 s and may answer `503`,
+    which the dashboard retries. **The fold happens after**: the pack's
+    connection runs the VACUUM with its automatic checkpoint off, then a
+    `PASSIVE` checkpoint, which holds no writer up, and a `TRUNCATE` that
+    waits at most 200 ms for readers; the minute-by-minute WAL checkpoint
+    (`checkpointWAL`) keeps out of its way while it runs, and itself now runs
+    `PASSIVE` first and gives its `TRUNCATE` the same 200 ms — with 30 s it
+    held every writer up behind a long read, and on a preview every write in
+    that time failed. A finished pack stores its rate and sets
+    `meta.payload_zstd_repacked`, so compression's own VACUUM does not repeat
+    it. Machine only: not in `pairedDeviceRoutes`.
 - **A paired device may read it** — sizes and counts only; the data directory
   path is already in `/v1/status`.
 
@@ -6717,26 +6856,29 @@ With **Compress tool output** on (Status → Storage; `PUT /v1/settings`
   than a day old (`store.CompressAge`), and only when that saves at least a
   tenth of the row: a small row stays plain. A row stamped more than an hour
   in the future counts as old, so a skewed clock cannot hold the job back.
-- **The job.** Only while idle, after the base64 compaction and the one
-  VACUUM below have finished and `tool_fields` is filled, never during start
-  and never on the write path. One cursor, `meta.payload_zstd_cursor`: every
+- **The job.** In the background, after the base64 compaction has finished
+  and `tool_fields` is filled, never during start and never on the write
+  path, one step at a time whenever writes pause (§ Payload compaction and
+  auto-vacuum, "The steps"). One cursor, `meta.payload_zstd_cursor`: every
   compressed row has an id at or below it. On, `CompressPayloadsStep` reads
   the next 500 ids above it outside any transaction, compresses the tool
   rows old enough, and writes them and the new cursor in one short
   transaction, each update matching the payload it read so a concurrent
   rewrite wins; it stops at the first row younger than a day. Off,
   `DecompressPayloadsStep` restores the compressed rows in the 500 ids at and
-  below the cursor and lowers it, until it is 0. Between steps the daemon
-  rests twice as long as the step took (at least 50 ms) and stops as soon as
-  anything is to be recorded. Interrupted anywhere, it resumes at the cursor.
-  A row passed and later rewritten by a repair stays plain.
+  below the cursor and lowers it, until it is 0. A finished compression pass
+  looks for rows that have turned a day old every 10 minutes. Interrupted
+  anywhere, it resumes at the cursor. A row passed and later rewritten by a
+  repair stays plain.
 - **The space.** The overflow pages compression frees go back by
-  incremental vacuum. Once a compression pass has finished having saved at
-  least 256 MiB since the last time (`meta.payload_zstd_repacked`), the
-  daemon runs one VACUUM to pack the leaf pages it left half empty — the
-  VACUUM below, under the same rules: free disk of 2.2 × the used size,
-  10 minutes at most, rolled back by anything that wants to write, tried
-  again a day later.
+  incremental vacuum, in the same background steps. Once a compression pass
+  has finished having saved at least 256 MiB since the last time
+  (`meta.payload_zstd_repacked`), the daemon runs one VACUUM to pack the leaf
+  pages it left half empty — the VACUUM below, under the same rules: 30
+  minutes idle, free disk of 2.2 × the used size, 10 minutes at most, rolled
+  back by anything that wants to write, tried again a day later. Where that
+  idle half hour never comes, the status strip offers the same VACUUM as a pack
+  the user starts (§ Storage, "Packing").
 - **Restoring needs room.** Off, the job first checks free disk on the data
   directory's volume for `meta.payload_zstd_saved` — the payload bytes
   compression has saved, added to by each step and taken from by each
@@ -6769,14 +6911,46 @@ Measured on a copy of the owner's database (2,524 MiB, 886,532 events,
   events, the Tools drill-down over 30 and 90 days, the Week, todos — gave
   identical results compressed, after the VACUUM and after restoring.
 
+Measured again on 2026-11-07, after "Compress tool output" had been on all
+night on the owner's machine and compressed nothing (`payload_zstd_cursor`
+still 0: the 30 idle minutes never came; in the last 24 hours of his events
+the longest gap was 11 minutes). On a copy (2,596 MiB, 911,345 events),
+steps back to back:
+
+- **Compression:** 552,525 rows, 838 MiB of payload saved, in 1,773 steps
+  and 48 s: 27 ms a step on average, 24 ms median, 50 ms at the 95th
+  percentile, 98 ms at most.
+- **Incremental vacuum:** 593 MiB in 149 steps of 4 MiB, 14 s: 96 ms median,
+  157 ms at the 95th percentile, 183 ms at most. File 2,001 MiB.
+- **VACUUM:** 2,001 MiB to 1,559 MiB in 49 s, and again in 56 s; on the
+  uncompressed copy, 2,595 MiB to 2,477 MiB in 108 s. The temporary copy grew
+  steadily over the first half, then the log to the packed size, then the
+  fold took the last fifth (on the 56 s run: 28 s, 15 s, 12 s).
+- **Gaps to step in:** in those 24 hours (25,197 events), gaps of at least
+  5 s left 14.7 hours past their first 5 s; at 2 s 17.3 h, at 10 s 13.0 h,
+  at 30 s 9.2 h, at 30 minutes none.
+
 ### Payload compaction and auto-vacuum (no migration)
 
 Two changes to stored state that no migration can make: a migration runs in a
 transaction, and VACUUM cannot; and rewriting every payload inside one would
-hold the write lock for minutes on a large database. Both run in the daemon,
-only while it is idle (nothing recorded, and no request that may write, for
-30 minutes), and both are recorded in `meta` so they finish once
-(`internal/store/compact.go`, `vacuum.go`, `internal/daemon/compact.go`).
+hold the write lock for minutes on a large database. Both run in the daemon
+and are recorded in `meta` so they finish once (`internal/store/compact.go`,
+`vacuum.go`, `internal/daemon/compact.go`, `maintain.go`).
+
+- **The steps** — this compaction, compressed tool output and incremental
+  vacuum — run in the background whenever writes pause, not when the daemon
+  is idle: on a machine whose agents run around the clock the idle half hour
+  never comes (2026-11-07). A step waits for 5 s with nothing recorded and
+  no request that may write (`calmFor`); runs on a context the write gate
+  cancels, so a hook, a transcript line or a request that may write
+  interrupts it and SQLite rolls it back, to be done again at the next pause;
+  and is followed by a rest of nine times its own length (at least 50 ms), so
+  the job uses at most a tenth of one core. One job at a time with the
+  VACUUMs. With nothing to do it sleeps 5 minutes.
+- **The VACUUM** waits for real quiet: nothing recorded, and no request that
+  may write, for 30 minutes. The user can also start one from the sidebar
+  (§ Storage, "Packing").
 
 - **Payload compaction.** Events stored before `event.CapToolField` still
   hold base64. `store.CompactPayloadsStep` replaces it with the same marker the
@@ -6789,8 +6963,8 @@ only while it is idle (nothing recorded, and no request that may write, for
   handed back. Each step reads 500 event ids outside any transaction, then
   rewrites the rows that changed and moves the cursor in one short write
   transaction, matching each row on the payload it read so a concurrent
-  rewrite (an assistant turn's merged prose) wins; the daemon pauses 50 ms
-  between steps and stops as soon as anything is recorded.
+  rewrite (an assistant turn's merged prose) wins; between steps the daemon
+  rests as the steps above do.
   - `meta.payload_compact_until` — the highest event id when the pass began;
     later rows were written capped and are never examined.
   - `meta.payload_compact_cursor` — the highest id examined, then `done`.
@@ -6806,8 +6980,9 @@ only while it is idle (nothing recorded, and no request that may write, for
   recorder's `OnWrite`, any API request but GET, HEAD and OPTIONS); an
   interrupted VACUUM rolls back and changes nothing, and is tried again a day
   later. The WAL it leaves is checkpointed with `TRUNCATE` at once. From then
-  on `PRAGMA incremental_vacuum(1024)` (4 MiB at a time, 50 ms apart) gives
-  the freelist back whenever it passes 8 MiB on an idle tick.
+  on `PRAGMA incremental_vacuum(1024)` (4 MiB a step) gives the freelist back
+  whenever it passes 8 MiB, in the background steps above; past 64 MiB its
+  steps come between compression steps rather than after the pass.
 
 Measured on a copy of the owner's database (2.2 GB, 484,842 events,
 2026-10-13), with a concurrent writer committing every 20 ms throughout:

@@ -407,10 +407,17 @@ what and how many bytes it freed, and is listed in the footprint's `actions`
 - **The storage measurement** (a full read of the database) runs only when the
   Storage panel asks for figures older than a day, and once a day while idle
   ([03-contracts.md § Storage](03-contracts.md#storage)).
-- **The database compaction** runs on the same idle check, before the
-  measurement, and stands down the moment anything is to be written
-  (`daemon/compact.go`; details and measurements in [03-contracts.md § Payload
-  compaction and auto-vacuum](03-contracts.md#payload-compaction-and-auto-vacuum-no-migration)):
+- **The database compaction** comes in two sizes ([ADR-093](08-decisions.md),
+  amended 2026-11-07; details and measurements in [03-contracts.md § Payload
+  compaction and auto-vacuum](03-contracts.md#payload-compaction-and-auto-vacuum-no-migration)).
+  Short steps run in the background whenever writes pause for 5 s, each
+  interrupted by any write and followed by a rest nine times its length, so
+  at most a tenth of one core (`daemon/maintain.go`): the base64 compaction,
+  compressed tool output and incremental vacuum. A VACUUM waits for the idle
+  check above, before the measurement, and stands down the moment anything
+  is to be written (`daemon/compact.go`) — or runs when the user picks *Pack
+  the database* in the status strip, holding new events in memory meanwhile
+  (`daemon/pack.go`; [03-contracts.md § Storage](03-contracts.md#storage)):
   - **Base64 in older events** — screenshots and files stored before the write
     path bounded them — becomes the same marker new events get, a few hundred
     rows at a time, resumable, once. Text is kept whole.
@@ -421,15 +428,14 @@ what and how many bytes it freed, and is listed in the footprint's `actions`
   - **Compressed tool output**, only with Compress tool output on (Status →
     Storage, off by default; [ADR-093](08-decisions.md)): the payloads of
     tool calls and results older than a day are stored zstd-compressed, 500
-    event ids per step, resting twice as long as a step took; prose and every
-    other kind stay plain JSON. Turned off, the same job restores them, when
+    event ids per step; prose and every other kind stay plain JSON. Turned off, the same job restores them, when
     the disk has room for what they grow back to. After a pass that saved
     256 MiB or more, one VACUUM under the rule above packs the pages it left
-    half empty. Readers of tool rows decompress through `store.ZPayload`
+    half empty; where the idle half hour never comes, the status strip offers it. Readers of tool rows decompress through `store.ZPayload`
     (details and measurements in [03-contracts.md § Compressed tool
     payloads](03-contracts.md#compressed-tool-payloads-migration-0080)).
-  - **Incremental vacuum** from then on returns free pages — from the retention
-    prune, from rows that shrank — 4 MiB at a time. A database created since
+  - **Incremental vacuum** returns free pages — from the retention prune,
+    from rows that shrank — 4 MiB a step. A database created since
     2026-10-13 is incremental from the start.
 
 ## Repository layout
@@ -475,7 +481,7 @@ internal/slashcmd/    # the slash commands an agent offers in a folder, for the 
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
 internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063); AI;DR's squeeze of one answer through the same runner (ADR-072)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
-internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with (ADR-067); relaysrv/ is `caprock remote relay`
+internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with and the proof of its key a token is bound to (ADR-067); relaysrv/ is `caprock remote relay`
 internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave
 internal/devshare/    # Open on my phone (ADR-087): a one-origin reverse proxy for a local dev server, on one private address and a random port, behind a token link and cookie; idle and longest-life expiry
 internal/telegram/    # the owner's own bot: Bot API client, long-poll reader, paced outbox, the two-way bridge (ADR-047) — Control

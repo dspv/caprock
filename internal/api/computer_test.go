@@ -17,6 +17,7 @@ import (
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/pairing"
+	"github.com/dspv/caprock/internal/remote"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -356,5 +357,70 @@ func TestRemovingADeviceClosesItsSockets(t *testing.T) {
 	}
 	if code := closed(cv); code != websocket.StatusPolicyViolation {
 		t.Fatalf("after a role change the live socket closed with %d, want 1008", code)
+	}
+}
+
+// A computer's token is held to the key its channel proved (ADR-067, Phase
+// 4): the first proven request binds it, with no step by anyone; from then
+// the same token on a channel that proved another key, or none, is refused,
+// and the binding is saved with the device. A computer from before the proof,
+// never bound, keeps working; a phone is never asked for a key.
+func TestAComputersTokenIsBoundToItsKey(t *testing.T) {
+	dir := t.TempDir()
+	s, ps, viewer, _ := pairedPhones(t, Deps{DataDir: dir})
+	phone := viewer.Token
+	mac := pairedComputer(t, ps, "MacBook", true)
+	old := pairedComputer(t, ps, "Old mini", true)
+	from := func(tok, key string) *http.Request {
+		r := phoneRequest("GET /v1/sessions", tok)
+		if key != "" {
+			remote.SetPeerKey(r.Header, key)
+		}
+		return r
+	}
+	if got, why := s.gate(from(old.Token, "")); got != 0 {
+		t.Fatalf("an unbound computer with no proof: %d (%s)", got, why)
+	}
+	if got, why := s.gate(from(mac.Token, "key-A")); got != 0 {
+		t.Fatalf("the first proven request: %d (%s)", got, why)
+	}
+	if got, _ := s.gate(from(mac.Token, "key-A")); got != 0 {
+		t.Fatalf("the same key again: %d", got)
+	}
+	for _, key := range []string{"key-B", ""} {
+		if got, _ := s.gate(from(mac.Token, key)); got != http.StatusUnauthorized {
+			t.Fatalf("the token with key %q: %d, want 401", key, got)
+		}
+	}
+	// A forged header is no key at all.
+	r := from(mac.Token, "")
+	r.Header.Set(remote.PeerHeader, "key-A.forged")
+	if got, _ := s.gate(r); got != http.StatusUnauthorized {
+		t.Fatalf("a forged mark: %d, want 401", got)
+	}
+	// The phone is untouched, with a key or without.
+	if got, _ := s.gate(from(phone, "key-C")); got != 0 {
+		t.Fatalf("a phone with a key: %d", got)
+	}
+	if got, _ := s.gate(from(phone, "")); got != 0 {
+		t.Fatalf("a phone: %d", got)
+	}
+	var bound bool
+	for _, d := range ps.Devices() {
+		if d.ID == mac.ID {
+			bound = d.Bound
+		}
+	}
+	if !bound {
+		t.Fatal("the device list does not say the token is bound")
+	}
+	saved, err := config.ReadDevices(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range saved {
+		if d.ID == mac.ID && d.Key != "key-A" {
+			t.Fatalf("devices.json holds key %q, want key-A", d.Key)
+		}
 	}
 }

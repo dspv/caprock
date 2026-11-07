@@ -15,6 +15,7 @@ import { ConnectionState } from './ConnectionState'
 import { AppUpdateNotice } from './AppUpdateNotice'
 import { StaleUiPill } from './StaleUiPill'
 import { KeepAwakeIndicator } from './KeepAwake'
+import { DbWorkIndicator } from './DbWork'
 import { SessionLoad } from './ResourceMeter'
 import { MemoryBar } from './MemoryBar'
 import { CaprockFootprint } from './FootprintPanel'
@@ -87,6 +88,9 @@ export function StatusStrip({ summary, pane, session, front, version, figures = 
         <GitHubStatusDot />
         {/* The setup strip folded by its ×: "0 of 2", a click unfolds it. */}
         <SetupChip />
+        {/* Compression's progress, the offer to pack and the pack's own bar
+          * (ADR-093, amended 2026-11-07); absent with nothing to say. */}
+        <DbWorkIndicator />
         {/* Only while the daemon holds the machine awake (ADR-049). */}
         <KeepAwakeIndicator />
         <StaleUiPill />

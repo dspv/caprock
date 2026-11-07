@@ -162,6 +162,12 @@ type Device struct {
 	// allow it by name (ADR-067). Until then its token reaches nothing but
 	// GET /v1/pair/me, and it holds no role (roleOf reads it as a viewer).
 	Pending bool `json:"pending,omitempty"`
+	// Key is the relay key (remote.HostID) a computer's token is bound to:
+	// the key its channel proved on the first request that carried a proof
+	// (ADR-067, Phase 4). Set once, by HoldKey; from then the token works on
+	// no channel that proved another key or none. Empty for a phone, and for
+	// a computer whose Caprock predates the proof.
+	Key string `json:"key,omitempty"`
 }
 
 // Public is a Device without its token, for listing in the dashboard.
@@ -180,6 +186,8 @@ type Public struct {
 	Kind string `json:"kind,omitempty"`
 	// Pending is Device.Pending.
 	Pending bool `json:"pending,omitempty"`
+	// Bound says a computer's token is held to its own key (Device.Key).
+	Bound bool `json:"bound,omitempty"`
 }
 
 // Store holds the pairing state. The zero value is not usable; call New.
@@ -397,6 +405,28 @@ func (s *Store) CheckVia(token, via string) (dev *Device, changed bool, err erro
 	return &cp, changed, nil
 }
 
+// HoldKey holds the token of a computer to the key its channel proved (key,
+// "" for none): the first key it is seen with binds it, and from then only
+// that key is ok. bound reports a new binding, so the caller saves the guest
+// list. A token never bound and seen with no key is ok: a computer from
+// before the proof, which this cannot tell from anything else.
+func (s *Store) HoldKey(token, key string) (ok, bound bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, found := s.devices[token]
+	if !found {
+		return false, false
+	}
+	switch {
+	case d.Key == "" && key == "":
+		return true, false
+	case d.Key == "":
+		d.Key = key
+		return true, true
+	}
+	return subtle.ConstantTimeCompare([]byte(d.Key), []byte(key)) == 1, false
+}
+
 // RoleOf is the current role of the device holding token, or "" when the
 // token is unknown or revoked. It does not touch LastSeen: it is asked once
 // per keystroke on an open terminal, which is not the device being seen again.
@@ -453,7 +483,7 @@ func (s *Store) Devices() []Public {
 	defer s.mu.Unlock()
 	out := make([]Public, 0, len(s.devices))
 	for _, d := range s.devices {
-		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via, App: d.App, Kind: d.Kind, Pending: d.Pending})
+		out = append(out, Public{ID: d.ID, Name: d.Name, PairedAt: d.PairedAt, LastSeen: d.LastSeen, Role: roleOf(d), Via: d.Via, App: d.App, Kind: d.Kind, Pending: d.Pending, Bound: d.Key != ""})
 	}
 	// Stable order so the list does not shuffle between polls.
 	for i := 1; i < len(out); i++ {

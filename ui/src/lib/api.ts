@@ -10,6 +10,7 @@ import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
 import type { Costliest, ExpensivePeriod, PRBoard } from './prboard'
 import type { ReposCI } from './reposci'
+import type { CompressionJob, PackReport } from './dbWork'
 import type { CreateRequest, GHStatus, Inspection, Template, TemplateInput, TemplateOp } from './templates'
 
 /** `done`: the turn ended and its last message asks nothing (a guess; § Needs you and Done). */
@@ -879,6 +880,38 @@ export interface Summary {
   hermes?: HermesCost
   /** The viewer's own usual over the last 30 days (lib/usual.ts); absent with too little history. */
   usual?: Usual
+  /** `?machines=all` (ADR-067, Phase 3): every other computer's figures for the same range, in the order added. */
+  machines?: MachineCost[]
+  /** `?machines=all`: this machine and every computer that answered, summed. */
+  all?: AcrossMachines
+}
+
+/** One other computer's line in the cost summary across computers. The
+ *  figures are absent when it did not answer: unknown, never $0 (rule 6). */
+export interface MachineCost {
+  id: string
+  name: string
+  status: string
+  error?: string
+  cost_usd?: number
+  tokens?: number
+  sessions?: number
+  turns?: number
+  /** Its own pricing table: each computer prices its own sessions. */
+  pricing_version?: string
+  unpriced?: Unpriced
+  at?: number
+}
+
+/** This machine and every computer that answered. `answered < of` means the sum is not the whole. */
+export interface AcrossMachines {
+  cost_usd: number
+  tokens: number
+  sessions: number
+  turns: number
+  answered: number
+  of: number
+  unpriced?: boolean
 }
 
 /** Hermes Agent's spend in a range (store.HermesCost). Every figure is
@@ -1554,8 +1587,9 @@ export interface StorageReport {
      *  estimate from compressing sample_rows of the plain ones in memory. */
     compression?: StorageCompression
   }
-  /** Compress tool output: the switch, and how far the idle-time job is. */
-  compression?: { on: boolean; through_ms?: number; restoring?: boolean }
+  /** Compress tool output: the switch, and how far the background job is
+   *  (cursor against target, payload bytes saved; lib/dbWork). */
+  compression?: CompressionJob
   measured_at?: number
   measure_ms?: number
   /** A measurement is running; the figures are the previous one's. */
@@ -2633,8 +2667,8 @@ export const api = {
   putTabs: (viewer: string, sessions: string[]) => post<void>('/v1/tabs', { viewer, sessions }, 'PUT'),
   /** The computer's open tabs in strip order (GET /v1/tabs), for the phone home's Continue. */
   tabs: () => get<TabsAnswer>('/v1/tabs'),
-  summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string) =>
-    get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}`),
+  summary: (range: 'today' | '7d' | '30d' | 'all' = 'today', agent?: string, machines?: 'all') =>
+    get<Summary>(`/v1/stats/summary?range=${range}${agent && agent !== 'all' ? `&agent=${agent}` : ''}${machines ? `&machines=${machines}` : ''}`),
   /** The plan windows alone (`GET /v1/stats/limits`): the summary's rate_limits and codex_rate_limits without the rest. */
   limits: () => get<LimitsAnswer>('/v1/stats/limits'),
   daily: (days = 30) => get<DailyStat[]>(`/v1/stats/daily?days=${days}`),
@@ -2686,6 +2720,10 @@ export const api = {
   stopOrchestrator: () => post<{ stopped: number }>('/v1/orchestrator/stop', {}),
   status: () => get<Status>('/v1/status'),
   storage: () => get<StorageReport>('/v1/storage'),
+  /** The compression job and the pack — offered, running, last done (lib/dbWork). */
+  storagePack: () => get<PackReport>('/v1/storage/pack'),
+  /** Pack the database now; answers at once, the pack runs on. */
+  startPack: () => post<PackReport>('/v1/storage/pack', {}),
   /** What each live session's process tree and Caprock itself cost (lib/resources.ts). */
   resources: () => get<ResourceReport>('/v1/resources'),
   /** The meter's kept samples after `since` (unix ms), as series: the status bar's popover (lib/resourceHistory.ts). */

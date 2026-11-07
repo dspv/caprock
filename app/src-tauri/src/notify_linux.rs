@@ -121,6 +121,7 @@ pub fn show<R: Runtime>(app: &AppHandle<R>, note: &Note) -> Result<(), String> {
         prompt_id: note.prompt_id.clone(),
         title: note.title.clone(),
         route: note.route.clone(),
+        machine: note.machine.clone(),
     };
     std::thread::spawn(move || {
         let mut acted = false;

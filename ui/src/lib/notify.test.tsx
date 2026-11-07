@@ -2,7 +2,7 @@ import { renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NotifyFrame } from './live'
 import { live } from './live'
-import { CLICK_WINDOW_MS, Notifier, promptRoute, useOsNotifications, type Viewing } from './notify'
+import { CLICK_WINDOW_MS, Notifier, machineSessionHash, promptRoute, useOsNotifications, type Viewing } from './notify'
 
 const approval = (over: Partial<NotifyFrame> = {}): NotifyFrame => ({
   id: 'approval-s1-1',
@@ -60,17 +60,31 @@ describe('Notifier', () => {
     expect(open).toHaveBeenCalledWith(mod)
   })
 
-  it('names another computer’s notification, hands the shell nothing it could answer here, and opens it there', async () => {
+  it('names another computer’s notification, gives it buttons that answer there, and opens it there', async () => {
     const { n, invoke, open } = setup({ focused: false })
     const far = approval({ id: 'approval-s9-1', session_id: 's9', machine: 'mini-id', machine_name: 'Mac mini' })
     expect(await n.receive(far)).toBe(true)
-    expect(invoke).toHaveBeenCalledWith('notify', { title: 'Needs approval · caprock · on Mac mini', body: far.body, id: 'm-approval-s9-1' })
+    expect(invoke).toHaveBeenCalledWith('notify', {
+      title: 'Needs approval · caprock · on Mac mini', body: far.body, id: 'm-approval-s9-1',
+      sessionId: 's9', promptId: 'p1', actions: ['allow', 'deny'], machine: 'mini-id',
+    })
     expect(promptRoute(far)).toBe('#/m/mini-id/session/s9')
     n.focused()
     expect(open).toHaveBeenCalledWith(far)
-    // Its prompt is not this machine's: answered there, nothing is withdrawn here.
+    const withdrawn = () => invoke.mock.calls.filter((c) => (c as unknown[])[0] === 'withdraw_notifications')
+    // A prompt of the same id ending on this machine is not that one.
     n.answered('s9')
-    expect(invoke.mock.calls.filter((c) => (c as unknown[])[0] === 'withdraw_notifications')).toHaveLength(0)
+    expect(withdrawn()).toHaveLength(0)
+    // Its prompt ended there: withdrawn by its own id.
+    n.answered('s9', 'mini-id')
+    expect(withdrawn()).toEqual([['withdraw_notifications', { ids: ['m-approval-s9-1'] }]])
+  })
+
+  it('opens a session on another computer only by a plain machine route', () => {
+    expect(machineSessionHash('#/m/Ab_c-1234567890123/session/s-9.x')).toBe('#/m/Ab_c-1234567890123/session/s-9.x')
+    for (const bad of ['#/m//session/s', '#/m/short/session/s', '#/m/Ab_c-1234567890123/session/..', '#/m/Ab_c-1234567890123/session/s?x=1', '#/m/..%2f/session/s', 'javascript:x', '#/settings', 7]) {
+      expect(machineSessionHash(bad)).toBeNull()
+    }
   })
 
   it('never hands the shell a route that is not a module’s', async () => {

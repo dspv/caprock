@@ -153,7 +153,8 @@ the join then runs once per session instead of once per event.
 
 With **Compress tool output** on (Status → Storage, off unless turned on),
 the `payload` of a `tool.pre` or `tool.post` row older than a day may be
-stored compressed: a BLOB instead of JSON text. `typeof(payload) = 'blob'`
+stored compressed: a BLOB instead of JSON text. The daemon compresses them in
+the background, a few hundred at a time, whenever its writes pause. `typeof(payload) = 'blob'`
 finds those rows, and `substr(payload, 6)` is a standard zstd frame with no
 dictionary, which `zstd -d` reads. To SQLite's JSON functions such a value
 is a JSON string with no fields, so `json_extract(payload, '$.tool_input')`
