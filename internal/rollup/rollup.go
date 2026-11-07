@@ -90,8 +90,9 @@ type Recorder struct {
 	SubscriptionOf func(transcriptPath string) string
 	// OnWrite is called as Record begins, before it waits for the database.
 	// The daemon's idle-time VACUUM holds the write lock for its whole run
-	// and stands down the moment something is to be recorded
-	// (daemon/compact.go). Set once, before the first Record; must not block.
+	// and stands down the moment something is to be recorded, and its
+	// background steps yield the same way (daemon/compact.go,
+	// daemon/maintain.go). Set once, before the first Record; must not block.
 	OnWrite func()
 	// OnClear is told, after the commit, that session next took over the
 	// process session prev ran in (a /clear): the terminal Caprock holds
@@ -206,6 +207,18 @@ func (r *Recorder) lockWrite() {
 	r.waiting.Add(1)
 	r.writeMu.Lock()
 	r.waiting.Add(-1)
+}
+
+// Exclusive holds every write the recorder makes until release is called:
+// the user-started pack of the database (daemon/pack.go) takes it for its
+// VACUUM. It waits for the write in flight, and an open Batch commits at its
+// next unit because a writer is waiting. Meanwhile each Record and Batch
+// waits here, in memory and on a context nothing cancels, so an event that
+// arrives during the pack is written when it ends rather than failing in
+// SQLite's busy handler after busy_timeout. release must be called once.
+func (r *Recorder) Exclusive() (release func()) {
+	r.lockWrite()
+	return r.writeMu.Unlock
 }
 
 // publish sends the live frames for one committed event.

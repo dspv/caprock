@@ -252,8 +252,15 @@ type Daemon struct {
 	// the idle housekeeping waits for a quiet spell (cleanup.go).
 	activity atomic.Int64
 	// writes is when something last asked to write, and interrupts the
-	// idle-time VACUUM when it does (compact.go).
+	// idle-time VACUUM and the background steps when it does (compact.go,
+	// maintain.go).
 	writes writeGate
+	// dbMu keeps the database's own housekeeping to one job at a time: a
+	// background step (maintain.go), the idle-time VACUUM (compact.go) or
+	// the user's pack (pack.go).
+	dbMu sync.Mutex
+	// pack is the user-started pack and its estimate (pack.go).
+	pack packState
 	// res is the resource meter (resources.go).
 	res *resourceMeter
 	// sig is what a stop from the doctor's orphan list sends; nil is the
@@ -772,7 +779,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	defer d.devShare.Close()
 	d.api = api.New(api.Deps{
 		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Morning: d, PhoneLink: d, Telegram: d.tg,
-		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, WindowStop: d.windowStopStatus,
+		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, StoragePack: func(ctx context.Context) any { return d.packReport(ctx) }, StartPack: d.startPackAPI, WindowStop: d.windowStopStatus,
 		Resources:       func(ctx context.Context) any { return d.resources(ctx) },
 		ResourceHistory: func(since int64) any { return d.resourceHistory(since) },
 		Footprint:       func(ctx context.Context, orphans, fresh bool) any { return d.footprint(ctx, orphans, fresh) },
@@ -986,6 +993,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
 	d.activity.Store(time.Now().UnixMilli())
 	d.goBg(func() { d.idleLoop(ctx) })
+	// The database's short housekeeping steps, whenever writes pause
+	// (maintain.go).
+	d.goBg(func() { d.maintainLoop(ctx) })
 	d.goBg(func() { d.resourceLoop(ctx) })
 	d.goBg(func() { d.machineWatchLoop(ctx) })
 	d.goBg(func() { d.ioLoop(ctx) })

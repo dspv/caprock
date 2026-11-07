@@ -109,6 +109,12 @@ type Deps struct {
 	KeepTranscriptDays int
 	// Storage returns what the data directory holds for /v1/storage. nil ⇒ 501.
 	Storage func(ctx context.Context) any
+	// StoragePack is GET /v1/storage/pack: the compression job and the
+	// pack — offered, running or last done — cheap enough to poll.
+	// StartPack starts a pack for POST /v1/storage/pack; on an error it
+	// returns the status to answer with. nil ⇒ 501.
+	StoragePack func(ctx context.Context) any
+	StartPack   func(ctx context.Context) (any, int, error)
 	// Resources returns the resource meter's figures for GET /v1/resources;
 	// ReapOrphans stops orphaned pty-hosts for POST /v1/resources/reap.
 	// nil ⇒ 501.
@@ -844,6 +850,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/recent-dirs", s.handleRecentDirs)
 	m.HandleFunc("GET /v1/status", s.handleStatus)
 	m.HandleFunc("GET /v1/storage", s.handleStorage)
+	m.HandleFunc("GET /v1/storage/pack", s.handleStoragePack)
+	m.HandleFunc("POST /v1/storage/pack", s.handleStartPack)
 	m.HandleFunc("GET /v1/resources", s.handleResources)
 	m.HandleFunc("GET /v1/resources/history", s.handleResourceHistory)
 	m.HandleFunc("POST /v1/resources/reap", s.handleReapOrphans)
@@ -2705,6 +2713,31 @@ func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.d.Storage(r.Context()))
+}
+
+// handleStoragePack reports the compression job and the pack, for the
+// sidebar's indicator to poll (03-contracts.md § Storage).
+func (s *Server) handleStoragePack(w http.ResponseWriter, r *http.Request) {
+	if s.d.StoragePack == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("pack not available"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.d.StoragePack(r.Context()))
+}
+
+// handleStartPack starts the pack the user asked for and answers at once
+// with the report; the pack runs on in the daemon.
+func (s *Server) handleStartPack(w http.ResponseWriter, r *http.Request) {
+	if s.d.StartPack == nil {
+		s.failCode(w, http.StatusNotImplemented, errors.New("pack not available"))
+		return
+	}
+	rep, code, err := s.d.StartPack(r.Context())
+	if err != nil {
+		s.failCode(w, code, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, rep)
 }
 
 func (s *Server) handlePremium(w http.ResponseWriter, _ *http.Request) {

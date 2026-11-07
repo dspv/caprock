@@ -12,11 +12,13 @@
  * days of recorded events scaled by what a recorded byte has cost on disk so
  * far — an estimate, and labelled as one.
  *
- * **No Compact button.** Caprock compacts on its own while idle: it replaces
- * the base64 images older rows still hold, runs one VACUUM when the disk has
- * room for a second copy, and from then on gives free pages back to the disk
- * as they appear (internal/daemon/compact.go). The panel says which of those
- * is true; there is nothing for the user to run.
+ * **No Compact button here.** Caprock compacts on its own: it replaces the
+ * base64 images older rows still hold and gives free pages back to the disk
+ * in small steps between writes (internal/daemon/maintain.go), and runs one
+ * VACUUM after half an hour idle when the disk has room for a second copy
+ * (compact.go). Where that half hour never comes, the status strip's
+ * database indicator offers to pack the file (lib/dbWork, pack.go). The panel says
+ * which of those is true.
  *
  * **One switch: Compress tool output** (ADR-093), off until the owner turns
  * it on, with what it would save on this database or what it has saved.
@@ -92,9 +94,9 @@ export function CompressToggle({ s, on, set, error, now }: { s: StorageReport; o
         label="Compress tool output"
         hint={
           <>
-            Tool calls and their output older than a day are stored compressed, while Caprock is idle; prompts and replies stay as they
-            are, so search is unchanged.{figure}
-            {!on && job?.restoring ? ' Restoring the compressed rows while idle.' : null}
+            Tool calls and their output older than a day are stored compressed, in small steps whenever your agents pause; prompts and
+            replies stay as they are, so search is unchanged.{figure}
+            {!on && job?.restoring ? ' Restoring the compressed rows in the background.' : null}
           </>
         }
       />
@@ -241,7 +243,7 @@ export function StorageView({
           <p>
             <span className="text-fg">Events older than {s.retention_days} days are deleted</span>, every six hours.
             {s.returns_free_space
-              ? ' The space they leave goes back to the disk while Caprock is idle.'
+              ? ' The space they leave goes back to the disk in the background.'
               : ' New events reuse the space they leave until Caprock has compacted the database once.'}
           </p>
         ) : (
@@ -255,7 +257,7 @@ export function StorageView({
               </>
             ) : null}
             .{s.returns_free_space
-              ? ' The space deleted events leave goes back to the disk while Caprock is idle.'
+              ? ' The space deleted events leave goes back to the disk in the background.'
               : ' New events reuse the space deleted ones leave until Caprock has compacted the database once.'}
           </p>
         )}
@@ -264,13 +266,13 @@ export function StorageView({
             <p>
               <span className="num text-fg">{fmtBytes(s.reclaimable_bytes)}</span> of the database is free space.{' '}
               {s.returns_free_space
-                ? 'Caprock gives it back to the disk the next time it is idle.'
-                : 'Caprock compacts the database once, on its own, the next time it is idle and the disk has room for a second copy; after that free space goes back to the disk as it appears.'}
+                ? 'Caprock gives it back to the disk in small steps, between your agents\' writes.'
+                : 'Caprock compacts the database once, on its own, the next time it is idle for half an hour and the disk has room for a second copy, or when you pick Pack database in the status strip at the bottom of the window; after that free space goes back to the disk as it appears.'}
             </p>
           ) : (
             <p>
               Free space inside the database: <span className="num text-fg">{fmtBytes(s.reclaimable_bytes)}</span> —
-              {s.returns_free_space ? ' given back to the disk while Caprock is idle.' : ' compacting it would give back next to nothing.'}
+              {s.returns_free_space ? ' given back to the disk in the background.' : ' compacting it would give back next to nothing.'}
             </p>
           )
         )}

@@ -10,6 +10,7 @@ import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
 import type { Costliest, ExpensivePeriod, PRBoard } from './prboard'
 import type { ReposCI } from './reposci'
+import type { CompressionJob, PackReport } from './dbWork'
 import type { CreateRequest, GHStatus, Inspection, Template, TemplateInput, TemplateOp } from './templates'
 
 /** `done`: the turn ended and its last message asks nothing (a guess; § Needs you and Done). */
@@ -1586,8 +1587,9 @@ export interface StorageReport {
      *  estimate from compressing sample_rows of the plain ones in memory. */
     compression?: StorageCompression
   }
-  /** Compress tool output: the switch, and how far the idle-time job is. */
-  compression?: { on: boolean; through_ms?: number; restoring?: boolean }
+  /** Compress tool output: the switch, and how far the background job is
+   *  (cursor against target, payload bytes saved; lib/dbWork). */
+  compression?: CompressionJob
   measured_at?: number
   measure_ms?: number
   /** A measurement is running; the figures are the previous one's. */
@@ -2718,6 +2720,10 @@ export const api = {
   stopOrchestrator: () => post<{ stopped: number }>('/v1/orchestrator/stop', {}),
   status: () => get<Status>('/v1/status'),
   storage: () => get<StorageReport>('/v1/storage'),
+  /** The compression job and the pack — offered, running, last done (lib/dbWork). */
+  storagePack: () => get<PackReport>('/v1/storage/pack'),
+  /** Pack the database now; answers at once, the pack runs on. */
+  startPack: () => post<PackReport>('/v1/storage/pack', {}),
   /** What each live session's process tree and Caprock itself cost (lib/resources.ts). */
   resources: () => get<ResourceReport>('/v1/resources'),
   /** The meter's kept samples after `since` (unix ms), as series: the status bar's popover (lib/resourceHistory.ts). */

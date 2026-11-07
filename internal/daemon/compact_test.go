@@ -58,6 +58,7 @@ func TestVacuumWaitsForDiskRoom(t *testing.T) {
 	d := compactDaemon(t)
 	withFreeSpace(t, 1024)
 	ctx := context.Background()
+	drainSteps(t, d)
 	var cs compactState
 	d.compactDB(ctx, &cs)
 	if m, _ := d.store.AutoVacuum(ctx); m != 0 {
@@ -83,13 +84,19 @@ func TestVacuumRoom(t *testing.T) {
 	}
 }
 
-// With room, the compaction finishes, then one VACUUM switches the database
-// to incremental, then free pages go back to the disk in steps.
+// With room, the compaction finishes in the background, then one VACUUM
+// switches the database to incremental once the daemon is idle, then free
+// pages go back to the disk in background steps.
 func TestCompactDBRunsTheThreeSteps(t *testing.T) {
 	d := compactDaemon(t)
 	withFreeSpace(t, 1<<50)
 	ctx := context.Background()
 	var cs compactState
+	d.compactDB(ctx, &cs)
+	if m, _ := d.store.AutoVacuum(ctx); m == store.AutoVacuumIncremental {
+		t.Fatal("vacuumed before the compaction had finished")
+	}
+	drainSteps(t, d)
 	d.compactDB(ctx, &cs)
 	if done, _ := d.store.PayloadCompactFinished(ctx); !done {
 		t.Fatal("compaction not finished")
@@ -114,7 +121,7 @@ func TestCompactDBRunsTheThreeSteps(t *testing.T) {
 	if _, err := db.Exec(`DELETE FROM filler`); err != nil {
 		t.Fatal(err)
 	}
-	d.compactDB(ctx, &cs)
+	drainSteps(t, d)
 	if p, _ := d.store.Pages(ctx); p.Free != 0 {
 		t.Fatalf("freelist %d pages left", p.Free)
 	}
@@ -124,7 +131,7 @@ func TestCompactDBRunsTheThreeSteps(t *testing.T) {
 }
 
 // Nothing runs while something is being recorded, or was asked to be written,
-// within idleFor.
+// within calmFor (the steps) or idleFor (the VACUUM).
 func TestCompactDBWaitsForQuiet(t *testing.T) {
 	d := compactDaemon(t)
 	withFreeSpace(t, 1<<50)
@@ -135,8 +142,10 @@ func TestCompactDBWaitsForQuiet(t *testing.T) {
 	ctx := context.Background()
 	var cs compactState
 	d.compactDB(ctx, &cs)
+	var ms maintainState
+	d.maintainOnce(ctx, &ms)
 	if done, _ := d.store.PayloadCompactFinished(ctx); done {
-		t.Fatal("compacted while not idle")
+		t.Fatal("compacted right after a write")
 	}
 	if len(d.actions.all()) != 0 {
 		t.Fatalf("actions %+v", d.actions.all())
@@ -171,7 +180,7 @@ func TestWriteGate(t *testing.T) {
 
 func TestCompactAction(t *testing.T) {
 	got := compactAction(3, 5<<20, false)
-	if !strings.Contains(got, "3 older events") || !strings.Contains(got, "continues the next time") {
+	if !strings.Contains(got, "3 older events") || !strings.Contains(got, "continues in the background") {
 		t.Fatal(got)
 	}
 	if got := compactAction(1, 0, true); !strings.Contains(got, "every older event is done") {
