@@ -30,7 +30,7 @@ func sqliteTempBytes() (int64, bool) {
 		if syscall.Fstat(fd, &st) != nil {
 			continue
 		}
-		if uint32(st.Mode)&syscall.S_IFMT == syscall.S_IFREG && st.Nlink == 0 && st.Size > largest {
+		if st.Mode&syscall.S_IFMT == syscall.S_IFREG && st.Nlink == 0 && st.Size > largest {
 			largest = st.Size
 		}
 	}

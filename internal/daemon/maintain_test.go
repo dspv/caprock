@@ -51,6 +51,9 @@ func TestStepsRunWhileAgentsWork(t *testing.T) {
 	d := zstdDaemon(t, true, 2000)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Busy from the start: the burst goroutine may not have run yet when
+	// the loop first asks quiet().
+	d.activity.Store(time.Now().UnixMilli())
 	// Bursts: an event every 5 ms for 100 ms, then a pause of 80 ms — the
 	// shape of a turn's hooks, scaled down with calmFor.
 	var bursts atomic.Int64
