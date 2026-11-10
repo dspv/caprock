@@ -221,7 +221,7 @@ describe('the popover', () => {
     expect(vm.getAttribute('title')).toContain('compressed or moved to swap')
     expect(document.querySelector('[data-memory-beyond]')!.textContent).toContain('more than the 14 GB in use')
     const widths = [...document.querySelectorAll<HTMLElement>('[data-memory-stack] [data-part]')].map((e) => parseFloat(e.style.width))
-    expect(widths.reduce((a, b) => a + b, 0)).toBeCloseTo((14 / 16) * 100, 5)
+    expect(widths.reduce((a, b) => a + b, 0)).toBeCloseTo((14 / 16) * 100, 3)
   })
 
   it('has no such note when the parts fit in what is in use', async () => {

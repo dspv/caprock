@@ -249,7 +249,9 @@ describe('ProjectsPanel figures', () => {
     )
     // By tokens `chatty` is the largest and fills; `pricey` is a ninth. Scaled
     // on cost the two would be the other way round.
-    expect(widths).toEqual([`${(100 * 1_000_000) / 9_000_000}%`, '100%'])
+    // jsdom 31 rounds a percentage width to four decimals, so compare numbers.
+    expect(widths[1]).toBe('100%')
+    expect(parseFloat(widths[0]!)).toBeCloseTo((100 * 1_000_000) / 9_000_000, 3)
   })
 
   it('states both figures on each directory of the breakdown', async () => {
@@ -531,7 +533,9 @@ describe('ProjectsPanel figures', () => {
     const widths = Array.from(container.querySelectorAll('.bg-accent\\/40')).map(
       (el) => (el as HTMLElement).style.width,
     )
-    expect(widths).toEqual([`${(100 * 100_000) / 900_000}%`, '100%'])
+    // jsdom 31 rounds a percentage width to four decimals, so compare numbers.
+    expect(widths[1]).toBe('100%')
+    expect(parseFloat(widths[0]!)).toBeCloseTo((100 * 100_000) / 900_000, 3)
   })
 
   it('renders under an agent filter without losing the panel', () => {
