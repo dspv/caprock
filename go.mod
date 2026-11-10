@@ -9,7 +9,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
-	github.com/emersion/go-smtp v0.25.0
+	github.com/emersion/go-smtp v0.25.1
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/klauspost/compress v1.20.3
 	github.com/shirou/gopsutil/v4 v4.26.10
@@ -17,7 +17,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
-	modernc.org/libc v1.80.0
+	modernc.org/libc v1.80.1
 	modernc.org/sqlite v1.61.1
 )
 
