@@ -395,6 +395,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-11 — 0.175.1: a long terminal link opens whole, fields keep their own width
+
+A patch release, one batch PR (#904). A long URL in a terminal opened cut at the first line on ⌘-click: Claude Code breaks a URL wider than the screen onto the next line itself, and the web-links addon matched each row as its own link (owner report, 2026-11-11). Caprock's own link provider now reads the rows of one URL together, across xterm's wrap and Claude Code's break, and leaves prose at the edge and a border under a URL apart. A text field given its own width keeps it, so the daily spend cap's label stays on one line. Dependency updates #901–#903 (jsdom 31) landed on master since 0.175.0.
+
 ### 2026-11-07 — 0.175.0: compression while agents work, packing the database on request, cost and approvals across computers
 
 A minor release, one batch PR (#899). Compressed tool output (ADR-093, amended) never ran on the owner's Mac: every idle-time database job waited for 30 quiet minutes, and agents working around the clock left at most 11. Row compression, payload compaction and incremental vacuum now run in small steps after a 5-second pause in writes, at most a tenth of one core, yielding to any write; on a copy of the owner's database (2,596 MiB) that compressed 552,525 rows for 838 MiB in 48 s of steps. The window's status bar gains a database item with the progress and a user-started Pack now (`/v1/storage/pack`) with a measured time estimate and a real progress bar; events wait in memory during a pack and none were lost in the test. Linked computers (ADR-067, amended): Approve/Deny on a remote session's notification, This Mac / All computers on Cost (a computer that did not answer is named, never counted as $0), the controller's token bound to its key automatically, and how to run your own relay. OQ-17–20 stay open.
