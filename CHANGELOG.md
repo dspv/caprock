@@ -12,6 +12,18 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.175.1] - 2026-11-11
+
+### Fixed
+
+- **ui:** a text field given its own width keeps it. The shared field style
+  stretched every field to the full row, so the daily spend cap's dollar field
+  ran across the whole panel and squeezed "Stop the day at" onto two lines.
+- **ui:** a long link in a terminal opens whole on ⌘-click (Ctrl+click
+  elsewhere), not cut where it wraps. Claude Code breaks a URL wider than the
+  screen onto the next line itself, and each line was read as a separate
+  link; the rows of one URL are now read together, whichever row you click.
+
 ## [0.175.0] - 2026-11-07
 
 ### Added
