@@ -10,6 +10,14 @@
  * loaded, and xterm's own OSC 8 fallback asks through `window.confirm`, which
  * the desktop app's webview never shows.
  *
+ * A long URL is one link however it wraps. xterm's own wrap marks the next
+ * row as a continuation, but Claude Code breaks a URL wider than the screen
+ * itself: a newline, then the indent, then the rest. Matching row by row, as
+ * the web-links addon did, opened the URL cut at the first break (owner,
+ * 2026-11-11, translated: "if I click it, only the first line or part of the
+ * link is taken"). `urlRows` joins a row that is full to the right edge and
+ * ends inside a URL with the next row's text, its indent dropped.
+ *
  * Only http, https and mailto open. Anything else a program prints (file:,
  * javascript:, a custom scheme that launches an app) is ignored: the text in a
  * terminal comes from whatever ran there, not from the user.
@@ -26,8 +34,7 @@
  * (components/LinkChooser.tsx, owner, 2026-10-17). A mailto link or a path
  * has no chooser: the chord opens it as ⌘-click does.
  */
-import type { IBufferRange, IDisposable, ILink, ILinkHandler, Terminal as Xterm } from '@xterm/xterm'
-import { WebLinksAddon } from '@xterm/addon-web-links'
+import type { IBufferLine, IBufferRange, IDisposable, ILink, ILinkHandler, Terminal as Xterm } from '@xterm/xterm'
 import { isMacPlatform, isTauri } from './appmode'
 import { keys, LINK_CHOOSE_CLICK, LINK_OPEN_CLICK } from './appkeys'
 import { shell } from './shell'
@@ -166,11 +173,19 @@ export function attachTerminalLinks(
     leave: hide,
   }
   term.options.linkHandler = handler
-  const addon = new WebLinksAddon((e, uri) => activate(e, uri), {
-    hover: (e, uri) => show(e, uri),
-    leave: hide,
+  const urls = term.registerLinkProvider({
+    provideLinks: (y, done) => {
+      const links = urlsAt(term, y).map((u): ILink => ({
+        range: u.range,
+        text: u.url,
+        decorations: { underline: true, pointerCursor: false },
+        activate: (e) => activate(e, u.url),
+        hover: (e) => show(e, u.url),
+        leave: hide,
+      }))
+      done(links.length > 0 ? links : undefined)
+    },
   })
-  term.loadAddon(addon)
 
   const onPath = opts.onPath
   const paths = onPath ? term.registerLinkProvider({
@@ -199,7 +214,7 @@ export function attachTerminalLinks(
     dispose: () => {
       hide()
       paths?.dispose()
-      addon.dispose()
+      urls.dispose()
       if (term.options.linkHandler === handler) term.options.linkHandler = null
     },
   }
@@ -221,4 +236,97 @@ function labelOf(term: Xterm, range: IBufferRange): string | undefined {
   } catch {
     return undefined
   }
+}
+
+// The web-links addon's pattern: a URL never ends on punctuation that closes
+// the sentence around it.
+const URL_RE = /(?:https?|HTTPS?):[/]{2}[^\s"'!*(){}|\\^<>`]*[^\s"':,.!?{}|\\^~[\]`()<>]|mailto:[^\s"'<>`]+[^\s"'<>`.,;:!?)]/g
+
+/** Rows joined at most, and characters: a runaway screen of one token stops here. */
+const MAX_ROWS = 40
+const MAX_CHARS = 4096
+
+/** One row as text, with the 1-based cell each UTF-16 unit stands in. */
+interface Row {
+  text: string
+  cells: number[]
+}
+
+function rowOf(line: IBufferLine, cols: number): Row {
+  let text = ''
+  const cells: number[] = []
+  for (let x = 0; x < cols; x++) {
+    const cell = line.getCell(x)
+    if (!cell || cell.getWidth() === 0) continue
+    const ch = cell.getChars() || ' '
+    text += ch
+    for (let i = 0; i < ch.length; i++) cells.push(x + 1)
+  }
+  const end = text.trimEnd().length
+  return { text: text.slice(0, end), cells: cells.slice(0, end) }
+}
+
+/** A row's text after its indent, and how many units the indent took. */
+function unindent(row: Row): [string, number] {
+  const body = row.text.trimStart()
+  return [body, row.text.length - body.length]
+}
+
+/**
+ * Whether row `y` (0-based) goes on in row `y + 1`: xterm wrapped it, or a
+ * program broke a URL at the edge. A hard break counts only when `y` reaches
+ * the last cells of the screen and its last word is a URL or a piece of one
+ * (the whole row is that word), and the next row starts, after a short
+ * indent, with a character a URL can hold. Prose that happens to end at the edge has a space in the row
+ * and no scheme in its last word, so it never joins.
+ */
+function goesOn(term: Xterm, y: number): boolean {
+  const buf = term.buffer.active
+  const next = buf.getLine(y + 1)
+  if (!next) return false
+  if (next.isWrapped) return true
+  const line = buf.getLine(y)
+  if (!line) return false
+  const row = rowOf(line, term.cols)
+  const last = row.cells[row.cells.length - 1]
+  if (last === undefined || last < term.cols - 2) return false
+  const [body] = unindent(row)
+  const word = body.slice(body.search(/\S+$/))
+  if (!/:\/\/|^mailto:/i.test(word) && /\s/.test(body)) return false
+  const [rest, indent] = unindent(rowOf(next, term.cols))
+  // What goes on is URL text: a border or a bullet under the URL is not.
+  return indent <= 8 && /^[\w\-.~:/?#[\]@!$&'()*+,;=%]/.test(rest)
+}
+
+/** The URLs that cover row `y` (1-based), each read across the rows it wraps over. */
+export function urlsAt(term: Xterm, y: number): { url: string; range: IBufferRange }[] {
+  const buf = term.buffer.active
+  const at = y - 1
+  if (!buf.getLine(at)) return []
+  let top = at
+  while (top > 0 && at - top < MAX_ROWS && goesOn(term, top - 1)) top--
+  let bottom = at
+  while (bottom - top < MAX_ROWS && goesOn(term, bottom)) bottom++
+
+  let text = ''
+  const where: { x: number; y: number }[] = []
+  for (let r = top; r <= bottom && text.length < MAX_CHARS; r++) {
+    const line = buf.getLine(r)
+    if (!line) break
+    const row = rowOf(line, term.cols)
+    // A soft wrap keeps every cell; a hard break drops the indent it added.
+    const skip = r > top && !line.isWrapped ? unindent(row)[1] : 0
+    text += row.text.slice(skip)
+    for (let i = skip; i < row.cells.length; i++) where.push({ x: row.cells[i]!, y: r + 1 })
+  }
+
+  const out: { url: string; range: IBufferRange }[] = []
+  for (const m of text.matchAll(URL_RE)) {
+    const from = where[m.index]
+    const to = where[m.index + m[0].length - 1]
+    if (!from || !to || to.y < y || from.y > y) continue
+    if (!openableUrl(m[0])) continue
+    out.push({ url: m[0], range: { start: from, end: to } })
+  }
+  return out
 }

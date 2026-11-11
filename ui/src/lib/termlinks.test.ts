@@ -170,6 +170,53 @@ describe('attachTerminalLinks', () => {
 
   // Owner, 2026-10-17: ⌘-click stays the default browser; another chord
   // shows the browsers to choose from.
+  // Owner, 2026-11-11, translated: "when you send a long link it does not
+  // work — if I click it, only the first line or part of the link is taken".
+  const LONG = 'https://auth.example.com/oauth/authorize?client_id=caprock-desktop&redirect_uri=http%3A%2F%2F127.0.0.1%3A4173%2Fcallback&scope=read%20write&state=Zm9vYmFyYmF6&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM'
+
+  it('opens a URL xterm wrapped as one link, from any of its rows', async () => {
+    const t = await setup(`see ${LONG} now\r\n`)
+    for (const y of [1, 2]) {
+      const link = (await t.linksOn(y))[0]!
+      expect(link.text).toBe(LONG)
+      expect(link.range.start).toEqual({ x: 5, y: 1 })
+      link.activate(click({ metaKey: true }), link.text)
+    }
+    expect(t.opened).toEqual([LONG, LONG])
+    t.teardown()
+  })
+
+  it('joins a URL Claude Code broke at the edge itself, dropping its indent', async () => {
+    // Claude Code prints the URL in rows of the screen's width: a newline,
+    // two spaces, the rest. xterm sees separate lines.
+    const first = `⏺ ${LONG.slice(0, 118)}`
+    const rest = LONG.slice(118)
+    const t = await setup(`${first}\r\n  ${rest}\r\n\r\n  Open it to sign in.\r\n`)
+    for (const y of [1, 2]) {
+      const links = await t.linksOn(y)
+      expect(links.map((l) => l.text)).toEqual([LONG])
+      expect(links[0]!.range).toEqual({ start: { x: 3, y: 1 }, end: { x: 2 + rest.length, y: 2 } })
+    }
+    expect(await t.linksOn(4)).toEqual([])
+    t.teardown()
+  })
+
+  it('leaves a URL that ends before the edge, and prose that reaches it, as they are', async () => {
+    const prose = 'word '.repeat(23) + 'https://example.com/a'.padStart(5)
+    const t = await setup(`⏺ https://example.com/short\r\n  continues here\r\n${prose.slice(0, 120)}\r\n  next\r\n`)
+    expect((await t.linksOn(1)).map((l) => l.text)).toEqual(['https://example.com/short'])
+    expect((await t.linksOn(2)).map((l) => l.text)).toEqual([])
+    expect(await t.linksOn(4)).toEqual([])
+    t.teardown()
+  })
+
+  it('does not run a URL into a border drawn under it', async () => {
+    const url = `https://example.com/${'a'.repeat(98)}`
+    const t = await setup(`  ${url}\r\n${'─'.repeat(120)}\r\n`)
+    expect((await t.linksOn(1)).map((l) => l.text)).toEqual([url])
+    t.teardown()
+  })
+
   it('opens the chooser at the pointer on ⇧⌘-click, and only for a web link', async () => {
     const t = await setup('see https://example.com/a and mailto:who@example.com\r\n')
     const link = (await t.linksOn(1))[0]!

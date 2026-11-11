@@ -98,7 +98,7 @@ export function SpendCap({ suggestion }: { suggestion?: number }) {
     >
       <div className="grid gap-2.5 px-3 py-3 text-[13px]">
         <div className="flex items-center gap-2">
-          <span className="text-fg-muted">Stop the day at</span>
+          <span className="whitespace-nowrap text-fg-muted">Stop the day at</span>
           <span className="text-fg-muted">$</span>
           <input
             className="input w-28"

@@ -623,17 +623,21 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
 /* No spinners longer than 300ms — a staleness dot instead. */
 .stale-dot { width: 6px; height: 6px; border-radius: 9999px; background: var(--color-warn); display: inline-block; }
 
-.input {
-  background: var(--color-panel-2);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 3px;
-  padding: 4px 8px;
-  color: var(--color-fg);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  width: 100%;
+/* In `@layer components`: unlayered, its width: 100% beat every width utility
+ * beside it (`input w-28` stretched the spend cap's field across the panel). */
+@layer components {
+  .input {
+    background: var(--color-panel-2);
+    border: 1px solid var(--color-border-strong);
+    border-radius: 3px;
+    padding: 4px 8px;
+    color: var(--color-fg);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    width: 100%;
+  }
+  .input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
 }
-.input:focus { outline: 1px solid var(--color-accent); border-color: var(--color-accent); }
 /* A phone's fields are at least 16px. iOS zooms the page in on focusing a
  * field whose text is smaller and leaves it zoomed, and the zoomed page then
  * scrolls sideways until pinched back: the Repository and Project pickers on
