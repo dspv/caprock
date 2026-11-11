@@ -34,6 +34,7 @@ vi.mock('@xterm/xterm', () => ({
     // what WebGL does on a machine without it — jsdom is such a machine. A
     // mock that swallowed it would let a missing fallback ship: the component
     // would die in a browser and pass every test here.
+    registerLinkProvider() { return { dispose() {} } }
     loadAddon(a: unknown) {
       if ((a as { __webgl?: boolean })?.__webgl) {
         steps.push('addon:webgl')
