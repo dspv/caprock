@@ -32,6 +32,7 @@ vi.mock('@xterm/xterm', () => ({
     dispose() {}
     focus() {}
     loadAddon() {}
+    registerLinkProvider() { return { dispose() {} } }
     onData() { return { dispose() {} } }
     onResize() { return { dispose() {} } }
     attachCustomKeyEventHandler() {}
