@@ -2,6 +2,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UpdateStatus } from '@/lib/api'
 import type { AppUpdateInfo } from '@/lib/appupdate'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { VersionPanel } from './VersionPanel'
 
 const app: { info?: AppUpdateInfo } = {}
@@ -32,6 +35,15 @@ describe('the version panel', () => {
     expect(document.documentElement.hasAttribute('data-version-open')).toBe(true)
     fireEvent.click(toggle)
     expect(document.documentElement.hasAttribute('data-version-open')).toBe(false)
+  })
+
+  // Owner, 2026-11-12: "Updated to 0.175.1 · What's new" sat over the open
+  // panel, which says the same. jsdom applies no stylesheet: read the rule.
+  it('hides the update card and the updated line in its corner while open', () => {
+    const tokens = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'design', 'tokens.css'), 'utf8')
+    const rule = /html\[data-version-open\][^{]*\{\s*display:\s*none/.exec(tokens)
+    expect(rule?.[0]).toContain('[data-update-toast]')
+    expect(rule?.[0]).toContain('[data-auto-updated]')
   })
 
   it('says up to date when the latest is the one running', () => {
