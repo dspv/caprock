@@ -12,6 +12,14 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.175.2] - 2026-11-12
+
+### Fixed
+
+- **ui:** the *Updated to X · What's new* line no longer sits over the open
+  version panel, which says the same; it steps aside while the panel is open,
+  as the update card already did.
+
 ## [0.175.1] - 2026-11-11
 
 ### Fixed
