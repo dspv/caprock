@@ -395,6 +395,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-12 — 0.175.2: the updated line steps aside for the version panel
+
+A patch release, one PR (#906). The *Updated to X · What's new* line was drawn over the open version panel in the same corner, which says the same thing (owner screenshot, 2026-11-12); it now steps aside while the panel is open, as the update card already did.
+
 ### 2026-11-11 — 0.175.1: a long terminal link opens whole, fields keep their own width
 
 A patch release, one batch PR (#904). A long URL in a terminal opened cut at the first line on ⌘-click: Claude Code breaks a URL wider than the screen onto the next line itself, and the web-links addon matched each row as its own link (owner report, 2026-11-11). Caprock's own link provider now reads the rows of one URL together, across xterm's wrap and Claude Code's break, and leaves prose at the edge and a border under a URL apart. A text field given its own width keeps it, so the daily spend cap's label stays on one line. Dependency updates #901–#903 (jsdom 31) landed on master since 0.175.0.
