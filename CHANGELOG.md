@@ -12,6 +12,38 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.176.0] - 2026-11-15
+
+### Added
+
+- **daemon:** `GET /v1/jarvis`, one digest of every live agent for the Jarvis
+  screen: what needs you (permission prompts, questions, task approvals,
+  sessions stuck in a loop, most urgent first), what each agent is doing now,
+  how far its plan is, and what today cost. Built from what Caprock already
+  records, with no model call and no tokens spent; a paired phone may read it.
+- **ui:** Jarvis, one screen over every agent on the machine (⇧⌘J, Ctrl+Alt+Shift+J
+  on Windows and Linux; the first row of the app's sidebar; `#/jarvis` in a
+  browser). One line with the projects and the day's figures, what needs you
+  with its action right there (the permission card, a reply through the
+  queue, Approve or Deny, Stop), one row per agent with what it is doing,
+  its plan's progress and its cost today, and a command line: `@project
+  text` goes to that project's agent through its queue, or starts a new
+  session there when none is running. A project's × mutes it on this
+  screen. Sessions Caprock did not start offer Open only.
+- **mcp:** Claude Desktop can add Caprock in one click. Each release carries
+  `caprock.mcpb`, an MCP bundle that starts the caprock already installed on
+  the computer, and Caprock is listed in the MCP Registry as
+  `io.github.dspv/caprock` for clients and catalogs that install from there.
+  The bundle holds no copy of Caprock and sends nothing; without Caprock
+  installed it says where to get it.
+
+### Fixed
+
+- **ios:** pairing the iPhone app by its scanner works. The code was read,
+  but the app's web view ignored the address change that carries the link,
+  so the page reloaded back to the welcome screen and nothing happened. The
+  same fix covers pasting a link and adding a second computer in the app.
+
 ## [0.175.2] - 2026-11-12
 
 ### Fixed
