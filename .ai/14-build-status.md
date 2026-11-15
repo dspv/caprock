@@ -405,6 +405,10 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-15 — 0.176.0: Jarvis, Caprock in the MCP Registry, the iPhone app pairs again
+
+A minor release, one batch PR (#909) and #908. **Jarvis** (ADR-094) is a new screen over every agent on the machine: a plain summary sentence, what needs you first (always shown), the agents at work grouped by project with what each is doing and its plan, the finished ones folded, and a command line, `@project what to do`, that hands a task to that project's agent or starts one. It reads a deterministic digest, `GET /v1/jarvis`; no model is asked. **The MCP Registry**: each stable release attaches `caprock.mcpb`, a launcher that runs the installed `caprock mcp` (one-click install in Claude Desktop), and publishes `io.github.dspv/caprock` to registry.modelcontextprotocol.io from a non-fatal job. **iOS pairing**: in the app's web view the reload after a scanned pairing link dropped the link, so nothing happened (owner report, 2026-11-15); the link is now kept across the reload. The iPhone app ships the fix as 1.2 through App Review.
+
 ### 2026-11-12 — 0.175.2: the updated line steps aside for the version panel
 
 A patch release, one PR (#906). The *Updated to X · What's new* line was drawn over the open version panel in the same corner, which says the same thing (owner screenshot, 2026-11-12); it now steps aside while the panel is open, as the update card already did.
