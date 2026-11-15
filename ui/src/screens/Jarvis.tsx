@@ -26,7 +26,7 @@ import { useNow } from '@/lib/useNow'
 import { useJarvis } from '@/lib/useJarvis'
 import { useCanControl } from '@/lib/useCanControl'
 import { PipelineHostContext } from '@/lib/pipelineHost'
-import { headlineParts, isStopped, loadMuted, needKey, needWord, NOT_OURS_TITLE, OLD_NEED_MS, parseCommand, routeCommand, saveMuted, shownOf, suggest } from '@/lib/jarvis'
+import { byProject, headlineParts, isStopped, loadMuted, needKey, needWord, NOT_OURS_TITLE, OLD_NEED_MS, parseCommand, routeCommand, saveMuted, shownOf, suggest, summaryLine } from '@/lib/jarvis'
 import { projectsApi } from '@/lib/projects'
 import { PermissionPrompt } from '@/components/PermissionPrompt'
 import { AgentGlyph } from '@/components/AgentMarks'
@@ -78,6 +78,13 @@ export function JarvisView({ digest, now, onOpenSession, onChanged }: {
   }, [onOpenSession])
   const canControl = useCanControl()
   const { needs, agents } = shownOf(digest, muted, only || undefined)
+  // Agents done and untouched for half an hour fold into one line, as Work
+  // folds them: on the owner's machine they were 13 of 16 live rows.
+  const [showIdle, setShowIdle] = useState(false)
+  const active = agents.filter((a) => a.state !== 'idle')
+  const idle = agents.filter((a) => a.state === 'idle')
+  const done = idle.filter((a) => !dozingAgent(a, now))
+  const dozing = idle.length - done.length
   // The first answer's time: rows waiting since before it were already there.
   const [firstAt] = useState(() => digest.generated_at || Date.now())
   const leaving = useLeaving(needs, needKey, needSince, firstAt)
@@ -92,26 +99,59 @@ export function JarvisView({ digest, now, onOpenSession, onChanged }: {
         <p data-jarvis-empty className="px-1 py-6 text-[13px] text-fg-muted">Nothing running. Start something: <span className="mono text-fg">@project what to do</span></p>
       ) : (
         <>
-          {leaving.length > 0 && (
-            <section aria-label="Needs you" data-jarvis-needs className="grid grid-cols-[minmax(0,1fr)] gap-1">
-              <h2 className="px-1 text-[12px] font-medium text-fg-muted">Needs you <span className="num text-fg-faint">· {needs.length}</span></h2>
+          <p data-jarvis-summary className="px-1 text-[14px] leading-snug text-fg">{summaryLine(needs.length, active, dozing + done.length)}</p>
+          <section aria-label="Needs you" data-jarvis-needs className="grid grid-cols-[minmax(0,1fr)] gap-1">
+            <h2 className="px-1 text-[12px] font-medium text-fg-muted">Needs you <span className="num text-fg-faint">· {needs.length}</span></h2>
+            {leaving.length === 0 ? (
+              <p data-jarvis-needs-none className="rounded-[var(--radius-panel)] border border-border bg-panel px-2.5 py-2 text-[13px] text-fg-muted">
+                <span className="text-ok">✓</span> Nothing needs you right now. A permission, a question or a stuck agent shows up here first.
+              </p>
+            ) : (
               <ul className="grid grid-cols-[minmax(0,1fr)] gap-1">
                 {leaving.map(({ item, gone, fresh }) => (
                   <NeedRow key={needKey(item)} need={item} gone={gone} fresh={fresh} now={now} canControl={canControl} onOpen={open} onChanged={changed} />
                 ))}
               </ul>
-            </section>
-          )}
-          <section aria-label="Agents" data-jarvis-agents className="grid grid-cols-[minmax(0,1fr)] gap-1">
-            <h2 className="px-1 text-[12px] font-medium text-fg-muted">Agents <span className="num text-fg-faint">· {agents.length}</span></h2>
-            {agents.length === 0 ? (
-              <p className="px-1 py-2 text-[12.5px] text-fg-faint">{muted.size > 0 || only ? 'Nothing running in the projects shown.' : 'No agent running.'}</p>
-            ) : (
-              <ul className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
-                {agents.map((a) => <AgentRow key={a.session_id} agent={a} now={now} canControl={canControl} onOpen={open} onChanged={changed} />)}
-              </ul>
             )}
           </section>
+          <section aria-label="Working now" data-jarvis-agents className="grid grid-cols-[minmax(0,1fr)] gap-1">
+            <h2 className="px-1 text-[12px] font-medium text-fg-muted">Working now <span className="num text-fg-faint">· {active.length}</span></h2>
+            {active.length === 0 ? (
+              <p className="rounded-[var(--radius-panel)] border border-border bg-panel px-2.5 py-2 text-[13px] text-fg-muted">
+                {muted.size > 0 || only ? 'No agent is working in the projects shown.' : 'No agent is working. Give one a task below.'}
+              </p>
+            ) : (
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5">
+                {byProject(active).map(([project, list]) => (
+                  <div key={project} data-jarvis-project={project} className="overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
+                    <h3 className="flex items-baseline gap-2 border-b border-border px-2.5 py-1 text-[12.5px]">
+                      <span className="font-semibold text-fg">{project}</span>
+                      <span className="num text-fg-faint">{list.length} {list.length === 1 ? 'agent' : 'agents'}</span>
+                    </h3>
+                    <ul className="grid grid-cols-[minmax(0,1fr)]">
+                      {list.map((a) => <AgentRow key={a.session_id} agent={a} now={now} canControl={canControl} onOpen={open} onChanged={changed} grouped />)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          {(done.length > 0 || dozing > 0) && (
+            <section aria-label="Finished" data-jarvis-done className="grid grid-cols-[minmax(0,1fr)] gap-1">
+              <h2 className="px-1 text-[12px] font-medium text-fg-muted">Finished, waiting for a next task <span className="num text-fg-faint">· {done.length + dozing}</span></h2>
+              <ul className="grid grid-cols-[minmax(0,1fr)] overflow-hidden rounded-[var(--radius-panel)] border border-border bg-panel">
+                {(showIdle ? idle : done).map((a) => <AgentRow key={a.session_id} agent={a} now={now} canControl={canControl} onOpen={open} onChanged={changed} />)}
+                {dozing > 0 && (
+                  <li className="px-2.5 py-1.5">
+                    <button type="button" data-jarvis-idle-toggle onClick={() => setShowIdle((v) => !v)} aria-expanded={showIdle}
+                      className="text-[12.5px] text-fg-muted hover:text-fg">
+                      {showIdle ? 'Hide' : 'Show'} <span className="num">{dozing}</span> finished over 30 minutes ago
+                    </button>
+                  </li>
+                )}
+              </ul>
+            </section>
+          )}
         </>
       )}
 
@@ -121,6 +161,12 @@ export function JarvisView({ digest, now, onOpenSession, onChanged }: {
 }
 
 function noop() {}
+
+/** Idle at its prompt for over 30 minutes. */
+const DOZE_MS = 30 * 60_000
+export function dozingAgent(a: JarvisAgent, now: number): boolean {
+  return a.state === 'idle' && now - a.last_activity_at > DOZE_MS
+}
 const needSince = (n: JarvisNeed) => n.since
 
 /** The one compact line: the name, the chips, the day's figures. */
@@ -205,7 +251,7 @@ function useLeaving<T>(items: readonly T[], key: (t: T) => string, since: (t: T)
 function OpenTitle({ project, title, id, onOpen }: { project: string; title: string; id: string; onOpen: (id: string) => void }) {
   return (
     <button type="button" onClick={() => onOpen(id)} title={`Open ${title || project}`} className="flex min-w-0 max-w-full items-baseline gap-1.5 overflow-hidden text-left hover:underline">
-      <span className="max-w-[60%] shrink-0 truncate font-medium text-fg">{project}</span>
+      <span className="max-w-[14rem] shrink-0 truncate font-medium text-fg">{project}</span>
       <span className="min-w-0 truncate text-fg-muted">{title}</span>
     </button>
   )
@@ -354,8 +400,10 @@ const DOT: Record<JarvisAgent['state'], string> = {
   stuck: 'bg-danger',
 }
 
-function AgentRow({ agent, now, canControl, onOpen, onChanged }: {
+function AgentRow({ agent, now, canControl, onOpen, onChanged, grouped }: {
   agent: JarvisAgent
+  /** Under its project's heading: the row leads with the title alone. */
+  grouped?: boolean
   now: number
   canControl: boolean
   onOpen: (id: string) => void
@@ -372,7 +420,10 @@ function AgentRow({ agent, now, canControl, onOpen, onChanged }: {
         <span className="flex min-w-0 flex-[1_1_16rem] items-center gap-2">
           <AgentGlyph agent={agent.agent} size={13} />
           <span aria-label={agent.state} title={agent.state} className={`h-[7px] w-[7px] shrink-0 rounded-full ${DOT[agent.state]}`} />
-          <OpenTitle project={agent.project} title={agent.title} id={agent.session_id} onOpen={onOpen} />
+          {grouped ? (
+            <button type="button" onClick={() => onOpen(agent.session_id)} title={`Open ${agent.title || agent.project}`}
+              className="min-w-0 truncate text-left font-medium text-fg hover:underline">{agent.title || agent.project}</button>
+          ) : <OpenTitle project={agent.project} title={agent.title} id={agent.session_id} onOpen={onOpen} />}
         </span>
         <span className="min-w-0 flex-[2_1_12rem] truncate text-[12.5px] text-fg-muted">
           <span key={agent.now} className="jarvis-swap" title={agent.now}>{agent.now || '—'}</span>
@@ -528,7 +579,7 @@ function CommandLine({ digest, canControl, onOpen, onChanged }: { digest: Jarvis
         <div className="flex min-w-0 items-center gap-1.5 rounded-[8px] border border-border-strong bg-panel px-2 focus-within:border-accent">
           <span aria-hidden className="mono text-[13px] text-fg-faint">›</span>
           <input value={line} onChange={(e) => { setLine(e.target.value); setPick(0) }} onKeyDown={onKey} disabled={busy}
-            aria-label="Command: @project, then what to do" placeholder="@project what to do"
+            aria-label="Command: @project, then what to do" placeholder="Give a task: @project what to do — it goes to that project's agent, or starts one"
             className="h-[34px] min-w-0 flex-1 bg-transparent text-[13px] text-fg placeholder:text-fg-faint focus:outline-none" />
           <span className="hidden shrink-0 text-[11px] text-fg-faint sm:inline">{options.length > 0 ? '⇥ pick' : line.trim() && cmd.kind === 'hint' ? cmd.text : '↵ send'}</span>
         </div>

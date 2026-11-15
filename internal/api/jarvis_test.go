@@ -9,6 +9,7 @@ import (
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/loop"
+	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -261,5 +262,17 @@ func TestJarvisPlanFollowsTheEvents(t *testing.T) {
 	todo(time.Minute, "completed")
 	if p := f.get().Agents[0].Plan; p == nil || *p != (JarvisPlan{Done: 1, Total: 1}) {
 		t.Fatalf("after: %+v", p)
+	}
+}
+
+// An idle agent's narration is its last event in the past tense ("Was
+// subagent finished"); the list says Done instead.
+func TestJarvisNowIdleIsDone(t *testing.T) {
+	act := narrate.Activity{Phrase: "was subagent finished"}
+	if got := jarvisNow(act, JarvisIdle, nil); got != "Done" {
+		t.Fatalf("idle now = %q, want Done", got)
+	}
+	if got := jarvisNow(act, JarvisWaiting, nil); got == "Done" {
+		t.Fatalf("waiting now = %q, want the narration", got)
 	}
 }

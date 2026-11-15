@@ -245,7 +245,7 @@ func jarvisState(sum SessionSummary) string {
 // jarvisNow is what the agent is doing: for one at work, its newest
 // main-thread call as the cockpit names a subagent's ("Editing Cockpit.tsx",
 // or the call's own description); otherwise, and when no call says more, the
-// Now screen's phrase.
+// Now screen's phrase; an idle one is "Done".
 func jarvisNow(act narrate.Activity, state string, last []event.Event) string {
 	if state == JarvisWorking && act.Background == 0 {
 		for i := len(last) - 1; i >= 0; i-- {
@@ -258,6 +258,12 @@ func jarvisNow(act narrate.Activity, state string, last []event.Event) string {
 			}
 			break
 		}
+	}
+	// An idle agent's phrase is its last event in the past tense ("was
+	// subagent finished"), which reads as noise in a list of agents: at its
+	// prompt with nothing asked, it is done.
+	if state == JarvisIdle {
+		return "Done"
 	}
 	if act.Phrase == "" {
 		return ""

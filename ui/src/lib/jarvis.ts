@@ -135,3 +135,25 @@ export function headlineParts(h: JarvisDigest['headline']): { text: string; tone
   parts.push({ text: `${h.sessions_today} ${h.sessions_today === 1 ? 'session' : 'sessions'} today` })
   return parts
 }
+
+/** Agents by project, in first-seen order (the daemon's: waiting, stuck, working). */
+export function byProject(agents: readonly JarvisAgent[]): [string, JarvisAgent[]][] {
+  const m = new Map<string, JarvisAgent[]>()
+  for (const a of agents) {
+    const list = m.get(a.project)
+    if (list) list.push(a)
+    else m.set(a.project, [a])
+  }
+  return [...m]
+}
+
+/** The screen's first sentence: the state of things in plain words. */
+export function summaryLine(needs: number, active: readonly JarvisAgent[], finished: number): string {
+  const projects = [...new Set(active.map((a) => a.project))]
+  const named = projects.length <= 3 ? projects.join(', ') : `${projects.slice(0, 3).join(', ')} and ${projects.length - 3} more`
+  const work = active.length === 0 ? 'No agent is working right now'
+    : `${active.length} ${active.length === 1 ? 'agent is' : 'agents are'} working, in ${named}`
+  const you = needs === 0 ? 'nothing needs you' : `${needs} ${needs === 1 ? 'thing needs' : 'things need'} you`
+  const rest = finished > 0 ? ` ${finished} finished and ${finished === 1 ? 'waits' : 'wait'} for a next task.` : ''
+  return `${work}; ${you}.${rest}`
+}

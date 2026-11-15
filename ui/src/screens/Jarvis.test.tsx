@@ -163,6 +163,46 @@ describe('Jarvis', () => {
     expect(need('permission', 'a1')).toHaveTextContent('13h ago')
   })
 
+  // On the owner's machine 13 of 16 live rows were agents done hours ago.
+  it('folds agents idle for over 30 minutes into one line, and shows them on a click', () => {
+    const d = jarvisFixture()
+    const base = d.agents[0]!
+    d.agents = [
+      { ...base, session_id: 'w1', state: 'working', last_activity_at: JNOW - 60_000 },
+      { ...base, session_id: 'i1', state: 'idle', now: 'Done', last_activity_at: JNOW - 5 * 60_000 },
+      { ...base, session_id: 'i2', state: 'idle', now: 'Done', last_activity_at: JNOW - 3 * 3_600_000 },
+      { ...base, session_id: 'i3', state: 'idle', now: 'Done', last_activity_at: JNOW - 26 * 3_600_000 },
+    ]
+    render(<JarvisView digest={d} now={JNOW} />)
+    expect(agentRow('w1')).toBeTruthy()
+    expect(agentRow('i1')).toBeTruthy()
+    expect(agentRow('i2')).toBeNull()
+    const toggle = document.querySelector('[data-jarvis-idle-toggle]') as HTMLElement
+    expect(toggle.textContent).toBe('Show 2 finished over 30 minutes ago')
+    fireEvent.click(toggle)
+    expect(agentRow('i2')).toBeTruthy()
+    expect(agentRow('i3')).toBeTruthy()
+    expect(toggle.textContent).toBe('Hide 2 finished over 30 minutes ago')
+  })
+
+  it('leads with a plain summary, always shows Needs you, and groups working agents by project', () => {
+    const d = jarvisFixture()
+    const base = d.agents[0]!
+    d.needs_you = []
+    d.agents = [
+      { ...base, session_id: 'w1', project: 'alpha', state: 'working', last_activity_at: JNOW - 60_000 },
+      { ...base, session_id: 'w2', project: 'beta', state: 'working', last_activity_at: JNOW - 60_000 },
+      { ...base, session_id: 'w3', project: 'alpha', state: 'working', last_activity_at: JNOW - 90_000 },
+      { ...base, session_id: 'i1', project: 'beta', state: 'idle', now: 'Done', last_activity_at: JNOW - 5 * 60_000 },
+    ]
+    render(<JarvisView digest={d} now={JNOW} />)
+    expect(document.querySelector('[data-jarvis-summary]')).toHaveTextContent('3 agents are working, in alpha, beta; nothing needs you. 1 finished and waits for a next task.')
+    expect(document.querySelector('[data-jarvis-needs-none]')).toHaveTextContent('Nothing needs you right now.')
+    const groups = [...document.querySelectorAll('[data-jarvis-project]')].map((g) => [g.getAttribute('data-jarvis-project'), g.querySelectorAll('[data-jarvis-agent]').length])
+    expect(groups).toEqual([['alpha', 2], ['beta', 1]])
+    expect(document.querySelector('[data-jarvis-done] [data-jarvis-agent="i1"]')).toBeTruthy()
+  })
+
   it('says one calm line when nothing runs', () => {
     render(<JarvisView digest={{ ...jarvisFixture(), agents: [], needs_you: [] }} now={JNOW} />)
     expect(document.querySelector('[data-jarvis-empty]')).toHaveTextContent('Nothing running. Start something: @project what to do')
