@@ -5376,6 +5376,20 @@ listener. Stdout carries the protocol and nothing else. Code:
   version, written by `scripts/changelog.py assemble`. The plugin name
   `caprock` is permanent: it is the install id `caprock@caprock`.
 
+- **MCP bundle and MCP Registry.** `mcpb/manifest.json` (MCPB
+  `manifest_version` 0.3, `name: "caprock"`, `server.type: "node"`, entry
+  `server/index.js`) and `mcpb/server.json` (registry name
+  `io.github.dspv/caprock`, one `mcpb` package, stdio). Their `version`
+  fields are placeholders: `scripts/mcp-bundle.py vX.Y.Z` writes the tag's
+  version into the packed copies, the package `identifier`
+  `https://github.com/dspv/caprock/releases/download/vX.Y.Z/caprock.mcpb` and
+  its `fileSha256`. The launcher searches PATH, `$CAPROCK_DATA_DIR/bin`, the
+  data directory's `bin`, `/Applications/Caprock.app/Contents/MacOS` (macOS),
+  then the package managers' places and Go's bin, as the plugin's does, and
+  execs `<caprock> mcp` with its arguments, passing the exit code back; with
+  none found it writes three lines to stderr naming
+  https://caprock.dev/install and exits 1. The registry name is permanent.
+
 - **Methods.** `initialize` (answers the client's `protocolVersion` when it
   is one of `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, else the
   first; `capabilities: {tools: {listChanged: false}}`, `serverInfo`

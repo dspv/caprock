@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dspv/caprock",
+  "title": "Caprock",
+  "description": "Read-only memory of your coding agents: decisions, past sessions, spend and CI. Needs Caprock.",
+  "repository": {
+    "url": "https://github.com/dspv/caprock",
+    "source": "github"
+  },
+  "websiteUrl": "https://caprock.dev",
+  "version": "0.0.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/dspv/caprock/releases/download/v0.0.0/caprock.mcpb",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
