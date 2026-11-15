@@ -21,6 +21,7 @@ import { agoText, classify, offersPairing, retryLine, type Cause } from './linkc
 import { extTitle } from '@/lib/externalLinks'
 import { isNativeApp } from '@/native/platform'
 import { ScanButton } from '@/native/ScanButton'
+import { reloadAt } from '@/lib/reloadat'
 
 const App = lazy(() => import('../App'))
 
@@ -41,8 +42,7 @@ window.addEventListener('hashchange', () => {
 // must not cost a pairing that did: back to it, rather than a code form.
 window.addEventListener(PAIR_FAILED_EVENT, () => {
   if (!abandonPairing()) return
-  window.location.replace(window.location.pathname + '#/')
-  window.location.reload()
+  reloadAt('#/')
 })
 
 /** How long the channel may be down before the page says why, in full. */
@@ -83,8 +83,7 @@ export default function RemoteRoot() {
       },
       select: (id) => {
         selectMachine(id)
-        window.location.replace(window.location.pathname + '#/')
-        window.location.reload()
+        reloadAt('#/')
       },
     })
     return () => provideMachineSwitch(null)
@@ -486,8 +485,7 @@ function MachineMenu({ onClose }: { onClose: () => void }) {
               onClick={() => {
                 if (m.id === cur?.id) return onClose()
                 selectMachine(m.id)
-                window.location.replace(window.location.pathname + '#/')
-                window.location.reload()
+                reloadAt('#/')
               }}
             >
               {m.name}
@@ -567,8 +565,7 @@ function AddMachine({ first, onCancel }: { first?: boolean; onCancel?: () => voi
       setError('That is not a Caprock pairing link. Tap Copy link under the code on your computer.')
       return
     }
-    window.location.replace(window.location.pathname + hash)
-    window.location.reload()
+    reloadAt(hash)
   }
   return (
     <div className={first ? 'mx-auto flex min-h-dvh max-w-md flex-col px-6 pb-12 pt-[max(3rem,env(safe-area-inset-top))]' : 'px-4 py-4'}>

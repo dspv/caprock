@@ -6,6 +6,7 @@
  * pairing screen. Pure but for the navigation, so the tests can read it.
  */
 import { parsePairLink } from '@/remote/boot'
+import { reloadAt } from '@/lib/reloadat'
 
 /** The `#/pair?…` part of whatever the code or the paste held, or '' when it is not a Caprock pairing link. */
 export function pairHash(raw: string): string {
@@ -16,12 +17,17 @@ export function pairHash(raw: string): string {
 
 export const NOT_A_LINK = 'That is not a Caprock pairing link. On your computer: Caprock → Settings → Use on your phone → Connect a phone, then scan its code or tap Copy link.'
 
-/** Opens the link in this page; false (and nothing happens) when it is not one. */
-export function openPairLink(raw: string, loc: Location = window.location): boolean {
+type Hist = Pick<History, 'replaceState'>
+
+/**
+ * Opens the link in this page; false (and nothing happens) when it is not one.
+ * Through reloadAt (lib/reloadat): location.replace lost the link in the iOS
+ * app, so a scanned code did nothing.
+ */
+export function openPairLink(raw: string, loc: Location = window.location, hist: Hist = window.history): boolean {
   const hash = pairHash(raw)
   if (!hash) return false
-  loc.replace(loc.pathname + hash)
-  loc.reload()
+  reloadAt(hash, loc, hist)
   return true
 }
 
@@ -49,12 +55,12 @@ function session(): Store | null {
  * link opened during the demo leaves it, as pairing does. False when the
  * link is not a pairing link or was opened already.
  */
-export function openOpenedLink(url: string, loc: Location = window.location, store: Store | null = session()): boolean {
+export function openOpenedLink(url: string, loc: Location = window.location, store: Store | null = session(), hist: Hist = window.history): boolean {
   if (!pairHash(url)) return false
   try {
     if (store?.getItem(OPENED_KEY) === url) return false
     store?.setItem(OPENED_KEY, url)
     store?.removeItem(DEMO_KEY)
   } catch { /* storage refused: open it anyway */ }
-  return openPairLink(url, loc)
+  return openPairLink(url, loc, hist)
 }
