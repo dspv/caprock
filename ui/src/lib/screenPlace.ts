@@ -24,7 +24,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import { href, type Route } from './router'
 
 /** The dashboard screens kept mounted once opened, by route name. */
-export const KEPT_SCREENS: readonly Route['name'][] = ['now', 'work', 'cost', 'history', 'week', 'pipeline', 'notes', 'tasks']
+export const KEPT_SCREENS: readonly Route['name'][] = ['now', 'jarvis', 'work', 'cost', 'history', 'week', 'pipeline', 'notes', 'tasks']
 
 /** The kept screen a route shows, or undefined for one that mounts only while shown. */
 export function keptScreen(r: Route): Route['name'] | undefined {

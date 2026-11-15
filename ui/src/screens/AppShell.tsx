@@ -18,7 +18,7 @@ import { installKeyReveal } from '@/lib/keyreveal'
 import { pageTitle } from '@/lib/pagetitle'
 import { TabPageBar } from '@/components/WhereAmI'
 import { SETTINGS_FIND_EVENT } from '@/lib/settingsSearch'
-import { DASHBOARD_KEY, FILES_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, REOPEN_TAB_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
+import { DASHBOARD_KEY, FILES_KEY, FIND_EVENT, INPUT_HIGHLIGHT_KEY, PIPELINE_KEY, REOPEN_TAB_KEY, THEME_KEY, THEME_MENU_EVENT, WORK_KEY, JARVIS_KEY, isArrowCommand, keyChipMode, keys, matchAppShortcut, tabDigit, type AppCommand } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, tabRowKey } from '@/lib/rowOrder'
 import { href, parseHash, type SettingsSection } from '@/lib/router'
 import { goHomeTop, isHomeHash } from '@/lib/screenPlace'
@@ -253,6 +253,7 @@ type SheetState =
 /** The dashboard's screens, reachable from the palette by name: [route, label, what is on it]. */
 const SCREENS: [string, string, string][] = [
   ['home', 'Home', 'every session on the machine, live'],
+  ['jarvis', 'Jarvis', 'every agent, what needs you, one command line'],
   ['work', 'Open Work', 'every piece of work on its way to a release'],
   ['cost', 'Cost', 'spend by day, project and model'],
   ['history', 'Lifetime', 'every session, every day, in totals'],
@@ -1375,6 +1376,7 @@ export function AppShell() {
   // are known (openPipeline, pipelineBack). ⇧⌘W the same for Work.
   const expandRef = useRef<(() => void) | undefined>(undefined)
   const workRef = useRef<(() => void) | undefined>(undefined)
+  const jarvisRef = useRef<(() => void) | undefined>(undefined)
   // ⌘W with the Pipeline tab in front closes it as its × does (closePipeline, further down).
   const closePipelineRef = useRef<(() => void) | undefined>(undefined)
   // ⇧⌘X: the Files tab of the project in front, its right panel on the
@@ -1397,6 +1399,9 @@ export function AppShell() {
         break
       case 'work':
         workRef.current?.()
+        break
+      case 'jarvis':
+        jarvisRef.current?.()
         break
       // The picker at the foot of the sidebar (SidebarFooter's ThemeButton):
       // the sidebar is shown first when it was hidden, so the picker has
@@ -1637,7 +1642,7 @@ export function AppShell() {
       { id: 'a-input-highlight', group: 'Actions', label: 'Toggle input highlight', detail: 'the band where you type in the terminal and the chat field’s tint, on or off', hint: keys(INPUT_HIGHLIGHT_KEY), icon: <SparkIcon size={14} />, run: () => run({ kind: 'input-highlight' }) },
       ...(isTauri() ? [{ id: 'a-zoom-reset', group: 'Actions' as const, label: 'Interface size: back to the default', hint: isMacPlatform() ? keys('⇧⌘0') : undefined, icon: <SparkIcon size={14} />, run: () => stepUiScale(0) }] : []),
       { id: 'a-share', group: 'Actions', label: 'Share my numbers', detail: 'a card of your figures: copy, save or post to X', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'share' }) },
-      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, ...(route === 'work' ? { hint: keys(WORK_KEY) } : {}), icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
+      ...SCREENS.map(([route, label, detail]) => ({ id: `a-screen-${route}`, group: 'Actions' as const, label, detail, ...(route === 'work' ? { hint: keys(WORK_KEY) } : route === 'jarvis' ? { hint: keys(JARVIS_KEY) } : {}), icon: route === 'brain' ? <BrainGlyph size={14} /> : <DashboardIcon size={14} />, run: () => { location.hash = `#/${route}` } })),
       { id: 'a-waiting', group: 'Actions', label: 'Next session waiting on you', hint: keys('⌘J'), icon: <SparkIcon size={14} />, run: jumpToWaiting },
       { id: 'a-saved', group: 'Actions', label: 'Run saved…', detail: 'a saved prompt or command', icon: <SparkIcon size={14} />, run: () => setSheet({ kind: 'saved' }) },
       manageSaved,
@@ -2082,12 +2087,31 @@ export function AppShell() {
     if (back && parseHash(back.hash).name !== 'work') { goHash(back.hash); return }
     goHash(wsRef.current.tabs.length > 0 ? APP_ROUTE : '#/')
   }, [goHash])
+  // Jarvis (⇧⌘J) the same way again: the Dashboard tab at #/jarvis, and back.
+  const jarvisBackRef = useRef<{ tab?: string; hash: string } | undefined>(undefined)
+  const jarvisShown = dashboardShown && shownRoute.name === 'jarvis'
+  const openJarvis = useCallback(() => {
+    if (!jarvisShown) jarvisBackRef.current = { tab: workspaceShown ? current?.id : undefined, hash: location.hash }
+    goHash(href({ name: 'jarvis' }))
+  }, [jarvisShown, workspaceShown, current?.id, goHash])
+  const jarvisBack = useCallback(() => {
+    const back = jarvisBackRef.current
+    jarvisBackRef.current = undefined
+    if (back?.tab && wsRef.current.tabs.some((t) => t.id === back.tab)) {
+      dispatch({ type: 'activate', tabId: back.tab })
+      goHash(isWorkspaceHash(back.hash) ? back.hash : APP_ROUTE)
+      return
+    }
+    if (back && parseHash(back.hash).name !== 'jarvis') { goHash(back.hash); return }
+    goHash(wsRef.current.tabs.length > 0 ? APP_ROUTE : '#/')
+  }, [goHash])
   // In a layout effect, so a key pressed right after a switch acts on what is now in front.
   useLayoutEffect(() => {
     expandRef.current = pipelineShown ? pipelineBack : () => openPipeline()
     workRef.current = workShown ? workBack : openWork
+    jarvisRef.current = jarvisShown ? jarvisBack : openJarvis
     closePipelineRef.current = pipelineShown ? closePipeline : undefined
-  }, [pipelineShown, pipelineBack, openPipeline, workShown, workBack, openWork, closePipeline])
+  }, [pipelineShown, pipelineBack, openPipeline, workShown, workBack, openWork, jarvisShown, jarvisBack, openJarvis, closePipeline])
   const onPipelineButton = useCallback(() => run({ kind: 'pipeline' }), [run])
   // A session row on Work or Home's Work strip: its tab, brought forward
   // (opened when it has none); a session not in the list, its page.
@@ -2174,6 +2198,8 @@ export function AppShell() {
               onReopenClosed={reopenClosed}
               onPipeline={onPipelineButton}
               pipelineActive={pipelineShown}
+              onJarvis={openJarvis}
+              jarvisActive={jarvisShown}
             />
           </div>
         )}

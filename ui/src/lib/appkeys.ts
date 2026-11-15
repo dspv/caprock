@@ -23,6 +23,18 @@ export const DASHBOARD_KEY = '⌘D'
 export const PIPELINE_KEY = '⌘P'
 export const WORK_KEY = '⇧⌘W'
 /**
+ * Jarvis, the one screen over every agent (.ai/04-ui.md § Jarvis): ⇧⌘J, J
+ * for Jarvis, beside ⌘J, Next waiting, which it is the whole picture of.
+ * macOS, its Services and the Mac terminals bind nothing to ⇧⌘J, and Tauri's
+ * default menu has no item on it. Off macOS ⌘J is Ctrl+Shift+J, so this
+ * takes Alt too (OFF_MAC_ALT): Ctrl+Alt+Shift+J. That also keeps it off
+ * Chrome's and Edge's Ctrl+Shift+J (the DevTools console), which a browser
+ * tab never hands the page. Ctrl+Alt+Shift+J is bound by no shell,
+ * PSReadLine, Windows Terminal or GNOME default, and J is no AltGr letter
+ * on Polish, Czech, German or French layouts.
+ */
+export const JARVIS_KEY = '⇧⌘J'
+/**
  * The theme picker: ⌥⌘P, P for the palettes it lists (Ctrl+Alt+Shift+P off
  * macOS). It was ⇧⌘T until 2026-10-20, when ⇧⌘T became Reopen closed tab,
  * as in every browser (REOPEN_TAB_KEY). Not ⌥⌘T: off macOS that would be
@@ -108,6 +120,8 @@ export type AppCommand =
   | { kind: 'pipeline' }
   /** ⇧⌘W: the Work page on the dashboard, or, from it, back to where it was pressed. */
   | { kind: 'work' }
+  /** ⇧⌘J: Jarvis on the dashboard, or, from it, back to where it was pressed. */
+  | { kind: 'jarvis' }
   /** ⌥⌘P: the theme picker at the foot of the sidebar, open or closed. */
   | { kind: 'theme' }
   /** ⇧⌘T: the last closed tab, back in a tab (the sidebar's Recently closed). */
@@ -352,6 +366,7 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         case 'f': return { kind: 'feedback' }
         case 't': return { kind: 'reopen-tab' }
         case 'w': return { kind: 'work' }
+        case 'j': return { kind: 'jarvis' }
       }
     }
     return null
@@ -399,6 +414,8 @@ export function matchAppShortcut(e: KeyLike, isMac: boolean): AppCommand | null 
         // Ctrl+Shift+W is ⌘W's, so it takes Alt too (OFF_MAC_ALT). In a
         // browser it closes the window, which the browser keeps.
         case 'w': return { kind: 'work' }
+        // J for Jarvis (JARVIS_KEY); ⌘J stays Next waiting.
+        case 'j': return { kind: 'jarvis' }
         // F for feedback (owner, 2026-10-14, translated: "Send feedback
         // should also open with a key combo … maybe people will file more
         // issues"). ⇧⌘F is bound by no Mac terminal or browser default that
@@ -505,11 +522,12 @@ export function keys(mac: string, isMac = isMacPlatform()): string {
  *  Ctrl+Shift+key, so these take Alt as well (split below, default size,
  *  the Pipeline's older key, feedback
  *  beside Find's Ctrl+Shift+F, Reopen closed tab beside New shell's
- *  Ctrl+Shift+T, Work beside Close's Ctrl+Shift+W, the modules' ⇧⌘1–9
- *  beside the tabs' Ctrl+Shift+1–9). Ctrl+Alt+Shift+B, F, T, W and the
+ *  Ctrl+Shift+T, Work beside Close's Ctrl+Shift+W, Jarvis beside Next
+ *  waiting's Ctrl+Shift+J, the modules' ⇧⌘1–9
+ *  beside the tabs' Ctrl+Shift+1–9). Ctrl+Alt+Shift+B, F, T, W, J and the
  *  digits are bound by no shell, PSReadLine, Windows Terminal or GNOME
  *  default (GNOME's terminal key is Ctrl+Alt+T, without Shift). */
-const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F', '⇧⌘T', '⇧⌘W', ...Array.from({ length: 9 }, (_, i) => `⇧⌘${i + 1}`)])
+const OFF_MAC_ALT = new Set(['⇧⌘E', '⇧⌘0', '⇧⌘B', '⇧⌘F', '⇧⌘T', '⇧⌘W', '⇧⌘J', ...Array.from({ length: 9 }, (_, i) => `⇧⌘${i + 1}`)])
 
 function offMac(k: string): string {
   // A click chord (⌘-click, ⇧⌘-click): Ctrl stands for ⌘, Shift stays.
@@ -626,6 +644,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
+  [JARVIS_KEY, 'Jarvis: every agent, what needs you, one command line; there, back'],
   ['⇧⌘H', 'Add to Second Brain: keep a line of your own'],
   ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
