@@ -13,6 +13,7 @@ import { currentChannel, currentMachine, forgetMachine, machines } from '@/remot
 import { keepPairing, lockWanted, setLockWanted, wipePairing } from './keychain'
 import { lockKind, unlock, type LockKind } from './lock'
 import { DEMO_MACHINE_NAME } from './demo/index'
+import { reloadAt } from '@/lib/reloadat'
 
 /** What a role lets this phone do, in the words of the mockup. */
 export function roleWords(role: string | undefined): string {
@@ -97,8 +98,7 @@ function Main({ demo, onClose, onVoice }: { demo: boolean; onClose: () => void; 
     forgetMachine(machine.id)
     if (machines().length === 0) await wipePairing()
     else await keepPairing()
-    window.location.replace(window.location.pathname + '#/')
-    window.location.reload()
+    reloadAt('#/')
   }
 
   return (

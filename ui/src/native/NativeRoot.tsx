@@ -17,6 +17,7 @@ import { machines, parsePairLink } from '@/remote/boot'
 import { ScanButton } from './ScanButton'
 import { DEMO_KEY, NOT_A_LINK, openPairLink } from './pairing'
 import { keepPairing, lockWanted, restorePairing } from './keychain'
+import { reloadAt } from '@/lib/reloadat'
 
 const RemoteRoot = lazy(() => import('@/remote/RemoteRoot'))
 const DemoApp = lazy(() => import('./demo/DemoApp'))
@@ -46,16 +47,14 @@ export function leaveDemo() {
     sessionStorage.removeItem(DEMO_KEY)
     if (localStorage.getItem('caprock.device.token') === DEMO_TOKEN) localStorage.removeItem('caprock.device.token')
   } catch { /* nothing kept */ }
-  window.location.replace(window.location.pathname + '#/')
-  window.location.reload()
+  reloadAt('#/')
 }
 
 function startDemo() {
   try {
     sessionStorage.setItem(DEMO_KEY, '1')
   } catch { /* the demo lasts this page only */ }
-  window.location.replace(window.location.pathname + '#/')
-  window.location.reload()
+  reloadAt('#/')
 }
 
 /** Which screen to start on, once the pairing is back. Exported for the tests. */

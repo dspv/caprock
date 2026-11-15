@@ -69,6 +69,25 @@ describe('pairing links', () => {
     return { pathname: '/index.html', replace: vi.fn(), reload: vi.fn() } as unknown as Location & { replace: ReturnType<typeof vi.fn>; reload: ReturnType<typeof vi.fn> }
   }
 
+  function fakeHist() {
+    return { replaceState: vi.fn() } as unknown as Pick<History, 'replaceState'> & { replaceState: ReturnType<typeof vi.fn> }
+  }
+
+  // Owner, 2026-11-15: a scanned code did nothing. In the app's web view
+  // location.replace left the address unchanged, so the reload lost the link;
+  // replaceState keeps it (checked in the iOS Simulator).
+  it('puts the link in the address through replaceState, never location.replace, then reloads', () => {
+    const loc = fakeLoc()
+    const hist = fakeHist()
+    expect(openPairLink(LINK, loc, hist)).toBe(true)
+    expect(hist.replaceState).toHaveBeenCalledWith(null, '', LINK.slice(LINK.indexOf('#')))
+    expect(loc.replace).not.toHaveBeenCalled()
+    expect(loc.reload).toHaveBeenCalledOnce()
+    const untouched = fakeHist()
+    expect(openPairLink('https://example.com/', fakeLoc(), untouched)).toBe(false)
+    expect(untouched.replaceState).not.toHaveBeenCalled()
+  })
+
   function fakeStore(init: Record<string, string> = {}) {
     const m = new Map(Object.entries(init))
     return {
@@ -80,34 +99,36 @@ describe('pairing links', () => {
   }
 
   it('opens a link iOS opened the app with exactly as a scanned one, once, and leaves the demo', () => {
-    const scanned = fakeLoc()
-    expect(openPairLink(LINK, scanned)).toBe(true)
+    const scanned = fakeHist()
+    expect(openPairLink(LINK, fakeLoc(), scanned)).toBe(true)
     const opened = fakeLoc()
+    const openedHist = fakeHist()
     const store = fakeStore({ [DEMO_KEY]: '1' })
-    expect(openOpenedLink(LINK, opened, store)).toBe(true)
-    expect(opened.replace.mock.calls).toEqual(scanned.replace.mock.calls)
+    expect(openOpenedLink(LINK, opened, store, openedHist)).toBe(true)
+    expect(openedHist.replaceState.mock.calls).toEqual(scanned.replaceState.mock.calls)
     expect(opened.reload).toHaveBeenCalledOnce()
     expect(store.m.get(OPENED_KEY)).toBe(LINK)
     expect(store.m.has(DEMO_KEY)).toBe(false)
     // After the reload iOS still reports the same launch link: it is not opened again.
     const again = fakeLoc()
-    expect(openOpenedLink(LINK, again, store)).toBe(false)
+    expect(openOpenedLink(LINK, again, store, fakeHist())).toBe(false)
     expect(again.reload).not.toHaveBeenCalled()
     // A new code from the computer is a new link.
     const next = LINK.replace('c=123456', 'c=654321')
-    expect(openOpenedLink(next, fakeLoc(), store)).toBe(true)
+    expect(openOpenedLink(next, fakeLoc(), store, fakeHist())).toBe(true)
   })
 
   it('ignores an opened link that is not a pairing link, and still opens one when storage is refused', () => {
     const loc = fakeLoc()
+    const hist = fakeHist()
     const store = fakeStore()
-    expect(openOpenedLink('https://m.caprock.dev/', loc, store)).toBe(false)
-    expect(openOpenedLink('https://m.caprock.dev/#/sessions', loc, store)).toBe(false)
-    expect(loc.replace).not.toHaveBeenCalled()
+    expect(openOpenedLink('https://m.caprock.dev/', loc, store, hist)).toBe(false)
+    expect(openOpenedLink('https://m.caprock.dev/#/sessions', loc, store, hist)).toBe(false)
+    expect(hist.replaceState).not.toHaveBeenCalled()
     expect(store.m.size).toBe(0)
     const refusing = { getItem: () => { throw new Error('no') }, setItem: () => {}, removeItem: () => {} }
-    expect(openOpenedLink(LINK, loc, refusing)).toBe(true)
-    expect(openOpenedLink(LINK, fakeLoc(), null)).toBe(true)
+    expect(openOpenedLink(LINK, loc, refusing, fakeHist())).toBe(true)
+    expect(openOpenedLink(LINK, fakeLoc(), null, fakeHist())).toBe(true)
   })
 
   it('hands both a launch link and a link opened later to the same opener', async () => {
