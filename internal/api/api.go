@@ -901,6 +901,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("POST /v1/agents/{id}/input", s.handleAgentInput)
 	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)
 	m.HandleFunc("GET /v1/work", s.handleWork)
+	m.HandleFunc("GET /v1/jarvis", s.handleJarvis)
 	m.HandleFunc("GET /v1/pipeline/agents", s.handlePipelineAgents)
 	m.HandleFunc("GET /v1/agents/{id}/queue", s.handleQueue)
 	m.HandleFunc("POST /v1/agents/{id}/queue", s.handleQueueSend)
@@ -1200,17 +1201,23 @@ type SessionDetail struct {
 
 func (s *Server) summarize(ctx context.Context, sess store.Session) (SessionSummary, []event.Event, error) {
 	q := s.d.Store.DB()
-	st, err := store.GetStats(ctx, q, sess.SessionID)
-	if err != nil {
-		return SessionSummary{}, nil, err
-	}
 	// The reads of the session's events go through the per-session cache,
 	// keyed by the generation read before them (recentcache.go).
 	gen, err := store.ReadEventsGen(ctx, q, sess.SessionID)
 	if err != nil {
 		return SessionSummary{}, nil, err
 	}
-	rec := s.recent.entry(sess.SessionID, gen)
+	return s.summarizeAt(ctx, sess, s.recent.entry(sess.SessionID, gen))
+}
+
+// summarizeAt is summarize over the session's cache entry, for a caller that
+// reads more from the same entry (the Jarvis digest's task list).
+func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recentEntry) (SessionSummary, []event.Event, error) {
+	q := s.d.Store.DB()
+	st, err := store.GetStats(ctx, q, sess.SessionID)
+	if err != nil {
+		return SessionSummary{}, nil, err
+	}
 	last, err := readOnce(&rec.mu, &rec.last, func() ([]event.Event, error) {
 		return store.LastEvents(ctx, q, sess.SessionID, 60)
 	})

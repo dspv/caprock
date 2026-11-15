@@ -199,7 +199,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   the board and one repository's Pipeline answer, composed by the daemon
   from the GitHub reads it keeps with its own token — the token never
   leaves it, and a relay phone reads both through the end-to-end channel),
-  `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
+  `/v1/jarvis` (§ Jarvis), `/v1/sessions/{id}/commands`, `/v1/sessions/{id}/files`, `/v1/projects`,
   `/v1/projects/ops`, `/v1/projects/{id}/worktrees`, `/v1/projects/{id}/changes`,
   `/v1/projects/{id}/changes/diff`, `/v1/projects/{id}/file`,
   `/v1/projects/{id}/files`, `/v1/projects/{id}/image`, `/v1/brain`, `/v1/brain/status`,
@@ -5954,6 +5954,84 @@ GET /v1/work → Work
   cold, 0.5 ms warm.
 - **Who.** A read open to every paired device, as the Queue is. `501`
   without a work board (a test server).
+
+### Jarvis
+
+One digest for a person running several agents at once
+([ADR-094](08-decisions.md)): what needs them, every live agent with what it
+is doing now and its plan, and the day so far. Deterministic: no model is
+asked, nothing is written, no DDL. Code: `internal/api/jarvis.go`,
+`store.DaySpend` in `internal/store/workspend.go`.
+
+```
+GET /v1/jarvis → JarvisDigest
+```
+
+- **`JarvisDigest`** — `{generated_at, headline, needs_you: [JarvisNeed],
+  agents: [JarvisAgent], projects: [{name, live, waiting}]}`; the three
+  lists are `[]`, never `null`. `generated_at` is the daemon's clock (unix
+  ms).
+- **`headline`** — `{working, waiting_you, stuck, live, sessions_today,
+  cost_today_usd}`. The first four count the live sessions by `state`.
+  `sessions_today` and `cost_today_usd` cover every session with an event
+  since local midnight, internal model work left out (one range scan over
+  `idx_events_ts_cover`, the Work board's `machine_today_usd`).
+- **Live** — every session not ended, shells left out, at most 200, as on
+  the Work board.
+- **`JarvisAgent`** — `{session_id, project, dir, agent, title, state, now,
+  plan, cost_today_usd, started_at, last_activity_at, controllable}`.
+  `dir` is the session's cwd; `agent` its kind (`claude` when unrecorded);
+  `title` the session list's `description` (name, agent title or first
+  prompt). `last_activity_at` is the later of `worked_at` and
+  `last_event_at`. `cost_today_usd` is `store.SpendBySessionSince` since
+  local midnight, one grouped query for every live session.
+- **`state`** — from the session summary (`summarize`, as `GET
+  /v1/sessions` and Home's Needs you read it): `stuck` while the loop
+  detector holds a live alert; `waiting` for health `waiting-on-you`
+  (permission, question, plan, an ended turn that asks, an error stop);
+  `working` for working, looping or a failed call, background subagents
+  included; `idle` otherwise (idle, done). Ordered waiting, stuck, working,
+  idle; newest `last_activity_at` first within a state.
+- **`now`** — for a working session, its newest main-thread call named as
+  the cockpit names a subagent's (`subagentDoing`: the call's own
+  description, else "Editing Cockpit.tsx", "Running tests", …); otherwise,
+  and when the call says nothing, the narration's phrase capitalised
+  ("Waiting for you", "Done", "Background agents working · 2").
+- **`plan`** — `{done, total, current}` from `store.SessionTodos` (the
+  agent's own TodoWrite, TaskCreate/TaskUpdate or update_plan calls),
+  cancelled items left out; `current` is the in-progress item's text, else
+  the first pending one's, `""` when all are done. `null` when the agent
+  keeps no list. Kept per events generation in the session list's cache.
+- **`controllable`** — Caprock started the session and holds its terminal
+  (`owned` and `AgentController.Holds`): the only sessions anything may be
+  typed into (rule 7). Always `true` on an approval, which is the task
+  runner's own.
+- **`JarvisNeed`** — `{kind, session_id, project, title, detail?, since,
+  approval_id?, controllable}`, ordered `permission`, `question`,
+  `approval`, `loop`, then oldest `since` first.
+  - `permission`: a permission dialog. `title` "Wants to run: <command>",
+    "Wants to edit: <file>", "Wants to write: <file>", else "Wants to use
+    <tool>: <target>"; `detail` the command's description (else the
+    command), the file's path, or the call's input.
+  - `question`: an AskUserQuestion dialog (`title` its first question,
+    `detail` the question and its option labels), a plan to approve
+    ("Has a plan for you to approve", `detail` the plan), an ended turn
+    whose last message asks something (`title` the line the guess rests
+    on), or a turn stopped on an error ("Stopped: rate limit").
+  - `approval`: a task in the task runner's needs-you column (`GET
+    /v1/approvals`), `approval_id` its id, `session_id` `""`; absent while
+    the runner is off.
+  - `loop`: a live loop alert; `title` "Stuck: ran <tool> <n> times",
+    `detail` the repeated call's sample, `since` its first repeated call.
+  - `since` (unix ms) is the narration's `at` — the event the wait rests on
+    — else `last_activity_at`. `title` is one line of at most 120
+    characters, `detail` at most 600.
+- **Cost.** Measured 2026-11-15 on a copy of the owner's database (1.81 GB,
+  989,423 events, 16 live sessions, 59 sessions today), without an agent
+  manager: 7.1 ms median warm (p90 7.5 ms, max 8.4 ms over 50 reads),
+  36–217 ms for the first answer, which reads each live session's events
+  and task list; `store.DaySpend` 0.9 ms.
+- **Who.** A read open to every paired device, as the Work board is.
 
 ### Pipeline agents
 

@@ -7372,3 +7372,47 @@ VACUUM); a timer-driven progress bar.
 latency rises while compression runs); a pack's hold proves too long for
 someone's agents (then: `VACUUM INTO` a copy while events flow, and a swap);
 or the estimate of the saving errs high on someone's database.
+
+## ADR-094 — Jarvis V1: a deterministic digest, no model
+
+**Date:** 2026-11-15 · **Status:** accepted (owner approved, 2026-11-15).
+Builds on the Now screen's narration (§ Needs you and Done in
+[04-ui.md](04-ui.md)) and the Work board
+([ADR-064](#adr-064--the-work-board-a-branch-is-the-unit-of-work-columns-derived-and-never-stored-estimates-only-with-a-measured-basis)).
+Contract: [03-contracts.md § Jarvis](03-contracts.md#jarvis).
+
+**Context.** A person running five to ten agent sessions at once switches
+between projects to learn which of them wants something and what the rest
+are doing. Every fact that answers it is already in the daemon: the
+session list's narration says who waits on a permission dialog or a
+question, the loop detector says who is stuck, the agent's own task list
+says how far its plan is, and the events say what it cost today.
+
+**Decision.**
+
+- **One read, `GET /v1/jarvis`, for one screen.** A headline (working,
+  waiting on you, stuck, live; sessions and spend today), the items that
+  need the person — permission dialogs, questions, the task runner's
+  approvals, loops, most urgent first — every live agent with what it is
+  doing now and its plan, and the projects with live sessions.
+- **Deterministic, no model, zero tokens.** Every field is read or folded
+  from what is stored or held in memory, the same way the screens that
+  already show it read it: the state and the needs from the session
+  summary's narration (`api.Server.summarize`, as the Home screen and the
+  Morning summary read them), "now" from the newest main-thread call as the
+  cockpit names a subagent's, the plan from `store.SessionTodos`, cost from
+  the priced events. Nothing is guessed that the Now screen does not
+  already guess (an ended turn that reads as a question is still marked a
+  guess there). A summary written by a model is a later version's call,
+  under its own switch.
+- **Cheap enough to poll.** The screen reads it every two seconds while
+  open and on live frames, so the digest only reads live sessions, reuses
+  the session list's per-generation cache for each one's events and task
+  list, and sums today's spend from covering indexes.
+- **Controllable is rule 7, not a preference.** An item or agent is
+  `controllable` only when Caprock started the session and holds its
+  terminal; the screen offers to answer or type only there.
+
+**Not built.** Detection of what a session started by hand without hooks
+is asking: it reads as the Now screen narrates it, no better. The task
+runner's approvals name no session.

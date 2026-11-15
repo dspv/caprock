@@ -77,6 +77,16 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-15 — unreleased: the Jarvis digest (ADR-094), daemon half
+
+Branch `feat/jarvis-digest`. `GET /v1/jarvis` answers one deterministic
+digest for the Jarvis screen: the headline counts, what needs you
+(permission, question, approval, loop), every live agent with its state,
+what it is doing now, its plan and today's cost, and the projects with live
+sessions. No model call. Built on the session summary and its
+per-generation cache; 7.1 ms median warm on a 1.81 GB copy of the owner's
+database with 16 live sessions. The screen itself is a separate branch.
+
 ### 2026-11-06 — unreleased: compressed tool output (ADR-093, #672 stage 2)
 
 Branch `feat/compress-tool-output`. Status → Storage gains *Compress tool

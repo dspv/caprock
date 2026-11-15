@@ -8,6 +8,19 @@ import (
 // The Work board's reads (ADR-064): what each live session spent today, and
 // the repositories worked in lately. Both read what is already recorded.
 
+// DaySpend is every session's priced cost since fromMs (the start of today)
+// and how many sessions had an event in that time, internal model work left
+// out: SpendSince and Summary's session count in one range scan over
+// idx_events_ts_cover, which holds ts, internal, sid and cost_usd, so no table
+// row is read. For the Jarvis digest's headline (GET /v1/jarvis), which is
+// read every few seconds.
+func DaySpend(ctx context.Context, q Querier, fromMs int64) (usd float64, sessions int, err error) {
+	err = q.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(cost_usd), 0), COUNT(DISTINCT sid) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent,
+		fromMs).Scan(&usd, &sessions)
+	return usd, sessions, err
+}
+
 // SpendBySessionSince is each given session's priced cost of events at or
 // after fromMs (internal model work left out, as every user total does). A
 // session with nothing priced since is absent.

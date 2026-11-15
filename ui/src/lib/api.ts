@@ -2886,6 +2886,8 @@ export const api = {
   queueBoard: () => get<QueueBoard>('/v1/queue'),
   /** The Work board: live sessions with their pull requests, tasks, queued messages, each repository's release cadence. */
   work: () => get<Work>('/v1/work'),
+  /** The Jarvis digest: what needs you, every live agent, the day so far (ADR-094); deterministic, no model. */
+  jarvis: () => get<JarvisDigest>('/v1/jarvis'),
   /** The chat field's send: typed in now at the prompt, otherwise queued. */
   queueSend: (id: string, text: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/queue`, { text }),
   queueEdit: (id: string, qid: number, text: string) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, { text }, 'PATCH'),
@@ -3180,6 +3182,75 @@ export interface WorkPR {
   merged_at?: number
   /** Its own command closed it (a merge aside); GitHub may say closed without it. */
   closed_at?: number
+}
+
+/** One thing waiting on the person (GET /v1/jarvis `needs_you`). */
+export interface JarvisNeed {
+  kind: 'permission' | 'question' | 'approval' | 'loop'
+  /** '' for an orchestrator approval with no session. */
+  session_id: string
+  project: string
+  /** Short, one line, plain words: "Wants to run: git push origin feat/x". */
+  title: string
+  /** The question asked, the call's input, the loop's repeated call. */
+  detail?: string
+  /** Unix ms when it started waiting. */
+  since: number
+  /** Only for kind approval: the task to approve. */
+  approval_id?: string
+  /** Caprock started the session and holds its terminal, so it may type into it (rule 7). */
+  controllable: boolean
+}
+
+/** The agent's own task list, folded (GET /v1/jarvis). */
+export interface JarvisPlan {
+  done: number
+  total: number
+  /** The item in progress, else the first pending one; '' when all are done. */
+  current: string
+}
+
+/** One live session (GET /v1/jarvis `agents`). */
+export interface JarvisAgent {
+  session_id: string
+  project: string
+  dir: string
+  /** "claude", "codex", "gemini", "opencode", … */
+  agent: string
+  /** The session's display title, '' when it has none yet. */
+  title: string
+  state: 'working' | 'waiting' | 'idle' | 'stuck'
+  /** What it is doing now, "Editing Cockpit.tsx"; '' when unknown. */
+  now: string
+  /** null when the agent keeps no task list. */
+  plan: JarvisPlan | null
+  cost_today_usd: number
+  /** Unix ms. */
+  started_at: number
+  last_activity_at: number
+  controllable: boolean
+}
+
+/** GET /v1/jarvis: one deterministic digest of every live agent (ADR-094). */
+export interface JarvisDigest {
+  /** Unix ms. */
+  generated_at: number
+  headline: {
+    /** Counts over live sessions. */
+    working: number
+    waiting_you: number
+    stuck: number
+    live: number
+    /** Every session with activity today (local day), and what today cost. */
+    sessions_today: number
+    cost_today_usd: number
+  }
+  /** Most urgent first: permission, question, approval, loop. */
+  needs_you: JarvisNeed[]
+  /** Waiting first, then stuck, working, idle; newest activity first within a state. */
+  agents: JarvisAgent[]
+  /** Projects with live sessions, most live first. */
+  projects: { name: string; live: number; waiting: number }[]
 }
 
 /** One live agent session on the Work board (GET /v1/work). */

@@ -901,6 +901,11 @@ SELECT COUNT(*) FROM throttle_observations WHERE ts >= ? AND session_id IN (SELE
 SELECT day, project, model, tokens_total, cost_usd, sessions FROM daily_stats WHERE day >= ? ORDER BY day ASC, project, model
     SEARCH daily_stats USING INDEX sqlite_autoindex_daily_stats_1 (day>?)
 
+## store.DaySpend
+SELECT COALESCE(SUM(cost_usd), 0), COUNT(DISTINCT sid) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ? AND internal = 0
+    USE TEMP B-TREE FOR count(DISTINCT)
+    SEARCH events USING COVERING INDEX idx_events_ts_cover (ts>?)
+
 ## store.DeleteBrainNode
 DELETE FROM brain_nodes WHERE id = ?
     SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
@@ -2322,6 +2327,14 @@ SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALES
 
 ## store.SpendBySessionSince
 SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(SUM(cost_usd), 0) FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT sid FROM sessions WHERE session_id IN (?, ?, ?, ?)) AND ts >= ? AND internal = 0 GROUP BY sid
+    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
+    LIST SUBQUERY 2
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+
+## store.SpendBySessionSince
+SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(SUM(cost_usd), 0) FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT sid FROM sessions WHERE session_id IN (?, ?, ?, ?, ?)) AND ts >= ? AND internal = 0 GROUP BY sid
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
     LIST SUBQUERY 2
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
