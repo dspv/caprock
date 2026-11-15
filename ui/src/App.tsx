@@ -15,6 +15,7 @@ import { NotesScreen } from '@/screens/Notes'
 import { PairScreen } from '@/screens/Pair'
 import { PipelineScreen } from '@/screens/Pipeline'
 import { WorkScreen } from '@/screens/Work'
+import { JarvisScreen } from '@/screens/Jarvis'
 import { FilesScreen } from '@/screens/Files'
 import { ChatsScreen } from '@/screens/Chats'
 import { ChatScreen } from '@/screens/Chat'
@@ -143,6 +144,8 @@ export function Dashboard({ route, inApp = false, shown = true, scroller = pageS
       case 'brain': return <Suspense fallback={null}><BrainScreen node={r.node} /></Suspense>
       case 'pipeline': return <PipelineScreen repo={r.repo} of={r.of} pr={r.pr} />
       case 'work': return <WorkScreenHosted />
+      // Its own way to a session's tab: PipelineHostContext, read inside.
+      case 'jarvis': return <JarvisScreen />
       case 'files': return <FilesScreen project={r.project} wt={r.wt} />
       case 'chats': return <ChatsScreen key={r.archived ? 'archived' : 'open'} archived={r.archived} />
       case 'chat': return <ChatScreen key={r.id} id={r.id} />

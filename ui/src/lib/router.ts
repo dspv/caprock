@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m/:machine[/session/:id]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m/:machine[/session/:id]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -35,6 +35,8 @@ export type Route =
   // Work (.ai/04-ui.md § Work): every piece of work on the machine on its
   // way to a release.
   | { name: 'work' }
+  // Jarvis (.ai/04-ui.md § Jarvis): every agent, what needs you, one command line.
+  | { name: 'jarvis' }
   // Chats (ADR-071, .ai/04-ui.md § Chats): the list, its archived half, and
   // one chat — a conversation, never a terminal.
   | { name: 'chats'; archived?: boolean }
@@ -110,6 +112,8 @@ export function parseHash(hash: string): Route {
     }
     case 'work':
       return { name: 'work' }
+    case 'jarvis':
+      return { name: 'jarvis' }
     case 'chats':
       if (parts[1]) return { name: 'chat', id: decodeURIComponent(parts[1]) }
       return params.get('archived') === '1' ? { name: 'chats', archived: true } : { name: 'chats' }
@@ -159,6 +163,7 @@ export function href(r: Route): string {
     case 'brain': return r.node ? `#/brain?node=${r.node}` : '#/brain'
     case 'start': return r.mode ? `#/start?mode=${r.mode}` : '#/start'
     case 'work': return '#/work'
+    case 'jarvis': return '#/jarvis'
     case 'chats': return r.archived ? '#/chats?archived=1' : '#/chats'
     case 'chat': return `#/chats/${encodeURIComponent(r.id)}`
     case 'module': return r.to && isModuleHref(r.to) ? `#/x/${r.id}?to=${encodeURIComponent(r.to)}` : `#/x/${r.id}`

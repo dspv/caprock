@@ -237,7 +237,7 @@ describe('zoom keys', () => {
 // changes, or it is an epic fail"). For each single-key chord in SHORTCUTS,
 // the macOS chord and the text `keys()` shows off macOS must reach the same
 // command.
-import { LINK_CHOOSE_CLICK, LINK_OPEN_CLICK, PHONE_MODE_KEY, SHORTCUTS } from './appkeys'
+import { JARVIS_KEY, LINK_CHOOSE_CLICK, LINK_OPEN_CLICK, PHONE_MODE_KEY, SHORTCUTS } from './appkeys'
 import { choosesBrowser, opensLink } from './termlinks'
 
 describe('every listed shortcut, on every OS', () => {
@@ -394,6 +394,23 @@ describe('every listed shortcut, on every OS', () => {
     expect(matchAppShortcut(event('KeyW', 'W', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'detach-tab' })
     // Ctrl+Alt+T without Shift (GNOME's terminal) is never ours.
     expect(matchAppShortcut(event('KeyT', 't', { ctrlKey: true, altKey: true }), false)).toBeNull()
+  })
+
+  // Jarvis (owner, 2026-11-15): ⇧⌘J beside ⌘J, Next waiting. Off macOS ⌘J
+  // is Ctrl+Shift+J, which is also Chrome's DevTools console, so Jarvis
+  // takes Alt there: Ctrl+Alt+Shift+J.
+  it('makes ⇧⌘J Jarvis, Ctrl+Alt+Shift+J off macOS, beside Next waiting', () => {
+    expect(JARVIS_KEY).toBe('⇧⌘J')
+    expect(SHORTCUTS.find(([k]) => k === JARVIS_KEY)?.[1]).toMatch(/^Jarvis/)
+    expect(keys(JARVIS_KEY, true)).toBe('⇧⌘J')
+    expect(keys(JARVIS_KEY, false)).toBe('Ctrl+Alt+Shift+J')
+    expect(matchAppShortcut(event('KeyJ', 'J', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'jarvis' })
+    expect(matchAppShortcut(event('KeyJ', 'j', { metaKey: true }), true)).toEqual({ kind: 'next-waiting' })
+    expect(matchAppShortcut(event('KeyJ', 'J', { ctrlKey: true, shiftKey: true, altKey: true }), false)).toEqual({ kind: 'jarvis' })
+    expect(matchAppShortcut(event('KeyJ', 'J', { ctrlKey: true, shiftKey: true }), false)).toEqual({ kind: 'next-waiting' })
+    // The Mac spelling is nothing off macOS, and the reverse.
+    expect(matchAppShortcut(event('KeyJ', 'J', { metaKey: true, shiftKey: true }), false)).toBeNull()
+    expect(matchAppShortcut(event('KeyJ', 'J', { ctrlKey: true, shiftKey: true, altKey: true }), true)).toBeNull()
   })
 
   it('makes ⌥⌘P the theme picker, Ctrl+Alt+Shift+P off macOS, apart from the Pipeline\'s ⌘P', () => {

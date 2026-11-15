@@ -45,9 +45,13 @@ export function usePermission(sessionId: string): [Permission | null, (p: Permis
  * session screen a phone answers from — so the card names no keys it could
  * not take.
  */
-export function PermissionPrompt({ sessionId, keys = true, onOpenTerminal }: {
+export function PermissionPrompt({ sessionId, keys = true, pageKeys = true, onOpenTerminal }: {
   sessionId: string
   keys?: boolean
+  /** False where several sessions' cards share the page (Jarvis): Y, A and N
+   *  on the page then answer none of them, since which one is meant is a guess.
+   *  The buttons still answer. */
+  pageKeys?: boolean
   /** Brings this session's terminal forward where the page holds one under a
    *  cover (the app's Chat view); the default finds it on the page or opens
    *  the session's Terminal tab (openTerminal). */
@@ -84,7 +88,7 @@ export function PermissionPrompt({ sessionId, keys = true, onOpenTerminal }: {
   // unknown, so no key and no button answers any of them (ADR-035, amended
   // 2026-10-09): the card lists them and sends the reader to the terminal.
   const several = (prompt?.waiting?.length ?? 0) > 1
-  usePromptKeys(card, sessionId, !!prompt && !several && canControl && !busy, !!prompt?.always, answer)
+  usePromptKeys(card, sessionId, pageKeys && !!prompt && !several && canControl && !busy, !!prompt?.always, answer)
   if (!prompt) return null
   if (several) {
     return (

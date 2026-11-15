@@ -56,6 +56,9 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   // because it is what Home's Work strip opens and the page the owner asked
   // to see as a project manager. ⇧⌘W opens it.
   { route: { name: 'work' }, label: 'Work' },
+  // Jarvis (.ai/04-ui.md § Jarvis): every agent on one screen, and acting on
+  // them from it. ⇧⌘J opens it; in the app it is the sidebar's first row.
+  { route: { name: 'jarvis' }, label: 'Jarvis', phase: 'new' },
   // Chats (ADR-071): conversations started to ask something, kept, counted
   // and searchable apart from the work sessions.
   { route: { name: 'chats' }, label: 'Chats', phase: 'new' },
