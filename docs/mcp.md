@@ -54,6 +54,22 @@ nothing. A caprock somewhere else: use **By hand** below with the full path.
 Use the plugin or **Connect**, not both: each adds a server, and Claude Code
 would start two.
 
+**Claude Desktop.** Each release carries `caprock.mcpb`, an
+[MCP bundle](https://github.com/modelcontextprotocol/mcpb):
+download it from
+<https://github.com/dspv/caprock/releases/latest/download/caprock.mcpb> and
+open it, or drop it on Settings → Extensions, and Claude Desktop installs it
+in one click. The same entry is in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.dspv/caprock`, for clients and catalogs that install from there.
+The bundle holds no Caprock of its own, only a small Node launcher
+(`mcpb/server/index.js`; Claude Desktop runs it with its own Node) that
+starts the caprock installed on this computer: it looks where the plugin's
+launcher does, and on macOS also in `/Applications/Caprock.app`. With none
+there it starts nothing and says on stderr to install Caprock from
+<https://caprock.dev/install>. Claude Desktop starts the server outside any
+project, so ask about a repository by name: the tools take it as `repo`.
+
 **One click.** Open Second Brain: the row on top, *Let your agents ask Second
 Brain*, has a **Connect** button for each agent installed on this computer
 (Claude Code, Codex). Settings → *Use Caprock from your agents (MCP)* has the

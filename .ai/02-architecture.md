@@ -184,6 +184,9 @@ whose manifest declares the same server. Claude Code starts it through
 `plugins/caprock/scripts/caprock-mcp` (`.cmd` on Windows), which finds
 `caprock` on PATH or in the app's and package managers' install places and
 otherwise prints where to install it and exits 1 — no network.
+Claude Desktop and the MCP Registry get the same server as `caprock.mcpb`
+(`mcpb/`, packed per release by `scripts/mcp-bundle.py`): a Node launcher
+doing the same search, never a copy of caprock.
 The tool list and protocol belong to
 [03-contracts.md § MCP server](03-contracts.md#mcp-server); rationale is in
 [ADR-078](08-decisions.md), setup in [docs/mcp.md](../docs/mcp.md).

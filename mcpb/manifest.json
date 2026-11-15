@@ -1,0 +1,104 @@
+{
+  "manifest_version": "0.3",
+  "name": "caprock",
+  "display_name": "Caprock",
+  "version": "0.0.0",
+  "description": "Ask Caprock about your coding agents' work: Second Brain memories and decisions, past sessions, spend, CI. Read-only, local; needs Caprock installed and running.",
+  "long_description": "Caprock records every coding-agent session on your computer (Claude Code, Codex, Gemini CLI, OpenCode and more). This extension runs `caprock mcp`, a read-only MCP server over that record, so you can ask \"did we decide this before?\", \"which session explained the SSO change?\" or \"what has this repository cost this week?\".\n\nIt carries no Caprock of its own: it starts the caprock already installed on this computer and says where to get it if there is none (https://caprock.dev/install). Caprock has to be running (the desktop app, or `caprock up`). It opens no port and sends nothing anywhere. Outside a project folder, name the repository you mean; the tools take it as `repo`.",
+  "author": {
+    "name": "Dmitriy Solodukha",
+    "url": "https://caprock.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dspv/caprock"
+  },
+  "homepage": "https://caprock.dev",
+  "documentation": "https://github.com/dspv/caprock/blob/master/docs/mcp.md",
+  "support": "https://github.com/dspv/caprock/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ]
+    }
+  },
+  "tools": [
+    {
+      "name": "search_memories",
+      "description": "Up to 30 ranked Second Brain memories for some words, to judge by meaning"
+    },
+    {
+      "name": "current_decisions",
+      "description": "The decisions in force for a repository, newest first"
+    },
+    {
+      "name": "get_memory",
+      "description": "One memory in full, with what it links to"
+    },
+    {
+      "name": "memory_topics",
+      "description": "The topics Second Brain knows, and the memories per project"
+    },
+    {
+      "name": "next_session_handoff",
+      "description": "What a new session in a repository is handed: current decisions, then memories"
+    },
+    {
+      "name": "recent_sessions",
+      "description": "Recent sessions in a repository (or everywhere): status, branch, cost, loop alert"
+    },
+    {
+      "name": "session_summary",
+      "description": "One session: description, files touched, pull requests, cost"
+    },
+    {
+      "name": "session_prose",
+      "description": "What one session's agent wrote, newest first"
+    },
+    {
+      "name": "search_prose",
+      "description": "What agents wrote, searched across every session"
+    },
+    {
+      "name": "cost",
+      "description": "Spend and tokens per day and model, for a repository or all"
+    },
+    {
+      "name": "ci_status",
+      "description": "GitHub Actions on the default branch and the open pull request"
+    },
+    {
+      "name": "loop_alerts",
+      "description": "Running sessions repeating the same tool call"
+    }
+  ],
+  "keywords": [
+    "claude-code",
+    "codex",
+    "coding-agents",
+    "memory",
+    "session-history",
+    "cost",
+    "ci",
+    "local-first"
+  ],
+  "license": "Apache-2.0",
+  "privacy_policies": [
+    "https://caprock.dev/privacy"
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=16.0.0"
+    }
+  }
+}

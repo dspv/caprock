@@ -47,6 +47,9 @@ type recentEntry struct {
 	mainTurn lazy[foundEvent]
 	prompts  lazy[[]string]
 	unpriced lazy[int64]
+	// todos is the agent's task list (store.SessionTodos), for the Jarvis
+	// digest (jarvis.go): only the session's own events move it.
+	todos lazy[store.TodoList]
 }
 
 // lazy is one value of an entry, and whether it has been read.

@@ -379,6 +379,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The Work board (ADR-064): the same reads across every live session,
 	// plus the release state the clone holds locally; nothing on it writes.
 	"GET /v1/work": true,
+	// The Jarvis digest (ADR-094): the same reads as the session list and
+	// the Work board, folded into one answer; nothing on it writes.
+	"GET /v1/jarvis": true,
 	// The Pipeline's agent figures: what an hour of agent work costs and
 	// how many agents worked, per repository; read-only.
 	"GET /v1/pipeline/agents": true,

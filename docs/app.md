@@ -771,6 +771,13 @@ others. Installing it: [install-app.md](install-app.md).
   go back to where you were. It reads GitHub only while it is in front.
   ⇧⌘B, its key before, still works; ⌘B is no longer the app's (the Add
   project sheet keeps its own).
+- **Jarvis.** The first row of the sidebar, or ⇧⌘J (Ctrl+Alt+Shift+J on
+  Windows and Linux), shows every agent on the machine on one screen: what
+  needs you, with its action right there (the permission card, a reply,
+  Approve or Deny, Stop), one row per agent, and a command line at the
+  bottom — `@project what to do` sends it to that project's agent, or
+  starts one there when none runs. A project's × hides it on this screen
+  until you click it again. ⇧⌘J again goes back to where you were.
 - **Work.** *Work*, second in the Dashboard's menu, or ⇧⌘W, lists every
   piece of work on your machine on its way to a release: a row per branch
   at its furthest step — agent, pull request, CI, merged, released — with
@@ -1024,6 +1031,7 @@ On macOS:
 | ⌘I          | Agent cockpit (the inspector)                                                       |
 | ⌘P          | Pipeline, in a tab of its own; there, back to where you were                        |
 | ⇧⌘W         | Work on the dashboard; there, back to where you were                                |
+| ⇧⌘J         | Jarvis: every agent, what needs you, one command line; there, back                  |
 | ⌘\          | Hide or show the sidebar                                                            |
 | ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                           |
 | ⌥⌘P         | Theme: open the picker                                                              |

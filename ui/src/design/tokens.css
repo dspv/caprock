@@ -1507,3 +1507,31 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
  * 2026-11-12: the two drawn over each other). */
 html[data-version-open] [data-update-toast],
 html[data-version-open] [data-auto-updated] { display: none; }
+
+/* Jarvis (screens/Jarvis.tsx, .ai/04-ui.md § Jarvis): simple motion that
+ * shows processing (owner, 2026-11-15). A needs-you row that arrives slides
+ * in once; one that resolves collapses away; a plan segment fills when its
+ * step completes; the "now" line fades in when it changes; a working dot
+ * breathes. In `@layer components`, so a utility still wins. All of it
+ * holds still under reduced motion. */
+@layer components {
+  .jarvis-in { animation: jarvisIn 220ms cubic-bezier(0.2, 0, 0, 1) 1; }
+  @keyframes jarvisIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  .jarvis-row-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1), opacity 200ms ease; }
+  .jarvis-row-wrap.jarvis-gone { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+  .jarvis-seg { transform: scaleX(0); transform-origin: left; transition: transform 420ms cubic-bezier(0.2, 0, 0, 1); }
+  .jarvis-seg[data-filled] { transform: scaleX(1); }
+  .jarvis-seg-run { transition: width 420ms cubic-bezier(0.2, 0, 0, 1); }
+  .jarvis-swap { animation: jarvisSwap 320ms ease 1; }
+  @keyframes jarvisSwap { from { opacity: 0; } to { opacity: 1; } }
+  .jarvis-dot-working { animation: jarvisBreathe 2.4s ease-in-out infinite; }
+  @keyframes jarvisBreathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+  /* A row's actions show on hover or keyboard focus; always on a touch screen. */
+  .jarvis-actions { opacity: 0; transition: opacity 120ms ease; }
+  .jarvis-row:hover .jarvis-actions, .jarvis-row:focus-within .jarvis-actions { opacity: 1; }
+  @media (hover: none) { .jarvis-actions { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .jarvis-in, .jarvis-swap, .jarvis-dot-working { animation: none; }
+    .jarvis-row-wrap, .jarvis-seg, .jarvis-seg-run, .jarvis-actions { transition: none; }
+  }
+}

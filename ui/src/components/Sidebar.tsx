@@ -95,11 +95,11 @@ import { useTodayCard } from '@/lib/todayCard'
 import { ShareDialog, ShareGlyph } from './Share'
 import { createPortal } from 'react-dom'
 import { SidebarFooter } from './SidebarFooter'
-import { CaprockMark, ChatIcon, EyeIcon, ListIcon, FolderIcon, FolderPlusIcon, MoreIcon, PlusIcon, SearchIcon, TerminalIcon } from './AppIcons'
+import { CaprockMark, ChatIcon, EyeIcon, ListIcon, FolderIcon, FolderPlusIcon, MoreIcon, PlusIcon, SearchIcon, SparkIcon, TerminalIcon } from './AppIcons'
 import { ModuleRows } from './ModuleRows'
 import { MachineRows } from './MachineRows'
 import { BrainSidebar } from './BrainSidebar'
-import { keys, revealClass } from '@/lib/appkeys'
+import { JARVIS_KEY, keys, revealClass } from '@/lib/appkeys'
 import { loadRowOrders, ROW_ORDER_EVENT, saveRowOrder, type RowOrders } from '@/lib/rowOrder'
 
 /** Project ids hidden by hand, with when: this browser's. An older plain list of ids still reads. */
@@ -223,6 +223,9 @@ export interface SidebarProps {
    *  front (components/SidebarFooter). */
   onPipeline?: () => void
   pipelineActive?: boolean
+  /** Jarvis (⇧⌘J), the list's first row, and whether it is in front (.ai/04-ui.md § Jarvis). */
+  onJarvis?: () => void
+  jarvisActive?: boolean
   onPalette: () => void
   /** The day's summary, for the Today strip; absent until it answers. */
   summary?: Summary
@@ -613,6 +616,25 @@ export function Sidebar(props: SidebarProps) {
         * by its content (flex-auto), so a long list presses on Second Brain,
         * which shrinks its orb first (components/BrainSidebar.tsx). */}
       <div data-sidebar-scroll className="app-scroll min-h-0 flex-auto overflow-y-auto px-2 pb-4" onKeyDown={onKeyDown}>
+        {/* Jarvis first: every agent on one screen, and acting on them from
+          * it (owner, 2026-11-15). Its waiting count is the Today line's. */}
+        {props.onJarvis && (
+          <button
+            type="button"
+            data-nav-row
+            data-sidebar-jarvis
+            aria-current={props.jarvisActive ? 'page' : undefined}
+            aria-keyshortcuts="Shift+Meta+J"
+            title={`Jarvis: every agent, what needs you, one command line (${keys(JARVIS_KEY)})`}
+            onClick={props.onJarvis}
+            className={`app-row mt-1.5 flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[6px] pl-[10px] pr-2 text-left text-[13px] ${props.jarvisActive ? 'app-row-selected font-semibold text-fg' : 'text-fg'}`}
+          >
+            <SparkIcon size={14} />
+            <span className="flex-1 truncate">Jarvis</span>
+            {today.waiting > 0 && <span className="num shrink-0 text-[11.5px] text-warn" aria-label={`${today.waiting} waiting on you`}>{today.waiting}</span>}
+            <kbd className={`app-kbd ${revealClass()}`}>{keys(JARVIS_KEY)}</kbd>
+          </button>
+        )}
         {/* Open: exactly the open tabs, in the strip's order, each with its
           * project, its phase and its ⌘ digit (mockup V1). */}
         {openRows.length > 0 && (
@@ -742,7 +764,7 @@ export function Sidebar(props: SidebarProps) {
       <SidebarFooter
         folded={folds.has('footer')}
         onToggleFold={() => toggleFold('footer')}
-        dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive}
+        dashboardActive={props.dashboardActive && !props.mailActive && !props.pipelineActive && !props.jarvisActive}
         onDashboard={props.onDashboard}
         mailActive={props.mailActive}
         onMail={props.onMail}

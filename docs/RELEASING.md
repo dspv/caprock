@@ -164,7 +164,11 @@ install command that is missing.
    `plugins/caprock/.claude-plugin/plugin.json`, so users of the plugin get
    the release with `claude plugin update`; commit that file with the
    changelog. Edit the assembled section by hand afterwards if it needs an intro line;
-   `release-notes.py` reads it at tag time as before.
+   `release-notes.py` reads it at tag time as before. The MCP bundle
+   (`mcpb/manifest.json`, `mcpb/server.json`) needs no bump: its version is
+   written from the tag by `scripts/mcp-bundle.py` in release.yml's
+   `mcp-registry` job, which attaches `caprock.mcpb` and publishes the
+   registry entry, and whose failure never fails the release.
 3. After the release PR merges: `git pull`, confirm the `dist` workflow has
    no run in progress (`gh run list -w dist -L 3`), run `make release-ready`
    (its `dist-check` fails while master's dashboard rebuild is still to come),
