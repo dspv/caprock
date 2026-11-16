@@ -483,9 +483,6 @@ INSERT INTO session_stats(session_id, turns, tool_calls, files_touched, tokens_i
 UPDATE brain_gaps SET cursor = ?, reads_done = reads_done + 1, attempts = 0, error = '', status = CASE WHEN ? >= to_event_id THEN 'done' ELSE status END, reads_total = CASE WHEN ? >= to_event_id THEN reads_done + 1 ELSE reads_total END, updated_at = ? WHERE id = ?
     SEARCH brain_gaps USING INTEGER PRIMARY KEY (rowid=?)
 
-## store.AppendJarvisMessage
-INSERT INTO jarvis_thread (at, role, kind, text, project, session_id, via, pending, brain, cost_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-
 ## store.ArchiveProject
 UPDATE projects SET archived_at = ? WHERE id = ?
     SEARCH projects USING INTEGER PRIMARY KEY (rowid=?)
@@ -1255,17 +1252,6 @@ INSERT INTO saved_prompts (kind, name, text, project_id, sort, created_at, updat
 ## store.IsRemoved
 SELECT 1 FROM removed_sessions WHERE session_id = ?
     SEARCH removed_sessions USING PRIMARY KEY (session_id=?)
-
-## store.JarvisBrainSpend
-SELECT COALESCE(SUM(cost_usd), 0), COUNT(*) FROM jarvis_thread WHERE at >= ? AND brain != 0
-    SEARCH jarvis_thread USING INDEX idx_jarvis_thread_at (at>?)
-
-## store.JarvisThread
-SELECT id, at, role, kind, text, project, session_id, via, pending, brain, cost_usd FROM (SELECT * FROM jarvis_thread ORDER BY id DESC LIMIT ?) ORDER BY id
-    CO-ROUTINE (subquery-1)
-        SCAN jarvis_thread
-    SCAN (subquery-1)
-    USE TEMP B-TREE FOR ORDER BY
 
 ## store.KnownPRs
 SELECT number, url, title, head, state, merged_at, closed_at, updated_at FROM github_prs WHERE repo = ?
@@ -2289,10 +2275,6 @@ UPDATE sessions SET subagent_model = ? WHERE session_id = ?
 UPDATE sessions SET title = ? WHERE session_id = ? AND title != ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
-## store.SettleJarvisPending
-UPDATE jarvis_thread SET pending = 0, text = ? WHERE pending != 0
-    SCAN jarvis_thread
-
 ## store.SharedCards
 SELECT id, url, image, delete_token, bytes, at FROM shared_cards ORDER BY at DESC
     SCAN shared_cards USING INDEX idx_shared_cards_at
@@ -2391,14 +2373,6 @@ SELECT s.session_id, s.git_branch, s.status, COALESCE(NULLIF(s.agent,''),'claude
 
 ## store.SpendBySessionSince
 SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(SUM(cost_usd), 0) FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT sid FROM sessions WHERE session_id IN (?)) AND ts >= ? AND internal = 0 GROUP BY sid
-    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
-    LIST SUBQUERY 2
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-    CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-
-## store.SpendBySessionSince
-SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(SUM(cost_usd), 0) FROM events INDEXED BY idx_events_attr_work WHERE sid IN (SELECT sid FROM sessions WHERE session_id IN (?, ?)) AND ts >= ? AND internal = 0 GROUP BY sid
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>?)
     LIST SUBQUERY 2
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
@@ -2694,10 +2668,6 @@ SELECT id FROM brain_nodes WHERE kind = ? AND norm = ? AND id != ?
 ## store.UpdateBrainNode
 UPDATE brain_nodes SET kind = ?, title = ?, norm = ?, summary = ?, search = ?, pinned = ?, updated_at = ? WHERE id = ?
     SEARCH brain_nodes USING INTEGER PRIMARY KEY (rowid=?)
-
-## store.UpdateJarvisMessage
-UPDATE jarvis_thread SET text = ?, project = ?, session_id = ?, pending = ?, brain = ?, cost_usd = ? WHERE id = ?
-    SEARCH jarvis_thread USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.UpdateProject
 UPDATE projects SET defaults = ? WHERE id = ?
