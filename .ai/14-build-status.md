@@ -96,7 +96,7 @@ the real `--help`. Details: [25-cursor.md](25-cursor.md).
 
 ### 2026-11-16 — unreleased: Jarvis V2's core (ADR-096), daemon half
 
-Branch `feat/jarvis-v2-core`. The digest's question needs carry their
+The digest's question needs carry their
 options (recommended marked) and `answerable`; `POST /v1/jarvis/answer`
 presses an option or types on the Other row in a session Caprock started,
 after reading the screen. The keys were read from the installed Claude Code
@@ -106,8 +106,20 @@ against dialogs reconstructed from that bundle, not yet against a live
 Claude Code question. Handled for you (`jarvis_handled`, migration 0082,
 `GET /v1/jarvis/handled`, the `jarvis` live frame) records limit moves and
 returns, end when done, idle ends, the morning summary and the new resume
-after a usage limit resets (`limit_auto_resume`, on by default). The
-screen, the brain and the Settings switch are other branches.
+after a usage limit resets (`limit_auto_resume`, on by default).
+
+### 2026-11-16 — unreleased: Jarvis V2's chat and brain (ADR-097), daemon half
+
+`GET /v1/jarvis/thread` and `POST
+/v1/jarvis/say` (migration 0083 `jarvis_thread`): a message is routed by the
+person's own Claude Code or Codex, headless and without tools, on the sign-in
+chosen in `jarvis_brain`, else deterministically as V1's command line did.
+Routine single-select questions in sessions Caprock started are answered by
+the brain behind a deny-word guard; "Done:" messages when an agent Jarvis
+gave work to finishes. The digest gains `brain`. Verified with fake `claude`
+and `codex` binaries only; the real flags were read from `--help` and never
+run against an account. Auto-answers press keys through the core's
+answer path (ADR-096) and are written to its Handled log.
 
 ### 2026-11-15 — unreleased: the Jarvis digest (ADR-094), daemon half
 

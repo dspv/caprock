@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/jarvisbrain"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -63,6 +64,8 @@ type JarvisDigest struct {
 	// HandledToday counts what Caprock did on its own today (Handled for
 	// you, ADR-096).
 	HandledToday int `json:"handled_today"`
+	// Brain is the state of Jarvis's brain (ADR-097, jarvischat.go).
+	Brain jarvisbrain.Status `json:"brain"`
 }
 
 // JarvisHeadline counts the live sessions by state, and today's work across
@@ -240,6 +243,7 @@ func (s *Server) Jarvis(ctx context.Context) (JarvisDigest, error) {
 	if out.HandledToday, err = store.CountHandledSince(ctx, db, day); err != nil {
 		return out, err
 	}
+	out.Brain = s.jarvisBrainStatus(ctx)
 	return out, nil
 }
 

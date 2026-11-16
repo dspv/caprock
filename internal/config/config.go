@@ -212,6 +212,9 @@ type Config struct {
 	// a usage limit stopped, once that limit's window has reset (ADR-096).
 	// On unless switched off: nil is on.
 	LimitAutoResume *bool `json:"limit_auto_resume,omitempty"`
+	// JarvisBrain is what Jarvis's brain runs on (ADR-097); nil until the
+	// person chooses once.
+	JarvisBrain *JarvisBrain `json:"jarvis_brain,omitempty"`
 	// CustomAgents are coding agents the user added by command (ADR-046), a
 	// paid feature: kept whatever the licence says, offered and started only
 	// while it is active. Edited through PUT /v1/agents/custom, which
@@ -783,4 +786,14 @@ type BrainConfig struct {
 	// and their projects are left out of the handoff, search and the graph
 	// unless opened by name. Empty by default.
 	Exclude []string `json:"exclude,omitempty"`
+}
+
+// JarvisBrain is the jarvis_brain setting (ADR-097): the agent the brain
+// runs on ("claude", "codex" or "off"), the sign-in ("" the one new sessions
+// of that agent start on, "default" the user's own, else a subscription
+// id), and "routine" or "off" for answering routine questions.
+type JarvisBrain struct {
+	Agent      string `json:"agent"`
+	Sub        string `json:"sub,omitempty"`
+	AutoAnswer string `json:"auto_answer,omitempty"`
 }

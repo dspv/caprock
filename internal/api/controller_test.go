@@ -46,7 +46,7 @@ var viewerMay = map[string]bool{
 	"GET /v1/statusline/{id}": true, "GET /v1/pair/me": true, "GET /healthz": true, "GET /v1/folder-labels": true,
 	"GET /v1/agents/{id}/permission": true, "GET /v1/sessions/{id}/permission-mode": true,
 	// The message queue and the chat field's pickers (ADR-053).
-	"GET /v1/agents/{id}/queue": true, "GET /v1/sessions/{id}/compaction": true, "GET /v1/stats/compactions": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/jarvis": true, "GET /v1/jarvis/handled": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true,
+	"GET /v1/agents/{id}/queue": true, "GET /v1/sessions/{id}/compaction": true, "GET /v1/stats/compactions": true, "GET /v1/queue": true, "GET /v1/work": true, "GET /v1/jarvis": true, "GET /v1/jarvis/handled": true, "GET /v1/sessions/{id}/commands": true, "GET /v1/sessions/{id}/files": true, "GET /v1/jarvis/thread": true,
 	"GET /v1/glance": true, "GET /v1/week": true, "GET /v1/tools/drill": true, "GET /v1/saved-prompts": true, "GET /v1/attempts/{group}": true,
 	"GET /v1/inbox": true, "GET /v1/inbox/{id}/files/{n}": true, // the Inbox and its thumbnails
 	"GET /v1/tabs":  true,                                                                    // the computer's open tabs, which the phone home's Continue mirrors
@@ -74,7 +74,7 @@ var controllerMayAlso = map[string]bool{
 	"POST /v1/agents": true, "GET /v1/agents/models": true, "GET /v1/agents/catalog": true, "GET /v1/subscriptions": true, "GET /v1/recent-dirs": true, "GET /v1/browse": true, "GET /v1/browse/stat": true, "GET /v1/browse/repos": true,
 	"GET /v1/sessions/{id}/relay": true, "GET /v1/agents/{id}/term": true, "GET /v1/agents/{id}/exit": true,
 	"POST /v1/agents/{id}/input": true, "POST /v1/agents/{id}/signal": true, "POST /v1/paste": true,
-	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true, "POST /v1/jarvis/answer": true,
+	"POST /v1/agents/{id}/permission": true, "POST /v1/agents/{id}/permission-mode": true, "POST /v1/jarvis/answer": true, "POST /v1/jarvis/say": true,
 	"PUT /v1/sessions/{id}/name": true, "PUT /v1/folder-labels": true,
 	"PUT /v1/sessions/{id}/needs": true, // "needs me?" / "not needed": a mark in memory
 	"POST /v1/support":            true,

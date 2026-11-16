@@ -847,6 +847,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
 		BrainHandoffState: d.brainHandoffState,
+		JarvisBrain:       d.jarvisBrainDeps(ctx),
 	})
 	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
@@ -1001,6 +1002,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.loadReportState(ctx)
 	d.goBg(func() { d.weeklyLoop(ctx) })
 	d.goBg(func() { d.morningLoop(ctx) })
+	d.goBg(func() { d.jarvisLoop(ctx) })
 	d.afterMove(ctx, func() { d.backfillToolLinks(ctx) })
 	d.afterMove(ctx, func() { d.repairEmptyText(ctx) })
 	d.afterMove(ctx, func() {
@@ -1972,6 +1974,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	out.MorningSummary, out.MorningSummaryAt = c.MorningSummaryOn(), morning.NormalizeAt(c.MorningSummaryAt)
 	out.MorningSummaryLastError, out.MorningSummaryLastMs = a.d.morningState.get()
 	out.CompressToolOutput = c.CompressToolOutputOn()
+	out.JarvisBrain = jarvisSettingOf(c.JarvisBrain)
 	return out
 }
 
@@ -2021,6 +2024,7 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 		resume := in.LimitResume
 		a.d.opt.Config.LimitAutoResume = &resume
 	}
+	a.d.opt.Config.JarvisBrain = jarvisConfigOf(in.JarvisBrain)
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	// Stored as a pointer so "never set" stays distinguishable from "turned

@@ -385,6 +385,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// Jarvis's Handled for you (ADR-096): what Caprock did on its own, from
 	// its own log; a read.
 	"GET /v1/jarvis/handled": true,
+	// Jarvis's thread (ADR-097): the messages kept in Caprock's own
+	// database; a read.
+	"GET /v1/jarvis/thread": true,
 	// The Pipeline's agent figures: what an hour of agent work costs and
 	// how many agents worked, per repository; read-only.
 	"GET /v1/pipeline/agents": true,
@@ -507,6 +510,11 @@ var controllerRoutes = map[string]bool{
 	// option pressed in a session Caprock started, as a button answers a
 	// permission prompt.
 	"POST /v1/jarvis/answer": true,
+
+	// A message to Jarvis (ADR-097): it goes through the same queue as the
+	// chat field, or starts an agent with the same checks as POST
+	// /v1/agents from a phone (controllerSpawnRefusal).
+	"POST /v1/jarvis/say": true,
 
 	// Rename a session, as its tab and sidebar row do on the machine: a
 	// label in Caprock's own database, which runs nothing.
