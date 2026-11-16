@@ -39,6 +39,30 @@ export function fmtUSDShort(v: number | undefined | null): string {
   return fmtUSD(v)
 }
 
+/**
+ * A headline dollar figure in whole dollars from $100: $7,562, not
+ * $7,562.05 — cents on a four-digit total are noise (owner, 2026-11-16). The
+ * exact sum goes in a tooltip. Under $100 the cents still say something.
+ */
+export function fmtUSDWhole(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  v = v as number
+  if (Math.abs(v) < 100) return fmtUSD(v)
+  return `${v < 0 ? '-' : ''}$${Math.round(Math.abs(v)).toLocaleString('en-US')}`
+}
+
+/** A token count to three significant figures, for a tile: 31.2M, 475M, 13.1B. */
+export function fmtTokensShort(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  v = v as number
+  const abs = Math.abs(v)
+  const unit = abs >= 1e9 ? [1e9, 'B'] as const : abs >= 1e6 ? [1e6, 'M'] as const : abs >= 1e4 ? [1e3, 'k'] as const : null
+  if (!unit) return int.format(v)
+  const n = abs / unit[0]
+  const digits = n >= 100 ? 0 : n >= 10 ? 1 : 2
+  return `${v < 0 ? '-' : ''}${trim(n, digits)}${unit[1]}`
+}
+
 /** A count, short where room is tight: 781, 7.8k, 35.2k, 1.2M. */
 export function fmtCountShort(v: number | undefined | null): string {
   if (finite(v) === null) return '—'

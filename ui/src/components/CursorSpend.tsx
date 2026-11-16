@@ -17,11 +17,11 @@ export function overheadCell(r?: OverheadRow): string {
   return `~${fmtTokens(r.median_tokens)}`
 }
 
-/** "7 of 14 chats" — how many samples the median stands on. */
-export function samplesCell(r?: OverheadRow, unit: 'chat' | 'session' = 'chat'): string {
+/** "7 of 14" or "8,407" — the samples column, its unit in the header. */
+export function samplesCount(r?: OverheadRow): string {
   if (!r) return ''
-  const units = `${unit}${r.samples === 1 ? '' : 's'}`
-  return r.clean === r.samples ? `${r.samples} ${units}` : `${r.clean} of ${r.samples} ${units}`
+  const n = (v: number) => v.toLocaleString('en-US')
+  return r.clean === r.samples ? n(r.samples) : `${n(r.clean)} of ${n(r.samples)}`
 }
 
 /** The rows of the comparison: every family either agent has, Cursor's
@@ -128,8 +128,11 @@ function OverheadTable({ rows, method }: { rows: ReturnType<typeof overheadRows>
             <tr className="text-fg-faint text-left">
               <th className="px-3 py-1 font-normal">Model</th>
               <th className="px-3 py-1 font-normal text-right">Cursor adds</th>
-              <th className="px-3 py-1 font-normal text-right">Claude Code adds</th>
-              <th className="px-3 py-1 font-normal text-right" title="Cursor's figure at the model's list input rate, and at its cache-read rate">At list price</th>
+              <th className="py-1 pr-3 font-normal text-right">chats</th>
+              <th className="border-l border-border px-3 py-1 font-normal text-right">Claude Code adds</th>
+              <th className="py-1 pr-3 font-normal text-right">sessions</th>
+              <th className="border-l border-border px-3 py-1 font-normal text-right" title="Cursor's figure at the model's list input rate">At list price</th>
+              <th className="py-1 pr-3 font-normal text-right" title="Cursor's figure at the model's cache-read rate">cached</th>
             </tr>
           </thead>
           <tbody>
@@ -137,15 +140,18 @@ function OverheadTable({ rows, method }: { rows: ReturnType<typeof overheadRows>
               <tr key={r.family} className="border-t border-border">
                 <td className="px-3 py-1 font-mono" title={[...(r.cursor?.models ?? []), ...(r.claude?.models ?? [])].join(', ')}>{r.family || 'unknown'}</td>
                 <td className="px-3 py-1 text-right tabular-nums" title={r.cursor && r.cursor.clean > 0 ? `smallest ${fmtTokens(r.cursor.min_tokens)}` : undefined}>
-                  {overheadCell(r.cursor)} <span className="text-fg-faint">{samplesCell(r.cursor)}</span>
+                  {overheadCell(r.cursor)}
                 </td>
-                <td className="px-3 py-1 text-right tabular-nums" title={r.claude ? `smallest ${fmtTokens(r.claude.min_tokens)}` : undefined}>
-                  {overheadCell(r.claude)} <span className="text-fg-faint">{samplesCell(r.claude, 'session')}</span>
+                <td className="py-1 pr-3 text-right tabular-nums text-fg-faint">{samplesCount(r.cursor)}</td>
+                <td className="border-l border-border px-3 py-1 text-right tabular-nums" title={r.claude ? `smallest ${fmtTokens(r.claude.min_tokens)}` : undefined}>
+                  {overheadCell(r.claude)}
                 </td>
-                <td className="px-3 py-1 text-right tabular-nums text-fg-muted">
-                  {r.cursor && r.cursor.clean > 0 && r.input !== undefined
-                    ? `${fmtUSD(atRate(r.cursor.median_tokens, r.input))} · ${fmtUSD(atRate(r.cursor.median_tokens, r.cacheRead ?? 0))} cached`
-                    : '—'}
+                <td className="py-1 pr-3 text-right tabular-nums text-fg-faint">{samplesCount(r.claude)}</td>
+                <td className="border-l border-border px-3 py-1 text-right tabular-nums text-fg-muted">
+                  {r.cursor && r.cursor.clean > 0 && r.input !== undefined ? fmtUSD(atRate(r.cursor.median_tokens, r.input)) : '—'}
+                </td>
+                <td className="py-1 pr-3 text-right tabular-nums text-fg-faint">
+                  {r.cursor && r.cursor.clean > 0 && r.input !== undefined ? fmtUSD(atRate(r.cursor.median_tokens, r.cacheRead ?? 0)) : ''}
                 </td>
               </tr>
             ))}
