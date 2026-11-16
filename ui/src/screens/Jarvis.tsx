@@ -438,7 +438,10 @@ function NeedRow({ need, gone, fresh, now, canControl, hidden, onOpen, onChanged
     )
   }
   // The question itself leads a question's card, in its own words.
-  const asks = need.kind === 'question' && !stopped && need.detail && need.detail !== need.title ? need.detail : ''
+  // With its options as buttons the question alone leads; the detail's
+  // option list would say them twice.
+  const asks = need.kind === 'question' && !stopped && tap ? need.title
+    : need.kind === 'question' && !stopped && need.detail && need.detail !== need.title ? need.detail : ''
   const detail = !asks && need.detail && need.detail !== need.title ? need.detail : ''
   const detailLine = detail ? <p className="line-clamp-2 min-w-0 whitespace-pre-line text-[12px] text-fg-muted [overflow-wrap:anywhere]" title={detail}>{detail}</p> : null
   const terminal = ours && need.session_id ? () => onOpen(need.session_id) : undefined
@@ -488,7 +491,7 @@ function NeedRow({ need, gone, fresh, now, canControl, hidden, onOpen, onChanged
             <span className="min-w-0 flex-[1_1_12rem]">
               {task ? (
                 <a href={href({ name: 'tasks' })} title="Open Tasks" className="block min-w-0 truncate text-fg hover:underline">{need.title}</a>
-              ) : <OpenTitle project={need.project} title={need.title} id={need.session_id} onOpen={onOpen} />}
+              ) : <OpenTitle project={need.project} title={asks ? '' : need.title} id={need.session_id} onOpen={onOpen} />}
             </span>
             <span className="num shrink-0 text-[11.5px] text-fg-faint" title="Waiting since">{fmtAgo(need.since, now)}</span>
             {actions && <span className="flex shrink-0 items-center gap-1">{actions}</span>}

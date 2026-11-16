@@ -102,7 +102,7 @@ const command = () => screen.getByLabelText('Message to Jarvis') as HTMLInputEle
 const emit = (f: Frame) => act(() => { for (const fn of (live as unknown as { frameSubs: Set<(f: Frame) => void> }).frameSubs) fn(f) })
 const withNeeds = (needs: JarvisNeed[], extra: Partial<JarvisDigest> = {}): JarvisDigest => ({ ...jarvisFixture(), needs_you: needs, ...extra })
 const question = (extra: Partial<JarvisNeed> = {}): JarvisNeed => ({
-  kind: 'question', session_id: 'a2', project: 'caprock', title: 'Share card agent', detail: 'Where should the share card images be stored?',
+  kind: 'question', session_id: 'a2', project: 'caprock', title: 'Where should the share card images be stored?', detail: 'Where should the share card images be stored?\nLocal disk · R2 bucket (Recommended)',
   since: JNOW - 240_000, controllable: true, answerable: true,
   options: [
     { label: 'Local disk', description: 'Nothing leaves the Mac', recommended: false },
