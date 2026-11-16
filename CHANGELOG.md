@@ -12,6 +12,14 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.178.1] - 2026-11-16
+
+### Removed
+
+- **jarvis:** Jarvis is back to the 0.177.0 screen. The decision cards,
+  Handled for you, the chat, hold to talk, the model behind it and the
+  automatic continue after a limit reset are withdrawn.
+
 ## [0.178.0] - 2026-11-16
 
 ### Added
