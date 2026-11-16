@@ -121,7 +121,7 @@ import { useOnScreen } from '@/lib/refresh'
 type Range = 'today' | '7d' | '30d' | 'all'
 
 /** Which agent's work to show. Present only when the machine has more than one. */
-export type AgentFilter = 'all' | 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes'
+export type AgentFilter = 'all' | 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes' | 'cursor'
 
 export const AGENTS: { key: AgentFilter; label: string }[] = [
   // 'all' rather than 'both': the third agent arrived and would have made
@@ -134,6 +134,7 @@ export const AGENTS: { key: AgentFilter; label: string }[] = [
   { key: 'codex', label: 'codex' },
   { key: 'deepseek', label: 'deepseek' },
   { key: 'hermes', label: 'hermes' },
+  { key: 'cursor', label: 'cursor' },
 ]
 
 /** Whether a list row wears its agent's mark: every agent but Claude Code.
@@ -142,7 +143,7 @@ export const AGENTS: { key: AgentFilter; label: string }[] = [
  *  Written once because it was three copies of `agent === 'opencode'`, each of
  *  which silently called a Gemini session Claude. */
 export function showsAgentMark(agent?: string): boolean {
-  return agent === 'opencode' || agent === 'gemini' || agent === 'codex' || agent === 'deepseek' || agent === 'hermes'
+  return agent === 'opencode' || agent === 'gemini' || agent === 'codex' || agent === 'deepseek' || agent === 'hermes' || agent === 'cursor'
 }
 
 /** How to name an agent in a sentence. */
@@ -158,6 +159,8 @@ export function agentName(agent?: string): string {
       return 'DeepSeek Harness'
     case 'hermes':
       return 'Hermes Agent'
+    case 'cursor':
+      return 'Cursor'
     default:
       return 'Claude Code'
   }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/chatimport"
+	"github.com/dspv/caprock/internal/cursor"
 	"github.com/dspv/caprock/internal/hermes"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/store"
@@ -110,14 +111,14 @@ func (s *Server) resumeState(sess store.Session) *ResumeInfo {
 	}
 	switch agent {
 	case "claude":
-	case "codex", "opencode", "hermes":
+	case "codex", "opencode", "hermes", "cursor":
 		return s.resumeOther(sess, agent)
 	case chatimport.SourceClaudeAI, chatimport.SourceChatGPT:
 		// An imported conversation (ADR-074): its history is a copy, and the
 		// service it lives on has no way in for a program on this machine.
 		return &ResumeInfo{Reason: "Imported from " + chatimport.SourceName(agent) + ": it can be read here, and carried on in " + chatimport.SourceName(agent) + " itself."}
 	default:
-		return &ResumeInfo{Reason: "Caprock continues Claude Code, Codex, OpenCode and Hermes sessions."}
+		return &ResumeInfo{Reason: "Caprock continues Claude Code, Codex, OpenCode, Hermes and Cursor CLI sessions."}
 	}
 	info := &ResumeInfo{OK: true, Command: "claude --resume " + sess.SessionID}
 	if sess.Cwd != "" {
@@ -175,6 +176,8 @@ func (s *Server) resumeOther(sess store.Session, agent string) *ResumeInfo {
 		name, flag = "OpenCode", "opencode --session "
 	case "hermes":
 		name, flag = "Hermes", "hermes chat --resume "
+	case "cursor":
+		name, flag = "Cursor", "cursor-agent --resume "
 	}
 	native := sess.NativeID
 	if native == "" {
@@ -213,11 +216,20 @@ func (s *Server) resumeOther(sess store.Session, agent string) *ResumeInfo {
 		info.OK, info.Reason, info.Command = false, "Hermes's state database is no longer there, so it has nothing to continue.", ""
 		return info
 	}
+	if agent == "cursor" && !cursor.ChatExists(sess.Cwd, native) {
+		// cursor-agent keeps a chat under the folder it ran in; an editor
+		// chat, or a CLI chat from another folder, is not there.
+		info.OK, info.Reason, info.Command = false, cursorNoChat, ""
+		return info
+	}
 	if s.d.Agents == nil || !s.d.Agents.Has(agent) {
 		info.OK, info.Reason = false, "Caprock cannot find "+agent+" to start it; run the command in a terminal."
 	}
 	return info
 }
+
+// cursorNoChat is why a Cursor session cannot be continued here.
+const cursorNoChat = "cursor-agent has no chat with this id for this folder: an editor chat is continued in Cursor itself."
 
 // transcriptOnDisk reports whether the session's own conversation file exists
 // — where the recorded path says, or where Claude Code keeps it for the cwd.

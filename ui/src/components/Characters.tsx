@@ -15,7 +15,7 @@
 import { useId } from 'react'
 import { isDuck, isPumpkin, type ClaudeFace, type Duck, type Face, type Pumpkin } from '@/lib/faces'
 
-export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek' | 'hermes'
+export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek' | 'hermes' | 'cursor'
 
 const INK = '#201c16'
 const AMBER = '#f3a553'
@@ -27,7 +27,7 @@ const STONE = '#bbb4a7'
 /** Which character stands for an agent's main threads or its subagents. */
 export function characterFor(agent: string, subagent = false): Character {
   if (agent === 'claude') return subagent ? 'crowd' : 'lead'
-  if (agent === 'codex' || agent === 'opencode' || agent === 'gemini' || agent === 'deepseek' || agent === 'hermes') return agent
+  if (agent === 'codex' || agent === 'opencode' || agent === 'gemini' || agent === 'deepseek' || agent === 'hermes' || agent === 'cursor') return agent
   return 'lead'
 }
 
@@ -524,6 +524,20 @@ export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
           <path d="M34 52c3.5 2.6 8.5 2.6 12 0" stroke={INK} strokeWidth="2.4" fill="none" strokeLinecap="round" />
         </>
       )
+    case 'cursor':
+      // Cursor: a graphite cube with a face on its front. Drawn here, not
+      // Anysphere's mark.
+      return (
+        <>
+          <Shadow rx={22} />
+          <path d="M40 10 66 24v30L40 68 14 54V24z" fill="#5d636b" {...outline} />
+          <path d="M14 24 40 38l26-14" fill="none" {...outline} />
+          <path d="M40 38v30" fill="none" {...outline} />
+          <path d="M14 24 40 10l26 14-26 14z" fill="#8a9099" {...outline} />
+          <circle cx="24" cy="46" r="3.2" fill={INK} /><circle cx="32" cy="50" r="3.2" fill={INK} />
+          <circle cx="25" cy="45" r="1.1" fill="#fff" /><circle cx="33" cy="49" r="1.1" fill="#fff" />
+        </>
+      )
   }
 }
 
@@ -559,6 +573,7 @@ export function agentName(agent: string): string {
     case 'deepseek': return 'DeepSeek'
     case 'grok': return 'Grok'
     case 'hermes': return 'Hermes'
+    case 'cursor': return 'Cursor'
     // Conversations imported from an export (ADR-074): the service is the source.
     case 'claude.ai': return 'Claude.ai'
     case 'chatgpt': return 'ChatGPT'

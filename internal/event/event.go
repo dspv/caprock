@@ -76,6 +76,14 @@ const (
 	// answers it. Distinct from approval.requested, which is the orchestrator's
 	// own approval queue.
 	KindPermissionPrompt Kind = "permission.prompt"
+
+	// KindContextOverhead is an estimate of what an agent sent beyond the
+	// conversation on a session's first measured request: its system prompt,
+	// tool definitions, rules and context it attached itself. Written once per
+	// Cursor chat (ADR-095, .ai/25-cursor.md § Overhead); its payload carries
+	// request_tokens, visible_tokens, typed_tokens, overhead_tokens, clean and
+	// method. No tokens or cost of its own, so no total counts it.
+	KindContextOverhead Kind = "context.overhead"
 )
 
 // Source says which data plane produced the event.
@@ -108,6 +116,11 @@ const (
 	// call itself and records whether the figure is the provider's or its
 	// estimate — so the pricing table is never applied to them (ADR-069).
 	SourceHermes Source = "hermes"
+	// SourceCursor marks events read from Cursor: the editor's chat database
+	// and the hook events of its editor and its `cursor-agent` CLI. Cost is
+	// Cursor's own figure where Cursor recorded one, and none otherwise; the
+	// pricing table is never applied to them (ADR-095).
+	SourceCursor Source = "cursor"
 	// SourceImport marks the messages of a conversation the user imported
 	// from a Claude.ai or ChatGPT export (ADR-074). They carry no tokens and
 	// no cost, and are stored `internal` so no aggregate counts them.

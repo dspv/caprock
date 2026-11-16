@@ -35,6 +35,7 @@ import (
 	"github.com/dspv/caprock/internal/config"
 	"github.com/dspv/caprock/internal/contexttax"
 	"github.com/dspv/caprock/internal/cost"
+	"github.com/dspv/caprock/internal/cursor"
 	"github.com/dspv/caprock/internal/deepseek"
 	"github.com/dspv/caprock/internal/desktop"
 	"github.com/dspv/caprock/internal/devshare"
@@ -119,6 +120,10 @@ type Options struct {
 	// Empty means Hermes's own (state.db under $HERMES_HOME, else ~/.hermes);
 	// "off" disables the import (ADR-069).
 	HermesDB string
+	// CursorDB overrides where the Cursor editor's chat database is looked
+	// for. Empty means Cursor's own (globalStorage/state.vscdb in its user
+	// directory); "off" disables the import (ADR-095).
+	CursorDB string
 	// IdleAfter is the silence threshold before a session is marked idle.
 	IdleAfter time.Duration
 	// EndAfter is the silence threshold before a session is marked ended
@@ -207,6 +212,9 @@ type Daemon struct {
 	// hmIn reads Hermes Agent's state database (ADR-069), read-only. Guarded
 	// by ingMu: it starts whenever the database first appears.
 	hmIn *hermes.Ingester
+	// cuIn reads the Cursor editor's chat database (ADR-095), read-only.
+	// Guarded by ingMu: it starts whenever the database first appears.
+	cuIn *cursor.Ingester
 	// gemIn reads the telemetry files spawned Gemini sessions write. Gemini has
 	// no hooks and no transcript, so without this Caprock starts a session and
 	// then observes nothing about it — which is what 0.44.x shipped.
@@ -705,6 +713,9 @@ func (d *Daemon) run(ctx context.Context) error {
 	// answers nil while no board exists, so the Stop-loop starts working the
 	// moment the task runner is turned on rather than only on the next restart.
 	hh := &hookd.Handler{Token: rt.Token, Recorder: d.rec, Log: d.log, Decide: d.stopDecision, Handoff: d.handoff, Observe: d.observeHook, AfterMain: d.afterMain, Annotate: d.queue.annotate}
+	// Cursor's hooks, when the user has installed them: its CLI's chats, and
+	// an editor chat only when no editor database is being read (ADR-095).
+	ch := &cursor.HookHandler{Token: rt.Token, Recorder: d.rec, Log: d.log, Link: d.link, Editor: d.cursorKnows}
 
 	// API.
 	// LAN access, decided before the API is built so the pairing screen has an
@@ -778,7 +789,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.devShare = devshare.New(devshare.Options{Log: d.log, Forbid: func(p int) bool { return p == d.port }})
 	defer d.devShare.Close()
 	d.api = api.New(api.Deps{
-		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, Version: d.opt.Version, Reporter: d, Alerts: d, Morning: d, PhoneLink: d, Telegram: d.tg,
+		Store: d.store, Bus: d.bus, Table: d.table, Log: d.log, Hook: hh, CursorHook: ch, CursorHooks: d.cursorHooks, Version: d.opt.Version, Reporter: d, Alerts: d, Morning: d, PhoneLink: d, Telegram: d.tg,
 		Status: d.status, InstallHooks: d.installHooks, BypassAccepted: bypassAccepted, AcceptBypass: acceptBypass, ReadRetention: readRetention, KeepTranscripts: keepTranscripts, Storage: d.storageReport, StoragePack: func(ctx context.Context) any { return d.packReport(ctx) }, StartPack: d.startPackAPI, WindowStop: d.windowStopStatus,
 		Resources:       func(ctx context.Context) any { return d.resources(ctx) },
 		ResourceHistory: func(since int64) any { return d.resourceHistory(since) },
@@ -933,6 +944,15 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.afterMove(ctx, func() {
 		if !d.startHermes(ctx) && !d.opt.DisableIngest {
 			d.awaitHermes(ctx, openCodeAwaitEvery)
+		}
+	})
+
+	// Cursor, when this machine has its editor: one SQLite database holding
+	// every editor chat with Cursor's own cost, read-only (ADR-095). Its CLI
+	// is seen through the hooks the user can turn on (/v1/hook/cursor).
+	d.afterMove(ctx, func() {
+		if !d.startCursor(ctx) && !d.opt.DisableIngest {
+			d.awaitCursor(ctx, openCodeAwaitEvery)
 		}
 	})
 
@@ -1667,6 +1687,11 @@ type Status struct {
 	Hermes *hermes.Stats `json:"hermes,omitempty"`
 	// HermesAvailable says the hermes CLI is installed, so New agent offers it.
 	HermesAvailable bool `json:"hermes_available"`
+	// Cursor reports the Cursor editor reader, absent when the machine has no
+	// Cursor database (ADR-095).
+	Cursor *cursor.Stats `json:"cursor,omitempty"`
+	// CursorAvailable says Cursor's CLI, cursor-agent, is installed.
+	CursorAvailable bool `json:"cursor_available"`
 	OwnedActive     int  `json:"owned_active"`
 	Orchestration   bool `json:"orchestration"`
 	// Memory reports how many repositories have enough history to hand a new
@@ -1745,6 +1770,8 @@ func (d *Daemon) status(ctx context.Context) any {
 		Deepseek:        d.deepseekStats(),
 		Hermes:          d.hermesStats(),
 		HermesAvailable: d.mgr.AgentAvailable(agents.AgentHermes),
+		Cursor:          d.cursorStats(),
+		CursorAvailable: d.mgr.AgentAvailable(agents.AgentCursor),
 		ClaudeAvailable: d.mgr.ClaudeAvailable(), GeminiAvailable: d.mgr.GeminiAvailable(), OwnedActive: len(d.mgr.OwnedRunning()),
 		CodexAvailable: d.mgr.AgentAvailable(agents.AgentCodex), OpenCodeAvailable: d.mgr.AgentAvailable(agents.AgentOpenCode),
 		OpenCodeVersion: d.mgr.OpenCodeVersion(),
@@ -2264,6 +2291,11 @@ func (a *agentAdapter) Spawn(ctx context.Context, req any) (string, string, erro
 		// started, and writes the row on the first message; the importer
 		// matches it to this spawn by folder and that stamp (ADR-069).
 		a.d.link.Expect(agents.AgentHermes, ag.SessionID, ag.Cwd, ag.StartedAt, true)
+	case sr.Agent == agents.AgentCursor && sr.Resume == "":
+		// cursor-agent names its chat itself. Its hooks carry the session
+		// from the environment and link it exactly; this expectation is for
+		// a hook that arrives without it (ADR-095).
+		a.d.link.Expect(agents.AgentCursor, ag.SessionID, ag.Cwd, ag.StartedAt, true)
 	case sr.Agent == agents.AgentOpenCode && ag.Port > 0:
 		go a.d.linkOpenCode(ag)
 	case sr.Agent == agents.AgentOpenCode && ag.NativeID != "":
@@ -2836,6 +2868,8 @@ func (d *Daemon) relink(ctx context.Context, back []*agents.Agent) {
 			d.link.Expect(agents.AgentCodex, ag.SessionID, ag.Cwd, ag.StartedAt, true)
 		case ag.Kind == agents.AgentHermes && native == "":
 			d.link.Expect(agents.AgentHermes, ag.SessionID, ag.Cwd, ag.StartedAt, true)
+		case ag.Kind == agents.AgentCursor && native == "":
+			d.link.Expect(agents.AgentCursor, ag.SessionID, ag.Cwd, ag.StartedAt, true)
 		case ag.Kind == agents.AgentGemini && d.gemIn != nil:
 			d.gemIn.Track(ag.SessionID, ag.Cwd)
 		}
@@ -2890,6 +2924,129 @@ func (d *Daemon) streamOpenCode(ctx context.Context, url, nativeID string) {
 	in := d.openCodeIngester()
 	in.Touch(ctx, nativeID)
 	opencode.NewStreamer(url, d.log).Run(ctx, func(id string) { in.Touch(ctx, id) })
+}
+
+// cursorStats reports the Cursor editor reader, or nil when it is not running.
+func (d *Daemon) cursorStats() *cursor.Stats {
+	d.ingMu.Lock()
+	in := d.cuIn
+	d.ingMu.Unlock()
+	if in == nil {
+		return nil
+	}
+	st := in.Stats()
+	return &st
+}
+
+// cursorKnows reports whether the editor reader holds a chat, so a hook for
+// it is left to that reader. False while no editor database is read.
+func (d *Daemon) cursorKnows(id string) bool {
+	d.ingMu.Lock()
+	in := d.cuIn
+	d.ingMu.Unlock()
+	return in != nil && in.Known(id)
+}
+
+// cursorDBPath is the editor database the Cursor reader would open: the
+// configured path, "off", or Cursor's own, "" while there is none.
+func (d *Daemon) cursorDBPath() string {
+	if p := d.opt.CursorDB; p != "" {
+		return p
+	}
+	return cursor.DBPath()
+}
+
+// startCursor starts reading the Cursor editor's database when this machine
+// has one and the reader is not running yet, and reports whether it is
+// running. A database that cannot be read is warned about and skipped.
+func (d *Daemon) startCursor(ctx context.Context) bool {
+	if d.opt.DisableIngest {
+		return false
+	}
+	d.ingMu.Lock()
+	defer d.ingMu.Unlock()
+	if d.cuIn != nil {
+		return true
+	}
+	if d.moving() {
+		return false
+	}
+	p := d.cursorDBPath()
+	if p == "off" || p == "" {
+		return false
+	}
+	db, err := cursor.Open(p)
+	if err != nil {
+		d.log.Warn("cursor found but not readable", "component", "cursor", "path", p, "err", err)
+		return false
+	}
+	if _, err := cursor.Composers(ctx, db); err != nil {
+		d.log.Warn("cursor database found but not readable; skipping", "component", "cursor", "path", p, "err", err)
+		_ = db.Close()
+		return false
+	}
+	userDir := cursor.UserDir()
+	if d.opt.CursorDB != "" {
+		userDir = filepath.Dir(filepath.Dir(p))
+	}
+	in := cursor.NewIngester(db, p, userDir, d.rec, d.log, 10*time.Second)
+	d.cuIn = in
+	go func() {
+		defer db.Close()
+		if err := in.Run(ctx); err != nil {
+			d.log.Error("cursor ingest stopped", "component", "cursor", "err", err)
+		}
+	}()
+	d.log.Info("cursor chats are being read", "component", "cursor", "db", p)
+	return true
+}
+
+// awaitCursor starts the Cursor reader once the editor's database appears.
+func (d *Daemon) awaitCursor(ctx context.Context, every time.Duration) {
+	wait := every
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		p := d.cursorDBPath()
+		if p == "off" {
+			return
+		}
+		if p != "" {
+			if _, err := os.Stat(p); err == nil {
+				if d.startCursor(ctx) {
+					return
+				}
+				if wait < 5*time.Minute {
+					wait *= 2
+				}
+			}
+		}
+		t.Reset(wait)
+	}
+}
+
+// cursorHooks reports, installs or removes Caprock's Cursor hooks — the
+// user's click on the Cost screen (ADR-095).
+func (d *Daemon) cursorHooks(_ context.Context, action string) (any, error) {
+	p := cursor.HooksPath()
+	if p == "" {
+		return nil, errors.New("no home directory to find ~/.cursor in")
+	}
+	switch action {
+	case "install":
+		if err := hooks.EnsureShim(d.opt.DataDir); err != nil {
+			return nil, err
+		}
+		return cursor.InstallHooks(p, hooks.ShimCommand(d.opt.DataDir))
+	case "uninstall":
+		return cursor.UninstallHooks(p)
+	}
+	return cursor.InspectHooks(p)
 }
 
 // hermesStats reports the Hermes Agent reader, or nil when it is not running.

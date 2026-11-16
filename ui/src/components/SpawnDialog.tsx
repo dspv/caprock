@@ -127,6 +127,14 @@ export const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
     plan: 'Default · Hermes has no plan mode',
     bypassPermissions: 'Bypass · --yolo, never asks',
   },
+  // cursor-agent (`--help`, 2025.09.12): -f/--force allows commands unless
+  // they are explicitly denied. Plan exists only in newer CLIs as --mode, so
+  // plan and accept-edits start Cursor as it is.
+  cursor: {
+    acceptEdits: 'Default · Cursor asks before commands',
+    plan: 'Default · plan is not a flag every Cursor CLI has',
+    bypassPermissions: 'Bypass · --force, runs what is not denied',
+  },
 }
 
 /** OpenCode 2 (2.0.26) has the flag OpenCode 1 lacked: `--auto`, "auto-approve
@@ -161,6 +169,7 @@ export const DEFAULT_MODELS: Record<SpawnAgent, string> = {
   opencode: '',
   grok: '',
   hermes: '',
+  cursor: '',
 }
 
 export function SpawnDialog({
@@ -409,7 +418,7 @@ export function ModelField({
 
 /** An agent's name, short: "Codex", "OpenCode", a custom agent's own. */
 export function shortAgentName(agent: SpawnAgent, entry?: CatalogEntry): string {
-  return entry?.label ?? { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', gemini: 'Gemini', grok: 'Grok', hermes: 'Hermes' }[agent as BuiltinAgent] ?? agent.replace(/^custom:/, '')
+  return entry?.label ?? { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode', gemini: 'Gemini', grok: 'Grok', hermes: 'Hermes', cursor: 'Cursor' }[agent as BuiltinAgent] ?? agent.replace(/^custom:/, '')
 }
 
 /** The models an agent's own files list, its default first, as [value, label];

@@ -34,7 +34,7 @@ import (
 var (
 	Tables  = []string{"events", "sessions"}
 	Formats = []string{"tsv", "csv", "jsonl"}
-	Agents  = []string{"claude", "codex", "opencode", "gemini", "deepseek", "hermes"}
+	Agents  = []string{"claude", "codex", "opencode", "gemini", "deepseek", "hermes", "cursor"}
 )
 
 // Options selects what is written.

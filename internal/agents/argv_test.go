@@ -182,7 +182,7 @@ func TestOnlyClaudeCodeTouchesClaudeJSON(t *testing.T) {
 
 func TestUnknownAgentIsRefused(t *testing.T) {
 	m, _ := codexMgr(t)
-	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir(), Agent: "cursor"}); err == nil {
+	if _, err := m.Spawn(context.Background(), SpawnRequest{Cwd: t.TempDir(), Agent: "windsurf"}); err == nil {
 		t.Fatal("an agent Caprock has no argv for was started")
 	}
 }
@@ -241,7 +241,7 @@ func TestAvailabilityFollowsTheBinary(t *testing.T) {
 	if m.AgentAvailable(AgentOpenCode) {
 		t.Fatal("a bare name that was never found counts as available")
 	}
-	if m.AgentAvailable("cursor") {
+	if m.AgentAvailable("windsurf") {
 		t.Fatal("an agent Caprock cannot start counts as available")
 	}
 }

@@ -1,0 +1,39 @@
+Usage: cursor-agent [options] [command] [prompt...]
+
+Start the Cursor Agent
+
+Arguments:
+  prompt                       Initial prompt for the agent
+
+Options:
+  -v, --version                Output the version number
+  --api-key <key>              API key for authentication (can also use
+                               CURSOR_API_KEY env var)
+  -p, --print                  Print responses to console (for scripts or
+                               non-interactive use). Has access to all tools,
+                               including write and bash. (default: false)
+  --output-format <format>     Output format (only works with --print): text |
+                               json | stream-json (default: "stream-json")
+  -b, --background             Start in background mode (open composer picker on
+                               launch) (default: false)
+  --fullscreen                 Enable fullscreen mode (default: false)
+  --resume [chatId]            Resume a chat session. (default: false)
+  --model <model>              Model to use (e.g., gpt-5, sonnet-4,
+                               sonnet-4-thinking)
+  -f, --force                  Force allow commands unless explicitly denied
+                               (default: false)
+  -h, --help                   Display help for command
+
+Commands:
+  install-shell-integration    Install shell integration to ~/.zshrc
+  uninstall-shell-integration  Remove shell integration from ~/.zshrc
+  login                        Authenticate with Cursor
+  logout                       Sign out and clear stored authentication
+  mcp                          Manage MCP servers
+  status                       Check authentication status
+  update|upgrade               Update Cursor Agent to the latest version
+  create-chat                  Create a new empty chat and return its ID
+  agent [prompt...]            Start the Cursor Agent
+  ls                           Resume a chat session
+  resume                       Resume the latest chat session
+  help [command]               Display help for command

@@ -77,6 +77,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-16 — unreleased: Cursor (ADR-095)
+
+Branch `feat/cursor-agent`. Cursor's editor chats are read from its
+`state.vscdb`, read-only, with Cursor's own cost by model: on the owner's
+database the 22 of 58 chats Cursor priced import to the cent of a direct sum
+of Cursor's records; the other 36 chats are unpriced, their tokens shown.
+`cursor-agent` is started and continued from Caprock (`--model`, `--force`,
+`--resume`), and observed through Cursor's hooks, merged into
+`~/.cursor/hooks.json` only from the Cost screen's button. Each chat carries
+an estimate of what Cursor sends beyond the conversation (median 88,458 tokens
+on claude-4-sonnet over 7 clean chats, smallest 13,395), shown beside Claude
+Code's first request (median 30,848 on claude-opus-5-5 over 8,278 sessions).
+Pricing table 2026-11-16.1 adds Cursor's Composer 2.5 rows. Not verified
+against a real `cursor-agent` chat: the owner is not signed in to the CLI,
+so its hooks, chat metadata and resume run on fixtures from Cursor's docs and
+the real `--help`. Details: [25-cursor.md](25-cursor.md).
+
 ### 2026-11-15 — unreleased: the Jarvis digest (ADR-094), daemon half
 
 Branch `feat/jarvis-digest`. `GET /v1/jarvis` answers one deterministic

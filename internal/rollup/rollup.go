@@ -251,8 +251,9 @@ func (r *Recorder) prepare(ev *event.Event, info SessionInfo) (internalModel, pr
 	// from different arithmetic: one column holding two costing methods would
 	// make a session's total depend on which rows happened to be priced by
 	// whom, and nothing on screen would say so.
-	// Hermes Agent is the same (ADR-069): its figure, or none.
-	ourCosting := ev.Source != event.SourceOpenCode && ev.Source != event.SourceHermes
+	// Hermes Agent is the same (ADR-069): its figure, or none. So is Cursor
+	// (ADR-095): the cost it recorded per chat, or none.
+	ourCosting := ev.Source != event.SourceOpenCode && ev.Source != event.SourceHermes && ev.Source != event.SourceCursor
 	if ourCosting && !internalModel && ev.Kind == event.KindTurnAssistant && ev.Tokens != nil && ev.CostUSD == nil && r.Table != nil && ev.Model != "" {
 		// Priced at the turn's own timestamp, not at today's rates: an
 		// introductory price that has since expired was the real price for the

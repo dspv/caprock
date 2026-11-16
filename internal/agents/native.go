@@ -27,6 +27,7 @@ var ErrNoNativeResume = errors.New("this agent cannot reopen a session by id")
 //   - gemini: `--resume` takes "latest" or an index into the current folder's
 //     list, not an id, so nothing is sure to reopen this session.
 //   - hermes (Hermes Agent 0.21.6): `chat --resume <id>`; it has no fork.
+//   - cursor (cursor-agent 2025.09.12): `--resume <chatId>`; it has no fork.
 //
 // Forking is Claude Code's only: `codex fork` and `opencode --fork` exist, but
 // both copy the history with its cost into a new session Caprock would count
@@ -53,6 +54,11 @@ func resumeArgs(agent, id string, fork bool) ([]string, error) {
 			return nil, errors.New("hermes cannot branch a session from the command line; continue it or start a new one")
 		}
 		return []string{"chat", "--resume", id}, nil
+	case AgentCursor:
+		if fork {
+			return nil, errors.New("cursor-agent cannot branch a chat from the command line; continue it or start a new one")
+		}
+		return []string{"--resume", id}, nil
 	}
 	return nil, ErrNoNativeResume
 }
@@ -70,7 +76,7 @@ func NativeResume(agent, id string, fork bool) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	bin := agent
+	bin := commandName(agent)
 	if bin == "" {
 		bin = AgentClaude
 	}

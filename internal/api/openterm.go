@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/agents"
+	"github.com/dspv/caprock/internal/cursor"
 	"github.com/dspv/caprock/internal/nativeterm"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -101,7 +102,11 @@ func (s *Server) openTerminalInfo(sess store.Session) *OpenTerminalInfo {
 		info.Modes = []string{}
 		info.Reason = "Claude Code has deleted its transcript (it keeps them 30 days by default, see cleanupPeriodDays)."
 	}
-	if (sess.Agent == agents.AgentCodex || sess.Agent == agents.AgentOpenCode || sess.Agent == agents.AgentHermes) && sess.Owned && sess.NativeID == "" {
+	if sess.Agent == agents.AgentCursor && !cursor.ChatExists(sess.Cwd, nativeID(sess)) {
+		info.Modes = []string{}
+		info.Reason = cursorNoChat
+	}
+	if (sess.Agent == agents.AgentCodex || sess.Agent == agents.AgentOpenCode || sess.Agent == agents.AgentHermes || sess.Agent == agents.AgentCursor) && sess.Owned && sess.NativeID == "" {
 		// Started here and never linked: nothing was sent, so the agent never
 		// made a thread or a session to go back to (the same answer resume
 		// gives).
@@ -131,6 +136,8 @@ func agentLabel(agent string) string {
 		return "OpenCode"
 	case agents.AgentHermes:
 		return "Hermes"
+	case agents.AgentCursor:
+		return "Cursor"
 	}
 	return "Codex"
 }

@@ -21,7 +21,7 @@ func TestAgentFilterParam(t *testing.T) {
 		{"deepseek", "deepseek", false},
 		{"OpenCode", "", true}, // case matters; a near-miss must not silently widen
 		{"Gemini", "", true},
-		{"cursor", "", true}, // an agent we do not support is an error, not "everything"
+		{"windsurf", "", true}, // an agent we do not support is an error, not "everything"
 		{"'; DROP TABLE sessions--", "", true},
 		{"claude,opencode", "", true},
 	}

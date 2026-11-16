@@ -7416,3 +7416,52 @@ says how far its plan is, and the events say what it cost today.
 **Not built.** Detection of what a session started by hand without hooks
 is asking: it reads as the Now screen narrates it, no better. The task
 runner's approvals name no session.
+
+## ADR-095 — Cursor is read from its own database, at Cursor's own cost, its CLI through opt-in hooks; its overhead is estimated beside Claude Code's
+
+**Date:** 2026-11-16 · **Status:** accepted (owner asked for it, 2026-11-16).
+Follows [ADR-069](#adr-069--hermes-agent-is-read-from-its-own-database-priced-by-hermes-with-its-background-runs-shown-apart-caprock-can-start-it).
+Details: [25-cursor.md](25-cursor.md). Contract: [03-contracts.md § Cursor](03-contracts.md#cursor).
+
+**Context.** The owner asked for Cursor support complete enough that someone
+working in Cursor can use Caprock instead, with every model Cursor offers
+counted, and — if it can be caught — the size of the prompt Cursor adds,
+because Claude on Cursor felt slower and costlier than Claude Code. Cursor
+keeps its editor chats in a 6.6 GB SQLite file beside the user's sign-in,
+records a cost for some chats and not others, keeps one request's token count
+per turn, and gives its CLI hooks that carry no tokens. Its permission hooks
+block the action when their answer does not parse.
+
+**Decision.**
+
+- **Editor chats are read from `state.vscdb`, read-only, by key.** Only the
+  `cursorDiskKV` rows for chats and messages; never `ItemTable`, which holds
+  the sign-in. Polled every 10 s and skipped while the file is unchanged.
+- **Cost is Cursor's, or none.** `usageData` per chat and model is carried
+  as recorded, reconciled as totals change. A chat without it is unpriced,
+  its tokens shown and named, never priced from the table: tried against the
+  chats Cursor did price, the table's figure over Cursor's token counts was
+  off by half to double, because one request per turn is recorded and there
+  is no cache split.
+- **The CLI is observed through Cursor's hooks, installed only on the user's
+  click**, merged into `~/.cursor/hooks.json` beside other tools' entries,
+  and removable byte for byte. Only events that decide nothing are
+  registered; the shim answers Cursor's neutral reply before anything else
+  and exits 0 on every path (rule 3). A hook for a chat the editor database
+  holds is dropped.
+- **Caprock starts and continues `cursor-agent`** with `--model`, `--force`
+  for bypass, and `--resume <chat id>`. Models are typed, because Cursor's
+  list depends on the account and comes over the network.
+- **Overhead is an estimate with its method beside it.** Per chat: the first
+  measured request minus everything readable before it, at 4 bytes a token,
+  counted only when that readable part is at most a quarter of the request.
+  Claude Code's comparable figure is its first request's exact prompt size
+  minus the typed prompt. Both are grouped by model family and shown
+  together on the Cost screen, and Cursor's on the chat's own page.
+
+**Consequences.** A Cursor chat with no recorded cost leaves the Cost
+screen's total partial, said so on the screen. A CLI chat shows turns and
+tools but no tokens. The owner's Cursor history (2025) and Claude Code
+history (2026) share no model, so the side-by-side comparison has no common
+row on his machine yet. Cursor's background agents and team usage live on
+Cursor's servers and are not read.

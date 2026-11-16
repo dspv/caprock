@@ -21,11 +21,13 @@ const (
 	AgentGrok = "grok"
 	// AgentHermes is Nous Research's Hermes Agent CLI, `hermes` (ADR-069).
 	AgentHermes = "hermes"
+	// AgentCursor is Cursor's CLI, `cursor-agent` (ADR-095).
+	AgentCursor = "cursor"
 )
 
 // Spawnable lists the agents Caprock can start, in the order the dialog
 // offers them.
-var Spawnable = []string{AgentClaude, AgentCodex, AgentOpenCode, AgentGemini, AgentGrok, AgentHermes}
+var Spawnable = []string{AgentClaude, AgentCodex, AgentOpenCode, AgentGemini, AgentGrok, AgentHermes, AgentCursor}
 
 // IsSpawnable reports whether agent names one Caprock can start. "" is Claude
 // Code, which every request before the agent field meant.
@@ -84,6 +86,34 @@ func nvmBins(home string) []string {
 	matches, _ := filepath.Glob(filepath.Join(root, "versions", "node", "*", "bin"))
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 	return matches
+}
+
+// commandName is the executable an agent is started as: its id for every
+// agent but Cursor, whose CLI is `cursor-agent`.
+func commandName(agent string) string {
+	if agent == AgentCursor {
+		return "cursor-agent"
+	}
+	return agent
+}
+
+// findAgentBinary is findBinary for an agent id. Cursor's newer installer
+// also links its CLI as `agent` (cursor.com/docs/cli/installation, read
+// 2026-11-16), a name another vendor's CLI uses too — on the owner's machine
+// `agent` is Grok's — so `agent` is taken only when it resolves into
+// Cursor's own install directory.
+func findAgentBinary(agent string) string {
+	if p := findBinary(commandName(agent)); p != "" || agent != AgentCursor {
+		return p
+	}
+	p := findBinary("agent")
+	if p == "" {
+		return ""
+	}
+	if real, err := filepath.EvalSymlinks(p); err == nil && strings.Contains(filepath.ToSlash(real), "cursor-agent") {
+		return p
+	}
+	return ""
 }
 
 // FindBinary resolves a command the way an agent's binary is resolved: the

@@ -114,6 +114,7 @@ func Builtins(env Env, installed func(agent string) bool) []Entry {
 		geminiEntry(installed("gemini")),
 		grokEntry(env, installed("grok"), win),
 		hermesEntry(env, installed("hermes"), win),
+		cursorEntry(env, installed("cursor"), win),
 	}
 	return out
 }

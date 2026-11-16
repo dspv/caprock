@@ -132,6 +132,7 @@ export function agentDisplayName(agent?: string): string {
     case 'gemini': return 'Gemini'
     case 'deepseek': return 'DeepSeek'
     case 'hermes': return 'Hermes'
+    case 'cursor': return 'Cursor'
     default: return 'The agent'
   }
 }

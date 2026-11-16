@@ -46,6 +46,7 @@ export function composerAgentName(agent?: string): string {
     case 'deepseek': return 'DeepSeek'
     case 'grok': return 'Grok'
     case 'hermes': return 'Hermes'
+    case 'cursor': return 'Cursor'
     default: return 'the agent'
   }
 }

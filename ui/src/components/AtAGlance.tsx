@@ -62,7 +62,7 @@ export function agentRows(agents: WeekAgent[]): AgentRow[] {
       cost: a.cost_usd,
     })
   }
-  const order = ['claude', 'claude-sub', 'codex', 'opencode', 'gemini', 'deepseek', 'hermes']
+  const order = ['claude', 'claude-sub', 'codex', 'opencode', 'gemini', 'deepseek', 'hermes', 'cursor']
   const rank = (k: string) => (order.indexOf(k) < 0 ? 99 : order.indexOf(k))
   return [...by.values()].filter((r) => r.turns > 0).sort((a, b) => rank(a.key) - rank(b.key))
 }

@@ -23,6 +23,7 @@ import { UnpricedNote } from '@/components/Unpriced'
 import { CutDonut, ShareBar, SliceDot, cutSegments, sliceColors } from '@/components/Donut'
 import { WorkMix } from '@/components/WorkMix'
 import { HermesSpendPanel } from '@/components/HermesSpend'
+import { CursorSpendPanel } from '@/components/CursorSpend'
 import { CompactionsPanel } from '@/components/CompactionsPanel'
 import { CostAcrossPanel, CostScopeToggle, useCostScope } from '@/components/CostAcross'
 import { thisComputer } from '@/components/RemoteAgentSheet'
@@ -45,6 +46,9 @@ export function CostScreen({ section }: { section?: string } = {}) {
   const across = canAcross && scope === 'all'
   const summary = useApi(() => api.summary(range, undefined, across ? 'all' : undefined), [range, across], { intervalMs: 5000 })
   const daily = useApi(() => api.daily(30), [], { intervalMs: 30000 })
+  // Whether this machine has Cursor at all, so its panel (and the switch for
+  // its hooks) shows before the range has a Cursor turn.
+  const status = useApi(() => api.status(), [], { live: false, intervalMs: 60000 })
   const [plan] = usePlan()
   const [activeDay, setActiveDay] = useState<string | null>(null)
   const [dayView, setDayView] = useState<'calendar' | 'bars'>('calendar')
@@ -181,6 +185,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
         <UnpricedNote u={s?.unpriced} background={s?.background} className="mx-3 mb-2.5" />
       </Panel>
       <HermesSpendPanel h={s?.hermes} range={range} />
+      <CursorSpendPanel c={s?.cursor} range={range} present={!!status.data?.cursor || !!status.data?.cursor_available} />
       <CompactionsPanel window={{ range }} title={`Compactions · ${range}`} fold="cost.compactions" />
       {/* Three cuts of one question — by model, by kind of work, by project —
           so they sit as equals in one row rather than leaving the third

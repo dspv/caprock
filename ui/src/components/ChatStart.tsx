@@ -21,7 +21,7 @@ import { quickChoiceLabel, quickModels, rememberedQuickChoice, rememberQuickChoi
 import { AgentGlyph } from './AgentMarks'
 import { ChevronIcon, CloseIcon } from './AppIcons'
 
-const SHORT: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode', grok: 'Grok', hermes: 'Hermes' }
+const SHORT: Record<string, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode', grok: 'Grok', hermes: 'Hermes', cursor: 'Cursor' }
 
 /** The agents a chat may start on here; on a phone, only those Caprock knows by name. */
 function useChatAgents() {
