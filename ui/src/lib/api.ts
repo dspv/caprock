@@ -1262,10 +1262,6 @@ export interface Settings {
   limit_fallbacks?: ContinueTarget[]
   /** Take an automatically moved session back once its own window resets. */
   limit_return_after_reset?: boolean
-  /** Jarvis's brain: which of the user's own agent sign-ins reads plain
-   *  speech, and whether it answers routine questions (03-contracts.md §
-   *  Jarvis). Absent: never chosen. */
-  jarvis_brain?: JarvisBrainSetting
   update_checks: boolean
   plan_kind: '' | 'flat' | 'metered'
   plan_label: string
@@ -2963,15 +2959,6 @@ export const api = {
   work: () => get<Work>('/v1/work'),
   /** The Jarvis digest: what needs you, every live agent, the day so far (ADR-094); deterministic, no model. */
   jarvis: () => get<JarvisDigest>('/v1/jarvis'),
-  /** Press one of a question dialog's options (0-based), or type a free answer, in a session Caprock started; 409 once that dialog is gone, 403 for one it did not start. */
-  jarvisAnswer: (sessionId: string, answer: { option: number } | { text: string }) =>
-    post<{ ok: boolean }>('/v1/jarvis/answer', { session_id: sessionId, ...answer }),
-  /** What Caprock did on its own since `since` (unix ms), newest first. */
-  jarvisHandled: (since: number, limit = 200) => get<{ items: HandledItem[] }>(`/v1/jarvis/handled?since=${since}&limit=${limit}`),
-  /** The chat with Jarvis, oldest first. */
-  jarvisThread: (limit = 100) => get<{ messages: JarvisMessage[] }>(`/v1/jarvis/thread?limit=${limit}`),
-  /** Say something to Jarvis; slow brain replies arrive later on the live socket ("jarvis" op thread). */
-  jarvisSay: (req: { text: string; project?: string; via?: 'text' | 'voice' }) => post<JarvisSayResult>('/v1/jarvis/say', req),
   /** The chat field's send: typed in now at the prompt, otherwise queued. */
   queueSend: (id: string, text: string) => post<QueueSendResult>(`/v1/agents/${encodeURIComponent(id)}/queue`, { text }),
   queueEdit: (id: string, qid: number, text: string) => post<QueueView>(`/v1/agents/${encodeURIComponent(id)}/queue/${qid}`, { text }, 'PATCH'),
@@ -3284,77 +3271,7 @@ export interface JarvisNeed {
   approval_id?: string
   /** Caprock started the session and holds its terminal, so it may type into it (rule 7). */
   controllable: boolean
-  /** A question's options, of its first question only (Jarvis V2). */
-  options?: JarvisOption[]
-  /** Caprock can press an option for it: a session it started, one single-select question on screen. */
-  answerable?: boolean
-  /** Further questions in the same dialog; then it is not answered by a tap. */
-  more_questions?: number
 }
-
-/** One option of an agent's question dialog. `label` may carry "(Recommended)", which the screen strips. */
-export interface JarvisOption {
-  label: string
-  description?: string
-  recommended: boolean
-}
-
-/** Jarvis's brain as the digest reports it (03-contracts.md § Jarvis). */
-export interface JarvisBrain {
-  state: 'off' | 'ready' | 'signed-out' | 'error' | 'unchosen'
-  agent?: 'claude' | 'codex'
-  /** The sign-in (Settings → Subscriptions id); absent is the agent's own default. */
-  sub?: string
-  auto_answer: 'routine' | 'off'
-  note?: string
-}
-
-/** What PUT /v1/settings takes as `jarvis_brain`. */
-export interface JarvisBrainSetting {
-  agent: 'claude' | 'codex' | 'off'
-  sub?: string
-  auto_answer: 'routine' | 'off'
-}
-
-/** One thing Caprock did on its own (GET /v1/jarvis/handled). */
-export interface HandledItem {
-  id: number
-  /** Unix ms. */
-  at: number
-  kind: 'limit_switch' | 'limit_return' | 'limit_resume' | 'end_done' | 'idle_end' | 'morning' | 'auto_answer'
-  session_id?: string
-  project?: string
-  text: string
-  reason?: string
-  /** `target`, when the daemon sends it, is where Undo continues the session; otherwise the user's own sign-in. */
-  undo?: { kind: 'continue_on'; session_id: string; target?: string }
-}
-
-/** One message of the chat with Jarvis. */
-export interface JarvisMessage {
-  id: number
-  /** Unix ms. */
-  at: number
-  role: 'user' | 'jarvis'
-  text: string
-  project?: string
-  session_id?: string
-  via?: 'text' | 'voice'
-  pending?: boolean
-}
-
-/** What POST /v1/jarvis/say answers. */
-export interface JarvisSayResult {
-  message: JarvisMessage
-  replies: JarvisMessage[]
-  actions: { kind: 'sent' | 'started' | 'answered' | 'none'; session_id?: string; project?: string }[]
-}
-
-/** The live socket's "jarvis" frame. */
-export type JarvisFrame =
-  | { op: 'handled'; item: HandledItem }
-  | { op: 'thread'; message: JarvisMessage }
-  | { op: 'brain'; brain: JarvisBrain }
 
 /** The agent's own task list, folded (GET /v1/jarvis). */
 export interface JarvisPlan {
@@ -3405,10 +3322,6 @@ export interface JarvisDigest {
   agents: JarvisAgent[]
   /** Projects with live sessions, most live first. */
   projects: { name: string; live: number; waiting: number }[]
-  /** How many things Caprock handled on its own today (Jarvis V2). */
-  handled_today?: number
-  /** The brain's state; absent from a daemon before Jarvis V2. */
-  brain?: JarvisBrain
 }
 
 /** One live agent session on the Work board (GET /v1/work). */

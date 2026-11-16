@@ -148,8 +148,6 @@ func (e *endWhenDone) check(id string) {
 	}
 	e.d.releaseFromWindowStop(id)
 	e.d.log.Info("end_when_done: the turn finished; ended the session", "component", "agents", "session_id", id, "agent", a.Kind)
-	_, _ = e.d.RecordHandled(ctx, store.HandledItem{Kind: store.HandledEndDone, SessionID: id,
-		Text: "Ended when its work was done", Reason: "It was started with “end when done”, and its turn finished with nothing waiting on you."})
 }
 
 // waitingOn says what keeps a flagged session from being done, "" when

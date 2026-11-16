@@ -201,8 +201,6 @@ func (e *endIdle) check(ctx context.Context, id string, win time.Duration, now t
 	e.d.releaseFromWindowStop(id)
 	e.d.log.Info("end idle: ended a session idle with no tab", "component", "agents", "session_id", id, "agent", a.Kind,
 		"idle_for", now.Sub(last).Round(time.Minute).String(), "window", win.String())
-	_, _ = e.d.RecordHandled(ctx, store.HandledItem{Kind: store.HandledIdleEnd, SessionID: id, At: now.UnixMilli(),
-		Text: "Ended after " + plainDuration(now.Sub(last)) + " idle with no tab open", Reason: "Settings → End idle sessions is set to " + plainDuration(win) + "."})
 }
 
 // lastActive is the newest of the process's start, the session's last event

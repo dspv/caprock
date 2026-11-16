@@ -156,9 +156,6 @@ func (m *Manager) ObserveHook(sig HookSignal) {
 	case "PreToolUse":
 		m.notePreToolUse(sig)
 	case "PermissionRequest":
-		if sig.Tool == "AskUserQuestion" && sig.AgentID == "" {
-			m.noteQuestion(sig.SessionID)
-		}
 		if p := newPermission(sig); p != nil {
 			if p.toolUseID == "" {
 				p.toolUseID = m.resolveToolUse(sig.SessionID, p)
@@ -187,7 +184,6 @@ func (m *Manager) ObserveHook(sig HookSignal) {
 	case "SessionEnd":
 		m.clearPermission(sig.SessionID)
 		m.forgetCalls(sig.SessionID)
-		m.forgetQuestion(sig.SessionID)
 	}
 }
 
@@ -248,8 +244,7 @@ func (m *Manager) resolveToolUse(sessionID string, p *Permission) string {
 
 // newPermission builds the prompt a PermissionRequest describes, or nil for a
 // dialog the buttons would answer wrongly: AskUserQuestion's options are the
-// question's answers, not Yes and No — AnswerQuestion presses those
-// (question.go, ADR-096).
+// question's answers, not Yes and No.
 func newPermission(sig HookSignal) *Permission {
 	if sig.Tool == "AskUserQuestion" {
 		return nil
