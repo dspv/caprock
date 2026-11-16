@@ -422,6 +422,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-16 — 0.178.2: the Cost screen at a glance; the Release section stays
+
+A patch release, one batch PR (#920), from the owner's notes on his own Cost
+screen. The total is whole dollars and the token tiles three significant
+figures, exact on hover. Per project folds agents' throwaway folders into one
+row per stem, chats and bare folders into a row each, and long lists show
+eight rows. Cursor's overhead table splits each figure from its sample count.
+The right panel's Release section no longer vanishes when nothing is new
+since the last tag.
+
 ### 2026-11-16 — 0.178.1: Jarvis V2 withdrawn
 
 A patch release, one PR (#917). The owner tried Jarvis V2 the day it shipped
