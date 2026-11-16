@@ -399,6 +399,16 @@ describe('where it is drawn', () => {
     expect(region.querySelector('[data-release-row="631"] [data-release-carried-names]')).toHaveTextContent('fix/b-9fix/b-10')
   })
 
+  // Owner, 2026-11-16: the section vanished after every release.
+  it('keeps the Release section with one line when nothing is new since the last tag', async () => {
+    const w = workFixture()
+    h.data = { ...w, sessions: [], repos: w.repos.map((r) => ({ ...r, unreleased: undefined })) }
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByText(/Nothing new since/)
+    expect(region).toHaveAttribute('data-release-empty')
+  })
+
   it('draws nothing in the right panel for a session outside a repository', () => {
     const { container } = render(<CockpitRelease sessionId="s1" />)
     expect(container).toBeEmptyDOMElement()
