@@ -1533,7 +1533,10 @@ mode*, so No is `4` there and `3` for Write — which is why No is Esc rather th
 a digit. The second button is offered only when the first suggestion is a kind
 seen on a real prompt (`addRules`, `addDirectories`, `setMode acceptEdits`),
 never for `ExitPlanMode`, and `AskUserQuestion` gets no buttons at all, because
-its menu is the question's answers and `1` would pick one.
+its menu is the question's answers and `1` would pick one. (Amended
+2026-11-16 by [ADR-096](#adr-096--jarvis-v2s-core-a-question-answered-from-its-card-a-log-of-what-caprock-did-on-its-own-and-a-session-resumed-after-its-usage-limit-resets):
+those answers are now buttons on Jarvis's decision card, each pressing the
+option it names.)
 
 **Rules out the hook's own decision output.** `PermissionRequest` may answer
 `{"behavior":"allow"}` itself, and that would need no keys. But it has to be
@@ -7465,3 +7468,77 @@ tools but no tokens. The owner's Cursor history (2025) and Claude Code
 history (2026) share no model, so the side-by-side comparison has no common
 row on his machine yet. Cursor's background agents and team usage live on
 Cursor's servers and are not read.
+
+## ADR-096 — Jarvis V2's core: a question answered from its card, a log of what Caprock did on its own, and a session resumed after its usage limit resets
+
+**Date:** 2026-11-16 · **Status:** accepted (owner approved the Jarvis V2
+mockup, 2026-11-16). Builds on
+[ADR-094](#adr-094--jarvis-v1-a-deterministic-digest-no-model), the
+permission buttons ([ADR-035](#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook)) and the moves at a usage limit
+([ADR-090](#adr-090--at-a-usage-limit-a-session-continues-on-another-provider-or-sign-in-the-same-conversation-where-it-can-be-a-summary-where-it-cannot)).
+Contract: [03-contracts.md § Jarvis](03-contracts.md#jarvis), § Jarvis
+handled DDL (migration 0082), § Continue on another provider (*Resumed
+after the reset*). The Jarvis brain (a model on the user's own
+subscription) is the next ADR.
+
+**Context.** Jarvis V1 says what needs the person; it cannot answer any of
+it. The commonest item is an agent's question dialog with two to four
+options, one marked recommended — a choice the person makes in one tap, if
+the tap could reach the terminal. Meanwhile Caprock already acts on its
+own — moves a session at its limit and back, ends one when done or idle,
+sends the morning summary — and nothing shows the person, on their
+return, what was done for them. And a session that a usage limit stopped
+sits stopped after the window reopens until someone types "continue".
+
+**Decision.**
+
+- **A question dialog is answered from its card, in a session Caprock
+  started.** Until now AskUserQuestion got no buttons at all (ADR-035:
+  its options are answers, not Yes and No). It now gets them, as an
+  explicit per-item action of the person, through `POST
+  /v1/jarvis/answer` — never on its own (the brain's auto-answers, under
+  their own switch and policy, are the next ADR's). The keys are the ones
+  Claude Code itself reads: read from the bundled JavaScript of the
+  installed Claude Code 2.1.325, read-only, nothing run. A digit picks an
+  option and one question is submitted on the pick; the Other row is
+  focused by its digit, typed into and submitted with Enter; the preview
+  view takes the digit as focus and Enter as the pick. A test pins the
+  table and names the build it came from.
+- **Nothing is pressed blind.** As for a permission button, the screen is
+  read first: the numbered options at its bottom must start with the
+  dialog's labels in order, with the selection marker on one; otherwise
+  `409` and nothing typed. Several questions in one dialog and a
+  multi-select are left to the terminal (`422`): their keys differ and a
+  wrong one submits a half answer. Only Claude Code: Codex has a question
+  tool (`request_user_input`), but Caprock does not observe it as a need,
+  and OpenCode's reads as one but is not typed into.
+- **Handled for you is a log, not a notification.** Every action Caprock
+  takes on its own is written to `jarvis_handled` with one line of what and
+  why — a move at a limit (with its Undo: continue back where it came
+  from), a move back after the reset, a resume after the reset, an end when
+  done, an idle end, the scheduled morning summary, and the brain's
+  auto-answers — and announced as a `jarvis` live frame. Rows older than 30
+  days are deleted as new ones are written. One writer,
+  `Daemon.RecordHandled`, so the brain's items are the same shape.
+- **A session a usage limit stopped is continued once the limit resets —
+  on by default.** The reset time is already on the session
+  (`limit_hit.resets_at`, ADR-090). A minute after it, "continue" goes
+  through the session's message queue as Jarvis's Continue button sends
+  it: typed at its prompt, or queued behind what waits. Once per limit;
+  not for a session someone set going again since, one moved elsewhere,
+  one mid-turn, or one whose reset is unknown or more than six hours past.
+  Never for a session Caprock did not start (rule 7). It is on by default
+  because the person who left an agent at its limit wanted the work
+  finished, and the one action is the one they would take; Settings → When
+  a limit is reached switches it off (`limit_auto_resume`).
+
+**Rules out.** Pressing keys for a dialog the card did not describe;
+answering a multi-question or multi-select dialog by tap; resuming a
+session Caprock did not start; a notification per handled item (the log is
+read when the person comes back).
+
+**Revisit if:** a Claude Code release changes the dialog's keys (the pinned
+test and the screen check are the alarm: read the bundle again); people
+want multi-question dialogs answered from the card (a review step per
+question would be needed); or resumes after a reset fail often enough that
+a second "continue" is wanted.

@@ -1947,6 +1947,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		LimitAction:      config.NormalizeLimitAction(c.LimitAction),
 		LimitFallbacks:   append([]string{}, c.LimitFallbacks...),
 		LimitReturn:      c.LimitReturnAfterReset,
+		LimitResume:      c.LimitAutoResumeOn(),
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
 		AlertApproval:    c.AlertApprovalOn(),
@@ -2014,6 +2015,12 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	}
 	a.d.opt.Config.LimitFallbacks = slices.Clone(in.LimitFallbacks)
 	a.d.opt.Config.LimitReturnAfterReset = in.LimitReturn
+	if in.LimitResume != a.d.opt.Config.LimitAutoResumeOn() {
+		// Written only when it changes, so a config that never chose keeps
+		// following the default.
+		resume := in.LimitResume
+		a.d.opt.Config.LimitAutoResume = &resume
+	}
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	// Stored as a pointer so "never set" stays distinguishable from "turned
@@ -2348,6 +2355,12 @@ func (a *agentAdapter) Permission(id string) (any, bool) {
 // AnswerPermission answers it with "allow", "always" or "deny".
 func (a *agentAdapter) AnswerPermission(id, promptID, choice string) error {
 	return a.m.AnswerPermission(id, promptID, agents.PermissionChoice(choice))
+}
+
+// AnswerQuestion presses an option in an owned session's question dialog
+// (agents.AnswerQuestion, ADR-096).
+func (a *agentAdapter) AnswerQuestion(id string, input json.RawMessage, option int, text string) error {
+	return a.m.AnswerQuestion(id, input, option, text)
 }
 
 // observeHook hands the manager what a hook says about a permission prompt.

@@ -267,6 +267,10 @@ type Manager struct {
 	// calls is each session's newest PreToolUse calls, so a PermissionRequest
 	// — which carries no tool_use_id — is tied to the call it asks about.
 	calls map[string][]preCall
+	// questionAt is each session's output offset when its newest
+	// AskUserQuestion hook arrived: the dialog AnswerQuestion reads is
+	// drawn after it (question.go).
+	questionAt map[string]uint64
 	// persistMu serialises writing perms to the store, and persisting tracks
 	// the writes in flight (see persistPermission).
 	persistMu  sync.Mutex

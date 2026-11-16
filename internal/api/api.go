@@ -405,6 +405,9 @@ type Settings struct {
 	LimitAction    string   `json:"limit_action"`
 	LimitFallbacks []string `json:"limit_fallbacks"`
 	LimitReturn    bool     `json:"limit_return_after_reset"`
+	// LimitResume: a session Caprock started that a usage limit stopped is
+	// continued once the limit resets (ADR-096). On unless switched off.
+	LimitResume bool `json:"limit_auto_resume"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -916,6 +919,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)
 	m.HandleFunc("GET /v1/work", s.handleWork)
 	m.HandleFunc("GET /v1/jarvis", s.handleJarvis)
+	m.HandleFunc("GET /v1/jarvis/handled", s.handleJarvisHandled)
+	m.HandleFunc("POST /v1/jarvis/answer", s.handleJarvisAnswer)
 	m.HandleFunc("GET /v1/pipeline/agents", s.handlePipelineAgents)
 	m.HandleFunc("GET /v1/agents/{id}/queue", s.handleQueue)
 	m.HandleFunc("POST /v1/agents/{id}/queue", s.handleQueueSend)
@@ -1895,6 +1900,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LimitAction    *string   `json:"limit_action"`
 		LimitFallbacks *[]string `json:"limit_fallbacks"`
 		LimitReturn    *bool     `json:"limit_return_after_reset"`
+		LimitResume    *bool     `json:"limit_auto_resume"`
 		AlertApproval  *bool     `json:"alert_approval"`
 		AlertFinished  *bool     `json:"alert_finished"`
 		AlertReply     *bool     `json:"alert_reply"`
@@ -2090,6 +2096,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.LimitReturn != nil {
 		in.LimitReturn = *patch.LimitReturn
+	}
+	if patch.LimitResume != nil {
+		in.LimitResume = *patch.LimitResume
 	}
 	if patch.AlertApproval != nil {
 		in.AlertApproval = *patch.AlertApproval

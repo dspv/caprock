@@ -94,6 +94,21 @@ against a real `cursor-agent` chat: the owner is not signed in to the CLI,
 so its hooks, chat metadata and resume run on fixtures from Cursor's docs and
 the real `--help`. Details: [25-cursor.md](25-cursor.md).
 
+### 2026-11-16 — unreleased: Jarvis V2's core (ADR-096), daemon half
+
+Branch `feat/jarvis-v2-core`. The digest's question needs carry their
+options (recommended marked) and `answerable`; `POST /v1/jarvis/answer`
+presses an option or types on the Other row in a session Caprock started,
+after reading the screen. The keys were read from the installed Claude Code
+2.1.325's bundled JavaScript; verified end to end only with the fake claude
+(the smoke test `TestJarvisAnswersAQuestionDialog`) and the screen reader
+against dialogs reconstructed from that bundle, not yet against a live
+Claude Code question. Handled for you (`jarvis_handled`, migration 0082,
+`GET /v1/jarvis/handled`, the `jarvis` live frame) records limit moves and
+returns, end when done, idle ends, the morning summary and the new resume
+after a usage limit resets (`limit_auto_resume`, on by default). The
+screen, the brain and the Settings switch are other branches.
+
 ### 2026-11-15 — unreleased: the Jarvis digest (ADR-094), daemon half
 
 Branch `feat/jarvis-digest`. `GET /v1/jarvis` answers one deterministic

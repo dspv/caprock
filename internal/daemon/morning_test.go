@@ -61,6 +61,10 @@ func TestMorningSummaryGoesOncePerDay(t *testing.T) {
 	now = time.Date(2026, 11, 6, 8, 1, 0, 0, time.UTC)
 	d.morningOnce(ctx)
 	waitFor(t, "the next morning's", func() bool { return sent() == 2 })
+	// Each sent one is in Jarvis's Handled for you (ADR-096).
+	if items, err := store.ListHandled(ctx, d.store.DB(), 0, 0); err != nil || len(items) != 2 || items[0].Kind != store.HandledMorning {
+		t.Fatalf("handled %+v (%v)", items, err)
+	}
 }
 
 // Asleep at 08:00: sent on waking that morning; not once the morning is

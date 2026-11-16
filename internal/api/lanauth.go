@@ -382,6 +382,9 @@ var pairedDeviceRoutes = map[string]bool{
 	// The Jarvis digest (ADR-094): the same reads as the session list and
 	// the Work board, folded into one answer; nothing on it writes.
 	"GET /v1/jarvis": true,
+	// Jarvis's Handled for you (ADR-096): what Caprock did on its own, from
+	// its own log; a read.
+	"GET /v1/jarvis/handled": true,
 	// The Pipeline's agent figures: what an hour of agent work costs and
 	// how many agents worked, per repository; read-only.
 	"GET /v1/pipeline/agents": true,
@@ -500,6 +503,10 @@ var controllerRoutes = map[string]bool{
 
 	// Answer a permission prompt with a button (ADR-035).
 	"POST /v1/agents/{id}/permission": true,
+	// Answer a question dialog from Jarvis's decision card (ADR-096): the
+	// option pressed in a session Caprock started, as a button answers a
+	// permission prompt.
+	"POST /v1/jarvis/answer": true,
 
 	// Rename a session, as its tab and sidebar row do on the machine: a
 	// label in Caprock's own database, which runs nothing.
