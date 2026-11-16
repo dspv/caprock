@@ -12,6 +12,25 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.179.0] - 2026-11-17
+
+### Added
+
+- **ui:** two new sets of faces for Claude's portrait: eight for the New
+  Year (Santa, a snowman, a reindeer, a Christmas tree, an elf, a bauble, a
+  Santa duck and a gingerbread man) and eight dobermans in the breed's
+  black, red, blue and fawn coats with rust markings (one with floppy ears,
+  one with its tongue out, a cool one in sunglasses, a sleepy one). Each has
+  its own tab in the face menu and its own pool in Settings → Appearance
+  (*A New Year face per session*, *A doberman per session*). Nobody's
+  current face changes.
+
+### Changed
+
+- **ui:** subagents now draw their faces from every set — faces, ducks,
+  pumpkins, New Year and dobermans — whenever Claude's face is set to a
+  random pool.
+
 ## [0.178.2] - 2026-11-16
 
 ### Changed
