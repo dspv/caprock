@@ -412,6 +412,18 @@ func (m *Manager) ClaudeAvailable() bool {
 	return err == nil
 }
 
+// AgentBinary is the executable an agent starts from, "" when this machine
+// cannot launch it. Jarvis's brain runs the same one (ADR-097).
+func (m *Manager) AgentBinary(agent string) string {
+	if agent == "" || agent == AgentClaude {
+		return m.ClaudeBinary()
+	}
+	if !m.AgentAvailable(agent) {
+		return ""
+	}
+	return m.binary(agent)
+}
+
 // ClaudeBinary is the claude executable the manager starts, "" when this
 // machine has none. Second Brain's extraction calls the same one (ADR-063).
 func (m *Manager) ClaudeBinary() string {

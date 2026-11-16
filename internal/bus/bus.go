@@ -91,6 +91,11 @@ const (
 	// down — so a screen listing their sessions reads GET
 	// /v1/machines/sessions again. Local only.
 	FrameMachines FrameType = "machines"
+	// FrameJarvis is Jarvis V2's (ADR-097): {op: "thread", message} — a
+	// thread message, new or settled (a pending reply comes again with the
+	// same id) — or {op: "brain", brain} — the brain's state changed. The
+	// core's {op: "handled", item} shares the type.
+	FrameJarvis FrameType = "jarvis"
 )
 
 // Frame is what goes over /v1/live. Seq is set by Publish: one more than the

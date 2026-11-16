@@ -94,6 +94,21 @@ against a real `cursor-agent` chat: the owner is not signed in to the CLI,
 so its hooks, chat metadata and resume run on fixtures from Cursor's docs and
 the real `--help`. Details: [25-cursor.md](25-cursor.md).
 
+### 2026-11-16 — unreleased: Jarvis V2's chat and brain (ADR-097), daemon half
+
+Branch `feat/jarvis-v2-brain`. `GET /v1/jarvis/thread` and `POST
+/v1/jarvis/say` (migration 0083 `jarvis_thread`): a message is routed by the
+person's own Claude Code or Codex, headless and without tools, on the sign-in
+chosen in `jarvis_brain`, else deterministically as V1's command line did.
+Routine single-select questions in sessions Caprock started are answered by
+the brain behind a deny-word guard; "Done:" messages when an agent Jarvis
+gave work to finishes. The digest gains `brain`. Verified with fake `claude`
+and `codex` binaries only; the real flags were read from `--help` and never
+run against an account. The answer path and the Handled log are the Jarvis
+V2 core's (ADR-096, `feat/jarvis-v2-core`): until the merge wires them,
+auto-answer and the brain's "answer" action stay off, and migration 0082 is
+a placeholder the merge replaces.
+
 ### 2026-11-15 — unreleased: the Jarvis digest (ADR-094), daemon half
 
 Branch `feat/jarvis-digest`. `GET /v1/jarvis` answers one deterministic

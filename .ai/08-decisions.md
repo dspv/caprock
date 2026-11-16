@@ -7465,3 +7465,88 @@ tools but no tokens. The owner's Cursor history (2025) and Claude Code
 history (2026) share no model, so the side-by-side comparison has no common
 row on his machine yet. Cursor's background agents and team usage live on
 Cursor's servers and are not read.
+
+## ADR-097 — Jarvis V2's brain: the person's own agent, headless and without tools, routes plain speech and answers routine questions
+
+**Date:** 2026-11-16 · **Status:** accepted (owner approved the Jarvis V2
+plan, 2026-11-16: "let it run on the subscription the user picks, Claude by
+default", translated). Builds on
+[ADR-094](#adr-094--jarvis-v1-a-deterministic-digest-no-model) (the digest)
+and ADR-096 (the Jarvis V2 core: decision cards, the answer path, the
+Handled log). Contract: [03-contracts.md § Jarvis
+thread](03-contracts.md#jarvis-thread). What leaves the machine:
+[docs/jarvis-brain.md](../docs/jarvis-brain.md).
+
+**Context.** Jarvis V1's command line took `@project text` and nothing
+else, worked out in the browser. A person talking to Jarvis — typed, or
+held-to-talk on a phone — says "tell the caprock one to rebase", "what is
+stuck?", "pick the recommended one in web". That needs a model. Caprock has
+no model of its own and sends nothing readable to a server of its own (rule
+4); the person already pays for Claude Code or Codex, signed in on this
+machine, often on more than one sign-in (ADR-048).
+
+**Decision.**
+
+- **One thread, stored locally.** Every message to Jarvis and every reply
+  is a row of `jarvis_thread` (migration 0083), read by `GET
+  /v1/jarvis/thread` and pushed on the live socket. A message is
+  `POST /v1/jarvis/say`.
+- **Deterministic routing is the floor.** With no brain chosen, the brain
+  off, signed out or failing, a message is routed the way V1's command
+  line routed it, now in the daemon: the project given, else the
+  `@mention`, else the most recently active project; its most recently
+  active agent Caprock started gets it through the queue, else a new agent
+  starts in its folder. The reply says what happened in plain words, and a
+  failed run says that it failed and that the message was routed without
+  it.
+- **The brain is the person's own agent, on the sign-in they choose.**
+  `jarvis_brain: {agent: claude|codex|off, sub?, auto_answer}`; absent until
+  the person chooses once (the screen's first-use card names what is sent
+  where, Claude preselected). It runs `claude -p` or `codex exec` headless,
+  with no tool, no MCP server, no hook, no settings or memory files and no
+  session written, from an empty folder of Caprock's, with
+  `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointed at the chosen sign-in. Claude
+  Code runs `--model sonnet`: routing and a routine choice need no more,
+  and it weighs on the person's plan less than their default. Never an API
+  key of Caprock's, and never DeepSeek or Kimi (an API key is not a
+  sign-in). This is the footing of Second Brain's extraction (ADR-063),
+  AI;DR (ADR-072) and Mail's summaries: the person's own agent calling its
+  own provider, which their sessions already do, not a call of Caprock's —
+  so rule 4 holds by the setting saying what is sent and where (ADR-047),
+  and nothing runs until it is chosen.
+- **It is given the message and the digest's summary, nothing else.** The
+  message, the project it was addressed to, each need's kind, project,
+  session id, title and options, each live agent's session id, project,
+  title, state, now-line and whether Caprock may type into it. No
+  transcript, file, folder path or code. For an auto-answer: the question,
+  its options, the project and the agent's title.
+- **Its answer is a fixed JSON schema, and every action is checked.**
+  `send` only to a session Caprock started and holds (rule 7), `start` only
+  in a known project with a known folder, `answer` only on an answerable
+  question need; what could not be done is said in the reply. 90 s per run,
+  at most two at once, one per message.
+- **Auto-answer is narrow, and has a guard the model cannot talk past.**
+  Only a single single-select question dialog in a session Caprock started,
+  on screen 5 s, never a permission, a plan or prose. A deterministic list
+  of deny words (push, merge, deploy, release, publish, delete, pay,
+  credential, token, send, email, production, migrate, …) over the question
+  and every option keeps it from even asking the model; the model must call
+  the choice routine, preferring the agent's recommended option. Each
+  answer is a Handled item with its reason and a thread line. On by default
+  once the brain is on (`auto_answer: "routine"`), switched off by `off`.
+- **Its cost is shown in Jarvis, not as the person's work.** A run writes
+  no transcript and fires no hook, so it is never a session on Now or Cost;
+  the cost Claude Code reports is kept on its thread row and summed into
+  the digest's `brain.spent_today_usd`. Codex reports none.
+- **"Done:" closes the loop.** An agent Jarvis gave work to is watched
+  until it has worked and stopped, and the thread says so with its last
+  words.
+
+**Not built.** Verified only with fake `claude` and `codex` binaries that
+check the flags; the real CLIs' flags were read from their `--help` (Claude
+Code 2.1.325, codex-cli 0.163.0, 2026-11-16) and never run against an
+account. Codex reports no cost, so its runs count without one. A Codex
+signed in through the OS keyring leaves no `auth.json` and reads as signed
+out. The brain sees only live sessions; it cannot read what an agent wrote.
+Scheduled work and reviving stuck agents (the rest of the competitor's
+"master agent") are later versions' calls.

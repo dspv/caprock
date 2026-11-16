@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/jarvisbrain"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -60,6 +61,8 @@ type JarvisDigest struct {
 	NeedsYou    []JarvisNeed       `json:"needs_you"`
 	Agents      []JarvisAgent      `json:"agents"`
 	Projects    []JarvisProjectRow `json:"projects"`
+	// Brain is the state of Jarvis's brain (ADR-097, jarvischat.go).
+	Brain jarvisbrain.Status `json:"brain"`
 }
 
 // JarvisHeadline counts the live sessions by state, and today's work across
@@ -223,6 +226,7 @@ func (s *Server) Jarvis(ctx context.Context) (JarvisDigest, error) {
 		return x.Since < y.Since
 	})
 	out.Projects = jarvisProjects(out.Agents)
+	out.Brain = s.jarvisBrainStatus(ctx)
 	return out, nil
 }
 

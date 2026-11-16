@@ -6011,7 +6011,8 @@ GET /v1/jarvis → JarvisDigest
 ```
 
 - **`JarvisDigest`** — `{generated_at, headline, needs_you: [JarvisNeed],
-  agents: [JarvisAgent], projects: [{name, live, waiting}]}`; the three
+  agents: [JarvisAgent], projects: [{name, live, waiting}], brain}`
+  (`brain`: § Jarvis thread); the three
   lists are `[]`, never `null`. `generated_at` is the daemon's clock (unix
   ms).
 - **`headline`** — `{working, waiting_you, stuck, live, sessions_today,
@@ -6075,6 +6076,152 @@ GET /v1/jarvis → JarvisDigest
   36–217 ms for the first answer, which reads each live session's events
   and task list; `store.DaySpend` 0.9 ms.
 - **Who.** A read open to every paired device, as the Work board is.
+
+### Jarvis thread
+
+Jarvis V2's chat and brain ([ADR-097](08-decisions.md)): the person writes
+to Jarvis in one thread; a message goes to an agent, starts one, or answers a
+question dialog. Routed by the user's own agent — the brain — when it is
+chosen and can run, deterministically otherwise. Code:
+`internal/jarvisbrain`, `internal/api/jarvischat.go`,
+`internal/daemon/jarvisbrain.go`, `internal/store/jarvisthread.go`.
+What a brain run is given is listed in
+[docs/jarvis-brain.md](../docs/jarvis-brain.md).
+
+```
+GET  /v1/jarvis/thread?limit=<n≤200> → {messages: [JarvisMessage]}
+POST /v1/jarvis/say {text, project?, via?} → {message, replies: [JarvisMessage], actions: [SayAction]}
+```
+
+- **`JarvisMessage`** — `{id, at, role: "user"|"jarvis", text, project?,
+  session_id?, via?: "text"|"voice", pending?, cost_usd?}`, oldest first,
+  the newest `limit` (default 200; outside 1–200 is `400`). `pending` is
+  true while the brain is still answering; the settled reply comes on the
+  live socket with the same `id`, and a client replaces the row it holds.
+  `cost_usd` is on a row a brain run produced when the agent reported a
+  cost (Claude Code does; Codex does not).
+- **Say.** `text` is 1–4000 characters (`400` otherwise); `via` is `text`
+  (the default) or `voice`; `project` the target the screen chose (a
+  project chip), else `""`. The message is stored, then:
+  - **Brain ready** (the digest's `brain.state` is `ready`): `replies` is
+    one pending row ("Thinking…") and `actions` `[]`; the run happens in the
+    background and settles the row.
+  - **Otherwise, deterministic** (Jarvis V1's command line, moved to the
+    daemon): the target project is `project`, else a leading `@project` (the
+    longest known name the line starts with, any case), else the project of
+    the most recently active live agent. Its most recently active agent
+    Caprock started and holds gets the text through its queue (ADR-053) —
+    `Gave it to the agent in caprock ("title").`, plus `It was the most
+    recently active of N there.` when there were several; with none, a new
+    agent starts in the project's folder (an agent's `cwd`, else the listed
+    project's root) through the same path as `POST /v1/agents` with
+    `{cwd, prompt}` and the stated permission mode — `No agent was free in
+    X, so I started a new one.`, with `(the one running there was not
+    started by Caprock, so I left it alone)` when one was skipped (rule 7).
+    An unknown `@word`, no project at all, no text after the mention, no
+    known folder and a failed send or start each get a reply in plain words
+    and `actions: [{kind: "none"}]`.
+  - **`SayAction`** — `{kind: "sent"|"started"|"answered"|"none",
+    session_id?, project?}`.
+- **The brain's answer** is JSON to a fixed schema: `{reply, actions:
+  [{kind: "send"|"start"|"answer"|"none", project, session_id, text,
+  option}]}` (unused fields `null`, at most three actions). Each action is
+  checked before it is done: `send` only to a live session Caprock started
+  and holds (another session's id is refused with a note; an unknown one
+  falls back to the project's route); `start` only in a known project with
+  a known folder; `answer` only on a question need that is `answerable`,
+  with an option in range, through the Jarvis V2 core's answer path. What
+  could not be done is added to the reply. A run that fails, times out
+  (90 s) or answers out of shape falls back to the deterministic route, and
+  the reply says so: `The brain did not answer (<why>), so I routed it
+  myself: …`. At most two runs at once; one per message.
+- **"Done:" messages.** An agent a message was given to or started for is
+  watched (every 3 s, only while something is watched): once it has been
+  seen working, waiting or stuck and is then idle or gone, Jarvis appends
+  `Done: <title> in <project> finished. Last words: <its last prose, one
+  line, at most 280 characters>`. A watch that never sees work is dropped
+  after 10 minutes once the session is gone, any watch after 12 hours.
+- **Auto-answer** (setting `auto_answer: "routine"`, brain ready, the core's
+  answer path wired): a question need that is a single single-select
+  AskUserQuestion dialog with two or more options in a session Caprock
+  started, on screen for at least 5 s and not considered before, with no
+  deny word in its question, labels or descriptions
+  (`jarvisbrain.DenyHit`: push, merge, deploy, release, publish, delete,
+  pay, credential, token, send, email, production, migrate and the like,
+  whole words), is put to the brain with only its question, options,
+  project and agent title. Answered when the brain calls it routine and
+  picks an option: the option is pressed, a Handled item `{kind:
+  "auto_answer", session_id, project, text: "Answered \"<question>\" with
+  \"<label>\"", reason}` is recorded, and the thread gets `Answered a
+  question in <project> for you: …`. Left for the person otherwise; when the
+  brain declined, the thread says why. Never a permission, a plan or a
+  prose question.
+- **Settings.** `GET`/`PUT /v1/settings` key `jarvis_brain: {agent:
+  "claude"|"codex"|"off", sub?, auto_answer: "routine"|"off"}`, absent
+  until chosen; `PUT` with `null` forgets the choice. `sub` absent is the
+  sign-in new sessions of that agent start on (Settings → Subscriptions'
+  default), `"default"` the user's own, else a subscription id; `deepseek`,
+  `kimi`, other agents and other values are `400`. Stored in `config.json`
+  as `jarvis_brain`.
+- **Digest.** `GET /v1/jarvis` carries `brain: {state, agent?, sub?,
+  auto_answer, note?, spent_today_usd, runs_today}`. `state` is
+  `unchosen` (never set), `off`, `ready`, `signed-out` (the sign-in's files
+  say it is signed out: `subs.Status`, or for the user's own sign-in no
+  `oauthAccount`/credentials file and no credential variable in the login
+  shell), or `error` (the agent is not installed, the chosen sign-in is
+  gone, or the last run failed within 10 minutes; `note` says which).
+  `spent_today_usd` and `runs_today` are the brain's runs since local
+  midnight (thread rows with `brain = 1`); Codex runs count with no cost.
+- **Live.** Frame type `jarvis`: `{op: "thread", message: JarvisMessage}`
+  for every new or settled row, `{op: "brain", brain}` when the brain's
+  state changes (after a run, on a setting change). The core's `{op:
+  "handled", item}` shares the type.
+- **How a run is made.** `claude -p --output-format json --tools ""
+  --strict-mcp-config --no-session-persistence --setting-sources local
+  --settings <file with {"disableAllHooks": true}> --model sonnet
+  --system-prompt <instructions> --json-schema <schema>`, the context on
+  stdin; through a Windows `.cmd` shim the instructions and schema go to
+  stdin too. `codex exec --ephemeral --skip-git-repo-check
+  --ignore-user-config --ignore-rules --sandbox read-only --color never -c
+  web_search=disabled --disable <every tool feature> --output-schema
+  <file> -o <file> -`. Both from `<data>/jarvis/run`, with the login
+  shell's environment and, on a subscription, `CLAUDE_CONFIG_DIR` or
+  `CODEX_HOME` set to its directory and the credential variables that
+  would outrank it removed (as a session on it). No transcript or session
+  file is written and no hook fires, so a run never appears as a session,
+  on Now or in Cost; its cost shows in Jarvis only. Flags read from `claude
+  --help` (2.1.325) and `codex exec --help` (0.163.0) on 2026-11-16.
+- **Who.** `GET /v1/jarvis/thread` is a read open to every paired device;
+  `POST /v1/jarvis/say` is a controller's, as the chat field's queue is,
+  and a start from a phone is held to `POST /v1/agents`'s phone limits.
+
+### Jarvis thread DDL (migration 0083)
+
+```sql
+CREATE TABLE IF NOT EXISTS jarvis_thread (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  at         INTEGER NOT NULL,
+  role       TEXT NOT NULL,
+  kind       TEXT NOT NULL DEFAULT '',
+  text       TEXT NOT NULL,
+  project    TEXT NOT NULL DEFAULT '',
+  session_id TEXT NOT NULL DEFAULT '',
+  via        TEXT NOT NULL DEFAULT '',
+  pending    INTEGER NOT NULL DEFAULT 0,
+  brain      INTEGER NOT NULL DEFAULT 0,
+  cost_usd   REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_jarvis_thread_at ON jarvis_thread(at);
+```
+
+`role` is `user` or `jarvis`; `kind` what made the row (`say`, `reply`,
+`done`, `auto_answer`); `brain` 1 when a model ran for it, `cost_usd` that
+run's reported cost (0 when unknown). Pruned to the newest 2000 rows as rows
+are added. When the daemon starts, a row still `pending` becomes a note
+("Caprock restarted before the brain answered this one…"). Migration 0082 is
+the Jarvis V2 core's handled log; on this branch alone it is a placeholder
+(`0082_reserved_jarvis_handled.sql`, `SELECT 1`) that the integration merge
+replaces.
 
 ### Pipeline agents
 
