@@ -646,8 +646,20 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const subagents = useContext(SessionSubagents)
   const now = useNow(60_000)
   const plan = useMemo(() => (repoRoot ? planForRepo(work.data, repoRoot, stats.d, now, { branches, subagents }) : undefined), [work.data, repoRoot, stats.d, now, branches, subagents])
-  if (!plan || (!folded && planEmpty(plan))) return null
+  if (!plan) return null
   const n = plan.rows.length
+  // Nothing new since the last tag: the section stays and says so. Hiding
+  // it made it vanish after every release (owner, 2026-11-16).
+  if (!folded && planEmpty(plan)) {
+    return (
+      <section aria-label="Release" data-cockpit-release data-release-empty className="grid gap-2">
+        <SectionLabel>Release</SectionLabel>
+        <p className="text-[12px] text-fg-muted">
+          {!work.data ? 'Reading…' : plan.last ? <>Nothing new since <span className="num text-fg">{plan.last.name}</span></> : 'Nothing new since the last release'}
+        </p>
+      </section>
+    )
+  }
   return (
     <section aria-label="Release" data-cockpit-release className="grid gap-2">
       <SectionLabel right={folded && (
