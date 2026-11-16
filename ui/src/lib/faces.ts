@@ -19,6 +19,10 @@
  * pool, and never in FACES or in the faces-and-ducks pool, so nobody's
  * hashed face moves.
  *
+ * New Year faces and Dobermans (owner, 2026-11-17, both sets approved from
+ * a mockup) are a fourth and fifth group, kept the same way: a tab and a
+ * pool each, appended to ALL_FACES and to nothing else.
+ *
  * Kept per viewer, in this browser's storage. Storage that throws or holds
  * garbage reads as nothing chosen, so the hashed face still shows.
  */
@@ -30,17 +34,23 @@ export const FACES = ['cap', 'beanie', 'headphones', 'crown', 'wizard', 'tuft', 
 export const DUCKS = ['duck', 'duck-glasses', 'duck-headset', 'duck-party', 'duck-pirate', 'duck-hoodie', 'duck-sleepy', 'duck-rainbow'] as const
 /** The Halloween pumpkins: a group and a pool of their own, like the ducks. */
 export const PUMPKINS = ['pumpkin', 'pumpkin-witch', 'pumpkin-vampire', 'pumpkin-ghost', 'pumpkin-cat', 'pumpkin-mummy', 'pumpkin-monster', 'pumpkin-lantern'] as const
+/** The New Year faces: a group and a pool of their own. */
+export const NEW_YEAR = ['ny-santa', 'ny-snowman', 'ny-reindeer', 'ny-tree', 'ny-elf', 'ny-bauble', 'ny-santa-duck', 'ny-gingerbread'] as const
+/** The dobermans, in the breed's four coats with rust markings: a group and a pool of their own. */
+export const DOBERMANS = ['dobie-black', 'dobie-red', 'dobie-blue', 'dobie-fawn', 'dobie-floppy', 'dobie-tongue', 'dobie-cool', 'dobie-sleepy'] as const
 /** The faces-and-ducks pool: fixed at the sixteen it had, so the pumpkins moved nobody in it. */
 const FACES_AND_DUCKS = [...FACES, ...DUCKS] as const
-export const ALL_FACES = [...FACES, ...DUCKS, ...PUMPKINS] as const
+export const ALL_FACES = [...FACES, ...DUCKS, ...PUMPKINS, ...NEW_YEAR, ...DOBERMANS] as const
 export type ClaudeFace = (typeof FACES)[number]
 export type Duck = (typeof DUCKS)[number]
 export type Pumpkin = (typeof PUMPKINS)[number]
-export type Face = ClaudeFace | Duck | Pumpkin
-/** A random pool — faces only (the default), ducks only, pumpkins only, or faces and ducks — or one fixed face for all. */
-export type FacePool = 'random' | 'random-ducks' | 'random-pumpkins' | 'random-all'
+export type NewYear = (typeof NEW_YEAR)[number]
+export type Dobie = (typeof DOBERMANS)[number]
+export type Face = ClaudeFace | Duck | Pumpkin | NewYear | Dobie
+/** A random pool — faces only (the default), ducks, pumpkins, New Year or dobermans only, or faces and ducks — or one fixed face for all. */
+export type FacePool = 'random' | 'random-ducks' | 'random-pumpkins' | 'random-newyear' | 'random-dobermans' | 'random-all'
 export type FaceDefault = FacePool | Face
-export const FACE_POOLS: readonly FacePool[] = ['random', 'random-ducks', 'random-pumpkins', 'random-all']
+export const FACE_POOLS: readonly FacePool[] = ['random', 'random-ducks', 'random-pumpkins', 'random-newyear', 'random-dobermans', 'random-all']
 
 export const FACE_NAME: Record<Face, string> = {
   cap: 'Hard hat',
@@ -67,12 +77,30 @@ export const FACE_NAME: Record<Face, string> = {
   'pumpkin-mummy': 'Mummy pumpkin',
   'pumpkin-monster': 'Monster pumpkin',
   'pumpkin-lantern': 'Lantern pumpkin',
+  'ny-santa': 'Santa',
+  'ny-snowman': 'Snowman',
+  'ny-reindeer': 'Reindeer',
+  'ny-tree': 'Christmas tree',
+  'ny-elf': 'Elf',
+  'ny-bauble': 'Bauble',
+  'ny-santa-duck': 'Santa duck',
+  'ny-gingerbread': 'Gingerbread',
+  'dobie-black': 'Black & rust',
+  'dobie-red': 'Red & rust',
+  'dobie-blue': 'Blue & rust',
+  'dobie-fawn': 'Fawn & rust',
+  'dobie-floppy': 'Floppy ears',
+  'dobie-tongue': 'Tongue out',
+  'dobie-cool': 'Cool dobie',
+  'dobie-sleepy': 'Sleepy dobie',
 }
 
 export const POOL_NAME: Record<FacePool, string> = {
   random: 'A face per session',
   'random-ducks': 'A duck per session',
   'random-pumpkins': 'A pumpkin per session',
+  'random-newyear': 'A New Year face per session',
+  'random-dobermans': 'A doberman per session',
   'random-all': 'Faces and ducks',
 }
 
@@ -97,6 +125,14 @@ export function isPumpkin(v: unknown): v is Pumpkin {
   return typeof v === 'string' && (PUMPKINS as readonly string[]).includes(v)
 }
 
+export function isNewYear(v: unknown): v is NewYear {
+  return typeof v === 'string' && (NEW_YEAR as readonly string[]).includes(v)
+}
+
+export function isDobie(v: unknown): v is Dobie {
+  return typeof v === 'string' && (DOBERMANS as readonly string[]).includes(v)
+}
+
 export function isPool(v: unknown): v is FacePool {
   return typeof v === 'string' && (FACE_POOLS as readonly string[]).includes(v)
 }
@@ -105,6 +141,8 @@ function poolOf(pool: FacePool): readonly Face[] {
   switch (pool) {
     case 'random-ducks': return DUCKS
     case 'random-pumpkins': return PUMPKINS
+    case 'random-newyear': return NEW_YEAR
+    case 'random-dobermans': return DOBERMANS
     case 'random-all': return FACES_AND_DUCKS
     default: return FACES
   }
@@ -116,12 +154,16 @@ function poolOf(pool: FacePool): readonly Face[] {
  * ducks moved nobody.
  */
 export function hashedFace(sessionId: string, pool: FacePool = 'random'): Face {
+  return hashedFrom(sessionId, poolOf(pool))
+}
+
+/** FNV-1a over the key, landing on one of `faces`: the same key, the same face. */
+export function hashedFrom<F extends Face>(key: string, faces: readonly F[]): F {
   let h = 0x811c9dc5
-  for (let i = 0; i < sessionId.length; i++) {
-    h ^= sessionId.charCodeAt(i)
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i)
     h = Math.imul(h, 0x01000193)
   }
-  const faces = poolOf(pool)
   return faces[(h >>> 0) % faces.length]!
 }
 
@@ -142,10 +184,15 @@ export function loadFaceDefault(): FaceDefault {
   } catch { return 'random' }
 }
 
+/** What a pool shows with no session to hash: the first of what it picks from. */
+function poolFace(pool: FacePool): Face {
+  return pool === 'random-all' ? 'cap' : poolOf(pool)[0]!
+}
+
 /** The face a session wears: its own pick, else the fixed default, else its hash in the default's pool. */
 export function faceFor(sessionId: string | undefined): Face {
   const d = loadFaceDefault()
-  if (!sessionId) return isPool(d) ? (d === 'random-ducks' ? 'duck' : d === 'random-pumpkins' ? 'pumpkin' : 'cap') : d
+  if (!sessionId) return isPool(d) ? poolFace(d) : d
   const pick = readPicks()[sessionId]
   if (pick) return pick
   return isPool(d) ? hashedFace(sessionId, d) : d
