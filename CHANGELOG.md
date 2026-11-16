@@ -12,6 +12,57 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.178.0] - 2026-11-16
+
+### Added
+
+- **jarvis:** Jarvis is a chat now. What you write goes to the right agent,
+  starts one where none is free, or answers a question card, and the thread
+  keeps every message and reply. With a brain chosen, your own Claude Code
+  (or Codex, on the sign-in you pick) reads plain speech and answers routine
+  multiple-choice questions for you, never ones about pushing, deploying,
+  deleting, paying, credentials or sending messages; without one, `@project`
+  routing works as before. When an agent Jarvis gave work to finishes,
+  Jarvis says so with its last words. What a brain run is sent and where:
+  `docs/jarvis-brain.md`.
+- **jarvis:** a question an agent asks in a session Caprock started can be
+  answered from Jarvis in one tap: the digest carries the dialog's options
+  with the recommended one marked, and `POST /v1/jarvis/answer` presses the
+  option (or types an answer on its Other row) with the keys Claude Code
+  itself reads, only after checking the dialog is still the one on the
+  screen (ADR-096).
+- **jarvis:** Handled for you: a log of what Caprock did on its own — a
+  session moved at its usage limit (with Undo) and moved back, a session
+  resumed after its limit reset, ended when done or idle, the morning
+  summary sent — at `GET /v1/jarvis/handled` and as a live `jarvis` frame;
+  the digest counts today's.
+- **limits:** a session Caprock started that a usage limit stopped is sent
+  "continue" once the limit has reset, through its message queue as
+  Jarvis's Continue sends it. On by default; `limit_auto_resume` in
+  settings switches it off.
+- **jarvis:** Needs you is now decision cards: an agent's question shows its
+  options as buttons, the one it recommends first with a star, and one tap
+  answers it in a session Caprock started; *Something else…* types a free
+  answer. Permissions and plans to approve are one tap too (*Allow*,
+  *Deny*, *Approve and start*). Each card has *Later* (an hour) and
+  *Dismiss* (until the agent asks something new), kept per browser.
+- **jarvis:** *Handled for you* lists what Caprock did on its own today —
+  limit moves with Undo, finished and idle sessions ended, the morning
+  summary, routine questions answered — and the summary adds *I handled N
+  things myself today.*
+- **jarvis:** the command line is a chat. `@project` is optional: without
+  it the message goes to the project picked on top, else the one you
+  worked in last, and the field shows where (*→ caprock*) before you send.
+  Replies, *Done:* when an agent finishes, and replies still coming show in
+  the thread.
+- **jarvis:** hold to talk — hold ⌥Space (Ctrl+Shift+Space on Windows and
+  Linux) or the mic, speak, release to send; Esc cancels. In browsers, the
+  iOS app and the macOS app (which now asks for speech recognition once).
+- **jarvis:** Jarvis can understand plain words on your own Claude or Codex
+  subscription. A one-time card says what is sent where before anything
+  is; *Use my Claude subscription* is one click, *Choose…* picks the agent
+  and sign-in, and Settings → Jarvis has the same choice.
+
 ## [0.177.0] - 2026-11-16
 
 ### Added
