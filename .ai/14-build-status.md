@@ -422,6 +422,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.179.0: New Year and Doberman faces; subagents wear every set
+
+A minor release, one PR (#922), from the owner's approved mockup. Two new
+face groups of eight, each with its own tab and pool in Settings →
+Appearance and the face menu: New Year (Santa, snowman, reindeer, tree, elf,
+bauble, Santa duck, gingerbread) and Dobermans (black, red, blue and fawn,
+each with rust markings, plus floppy ears, tongue out, cool and sleepy).
+`FACES` and the faces-and-ducks pool are unchanged, so no session's face
+moved. A subagent under any random pool now draws from every set.
+
 ### 2026-11-16 — 0.178.2: the Cost screen at a glance; the Release section stays
 
 A patch release, one batch PR (#920), from the owner's notes on his own Cost
