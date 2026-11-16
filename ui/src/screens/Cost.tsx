@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api, isPairedDevice, type DailyStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { cacheLevel } from '@/lib/cachelevel'
-import { fmtModel, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
+import { fmtModel, fmtPct, fmtTokens, fmtTokensShort, fmtUSD, fmtUSDWhole } from '@/lib/format'
+import { foldRows, groupProjects } from '@/lib/projectGroups'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ShareWith } from '@/components/PanelShare'
 import { mdTable } from '@/lib/panelShare'
@@ -55,7 +56,12 @@ export function CostScreen({ section }: { section?: string } = {}) {
   const s = summary.data
   const modelSegs = cutSegments((s?.models ?? []).map((m) => ({ key: m.model, label: m.model ? fmtModel(m.model) : 'unknown', value: m.cost_usd })), fmtUSD)
   const modelColors = sliceColors(modelSegs)
-  const projectSegs = cutSegments((s?.projects ?? []).map((p) => ({ key: p.project, label: p.project || 'unknown', value: p.cost_usd })), fmtUSD)
+  const projects = groupProjects(s?.projects ?? [])
+  const projectSegs = cutSegments(projects.map((p) => ({ key: p.project, label: p.label, value: p.cost_usd })), fmtUSD)
+  const [modelsOpen, setModelsOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState(false)
+  const modelFold = foldRows(s?.models ?? [], modelsOpen)
+  const projectFold = foldRows(projects, projectsOpen)
   const projectColors = sliceColors(projectSegs)
   // Arriving from the plan-limit alert: bring its explanation into view once
   // there is something to show, rather than leaving the reader at the top.
@@ -157,16 +163,16 @@ export function CostScreen({ section }: { section?: string } = {}) {
               the line past the column and truncated the part that matters. */}
           {/* What the same work was of the plan, under the figure it explains
               (components/PlanShare); nothing on a metered or unstated plan. */}
-          <Stat label={costLabel(plan)} value={measured ? fmtUSD(s!.cost_usd) : '—'} trend={measured ? <PlanShare parts={asSpendParts(s!.cost_parts)} className="mt-0.5" /> : undefined} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} tone="info" size="hero" />
-          <Stat label="Burn now" value={measured ? `${fmtUSD(s!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(s!.burn.tokens_per_min))} tok/min · ${s!.sessions} sessions` : undefined}  />
-          <Stat label="Input" value={measured ? fmtTokens(s!.tokens_in) : '—'} sub="fresh, full price" />
-          <Stat label="Output" value={measured ? fmtTokens(s!.tokens_out) : '—'} sub={measured ? `${s!.turns} turns` : undefined} />
+          <Stat label={costLabel(plan)} value={measured ? <span title={fmtUSD(s!.cost_usd)}>{fmtUSDWhole(s!.cost_usd)}</span> : '—'} trend={measured ? <PlanShare parts={asSpendParts(s!.cost_parts)} className="mt-0.5" /> : undefined} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} tone="info" size="hero" />
+          <Stat label="Burn now" value={measured ? `${fmtUSD(s!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(s!.burn.tokens_per_min))} tok/min · ${s!.sessions.toLocaleString('en-US')} sessions` : undefined}  />
+          <Stat label="Input" value={measured ? <span title={s!.tokens_in.toLocaleString('en-US')}>{fmtTokensShort(s!.tokens_in)}</span> : '—'} sub="fresh, full price" />
+          <Stat label="Output" value={measured ? <span title={s!.tokens_out.toLocaleString('en-US')}>{fmtTokensShort(s!.tokens_out)}</span> : '—'} sub={measured ? `${s!.turns.toLocaleString('en-US')} turns` : undefined} />
           {/* The word goes in the sub-line here, not beside the value: on
             * this screen the headline figure is the token count and the hit
             * rate is already the caption. Same bands as everywhere else. */}
           <Stat
             label="Cache read"
-            value={measured ? fmtTokens(s!.cache_read) : '—'}
+            value={measured ? <span title={s!.cache_read.toLocaleString('en-US')}>{fmtTokensShort(s!.cache_read)}</span> : '—'}
             sub={
               measured ? (
                 <span className="inline-flex items-baseline gap-1.5">
@@ -179,7 +185,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
               ) : undefined
             }
           />
-          <Stat label="Cache write" value={measured ? fmtTokens(s!.cache_write) : '—'} sub={measured ? `${fmtPct(s!.savings.cut_pct)} input cost cut by cache` : undefined} />
+          <Stat label="Cache write" value={measured ? <span title={s!.cache_write.toLocaleString('en-US')}>{fmtTokensShort(s!.cache_write)}</span> : '—'} sub={measured ? `${fmtPct(s!.savings.cut_pct)} input cost cut by cache` : undefined} />
         </div>
         {/* The money screen is exactly where an incomplete total misleads. */}
         <UnpricedNote u={s?.unpriced} background={s?.background} className="mx-3 mb-2.5" />
@@ -216,9 +222,9 @@ export function CostScreen({ section }: { section?: string } = {}) {
                 </tr>
               </thead>
               <tbody>
-                {(s?.models ?? []).map((m) => (
+                {modelFold.shown.map((m) => (
                   <tr key={m.model} className="border-b border-border/60 last:border-0">
-                    <td className="px-3 py-1 mono whitespace-nowrap max-w-[11rem] truncate" title={m.model || undefined}><SliceDot color={modelColors.get(m.model)} />{m.model ? fmtModel(m.model) : 'unknown'}</td>
+                    <td className="px-3 py-1 mono w-full max-w-0" title={m.model || undefined}><div className="truncate"><SliceDot color={modelColors.get(m.model)} />{m.model ? fmtModel(m.model) : 'unknown'}</div></td>
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{m.turns.toLocaleString('en-US')}</td>
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{fmtTokens(m.tokens)}</td>
                     {/* An unpriced model summed to 0 and rendered "$0.00",
@@ -229,6 +235,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
                 ))}
               </tbody>
             </table>
+            <FoldRow hidden={modelFold.hidden.length} what="model" cost={modelFold.hidden.reduce((a, m) => a + m.cost_usd, 0)} open={modelsOpen} onToggle={() => setModelsOpen((o) => !o)} />
           </div>
         </Panel>
         {/* The third cut of "where did the money go": by model, by project, and
@@ -236,9 +243,9 @@ export function CostScreen({ section }: { section?: string } = {}) {
             than on a screen of its own because it answers the same question. */}
         <WorkMix summary={s} />
         <Panel fold="cost.projects" title="Per project" right={<span>by cost</span>} share="Per project">
-          {s && <ShareWith names={() => s.projects.map((p) => ({ kind: 'project' as const, value: p.project }))}
-            toText={(alias) => `By cost, ${range}.\n\n${mdTable(['Project', 'Tokens', 'Cost', 'Share'], s.projects.map((p) => [
-              p.project ? alias('project', p.project) : 'unknown', fmtTokens(p.tokens), fmtUSD(p.cost_usd), s.cost_usd > 0 ? fmtPct((p.cost_usd / s.cost_usd) * 100) : '—']))}`} />}
+          {s && <ShareWith names={() => projects.flatMap((p) => p.members.map((value) => ({ kind: 'project' as const, value })))}
+            toText={(alias) => `By cost, ${range}.\n\n${mdTable(['Project', 'Tokens', 'Cost', 'Share'], projects.map((p) => [
+              p.members.length === 1 ? (p.project ? alias('project', p.project) : 'unknown') : p.project.startsWith('\0') ? p.label : `${p.members.length} agent folders`, fmtTokens(p.tokens), fmtUSD(p.cost_usd), s.cost_usd > 0 ? fmtPct((p.cost_usd / s.cost_usd) * 100) : '—']))}`} />}
           {!s ? <Skeleton rows={4} /> : s.projects.length === 0 && <Empty title="No priced turns in range" />}
           <CutDonut segments={projectSegs} what="project" />
           <div className="overflow-x-auto">
@@ -254,9 +261,11 @@ export function CostScreen({ section }: { section?: string } = {}) {
                 </tr>
               </thead>
               <tbody>
-                {(s?.projects ?? []).map((p) => (
+                {projectFold.shown.map((p) => (
                   <tr key={p.project} className="border-b border-border/60 last:border-0">
-                    <td className="px-3 py-1 whitespace-nowrap max-w-[12rem] truncate" title={p.project || undefined}><SliceDot color={projectColors.get(p.project)} />{p.project || 'unknown'}</td>
+                    <td className="px-3 py-1 w-full max-w-0" title={p.members.length > 1 ? p.members.join('\n') : p.project || undefined}>
+                      <div className="truncate"><SliceDot color={projectColors.get(p.project)} />{p.label}{p.members.length > 1 && <span className="ml-1.5 text-fg-faint">{p.members.length}</span>}</div>
+                    </td>
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{fmtTokens(p.tokens)}</td>
                     <td className="px-3 py-1 num text-right whitespace-nowrap">{fmtUSD(p.cost_usd)}</td>
                     <td className="px-3 py-1 text-right text-fg-faint w-[5.5rem] whitespace-nowrap">{s && s.cost_usd > 0 ? <ShareBar value={p.cost_usd} total={s.cost_usd} color={projectColors.get(p.project)} /> : '—'}</td>
@@ -264,6 +273,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
                 ))}
               </tbody>
             </table>
+            <FoldRow hidden={projectFold.hidden.length} what="project" cost={projectFold.hidden.reduce((a, p) => a + p.cost_usd, 0)} open={projectsOpen} onToggle={() => setProjectsOpen((o) => !o)} />
           </div>
         </Panel>
       </div>
@@ -321,6 +331,16 @@ export function CostScreen({ section }: { section?: string } = {}) {
           : "No rate-limit events observed in this range."}
       </div>
     </div>
+  )
+}
+
+/** The line under a folded list: "Show 38 more · $72", and "Show fewer" once open. */
+function FoldRow({ hidden, what, cost, open, onToggle }: { hidden: number; what: string; cost: number; open: boolean; onToggle: () => void }) {
+  if (!open && hidden === 0) return null
+  return (
+    <button type="button" onClick={onToggle} aria-expanded={open} className="w-full px-3 py-1.5 text-left text-[12px] text-fg-muted hover:text-fg">
+      {open ? 'Show fewer' : <>Show {hidden} more {what}{hidden === 1 ? '' : 's'} <span className="num text-fg-faint">· {fmtUSD(cost)}</span></>}
+    </button>
   )
 }
 

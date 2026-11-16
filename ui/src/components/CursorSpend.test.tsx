@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { atRate, overheadCell, overheadRows, samplesCell } from './CursorSpend'
+import { atRate, overheadCell, overheadRows, samplesCount } from './CursorSpend'
 import { overheadSentence } from './CursorOverhead'
 import type { OverheadReport, SessionOverhead } from '@/lib/api'
 
@@ -32,9 +32,9 @@ describe('Cursor overhead comparison', () => {
 
   it('says how many samples stand behind a median, and a dash for none', () => {
     expect(overheadCell(report.cursor[1])).toBe('—')
-    expect(samplesCell(report.cursor[0])).toBe('7 of 14 chats')
-    expect(samplesCell(report.claude[0], 'session')).toBe('30 sessions')
-    expect(samplesCell({ ...report.cursor[0]!, samples: 1, clean: 1 })).toBe('1 chat')
+    expect(samplesCount(report.cursor[0])).toBe('7 of 14')
+    expect(samplesCount(report.claude[0])).toBe('30')
+    expect(samplesCount({ ...report.cursor[0]!, samples: 8407, clean: 8407 })).toBe('8,407')
   })
 
   it('prices a token count at a list rate per million', () => {
