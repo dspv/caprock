@@ -773,10 +773,16 @@ others. Installing it: [install-app.md](install-app.md).
   project sheet keeps its own).
 - **Jarvis.** The first row of the sidebar, or ⇧⌘J (Ctrl+Alt+Shift+J on
   Windows and Linux), shows every agent on the machine on one screen: what
-  needs you, with its action right there (the permission card, a reply,
-  Approve or Deny, Stop), one row per agent, and a command line at the
-  bottom — `@project what to do` sends it to that project's agent, or
-  starts one there when none runs. A project's × hides it on this screen
+  needs you as cards you answer with one tap (an agent's question with its
+  options, the one it recommends starred; a permission; a plan to approve),
+  Later and Dismiss on each, what Caprock handled on its own today with
+  Undo, one row per agent, and a chat with Jarvis at the bottom. Say what
+  you need; it goes to the project you name with `@project`, else the one
+  picked on top, else the one you worked in last, and the field shows
+  where before you send. Hold ⌥Space (Ctrl+Shift+Space on Windows and
+  Linux) or the mic to talk; release to send, Esc to cancel. Jarvis
+  understands plain words on your own Claude or Codex subscription once
+  you pick it (Settings → Jarvis). A project's × hides it on this screen
   until you click it again. ⇧⌘J again goes back to where you were.
 - **Work.** *Work*, second in the Dashboard's menu, or ⇧⌘W, lists every
   piece of work on your machine on its way to a release: a row per branch
@@ -1031,7 +1037,8 @@ On macOS:
 | ⌘I          | Agent cockpit (the inspector)                                                       |
 | ⌘P          | Pipeline, in a tab of its own; there, back to where you were                        |
 | ⇧⌘W         | Work on the dashboard; there, back to where you were                                |
-| ⇧⌘J         | Jarvis: every agent, what needs you, one command line; there, back                  |
+| ⇧⌘J         | Jarvis: every agent, what needs you, one chat; there, back                          |
+| ⌥Space      | In Jarvis: hold to talk, release to send; Esc cancels                               |
 | ⌘\          | Hide or show the sidebar                                                            |
 | ⌘D, ⌘0      | Dashboard tab, where you left it; again: Home, at its top                           |
 | ⌥⌘P         | Theme: open the picker                                                              |
@@ -1051,7 +1058,8 @@ projects), since Ctrl+Shift+← → are
 PowerShell's select-by-word, and moving a sidebar row is Ctrl+Shift+↑ ↓;
 a browser tab's ⌥← ⌥→ are Ctrl+PageUp and Ctrl+PageDown, since Alt+← → are
 a browser's Back and Forward there, and its Phone mode is Ctrl+Alt+Shift+D,
-since GNOME takes Ctrl+Alt+Shift+R for a screencast;
+since GNOME takes Ctrl+Alt+Shift+R for a screencast; Jarvis's hold to talk
+is Ctrl+Shift+Space, since Alt+Space opens the window menu there;
 in a text field the arrow chords stay the field's. Ctrl+Shift+C
 and Ctrl+Shift+V stay the terminal's copy and paste. Reload is F5 there:
 Ctrl+R stays the shell's history search, and F5 in a focused terminal goes

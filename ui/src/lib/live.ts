@@ -7,7 +7,7 @@
 // a ping every 10 s, and 25 s of silence means the socket is dead.
 // Retries follow lib/reconnect.ts, the policy every socket shares (WP-13).
 import { useRef, useSyncExternalStore } from 'react'
-import type { ContinueOnResult, Event, LoopAlert, Permission, QueueView, Session, Stats, TaskFrame } from './api'
+import type { ContinueOnResult, Event, JarvisFrame, LoopAlert, Permission, QueueView, Session, Stats, TaskFrame } from './api'
 import { deviceToken } from './api'
 import type { ApiShell, OpFrame, ProjectFrame } from './projects'
 import type { Footprint } from './footprint'
@@ -105,6 +105,9 @@ export type Frame = (
   // A session was continued on another provider or sign-in, by a button or
   // by Caprock (auto): the tab follows it and a toast offers Undo (ADR-090).
   | { type: 'continued'; data: ContinueOnResult }
+  // Jarvis (03-contracts.md § Jarvis): a thing handled on its own, a chat
+  // message (a brain reply, a "Done:"), the brain's state.
+  | { type: 'jarvis'; data: JarvisFrame }
 ) & { seq?: number }
 
 /**

@@ -109,6 +109,11 @@ func TestEndWhenDoneEndsAFlaggedSessionWhenItsTurnFinishes(t *testing.T) {
 	if got := ef.endedOnes(); !slices.Equal(got, []string{"s1"}) {
 		t.Fatalf("ended %v, want s1 once", got)
 	}
+	// Jarvis's Handled for you has it once (ADR-096).
+	if items, err := store.ListHandled(context.Background(), d.store.DB(), 0, 0); err != nil || len(items) != 1 ||
+		items[0].Kind != store.HandledEndDone || items[0].SessionID != "s1" {
+		t.Fatalf("handled %+v (%v)", items, err)
+	}
 }
 
 // Rule 7, and the flag being opt-in: a session started without it, and one

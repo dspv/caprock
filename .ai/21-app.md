@@ -2686,7 +2686,14 @@ the fallback since the Developer ID; see *With a Developer ID*):
   (`app/src-tauri/Entitlements.plist`), the app's Info.plist carries
   `NSMicrophoneUsageDescription` (`app/src-tauri/Info.plist`), and
   `scripts/check-app-mic.sh` checks both in CI and in `app-release.sh`. The formula's binary has no runtime
-  flag and needs neither.
+  flag and needs neither. Jarvis's hold to talk (04-ui.md § Jarvis) uses
+  the web view's own `webkitSpeechRecognition`, which WebKit serves through
+  Apple's speech recognition: macOS refuses that to an app without
+  `NSSpeechRecognitionUsageDescription`, so the Info.plist carries it too
+  (2026-11-16), and the microphone string names Jarvis. No entitlement
+  exists or is needed for speech recognition; the microphone one above
+  already covers the app. wry grants the web view's microphone request by
+  default, so the only prompts are macOS's own, on the first hold.
 - **With a Developer ID** (the Apple account since 2026-10-20): the
   Developer ID certificate replaces the self-signed one in release builds
   (`APPLE_CERTIFICATE` and notarization, `scripts/macos-developer-id.sh`,

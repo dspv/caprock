@@ -48,6 +48,12 @@ const (
 	// sign-in (api.ContinueOnResult): by a button, or by Caprock itself on
 	// a usage limit (auto true) — the app's toast, with Undo.
 	FrameContinued FrameType = "continued"
+	// FrameJarvis is Jarvis's news (03-contracts.md § Jarvis): {op:
+	// "handled", item} when Caprock did something on its own (ADR-096);
+	// {op: "thread", message}, a thread message new or settled (a pending
+	// reply comes again with the same id), and {op: "brain", brain} when the
+	// brain's state changed (ADR-097).
+	FrameJarvis FrameType = "jarvis"
 	// FrameResources is the resource meter's sample (daemon.ResourceReport),
 	// every few seconds while a dashboard is connected.
 	FrameResources FrameType = "resources"

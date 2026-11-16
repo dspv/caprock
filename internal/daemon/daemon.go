@@ -847,6 +847,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
 		BrainHandoffState: d.brainHandoffState,
+		JarvisBrain:       d.jarvisBrainDeps(ctx),
 	})
 	srv := &http.Server{Handler: d.markWrites(d.api), ReadHeaderTimeout: 10 * time.Second}
 	// Held so LAN access can be switched on later without a restart. The
@@ -1001,6 +1002,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	d.loadReportState(ctx)
 	d.goBg(func() { d.weeklyLoop(ctx) })
 	d.goBg(func() { d.morningLoop(ctx) })
+	d.goBg(func() { d.jarvisLoop(ctx) })
 	d.afterMove(ctx, func() { d.backfillToolLinks(ctx) })
 	d.afterMove(ctx, func() { d.repairEmptyText(ctx) })
 	d.afterMove(ctx, func() {
@@ -1947,6 +1949,7 @@ func (a *settingsAdapter) Get() api.Settings {
 		LimitAction:      config.NormalizeLimitAction(c.LimitAction),
 		LimitFallbacks:   append([]string{}, c.LimitFallbacks...),
 		LimitReturn:      c.LimitReturnAfterReset,
+		LimitResume:      c.LimitAutoResumeOn(),
 		ReportLastError:  a.d.reportLastError(),
 		ReportLastSentMs: a.d.reportLastSent(),
 		AlertApproval:    c.AlertApprovalOn(),
@@ -1971,6 +1974,7 @@ func (a *settingsAdapter) Get() api.Settings {
 	out.MorningSummary, out.MorningSummaryAt = c.MorningSummaryOn(), morning.NormalizeAt(c.MorningSummaryAt)
 	out.MorningSummaryLastError, out.MorningSummaryLastMs = a.d.morningState.get()
 	out.CompressToolOutput = c.CompressToolOutputOn()
+	out.JarvisBrain = jarvisSettingOf(c.JarvisBrain)
 	return out
 }
 
@@ -2014,6 +2018,13 @@ func (a *settingsAdapter) Set(in api.Settings) error {
 	}
 	a.d.opt.Config.LimitFallbacks = slices.Clone(in.LimitFallbacks)
 	a.d.opt.Config.LimitReturnAfterReset = in.LimitReturn
+	if in.LimitResume != a.d.opt.Config.LimitAutoResumeOn() {
+		// Written only when it changes, so a config that never chose keeps
+		// following the default.
+		resume := in.LimitResume
+		a.d.opt.Config.LimitAutoResume = &resume
+	}
+	a.d.opt.Config.JarvisBrain = jarvisConfigOf(in.JarvisBrain)
 	justEnabled := in.UpdateChecks && !a.d.opt.Config.UpdateChecks
 	a.d.opt.Config.UpdateChecks = in.UpdateChecks
 	// Stored as a pointer so "never set" stays distinguishable from "turned
@@ -2348,6 +2359,12 @@ func (a *agentAdapter) Permission(id string) (any, bool) {
 // AnswerPermission answers it with "allow", "always" or "deny".
 func (a *agentAdapter) AnswerPermission(id, promptID, choice string) error {
 	return a.m.AnswerPermission(id, promptID, agents.PermissionChoice(choice))
+}
+
+// AnswerQuestion presses an option in an owned session's question dialog
+// (agents.AnswerQuestion, ADR-096).
+func (a *agentAdapter) AnswerQuestion(id string, input json.RawMessage, option int, text string) error {
+	return a.m.AnswerQuestion(id, input, option, text)
 }
 
 // observeHook hands the manager what a hook says about a permission prompt.

@@ -208,6 +208,13 @@ type Config struct {
 	LimitAction           string   `json:"limit_action,omitempty"`
 	LimitFallbacks        []string `json:"limit_fallbacks,omitempty"`
 	LimitReturnAfterReset bool     `json:"limit_return_after_reset,omitempty"`
+	// LimitAutoResume types "continue" into a session Caprock started that
+	// a usage limit stopped, once that limit's window has reset (ADR-096).
+	// On unless switched off: nil is on.
+	LimitAutoResume *bool `json:"limit_auto_resume,omitempty"`
+	// JarvisBrain is what Jarvis's brain runs on (ADR-097); nil until the
+	// person chooses once.
+	JarvisBrain *JarvisBrain `json:"jarvis_brain,omitempty"`
 	// CustomAgents are coding agents the user added by command (ADR-046), a
 	// paid feature: kept whatever the licence says, offered and started only
 	// while it is active. Edited through PUT /v1/agents/custom, which
@@ -682,6 +689,13 @@ func (c Config) MemoryOn() bool {
 	return c.Memory == nil || *c.Memory
 }
 
+// LimitAutoResumeOn reports whether a session stopped by a usage limit is
+// continued once the limit resets (ADR-096). On unless switched off, kept
+// as a pointer for the reason MemoryOn's is.
+func (c Config) LimitAutoResumeOn() bool {
+	return c.LimitAutoResume == nil || *c.LimitAutoResume
+}
+
 // WindowStop is the plan-window stop's share in percent, 0 when off; never
 // chosen (nil) is off.
 func (c Config) WindowStop() int {
@@ -772,4 +786,14 @@ type BrainConfig struct {
 	// and their projects are left out of the handoff, search and the graph
 	// unless opened by name. Empty by default.
 	Exclude []string `json:"exclude,omitempty"`
+}
+
+// JarvisBrain is the jarvis_brain setting (ADR-097): the agent the brain
+// runs on ("claude", "codex" or "off"), the sign-in ("" the one new sessions
+// of that agent start on, "default" the user's own, else a subscription
+// id), and "routine" or "off" for answering routine questions.
+type JarvisBrain struct {
+	Agent      string `json:"agent"`
+	Sub        string `json:"sub,omitempty"`
+	AutoAnswer string `json:"auto_answer,omitempty"`
 }

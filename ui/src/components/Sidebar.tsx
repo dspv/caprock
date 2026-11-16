@@ -625,7 +625,7 @@ export function Sidebar(props: SidebarProps) {
             data-sidebar-jarvis
             aria-current={props.jarvisActive ? 'page' : undefined}
             aria-keyshortcuts="Shift+Meta+J"
-            title={`Jarvis: every agent, what needs you, one command line (${keys(JARVIS_KEY)})`}
+            title={`Jarvis: every agent, what needs you, one chat (${keys(JARVIS_KEY)})`}
             onClick={props.onJarvis}
             className={`app-row mt-1.5 flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[6px] pl-[10px] pr-2 text-left text-[13px] ${props.jarvisActive ? 'app-row-selected font-semibold text-fg' : 'text-fg'}`}
           >

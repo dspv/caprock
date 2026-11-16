@@ -1533,7 +1533,10 @@ mode*, so No is `4` there and `3` for Write — which is why No is Esc rather th
 a digit. The second button is offered only when the first suggestion is a kind
 seen on a real prompt (`addRules`, `addDirectories`, `setMode acceptEdits`),
 never for `ExitPlanMode`, and `AskUserQuestion` gets no buttons at all, because
-its menu is the question's answers and `1` would pick one.
+its menu is the question's answers and `1` would pick one. (Amended
+2026-11-16 by [ADR-096](#adr-096--jarvis-v2s-core-a-question-answered-from-its-card-a-log-of-what-caprock-did-on-its-own-and-a-session-resumed-after-its-usage-limit-resets):
+those answers are now buttons on Jarvis's decision card, each pressing the
+option it names.)
 
 **Rules out the hook's own decision output.** `PermissionRequest` may answer
 `{"behavior":"allow"}` itself, and that would need no keys. But it has to be
@@ -7465,3 +7468,162 @@ tools but no tokens. The owner's Cursor history (2025) and Claude Code
 history (2026) share no model, so the side-by-side comparison has no common
 row on his machine yet. Cursor's background agents and team usage live on
 Cursor's servers and are not read.
+
+## ADR-096 — Jarvis V2's core: a question answered from its card, a log of what Caprock did on its own, and a session resumed after its usage limit resets
+
+**Date:** 2026-11-16 · **Status:** accepted (owner approved the Jarvis V2
+mockup, 2026-11-16). Builds on
+[ADR-094](#adr-094--jarvis-v1-a-deterministic-digest-no-model), the
+permission buttons ([ADR-035](#adr-035--a-permission-prompt-is-answered-with-a-button-found-by-its-hook)) and the moves at a usage limit
+([ADR-090](#adr-090--at-a-usage-limit-a-session-continues-on-another-provider-or-sign-in-the-same-conversation-where-it-can-be-a-summary-where-it-cannot)).
+Contract: [03-contracts.md § Jarvis](03-contracts.md#jarvis), § Jarvis
+handled DDL (migration 0082), § Continue on another provider (*Resumed
+after the reset*). The Jarvis brain (a model on the user's own
+subscription) is the next ADR.
+
+**Context.** Jarvis V1 says what needs the person; it cannot answer any of
+it. The commonest item is an agent's question dialog with two to four
+options, one marked recommended — a choice the person makes in one tap, if
+the tap could reach the terminal. Meanwhile Caprock already acts on its
+own — moves a session at its limit and back, ends one when done or idle,
+sends the morning summary — and nothing shows the person, on their
+return, what was done for them. And a session that a usage limit stopped
+sits stopped after the window reopens until someone types "continue".
+
+**Decision.**
+
+- **A question dialog is answered from its card, in a session Caprock
+  started.** Until now AskUserQuestion got no buttons at all (ADR-035:
+  its options are answers, not Yes and No). It now gets them, as an
+  explicit per-item action of the person, through `POST
+  /v1/jarvis/answer` — never on its own (the brain's auto-answers, under
+  their own switch and policy, are the next ADR's). The keys are the ones
+  Claude Code itself reads: read from the bundled JavaScript of the
+  installed Claude Code 2.1.325, read-only, nothing run. A digit picks an
+  option and one question is submitted on the pick; the Other row is
+  focused by its digit, typed into and submitted with Enter; the preview
+  view takes the digit as focus and Enter as the pick. A test pins the
+  table and names the build it came from.
+- **Nothing is pressed blind.** As for a permission button, the screen is
+  read first: the numbered options at its bottom must start with the
+  dialog's labels in order, with the selection marker on one; otherwise
+  `409` and nothing typed. Several questions in one dialog and a
+  multi-select are left to the terminal (`422`): their keys differ and a
+  wrong one submits a half answer. Only Claude Code: Codex has a question
+  tool (`request_user_input`), but Caprock does not observe it as a need,
+  and OpenCode's reads as one but is not typed into.
+- **Handled for you is a log, not a notification.** Every action Caprock
+  takes on its own is written to `jarvis_handled` with one line of what and
+  why — a move at a limit (with its Undo: continue back where it came
+  from), a move back after the reset, a resume after the reset, an end when
+  done, an idle end, the scheduled morning summary, and the brain's
+  auto-answers — and announced as a `jarvis` live frame. Rows older than 30
+  days are deleted as new ones are written. One writer,
+  `Daemon.RecordHandled`, so the brain's items are the same shape.
+- **A session a usage limit stopped is continued once the limit resets —
+  on by default.** The reset time is already on the session
+  (`limit_hit.resets_at`, ADR-090). A minute after it, "continue" goes
+  through the session's message queue as Jarvis's Continue button sends
+  it: typed at its prompt, or queued behind what waits. Once per limit;
+  not for a session someone set going again since, one moved elsewhere,
+  one mid-turn, or one whose reset is unknown or more than six hours past.
+  Never for a session Caprock did not start (rule 7). It is on by default
+  because the person who left an agent at its limit wanted the work
+  finished, and the one action is the one they would take; Settings → When
+  a limit is reached switches it off (`limit_auto_resume`).
+
+**Rules out.** Pressing keys for a dialog the card did not describe;
+answering a multi-question or multi-select dialog by tap; resuming a
+session Caprock did not start; a notification per handled item (the log is
+read when the person comes back).
+
+**Revisit if:** a Claude Code release changes the dialog's keys (the pinned
+test and the screen check are the alarm: read the bundle again); people
+want multi-question dialogs answered from the card (a review step per
+question would be needed); or resumes after a reset fail often enough that
+a second "continue" is wanted.
+
+## ADR-097 — Jarvis V2's brain: the person's own agent, headless and without tools, routes plain speech and answers routine questions
+
+**Date:** 2026-11-16 · **Status:** accepted (owner approved the Jarvis V2
+plan, 2026-11-16: "let it run on the subscription the user picks, Claude by
+default", translated). Builds on
+[ADR-094](#adr-094--jarvis-v1-a-deterministic-digest-no-model) (the digest)
+and ADR-096 (the Jarvis V2 core: decision cards, the answer path, the
+Handled log). Contract: [03-contracts.md § Jarvis
+thread](03-contracts.md#jarvis-thread). What leaves the machine:
+[docs/jarvis-brain.md](../docs/jarvis-brain.md).
+
+**Context.** Jarvis V1's command line took `@project text` and nothing
+else, worked out in the browser. A person talking to Jarvis — typed, or
+held-to-talk on a phone — says "tell the caprock one to rebase", "what is
+stuck?", "pick the recommended one in web". That needs a model. Caprock has
+no model of its own and sends nothing readable to a server of its own (rule
+4); the person already pays for Claude Code or Codex, signed in on this
+machine, often on more than one sign-in (ADR-048).
+
+**Decision.**
+
+- **One thread, stored locally.** Every message to Jarvis and every reply
+  is a row of `jarvis_thread` (migration 0083), read by `GET
+  /v1/jarvis/thread` and pushed on the live socket. A message is
+  `POST /v1/jarvis/say`.
+- **Deterministic routing is the floor.** With no brain chosen, the brain
+  off, signed out or failing, a message is routed the way V1's command
+  line routed it, now in the daemon: the project given, else the
+  `@mention`, else the most recently active project; its most recently
+  active agent Caprock started gets it through the queue, else a new agent
+  starts in its folder. The reply says what happened in plain words, and a
+  failed run says that it failed and that the message was routed without
+  it.
+- **The brain is the person's own agent, on the sign-in they choose.**
+  `jarvis_brain: {agent: claude|codex|off, sub?, auto_answer}`; absent until
+  the person chooses once (the screen's first-use card names what is sent
+  where, Claude preselected). It runs `claude -p` or `codex exec` headless,
+  with no tool, no MCP server, no hook, no settings or memory files and no
+  session written, from an empty folder of Caprock's, with
+  `CLAUDE_CONFIG_DIR` or `CODEX_HOME` pointed at the chosen sign-in. Claude
+  Code runs `--model sonnet`: routing and a routine choice need no more,
+  and it weighs on the person's plan less than their default. Never an API
+  key of Caprock's, and never DeepSeek or Kimi (an API key is not a
+  sign-in). This is the footing of Second Brain's extraction (ADR-063),
+  AI;DR (ADR-072) and Mail's summaries: the person's own agent calling its
+  own provider, which their sessions already do, not a call of Caprock's —
+  so rule 4 holds by the setting saying what is sent and where (ADR-047),
+  and nothing runs until it is chosen.
+- **It is given the message and the digest's summary, nothing else.** The
+  message, the project it was addressed to, each need's kind, project,
+  session id, title and options, each live agent's session id, project,
+  title, state, now-line and whether Caprock may type into it. No
+  transcript, file, folder path or code. For an auto-answer: the question,
+  its options, the project and the agent's title.
+- **Its answer is a fixed JSON schema, and every action is checked.**
+  `send` only to a session Caprock started and holds (rule 7), `start` only
+  in a known project with a known folder, `answer` only on an answerable
+  question need; what could not be done is said in the reply. 90 s per run,
+  at most two at once, one per message.
+- **Auto-answer is narrow, and has a guard the model cannot talk past.**
+  Only a single single-select question dialog in a session Caprock started,
+  on screen 5 s, never a permission, a plan or prose. A deterministic list
+  of deny words (push, merge, deploy, release, publish, delete, pay,
+  credential, token, send, email, production, migrate, …) over the question
+  and every option keeps it from even asking the model; the model must call
+  the choice routine, preferring the agent's recommended option. Each
+  answer is a Handled item with its reason and a thread line. On by default
+  once the brain is on (`auto_answer: "routine"`), switched off by `off`.
+- **Its cost is shown in Jarvis, not as the person's work.** A run writes
+  no transcript and fires no hook, so it is never a session on Now or Cost;
+  the cost Claude Code reports is kept on its thread row and summed into
+  the digest's `brain.spent_today_usd`. Codex reports none.
+- **"Done:" closes the loop.** An agent Jarvis gave work to is watched
+  until it has worked and stopped, and the thread says so with its last
+  words.
+
+**Not built.** Verified only with fake `claude` and `codex` binaries that
+check the flags; the real CLIs' flags were read from their `--help` (Claude
+Code 2.1.325, codex-cli 0.163.0, 2026-11-16) and never run against an
+account. Codex reports no cost, so its runs count without one. A Codex
+signed in through the OS keyring leaves no `auth.json` and reads as signed
+out. The brain sees only live sessions; it cannot read what an agent wrote.
+Scheduled work and reviving stuck agents (the rest of the competitor's
+"master agent") are later versions' calls.

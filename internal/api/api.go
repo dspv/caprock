@@ -36,6 +36,7 @@ import (
 	"github.com/dspv/caprock/internal/gitdiff"
 	"github.com/dspv/caprock/internal/github"
 	"github.com/dspv/caprock/internal/gitremote"
+	"github.com/dspv/caprock/internal/jarvisbrain"
 	"github.com/dspv/caprock/internal/keepawake"
 	"github.com/dspv/caprock/internal/license"
 	"github.com/dspv/caprock/internal/loop"
@@ -289,6 +290,9 @@ type Deps struct {
 	// ModuleNotify shows a module's desktop notification (POST
 	// /v1/x/{id}/notify). nil ⇒ the route answers 204 and shows nothing.
 	ModuleNotify ModuleNotifier
+	// JarvisBrain is Jarvis V2's chat and brain (ADR-097, jarvischat.go).
+	// Nil leaves GET /v1/jarvis/thread and POST /v1/jarvis/say answering 501.
+	JarvisBrain *JarvisBrainDeps
 	// DataDir is where Caprock keeps its own state. Needed so a file pasted
 	// into the terminal can be written somewhere Claude Code can read it by
 	// path. Empty ⇒ POST /v1/paste returns 501.
@@ -405,6 +409,9 @@ type Settings struct {
 	LimitAction    string   `json:"limit_action"`
 	LimitFallbacks []string `json:"limit_fallbacks"`
 	LimitReturn    bool     `json:"limit_return_after_reset"`
+	// LimitResume: a session Caprock started that a usage limit stopped is
+	// continued once the limit resets (ADR-096). On unless switched off.
+	LimitResume bool `json:"limit_auto_resume"`
 	// ReportLastError is why the last send failed, empty when it did not.
 	//
 	// A weekly message that silently stops arriving is the failure mode this
@@ -509,6 +516,11 @@ type Settings struct {
 	// one of config.AppUpdateModes. GET returns the effective mode, "ask"
 	// when never chosen.
 	AppUpdate string `json:"app_update"`
+	// JarvisBrain is what Jarvis's brain runs on (ADR-097): the agent
+	// (claude, codex or off), the sign-in and whether it answers routine
+	// questions. Absent until the person chooses once; PUT with null forgets
+	// the choice.
+	JarvisBrain *jarvisbrain.Setting `json:"jarvis_brain,omitempty"`
 }
 
 // ReportSender sends one weekly report immediately.
@@ -686,6 +698,9 @@ type Server struct {
 	socks deviceSockets
 	// tldr holds the AI;DR squeezes in flight, one per answer (tldr.go).
 	tldr tldrFlights
+	// jarvis is Jarvis V2's chat and brain (jarvischat.go); nil without
+	// Deps.JarvisBrain.
+	jarvis *jarvisbrain.Engine
 }
 
 // New builds the router.
@@ -710,6 +725,9 @@ func New(d Deps) *Server {
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
 		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
 	s.ws.hold = s.holdSocket
+	if d.JarvisBrain != nil {
+		s.jarvis = s.newJarvisEngine()
+	}
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
 			_ = s.d.Agents.Resize(id, cols, rows)
@@ -916,6 +934,10 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/queue", s.handleQueueBoard)
 	m.HandleFunc("GET /v1/work", s.handleWork)
 	m.HandleFunc("GET /v1/jarvis", s.handleJarvis)
+	m.HandleFunc("GET /v1/jarvis/handled", s.handleJarvisHandled)
+	m.HandleFunc("POST /v1/jarvis/answer", s.handleJarvisAnswer)
+	m.HandleFunc("GET /v1/jarvis/thread", s.handleJarvisThread)
+	m.HandleFunc("POST /v1/jarvis/say", s.handleJarvisSay)
 	m.HandleFunc("GET /v1/pipeline/agents", s.handlePipelineAgents)
 	m.HandleFunc("GET /v1/agents/{id}/queue", s.handleQueue)
 	m.HandleFunc("POST /v1/agents/{id}/queue", s.handleQueueSend)
@@ -1895,6 +1917,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LimitAction    *string   `json:"limit_action"`
 		LimitFallbacks *[]string `json:"limit_fallbacks"`
 		LimitReturn    *bool     `json:"limit_return_after_reset"`
+		LimitResume    *bool     `json:"limit_auto_resume"`
 		AlertApproval  *bool     `json:"alert_approval"`
 		AlertFinished  *bool     `json:"alert_finished"`
 		AlertReply     *bool     `json:"alert_reply"`
@@ -1909,6 +1932,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		// Merged, not replaced: each named prompt keeps the later time, 0 clears one, and
 		// prompts not named keep their answer.
 		Prompts map[string]int64 `json:"prompts"`
+		// An object sets the brain, null forgets the choice (ADR-097).
+		JarvisBrain json.RawMessage `json:"jarvis_brain"`
 	}
 	// 16 KiB: the quick replies are the largest field, ten of 300 bytes.
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&patch); err != nil {
@@ -2091,6 +2116,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if patch.LimitReturn != nil {
 		in.LimitReturn = *patch.LimitReturn
 	}
+	if patch.LimitResume != nil {
+		in.LimitResume = *patch.LimitResume
+	}
 	if patch.AlertApproval != nil {
 		in.AlertApproval = *patch.AlertApproval
 	}
@@ -2137,6 +2165,25 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Prompts = merged
 	}
+	jarvisChanged := false
+	if len(patch.JarvisBrain) > 0 {
+		jarvisChanged = true
+		if string(patch.JarvisBrain) == "null" {
+			in.JarvisBrain = nil
+		} else {
+			var jb jarvisbrain.Setting
+			if err := json.Unmarshal(patch.JarvisBrain, &jb); err != nil {
+				s.failCode(w, http.StatusBadRequest, errors.New("jarvis_brain is {agent, sub?, auto_answer?} or null"))
+				return
+			}
+			jb, err := jb.Normalize()
+			if err != nil {
+				s.failCode(w, http.StatusBadRequest, err)
+				return
+			}
+			in.JarvisBrain = &jb
+		}
+	}
 	if patch.LicenseKey != nil {
 		in.LicenseKey = *patch.LicenseKey
 	}
@@ -2162,6 +2209,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if err := s.d.Settings.Set(in); err != nil {
 		s.fail(w, err)
 		return
+	}
+	if jarvisChanged {
+		s.JarvisSettingChanged(r.Context())
 	}
 	writeJSON(w, http.StatusOK, s.d.Settings.Get())
 }

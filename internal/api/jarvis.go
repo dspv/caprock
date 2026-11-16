@@ -12,6 +12,7 @@ import (
 
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/jarvisbrain"
 	"github.com/dspv/caprock/internal/narrate"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -60,6 +61,11 @@ type JarvisDigest struct {
 	NeedsYou    []JarvisNeed       `json:"needs_you"`
 	Agents      []JarvisAgent      `json:"agents"`
 	Projects    []JarvisProjectRow `json:"projects"`
+	// HandledToday counts what Caprock did on its own today (Handled for
+	// you, ADR-096).
+	HandledToday int `json:"handled_today"`
+	// Brain is the state of Jarvis's brain (ADR-097, jarvischat.go).
+	Brain jarvisbrain.Status `json:"brain"`
 }
 
 // JarvisHeadline counts the live sessions by state, and today's work across
@@ -88,6 +94,17 @@ type JarvisNeed struct {
 	Since        int64  `json:"since"`
 	ApprovalID   string `json:"approval_id,omitempty"`
 	Controllable bool   `json:"controllable"`
+	// Options are a question dialog's answers, its first question's
+	// (ADR-096): the label with "(Recommended)" taken out and recommended
+	// set instead.
+	Options []agents.QuestionOption `json:"options,omitempty"`
+	// Answerable: POST /v1/jarvis/answer can press an option for it — a
+	// Claude Code session Caprock started and holds, one single-select
+	// question.
+	Answerable bool `json:"answerable"`
+	// MoreQuestions is how many further questions the same dialog asks; a
+	// dialog with any is answered in the terminal.
+	MoreQuestions int `json:"more_questions,omitempty"`
 }
 
 // JarvisAgent is one live session.
@@ -223,6 +240,10 @@ func (s *Server) Jarvis(ctx context.Context) (JarvisDigest, error) {
 		return x.Since < y.Since
 	})
 	out.Projects = jarvisProjects(out.Agents)
+	if out.HandledToday, err = store.CountHandledSince(ctx, db, day); err != nil {
+		return out, err
+	}
+	out.Brain = s.jarvisBrainStatus(ctx)
 	return out, nil
 }
 
@@ -300,7 +321,12 @@ func jarvisNeed(sum SessionSummary, a JarvisAgent, last []event.Event) (JarvisNe
 		}
 	case narrate.NeedQuestion:
 		if hasPrompt {
-			n.Title, n.Detail = questionLine(toolInputOf(prompt.Payload))
+			in := toolInputOf(prompt.Payload)
+			n.Title, n.Detail = questionLine(in)
+			if d, ok := agents.ParseQuestion(in); ok && prompt.Tool == "AskUserQuestion" {
+				n.Options, n.MoreQuestions = d.Options, d.More
+				n.Answerable = a.Controllable && a.Agent == agents.AgentClaude && d.Answerable()
+			}
 		}
 		if n.Title == "" {
 			n.Title = "Asks you a question"

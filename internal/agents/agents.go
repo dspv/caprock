@@ -267,6 +267,10 @@ type Manager struct {
 	// calls is each session's newest PreToolUse calls, so a PermissionRequest
 	// — which carries no tool_use_id — is tied to the call it asks about.
 	calls map[string][]preCall
+	// questionAt is each session's output offset when its newest
+	// AskUserQuestion hook arrived: the dialog AnswerQuestion reads is
+	// drawn after it (question.go).
+	questionAt map[string]uint64
 	// persistMu serialises writing perms to the store, and persisting tracks
 	// the writes in flight (see persistPermission).
 	persistMu  sync.Mutex
@@ -410,6 +414,18 @@ func (m *Manager) ClaudeAvailable() bool {
 	}
 	_, err := exec.LookPath(m.claude)
 	return err == nil
+}
+
+// AgentBinary is the executable an agent starts from, "" when this machine
+// cannot launch it. Jarvis's brain runs the same one (ADR-097).
+func (m *Manager) AgentBinary(agent string) string {
+	if agent == "" || agent == AgentClaude {
+		return m.ClaudeBinary()
+	}
+	if !m.AgentAvailable(agent) {
+		return ""
+	}
+	return m.binary(agent)
 }
 
 // ClaudeBinary is the claude executable the manager starts, "" when this
