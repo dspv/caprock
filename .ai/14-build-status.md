@@ -422,12 +422,6 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
-### 2026-11-16 — 0.178.1: Jarvis V2 withdrawn
-
-A patch release. The owner tried Jarvis V2 the day it shipped and found it
-hard to understand next to V1; it was reverted whole (ADR-098) and Jarvis is
-the V1 digest again. Migrations 0082 and 0083 stay, their tables unused.
-
 ### 2026-11-16 — 0.178.0: Jarvis V2 — decision cards, Handled for you, one chat, hold to talk, and a brain on the user's own subscription
 
 A minor release, one batch PR (#915). From the owner's approved mockup (2026-11-16). **Decision cards** (ADR-096): a question need carries its options, the agent's recommended one first with a star, and one tap presses it in a session Caprock started (`POST /v1/jarvis/answer`, after reading the dialog off the screen; keys read from Claude Code 2.1.325's bundle, verified end to end with the fake claude only); permissions and plans answer from the card; Later and Dismiss per browser. **Handled for you** (`jarvis_handled`, migration 0082): limit moves and returns, end when done, idle ends, the morning summary, and the new resume after a usage limit resets (`limit_auto_resume`, on by default). **Chat** (migration 0083 `jarvis_thread`, `POST /v1/jarvis/say`): `@project` optional, the target shown before sending, "Done:" messages when an agent finishes. **Hold to talk**: ⌥Space on macOS, Ctrl+Shift+Space elsewhere, the mic in the browser and the macOS app. **The brain** (ADR-097): the user's own Claude Code (default) or Codex, headless and without tools, on the sign-in they choose, off until chosen once from a card that says what is sent; it routes plain speech and answers routine single-select questions behind a deny-word guard, each written to Handled. Not yet seen on a live Claude Code question dialog: a wrong screen read refuses with 409 rather than mistyping.
