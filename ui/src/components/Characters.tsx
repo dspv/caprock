@@ -13,7 +13,7 @@
  */
 
 import { useId } from 'react'
-import { isDuck, isPumpkin, type ClaudeFace, type Duck, type Face, type Pumpkin } from '@/lib/faces'
+import { isDobie, isDuck, isNewYear, isPumpkin, type ClaudeFace, type Dobie, type Duck, type Face, type NewYear, type Pumpkin } from '@/lib/faces'
 
 export type Character = 'lead' | 'crowd' | 'codex' | 'opencode' | 'gemini' | 'deepseek' | 'hermes' | 'cursor'
 
@@ -422,12 +422,302 @@ function PumpkinBody({ pumpkin, outline }: { pumpkin: Pumpkin; outline: { stroke
   }
 }
 
+/*
+ * The New Year faces (lib/faces.ts): Santa, the elf and the reindeer are the
+ * pebble, the Santa duck is the rubber duck, and the snowman, the tree, the
+ * bauble and the gingerbread man are drawn in the same 80x80 box on the same
+ * shadow, the eyes near where the pebble's are.
+ */
+const RED = '#d6504a'
+const RED_DEEP = '#b33f3a'
+const SNOW = '#f4f1ea'
+const SNOW_SHADE = '#ddd6ca'
+const GOLD = '#f2c94c'
+const GOLD_DEEP = '#d9a92e'
+const ICING = '#fbf7ef'
+const GINGER_LIMBS = 'M21 43L59 43M34 55L27 66M46 55L53 66'
+
+function NewYearBody({ face, outline }: { face: NewYear; outline: { stroke: string; strokeWidth: number } }) {
+  const eyes = (<><circle cx="31" cy="46" r="4" fill={INK} /><circle cx="49" cy="46" r="4" fill={INK} /><circle cx="32.3" cy="44.6" r="1.3" fill="#fff" /><circle cx="50.3" cy="44.6" r="1.3" fill="#fff" /></>)
+  const cheeks = (c: string) => (<><circle cx="23" cy="53" r="3.2" fill={c} opacity=".75" /><circle cx="57" cy="53" r="3.2" fill={c} opacity=".75" /></>)
+  switch (face) {
+    case 'ny-santa':
+      // Santa: a soft-amber pebble, a red hat whose tip flops to the right, a white beard.
+      return (
+        <>
+          <Shadow />
+          <path d={PEBBLE} fill={AMBER_SOFT} />
+          <path d="M17 34c0-13 10-21 23-21 10 0 18 4 23 11l7 13-6 1.5c-1.5-4-3.5-7-6-9v4.5z" fill={RED} strokeLinejoin="round" {...outline} />
+          <circle cx="68" cy="38.5" r="5" fill={SNOW} {...outline} />
+          <rect x="15" y="29" width="50" height="9" rx="4.5" fill={SNOW} {...outline} />
+          <path d="M15 49c3 4 7 6 11 6h28c4 0 8-2 11-6 1 11-5 21-13 24-4 1.5-8 2-12 2s-8-.5-12-2c-8-3-14-13-13-24z" fill={SNOW} {...outline} />
+          <path d="M24 63c3 3 6 5 9 6M56 63c-3 3-6 5-9 6" stroke={SNOW_SHADE} strokeWidth="1.6" fill="none" strokeLinecap="round" />
+          {eyes}
+          <circle cx="22.5" cy="50" r="3" fill="#e3807f" opacity=".75" /><circle cx="57.5" cy="50" r="3" fill="#e3807f" opacity=".75" />
+          <ellipse cx="40" cy="60.5" rx="3" ry="2.2" fill={INK} />
+          <path d="M40 55.5c-3-3.5-9-3.5-12 .5 3.5 2.5 9 2.5 12-.5zM40 55.5c3-3.5 9-3.5 12 .5-3.5 2.5-9 2.5-12-.5z" fill="#fff" {...outline} />
+          <circle cx="40" cy="52.5" r="2.8" fill="#e8907a" />
+        </>
+      )
+    case 'ny-snowman':
+      // A snowman: coal eyes and smile, a carrot nose, a crooked bucket, a red scarf.
+      return (
+        <>
+          <Shadow rx={20} />
+          <ellipse cx="40" cy="63" rx="19" ry="10" fill={SNOW_SHADE} {...outline} />
+          <circle cx="40" cy="41" r="19" fill={SNOW} {...outline} />
+          <g transform="rotate(-10 40 22)">
+            <path d="M28 24l3-15h18l3 15z" fill="#7f9bb3" strokeLinejoin="round" {...outline} />
+            <path d="M30.3 13.5h19.4" stroke="#9fb6c9" strokeWidth="2" strokeLinecap="round" />
+            <rect x="25" y="22" width="30" height="5" rx="2.5" fill="#6a849b" {...outline} />
+            <path d="M29 18c-4 1-5 5-3 8" stroke="#4d6275" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+          </g>
+          <circle cx="33" cy="39" r="3.4" fill={INK} /><circle cx="47" cy="39" r="3.4" fill={INK} />
+          <circle cx="34.1" cy="37.8" r="1.1" fill="#fff" /><circle cx="48.1" cy="37.8" r="1.1" fill="#fff" />
+          <path d="M39 43.5l17 4c1 .3 1 1.3 0 1.6L39.5 49c-2-.8-2.5-4.5-.5-5.5z" fill={BEAK} strokeLinejoin="round" />
+          <path d="M45 45.5l-1 2.8M50 46.8l-.8 2" stroke={BEAK_DEEP} strokeWidth="1" strokeLinecap="round" />
+          <circle cx="33.5" cy="51.5" r="1.4" fill={INK} /><circle cx="37.5" cy="53.3" r="1.4" fill={INK} /><circle cx="42" cy="53.6" r="1.4" fill={INK} /><circle cx="46.3" cy="52.3" r="1.4" fill={INK} />
+          <circle cx="26" cy="46" r="3.2" fill="#e3a0a0" opacity=".75" /><circle cx="54" cy="46" r="3.2" fill="#e3a0a0" opacity=".75" />
+          <path d="M22 54c5 4 11 6 18 6s13-2 18-6l1 5c-5 4.5-12 7-19 7s-14-2.5-19-7z" fill={RED} {...outline} />
+          <path d="M49 60l6 12-6 1.5-4-12z" fill={RED_DEEP} strokeLinejoin="round" {...outline} />
+          <path d="M30 58.5l-1 5.5M40 60l-.5 5.5M50 58.5l1 5" stroke="#8fbc98" strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M50 66l4-1" stroke="#8fbc98" strokeWidth="2" strokeLinecap="round" />
+        </>
+      )
+    case 'ny-reindeer':
+      // A reindeer: a brown pebble, branching antlers, a pale muzzle, a shiny red nose.
+      return (
+        <>
+          <Shadow />
+          <path d="M29 24c-4-6-5-12-2.5-18M27.5 14c-4-.5-7.5-3-9-7M27 19.5c3-2 5-5.5 5.5-9" stroke="#6b4a32" strokeWidth="3.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M51 24c4-6 5-12 2.5-18M52.5 14c4-.5 7.5-3 9-7M53 19.5c-3-2-5-5.5-5.5-9" stroke="#6b4a32" strokeWidth="3.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M18 34c-6.5 0-11.5-3-13-8 5-1.5 11 0 15 4z" fill="#7d5638" {...outline} />
+          <path d="M62 34c6.5 0 11.5-3 13-8-5-1.5-11 0-15 4z" fill="#7d5638" {...outline} />
+          <path d={PEBBLE} fill="#a87a5a" />
+          <path d="M40 22c3 0 5 2 5 4s-2 3-5 3-5-1-5-3 2-4 5-4z" fill="#c9a07e" />
+          <ellipse cx="40" cy="58" rx="12" ry="9" fill="#dcbf9f" />
+          {eyes}
+          <path d="M35 64c3 2 7 2 10 0" stroke={INK} strokeWidth="2.6" fill="none" strokeLinecap="round" />
+          <circle cx="40" cy="55" r="5.5" fill="#e0443e" {...outline} /><circle cx="38.2" cy="53.2" r="1.7" fill="#fff" opacity=".8" />
+          {cheeks('#8a5c40')}
+        </>
+      )
+    case 'ny-tree':
+      // A Christmas tree: three tiers, garland and lights, a star; the face on the bottom tier.
+      return (
+        <>
+          <Shadow rx={24} />
+          <rect x="35" y="62" width="10" height="9" rx="2" fill="#7d5638" {...outline} />
+          <path d="M40 34l24 27c1 1.5 0 3-2 3H18c-2 0-3-1.5-2-3z" fill="#4a8559" strokeLinejoin="round" {...outline} />
+          <path d="M40 23l18 20c1 1.5 0 3-2 3H24c-2 0-3-1.5-2-3z" fill="#5f9e6e" strokeLinejoin="round" {...outline} />
+          <path d="M40 13l12 14c1 1.5 0 2.5-1.5 2.5h-21C28 29.5 27 28.5 28 27z" fill="#6fae7d" strokeLinejoin="round" {...outline} />
+          <path d="M31 27c5 2.5 13 2.5 19-1M26 43c8 4 20 4 30-1.5" stroke={GOLD} strokeWidth="2" fill="none" strokeLinecap="round" />
+          <path d="M21 60c11 3.5 27 3.5 39-1" stroke="#e3807f" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          <circle cx="34" cy="21.5" r="1.8" fill="#e3807f" /><circle cx="46" cy="35" r="2" fill="#86a9dc" /><circle cx="30" cy="36" r="2" fill={GOLD} />
+          <circle cx="21" cy="56" r="2.2" fill="#86a9dc" /><circle cx="59" cy="56" r="2.2" fill={GOLD} />
+          <circle cx="33" cy="51" r="3.4" fill={INK} /><circle cx="47" cy="51" r="3.4" fill={INK} />
+          <circle cx="34.1" cy="49.8" r="1.1" fill="#fff" /><circle cx="48.1" cy="49.8" r="1.1" fill="#fff" />
+          <path d="M36.5 56c2 2 5 2 7 0" stroke={INK} strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <circle cx="27.5" cy="55" r="2.6" fill="#e3a0a0" opacity=".8" /><circle cx="52.5" cy="55" r="2.6" fill="#e3a0a0" opacity=".8" />
+          <path d="M40 2.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={GOLD} strokeLinejoin="round" {...outline} />
+        </>
+      )
+    case 'ny-elf':
+      // An elf: a peach pebble, pointy ears, a green hat with a bell; laughing.
+      return (
+        <>
+          <Shadow />
+          <path d="M16 41L4 33.5c-1-.6-.6-1.8.5-1.6L17 35z" fill="#f5c9a6" strokeLinejoin="round" {...outline} />
+          <path d="M64 41l12-7.5c1-.6.6-1.8-.5-1.6L63 35z" fill="#f5c9a6" strokeLinejoin="round" {...outline} />
+          <path d={PEBBLE} fill="#f5c9a6" />
+          <path d="M19 33C24 20 36 8 54 4c2.5-.5 3.5 1 2.5 3C52 16 56 25 61 33z" fill="#4f9a5a" strokeLinejoin="round" {...outline} />
+          <circle cx="56" cy="5" r="4" fill={GOLD} {...outline} /><path d="M54 6.5h4" stroke={GOLD_DEEP} strokeWidth="1.4" strokeLinecap="round" />
+          <rect x="15" y="29" width="50" height="8" rx="4" fill={RED} {...outline} />
+          <path d="M21 33h0M28 33h0M35 33h0M42 33h0M49 33h0M56 33h0" stroke={SNOW} strokeWidth="2.6" strokeLinecap="round" />
+          {eyes}
+          <path d="M32 54h16c0 6-4 9-8 9s-8-3-8-9z" fill={INK} />
+          <path d="M36 60.5c2-1.8 6-1.8 8 0-1 1.6-2.5 2.4-4 2.4s-3-.8-4-2.4z" fill="#e3807f" />
+          {cheeks('#e8907a')}
+          <circle cx="21" cy="50" r=".9" fill="#b9805a" /><circle cx="24" cy="49" r=".9" fill="#b9805a" /><circle cx="56" cy="49" r=".9" fill="#b9805a" /><circle cx="59" cy="50" r=".9" fill="#b9805a" />
+        </>
+      )
+    case 'ny-bauble':
+      // A bauble: a blue ornament with a gold cap and loop, a wavy band, a shine.
+      return (
+        <>
+          <Shadow rx={20} />
+          <circle cx="40" cy="14" r="4.5" fill="none" stroke={GOLD_DEEP} strokeWidth="2.4" />
+          <circle cx="40" cy="47" r="24" fill="#5f8fd6" {...outline} />
+          <path d="M17.5 39c7 3 15 4 22.5 4s15.5-1 22.5-4" stroke="#b8cdf0" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <path d="M18 61c4.5-2.5 7.5 2.5 11 0s7.5 2.5 11 0 7.5 2.5 11 0 7.5 2.5 11 0" stroke={GOLD} strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <ellipse cx="29" cy="32" rx="5" ry="3" fill="#fff" opacity=".5" transform="rotate(-35 29 32)" />
+          <rect x="32" y="18" width="16" height="7.5" rx="2" fill={GOLD} {...outline} />
+          <path d="M36 19.5v4.5M40 19.5v4.5M44 19.5v4.5" stroke={GOLD_DEEP} strokeWidth="1.4" strokeLinecap="round" />
+          {eyes}
+          <path d="M34 54c3.5 3.5 8.5 3.5 12 0" stroke={INK} strokeWidth="3" fill="none" strokeLinecap="round" />
+          {cheeks('#e3a0a0')}
+        </>
+      )
+    case 'ny-santa-duck':
+      // The classic duck in a Santa hat, its tip flopping back behind the head.
+      return (
+        <>
+          <Shadow rx={25} />
+          <path d={DUCK_BODY} fill={DUCK_YELLOW} {...outline} /><path d={DUCK_WING} fill={DUCK_SHADE} />
+          <circle cx="46" cy="29" r="15" fill={DUCK_YELLOW} {...outline} />
+          <path d="M57.5 27.5c6.5-3 13.5-2 16.5 2 1 1.4.2 2.8-1.4 3.3-4 1.6-10 2.6-15 2.2z" fill={BEAK} {...outline} /><path d="M59.5 33h12" stroke={BEAK_DEEP} strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="51" cy="24.5" r="3.4" fill={INK} /><circle cx="52.3" cy="23.2" r="1.15" fill="#fff" />
+          <ellipse cx="53.5" cy="32.5" rx="2.6" ry="2" fill="#f08a6a" opacity=".55" />
+          <path d="M38 11c-5-3.5-12-3-16.5 2l3.5 3.5c3.5-2.5 7.5-3 11.5-2z" fill={RED_DEEP} {...outline} />
+          <path d="M31.5 21.5c1-8.5 7.5-14 15.5-14 7.5 0 13.5 5 15 13.5-10-1.5-20-1.5-30.5.5z" fill={RED} {...outline} />
+          <path d="M31.5 21.5c10-2.2 20.5-2.4 30.5-.6" stroke={SNOW} strokeWidth="4.6" strokeLinecap="round" fill="none" />
+          <circle cx="22.5" cy="15" r="4" fill={SNOW} {...outline} />
+        </>
+      )
+    case 'ny-gingerbread':
+      // A gingerbread man: icing at the wrists and ankles, an icing smile, two candy buttons.
+      return (
+        <>
+          <Shadow rx={22} />
+          <path d={GINGER_LIMBS} stroke={outline.stroke} strokeWidth="13.5" strokeLinecap="round" fill="none" />
+          <circle cx="40" cy="25" r="14.75" fill={outline.stroke} />
+          <path d={GINGER_LIMBS} stroke="#c97d40" strokeWidth="12" strokeLinecap="round" fill="none" />
+          <ellipse cx="40" cy="48" rx="12" ry="12" fill="#c97d40" />
+          <circle cx="40" cy="25" r="14" fill="#c97d40" />
+          <path d="M19.5 39.5c1.5 1 1.5 2.5 0 3.5s-1.5 2.5 0 3.5M60.5 39.5c-1.5 1-1.5 2.5 0 3.5s1.5 2.5 0 3.5" stroke={ICING} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+          <path d="M23.5 64c2 .5 3.5 1.5 5 2.5s3 1 4.5 .5M56.5 64c-2 .5-3.5 1.5-5 2.5s-3 1-4.5.5" stroke={ICING} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+          <circle cx="40" cy="43" r="2.4" fill="#e0443e" /><circle cx="40" cy="50.5" r="2.4" fill="#4f9a5a" />
+          <path d="M36.5 36.5l3.5 2 3.5-2" stroke={ICING} strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="34.5" cy="23" r="3.2" fill={INK} /><circle cx="45.5" cy="23" r="3.2" fill={INK} />
+          <circle cx="35.6" cy="21.9" r="1.1" fill="#fff" /><circle cx="46.6" cy="21.9" r="1.1" fill="#fff" />
+          <path d="M34 29.5c3.5 3.5 8.5 3.5 12 0" stroke={ICING} strokeWidth="2.4" fill="none" strokeLinecap="round" />
+          <circle cx="29.5" cy="28.5" r="2.5" fill="#e3807f" opacity=".75" /><circle cx="50.5" cy="28.5" r="2.5" fill="#e3807f" opacity=".75" />
+        </>
+      )
+  }
+}
+
+/*
+ * The dobermans (lib/faces.ts): one head, front-on, in the same 80x80 box on
+ * the same shadow — cropped ears, a narrow wedge head with a long muzzle, the
+ * breed's rust markings (eyebrow dots, cheeks and muzzle round a dark bridge,
+ * two chest patches) — in its four coats: black, red, blue and fawn. The eyes
+ * sit in a brown ring so they read on a black coat.
+ */
+type Coat = { coat: string; deep: string; tan: string; nose: string; ear: string; iris: string }
+const COATS: Record<'black' | 'red' | 'blue' | 'fawn', Coat> = {
+  black: { coat: '#3d3530', deep: '#2c2622', tan: '#cc8440', nose: '#1c1814', ear: '#9a6a56', iris: '#6b4424' },
+  red: { coat: '#7c3f24', deep: '#5f2f1a', tan: '#dba06a', nose: '#4a2414', ear: '#b07060', iris: '#5a3018' },
+  blue: { coat: '#6c7884', deep: '#56616c', tan: '#cc935f', nose: '#3f4852', ear: '#a08a88', iris: '#5a4632' },
+  fawn: { coat: '#b19887', deep: '#977e6d', tan: '#e2b27a', nose: '#86665e', ear: '#d09c94', iris: '#6a4a30' },
+}
+const DOBIE_HEAD = 'M40 15c13 0 20.5 9 20.5 21 0 7-2 11-5 15-2 4-4 9-6.5 12.5-2 2.5-5 3.5-9 3.5s-7-1-9-3.5c-2.5-3.5-4.5-8.5-6.5-12.5-3-4-5-8-5-15 0-12 7.5-21 20.5-21z'
+const DOBIE_SMILE = 'M40 56.5v2M34 58.5c2 2.8 4.5 2.8 6 0 1.5 2.8 4 2.8 6 0'
+const DOBIE_SMIRK = 'M40 56.5v2M35 59.5c2 1 4 .6 5-1 1.5 2.6 5 2.6 7.5-.5'
+
+type DobieLook = { coat: Coat; ears?: 'cropped' | 'floppy'; eye?: 'open' | 'happy' | 'sleepy' | 'none'; mouth: 'smile' | 'tongue' | 'blep' | 'smirk' | 'oh'; tilt?: number }
+const DOBIE_LOOK: Record<Dobie, DobieLook> = {
+  'dobie-black': { coat: COATS.black, mouth: 'smile' },
+  'dobie-red': { coat: COATS.red, eye: 'happy', mouth: 'smile' },
+  'dobie-blue': { coat: COATS.blue, mouth: 'smirk' },
+  'dobie-fawn': { coat: COATS.fawn, mouth: 'oh' },
+  'dobie-floppy': { coat: COATS.black, ears: 'floppy', mouth: 'smile' },
+  'dobie-tongue': { coat: COATS.red, eye: 'happy', mouth: 'tongue' },
+  'dobie-cool': { coat: COATS.blue, eye: 'none', mouth: 'smirk' },
+  'dobie-sleepy': { coat: COATS.fawn, eye: 'sleepy', mouth: 'blep', tilt: -14 },
+}
+
+function DobieBody({ dobie, outline }: { dobie: Dobie; outline: { stroke: string; strokeWidth: number } }) {
+  const { coat: k, ears = 'cropped', eye = 'open', mouth, tilt } = DOBIE_LOOK[dobie]
+  const line = (d: string) => <path d={d} stroke={INK} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  const head = (
+    <>
+      {ears === 'cropped' && (
+        <>
+          <path d="M24 31L19.5 3c-.3-1.8 1.2-2.6 2.4-1.4L36 20z" fill={k.coat} strokeLinejoin="round" {...outline} />
+          <path d="M56 31l4.5-28c.3-1.8-1.2-2.6-2.4-1.4L44 20z" fill={k.coat} strokeLinejoin="round" {...outline} />
+          <path d="M25.3 25L22 8l9 11.5zM54.7 25L58 8l-9 11.5z" fill={k.ear} />
+        </>
+      )}
+      <path d={DOBIE_HEAD} fill={k.coat} {...outline} />
+      <path d="M25 48c3.5-2.5 9-3.5 15-3.5s11.5 1 15 3.5c-1.5 5-3.5 10.5-6 14.5-2 2.6-5 3.6-9 3.6s-7-1-9-3.6c-2.5-4-4.5-9.5-6-14.5z" fill={k.tan} />
+      <path d="M34.5 38c2-1 9-1 11 0l-1.4 15.5h-8.2z" fill={k.coat} />
+      {ears === 'floppy' && (
+        <>
+          <path d="M22 21c-7 1.5-11 10-11.5 21-.2 5 3.5 7 6.5 3.5 3.5-4.5 5-11 6.5-17z" fill={k.deep} strokeLinejoin="round" {...outline} />
+          <path d="M58 21c7 1.5 11 10 11.5 21 .2 5-3.5 7-6.5 3.5-3.5-4.5-5-11-6.5-17z" fill={k.deep} strokeLinejoin="round" {...outline} />
+        </>
+      )}
+      <ellipse cx="30" cy="35" rx="3.4" ry="2.4" fill={k.tan} /><ellipse cx="50" cy="35" rx="3.4" ry="2.4" fill={k.tan} />
+      {eye === 'open' && (
+        <>
+          <circle cx="31" cy="42.5" r="4.6" fill={k.iris} /><circle cx="49" cy="42.5" r="4.6" fill={k.iris} />
+          <circle cx="31" cy="42.5" r="3.3" fill={INK} /><circle cx="49" cy="42.5" r="3.3" fill={INK} />
+          <circle cx="32.4" cy="41.1" r="1.3" fill="#fff" /><circle cx="50.4" cy="41.1" r="1.3" fill="#fff" />
+        </>
+      )}
+      {eye === 'happy' && <path d="M26.5 43.5q4.5-5 9 0M44.5 43.5q4.5-5 9 0" stroke={k.tan} strokeWidth="3" fill="none" strokeLinecap="round" />}
+      {eye === 'sleepy' && (
+        <>
+          <path d="M26.5 42q4.5 3.5 9 0" stroke={k.tan} strokeWidth="3" fill="none" strokeLinecap="round" />
+          <circle cx="49" cy="43" r="4.6" fill={k.iris} /><circle cx="49" cy="43" r="3.3" fill={INK} />
+          <circle cx="50.4" cy="41.6" r="1.3" fill="#fff" />
+          <path d="M43.8 41.2h10.4c0-3.4-2.4-5.4-5.2-5.4s-5.2 2-5.2 5.4z" fill={k.coat} />
+          <path d="M44 41.3h10" stroke={INK} strokeWidth="1.6" strokeLinecap="round" />
+        </>
+      )}
+      <g transform="translate(0 3)">
+        <path d="M33.5 51.5c0-2.3 2.8-3.5 6.5-3.5s6.5 1.2 6.5 3.5-2.8 5-6.5 5-6.5-2.7-6.5-5z" fill={k.nose} />
+        <ellipse cx="37.8" cy="50.3" rx="2" ry="1.1" fill="#fff" opacity=".45" />
+        {(mouth === 'smile' || mouth === 'blep') && line(DOBIE_SMILE)}
+        {mouth === 'blep' && <path d="M41.5 59.8h4.2v2.4c0 1.4-1 2.4-2.1 2.4s-2.1-1-2.1-2.4z" fill="#e8807f" />}
+        {mouth === 'smirk' && line(DOBIE_SMIRK)}
+        {mouth === 'oh' && (<><path d="M40 56.5v1.5" stroke={INK} strokeWidth="2" strokeLinecap="round" /><ellipse cx="40" cy="60.5" rx="2.4" ry="2.6" fill={INK} /></>)}
+        {mouth === 'tongue' && (
+          <>
+            <path d="M33 58c2 4 12 4 14 0z" fill={INK} />
+            <path d="M36 59.5h8v4.5c0 3-1.8 5-4 5s-4-2-4-5z" fill="#e8807f" {...outline} />
+            <path d="M40 60.5v4.5" stroke="#c4605f" strokeWidth="1.3" strokeLinecap="round" />
+            <path d="M40 56.5v2" stroke={INK} strokeWidth="2" strokeLinecap="round" />
+          </>
+        )}
+      </g>
+      {dobie === 'dobie-cool' && (
+        <>
+          {/* Sunglasses and a tiny party hat, with confetti. */}
+          <path d="M23 39.5h14c0 5-2.5 8-7 8s-7-3-7-8zM43 39.5h14c0 5-2.5 8-7 8s-7-3-7-8z" fill="#1d2228" stroke={INK} strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M37 40.5c2-1 4-1 6 0" stroke={INK} strokeWidth="1.8" fill="none" strokeLinecap="round" />
+          <path d="M23 40l-4.5-1.5M57 40l4.5-1.5" stroke={INK} strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M26.5 42l3-2.2M46.5 42l3-2.2" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" opacity=".7" />
+          <path d="M33 20L41.5 1.5 49.5 19c-5.5-1.6-11-1.3-16.5 1z" fill="#b8a8d6" strokeLinejoin="round" {...outline} />
+          <path d="M38.2 10l7.4 1.6M35.7 15.4l11.9 1.2" stroke="#e3807f" strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="41.5" cy="2.5" r="2.8" fill="#f2c94c" />
+          <rect x="9" y="22" width="4" height="4" rx="1" fill="#e3807f" transform="rotate(20 11 24)" />
+          <rect x="67" y="24" width="4" height="4" rx="1" fill="#86a9dc" transform="rotate(-25 69 26)" />
+          <circle cx="70" cy="44" r="1.8" fill="#8fbc98" /><circle cx="10" cy="46" r="1.8" fill="#f3a553" />
+        </>
+      )}
+    </>
+  )
+  return (
+    <>
+      <Shadow rx={24} />
+      <path d="M15 73c1.5-10 11-15.5 25-15.5S63.5 63 65 73z" fill={k.coat} {...outline} />
+      <path d="M26 63c3.5 1.5 6.5 4.5 8 10h-8.5c-1.5-3.5-1.5-7 .5-10zM54 63c-3.5 1.5-6.5 4.5-8 10h8.5c1.5-3.5 1.5-7-.5-10z" fill={k.tan} />
+      {tilt ? <g transform={`rotate(${tilt} 40 44)`}>{head}</g> : head}
+      {dobie === 'dobie-sleepy' && <path d="M62 14h6l-6 6.5h6M70 4.5h4.4L70 9.3h4.4" stroke="#86a9dc" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />}
+    </>
+  )
+}
+
 /** A character's drawing in its 80x80 box, for composing several into one scene (BannerArt). */
 export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
   const outline = { stroke: 'var(--character-outline, transparent)', strokeWidth: 1.5 }
   if (who === 'lead' && isDuck(face)) return <DuckBody duck={face} outline={outline} />
+  if (who === 'lead' && isNewYear(face)) return <NewYearBody face={face} outline={outline} />
+  if (who === 'lead' && isDobie(face)) return <DobieBody dobie={face} outline={outline} />
   if (who === 'lead' && isPumpkin(face)) return <PumpkinBody pumpkin={face} outline={outline} />
-  if (who === 'lead' && !isDuck(face) && !isPumpkin(face) && face !== 'cap') return <FaceBody face={face} outline={outline} />
+  if (who === 'lead' && !isDuck(face) && !isPumpkin(face) && !isNewYear(face) && !isDobie(face) && face !== 'cap') return <FaceBody face={face} outline={outline} />
   switch (who) {
     case 'lead':
       // Claude Code: an amber pebble in a hard hat.
@@ -543,7 +833,7 @@ export function Body({ who, face = 'cap' }: { who: Character; face?: Face }) {
 
 /**
  * One character, `size` pixels square. Decorative: the name beside it says
- * who. `face` dresses Claude ('lead') in one of its eight looks; every other
+ * who. `face` dresses Claude ('lead') in one of its faces; every other
  * agent keeps its own mark.
  */
 export function AgentCharacter({ who, size = 62, className, face }: { who: Character; size?: number; className?: string; face?: Face }) {

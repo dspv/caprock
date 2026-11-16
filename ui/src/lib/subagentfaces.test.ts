@@ -3,7 +3,7 @@ import {
   DEFAULT_SUBAGENT_LOOK, MATRIX_TILES, SUBAGENT_LOOKS, SUBAGENT_LOOK_KEY, clockTime, getSubagentLook, isSubagentLook, peakMinute, readSubagentLook, resetSubagentLookForTest,
   matrixRoom, setSubagentLook, sparkPoints, subagentFace, subagentSummary,
 } from './subagentfaces'
-import { FACES, DUCKS } from './faces'
+import { ALL_FACES, DOBERMANS, DUCKS, FACES, FACE_POOLS, NEW_YEAR, PUMPKINS } from './faces'
 
 const M = 60_000
 
@@ -56,15 +56,18 @@ describe('peakMinute and clockTime', () => {
 })
 
 describe('subagentFace', () => {
-  it('wears the face chosen for Claude, or a stable one from its random pool', () => {
+  it('wears the face chosen for Claude, or a stable one from every set under any random pool', () => {
     expect(subagentFace('a1', 'wizard')).toBe('wizard')
     expect(subagentFace('a1', 'duck-party')).toBe('duck-party')
+    expect(subagentFace('a1', 'dobie-cool')).toBe('dobie-cool')
     const f = subagentFace('a1', 'random')
-    expect(FACES).toContain(f)
+    expect(ALL_FACES).toContain(f)
     expect(subagentFace('a1', 'random')).toBe(f)
-    expect(DUCKS).toContain(subagentFace('a1', 'random-ducks'))
-    // Different keys spread over the pool.
-    expect(new Set(Array.from({ length: 40 }, (_, i) => subagentFace(`k${i}`, 'random'))).size).toBeGreaterThan(3)
+    // Any pool draws from all the sets: the same key, the same face.
+    for (const p of FACE_POOLS) expect(subagentFace('a1', p)).toBe(f)
+    // Different keys reach every set.
+    const seen = Array.from({ length: 400 }, (_, i) => subagentFace(`k${i}`, 'random-ducks'))
+    for (const set of [FACES, DUCKS, PUMPKINS, NEW_YEAR, DOBERMANS] as const) expect(seen.some((s) => (set as readonly string[]).includes(s))).toBe(true)
   })
 })
 

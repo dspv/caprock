@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { DUCKS, DUCK_HINT_EVERY, PUMPKIN_HINT_KEY, pumpkinSeason, FACES, PUMPKINS, FACES_KEY, FACE_DEFAULT_KEY, FACE_NAME, MAX_PICKS, duckHintDone, duckHintDue, faceFor, hashedFace, hasOwnFace, isDuck, isPumpkin, saveFaceDefault, setSessionFace } from './faces'
+import { DOBERMANS, NEW_YEAR, isDobie, isNewYear, DUCKS, DUCK_HINT_EVERY, PUMPKIN_HINT_KEY, pumpkinSeason, FACES, PUMPKINS, FACES_KEY, FACE_DEFAULT_KEY, FACE_NAME, MAX_PICKS, duckHintDone, duckHintDue, faceFor, hashedFace, hasOwnFace, isDuck, isPumpkin, saveFaceDefault, setSessionFace } from './faces'
 import { DUCK_HINT_LINGER, DUCK_HINT_QUIET, FaceDefaultSetting, PickableFace, SessionCharacter } from '@/components/SessionFace'
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks() })
@@ -168,12 +168,13 @@ describe('pumpkins', () => {
   it('the picker has a Pumpkins tab, reached by key, and opens on it for a pumpkin', () => {
     render(<PickableFace agent="claude" sessionId="p2"><SessionCharacter agent="claude" sessionId="p2" /></PickableFace>)
     fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Faces' }), { code: 'ArrowLeft' })
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Faces' }), { code: 'ArrowRight' })
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Ducks' }), { code: 'ArrowRight' })
     expect(screen.getByRole('tab', { name: 'Pumpkins' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getAllByRole('menuitemradio').map((b) => b.getAttribute('aria-label'))).toEqual(PUMPKINS.map((p) => FACE_NAME[p]))
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Pumpkins' }), { code: 'ArrowRight' })
-    expect(screen.getByRole('tab', { name: 'Faces' })).toHaveAttribute('aria-selected', 'true')
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Faces' }), { code: 'ArrowLeft' })
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Pumpkins' }), { code: 'ArrowLeft' })
+    expect(screen.getByRole('tab', { name: 'Ducks' })).toHaveAttribute('aria-selected', 'true')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Ducks' }), { code: 'ArrowRight' })
     act(() => { fireEvent.click(screen.getByRole('menuitemradio', { name: 'Vampire pumpkin' })) })
     expect(faceFor('p2')).toBe('pumpkin-vampire')
     fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
@@ -191,6 +192,69 @@ describe('pumpkins', () => {
     const { container } = render(<>{PUMPKINS.map((p) => { setSessionFace(`d-${p}`, p); return <SessionCharacter key={p} agent="claude" sessionId={`d-${p}`} /> })}</>)
     const svgs = Array.from(container.querySelectorAll('svg'))
     expect(svgs.map((s) => s.getAttribute('data-face'))).toEqual([...PUMPKINS])
+    for (const s of svgs) expect(s.querySelectorAll('path, ellipse, circle').length).toBeGreaterThan(5)
+  })
+})
+
+describe('New Year faces and dobermans', () => {
+  it('move nobody: the faces pool and the faces-and-ducks pool keep their hashes', () => {
+    for (let i = 0; i < 100; i++) expect(FACES).toContain(hashedFace(`n-${i}`))
+    saveFaceDefault('random-all')
+    for (let i = 0; i < 300; i++) {
+      expect(isNewYear(faceFor(`n-${i}`))).toBe(false)
+      expect(isDobie(faceFor(`n-${i}`))).toBe(false)
+    }
+  })
+  it('each has a pool of its own that draws from all eight', () => {
+    saveFaceDefault('random-newyear')
+    expect([...new Set(Array.from({ length: 300 }, (_, i) => faceFor(`n-${i}`)))].sort()).toEqual([...NEW_YEAR].sort())
+    expect(faceFor(undefined)).toBe('ny-santa')
+    saveFaceDefault('random-dobermans')
+    expect([...new Set(Array.from({ length: 300 }, (_, i) => faceFor(`n-${i}`)))].sort()).toEqual([...DOBERMANS].sort())
+    expect(faceFor(undefined)).toBe('dobie-black')
+    setSessionFace('n1', 'dobie-cool')
+    expect(faceFor('n1')).toBe('dobie-cool')
+  })
+  it('the picker has New Year and Dobermans tabs, round from Faces, and opens on the one worn', () => {
+    render(<PickableFace agent="claude" sessionId="n2"><SessionCharacter agent="claude" sessionId="n2" /></PickableFace>)
+    fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Faces', 'Ducks', 'Pumpkins', 'New Year', 'Dobermans'])
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Faces' }), { code: 'ArrowLeft' })
+    expect(screen.getByRole('tab', { name: 'Dobermans' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('menuitemradio').map((b) => b.getAttribute('aria-label'))).toEqual(DOBERMANS.map((p) => FACE_NAME[p]))
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Dobermans' }), { code: 'ArrowLeft' })
+    expect(screen.getByRole('tab', { name: 'New Year' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('menuitemradio').map((b) => b.getAttribute('aria-label'))).toEqual(NEW_YEAR.map((p) => FACE_NAME[p]))
+    act(() => { fireEvent.click(screen.getByRole('menuitemradio', { name: 'Snowman' })) })
+    expect(faceFor('n2')).toBe('ny-snowman')
+    fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
+    expect(screen.getByRole('tab', { name: 'New Year' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('menuitemradio', { name: 'Snowman' })).toHaveFocus()
+  })
+  it('opening their tabs does not count as finding the ducks or the pumpkins', () => {
+    render(<PickableFace agent="claude" sessionId="n3"><SessionCharacter agent="claude" sessionId="n3" /></PickableFace>)
+    fireEvent.click(screen.getByRole('button', { name: "Change this session's face" }))
+    fireEvent.click(screen.getByRole('tab', { name: 'New Year' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Dobermans' }))
+    expect(duckHintDue(Date.now() + 2 * DUCK_HINT_EVERY)).toBe(true)
+    expect(duckHintDue(Date.now() + 2 * DUCK_HINT_EVERY, 'pumpkins')).toBe(true)
+  })
+  it('Settings offers both sets and a pool for each', () => {
+    render(<FaceDefaultSetting />)
+    fireEvent.click(screen.getByRole('radio', { name: 'A New Year face per session' }))
+    expect(isNewYear(faceFor('x'))).toBe(true)
+    fireEvent.click(screen.getByRole('radio', { name: 'A doberman per session' }))
+    expect(isDobie(faceFor('x'))).toBe(true)
+    fireEvent.click(screen.getByRole('radio', { name: 'Gingerbread' }))
+    expect(faceFor('x')).toBe('ny-gingerbread')
+    fireEvent.click(screen.getByRole('radio', { name: 'Floppy ears' }))
+    expect(faceFor('x')).toBe('dobie-floppy')
+  })
+  it('every one of them draws', () => {
+    const all = [...NEW_YEAR, ...DOBERMANS]
+    const { container } = render(<>{all.map((p) => { setSessionFace(`d-${p}`, p); return <SessionCharacter key={p} agent="claude" sessionId={`d-${p}`} /> })}</>)
+    const svgs = Array.from(container.querySelectorAll('svg'))
+    expect(svgs.map((s) => s.getAttribute('data-face'))).toEqual(all)
     for (const s of svgs) expect(s.querySelectorAll('path, ellipse, circle').length).toBeGreaterThan(5)
   })
 })

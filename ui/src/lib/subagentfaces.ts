@@ -22,7 +22,7 @@
  * is tested apart from the component.
  */
 import { useSyncExternalStore } from 'react'
-import { hashedFace, isPool, type Face, type FaceDefault } from '@/lib/faces'
+import { ALL_FACES, hashedFrom, isPool, type Face, type FaceDefault } from '@/lib/faces'
 import type { SubagentHour } from '@/lib/api'
 
 export type SubagentLook = 'matrix' | 'chips' | 'strip'
@@ -139,9 +139,11 @@ export function subagentSummary(working: number, hour: Pick<SubagentHour, 'peak'
 
 /**
  * The face a subagent wears: the one the viewer chose for Claude in
- * Settings, or, when that is a random pool, one from the pool picked by the
- * key's hash — the same key, the same face, on every render.
+ * Settings, or, when that is any random pool, one from every set — faces,
+ * ducks, pumpkins, New Year, dobermans — picked by the key's hash, the same
+ * key, the same face, on every render (owner, 2026-11-17: subagents draw
+ * from all the sets).
  */
 export function subagentFace(key: string, d: FaceDefault): Face {
-  return isPool(d) ? hashedFace(key, d) : d
+  return isPool(d) ? hashedFrom(key, ALL_FACES) : d
 }

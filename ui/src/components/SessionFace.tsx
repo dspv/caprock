@@ -1,40 +1,49 @@
 /**
  * A session's portrait: Claude in the face this session wears (lib/faces.ts),
  * any other agent in its own mark. FacePicker is the small menu a click on
- * the hero's portrait opens: the eight faces, the rubber ducks and the
- * Halloween pumpkins, on three tabs, and a way back to the default. DuckHint is the quiet "try a duck?"
+ * the hero's portrait opens: the eight faces, the rubber ducks, the
+ * Halloween pumpkins, the New Year faces and the dobermans, on five tabs,
+ * and a way back to the default. DuckHint is the quiet "try a duck?"
  * line that now and then points at the ducks.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { AgentCharacter, characterFor } from './Characters'
 import {
-  DUCKS, FACES, FACE_NAME, POOL_NAME, PUMPKINS, duckHintClosed, duckHintDone, duckHintDue, duckHintShown, hasOwnFace, hintKindAt, isDuck,
-  isPumpkin, setSessionFace, useFaceDefault, useSessionFace, type Face, type FaceDefault, type FacePool, type HintKind,
+  DOBERMANS, DUCKS, FACES, FACE_NAME, NEW_YEAR, POOL_NAME, PUMPKINS, duckHintClosed, duckHintDone, duckHintDue, duckHintShown, hasOwnFace, hintKindAt,
+  isDobie, isDuck, isNewYear, isPumpkin, setSessionFace, useFaceDefault, useSessionFace, type Face, type FaceDefault, type FacePool, type HintKind,
 } from '@/lib/faces'
 
-type Group = 'faces' | 'ducks' | 'pumpkins'
+type Group = 'faces' | 'ducks' | 'pumpkins' | 'newyear' | 'dobermans'
 /** The tabs, in order; arrow keys go round them. */
-const GROUPS: readonly Group[] = ['faces', 'ducks', 'pumpkins']
-const GROUP_NAME: Record<Group, string> = { faces: 'Faces', ducks: 'Ducks', pumpkins: 'Pumpkins' }
-const GROUP_LIST: Record<Group, readonly Face[]> = { faces: FACES, ducks: DUCKS, pumpkins: PUMPKINS }
+const GROUPS: readonly Group[] = ['faces', 'ducks', 'pumpkins', 'newyear', 'dobermans']
+const GROUP_NAME: Record<Group, string> = { faces: 'Faces', ducks: 'Ducks', pumpkins: 'Pumpkins', newyear: 'New Year', dobermans: 'Dobermans' }
+const GROUP_LIST: Record<Group, readonly Face[]> = { faces: FACES, ducks: DUCKS, pumpkins: PUMPKINS, newyear: NEW_YEAR, dobermans: DOBERMANS }
 
 /** The tab a face is on. */
 function groupOf(face: Face): Group {
-  return isDuck(face) ? 'ducks' : isPumpkin(face) ? 'pumpkins' : 'faces'
+  return isDuck(face) ? 'ducks' : isPumpkin(face) ? 'pumpkins' : isNewYear(face) ? 'newyear' : isDobie(face) ? 'dobermans' : 'faces'
 }
 
-/** The three random choices, each drawn as three of what it picks from. */
+/** The tabs a "try a …?" line points at: opening one counts as found. */
+function hintOf(g: Group): HintKind | undefined {
+  return g === 'ducks' || g === 'pumpkins' ? g : undefined
+}
+
+/** The random choices, each drawn as three of what it picks from. */
 const POOL_ART: Record<FacePool, [Face, Face, Face]> = {
   random: ['beanie', 'crown', 'propeller'],
   'random-ducks': ['duck', 'duck-party', 'duck-sleepy'],
   'random-pumpkins': ['pumpkin', 'pumpkin-witch', 'pumpkin-ghost'],
+  'random-newyear': ['ny-santa', 'ny-snowman', 'ny-tree'],
+  'random-dobermans': ['dobie-black', 'dobie-cool', 'dobie-fawn'],
   'random-all': ['beanie', 'duck', 'crown'],
 }
 
 /**
  * Settings → Appearance: which face a session wears unless you picked one
  * for it — one at random per session (hashed from its id) from the faces,
- * the ducks, the pumpkins, or faces and ducks, or the same for all.
+ * the ducks, the pumpkins, the New Year faces, the dobermans, or faces and
+ * ducks, or the same for all.
  */
 export function FaceDefaultSetting() {
   const [d, setD] = useFaceDefault()
@@ -55,13 +64,15 @@ export function FaceDefaultSetting() {
     <div className="space-y-1.5" data-face-default>
       <p className="text-[13px] text-fg">Claude&rsquo;s face</p>
       <div role="radiogroup" aria-label="Claude's face" className="space-y-1.5">
-        <div className="flex flex-wrap gap-1.5">{pool('random')}{pool('random-ducks')}{pool('random-pumpkins')}{pool('random-all')}</div>
+        <div className="flex flex-wrap gap-1.5">{pool('random')}{pool('random-ducks')}{pool('random-pumpkins')}{pool('random-newyear')}{pool('random-dobermans')}{pool('random-all')}</div>
         <div className="flex flex-wrap gap-1.5">{FACES.map(one)}</div>
         <div className="flex flex-wrap gap-1.5" data-face-default-ducks>{DUCKS.map(one)}</div>
         <div className="flex flex-wrap gap-1.5" data-face-default-pumpkins>{PUMPKINS.map(one)}</div>
+        <div className="flex flex-wrap gap-1.5" data-face-default-newyear>{NEW_YEAR.map(one)}</div>
+        <div className="flex flex-wrap gap-1.5" data-face-default-dobermans>{DOBERMANS.map(one)}</div>
       </div>
       <p className="text-[12px] text-fg-muted">
-        Each session gets one at random and keeps it everywhere — from the eight faces, unless you pick the ducks, the pumpkins, or faces and ducks; click the portrait in a session to give it another.
+        Each session gets one at random and keeps it everywhere — from the eight faces, unless you pick the ducks, the pumpkins, the New Year faces, the dobermans, or faces and ducks; click the portrait in a session to give it another.
       </p>
     </div>
   )
@@ -138,7 +149,7 @@ export function PickableFace({ agent, sessionId, className, children, hint = fal
   useLayoutEffect(() => {
     if (!open || !btn.current) return
     const r = btn.current.getBoundingClientRect()
-    setAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 236)) })
+    setAt({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 328)) })
   }, [open])
   useEffect(() => {
     if (!open) return
@@ -185,7 +196,7 @@ export function FacePicker({ sessionId, at, group: initial, onDone }: { sessionI
   const own = hasOwnFace(sessionId)
   const [group, setGroup] = useState<Group>(initial ?? groupOf(face))
   const menu = useRef<HTMLDivElement>(null)
-  const show = (g: Group) => { setGroup(g); if (g !== 'faces') duckHintDone(g) }
+  const show = (g: Group) => { setGroup(g); const k = hintOf(g); if (k) duckHintDone(k) }
   const pick = (f: Face | null) => {
     setSessionFace(sessionId, f)
     if (isDuck(f)) duckHintDone()
@@ -196,7 +207,8 @@ export function FacePicker({ sessionId, at, group: initial, onDone }: { sessionI
   useEffect(() => {
     const items = menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')
     ;(menu.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"][aria-checked="true"]') ?? items?.[0])?.focus()
-    if (initial && initial !== 'faces') duckHintDone(initial)
+    const k = initial && hintOf(initial)
+    if (k) duckHintDone(k)
   }, [])
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const tab = (e.target as HTMLElement).getAttribute?.('role') === 'tab'
@@ -226,7 +238,7 @@ export function FacePicker({ sessionId, at, group: initial, onDone }: { sessionI
   return (
     <div ref={menu} role="menu" aria-label="This session's face" data-face-picker data-group={group} onKeyDown={onKey}
       style={at ? { top: at.top, left: at.left } : undefined}
-      className="fixed z-50 w-[228px] rounded-[10px] border border-border-strong bg-panel p-2 shadow-lg">
+      className="fixed z-50 w-[320px] rounded-[10px] border border-border-strong bg-panel p-2 shadow-lg">
       <div role="tablist" aria-label="Kind" className="mb-1.5 flex gap-1 rounded-[8px] border border-border p-[2px]">
         {GROUPS.map((g) => (
           <button key={g} type="button" role="tab" data-group={g} aria-selected={group === g} tabIndex={group === g ? 0 : -1} onClick={() => show(g)} className={tabClass(g)}>{GROUP_NAME[g]}</button>
