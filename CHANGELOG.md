@@ -12,6 +12,23 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.178.2] - 2026-11-16
+
+### Changed
+
+- **cost:** the Cost screen reads at a glance. The total is whole dollars
+  ($7,562) and the token tiles three figures (31.2M, 13.1B), exact on hover.
+  Per project folds agents' throwaway folders into one row per stem, chats
+  into *chats* and `/`, `src` and the like into *other folders*; Model mix
+  and Per project show eight rows and fold the rest. Cursor's overhead table
+  puts each figure and its sample count in their own columns.
+
+### Fixed
+
+- **inspector:** the right panel's Release section no longer vanishes after
+  a release: with nothing new since the last tag it says *Nothing new since
+  v0.178.1* under its heading.
+
 ## [0.178.1] - 2026-11-16
 
 ### Removed
