@@ -253,7 +253,7 @@ type SheetState =
 /** The dashboard's screens, reachable from the palette by name: [route, label, what is on it]. */
 const SCREENS: [string, string, string][] = [
   ['home', 'Home', 'every session on the machine, live'],
-  ['jarvis', 'Jarvis', 'every agent, what needs you, one command line'],
+  ['jarvis', 'Jarvis', 'every agent, what needs you, one chat'],
   ['work', 'Open Work', 'every piece of work on its way to a release'],
   ['cost', 'Cost', 'spend by day, project and model'],
   ['history', 'Lifetime', 'every session, every day, in totals'],

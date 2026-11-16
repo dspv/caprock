@@ -52,6 +52,7 @@ import { SavedPromptsSetting } from '@/components/SavedPromptsSetting'
 import { TemplatesSetting } from '@/components/TemplatesSetting'
 import { SubscriptionsSetting } from '@/components/SubscriptionsSetting'
 import { LimitSetting } from '@/components/LimitSetting'
+import { JarvisBrainSection } from '@/components/JarvisBrain'
 import { SpawnModeSetting } from '@/components/SpawnModeSetting'
 import { KeepAwakeSetting } from '@/components/KeepAwake'
 import { AgentCloseSetting } from '@/components/AgentCloseSetting'
@@ -190,6 +191,7 @@ export function StatusScreen() {
           {owner && <WorktreeCleanupSetting />}
           {owner && <SubscriptionsSetting />}
           {owner && <LimitSetting />}
+          {owner && <JarvisBrainSection />}
           {owner && <CustomAgentsSection />}
           {owner && isTauri() && <DesktopNotifications />}
           {owner && isTauri() && <GlobalHotkey />}
@@ -214,6 +216,7 @@ export function StatusScreen() {
           {owner && <WorktreeCleanupSetting />}
           {owner && <SubscriptionsSetting />}
           {owner && <LimitSetting />}
+          {owner && <JarvisBrainSection />}
           {owner && <CustomAgentsSection />}
           <GitHubSettings />
           {owner && isTauri() && <GlobalHotkey />}

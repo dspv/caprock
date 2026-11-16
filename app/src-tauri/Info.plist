@@ -4,8 +4,15 @@
 <dict>
 	<!-- Merged into Caprock.app's Info.plist by the Tauri bundler. macOS
 	     shows it in the microphone prompt when an agent in a Caprock
-	     terminal records, such as Claude Code's voice mode (ADR-045). -->
+	     terminal records, such as Claude Code's voice mode (ADR-045), and
+	     when Jarvis's hold to talk listens (.ai/04-ui.md § Jarvis). -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>An agent running in a Caprock terminal wants the microphone, for example for voice input.</string>
+	<string>An agent running in a Caprock terminal, or Jarvis's hold to talk, wants the microphone for voice input.</string>
+	<!-- Jarvis's hold to talk uses the web view's speech recognition, which
+	     is Apple's: WebKit asks macOS for it, and macOS refuses an app whose
+	     Info.plist does not say why. Nothing is recognised until the user
+	     holds the key or the mic. -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Jarvis turns what you say while you hold to talk into text, using Apple's speech recognition.</string>
 </dict>
 </plist>

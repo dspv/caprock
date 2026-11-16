@@ -35,7 +35,7 @@ export type Route =
   // Work (.ai/04-ui.md § Work): every piece of work on the machine on its
   // way to a release.
   | { name: 'work' }
-  // Jarvis (.ai/04-ui.md § Jarvis): every agent, what needs you, one command line.
+  // Jarvis (.ai/04-ui.md § Jarvis): every agent, what needs you, one chat.
   | { name: 'jarvis' }
   // Chats (ADR-071, .ai/04-ui.md § Chats): the list, its archived half, and
   // one chat — a conversation, never a terminal.
