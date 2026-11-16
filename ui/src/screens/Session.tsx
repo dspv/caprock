@@ -9,6 +9,7 @@ import { useLoopHidden } from '@/lib/loopalert'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
 import { cumulativeCaption, sessionCost } from '@/lib/sessionCost'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
+import { CursorOverheadPanel } from '@/components/CursorOverhead'
 import { href, navigate } from '@/lib/router'
 import { useNowFor } from '@/lib/useNow'
 import { SessionNotes } from '@/components/Notes'
@@ -55,6 +56,7 @@ function sourceLine(s: SessionDetail): string {
   if (s.agent === 'gemini') return 'telemetry'
   if (s.agent === 'codex') return 'rollout transcript'
   if (s.agent === 'opencode') return 'OpenCode database'
+  if (s.agent === 'cursor') return "Cursor's records"
   const parts = [s.has_hooks ? 'hooks' : 'no hooks', s.has_transcript ? 'transcript' : 'no transcript']
   return parts.join(' · ')
 }
@@ -164,6 +166,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   // links what they write to this session when they do (sessionlink). Until
   // then there is nothing to read, which is not the same as "not measured".
   const waitingOnLink = unmeasurable && s.owned && (s.agent === 'codex' || s.agent === 'opencode')
+  // cursor-agent keeps its chats in a store Caprock does not read; its turns
+  // arrive through Cursor's hooks, once the user has turned them on.
+  const waitingOnCursorHooks = unmeasurable && s.owned && s.agent === 'cursor'
   // A session with no events yet has no activity time; Go's zero time is
   // "two thousand years ago", which is what the line under the title said.
   const activityAt = s.activity.at && !String(s.activity.at).startsWith('0001-') ? s.activity.at : s.last_event_at
@@ -319,7 +324,12 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       {unmeasurable ? (
         <Panel className={talking ? 'max-sm:hidden' : ''}>
           <div className="px-3 py-2.5 text-[13px] text-fg-muted">
-            {waitingOnLink ? (
+            {waitingOnCursorHooks ? (
+              <>
+                Nothing measured yet — Caprock sees a cursor-agent chat through Cursor&rsquo;s hooks, which are switched on from the Cost screen; turns appear once they are on and the first message is sent. Cursor&rsquo;s CLI reports no token counts, so none are shown for it.{' '}
+                {s.status !== 'ended' && <span className="text-fg-faint">The terminal below is live.</span>}
+              </>
+            ) : waitingOnLink ? (
               <>
                 {s.native_id
                   ? <>Nothing measured yet — linked to {agentName(s.agent)}&rsquo;s own session, and its figures appear here as it answers.{' '}</>
@@ -366,6 +376,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
         </div>
       </Panel>
       )}
+      {s.agent === 'cursor' && <CursorOverheadPanel sessionId={s.session_id} className={talking ? 'max-sm:hidden' : ''} />}
       {/* A waiting permission prompt on every tab, not only beside the
         * terminal: a phone opens on Timeline. The Terminal tab draws its own. */}
       {/* Under the bar when it is drawn over the chat; nothing when no prompt waits. */}

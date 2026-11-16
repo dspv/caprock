@@ -331,10 +331,10 @@ func (m *Manager) binary(agent string) string {
 	if p, ok := m.bins[agent]; ok {
 		return p
 	}
-	if p := findBinary(agent); p != "" {
+	if p := findAgentBinary(agent); p != "" {
 		return p
 	}
-	return agent
+	return commandName(agent)
 }
 
 // SetBinary points agent at the binary at path, for a test's fake.

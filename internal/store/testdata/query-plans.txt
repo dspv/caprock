@@ -108,6 +108,17 @@ UPDATE events SET payload = json_set((CASE WHEN typeof(payload) = 'blob' THEN zj
 UPDATE daily_stats SET tokens_total = tokens_total - ?, cost_usd = cost_usd - ? WHERE day = ? AND project = ? AND model = ?
     SEARCH daily_stats USING INDEX sqlite_autoindex_daily_stats_1 (day=? AND project=? AND model=?)
 
+## cursor.(*Ingester).pending
+SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cost_usd),0), COALESCE(SUM(json_extract(payload,'$.requests')),0) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = 'turn.assistant' GROUP BY 1
+    SEARCH events USING INDEX idx_events_session_id (sid=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    USE TEMP B-TREE FOR GROUP BY
+
+## cursor.(*Ingester).upToDate
+SELECT COALESCE(last_event_at,0) FROM sessions WHERE session_id = ?
+    SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## daemon.(*Daemon).compressionReport
 SELECT COALESCE( (SELECT MAX(id) FROM events WHERE id < (SELECT MIN(id) FROM events WHERE ts >= ? AND ts <= ?)), (SELECT MAX(id) FROM events WHERE NOT EXISTS (SELECT 1 FROM events WHERE ts >= ? AND ts <= ?)), 0)
     SCAN CONSTANT ROW
@@ -803,6 +814,22 @@ SELECT s.session_id, COALESCE(s.transcript_path, '') FROM sessions s WHERE s.sid
     LIST SUBQUERY 1
         SCAN compaction_stats
 
+## store.ContextOverhead
+SELECT COALESCE(e.model,''), COALESCE(json_extract(e.payload,'$.overhead_tokens'),0), COALESCE(json_extract(e.payload,'$.clean'),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid WHERE s.agent = 'cursor' AND s.last_event_at >= ? AND e.kind = 'context.overhead' AND json_valid(e.payload)
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=?)
+
+## store.ContextOverhead
+WITH first AS ( SELECT e.sid, MIN(e.id) AS id FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid WHERE s.agent = 'claude' AND s.started_at >= ? AND s.chat = 0 AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0 GROUP BY e.sid) SELECT COALESCE(e.model,''), COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0), COALESCE((SELECT LENGTH(CAST(json_extract(u.payload,'$.prompt') AS BLOB)) FROM events u INDEXED BY idx_events_session_id WHERE u.sid = e.sid AND u.id < e.id AND u.kind = 'turn.user' ORDER BY u.id LIMIT 1),0) FROM first f JOIN events e ON e.id = f.id
+    CO-ROUTINE first
+        SEARCH s USING INDEX idx_sessions_agent (agent=?)
+        SEARCH e USING INDEX idx_events_session_ts (sid=?)
+        USE TEMP B-TREE FOR GROUP BY
+    SCAN f
+    SEARCH e USING INTEGER PRIMARY KEY (rowid=?)
+    CORRELATED SCALAR SUBQUERY 2
+        SEARCH u USING INDEX idx_events_session_id (sid=? AND id<?)
+
 ## store.CountBrainMemories
 SELECT COUNT(*) FROM brain_nodes WHERE kind NOT IN ('topic','person','project','note')
     SCAN brain_nodes
@@ -896,6 +923,12 @@ SELECT COUNT(*) FROM throttle_observations WHERE ts >= ? AND session_id IN (SELE
     LIST SUBQUERY 1
         SCAN sessions
         CREATE BLOOM FILTER
+
+## store.CursorSpend
+SELECT s.sid, COALESCE(e.model,''), COALESCE(SUM(e.cost_usd),0), COALESCE(SUM(json_extract(e.payload,'$.requests')),0), COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)),0), COALESCE(MAX(e.cost_usd IS NOT NULL),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.agent = 'cursor' AND e.source = 'cursor' AND e.kind = 'turn.assistant' AND e.internal = 0 GROUP BY 1, 2
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
+    USE TEMP B-TREE FOR GROUP BY
 
 ## store.Daily
 SELECT day, project, model, tokens_total, cost_usd, sessions FROM daily_stats WHERE day >= ? ORDER BY day ASC, project, model
@@ -2077,6 +2110,12 @@ SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+
+## store.SessionOverheadFor
+SELECT COALESCE(e.model,''), COALESCE(json_extract(e.payload,'$.request_tokens'),0), COALESCE(json_extract(e.payload,'$.typed_tokens'),0), COALESCE(json_extract(e.payload,'$.visible_tokens'),0), COALESCE(json_extract(e.payload,'$.overhead_tokens'),0), COALESCE(json_extract(e.payload,'$.model_calls'),0), COALESCE(json_extract(e.payload,'$.clean'),0) FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'context.overhead' AND json_valid(e.payload) ORDER BY e.id LIMIT 1
+    SEARCH e USING INDEX idx_events_session_id (sid=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.SessionPRs
 SELECT session_id, url, number, title, opened_at, merged_at, closed_at, last_at FROM session_prs WHERE session_id = ? ORDER BY last_at DESC

@@ -213,7 +213,7 @@ func TestRejects(t *testing.T) {
 	for _, o := range []Options{
 		{Table: "turns"},
 		{Format: "xlsx"},
-		{Agent: "cursor"},
+		{Agent: "windsurf"},
 		{Payload: true}, // tsv
 		{Table: "sessions", Format: "jsonl", Payload: true},
 	} {

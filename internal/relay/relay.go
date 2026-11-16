@@ -203,6 +203,8 @@ func AgentName(agent string) string {
 		return "DeepSeek Harness"
 	case "hermes":
 		return "Hermes Agent"
+	case "cursor":
+		return "Cursor"
 	default:
 		return "Claude Code"
 	}

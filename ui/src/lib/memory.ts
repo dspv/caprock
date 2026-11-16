@@ -175,7 +175,7 @@ export function memoryParts(m: MachineMemory): { key: 'agents' | 'caprock' | 'ot
   ]
 }
 
-const CLI: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', gemini: 'Gemini CLI', deepseek: 'DeepSeek Harness', hermes: 'Hermes Agent' }
+const CLI: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', gemini: 'Gemini CLI', deepseek: 'DeepSeek Harness', hermes: 'Hermes Agent', cursor: 'Cursor' }
 
 /** What the heavy flag says: "3.1 GB in one process" or "growing for hours · 2.4 GB". */
 export function heavyText(heavy: 'big' | 'growing', maxProc: number | undefined): string {

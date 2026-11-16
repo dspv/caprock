@@ -54,7 +54,7 @@ export interface Session {
   /** Which coding agent produced this session. Absent means Claude Code,
    *  which is what every session was before OpenCode support. `claude.ai`
    *  and `chatgpt` are conversations imported from an export (ADR-074). */
-  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes' | 'claude.ai' | 'chatgpt'
+  agent?: 'claude' | 'opencode' | 'gemini' | 'codex' | 'deepseek' | 'hermes' | 'cursor' | 'claude.ai' | 'chatgpt'
   /** The agent's own id for a Codex or OpenCode session Caprock started under
    *  an id of its own — the thread or session its importer files under this
    *  one. Absent until the first message is sent, and for every other session. */
@@ -878,6 +878,9 @@ export interface Summary {
   /** Hermes Agent's share of the total, split by what kind of figure it is
    *  and by background work (ADR-069). Absent without Hermes turns. */
   hermes?: HermesCost
+  /** Cursor's share of the total in Cursor's own figures, by model, with
+   *  what it recorded no cost for (ADR-095). Absent without Cursor turns. */
+  cursor?: CursorCost
   /** The viewer's own usual over the last 30 days (lib/usual.ts); absent with too little history. */
   usual?: Usual
   /** `?machines=all` (ADR-067, Phase 3): every other computer's figures for the same range, in the order added. */
@@ -912,6 +915,61 @@ export interface AcrossMachines {
   answered: number
   of: number
   unpriced?: boolean
+}
+
+/** Cursor's spend in a range (store.CursorCost): the cost Cursor itself
+ *  recorded per chat and model, never priced from Caprock's table. */
+export interface CursorCost {
+  total_usd: number
+  requests: number
+  chats: number
+  priced_chats: number
+  unpriced_tokens: number
+  models?: { model: string; cost_usd: number; requests: number; tokens: number; priced: boolean }[]
+}
+
+/** One model family's first-request figures for one agent
+ *  (store.OverheadRow): what the agent sent that the person did not write. */
+export interface OverheadRow {
+  family: string
+  models: string[]
+  samples: number
+  clean: number
+  median_tokens: number
+  min_tokens: number
+}
+
+/** GET /v1/cursor/overhead. */
+export interface OverheadReport {
+  range: string
+  cursor: OverheadRow[]
+  claude: OverheadRow[]
+  rates: { family: string; model: string; input: number; cache_read: number }[]
+  method: string
+}
+
+/** GET /v1/sessions/{id}/overhead: a Cursor chat's own estimate. */
+export interface SessionOverhead {
+  model: string
+  request_tokens: number
+  typed_tokens: number
+  visible_tokens: number
+  overhead_tokens: number
+  model_calls: number
+  clean: boolean
+  family?: string
+  cursor_family?: OverheadRow
+  claude_family?: OverheadRow
+  method: string
+}
+
+/** GET/POST /v1/cursor/hooks: Caprock's entries in ~/.cursor/hooks.json. */
+export interface CursorHooksStatus {
+  path: string
+  installed: boolean
+  missing?: string[]
+  others: number
+  exists: boolean
 }
 
 /** Hermes Agent's spend in a range (store.HermesCost). Every figure is
@@ -1474,6 +1532,9 @@ export interface Status {
    *  Hermes could not price, and how many sessions ran in the background
    *  (cron, a gateway chat). Absent when there is no Hermes database. */
   hermes?: { sessions: number; events: number; unpriced?: number; background?: number; last_poll_ms?: number }
+  /** The Cursor editor reader (ADR-095): chats read, events stored, chats
+   *  Cursor recorded a cost for. Absent without a Cursor database. */
+  cursor?: { chats: number; events: number; priced_chats?: number; unpriced?: number; last_poll_ms?: number }
   version: string
   /** GOOS/GOARCH — what a bug report needs and nobody remembers to include. */
   platform?: string
@@ -1520,6 +1581,8 @@ export interface Status {
   grok_available?: boolean
   /** Nous Research's Hermes Agent CLI (ADR-069). Absent on older daemons. */
   hermes_available?: boolean
+  /** Cursor's CLI, cursor-agent (ADR-095). Absent on older daemons. */
+  cursor_available?: boolean
   /** The version of the OpenCode a new session would start ("2.0.26"),
    *  absent while the daemon has not asked it. OpenCode 1 and 2 take
    *  different flags, so a mode can become something different in each. */
@@ -2470,6 +2533,14 @@ export const api = {
   /** One Projects row's sessions, newest first, each with whether it can be picked up. */
   sessionsInDir: (dir: string) => get<SessionSummary[]>(`/v1/sessions?dir=${encodeURIComponent(dir)}`),
   session: (id: string) => get<SessionDetail>(`/v1/sessions/${encodeURIComponent(id)}`),
+  /** A Cursor chat's first-request overhead estimate, null when it has none (ADR-095). */
+  sessionOverhead: (id: string) => get<SessionOverhead | null>(`/v1/sessions/${encodeURIComponent(id)}/overhead`),
+  /** Cursor's and Claude Code's first-request overhead, by model family. */
+  cursorOverhead: (range: string) => get<OverheadReport>(`/v1/cursor/overhead?range=${encodeURIComponent(range)}`),
+  /** Caprock's entries in ~/.cursor/hooks.json. */
+  cursorHooks: () => get<CursorHooksStatus>('/v1/cursor/hooks'),
+  /** Install or remove them — only on the user's click. */
+  setCursorHooks: (action: 'install' | 'uninstall') => post<CursorHooksStatus>('/v1/cursor/hooks', { action }),
   /** The user's own name for a session; '' clears it. */
   /** Send one offer-survey answer to caprock.dev, through the daemon (ADR-062). Only on the user's click. */
   sendOffer: (a: { offer: string; answers: Record<string, string>; email?: string }) => post<{ status: string }>('/v1/offer', a),
@@ -2639,7 +2710,7 @@ export const api = {
   setRemote: (on: boolean) => post<RemoteState>('/v1/pair/remote', { on }),
   /** Sends the phone's page address (no code, no key) to the owner's Telegram chat. */
   pairSendLink: () => post<{ sent: string; link: string }>('/v1/pair/send-link', {}),
-  /** The dev servers shared with a phone now (ADR-087). Machine only. */
+  /** The dev servers shared with a phone now (ADR-095). Machine only. */
   devShares: () => get<DevShareList>('/v1/devshare'),
   /** Shares a local dev server on the Wi-Fi behind a link; the same origin again gives the same link. */
   startDevShare: (url: string) => post<DevShare>('/v1/devshare', { url }),

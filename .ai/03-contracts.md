@@ -1039,6 +1039,11 @@ GET  /v1/stats/daily?days=30           → DailyStat[]
 GET  /v1/stats/trends?agent=…         → Trends — Now's Today cells: 14 previous days cut at this time of day, today, the usual burn
 GET  /v1/pipeline/agents?repo=…      → RepoAgents — the Pipeline's cost per agent-hour and agent team for a repository's folders (§ Pipeline agents)
 POST /v1/hook                          → 204 (shim only, bearer-token gated; the event is written even after the shim hangs up)
+POST /v1/hook/cursor                   → 204 (`caprock-hook cursor` only, bearer-token gated; one Cursor hook event, § Cursor)
+GET  /v1/cursor/hooks                  → CursorHooks — Caprock's entries in ~/.cursor/hooks.json (§ Cursor)
+POST /v1/cursor/hooks                  → CursorHooks — {"action":"install"|"uninstall"}; only on the user's click
+GET  /v1/cursor/overhead?range=…       → OverheadReport — what Cursor and Claude Code send beyond what was typed, by model family
+GET  /v1/sessions/{id}/overhead        → SessionOverhead | null — one Cursor chat's first-request estimate
 WS   /v1/live                          → server-push frames: {type:"event"|"session"|"alert", data:…}
 ```
 
@@ -1477,6 +1482,17 @@ Extended thinking is never stored at all — only `type: "text"` blocks are read
 - **subagents**: a child whose `model_config._delegate_from` is its parent (or a child with no branch, reset or compression marker) is stored inside the main-thread session it descends from with `agent_id` = its own id and `sidechain: true`; a branch (`_branched_from`), a reset (`_reset_from`) and the continuation of a parent that ended on `compression` are sessions of their own;
 - **background**: `hermes_source` is the main thread's `source`; `background: true` when it is not one of Hermes's attended sources (`cli`, `tui`, `desktop`, `acp`);
 - **ended**: a main-thread session under Hermes's own id whose `ended_at` is set is marked `ended`.
+
+**Cursor's editor chats are read from its global state database** (`internal/cursor`, [ADR-095](08-decisions.md), [25-cursor.md](25-cursor.md)). `<Cursor user dir>/globalStorage/state.vscdb` (`~/Library/Application Support/Cursor/User` on macOS, `%APPDATA%\Cursor\User` on Windows, `$XDG_CONFIG_HOME/Cursor/User` or `~/.config/Cursor/User` on Linux) is opened `mode=ro` with `busy_timeout` and one connection, polled every 10 s, and skipped while its size and modification time (and its `-wal`'s) are unchanged. Only the `cursorDiskKV` rows `composerData:<chat>` and `bubbleId:<chat>:<message>` are read, by key range and by key, never `ItemTable`, which holds Cursor's sign-in. Events carry `source: "cursor"` and sessions `agent: "cursor"`, under Cursor's chat id:
+- a user message (`type` 1) → `turn.user`, key `cu-user:<message id>`, payload `{prompt, cwd, cursor_surface: "editor"}`;
+- a reply or thinking (`type` 2 with text, or with `tokenCount`) → `turn.assistant`, key `cu-msg:<message id>`, `msg_id` `cursor/<modelCallId, else message id>`, payload `{text, model, cwd, request_tokens?}`, where `request_tokens` is `tokenCount.inputTokens` — the size of the turn's last request, not a sum;
+- a tool call (`toolFormerData`) → `tool.pre`, key `cu-tool:<message id>`, `msg_id` `cursor/<modelCallId, else message id>` (the model request it belongs to), payload `{tool_name, tool_input, cwd, cursor_tool, error?}`, with `run_terminal_cmd`, `read_file`, `edit_file`/`search_replace`, `grep`, `glob_file_search`, `web_search` and `todo_write` named `Bash`, `Read`, `Edit`, `Grep`, `Glob`, `WebSearch` and `TodoWrite`;
+- **folder**: the window's folder from `workspaceStorage/<hash>/workspace.json` when a window's `composer.composerData` lists the chat, else the chat's `lastTerminalCwd`, else the repository (nearest `.git`) of the first absolute path a tool touched;
+- **cost**: `usageData` — `{<model>: {costInCents, amount}}` per chat — is Cursor's own figure and the only one used. Each pass stores, per model, `Cursor's total − SUM(what Caprock holds for that chat and model)` on the newest new reply of that model, or on a `turn.assistant` of its own, key `cu-usage:<chat>:<model>:<in>:<out>:<requests>:<cost>`, payload `{usage_only: true, …}`. The carrier's payload has `cost_basis: "cursor"` and `requests`; `cost_usd` is Cursor's cents / 100. Tokens are the sum of each turn's `tokenCount`. A chat with no `usageData` carries `cost_basis: "none"` and a NULL `cost_usd` — unpriced, never priced from the table;
+- **overhead**: once per chat, `context.overhead`, key `cu-overhead:<chat>`, payload `{model, cwd, cursor_surface, request_tokens, typed_tokens, visible_tokens, overhead_tokens, model_calls, clean, method: "first_request"}` (§ Cursor);
+- **liveness**: an editor chat has no process; it is judged by the clock, like the other observed agents. Chats with no messages and no `usageData` (empty drafts) are skipped.
+
+**`cursor-agent` chats arrive through Cursor's hooks** (`POST /v1/hook/cursor`), when the user turned them on. `caprock-hook cursor` (or `caprock hook cursor`) reads the event from stdin, prints Cursor's neutral answer first — `{"continue":true}` for `beforeSubmitPrompt`, `{}` otherwise — and forwards the body with `X-Caprock-Ppid` and, for a chat Caprock started, `X-Caprock-Session` (from `CAPROCK_CURSOR_SESSION`), within the shim's budget, exiting 0 on every path (rule 3). The daemon answers 204 always. A hook whose `conversation_id` the editor database already holds is dropped, so an editor chat is never counted twice. Events: `beforeSubmitPrompt` → `turn.user` (`cu-hook-prompt:<generation>:<hash>`), `afterAgentResponse` → `turn.assistant` (`cu-hook-reply:…`, `cost_basis: "none"`: hooks carry no tokens), `postToolUse` / `postToolUseFailure` → `tool.pre` and `tool.post` (`cu-hook-pre:…`, `cu-hook-post:…`), `stop` → `agent.stop`, `preCompact` → `context.compact`; cwd is `workspace_roots[0]`; payloads carry `cursor_surface: "cli"` (or `"hook"` when no editor database is read, so the surface is unknown) and `cursor_version`.
 
 **DeepSeek Harness's injected context is not a prompt.** DSH writes the AGENTS.md/CLAUDE.md instructions (`source.kind: agent-instructions`) and its runtime-policy snapshot (`plugin`) as `user/message` records; only `source.kind: user` is stored as `turn.user` (a record with no `source` is kept). Rows imported before this are removed once, after the importer's first pass (`meta.deepseek_injected_removed`): each transcript is read again and a `turn.user` row is deleted only when its key `dsh:user:<seq>` names a record whose `source.kind` is set and is not `user` — never judged by its text; a session whose transcript is gone keeps its rows. A `turn.user` row added nothing to `session_stats` or `daily_stats`, so nothing moves there; `sessions.started_at`, `last_event_at` and `worked_at` are recomputed from the remaining events, in the same transaction, only where one equals a deleted row's `ts`. On a copy of the owner's database (2026-10-01) it deleted 5 of 22 DeepSeek prompts and changed no session time or total.
 
@@ -2801,7 +2817,10 @@ next read of any total is without it. `caprock sessions rm [ids…]
 (2026-10-10, [23-grok.md](23-grok.md)), `hermes` (2026-10-15,
 [24-hermes.md](24-hermes.md): `hermes chat`, `-m`, `--yolo` for
 `bypassPermissions`, `-q` for the first message, `chat --resume <native id>`;
-`fork` is a 400) or a custom agent, `custom:<id>`
+`fork` is a 400), `cursor` (2026-11-16, [25-cursor.md](25-cursor.md):
+`cursor-agent`, `--model`, `--force` for `bypassPermissions`, the first message
+as the positional prompt, `--resume <chat id>`; plan and accept-edits start it
+as it is; `fork` is a 400; the env carries `CAPROCK_CURSOR_SESSION`) or a custom agent, `custom:<id>`
 (below); any other value is a 400. `permission_mode` is always in Claude Code's words and each
 agent's argv builder translates or drops it (`internal/agents/argv.go`; the
 per-agent flags are in [19-codex.md](19-codex.md) and
@@ -3633,13 +3652,17 @@ pause.
 **`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
 `codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
 `priority` order, and `default` from the top-level `model` in `config.toml`.
-`claude`, `gemini`, `opencode`, `grok` and `hermes` answer an empty list; an unknown
+`claude`, `gemini`, `opencode`, `grok`, `hermes` and `cursor` answer an empty list; an unknown
 agent is a 400. No network I/O. Kept for older pages; the pickers read the
 catalog below.
 
 **`GET /v1/agents/catalog`** — every agent the pickers offer, installed or not
 ([ADR-046](08-decisions.md)), in their order: Claude Code, Codex, OpenCode,
-Gemini CLI, Grok, Hermes, then the custom agents. Hermes is `observed: true`
+Gemini CLI, Grok, Hermes, Cursor, then the custom agents. Cursor is `observed:
+true` and `typed_model: true`; its models are the one in `cli-config.json`, the
+ones its recent CLI chats used, and the examples `cursor-agent --help` names —
+Cursor's full list depends on the account and comes over the network, so it
+is typed. Hermes is `observed: true`
 and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
 `~/.hermes`) names no `model.default`, its `setup` is `no_provider` with the
 command `hermes model` — only whether the key is set is read, never its
@@ -3858,7 +3881,10 @@ whose transcript path is under `profiles/<id>/` records `sessions.subscription
 
 **`/v1/status`** carries `hermes` — `{sessions, events, unpriced?, background?,
 last_poll_ms?}`, the Hermes Agent reader, absent while there is no Hermes
-database — and `codex_available`, `opencode_available`,
+database —, `cursor` — `{chats, events, priced_chats?, unpriced?,
+last_poll_ms?}`, the Cursor editor reader, absent while there is no Cursor
+database, with `cursor_available` for `cursor-agent` (an `agent` binary counts
+only when it resolves to `cursor-agent`, since Grok's is also called `agent`) — and `codex_available`, `opencode_available`,
 `grok_available` and `hermes_available` beside `claude_available` and `gemini_available`: the binary
 found on the daemon's PATH, the login shell's (once resolved — never waited
 for), or the installers' directories (`~/.local/bin`, `~/bin`,
@@ -4043,7 +4069,10 @@ OpenCode and Hermes: `command` is `cd <cwd> && codex resume <id>` /
 id (`native_id` when set); `ok` is false while the session is not ended (two
 processes on one thread), when its folder is gone, when Caprock started it and
 nothing was ever sent (nothing to continue), when the binary is not found, or,
-for Hermes, when its `state.db` is gone.
+for Hermes, when its `state.db` is gone. Cursor: `cursor-agent --resume <chat
+id>`, `ok` only when the CLI holds that chat for that folder
+(`<config dir>/chats/<md5 of the folder>/<chat id>/store.db`); an editor chat
+says it is continued in Cursor itself.
 
 **`open_terminal`** — `{modes, reason?}`, filled wherever `resume` is: how the
 session can be opened in the user's **own** terminal application (Ghostty,
@@ -7163,7 +7192,12 @@ Live frames gained `mail.*` events (router) in Phase 2.
 
 
 **`GET /v1/stats/summary` takes `?agent=`** — `claude`, `opencode`, `gemini`,
-`codex`, `deepseek`, `grok`, `hermes`, or omitted for every agent. With no filter or
+`codex`, `deepseek`, `grok`, `hermes`, `cursor`, or omitted for every agent. With no filter or
+`cursor`, the summary carries **`cursor`** when the range has Cursor turns
+(`store.CursorCost`, [ADR-095](08-decisions.md)): `{total_usd, requests,
+chats, priced_chats, unpriced_tokens, models?: [{model, cost_usd, requests,
+tokens, priced}]}` — Cursor's own cost by model, and the tokens of chats it
+recorded none for. With no filter or
 `hermes`, the summary carries **`hermes`** when the range has Hermes turns
 (`store.HermesCost`, [ADR-069](08-decisions.md)): `{total_usd, actual_usd,
 estimated_usd, included_turns?, unpriced_turns?, background_usd,
@@ -7227,7 +7261,7 @@ closed a session while its owner was at lunch. See
 
 Two exceptions, both deliberate:
 
-- **Agents Caprock only observes** (`opencode`, `codex`, `deepseek`, `hermes`; one Caprock started is judged by its process) are judged by the clock alone. A Hermes session also ends when Hermes writes its `ended_at`.
+- **Agents Caprock only observes** (`opencode`, `codex`, `deepseek`, `hermes`, `cursor`; one Caprock started is judged by its process) are judged by the clock alone. A Hermes session also ends when Hermes writes its `ended_at`.
   Their rows are read out of another tool's database, arrive months old, and
   have no process of ours to ask about.
 - **Sessions with no pid** — written by an older shim, or read from a transcript
@@ -8835,10 +8869,63 @@ Tables `tasks` (mirror of file state for querying) and `verifications` (`task_id
 
 No DDL change was needed for either fix here, only honest use of the existing columns. `verifications.output_path` now holds a real path — `<hive>/verifications/<task-id>/round-<n>-cmd-<i>.log` — instead of the empty string it was always written with, so a green task carries auditable evidence. The forced-continue counter's `task_id` takes the reserved value `/no-task` for a session that owns none (the orchestrator), which is what makes the guard bound it too; a hive id may not contain `/`, so it cannot collide with a real task id.
 
+## Cursor
+
+[ADR-095](08-decisions.md), [25-cursor.md](25-cursor.md). No DDL: Cursor's
+rows are ordinary events and sessions (§ HTTP API, the Cursor ingest).
+
+**`context.overhead`** is one event per Cursor chat, the estimate of what
+Cursor sent on the chat's first measured request beyond the conversation:
+`request_tokens` is that request's `tokenCount.inputTokens`; `typed_tokens`
+the first prompt's bytes / 4; `visible_tokens` every readable byte before the
+measured reply in that turn — the prompt, replies, thinking, tool arguments
+and results — / 4; `overhead_tokens = request_tokens − visible_tokens`;
+`model_calls` the distinct model calls in the turn up to the measured one;
+`clean` is true when `visible_tokens ≤ request_tokens / 4`, so the difference
+is mostly Cursor's own. A turn that ended with no measured request records
+nothing.
+
+**`GET /v1/cursor/overhead?range=today|7d|30d|all`** → `{range, cursor:
+OverheadRow[], claude: OverheadRow[], rates: [{family, model, input,
+cache_read}], method}`. An `OverheadRow` is `{family, models, samples, clean,
+median_tokens, min_tokens}`, medians and minima over the clean samples.
+`family` is `modelclass.Family`: Cursor's `claude-4.5-sonnet-thinking` and
+Claude Code's `claude-sonnet-4-5-20250929` are both `claude-sonnet-4-5`; the
+`-thinking`, `-max`, `-fast` and `[1m]` suffixes and a `provider/` prefix are
+dropped. Cursor's rows are its `context.overhead` events in sessions active in
+the range. Claude Code's are each main-thread session's first priced
+`turn.assistant`: `tokens_in + cache_read + cache_write` (exact, from the API)
+minus the session's first prompt's bytes / 4; every one is clean. `rates` are
+the table's list rates for each Cursor family it has a row for (Cursor's own
+models under `cursor-<family>`), so the screen can value the overhead.
+`method` is the sentence the screen shows.
+
+**`GET /v1/sessions/{id}/overhead`** → `{model, request_tokens, typed_tokens,
+visible_tokens, overhead_tokens, model_calls, clean, family?, cursor_family?,
+claude_family?, method}` for a Cursor chat with an estimate, `null`
+otherwise; the two family rows are the last 90 days'.
+
+**`GET /v1/cursor/hooks`** and **`POST /v1/cursor/hooks`** (`{"action":
+"install"|"uninstall"}`) → `{path, installed, missing?, others, exists}` for
+`~/.cursor/hooks.json`. Install merges: it keeps every other tool's entry in
+place, adds `{"command": "\"<shim>\" cursor", "timeout": 5}` to
+`beforeSubmitPrompt`, `afterAgentResponse`, `postToolUse`,
+`postToolUseFailure`, `stop` and `preCompact` — never a permission hook
+(`preToolUse`, `beforeShellExecution`, `beforeMCPExecution`, `beforeReadFile`,
+`subagentStart`), where an answer Cursor cannot parse blocks the action —
+replaces an earlier Caprock entry in place, writes `version: 1` when absent,
+keeps the file's mode, writes atomically without escaping `<`, `>` or `&`, and
+saves the original once as `hooks.json.caprock-backup`. Uninstall removes only
+Caprock's entries (a command whose program is `caprock-hook` or `caprock` with
+`cursor` or `hook cursor`) and drops a list it left empty; with no other
+change it gives back the file byte for byte. A file that is not valid JSON is
+left alone and the call is a 409. Installed only from the Cost screen's
+button: neither the daemon nor `caprock hooks install` writes it.
+
 ## Pricing table
 
 - Embedded JSON `pricing/pricing.json` (the spec's "ported from Caprock-python" — authored from the Anthropic pricing page in practice, [ADR-015](08-decisions.md#adr-015--pricing-source-anthropic-first-party-pricing-page-versioned-the-legacy-repo-has-no-pricingjson)); overridable by a user file (`<data_dir>/pricing.json`); `pricing_version` recorded in `meta` so historical cost is never silently recomputed — the one exception is a turn a table version lists under `corrections` (below), which is recomputed openly and logged.
-- **Who prices what.** Four of the six sources are priced by this table; two are not. **Hermes Agent** prices its own calls and records whether a figure is the provider's or its estimate; Caprock carries it unchanged with that basis ([ADR-069](08-decisions.md)). Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29; `gpt-6-astra` and `gpt-6.1-sol`, read 2026-09-30 — the gpt-6 >272K-token tier is not modelled, and no observed turn reached it). `cache_write_*` is `0` on the gpt-5 rows because OpenAI did not charge for writing its cache, which is "not charged" rather than "unknown". The gpt-6 model pages bill cache writes at 1.25x input, so those rows carry it — to no effect yet: Codex reports `cache_write_input_tokens` as 0 on every gpt-6 turn observed, so written tokens arrive as plain input and the gpt-6 rows under-report by up to a quarter of that unknown share. DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
+- **Who prices what.** Four of the seven sources are priced by this table; three are not. **Cursor** records a cost per chat and model for some chats and none for others; Caprock carries Cursor's figure and leaves the rest unpriced, never priced from this table, because Cursor records one request's tokens per turn and no cache split, so the table's arithmetic over them was off by half to double against Cursor's own figures on the owner's chats ([ADR-095](08-decisions.md)). **Hermes Agent** prices its own calls and records whether a figure is the provider's or its estimate; Caprock carries it unchanged with that basis ([ADR-069](08-decisions.md)). Claude Code, Gemini, Codex and **DeepSeek Harness** report tokens and no cost, so the table does the arithmetic. **OpenCode** reports its own cost, which is carried through unchanged — two different arithmetics over the same tokens would give one session two totals. The `source` on an event is what tells a reader which produced a figure. Codex is why the table carries OpenAI rows (`gpt-5-codex`, `gpt-5.3-codex`, and the `gpt-5.6` family, read from developers.openai.com on 2026-09-06; `gpt-6-sol` and `gpt-6-luna`, read 2026-09-29; `gpt-6-astra` and `gpt-6.1-sol`, read 2026-09-30 — the gpt-6 >272K-token tier is not modelled, and no observed turn reached it). `cache_write_*` is `0` on the gpt-5 rows because OpenAI did not charge for writing its cache, which is "not charged" rather than "unknown". The gpt-6 model pages bill cache writes at 1.25x input, so those rows carry it — to no effect yet: Codex reports `cache_write_input_tokens` as 0 on every gpt-6 turn observed, so written tokens arrive as plain input and the gpt-6 rows under-report by up to a quarter of that unknown share. DeepSeek Harness names `deepseek-v4-pro`, already present from the OpenCode third-party rows; its `cache_write_*` is unused because DSH reports no cache-write split.
 - **A turn whose model is not in the table is priced once the table has it.**
   It is stored with no cost and sits outside every total, counted as
   unpriced; adding the model's row fixed only the turns after it. On start
@@ -8888,7 +8975,7 @@ No DDL change was needed for either fix here, only honest use of the existing co
 - **The weekly report states what changed, not what happened.** It is sold on the promise of the repository that cost 3× its usual week and of last week against the one before it, per repository and model — so it must ship as a comparison against the preceding period, not as a digest of the current one. This is not a presentation choice: five readers were shown a digest-shaped description of it and every one of them concluded they would be paying for delivery of figures the free dashboard already shows (FB-027). A digest is a notification; what moved is the thing a week of data can say and a live screen cannot.
 - **`/v1/history` and the wide ranges of `/v1/stats/summary` are cached, with single-flight and stale-while-revalidate** (`internal/api/answercache.go`). Both answer from aggregates over the whole events table — on the owner's 1 GB, 333k-event database `/v1/history?range=all` is ~1.5s and `/v1/stats/summary?range=all` ~1.0s through the Go driver, and 4.7s and 1.5s under a live dashboard (2026-10-04) — and they are asked for in bursts: **five components on the main screen request history on their own timers**, and the share dialog asks for its period's summary (or all-time history) beside the glance. Requests for the same key that arrive while one is in flight wait for it and share its result. A settled answer is served as it is for its TTL (`historyTTL` 3s, `summaryTTL` 10s), and a history answer for **20 times what computing it took** when that is longer (`historyCostScale`, at most `historyCostCeiling` 2 min): today's history, milliseconds to count, keeps the 3 s, while an all-time one that takes a second is refreshed at most every 20 s, so keeping it current costs at most a twentieth of one core however large the history grows — with agents writing, the version always moves and the all-time answer was otherwise counted again on every poll, 40% of the daemon's CPU under the 2026-10-18 profile (resource-usage audit F13). A history that reaches before today (`7d`, `30d`, `all`) is also kept for at least `historyWideTTL` (1 min) however fast it was to count: the cost bound measures wall time, a whole-history scan the page cache answers is fast, and it still reads every event in the range — on a machine short of memory those reads go to disk on every poll (resource-usage audit F16). Today's history keeps the 3 s. The history totals take turns, tool calls, cost, unpriced and background volume from the summary computed beside them (`store.HistoryFrom`) instead of scanning for them a second time; past that it is **still served at once and one background refresh replaces it**, so nobody waits on a whole-table scan once a key has been computed, and what is shown is at most one refresh behind. Past `answerMaxStale` (30 min) an answer is too old to present as current and the caller waits for a fresh one. The daemon computes history for all time and the 7d, 30d and all-time summaries in the background as it starts (`Server.Warm`), so the first screen after a restart finds them ready. **Today's summary is not cached** — it is ~40ms and is the figure people watch move — and neither are the burn rate, throttles and plan windows beside any range, which are read live on every request. Keys carry the range's resolved start as well as its label, so `today`, `7d` and `30d` become new keys at midnight rather than serving yesterday's answer; `?range=` and `?range=today` still share one entry. **Errors are never cached**, and a failed refresh keeps the stale answer. Computations run on a context detached from their first caller: browsers abandon requests routinely, and a caller hanging up must not take the answer away from the callers waiting behind it. Writes do not invalidate — ingest commits several times a second while anyone works, so an invalidated cache would be empty exactly when the screen is busiest. Measured on a copy of the owner's database with a writer committing every 200ms and the main screen's eleven requests fired at once: the slowest went from 3.6s to 0.09s (2026-10-04). `/v1/status` reads its stored-event count the same way, recounted in the background at most every 30 s: a `COUNT(*)` over 333k events is 600ms on a cold connection.
 - **Dated prices (migration-free, `pricing.json`).** A model may have more than one row. A superseded price keeps its own row carrying `until` — the last date it applied, inclusive, UTC — and the current price is the row with no `until`; rows for one id are ordered oldest-first. A turn is priced by `LookupAt`/`PriceAt` at **its own timestamp**, so a rate that has since lapsed still prices the turns that ran under it. Without this, the only way to record a price change is to overwrite the figure, which silently restates history at a price nobody was charged — an invented number (rule 6) about our own past. Sonnet 5 was the first case (introductory $2/$10 through 2026-08-30, $3/$15 announced from 2026-08-31) until the rise was cancelled; no row is dated today. A row whose `until` will not parse is treated as not applying, so an unparseable date falls through to the current price rather than pricing a turn at an expired one. Exactly one row per model id may omit `until`, and a test enforces it.
-- **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced. `2026-10-08.1` adds `claude-haiku-5-5` (its lower, under-100k tier) with no correction, for the same reason. `2026-10-13.1` adds `deepseek-flash` (DeepSeek's off-peak list price; peak hours bill double and are under-reported) with no correction, for the same reason; it prices Claude Code on DeepSeek. `2026-10-22.1` changes no row: it prices ids ending in `-free` or `:free` at $0 (above), with no correction. The `deepseek-v4-pro` row is unchanged although DeepSeek now lists a higher price, because the date it changed is not known ([OQ-13](12-risks.md#open-questions)). `2026-10-31.1` splits `claude-sonnet-5-5` into two rows at 2026-10-07 (cache read $0.20 through 2026-10-06, $0.10 from 2026-10-07: Anthropic's pricing page prices Opus 5.5 and Sonnet 5.5 cache reads at 0.05x, read 2026-10-31, and Amazon Bedrock's pricing page dates the Sonnet 5.5 change to October 7, 2026) and corrects its turns from 2026-10-07, which the table had priced at the old rate; it adds `gpt-6.1-terra` with no correction (unpriced before, as above).
+- **Corrections (`pricing.json` `corrections`).** A list of `{model, from?, reason}`: turns an earlier table priced *wrongly* — a missing row that fell through to another model by prefix, or a price change that was announced and cancelled. That differs from a price that changed, which never restates history. On start the daemon (`rollup.ApplyCorrections`) reprices every `turn.assistant` whose model starts with `model` and whose time is on or after `from` (UTC; empty = all), at the row in force at the turn's own timestamp, and moves `session_stats` and `daily_stats` by the difference in the same transaction. It runs once per table version, recorded in `meta.price_corrections`; an interrupted pass is finished by the next start, because a turn already at the corrected figure moves by nothing. A malformed `from` or a correction with no model fails the table load. `2026-10-01.1` corrects `claude-opus-5-5` (all turns, previously priced as Opus 5) and `claude-sonnet-5` from 2026-08-31. `2026-10-03.1` adds `gemini-3.8-flash` and `gemini-3.1-flash-lite` with no correction: neither matched another id by prefix, so their turns were unpriced (named in `unpriced`), not mispriced. `2026-10-08.1` adds `claude-haiku-5-5` (its lower, under-100k tier) with no correction, for the same reason. `2026-10-13.1` adds `deepseek-flash` (DeepSeek's off-peak list price; peak hours bill double and are under-reported) with no correction, for the same reason; it prices Claude Code on DeepSeek. `2026-10-22.1` changes no row: it prices ids ending in `-free` or `:free` at $0 (above), with no correction. The `deepseek-v4-pro` row is unchanged although DeepSeek now lists a higher price, because the date it changed is not known ([OQ-13](12-risks.md#open-questions)). `2026-10-31.1` splits `claude-sonnet-5-5` into two rows at 2026-10-07 (cache read $0.20 through 2026-10-06, $0.10 from 2026-10-07: Anthropic's pricing page prices Opus 5.5 and Sonnet 5.5 cache reads at 0.05x, read 2026-10-31, and Amazon Bedrock's pricing page dates the Sonnet 5.5 change to October 7, 2026) and corrects its turns from 2026-10-07, which the table had priced at the old rate; it adds `gpt-6.1-terra` with no correction (unpriced before, as above). `2026-11-16.1` adds `cursor-composer-2.5` ($0.50 input, $0.20 cache read, $2.50 output) and `cursor-composer-2.5-fast` ($3, $0.50, $15), Cursor's own models as <https://cursor.com/docs/models> lists them, read 2026-11-16, with no correction: no turn is priced by them. Cache write and context window are 0 there because the page gives neither. They exist to put a list price on Cursor's per-request overhead (§ Cursor); a Cursor turn is never priced from the table. The same page adds a Cursor Token Rate of $0.25 per 1M tokens to third-party models' requests, which no row includes.
 - Cost per assistant turn = `tokens_in × input + cache_write × cache_write_price + cache_read × cache_read_price + tokens_out × output`, all prices per token (table values are per MTok ÷ 1e6).
 - Cache-savings math (ported from Caprock-python `_savings.py`): `billed_with = in + 1.25·cache_write + 0.10·cache_read` in input-token equivalents; `billed_without = in + cache_write + cache_read`; `saved = billed_without − billed_with`; hit-rate reported as `cache_read / (in + cache_read + cache_write)`. Where the transcript reports the 1h-TTL split (`cache_creation.ephemeral_1h_input_tokens`), those tokens are priced at the 1h write price (2×), not 1.25×.
 - **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).

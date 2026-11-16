@@ -785,7 +785,7 @@ func MarkIdleSessions(ctx context.Context, q Querier, before int64) ([]string, e
 // One fact is still available for those: the disk. A watched session with no
 // pid whose transcript file is gone, or whose directory is gone, ends now
 // rather than a day from now (see goneFromDisk). Imported history (OpenCode,
-// Codex, DeepSeek, Hermes) stays on the clock alone.
+// Codex, DeepSeek, Hermes, Cursor) stays on the clock alone.
 func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx,
 		`SELECT session_id, COALESCE(pid, 0), COALESCE(last_event_at, 0), COALESCE(agent, 'claude'), COALESCE(owned, 0),
@@ -869,8 +869,10 @@ func MarkEndedSessions(ctx context.Context, q Querier, before int64) ([]string, 
 // running. Hermes Agent's rows are read out of its database the same way
 // (ADR-069); Hermes records no process per session, so an observed one goes
 // by the clock — and by its own ended_at, which the importer applies.
+// Cursor's are the same (ADR-095): an editor chat has no process of its own
+// and a CLI chat seen through hooks has none Caprock started.
 func ownsItsProcess(agent string) bool {
-	return agent != "opencode" && agent != "codex" && agent != "deepseek" && agent != "hermes"
+	return agent != "opencode" && agent != "codex" && agent != "deepseek" && agent != "hermes" && agent != "cursor"
 }
 
 // updateStatusByID sets one status on a known set of sessions, in chunks that
@@ -1817,6 +1819,10 @@ type Summary struct {
 	// omitted when the range has no Hermes turns or another agent is
 	// filtered for.
 	Hermes *HermesCost `json:"hermes,omitempty"`
+	// Cursor is Cursor's spend in the range in Cursor's own figures, by
+	// model, with what it recorded no cost for (ADR-095); omitted when the
+	// range has no Cursor turns or another agent is filtered.
+	Cursor *CursorCost `json:"cursor,omitempty"`
 	// CostParts splits CostUSD by the sign-in each session ran on (agent and
 	// subscription), for the plan figures (internal/planshare). Filled by the
 	// API's range summary, not by SummarizeSparkFor.
@@ -2426,6 +2432,13 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			return s, err
 		}
 		s.Hermes = h
+	}
+	if agent == "" || agent == "cursor" {
+		c, err := CursorSpend(ctx, q, fromMs)
+		if err != nil {
+			return s, err
+		}
+		s.Cursor = c
 	}
 	// Both levels of the projects roll-up come from ONE pass. Grouping by
 	// (project, first segment of repo_path) and summing the segments back up

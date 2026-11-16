@@ -429,7 +429,7 @@ func TestAgentModels(t *testing.T) {
 	if code, body := get("opencode"); code != 200 || !strings.Contains(body, `"models":[]`) {
 		t.Fatalf("opencode: %d %s", code, body)
 	}
-	if code, _ := get("cursor"); code != 400 {
+	if code, _ := get("windsurf"); code != 400 {
 		t.Fatalf("unknown agent: %d", code)
 	}
 }

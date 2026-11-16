@@ -706,7 +706,11 @@ func hookCmd() *cobra.Command {
 		Use:    "hook",
 		Hidden: true,
 		Short:  "Internal: hook shim (reads a Claude Code hook payload on stdin)",
-		Run: func(cmd *cobra.Command, _ []string) {
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) > 0 && args[0] == shim.CursorArg {
+				shim.RunCursor(cmd.InOrStdin(), cmd.OutOrStdout())
+				return
+			}
 			shim.Run(cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}

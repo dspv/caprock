@@ -231,16 +231,17 @@ settings). Say no and it still reads your history from transcripts.
 Run [OpenCode](https://github.com/anomalyco/opencode),
 [Codex](https://developers.openai.com/codex),
 [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness),
-[Hermes Agent](https://github.com/NousResearch/hermes-agent) or
+[Hermes Agent](https://github.com/NousResearch/hermes-agent),
+[Cursor](https://cursor.com) or
 [Gemini CLI](https://github.com/google-gemini/gemini-cli) too? All are shown on
-the same screens — OpenCode and Hermes Agent from their own databases, Codex
+the same screens — OpenCode, Hermes Agent and Cursor from their own databases, Codex
 and DeepSeek Harness from the transcripts they write, Gemini through the
 telemetry it writes when Caprock starts it. See
 [OpenCode, Codex and DeepSeek Harness](#opencode-codex-and-deepseek-harness) and
-[Hermes Agent](#hermes-agent) for what that covers and what it does not.
+[Hermes Agent](#hermes-agent) and [Cursor](#cursor) for what that covers and what it does not.
 
 Caprock starts Codex, OpenCode (1 or 2, whichever `opencode --version`
-says is installed), Gemini CLI and Hermes Agent sessions too: whichever of them
+says is installed), Gemini CLI, Hermes Agent and Cursor's `cursor-agent` sessions too: whichever of them
 is installed appears next to Claude Code in the New Session dialog — same
 terminal, same directory picker, its own filter chip — and the dialog remembers
 the one you picked last. A Codex or OpenCode session started here shows its
@@ -334,7 +335,7 @@ report says when. Details: [docs/doctor.md](docs/doctor.md).
 
 ## Take the record out
 
-Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek, Hermes —
+Every agent Caprock reads — Claude Code, Codex, OpenCode, Gemini CLI, DeepSeek, Hermes, Cursor —
 lands in the same tables with the same columns. `caprock export` writes one of
 them out, for a spreadsheet, a notebook or your own warehouse:
 
@@ -429,7 +430,7 @@ and the cost add up over all of them, and the rows carry each agent's own mark
 so you can still tell them apart.
 
 **Or see one at a time.** The Home screen carries
-`all / claude / opencode / gemini / codex / deepseek / hermes` in the middle of its
+`all / claude / opencode / gemini / codex / deepseek / hermes / cursor` in the middle of its
 header, and it applies to the whole screen — today's totals, the live pulse, the
 activity feed, the projects list and the session cards all answer the same
 question. It appears only on a machine that runs more than one.
@@ -486,6 +487,18 @@ which part the provider reported and which part is Hermes's estimate, and
 shows background runs apart, by source. Delegated subagents sit inside the
 session that delegated them, counted once. Nothing is installed into Hermes.
 Only Hermes's default profile is read. See [docs/hermes.md](docs/hermes.md).
+
+### Cursor
+
+Caprock reads [Cursor](https://cursor.com)'s Agent and Composer chats from the
+editor's own database, read-only, with the cost Cursor itself recorded for
+each chat and model; a chat Cursor recorded no cost for shows its tokens and
+no price. It starts and continues `cursor-agent` from **New agent**, with the
+model you type, and sees `cursor-agent` chats once you turn on Cursor's hooks
+on the Cost screen — merged into `~/.cursor/hooks.json` beside anything
+already there, and removable. The Cost screen also estimates how many tokens
+Cursor sends on each request beyond what you typed, per model, beside Claude
+Code's figure for the same model. See [docs/cursor.md](docs/cursor.md).
 
 ### Claude Code on DeepSeek
 

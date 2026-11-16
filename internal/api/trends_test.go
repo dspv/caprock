@@ -27,7 +27,7 @@ func TestTrendsEndpoint(t *testing.T) {
 	if today.Turns == 0 {
 		t.Fatal("the seed has no turn; the test would prove nothing")
 	}
-	if code := e.get(t, "/v1/stats/trends?agent=cursor", nil); code != 400 {
+	if code := e.get(t, "/v1/stats/trends?agent=windsurf", nil); code != 400 {
 		t.Fatalf("unknown agent: %d, want 400", code)
 	}
 	var codex store.Trends

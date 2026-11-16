@@ -1,0 +1,802 @@
+{
+ "composerData:c0ffee00-0000-4000-8000-000000000001": {
+  "_v": 10,
+  "composerId": "c0ffee00-0000-4000-8000-000000000001",
+  "name": "Update the sign-up link",
+  "createdAt": 1762452211482,
+  "lastUpdatedAt": 1762452315337,
+  "modelConfig": {
+   "modelName": "composer-1",
+   "maxMode": true
+  },
+  "unifiedMode": "agent",
+  "status": "completed",
+  "usageData": {
+   "composer-1": {
+    "costInCents": 11,
+    "amount": 15
+   }
+  },
+  "fullConversationHeadersOnly": [
+   {
+    "bubbleId": "b0000001-0000-4000-8000-000000000000",
+    "type": 1
+   },
+   {
+    "bubbleId": "b0000002-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000003-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000004-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000005-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000006-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000007-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000008-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000009-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000010-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000011-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000012-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000013-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000014-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000015-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000016-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000017-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000018-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000019-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000020-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000021-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000022-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000023-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000024-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000025-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000026-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000027-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000028-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000029-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000030-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000031-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000032-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000033-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000034-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000035-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000036-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "b0000037-0000-4000-8000-000000000000",
+    "type": 2
+   }
+  ]
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000001-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 1,
+  "bubbleId": "b0000001-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:56.365Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": true,
+  "text": "Prompt 1: please update the sign-up link.",
+  "modelInfo": {
+   "modelName": "composer-1"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000002-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000002-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:56.563Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "modelInfo": {
+   "modelName": "composer-1"
+  },
+  "usageUuid": "811cacb7-b094-5b17-af9e-7a2b31786af3",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000003-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000003-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:58.287Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 3: done. done. done. done. done. done. done. done. done. done. ",
+  "usageUuid": "811cacb7-b094-5b17-af9e-7a2b31786af3"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000004-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000004-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:58.310Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 39,
+   "toolCallId": "tool_4",
+   "modelCallId": "790beeaf-db15-5307-8de6-0bb5394f7469",
+   "status": "completed",
+   "name": "list_dir",
+   "rawArgs": "{\"target_directory\": \"/work/site/app/page.tsx\"}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000005-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000005-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:58.310Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 41,
+   "toolCallId": "tool_5",
+   "modelCallId": "790beeaf-db15-5307-8de6-0bb5394f7469",
+   "status": "completed",
+   "name": "grep",
+   "rawArgs": "{\"pattern\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"path\": \"/work/site/app/page.tsx\", \"-i\": true}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000006-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000006-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:58.494Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "3bed85cc-9b28-5dd6-9024-e9b98047cf1e",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000007-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000007-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:59.403Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 7: done. done. done. done. done. done. done. done. ",
+  "usageUuid": "3bed85cc-9b28-5dd6-9024-e9b98047cf1e"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000008-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000008-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:59.429Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 40,
+   "toolCallId": "tool_8",
+   "modelCallId": "3f38b0df-3e09-5254-9eda-ba581901d65e",
+   "status": "completed",
+   "name": "read_file",
+   "rawArgs": "{\"target_file\": \"/work/site/app/page.tsx\"}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000009-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000009-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:59.429Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 40,
+   "toolCallId": "tool_9",
+   "modelCallId": "3f38b0df-3e09-5254-9eda-ba581901d65e",
+   "status": "completed",
+   "name": "read_file",
+   "rawArgs": "{\"target_file\": \"/work/site/app/page.tsx\"}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000010-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000010-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:04:59.648Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "7dc38b37-f200-5468-b16e-f488af97e786",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000011-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000011-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:01.021Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 11: done. done. done. done. done. done. ",
+  "usageUuid": "7dc38b37-f200-5468-b16e-f488af97e786"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000012-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000012-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:01.131Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_12",
+   "modelCallId": "055ca49d-166b-5647-a9ae-08c6ba22be03",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm run build\", \"is_background\": false}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000013-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000013-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:01.131Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "6560bded-aa63-5ce6-a1db-840688d71c81",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000014-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000014-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:01.810Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 14: done. done. done. done. done. ",
+  "usageUuid": "6560bded-aa63-5ce6-a1db-840688d71c81"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000015-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000015-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:01.831Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_15",
+   "modelCallId": "3239d707-e26d-50d9-a6e1-d9bd17ea73aa",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm run build\", \"is_background\": false}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000016-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000016-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:01.831Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "845a2147-ec58-5cff-8105-21c60433db4a",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000017-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000017-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:02.898Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 17: done. done. done. done. done. ",
+  "usageUuid": "845a2147-ec58-5cff-8105-21c60433db4a"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000018-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000018-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:02.902Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 38,
+   "toolCallId": "tool_18",
+   "modelCallId": "2adddf1a-9675-5361-9822-e86e6162e8b0",
+   "status": "completed",
+   "name": "search_replace",
+   "rawArgs": "{\"file_path\": \"/work/site/app/page.tsx\", \"old_string\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"new_string\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000019-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000019-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:02.902Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 38,
+   "toolCallId": "tool_19",
+   "modelCallId": "2adddf1a-9675-5361-9822-e86e6162e8b0",
+   "status": "completed",
+   "name": "search_replace",
+   "rawArgs": "{\"file_path\": \"/work/site/app/page.tsx\", \"old_string\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"new_string\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000020-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000020-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:04.582Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 38,
+   "toolCallId": "tool_20",
+   "modelCallId": "2adddf1a-9675-5361-9822-e86e6162e8b0",
+   "status": "completed",
+   "name": "search_replace",
+   "rawArgs": "{\"file_path\": \"/work/site/app/page.tsx\", \"old_string\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\", \"new_string\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000021-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000021-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:05.539Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "7ad48b17-5eec-5bea-8bd6-eaf31c796e13",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000022-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000022-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:06.769Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 22: done. done. done. done. ",
+  "usageUuid": "7ad48b17-5eec-5bea-8bd6-eaf31c796e13"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000023-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000023-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:06.795Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 30,
+   "toolCallId": "tool_23",
+   "modelCallId": "12d93348-aa0e-5e6b-b771-288306af2ebd",
+   "status": "completed",
+   "name": "read_lints",
+   "rawArgs": "{\"paths\": [\"/work/site/app/page.tsx\", \"/work/site/app/footer.tsx\"]}",
+   "result": "{\"contents\": \"yy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000024-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000024-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:06.795Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "91180a75-e49e-5f94-9c6d-14d52d977c3f",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000025-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000025-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:09.956Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 25: done. done. done. done. done. done. done. done. ",
+  "usageUuid": "91180a75-e49e-5f94-9c6d-14d52d977c3f"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000026-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000026-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:09.987Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_26",
+   "modelCallId": "1968cdf0-1007-5542-b9eb-8d877b299d53",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm run build\", \"is_background\": false}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000027-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000027-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:09.987Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "ddc18f1f-f088-556e-ab16-e91db5b28a33",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000028-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000028-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:10.764Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 28: done. done. ",
+  "usageUuid": "ddc18f1f-f088-556e-ab16-e91db5b28a33"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000029-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000029-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:10.785Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_29",
+   "modelCallId": "2299240d-9990-5fa6-abc4-eb2e58fb68e4",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm run build\", \"is_background\": false}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000030-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000030-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:10.785Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "1373649c-07d1-56b2-9ffd-7852448be4e5",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000031-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000031-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:11.667Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 31: done. done. done. done. done. done. done. done. done. ",
+  "usageUuid": "1373649c-07d1-56b2-9ffd-7852448be4e5"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000032-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000032-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:11.700Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_32",
+   "modelCallId": "dd372862-73cd-5aa8-b916-1cf59c399dd8",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm run build\", \"is_background\": false}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000033-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000033-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:11.700Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "8c4b163d-38c9-5e70-8baa-0f77995d3f03",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000034-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000034-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:12.641Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "Reply 34: done. done. done. done. done. done. done. done. ",
+  "usageUuid": "8c4b163d-38c9-5e70-8baa-0f77995d3f03"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000035-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000035-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:12.671Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_35",
+   "modelCallId": "cee7df88-a9bf-57d5-9d8e-b89b830b1f2f",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm run build\", \"is_background\": false}",
+   "result": "{\"contents\": \"yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000036-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000036-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:12.671Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "isAgentic": false,
+  "text": "",
+  "usageUuid": "a26a4a8b-21a4-5bd7-a63e-70f471e99242",
+  "thinking": {
+   "text": "Thinking about the link.Thinking about the link.Thinking about the link."
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000001:b0000037-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "b0000037-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-06T18:05:14.429Z",
+  "tokenCount": {
+   "inputTokens": 19330,
+   "outputTokens": 299
+  },
+  "isAgentic": false,
+  "text": "Reply 37: done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. done. ",
+  "usageUuid": "a26a4a8b-21a4-5bd7-a63e-70f471e99242"
+ }
+}

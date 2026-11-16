@@ -41,6 +41,7 @@ const OTHER: Partial<Record<string, { label: string; who: Character }>> = {
   gemini: { label: 'Gemini', who: 'gemini' },
   opencode: { label: 'OpenCode', who: 'opencode' },
   hermes: { label: 'Hermes', who: 'hermes' },
+  cursor: { label: 'Cursor', who: 'cursor' },
   grok: { label: 'Grok', who: 'crowd' },
 }
 

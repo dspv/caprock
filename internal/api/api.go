@@ -68,6 +68,13 @@ type Deps struct {
 	Table  *cost.Table
 	Log    *slog.Logger
 	Hook   http.Handler // POST /v1/hook (hookd)
+	// CursorHook serves POST /v1/hook/cursor: Cursor's hooks, forwarded by
+	// `caprock-hook cursor` (ADR-095). Nil leaves the route out.
+	CursorHook http.Handler
+	// CursorHooks reports ("" ), installs ("install") or removes
+	// ("uninstall") Caprock's entries in ~/.cursor/hooks.json — only on the
+	// user's click. Nil answers 501.
+	CursorHooks func(ctx context.Context, action string) (any, error)
 	// Reporter sends a weekly report on demand, so somebody can find out
 	// whether their bot works without waiting for Monday. Nil disables the
 	// endpoint rather than crashing it.
@@ -875,6 +882,13 @@ func New(d Deps) *Server {
 	if d.Hook != nil {
 		m.Handle("POST /v1/hook", d.Hook)
 	}
+	if d.CursorHook != nil {
+		m.Handle("POST /v1/hook/cursor", d.CursorHook)
+	}
+	m.HandleFunc("GET /v1/cursor/hooks", s.handleCursorHooks)
+	m.HandleFunc("POST /v1/cursor/hooks", s.handleCursorHooks)
+	m.HandleFunc("GET /v1/cursor/overhead", s.handleCursorOverhead)
+	m.HandleFunc("GET /v1/sessions/{id}/overhead", s.handleSessionOverhead)
 	m.HandleFunc("POST /v1/hive", s.handleEnableHive)
 	m.HandleFunc("GET /v1/hive/starter", s.handleTaskStarter)
 	m.HandleFunc("GET /v1/tasks", s.handleTasks)
@@ -3204,9 +3218,9 @@ func (s *Server) handleAgentModels(w http.ResponseWriter, r *http.Request) {
 			out.Models = m
 		}
 		out.Default = codex.ConfiguredModel()
-	case "claude", "gemini", "opencode", "grok", "hermes":
+	case "claude", "gemini", "opencode", "grok", "hermes", "cursor":
 	default:
-		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok, hermes`, http.StatusBadRequest)
+		http.Error(w, `agent must be one of claude, codex, opencode, gemini, grok, hermes, cursor`, http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -3392,10 +3406,10 @@ func agentFilter(v string) (store.AgentFilter, error) {
 	switch v {
 	case "", "all":
 		return "", nil
-	case "claude", "opencode", "gemini", "codex", "deepseek", "grok", "hermes":
+	case "claude", "opencode", "gemini", "codex", "deepseek", "grok", "hermes", "cursor":
 		return store.AgentFilter(v), nil
 	default:
-		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, deepseek, grok, hermes, or omit for all", v)
+		return "", fmt.Errorf("unknown agent %q: use claude, opencode, gemini, codex, deepseek, grok, hermes, cursor, or omit for all", v)
 	}
 }
 

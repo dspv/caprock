@@ -11,6 +11,12 @@ import (
 )
 
 func main() {
+	// `caprock-hook cursor` is Cursor's hook (ADR-095): it prints Cursor's
+	// neutral reply first, then forwards the payload the same silent way.
+	if len(os.Args) > 1 && os.Args[1] == shim.CursorArg {
+		shim.RunCursor(os.Stdin, os.Stdout)
+		os.Exit(0)
+	}
 	shim.Run(os.Stdin, os.Stdout)
 	os.Exit(0)
 }
