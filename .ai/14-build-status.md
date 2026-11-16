@@ -94,33 +94,6 @@ against a real `cursor-agent` chat: the owner is not signed in to the CLI,
 so its hooks, chat metadata and resume run on fixtures from Cursor's docs and
 the real `--help`. Details: [25-cursor.md](25-cursor.md).
 
-### 2026-11-16 — unreleased: Jarvis V2's core (ADR-096), daemon half
-
-The digest's question needs carry their
-options (recommended marked) and `answerable`; `POST /v1/jarvis/answer`
-presses an option or types on the Other row in a session Caprock started,
-after reading the screen. The keys were read from the installed Claude Code
-2.1.325's bundled JavaScript; verified end to end only with the fake claude
-(the smoke test `TestJarvisAnswersAQuestionDialog`) and the screen reader
-against dialogs reconstructed from that bundle, not yet against a live
-Claude Code question. Handled for you (`jarvis_handled`, migration 0082,
-`GET /v1/jarvis/handled`, the `jarvis` live frame) records limit moves and
-returns, end when done, idle ends, the morning summary and the new resume
-after a usage limit resets (`limit_auto_resume`, on by default).
-
-### 2026-11-16 — unreleased: Jarvis V2's chat and brain (ADR-097), daemon half
-
-`GET /v1/jarvis/thread` and `POST
-/v1/jarvis/say` (migration 0083 `jarvis_thread`): a message is routed by the
-person's own Claude Code or Codex, headless and without tools, on the sign-in
-chosen in `jarvis_brain`, else deterministically as V1's command line did.
-Routine single-select questions in sessions Caprock started are answered by
-the brain behind a deny-word guard; "Done:" messages when an agent Jarvis
-gave work to finishes. The digest gains `brain`. Verified with fake `claude`
-and `codex` binaries only; the real flags were read from `--help` and never
-run against an account. Auto-answers press keys through the core's
-answer path (ADR-096) and are written to its Handled log.
-
 ### 2026-11-15 — unreleased: the Jarvis digest (ADR-094), daemon half
 
 Branch `feat/jarvis-digest`. `GET /v1/jarvis` answers one deterministic
@@ -448,6 +421,12 @@ title, about 335,000 characters as the re-tag sends them, so 31 calls. Token
 estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
+
+### 2026-11-16 — 0.178.1: Jarvis V2 withdrawn
+
+A patch release. The owner tried Jarvis V2 the day it shipped and found it
+hard to understand next to V1; it was reverted whole (ADR-098) and Jarvis is
+the V1 digest again. Migrations 0082 and 0083 stay, their tables unused.
 
 ### 2026-11-16 — 0.178.0: Jarvis V2 — decision cards, Handled for you, one chat, hold to talk, and a brain on the user's own subscription
 

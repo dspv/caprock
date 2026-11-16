@@ -1365,8 +1365,7 @@ event, so the next event always wins:
   within milliseconds; Enter that submitted nothing is not work.
 
 A dialog for `AskUserQuestion` is answered by its own call's hook and is
-left alone here (a Jarvis answer, § Jarvis, presses its keys and its
-`PostToolUse` follows at once); looping, error and ended outrank a nudge; with two or more
+left alone; looping, error and ended outrank a nudge; with two or more
 dialogs outstanding a key answers one Caprock cannot name and nudges
 nothing. A session Caprock did not start has no nudge (rule 7: nothing
 here sees its keys). An approval older than the idle window reads idle
@@ -1426,7 +1425,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "machines" frame carries {id, why, session_id?} when something changed on another computer this one reaches, local only (§ Other computers); `?types=a,b` sends only those types and the housekeeping ones (§ Live socket, replay); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "continued" frame carries a ContinueOnResult when a session was continued on another provider or sign-in, by a button or by Caprock (auto true) — the toast and its Undo (§ Continue on another provider); a "jarvis" frame carries {op: "handled", item: HandledItem} when Caprock did something on its own (§ Jarvis); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "machines" frame carries {id, why, session_id?} when something changed on another computer this one reaches, local only (§ Other computers); `?types=a,b` sends only those types and the housekeeping ones (§ Live socket, replay); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "continued" frame carries a ContinueOnResult when a session was continued on another provider or sign-in, by a button or by Caprock (auto true) — the toast and its Undo (§ Continue on another provider); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -1441,9 +1440,7 @@ the hook's, `"subagent"` when it names none; both omitted for the main
 thread), `queued` (how many more are outstanding) and `waiting` (every
 outstanding prompt oldest first, this one included, each with the same fields
 but no `queued`/`waiting` — present only when there are two or more).
-`AskUserQuestion` never becomes one: its menu is answers, not Yes and No; it
-is answered from Jarvis's decision card instead (`POST /v1/jarvis/answer`,
-§ Jarvis, [ADR-096](08-decisions.md)). The
+`AskUserQuestion` never becomes one: its menu is answers, not Yes and No. The
 `POST` presses the key a person would — `allow` = `1`, `always` = `2` (409
 when `always` is not offered), `deny` = Esc — only while `id` is the oldest
 prompt **and the only one outstanding**: with two or more, which dialog the
@@ -2289,7 +2286,7 @@ page acts on it; the daemon never installs anything (ADR-042 as amended
 
 `PUT /v1/settings` also accepts `kimi_api_key`, the user's Kimi platform key for Claude Code on Kimi (see **Subscriptions** below), held to exactly the rules of `deepseek_api_key`: write-only, kept in the secret store under `dev.caprock.kimi` (file `kimi-api-key`; `kimi_key_stored` in `config.json` records that one is kept), `GET` reports `kimi_key_set`, `kimi_key_where` and `kimi_key_hint`, `""` clears it, `400` for a line break, a NUL or over 512 bytes. There is no older `config.json` copy to move.
 
-`PUT /v1/settings` also accepts Settings → *When a limit is reached* ([ADR-090](08-decisions.md), § Continue on another provider): `limit_action` — `"ask"` (the default, stored as absent), `"auto"` or `"wait"`, anything else `400`; `limit_fallbacks` — the targets `"auto"` tries, in order: `"default"`, `"deepseek"`, `"kimi"`, `"codex"` or a well-formed subscription id, duplicates dropped, at most 16, anything else `400` (whether one exists or is usable is decided when it is tried); `limit_return_after_reset` (bool); and `limit_auto_resume` (bool, on unless switched off — [ADR-096](08-decisions.md): a session a limit stopped is continued once the limit resets). `GET` always reports all four (`limit_fallbacks` `[]` when none).
+`PUT /v1/settings` also accepts Settings → *When a limit is reached* ([ADR-090](08-decisions.md), § Continue on another provider): `limit_action` — `"ask"` (the default, stored as absent), `"auto"` or `"wait"`, anything else `400`; `limit_fallbacks` — the targets `"auto"` tries, in order: `"default"`, `"deepseek"`, `"kimi"`, `"codex"` or a well-formed subscription id, duplicates dropped, at most 16, anything else `400` (whether one exists or is usable is decided when it is tried); and `limit_return_after_reset` (bool). `GET` always reports all three (`limit_fallbacks` `[]` when none).
 
 `PUT /v1/settings` accepts `report_bot_token` and `report_chat_id` for the weekly report. The **token is write-only**: it is kept in the secret store (below) and never returned by `GET /v1/settings`, which instead carries `report_bot_set` (a bool), `report_bot_where`, `report_last_error` and `report_last_sent_ms`. This is the only write-only field in the API and it exists because the settings response is read on every dashboard render and by `caprock report` — a credential should not ride along on either ([ADR-024](08-decisions.md)). Omitting `report_bot_token` from a PUT leaves the stored one alone, since a UI that reads settings and writes them back always omits it; sending `""` clears it. The chat id is not a credential and round-trips normally. `report_last_error` is the last send's failure, kept in `meta` so it survives a restart; a send that goes through (scheduled or *Send one now*) clears it, and so does saving a different bot token or chat — through `PUT /v1/settings`, `PUT /v1/telegram/token` or pairing — because the failure was the old bot's (a stale *Unauthorized* sat under a fresh *sent — check Telegram*, owner, 2026-10-22). The Weekly report panel reads settings again after *Send one now*, whichever way it went.
 
@@ -3651,20 +3648,6 @@ app offers the choices. `"wait"` does not use the plan-window stop
 (Premium): that pauses at a share below 100% so a turn survives, while at
 the limit Claude Code has already ended the turn and there is nothing to
 pause.
-
-**Resumed after the reset** (`limit_auto_resume`, on unless switched off,
-[ADR-096](08-decisions.md); `autoResume` in `limitwatch.go`). On the same
-tick, whatever `limit_action` is, each of those sessions whose limit has a
-known reset that passed at least a minute ago and at most six hours ago is
-sent `continue` through its message queue (`msgQueue.Send`, as Jarvis's
-Continue sends it: typed at once at its prompt, queued otherwise) — once per
-limit (by `limit_hit.at`, in memory), and only while this daemon holds its
-terminal, it is not mid-turn, no main-thread prompt arrived after the limit
-(someone set it going again; this also keeps a restarted daemon from sending
-a second one), no message waits in its queue, and no automatic move took it
-elsewhere. The first real reply clears `limit_hit` as usual. Each one is a
-`limit_resume` item in Jarvis's Handled for you (§ Jarvis). A session
-Caprock did not start is never in the list (`owned = 1`, rule 7).
 
 **`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
 `codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
@@ -6020,24 +6003,17 @@ GET /v1/work → Work
 One digest for a person running several agents at once
 ([ADR-094](08-decisions.md)): what needs them, every live agent with what it
 is doing now and its plan, and the day so far. Deterministic: no model is
-asked, nothing is written. Code: `internal/api/jarvis.go`,
-`store.DaySpend` in `internal/store/workspend.go`. V2's core
-([ADR-096](08-decisions.md)) adds a question answered from its card and the
-Handled for you log (`internal/api/jarvisanswer.go`,
-`internal/agents/question.go`, `internal/daemon/handled.go`,
-`internal/store/jarvishandled.go`, § Jarvis handled DDL).
+asked, nothing is written, no DDL. Code: `internal/api/jarvis.go`,
+`store.DaySpend` in `internal/store/workspend.go`.
 
 ```
-GET  /v1/jarvis                                  → JarvisDigest
-POST /v1/jarvis/answer {session_id, option?, text?} → {ok: true}
-GET  /v1/jarvis/handled?since=<unix ms>&limit=<n> → {items: [HandledItem]}
+GET /v1/jarvis → JarvisDigest
 ```
 
 - **`JarvisDigest`** — `{generated_at, headline, needs_you: [JarvisNeed],
-  agents: [JarvisAgent], projects: [{name, live, waiting}],
-  handled_today, brain}` (`brain`: § Jarvis thread); the three lists are
-  `[]`, never `null`. `generated_at` is the daemon's clock (unix ms).
-  `handled_today` counts the Handled for you items since local midnight.
+  agents: [JarvisAgent], projects: [{name, live, waiting}]}`; the three
+  lists are `[]`, never `null`. `generated_at` is the daemon's clock (unix
+  ms).
 - **`headline`** — `{working, waiting_you, stuck, live, sessions_today,
   cost_today_usd}`. The first four count the live sessions by `state`.
   `sessions_today` and `cost_today_usd` cover every session with an event
@@ -6074,9 +6050,8 @@ GET  /v1/jarvis/handled?since=<unix ms>&limit=<n> → {items: [HandledItem]}
   typed into (rule 7). Always `true` on an approval, which is the task
   runner's own.
 - **`JarvisNeed`** — `{kind, session_id, project, title, detail?, since,
-  approval_id?, controllable, options?, answerable, more_questions?}`,
-  ordered `permission`, `question`, `approval`, `loop`, then oldest `since`
-  first.
+  approval_id?, controllable}`, ordered `permission`, `question`,
+  `approval`, `loop`, then oldest `since` first.
   - `permission`: a permission dialog. `title` "Wants to run: <command>",
     "Wants to edit: <file>", "Wants to write: <file>", else "Wants to use
     <tool>: <target>"; `detail` the command's description (else the
@@ -6094,17 +6069,6 @@ GET  /v1/jarvis/handled?since=<unix ms>&limit=<n> → {items: [HandledItem]}
   - `since` (unix ms) is the narration's `at` — the event the wait rests on
     — else `last_activity_at`. `title` is one line of at most 120
     characters, `detail` at most 600.
-  - `options` (an AskUserQuestion dialog only): its first question's
-    options, `[{label, description?, recommended}]`; `recommended` is set
-    when the agent's label contains "(Recommended)" (any case), which is
-    taken out of `label`. `more_questions` is how many further questions
-    the same dialog asks (omitted when none).
-  - `answerable`: `POST /v1/jarvis/answer` can press an option for it — a
-    Claude Code session that is `controllable`, a dialog of one
-    single-select question with at most eight options. `false` for
-    everything else: Codex's `request_user_input` is never a question need
-    (Caprock does not observe it), and OpenCode's question tool, which
-    reads as one, is not typed into.
 - **Cost.** Measured 2026-11-15 on a copy of the owner's database (1.81 GB,
   989,423 events, 16 live sessions, 59 sessions today), without an agent
   manager: 7.1 ms median warm (p90 7.5 ms, max 8.4 ms over 50 reads),
@@ -6112,218 +6076,12 @@ GET  /v1/jarvis/handled?since=<unix ms>&limit=<n> → {items: [HandledItem]}
   and task list; `store.DaySpend` 0.9 ms.
 - **Who.** A read open to every paired device, as the Work board is.
 
-**Answering a question** (`POST /v1/jarvis/answer`, [ADR-096](08-decisions.md)).
-`{session_id, option}` presses option `option` (0-based) of the question
-dialog the session waits on; `{session_id, text}` types `text` on its Other
-row (one line, control characters dropped, at most 2,000 characters). It
-acts only when the session's newest prompt is that `AskUserQuestion` dialog
-and its summary reads waiting on a question, the session is Claude Code,
-Caprock started it and holds its terminal, and the dialog is one a tap
-answers; then the session's screen is read (`termbuf`, the whole ring and,
-failing that, the bytes since the dialog's hook): the lowest run of options
-numbered from 1 with the selection marker on one must start with the
-dialog's labels in order (their first 20 characters, each row cut at a
-box-drawing character, since the preview view draws the preview beside
-them), with at most six rows under it. Only then are the keys written, as
-Claude Code 2.1.325's bundle reads them (`agents.QuestionKeys`, pinned by
-`TestQuestionKeysMatchClaudeCode`): an option is its digit (a digit picks
-it, and one question is submitted on the pick); in the preview view —
-an option carries a `preview` — the digit then Enter (there a digit only
-moves the focus); text is the Other row's digit (`options + 1`, which
-focuses the row), the text (a bracketed paste when the session turned paste
-on), and Enter, three writes 150 ms apart. `200 {ok: true}` once typed;
-`400` for a body with neither field or a negative option; `403` for a
-session Caprock did not start or does not hold (rule 7) or an unknown one;
-`409` when the dialog is no longer on the screen or the session moved on
-(nothing typed), or for an option past the last; `422` for one a tap cannot
-answer — several questions, a multi-select, free text in the preview view,
-another agent. Paired controller devices may call it, as `POST
-/v1/agents/{id}/permission`. The same check is `Server.AnswerJarvis` for
-the Jarvis brain.
-
-**Handled for you** (`GET /v1/jarvis/handled`, [ADR-096](08-decisions.md)).
-What Caprock did on its own, newest first: `since` (unix ms, default 0)
-and `limit` (default and most 200). `HandledItem` is `{id, at, kind,
-session_id?, project?, text, reason?, undo?}`; `kind` one of
-`limit_switch` (moved to another sign-in at a usage limit, `undo`
-`{kind: "continue_on", session_id, target}` — continue-on of `session_id`
-back to `target`), `limit_return` (moved back after the window reset),
-`limit_resume` (`continue` sent after the reset, § Continue on another
-provider), `end_done` (ended when its turn finished, *end when done*),
-`idle_end` (ended idle with no tab), `morning` (the scheduled morning
-summary went to Telegram; *Send one now* is not one), `auto_answer` (the
-Jarvis brain answered a routine question). `text` is one line of at most
-300 characters, `reason` at most 600; `project` is the session's when the
-writer named none. Each is written by `Daemon.RecordHandled(ctx,
-store.HandledItem) (store.HandledItem, error)` — the entry point the brain
-calls for `auto_answer` — and published as a `jarvis` live frame `{op:
-"handled", item}`. A read open to every paired device.
-
-### Jarvis handled DDL (migration 0082)
-
-```sql
-CREATE TABLE IF NOT EXISTS jarvis_handled (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  at           INTEGER NOT NULL,
-  kind         TEXT NOT NULL,
-  session_id   TEXT NOT NULL DEFAULT '',
-  project      TEXT NOT NULL DEFAULT '',
-  text         TEXT NOT NULL,
-  reason       TEXT NOT NULL DEFAULT '',
-  undo_kind    TEXT NOT NULL DEFAULT '',
-  undo_session TEXT NOT NULL DEFAULT '',
-  undo_target  TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_jarvis_handled_at ON jarvis_handled(at);
-```
-
-One row per thing Caprock did on its own (§ Jarvis, *Handled for you*):
-`store.AddHandled` writes it and deletes the rows more than 30 days older;
-`store.ListHandled` and `store.CountHandledSince` read by `at`. `undo_*`
-are `''` when nothing undoes the item.
-
-### Jarvis thread
-
-Jarvis V2's chat and brain ([ADR-097](08-decisions.md)): the person writes
-to Jarvis in one thread; a message goes to an agent, starts one, or answers a
-question dialog. Routed by the user's own agent — the brain — when it is
-chosen and can run, deterministically otherwise. Code:
-`internal/jarvisbrain`, `internal/api/jarvischat.go`,
-`internal/daemon/jarvisbrain.go`, `internal/store/jarvisthread.go`.
-What a brain run is given is listed in
-[docs/jarvis-brain.md](../docs/jarvis-brain.md).
-
-```
-GET  /v1/jarvis/thread?limit=<n≤200> → {messages: [JarvisMessage]}
-POST /v1/jarvis/say {text, project?, via?} → {message, replies: [JarvisMessage], actions: [SayAction]}
-```
-
-- **`JarvisMessage`** — `{id, at, role: "user"|"jarvis", text, project?,
-  session_id?, via?: "text"|"voice", pending?, cost_usd?}`, oldest first,
-  the newest `limit` (default 200; outside 1–200 is `400`). `pending` is
-  true while the brain is still answering; the settled reply comes on the
-  live socket with the same `id`, and a client replaces the row it holds.
-  `cost_usd` is on a row a brain run produced when the agent reported a
-  cost (Claude Code does; Codex does not).
-- **Say.** `text` is 1–4000 characters (`400` otherwise); `via` is `text`
-  (the default) or `voice`; `project` the target the screen chose (a
-  project chip), else `""`. The message is stored, then:
-  - **Brain ready** (the digest's `brain.state` is `ready`): `replies` is
-    one pending row ("Thinking…") and `actions` `[]`; the run happens in the
-    background and settles the row.
-  - **Otherwise, deterministic** (Jarvis V1's command line, moved to the
-    daemon): the target project is `project`, else a leading `@project` (the
-    longest known name the line starts with, any case), else the project of
-    the most recently active live agent. Its most recently active agent
-    Caprock started and holds gets the text through its queue (ADR-053) —
-    `Gave it to the agent in caprock ("title").`, plus `It was the most
-    recently active of N there.` when there were several; with none, a new
-    agent starts in the project's folder (an agent's `cwd`, else the listed
-    project's root) through the same path as `POST /v1/agents` with
-    `{cwd, prompt}` and the stated permission mode — `No agent was free in
-    X, so I started a new one.`, with `(the one running there was not
-    started by Caprock, so I left it alone)` when one was skipped (rule 7).
-    An unknown `@word`, no project at all, no text after the mention, no
-    known folder and a failed send or start each get a reply in plain words
-    and `actions: [{kind: "none"}]`.
-  - **`SayAction`** — `{kind: "sent"|"started"|"answered"|"none",
-    session_id?, project?}`.
-- **The brain's answer** is JSON to a fixed schema: `{reply, actions:
-  [{kind: "send"|"start"|"answer"|"none", project, session_id, text,
-  option}]}` (unused fields `null`, at most three actions). Each action is
-  checked before it is done: `send` only to a live session Caprock started
-  and holds (another session's id is refused with a note; an unknown one
-  falls back to the project's route); `start` only in a known project with
-  a known folder; `answer` only on a question need that is `answerable`,
-  with an option in range, through the Jarvis V2 core's answer path. What
-  could not be done is added to the reply. A run that fails, times out
-  (90 s) or answers out of shape falls back to the deterministic route, and
-  the reply says so: `The brain did not answer (<why>), so I routed it
-  myself: …`. At most two runs at once; one per message.
-- **"Done:" messages.** An agent a message was given to or started for is
-  watched (every 3 s, only while something is watched): once it has been
-  seen working, waiting or stuck and is then idle or gone, Jarvis appends
-  `Done: <title> in <project> finished. Last words: <its last prose, one
-  line, at most 280 characters>`. A watch that never sees work is dropped
-  after 10 minutes once the session is gone, any watch after 12 hours.
-- **Auto-answer** (setting `auto_answer: "routine"`, brain ready, the core's
-  answer path wired): a question need that is a single single-select
-  AskUserQuestion dialog with two or more options in a session Caprock
-  started, on screen for at least 5 s and not considered before, with no
-  deny word in its question, labels or descriptions
-  (`jarvisbrain.DenyHit`: push, merge, deploy, release, publish, delete,
-  pay, credential, token, send, email, production, migrate and the like,
-  whole words), is put to the brain with only its question, options,
-  project and agent title. Answered when the brain calls it routine and
-  picks an option: the option is pressed, a Handled item `{kind:
-  "auto_answer", session_id, project, text: "Answered \"<question>\" with
-  \"<label>\"", reason}` is recorded, and the thread gets `Answered a
-  question in <project> for you: …`. Left for the person otherwise; when the
-  brain declined, the thread says why. Never a permission, a plan or a
-  prose question.
-- **Settings.** `GET`/`PUT /v1/settings` key `jarvis_brain: {agent:
-  "claude"|"codex"|"off", sub?, auto_answer: "routine"|"off"}`, absent
-  until chosen; `PUT` with `null` forgets the choice. `sub` absent is the
-  sign-in new sessions of that agent start on (Settings → Subscriptions'
-  default), `"default"` the user's own, else a subscription id; `deepseek`,
-  `kimi`, other agents and other values are `400`. Stored in `config.json`
-  as `jarvis_brain`.
-- **Digest.** `GET /v1/jarvis` carries `brain: {state, agent?, sub?,
-  auto_answer, note?, spent_today_usd, runs_today}`. `state` is
-  `unchosen` (never set), `off`, `ready`, `signed-out` (the sign-in's files
-  say it is signed out: `subs.Status`, or for the user's own sign-in no
-  `oauthAccount`/credentials file and no credential variable in the login
-  shell), or `error` (the agent is not installed, the chosen sign-in is
-  gone, or the last run failed within 10 minutes; `note` says which).
-  `spent_today_usd` and `runs_today` are the brain's runs since local
-  midnight (thread rows with `brain = 1`); Codex runs count with no cost.
-- **Live.** Frame type `jarvis`: `{op: "thread", message: JarvisMessage}`
-  for every new or settled row, `{op: "brain", brain}` when the brain's
-  state changes (after a run, on a setting change). The core's `{op:
-  "handled", item}` shares the type.
-- **How a run is made.** `claude -p --output-format json --tools ""
-  --strict-mcp-config --no-session-persistence --setting-sources local
-  --settings <file with {"disableAllHooks": true}> --model sonnet
-  --system-prompt <instructions> --json-schema <schema>`, the context on
-  stdin; through a Windows `.cmd` shim the instructions and schema go to
-  stdin too. `codex exec --ephemeral --skip-git-repo-check
-  --ignore-user-config --ignore-rules --sandbox read-only --color never -c
-  web_search=disabled --disable <every tool feature> --output-schema
-  <file> -o <file> -`. Both from `<data>/jarvis/run`, with the login
-  shell's environment and, on a subscription, `CLAUDE_CONFIG_DIR` or
-  `CODEX_HOME` set to its directory and the credential variables that
-  would outrank it removed (as a session on it). No transcript or session
-  file is written and no hook fires, so a run never appears as a session,
-  on Now or in Cost; its cost shows in Jarvis only. Flags read from `claude
-  --help` (2.1.325) and `codex exec --help` (0.163.0) on 2026-11-16.
-- **Who.** `GET /v1/jarvis/thread` is a read open to every paired device;
-  `POST /v1/jarvis/say` is a controller's, as the chat field's queue is,
-  and a start from a phone is held to `POST /v1/agents`'s phone limits.
-
-### Jarvis thread DDL (migration 0083)
-
-```sql
-CREATE TABLE IF NOT EXISTS jarvis_thread (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  at         INTEGER NOT NULL,
-  role       TEXT NOT NULL,
-  kind       TEXT NOT NULL DEFAULT '',
-  text       TEXT NOT NULL,
-  project    TEXT NOT NULL DEFAULT '',
-  session_id TEXT NOT NULL DEFAULT '',
-  via        TEXT NOT NULL DEFAULT '',
-  pending    INTEGER NOT NULL DEFAULT 0,
-  brain      INTEGER NOT NULL DEFAULT 0,
-  cost_usd   REAL NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_jarvis_thread_at ON jarvis_thread(at);
-```
-
-`role` is `user` or `jarvis`; `kind` what made the row (`say`, `reply`,
-`done`, `auto_answer`); `brain` 1 when a model ran for it, `cost_usd` that
-run's reported cost (0 when unknown). Pruned to the newest 2000 rows as rows
-are added. When the daemon starts, a row still `pending` becomes a note
-("Caprock restarted before the brain answered this one…").
+**Unused tables.** Migrations 0082 (`jarvis_handled`) and 0083
+(`jarvis_thread`) came with Jarvis V2, which was withdrawn
+([ADR-098](08-decisions.md)). An applied migration stays, so the tables
+are still created and nothing reads or writes them;
+`internal/store/jarvishandled.go` and `jarvisthread.go` keep their store
+code for a later version. The DDL is in the migration files.
 
 ### Pipeline agents
 

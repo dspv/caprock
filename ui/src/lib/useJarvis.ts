@@ -58,7 +58,7 @@ export function useJarvis(): JarvisRead {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
     const off = live.onFrame((f) => {
-      if (!changesWork(f) && f.type !== 'jarvis') return
+      if (!changesWork(f)) return
       if (!shownRef.current || pageHidden()) { missed.current = true; return }
       if (timer) return
       timer = setTimeout(() => { timer = undefined; read() }, WORK_READ_MS)

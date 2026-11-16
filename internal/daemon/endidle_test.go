@@ -160,12 +160,6 @@ func TestEndIdleEndsASessionIdleForTheWindowAndMarksWhy(t *testing.T) {
 	if got.IdleEndedAt != s.now.UnixMilli() || got.IdleEndedAfter != (12*time.Hour).Milliseconds() {
 		t.Fatalf("idle end not recorded: at %d after %d", got.IdleEndedAt, got.IdleEndedAfter)
 	}
-	// And Jarvis's Handled for you has it (ADR-096).
-	items, err := store.ListHandled(context.Background(), s.d.store.DB(), 0, 0)
-	if err != nil || len(items) != 1 || items[0].Kind != store.HandledIdleEnd || items[0].SessionID != "s1" ||
-		items[0].At != s.now.UnixMilli() || items[0].Text != "Ended after 12 h 1 min idle with no tab open" {
-		t.Fatalf("handled %+v (%v)", items, err)
-	}
 	// Asked once: a second look while it exits does not ask again.
 	s.at(12*time.Hour + 3*time.Minute)
 	s.wantEnded(t, "s1")

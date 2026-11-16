@@ -7471,6 +7471,8 @@ Cursor's servers and are not read.
 
 ## ADR-096 — Jarvis V2's core: a question answered from its card, a log of what Caprock did on its own, and a session resumed after its usage limit resets
 
+**Withdrawn 2026-11-16** by [ADR-098](08-decisions.md): reverted in 0.178.1.
+
 **Date:** 2026-11-16 · **Status:** accepted (owner approved the Jarvis V2
 mockup, 2026-11-16). Builds on
 [ADR-094](#adr-094--jarvis-v1-a-deterministic-digest-no-model), the
@@ -7545,6 +7547,8 @@ a second "continue" is wanted.
 
 ## ADR-097 — Jarvis V2's brain: the person's own agent, headless and without tools, routes plain speech and answers routine questions
 
+**Withdrawn 2026-11-16** by [ADR-098](08-decisions.md): reverted in 0.178.1.
+
 **Date:** 2026-11-16 · **Status:** accepted (owner approved the Jarvis V2
 plan, 2026-11-16: "let it run on the subscription the user picks, Claude by
 default", translated). Builds on
@@ -7552,7 +7556,7 @@ default", translated). Builds on
 and ADR-096 (the Jarvis V2 core: decision cards, the answer path, the
 Handled log). Contract: [03-contracts.md § Jarvis
 thread](03-contracts.md#jarvis-thread). What leaves the machine:
-[docs/jarvis-brain.md](../docs/jarvis-brain.md).
+docs/jarvis-brain.md (doc removed in 0.178.1).
 
 **Context.** Jarvis V1's command line took `@project text` and nothing
 else, worked out in the browser. A person talking to Jarvis — typed, or
@@ -7627,3 +7631,21 @@ signed in through the OS keyring leaves no `auth.json` and reads as signed
 out. The brain sees only live sessions; it cannot read what an agent wrote.
 Scheduled work and reviving stuck agents (the rest of the competitor's
 "master agent") are later versions' calls.
+
+## ADR-098 — Jarvis V2 is withdrawn; the screen goes back to V1
+
+**Status:** accepted 2026-11-16.
+
+**Context.** Jarvis V2 (decision cards with answers, Handled for you, a
+chat, hold to talk and a model behind it) shipped in 0.178.0. The owner
+tried it the same day and found it hard to understand next to V1, which
+was clear (owner, 2026-11-16, translated). It was checked on a preview
+with a fake `claude`, never on a live session.
+
+**Decision.** Revert V2 whole: the screen, the answer and chat endpoints,
+the brain, the Handled log and the automatic continue after a limit reset.
+Jarvis is the V1 digest again ([ADR-094](08-decisions.md)). The two tables
+V2 created stay, unused, because an applied migration cannot be taken back.
+
+**Consequences.** Anything new on Jarvis comes back one piece at a time,
+shown to the owner on a live screen before it ships.

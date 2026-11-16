@@ -59,7 +59,6 @@ const BY_TITLE: [RegExp, string][] = [
   [/folder|projects/i, 'folder'],
   [/subscription/i, 'key'],
   [/when a limit/i, 'refresh'],
-  [/^jarvis/i, 'chat'],
   [/custom agents/i, 'bot'],
   [/notification|alert/i, 'bell'],
   [/shortcut|hotkey/i, 'keyboard'],

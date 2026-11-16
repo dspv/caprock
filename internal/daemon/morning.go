@@ -115,7 +115,6 @@ func (d *Daemon) morningOnce(ctx context.Context) {
 	}
 	d.log.Info("morning summary sent", "component", "morning", "day", morning.Day(now))
 	d.recordMorning(ctx, nil, now.UnixMilli())
-	_, _ = d.RecordHandled(ctx, store.HandledItem{Kind: store.HandledMorning, Text: "Sent the morning summary to Telegram"})
 }
 
 // SendMorningNow implements api.MorningSender: the summary as it would read

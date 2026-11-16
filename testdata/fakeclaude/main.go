@@ -3,7 +3,7 @@
 //
 // It is a line REPL: it prints a ready line, answers every line it reads with
 // `you-said:<line>`, draws a permission dialog on `ask[tag]` (its footer ends
-// `asked<tag>`) and a question dialog on `question[tag]` (`questioned<tag>`), animates Claude Code's subagent list on `agents [frames] [tag]` and
+// `asked<tag>`), animates Claude Code's subagent list on `agents [frames] [tag]` and
 // draws its input box on `box` (agents.go), exits with code 3 on `quit`, and
 // exits cleanly on `/exit` or
 // Ctrl+D, as Claude Code does. Shell scripts do this
@@ -67,20 +67,6 @@ func answer(line string) {
 	}
 	if n, ok := strings.CutPrefix(line, "agents"); ok {
 		agents(n)
-		return
-	}
-	if tag, ok := strings.CutPrefix(line, "question"); ok {
-		// A question dialog (AskUserQuestion) as Claude Code 2.1.325 draws
-		// it: the options with their descriptions under them, the Other
-		// row, a divider, Chat about this and the key hints. Jarvis reads
-		// it off the screen before it types (ADR-096); the footer carries
-		// the tag.
-		fmt.Print("\x1b[2G☐ Database\r\n\r\n\x1b[2GWhich\x1b[8Gdatabase?\r\n\r\n" +
-			"\x1b[2G\x1b[36m❯\x1b[4G1.\x1b[7GSQLite\x1b[39m\r\n\x1b[7GOne file\r\n" +
-			"\x1b[4G2.\x1b[7GPostgres (Recommended)\r\n\x1b[7GWhat prod runs\r\n" +
-			"\x1b[4G3.\x1b[7GType something.\r\n" +
-			"\x1b[2G────────\r\n\x1b[4G4.\x1b[7GChat about this\r\n" +
-			"\r\n\x1b[2GEnter to select · ↑/↓ to navigate · Esc to cancel · questioned" + strings.TrimSpace(tag) + "\r\n")
 		return
 	}
 	if tag, ok := strings.CutPrefix(line, "ask"); ok {
