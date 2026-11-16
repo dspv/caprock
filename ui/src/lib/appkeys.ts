@@ -62,6 +62,34 @@ export const BROWSER_TAB_KEYS = '⌥←, ⌥→'
 export const PHONE_MODE_KEY = '⌥⌘R'
 
 /**
+ * Hold to talk on the Jarvis screen (.ai/04-ui.md § Jarvis): held, it
+ * listens; released, what was heard is sent; Esc cancels. ⌥Space on macOS
+ * (the mockup's key), where macOS binds nothing to it (Spotlight is ⌘Space,
+ * input sources ⌃Space) and Option+Space would only type a no-break space,
+ * which the screen takes instead. Off macOS Alt+Space opens the window's
+ * system menu on Windows and in GNOME and KDE, which the page never gets, so
+ * it is **Ctrl+Shift+Space** there: bound by no Windows, GNOME or KDE
+ * default, no browser, and no shell's — the screen has no terminal on it and
+ * listens only while it is in front. Not Ctrl+Space, the input-method
+ * switch of IBus, Fcitx and Windows' East Asian IMEs. Only on that screen,
+ * never an app chord: matchAppShortcut leaves it alone. `keys()` spells it
+ * per OS; `talkKey` reads it.
+ */
+export const TALK_KEY = '⌥Space'
+
+/** Whether a keydown is hold-to-talk as this OS spells it (TALK_KEY). By the code: Option makes Space a no-break space. */
+export function talkKey(e: Pick<KeyLike, 'code' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>, isMac = isMacPlatform()): boolean {
+  if (e.code !== 'Space' || e.metaKey) return false
+  return isMac ? e.altKey && !e.ctrlKey && !e.shiftKey : e.ctrlKey && e.shiftKey && !e.altKey
+}
+
+/** Whether a keyup ends hold-to-talk: Space, or a modifier of the chord, let go. */
+export function talkKeyUp(e: Pick<KeyLike, 'code' | 'key'>, isMac = isMacPlatform()): boolean {
+  if (e.code === 'Space') return true
+  return isMac ? e.key === 'Alt' : e.key === 'Control' || e.key === 'Shift'
+}
+
+/**
  * ⇧⌘X (Ctrl+Shift+X off macOS): the Files tab, two panels over the project
  * in front and its agents' worktrees (ADR-089). F is Find and ⇧⌘F feedback,
  * and off macOS Ctrl+Alt+Shift+F is feedback too, so not F; ⌥⌘ letters
@@ -544,6 +572,8 @@ function offMac(k: string): string {
   if (k === '⌥→') return 'Ctrl+PageDown'
   // Phone mode: its own letter off macOS (PHONE_MODE_KEY).
   if (k === PHONE_MODE_KEY) return 'Ctrl+Alt+Shift+D'
+  // Hold to talk: Alt+Space is the window menu off macOS (TALK_KEY).
+  if (k === TALK_KEY) return 'Ctrl+Shift+Space'
   // The Files tab's action keys, ⌥3–⌥8 on a Mac (lib/fsapi FILES_ACTIONS):
   // Alt with the digit off macOS, where nothing of the app's holds Alt.
   if (/^⌥\d(–⌥\d)?$/.test(k)) return k.replace(/⌥/g, 'Alt+')
@@ -644,7 +674,8 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘O', 'Add a project'],
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
-  [JARVIS_KEY, 'Jarvis: every agent, what needs you, one command line; there, back'],
+  [JARVIS_KEY, 'Jarvis: every agent, what needs you, one chat; there, back'],
+  [TALK_KEY, 'In Jarvis: hold to talk, release to send; Esc cancels'],
   ['⇧⌘H', 'Add to Second Brain: keep a line of your own'],
   ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],

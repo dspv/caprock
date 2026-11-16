@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { INPUT_HIGHLIGHT_KEY, THEME_KEY, heldClass, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, macTakenModuleKey, setModuleKeyCount } from './appkeys'
+import { INPUT_HIGHLIGHT_KEY, TALK_KEY, THEME_KEY, talkKey, talkKeyUp, heldClass, isPlainKeyLabel, keyChipMode, matchAppShortcut, moveKeysLine, ownsTerminalKey, revealClass, stripKey, type KeyLike, keys, tabDigit, tabKey, moduleKey, macTakenModuleKey, setModuleKeyCount } from './appkeys'
 import { browserKey } from './browsertab'
 
 const k = (key: string, mods: Partial<KeyLike> = {}): KeyLike => ({
@@ -272,6 +272,39 @@ describe('every listed shortcut, on every OS', () => {
     expect(browserKey(event('KeyM', 'M', { metaKey: true, shiftKey: true }), true)).toBeNull()
     // Neither collides with an app chord: ⇧⌘M stays Mail.
     expect(matchAppShortcut(event('KeyM', 'm', { metaKey: true, shiftKey: true }), true)).toEqual({ kind: 'mail' })
+  })
+  // Owner, 2026-11-16 (Jarvis V2): hold ⌥Space to talk. Off macOS Alt+Space
+  // is the window's system menu (Windows, GNOME, KDE), which the page never
+  // gets, so it is Ctrl+Shift+Space there; Ctrl+Space is the input-method
+  // switch. Only on the Jarvis screen, never an app chord.
+  it(`${TALK_KEY} holds to talk in Jarvis, as ${keys(TALK_KEY, false)} on Windows and Linux, and is no app chord`, () => {
+    expect(SHORTCUTS.some(([k]) => k === TALK_KEY)).toBe(true)
+    expect(keys(TALK_KEY, true)).toBe('⌥Space')
+    const off = keys(TALK_KEY, false)
+    expect(off).toBe('Ctrl+Shift+Space')
+    expect(isPlainKeyLabel(off)).toBe(true)
+    // macOS: Option makes Space a no-break space; the code is what counts.
+    const mac = event('Space', '\u00a0', { altKey: true })
+    expect(talkKey(mac, true)).toBe(true)
+    expect(matchAppShortcut(mac, true)).toBeNull()
+    // Windows and Linux, pressed as the label spells it.
+    const parts = off.split('+')
+    const win = event('Space', ' ', { ctrlKey: parts.includes('Ctrl'), altKey: parts.includes('Alt'), shiftKey: parts.includes('Shift') })
+    expect(talkKey(win, false)).toBe(true)
+    expect(matchAppShortcut(win, false)).toBeNull()
+    expect(ownsTerminalKey(win, false)).toBe(false)
+    // Neither spelling is the other OS's; Alt+Space, Ctrl+Space and ⌘Space are nothing.
+    expect(talkKey(win, true)).toBe(false)
+    expect(talkKey(mac, false)).toBe(false)
+    expect(talkKey(event('Space', ' ', { ctrlKey: true }), false)).toBe(false)
+    expect(talkKey(event('Space', ' ', { metaKey: true }), true)).toBe(false)
+    expect(talkKey(event('KeyA', 'a', { altKey: true }), true)).toBe(false)
+    // Letting go of Space or a modifier of the chord ends it.
+    expect(talkKeyUp({ code: 'Space', key: ' ' }, true)).toBe(true)
+    expect(talkKeyUp({ code: 'AltLeft', key: 'Alt' }, true)).toBe(true)
+    expect(talkKeyUp({ code: 'ControlLeft', key: 'Control' }, false)).toBe(true)
+    expect(talkKeyUp({ code: 'ShiftLeft', key: 'Shift' }, false)).toBe(true)
+    expect(talkKeyUp({ code: 'KeyA', key: 'a' }, true)).toBe(false)
   })
   const codeOf = (ch: string) => (/[A-Z]/.test(ch) ? `Key${ch}` : /[0-9]/.test(ch) ? `Digit${ch}` : ({ ',': 'Comma', '\\': 'Backslash', '.': 'Period', '-': 'Minus', '=': 'Equal', '+': 'Equal', '[': 'BracketLeft', ']': 'BracketRight', '↑': 'ArrowUp', '↓': 'ArrowDown', '←': 'ArrowLeft', '→': 'ArrowRight' } as Record<string, string>)[ch] ?? ch)
   // An arrow's key is its name, as a browser reports it.
