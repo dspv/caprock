@@ -40,6 +40,10 @@ var claudeTools = map[string]string{
 	"Delete":             "Delete",
 	"Task":               "Task",
 	"edit_file_v2_write": "Write",
+	// One call each on the owner's machine (2026-11-17): Cursor's newer
+	// edit tool, and reapply, which applies an edit again.
+	"edit_file_v2_search_replace": "Edit",
+	"reapply":                     "Edit",
 }
 
 // ToolName is the name Caprock stores for a Cursor tool.
@@ -48,6 +52,19 @@ func ToolName(cursor string) string {
 		return n
 	}
 	return cursor
+}
+
+// callName is the name Caprock stores for one call: ToolName, except that an
+// MCP call is spelled as Claude Code spells one, mcp__<server>__<tool>, so it
+// groups with the same server's calls from any agent. Cursor names an MCP
+// call mcp_<server>_<tool> (or just "mcp"), and both parts may hold "_" or
+// "-", so the split is taken from the server and tool Cursor recorded beside
+// it (reviewData, params); without them the name is kept as Cursor wrote it.
+func callName(t *Tool) string {
+	if t.MCPServer != "" && t.MCPTool != "" && strings.HasPrefix(t.Name, "mcp") {
+		return "mcp__" + t.MCPServer + "__" + t.MCPTool
+	}
+	return ToolName(t.Name)
 }
 
 // pathKeys are the arguments Cursor's file tools name a file or folder by.
@@ -83,14 +100,32 @@ func ToolInput(cursor string, in map[string]any, cwd string) map[string]any {
 
 // absolute resolves p against cwd unless it is absolute where Cursor ran it
 // ("/…" is, even read on Windows).
+//
+// Cursor often writes a relative path from the folder above the workspace:
+// "kgpu/src/main.jsx" in a chat whose folder is …/kgpu. Joined as it is, the
+// edit was filed under …/kgpu/kgpu/src (on the owner's machine 284 of 362
+// edit_file paths were relative, 2026-11-17). So a leading segment that names
+// the folder itself is dropped — unless the folder really holds a subfolder
+// of that name.
 func absolute(p, cwd string) string {
 	if filepath.IsAbs(p) || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || cwd == "" {
 		return p
 	}
-	if strings.HasPrefix(cwd, "/") && !strings.Contains(cwd, `\`) {
-		return path.Join(cwd, p)
+	slash := strings.HasPrefix(cwd, "/") && !strings.Contains(cwd, `\`)
+	join, base := filepath.Join, filepath.Base
+	if slash {
+		join, base = path.Join, path.Base
 	}
-	return filepath.Join(cwd, p)
+	rel := strings.TrimPrefix(strings.ReplaceAll(p, `\`, "/"), "./")
+	if first, rest, ok := strings.Cut(rel, "/"); ok && rest != "" && first == base(cwd) {
+		if _, err := osStat(join(cwd, first)); err != nil {
+			rel = rest
+		}
+	}
+	if !slash {
+		rel = filepath.FromSlash(rel)
+	}
+	return join(cwd, rel)
 }
 
 // pathHint is an absolute path a tool call names, "" when it names none.

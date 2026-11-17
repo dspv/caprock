@@ -1294,6 +1294,18 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 	}); err != nil {
 		return SessionSummary{}, nil, err
 	}
+	if sess.Agent == "cursor" || sess.Agent == "hermes" {
+		u, err := readOnce(&rec.mu, &rec.usage, func() ([2]int64, error) {
+			r, n, err := store.SessionUsageCount(ctx, q, sess.SessionID)
+			return [2]int64{r, n}, err
+		})
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		// A usage record is Cursor's or Hermes's running total, nobody's
+		// turn; the requests it carries are the count shown beside the turns.
+		st.Turns, st.Requests = max(0, st.Turns-u[0]), u[1]
+	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
 	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
 		return readOnce(&rec.mu, &rec.prompts, func() ([]string, error) {

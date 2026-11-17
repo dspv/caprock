@@ -165,6 +165,17 @@ function OverheadTable({ rows, method }: { rows: ReturnType<typeof overheadRows>
 }
 
 /** The switch for Cursor's hooks: the way Caprock sees cursor-agent chats. */
+/** How many events Caprock registers in Cursor's hooks.json
+ *  (internal/cursor/hooks.go HookEvents). */
+const CURSOR_HOOK_EVENTS = 12
+
+/** Whether Caprock's Cursor hooks are on: all of them, some (an install
+ *  from before the observational ones were added), or none. */
+export function hooksState(h: Pick<CursorHooksStatus, 'installed' | 'missing'>): 'on' | 'partly' | 'off' {
+  if (h.installed) return 'on'
+  return (h.missing?.length ?? CURSOR_HOOK_EVENTS) < CURSOR_HOOK_EVENTS ? 'partly' : 'off'
+}
+
 function CursorHooks() {
   const st = useApi(() => api.cursorHooks(), [], { intervalMs: 0 })
   const [busy, setBusy] = useState(false)
@@ -183,19 +194,24 @@ function CursorHooks() {
       setBusy(false)
     }
   }
+  // An install from before the observational hooks were added holds some
+  // of them: it is on, and pressing the button again adds the rest.
+  const partial = hooksState(h) === 'partly'
   return (
     <div className="mx-3 mb-2.5 mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-border pt-2 text-[12px] text-fg-muted">
       <span>
-        {h.installed ? 'Cursor hooks are on: ' : 'Cursor hooks are off: '}
+        {h.installed ? 'Cursor hooks are on: ' : partial ? 'Cursor hooks are partly on: ' : 'Cursor hooks are off: '}
         {h.installed
           ? 'cursor-agent chats show here as they run.'
-          : 'turn them on to see cursor-agent chats here. Editor chats are read without them.'}
+          : partial
+            ? `${h.missing?.length} newer events are not added yet (a chat's start and end, subagents, shell output, file edits).`
+            : 'turn them on to see cursor-agent chats here. Editor chats are read without them.'}
         <span className="text-fg-faint">
-          {' '}{h.installed ? 'Caprock is in' : 'Adds Caprock to'} {h.path} for six events that decide nothing{h.others > 0 ? `, beside the ${h.others} ${h.others === 1 ? 'entry' : 'entries'} already there` : ''}. Nothing leaves this machine.
+          {' '}{h.installed ? 'Caprock is in' : 'Adds Caprock to'} {h.path} for twelve events that decide nothing{h.others > 0 ? `, beside the ${h.others} ${h.others === 1 ? 'entry' : 'entries'} already there` : ''}. Nothing leaves this machine.
         </span>
       </span>
       <button type="button" className="rounded-[6px] border border-border px-2.5 py-1 text-[12px] text-fg hover:text-accent disabled:opacity-50 disabled:hover:text-fg" disabled={busy} onClick={() => act(h.installed ? 'uninstall' : 'install')}>
-        {h.installed ? 'Remove Cursor hooks' : 'Turn on Cursor hooks'}
+        {h.installed ? 'Remove Cursor hooks' : partial ? 'Add the newer Cursor hooks' : 'Turn on Cursor hooks'}
       </button>
       {err && <span className="text-warn">{err}</span>}
     </div>

@@ -66,6 +66,11 @@ type modeSwitcher interface {
 	SetPermissionMode(ctx context.Context, sessionID, mode string, restart bool) (PermissionModeView, error)
 }
 
+// cursorModes are the modes a Cursor session's rows can name beside Claude
+// Code's: "ask" (Ask mode: answers, changes nothing) and "autoRun" (Agent
+// with auto-run: runs commands without asking).
+var cursorModes = map[string]bool{"ask": true, "autoRun": true}
+
 // handlePermissionMode is GET /v1/sessions/{id}/permission-mode.
 func (s *Server) handlePermissionMode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -82,6 +87,11 @@ func (s *Server) handlePermissionMode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := PermissionModeView{SessionID: id, Mode: agents.CanonicalMode(mode)}
+	if v.Mode == "" && cursorModes[mode] {
+		// Cursor's own modes, which Claude Code has no word for: Ask, and
+		// Agent with auto-run (internal/cursor, .ai/25-cursor.md).
+		v.Mode = mode
+	}
 	if v.Mode != "" {
 		v.Source = string(agents.SourceHook)
 	}

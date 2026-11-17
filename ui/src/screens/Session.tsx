@@ -373,7 +373,9 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
             sub={gaps.cache ?? gaps.tokens ?? (gaps.cache_write ? <span title={`read ${fmtTokens(s.stats.cache_read)}`}>{gaps.cache_write}</span> : `read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`)}
             tone={!gaps.cache && (s.savings?.hit_rate ?? 0) > 0.5 ? 'ok' : undefined} />
           <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
-          <Stat label="Turns" value={s.stats.turns} sub={`${s.stats.tool_calls} tool calls`} />
+          {/* Cursor counts requests, not turns, for its cost: a usage record
+            * is not a turn, and the requests it carries are shown beside. */}
+          <Stat label="Turns" value={s.stats.turns} sub={s.stats.requests ? `${s.stats.requests.toLocaleString('en-US')} requests · ${s.stats.tool_calls} tool calls` : `${s.stats.tool_calls} tool calls`} />
           {/* What is being read, named. "no hooks · no transcript" is true of a
             * Gemini session and reads as "nothing is being measured", which
             * stopped being true once its telemetry was ingested — the row

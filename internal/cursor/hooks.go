@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
@@ -45,6 +46,34 @@ type HookPayload struct {
 	Trigger       string `json:"trigger"`
 	ContextTokens int64  `json:"context_tokens"`
 	ContextWindow int64  `json:"context_window_size"`
+	// postToolUse and afterShellExecution: the call's time in ms.
+	Duration float64 `json:"duration"`
+	// sessionStart, sessionEnd, subagentStop, afterAgentThought.
+	SessionID    string  `json:"session_id"`
+	ComposerMode string  `json:"composer_mode"`
+	IsBackground bool    `json:"is_background_agent"`
+	Reason       string  `json:"reason"`
+	FinalStatus  string  `json:"final_status"`
+	DurationMs   float64 `json:"duration_ms"`
+	// subagentStop. Cursor's docs name no id for the subagent; the fields
+	// are read when a build sends them.
+	SubagentID    string   `json:"subagent_id"`
+	ToolCallID    string   `json:"tool_call_id"`
+	SubagentType  string   `json:"subagent_type"`
+	Task          string   `json:"task"`
+	Description   string   `json:"description"`
+	Summary       string   `json:"summary"`
+	MessageCount  int      `json:"message_count"`
+	ToolCallCount int      `json:"tool_call_count"`
+	ModifiedFiles []string `json:"modified_files"`
+	// afterShellExecution.
+	Command string `json:"command"`
+	Output  string `json:"output"`
+	// afterFileEdit.
+	FilePath string            `json:"file_path"`
+	Edits    []json.RawMessage `json:"edits"`
+	// user_email, on every hook, is never read: there is no field for it,
+	// so it is dropped with the rest of the body (rule 4).
 }
 
 // HookEvents are the hooks Caprock registers in hooks.json, in the order
@@ -53,7 +82,15 @@ type HookPayload struct {
 // beforeReadFile, subagentStart) prints nothing valid, and an "allow" from
 // one could pass something Cursor would have asked about. Caprock reads; it
 // never stands in the way of a decision (rule 3).
-var HookEvents = []string{"beforeSubmitPrompt", "afterAgentResponse", "postToolUse", "postToolUseFailure", "stop", "preCompact"}
+//
+// sessionStart's reply could set environment variables and add context, and
+// subagentStop's and stop's could send a follow-up message; {} does none of
+// it. The observational ones added for the CLI's chats (sessionStart,
+// sessionEnd, subagentStop, afterShellExecution, afterFileEdit,
+// afterAgentThought) are documented as fire-and-forget or decide nothing
+// (cursor.com/docs/agent/hooks, read 2026-11-17).
+var HookEvents = []string{"beforeSubmitPrompt", "afterAgentResponse", "postToolUse", "postToolUseFailure", "stop", "preCompact",
+	"sessionStart", "sessionEnd", "subagentStop", "afterShellExecution", "afterFileEdit", "afterAgentThought"}
 
 // NeutralReply is what the shim prints for a hook: the answer that leaves
 // Cursor doing exactly what it would have done without Caprock.
@@ -94,6 +131,12 @@ type HookHandler struct {
 	Editor func(id string) bool
 	Link   *sessionlink.Linker
 	Now    func() time.Time
+
+	mu sync.Mutex
+	// thoughts holds afterAgentThought's duration_ms per generation, by a
+	// digest of the thought so a repeated hook counts once, until its stop
+	// carries their sum.
+	thoughts map[string]map[string]int64
 }
 
 func (h *HookHandler) authorized(r *http.Request) bool {
@@ -214,31 +257,202 @@ func (h *HookHandler) handle(ctx context.Context, p HookPayload, spawned string,
 		}
 		input := toolArgs(p.ToolInput)
 		raw, _ := json.Marshal(ToolInput(p.ToolName, input, cwd))
+		capped := event.CapToolField(raw)
 		key := p.ToolUseID
 		if key == "" {
 			key = p.GenerationID + ":" + short(string(p.ToolInput))
 		}
 		tool := ToolName(p.ToolName)
 		if err := rec(&event.Event{Kind: event.KindToolPre, Tool: tool, Key: "cu-hook-pre:" + key, MsgID: "cursor/" + p.GenerationID},
-			map[string]any{"tool_name": tool, "tool_input": event.CapToolField(raw), "cursor_tool": p.ToolName}); err != nil {
+			map[string]any{"tool_name": tool, "tool_input": capped, "cursor_tool": p.ToolName, "tool_use_id": key}); err != nil {
 			return err
 		}
-		fields := map[string]any{"tool_name": tool, "cursor_tool": p.ToolName}
-		if len(p.ToolOutput) > 0 {
+		if (tool == "Write" || tool == "Edit") && p.Event == "postToolUse" {
+			// afterFileEdit records the edit's result with its old and new
+			// strings; a second result here would count its lines twice.
+			return nil
+		}
+		fields := map[string]any{"tool_name": tool, "cursor_tool": p.ToolName, "tool_input": capped, "tool_use_id": key}
+		evKey := "cu-hook-post:" + key
+		var size int64
+		if tool == "Bash" {
+			// In Claude Code's shape, {stdout}, so the pull-request and
+			// branch readers find a `gh pr create` URL and a `git push`.
+			// afterShellExecution may carry the same command: both are
+			// keyed by it, and the first to arrive is kept.
+			cmd, _ := input["command"].(string)
+			evKey = shellKey(p.GenerationID, cmd)
+			out, code, hasCode := shellOutput(p.ToolOutput)
+			resp, _ := json.Marshal(map[string]any{"stdout": out})
+			size = int64(len(resp))
+			fields["tool_response"] = event.CapToolField(resp)
+			if hasCode {
+				fields["exit_code"] = code
+			}
+			fields["is_error"] = p.Event == "postToolUseFailure" || hasCode && code != 0
+		} else if len(p.ToolOutput) > 0 {
+			size = int64(len(p.ToolOutput))
 			fields["tool_response"] = event.CapToolField(p.ToolOutput)
+			fields["is_error"] = p.Event == "postToolUseFailure"
+		}
+		if p.Duration > 0 {
+			fields["duration_ms"] = int64(p.Duration)
 		}
 		if p.Event == "postToolUseFailure" {
 			fields["error"] = p.Error
+			fields["is_error"] = true
 		}
-		return rec(&event.Event{Kind: event.KindToolPost, Tool: tool, Key: "cu-hook-post:" + key}, fields)
+		return rec(&event.Event{Kind: event.KindToolPost, Tool: tool, Key: evKey, ToolBytes: size}, fields)
+	case "afterShellExecution":
+		if p.Command == "" {
+			return nil
+		}
+		resp, _ := json.Marshal(map[string]any{"stdout": p.Output})
+		in, _ := json.Marshal(map[string]any{"command": p.Command})
+		fields := map[string]any{"tool_name": "Bash", "cursor_tool": "Shell", "tool_input": json.RawMessage(in),
+			"tool_response": event.CapToolField(resp), "is_error": false}
+		if p.Duration > 0 {
+			fields["duration_ms"] = int64(p.Duration)
+		}
+		return rec(&event.Event{Kind: event.KindToolPost, Tool: "Bash", Key: shellKey(p.GenerationID, p.Command), ToolBytes: int64(len(resp))}, fields)
+	case "afterFileEdit":
+		if p.FilePath == "" {
+			return nil
+		}
+		in, _ := json.Marshal(map[string]any{"file_path": absolute(p.FilePath, cwd), "edits": p.Edits})
+		capped := event.CapToolField(in)
+		return rec(&event.Event{Kind: event.KindToolPost, Tool: "Edit", Key: "cu-hook-edit:" + p.GenerationID + ":" + short(string(in))},
+			map[string]any{"tool_name": "Edit", "cursor_tool": "afterFileEdit", "tool_input": capped, "is_error": false})
+	case "afterAgentThought":
+		// Only how long the model thought, added up per generation for its
+		// stop; the thought itself is not stored.
+		if p.DurationMs > 0 && p.GenerationID != "" {
+			h.addThought(p.GenerationID, short(p.Text), int64(p.DurationMs))
+		}
+		return nil
 	case "stop":
-		return rec(&event.Event{Kind: event.KindAgentStop, Key: "cu-hook-stop:" + p.GenerationID},
-			map[string]any{"status": p.Status, "loop_count": p.LoopCount})
+		fields := map[string]any{"status": p.Status, "loop_count": p.LoopCount}
+		if ms := h.takeThought(p.GenerationID); ms > 0 {
+			fields["thinking_ms"] = ms
+		}
+		return rec(&event.Event{Kind: event.KindAgentStop, Key: "cu-hook-stop:" + p.GenerationID}, fields)
+	case "subagentStop":
+		// A subagent's end, as Claude Code's SubagentStop: agent.stop with
+		// the subagent's id, and what Cursor says it was and did.
+		id := p.SubagentID
+		if id == "" {
+			id = p.ToolCallID
+		}
+		if id == "" {
+			id = "sub-" + short(p.GenerationID+"\x00"+p.Task+"\x00"+p.Description)
+		}
+		fields := map[string]any{"status": p.Status, "agent_type": p.SubagentType, "description": firstNonEmpty(p.Description, p.Task),
+			"tool_call_count": p.ToolCallCount, "message_count": p.MessageCount}
+		if p.DurationMs > 0 {
+			fields["duration_ms"] = int64(p.DurationMs)
+		}
+		if len(p.ModifiedFiles) > 0 {
+			fields["modified_files"] = p.ModifiedFiles
+		}
+		return rec(&event.Event{Kind: event.KindAgentStop, AgentID: id, Key: "cu-hook-substop:" + p.GenerationID + ":" + id}, fields)
+	case "sessionStart":
+		fields := map[string]any{"composer_mode": p.ComposerMode}
+		if m := HookMode(p.ComposerMode); m != "" {
+			fields["permission_mode"] = m
+		}
+		if p.IsBackground {
+			fields["background_agent"] = true
+		}
+		return rec(&event.Event{Kind: event.KindAgentSpawn, Key: "cu-hook-start:" + firstNonEmpty(p.SessionID, p.ConversationID)}, fields)
+	case "sessionEnd":
+		// Cursor's session ends when its work completed or the person
+		// closed it; an abort, an error or a closed window may leave the
+		// chat to be taken up again, so they are kept on the timeline only.
+		kind := event.KindSessionContinue
+		if p.Reason == "completed" || p.Reason == "user_close" {
+			kind = event.KindSessionEnd
+		}
+		fields := map[string]any{"reason": p.Reason, "final_status": p.FinalStatus}
+		if p.DurationMs > 0 {
+			fields["duration_ms"] = int64(p.DurationMs)
+		}
+		return rec(&event.Event{Kind: kind, Key: "cu-hook-end:" + firstNonEmpty(p.SessionID, p.ConversationID) + ":" + p.Reason}, fields)
 	case "preCompact":
 		return rec(&event.Event{Kind: event.KindContextCompact, Key: "cu-hook-compact:" + p.GenerationID},
 			map[string]any{"trigger": p.Trigger, "context_tokens": p.ContextTokens, "context_window_size": p.ContextWindow})
 	}
 	return nil
+}
+
+// shellKey keys a terminal command's result by its generation and command:
+// postToolUse and afterShellExecution both report it, and only one of them
+// carries a call id.
+func shellKey(generation, command string) string {
+	return "cu-hook-shell:" + generation + ":" + short(command)
+}
+
+// shellOutput reads a Shell call's tool_output — a JSON string holding an
+// object ({"output": …, "exitCode": n}) — as its output and exit code.
+func shellOutput(raw json.RawMessage) (out string, code int, hasCode bool) {
+	if len(raw) == 0 {
+		return "", 0, false
+	}
+	var v map[string]any
+	if !object(raw, &v) {
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			return s, 0, false
+		}
+		return string(raw), 0, false
+	}
+	for _, k := range []string{"output", "stdout"} {
+		if s, ok := v[k].(string); ok {
+			out = s
+			break
+		}
+	}
+	for _, k := range []string{"exitCode", "exit_code"} {
+		if n, ok := v[k].(float64); ok {
+			return out, int(n), true
+		}
+	}
+	return out, 0, false
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, s := range v {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// maxThoughts bounds the generations whose thinking is held for their stop:
+// a generation whose stop never comes is dropped with the rest.
+const maxThoughts = 512
+
+func (h *HookHandler) addThought(gen, digest string, ms int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.thoughts == nil || len(h.thoughts) >= maxThoughts {
+		h.thoughts = map[string]map[string]int64{}
+	}
+	if h.thoughts[gen] == nil {
+		h.thoughts[gen] = map[string]int64{}
+	}
+	h.thoughts[gen][digest] = ms
+}
+
+func (h *HookHandler) takeThought(gen string) int64 {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var ms int64
+	for _, v := range h.thoughts[gen] {
+		ms += v
+	}
+	delete(h.thoughts, gen)
+	return ms
 }
 
 // toolArgs reads tool_input, which the docs give as an object for one hook

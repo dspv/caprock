@@ -136,3 +136,19 @@ func discountUsageRecords(ctx context.Context, q Querier, fromMs int64, agent Ag
 	}
 	return nil
 }
+
+// SessionUsageCount is one Cursor or Hermes session's usage records and
+// Cursor's request count, for the session's own Turns tile: the records
+// come out of its turn count as they come out of every other count, and its
+// requests are shown beside it. Zero for any other agent's session, whose
+// rows are never read.
+func SessionUsageCount(ctx context.Context, q Querier, sessionID string) (records, requests int64, err error) {
+	var req float64
+	err = q.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(substr(e.key,1,9) IN ('cu-usage:','hm-usage:')),0),
+		       COALESCE(SUM(CASE WHEN e.source = 'cursor' AND e.cost_usd IS NOT NULL AND json_valid(e.payload)
+		                         THEN json_extract(e.payload,'$.requests') END),0)
+		FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid
+		WHERE s.session_id = ? AND s.agent IN ('cursor','hermes') AND e.kind = 'turn.assistant'`, sessionID).Scan(&records, &req)
+	return records, int64(req), err
+}

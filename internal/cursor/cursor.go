@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite" // the driver every other reader uses
 )
@@ -186,12 +187,35 @@ type Composer struct {
 	// ContextUsed and ContextLimit are Cursor's last reading of the chat's
 	// context window, 0 when it kept none.
 	ContextUsed, ContextLimit int64
+	// Generating is how many messages Cursor is still writing
+	// (generatingBubbleIds): non-zero while a turn runs.
+	Generating int
+	// Legacy is a chat in the format before fullConversationHeadersOnly
+	// (Cursor's spring 2025 builds): its messages live inline in
+	// composerData.conversation and its tool calls in the composer's
+	// capabilities, not in bubbleId rows. Messages counts them.
+	Legacy bool
+}
+
+// Finished reports whether the chat's newest turn is over: Cursor writes
+// nothing for it and its status says it stopped. "none" is what older
+// builds left on a chat they did not track (107 of 171 chats on the owner's
+// machine, 2026-11-17); a running chat has generatingBubbleIds.
+func (c Composer) Finished() bool {
+	if c.Generating > 0 {
+		return false
+	}
+	switch c.Status {
+	case "completed", "aborted", "none":
+		return true
+	}
+	return false
 }
 
 // Fingerprint changes whenever anything Caprock reads from the chat changes.
 func (c Composer) Fingerprint() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d|%d|%s|%s|%d", c.Updated.UnixMilli(), c.Messages, c.Model, c.Name, c.ContextUsed)
+	fmt.Fprintf(&b, "%d|%d|%s|%s|%d|%s|%d", c.Updated.UnixMilli(), c.Messages, c.Model, c.Name, c.ContextUsed, c.Status, c.Generating)
 	for _, m := range sortedKeys(c.Usage) {
 		u := c.Usage[m]
 		fmt.Fprintf(&b, "|%s:%d:%g", m, u.Requests, u.Cents)
@@ -224,7 +248,9 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 		       COALESCE(json_extract(value,'$.isArchived'),0),
 		       COALESCE(json_extract(value,'$.usageData'),''),
 		       COALESCE(json_extract(value,'$.contextTokensUsed'),0),
-		       COALESCE(json_extract(value,'$.contextTokenLimit'),0)
+		       COALESCE(json_extract(value,'$.contextTokenLimit'),0),
+		       COALESCE(json_array_length(value,'$.generatingBubbleIds'),0),
+		       COALESCE(json_array_length(value,'$.conversation'),0)
 		FROM cursorDiskKV
 		WHERE key >= ? AND key < ? AND json_valid(value)`, lo, hi)
 	if err != nil {
@@ -237,7 +263,8 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 		var key, usage string
 		var maxMode, archived int
 		var created, updated, used, limit float64
-		if err := rows.Scan(&key, &c.Name, &c.Model, &maxMode, &c.Mode, &c.Status, &created, &updated, &c.Messages, &archived, &usage, &used, &limit); err != nil {
+		var legacy int
+		if err := rows.Scan(&key, &c.Name, &c.Model, &maxMode, &c.Mode, &c.Status, &created, &updated, &c.Messages, &archived, &usage, &used, &limit, &c.Generating, &legacy); err != nil {
 			return nil, fmt.Errorf("cursor: read chat: %w", err)
 		}
 		c.ID = strings.TrimPrefix(key, "composerData:")
@@ -250,6 +277,9 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 		}
 		c.ContextUsed, c.ContextLimit = int64(used), int64(limit)
 		c.Usage = parseUsage(usage)
+		if c.Messages == 0 && legacy > 0 {
+			c.Messages, c.Legacy = legacy, true
+		}
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -382,6 +412,25 @@ type Bubble struct {
 	// Visible is how many characters of the conversation this row adds that
 	// a person can read: words, thinking, a tool call's arguments and result.
 	Visible int
+	// ThinkingMs is thinkingDurationMs: how long the model thought before
+	// this row, as Cursor timed it; 0 when it did not.
+	ThinkingMs int64
+	// SentAt and EndedAt are timingInfo's clientRpcSendTime and
+	// clientEndTime (unix ms): when the request this row answers was sent
+	// and when its reply finished; 0 when Cursor kept no timing.
+	SentAt, EndedAt int64
+	// Summary is set on the row where Cursor summarized the chat to make
+	// room (conversationSummary with truncationLastBubbleIdInclusive): a
+	// compaction.
+	Summary *Summary
+}
+
+// Summary is a compaction Cursor recorded: the summary that replaced the
+// conversation up to the message Truncated names.
+type Summary struct {
+	Truncated string
+	// Chars is the summary's length in characters.
+	Chars int
 }
 
 // Tool is a tool call as Cursor recorded it (toolFormerData).
@@ -400,6 +449,14 @@ type Tool struct {
 	// Decision is userDecision: accepted or rejected, "" when nobody was
 	// asked.
 	Decision string
+	// Approval is additionalData.reviewData.approvalType: "full_auto" when
+	// Cursor ran the call without asking (its auto-run), "" when it kept
+	// none.
+	Approval string
+	// MCPServer and MCPTool name an MCP call's server and tool, from
+	// additionalData.reviewData (serverId, toolName) or the call's params
+	// (tools[0].serverName, name); "" for any other call.
+	MCPServer, MCPTool string
 }
 
 type rawBubble struct {
@@ -421,18 +478,46 @@ type rawBubble struct {
 		Used  int64 `json:"tokensUsed"`
 		Limit int64 `json:"tokenLimit"`
 	} `json:"contextWindowStatusAtCreation"`
-	UsageUUID   string `json:"usageUuid"`
-	TerminalCwd string `json:"lastTerminalCwd"`
-	Tool        *struct {
-		Name        string `json:"name"`
-		ToolCallID  string `json:"toolCallId"`
-		ModelCallID string `json:"modelCallId"`
-		Status      string `json:"status"`
-		RawArgs     string `json:"rawArgs"`
-		Result      string `json:"result"`
-		Error       any    `json:"error"`
-		Decision    string `json:"userDecision"`
-	} `json:"toolFormerData"`
+	UsageUUID   string          `json:"usageUuid"`
+	TerminalCwd string          `json:"lastTerminalCwd"`
+	Tool        *rawTool        `json:"toolFormerData"`
+	ThinkingMs  float64         `json:"thinkingDurationMs"`
+	Summary     json.RawMessage `json:"conversationSummary"`
+	Timing      *struct {
+		Sent  float64 `json:"clientRpcSendTime"`
+		Ended float64 `json:"clientEndTime"`
+	} `json:"timingInfo"`
+}
+
+// rawTool is toolFormerData, which a legacy chat keeps in its composer's
+// capabilities instead (bubbleDataMap) in the same shape.
+type rawTool struct {
+	Name        string          `json:"name"`
+	ToolCallID  string          `json:"toolCallId"`
+	ModelCallID string          `json:"modelCallId"`
+	Status      string          `json:"status"`
+	RawArgs     string          `json:"rawArgs"`
+	Result      string          `json:"result"`
+	Error       any             `json:"error"`
+	Decision    string          `json:"userDecision"`
+	Additional  json.RawMessage `json:"additionalData"`
+	Params      string          `json:"params"`
+}
+
+// object reads a field Cursor writes either as a JSON object or as a JSON
+// string holding one.
+func object(raw json.RawMessage, into any) bool {
+	if len(raw) == 0 || string(raw) == "null" {
+		return false
+	}
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			return false
+		}
+		raw = json.RawMessage(s)
+	}
+	return json.Unmarshal(raw, into) == nil
 }
 
 // Bubbles reads the messages ids names, in that order (HeaderIDs). A message
@@ -498,15 +583,56 @@ func parseBubble(id string, val []byte) (Bubble, bool) {
 		b.ContextUsed, b.ContextLimit = max(0, r.Context.Used), max(0, r.Context.Limit)
 	}
 	b.Visible = len(r.Text) + len(b.Thinking)
-	if t := r.Tool; t != nil && t.Name != "" {
-		b.Tool = &Tool{ID: t.ToolCallID, Name: t.Name, Args: arguments(t.RawArgs), Status: t.Status,
-			Error: t.Error != nil || t.Status == "error", Result: t.Result, ErrorText: errorText(t.Error), Decision: t.Decision}
-		if t.ModelCallID != "" {
-			b.Call = t.ModelCallID
-		}
-		b.Visible += len(t.RawArgs) + len(t.Result)
+	b.ThinkingMs = max(0, int64(r.ThinkingMs))
+	if r.Timing != nil && r.Timing.Sent > 0 && r.Timing.Ended >= r.Timing.Sent {
+		b.SentAt, b.EndedAt = int64(r.Timing.Sent), int64(r.Timing.Ended)
+	}
+	var sum struct {
+		Summary   string `json:"summary"`
+		Truncated string `json:"truncationLastBubbleIdInclusive"`
+	}
+	if object(r.Summary, &sum) && sum.Truncated != "" {
+		b.Summary = &Summary{Truncated: sum.Truncated, Chars: utf8.RuneCountInString(sum.Summary)}
+	}
+	if r.Tool != nil {
+		b.setTool(r.Tool)
 	}
 	return b, true
+}
+
+// setTool reads a toolFormerData onto the row.
+func (b *Bubble) setTool(t *rawTool) {
+	if t.Name == "" {
+		return
+	}
+	b.Tool = &Tool{ID: t.ToolCallID, Name: t.Name, Args: arguments(t.RawArgs), Status: t.Status,
+		Error: t.Error != nil || t.Status == "error", Result: t.Result, ErrorText: errorText(t.Error), Decision: t.Decision}
+	var add struct {
+		Review struct {
+			Approval string `json:"approvalType"`
+			Tool     string `json:"toolName"`
+			Server   string `json:"serverId"`
+		} `json:"reviewData"`
+	}
+	if object(t.Additional, &add) {
+		b.Tool.Approval = add.Review.Approval
+		b.Tool.MCPServer, b.Tool.MCPTool = add.Review.Server, add.Review.Tool
+	}
+	if b.Tool.MCPServer == "" && t.Params != "" && strings.HasPrefix(t.Name, "mcp") {
+		var p struct {
+			Tools []struct {
+				Name   string `json:"name"`
+				Server string `json:"serverName"`
+			} `json:"tools"`
+		}
+		if json.Unmarshal([]byte(t.Params), &p) == nil && len(p.Tools) == 1 {
+			b.Tool.MCPServer, b.Tool.MCPTool = p.Tools[0].Server, p.Tools[0].Name
+		}
+	}
+	if t.ModelCallID != "" {
+		b.Call = t.ModelCallID
+	}
+	b.Visible += len(t.RawArgs) + len(t.Result)
 }
 
 // errorText reads toolFormerData.error, a JSON string holding

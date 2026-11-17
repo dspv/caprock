@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dspv/caprock/internal/agents"
@@ -56,6 +57,16 @@ func restartModes(f agents.LaunchFacts) []string {
 	return append(out, agents.ModeDontAsk)
 }
 
+// hasArg reports whether a command line holds arg as a word of its own.
+func hasArg(command, arg string) bool {
+	for _, w := range strings.Fields(command) {
+		if w == arg {
+			return true
+		}
+	}
+	return false
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {
@@ -72,6 +83,16 @@ func (a *agentAdapter) PermissionMode(ctx context.Context, id string) (api.Permi
 		return api.PermissionModeView{}, false
 	}
 	v := api.PermissionModeView{SessionID: id}
+	if ag.Kind == agents.AgentCursor {
+		// cursor-agent's mode is not switched here. Started with --force it
+		// runs every command unasked (Caprock's bypass); otherwise its own
+		// rows say (sessionStart's composer_mode), so the store answers.
+		if hasArg(ag.Command, "--force") {
+			v.Mode, v.Source = agents.ModeBypass, string(agents.SourceLaunch)
+			return v, true
+		}
+		return v, false
+	}
 	if ag.Kind != "" && ag.Kind != agents.AgentClaude {
 		// Codex, OpenCode, Gemini: their modes are not read or switched here.
 		return v, true

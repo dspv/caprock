@@ -132,6 +132,11 @@ type Stats struct {
 	// omitted when zero. A session whose every turn is unpriced has CostUSD 0,
 	// which is not "free" but "unknown".
 	UnpricedTurns int64 `json:"unpriced_turns,omitempty"`
+	// Requests is how many requests Cursor counted for the session (its
+	// usageData), filled by the session summary only; omitted for every
+	// other agent. Turns there leaves out the usage records that carry them
+	// (store.SessionUsageCount).
+	Requests int64 `json:"requests,omitempty"`
 }
 
 // DailyStat mirrors daily_stats.

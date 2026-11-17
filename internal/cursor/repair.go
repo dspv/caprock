@@ -25,6 +25,9 @@ type stored struct {
 	cost              sql.NullFloat64
 	cwd               string
 	reconciled, usage bool
+	tool, payTool     string
+	filePath          string
+	mode, decision    string
 }
 
 // target is what a stored row should say today.
@@ -32,6 +35,11 @@ type target struct {
 	model, source     string
 	ctxUsed, ctxLimit int64
 	useID             string
+	// tool is the call's name (callName), filePath its tool_input's file
+	// (ToolInput), mode its permission_mode and decision the person's
+	// answer; "" where the row carries none.
+	tool, filePath string
+	mode, decision string
 }
 
 // repair brings what an earlier version of this reader stored of one chat up
@@ -56,7 +64,7 @@ type target struct {
 // usage comes out in one transaction and the labels follow in short ones;
 // it is idempotent, so a repair cut short is simply run again, and a second
 // run over a repaired chat finds nothing to change.
-func (in *Ingester) repair(ctx context.Context, c Composer, bubbles []Bubble, sessionModel string) error {
+func (in *Ingester) repair(ctx context.Context, c Composer, bubbles []Bubble, sessionModel, cwd string) error {
 	if in.rec == nil || in.rec.Store == nil {
 		return nil
 	}
@@ -68,13 +76,18 @@ func (in *Ingester) repair(ctx context.Context, c Composer, bubbles []Bubble, se
 		}
 		switch {
 		case b.User:
-			want["cu-user:"+b.ID] = target{model: turn, source: source, ctxUsed: b.ContextUsed, ctxLimit: b.ContextLimit}
-			if i == 0 && turn != "" {
+			want["cu-user:"+b.ID] = target{model: turn, source: source, ctxUsed: b.ContextUsed, ctxLimit: b.ContextLimit,
+				mode: chatMode(c.Mode)}
+			// The turn's end carries its model too (turnSpan.stop).
+			want["cu-stop:"+c.ID+":"+b.ID] = target{model: turn}
+			if i == 0 {
 				want["cu-overhead:"+c.ID] = target{model: turn}
 			}
 		case b.Tool != nil:
-			want["cu-tool:"+b.ID] = target{model: turn, useID: useID(b)}
-			want["cu-post:"+b.ID] = target{model: turn}
+			name := callName(b.Tool)
+			fp, _ := ToolInput(b.Tool.Name, b.Tool.Args, cwd)["file_path"].(string)
+			want["cu-tool:"+b.ID] = target{model: turn, useID: useID(b), tool: name, filePath: fp, mode: callMode(b.Tool)}
+			want["cu-post:"+b.ID] = target{model: turn, tool: name, filePath: fp, decision: b.Tool.Decision}
 		default:
 			w := target{model: turn, source: source}
 			if i == len(bubbles)-1 && (c.Status == "completed" || c.Status == "aborted") {
@@ -154,7 +167,12 @@ func (in *Ingester) repair(ctx context.Context, c Composer, bubbles []Bubble, se
 		if !ok {
 			continue
 		}
-		todo = append(todo, func(q store.Querier) error { return fix(ctx, q, r, w) })
+		todo = append(todo, func(q store.Querier) error {
+			if err := fix(ctx, q, r, w); err != nil {
+				return err
+			}
+			return movePath(ctx, q, c.ID, r, w)
+		})
 	}
 	for len(todo) > 0 {
 		n := min(len(todo), repairBatch)
@@ -185,13 +203,28 @@ func fix(ctx context.Context, q store.Querier, r stored, w target) error {
 	expr := store.ZPayload
 	var args []any
 	switch {
-	case strings.HasPrefix(r.key, "cu-tool:"):
+	case strings.HasPrefix(r.key, "cu-tool:"), strings.HasPrefix(r.key, "cu-post:"):
 		if w.useID != "" && r.useID != w.useID {
 			expr = `json_set(` + expr + `, '$.tool_use_id', ?)`
 			args = append(args, w.useID)
 		}
-	case strings.HasPrefix(r.key, "cu-post:"):
-	case strings.HasPrefix(r.key, "cu-overhead:"):
+		if w.tool != "" && r.payTool != w.tool {
+			expr = `json_set(` + expr + `, '$.tool_name', ?)`
+			args = append(args, w.tool)
+		}
+		if w.filePath != "" && r.filePath != "" && r.filePath != w.filePath {
+			expr = `json_set(` + expr + `, '$.tool_input.file_path', ?)`
+			args = append(args, w.filePath)
+		}
+		if w.mode != "" && r.mode != w.mode {
+			expr = `json_set(` + expr + `, '$.permission_mode', ?)`
+			args = append(args, w.mode)
+		}
+		if w.decision != "" && r.decision != w.decision {
+			expr = `json_set(` + expr + `, '$.user_decision', ?)`
+			args = append(args, w.decision)
+		}
+	case strings.HasPrefix(r.key, "cu-overhead:"), strings.HasPrefix(r.key, "cu-stop:"):
 		if r.payModel != w.model {
 			expr = `json_set(` + expr + `, '$.model', ?)`
 			args = append(args, w.model)
@@ -200,6 +233,10 @@ func fix(ctx context.Context, q store.Querier, r stored, w target) error {
 		if r.payModel != w.model || r.source != w.source {
 			expr = `json_set(` + expr + `, '$.model', ?, '$.model_source', ?)`
 			args = append(args, w.model, w.source)
+		}
+		if w.mode != "" && r.mode != w.mode {
+			expr = `json_set(` + expr + `, '$.permission_mode', ?)`
+			args = append(args, w.mode)
 		}
 		if w.ctxUsed > 0 && r.ctxTokens != w.ctxUsed {
 			expr = `json_set(` + expr + `, '$.context_tokens', ?)`
@@ -211,18 +248,27 @@ func fix(ctx context.Context, q store.Querier, r stored, w target) error {
 		}
 	}
 	modelChanged := r.model != w.model
-	if !modelChanged && len(args) == 0 {
+	toolChanged := w.tool != "" && r.tool != w.tool
+	if !modelChanged && !toolChanged && len(args) == 0 {
 		return nil
 	}
 	var model any
 	if w.model != "" {
 		model = w.model
 	}
+	tool := r.tool
+	if toolChanged {
+		tool = w.tool
+	}
+	var toolCol any
+	if tool != "" {
+		toolCol = tool
+	}
 	if len(args) == 0 {
-		_, err := q.ExecContext(ctx, `UPDATE events SET model = ? WHERE id = ?`, model, r.id)
+		_, err := q.ExecContext(ctx, `UPDATE events SET model = ?, tool = ? WHERE id = ?`, model, toolCol, r.id)
 		return err
 	}
-	_, err := q.ExecContext(ctx, `UPDATE events SET payload = `+expr+`, model = ? WHERE id = ?`, append(args, model, r.id)...)
+	_, err := q.ExecContext(ctx, `UPDATE events SET payload = `+expr+`, model = ?, tool = ? WHERE id = ?`, append(args, model, toolCol, r.id)...)
 	return err
 }
 
@@ -256,7 +302,12 @@ func (in *Ingester) storedRows(ctx context.Context, chat string) ([]stored, stri
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.context_tokens'),0),
 		       tokens_in IS NOT NULL, COALESCE(tokens_in,0), COALESCE(tokens_out,0), cost_usd,
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.cwd'),''),
-		       COALESCE(json_extract(`+store.ZPayload+`,'$.usage_only'),0)
+		       COALESCE(json_extract(`+store.ZPayload+`,'$.usage_only'),0),
+		       COALESCE(tool,''),
+		       COALESCE(json_extract(`+store.ZPayload+`,'$.tool_name'),''),
+		       COALESCE(json_extract(`+store.ZPayload+`,'$.tool_input.file_path'),''),
+		       COALESCE(json_extract(`+store.ZPayload+`,'$.permission_mode'),''),
+		       COALESCE(json_extract(`+store.ZPayload+`,'$.user_decision'),'')
 		  FROM events
 		 WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ?
 		   AND key >= 'cu-' AND key < 'cu.' AND key NOT LIKE 'cu-hook-%'`, chat, string(event.SourceCursor))
@@ -269,7 +320,7 @@ func (in *Ingester) storedRows(ctx context.Context, chat string) ([]stored, stri
 		var r stored
 		var usage int
 		if err := rows.Scan(&r.id, &r.key, &r.kind, &r.ts, &r.model, &r.payModel, &r.source, &r.useID, &r.ctxTokens,
-			&r.hasTokens, &r.tin, &r.tout, &r.cost, &r.cwd, &usage); err != nil {
+			&r.hasTokens, &r.tin, &r.tout, &r.cost, &r.cwd, &usage, &r.tool, &r.payTool, &r.filePath, &r.mode, &r.decision); err != nil {
 			return nil, "", err
 		}
 		r.usage = usage != 0 || strings.HasPrefix(r.key, "cu-usage:")
@@ -277,4 +328,46 @@ func (in *Ingester) storedRows(ctx context.Context, chat string) ([]stored, stri
 		out = append(out, r)
 	}
 	return out, project, rows.Err()
+}
+
+// movePath keeps the session's touched files (session_files, and the
+// files_touched count beside it) in step with a call whose file or name
+// the repair corrected: the path the earlier reader filed it under —
+// "…/kgpu/kgpu/src" for "kgpu/src" read in …/kgpu — goes, the right one
+// comes, as the recorder would have filed it (rollup.touchedPath).
+func movePath(ctx context.Context, q store.Querier, chat string, r stored, w target) error {
+	if !strings.HasPrefix(r.key, "cu-tool:") || w.filePath == "" {
+		return nil
+	}
+	switch w.tool {
+	case "Edit", "Write", "MultiEdit":
+	default:
+		return nil
+	}
+	moved := r.filePath != "" && r.filePath != w.filePath
+	renamed := w.tool != r.tool
+	if !moved && !renamed {
+		return nil
+	}
+	delta := int64(0)
+	if moved {
+		res, err := q.ExecContext(ctx, `DELETE FROM session_files WHERE session_id = ? AND path = ?`, chat, r.filePath)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		delta -= n
+	}
+	isNew, err := store.TouchFile(ctx, q, chat, w.filePath, r.ts)
+	if err != nil {
+		return err
+	}
+	if isNew {
+		delta++
+	}
+	if delta == 0 {
+		return nil
+	}
+	_, err = q.ExecContext(ctx, `UPDATE session_stats SET files_touched = MAX(0, files_touched + ?) WHERE session_id = ?`, delta, chat)
+	return err
 }

@@ -71,11 +71,16 @@ const notCopyWhere = ` AND NOT EXISTS (SELECT 1 FROM events o INDEXED BY idx_eve
 // ReinitCompactionStat (pricing_version ”). A boundary is always stored
 // after the ones before it in the table, the transcript backfill too, so
 // the newest row's event id is a cursor.
+//
+// Cursor's compactions are left out: these rows price a compaction and its
+// saving from the pricing table, and Cursor is never priced from it
+// (ADR-095); its compactions are counted and measured (store.Compactions)
+// but carry no cost estimate.
 func AddCompactionBoundaries(ctx context.Context, q Querier) (int64, error) {
 	res, err := q.ExecContext(ctx, `
 		INSERT INTO compaction_stats(event_id, sid, at, pricing_version)
 		SELECT e.id, e.sid, e.ts, '' FROM events e INDEXED BY idx_events_kind_id
-		WHERE e.kind = 'context.compacted'
+		WHERE e.kind = 'context.compacted' AND e.source <> 'cursor'
 		  AND e.id > COALESCE((SELECT MAX(event_id) FROM compaction_stats), 0)
 		  AND `+MainThreadWhere+notCopyWhere+`
 		ON CONFLICT(event_id) DO NOTHING`)
