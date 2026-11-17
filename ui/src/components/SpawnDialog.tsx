@@ -45,7 +45,7 @@ export const GEMINI_MODELS: [value: string, label: string][] = [
 
 // Ordered most capable first, and labelled with the axis someone actually
 // picks on: price relative to the others. The ranking is pricing.json's, per
-// million output tokens (Fable 5.1 50, Opus 5.5 20, Sonnet 5.5 10, Haiku 5.5 0.5) — the figures
+// million output tokens (Fable 5.2 40, Opus 5.5 20, Sonnet 5.5 10, Haiku 5.5 0.5) — the figures
 // the Cost screen bills these sessions with, not a remembered ordering.
 //
 // Each label stays within 25 characters: the New agent sheet gives the model
@@ -70,7 +70,7 @@ export const GEMINI_MODELS: [value: string, label: string][] = [
 // account can call it — the only proof that belongs in this list is a live
 // answer from the real `claude`.
 export const MODELS: [value: string, label: string][] = [
-  ['claude-fable-5-1', 'Fable 5.1 · top, priciest'],
+  ['claude-fable-5-2', 'Fable 5.2 · top, priciest'],
   ['claude-opus-5-5', 'Opus 5.5 · all-rounder'],
   ['claude-sonnet-5-5', 'Sonnet 5.5 · fast, cheap'],
   ['claude-haiku-5-5', 'Haiku 5.5 · cheapest'],

@@ -110,10 +110,10 @@ describe('the New agent sheet on the keyboard', () => {
     expect(model.value).toBe('claude-sonnet-5-5')
     fireEvent.keyDown(model, { key: 'ArrowUp' })
     fireEvent.keyDown(model, { key: 'ArrowUp' })
-    expect(model.value).toBe('claude-fable-5-1')
+    expect(model.value).toBe('claude-fable-5-2')
     // At the top it stays.
     fireEvent.keyDown(model, { key: 'ArrowUp' })
-    expect(model.value).toBe('claude-fable-5-1')
+    expect(model.value).toBe('claude-fable-5-2')
   })
 
   it('starts with ⌘↩ from a select and from the footer, with what was chosen', async () => {
