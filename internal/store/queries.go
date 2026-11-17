@@ -1688,6 +1688,92 @@ func SessionUnpricedTurns(ctx context.Context, q Querier, sessionID string) (int
 	return n, err
 }
 
+// CostPoint is one point of a session's cumulative cost: what the session
+// had cost by the end of a priced turn (Ts, unix ms).
+type CostPoint struct {
+	Ts  int64   `json:"ts"`
+	USD float64 `json:"usd"`
+}
+
+// CostSeries is a session's cost over its whole life, for the session
+// page's "Cost, cumulative" line. It ends at what session_stats holds, so
+// the line and the Cost tile state one figure.
+type CostSeries struct {
+	// Points are oldest first, the last one the session's total, at most
+	// CostSeriesPoints of them.
+	Points []CostPoint `json:"points"`
+	// PricedTurns counts the assistant turns that carry a cost and a reason
+	// to (cost or tokens), leaving out the usage records Cursor and Hermes
+	// reconcile their totals onto (`cu-usage:` / `hm-usage:`), which hold
+	// money and no reply.
+	PricedTurns int64 `json:"priced_turns"`
+}
+
+// CostSeriesPoints caps CostSeries.Points: a sparkline 230 px wide has no
+// use for more, and the detail is polled.
+const CostSeriesPoints = 120
+
+// SessionCostSeries reads one session's cumulative cost from every priced
+// assistant turn it has, not from the window of events a page holds: Cursor
+// and Hermes put a chat's whole cost on one reconciled row (ADR-095), and a
+// line drawn from the last 60 events read $0.00 flat whenever that row was
+// older than them. Internal model calls are left out, as session_stats
+// leaves them out. The rows come off idx_events_attr_work in (sid, ts)
+// order; only the priced ones are looked up for their key.
+func SessionCostSeries(ctx context.Context, q Querier, sessionID string) (CostSeries, error) {
+	out := CostSeries{Points: []CostPoint{}}
+	rows, err := q.QueryContext(ctx, `
+		SELECT ts, cost_usd,
+		       COALESCE(substr(key,1,9) IN ('cu-usage:','hm-usage:'),0),
+		       (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
+		        + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
+		FROM events INDEXED BY idx_events_attr_work
+		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)
+		  AND kind = 'turn.assistant' AND cost_usd IS NOT NULL AND internal = 0
+		ORDER BY ts, id`, sessionID)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	var all []CostPoint
+	acc := 0.0
+	for rows.Next() {
+		var ts int64
+		var c float64
+		var usage, tokens bool
+		if err := rows.Scan(&ts, &c, &usage, &tokens); err != nil {
+			return out, err
+		}
+		if !usage && (c > 0 || tokens) {
+			out.PricedTurns++
+		}
+		acc += c
+		all = append(all, CostPoint{Ts: ts, USD: acc})
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	out.Points = thinCostPoints(all, CostSeriesPoints)
+	return out, nil
+}
+
+// thinCostPoints keeps at most n of a cumulative series, evenly spread, the
+// first and the last always among them: the line keeps its shape and still
+// ends at the total.
+func thinCostPoints(all []CostPoint, n int) []CostPoint {
+	if len(all) <= n {
+		if all == nil {
+			return []CostPoint{}
+		}
+		return all
+	}
+	out := make([]CostPoint, n)
+	for i := range n {
+		out[i] = all[i*(len(all)-1)/(n-1)]
+	}
+	return out
+}
+
 // EventsGen identifies the state of a session's events: equal values mean
 // its events are as they were. Gen is its rewrite generation (migration
 // 0063), which triggers move in the same transaction as every update or delete

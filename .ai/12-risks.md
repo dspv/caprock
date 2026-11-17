@@ -402,6 +402,20 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   `gpt-5.6-sol` row keeps $4/$20 with no `until`. Decided by: the page read
   on or after 2026-12-01; the new price goes in as a row from 2026-12-01,
   with the current one given `until: "2026-11-30"`.
+- `OQ-29` — **What `deepseek-chat` costs now.** It is the default model of
+  Caprock Mail's AI on the `deepseek` provider (`internal/mail/ai`), and it
+  has no row, so those calls are unpriced. DeepSeek's change log
+  (api-docs.deepseek.com/updates, read 2026-11-17) says on 2026-04-24 that
+  the legacy names `deepseek-chat` and `deepseek-reasoner` "will be
+  discontinued in three months (2026-07-24)" and until then point to
+  `deepseek-v4-flash`. The pricing page (read 2026-11-17) lists only
+  `deepseek-flash` and `deepseek-v4-pro`, and names `deepseek-v4-flash` as
+  the one legacy alias still accepted. Whether `deepseek-chat` is still
+  served, by what and at what price, no DeepSeek page says, so table
+  `2026-11-17.3` adds no row (rule 6). Decided by: DeepSeek's page naming
+  it again, or a reply on a funded key showing the model it answers with.
+  Mail's default moved to `deepseek-flash` in the same change, so only a
+  user who typed `deepseek-chat` by hand still meets it.
 
 ## What would falsify the whole plan
 

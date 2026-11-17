@@ -405,6 +405,9 @@ export interface SessionCall {
 export interface SessionDetail extends SessionSummary {
   files: string[]
   events: Event[]
+  /** The cumulative cost over every priced turn of the session, ending at
+   *  stats.cost_usd — not over `events`, the last 60. An older daemon sends none. */
+  cost_series?: CostSeries
   /** Absent when the session's directory is not in a git repository. */
   repo?: RepoLink
   /** Latest first. An older daemon sends none. */
@@ -413,6 +416,14 @@ export interface SessionDetail extends SessionSummary {
   relayed_from?: RelayLink
   /** The sessions started to carry this one on, oldest first. */
   relayed_to?: RelayLink[]
+}
+
+/** A session's cumulative cost: at most 120 points, oldest first, the last the total. */
+export interface CostSeries {
+  /** `ts` is unix ms; `usd` what the session had cost by then. */
+  points: { ts: number; usd: number }[]
+  /** Turns with a cost, leaving out Cursor's and Hermes's usage records. */
+  priced_turns: number
 }
 
 /** One end of a relay, as a session page names it. */

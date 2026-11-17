@@ -212,9 +212,16 @@ Cursor's own figure, never the table's.
 - The CLI's hooks carry no tokens and no cost, so a CLI chat shows turns and
   tools and no spend. The UI says so on the session.
 - `pricing.json` has `cursor-composer-2.5` and `cursor-composer-2.5-fast`
-  (cursor.com/docs/models, read 2026-11-16) only to value the overhead below;
-  Cursor's other models are third-party ones billed at their list price plus
-  Cursor's Token Rate ($0.25 per 1M), which the table leaves out.
+  (cursor.com/docs/models, read 2026-11-16), the Grok 4.7, 4.6 and 4.5 rows
+  (`cursor-grok-*`, with Fast and 500k variants) and `cursor-muse-wonder`
+  (Meta's model at Cursor's listed price), read 2026-11-17, only to value the
+  overhead below. Cursor's other models are third-party ones billed at their
+  list price plus Cursor's Token Rate ($0.25 per 1M), which the table leaves
+  out. `cursorFamilyIDs` (`internal/api/cursor.go`) maps a Cursor name to its
+  row where the two differ: `grok-4.7` to `cursor-grok-4.7`, `gemini-3.1-pro`
+  to `gemini-3.1-pro-preview`, the picker's `sonnet-4` to `claude-sonnet-4`.
+  A Fast variant is valued at its base model's rate, because
+  `modelclass.Family` drops `-fast`.
 
 ## Overhead
 

@@ -1,13 +1,13 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { subagentModelLabel } from '@/lib/subagentModel'
-import { api, ApiError, isPairedDevice, type DiffResult, type Event, type SessionDetail, type SessionSummary } from '@/lib/api'
+import { api, ApiError, isPairedDevice, type CostSeries, type DiffResult, type Event, type SessionDetail, type SessionSummary } from '@/lib/api'
 import { useCanControl } from '@/lib/useCanControl'
 import { useApi } from '@/lib/useApi'
 import { live, useLiveLink } from '@/lib/live'
 import { LoopAlertCard } from '@/components/LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
-import { cumulativeCaption, sessionCost } from '@/lib/sessionCost'
+import { costLine, sessionCost } from '@/lib/sessionCost'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { CursorOverheadPanel } from '@/components/CursorOverhead'
 import { href, navigate } from '@/lib/router'
@@ -404,7 +404,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
       </div>
       )}
       {/* The timeline starts from the fresh events, never from a kept copy. */}
-      {active === 'timeline' && (detail.stale ? <Skeleton rows={6} /> : <Timeline id={id} initial={s.events} now={now} at={at} />)}
+      {active === 'timeline' && (detail.stale ? <Skeleton rows={6} /> : <Timeline id={id} initial={s.events} series={s.cost_series} unpriced={s.stats.unpriced_turns} now={now} at={at} />)}
       {active === 'chat' && (
         <Panel className="overflow-hidden">
           <ChatView
@@ -472,7 +472,7 @@ const EARLIER_PAGE = 200
  */
 export const TIMELINE_HELD = 1000
 
-function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now: number; at?: number }) {
+function Timeline({ id, initial, series, unpriced, now, at }: { id: string; initial: Event[]; series?: CostSeries; unpriced?: number; now: number; at?: number }) {
   const [events, setEvents] = useState<Event[]>(initial)
   const [filter, setFilter] = useState<Filter>('all')
   const lastId = useRef(initial.length ? initial[initial.length - 1]!.id : 0)
@@ -533,13 +533,11 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
     })
     return () => { off(); incoming.cancel() }
   }, [id, incoming])
-  const cost = useMemo(() => {
-    let acc = 0
-    return events.filter((e) => e.kind === 'turn.assistant').map((e) => (acc += e.cost_usd ?? 0))
-  }, [events])
-  // Priced turns and their sum, with the unpriced ones beside them: a
-  // session on a model with no published price is not $0.00.
-  const costCaption = useMemo(() => cumulativeCaption(events), [events])
+  // The whole session's cost, from the daemon's series (lib/sessionCost):
+  // priced turns and their sum, with the unpriced ones beside them, so a
+  // session on a model with no published price is not $0.00 and a Cursor
+  // chat's reconciled cost is never outside the line.
+  const { values: cost, caption: costCaption } = useMemo(() => costLine(series, events, unpriced), [series, events, unpriced])
   // tool.post rows from transcripts carry no tool name; resolve it via the matching tool.pre.
   const toolByUse = useMemo(() => {
     const m = new Map<string, string>()
@@ -599,7 +597,7 @@ function Timeline({ id, initial, now, at }: { id: string; initial: Event[]; now:
       </Panel>
       <div className="grid gap-3 content-start">
         <Panel title="Cost, cumulative">
-          <div className="px-3 py-2"><Sparkline values={cost.length ? cost : [0, 0]} width={230} height={40} tone="accent" /></div>
+          <div className="px-3 py-2"><Sparkline values={cost} width={230} height={40} tone="accent" /></div>
           <div className="px-3 pb-2 text-[11px] text-fg-muted num">{costCaption}</div>
         </Panel>
         <Panel title="Tokens per turn">
