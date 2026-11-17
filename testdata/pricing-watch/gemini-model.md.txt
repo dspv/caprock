@@ -1,0 +1,51 @@
+# Gemini 4 Carbon
+
+Gemini 4 Carbon (`gemini-4-carbon`) is our most capable reasoning model, built for complex software engineering, mathematical and scientific problem solving, high factual accuracy, autonomous multi-step agents, and long decode up to 1M tokens.
+
+{% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-4-carbon" variant="ais" %}Try in Google AI Studio{% /button %}
+
+## Documentation  {% id="documentation" %}
+
+Visit the [What's new in Gemini 4 Carbon](/docs/whats-new-gemini-4-carbon) page
+for full coverage of features, API changes, and migration guidance.
+
+## gemini-4-carbon  {% id="gemini-4-carbon" %}
+
+{% table variant="model" %}
+  * Property
+  * Description
+
+  ---
+
+  *     {% section class="model-property" %}
+  {% icon name="id_card" /%}Model code
+
+    {% /section %}
+
+  * `gemini-4-carbon`
+
+  ---
+
+  *     {% section class="model-property" %}
+  {% icon name="save" /%}Supported data types
+
+    {% /section %}
+
+  *     **Inputs** Text, Image, Video, Audio, and PDF
+
+    **Output** Text
+
+
+  ---
+
+  *     {% section class="model-property" %}
+  {% icon name="token_auto" /%}Token limits{% sup %}[[*]](/docs/tokens){% /sup %}
+
+    {% /section %}
+
+  *     **Context window (unified input and output token limit)** 1,048,576
+
+    **Max output** 65,536 (default synchronous) / up to 1,048,576 (with [long decode](/docs/long-decode))
+
+
+  ---

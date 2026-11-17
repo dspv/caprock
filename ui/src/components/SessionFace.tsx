@@ -2,22 +2,20 @@
  * A session's portrait: Claude in the face this session wears (lib/faces.ts),
  * any other agent in its own mark. FacePicker is the small menu a click on
  * the hero's portrait opens: the eight faces, the rubber ducks, the
- * Halloween pumpkins, the New Year faces and the dobermans, on five tabs,
+ * Halloween pumpkins, the New Year faces and the dobies, on five tabs,
  * and a way back to the default. DuckHint is the quiet "try a duck?"
  * line that now and then points at the ducks.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { AgentCharacter, characterFor } from './Characters'
 import {
-  DOBERMANS, DUCKS, FACES, FACE_NAME, NEW_YEAR, POOL_NAME, PUMPKINS, duckHintClosed, duckHintDone, duckHintDue, duckHintShown, hasOwnFace, hintKindAt,
-  isDobie, isDuck, isNewYear, isPumpkin, setSessionFace, useFaceDefault, useSessionFace, type Face, type FaceDefault, type FacePool, type HintKind,
+  FACE_NAME, FACE_SET, FACE_SETS, POOL_NAME, duckHintClosed, duckHintDone, duckHintDue, duckHintShown, hasOwnFace, hintKindAt,
+  isDobie, isDuck, isNewYear, isPumpkin, setSessionFace, useFaceDefault, useSessionFace, type Face, type FaceDefault, type FacePool, type FaceSet, type HintKind,
 } from '@/lib/faces'
 
-type Group = 'faces' | 'ducks' | 'pumpkins' | 'newyear' | 'dobermans'
-/** The tabs, in order; arrow keys go round them. */
-const GROUPS: readonly Group[] = ['faces', 'ducks', 'pumpkins', 'newyear', 'dobermans']
-const GROUP_NAME: Record<Group, string> = { faces: 'Faces', ducks: 'Ducks', pumpkins: 'Pumpkins', newyear: 'New Year', dobermans: 'Dobermans' }
-const GROUP_LIST: Record<Group, readonly Face[]> = { faces: FACES, ducks: DUCKS, pumpkins: PUMPKINS, newyear: NEW_YEAR, dobermans: DOBERMANS }
+type Group = FaceSet
+/** The tabs, in order; arrow keys go round them, Home and End jump to the ends. */
+const GROUPS = FACE_SETS
 
 /** The tab a face is on. */
 function groupOf(face: Face): Group {
@@ -42,8 +40,9 @@ const POOL_ART: Record<FacePool, [Face, Face, Face]> = {
 /**
  * Settings → Appearance: which face a session wears unless you picked one
  * for it — one at random per session (hashed from its id) from the faces,
- * the ducks, the pumpkins, the New Year faces, the dobermans, or faces and
- * ducks, or the same for all.
+ * the ducks, the pumpkins, the New Year faces, the dobies, or faces and
+ * ducks, or the same for all. The sets and their pools come from FACE_SET,
+ * as the face menu's tabs do.
  */
 export function FaceDefaultSetting() {
   const [d, setD] = useFaceDefault()
@@ -64,15 +63,13 @@ export function FaceDefaultSetting() {
     <div className="space-y-1.5" data-face-default>
       <p className="text-[13px] text-fg">Claude&rsquo;s face</p>
       <div role="radiogroup" aria-label="Claude's face" className="space-y-1.5">
-        <div className="flex flex-wrap gap-1.5">{pool('random')}{pool('random-ducks')}{pool('random-pumpkins')}{pool('random-newyear')}{pool('random-dobermans')}{pool('random-all')}</div>
-        <div className="flex flex-wrap gap-1.5">{FACES.map(one)}</div>
-        <div className="flex flex-wrap gap-1.5" data-face-default-ducks>{DUCKS.map(one)}</div>
-        <div className="flex flex-wrap gap-1.5" data-face-default-pumpkins>{PUMPKINS.map(one)}</div>
-        <div className="flex flex-wrap gap-1.5" data-face-default-newyear>{NEW_YEAR.map(one)}</div>
-        <div className="flex flex-wrap gap-1.5" data-face-default-dobermans>{DOBERMANS.map(one)}</div>
+        <div className="flex flex-wrap gap-1.5">{FACE_SETS.map((g) => pool(FACE_SET[g].pool))}{pool('random-all')}</div>
+        {FACE_SETS.map((g) => (
+          <div key={g} className="flex flex-wrap gap-1.5" {...(g === 'faces' ? {} : { [`data-face-default-${g}`]: '' })}>{FACE_SET[g].faces.map(one)}</div>
+        ))}
       </div>
       <p className="text-[12px] text-fg-muted">
-        Each session gets one at random and keeps it everywhere — from the eight faces, unless you pick the ducks, the pumpkins, the New Year faces, the dobermans, or faces and ducks; click the portrait in a session to give it another.
+        Each session gets one at random and keeps it everywhere — from the eight faces, unless you pick the ducks, the pumpkins, the New Year faces, the dobies, or faces and ducks; click the portrait in a session to give it another.
       </p>
     </div>
   )
@@ -212,9 +209,10 @@ export function FacePicker({ sessionId, at, group: initial, onDone }: { sessionI
   }, [])
   const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     const tab = (e.target as HTMLElement).getAttribute?.('role') === 'tab'
-    if (tab && (e.code === 'ArrowRight' || e.code === 'ArrowLeft')) {
+    if (tab && (e.code === 'ArrowRight' || e.code === 'ArrowLeft' || e.code === 'Home' || e.code === 'End')) {
       e.preventDefault()
-      const next = GROUPS[(GROUPS.indexOf(group) + (e.code === 'ArrowRight' ? 1 : GROUPS.length - 1)) % GROUPS.length]!
+      const next = e.code === 'Home' ? GROUPS[0]! : e.code === 'End' ? GROUPS[GROUPS.length - 1]!
+        : GROUPS[(GROUPS.indexOf(group) + (e.code === 'ArrowRight' ? 1 : GROUPS.length - 1)) % GROUPS.length]!
       show(next)
       menu.current?.querySelector<HTMLButtonElement>(`[role="tab"][data-group="${next}"]`)?.focus()
       return
@@ -233,18 +231,24 @@ export function FacePicker({ sessionId, at, group: initial, onDone }: { sessionI
     if (i >= 0 && i + d < 0 && d === -4) { menu.current?.querySelector<HTMLButtonElement>(`[role="tab"][data-group="${group}"]`)?.focus(); return }
     items[Math.max(0, Math.min(items.length - 1, i + d))]?.focus()
   }
-  const list = GROUP_LIST[group]
-  const tabClass = (g: Group) => `h-[24px] flex-1 rounded-[6px] text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${group === g ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`
+  const list = FACE_SET[group].faces
+  // Each tab: the set's emblem face over its short name; the open one raised
+  // on the panel with a hairline ring, the others dimmed until hovered.
+  const tabClass = (g: Group) => `group flex h-[50px] min-w-0 flex-col items-center justify-center gap-px rounded-[6px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${group === g ? 'bg-panel text-fg shadow-[0_1px_2px_rgba(0,0,0,0.35),inset_0_0_0_1px_var(--color-border-strong)]' : 'text-fg-muted hover:text-fg'}`
   return (
     <div ref={menu} role="menu" aria-label="This session's face" data-face-picker data-group={group} onKeyDown={onKey}
       style={at ? { top: at.top, left: at.left } : undefined}
       className="fixed z-50 w-[320px] rounded-[10px] border border-border-strong bg-panel p-2 shadow-lg">
-      <div role="tablist" aria-label="Kind" className="mb-1.5 flex gap-1 rounded-[8px] border border-border p-[2px]">
+      <div role="tablist" aria-label="Kind" className="mb-1.5 grid grid-cols-5 gap-[2px] rounded-[8px] bg-panel-2 p-[3px]">
         {GROUPS.map((g) => (
-          <button key={g} type="button" role="tab" data-group={g} aria-selected={group === g} tabIndex={group === g ? 0 : -1} onClick={() => show(g)} className={tabClass(g)}>{GROUP_NAME[g]}</button>
+          <button key={g} type="button" role="tab" data-group={g} aria-selected={group === g} tabIndex={group === g ? 0 : -1}
+            aria-label={FACE_SET[g].name} title={FACE_SET[g].name} onClick={() => show(g)} className={tabClass(g)}>
+            <AgentCharacter who="lead" face={FACE_SET[g].emblem} size={32} className={group === g ? '' : 'opacity-55 group-hover:opacity-100'} />
+            <span className="truncate text-[10.5px] font-medium leading-none">{FACE_SET[g].short}</span>
+          </button>
         ))}
       </div>
-      <div role="group" aria-label={GROUP_NAME[group]} className="grid grid-cols-4 gap-1">
+      <div role="group" aria-label={FACE_SET[group].name} className="grid grid-cols-4 gap-1">
         {list.map((f) => (
           <button key={f} type="button" role="menuitemradio" aria-checked={f === face} aria-label={FACE_NAME[f]} title={FACE_NAME[f]}
             onClick={() => pick(f)}

@@ -3,6 +3,7 @@ import { api, isPairedDevice, type DailyStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { cacheLevel } from '@/lib/cachelevel'
 import { fmtModel, fmtPct, fmtTokens, fmtTokensShort, fmtUSD, fmtUSDWhole } from '@/lib/format'
+import { volumeCount, volumeLine } from '@/lib/perRequest'
 import { foldRows, groupProjects } from '@/lib/projectGroups'
 import { Empty, Panel, Skeleton, Stat } from '@/components/ui'
 import { ShareWith } from '@/components/PanelShare'
@@ -201,7 +202,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
         <Panel fold="cost.models" title="Model mix" right={<span>by cost</span>} share="Model mix">
           {s && <ShareWith toText={() => `By cost, ${range}.\n\n${mdTable(['Model', 'Turns', 'Tokens', 'Cost', 'Share'], s.models.map((m) => {
             const unpriced = (s.unpriced?.models ?? []).includes(m.model)
-            return [m.model ? fmtModel(m.model) : 'unknown', m.turns, fmtTokens(m.tokens), unpriced ? 'unpriced' : fmtUSD(m.cost_usd), !unpriced && s.cost_usd > 0 ? fmtPct((m.cost_usd / s.cost_usd) * 100) : '—']
+            return [m.model ? fmtModel(m.model) : 'unknown', volumeCount(m), fmtTokens(m.tokens), unpriced ? 'unpriced' : fmtUSD(m.cost_usd), !unpriced && s.cost_usd > 0 ? fmtPct((m.cost_usd / s.cost_usd) * 100) : '—']
           }))}`} />}
           {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
           <CutDonut segments={modelSegs} what="model" />
@@ -225,7 +226,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
                 {modelFold.shown.map((m) => (
                   <tr key={m.model} className="border-b border-border/60 last:border-0">
                     <td className="px-3 py-1 mono w-full max-w-0" title={m.model || undefined}><div className="truncate"><SliceDot color={modelColors.get(m.model)} />{m.model ? fmtModel(m.model) : 'unknown'}</div></td>
-                    <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{m.turns.toLocaleString('en-US')}</td>
+                    <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{m.requests ? <span title={volumeLine(m)}>{volumeCount(m)}</span> : m.turns.toLocaleString('en-US')}</td>
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{fmtTokens(m.tokens)}</td>
                     {/* An unpriced model summed to 0 and rendered "$0.00",
                         which reads as free. It has no price, so it shows none. */}

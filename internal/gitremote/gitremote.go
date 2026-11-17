@@ -246,13 +246,18 @@ func FromToolPost(payload []byte) (PR, bool) {
 	return PR{URL: m[0], Number: n, Title: title, Action: "created"}, n > 0
 }
 
-// PushFromToolPost reads the branch a Bash tool's PostToolUse payload pushed:
+// PushFromToolPost reads the branch a Bash tool's PostToolUse payload pushed.
 // Claude Code records `tool_response.gitOperation.push.branch` when a `git
-// push` succeeds. It is how a session's pull request is found when the
-// session never ran `gh pr` itself (a script opened it). A failed command, or
-// a push without a branch, records nothing.
+// push` succeeds; an agent that records no gitOperation (Cursor's editor,
+// Codex) is read from the command's own output instead (PushFromOutput),
+// when the command was a `git push`. It is how a session's pull request is
+// found when the session never ran `gh pr` itself (a script opened it). A
+// failed command, or a push without a branch, records nothing.
 func PushFromToolPost(payload []byte) (branch string, ok bool) {
 	var p struct {
+		ToolInput struct {
+			Command string `json:"command"`
+		} `json:"tool_input"`
 		ToolResponse json.RawMessage `json:"tool_response"`
 		IsError      bool            `json:"is_error"`
 	}
@@ -260,17 +265,73 @@ func PushFromToolPost(payload []byte) (branch string, ok bool) {
 		return "", false
 	}
 	var resp struct {
+		Stdout       string `json:"stdout"`
+		Stderr       string `json:"stderr"`
 		GitOperation *struct {
 			Push *struct {
 				Branch string `json:"branch"`
 			} `json:"push"`
 		} `json:"gitOperation"`
 	}
-	if json.Unmarshal(p.ToolResponse, &resp) != nil || resp.GitOperation == nil || resp.GitOperation.Push == nil {
+	if json.Unmarshal(p.ToolResponse, &resp) != nil {
+		// A response stored as plain text (Codex) is the output itself.
+		var text string
+		if json.Unmarshal(p.ToolResponse, &text) != nil {
+			return "", false
+		}
+		resp.Stdout = text
+	}
+	if g := resp.GitOperation; g != nil && g.Push != nil {
+		branch = strings.TrimSpace(g.Push.Branch)
+		return branch, branch != ""
+	}
+	if !isGitPush(p.ToolInput.Command) {
 		return "", false
 	}
-	branch = strings.TrimSpace(resp.GitOperation.Push.Branch)
-	return branch, branch != ""
+	return PushFromOutput(resp.Stdout + "\n" + resp.Stderr)
+}
+
+// PushFromOutput reads the branch a `git push` sent from what git printed:
+// after the `To <remote>` line, one line per ref, `<flag> <summary> <local>
+// -> <remote ref>`. The first branch that went (a fast-forward, a new
+// branch, a forced update) is the one returned; a rejected ref (`!`), a
+// deleted one (`-`) and a tag are not pushes of a branch. Without a `To`
+// line nothing was pushed — `Everything up-to-date`, or an error.
+func PushFromOutput(out string) (string, bool) {
+	to := false
+	for _, line := range strings.Split(out, "\n") {
+		t := strings.TrimSpace(strings.TrimRight(line, "\r"))
+		if strings.HasPrefix(t, "To ") {
+			to = true
+			continue
+		}
+		if !to || !strings.Contains(t, " -> ") || strings.HasPrefix(t, "!") || strings.HasPrefix(t, "-") ||
+			strings.Contains(t, "[new tag]") || strings.Contains(t, "rejected]") {
+			continue
+		}
+		dst := strings.TrimSpace(t[strings.LastIndex(t, " -> ")+4:])
+		if i := strings.IndexAny(dst, " \t"); i >= 0 {
+			dst = dst[:i] // "(forced update)"
+		}
+		dst = strings.TrimPrefix(dst, "refs/heads/")
+		if dst == "" || strings.HasPrefix(dst, "refs/") {
+			continue
+		}
+		return dst, true
+	}
+	return "", false
+}
+
+// isGitPush reports whether a command line runs `git push`, as a word pair
+// anywhere in it (`cd x && git push -u origin HEAD`).
+func isGitPush(cmd string) bool {
+	f := strings.Fields(cmd)
+	for i := 0; i+1 < len(f); i++ {
+		if f[i] == "git" && f[i+1] == "push" {
+			return true
+		}
+	}
+	return false
 }
 
 func isPRCreate(cmd string) bool {

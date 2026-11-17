@@ -761,7 +761,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
   // place the answer lives — and the text is already here.
   const waiting = s.activity?.health === 'waiting-on-you'
   const need = s.status !== 'ended' && (waiting || s.activity?.health === 'done') ? s.activity.need : undefined
-  const cost = sessionCost(s.stats, s.model)
+  const cost = sessionCost(s.stats, s.model, s.gaps?.cost)
   return (
     <a href={href({ name: 'session', id: s.session_id })} className="block border border-border bg-panel rounded-[var(--radius-panel)] hover:border-border-strong no-underline hover:no-underline text-fg">
       <div className="px-3 pt-2 pb-1 flex items-center gap-2">
@@ -861,7 +861,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
           sub={cost.note
             ? <span title={cost.title}>{cost.state === 'unknown' ? `${cost.note} · ${s.model || '—'}` : `${s.model || '—'} · ${cost.note}`}</span>
             : s.model || '—'} tone="info" />
-        <Stat label="Tokens" value={fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={`${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
+        <Stat label="Tokens" value={s.gaps?.tokens ? '—' : fmtTokens(s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write)} sub={s.gaps?.tokens ?? s.gaps?.cache ?? `${fmtPct((s.savings?.hit_rate ?? 0) * 100)} cache hit`} />
         {/* The caption carries the price of the NEXT call, not the window size
           * the percentage above already states. Every call re-reads the whole
           * context before it does anything, so a full context is not merely
@@ -870,7 +870,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         <Stat
           label="Context"
           value={ctx ? fmtPct(ctx.pct) : '—'}
-          sub={ctx ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : (s.context_note || 'no turn yet')}
+          sub={ctx ? ctx.next_call_usd > 0 ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : fmtTokens(ctx.tokens) : (s.context_note || 'no turn yet')}
           tone={ctxTone}
         />
         <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} />

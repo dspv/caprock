@@ -1,0 +1,24 @@
+# All models
+
+> For the complete documentation index, see [llms.txt](/llms.txt). Markdown versions of documentation pages are available by appending `.md` to the page URL.
+
+> Browse models and compare their capabilities.
+
+[Models](/api/docs/models.md) · [Compare models](/api/docs/models/compare.md)
+
+## Flagship models
+
+Compare capabilities and specifications.
+
+- [GPT-6 Astra](/api/docs/models/gpt-6-astra.md): Our most capable model for the most demanding work.
+- [GPT-6.1 Sol](/api/docs/models/gpt-6.1-sol.md): Near-Astra performance for complex work at a lower cost.
+- [GPT-6.1 Terra](/api/docs/models/gpt-6.1-terra.md): A fast, efficient model for visual reasoning, precise computer use, and clear, natural writing.
+- [GPT-6 Luna](/api/docs/models/gpt-6-luna.md): Our most efficient model for focused, high-volume tasks.
+
+## Image
+- [GPT-5.2 Pro](/api/docs/models/gpt-5.2-pro.md): Previous pro model for professional work that produces smarter and more precise responses.
+- [GPT-5.4](/api/docs/models/gpt-5.4.md): A more affordable model for coding and professional work.
+- [GPT-5.4 mini](/api/docs/models/gpt-5.4-mini.md): Our strongest mini model yet for coding, computer use, and subagents
+- [GPT-5.4 Pro](/api/docs/models/gpt-5.4-pro.md): Version of GPT-5.4 that produces smarter and more precise responses.
+- [GPT-5.5](/api/docs/models/gpt-5.5.md): A new class of intelligence for coding and professional work.
+- [GPT-Rosalind](/api/docs/pricing#specialized-models): Life sciences reasoning for approved organizations. Model ID: `gpt-rosalind-research`.

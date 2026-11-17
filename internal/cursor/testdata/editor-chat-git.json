@@ -1,0 +1,246 @@
+{
+ "composerData:c0ffee00-0000-4000-8000-000000000003": {
+  "_v": 10,
+  "composerId": "c0ffee00-0000-4000-8000-000000000003",
+  "name": "Push the sign-up fix",
+  "createdAt": 1762509600000,
+  "lastUpdatedAt": 1762509910000,
+  "modelConfig": {
+   "modelName": "claude-4-sonnet",
+   "maxMode": false
+  },
+  "unifiedMode": "agent",
+  "status": "completed",
+  "usageData": {
+   "claude-4.1-opus-thinking": {
+    "costInCents": 120,
+    "amount": 7
+   }
+  },
+  "contextTokensUsed": 95756,
+  "contextTokenLimit": 176000,
+  "contextUsagePercent": 54.4,
+  "fullConversationHeadersOnly": [
+   {
+    "bubbleId": "d0000001-0000-4000-8000-000000000000",
+    "type": 1
+   },
+   {
+    "bubbleId": "d0000002-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000003-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000004-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000005-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000006-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000007-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000008-0000-4000-8000-000000000000",
+    "type": 1
+   },
+   {
+    "bubbleId": "d0000009-0000-4000-8000-000000000000",
+    "type": 2
+   },
+   {
+    "bubbleId": "d0000010-0000-4000-8000-000000000000",
+    "type": 2
+   }
+  ]
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000001-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 1,
+  "bubbleId": "d0000001-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:00.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "Prompt 1: push the fix and open a pull request.",
+  "contextWindowStatusAtCreation": {
+   "percentageRemaining": 76,
+   "tokensUsed": 41000,
+   "tokenLimit": 176000
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000002-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000002-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:05.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_2",
+   "modelCallId": "e0000002-5000-4000-8000-000000000000",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"cd /work/site && git push -u origin HEAD\", \"is_background\": false}",
+   "result": "{\"output\": \"Enumerating objects: 9, done.\\nremote: Create a pull request for 'fix/sign-up-link' on GitHub by visiting:\\nTo github.com:example/site.git\\n * [new branch]      HEAD -> fix/sign-up-link\\nbranch 'fix/sign-up-link' set up to track 'origin/fix/sign-up-link'.\", \"rejected\": false, \"notInterrupted\": true, \"resultingWorkingDirectory\": \"/work/site\", \"endedReason\": \"RUN_TERMINAL_COMMAND_ENDED_REASON_EXECUTION_COMPLETED\", \"outputRaw\": \"Enumerating objects: 9, done.\\r\\nremote: Create a pull request for 'fix/sign-up-link' on GitHub by visiting:\\r\\nTo github.com:example/site.git\\r\\n * [new branch]      HEAD -> fix/sign-up-link\\r\\nbranch 'fix/sign-up-link' set up to track 'origin/fix/sign-up-link'.\\r\\n\\u001b[34;1m~/work/site\\u001b[0m\\r\\n\", \"exitCodeV2\": 0}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000003-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000003-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:09.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_3",
+   "modelCallId": "e0000003-5000-4000-8000-000000000000",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"gh pr create --title \\\"Fix the sign-up link\\\" --body \\\"Points it at the new page.\\\" --base master\", \"is_background\": false}",
+   "result": "{\"output\": \"Creating pull request for fix/sign-up-link into master in example/site\\n\\nhttps://github.com/example/site/pull/14\", \"rejected\": false, \"notInterrupted\": true, \"resultingWorkingDirectory\": \"/work/site\", \"endedReason\": \"RUN_TERMINAL_COMMAND_ENDED_REASON_EXECUTION_COMPLETED\", \"outputRaw\": \"Creating pull request for fix/sign-up-link into master in example/site\\r\\n\\r\\nhttps://github.com/example/site/pull/14\\r\\n\\u001b[34;1m~/work/site\\u001b[0m\\r\\n\", \"exitCodeV2\": 0}",
+   "userDecision": "accepted"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000004-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000004-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:12.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_4",
+   "modelCallId": "e0000004-5000-4000-8000-000000000000",
+   "status": "error",
+   "name": "search_replace",
+   "rawArgs": "{\"file_path\": \"app/page.tsx\", \"old_string\": \"xxxx\", \"new_string\": \"yyyy\"}",
+   "error": "{\"clientVisibleErrorMessage\": \"The string to replace was not found in the file.\", \"modelVisibleErrorMessage\": \"The string to replace was not found in the file.\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000005-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000005-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:15.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_5",
+   "modelCallId": "e0000005-5000-4000-8000-000000000000",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"npm test\", \"is_background\": false}",
+   "result": "{\"output\": \"1 failing\\n  sign-up link points at /join\", \"rejected\": false, \"notInterrupted\": true, \"resultingWorkingDirectory\": \"/work/site\", \"endedReason\": \"RUN_TERMINAL_COMMAND_ENDED_REASON_EXECUTION_COMPLETED\", \"outputRaw\": \"1 failing\\r\\n  sign-up link points at /join\\r\\n\\u001b[34;1m~/work/site\\u001b[0m\\r\\n\", \"exitCodeV2\": 1}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000006-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000006-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:20.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_6",
+   "modelCallId": "e0000006-5000-4000-8000-000000000000",
+   "status": "completed",
+   "name": "run_terminal_cmd",
+   "rawArgs": "{\"command\": \"rm -rf build\", \"is_background\": false}",
+   "result": "{\"output\": \"\", \"rejected\": true, \"notInterrupted\": true, \"resultingWorkingDirectory\": \"/work/site\", \"endedReason\": \"RUN_TERMINAL_COMMAND_ENDED_REASON_EXECUTION_COMPLETED\", \"outputRaw\": \"\\r\\n\\u001b[34;1m~/work/site\\u001b[0m\\r\\n\"}",
+   "userDecision": "rejected"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000007-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000007-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:00:25.000Z",
+  "tokenCount": {
+   "inputTokens": 52000,
+   "outputTokens": 800
+  },
+  "text": "Reply 7: pushed, opened the pull request; one test fails.",
+  "usageUuid": "f0000007-5000-4000-8000-000000000000"
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000008-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 1,
+  "bubbleId": "d0000008-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:05:00.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "Prompt 2: look at the failing test.",
+  "modelInfo": {
+   "modelName": "default"
+  },
+  "contextWindowStatusAtCreation": {
+   "percentageRemaining": 66,
+   "tokensUsed": 60000,
+   "tokenLimit": 176000
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000009-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000009-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:05:03.000Z",
+  "tokenCount": {
+   "inputTokens": 0,
+   "outputTokens": 0
+  },
+  "text": "",
+  "toolFormerData": {
+   "tool": 15,
+   "toolCallId": "tool_9",
+   "modelCallId": "e0000009-5000-4000-8000-000000000000",
+   "status": "cancelled",
+   "name": "read_file",
+   "rawArgs": "{\"target_file\": \"app/page.test.tsx\"}"
+  }
+ },
+ "bubbleId:c0ffee00-0000-4000-8000-000000000003:d0000010-0000-4000-8000-000000000000": {
+  "_v": 3,
+  "type": 2,
+  "bubbleId": "d0000010-0000-4000-8000-000000000000",
+  "createdAt": "2025-11-07T10:05:10.000Z",
+  "tokenCount": {
+   "inputTokens": 61000,
+   "outputTokens": 300
+  },
+  "text": "Reply 10: stopped, as asked.",
+  "usageUuid": "f0000010-5000-4000-8000-000000000000"
+ }
+}

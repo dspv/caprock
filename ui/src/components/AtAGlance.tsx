@@ -40,7 +40,9 @@ function write(key: string, v: string) {
   try { localStorage.setItem(key, v) } catch { /* a remembered layout is a convenience */ }
 }
 
-export interface AgentRow { key: string; who: Character; name: string; turns: number; cost: number }
+/** `requests` is what the agent counted where it counts them (Cursor): its
+ *  money is read per request, not per turn (lib/perRequest.ts). */
+export interface AgentRow { key: string; who: Character; name: string; turns: number; requests?: number; cost: number }
 
 /**
  * One row per agent, with each agent's own sub-agents folded in — except
@@ -53,18 +55,19 @@ export function agentRows(agents: WeekAgent[]): AgentRow[] {
     const sub = a.agent === 'claude' && a.subagent
     const key = sub ? 'claude-sub' : a.agent
     const cur = by.get(key)
-    if (cur) { cur.turns += a.turns; cur.cost += a.cost_usd; continue }
+    if (cur) { cur.turns += a.turns; cur.cost += a.cost_usd; if (a.requests) cur.requests = (cur.requests ?? 0) + a.requests; continue }
     by.set(key, {
       key,
       who: characterFor(a.agent, sub),
       name: sub ? (a.threads ? `${a.threads.toLocaleString('en-US')} subagents` : 'Subagents') : agentName(a.agent),
       turns: a.turns,
+      requests: a.requests,
       cost: a.cost_usd,
     })
   }
   const order = ['claude', 'claude-sub', 'codex', 'opencode', 'gemini', 'deepseek', 'hermes', 'cursor']
   const rank = (k: string) => (order.indexOf(k) < 0 ? 99 : order.indexOf(k))
-  return [...by.values()].filter((r) => r.turns > 0).sort((a, b) => rank(a.key) - rank(b.key))
+  return [...by.values()].filter((r) => r.turns > 0 || (r.requests ?? 0) > 0).sort((a, b) => rank(a.key) - rank(b.key))
 }
 
 export interface GlanceCharts {
@@ -281,7 +284,10 @@ export function AtAGlancePanel() {
                       <span className="mt-1.5 grid grid-cols-[auto_auto] gap-x-4 gap-y-0.5 text-[12.5px]">
                         <span className="text-fg-muted">spent</span><span className="num text-right text-fg">{fmtUSD(r.cost)}</span>
                         <span className="text-fg-muted">turns</span><span className="num text-right text-fg">{r.turns.toLocaleString('en-US')}</span>
-                        <span className="text-fg-muted">per turn</span><span className="num text-right text-fg">{r.turns > 0 ? fmtUSD(r.cost / r.turns) : '—'}</span>
+                        {r.requests ? <>
+                          <span className="text-fg-muted">requests</span><span className="num text-right text-fg">{r.requests.toLocaleString('en-US')}</span>
+                          <span className="text-fg-muted">per request</span><span className="num text-right text-fg">{fmtUSD(r.cost / r.requests)}</span>
+                        </> : <><span className="text-fg-muted">per turn</span><span className="num text-right text-fg">{r.turns > 0 ? fmtUSD(r.cost / r.turns) : '—'}</span></>}
                       </span>
                     </span>
                   </span>

@@ -47,6 +47,9 @@ type recentEntry struct {
 	mainTurn lazy[foundEvent]
 	prompts  lazy[[]string]
 	unpriced lazy[int64]
+	// reading is the newest context reading an agent recorded itself
+	// (store.LastContextReading), for agents that do (readsOwnContext).
+	reading lazy[foundReading]
 	// todos is the agent's task list (store.SessionTodos), for the Jarvis
 	// digest (jarvis.go): only the session's own events move it.
 	todos lazy[store.TodoList]
@@ -56,6 +59,12 @@ type recentEntry struct {
 type lazy[T any] struct {
 	v    T
 	have bool
+}
+
+// foundReading is store.LastContextReading's answer.
+type foundReading struct {
+	r     store.ContextReading
+	found bool
 }
 
 // foundEvent is store.LastMainTurn's answer.

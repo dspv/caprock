@@ -290,6 +290,304 @@ class LookupTest(unittest.TestCase):
         self.assertIsNone(pw.lookup(self.rows, "gpt-6-sol"))
 
 
+def run(src_name, models, table, **kw):
+    return pw.compare(table, [(source(src_name), models, "fixture", None)], "2026-11-17", **kw)
+
+
+def info_only(f):
+    return pw.exit_code(f) == 0
+
+
+class TokensTest(unittest.TestCase):
+    def test_exact_and_rounded(self):
+        self.assertEqual(pw.tokens("1,048,576-token context window"), (1048576, True))
+        self.assertEqual(pw.tokens("1M tokens"), (1000000, False))
+        self.assertEqual(pw.tokens("128K"), (128000, False))
+        self.assertIsNone(pw.tokens("not stated"))
+
+    def test_rounded_figure_matches_within_five_percent(self):
+        pm = pw.PageModel("m", "m", {}, context=1000000, context_exact=False)
+        self.assertEqual(pw.context_finding({"id": "m", "context_window": 1048576}, pm), (None, None))
+        pm.context_exact = True
+        self.assertEqual(pw.context_finding({"id": "m", "context_window": 1048576}, pm)[0], "drift")
+        self.assertEqual(pw.context_finding({"id": "m", "context_window": 0}, pm)[0], "info")
+
+
+class ZenTest(unittest.TestCase):
+    def setUp(self):
+        self.m = by_id(pw.parse_zen(fixture("zen.html")))
+
+    def test_ids_prices_and_struck_promotion(self):
+        self.assertEqual(self.m["minimax-m2.7"].prices["input"], 0.3)
+        self.assertEqual(self.m["minimax-m2.7"].prices["cache_read"], 0.06)
+        self.assertIsNone(self.m["minimax-m2.7"].prices["cache_write_5m"])
+        # "<del>$4.00</del> $2.00": today's price, not the struck one.
+        self.assertEqual(self.m["gemini-4-carbon"].prices["input"], 2.0)
+        self.assertEqual(self.m["gemini-3.7-flash"].prices["output"], 3.75)
+        self.assertEqual(self.m["gpt-6-sol"].tier_prices["input"], 4.0)
+        # Listed only in the deprecation table, by name: not a model here.
+        self.assertNotIn("deepseek-v4-flash", self.m)
+
+    def test_only_zen_priced_rows_are_compared(self):
+        table = {"version": "t", "models": [
+            row("minimax-m2.7", 0.3, 0.3, 0.3, 0.06, 1.5),  # output differs from Zen's $1.20
+            row("claude-opus-5-5", 9, 9, 9, 9, 99),  # differs too, but Anthropic is its source
+        ]}
+        f = run("zen", list(self.m.values()), table)
+        self.assertEqual([i["model"] for i in f["changed"]], ["minimax-m2.7"])
+        self.assertEqual(pw.exit_code(f), 1)
+        unlisted = {i["model"] for i in f["unlisted"]}
+        self.assertIn("glm-5.3", unlisted)
+        self.assertNotIn("claude-opus-5-5", unlisted)
+        self.assertFalse(any(m.endswith("-free") for m in unlisted))
+
+    def test_new_zen_model_is_information(self):
+        f = run("zen", [self.m["glm-5.3"]], {"version": "t", "models": []})
+        self.assertTrue(info_only(f))
+        self.assertEqual(f["missing"], [])
+        self.assertIn("Zen sells it", pw.report(f, {"version": "t"}, [], "2026-11-17"))
+
+    def test_zen_priced_rows_cite_zen(self):
+        table = json.loads((HERE.parent / "pricing" / "pricing.json").read_text(encoding="utf-8"))
+        zen_notes = [n for n in table["notes"] if "opencode.ai/docs/zen" in n]
+        for mid in pw.ZEN_PRICED:
+            self.assertTrue(any(mid in n for n in zen_notes), mid)
+
+
+class DeepSeekTest(unittest.TestCase):
+    def setUp(self):
+        self.m = by_id(pw.parse_deepseek(fixture("deepseek.md.txt")))
+
+    def test_off_peak_prices_and_context(self):
+        flash = self.m["deepseek-flash"]
+        self.assertEqual((flash.prices["input"], flash.prices["cache_read"], flash.prices["output"]),
+                         (0.15, 0.003, 0.6))
+        self.assertIsNone(flash.prices["cache_write_5m"])
+        self.assertEqual(self.m["deepseek-v4-pro"].prices["output"], 1.98)  # not the peak $3.96
+        self.assertEqual((flash.context, flash.context_exact), (1000000, False))
+
+    def test_legacy_names_are_aliases(self):
+        self.assertTrue(self.m["deepseek-v4-flash-vision-exp"].alias)
+        f = run("deepseek", list(self.m.values()), {"version": "t", "models": [
+            row("deepseek-flash", 0.15, 0.15, 0.15, 0.003, 0.6), row("deepseek-v4-flash", 0.15, 0.15, 0.15, 0.003, 0.6),
+            row("deepseek-v4-pro", 0.66, 0.66, 0.66, 0.022, 1.98)]})
+        self.assertTrue(info_only(f), f)
+        self.assertEqual(f["gone"], [])
+
+
+class MiniMaxTest(unittest.TestCase):
+    def test_standard_tab_and_tier(self):
+        m = by_id(pw.parse_minimax(fixture("minimax.md.txt")))
+        self.assertEqual(sorted(m), ["minimax-m3", "minimax-m3.1-flash"])
+        self.assertEqual(m["minimax-m3.1-flash"].prices["cache_read"], 0.015)
+        m3 = m["minimax-m3"]
+        self.assertEqual(m3.prices["input"], 0.3)  # not struck $0.60, not Priority $0.45
+        self.assertEqual(m3.tier_prices["output"], 2.4)
+        self.assertTrue(source("minimax").owns("minimax-m3"))
+        self.assertFalse(source("minimax").owns("minimax-m2.7"))  # Zen's figure
+
+
+class KimiTest(unittest.TestCase):
+    def test_reads_the_js_payload(self):
+        m = by_id(pw.parse_kimi(fixture("kimi.html")))
+        k3 = m["kimi-k3"]
+        self.assertEqual(k3.prices, {"input": 3.0, "output": 15.0, "cache_read": 0.3,
+                                     "cache_write_5m": 3.0, "cache_write_1h": 6.0})
+        self.assertEqual((k3.context, k3.context_exact), (1048576, True))
+        self.assertEqual(m["kimi-k2.6"].prices["cache_read"], 0.16)
+        self.assertIsNone(m["kimi-k2.6"].prices["cache_write_5m"])
+        self.assertEqual(m["kimi-k2.7-code"].context, 262144)
+
+    def test_empty_rendered_table_is_unreadable(self):
+        with self.assertRaises(pw.Unreadable):
+            pw.parse_kimi("<table><thead><tr /></thead><tbody /></table>")
+
+
+class CursorTest(unittest.TestCase):
+    def setUp(self):
+        self.models = pw.parse_cursor(fixture("cursor.html"))
+        self.m = by_id(self.models)
+
+    def test_own_models_under_cursor(self):
+        self.assertEqual(self.m["cursor-composer-2.5"].prices["cache_read"], 0.2)
+        self.assertEqual(self.m["cursor-composer-2.5-fast"].prices["output"], 15.0)
+        self.assertIn("claude-opus-5.5", self.m)
+        self.assertIn("gpt-5.6-sol", self.m)
+
+    def test_family_matches_internal_modelclass(self):
+        # The same cases as internal/modelclass TestFamilyJoinsOneModelAcrossAgents.
+        for given, want in {"claude-4.5-sonnet-thinking": "claude-sonnet-4-5", "claude-4-sonnet": "claude-sonnet-4",
+                            "claude-opus-4-1-20250805": "claude-opus-4-1", "claude-opus-5-5[1m]": "claude-opus-5-5",
+                            "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6", "gpt-5-fast": "gpt-5",
+                            "composer-2.5-fast": "composer-2.5", "GPT-4.1": "gpt-4.1", "": ""}.items():
+            self.assertEqual(pw.cursor_family(given), want, given)
+
+    def test_unmapped_names_are_information(self):
+        table = {"version": "t", "models": [
+            row("cursor-composer-2.5", 0.5, 0, 0, 0.2, 2.5), row("cursor-composer-2.5-fast", 3, 0, 0, 0.5, 15),
+            row("claude-opus-5-5", 4, 5, 8, 0.2, 20), row("gpt-5.6-sol", 4, 5, 5, 0.4, 20)]}
+        f = run("cursor", self.models, table, cursor_local=["sonnet-4", "gpt-5.6-sol"])
+        unmapped = {i["id"] for i in f["unmapped"]}
+        self.assertIn("grok-4.7", unmapped)
+        self.assertIn("gemini-3.1-pro", unmapped)
+        self.assertIn("sonnet-4", unmapped)
+        self.assertNotIn("claude-opus-5.5", unmapped)
+        self.assertNotIn("gpt-5.6-sol", unmapped)
+        self.assertNotIn("cursor-composer-2.5", unmapped)
+        self.assertTrue(info_only(f), f)
+
+    def test_composer_price_change_is_drift(self):
+        table = {"version": "t", "models": [row("cursor-composer-2.5", 0.6, 0, 0, 0.2, 2.5)]}
+        f = run("cursor", self.models, table, cursor_local=[])
+        self.assertEqual(f["changed"][0]["diff"], {"input": {"table": 0.6, "page": 0.5}})
+
+    def test_picker_ids_read_from_go(self):
+        self.assertIn("gpt-5", pw.cursor_local_ids())
+
+
+class CodexTest(unittest.TestCase):
+    def setUp(self):
+        self.models = pw.parse_codex(fixture("codex-models.json"))
+
+    def test_listed_and_hidden(self):
+        m = by_id(self.models)
+        self.assertFalse(m["gpt-6-astra"].hidden)
+        self.assertTrue(m["codex-auto-review"].hidden)
+
+    def test_listed_model_without_a_row_is_drift(self):
+        f = run("codex", self.models, {"version": "t", "models": [row("gpt-6-sol", 2, 2.5, 2.5, 0.2, 10)]})
+        missing = {i["model"] for i in f["missing"]}
+        self.assertIn("gpt-6-astra", missing)
+        self.assertNotIn("codex-auto-review", missing)
+        self.assertIn("codex-auto-review", {i["model"] for i in f["unlisted"]})
+        self.assertEqual(pw.exit_code(f), 1)
+        self.assertIn("Codex offers it", pw.report(f, {"version": "t"}, [], "2026-11-17"))
+
+    def test_moved_file_is_found_again(self):
+        raw = "https://raw.githubusercontent.com/openai/codex/main/codex-rs/new-home/models.json"
+
+        def fetcher(url, headers):
+            if url.startswith("https://api.github.com/"):
+                return json.dumps({"tree": [{"path": "codex-rs/new-home/models.json"},
+                                            {"path": "codex-rs/core/tests/models.json"}]})
+            if url == raw:
+                return fixture("codex-models.json")
+            raise OSError("404")
+        models, how, err = pw.read_source(source("codex"), fetcher=fetcher)
+        self.assertEqual(how, raw)
+        self.assertIsNone(err)
+
+    def test_unreachable_is_reported(self):
+        def fetcher(url, headers):
+            raise OSError("offline")
+        models, how, err = pw.read_source(source("codex"), fetcher=fetcher)
+        self.assertIsNone(models)
+        self.assertIn("offline", err)
+        f = pw.compare({"version": "t", "models": []}, [(source("codex"), None, None, err)])
+        self.assertEqual(pw.exit_code(f), 2)
+
+
+class OverviewTest(unittest.TestCase):
+    def test_anthropic_context(self):
+        m = by_id(pw.parse_anthropic_models(fixture("anthropic-models.md.txt")))
+        self.assertEqual((m["claude-opus-5-5"].context, m["claude-opus-5-5"].context_exact), (1000000, False))
+        self.assertEqual(m["claude-opus-4-1"].context, 200000)
+        table = {"version": "t", "models": [row("claude-opus-5-5", 4, 5, 8, 0.2, 20)]}
+        table["models"][0]["context_window"] = 1000000
+        self.assertTrue(info_only(run("anthropic-models", list(m.values()), table)))
+        table["models"][0]["context_window"] = 200000
+        f = run("anthropic-models", list(m.values()), table)
+        self.assertEqual(f["context"][0]["model"], "claude-opus-5-5")
+        self.assertEqual(pw.exit_code(f), 1)
+        self.assertTrue(any(i["model"] == "claude-sonnet-5-5" for i in f["unlisted"]))
+
+    def test_anthropic_deprecations(self):
+        m = by_id(pw.parse_anthropic_deprecations(fixture("anthropic-deprecations.md.txt")))
+        self.assertNotIn("claude-opus-5-5", m)  # Active
+        self.assertEqual(m["claude-sonnet-4-5-20250929"].retire,
+                         "deprecated September 30, 2026, retirement date November 30, 2026")
+        f = run("anthropic-deprecations", list(m.values()),
+                {"version": "t", "models": [row("claude-sonnet-4-5", 3, 3.75, 6, 0.3, 15)]})
+        self.assertEqual([i["row"] for i in f["retiring"]], ["claude-sonnet-4-5"])
+        self.assertTrue(info_only(f))
+
+    def test_openai_models_and_model_pages(self):
+        models = pw.parse_openai_models(fixture("openai-models.md.txt"))
+        m = by_id(models)
+        self.assertIn("gpt-6-astra", m)
+        self.assertIn("gpt-rosalind-research", m)
+        table = {"version": "t", "models": [row("gpt-6-astra", 10, 12.5, 12.5, 1, 50), row("gpt-5.5", 5, 0, 0, 0.5, 30)]}
+        table["models"][0]["context_window"] = 1050000
+        table["models"][1]["context_window"] = 0
+        asked = []
+
+        def fetcher(url, headers):
+            asked.append(url)
+            if url.endswith("/gpt-6-astra.md"):
+                return fixture("openai-model.md.txt")
+            raise OSError("HTTP Error 404")
+        pw.fill_details(source("openai-models"), models, pw.current_rows(table, "2026-11-17"), fetcher)
+        self.assertEqual(len(asked), 2)  # priced models only
+        self.assertEqual((m["gpt-6-astra"].context, m["gpt-6-astra"].context_exact), (1050000, True))
+        f = run("openai-models", models, table)
+        self.assertTrue(info_only(f), f)
+        self.assertEqual([i["model"] for i in f["detail"]], ["gpt-5.5"])
+        table["models"][0]["context_window"] = 400000
+        f = run("openai-models", models, table)
+        self.assertEqual(f["context"][0]["page"], 1050000)
+        # The -pro and rosalind ids are on the ignore list, not "new".
+        self.assertNotIn("gpt-5.4-pro", {i["model"] for i in f["unlisted"]})
+
+    def test_openai_deprecations(self):
+        m = by_id(pw.parse_openai_deprecations(fixture("openai-deprecations.md.txt")))
+        self.assertEqual(m["gpt-5"].retire, "shuts down Dec 11, 2026, replacement gpt-6.1-sol")
+        f = run("openai-deprecations", list(m.values()), {"version": "t", "models": [row("gpt-5", 1.25, 0, 0, 0.125, 10)]})
+        self.assertEqual({i["model"] for i in f["retiring"]}, {"gpt-5"})  # the dated id is ignored
+        self.assertTrue(info_only(f))
+
+    def test_gemini_models(self):
+        m = by_id(pw.parse_gemini_models(fixture("gemini-models.md.txt")))
+        self.assertEqual((m["gemini-4-carbon"].context, m["gemini-4-carbon"].context_exact), (1000000, False))
+        self.assertIn("December 1, 2026", m["gemini-2.5-flash"].retire)
+        self.assertIn("`gemini-2.5-flash` will automatically route", m["gemini-2.5-flash"].retire)
+        self.assertEqual(pw.gemini_model_context(fixture("gemini-model.md.txt")), (1048576, True))
+
+
+class OpenRouterTest(unittest.TestCase):
+    def test_ids_are_hints_only(self):
+        models = pw.parse_openrouter(fixture("openrouter.json"))
+        m = by_id(models)
+        self.assertIn("claude-opus-4-8", m)  # dotted on OpenRouter
+        self.assertNotIn("claude-opus-4-8:batch", m)
+        self.assertFalse(any(i.startswith("gemma") for i in m))  # :free only
+        self.assertFalse(any(i.startswith("grok") for i in m))  # not a watched vendor
+        table = {"version": "t", "models": [row("claude-opus-4-8", 5, 6.25, 10, 0.5, 25),
+                                            row("gpt-6.1-sol", 2, 2.5, 2.5, 0.1, 10)]}
+        f = run("openrouter", models, table)
+        unlisted = {i["model"] for i in f["unlisted"]}
+        self.assertIn("kimi-k2.5", unlisted)
+        self.assertNotIn("claude-opus-4-8", unlisted)
+        self.assertNotIn("gpt-6.1-sol-pro", unlisted)  # OpenAI's ignore list applies
+        self.assertTrue(info_only(f))
+        self.assertIn("new model seen on OpenRouter; check the vendor page",
+                      pw.report(f, table, [], "2026-11-17"))
+
+
+class NewParsersUnreadableTest(unittest.TestCase):
+    def test_unrelated_page(self):
+        page = "# Pricing\n\n| Concept | Details |\n| --- | --- |\n| a | b |\n"
+        for parse in (pw.parse_zen, pw.parse_deepseek, pw.parse_minimax, pw.parse_kimi, pw.parse_cursor,
+                      pw.parse_codex, pw.parse_anthropic_models, pw.parse_anthropic_deprecations,
+                      pw.parse_openai_models, pw.parse_openai_deprecations, pw.parse_gemini_models,
+                      pw.parse_openrouter):
+            with self.assertRaises(pw.Unreadable, msg=parse.__name__):
+                parse(page)
+
+    def test_every_source_has_a_mode_compare_knows(self):
+        for s in pw.SOURCES:
+            self.assertIn(s.mode, ("price", "zen", "cursor", "catalog", "overview", "retire", "early"), s.name)
+
+
 class MainTest(unittest.TestCase):
     def test_json_from_saved_pages(self):
         with tempfile.TemporaryDirectory() as d:

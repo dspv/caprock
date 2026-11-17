@@ -4,6 +4,7 @@ import { useApi } from '@/lib/useApi'
 import { fmtTokens, fmtUSD } from '@/lib/format'
 import { Panel, Stat } from '@/components/ui'
 import { AgentGlyph } from './AgentMarks'
+import { doesntRecord } from '@/lib/gaps'
 
 /** A list rate per million tokens put on a token count: the dollars it is
  *  at that rate. */
@@ -77,7 +78,7 @@ export function CursorSpendPanel({ c, range, present }: { c?: CursorCost; range:
           <Stat
             label="Tokens, no cost"
             value={fmtTokens(c.unpriced_tokens)}
-            sub="Cursor recorded no cost"
+            sub={doesntRecord('Cursor', 'a cost for these chats')}
             hint="Cursor writes one request's tokens per turn — the turn's last — so Cursor's token counts are a floor, not every request's."
           />
         </div>
@@ -101,7 +102,7 @@ export function CursorSpendPanel({ c, range, present }: { c?: CursorCost; range:
                   <td className="px-3 py-1 font-mono">{m.model || 'unknown'}</td>
                   <td className="px-3 py-1 text-right tabular-nums">{m.requests ? m.requests.toLocaleString('en-US') : '—'}</td>
                   <td className="px-3 py-1 text-right tabular-nums">{m.tokens ? fmtTokens(m.tokens) : '—'}</td>
-                  <td className="px-3 py-1 text-right tabular-nums">{m.cost_usd > 0 ? fmtUSD(m.cost_usd) : <span className="text-fg-faint" title={m.priced ? "Cursor recorded a cost for these chats, but none under this model's name" : 'Cursor recorded no cost for the chats this model was in'}>{m.priced ? 'not itemised' : 'none recorded'}</span>}</td>
+                  <td className="px-3 py-1 text-right tabular-nums">{m.cost_usd > 0 ? fmtUSD(m.cost_usd) : <span className="text-fg-faint" title={m.priced ? "Cursor recorded a cost for these chats, but none under this model's name" : doesntRecord('Cursor', 'a cost for the chats this model was in')}>{m.priced ? 'not itemised' : 'none recorded'}</span>}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,0 +1,36 @@
+## LLM
+
+[Recharge Now](https://platform.minimax.io/user-center/payment/balance)
+
+| **Model** | **Input** \$ / M tokens | **Output** \$ / M tokens | **Prompt caching Read** \$ / M tokens |
+| :- | :-: | :-: | :-: |
+| **MiniMax-M3.1-Flash** | \$0.15 | \$0.60 | \$0.015 |
+
+> [tab] Standard
+>
+> | **Model** | **Input** \$ / M tokens | **Output** \$ / M tokens | **Prompt caching Read** \$ / M tokens |
+> | :- | :-: | :-: | :-: |
+> | **MiniMax-M3** ≤ 512k input tokens Permanent 50% off | ~~\$0.60~~ \$0.30 | ~~\$2.40~~ \$1.20 | ~~\$0.12~~ \$0.06 |
+> | **MiniMax-M3** > 512k input tokens\* Permanent 50% off | ~~\$1.20~~ \$0.60 | ~~\$4.80~~ \$2.40 | ~~\$0.24~~ \$0.12 |
+
+> [tab] Priority\*
+>
+> | **Model** | **Input** \$ / M tokens | **Output** \$ / M tokens | **Prompt caching Read** \$ / M tokens |
+> | :- | :-: | :-: | :-: |
+> | **MiniMax-M3** ≤ 512k input tokens Permanent 50% off | ~~\$0.90~~ \$0.45 | ~~\$3.60~~ \$1.80 | ~~\$0.18~~ \$0.09 |
+> | **MiniMax-M3** > 512k input tokens Permanent 50% off | ~~\$1.80~~ \$0.90 | ~~\$7.20~~ \$3.60 | ~~\$0.36~~ \$0.18 |
+>
+> \* Priority provides priority admission for faster response times and improved request reliability. Set `service_tier` to `priority` to enable it. Pricing is 1.5x standard.
+
+> [!NOTE]
+>
+> Note:
+>
+> 1. The billing item is token count; the token-to-character ratio varies slightly depending on the usage scenario, subject to actual consumption
+> 2. Token to English word ratio (estimate): approximately 750 English words consume 1000 tokens
+
+## Video
+
+[Recharge Now](https://platform.minimax.io/user-center/payment/balance)
+
+### H3 Series Flagship Models

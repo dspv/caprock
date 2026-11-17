@@ -1,0 +1,64 @@
+{
+ "data": [
+  {
+   "id": "anthropic/claude-fable-5.2",
+   "name": "Anthropic: Claude Fable 5.2",
+   "context_length": 1000000
+  },
+  {
+   "id": "openai/gpt-6.1-sol-pro",
+   "name": "OpenAI: GPT-6.1 Sol Pro",
+   "context_length": 1050000
+  },
+  {
+   "id": "openai/gpt-6.1-sol",
+   "name": "OpenAI: GPT-6.1 Sol",
+   "context_length": 1050000
+  },
+  {
+   "id": "deepseek/deepseek-v4.1-flash",
+   "name": "DeepSeek: DeepSeek V4.1 Flash",
+   "context_length": 1048576
+  },
+  {
+   "id": "moonshotai/kimi-k3",
+   "name": "MoonshotAI: Kimi K3",
+   "context_length": 1048576
+  },
+  {
+   "id": "anthropic/claude-opus-4.8",
+   "name": "Anthropic: Claude Opus 4.8",
+   "context_length": 1000000
+  },
+  {
+   "id": "anthropic/claude-opus-4.8:batch",
+   "name": "Anthropic: Claude Opus 4.8 (batch)",
+   "context_length": 1000000
+  },
+  {
+   "id": "google/gemma-4-31b-it:free",
+   "name": "Google: Gemma 4 31B (free)",
+   "context_length": 262144
+  },
+  {
+   "id": "minimax/minimax-m2.5",
+   "name": "MiniMax: MiniMax M2.5",
+   "context_length": 198000
+  },
+  {
+   "id": "moonshotai/kimi-k2.5",
+   "name": "MoonshotAI: Kimi K2.5",
+   "context_length": 262144
+  },
+  {
+   "id": "openai/gpt-oss-120b",
+   "name": "OpenAI: gpt-oss-120b",
+   "context_length": 131072
+  },
+  {
+   "id": "x-ai/grok-4.7",
+   "name": "xAI: Grok 4.7",
+   "context_length": 0
+  }
+ ]
+}

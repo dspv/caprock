@@ -969,6 +969,47 @@ func TestContextNoteSaysWhyContextIsMissing(t *testing.T) {
 	}
 }
 
+// Cursor measures its own window (contextWindowStatusAtCreation) and the
+// meter shows that reading: its turns' tokens are reconciled totals and its
+// model ids are not the table's, so the table fill would be wrong twice.
+func TestContextFromCursorsOwnReading(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	info := rollup.SessionInfo{Cwd: t.TempDir(), Agent: "cursor", Model: "claude-4.1-opus-thinking"}
+	cost := 1.2
+	for _, ev := range []*event.Event{
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:1", Ts: base,
+			Payload: json.RawMessage(`{"prompt":"go","context_tokens":41000,"context_window":176000}`)},
+		// A reconciled total far above the window: never a fill.
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-msg:2", Ts: base.Add(time.Second),
+			Model: "gpt-5", Tokens: &event.TokenDelta{In: 900000, Out: 800}, CostUSD: &cost, Payload: json.RawMessage(`{"text":"done"}`)},
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:3", Ts: base.Add(2 * time.Second),
+			Payload: json.RawMessage(`{"prompt":"more","context_tokens":88000,"context_window":176000}`)},
+		{SessionID: "cu-none", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-msg:9", Ts: base,
+			Model: "gpt-5", Tokens: &event.TokenDelta{In: 900000}, Payload: json.RawMessage(`{"text":"done"}`)},
+	} {
+		if _, err := e.rec.Record(ctx, ev, info); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	got := map[string]SessionSummary{}
+	for _, s := range list {
+		got[s.SessionID] = s
+	}
+	c := got["cu"].Context
+	if c == nil || c.Tokens != 88000 || c.Window != 176000 || c.Pct != 50 || c.NextCallUSD != 0 {
+		t.Fatalf("context %+v note %q, want Cursor's 88000 of 176000 and no table price", c, got["cu"].ContextNote)
+	}
+	if s := got["cu-none"]; s.Context != nil || s.ContextNote != "no context reading yet" {
+		t.Fatalf("a chat with no reading: %+v %q", s.Context, s.ContextNote)
+	}
+}
+
 // A turn on a model the pricing table does not carry leaves its cost unknown,
 // and the session's stats count it, so the Cost tile can say "price unknown"
 // instead of a $0.00 that claims the work was free. A session with no such
@@ -1188,5 +1229,68 @@ func TestSettingsPromptsMergeAndValidate(t *testing.T) {
 		if code := e.putSettings(t, map[string]any{"prompts": bad}); code != 400 {
 			t.Fatalf("put %v = %d, want 400", bad, code)
 		}
+	}
+}
+
+// A missing figure reads the same for every agent: "<Agent> doesn't record
+// <what>", in the slot under the tile (agentcat.Gaps). Cursor's turn tokens
+// are sums over requests, so its Context says so rather than measuring a sum
+// against a window — unless the turn carries Cursor's own reading. Gemini's
+// context is measured, and its missing cache writes are named.
+func TestSessionGapsSayWhatTheAgentDoesNotRecord(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	usd := 1.0
+	rec := func(sid, agent, key, model string, tok *event.TokenDelta, cost *float64, payload string) {
+		t.Helper()
+		src := event.SourceTranscript
+		switch agent {
+		case "cursor":
+			src = event.SourceCursor
+		case "gemini":
+			src = event.SourceGemini
+		}
+		if _, err := e.rec.Record(ctx, &event.Event{SessionID: sid, Source: src, Kind: event.KindTurnAssistant, Key: key, Ts: base, Model: model, Tokens: tok, CostUSD: cost, Payload: json.RawMessage(payload)}, rollup.SessionInfo{Cwd: t.TempDir(), Agent: agent}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec("cu-sum", "cursor", "cu:1", "claude-opus-5", &event.TokenDelta{In: 900_000, Out: 20}, &usd, `{"text":"hi"}`)
+	rec("cu-free", "cursor", "cu:2", "claude-4-sonnet", &event.TokenDelta{In: 10, Out: 20}, nil, `{"text":"hi","cost_basis":"none"}`)
+	rec("cu-own", "cursor", "cu:3", "claude-opus-5", &event.TokenDelta{In: 900_000, Out: 20}, &usd, `{"text":"hi","context_tokens":50000,"context_window":200000}`)
+	rec("gem", "gemini", "g:1", "gemini-2.5-pro", &event.TokenDelta{In: 1000, Out: 20, CacheRead: 500}, nil, `{"text":"hi"}`)
+	rec("cc", "claude", "c:1", "claude-opus-5", &event.TokenDelta{In: 1000, Out: 20}, &usd, `{"text":"hi"}`)
+
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	by := map[string]SessionSummary{}
+	for _, s := range list {
+		by[s.SessionID] = s
+	}
+	sum := by["cu-sum"]
+	// Cursor measures its own window: no reading yet says so, never a fill
+	// from its summed tokens.
+	if sum.Context != nil || sum.ContextNote != "no context reading yet" {
+		t.Errorf("cursor context = %+v, note %q", sum.Context, sum.ContextNote)
+	}
+	if got := sum.Gaps["cache"]; got != "Cursor doesn't record cache reads or writes" {
+		t.Errorf("cursor cache gap = %q", got)
+	}
+	if _, ok := sum.Gaps["cost"]; ok {
+		t.Errorf("a priced cursor chat has a cost gap: %v", sum.Gaps)
+	}
+	if got := by["cu-free"].Gaps["cost"]; got != "Cursor doesn't record a cost for this chat" {
+		t.Errorf("unpriced cursor chat cost gap = %q", got)
+	}
+	if own := by["cu-own"]; own.Context == nil || own.Context.Tokens != 50000 || own.Context.Window != 200000 || own.ContextNote != "" {
+		t.Errorf("cursor's own context reading = %+v, note %q", own.Context, own.ContextNote)
+	}
+	if got := by["gem"].Gaps["cache_write"]; got != "Gemini doesn't record cache writes" {
+		t.Errorf("gemini gaps = %v", by["gem"].Gaps)
+	}
+	if by["cc"].Gaps != nil {
+		t.Errorf("claude code has gaps: %v", by["cc"].Gaps)
 	}
 }
