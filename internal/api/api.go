@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/agentcat"
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/brain"
 	"github.com/dspv/caprock/internal/bus"
@@ -1134,6 +1135,10 @@ type SessionSummary struct {
 	// not answered yet both arrive as "no context", and they call for opposite
 	// reactions. Empty whenever Context is present.
 	ContextNote string `json:"context_note,omitempty"`
+	// Gaps are the figures this session's agent does not record, field →
+	// "<Agent> doesn't record <what>" (agentcat.Gaps): the one wording every
+	// agent's missing figure is said in, in the slot under its tile.
+	Gaps map[string]string `json:"gaps,omitempty"`
 	// Description tells this session from the others on the screen: the
 	// agent's own title, else the first prompt that says something. Source is
 	// "title" or "prompt", so the card can style a guess differently from a
@@ -1334,6 +1339,11 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 			turn, ok = main.ev, true
 		}
 	}
+	sum.Gaps = agentcat.Gaps(sess.Agent, agentcat.SessionFacts{
+		Tokens:        st.TokensIn + st.TokensOut + st.CacheRead + st.CacheWrite,
+		CostUSD:       st.CostUSD,
+		UnpricedTurns: st.UnpricedTurns,
+	})
 	if ok {
 		sum.Context, sum.ContextNote = s.contextFill(turn, sess.Model)
 		// A compaction after that turn replaced the context it measured: the
@@ -1344,7 +1354,35 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 			sum.Context.At = at
 		}
 	}
+	// An agent with no figure that is one request's size has no context
+	// fill to show: its turns' tokens are sums over requests, and measured
+	// against a window they read as a fill they never were. A turn that
+	// carries the agent's own reading of the context is measured by it.
+	if g := sum.Gaps[agentcat.GapContext]; g != "" && ok {
+		if f := ownContext(turn); f != nil {
+			sum.Context, sum.ContextNote = s.fill(f.Window, f.Tokens, firstNonEmpty(turn.Model, sess.Model)), ""
+			sum.Context.At = turn.Ts.UnixMilli()
+		} else {
+			sum.Context, sum.ContextNote = nil, g
+		}
+	} else if g != "" {
+		sum.ContextNote = g
+	}
 	return sum, last, nil
+}
+
+// ownContext is the context size an agent recorded on a turn itself
+// (`context_tokens` of `context_window`), for an agent whose token counts
+// are not one request's; nil when the turn carries none.
+func ownContext(e event.Event) *ContextFill {
+	var p struct {
+		Tokens int64 `json:"context_tokens"`
+		Window int64 `json:"context_window"`
+	}
+	if len(e.Payload) == 0 || json.Unmarshal(e.Payload, &p) != nil || p.Tokens <= 0 || p.Window <= 0 {
+		return nil
+	}
+	return &ContextFill{Tokens: p.Tokens, Window: p.Window}
 }
 
 // contextFill measures one turn's prompt against its model's window, or says

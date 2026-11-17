@@ -61,6 +61,19 @@ describe('week card wording', () => {
     expect(c[2]).toMatchObject({ who: 'codex', turns: 684, bitLong: '6 sessions, 5 sub-agents of its own.' })
   })
 
+  it('counts Cursor in requests, and keeps it when its money came on usage records alone', () => {
+    const w = week({ sessions: 8, cost_usd: 628.08, agents: [
+      { agent: 'claude', subagent: false, turns: 10, cost_usd: 5, sessions: 1 },
+      { agent: 'cursor', subagent: false, turns: 0, requests: 2153, cost_usd: 623.08, sessions: 7 },
+    ] })
+    const c = crew(w)
+    expect(c.map((m) => m.name)).toEqual(['Claude Code', 'Cursor'])
+    expect(c[1]).toMatchObject({ turns: 0, requests: 2153 })
+    const { container } = render(<WeekCard week={w} layout="land" when="this week" />)
+    expect(container.textContent).toContain('2,153 requests · $623')
+    expect(container.textContent).not.toContain('0 turns · $623')
+  })
+
   it('describes the loop and the biggest session without naming anything', () => {
     expect(loopSentence(busy.loop!)).toEqual({ what: 'Codex kept asking “done yet?”', count: '10× in 72 s' })
     expect(biggestSentence(busy)).toEqual({ lead: 'One Claude Code session, five days,', cost: '$431', share: '91% of the week.' })

@@ -150,7 +150,8 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
   }
   const setTab = (t: Tab) => navigate({ name: 'session', id, tab: t })
   const total = s.stats.tokens_in + s.stats.tokens_out + s.stats.cache_read + s.stats.cache_write
-  const sc = sessionCost(s.stats, s.model)
+  const sc = sessionCost(s.stats, s.model, s.gaps?.cost)
+  const gaps = s.gaps ?? {}
   // Nothing measured, and no source that could measure it. Both halves matter:
   // a Claude session in its first second also has zeros, but it has hooks, so
   // its bar is about to fill in and the zeros are true.
@@ -326,7 +327,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           <div className="px-3 py-2.5 text-[13px] text-fg-muted">
             {waitingOnCursorHooks ? (
               <>
-                Nothing measured yet — Caprock sees a cursor-agent chat through Cursor&rsquo;s hooks, which are switched on from the Cost screen; turns appear once they are on and the first message is sent. Cursor&rsquo;s CLI reports no token counts, so none are shown for it.{' '}
+                Nothing measured yet — Caprock sees a cursor-agent chat through Cursor&rsquo;s hooks, which are switched on from the Cost screen; turns appear once they are on and the first message is sent. {gaps.tokens ? `${gaps.tokens}.` : ''}{' '}
                 {s.status !== 'ended' && <span className="text-fg-faint">The terminal below is live.</span>}
               </>
             ) : waitingOnLink ? (
@@ -364,8 +365,13 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
               : <span title={costBasisLong(plan)}>{s.model || 'unknown model'}</span>} />
           {/* The total includes cache reads, which are usually 99% of it. Breaking
               out only in/out made the subtitle contradict the number above it. */}
-          <Stat label="Tokens" value={fmtTokens(total)} sub={`in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
-          <Stat label="Cache" value={fmtPct((s.savings?.hit_rate ?? 0) * 100)} sub={`read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`} tone={(s.savings?.hit_rate ?? 0) > 0.5 ? 'ok' : undefined} />
+          {/* A figure the agent does not record is "—" with the one sentence
+            * every agent's gap is said in (lib/gaps.ts), in the sub-line
+            * slot the Context tile uses for "no turn yet". */}
+          <Stat label="Tokens" value={gaps.tokens ? '—' : fmtTokens(total)} sub={gaps.tokens ?? `in ${fmtTokens(s.stats.tokens_in)} · out ${fmtTokens(s.stats.tokens_out)} · cache ${fmtTokens(s.stats.cache_read + s.stats.cache_write)}`} />
+          <Stat label="Cache" value={gaps.cache || gaps.tokens ? '—' : fmtPct((s.savings?.hit_rate ?? 0) * 100)}
+            sub={gaps.cache ?? gaps.tokens ?? (gaps.cache_write ? <span title={`read ${fmtTokens(s.stats.cache_read)}`}>{gaps.cache_write}</span> : `read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`)}
+            tone={!gaps.cache && (s.savings?.hit_rate ?? 0) > 0.5 ? 'ok' : undefined} />
           <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
           <Stat label="Turns" value={s.stats.turns} sub={`${s.stats.tool_calls} tool calls`} />
           {/* What is being read, named. "no hooks · no transcript" is true of a

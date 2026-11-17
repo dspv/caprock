@@ -2749,44 +2749,6 @@ SELECT e.id, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), ?, e.
         SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.agentSplit
-SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 GROUP BY sid, 2
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
-    USE TEMP B-TREE FOR GROUP BY
-    CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
-
-## store.agentSplit
-SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY sid, 2
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-    LIST SUBQUERY 2
-        SCAN sessions
-        CREATE BLOOM FILTER
-    USE TEMP B-TREE FOR GROUP BY
-    CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
-
-## store.agentSplit
-SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY sid, 2
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-    LIST SUBQUERY 2
-        SCAN sessions
-        CREATE BLOOM FILTER
-    USE TEMP B-TREE FOR GROUP BY
-    CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
-
-## store.agentSplit
-SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 GROUP BY sid, 2
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
-    USE TEMP B-TREE FOR GROUP BY
-    CORRELATED SCALAR SUBQUERY 1
-        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
-    USE TEMP B-TREE FOR count(DISTINCT)
-
-## store.agentSplit
 SELECT COALESCE(agent,'claude') FROM sessions WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -2795,6 +2757,44 @@ SELECT json_extract(payload, '$.sidechain') FROM events INDEXED BY idx_events_se
     SEARCH events USING INDEX idx_events_session_ts (sid=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.agentSplit
+SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND internal = 0 GROUP BY sid, 3
+    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
+    USE TEMP B-TREE FOR GROUP BY
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+    USE TEMP B-TREE FOR count(DISTINCT)
+
+## store.agentSplit
+SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY sid, 3
+    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+    LIST SUBQUERY 2
+        SCAN sessions
+        CREATE BLOOM FILTER
+    USE TEMP B-TREE FOR GROUP BY
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+    USE TEMP B-TREE FOR count(DISTINCT)
+
+## store.agentSplit
+SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY sid, 3
+    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+    LIST SUBQUERY 2
+        SCAN sessions
+        CREATE BLOOM FILTER
+    USE TEMP B-TREE FOR GROUP BY
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+    USE TEMP B-TREE FOR count(DISTINCT)
+
+## store.agentSplit
+SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,'')) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0 GROUP BY sid, 3
+    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+    USE TEMP B-TREE FOR GROUP BY
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+    USE TEMP B-TREE FOR count(DISTINCT)
 
 ## store.brainEdgesAmong
 SELECT e.src, e.dst, e.kind, e.weight FROM brain_edges e WHERE e.src IN (SELECT value FROM json_each(?)) AND e.dst IN (SELECT value FROM json_each(?))
@@ -3379,6 +3379,42 @@ UPDATE sessions SET status = ? WHERE session_id IN (?)
 ## store.updateStatusByID
 UPDATE sessions SET status = ? WHERE session_id IN (?,?)
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.usageRows
+SELECT e.sid, COALESCE(e.model,''), COALESCE(e.agent_id,'') <> '', COALESCE(SUM(substr(e.key,1,9) IN ('cu-usage:','hm-usage:')),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' AND e.cost_usd IS NOT NULL AND json_valid(e.payload) THEN json_extract(e.payload,'$.requests') END),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' THEN e.cost_usd END),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.last_event_at >= ? AND e.kind = 'turn.assistant' AND e.ts < ? AND s.agent IN ('cursor','hermes') AND e.internal = 0 AND e.sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY 1, 2, 3
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
+    LIST SUBQUERY 1
+        SCAN sessions
+        CREATE BLOOM FILTER
+    USE TEMP B-TREE FOR GROUP BY
+
+## store.usageRows
+SELECT e.sid, COALESCE(e.model,''), COALESCE(e.agent_id,'') <> '', COALESCE(SUM(substr(e.key,1,9) IN ('cu-usage:','hm-usage:')),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' AND e.cost_usd IS NOT NULL AND json_valid(e.payload) THEN json_extract(e.payload,'$.requests') END),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' THEN e.cost_usd END),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.last_event_at >= ? AND e.kind = 'turn.assistant' AND e.ts < ? AND s.agent IN ('cursor','hermes') AND e.internal = 0 AND e.sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/','<temp>')) GROUP BY 1, 2, 3
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
+    LIST SUBQUERY 1
+        SCAN sessions
+        CREATE BLOOM FILTER
+    USE TEMP B-TREE FOR GROUP BY
+
+## store.usageRows
+SELECT e.sid, COALESCE(e.model,''), COALESCE(e.agent_id,'') <> '', COALESCE(SUM(substr(e.key,1,9) IN ('cu-usage:','hm-usage:')),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' AND e.cost_usd IS NOT NULL AND json_valid(e.payload) THEN json_extract(e.payload,'$.requests') END),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' THEN e.cost_usd END),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.last_event_at >= ? AND e.kind = 'turn.assistant' AND e.ts < ? AND s.agent IN ('cursor','hermes') AND e.internal = 0 GROUP BY 1, 2, 3
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
+    USE TEMP B-TREE FOR GROUP BY
+
+## store.usageRows
+SELECT e.sid, COALESCE(e.model,''), COALESCE(e.agent_id,'') <> '', COALESCE(SUM(substr(e.key,1,9) IN ('cu-usage:','hm-usage:')),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' AND e.cost_usd IS NOT NULL AND json_valid(e.payload) THEN json_extract(e.payload,'$.requests') END),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' THEN e.cost_usd END),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.last_event_at >= ? AND e.kind = 'turn.assistant' AND s.agent = ? AND e.internal = 0 GROUP BY 1, 2, 3
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
+    USE TEMP B-TREE FOR GROUP BY
+
+## store.usageRows
+SELECT e.sid, COALESCE(e.model,''), COALESCE(e.agent_id,'') <> '', COALESCE(SUM(substr(e.key,1,9) IN ('cu-usage:','hm-usage:')),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' AND e.cost_usd IS NOT NULL AND json_valid(e.payload) THEN json_extract(e.payload,'$.requests') END),0), COALESCE(SUM(CASE WHEN e.source = 'cursor' THEN e.cost_usd END),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid AND e.ts >= ? WHERE s.last_event_at >= ? AND e.kind = 'turn.assistant' AND s.agent IN ('cursor','hermes') AND e.internal = 0 GROUP BY 1, 2, 3
+    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
+    USE TEMP B-TREE FOR GROUP BY
 
 ## store.weekActivity
 SELECT COUNT(DISTINCT sid) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ? AND ts < ? AND internal = 0

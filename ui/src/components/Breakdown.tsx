@@ -20,6 +20,7 @@ import { fmtBytes, fmtPct, fmtTokens, fmtTool, fmtUSD } from '@/lib/format'
 import { Panel, usePanelOpen } from '@/components/ui'
 import { SLOW_LIVE_MS, useOnScreen } from '@/lib/refresh'
 import { ShareCard } from '@/components/Share'
+import { volumeLine } from '@/lib/perRequest'
 
 export function BreakdownPanel() {
   // Lifetime figures move slowly; a minute is far more often than they change,
@@ -107,7 +108,10 @@ export function BreakdownPanel() {
             label: m.model || 'unknown',
             value: fmtUSD(m.cost_usd),
             sub: fmtTokens(m.output ?? 0),
-            sub2: m.turns > 0 ? fmtUSD(m.cost_usd / m.turns) : '',
+            // Cursor counts its cost in requests and stores it on a record
+            // that is not a turn: per turn, 2,153 requests read "$89".
+            sub2: m.requests ? `${fmtUSD((m.requests_cost_usd ?? m.cost_usd) / m.requests)}/req` : m.turns > 0 ? fmtUSD(m.cost_usd / m.turns) : '',
+            sub2Title: m.requests ? volumeLine(m) : undefined,
             share: allCost > 0 ? (100 * m.cost_usd) / allCost : null,
             frac: topCost > 0 ? m.cost_usd / topCost : 0,
           }))}
@@ -195,6 +199,8 @@ export function Bars({
      *  of a turn, which is the only figure here that compares models to each
      *  other rather than measuring them. */
     sub2?: string
+    /** The whole of sub2 on hover, where the cell shortens it. */
+    sub2Title?: string
     share: number | null
     frac: number
   }[]
@@ -220,7 +226,7 @@ export function Bars({
           * their room on a phone and pushed the share past the card's edge. */}
         {cols.sub !== undefined && <span className="num w-16 shrink-0 text-right">{cols.sub}</span>}
         {cols.sub2 !== undefined && (
-          <span className="num hidden w-14 shrink-0 text-right sm:inline">{cols.sub2}</span>
+          <span className="num hidden w-16 shrink-0 text-right sm:inline">{cols.sub2}</span>
         )}
         <span className="num w-9 shrink-0 text-right">{cols.share}</span>
       </div>
@@ -241,7 +247,7 @@ export function Bars({
               * produced the cost, in the same units the vendor bills in. */}
             {cols.sub !== undefined && <span className="num w-16 shrink-0 text-right text-fg-faint">{r.sub ?? ''}</span>}
             {cols.sub2 !== undefined && (
-              <span className="num hidden w-14 shrink-0 text-right text-fg-faint sm:inline">{r.sub2 ?? ''}</span>
+              <span className="num hidden w-16 shrink-0 truncate text-right text-fg-faint sm:inline" title={r.sub2Title}>{r.sub2 ?? ''}</span>
             )}
             {/* The share is what makes the count mean something: 40,961 calls
               * is a number, half of everything is a finding. Floored, so a

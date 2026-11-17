@@ -256,6 +256,8 @@ export interface CrewMember {
   who: Character
   name: string
   turns: number
+  /** Requests the agent counted, where it counts them (Cursor). */
+  requests?: number
   cost: number
   /** One line about what it did; short for the landscape card. */
   bit: string
@@ -281,6 +283,7 @@ export function crew(w: Week): CrewMember[] {
     const cur = by.get(a.agent)
     if (cur) {
       cur.turns += a.turns
+      if (a.requests) cur.requests = (cur.requests ?? 0) + a.requests
       cur.cost_usd += a.cost_usd
       if (a.subagent) cur.subThreads += a.threads ?? 0
       else cur.sessions = Math.max(cur.sessions, a.sessions)
@@ -293,7 +296,9 @@ export function crew(w: Week): CrewMember[] {
   const agents = [...by.keys()].sort((a, b) => (order.indexOf(a) + 99 * +(order.indexOf(a) < 0)) - (order.indexOf(b) + 99 * +(order.indexOf(b) < 0)))
   for (const agent of agents) {
     const a = by.get(agent)!
-    if (a.turns <= 0) continue
+    // A Cursor chat whose money came on a usage record has requests and no
+    // turn of its own in the window; it still did the work.
+    if (a.turns <= 0 && !(a.requests && a.requests > 0)) continue
     let bit = plural(a.sessions, 'session')
     let bitLong = `${cap(plural(a.sessions, 'session'))}${a.subThreads > 0 ? `, ${plural(a.subThreads, 'sub-agent')} of its own` : ''}.`
     // GitHub's count is everyone's pull requests, not Claude Code's: only the
@@ -308,7 +313,7 @@ export function crew(w: Week): CrewMember[] {
         bitLong = `Opened ${plural(opened, 'PR')} with its helpers.`
       }
     }
-    out.push({ who: characterFor(agent), name: agentName(agent), turns: a.turns, cost: a.cost_usd, bit, bitLong })
+    out.push({ who: characterFor(agent), name: agentName(agent), turns: a.turns, requests: a.requests, cost: a.cost_usd, bit, bitLong })
     if (agent === 'claude' && claudeSubs && claudeSubs.turns > 0) {
       const n = claudeSubs.threads ?? 0
       out.push({

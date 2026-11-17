@@ -51,6 +51,13 @@ describe('BreakdownPanel', () => {
     expect(await screen.findByText('claude-in-chrome·computer')).toBeTruthy()
   })
 
+  it('prices Cursor per request, not per usage record', async () => {
+    data.value = history({ summary: { models: [{ model: 'claude-4.1-opus-thinking', tokens: 1, output: 1, turns: 0, requests: 2153, requests_cost_usd: 623.08, cost_usd: 623.08 }], projects: [] } } as unknown as Partial<History>)
+    render(<BreakdownPanel />)
+    const cell = await screen.findByText('$0.29/req')
+    expect(cell.getAttribute('title')).toBe('2,153 requests · $0.29/request')
+  })
+
   it('renders nothing at all on a machine with no history', async () => {
     data.value = { ...history(), tools: [], summary: { models: [], projects: [] } } as unknown as History
     const { container } = render(<BreakdownPanel />)

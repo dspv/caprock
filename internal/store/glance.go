@@ -24,34 +24,38 @@ import (
 // turn of a child session, so one turn answers for the session. Reading it per
 // event cost 3.5 s on the owner's database (2026-10-04).
 func AgentSplit(ctx context.Context, q Querier, from, to int64) ([]WeekAgent, error) {
-	return agentSplit(ctx, q, from, to, "")
+	return agentSplit(ctx, q, from, to, "", "")
 }
 
 // agentSplit is AgentSplit with a clause on sid appended: the Week's
 // hand-run filter (scheduledSkip).
-func agentSplit(ctx context.Context, q Querier, from, to int64, skip string) ([]WeekAgent, error) {
+//
+// A usage record (requests.go) is not a turn: it is taken out of Turns, and
+// Cursor's request counts are carried as Requests.
+func agentSplit(ctx context.Context, q Querier, from, to int64, skip, skipE string) ([]WeekAgent, error) {
 	upper, args := "", []any{from}
 	if to > 0 {
 		upper, args = " AND ts < ?", append(args, to)
 	}
 	rows, err := q.QueryContext(ctx, `
-		SELECT (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,''))
+		SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), COALESCE(agent_id,'') <> '', COUNT(*), COALESCE(SUM(cost_usd),0), COUNT(DISTINCT NULLIF(agent_id,''))
 		FROM events INDEXED BY idx_events_turn_agent
 		WHERE kind = 'turn.assistant' AND ts >= ?`+upper+nonInternalEvent+skip+`
-		GROUP BY sid, 2`, args...)
+		GROUP BY sid, 3`, args...)
 	if err != nil {
 		return nil, err
 	}
 	type part struct {
-		session        string
-		sub            bool
-		turns, threads int64
-		cost           float64
+		sid                      int64
+		session                  string
+		sub                      bool
+		turns, threads, requests int64
+		cost                     float64
 	}
 	var parts []part
 	for rows.Next() {
 		var p part
-		if err := rows.Scan(&p.session, &p.sub, &p.turns, &p.cost, &p.threads); err != nil {
+		if err := rows.Scan(&p.sid, &p.session, &p.sub, &p.turns, &p.cost, &p.threads); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -62,6 +66,19 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip string) ([]
 		return nil, err
 	}
 	_ = rows.Close()
+	usage, err := usageRows(ctx, q, from, to, skipE, "")
+	if err != nil {
+		return nil, err
+	}
+	for k, c := range usage {
+		for i := range parts {
+			if parts[i].sid == k.Sid && parts[i].sub == k.Sub {
+				parts[i].turns = max(0, parts[i].turns-c.Records)
+				parts[i].requests += c.Requests
+				break
+			}
+		}
+	}
 
 	agentOf := map[string]string{}
 	sidechain := map[string]bool{}
@@ -104,6 +121,7 @@ func agentSplit(ctx context.Context, q Querier, from, to int64, skip string) ([]
 			sessions[k] = map[string]bool{}
 		}
 		a.Turns += p.turns
+		a.Requests += p.requests
 		a.CostUSD += p.cost
 		if k.sub {
 			a.Threads += p.threads

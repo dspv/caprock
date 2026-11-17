@@ -22,10 +22,13 @@ export interface SessionCost {
   title?: string
 }
 
-export function sessionCost(stats: Pick<Stats, 'cost_usd' | 'unpriced_turns'>, model?: string): SessionCost {
+export function sessionCost(stats: Pick<Stats, 'cost_usd' | 'unpriced_turns'>, model?: string, gap?: string): SessionCost {
   const n = stats.unpriced_turns ?? 0
   if (n <= 0) return { state: 'priced', value: fmtUSD(stats.cost_usd) }
   const who = model || 'This model'
+  // The agent keeps no cost for this session and Caprock does not price it
+  // from its own table (Cursor, ADR-095): that, not the table, is why.
+  if (gap && !(stats.cost_usd > 0)) return { state: 'unknown', value: '—', note: gap, title: gap }
   if (!(stats.cost_usd > 0)) {
     return {
       state: 'unknown',
