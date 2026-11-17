@@ -57,6 +57,9 @@ type recentEntry struct {
 	// todos is the agent's task list (store.SessionTodos), for the Jarvis
 	// digest (jarvis.go): only the session's own events move it.
 	todos lazy[store.TodoList]
+	// costSeries is the session's cumulative cost over its whole life
+	// (store.SessionCostSeries), for the session page's cost line.
+	costSeries lazy[store.CostSeries]
 }
 
 // lazy is one value of an entry, and whether it has been read.
