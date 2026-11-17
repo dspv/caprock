@@ -84,7 +84,13 @@ func (h *harness) put(t *testing.T, key string, v any) {
 
 func (h *harness) load(t *testing.T) map[string]map[string]any {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", "editor-chat.json"))
+	return h.loadFile(t, "editor-chat.json")
+}
+
+// loadFile writes a fixture's rows into the test's Cursor database.
+func (h *harness) loadFile(t *testing.T, name string) map[string]map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}

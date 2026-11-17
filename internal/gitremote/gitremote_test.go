@@ -128,6 +128,38 @@ func TestPushFromToolPost(t *testing.T) {
 	}
 }
 
+// Without Claude Code's gitOperation a push is read from git's own output,
+// and only for a `git push`: Cursor's terminal output, Codex's plain text.
+func TestPushFromOutput(t *testing.T) {
+	cases := []struct {
+		name, payload, want string
+	}{
+		{"fast-forward (Cursor's terminal)", `{"tool_input":{"command":"git push"},"tool_response":{"stdout":"Enumerating objects: 18, done.\nTo github.com:o/site.git\n   385159d..252476a  master -> master"}}`, "master"},
+		{"new branch after cd", `{"tool_input":{"command":"cd /w/x && git push -u origin HEAD"},"tool_response":{"stdout":"remote: Create a pull request\nTo github.com:o/x.git\n * [new branch]      HEAD -> feat/cursor-parity\nbranch 'feat/cursor-parity' set up to track 'origin/feat/cursor-parity'."}}`, "feat/cursor-parity"},
+		{"forced update", `{"tool_input":{"command":"git push -f"},"tool_response":{"stderr":"To github.com:o/x.git\r\n + 1a2b3c...4d5e6f fix/y -> fix/y (forced update)\r\n"}}`, "fix/y"},
+		{"refs/heads spelled out", `{"tool_input":{"command":"git push origin HEAD:refs/heads/rel"},"tool_response":{"stdout":"To https://github.com/o/x\n * [new branch]      HEAD -> refs/heads/rel"}}`, "rel"},
+		{"Codex text response", `{"tool_input":{"command":"git push"},"tool_response":"To github.com:o/x.git\n   a..b  main -> main"}`, "main"},
+	}
+	for _, c := range cases {
+		if b, ok := PushFromToolPost([]byte(c.payload)); !ok || b != c.want {
+			t.Errorf("%s: %q %v, want %q", c.name, b, ok, c.want)
+		}
+	}
+	for _, p := range []string{
+		`{"tool_input":{"command":"git push"},"tool_response":{"stdout":"Everything up-to-date"}}`,
+		`{"tool_input":{"command":"git push"},"tool_response":{"stdout":"To github.com:o/x.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs"}}`,
+		`{"tool_input":{"command":"git push --tags"},"tool_response":{"stdout":"To github.com:o/x.git\n * [new tag]         v1.0 -> v1.0"}}`,
+		`{"tool_input":{"command":"git push origin --delete old"},"tool_response":{"stdout":"To github.com:o/x.git\n - [deleted]         old"}}`,
+		// A fetch prints the same arrows; only a push counts.
+		`{"tool_input":{"command":"git fetch"},"tool_response":{"stdout":"From github.com:o/x\nTo x\n * [new branch]      feat/z -> origin/feat/z"}}`,
+		`{"is_error":true,"tool_input":{"command":"git push"},"tool_response":{"stdout":"To github.com:o/x.git\n   a..b  main -> main"}}`,
+	} {
+		if b, ok := PushFromToolPost([]byte(p)); ok {
+			t.Errorf("PushFromToolPost(%s) = %q, want nothing", p, b)
+		}
+	}
+}
+
 // Lookup against real repositories: a clone with an ssh remote on a branch,
 // and a linked worktree, whose .git is a file pointing elsewhere.
 func TestLookup(t *testing.T) {

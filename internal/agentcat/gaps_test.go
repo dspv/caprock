@@ -9,7 +9,7 @@ func TestGapsAreOneSentenceForEveryAgent(t *testing.T) {
 		}
 	}
 	want := map[string]map[string]string{
-		"cursor":   {GapCache: "Cursor doesn't record cache reads or writes", GapContext: "Cursor doesn't record each request's tokens"},
+		"cursor":   {GapCache: "Cursor doesn't record cache reads or writes"},
 		"gemini":   {GapCacheWrite: "Gemini doesn't record cache writes"},
 		"deepseek": {GapCacheWrite: "DeepSeek doesn't record cache writes"},
 		"hermes":   {GapContext: "Hermes doesn't record each request's tokens"},

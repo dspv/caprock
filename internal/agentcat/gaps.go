@@ -37,11 +37,10 @@ const (
 // the session screen shows, so they have no entry.
 var agentGaps = map[string]map[string]string{
 	// internal/cursor: tokenCount{inputTokens, outputTokens} on the last
-	// reply of a turn only, reconciled as differences; no cache split.
-	"cursor": {
-		GapCache:   "cache reads or writes",
-		GapContext: "each request's tokens",
-	},
+	// reply of a turn only, reconciled as differences; no cache split. Its
+	// context is Cursor's own reading (contextWindowStatusAtCreation), so
+	// it has no context gap.
+	"cursor": {GapCache: "cache reads or writes"},
 	// internal/gemini: CacheRead from telemetry, no cache-write figure.
 	"gemini": {GapCacheWrite: "cache writes"},
 	// internal/deepseek: CacheWrite is 0, "DSH reports no cache-write split".

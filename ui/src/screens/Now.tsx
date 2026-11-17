@@ -870,7 +870,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         <Stat
           label="Context"
           value={ctx ? fmtPct(ctx.pct) : '—'}
-          sub={ctx ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : (s.context_note || 'no turn yet')}
+          sub={ctx ? ctx.next_call_usd > 0 ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : fmtTokens(ctx.tokens) : (s.context_note || 'no turn yet')}
           tone={ctxTone}
         />
         <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} />
