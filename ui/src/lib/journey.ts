@@ -262,3 +262,9 @@ export function flightLead(f: Flight): PipelineRow | undefined {
   const at = (r: PipelineRow) => (open.length > 0 ? r.created_at : r.merged_at) ?? 0
   return pool.reduce<PipelineRow | undefined>((best, r) => (!best || at(r) > at(best) ? r : best), undefined)
 }
+
+/** The newest open pull request in flight, if one is open: the folded CI line's when the session's own is not open. */
+export function openFlightLead(f: Flight): PipelineRow | undefined {
+  const lead = flightLead(f)
+  return lead && OPEN_STAGES.has(stageOf(lead)) ? lead : undefined
+}
