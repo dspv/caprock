@@ -12,6 +12,15 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.182.1] - 2026-11-17
+
+### Fixed
+
+- **ci:** folded, the CI line shows the checks of the repository's open pull
+  request when the session's own is already merged, instead of just
+  "merged". The session's own open pull request still keeps the line, and the
+  line is drawn only from a read made since the block was shown.
+
 ## [0.182.0] - 2026-11-17
 
 ### Added

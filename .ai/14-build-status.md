@@ -422,6 +422,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.182.1: the folded CI line shows the open PR's checks
+
+A patch release, one PR (#932). Folded, the CI block showed the session's own
+newest PR, so it read "#930 merged" while the repository's release PR #931,
+opened by a script, had CI running. It now shows the repository's open PR's
+checks when the session's own is merged or closed; the session's own open PR
+still wins.
+
 ### 2026-11-17 — 0.182.0: Cursor part 2: compactions, turn ends, old chats, hooks, modes
 
 A minor release, one PR (#930). Cursor's summaries are compactions, its turns
