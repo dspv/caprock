@@ -12,6 +12,44 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.180.0] - 2026-11-17
+
+### Added
+
+- **ci:** a daily `pricing-watch` run compares the Anthropic, OpenAI and Gemini
+  pricing pages with `pricing/pricing.json` and opens one "Pricing drift" issue
+  when a page lists a model the table lacks, a model the table prices as a
+  different one by prefix (Claude Fable 5.2 as Fable 5), or a different price.
+  It never edits the table; prices are still copied by hand with their source
+  and date.
+
+### Changed
+
+- **pricing:** new models priced: Claude Fable 5.2 and Mythos 5.2, Gemini 4
+  Carbon, Argon and Hydrogen, Gemini 3 Flash Preview, MiniMax M3.1 Flash, and
+  the older OpenAI models Codex can run (GPT-5.5 back to GPT-5, GPT-4.1, o3).
+- **pricing:** Kimi is priced: Claude Code sessions on Kimi K3 and K2.7 Code
+  now show a cost, including the ones already recorded.
+- **pricing:** DeepSeek V4 Pro is priced at DeepSeek's current rate; turns
+  already recorded keep the cost they were given.
+- **pricing:** announced price changes are entered ahead of their date, and
+  today's price is shown until the day comes: Gemini 4 Carbon and Argon on
+  December 1, Gemini 2.5 Pro billed as 3.8 Flash from December 1, Gemini 3.8,
+  3.7 and 3.6 Flash on January 1.
+
+### Fixed
+
+- **pricing:** Claude Fable 5.2 is no longer priced as Fable 5. A model is now
+  matched only by its own name (or a dated or `[1m]` form of it), so a newer
+  model is shown as unpriced rather than charged at an older model's rate.
+  Turns already priced the wrong way are corrected on the next start.
+- **pricing:** long prompts are priced at their higher rate: Claude Haiku 5.5
+  over 100,000 tokens, GPT-6 and GPT-5.6 over 272K, Gemini 3.1 Pro and 2.5
+  Pro over 200k, MiniMax M3 over 512K. Earlier turns on these models are
+  corrected on the next start.
+- **pricing:** OpenCode, Hermes and Cursor turns keep the cost their own
+  agent recorded, or none, when Caprock reprices or fills in stored turns.
+
 ## [0.179.1] - 2026-11-17
 
 ### Fixed
