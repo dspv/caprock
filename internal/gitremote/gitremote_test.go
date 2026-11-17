@@ -101,6 +101,33 @@ func TestFromToolPost(t *testing.T) {
 	}
 }
 
+// A push is read from Claude Code's record alone: its branch, never a failed
+// command's, never one without a branch.
+func TestPushFromToolPost(t *testing.T) {
+	push := `{"tool_input":{"command":"git push -u origin feat/cursor-agent"},"tool_response":{"stdout":"","gitOperation":{"push":{"branch":"feat/cursor-agent"}}}}`
+	if b, ok := PushFromToolPost([]byte(push)); !ok || b != "feat/cursor-agent" {
+		t.Fatalf("push: %q %v", b, ok)
+	}
+	// A push recorded beside a pull request still names its branch.
+	both := `{"tool_response":{"gitOperation":{"pr":{"number":3,"url":"https://github.com/o/r/pull/3","action":"created"},"push":{"branch":"fix/x"}}}}`
+	if b, ok := PushFromToolPost([]byte(both)); !ok || b != "fix/x" {
+		t.Fatalf("both: %q %v", b, ok)
+	}
+	for _, p := range []string{
+		`{"is_error":true,"tool_response":{"gitOperation":{"push":{"branch":"feat/x"}}}}`,
+		`{"tool_response":{"gitOperation":{"push":{"branch":""}}}}`,
+		`{"tool_response":{"gitOperation":{"push":{}}}}`,
+		`{"tool_response":{"gitOperation":{"pr":{"number":3,"url":"https://github.com/o/r/pull/3","action":"created"}}}}`,
+		`{"tool_response":"plain text"}`,
+		`{"tool_input":{"command":"git push"}}`,
+		`not json`,
+	} {
+		if b, ok := PushFromToolPost([]byte(p)); ok {
+			t.Errorf("PushFromToolPost(%s) = %q, want nothing", p, b)
+		}
+	}
+}
+
 // Lookup against real repositories: a clone with an ssh remote on a branch,
 // and a linked worktree, whose .git is a file pointing elsewhere.
 func TestLookup(t *testing.T) {

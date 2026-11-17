@@ -125,6 +125,9 @@ const (
 	// MetaPRsBackfilled is "1" once session_prs holds the pull requests of the
 	// events stored before migration 0035.
 	MetaPRsBackfilled = "session_prs_backfilled"
+	// MetaBranchesBackfilled is "1" once session_branches holds the pushes of
+	// the events stored before migration 0084.
+	MetaBranchesBackfilled = "session_branches_backfilled"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

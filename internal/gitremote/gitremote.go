@@ -246,6 +246,33 @@ func FromToolPost(payload []byte) (PR, bool) {
 	return PR{URL: m[0], Number: n, Title: title, Action: "created"}, n > 0
 }
 
+// PushFromToolPost reads the branch a Bash tool's PostToolUse payload pushed:
+// Claude Code records `tool_response.gitOperation.push.branch` when a `git
+// push` succeeds. It is how a session's pull request is found when the
+// session never ran `gh pr` itself (a script opened it). A failed command, or
+// a push without a branch, records nothing.
+func PushFromToolPost(payload []byte) (branch string, ok bool) {
+	var p struct {
+		ToolResponse json.RawMessage `json:"tool_response"`
+		IsError      bool            `json:"is_error"`
+	}
+	if json.Unmarshal(payload, &p) != nil || p.IsError || len(p.ToolResponse) == 0 {
+		return "", false
+	}
+	var resp struct {
+		GitOperation *struct {
+			Push *struct {
+				Branch string `json:"branch"`
+			} `json:"push"`
+		} `json:"gitOperation"`
+	}
+	if json.Unmarshal(p.ToolResponse, &resp) != nil || resp.GitOperation == nil || resp.GitOperation.Push == nil {
+		return "", false
+	}
+	branch = strings.TrimSpace(resp.GitOperation.Push.Branch)
+	return branch, branch != ""
+}
+
 func isPRCreate(cmd string) bool {
 	f := strings.Fields(cmd)
 	for i := 0; i+2 < len(f); i++ {

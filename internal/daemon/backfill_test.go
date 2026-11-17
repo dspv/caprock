@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/store"
@@ -144,5 +145,47 @@ func TestBackfillToolLinksIgnoresTheNarrowPassMarker(t *testing.T) {
 
 	if n := countUnlinked(t, st); n != 0 {
 		t.Errorf("%d pathless calls left unlinked on a database the narrow pass had marked complete", n)
+	}
+}
+
+// The pushes stored before migration 0084 are read once: a session's branches
+// fill in, and a second start finds the sentinel and scans nothing.
+func TestBackfillBranchesReadsHistoryOnce(t *testing.T) {
+	ctx := context.Background()
+	st := memStore(t)
+	if err := store.UpsertSession(ctx, st.DB(), "s1", store.SessionPatch{Cwd: "/w", StartedAt: 1, LastEventAt: 2}); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 17, 9, 0, 0, 0, time.UTC)
+	for i, p := range []string{
+		`{"tool_input":{"command":"git push"},"tool_response":{"gitOperation":{"push":{"branch":"feat/one"}}}}`,
+		`{"tool_input":{"command":"git push"},"tool_response":{"stdout":"x","gitOperation":{"push":{"branch":"feat/two"}}}}`,
+		`{"is_error":true,"tool_response":{"gitOperation":{"push":{"branch":"feat/failed"}}}}`,
+		`{"tool_input":{"command":"ls"},"tool_response":{"stdout":"push"}}`,
+	} {
+		e := event.Event{SessionID: "s1", Ts: at.Add(time.Duration(i) * time.Minute), Source: event.SourceHook, Kind: event.KindToolPost,
+			Tool: "Bash", Key: "post:" + itoa(i), Payload: json.RawMessage(p)}
+		if _, err := store.InsertEvent(ctx, st.DB(), &e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d := &Daemon{log: quietLog(), store: st}
+	d.backfillBranches(ctx)
+	got, err := store.SessionBranches(ctx, st.DB(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Branch != "feat/two" || got[1].Branch != "feat/one" || got[1].PushedAt != at.UnixMilli() {
+		t.Fatalf("branches = %+v", got)
+	}
+	if v, _ := st.GetMeta(ctx, store.MetaBranchesBackfilled); v != "1" {
+		t.Fatalf("sentinel = %q", v)
+	}
+	if _, err := st.DB().Exec(`DELETE FROM session_branches`); err != nil {
+		t.Fatal(err)
+	}
+	d.backfillBranches(ctx)
+	if got, _ := store.SessionBranches(ctx, st.DB(), "s1"); len(got) != 0 {
+		t.Fatalf("a finished backfill ran again: %+v", got)
 	}
 }

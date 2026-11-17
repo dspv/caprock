@@ -124,6 +124,7 @@ func RemoveSession(ctx context.Context, q Querier, c RemovalCandidate, loc *time
 		`DELETE FROM session_stats WHERE session_id = ?`,
 		`DELETE FROM session_files WHERE session_id = ?`,
 		`DELETE FROM session_prs WHERE session_id = ?`,
+		`DELETE FROM session_branches WHERE session_id = ?`,
 		`DELETE FROM throttle_observations WHERE session_id = ?`,
 		`DELETE FROM forced_continues WHERE session_id = ?`,
 		`DELETE FROM pending_permissions WHERE session_id = ?`,

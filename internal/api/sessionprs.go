@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dspv/caprock/internal/github"
@@ -72,7 +74,7 @@ func (s *Server) recordedSessionPRs(ctx context.Context, id string, connected bo
 }
 
 func (s *Server) composeSessionPRs(ctx context.Context, id string, connected bool) (deckAnswer, error) {
-	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
+	prs, err := s.sessionPRList(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +111,7 @@ func (s *Server) sessionPR(w http.ResponseWriter, r *http.Request, doing string)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad pull request number"})
 		return github.Repo{}, github.PR{}, false
 	}
-	prs, err := store.SessionPRs(r.Context(), s.d.Store.DB(), r.PathValue("id"))
+	prs, err := s.sessionPRList(r.Context(), r.PathValue("id"))
 	if err != nil {
 		s.fail(w, err)
 		return github.Repo{}, github.PR{}, false
@@ -136,6 +138,68 @@ func (s *Server) sessionPR(w http.ResponseWriter, r *http.Request, doing string)
 	}
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": doing + ": #" + strconv.Itoa(n) + " is neither this session's pull request nor one the PRs & CI tab listed"})
 	return github.Repo{}, github.PR{}, false
+}
+
+// sessionPushedBranches is how many of a session's latest pushed branches
+// sessionPRList looks up a pull request for.
+const sessionPushedBranches = 5
+
+// sessionPRList is the session's pull requests, the latest first: the ones it
+// recorded (a `gh pr` command, session_prs) and, with GitHub connected, the
+// ones whose head is a branch it pushed (session_branches): a pull request a
+// script opened, or one the agent never ran `gh pr` on, which otherwise left
+// the CI cell on an older one (the owner saw "#915 merged" while his PR was
+// #917). The branches are matched against the repository's one kept list of
+// pull requests (github.PullsByBranch, 2 min), so a branch costs no request
+// of its own. A push to the default branch is no pull request. On any GitHub
+// error the recorded ones alone are the answer. A recorded row wins over a
+// found one with the same URL, keeping the later of their times.
+func (s *Server) sessionPRList(ctx context.Context, id string) ([]store.SessionPR, error) {
+	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
+	if err != nil || !s.githubConnected() {
+		return prs, err
+	}
+	pushed, err := store.SessionBranches(ctx, s.d.Store.DB(), id)
+	if err != nil {
+		return nil, err
+	}
+	if len(pushed) == 0 {
+		return prs, nil
+	}
+	var where SessionRepoCI
+	repo, local, ok, rerr := s.sessionRepo(ctx, id, &where)
+	if rerr != nil || !ok {
+		return prs, nil //nolint:nilerr // no repository to look in: the recorded ones are the answer
+	}
+	byBranch, e := s.d.GitHub.PullsByBranch(ctx, repo)
+	if e != nil {
+		return prs, nil //nolint:nilerr // GitHub failing: the recorded ones are the answer
+	}
+	if len(pushed) > sessionPushedBranches {
+		pushed = pushed[:sessionPushedBranches]
+	}
+	for _, b := range pushed {
+		if b.Branch == local || b.Branch == "master" || b.Branch == "main" {
+			continue
+		}
+		p, ok := byBranch[b.Branch]
+		if !ok || p.URL == "" || p.Number <= 0 {
+			continue
+		}
+		found := false
+		for i := range prs {
+			if strings.EqualFold(prs[i].URL, p.URL) {
+				prs[i].LastAt = max(prs[i].LastAt, b.PushedAt)
+				found = true
+				break
+			}
+		}
+		if !found {
+			prs = append(prs, store.SessionPR{SessionID: id, URL: p.URL, Number: p.Number, Title: p.Title, LastAt: b.PushedAt})
+		}
+	}
+	sort.SliceStable(prs, func(i, j int) bool { return prs[i].LastAt > prs[j].LastAt })
+	return prs, nil
 }
 
 // handleSessionPRRerun runs the checks of one of the session's pull requests

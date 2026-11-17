@@ -2802,7 +2802,7 @@ boundary; a request with neither is a `400`. A `RemovalCandidate` is
 cost_usd}`. A session Caprock holds a terminal for, or whose status is
 `active`, is listed in `skipped` with a reason and left alone. With `dry_run`
 nothing changes. Otherwise, in one transaction per request, each session's
-events, `session_stats`, `session_files`, `session_prs`,
+events, `session_stats`, `session_files`, `session_prs`, `session_branches`,
 `throttle_observations`, `forced_continues`, `pending_permissions` and
 `sessions` rows are deleted; its counted turns are taken back out of
 `daily_stats` and its `daily_sessions` marks out of the day's session count;
@@ -3055,6 +3055,22 @@ read fields this answer already carries (`mergeable`, `mergeable_state`,
 `review`, `draft`, and `auto_merge` for its *queued*); nothing is asked per
 chip.
 
+**Found by a pushed branch** (2026-11-17, `sessionPRList`). With GitHub
+connected, the session's pull requests are its recorded ones merged with
+those whose head is one of its five latest pushed branches
+(§ Session branches DDL), matched against the repository's one kept list of
+pull requests (`github.PullsByBranch`, 2 min), so a branch costs no request
+of its own. A push to the default branch (as the clone knows it, and `main`
+or `master`) is no pull request. A found one carries `url`, `number`,
+`title` and `last_at` = its branch's `pushed_at`; never `opened_at` or
+`merged_at`, which stay recorded-only. The same link recorded and found is
+the recorded row, with the later `last_at`. The merged list is sorted by
+`last_at`, newest first, before the newest four are taken. On any GitHub
+error, or without a GitHub repository, the recorded ones alone are the
+answer. `…/ci`'s pull request and the force actions below read the same
+list; the quick answer while a composition waits (`refreshing`) and the
+not-connected answers read `session_prs` alone.
+
 **The deck's answers are kept** (`internal/api/deckcache.go`). The five
 views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`,
 `…/ci/main`, `…/branches` — and the Pipeline's `…/ci/stats` are each composed from the kept GitHub reads
@@ -3085,7 +3101,8 @@ used to, each deciding by its own freshness whether to ask.
 
 **`POST /v1/sessions/{id}/prs/{number}/rerun`** (no body) → `{ok, mode,
 runs, jobs}`: the session deck's *Re-run checks*. Acts only on a pull
-request in the session's `session_prs`, or one of its repository's that
+request in the session's `session_prs` or found by a branch it pushed
+(*Found by a pushed branch* above), or one of its repository's that
 the Pipeline listed — in the last `…/ci/stats` list read
 (`github.CachedRepoPull`), so no number a request merely names is acted on
 — 404 otherwise; read through
@@ -3118,7 +3135,8 @@ the paired-device lists.
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
 pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
 state?, repo, head_sha?, live?}` is pull request N when it is among the session's
-latest four (a click on its row or its mini pipeline) or one of its
+latest four (the `…/prs` list, including those found by a pushed branch; a
+click on its row or its mini pipeline) or one of its
 repository's that the Pipeline listed (as the rerun route checks), else the
 session's open one among them, else the newest (each read through `github.PullByURL`, so it shares the PRs
 cell's reads; `live` is that `github.PR`, for the tab's review, merge state
@@ -8549,6 +8567,32 @@ records `created`, `merged` and `closed` in the same transaction as the event
 a merged PR. `meta.session_prs_backfilled` gates a one-off pass over the
 `tool.post` rows already stored (`store.PRToolPosts`), run in the background
 after the port opens.
+
+### Session branches DDL (migration 0084)
+
+```sql
+CREATE TABLE IF NOT EXISTS session_branches (
+  session_id TEXT    NOT NULL,
+  branch     TEXT    NOT NULL,
+  pushed_at  INTEGER NOT NULL,  -- unix ms of the latest push
+  PRIMARY KEY (session_id, branch)
+);
+```
+
+A branch a session pushed (2026-11-17). Claude Code's PostToolUse payload for
+a `Bash` call whose `git push` succeeded carries
+`tool_response.gitOperation.push.branch`; the rollup records it in the same
+transaction as the event (`gitremote.PushFromToolPost`, `store.RecordPush`),
+a later push of the same branch moving `pushed_at` and an earlier one never
+moving it back. A failed command records nothing. Why: `session_prs` knows
+only the `gh pr` commands a session ran, so a pull request a script opened,
+or one the agent never ran `gh pr` on, left the deck's CI cell on an older
+one (the owner saw *#915 merged* while the session's pull request was
+#917). The deck finds those by their head branch (§ `GET
+/v1/sessions/{id}/prs`, *found by a pushed branch*); nothing it finds is
+written to `session_prs`. `meta.session_branches_backfilled` gates a one-off
+pass over the `tool.post` rows already stored (`store.PushToolPosts`), run in
+the background after the port opens. Removing a session removes its rows.
 
 ### GitHub pull requests DDL (migration 0071)
 

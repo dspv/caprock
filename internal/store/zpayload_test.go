@@ -120,7 +120,7 @@ func seedZstd(t *testing.T, st *Store, old, young time.Time) {
 		add(event.Event{Ts: at.Add(2), Source: event.SourceHook, Kind: event.KindToolPost, Tool: "Bash", Key: fmt.Sprintf("post:b%d", i), Payload: js(map[string]any{
 			"hook_event_name": "PostToolUse", "tool_use_id": fmt.Sprintf("b%d", i), "cwd": "/w/app",
 			"tool_input":    map[string]any{"command": "gh pr create --fill"},
-			"tool_response": map[string]any{"stdout": strings.Repeat("https://github.com/o/r/pull/7\n", 50), "gitOperation": map[string]any{"pr": map[string]any{"number": 7 + i, "url": fmt.Sprintf("https://github.com/o/r/pull/%d", 7+i), "action": "created"}}}})})
+			"tool_response": map[string]any{"stdout": strings.Repeat("https://github.com/o/r/pull/7\n", 50), "gitOperation": map[string]any{"pr": map[string]any{"number": 7 + i, "url": fmt.Sprintf("https://github.com/o/r/pull/%d", 7+i), "action": "created"}, "push": map[string]any{"branch": fmt.Sprintf("feat/z%d", i)}}}})})
 		add(event.Event{Ts: at.Add(3), Source: event.SourceHook, Kind: event.KindToolPre, Tool: "TodoWrite", Key: fmt.Sprintf("pre:t%d", i), Payload: js(map[string]any{
 			"tool_use_id": fmt.Sprintf("t%d", i), "tool_input": map[string]any{"todos": []map[string]any{{"content": strings.Repeat("write the tests ", 30), "status": "in_progress", "activeForm": "Writing"}}}})})
 		add(event.Event{Ts: at.Add(4), Source: event.SourceHook, Kind: event.KindToolPre, Tool: "Edit", Key: fmt.Sprintf("pre:e%d", i), Payload: js(map[string]any{
@@ -170,6 +170,12 @@ func readAll(t *testing.T, st *Store, old, young time.Time) map[string]any {
 		return nil
 	})
 	must("PRToolPosts", prs, err)
+	var pushes []string
+	err = PushToolPosts(ctx, q, func(sid string, ts int64, p []byte) error {
+		pushes = append(pushes, fmt.Sprintf("%s %d %s", sid, ts, p))
+		return nil
+	})
+	must("PushToolPosts", pushes, err)
 	calls, err := SessionCalls(ctx, q, "zs", 50)
 	must("SessionCalls", calls, err)
 	files, err := runFiles(ctx, q, "zs", 0, young.Add(time.Hour).UnixMilli())
@@ -256,7 +262,7 @@ func TestEveryReaderAgreesOnMixedRows(t *testing.T) {
 	plainPayloads := payloadsByID(t, st)
 	before := readAll(t, st, old, young)
 	// Each comparison below means something only if the reader found rows.
-	for _, name := range []string{"ListEvents", "PRToolPosts", "runFiles", "tool_fields"} {
+	for _, name := range []string{"ListEvents", "PRToolPosts", "PushToolPosts", "runFiles", "tool_fields"} {
 		if reflect.ValueOf(before[name]).Len() == 0 {
 			t.Fatalf("%s read nothing from the fixture", name)
 		}
