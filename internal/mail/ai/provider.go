@@ -66,7 +66,7 @@ var Providers = []Info{
 		NeedsModel: true, ModelHint: "vendor/model, as openrouter.ai/models lists it",
 		SendsTo: "openrouter.ai with your API key, which passes it on to the model's vendor"},
 	{ID: ProviderDeepSeek, Label: "DeepSeek API", Kind: KindAPI, URL: "https://api.deepseek.com/v1",
-		Model: "deepseek-chat", ModelHint: "deepseek-chat",
+		Model: "deepseek-flash", ModelHint: "deepseek-flash",
 		SendsTo: "api.deepseek.com, with your API key"},
 	{ID: ProviderLocal, Label: "Local model", Kind: KindLocal,
 		SendsTo: "the model server on this computer"},

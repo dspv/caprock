@@ -413,8 +413,9 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   the one legacy alias still accepted. Whether `deepseek-chat` is still
   served, by what and at what price, no DeepSeek page says, so table
   `2026-11-17.3` adds no row (rule 6). Decided by: DeepSeek's page naming
-  it again, or a reply on a funded key showing the model it answers with;
-  the likelier fix is Mail's default moving to `deepseek-flash`.
+  it again, or a reply on a funded key showing the model it answers with.
+  Mail's default moved to `deepseek-flash` in the same change, so only a
+  user who typed `deepseek-chat` by hand still meets it.
 
 ## What would falsify the whole plan
 
