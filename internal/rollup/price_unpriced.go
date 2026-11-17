@@ -21,6 +21,11 @@ import (
 // at the row in force at its own timestamp, exactly as it would have been had
 // the row existed then, and the session and daily totals take the same amount
 // in the same transaction, so every screen stays consistent with the events.
+//
+// Only turns the table prices when they arrive (Recorder.prepare): an
+// OpenCode, Hermes or Cursor turn with no cost is one its agent left without a
+// figure, and stays that way. Without that filter, adding a gpt-5 row would
+// have priced the Cursor chats Cursor recorded no cost for (ADR-095).
 func (r *Recorder) PriceUnpriced(ctx context.Context) (priced int, err error) {
 	if r.Table == nil {
 		return 0, nil
@@ -32,8 +37,9 @@ func (r *Recorder) PriceUnpriced(ctx context.Context) (priced int, err error) {
 		       COALESCE(s.project,'')
 		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
 		WHERE e.kind = ? AND e.cost_usd IS NULL AND COALESCE(e.model,'') != '' AND e.internal = 0
+		  AND COALESCE(s.agent,'') NOT IN (?, ?, ?)
 		  AND COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0`,
-		string(event.KindTurnAssistant))
+		string(event.KindTurnAssistant), notOurCosting[0], notOurCosting[1], notOurCosting[2])
 	if err != nil {
 		return 0, fmt.Errorf("find unpriced turns: %w", err)
 	}

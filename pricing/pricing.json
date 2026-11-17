@@ -1,35 +1,47 @@
 {
-  "version": "2026-11-16.1",
+  "version": "2026-11-17.1",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-  "fetched_at": "2026-10-08",
+  "fetched_at": "2026-11-17",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
-    "fetched_at is the most recent read, not one date for every row: Anthropic prices were read on 2026-08-18, the non-Anthropic rows on 2026-08-27, the Gemini rows on 2026-09-01, and Fable 5.1 / Mythos 5.1 on 2026-09-02. Each note below carries the date for the rows it describes, because a single date on a table assembled over weeks tells a reader checking a figure nothing about that figure.",
-    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input — per Anthropic's published multipliers. Claude Fable 5.1 and Claude Mythos 5.1 are the exception and read 0.025x ($0.25 per 1M), so those two rows deliberately break the 0.1x rule; both were read from the pricing page on 2026-09-02.",
-    "Model ids are matched by prefix against the `model` field observed in transcripts (e.g. claude-opus-5, claude-sonnet-4-5-20250929). Longest prefix wins.",
+    "fetched_at is the most recent read, not one date for every row: Anthropic prices were read on 2026-08-18, the non-Anthropic rows on 2026-08-27, the Gemini rows on 2026-09-01, and Fable 5.1 / Mythos 5.1 on 2026-09-02. Each note below carries the date for the rows it describes, because a single date on a table assembled over weeks tells a reader checking a figure nothing about that figure. Since 2026-11-17.1 every row was re-read on 2026-11-17 against the pages named in the notes below; a note with an older date describes when that figure was first entered.",
+    "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input — per Anthropic's published multipliers. Claude Fable 5.1 and Claude Mythos 5.1 are the exception and read 0.025x ($0.25 per 1M), as do Fable 5.2 and Mythos 5.2 ($0.20, read 2026-11-17), so those rows deliberately break the 0.1x rule; both were read from the pricing page on 2026-09-02.",
+    "Model ids are matched against the `model` field observed in transcripts after normalisation (lower case; Bedrock's `anthropic.`, Vertex's `@...` and a gateway's `vendor/` removed). A row matches the id itself, or the id followed by a dated snapshot (`-YYYYMMDD`, e.g. claude-haiku-4-5-20251001), a Bedrock version (`-v1:0`), a bracket (`[1m]`, which Claude Code's launchers append) or `:` and anything after it; the longest matching row wins. Any other suffix is a different model and is left unpriced (internal/cost matchesID, since 2026-11-17.1). Before that the match was a bare prefix, which priced claude-fable-5-2 as claude-fable-5 and would have priced gpt-5.5 by a gpt-5 row, minimax-m3.1-flash as minimax-m3 and kimi-k3.1-pro as kimi-k3. An unpriced id is named in `unpriced` and can be reported; a wrong price looks like any other (rule 6).",
     "An id with no row that ends in -free (OpenCode Zen, e.g. deepseek-v4.1-flash-free) or :free (OpenRouter) is the gateway's no-charge variant and is priced at $0 in code (internal/cost isFreeModel), with no context window; a row for the id still wins. Added in 2026-10-22.1 for issue #787, with no correction: those turns were unpriced, not mispriced, and are priced on the next start.",
     "context_window is the model's maximum input context in tokens as published; used for the 'context fill %' badge (OQ-07).",
-    "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M (its 75% cut, made permanent); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill.",
-    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. No row is dated today. Sonnet 5 was the first: $2/$10 was announced as introductory through 2026-08-30 with $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30), but on 2026-10-01 the API pricing page says the increase \"will not occur\" and $2/$10 is the standard price, so its $3/$15 row is gone and the turns priced at it are a correction (below).",
-    "Gemini prices are Google AI Studio paid-tier rates read from https://ai.google.dev/gemini-api/docs/pricing on 2026-09-01, for the text models the chat feature can reach. Image, video, TTS, embedding and robotics models are omitted because no code path can bill them.",
-    "gemini-3.8-flash, gemini-3.7-flash and gemini-3.6-flash carry introductory pricing through 2026-12-31; input doubles to $1.50, cache read to $0.15 and output to $7.50 on 2027-01-01. This table must be refreshed before that date or those three rows will understate cost.",
+    "Non-Anthropic rows are the providers' own published list prices, fetched 2026-08-27: DeepSeek V4 Pro $0.435/$0.87 per 1M then (its 75% cut, made permanent; superseded, see the deepseek-v4-pro note of 2026-11-17.1); MiniMax M3 $0.30/$1.20 per 1M standard tier with $0.06 cache read (its permanent 50% off). They are priced so a total that includes non-Anthropic usage is a total; Caprock still does not charge for any of it and cannot see a bill.",
+    "A model may have more than one row: a price that has been superseded keeps its own row with `until` (the last date it applied, inclusive, UTC), and the current price is the row with no `until`. Rows for one id are ordered oldest-first and a turn is priced by the row in force when it ran, so an expiring introductory rate never restates history at a price nobody was charged. A change announced for a future date is entered in advance: the current row gets `until` (the day before the change) and the next row follows it. A lookup with no timestamp reads the clock, so today's price is shown until the day comes (internal/cost LookupAt, since 2026-11-17.1; before it a row with any `until` was never 'now', so a future change could not be entered). Sonnet 5 was the first: $2/$10 was announced as introductory through 2026-08-30 with $3/$15 from 2026-08-31 (claude.com/pricing, read 2026-08-30), but on 2026-10-01 the API pricing page says the increase \"will not occur\" and $2/$10 is the standard price, so its $3/$15 row is gone and the turns priced at it are a correction (below).",
+    "Gemini prices are Google AI Studio paid-tier rates read from https://ai.google.dev/gemini-api/docs/pricing on 2026-09-01, for the text models the chat feature can reach. Image, video, TTS, embedding and robotics models are omitted because no code path can bill them. Since 2026-11-17 the pricing page is https://aistudio.google.com/docs/pricing (the ai.google.dev URL redirects there) and the model pages are under https://aistudio.google.com/docs/models/.",
+    "gemini-3.8-flash, gemini-3.7-flash and gemini-3.6-flash carry introductory pricing through 2026-12-31; input doubles to $1.50, cache read to $0.15 and output to $7.50 on 2027-01-01. Since 2026-11-17.1 that change is entered as a second row for each from 2027-01-01. Google's pricing page lists it for 3.8 Flash and 3.6 Flash (read 2026-11-17). 3.7 Flash is no longer on Google's pages; its rows rest on this table's own earlier read of Google's page, which named the same change for all three, and on OpenCode Zen (https://opencode.ai/docs/zen/, read 2026-11-17), which still lists 3.7 Flash with the same \"50% off through December 31, 2026\".",
     "gemini-3.8-flash ($0.75/$3.75 per 1M, $0.075 cache read) and gemini-3.1-flash-lite ($0.25/$1.50, $0.025 cache read; text, image and video input), 1,048,576-token context, were read from https://ai.google.dev/gemini-api/docs/pricing and their model pages on 2026-10-03. Before 2026-10-03.1 neither had a row, and neither matched another id by prefix, so a turn on either was left unpriced and named in `unpriced`, not mispriced; no correction is needed.",
     "Gemini has no 5m/1h cache-write price: Google bills cache storage per hour ($0.50-$4.50 per 1M tokens/hour by model), which is time-based and has no per-token equivalent, so cache_write_* are 0 for Gemini rows and cached input is priced at cache_read.",
-    "gemini-3.1-pro-preview and gemini-2.5-pro are tiered by prompt size; the rate here is the =<200k tier. Prompts over 200k tokens bill at roughly double ($4.00/$18.00 and $2.50/$15.00 respectively) and are therefore under-reported by this table.",
+    "gemini-3.1-pro-preview and gemini-2.5-pro are tiered by prompt size: over 200k tokens they bill $4.00 input, $0.40 cache read, $18.00 output and $2.50, $0.25, $15.00 respectively (pricing page, read 2026-11-17). Since 2026-11-17.1 the rows carry that tier (`tiers`); before, those prompts were priced at the lower tier and are corrected. Google writes the threshold as \"200k\"; whether that is 200,000 or 204,800 tokens is not stated, and the table uses 200,000 (OQ-27 in .ai/12-risks.md).",
     "OpenAI rows are OpenAI's own published list prices, read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-06: gpt-5-codex $1.25/$10.00 per 1M with $0.125 cached input (400k context), gpt-5.3-codex $1.75/$14.00 with $0.175 cached, and the gpt-5.6 family sol $4/$20, terra $2/$12, luna $0.20/$1.20 (1.05M context). They exist because Codex sessions report tokens but no cost of their own, unlike OpenCode which computes its own figure.",
-    "cache_write_5m and cache_write_1h are 0 on the gpt-5 rows because OpenAI did not bill for writing to its cache when they were read — a zero there means 'not charged', not 'unknown'; the same is true of the Gemini rows. The gpt-6 family is different: its model pages, read 2026-09-30, say \"Cache writes are billed at 1.25x the uncached input token rate\", so those rows carry that rate in both columns (OpenAI has one cache tier). It changes nothing today: Codex reports cache_write_input_tokens as 0 on every one of the 5,815 gpt-6 turns on the owner's machine, so written tokens arrive inside plain input and are billed at 1x. The gpt-6 rows under-report by up to 0.25x of whatever share of input was a cache write, and the transcript does not say what share that is (rule 6).",
-    "gpt-6-sol ($2.00/$10.00 per 1M, $0.20 cached) and gpt-6-luna ($0.10/$0.50, $0.01 cached), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-29. Prompts over 272K input tokens bill at 2x input and cache and 1.5x output for the whole request and are under-reported by these rows; none of the 5,788 gpt-6 turns on the owner's machine reached that size (largest 237,646), because Codex compacts first.",
+    "cache_write_5m and cache_write_1h are 0 on the gpt-5 rows because OpenAI did not bill for writing to its cache when they were read — a zero there means 'not charged', not 'unknown'; the same is true of the Gemini rows. The gpt-6 family is different: its model pages, read 2026-09-30, say \"Cache writes are billed at 1.25x the uncached input token rate\", so those rows carry that rate in both columns (OpenAI has one cache tier). It changes nothing today: Codex reports cache_write_input_tokens as 0 on every one of the 5,815 gpt-6 turns on the owner's machine, so written tokens arrive inside plain input and are billed at 1x. The gpt-6 rows under-report by up to 0.25x of whatever share of input was a cache write, and the transcript does not say what share that is (rule 6). Since 2026-11-17 the pricing page lists 30-minute and 12-hour cache writes for the gpt-5.6 family as well (sol $5.00/$10.00, terra $2.50/$5.00, luna $0.25/$0.50 per 1M, read 2026-11-17); the rows carry the 30-minute rate in both columns, as the gpt-6 rows do. When OpenAI began charging those writes is not on the page, so this is not a correction; it changes no stored figure, because Codex reports no cache-write tokens. The older OpenAI rows added in 2026-11-17.1 (gpt-5.5 and earlier) keep 0: the page lists no cache write for them.",
+    "gpt-6-sol ($2.00/$10.00 per 1M, $0.20 cached) and gpt-6-luna ($0.10/$0.50, $0.01 cached), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-29. Prompts over 272K input tokens bill at 2x input and cache and 1.5x output for the whole request; when these rows were added no gpt-6 turn on the owner's machine reached that size (largest 237,646). The tier is modelled since 2026-11-17.1 (see the long-context note).",
     "gpt-5.3-codex fast mode (2x list: $3.50/$28.00) is deliberately not a row. Codex rollouts from late September 2026 record `service_tier` in `thread_settings_applied`, but all 598 such records on the owner's machine on 2026-10-01 say `default`; until a fast-tier turn is seen, the value it would carry is not known, and a second row could only be guessed at (rule 6). Claude Code transcripts do not record the speed at all. A fast-mode turn is priced at the standard rate and understated.",
     "Claude Opus 5.5 and Claude Sonnet 5.5 were read from the API pricing page on 2026-10-01. Opus 5.5 is $4/$20 and reads cache at 0.05x ($0.20 per 1M), another deliberate break from the 0.1x rule. Before it had a row, `claude-opus-5-5` matched `claude-opus-5` by prefix and was priced at Opus 5's $5/$25 and $0.50 cache read. The page gives Claude 4.6 and later models a 1M context window at standard pricing.",
-    "`corrections` name turns an earlier version of this table priced wrongly, as opposed to a price that changed. The daemon reprices those turns once per table version, at the row in force at each turn's own time, and moves the session and daily totals by the difference. 2026-10-01.1 corrects Opus 5.5 (every turn) and Sonnet 5 from 2026-08-31.",
-    "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context surcharge applies as to gpt-6-sol and is not modelled.",
-    "claude-haiku-5-5 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08. It is priced by prompt length: up to 100,000 tokens $0.10 input, $0.125 5m write, $0.20 1h write, $0.01 cache read, $0.50 output per 1M; over 100,000 tokens $0.50 / $0.625 / $1.00 / $0.05 / $2.50. The row carries the lower tier, so a prompt over 100,000 tokens is under-reported fivefold, as the Gemini rows are over 200k. 1M context (models overview, same date). No correction: no earlier row matched it by prefix, so its turns were unpriced, not mispriced.",
-    "deepseek-flash read from https://api-docs.deepseek.com/quick_start/pricing on 2026-10-13: $0.15 input (cache miss), $0.003 cache hit, $0.60 output per 1M off-peak; peak hours (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays) bill exactly double. The row carries the off-peak rate, so a turn in peak hours is under-reported by half. DeepSeek bills no cache write, so cache_write_* equal input, as on the deepseek-v4-pro row. 1M context. It is the model Caprock's Claude Code on DeepSeek sessions run on. No correction: no earlier row matched it by prefix. The same page lists deepseek-v4-pro at $0.66/$1.98 off-peak, not the $0.435/$0.87 its row carries; the date that price changed is not on DeepSeek's page, so the row is left as it is and the gap is an open question (OQ-13 in .ai/12-risks.md).",
+    "`corrections` name turns an earlier version of this table priced wrongly, as opposed to a price that changed. The daemon reprices those turns once per table version, at the row in force at each turn's own time, and moves the session and daily totals by the difference. 2026-10-01.1 corrects Opus 5.5 (every turn) and Sonnet 5 from 2026-08-31. 2026-11-17.1 corrects claude-fable-5-2 (priced as claude-fable-5 by prefix) and every tiered row whose upper tier was not modelled (claude-haiku-5-5, the gpt-6 and gpt-5.6 rows, gemini-3.1-pro-preview, gemini-2.5-pro, minimax-m3). Only turns the table priced are corrected: OpenCode, Hermes and Cursor turns carry their agent's own figure or none, and a correction or a late pricing pass never touches them.",
+    "gpt-6-astra ($10.00/$50.00 per 1M, $1.00 cached, $12.50 cache write) and gpt-6.1-sol ($2.00/$10.00, $0.10 cached, $2.50 cache write), 1.05M context, are OpenAI's list prices read from https://developers.openai.com/api/docs/pricing and the per-model pages on 2026-09-30. The same over-272K long-context rate applies as to gpt-6-sol; modelled since 2026-11-17.1.",
+    "claude-haiku-5-5 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-10-08. It is priced by prompt length: up to 100,000 tokens $0.10 input, $0.125 5m write, $0.20 1h write, $0.01 cache read, $0.50 output per 1M; over 100,000 tokens $0.50 / $0.625 / $1.00 / $0.05 / $2.50. 1M context (models overview, same date). Until 2026-11-17.1 the row carried only the lower tier, so a prompt over 100,000 tokens was under-reported fivefold (88 of 180 Haiku 5.5 turns on the owner's machine, $0.49 stored against $1.57 at the right tier). The page counts \"all of its input tokens, including cache reads and cache writes\"; the row now carries the upper tier (`tiers`, re-read 2026-11-17) and those turns are corrected.",
+    "deepseek-flash read from https://api-docs.deepseek.com/quick_start/pricing on 2026-10-13: $0.15 input (cache miss), $0.003 cache hit, $0.60 output per 1M off-peak; peak hours (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays) bill exactly double. The row carries the off-peak rate, so a turn in peak hours is under-reported by half. DeepSeek bills no cache write, so cache_write_* equal input, as on the deepseek-v4-pro row. 1M context. It is the model Caprock's Claude Code on DeepSeek sessions run on. No correction: no earlier row matched it by prefix. The deepseek-v4-pro row was brought to the page's price in 2026-11-17.1 (its own note).",
     "cursor-composer-2.5 ($0.50/$2.50 per 1M, $0.20 cache read) and cursor-composer-2.5-fast ($3.00/$15.00, $0.50 cache read) are Cursor's own models as https://cursor.com/docs/models lists them, read 2026-11-16; the page gives no cache-write price and no context window for them, so both are 0 (cache write: not listed; context window: not stated). They are under cursor- so no other vendor's id matches them by prefix. Caprock never prices a Cursor chat from this table — Cursor's turns carry Cursor's own recorded cost or none (ADR-095) — and uses these rows, with the Anthropic and OpenAI rows Cursor bills at list price, only to put a list price on Cursor's per-request overhead. The same page adds a Cursor Token Rate of $0.25 per 1M tokens to eligible third-party requests, which no row here includes. Added in 2026-11-16.1 with no correction: no turn was priced by these ids before.",
     "claude-sonnet-5-5 has two rows since 2026-10-31.1: Anthropic's pricing page, read 2026-10-31, prices cache reads on Claude Opus 5.5 and Claude Sonnet 5.5 at 0.05x the base input price ($0.10 per 1M on Sonnet 5.5), and the Amazon Bedrock pricing page dates the Sonnet 5.5 change to October 7, 2026 (\"Starting October 7, 2026, cache read pricing for Claude Sonnet 5.5...\", read the same day). The row through 2026-10-06 keeps $0.20 (0.1x); the current row has $0.10. Opus 5.5 was already $0.20 (0.05x of $4). Turns from 2026-10-07 were priced at the old row until this version, so they are corrected (below).",
-    "gpt-6.1-terra read from https://learn.chatgpt.com/api/docs/pricing on 2026-10-31: $1.00 input, $5.00 output, $0.05 cached input, $1.25 30-minute cache write, $2.50 12-hour cache write per 1M, standard tier. The table has no 12-hour write column, so cache_write_1h carries the 30-minute rate as the other gpt-6 rows do; Codex reports no cache-write tokens (RISK-07), so neither write column is applied to a Codex turn. No correction: the id matched no row by prefix, so its turns were unpriced, not mispriced."
+    "gpt-6.1-terra read from https://learn.chatgpt.com/api/docs/pricing on 2026-10-31: $1.00 input, $5.00 output, $0.05 cached input, $1.25 30-minute cache write, $2.50 12-hour cache write per 1M, standard tier. The table has no 12-hour write column, so cache_write_1h carries the 30-minute rate as the other gpt-6 rows do; Codex reports no cache-write tokens (RISK-07), so neither write column is applied to a Codex turn. No correction: the id matched no row by prefix, so its turns were unpriced, not mispriced.",
+    "Since 2026-11-17.1 a row may carry `tiers`: `[{above_prompt_tokens, input, cache_write_5m, cache_write_1h, cache_read, output}]`, lowest threshold first. A request whose prompt (fresh input + cache read + cache write, the vendors' own definition) is over a threshold is priced wholly at that tier's columns; the row's own columns are the lowest tier. It is chosen per turn, from that turn's own tokens (internal/cost ForPrompt). Totals that have no per-turn prompt (the Bill breakdown on the overview, the subagent saving, the lifetime context tax) use the lowest tier, so for a tiered model they are a lower bound.",
+    "claude-fable-5-2 and claude-mythos-5-2 read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-11-17: $8 input, $10 5m write, $16 1h write, $0.20 cache read (footnote 1: 0.025x), $40 output per 1M; 1M context (models overview, same date). Before 2026-11-17.1 neither had a row, and the prefix rule priced claude-fable-5-2 as claude-fable-5 ($10/$12.50/$20/$1.00/$50); those turns are corrected (one on the owner's machine, $1.95 stored against $1.54). Fast mode ($16/$80 on both), Opus 5.5's ($8/$40) and Opus 5 and 4.8's ($10/$50), and the 1.1x US-only `inference_geo` multiplier are not modelled: the transcript does not say a turn used them, so such a turn is understated.",
+    "deepseek-v4-pro re-read from https://api-docs.deepseek.com/quick_start/pricing on 2026-11-17: model version DeepSeek-V4-Pro-0813, $0.66 input (cache miss), $0.022 cache hit, $1.98 output per 1M off-peak, double in peak hours (01:00-04:00 and 06:00-10:00 UTC, Monday to Friday, excluding Chinese public holidays); 1M context, not the 128,000 the row had. The row carries the off-peak rate and the write columns equal input, as deepseek-flash's do. The earlier $0.435/$0.87/$0.0036 row was replaced, not kept with an `until`: DeepSeek's change log (https://api-docs.deepseek.com/updates/, read 2026-11-17) dates new peak/off-peak V4 Pro prices to 16:00 UTC on 2026-08-16 but gives no figures, and this table read $0.435/$0.87 on 2026-08-27, after that date, so the day the old price stopped applying cannot be sourced. No correction: a price that changed is not a mistake in the table, so turns already stored keep the figure they were given (432 Claude-Code-on-DeepSeek turns on the owner's machine, 2026-09-06 to 2026-09-12); a turn priced from now on, including one priced late, gets today's off-peak rate. OQ-13 stays open.",
+    "deepseek-v4-flash is DeepSeek's legacy name: the pricing page (read 2026-11-17) says `deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` requests are \"served by the DeepSeek-V4.1-Flash-1017 model and billed at the Flash price\", so the row repeats deepseek-flash's. deepseek-v4-flash-vision-exp has a suffix the matcher does not accept, so it stays unpriced; no turn of it has been seen.",
+    "Kimi rows read on 2026-11-17 from https://platform.kimi.ai/docs/pricing/chat (the table is rendered in the browser; the figures are in the page source) and https://platform.kimi.ai/docs/guide/context-caching.md: kimi-k3 $3.00 input, $3.00 5m write, $6.00 1h write, $0.30 cache read, $15.00 output; kimi-k3.1-pro $2.00/$2.00/$4.00/$0.20/$10.00; kimi-k3.1-pro-highspeed $4.00/$4.00/$8.00/$0.20/$20.00, all 1,048,576 context with \"no tiering by context length\". K2 series (262,144 context): kimi-k2.7-code $0.95 input, $0.19 cache read, $4.00 output; kimi-k2.7-code-highspeed $1.90/$0.38/$8.00; kimi-k2.6 $0.95/$0.16/$4.00; the page lists no cache write for K2, so the write columns equal input as on the DeepSeek and MiniMax rows. K2 closed to new users on 2026-10-31 and is planned for retirement by the end of December 2026. Caprock launches Claude Code on Kimi with kimi-k3[1m] and kimi-k2.7-code (internal/agents/provider.go); before 2026-11-17.1 no Kimi row existed, so those turns were unpriced, not mispriced, and are priced on the next start (PriceUnpriced).",
+    "Gemini 4 rows read from https://aistudio.google.com/docs/pricing and the model pages on 2026-11-17: gemini-4-carbon and gemini-4-argon $2.00 input, $0.10 cache read, $10.00 output per 1M through 2026-11-30 and $4.00/$0.20/$20.00 from 2026-12-01 (two rows each, the change entered in advance); gemini-4-hydrogen $1.50/$0.075/$7.50 with no dated change; gemini-3-flash-preview $0.50/$0.05/$3.00 for text, image and video input (audio input $1.00 and its cache $0.10 are not modelled). All four have a 1,048,576-token context window on their model pages. Implicit caching only, so cache writes are 0 as on the other Gemini rows. No correction: none had a row, so their turns were unpriced.",
+    "gemini-2.5-pro is retired by routing: the pricing page (read 2026-11-17) says that \"Effective December 1, 2026, all API requests to gemini-2.5-pro will automatically route to Gemini 3.8 Flash (gemini-3.8-flash) and be billed at Gemini 3.8 Flash rates\". So it has three rows: its own price (with the over-200k tier) through 2026-11-30, 3.8 Flash's $0.75/$0.075/$3.75 through 2026-12-31, and 3.8 Flash's $1.50/$0.15/$7.50 from 2027-01-01. gemini-2.5-flash routes to Gemini 3.5 Flash-Lite at its rates, which are the same as its own, so it needs no change.",
+    "OpenAI long context, read from https://developers.openai.com/api/docs/pricing on 2026-11-17: \"Short context: <=272K input tokens. Long context: >272K input tokens.\" Over 272K the gpt-6 and gpt-5.6 rows bill input, cached input and both cache writes at 2x and output at 1.5x: gpt-6-astra $20/$2.00/$25/$75, gpt-6.1-sol $4/$0.20/$5/$15, gpt-6.1-terra $2/$0.10/$2.50/$7.50, gpt-6-sol $4/$0.40/$5/$15, gpt-6-luna $0.20/$0.02/$0.25/$0.75, gpt-5.6-sol $8/$0.80/$10/$30, gpt-5.6-terra $4/$0.40/$5/$18, gpt-5.6-luna $0.40/$0.04/$0.50/$1.80 (input / cached / 30m write / output). They are `tiers` above 272,000 since 2026-11-17.1 (whether \"272K\" is 272,000 or 278,528 tokens is not stated: OQ-27). Codex prices a turn from one request's tokens, so the tier is applied per turn. On the owner's machine 97 gpt-6.1-sol turns were over 272K ($4.38 stored, $8.28 at the long-context rate); they and any other tiered OpenAI turns are corrected. The page's footnote \"GPT-5.6 Sol's promotional pricing is available until November 30, 2026\" gives no price after it, so gpt-5.6-sol keeps $4/$20 and the end of the promotion is an open question (OQ-28).",
+    "Older OpenAI ids Codex can run, added in 2026-11-17.1 from https://developers.openai.com/api/docs/pricing (standard tier, read 2026-11-17), input / cached input / output per 1M: gpt-5.5 $5.00/$0.50/$30.00 (over 272K $10.00/$1.00/$45.00), gpt-5.4 $2.50/$0.25/$15.00 (over 272K $5.00/$0.50/$22.50), gpt-5.4-mini $0.75/$0.075/$4.50, gpt-5.4-nano $0.20/$0.02/$1.25, gpt-5.2 $1.75/$0.175/$14.00, gpt-5.1 and gpt-5 $1.25/$0.125/$10.00, gpt-5-mini $0.25/$0.025/$2.00, gpt-5-nano $0.05/$0.005/$0.40, gpt-4.1 $2.00/$0.50/$8.00, gpt-4.1-mini $0.40/$0.10/$1.60, o3 $2.00/$0.50/$8.00. The page lists no cache write for them (0, as on gpt-5-codex). Their context windows were not read, so context_window is 0 and the context badge says so. -pro models are not rows: Codex does not run them. These rows could only be added once the matcher stopped treating a row id as a bare prefix: a gpt-5 row would otherwise have priced every later gpt-5.x id and an o3 row o3-pro. A Cursor turn on one of these ids is still never priced from the table (ADR-095).",
+    "minimax-m3.1-flash read from https://platform.minimax.io/docs/guides/pricing-paygo on 2026-11-17: $0.15 input, $0.015 cache read, $0.60 output per 1M; no cache write and no context window are stated, so the write columns equal input as on the other MiniMax rows and context_window is 0. Before 2026-11-17.1 it would have been priced as minimax-m3 by prefix, at twice the price; no turn of it is stored. The same page gives minimax-m3 a second Standard tier over 512K input tokens, $0.60/$0.12/$2.40 (both tiers \"Permanent 50% off\"); the row carries it since 2026-11-17.1, with the same \"512K\" ambiguity as OpenAI's 272K (OQ-27). The Priority tier (1.5x) is not modelled: the transcript does not say a request used it.",
+    "minimax-m2.7 is not on MiniMax's own pages any more (read 2026-11-17), and neither are M2 or M2.5. Its row is OpenCode Zen's price (https://opencode.ai/docs/zen/, read 2026-11-17: MiniMax M2.7 $0.30 input, $1.20 output, $0.06 cached read), which Zen says it sells \"at cost\" — a reseller's figure, named as such. Before 2026-11-17.1 the minimax-m2 row priced it by prefix at the same figures; the matcher no longer does that. Context window not stated, so 0. The minimax-m2 row itself cannot be re-verified from MiniMax and is kept for history.",
+    "Not modelled, and so understated where they apply, because no transcript Caprock reads records them: DeepSeek peak hours (2x), OpenAI fast/priority and the 12-hour cache write, Anthropic fast mode and the 1.1x US-only geography, MiniMax Priority (1.5x), Gemini audio input and per-hour cache storage, and Cursor's Token Rate. Cursor's own models (composer-1, code-supernova) and Codex's codex-auto-review have no published per-token price, so no row can be sourced for them."
   ],
   "corrections": [
     {
@@ -45,9 +57,81 @@
       "model": "claude-sonnet-5-5",
       "from": "2026-10-07",
       "reason": "Cache reads from 2026-10-07 were priced at $0.20 per 1M; Anthropic charged $0.10 (0.05x) from that day. The 2026-10-31.1 row split puts the right rate at each turn's own date."
+    },
+    {
+      "model": "claude-fable-5-2",
+      "reason": "No row before 2026-11-17.1; priced as claude-fable-5 by prefix."
+    },
+    {
+      "model": "claude-haiku-5-5",
+      "reason": "Prompts over 100,000 tokens bill at 5x; the row carried only the lower tier until 2026-11-17.1."
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-6.1-terra",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-6-astra",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-6-sol",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-6-luna",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "reason": "Prompts over 272K input tokens bill at the long-context rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gemini-3.1-pro-preview",
+      "reason": "Prompts over 200k tokens bill at the higher rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "gemini-2.5-pro",
+      "reason": "Prompts over 200k tokens bill at the higher rate; not modelled before 2026-11-17.1."
+    },
+    {
+      "model": "minimax-m3",
+      "reason": "Prompts over 512K input tokens bill at double; not modelled before 2026-11-17.1."
     }
   ],
   "models": [
+    {
+      "id": "claude-fable-5-2",
+      "display": "Claude Fable 5.2",
+      "input": 8.0,
+      "cache_write_5m": 10.0,
+      "cache_write_1h": 16.0,
+      "cache_read": 0.2,
+      "output": 40.0,
+      "context_window": 1000000
+    },
+    {
+      "id": "claude-mythos-5-2",
+      "display": "Claude Mythos 5.2",
+      "input": 8.0,
+      "cache_write_5m": 10.0,
+      "cache_write_1h": 16.0,
+      "cache_read": 0.2,
+      "output": 40.0,
+      "context_window": 1000000
+    },
     {
       "id": "claude-fable-5-1",
       "display": "Claude Fable 5.1",
@@ -237,7 +321,17 @@
       "cache_write_1h": 0.2,
       "cache_read": 0.01,
       "output": 0.5,
-      "context_window": 1000000
+      "context_window": 1000000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 100000,
+          "input": 0.5,
+          "cache_write_5m": 0.625,
+          "cache_write_1h": 1.0,
+          "cache_read": 0.05,
+          "output": 2.5
+        }
+      ]
     },
     {
       "id": "claude-haiku-4-5",
@@ -272,12 +366,12 @@
     {
       "id": "deepseek-v4-pro",
       "display": "DeepSeek V4 Pro",
-      "input": 0.435,
-      "cache_write_5m": 0.435,
-      "cache_write_1h": 0.435,
-      "cache_read": 0.0036,
-      "output": 0.87,
-      "context_window": 128000
+      "input": 0.66,
+      "cache_write_5m": 0.66,
+      "cache_write_1h": 0.66,
+      "cache_read": 0.022,
+      "output": 1.98,
+      "context_window": 1000000
     },
     {
       "id": "deepseek-flash",
@@ -290,6 +384,26 @@
       "context_window": 1000000
     },
     {
+      "id": "deepseek-v4-flash",
+      "display": "DeepSeek V4 Flash (legacy id, billed as DeepSeek Flash)",
+      "input": 0.15,
+      "cache_write_5m": 0.15,
+      "cache_write_1h": 0.15,
+      "cache_read": 0.003,
+      "output": 0.6,
+      "context_window": 1000000
+    },
+    {
+      "id": "minimax-m3.1-flash",
+      "display": "MiniMax M3.1 Flash",
+      "input": 0.15,
+      "cache_write_5m": 0.15,
+      "cache_write_1h": 0.15,
+      "cache_read": 0.015,
+      "output": 0.6,
+      "context_window": 0
+    },
+    {
       "id": "minimax-m3",
       "display": "MiniMax M3",
       "input": 0.3,
@@ -297,7 +411,17 @@
       "cache_write_1h": 0.3,
       "cache_read": 0.06,
       "output": 1.2,
-      "context_window": 1000000
+      "context_window": 1000000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 512000,
+          "input": 0.6,
+          "cache_write_5m": 0.6,
+          "cache_write_1h": 0.6,
+          "cache_read": 0.12,
+          "output": 2.4
+        }
+      ]
     },
     {
       "id": "minimax-m2",
@@ -310,6 +434,128 @@
       "context_window": 204800
     },
     {
+      "id": "minimax-m2.7",
+      "display": "MiniMax M2.7",
+      "input": 0.3,
+      "cache_write_5m": 0.3,
+      "cache_write_1h": 0.3,
+      "cache_read": 0.06,
+      "output": 1.2,
+      "context_window": 0
+    },
+    {
+      "id": "kimi-k3.1-pro-highspeed",
+      "display": "Kimi K3.1 Pro Highspeed",
+      "input": 4.0,
+      "cache_write_5m": 4.0,
+      "cache_write_1h": 8.0,
+      "cache_read": 0.2,
+      "output": 20.0,
+      "context_window": 1048576
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "display": "Kimi K3.1 Pro",
+      "input": 2.0,
+      "cache_write_5m": 2.0,
+      "cache_write_1h": 4.0,
+      "cache_read": 0.2,
+      "output": 10.0,
+      "context_window": 1048576
+    },
+    {
+      "id": "kimi-k3",
+      "display": "Kimi K3",
+      "input": 3.0,
+      "cache_write_5m": 3.0,
+      "cache_write_1h": 6.0,
+      "cache_read": 0.3,
+      "output": 15.0,
+      "context_window": 1048576
+    },
+    {
+      "id": "kimi-k2.7-code-highspeed",
+      "display": "Kimi K2.7 Code Highspeed",
+      "input": 1.9,
+      "cache_write_5m": 1.9,
+      "cache_write_1h": 1.9,
+      "cache_read": 0.38,
+      "output": 8.0,
+      "context_window": 262144
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "display": "Kimi K2.7 Code",
+      "input": 0.95,
+      "cache_write_5m": 0.95,
+      "cache_write_1h": 0.95,
+      "cache_read": 0.19,
+      "output": 4.0,
+      "context_window": 262144
+    },
+    {
+      "id": "kimi-k2.6",
+      "display": "Kimi K2.6",
+      "input": 0.95,
+      "cache_write_5m": 0.95,
+      "cache_write_1h": 0.95,
+      "cache_read": 0.16,
+      "output": 4.0,
+      "context_window": 262144
+    },
+    {
+      "id": "gemini-4-carbon",
+      "display": "Gemini 4 Carbon",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.1,
+      "output": 10.0,
+      "context_window": 1048576,
+      "until": "2026-11-30"
+    },
+    {
+      "id": "gemini-4-carbon",
+      "display": "Gemini 4 Carbon",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.2,
+      "output": 20.0,
+      "context_window": 1048576
+    },
+    {
+      "id": "gemini-4-argon",
+      "display": "Gemini 4 Argon",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.1,
+      "output": 10.0,
+      "context_window": 1048576,
+      "until": "2026-11-30"
+    },
+    {
+      "id": "gemini-4-argon",
+      "display": "Gemini 4 Argon",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.2,
+      "output": 20.0,
+      "context_window": 1048576
+    },
+    {
+      "id": "gemini-4-hydrogen",
+      "display": "Gemini 4 Hydrogen",
+      "input": 1.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.075,
+      "output": 7.5,
+      "context_window": 1048576
+    },
+    {
       "id": "gemini-3.8-flash",
       "display": "Gemini 3.8 Flash",
       "input": 0.75,
@@ -317,6 +563,17 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.075,
       "output": 3.75,
+      "context_window": 1048576,
+      "until": "2026-12-31"
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "display": "Gemini 3.8 Flash",
+      "input": 1.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.15,
+      "output": 7.5,
       "context_window": 1048576
     },
     {
@@ -327,6 +584,17 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.075,
       "output": 3.75,
+      "context_window": 1000000,
+      "until": "2026-12-31"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "display": "Gemini 3.7 Flash",
+      "input": 1.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.15,
+      "output": 7.5,
       "context_window": 1000000
     },
     {
@@ -337,6 +605,17 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.075,
       "output": 3.75,
+      "context_window": 1000000,
+      "until": "2026-12-31"
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "display": "Gemini 3.6 Flash",
+      "input": 1.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.15,
+      "output": 7.5,
       "context_window": 1000000
     },
     {
@@ -367,7 +646,27 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.2,
       "output": 12.0,
-      "context_window": 1000000
+      "context_window": 1000000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 200000,
+          "input": 4.0,
+          "cache_write_5m": 0.0,
+          "cache_write_1h": 0.0,
+          "cache_read": 0.4,
+          "output": 18.0
+        }
+      ]
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "display": "Gemini 3 Flash Preview",
+      "input": 0.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.05,
+      "output": 3.0,
+      "context_window": 1048576
     },
     {
       "id": "gemini-3.1-flash-lite",
@@ -387,6 +686,38 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.125,
       "output": 10.0,
+      "context_window": 1000000,
+      "until": "2026-11-30",
+      "tiers": [
+        {
+          "above_prompt_tokens": 200000,
+          "input": 2.5,
+          "cache_write_5m": 0.0,
+          "cache_write_1h": 0.0,
+          "cache_read": 0.25,
+          "output": 15.0
+        }
+      ]
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "display": "Gemini 2.5 Pro",
+      "input": 0.75,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.075,
+      "output": 3.75,
+      "context_window": 1000000,
+      "until": "2026-12-31"
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "display": "Gemini 2.5 Pro",
+      "input": 1.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.15,
+      "output": 7.5,
       "context_window": 1000000
     },
     {
@@ -433,31 +764,61 @@
       "id": "gpt-5.6-sol",
       "display": "GPT-5.6 Sol",
       "input": 4.0,
-      "cache_write_5m": 0.0,
-      "cache_write_1h": 0.0,
+      "cache_write_5m": 5.0,
+      "cache_write_1h": 5.0,
       "cache_read": 0.4,
       "output": 20.0,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 8.0,
+          "cache_write_5m": 10.0,
+          "cache_write_1h": 10.0,
+          "cache_read": 0.8,
+          "output": 30.0
+        }
+      ]
     },
     {
       "id": "gpt-5.6-terra",
       "display": "GPT-5.6 Terra",
       "input": 2.0,
-      "cache_write_5m": 0.0,
-      "cache_write_1h": 0.0,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 2.5,
       "cache_read": 0.2,
       "output": 12.0,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 4.0,
+          "cache_write_5m": 5.0,
+          "cache_write_1h": 5.0,
+          "cache_read": 0.4,
+          "output": 18.0
+        }
+      ]
     },
     {
       "id": "gpt-5.6-luna",
       "display": "GPT-5.6 Luna",
       "input": 0.2,
-      "cache_write_5m": 0.0,
-      "cache_write_1h": 0.0,
+      "cache_write_5m": 0.25,
+      "cache_write_1h": 0.25,
       "cache_read": 0.02,
       "output": 1.2,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 0.4,
+          "cache_write_5m": 0.5,
+          "cache_write_1h": 0.5,
+          "cache_read": 0.04,
+          "output": 1.8
+        }
+      ]
     },
     {
       "id": "gpt-6-sol",
@@ -467,7 +828,17 @@
       "cache_write_1h": 2.5,
       "cache_read": 0.2,
       "output": 10.0,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 4.0,
+          "cache_write_5m": 5.0,
+          "cache_write_1h": 5.0,
+          "cache_read": 0.4,
+          "output": 15.0
+        }
+      ]
     },
     {
       "id": "gpt-6-luna",
@@ -477,7 +848,17 @@
       "cache_write_1h": 0.125,
       "cache_read": 0.01,
       "output": 0.5,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 0.2,
+          "cache_write_5m": 0.25,
+          "cache_write_1h": 0.25,
+          "cache_read": 0.02,
+          "output": 0.75
+        }
+      ]
     },
     {
       "id": "gpt-6-astra",
@@ -487,7 +868,17 @@
       "cache_write_1h": 12.5,
       "cache_read": 1.0,
       "output": 50.0,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 20.0,
+          "cache_write_5m": 25.0,
+          "cache_write_1h": 25.0,
+          "cache_read": 2.0,
+          "output": 75.0
+        }
+      ]
     },
     {
       "id": "gpt-6.1-sol",
@@ -497,7 +888,17 @@
       "cache_write_1h": 2.5,
       "cache_read": 0.1,
       "output": 10.0,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 4.0,
+          "cache_write_5m": 5.0,
+          "cache_write_1h": 5.0,
+          "cache_read": 0.2,
+          "output": 15.0
+        }
+      ]
     },
     {
       "id": "gpt-6.1-terra",
@@ -507,7 +908,157 @@
       "cache_write_1h": 1.25,
       "cache_read": 0.05,
       "output": 5.0,
-      "context_window": 1050000
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 2.0,
+          "cache_write_5m": 2.5,
+          "cache_write_1h": 2.5,
+          "cache_read": 0.1,
+          "output": 7.5
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.5",
+      "display": "GPT-5.5",
+      "input": 5.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.5,
+      "output": 30.0,
+      "context_window": 0,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 10.0,
+          "cache_write_5m": 0.0,
+          "cache_write_1h": 0.0,
+          "cache_read": 1.0,
+          "output": 45.0
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.4",
+      "display": "GPT-5.4",
+      "input": 2.5,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.25,
+      "output": 15.0,
+      "context_window": 0,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 5.0,
+          "cache_write_5m": 0.0,
+          "cache_write_1h": 0.0,
+          "cache_read": 0.5,
+          "output": 22.5
+        }
+      ]
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "display": "GPT-5.4 mini",
+      "input": 0.75,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.075,
+      "output": 4.5,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "display": "GPT-5.4 nano",
+      "input": 0.2,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.02,
+      "output": 1.25,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-5.2",
+      "display": "GPT-5.2",
+      "input": 1.75,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.175,
+      "output": 14.0,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-5.1",
+      "display": "GPT-5.1",
+      "input": 1.25,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.125,
+      "output": 10.0,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-5",
+      "display": "GPT-5",
+      "input": 1.25,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.125,
+      "output": 10.0,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-5-mini",
+      "display": "GPT-5 mini",
+      "input": 0.25,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.025,
+      "output": 2.0,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-5-nano",
+      "display": "GPT-5 nano",
+      "input": 0.05,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.005,
+      "output": 0.4,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-4.1",
+      "display": "GPT-4.1",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.5,
+      "output": 8.0,
+      "context_window": 0
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "display": "GPT-4.1 mini",
+      "input": 0.4,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.1,
+      "output": 1.6,
+      "context_window": 0
+    },
+    {
+      "id": "o3",
+      "display": "o3",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.5,
+      "output": 8.0,
+      "context_window": 0
     },
     {
       "id": "cursor-composer-2.5-fast",

@@ -42,7 +42,7 @@ Munder Difflin won on story. Phase 0 needs its own hook: "I watched my Claude bu
 The spike proves the PTY once; a later dependency bump can break it silently. Mitigation: the three-OS smoke job on every PR and the "no red Windows job" rule; weak point is that GitHub's Windows runner is not every user's Windows.
 
 **`RISK-07` — Cost math drift vs the real bill.**
-Prices change; a stale table under-reports spend and users notice on their invoice. Mitigation: `meta.pricing_version` recorded and never applied retroactively, user override file, a dated `source` in `pricing.json`, and a release-checklist step to re-fetch the pricing page. Accepted residuals: partner platforms (Bedrock/Vertex) are not priced ([OQ-02](#open-questions)); the gpt-6 rows cannot apply OpenAI's cache-write rate because Codex reports no cache-write tokens, so those figures can be low by up to a quarter of that unreported share; and the gpt-6 surcharge above 272K input tokens is not modelled (no observed turn reached it).
+Prices change; a stale table under-reports spend and users notice on their invoice. Mitigation: `meta.pricing_version` recorded and never applied retroactively, user override file, a dated `source` in `pricing.json`, a release-checklist step to re-fetch the pricing page, and a daily `pricing-watch` run that files a "Pricing drift" issue when a provider page lists a model or price the table does not have ([03-contracts.md § Pricing table](03-contracts.md#pricing-table)). Accepted residuals: partner platforms (Bedrock/Vertex) are not priced ([OQ-02](#open-questions)); the gpt-6 rows cannot apply OpenAI's cache-write rate because Codex reports no cache-write tokens, so those figures can be low by up to a quarter of that unreported share; and the gpt-6 surcharge above 272K input tokens is not modelled (no observed turn reached it).
 
 **`RISK-08` — Queue estimates are rough.**
 The Queue view says when a queued message starts and is done from how long the project's past Claude Code turns took ([03-contracts.md § Queue](03-contracts.md#queue)). A turn's length depends on what it was asked, which history cannot see, so the estimate is weak. Measured on a copy of the owner's database (2026-10-12): 2,227 finished Claude Code turns (prompt to Stop; 85 more were interrupted), median 48 s, p25 16 s, p75 216 s, p90 577 s. Backtest, each turn predicted from the newest 200 turns of its project that ended before it started (2,168 turns with at least five such):
@@ -141,7 +141,9 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   things about Claude Code on DeepSeek are not yet measured.
   - **The model id in the transcript.** Claude Code writes the model the
     API answered with. Sessions start on `deepseek-flash`, and the
-    `deepseek-flash` row prices any id that begins with it. If DeepSeek
+    `deepseek-flash` row prices that id and `deepseek-flash[1m]` (since
+    2026-11-17.1 a row no longer prices every id that merely begins with
+    it). If DeepSeek
     answers with another spelling, its turns show as unpriced and are named
     in `unpriced`, not mispriced. A live check on 2026-10-13 reached the
     endpoint and was authenticated, but the account had no balance, so no
@@ -156,9 +158,19 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
     A third-party note gives 2026-08-16, and another says requests to it
     have been served and billed as `deepseek-flash` since 2026-09-14.
     Neither is DeepSeek's own word, so the row is not dated from them.
+    *2026-11-17:* the pricing page names the model version
+    DeepSeek-V4-Pro-0813 at $0.66/$0.022/$1.98 off-peak, 1M context, and
+    DeepSeek's change log (api-docs.deepseek.com/updates) says the 2026-08-13
+    update's new peak and off-peak prices "will take effect at 16:00 (UTC
+    Time) on August 16, 2026", with no figures. That conflicts with this
+    table's own reading of $0.435/$0.87 on 2026-08-27. Table `2026-11-17.1`
+    carries the page's price as the current row and keeps no dated old row,
+    because the day the old price stopped cannot be sourced; turns already
+    stored keep their figures (no correction, since this is a price change,
+    not a table mistake). The date is still open.
 
   Decided by: one DeepSeek session's transcript (the model id), and
-  DeepSeek's own changelog or a bill for the v4-pro date.
+  DeepSeek's own changelog figures or a bill for the v4-pro date.
   use of the keyboard-dictation path shows whether it is enough. *2026-10-13:*
   the phone's page for access from anywhere (ADR-058) is served over https,
   so speech recognition is available there.
@@ -369,7 +381,27 @@ Anything the spec did not answer. Do not resolve these by inventing an answer. "
   none and prices no Kimi turn until a dated official figure exists (rule 6).
   The owner's "Kimi 3.1" is not the id the guide names for Claude Code
   (`kimi-k3.1-pro` appears only in its curl check). Decided by: a real
-  session on the owner's key, and Moonshot's pricing page.
+  session on the owner's key, and Moonshot's pricing page. *2026-11-17:* the
+  price half is closed. Moonshot's pricing page
+  (platform.kimi.ai/docs/pricing/chat, read 2026-11-17; the table renders
+  in the browser, the figures are in the page source) lists every Kimi id,
+  and table `2026-11-17.1` prices `kimi-k3`, `kimi-k3.1-pro`,
+  `kimi-k3.1-pro-highspeed`, `kimi-k2.7-code`, `kimi-k2.7-code-highspeed`
+  and `kimi-k2.6` from it. The Haiku-tier question stays open.
+- `OQ-27` — **Is "272K" 272,000 tokens?** OpenAI bills a request over
+  "272K" input tokens at its long-context rate, Google a prompt over "200k"
+  at its higher tier, and MiniMax M3 over "512K" at double (pricing pages,
+  read 2026-11-17). None says whether K means 1,000 or 1,024. Table
+  `2026-11-17.1` uses 272,000, 200,000 and 512,000. A prompt between the two
+  readings (272,001 to 278,528 tokens for OpenAI) may be priced at the wrong
+  tier. Decided by: a vendor's documentation stating the number, or a bill
+  for a request in that band.
+- `OQ-28` — **What GPT-5.6 Sol costs after 2026-11-30.** OpenAI's pricing
+  page (read 2026-11-17) says "GPT-5.6 Sol's promotional pricing is
+  available until November 30, 2026" and gives no price after it. The
+  `gpt-5.6-sol` row keeps $4/$20 with no `until`. Decided by: the page read
+  on or after 2026-12-01; the new price goes in as a row from 2026-12-01,
+  with the current one given `until: "2026-11-30"`.
 
 ## What would falsify the whole plan
 

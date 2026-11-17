@@ -1,0 +1,318 @@
+<!-- Excerpt of https://ai.google.dev/gemini-api/docs/pricing.md.txt, read 2026-11-17, trimmed for scripts/test_pricing_watch.py. -->
+
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+> - Gemini Docs MCP server (consistent live info): https://gemini-api-docs-mcp.dev
+> - Coding agent skills & setup guide: https://aistudio.google.com/docs/coding-agents.md
+
+# Gemini Developer API pricing
+
+Start building free of charge with generous limits, then scale up with prepaid
+
+## Gemini 4 Carbon  {% id="gemini-4-carbon" %}
+
+{% two-column-layout %}
+  {% left-column class="center-vertically" %}
+  *[`gemini-4-carbon`](/docs/models/gemini-4-carbon)*
+
+  {% /left-column %}
+
+  {% right-column class="center-vertically right-align" %}
+  {% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-4-carbon" variant="ais" %}
+  Try it in Google AI Studio
+
+  {% /button %}
+
+  {% /right-column %}
+
+{% /two-column-layout %}
+
+{% hr /%}
+
+Our most capable reasoning model, built for complex software engineering, deep
+mathematical and scientific problem solving, high factual accuracy, autonomous
+multi-step agents, and long-decode generation up to 1M tokens.
+
+{% callout type="note" %}
+  Gemini 4 Carbon is not available on the Free tier. Every token the model processes is counted and billed, including thinking tokens and internal tool system instructions and function declarations when using grounding.
+
+{% /callout %}
+
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+
+  ---
+
+  * Input price
+  * Not available
+  * $2.00 through November 30, 2026.   
+  $4.00 starting December 1, 2026.
+
+  ---
+
+  * Output price (including thinking tokens)
+  * Not available
+  * $10.00 through November 30, 2026.   
+  $20.00 starting December 1, 2026.
+
+  ---
+
+  * Context caching price
+  * Not available
+  * $0.10 through November 30, 2026.   
+  $0.20 starting December 1, 2026.   
+  Implicit caching only (explicit caching is not supported).
+
+  ---
+
+  * Grounding with Google Search{% sup %}*{% /sup %}
+  * Not available
+  * 5,000 free search requests per month (shared across all Gemini 3 and newer models),
+  then $14 per 1,000 requests (subject to a [daily cap](/docs/pricing#pricing-for-tools) of 1,500 requests per day).
+
+  ---
+
+  * Grounding with Google Maps
+  * Not available
+  * 5,000 requests per month (free, shared across all Gemini 3 and newer models), then $14 / 1,000
+  search queries.
+
+  ---
+
+  * Used to improve our products
+  * Not available
+  * [No](/docs/terms)
+  {% /table %}
+
+  {% sup %}*{% /sup %} A customer-submitted request to Gemini may result in one or
+    more queries to Google Search. You will be charged for each individual search
+    query performed.
+    
+
+  {% /tab %}
+
+{% /tabs %}
+
+## Gemini 3.8 Flash  {% id="gemini-3.8-flash" %}
+
+{% two-column-layout %}
+  {% left-column class="center-vertically" %}
+  *[`gemini-3.8-flash`](/docs/models/gemini-3.8-flash)*
+
+  {% /left-column %}
+
+  {% right-column class="center-vertically right-align" %}
+  {% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-3.8-flash" variant="ais" %}
+  Try it in Google AI Studio
+
+  {% /button %}
+
+  {% /right-column %}
+
+{% /two-column-layout %}
+
+{% hr /%}
+
+Our most intelligent Flash model, engineered for long-horizon software
+engineering, autonomous agents, and complex enterprise workflows.
+
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+
+  ---
+
+  * Input price
+  * Free of charge
+  * $0.75 through December 31, 2026.   
+  $1.50 starting January 1, 2027.
+
+  ---
+
+  * Output price (including thinking tokens)
+  * Free of charge
+  * $3.75 through December 31, 2026.   
+  $7.50 starting January 1, 2027.
+
+  ---
+
+  * Context caching price
+  * Free of charge
+  * $0.075 through December 31, 2026.   
+  $0.15 starting January 1, 2027.   
+  $0.50 / 1,000,000 tokens per hour (storage price) through December 31, 2026.   
+  $1.00 / 1,000,000 tokens per hour (storage price) starting January 1, 2027.
+
+  ---
+
+  * Grounding with Google Search
+  * Not available
+  * 5,000 free search requests per month (shared across all Gemini 3 and newer models),
+  then $14 per 1,000 requests (subject to a [daily cap](/docs/pricing#pricing-for-tools) of 1,500 requests per day).
+
+  ---
+
+  * Grounding with Google Maps
+  * Not available
+  * 5,000 requests per month (free, shared across all Gemini 3 and newer models), then $14 / 1,000
+  search queries.
+
+  ---
+
+  * Used to improve our products
+  * [Yes](/docs/terms)
+  * [No](/docs/terms)
+  {% /table %}
+
+  {% /tab %}
+
+{% /tabs %}
+
+## Gemini 3.1 Pro Preview  {% id="gemini-3.1-pro-preview" %}
+
+{% two-column-layout %}
+  {% left-column class="center-vertically" %}
+  *[`gemini-3.1-pro-preview`](/docs/models/gemini-3.1-pro-preview) and
+    [`gemini-3.1-pro-preview-customtools`](/docs/models/gemini-3.1-pro-preview#gemini-31-pro-preview-customtools)*
+
+  {% /left-column %}
+
+  {% right-column class="center-vertically right-align" %}
+  {% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-3.1-pro-preview" variant="ais" %}
+  Try it in Google AI Studio
+
+  {% /button %}
+
+  {% /right-column %}
+
+{% /two-column-layout %}
+
+{% hr /%}
+
+Our 3rd generation Pro model, built for multimodal understanding, agentic
+capabilities, and vibe-coding.
+
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+
+  ---
+
+  * Input price
+  * Not available
+  * $2.00, prompts <= 200k tokens    
+  $4.00, prompts > 200k tokens
+
+  ---
+
+  * Output price (including thinking tokens)
+  * Not available
+  * $12.00, prompts <= 200k tokens    
+  $18.00, prompts > 200k
+
+  ---
+
+  * Context caching price
+  * Not available
+  * $0.20, prompts <= 200k tokens    
+  $0.40, prompts > 200k    
+  $4.50 / 1,000,000 tokens per hour (storage price)
+
+  ---
+
+  * Grounding with Google Search{% sup %}*{% /sup %}
+  * Not available{% sup %}**{% /sup %}
+  * 5,000 free search requests per month (shared across all Gemini 3 and newer models),
+  then $14 per 1,000 requests (subject to a [daily cap](/docs/pricing#pricing-for-tools) of 1,500 requests per day).
+
+  ---
+
+  * Grounding with Google Maps
+  * Not available{% sup %}**{% /sup %}
+  * 5,000 requests per month (free, shared across all Gemini 3 and newer models), then $14 / 1,000
+  search queries.
+
+  ---
+
+  * Used to improve our products
+  * Not available
+  * [No](/docs/terms)
+  {% /table %}
+
+  {% sup %}*{% /sup %} A customer-submitted request to Gemini may result in one or
+    more queries to Google Search. You will be charged for each individual search
+    query performed.
+
+  {% sup %}**{% /sup %} Can be tested in Google AI Studio.
+    
+
+  {% /tab %}
+
+{% /tabs %}
+
+## Gemini 3.8 Flash TTS  {% id="gemini-3.8-flash-tts" %}
+
+{% two-column-layout %}
+  {% left-column %}
+  *[`gemini-3.8-flash-tts`](/docs/models/gemini-3.8-flash-tts)*
+
+  {% /left-column %}
+
+  {% right-column %}
+  {% button class="right-align" href="https://aistudio.google.com/prompts/new_chat?model=gemini-3.8-flash-tts" variant="ais" %}
+  Try it in Google AI Studio
+
+  {% /button %}
+
+  {% /right-column %}
+
+{% /two-column-layout %}
+
+{% hr /%}
+
+Our 3.8 Flash Text-to-Speech audio model engineered for studio-grade voice fidelity, expressive acting, and long-form stability.
+
+{% tabs %}
+  {% tab title="Standard" %}
+  {% table %}
+  * Feature
+  * Free Tier
+  * Paid Tier, per 1M tokens in USD
+
+  ---
+
+  * Input price
+  * Free of charge
+  * $0.50 (text) through December 31, 2026.   
+  $1.00 (text) starting January 1, 2027.
+
+  ---
+
+  * Output price
+  * Free of charge
+  * $9.00 (audio) through December 31, 2026.   
+  $18.00 (audio) starting January 1, 2027.   
+  Equivalent to $0.00225 per 10s audio{% sup /%} through December 31, 2026.   
+  Equivalent to $0.0045 per 10s audio{% sup /%} starting January 1, 2027.
+
+  ---
+
+  * Used to improve our products
+  * [Yes](/docs/terms)
+  * [No](/docs/terms)
+  {% /table %}
+
+  {% /tab %}
+
+{% /tabs %}
+

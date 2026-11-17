@@ -45,8 +45,9 @@ func Isolate(calls []Call, p Prices, turnsLeftEnd int) Isolation {
 
 	acc := int64(SubStartTokens)
 	for _, c := range calls {
-		iso.Isolated += float64(acc) * p.CacheRead
-		iso.Isolated += float64(c.Result) * p.CacheWrite
+		r := p.At(acc)
+		iso.Isolated += float64(acc) * r.CacheRead
+		iso.Isolated += float64(c.Result) * r.CacheWrite
 		acc += c.Result
 	}
 	// What comes back to the parent, and the brief that was written to send it.

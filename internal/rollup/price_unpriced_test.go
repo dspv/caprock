@@ -97,3 +97,46 @@ func TestApplyCorrectionsRepricesOnlyNamedTurns(t *testing.T) {
 		t.Fatalf("second pass corrected %d", n)
 	}
 }
+
+// The passes that price stored turns after the fact never touch a turn whose
+// agent prices its own: OpenCode's figure stays OpenCode's, and a Cursor turn
+// Cursor recorded no cost for stays unpriced (ADR-095) — even once the table
+// has a row for its model, and even when a correction names that model.
+func TestLatePricingSkipsAgentsThatPriceThemselves(t *testing.T) {
+	r, _ := newRecorder(t)
+	ctx := context.Background()
+	at := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
+	own := 0.42
+	rec := func(sess, key string, src event.Source, agent, model string, usd *float64) {
+		ev := event.Event{Ts: at, SessionID: sess, Source: src, Kind: event.KindTurnAssistant, Model: model, Key: key,
+			Tokens: &event.TokenDelta{In: 1_000_000, Out: 1_000_000}, CostUSD: usd}
+		if _, err := r.Record(ctx, &ev, SessionInfo{Cwd: "/r", Agent: agent}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec("oc", "a", event.SourceOpenCode, "opencode", "deepseek-v4-pro", &own)
+	rec("cu", "b", event.SourceCursor, "cursor", "gpt-5", nil)
+	rec("cx", "c", event.SourceCodex, "codex", "future-model-x", nil)
+
+	tb, err := cost.Parse([]byte(`{"version":"t","models":[{"id":"deepseek-v4-pro","input":1,"output":1},{"id":"gpt-5","input":2,"output":2},{"id":"future-model-x","input":2,"output":2}],
+		"corrections":[{"model":"deepseek-v4-pro"},{"model":"gpt-5"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Table = tb
+	if n, err := r.PriceUnpriced(ctx); err != nil || n != 1 {
+		t.Fatalf("priced %d, err %v; want only the Codex turn", n, err)
+	}
+	if n, err := r.ApplyCorrections(ctx); err != nil || n != 0 {
+		t.Fatalf("corrected %d, err %v; want none", n, err)
+	}
+	db := r.Store.DB()
+	var oc float64
+	if err := db.QueryRow(`SELECT cost_usd FROM events WHERE key = 'a'`).Scan(&oc); err != nil || oc != own {
+		t.Errorf("OpenCode's own figure became %v (err %v)", oc, err)
+	}
+	var cu *float64
+	if err := db.QueryRow(`SELECT cost_usd FROM events WHERE key = 'b'`).Scan(&cu); err != nil || cu != nil {
+		t.Errorf("a Cursor turn with no recorded cost was priced: %v (err %v)", cu, err)
+	}
+}

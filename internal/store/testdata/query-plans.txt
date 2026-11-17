@@ -239,7 +239,7 @@ SELECT CAST(COALESCE(json_extract(p, '$.tool_response.gitOperation.pr.number'), 
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## rollup.(*Recorder).PriceUnpriced
-SELECT e.id, e.ts, s.session_id, e.model, COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0), COALESCE(s.project,'') FROM events e LEFT JOIN sessions s ON s.sid = e.sid WHERE e.kind = ? AND e.cost_usd IS NULL AND COALESCE(e.model,'') != '' AND e.internal = 0 AND COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0
+SELECT e.id, e.ts, s.session_id, e.model, COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0), COALESCE(s.project,'') FROM events e LEFT JOIN sessions s ON s.sid = e.sid WHERE e.kind = ? AND e.cost_usd IS NULL AND COALESCE(e.model,'') != '' AND e.internal = 0 AND COALESCE(s.agent,'') NOT IN (?, ?, ?) AND COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0
     SEARCH e USING COVERING INDEX idx_events_turn_agent (kind=?)
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
 
@@ -292,7 +292,7 @@ SELECT COALESCE(json_extract(payload, '$.duration_ms'), 0) FROM events WHERE id 
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
 
 ## rollup.(*Recorder).correct
-SELECT e.id, e.ts, s.session_id, e.model, e.cost_usd, COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0), COALESCE(s.project,'') FROM events e LEFT JOIN sessions s ON s.sid = e.sid WHERE e.kind = ? AND e.cost_usd IS NOT NULL AND e.model LIKE ? ESCAPE '\' AND e.ts >= ? AND e.internal = 0
+SELECT e.id, e.ts, s.session_id, e.model, e.cost_usd, COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0), COALESCE(s.project,'') FROM events e LEFT JOIN sessions s ON s.sid = e.sid WHERE e.kind = ? AND e.cost_usd IS NOT NULL AND e.model LIKE ? ESCAPE '\' AND e.ts >= ? AND e.internal = 0 AND COALESCE(s.agent,'') NOT IN (?, ?, ?)
     SEARCH e USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
 
