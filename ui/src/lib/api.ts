@@ -183,6 +183,9 @@ export interface Stats {
   /** Assistant turns whose model has no row in the pricing table: their cost
    *  is unknown and not in cost_usd. Absent when zero, and on daemons before it. */
   unpriced_turns?: number
+  /** Requests Cursor counted for this session (its usageData); absent for
+   *  every other agent. `turns` leaves out the usage records carrying them. */
+  requests?: number
 }
 
 export interface Plan { done: number; total: number; next?: string }

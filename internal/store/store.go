@@ -132,6 +132,10 @@ const (
 	// stored before it read the billed model, the context reading and the
 	// tool results were read again (cursor.Ingester's repair).
 	MetaCursorParityRepaired = "cursor_parity_repaired"
+	// MetaCursorParity2Repaired is "1" once the editor chats stored before
+	// the reader recorded compactions, turn ends, legacy chats, MCP names,
+	// fixed relative paths, modes and decisions were read again.
+	MetaCursorParity2Repaired = "cursor_parity2_repaired"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

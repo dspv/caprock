@@ -1294,3 +1294,40 @@ func TestSessionGapsSayWhatTheAgentDoesNotRecord(t *testing.T) {
 		t.Errorf("claude code has gaps: %v", by["cc"].Gaps)
 	}
 }
+
+// A Cursor session's Turns tile counts its replies, not the usage records
+// that carry Cursor's running totals, and names the requests Cursor counted
+// beside them; its mode is the one Cursor recorded, in Cursor's own words
+// where Claude Code has none.
+func TestCursorSessionTurnsRequestsAndMode(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	info := rollup.SessionInfo{Cwd: t.TempDir(), Agent: "cursor", Model: "gpt-5"}
+	usd := 0.5
+	for _, ev := range []*event.Event{
+		{SessionID: "cu-t", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:1", Ts: base,
+			Payload: json.RawMessage(`{"prompt":"go","permission_mode":"ask"}`)},
+		{SessionID: "cu-t", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-msg:2", Ts: base.Add(time.Second),
+			Model: "gpt-5", Tokens: &event.TokenDelta{In: 100, Out: 10}, CostUSD: &usd, Payload: json.RawMessage(`{"text":"done","requests":3}`)},
+		{SessionID: "cu-t", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-usage:cu-t:gpt-5:1", Ts: base.Add(2 * time.Second),
+			Model: "gpt-5", Tokens: &event.TokenDelta{In: 50}, CostUSD: &usd, Payload: json.RawMessage(`{"usage_only":true,"requests":4}`)},
+	} {
+		if _, err := e.rec.Record(ctx, ev, info); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	for _, s := range list {
+		if s.SessionID == "cu-t" && (s.Stats.Turns != 1 || s.Stats.Requests != 7) {
+			t.Fatalf("turns %d requests %d, want 1 and 7", s.Stats.Turns, s.Stats.Requests)
+		}
+	}
+	var v PermissionModeView
+	if code := e.get(t, "/v1/sessions/cu-t/permission-mode", &v); code != 200 || v.Mode != "ask" || v.Switchable {
+		t.Fatalf("mode %+v (%d)", v, code)
+	}
+}

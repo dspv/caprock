@@ -160,8 +160,13 @@ func (in *Ingester) Once(ctx context.Context) error {
 	in.mu.Unlock()
 	repairAll := false
 	if !in.repairChecked && in.rec != nil && in.rec.Store != nil {
-		done, _ := in.rec.Store.GetMeta(ctx, store.MetaCursorParityRepaired)
-		repairAll = done != "1"
+		// Each version of the reader that records more of a chat than the
+		// one before reads every stored chat again once (repair).
+		for _, k := range repairMetas {
+			if done, _ := in.rec.Store.GetMeta(ctx, k); done != "1" {
+				repairAll = true
+			}
+		}
 	}
 	repaired := 0
 	for _, c := range chats {
@@ -200,9 +205,15 @@ func (in *Ingester) Once(ctx context.Context) error {
 	if repairAll && ctx.Err() == nil {
 		// Set even when a chat failed: that chat is in redo, and is
 		// repaired on its own on a later pass.
-		if err := in.rec.Store.SetMeta(ctx, store.MetaCursorParityRepaired, "1"); err == nil {
+		var err error
+		for _, k := range repairMetas {
+			if err == nil {
+				err = in.rec.Store.SetMeta(ctx, k, "1")
+			}
+		}
+		if err == nil {
 			in.repairChecked = true
-			in.log.Info("cursor chats read again for the billed model, context readings and tool results",
+			in.log.Info("cursor chats read again for models, readings, results, compactions, turn ends, legacy chats, names, paths and modes",
 				"component", "cursor", "chats", repaired)
 		}
 	} else if !repairAll {
@@ -214,6 +225,9 @@ func (in *Ingester) Once(ctx context.Context) error {
 	in.mu.Unlock()
 	return nil
 }
+
+// repairMetas are the one-time repairs of stored chats (repair), in order.
+var repairMetas = []string{store.MetaCursorParityRepaired, store.MetaCursorParity2Repaired}
 
 // folder is the chat's folder: its window's, else the folder Cursor's
 // terminal was last in, else the repository of the first absolute path a
@@ -271,7 +285,7 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 	var ids []string
 	if c.Messages > 0 {
 		var err error
-		if ids, err = HeaderIDs(ctx, in.db, c.ID); err != nil {
+		if ids, err = ChatIDs(ctx, in.db, c); err != nil {
 			return err
 		}
 	}
@@ -289,7 +303,7 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 		in.mu.Unlock()
 		return nil
 	}
-	bubbles, err := Bubbles(ctx, in.db, c.ID, ids[start:])
+	bubbles, err := ChatBubbles(ctx, in.db, c, ids[start:])
 	if err != nil {
 		return err
 	}
@@ -307,7 +321,7 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 	}
 	info := rollup.SessionInfo{Cwd: cwd, Model: model, Agent: Agent, Title: c.Name}
 	if full {
-		if err := in.repair(ctx, c, bubbles, model); err != nil {
+		if err := in.repair(ctx, c, bubbles, model, cwd); err != nil {
 			return err
 		}
 	}
@@ -318,6 +332,9 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 		}
 		if c.MaxMode {
 			f["max_mode"] = true
+		}
+		if c.Legacy {
+			f["cursor_format"] = "legacy"
 		}
 		return f
 	}
@@ -348,13 +365,52 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 	priced := len(c.Usage) > 0
 	carried, didCarry := "", false // "" is a model too: one Cursor did not record
 	turn, source := turnModel(c, "")
+	// The turn being read, for its end (agent.stop) and its timings.
+	var tt *turnSpan
+	endTurn := func(next time.Time, finished bool) error {
+		if tt == nil || tt.rows == 0 {
+			return nil
+		}
+		ev, ok := tt.stop(c, next, finished)
+		if !ok {
+			return nil
+		}
+		ev.Payload, _ = json.Marshal(common(ev.fields))
+		_, err := in.record(ctx, &ev.Event, as(info, tt.model))
+		return err
+	}
+	lastTs := time.Time{}
 	for i, b := range bubbles {
 		ts := b.At
 		if ts.IsZero() {
 			ts = c.Updated
 		}
+		// A row Cursor did not date is placed after the last dated one for
+		// what is new here (a compaction, a turn's end); the rows themselves
+		// keep the chat's last update, as they were stored.
+		near := b.At
+		if near.IsZero() {
+			near = lastTs
+		}
+		if near.IsZero() {
+			near = ts
+		}
+		if !b.At.IsZero() {
+			lastTs = b.At
+		}
 		if b.User {
+			if err := endTurn(b.At, false); err != nil {
+				return err
+			}
 			turn, source = turnModel(c, b.Model)
+			tt = &turnSpan{prompt: b.ID, at: b.At, model: turn}
+		} else if tt != nil {
+			tt.add(b, ts)
+		}
+		if b.Summary != nil {
+			if err := in.compaction(ctx, c, bubbles, i, near, cwd, as(info, turn), common); err != nil {
+				return err
+			}
 		}
 		switch {
 		case b.User:
@@ -363,6 +419,9 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 			}
 			fields := common(map[string]any{"prompt": ingest.ClipAssistantText(b.Text), "cwd": cwd, "model": turn, "model_source": source})
 			reading(fields, b.ContextUsed, b.ContextLimit)
+			if m := chatMode(c.Mode); m != "" {
+				fields["permission_mode"] = m
+			}
 			payload, _ := json.Marshal(fields)
 			if _, err := in.record(ctx, &event.Event{
 				Ts: ts, SessionID: c.ID, Source: event.SourceCursor, Kind: event.KindTurnUser,
@@ -371,10 +430,11 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 				return err
 			}
 		case b.Tool != nil:
+			name := callName(b.Tool)
 			input, _ := json.Marshal(ToolInput(b.Tool.Name, b.Tool.Args, cwd))
 			capped := event.CapToolField(input)
 			fields := common(map[string]any{
-				"tool_name":   ToolName(b.Tool.Name),
+				"tool_name":   name,
 				"tool_input":  capped,
 				"tool_use_id": useID(b),
 				"cwd":         cwd,
@@ -383,10 +443,13 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 			if b.Tool.Error {
 				fields["error"] = true
 			}
+			if m := callMode(b.Tool); m != "" {
+				fields["permission_mode"] = m
+			}
 			payload, _ := json.Marshal(fields)
 			if _, err := in.record(ctx, &event.Event{
 				Ts: ts, SessionID: c.ID, Source: event.SourceCursor, Kind: event.KindToolPre,
-				Tool: ToolName(b.Tool.Name), Payload: payload, Key: "cu-tool:" + b.ID, MsgID: msgID(b),
+				Tool: name, Payload: payload, Key: "cu-tool:" + b.ID, MsgID: msgID(b),
 			}, as(info, turn)); err != nil {
 				return err
 			}
@@ -428,6 +491,13 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 			if i == carrier && stored && has && !d.zero() {
 				carried, didCarry = turn, true
 			}
+		}
+	}
+	// The newest turn ends when Cursor says the chat stopped: its status, and
+	// nothing still being written (generatingBubbleIds).
+	if len(bubbles) > 0 && bubbles[len(bubbles)-1].ID == ids[len(ids)-1] && c.Finished() {
+		if err := endTurn(time.Time{}, true); err != nil {
+			return err
 		}
 	}
 	// Whatever no new reply carried — every model on a chat's first read but
@@ -564,7 +634,7 @@ func toolPost(b Bubble, input json.RawMessage) (postEvent, bool) {
 	default:
 		return postEvent{}, false
 	}
-	name := ToolName(t.Name)
+	name := callName(t)
 	fields := map[string]any{
 		"tool_name":   name,
 		"tool_input":  input,
@@ -611,6 +681,12 @@ func toolPost(b Bubble, input json.RawMessage) (postEvent, bool) {
 	if t.Status == "cancelled" && !failed {
 		fields["interrupted"] = true
 	}
+	if t.Decision != "" {
+		// The person's answer to the call, recorded after the fact:
+		// accepted or rejected (11.6% of calls on the owner's machine
+		// carry one, 2026-11-17).
+		fields["user_decision"] = t.Decision
+	}
 	fields["is_error"] = failed
 	var size int64
 	if resp != nil {
@@ -644,7 +720,7 @@ func (in *Ingester) upToDate(ctx context.Context, c Composer) bool {
 // into Go: a turn's tokens belong to the model it ran on (turnModel).
 func (in *Ingester) totals(ctx context.Context, c Composer, ids []string) (totals, error) {
 	out := totals{}
-	toks, err := TokensByTurn(ctx, in.db, c.ID, ids)
+	toks, err := ChatTokens(ctx, in.db, c, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -791,12 +867,11 @@ func (in *Ingester) overhead(ctx context.Context, c Composer, bubbles []Bubble, 
 			calls[b.Call] = true
 		}
 		if b.TokensIn > 0 && !b.User {
+			// A turn whose model Cursor did not record (a chat billed to
+			// several) is still a sample: it is reported as an unnamed
+			// model, as the estimate was before the turn model came from
+			// the bill.
 			m, _ := turnModel(c, first.Model)
-			if m == "" {
-				// The estimate is reported by model; a turn whose model
-				// Cursor did not record is no sample of any.
-				return nil
-			}
 			est := Overhead{
 				Model:         m,
 				RequestTokens: b.TokensIn,
@@ -820,7 +895,7 @@ func (in *Ingester) overhead(ctx context.Context, c Composer, bubbles []Bubble, 
 			_, err := in.record(ctx, &event.Event{
 				Ts: ts, SessionID: c.ID, Source: event.SourceCursor, Kind: event.KindContextOverhead,
 				Model: m, Payload: payload, Key: "cu-overhead:" + c.ID,
-			}, info)
+			}, as(info, m))
 			return err
 		}
 		visible += b.Visible

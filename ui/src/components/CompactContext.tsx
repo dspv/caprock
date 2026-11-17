@@ -41,7 +41,9 @@ export interface CompactState {
 export function useCompact(s: SessionSummary): CompactState {
   const canControl = useCanControl()
   const offer = compactOffer(s, canControl)
-  const claude = !s.agent || s.agent === 'claude'
+  // Claude Code and Cursor record finished compactions; only Claude Code's
+  // can be pressed from here (compactOffer).
+  const claude = !s.agent || s.agent === 'claude' || s.agent === 'cursor'
   const [view, setView] = useState<CompactionView | undefined>(undefined)
   const [pressed, setPressed] = useState<CompactPress | undefined>(undefined)
   const [error, setError] = useState('')
@@ -204,18 +206,19 @@ function SavingsCurve({ est }: { est: CompactionEstimate }) {
 }
 
 /** The one line and its curve: the newest compaction, what it cost and has saved. */
-function CompactResult({ c, after, fresh }: { c: CompactState; after: Compaction; fresh: boolean }) {
+function CompactResult({ c, after, fresh, gap }: { c: CompactState; after: Compaction; fresh: boolean; gap?: string }) {
   const est = c.view?.estimate
   const saving = savingOf(after, est)
   const auto = after.trigger === 'auto'
   return (
     <>
       <div className={`num flex min-w-0 items-center gap-2 text-[11.5px] ${fresh ? 'text-fg' : 'text-fg-muted'}`} data-compact="result">
-        <span title={auto ? 'Automatic: Claude Code ran out of room' : 'Manual: /compact'} aria-label={auto ? 'Automatic' : 'Manual'}
+        <span title={auto ? 'Automatic: the agent ran out of room' : 'Manual: /compact'} aria-label={auto ? 'Automatic' : 'Manual'}
           className="grid h-[14px] min-w-[14px] shrink-0 place-items-center rounded-[4px] bg-panel-2 px-[3px] text-[9px] font-semibold text-fg-faint">{auto ? 'A' : 'M'}</span>
         <span className="min-w-0 truncate" title={compactLine(after, est)}>{compactLine(after, est)}</span>
       </div>
       {saving && <SavingsCurve est={saving} />}
+      {!est && gap && <p className="text-[11px] text-fg-faint" data-compact="gap">{gap}</p>}
     </>
   )
 }
@@ -228,7 +231,7 @@ export function CompactAction({ s, c }: { s: SessionSummary; c: CompactState }) 
   const done = c.phase.kind === 'done' ? c.phase.last : undefined
   const after = done ?? last
   const kept = keptLine(c.view?.typical)
-  const afterLine = after ? <CompactResult c={c} after={after} fresh={!!done} /> : null
+  const afterLine = after ? <CompactResult c={c} after={after} fresh={!!done} gap={s.gaps?.compaction_cost} /> : null
   if (c.offer === 'none') {
     if (!after) return null
     return (

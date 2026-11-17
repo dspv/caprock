@@ -42,6 +42,7 @@ var plainPayloadReads = map[string]string{
 	"internal/store/hermes.go:HermesSpend":                           "turn.assistant",
 	"internal/store/cursor.go:CursorSpend":                           "turn.assistant",
 	"internal/store/requests.go:usageRows":                           "turn.assistant",
+	"internal/store/requests.go:SessionUsageCount":                   "turn.assistant",
 	"internal/store/cursor.go:ContextOverhead":                       "context.overhead and turn.user",
 	"internal/store/cursor.go:SessionOverheadFor":                    "context.overhead",
 	"internal/cursor/ingest.go:(*Ingester).pending":                  "turn.assistant",

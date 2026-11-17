@@ -47,7 +47,7 @@ func compactionQuery(where string) string {
 			SELECT COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0)
 			FROM events t INDEXED BY idx_events_session_ts
 			WHERE t.sid = b.sid AND t.ts >= b.ts AND t.ts < b.next
-			  AND t.kind = 'turn.assistant' AND t.internal = 0 AND t.tokens_in IS NOT NULL
+			  AND t.kind = 'turn.assistant' AND t.internal = 0 AND t.tokens_in IS NOT NULL AND t.source <> 'cursor'
 			  AND COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) > 0
 			  AND COALESCE(t.agent_id, '') = '' AND json_extract(t.payload, '$.sidechain') IS NOT 1
 			ORDER BY t.ts, t.id LIMIT 1

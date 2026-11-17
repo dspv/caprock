@@ -30,6 +30,10 @@ const (
 	// GapCost: no cost for this session, and Caprock does not price it from
 	// its own table (Cursor, ADR-095).
 	GapCost = "cost"
+	// GapCompactionCost: no figure a compaction's cost could be read from,
+	// and Caprock does not price it from its own table (Cursor's summaries
+	// are recorded as compactions without one, ADR-095).
+	GapCompactionCost = "compaction_cost"
 )
 
 // agentGaps is what each agent leaves out of every session. Claude Code
@@ -40,7 +44,7 @@ var agentGaps = map[string]map[string]string{
 	// reply of a turn only, reconciled as differences; no cache split. Its
 	// context is Cursor's own reading (contextWindowStatusAtCreation), so
 	// it has no context gap.
-	"cursor": {GapCache: "cache reads or writes"},
+	"cursor": {GapCache: "cache reads or writes", GapCompactionCost: "what a summary cost"},
 	// internal/gemini: CacheRead from telemetry, no cache-write figure.
 	"gemini": {GapCacheWrite: "cache writes"},
 	// internal/deepseek: CacheWrite is 0, "DSH reports no cache-write split".

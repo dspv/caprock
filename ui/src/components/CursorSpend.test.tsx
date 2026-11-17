@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { atRate, overheadCell, overheadRows, samplesCount } from './CursorSpend'
+import { atRate, hooksState, overheadCell, overheadRows, samplesCount } from './CursorSpend'
 import { overheadSentence } from './CursorOverhead'
 import type { OverheadReport, SessionOverhead } from '@/lib/api'
 
@@ -55,5 +55,14 @@ describe('one chat’s overhead', () => {
     expect(s.parts.join(' ')).toContain('6 model calls')
     expect(s.compare).toContain('over 3 chats')
     expect(s.compare).not.toContain('Claude Code')
+  })
+})
+
+describe('Cursor hooks switch', () => {
+  it('reads an install from before the observational hooks as partly on', () => {
+    expect(hooksState({ installed: true })).toBe('on')
+    expect(hooksState({ installed: false, missing: ['sessionStart', 'sessionEnd', 'subagentStop', 'afterShellExecution', 'afterFileEdit', 'afterAgentThought'] })).toBe('partly')
+    expect(hooksState({ installed: false, missing: Array.from({ length: 12 }, (_, i) => String(i)) })).toBe('off')
+    expect(hooksState({ installed: false })).toBe('off')
   })
 })

@@ -17,7 +17,9 @@
  *
  * A session Caprock did not start shows its mode read-only: Caprock never
  * types into a process it did not start (rule 7), so it changes in that
- * terminal. Codex, OpenCode and the rest show nothing: their mode is not read.
+ * terminal. A Cursor session shows the mode Cursor recorded, read-only: Plan,
+ * Ask (answers, changes nothing), auto-run (commands run unasked), or asks
+ * first. Codex, OpenCode and the rest show nothing: their mode is not read.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, errText, isPairedDevice, type PermissionModeView } from '@/lib/api'
@@ -34,6 +36,9 @@ const CHIP: Record<string, string> = {
   bypassPermissions: 'bypass',
   auto: 'auto mode',
   dontAsk: "don't ask",
+  // Cursor's own (internal/cursor/turns.go).
+  ask: 'ask only',
+  autoRun: 'auto-run',
 }
 
 /** Each mode in the menu: its name, and what it does on a line of its own. */
@@ -109,7 +114,7 @@ function ModeRow({ mode, current, disabled, reason, restart, onPick, title }: {
 
 /** The chip's tone: bypass in the danger colour, as Claude Code draws it. */
 function tone(mode: string): string {
-  if (mode === 'bypassPermissions' || mode === 'dontAsk') return 'border-danger/60 text-danger'
+  if (mode === 'bypassPermissions' || mode === 'dontAsk' || mode === 'autoRun') return 'border-danger/60 text-danger'
   if (mode === 'plan') return 'border-accent/60 text-accent'
   return 'border-border text-fg-muted'
 }
@@ -155,7 +160,8 @@ export function usePermissionMode(sessionId: string, enabled = true): [Permissio
 
 export function PermissionModeChip({ sessionId, agent, enabled = true }: { sessionId: string; agent?: string; enabled?: boolean }) {
   const claude = (agent ?? 'claude') === 'claude'
-  const [view, setView, refresh] = usePermissionMode(sessionId, enabled && claude)
+  const cursor = agent === 'cursor'
+  const [view, setView, refresh] = usePermissionMode(sessionId, enabled && (claude || cursor))
   const canControl = useCanControl()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -189,7 +195,7 @@ export function PermissionModeChip({ sessionId, agent, enabled = true }: { sessi
     }
   }, [open])
 
-  if (!claude || !view || (!view.mode && !view.switchable)) return null
+  if (!(claude || cursor) || !view || (!view.mode && !view.switchable)) return null
   const mode = view.mode
   const label = CHIP[mode] ?? (mode || 'mode unknown')
 
@@ -197,9 +203,11 @@ export function PermissionModeChip({ sessionId, agent, enabled = true }: { sessi
     return (
       <span
         data-permission-mode={mode}
-        title={view.switchable
-          ? 'The permission mode. A phone that only views cannot change it.'
-          : "The permission mode, as this session's hooks last said. Caprock did not start it, so it changes only in its own terminal: Shift+Tab there."}
+        title={cursor
+          ? 'The mode, as Cursor recorded it for this chat. It changes in Cursor.'
+          : view.switchable
+            ? 'The permission mode. A phone that only views cannot change it.'
+            : "The permission mode, as this session's hooks last said. Caprock did not start it, so it changes only in its own terminal: Shift+Tab there."}
         className={`inline-flex items-center rounded-[6px] border px-1.5 text-[11px] ${tone(mode)}`}
       >
         {label}

@@ -50,6 +50,10 @@ type recentEntry struct {
 	// reading is the newest context reading an agent recorded itself
 	// (store.LastContextReading), for agents that do (readsOwnContext).
 	reading lazy[foundReading]
+	// usage is a Cursor or Hermes session's usage records and requests
+	// (store.SessionUsageCount): its Turns tile counts the one without the
+	// other.
+	usage lazy[[2]int64]
 	// todos is the agent's task list (store.SessionTodos), for the Jarvis
 	// digest (jarvis.go): only the session's own events move it.
 	todos lazy[store.TodoList]

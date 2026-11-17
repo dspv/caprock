@@ -10,7 +10,7 @@
  */
 
 /** The figures a gap can name; the keys of `SessionSummary.gaps`. */
-export type GapField = 'tokens' | 'cache' | 'cache_write' | 'context' | 'cost'
+export type GapField = 'tokens' | 'cache' | 'cache_write' | 'context' | 'cost' | 'compaction_cost'
 
 export type Gaps = Partial<Record<GapField, string>>
 

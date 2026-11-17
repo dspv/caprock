@@ -105,8 +105,9 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
   branch a `git push` sent (`gitremote.PushFromOutput` reads git's `To
   <remote>` block when no `gitOperation` is recorded) — so `session_prs`,
   `session_branches` and the PR and CI cells fill as for Claude Code.
-- **Chats stored before** the three points above are read again once, on the
-  first start that has them (meta `cursor_parity_repaired`): each stored
+- **Chats stored before** the turn model, readings and results are read
+  again once, on the first start that has them (meta
+  `cursor_parity_repaired`): each stored
   row's model and payload are corrected in place, prompts gain their
   readings, calls their `tool_use_id`, and the results are added. When a
   chat's models change, its reconciled usage is taken back out of the rows,
@@ -121,10 +122,78 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
   turns of chats billed to several models with no model; 17,196 results
   added, 1,382 of them failed; 913 prompts with a reading; 25 pull requests
   in 11 chats and 78 pushed branches. It took 2 min 19 s, once.
+- **And again** for turn ends, compactions, legacy chats, names, paths, modes
+  and decisions (meta `cursor_parity2_repaired`): the new rows are added by
+  their keys, and stored calls get their corrected name, path (the touched
+  files follow), mode and decision in place. On a copy of the owner's store
+  after the first repair (2026-11-17): 3,193 turn ends added (3,078 timed,
+  916 with thinking), 240 compactions, 6 chats and 1,126 tool calls from the
+  legacy format, 10 MCP calls renamed, 5,650 decisions and 4,601 modes
+  recorded; Cursor's cost $882.16 before and after, tokens 194,039,241 before
+  and 238,621,721 after — the 44,582,480 difference exactly the legacy chats'
+  `tokenCount`, read for the first time — in the rows, `session_stats` and
+  `daily_stats` alike; no key twice. Run a second time it changed nothing.
+  It took 24 s.
+- **A turn ends** as Claude Code's Stop hook ends one, with an `agent.stop`:
+  when the next prompt arrives, and for the newest turn when the composer's
+  `status` says it stopped (`completed`, `aborted`, or `none`, which older
+  builds left on 107 of the owner's 171 chats) and `generatingBubbleIds` is
+  empty. So Now and the phone read "done" or "waiting for you" for a Cursor
+  chat, from what Cursor wrote last, rather than going by the clock; while
+  Cursor is still writing, the chat's newest rows say what it is doing. The
+  stop carries the turn's timings where Cursor kept them: `duration_ms` from
+  its first request sent to its last reply's end, `request_ms` the requests'
+  own time (`timingInfo`, on 4,001 replies) and `thinking_ms`
+  (`thinkingDurationMs`, on 6,077 rows). No other agent records a turn's
+  time, so these are new fields, not a figure a screen shows yet; the
+  thinking text itself is not stored (Codex's `reasoning` is a token count,
+  not text).
+- **Compactions.** A row whose `conversationSummary` names the last message
+  it replaced (`truncationLastBubbleIdInclusive`) is a compaction Cursor made
+  on its own, recorded as Claude Code's finished one (`context.compacted`,
+  trigger `auto`): before is the reading of the prompt before it, after the
+  reading of the prompt after it. Of 302 summary rows on the owner's machine,
+  129 are in a chat's conversation (the rest belong to branches Cursor
+  discarded) plus 111 in the legacy chats: 240 compactions in 35 chats, 75
+  with a reading before and 74 after. They count in the Context look's last
+  compaction and in the machine's typical share kept, but carry no cost or
+  saving: those are priced from the table, which never prices Cursor, so the
+  session says "Cursor doesn't record what a summary cost".
+- **Legacy chats.** Cursor's spring-2025 builds kept a chat's messages inline
+  in `composerData.conversation` and its tool calls in the composer's
+  `capabilities` (`bubbleDataMap`), with no `bubbleId` rows. The 9 such chats
+  on the owner's machine (April to June 2025, 4,471 messages, 1,370 tool
+  calls) are read like any other: prompts, replies, tools, compactions and
+  `tokenCount`. Their messages carry no `createdAt`, so each is dated by its
+  request's `timingInfo`, else by the next dated message.
+- **Tool names and paths.** `edit_file_v2_search_replace` and `reapply` are
+  `Edit`; an MCP call (`mcp_<server>_<tool>`, or just `mcp`) is
+  `mcp__<server>__<tool>` as Claude Code spells it, split by the server and
+  tool Cursor recorded beside the call (the name alone is ambiguous: both
+  parts hold `_` and `-`). A relative path that starts with the chat folder's
+  own name (`kgpu/src/main.jsx` in `…/kgpu`, 1,303 of 1,611 relative file
+  paths) had been filed a folder too deep; the segment is dropped unless the
+  folder really holds such a subfolder.
+- **Mode and decisions.** The session's mode is what Cursor recorded: `plan`
+  and `ask` from the chat's `unifiedMode`; for an Agent chat, each terminal
+  command says it — `autoRun` when Cursor ran it unasked
+  (`reviewData.approvalType: "full_auto"`, 4,442 commands) and `default` when
+  the person was asked (159). The chip on Session and Now shows it read-only
+  ("auto-run" in the warning colour, "ask only"); it changes in Cursor. A
+  call's `userDecision` (accepted 5,577, rejected 73) is on its result.
 - **CLI chats** arrive through the hooks, when the user turns them on. A hook
   for a chat the editor database holds is dropped, so nothing is counted
   twice. A chat Caprock started is filed under its Caprock session through
-  `CAPROCK_CURSOR_SESSION` in its environment.
+  `CAPROCK_CURSOR_SESSION` in its environment. Besides prompts, replies,
+  tools and stops, the hooks give a CLI chat its start (and mode, from
+  `sessionStart`'s `composer_mode`; a chat Caprock started with `--force` is
+  bypass), its end (`sessionEnd` with `completed` or `user_close`; any other
+  reason leaves it open), its subagents' ends (`subagentStop`, as Claude
+  Code's SubagentStop), each tool's `duration`, a shell command's output as
+  `{stdout}` — so its pull requests and pushed branches are found — and each
+  file edit's old and new strings. `afterShellExecution` and `postToolUse`
+  both report a command; they are keyed by generation and command, so it is
+  one result.
 
 ## Cost
 
@@ -157,7 +226,10 @@ always labelled as one.
   (`tokenCount.inputTokens`) minus everything readable before it in that turn
   — prompt, replies, thinking, tool arguments and results — at 4 bytes a
   token. The sample is *clean* when that readable part is at most a quarter
-  of the request; only clean samples enter the medians.
+  of the request; only clean samples enter the medians. A chat whose first
+  turn has no known model (billed to several) is a sample of the unnamed
+  model rather than none: on the owner's machine 6 of 45 estimates
+  (2026-11-17).
 - **Claude Code** (per session, computed on read): the first priced main-thread
   request's `tokens_in + cache_read + cache_write` — exact, from the API —
   minus the first prompt at 4 bytes a token.
@@ -209,9 +281,21 @@ folder; an editor chat is continued in Cursor.
   daemon or `caprock hooks install`. The installer merges into the file,
   keeps every other tool's entry (the owner's holds Orca's), is idempotent,
   saves the original once, and uninstall restores it byte for byte.
-- Only events that decide nothing are registered. Permission hooks block the
-  action when their answer does not parse, so a broken shim there would stop
-  the user's work.
+- Only events that decide nothing are registered: `beforeSubmitPrompt`,
+  `afterAgentResponse`, `postToolUse`, `postToolUseFailure`, `stop`,
+  `preCompact`, and for the CLI's chats `sessionStart`, `sessionEnd`,
+  `subagentStop`, `afterShellExecution`, `afterFileEdit` and
+  `afterAgentThought`. Each is answered `{}` (`{"continue":true}` for
+  `beforeSubmitPrompt`), which asks Cursor for nothing: no environment, no
+  context, no follow-up. Permission hooks (`preToolUse`,
+  `beforeShellExecution`, `beforeMCPExecution`, `beforeReadFile`,
+  `subagentStart`) block the action when their answer does not parse, so a
+  broken shim there would stop the user's work; they are never registered.
+  An install from before the six were added shows them missing until the
+  button is pressed again.
+- `user_email`, on every hook, is never read: the payload has no field for
+  it. Nor is a thought's text: `afterAgentThought` keeps only its duration,
+  for its generation's stop.
 - `caprock-hook cursor` prints Cursor's neutral answer before doing anything
   else and exits 0 on every path within the shim's budget (rule 3).
 
@@ -225,15 +309,26 @@ folder; an editor chat is continued in Cursor.
   servers.
 - Per-request tokens: Cursor keeps one request per turn locally.
 - Which of several billed models ran a turn whose prompt names none.
+- A tool call's own duration in an editor chat (no timing on tool rows; the
+  CLI's `postToolUse` has one), and the live "waiting for approval": only
+  the permission hooks see it, and they are never registered. A decision is
+  read after the fact.
+- What a compaction cost: Cursor records no usage for the summary, and the
+  table never prices Cursor.
+- The branch of an editor chat: only `subagentStart`, a permission hook,
+  carries one.
 
 ## Verified on
 
 - **Real data, read-only:** the editor reader, cost reconciliation, folders,
-  the turn model, readings, tool results, pull requests and the repair of
-  stored chats (into a throwaway store, 2026-11-17), and the overhead figures
+  the turn model, readings, tool results, pull requests, turn ends,
+  compactions, legacy chats, tool names and paths, modes and both repairs of
+  stored chats (into a copy of the owner's store, 2026-11-17, then a preview
+  daemon on that copy), and the overhead figures
   above (`TestLiveEditorDatabase`, gated by
   `CAPROCK_CURSOR_LIVE=1`); the hooks installer on a copy of the owner's
   `hooks.json`.
-- **Fixtures only:** the CLI's hooks (shapes from Cursor's docs), its `meta`
+- **Fixtures only:** the CLI's hooks, the six added on 2026-11-17 too
+  (shapes from Cursor's docs, read that day), its `meta`
   reader, `--resume`, and launch with a fake `cursor-agent`. The owner is not
   signed in to the CLI and has no CLI chats.

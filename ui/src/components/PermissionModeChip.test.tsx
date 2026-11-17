@@ -112,6 +112,14 @@ describe('the permission-mode chip', () => {
     expect(h.mode).not.toHaveBeenCalled()
   })
 
+  it('shows the mode Cursor recorded, read-only, auto-run in the warning colour', async () => {
+    h.mode.mockResolvedValue({ session_id: 's1', mode: 'autoRun', source: 'hook', switchable: false })
+    const { container } = render(<PermissionModeChip sessionId="s1" agent="cursor" />)
+    await waitFor(() => expect(container.textContent).toBe('auto-run'))
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(container.querySelector('[data-permission-mode="autoRun"]')?.className).toContain('text-danger')
+  })
+
   it('draws each mode as a name and what it does, the current one marked, and why a row is off', async () => {
     h.mode.mockResolvedValue({ ...owned, waiting: 'turn' })
     render(<PermissionModeChip sessionId="s1" />)
