@@ -2241,8 +2241,10 @@ tells a page where a file lives.
   events on any OS — the macOS handler answers every drag without calling
   WebKit, and on Windows the handler replaces WebView2's own drop target.
   Nothing in the app may rely on `draggable`/`dragover`/`drop`: the tab
-  strip reorders by pointer events (`TerminalTabs.tsx`). A drop outside a
-  terminal does nothing, and the window never navigates to a dropped file.
+  strip reorders by pointer events (`TerminalTabs.tsx`); the chat's
+  *Drop to attach* outline is a browser's only. A drop outside a terminal
+  or an open chat does nothing, and the window never navigates to a
+  dropped file.
 - **A dialog over a terminal takes the drop.** While any dialog is open
   (a `[data-dialog-backdrop]` is in the page) no terminal types a dropped
   path: the file was aimed at the dialog, not the terminal under its
@@ -2261,7 +2263,12 @@ tells a page where a file lives.
   used from tests.
 
 Where it goes (`routeDrop`, lib/xtermInput.ts): a dialog on screen takes
-it (Feedback, a sheet); else the terminal under the point; else the
+it (Feedback, a sheet); else a drop zone under the point — an open chat
+that can be typed into marks itself `data-file-drop` and attaches the file
+as its Attach button does, even where it is laid over a terminal
+([04-ui.md](04-ui.md) § From a phone, *A file dropped on an open chat
+attaches*;
+2026-11-17); else the terminal under the point; else the
 terminal used last that is on screen; else the only terminal on screen;
 else a short note says to drop it onto a terminal. A drop is never dropped
 without a word — it used to reach only a terminal whose box held the point,

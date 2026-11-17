@@ -128,6 +128,14 @@ export interface Attached {
   url?: string
 }
 
+/**
+ * What else may attach in the field besides its Attach button: the chat's
+ * drop (ChatView). Each item is a File, which goes as one picked with Attach
+ * does, or a path already on disk, which becomes a chip as it is. The order
+ * of the items is the order of the chips.
+ */
+export type AttachIn = (items: readonly (File | string)[]) => Promise<void>
+
 /** A message as it is held or shown: the words, with "[Image N]" for each
  *  photo and the name of each other file (lib/attach attachLabels). */
 export function heldLabel(h: { text: string; paths?: readonly string[] }): string {
@@ -137,12 +145,14 @@ export function heldLabel(h: { text: string; paths?: readonly string[] }): strin
   return h.text ? `${files} ${h.text}` : files
 }
 
-export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder }: {
+export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', state, isPromptWaiting, sessionId, chips = false, submitText, pickers = false, voice = false, foldKeys = false, placeholder }: {
   send: (bytes: string) => void
   /** Attaches photos. Where it returns the saved paths (the chat; one per
    *  file, '' for one that failed), each shows as an "Image N" chip over the
    *  field and goes to sendPaths before the words on Send. */
   attach?: (files: File[]) => Promise<void | readonly string[]>
+  /** Set to the field's own attach while it is mounted, for a drop (AttachIn). */
+  attachIn?: { current: AttachIn | null }
   /** Pastes the attached photos into the session as the desktop terminal
    *  pastes a dropped image, so Claude Code shows `[Image #N]`. */
   sendPaths?: (paths: readonly string[]) => Promise<void>
@@ -333,20 +343,35 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
   // returns the paths instead (the chat), each becomes an "Image N" chip over
   // the field — never the path in the text, which on a phone was a line of
   // "/Users/…/Application Support/caprock/paste/…" (owner, 2026-10-18).
-  const onPicked = async (files: File[]) => {
-    if (!attach || files.length === 0) return
+  //
+  // A drop on the chat comes the same way (attachIn): its files are saved
+  // as picked ones are, and a path already on disk (the desktop app's drop
+  // of a document) becomes a chip as it is, each in the order dropped.
+  const onPicked = (files: File[]) => addAttachments(files)
+  const addAttachments: AttachIn = async (items) => {
+    const files = items.filter((i): i is File => typeof i !== 'string')
+    if (!attach || items.length === 0) return
     setAttaching(true)
     try {
-      const paths = await attach(files)
-      if (paths && paths.length > 0) {
-        const aligned = paths.length === files.length
-        const next: Attached[] = []
-        paths.forEach((p, i) => {
-          if (!p) return
-          const f = aligned ? files[i] : undefined
-          const preview = f && isImageName(p) && typeof URL.createObjectURL === 'function'
-          next.push({ path: p, ...(preview ? { url: URL.createObjectURL(f) } : {}) })
-        })
+      const paths = files.length > 0 ? await attach(files) : []
+      // An attach that typed the paths itself (no chips) returns nothing.
+      if (files.length > 0 && !(paths && paths.length > 0)) return
+      const saved = paths ?? []
+      const aligned = saved.length === files.length
+      const next: Attached[] = []
+      const chip = (p: string | undefined, f?: File) => {
+        if (!p) return
+        const preview = f && isImageName(p) && typeof URL.createObjectURL === 'function'
+        next.push({ path: p, ...(preview ? { url: URL.createObjectURL(f) } : {}) })
+      }
+      let at = 0
+      for (const it of items) {
+        if (typeof it === 'string') { chip(it); continue }
+        if (aligned) chip(saved[at], it)
+        else if (at === 0) saved.forEach((p) => chip(p))
+        at++
+      }
+      if (next.length > 0) {
         setAttached((list) => [...list, ...next])
         field.current?.focus()
       }
@@ -354,6 +379,11 @@ export function TerminalKeys({ send, attach, sendPaths, initial = '', state, isP
       setAttaching(false)
     }
   }
+  useEffect(() => {
+    if (!attachIn) return
+    attachIn.current = addAttachments
+    return () => { if (attachIn.current === addAttachments) attachIn.current = null }
+  })
 
   // The text, then Enter on its own after a pause. A message ending in an
   // @file mention gets a space first: Claude Code's file menu is open after

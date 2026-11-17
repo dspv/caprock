@@ -20,7 +20,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type Event, type QueueView } from '@/lib/api'
 import { downscalePhoto } from '@/lib/downscale'
-import { attachRefusal } from '@/lib/attach'
+import { attachRefusal, droppedItems } from '@/lib/attach'
+import { shell } from '@/lib/shell'
+import { dialogOnScreen, DROP_PATHS_EVENT, DROP_ZONE_ATTR, dropZoneAt, type DroppedPaths } from '@/lib/xtermInput'
 import { compareEvents, isMessageEvent, mergeEvents, toMessages, toolInputText, type ChatMessage } from '@/lib/chat'
 import { BrainDropButton } from './BrainDrop'
 import { live, useLiveConn, useLiveLink } from '@/lib/live'
@@ -33,7 +35,7 @@ import { navigate } from '@/lib/router'
 import { NewPill } from './NewPill'
 import { LinkedText, Prose } from './Prose'
 import { requestOpenPath } from '@/lib/mdreader'
-import { TerminalKeys } from './TerminalKeys'
+import { TerminalKeys, type AttachIn } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
 import { touchScreen } from '@/lib/phone'
 import { QuickReplies } from './QuickReplies'
@@ -484,6 +486,60 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
     return sent
   }, [sessionId])
 
+  // A file dropped anywhere on the chat attaches as Attach does (.ai/04-ui.md
+  // § Chat attachments): the field's own attach (TerminalKeys attachIn), so
+  // the chips, the limits, the refusal line and what the agent gets are the
+  // Attach button's. Only while the session can be typed into (rule 7).
+  const attachIn = useRef<AttachIn | null>(null)
+  const root = useRef<HTMLDivElement | null>(null)
+  const rootRef = useCallback((el: HTMLDivElement | null) => {
+    root.current = el
+    boxRef?.(el)
+  }, [boxRef])
+  const [dragging, setDragging] = useState(false)
+  // The desktop app: its native handler takes every drop and hands the page
+  // the real paths and the point (DROP_PATHS_EVENT). The chat marks itself a
+  // drop zone, so a terminal under it (the Full dashboard lays the chat over
+  // its pane's terminal) leaves the drop alone; a dialog on screen takes it.
+  useEffect(() => {
+    if (!canType) return
+    const on = (e: globalThis.Event) => {
+      const d = (e as CustomEvent<Partial<DroppedPaths> | undefined>).detail
+      const paths = Array.isArray(d?.paths) ? d.paths.filter((p): p is string => typeof p === 'string' && p !== '') : []
+      if (!d || paths.length === 0 || typeof d.x !== 'number' || typeof d.y !== 'number') return
+      if (dialogOnScreen() || dropZoneAt({ x: d.x, y: d.y }) !== root.current) return
+      void (async () => {
+        const { items, refusal } = await droppedItems(paths, (p) => shell.readDroppedImage(p))
+        const done = attachIn.current?.(items)
+        // A file saved now clears the last refusal itself; this drop's own stays.
+        if (refusal || items.every((i) => typeof i === 'string')) setSendError(refusal)
+        await done
+      })()
+    }
+    window.addEventListener(DROP_PATHS_EVENT, on)
+    return () => window.removeEventListener(DROP_PATHS_EVENT, on)
+  }, [canType])
+  // A browser: an HTML5 drop with the files' bytes, attached as picked ones.
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+  const onDragOver = (e: React.DragEvent) => {
+    if (!canType || !hasFiles(e)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setDragging(true)
+  }
+  const onDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false)
+  }
+  const onDrop = (e: React.DragEvent) => {
+    setDragging(false)
+    if (!canType) return
+    const files = Array.from(e.dataTransfer?.files ?? [])
+    if (files.length === 0) return
+    e.preventDefault()
+    void attachIn.current?.(files)
+  }
+  if (!canType && dragging) setDragging(false)
+
   // Dictation on a phone or a tablet, where typing is the slow part (owner's
   // report, 2026-10-11). The desktop chat is unchanged: its keyboard is fast,
   // and the OS has its own dictation key there.
@@ -497,7 +553,20 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   }, [stickRef, scrollRef])
 
   return (
-    <div ref={boxRef} className={`flex min-h-0 flex-col ${className}`} data-chat-view>
+    <div
+      ref={rootRef}
+      className={`flex min-h-0 flex-col ${/\b(absolute|fixed)\b/.test(className) ? '' : 'relative '}${className}`}
+      data-chat-view
+      {...(canType ? { [DROP_ZONE_ATTR]: '' } : {})}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div aria-hidden data-chat-drop className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-[inherit] border-2 border-dashed border-accent bg-accent/10 text-[15px] font-medium text-accent">
+          Drop to attach
+        </div>
+      )}
       <div className="relative min-h-0 flex-1">
         <div
           ref={attach}
@@ -563,7 +632,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
           {/* Not on a phone, where the row crowds a small screen. */}
           {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
+          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
