@@ -488,6 +488,13 @@ class CodexTest(unittest.TestCase):
         self.assertEqual(pw.exit_code(f), 1)
         self.assertIn("Codex offers it", pw.report(f, {"version": "t"}, [], "2026-11-17"))
 
+    def test_the_table_has_every_listed_codex_model(self):
+        # The live table against the fixture: every model Codex lists in its
+        # picker has a row (gpt-6.2-astra and gpt-6.2-sol since 2026-11-17.4).
+        table = json.loads((pw.ROOT / "pricing" / "pricing.json").read_text(encoding="utf-8"))
+        f = run("codex", self.models, table)
+        self.assertEqual(f["missing"], [])
+
     def test_moved_file_is_found_again(self):
         raw = "https://raw.githubusercontent.com/openai/codex/main/codex-rs/new-home/models.json"
 

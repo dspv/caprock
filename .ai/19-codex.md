@@ -86,7 +86,8 @@ table prices. So `pricing/pricing.json` grew OpenAI rows, read from
 `developers.openai.com` on 2026-09-06 and dated there: `gpt-5-codex`,
 `gpt-5.3-codex`, and the `gpt-5.6` family (sol, terra, luna); `gpt-6-sol` and
 `gpt-6-luna` were added from the same source on 2026-09-29, `gpt-6-astra` and
-`gpt-6.1-sol` on 2026-09-30, and the Codex turns
+`gpt-6.1-sol` on 2026-09-30, `gpt-6.2-astra` and `gpt-6.2-sol` (which Codex
+lists first in its picker) on 2026-11-17, and the Codex turns
 stored unpriced before then are priced on start (`Recorder.PriceUnpriced`, see
 [03-contracts.md § Pricing table](03-contracts.md#pricing-table)). OpenAI did
 not bill for cache writes on the gpt-5 models, so those columns are `0` —

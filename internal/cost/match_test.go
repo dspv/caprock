@@ -84,6 +84,8 @@ func TestObservedIDsKeepTheirRows(t *testing.T) {
 		"gpt-6-luna":                "gpt-6-luna",
 		"gpt-6-sol":                 "gpt-6-sol",
 		"gpt-6.1-sol":               "gpt-6.1-sol",
+		"gpt-6.2-astra":             "gpt-6.2-astra",
+		"gpt-6.2-sol":               "gpt-6.2-sol",
 		"deepseek-v4-pro":           "deepseek-v4-pro",
 		"MiniMax-M2.7":              "minimax-m2.7",
 		"MiniMax-M3":                "minimax-m3",
@@ -214,6 +216,10 @@ func TestTiersInTheTable(t *testing.T) {
 		{"gpt-6.1-sol", event.TokenDelta{In: 10_000, CacheRead: 300_000, Out: 2_000}, (10_000*4 + 300_000*0.20 + 2_000*15) / mtok},
 		// ... and at 272,000 exactly, the short-context rate.
 		{"gpt-6.1-sol", event.TokenDelta{In: 2_000, CacheRead: 270_000, Out: 2_000}, (2_000*2 + 270_000*0.10 + 2_000*10) / mtok},
+		// gpt-6.2-astra over 272K: $16 input, $0.80 cached, $60 output (2026-11-17.4).
+		{"gpt-6.2-astra", event.TokenDelta{In: 10_000, CacheRead: 300_000, Out: 2_000}, (10_000*16 + 300_000*0.80 + 2_000*60) / mtok},
+		// gpt-6.2-sol under it: $2 input, $0.10 cached, $10 output.
+		{"gpt-6.2-sol", event.TokenDelta{In: 2_000, CacheRead: 100_000, Out: 2_000}, (2_000*2 + 100_000*0.10 + 2_000*10) / mtok},
 		{"gemini-3.1-pro-preview", event.TokenDelta{In: 250_000, Out: 1_000}, (250_000*4 + 1_000*18) / mtok},
 		{"minimax-m3", event.TokenDelta{In: 600_000, Out: 1_000}, (600_000*0.6 + 1_000*2.4) / mtok},
 		// Fable 5.2 at its own price, not Fable 5's: the turn the audit found.
