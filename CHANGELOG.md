@@ -12,6 +12,27 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.182.3] - 2026-11-17
+
+### Fixed
+
+- **ui:** a file dropped on an open chat now attaches, as the Attach button
+  does: the same Image N or file-name chip over the field, the same line for
+  a file that can't be attached, and the same input to the agent on Send. On
+  the Chat screen, a session's Chat tab and the Full dashboard's Chat view.
+  In a browser a *Drop to attach* outline shows while a file is over the
+  chat. In the desktop app an image is read and saved as a picked one is,
+  and any other kept file goes by its real path, as a drop on the terminal
+  does; a terminal under the chat no longer also types it.
+- **pricing:** Codex sessions on GPT-6.2 Astra and GPT-6.2 Sol now show a cost.
+  OpenAI released both on 2026-11-17 and Codex lists them first in its
+  picker, but the table had no row for them, so their turns were unpriced.
+  Prices are OpenAI's list prices, read 2026-11-17: Astra $8 input, $0.40
+  cached, $40 output per 1M; Sol $2, $0.10 and $10; both doubled on input
+  and 1.5x on output over 272K input tokens, with a 1.05M context window.
+  Turns already recorded are priced on the next start. Pricing table
+  `2026-11-17.4`.
+
 ## [0.182.2] - 2026-11-17
 
 ### Fixed
