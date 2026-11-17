@@ -11,6 +11,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Event } from '@/lib/api'
 import { live } from '@/lib/live'
+import { shell } from '@/lib/shell'
+import { DROP_PATHS_EVENT, DROP_ZONE_ATTR } from '@/lib/xtermInput'
 import type { LinkPhase } from '@/lib/reconnect'
 import { ChatView, CHAT_GAP_PAGES, CHAT_HELD_MAX, CHAT_PAGE_EVENTS, CHAT_WINDOW, CLEARED_DIVIDER } from './ChatView'
 import { resetPickerCache } from './ChatPicker'
@@ -795,5 +797,75 @@ describe('ChatView: messages the session never got', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Copy the message: keep this' }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('keep this'))
     expect(await screen.findByText('Copied')).toBeInTheDocument()
+  })
+})
+
+// Owner, 2026-11-17: a file dropped on an open chat did nothing. It attaches
+// as the Attach button does: the same chips, the same refusal line, the same
+// bytes into the session.
+describe('ChatView: a file dropped on the chat', () => {
+  const chatRoot = () => document.querySelector('[data-chat-view]') as HTMLElement
+  const EXE = "setup.exe can't be attached: .exe isn't a supported type. Photos, PDFs, text, Markdown, office, data and source files can."
+  const dropPaths = (paths: string[], x: number, y: number) => act(() => {
+    window.dispatchEvent(new CustomEvent(DROP_PATHS_EVENT, { detail: { paths, x, y } }))
+  })
+
+  it('in a browser, a drop shows where it goes and attaches the files as Attach does', async () => {
+    render(<ChatView sessionId="s" canType />)
+    const files = [new File(['# plan'], 'plan.md'), new File(['x'], 'IMG_0001.png', { type: 'image/png' })]
+    fireEvent.dragOver(chatRoot(), { dataTransfer: { types: ['Files'], files: [], dropEffect: 'none' } })
+    expect(screen.getByText('Drop to attach')).toBeInTheDocument()
+    fireEvent.drop(chatRoot(), { dataTransfer: { types: ['Files'], files } })
+    expect(screen.queryByText('Drop to attach')).toBeNull()
+    expect(await screen.findByRole('button', { name: 'Remove plan.md' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Remove Image 1' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Type to the session'), { target: { value: 'look' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', '\x1b[200~"/data/paste/IMG_0001.png"\x1b[201~', 'look', '\r']), { timeout: 1000 })
+  })
+
+  it('in a browser, a refused file gets the line Attach gives it', async () => {
+    render(<ChatView sessionId="s" canType />)
+    fireEvent.drop(chatRoot(), { dataTransfer: { types: ['Files'], files: [new File(['x'], 'setup.exe')] } })
+    expect((await screen.findByRole('alert')).textContent).toBe(EXE)
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
+  })
+
+  it('in the app, the drop under the point attaches: an image read by the shell, a document by its path', async () => {
+    const read = vi.spyOn(shell, 'readDroppedImage').mockResolvedValue(new Uint8Array([1, 2, 3]).buffer)
+    render(<ChatView sessionId="s" canType />)
+    expect(chatRoot().hasAttribute(DROP_ZONE_ATTR)).toBe(true)
+    dropPaths(['/Users/u/plan.md', '/Users/u/shot.png', '/Users/u/setup.exe'], 50, 10)
+    expect(await screen.findByRole('button', { name: 'Remove plan.md' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Remove Image 1' })).toBeInTheDocument()
+    expect(read).toHaveBeenCalledWith('/Users/u/shot.png')
+    expect((await screen.findByRole('alert')).textContent).toBe(EXE)
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    // The document as the app's terminal types it; the image as Attach saves it.
+    await waitFor(() => expect(store.inputs).toEqual(['"/Users/u/plan.md" ', '\x1b[200~"/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
+    read.mockRestore()
+  })
+
+  it("in the app, a drop off the chat or under a dialog is not the chat's", async () => {
+    render(<ChatView sessionId="s" canType />)
+    dropPaths(['/Users/u/plan.md'], 500, 10)
+    const backdrop = document.createElement('div')
+    backdrop.setAttribute('data-dialog-backdrop', '')
+    document.body.appendChild(backdrop)
+    dropPaths(['/Users/u/plan.md'], 50, 10)
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)) })
+    backdrop.remove()
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
+  })
+
+  it('takes no drop when it cannot be typed into', async () => {
+    render(<ChatView sessionId="s" canType={false} ended />)
+    expect(chatRoot().hasAttribute(DROP_ZONE_ATTR)).toBe(false)
+    fireEvent.dragOver(chatRoot(), { dataTransfer: { types: ['Files'], files: [] } })
+    expect(screen.queryByText('Drop to attach')).toBeNull()
+    dropPaths(['/Users/u/plan.md'], 50, 10)
+    await act(async () => { await new Promise((r) => setTimeout(r, 30)) })
+    expect(store.inputs).toEqual([])
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
   })
 })

@@ -7,7 +7,7 @@ vi.mock('@/lib/api', () => ({
   errText: (e: Error) => e.message,
 }))
 
-import { DROP_PATHS_EVENT, routeDrop, attachTerminalInput, isImagePath, pathInput } from './xtermInput'
+import { DROP_PATHS_EVENT, DROP_ZONE_ATTR, dropZoneAt, routeDrop, attachTerminalInput, isImagePath, pathInput } from './xtermInput'
 
 const SPACED = '/Users/u/Library/Application Support/caprock/paste/20261011-ab/image.png'
 
@@ -159,5 +159,17 @@ describe('routeDrop', () => {
     d.setAttribute('data-dialog-backdrop', '')
     document.body.appendChild(d)
     expect(routeDrop({ paths: ['/x'], x: 10, y: 10 }, [t(box(0, 0, 100, 100))])).toBe('dialog')
+  })
+  it('leaves a drop on an open chat to the chat, even over a terminal, and only under the point', () => {
+    for (const el of document.querySelectorAll('[data-dialog-backdrop]')) el.remove()
+    const term = t(box(0, 0, 200, 200))
+    const chat = box(0, 0, 200, 100)
+    chat.setAttribute(DROP_ZONE_ATTR, '')
+    expect(dropZoneAt({ x: 50, y: 50 })).toBe(chat)
+    expect(routeDrop({ paths: ['/x'], x: 50, y: 50 }, [term])).toBe('zone')
+    // Below the chat, the terminal's again.
+    expect(dropZoneAt({ x: 50, y: 150 })).toBeNull()
+    expect(routeDrop({ paths: ['/x'], x: 50, y: 150 }, [term])).toBe(term)
+    chat.remove()
   })
 })

@@ -1,10 +1,11 @@
 {
-  "version": "2026-11-17.3",
+  "version": "2026-11-17.4",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-11-17",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
+    "2026-11-17.4 adds gpt-6.2-astra and gpt-6.2-sol, read from https://developers.openai.com/api/docs/pricing (and its .md form) and the model pages https://developers.openai.com/api/docs/models/gpt-6.2-astra and https://developers.openai.com/api/docs/models/gpt-6.2-sol on 2026-11-17, standard tier, input / cached input / 30-minute cache write / output per 1M: gpt-6.2-astra $8.00/$0.40/$10.00/$40.00, over 272K input tokens $16.00/$0.80/$20.00/$60.00; gpt-6.2-sol $2.00/$0.10/$2.50/$10.00, over 272K $4.00/$0.20/$5.00/$15.00. The 12-hour write ($20.00 and $5.00 short context) is not a column, so cache_write_1h carries the 30-minute rate as on the other gpt-6 rows. Both model pages state a 1,050,000-token context window (922,000 max input, 128,000 max output). The only dated price is Ultrafast (3x Standard through 2027-02-28, 6x from 2027-03-01, Pacific time), which is not modelled, like fast mode: the transcript does not say a turn used it. Codex offers both (its catalog, https://raw.githubusercontent.com/openai/codex/main/codex-rs/models-manager/models.json, and https://learn.chatgpt.com/docs/models, read 2026-11-17; the Codex changelog of 2026-11-17 announces them), and OpenCode Zen lists both at the same figures (https://opencode.ai/docs/zen/, same date). gpt-6.2-astra-law is a legal configuration Codex does not run, so it has no row. No correction: the exact-id matcher never priced either id as another model, so their turns were unpriced, not mispriced, and are priced on the next start.",
     "2026-11-17.3 adds Cursor-sold models read from https://cursor.com/docs/models on 2026-11-17, input / cache read / output per 1M (the page lists no cache write for any of them, so both write columns are 0): Grok 4.7 $2/$0.50/$6, Grok 4.7 (Fast) $4/$1/$12, Grok 4.7 500k $4/$1/$12, Grok 4.7 500k (Fast) $6/$1.50/$18, Grok 4.6 $2/$0.50/$6, Grok 4.6 (Fast) $4/$1/$12, Grok 4.5 $2/$0.50/$6, Grok 4.5 (Fast) $4/$1/$18; and Muse Wonder (Meta, Cursor's model id muse-wonder-1.0) $4/$0.20/$20, which Cursor lists among third-party models billed at \"the model's API list price\" — Cursor's figure, named as such, not read from Meta. The Grok models are Cursor's own (\"Provider: Cursor\" on their model pages, https://cursor.com/docs/models/grok-4-7 and siblings, same date), so they sit under cursor- with the Composer rows; Muse Wonder does too, because its figure is Cursor's. Context windows are 0: the model pages say \"256k\" for the Grok models (Grok 4.7 500k is the 500k variant) and \"300k\", max \"1M\", for Muse Wonder, without saying whether k is 1,000 or 1,024 (as OQ-27), and Cursor's single price for Muse Wonder gives no tier above 300k. These rows only value Cursor's per-request overhead at list price; a Cursor chat is never priced from the table (ADR-095), so no turn was priced by them before and there is no correction. The same version maps Cursor's gemini-3.1-pro to the gemini-3.1-pro-preview row (the page's $2/$0.20/$12 matches it) and Caprock's Cursor picker ids sonnet-4 and sonnet-4-thinking to claude-sonnet-4 (internal/api cursorFamilyID). deepseek-chat gets no row: DeepSeek's change log (https://api-docs.deepseek.com/updates/, read 2026-11-17) says the name was to be discontinued on 2026-07-24, and the pricing page (https://api-docs.deepseek.com/quick_start/pricing, same date) no longer lists it (OQ-29 in .ai/12-risks.md).",
     "2026-11-17.2 changes context windows only, no price: six Gemini rows from 1,000,000 to 1,048,576 as each model page states, and the OpenAI rows added in 2026-11-17.1 with 0 now carry the windows on their model pages (gpt-5.5 and gpt-5.4 1,050,000; gpt-5.4-mini, -nano, gpt-5.2, gpt-5.1, gpt-5, -mini, -nano 400,000; o3 200,000; gpt-4.1 and -mini 1,047,576), all read 2026-11-17 and reported by scripts/pricing-watch.py. The window only drives the context fill %.",
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
@@ -919,6 +920,46 @@
           "cache_write_1h": 2.5,
           "cache_read": 0.1,
           "output": 7.5
+        }
+      ]
+    },
+    {
+      "id": "gpt-6.2-astra",
+      "display": "GPT-6.2 Astra",
+      "input": 8.0,
+      "cache_write_5m": 10.0,
+      "cache_write_1h": 10.0,
+      "cache_read": 0.4,
+      "output": 40.0,
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 16.0,
+          "cache_write_5m": 20.0,
+          "cache_write_1h": 20.0,
+          "cache_read": 0.8,
+          "output": 60.0
+        }
+      ]
+    },
+    {
+      "id": "gpt-6.2-sol",
+      "display": "GPT-6.2 Sol",
+      "input": 2.0,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 2.5,
+      "cache_read": 0.1,
+      "output": 10.0,
+      "context_window": 1050000,
+      "tiers": [
+        {
+          "above_prompt_tokens": 272000,
+          "input": 4.0,
+          "cache_write_5m": 5.0,
+          "cache_write_1h": 5.0,
+          "cache_read": 0.2,
+          "output": 15.0
         }
       ]
     },
