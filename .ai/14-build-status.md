@@ -422,6 +422,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.179.1: the CI cell finds a PR by the branch the session pushed
+
+A patch release, one PR (#924). The deck's PRs and CI cells knew a session's
+pull requests only from its `gh pr` commands, so a PR opened by a script left
+the CI cell on an older one (the owner saw #915 while his PR was #917). The
+session's pushes (Claude Code's `gitOperation.push.branch`) are now kept in
+`session_branches` (migration 0084, backfilled once), and the cells add the
+pull request of each of the latest pushed branches from the repository's one
+kept pull list, so no request per branch.
+
 ### 2026-11-17 — 0.179.0: New Year and Doberman faces; subagents wear every set
 
 A minor release, one PR (#922), from the owner's approved mockup. Two new

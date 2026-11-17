@@ -12,6 +12,15 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.179.1] - 2026-11-17
+
+### Fixed
+
+- **deck:** the right panel's CI and PRs now also find a pull request by the
+  branch the session pushed, so CI no longer sticks on an older pull request
+  when the new one was opened by a script or without the agent running
+  `gh pr` itself.
+
 ## [0.179.0] - 2026-11-17
 
 ### Added
