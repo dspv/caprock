@@ -9040,23 +9040,63 @@ button: neither the daemon nor `caprock hooks install` writes it.
 - **A daily watch reports drift; it never edits the table.** The
   `pricing-watch` workflow (`.github/workflows/pricing-watch.yml`, 06:17 UTC
   and on demand) runs `scripts/pricing-watch.py`, which reads the Anthropic,
-  OpenAI and Gemini pricing pages and compares each listed model with the
-  row in force today (a row whose `until` is today or later, as
-  `cost.Lookup` reads it). It reports a model with no row, a model the
-  matching rule prices as a different row (Fable 5.2 as `claude-fable-5`
-  was the case that prompted it), a price that differs — the row's highest
-  `tiers` entry included, against the page's highest prompt-size tier — and
-  a page it could not read; rows gone from a page, a tier or audio price the
-  row does not model, and announced price changes (marked when already
-  entered as a dated row) are listed for information. Drift opens or updates one issue
-  titled "Pricing drift" (label `pricing`); the first clean run closes it.
-  Models a source lists that no observed agent can bill are skipped by the
-  per-source `ignore` lists in the script. The report is a prompt, not a
-  source: a number reaches `pricing.json` by hand, read from the page, with
-  the page and date in a note and a `version` bump (rule 6). Exit status 0
-  clean, 1 drift, 2 a page unreadable, 3 the script failed (the run goes red,
-  no issue). Tests: `scripts/test_pricing_watch.py` against saved excerpts in
-  `testdata/pricing-watch/`, in `make test-scripts`.
+  OpenAI, Gemini, DeepSeek, MiniMax and Kimi pricing pages (Kimi's table is
+  rendered in the browser, so its figures are read from the page's JS
+  payload) and compares each listed model with the row in force today (a row
+  whose `until` is today or later, as `cost.Lookup` reads it, matched by the
+  same exact-id rule). It reports a model with no row, a model the matching
+  rule prices as a different row (Fable 5.2 as `claude-fable-5` was the case
+  that prompted it), a price that differs — the row's highest `tiers` entry
+  included, against the page's highest prompt-size tier — and a page it could
+  not read. It reads more than prices:
+  - **OpenCode Zen** (`opencode.ai/docs/zen`) is a gateway, so it is compared
+    only on the rows whose figure is Zen's (`ZEN_PRICED`: `minimax-m2.7`,
+    `gemini-3.7-flash`; a test holds each to a `pricing.json` note citing
+    Zen); a Zen model with no row is listed, and its `-free` variants are
+    skipped (`isFreeModel`).
+  - **Cursor** (`cursor.com/docs/models`): the `cursor-composer-*` rows are
+    compared; every other model name, and the ids Caprock's Cursor picker
+    offers (`internal/agentcat` `cursorHelpModels`), is reduced by the
+    script's copy of `modelclass.Family` and `cursorFamilyID` and listed when
+    no row matches, because the Cursor page's model mix and "at list price"
+    column have no figure for it. A Cursor chat is never priced from the
+    table (ADR-095).
+  - **Codex's catalog** (`codex-rs/models-manager/models.json` in
+    `openai/codex`, found again through the repository tree if it moves):
+    a model the Codex picker lists (`visibility: "list"`) with no row is
+    drift; a hidden one is listed.
+  - **Model lists and deprecations** (Anthropic's models overview and
+    deprecations page, OpenAI's all-models list, model pages and
+    deprecations, Gemini's models page and model pages): a context window
+    that differs from `context_window` is drift, because the context fill %
+    uses it (a rounded "1M" matches a row within 5%); a page figure for a row
+    whose `context_window` is 0, a new model id, and a deprecation or
+    retirement date of a priced model are listed.
+  - **OpenRouter** (`openrouter.ai/api/v1/models`): an id from a vendor the
+    table prices with no row is listed as "new model seen on OpenRouter;
+    check the vendor page". No price is ever taken from it.
+
+  Drift is a missing or mispriced model, a changed price, a differing
+  context window, or an unreadable source; it opens or updates one issue
+  titled "Pricing drift" (label `pricing`), and the first clean run closes
+  it. Everything else — rows gone from a page, tiers or audio prices the row
+  does not model, announced changes (marked when already entered as a dated
+  row), and the listed items above — is reported under "For information"
+  and never opens the issue. Models a source lists that no observed agent can
+  bill are skipped by the per-source `ignore` lists in the script. The report
+  is a prompt, not a source: a number reaches `pricing.json` by hand, read
+  from the page, with the page and date in a note and a `version` bump (rule
+  6). Exit status 0 clean, 1 drift, 2 a page unreadable, 3 the script failed
+  (the run goes red, no issue). Tests: `scripts/test_pricing_watch.py`
+  against saved excerpts in `testdata/pricing-watch/`, in `make test-scripts`.
+- **Every model Caprock offers is priced.** `internal/cost`
+  `TestEveryOfferedModelIsPriced` fails CI on every PR when a model id a
+  launch menu offers has no row by the matching rule: the Claude and Gemini
+  lists in `ui/src/components/SpawnDialog.tsx` (`MODELS`, `GEMINI_MODELS`,
+  also used by the phone sheet and Quick chat), Claude Code on DeepSeek and
+  on Kimi (`internal/agents`), and the Gemini CLI default. Cursor is exempt
+  (its own cost); Codex's and OpenCode's lists come from their caches at run
+  time and are covered by the watch above.
 
 ### Runner rate table (`pricing/actions.json`)
 

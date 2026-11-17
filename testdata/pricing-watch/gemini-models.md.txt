@@ -1,0 +1,83 @@
+> ## AI Agent Context
+> - Full documentation index: https://aistudio.google.com/llms.txt
+> - Gemini Docs MCP server (consistent live info): https://gemini-api-docs-mcp.dev
+> - Coding agent skills & setup guide: https://aistudio.google.com/docs/coding-agents.md
+
+# Models
+
+## Gemini 4  {% id="gemini-4" %}
+
+{% card-grid columns="3" %}
+  {% card description="Our strongest reasoning model, built for complex software engineering, multimodal knowledge work, scientific reasoning, and cybersecurity defense." title="Gemini 4 Carbon" variant="model-card" %}
+  {% section class="model-specs" %}
+  *   *Model code* **gemini-4-carbon**
+  *   *Context* **1M tokens**
+  *   *Max output* **64K / 1M tokens**
+  *   *Modalities* **Text, Image, Audio, Video, PDF**
+
+  {% /section %}
+
+  {% section class="card-actions" %}
+  {% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-4-carbon" variant="primary" %}Try in AI Studio{% /button %} {% button href="/docs/models/gemini-4-carbon" icon="arrow_forward" tooltip="View models" variant="icon-primary" /%}
+
+  {% /section %}
+
+  {% /card %}
+
+  {% card description="Our efficient Gemini 4 frontier reasoning model, delivering faster responses and lower token spend per turn compared to Gemini 4 Carbon across complex coding, agentic, math, and science tasks." title="Gemini 4 Argon" variant="model-card" %}
+  {% section class="model-specs" %}
+  *   *Model code* **gemini-4-argon**
+  *   *Context* **1M tokens**
+  *   *Max output* **64K / 1M tokens**
+  *   *Modalities* **Text, Image, Audio, Video, PDF**
+
+  {% /section %}
+
+  {% section class="card-actions" %}
+  {% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-4-argon" variant="primary" %}Try in AI Studio{% /button %} {% button href="/docs/models/gemini-4-argon" icon="arrow_forward" tooltip="View models" variant="icon-primary" /%}
+
+  {% /section %}
+
+  {% /card %}
+
+  {% card description="Brings cutting-edge intelligence to everyone, with speed and efficiency for everyday coding and agentic workflows, featuring a shared 1M context window and long decodes up to 1M tokens." title="Gemini 4 Hydrogen" variant="model-card" %}
+  {% section class="model-specs" %}
+  *   *Model code* **gemini-4-hydrogen**
+  *   *Context* **1M tokens**
+  *   *Max output* **64K / 1M tokens**
+  *   *Modalities* **Text, Image, Audio, Video, PDF**
+
+  {% /section %}
+
+  {% section class="card-actions" %}
+  {% button href="https://aistudio.google.com/prompts/new_chat?model=gemini-4-hydrogen" variant="primary" %}Try in AI Studio{% /button %} {% button href="/docs/models/gemini-4-hydrogen" icon="arrow_forward" tooltip="View models" variant="icon-primary" /%}
+
+  {% /section %}
+
+  {% /card %}
+
+{% /card-grid %}
+
+
+## Gemini 2.5 Flash  {% id="gemini-25-flash" %}
+
+{% callout type="caution" %}
+  `gemini-2.5-flash` is [deprecated](/docs/deprecations#gemini-2.5-flash-models)
+  and is no longer available to select in Google AI Studio (API access to the 2.5
+  models is limited to existing users). Effective December 1, 2026, all API
+  requests to `gemini-2.5-flash` will automatically route to
+  [`gemini-3.5-flash-lite`](/docs/models/gemini-3.5-flash-lite). Update your model
+  string to `gemini-3.5-flash-lite` and review the
+  [Gemini 3.5 Flash-Lite migration guide](/docs/whats-new-gemini-3.6#migrate-to-gemini-3-5-flash-lite)
+  before December 1, 2026.
+
+{% /callout %}
+
+{% table variant="model" %}
+  * Model
+  * Description
+  * Endpoint
+
+  ---
+
+  * [Gemini 2.5 Flash](/docs/models/gemini-2.5-flash)

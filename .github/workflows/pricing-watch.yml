@@ -1,11 +1,12 @@
 name: pricing-watch
 
-# Once a day, compare the providers' published model prices with
-# pricing/pricing.json (scripts/pricing-watch.py). Drift, or a page that could
-# not be read, opens or updates ONE issue titled "Pricing drift" (label
-# `pricing`); a clean run closes it. Nothing here edits the table or opens a
-# pull request: a price reaches pricing.json by hand, with its source and date
-# (CLAUDE.md rule 6). No pull_request trigger, so it never gates CI.
+# Once a day, compare the providers' published model prices, model lists and
+# Codex's model catalog with pricing/pricing.json (scripts/pricing-watch.py).
+# Drift, or a page that could not be read, opens or updates ONE issue titled
+# "Pricing drift" (label `pricing`); a clean run closes it. Findings reported
+# "for information" (new ids, Cursor names, retirements) never open it. Nothing
+# here edits the table or opens a pull request: a price reaches pricing.json by
+# hand, with its source and date (CLAUDE.md rule 6). No pull_request trigger, so it never gates CI.
 on:
   schedule:
     - cron: "17 6 * * *"
@@ -23,7 +24,7 @@ jobs:
   watch:
     name: published prices vs pricing.json
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -32,6 +33,10 @@ jobs:
 
       - name: Compare
         id: watch
+        env:
+          # Read-only use: finding Codex's catalog in the openai/codex tree if
+          # the file moves, at the authenticated rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set +e
           python3 scripts/pricing-watch.py > report.md

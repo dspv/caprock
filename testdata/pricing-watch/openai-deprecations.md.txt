@@ -1,0 +1,22 @@
+
+
+
+
+| Shutdown date    | Affected model                                                                                                        | Status                                                       | Recommended replacement                                    | Notice date  |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------- | ------------ |
+| **Dec 1, 2026**  | `gpt-image-1-mini`                                          | Deprecated | `gpt-image-2.6-sunburst` or `gpt-image-2.6-flare`          | Jun 2, 2026  |
+| **Dec 1, 2026**  | `gpt-image-1.5`, `gpt-image-1.5-2025-12-16`                                                                           | Deprecated | `gpt-image-2.6-sunburst` or `gpt-image-2.6-flare`          | Jun 2, 2026  |
+| **Dec 1, 2026**  | `chatgpt-image-latest`                                                                                                | Deprecated | `gpt-image-2.6-sunburst` or `gpt-image-2.6-flare`          | Jun 2, 2026  |
+| **Dec 11, 2026** | `gpt-5`, `gpt-5-2025-08-07`                              | Deprecated | `gpt-6.1-sol`                                              | Jun 11, 2026 |
+| **Dec 11, 2026** | `gpt-5-mini`, `gpt-5-mini-2025-08-07`                                                                                 | Deprecated | `gpt-6.1-terra`                                            | Jun 11, 2026 |
+| **Dec 11, 2026** | `gpt-5-nano`, `gpt-5-nano-2025-08-07`                                                                                 | Deprecated | `gpt-6-luna`                                               | Jun 11, 2026 |
+| **Dec 11, 2026** | `gpt-5-pro`, `gpt-5-pro-2025-10-06`                                                                                   | Deprecated | `gpt-6.1-sol` (`reasoning.mode: pro`) in the Responses API | Jun 11, 2026 |
+| **Dec 11, 2026** | `o3`, `o3-2025-04-16`                                                                                                 | Deprecated | `gpt-6.1-sol`                                              | Jun 11, 2026 |
+| **Dec 11, 2026** | `o3-pro`, `o3-pro-2025-06-10`                                                                                         | Deprecated | `gpt-6.1-sol` (`reasoning.mode: pro`) in the Responses API | Jun 11, 2026 |
+| **Jan 6, 2027**  | `tts-1`                                                            | Deprecated | `gpt-realtime-2.1-mini`                                    | Oct 1, 2026  |
+| **Jan 6, 2027**  | `tts-1-hd`                                                                                                            | Deprecated | `gpt-realtime-2.1-mini`                                    | Oct 1, 2026  |
+| **Jan 6, 2027**  | `gpt-4o-mini-tts`, `gpt-4o-mini-tts-2025-03-20`, `gpt-4o-mini-tts-2025-12-15`                                         | Deprecated | `gpt-realtime-2.1-mini`                                    | Oct 1, 2026  |
+| **Jan 14, 2027** | GPT-4o (`gpt-4o-2024-08-06`, `gpt-4o-2024-11-20`)        | Deprecated | `gpt-6-luna`                                               | Oct 14, 2026 |
+| **Jan 14, 2027** | GPT-4o mini (`gpt-4o-mini-2024-07-18`)                                                                                | Deprecated | `gpt-6-luna`                                               | Oct 14, 2026 |
+| **Jan 14, 2027** | GPT-4.1 (`gpt-4.1-2025-04-14`)                                                                                        | Deprecated | `gpt-6-luna`                                               | Oct 14, 2026 |
+| **Jan 14, 2027** | GPT-4.1 mini (`gpt-4.1-mini-2025-04-14`)                                                                              | Deprecated | `gpt-6-luna`                                               | Oct 14, 2026 |
