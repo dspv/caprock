@@ -1,0 +1,54 @@
+# Pricing
+
+> Excerpt of https://developers.openai.com/api/docs/pricing.md, read 2026-11-17, trimmed for scripts/test_pricing_watch.py.
+
+Flagship models
+
+Standard
+
+### Standard pricing data
+
+| Model | Short context input | Short context output | Short context cached input | Short context 30m write | Short context 12h write | Long context input | Long context output | Long context cached input | Long context 30m write | Long context 12h write |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gpt-6-astra | $10.00 | $50.00 | $1.00 | $12.50 | $25.00 | $20.00 | $75.00 | $2.00 | $25.00 | $50.00 |
+| gpt-6.1-sol | $2.00 | $10.00 | $0.10 | $2.50 | $5.00 | $4.00 | $15.00 | $0.20 | $5.00 | $10.00 |
+| gpt-5.6-terra | $2.00 | $12.00 | $0.20 | $2.50 | $5.00 | $4.00 | $18.00 | $0.40 | $5.00 | $10.00 |
+| gpt-5.4 (<272K context length) | $2.50 | $15.00 | $0.25 | - | - | $5.00 | $22.50 | $0.50 | - | - |
+| gpt-5.4-pro (<272K context length) | $30.00 | $180.00 | - | - | - | $60.00 | $270.00 | - | - | - |
+
+| Model | Input | Output | Cached input |
+| --- | --- | --- | --- |
+| gpt-5.4-mini | $0.75 | $4.50 | $0.075 |
+| gpt-4o | $2.50 | $10.00 | $1.25 |
+
+Batch
+
+### Batch pricing data
+
+#### Batch
+
+| Model | Short context input | Short context output | Short context cached input | Short context 30m write | Short context 12h write | Long context input | Long context output | Long context cached input | Long context 30m write | Long context 12h write |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| gpt-6-astra | $5.00 | $25.00 | $0.50 | $6.25 | $12.50 | $10.00 | $37.50 | $1.00 | $12.50 | $25.00 |
+| gpt-6-luna | $0.05 | $0.25 | $0.005 | $0.0625 | $0.125 | $0.10 | $0.375 | $0.01 | $0.125 | $0.25 |
+
+Specialized models
+
+Standard
+
+### Grouped Pricing Table data
+
+| Category | Model | Input | Output | Cached input | 30m write | 12h write |
+| --- | --- | --- | --- | --- | --- | --- |
+| <a id="cyber-models"></a>Cyber — Trusted Access: [Daybreak](https://openai.com/daybreak/) | gpt-6-cyber (short context) | $20.00 | $100.00 | $2.00 | $25.00 | $50.00 |
+| Cyber — Trusted Access: [Daybreak](https://openai.com/daybreak/) | gpt-6-cyber (long context) | $40.00 | $150.00 | $4.00 | - | - |
+| <a id="legal-model-configurations"></a>Legal | gpt-6-astra-law | $10.00 | $50.00 | $1.00 | - | - |
+| Codex | gpt-5.3-codex | $1.75 | $14.00 | $0.175 | - | - |
+
+Fast
+
+### Grouped Pricing Table data
+
+| Category | Model | Input | Output | Cached input |
+| --- | --- | --- | --- | --- |
+| Codex | gpt-5.3-codex | $3.50 | $28.00 | $0.35 |

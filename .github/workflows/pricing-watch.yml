@@ -1,0 +1,71 @@
+name: pricing-watch
+
+# Once a day, compare the providers' published model prices with
+# pricing/pricing.json (scripts/pricing-watch.py). Drift, or a page that could
+# not be read, opens or updates ONE issue titled "Pricing drift" (label
+# `pricing`); a clean run closes it. Nothing here edits the table or opens a
+# pull request: a price reaches pricing.json by hand, with its source and date
+# (CLAUDE.md rule 6). No pull_request trigger, so it never gates CI.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: pricing-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: published prices vs pricing.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Compare
+        id: watch
+        run: |
+          set +e
+          python3 scripts/pricing-watch.py > report.md
+          code=$?
+          set -e
+          cat report.md
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # 0 clean, 1 drift, 2 a page could not be read; anything else is the
+          # script failing, which must turn the run red, not file an issue.
+          if [ "$code" -gt 2 ] || [ ! -s report.md ]; then
+            echo "::error::pricing-watch exited $code"
+            exit 1
+          fi
+
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ steps.watch.outputs.code }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Pricing drift"
+          number=$(gh issue list --state open --label pricing --search "\"$title\" in:title" \
+            --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ "$CODE" = "0" ]; then
+            if [ -n "$number" ]; then
+              gh issue close "$number" --comment "No drift on $(date -u +%F): every watched model matches its row. ($RUN_URL)"
+            fi
+            exit 0
+          fi
+          printf '\n---\nFiled by the daily [pricing-watch](%s) run. It closes itself on the first clean run.\n' "$RUN_URL" >> report.md
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body-file report.md
+          else
+            gh label create pricing --color FBCA04 \
+              --description "Published model prices differ from pricing/pricing.json" 2>/dev/null || true
+            gh issue create --title "$title" --label pricing --body-file report.md
+          fi

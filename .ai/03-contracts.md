@@ -9031,6 +9031,23 @@ button: neither the daemon nor `caprock hooks install` writes it.
 - Cache-savings math (ported from Caprock-python `_savings.py`): `billed_with = in + 1.25·cache_write + 0.10·cache_read` in input-token equivalents; `billed_without = in + cache_write + cache_read`; `saved = billed_without − billed_with`; hit-rate reported as `cache_read / (in + cache_read + cache_write)`. Where the transcript reports the 1h-TTL split (`cache_creation.ephemeral_1h_input_tokens`), those tokens are priced at the 1h write price (2×), not 1.25×.
 - **Source of the numbers:** Anthropic first-party pricing page (`platform.claude.com/docs/en/about-claude/pricing`), fetched 2026-08-18. Bedrock/Vertex have separate partner pricing — first-party only across v0.1–v0.3; recorded as [OQ-02](12-risks.md#open-questions).
 - The parity target and its fixture story: [OQ-01](12-risks.md#open-questions).
+- **A daily watch reports drift; it never edits the table.** The
+  `pricing-watch` workflow (`.github/workflows/pricing-watch.yml`, 06:17 UTC
+  and on demand) runs `scripts/pricing-watch.py`, which reads the Anthropic,
+  OpenAI and Gemini pricing pages and compares each listed model with the
+  current rows (no `until`). It reports a model with no row, a model the
+  longest-prefix rule prices as a different row (Fable 5.2 as `claude-fable-5`
+  was the case that prompted it), a price that differs, and a page it could
+  not read; rows gone from a page, higher prompt-size tiers and announced
+  price changes are listed for information. Drift opens or updates one issue
+  titled "Pricing drift" (label `pricing`); the first clean run closes it.
+  Models a source lists that no observed agent can bill are skipped by the
+  per-source `ignore` lists in the script. The report is a prompt, not a
+  source: a number reaches `pricing.json` by hand, read from the page, with
+  the page and date in a note and a `version` bump (rule 6). Exit status 0
+  clean, 1 drift, 2 a page unreadable, 3 the script failed (the run goes red,
+  no issue). Tests: `scripts/test_pricing_watch.py` against saved excerpts in
+  `testdata/pricing-watch/`, in `make test-scripts`.
 
 ### Runner rate table (`pricing/actions.json`)
 
