@@ -7,7 +7,9 @@ import importlib.util
 import io
 import json
 import pathlib
+import re
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 
@@ -24,12 +26,19 @@ def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
 
 
-def row(mid, inp, cw5, cw1, cr, out, until=None):
+def row(mid, inp, cw5, cw1, cr, out, until=None, tiers=None):
     r = {"id": mid, "display": mid, "input": inp, "cache_write_5m": cw5,
          "cache_write_1h": cw1, "cache_read": cr, "output": out}
     if until:
         r["until"] = until
+    if tiers:
+        r["tiers"] = tiers
     return r
+
+
+def tier(above, inp, cw5, cw1, cr, out):
+    return {"above_prompt_tokens": above, "input": inp, "cache_write_5m": cw5,
+            "cache_write_1h": cw1, "cache_read": cr, "output": out}
 
 
 def by_id(models):
@@ -90,6 +99,23 @@ class OpenAITest(unittest.TestCase):
         self.assertEqual(g.prices["cache_read"], 0.25)
         self.assertEqual(self.m["gpt-5.4-mini"].prices["output"], 4.5)
 
+    def test_long_context_tier_prices(self):
+        sol = self.m["gpt-6.1-sol"]
+        self.assertEqual(sol.tier_prices, {"input": 4.0, "output": 15.0, "cache_read": 0.2,
+                                           "cache_write_5m": 5.0, "cache_write_1h": 5.0})
+        self.assertEqual(self.m["gpt-5.4"].tier_prices["output"], 22.5)
+        self.assertIsNone(self.m["gpt-5.4"].tier_prices["cache_write_5m"])
+
+    def test_long_context_compared_with_the_row(self):
+        table = {"version": "t", "models": [
+            row("gpt-6.1-sol", 2, 2.5, 2.5, 0.1, 10, tiers=[tier(272000, 4, 5, 5, 0.2, 15)])]}
+        models = [m for m in pw.parse_openai(fixture("openai.md.txt")) if m.id == "gpt-6.1-sol"]
+        f = pw.compare(table, [(source("openai"), models, "fixture", None)])
+        self.assertEqual(pw.exit_code(f), 0)
+        table["models"][0]["tiers"][0]["cache_read"] = 0.4
+        f = pw.compare(table, [(source("openai"), models, "fixture", None)])
+        self.assertEqual(f["changed"][0]["diff"], {"cache_read above 272,000 tokens": {"table": 0.4, "page": 0.2}})
+
     def test_short_and_long_context_rows(self):
         cyber = self.m["gpt-6-cyber"]
         self.assertEqual(cyber.prices["input"], 20.0)
@@ -113,6 +139,15 @@ class GeminiTest(unittest.TestCase):
         self.assertEqual(pro.prices["input"], 2.0)
         self.assertTrue(any("> 200k" in t for t in pro.tiers))
         self.assertFalse(any("storage" in t for t in pro.tiers))
+        self.assertEqual(pro.tier_prices, {"input": 4.0, "output": 18.0, "cache_read": 0.4})
+
+    def test_entered_change_is_flagged(self):
+        table = {"version": "t", "models": [
+            row("gemini-4-carbon", 2, 0, 0, 0.1, 10, until="2026-11-30"),
+            row("gemini-4-carbon", 4, 0, 0, 0.2, 20)]}
+        f = pw.compare(table, [(source("google"), [self.m["gemini-4-carbon"]], "fixture", None)], "2026-11-17")
+        self.assertEqual(pw.exit_code(f), 0)
+        self.assertTrue(f["announced"][0]["entered"])
 
 
 TABLE = {
@@ -140,13 +175,28 @@ class CompareTest(unittest.TestCase):
         models = pw.parse_anthropic(fixture("anthropic.md.txt"))
         return pw.compare(TABLE, anthropic_result(models))
 
-    def test_new_model_caught_by_prefix(self):
+    def test_new_model_is_missing_not_priced_as_another(self):
+        # claude-fable-5-2 is not claude-fable-5 plus a suffix that names the
+        # same model, so internal/cost leaves it unpriced, and so does this.
         f = self.findings()
-        col = {i["model"]: i["row"] for i in f["collision"]}
-        self.assertEqual(col["claude-fable-5-2"], "claude-fable-5")
-        self.assertNotIn("claude-mythos-5-2", col)  # no claude-mythos-5 row here
-        self.assertIn("claude-mythos-5-2", [i["model"] for i in f["missing"]])
+        missing = [i["model"] for i in f["missing"]]
+        self.assertIn("claude-fable-5-2", missing)
+        self.assertIn("claude-mythos-5-2", missing)
+        self.assertEqual(f["collision"], [])
         self.assertEqual(pw.exit_code(f), 1)
+
+    def test_tier_modelled_and_compared(self):
+        models = pw.parse_anthropic(fixture("anthropic.md.txt"))
+        table = json.loads(json.dumps(TABLE))
+        haiku = next(r for r in table["models"] if r["id"] == "claude-haiku-5-5")
+        haiku["tiers"] = [tier(100000, 0.5, 0.625, 1, 0.05, 2.5)]
+        f = pw.compare(table, anthropic_result(models))
+        self.assertNotIn("claude-haiku-5-5", [i["model"] for i in f["tiers"]])
+        self.assertNotIn("claude-haiku-5-5", [i["model"] for i in f["changed"]])
+        haiku["tiers"][0]["output"] = 2.0
+        f = pw.compare(table, anthropic_result(models))
+        diff = next(i for i in f["changed"] if i["model"] == "claude-haiku-5-5")["diff"]
+        self.assertEqual(diff, {"output above 100,000 tokens": {"table": 2.0, "page": 2.5}})
 
     def test_superseded_row_is_ignored(self):
         f = self.findings()
@@ -188,15 +238,50 @@ class CompareTest(unittest.TestCase):
         ignored = {i["model"] for i in f["ignored"]}
         self.assertTrue({"gpt-4o", "gpt-5.4-pro", "gpt-6-cyber", "gpt-6-astra-law"} <= ignored)
         self.assertIn("gpt-5.4", [i["model"] for i in f["missing"]])
+        # The fine-tuning table's dated ids are not the model's own prices.
+        self.assertTrue(any(re.search(p, "gpt-4.1-2025-04-14") for p in source("openai").ignore))
+        # o3 and gpt-4.1 are priced now; o-series rows belong to OpenAI.
+        self.assertFalse(any(re.search(p, "o3") for p in source("openai").ignore))
+        self.assertTrue(source("openai").owns("o3"))
 
 
 class LookupTest(unittest.TestCase):
     rows = pw.current_rows({"models": [row("claude-opus-5", 5, 0, 0, 0, 25),
                                        row("claude-opus-5-5", 4, 0, 0, 0, 20)]})
 
-    def test_longest_prefix(self):
+    def test_longest_match(self):
         self.assertEqual(pw.lookup(self.rows, "claude-opus-5-5-20261001")["id"], "claude-opus-5-5")
-        self.assertEqual(pw.lookup(self.rows, "claude-opus-5-1")["id"], "claude-opus-5")
+        self.assertEqual(pw.lookup(self.rows, "claude-opus-5[1m]")["id"], "claude-opus-5")
+        self.assertEqual(pw.lookup(self.rows, "claude-opus-5:0")["id"], "claude-opus-5")
+        # Not a bare prefix: another version is another model (internal/cost matchesID).
+        self.assertIsNone(pw.lookup(self.rows, "claude-opus-5-1"))
+        self.assertIsNone(pw.lookup(self.rows, "claude-opus-5.1"))
+
+    def test_guard_matches_internal_cost(self):
+        # The same cases as internal/cost TestRowIDIsNotABarePrefix.
+        for m, rid in (("claude-haiku-4-5-20251001", "claude-haiku-4-5"),
+                       ("claude-sonnet-4-5-20250929-v1:0", "claude-sonnet-4-5"),
+                       ("claude-sonnet-4-5-v2", "claude-sonnet-4-5"),
+                       ("kimi-k3[1m]", "kimi-k3"), ("gpt-5:extended", "gpt-5")):
+            self.assertTrue(pw.matches(m, rid), m)
+        for m, rid in (("claude-fable-5-2", "claude-fable-5"), ("minimax-m3.1-flash", "minimax-m3"),
+                       ("kimi-k3.1-pro", "kimi-k3"), ("kimi-k2.7-code-highspeed", "kimi-k2.7-code"),
+                       ("gpt-5.5", "gpt-5"), ("o3-pro", "o3"), ("claude-haiku-4-5-2025", "claude-haiku-4-5")):
+            self.assertFalse(pw.matches(m, rid), m)
+
+    def test_row_in_force_today(self):
+        # A change entered in advance is not today's price until its day.
+        table = {"models": [row("gemini-4-carbon", 2, 0, 0, 0.1, 10, until="2026-11-30"),
+                            row("gemini-4-carbon", 4, 0, 0, 0.2, 20),
+                            row("old", 1, 0, 0, 0, 1, until="2026-01-01"),
+                            row("old", 2, 0, 0, 0, 2)]}
+        rows = {r["id"]: r for r in pw.current_rows(table, "2026-11-17")}
+        self.assertEqual(rows["gemini-4-carbon"]["input"], 2)
+        self.assertEqual(rows["old"]["input"], 2)
+        self.assertEqual(pw.current_rows(table, "2026-11-30")[0]["input"], 2)
+        self.assertEqual({r["id"]: r for r in pw.current_rows(table, "2026-12-01")}["gemini-4-carbon"]["input"], 4)
+        self.assertEqual(pw.changes_entered(table, "2026-11-17"), {"gemini-4-carbon"})
+        self.assertEqual(pw.changes_entered(table, "2026-12-01"), set())
 
     def test_provider_prefixes(self):
         self.assertEqual(pw.lookup(self.rows, "us.anthropic.claude-opus-5-5-v1:0")["id"], "claude-opus-5-5")
@@ -207,15 +292,18 @@ class LookupTest(unittest.TestCase):
 
 class MainTest(unittest.TestCase):
     def test_json_from_saved_pages(self):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            code = pw.main(["--json", "--only", "anthropic",
-                            "--source", f"anthropic={FIXTURES / 'anthropic.md.txt'}"])
+        with tempfile.TemporaryDirectory() as d:
+            tpath = pathlib.Path(d) / "pricing.json"
+            tpath.write_text(json.dumps(TABLE), encoding="utf-8")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                code = pw.main(["--json", "--only", "anthropic", "--table", str(tpath),
+                                "--source", f"anthropic={FIXTURES / 'anthropic.md.txt'}"])
         out = json.loads(buf.getvalue())
         self.assertEqual(code, 1)
         self.assertEqual(out["exit"], 1)
         self.assertEqual(out["sources"][0]["models"], 8)
-        self.assertIn("claude-fable-5-2", [i["model"] for i in out["findings"]["collision"]])
+        self.assertIn("claude-fable-5-2", [i["model"] for i in out["findings"]["missing"]])
 
 
 if __name__ == "__main__":

@@ -131,7 +131,7 @@ func (s *Server) compactionEstimate(ctx context.Context, q store.Querier, id str
 		if post == 0 {
 			post = c.Prompt()
 		}
-		if v, ok := s.d.Table.CompactionSaving(c.Model, time.UnixMilli(c.Ts), row.PreTokens-post); ok {
+		if v, ok := s.d.Table.CompactionSaving(c.Model, time.UnixMilli(c.Ts), c.Prompt(), row.PreTokens-post); ok {
 			saved += v
 		}
 		cum = append(cum, SavingPoint{At: c.Ts, SavedUSD: saved})

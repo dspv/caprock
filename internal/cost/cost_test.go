@@ -42,7 +42,7 @@ func TestLookupPrefixAndProviderIDs(t *testing.T) {
 			t.Errorf("Lookup(%q) = %q,%v; want %q", in, row.ID, ok, want)
 		}
 	}
-	if _, ok := tb.Lookup("gpt-5"); ok {
+	if _, ok := tb.Lookup("llama-3-70b"); ok {
 		t.Error("unknown model matched")
 	}
 	if _, ok := tb.Lookup(""); ok {
@@ -140,7 +140,7 @@ func TestGatewayPrefixesPriceTheSame(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, group := range [][]string{
-		{"minimax-m3", "MiniMax-M3", "minimax/minimax-m3", "MiniMax-M3-Preview"},
+		{"minimax-m3", "MiniMax-M3", "minimax/minimax-m3"},
 		{"deepseek-v4-pro", "deepseek/deepseek-v4-pro"},
 	} {
 		var want Model
@@ -353,7 +353,9 @@ func TestSonnet55CacheReadSplitsOn7October(t *testing.T) {
 		{"claude-opus-5-5", time.Date(2026, 10, 7, 1, 0, 0, 0, time.UTC), 0.2},
 		{"gpt-6.1-terra", time.Time{}, 0.05},
 	} {
-		got, ok := tb.PriceAt(tc.model, event.TokenDelta{CacheRead: 1_000_000}, tc.at)
+		// 100,000 tokens, under every prompt-size tier, scaled to 1M.
+		got, ok := tb.PriceAt(tc.model, event.TokenDelta{CacheRead: 100_000}, tc.at)
+		got *= 10
 		if !ok || math.Abs(got-tc.want) > 1e-9 {
 			t.Errorf("%s at %v: 1M cache-read tokens cost $%.3f (ok %v), want $%.3f", tc.model, tc.at, got, ok, tc.want)
 		}

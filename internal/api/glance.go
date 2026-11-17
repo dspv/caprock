@@ -142,6 +142,11 @@ func (s *Server) buildTrend(ctx context.Context, display map[string]string) (*Gl
 
 // priceBill prices each model's tokens by type at the table's current rates,
 // noting each priced model's display name. Nil without a pricing table.
+//
+// The tokens are a total per model with no prompt size, so a model priced by
+// prompt length (cost.Tier) is billed here at its lowest tier: for such a
+// model the split is a lower bound, while the turns themselves were priced at
+// their own tier.
 func (s *Server) priceBill(toks []store.ModelTokens, display map[string]string) *Bill {
 	if s.d.Table == nil {
 		return nil

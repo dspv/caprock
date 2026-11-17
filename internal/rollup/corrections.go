@@ -16,6 +16,14 @@ import (
 // have been applied, so they run once per version rather than on every start.
 const MetaPriceCorrections = "price_corrections"
 
+// notOurCosting are the event sources whose turns carry their agent's own
+// cost, or none, and are never priced from the table (Recorder.prepare). The
+// passes that price stored turns after the fact skip them for the same reason.
+// They are matched against sessions.agent, which carries the same names for
+// these three: events.source is not in the covering index the passes read,
+// and testing it made each pass read every turn's row, payload included.
+var notOurCosting = [3]string{string(event.SourceOpenCode), string(event.SourceHermes), string(event.SourceCursor)}
+
 // ApplyCorrections reprices the turns the table's `corrections` name, and moves
 // the session and daily totals by the difference in the same transaction.
 //
@@ -27,6 +35,11 @@ const MetaPriceCorrections = "price_corrections"
 //
 // Idempotent: a turn already at the corrected figure moves by nothing, so an
 // interrupted pass is finished by the next start.
+//
+// Only turns the table priced: an OpenCode, Hermes or Cursor turn carries its
+// agent's own figure, which no mistake in our table produced. Before this
+// filter a correction for a model OpenCode also runs (deepseek-v4-pro,
+// claude-opus-5-5) would have replaced OpenCode's figure with the table's.
 func (r *Recorder) ApplyCorrections(ctx context.Context) (corrected int, err error) {
 	if r.Table == nil || len(r.Table.Corrections) == 0 {
 		return 0, nil
@@ -71,8 +84,9 @@ func (r *Recorder) correct(ctx context.Context, prefix string, from int64, loc *
 		       COALESCE(e.tokens_in,0), COALESCE(e.tokens_out,0), COALESCE(e.cache_read,0), COALESCE(e.cache_write,0), COALESCE(e.cache_write_1h,0),
 		       COALESCE(s.project,'')
 		FROM events e LEFT JOIN sessions s ON s.sid = e.sid
-		WHERE e.kind = ? AND e.cost_usd IS NOT NULL AND e.model LIKE ? ESCAPE '\' AND e.ts >= ? AND e.internal = 0`,
-		string(event.KindTurnAssistant), esc+"%", from)
+		WHERE e.kind = ? AND e.cost_usd IS NOT NULL AND e.model LIKE ? ESCAPE '\' AND e.ts >= ? AND e.internal = 0
+		  AND COALESCE(s.agent,'') NOT IN (?, ?, ?)`,
+		string(event.KindTurnAssistant), esc+"%", from, notOurCosting[0], notOurCosting[1], notOurCosting[2])
 	if err != nil {
 		return 0, fmt.Errorf("find turns to correct: %w", err)
 	}

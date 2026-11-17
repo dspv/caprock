@@ -62,6 +62,29 @@ const perMTok = 1_000_000.0
 type Prices struct {
 	CacheRead  float64
 	CacheWrite float64
+	// Tiers are the rates for a larger context, lowest threshold first, from
+	// a row priced by prompt length (cost.Tier). Empty for most models.
+	Tiers []PriceTier
+}
+
+// PriceTier is the rates for a context larger than Above tokens.
+type PriceTier struct {
+	Above      int64
+	CacheRead  float64
+	CacheWrite float64
+}
+
+// At is the rates a call whose context is that many tokens is charged at: a
+// vendor that prices by prompt length bills the whole request at its tier.
+func (p Prices) At(context int64) Prices {
+	out := Prices{CacheRead: p.CacheRead, CacheWrite: p.CacheWrite}
+	for _, t := range p.Tiers {
+		if context <= t.Above {
+			break
+		}
+		out.CacheRead, out.CacheWrite = t.CacheRead, t.CacheWrite
+	}
+	return out
 }
 
 // PricesOf reads the rates for a model out of a pricing row.
@@ -69,10 +92,14 @@ type Prices struct {
 // CacheWrite5m is the right write rate: a series writes results it re-reads
 // within the same loop, which is minutes, not the hour the 1h rate is for.
 func PricesOf(row cost.Model) Prices {
-	return Prices{
+	p := Prices{
 		CacheRead:  row.CacheRead / perMTok,
 		CacheWrite: row.CacheWrite5m / perMTok,
 	}
+	for _, t := range row.Tiers {
+		p.Tiers = append(p.Tiers, PriceTier{Above: t.AbovePromptTokens, CacheRead: t.CacheRead / perMTok, CacheWrite: t.CacheWrite5m / perMTok})
+	}
+	return p
 }
 
 // NextCall is what the next tool call costs at the current context, before it
@@ -82,7 +109,7 @@ func NextCall(contextTokens int64, p Prices) float64 {
 	if contextTokens <= 0 {
 		return 0
 	}
-	return float64(contextTokens) * p.CacheRead
+	return float64(contextTokens) * p.At(contextTokens).CacheRead
 }
 
 // Call is one priced tool call: the context it re-read, what it returned, and
@@ -97,16 +124,20 @@ type Call struct {
 // nothing else. It is the number the meter shows, kept apart from the cost of
 // the result so a reader can see which half is which.
 func (c Call) Tax(p Prices) float64 {
-	return float64(c.Context) * p.CacheRead
+	return float64(c.Context) * p.At(c.Context).CacheRead
 }
 
 // Cost is the full section 5.2 charge for a call: the context it re-read, the
 // result it wrote to cache, and that result being re-read by every turn left
 // in the session.
+//
+// The result is charged at the tier of the call's own context: the turns that
+// re-read it are at least that large.
 func (c Call) Cost(p Prices) float64 {
+	r := p.At(c.Context)
 	return c.Tax(p) +
-		float64(c.Result)*p.CacheWrite +
-		float64(c.Result)*float64(c.TurnsLeft)*p.CacheRead
+		float64(c.Result)*r.CacheWrite +
+		float64(c.Result)*float64(c.TurnsLeft)*r.CacheRead
 }
 
 // TaxOf sums the context tax over a run of calls.
@@ -158,6 +189,9 @@ type ModelTax struct {
 // lifetime tax is charged at today's rate for that model's whole volume. The
 // error is bounded by how much a rate moved and applies only to the models
 // that moved; per-call figures, where an instant does exist, use LookupAt.
+// For the same reason the volume is charged at the base tier of a model priced
+// by prompt length (cost.Tier): a total has no prompt size, so the lifetime
+// tax of a model whose long prompts bill higher is a lower bound.
 type Table interface {
 	Lookup(model string) (cost.Model, bool)
 }

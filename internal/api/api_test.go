@@ -983,11 +983,11 @@ func TestSessionStatsCountUnpricedTurns(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	rec("kimi", "msg:k1", "kimi-k3", &event.TokenDelta{In: 10, Out: 20})
-	rec("kimi", "msg:k2", "kimi-k3", &event.TokenDelta{In: 30, Out: 5})
-	rec("kimi", "msg:k0", "kimi-k3", &event.TokenDelta{}) // nothing to price
+	rec("kimi", "msg:k1", "unlisted-model-x", &event.TokenDelta{In: 10, Out: 20})
+	rec("kimi", "msg:k2", "unlisted-model-x", &event.TokenDelta{In: 30, Out: 5})
+	rec("kimi", "msg:k0", "unlisted-model-x", &event.TokenDelta{}) // nothing to price
 	rec("mixed", "msg:m1", "claude-opus-5", &event.TokenDelta{In: 1000, Out: 200})
-	rec("mixed", "msg:m2", "kimi-k3", &event.TokenDelta{In: 10, Out: 20})
+	rec("mixed", "msg:m2", "unlisted-model-x", &event.TokenDelta{In: 10, Out: 20})
 	rec("priced", "msg:p1", "claude-opus-5", &event.TokenDelta{In: 1000, Out: 200})
 
 	for _, tc := range []struct {

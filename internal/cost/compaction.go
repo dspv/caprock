@@ -20,13 +20,15 @@ const (
 // CompactionCost is the estimated cost of the call that summarised pre
 // tokens of context into summaryTokens of output, at model's prices at `at`:
 // the context read from the cache when it was warm, sent as uncached input
-// when it was not, and the summary as output. ok is false when the model is
-// not in the table.
+// when it was not, and the summary as output. The call's prompt is the pre
+// tokens, so a model priced by prompt length is charged at the tier they fall
+// in. ok is false when the model is not in the table.
 func (t *Table) CompactionCost(model string, at time.Time, pre, summaryTokens int64, warm bool) (float64, bool) {
 	row, ok := t.LookupAt(model, at)
 	if !ok {
 		return 0, false
 	}
+	row = row.ForPrompt(pre)
 	in := row.Input
 	if warm {
 		in = row.CacheRead
@@ -36,8 +38,12 @@ func (t *Table) CompactionCost(model string, at time.Time, pre, summaryTokens in
 
 // CompactionSaving is what one call after a compaction did not pay for the
 // dropped tokens it would otherwise have read from the cache, at the call's
-// own model and time. ok is false when the model is not in the table.
-func (t *Table) CompactionSaving(model string, at time.Time, dropped int64) (float64, bool) {
+// own model and time. prompt is the call's own prompt (PromptTokens); without
+// the compaction it would have been prompt+dropped, so the dropped tokens are
+// priced at the tier that larger prompt falls in. The rest of the call moving
+// into a higher tier is not counted: the estimate stays on the dropped tokens.
+// ok is false when the model is not in the table.
+func (t *Table) CompactionSaving(model string, at time.Time, prompt, dropped int64) (float64, bool) {
 	if dropped <= 0 {
 		return 0, true
 	}
@@ -45,5 +51,6 @@ func (t *Table) CompactionSaving(model string, at time.Time, dropped int64) (flo
 	if !ok {
 		return 0, false
 	}
+	row = row.ForPrompt(max(prompt, 0) + dropped)
 	return float64(dropped) * row.CacheRead / perMTok, true
 }

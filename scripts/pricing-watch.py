@@ -51,6 +51,9 @@ class PageModel:
     prices: dict
     tiers: list = dataclasses.field(default_factory=list)  # higher-tier rows, text
     announced: list = dataclasses.field(default_factory=list)  # future price lines
+    # The highest prompt-size tier's prices, by FIELDS, when the page gives
+    # them as numbers; compared with the row's own highest `tiers` entry.
+    tier_prices: dict = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -204,6 +207,7 @@ def anthropic_rows(rows: list) -> list:
         clean = drop_parens(display)
         if mid in out:
             out[mid].tiers.append(f"{tier.group(1) if tier else display}: " + fmt_prices(prices))
+            out[mid].tier_prices = prices
             continue
         out[mid] = PageModel(mid, clean, prices)
     if not out:
@@ -285,6 +289,12 @@ def _openai_table(rows: list, out: dict) -> None:
         "write": find("short context 30m write", "30m write"),
     }
     long_in = find("long context input")
+    long_col = {
+        "input": long_in,
+        "output": find("long context output"),
+        "cache_read": find("long context cached input"),
+        "write": find("long context 30m write"),
+    }
     if col["input"] is None or col["output"] is None:
         return
     for cells in rows[1:]:
@@ -314,12 +324,22 @@ def _openai_table(rows: list, out: dict) -> None:
         if long_ctx:
             if mid in out:
                 out[mid].tiers.append("long context: " + fmt_prices(prices))
+                out[mid].tier_prices = prices
             continue
         if mid in out:
             continue
         pm = PageModel(mid, drop_parens(raw), prices)
         if long_in is not None and long_in < len(cells) and price(cells[long_in]) is not None:
             pm.tiers.append(f"long context: input ${fmt(price(cells[long_in]))}")
+
+            def long_cell(key):
+                i = long_col[key]
+                return price(cells[i]) if i is not None and i < len(cells) else None
+
+            lw = long_cell("write")
+            pm.tier_prices = {"input": long_cell("input"), "output": long_cell("output"),
+                              "cache_read": long_cell("cache_read"),
+                              "cache_write_5m": lw, "cache_write_1h": lw}
         out[mid] = pm
 
 
@@ -345,7 +365,7 @@ def parse_gemini(text: str) -> list:
             continue
         cells = _gemini_cells(tab.group(1))
         prices = {f: None for f in FIELDS}
-        announced, tiers = [], []
+        announced, tiers, tier_prices = [], [], {}
         for feature, paid in cells:
             key = {
                 "input price": "input",
@@ -363,10 +383,12 @@ def parse_gemini(text: str) -> list:
                     announced.append(f"{key}: {line.strip().rstrip('.')}")
                 elif price(line) is not None:
                     tiers.append(f"{key}: {line.strip()}")
+                    if re.search(r"prompts\s*>", line):
+                        tier_prices[key] = price(line)
         if prices["input"] is None and prices["output"] is None:
             continue
         if mid not in out:
-            out[mid] = PageModel(mid, strip_markup(h.group(1)), prices, tiers, announced)
+            out[mid] = PageModel(mid, strip_markup(h.group(1)), prices, tiers, announced, tier_prices)
     if not out:
         raise Unreadable("no model sections with a Standard tab")
     return list(out.values())
@@ -409,11 +431,15 @@ SOURCES = [
             ("https://developers.openai.com/api/docs/pricing", {"Accept": "text/markdown"}),
         ],
         parse=parse_openai,
-        owns=lambda i: i.startswith("gpt-"),
+        owns=lambda i: i.startswith("gpt-") or re.match(r"o\d", i) is not None,
         # Not reachable from a coding agent Caprock observes, or a generation
         # no agent runs: the table prices what Codex and the chat feature use.
+        # -pro models are not run by Codex. gpt-4o and gpt-3.x are not either.
+        # A dated id (gpt-4.1-2025-04-14) is listed only in the fine-tuning
+        # table, whose columns are training and fine-tuned inference prices,
+        # not the model's own.
         ignore=(
-            r"^gpt-4", r"^o\d", r"^gpt-3", r"-pro$", r"embedding", r"moderation",
+            r"^gpt-4o", r"^gpt-3", r"-pro$", r"-\d{4}-\d{2}-\d{2}$", r"embedding", r"moderation",
             r"image", r"audio", r"realtime", r"transcribe", r"tts", r"search",
             r"cyber", r"rosalind", r"-law$", r"^chat-latest$", r"^sora", r"^dall-e",
             r"whisper", r"^computer-use", r"^codex-mini",
@@ -466,10 +492,30 @@ def read_source(src: Source, saved: str | None = None):
 # ---------------------------------------------------------------- comparison
 
 
-def current_rows(table: dict) -> list:
-    """Rows with no `until`, longest id first, as internal/cost sorts them."""
-    rows = [r for r in table["models"] if not r.get("until")]
+def current_rows(table: dict, today: str | None = None) -> list:
+    """The row in force on `today` (YYYY-MM-DD, UTC) for each id, longest id
+    first, as internal/cost sorts them.
+
+    internal/cost LookupAt with no timestamp reads the clock: a row whose
+    `until` is today or later is still the price, and a change entered in
+    advance (the next row) is not yet. Rows for one id are oldest first.
+    """
+    today = today or dt.datetime.now(dt.timezone.utc).date().isoformat()
+    rows, seen = [], set()
+    for r in table["models"]:
+        if r["id"] in seen:
+            continue
+        if not r.get("until") or r["until"] >= today:
+            rows.append(r)
+            seen.add(r["id"])
     return sorted(rows, key=lambda r: len(r["id"]), reverse=True)
+
+
+def changes_entered(table: dict, today: str | None = None) -> set:
+    """Ids whose row in force today is followed by a later one: an announced
+    change already in the table."""
+    today = today or dt.datetime.now(dt.timezone.utc).date().isoformat()
+    return {r["id"] for r in table["models"] if r.get("until") and r["until"] >= today}
 
 
 def normalize(model: str) -> str:
@@ -487,11 +533,22 @@ def normalize(model: str) -> str:
     return m
 
 
+# internal/cost modelSuffix: what may follow a row's id in an id it matches —
+# a dated snapshot, a Bedrock version, a bracket ("[1m]"), or ":" and anything.
+_SUFFIX = re.compile(r"(?:-\d{8})?(?:-v\d+(?::\d+)?)?(?:\[[^\]]*\])?(?::.*)?")
+
+
+def matches(m: str, row_id: str) -> bool:
+    """internal/cost matchesID: the row's id, or it plus a suffix naming the
+    same model. claude-fable-5-2 is not claude-fable-5."""
+    return m.startswith(row_id) and _SUFFIX.fullmatch(m[len(row_id):]) is not None
+
+
 def lookup(rows: list, model: str):
-    """internal/cost LookupAt at "now": longest current row id that prefixes it."""
+    """internal/cost LookupAt at "now": the longest row id that matches it."""
     m = normalize(model)
     for r in rows:
-        if m.startswith(r["id"]):
+        if matches(m, r["id"]):
             return r
     return None
 
@@ -500,9 +557,11 @@ def same(a: float, b: float) -> bool:
     return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
 
 
-def compare(table: dict, results: list) -> dict:
-    """Findings from [(source, models | None, how, error)]."""
-    rows = current_rows(table)
+def compare(table: dict, results: list, today: str | None = None) -> dict:
+    """Findings from [(source, models | None, how, error)], against the rows in
+    force on `today` (default: the UTC date now)."""
+    rows = current_rows(table, today)
+    entered = changes_entered(table, today)
     f = {"missing": [], "collision": [], "changed": [], "gone": [], "unreadable": [],
          "tiers": [], "announced": [], "ignored": []}
     for src, models, how, err in results:
@@ -517,10 +576,10 @@ def compare(table: dict, results: list) -> dict:
             seen.add(pm.id)
             row = lookup(rows, pm.id)
             base = {"source": src.name, "model": pm.id, "display": pm.display, "page": pm.prices}
-            if pm.tiers:
+            if pm.tiers and not (row and row.get("tiers") and row["id"] == pm.id):
                 f["tiers"].append({**base, "tiers": pm.tiers})
             if pm.announced:
-                f["announced"].append({**base, "announced": pm.announced})
+                f["announced"].append({**base, "announced": pm.announced, "entered": pm.id in entered})
             if row is None:
                 f["missing"].append(base)
             elif row["id"] != pm.id:
@@ -528,6 +587,13 @@ def compare(table: dict, results: list) -> dict:
             else:
                 diff = {k: {"table": row.get(k), "page": v} for k, v in pm.prices.items()
                         if v is not None and not same(float(row.get(k, 0.0)), v)}
+                # The row's highest prompt-size tier against the page's, when
+                # both have one; a tier the row lacks is listed for information.
+                if row.get("tiers") and pm.tier_prices:
+                    top = row["tiers"][-1]
+                    for k, v in pm.tier_prices.items():
+                        if v is not None and not same(float(top.get(k, 0.0)), v):
+                            diff[f"{k} above {top['above_prompt_tokens']:,} tokens"] = {"table": top.get(k), "page": v}
                 if diff:
                     f["changed"].append({**base, "table": pick(row), "diff": diff})
         for r in rows:
@@ -591,7 +657,7 @@ def report(f: dict, table: dict, results: list, today: str) -> str:
             "No row matches it, so its turns are unpriced.")
     section("Priced as a different model", f["collision"], lambda i:
             f"- **`{i['model']}`** ({i['display']}, {title[i['source']]}): page says {fmt_prices(i['page'])}; "
-            f"the longest-prefix rule prices it as `{i['row']}` ({fmt_prices(i['table'])}).")
+            f"the table prices it as `{i['row']}` ({fmt_prices(i['table'])}).")
     section("Price changed", f["changed"], lambda i:
             f"- **`{i['model']}`** ({title[i['source']]}): " + "; ".join(
                 f"{k} table ${fmt(d['table'])} → page ${fmt(d['page'])}" for k, d in i["diff"].items()) + ".")
@@ -610,10 +676,12 @@ def report(f: dict, table: dict, results: list, today: str) -> str:
     if f["announced"]:
         out.append("Announced price changes:")
         out.append("")
-        out.extend(f"- `{i['model']}`: " + "; ".join(i["announced"]) for i in f["announced"])
+        out.extend(f"- `{i['model']}`: " + "; ".join(i["announced"])
+                   + (" (entered in the table as a dated row)" if i.get("entered") else "")
+                   for i in f["announced"])
         out.append("")
     if f["tiers"]:
-        out.append("Higher tiers the table does not model (it carries the first tier):")
+        out.append("Prices the table does not model (a prompt-size tier the row lacks, or audio input):")
         out.append("")
         out.extend(f"- `{i['model']}`: " + "; ".join(i["tiers"]) for i in f["tiers"])
         out.append("")
@@ -647,9 +715,9 @@ def main(argv=None) -> int:
     for src in wanted:
         models, how, err = read_source(src, saved.get(src.name))
         results.append((src, models, how, err))
-    f = compare(table, results)
-    code = exit_code(f)
     today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    f = compare(table, results, today)
+    code = exit_code(f)
     if args.json:
         json.dump({"checked": today, "table_version": table.get("version"),
                    "exit": code, "findings": f,

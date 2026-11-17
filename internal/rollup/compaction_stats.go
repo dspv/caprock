@@ -107,7 +107,7 @@ func (r *Recorder) refreshCompaction(ctx context.Context, db store.Querier, c *s
 				// carries the context after (as store.LastCompaction reads it).
 				c.PostTokens = call.Prompt()
 			}
-			if s, ok := r.Table.CompactionSaving(call.Model, time.UnixMilli(call.Ts), c.PreTokens-c.PostTokens); ok {
+			if s, ok := r.Table.CompactionSaving(call.Model, time.UnixMilli(call.Ts), call.Prompt(), c.PreTokens-c.PostTokens); ok {
 				c.EstSavedUSD += s
 			}
 			c.TurnsAfter++
