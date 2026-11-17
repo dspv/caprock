@@ -1,10 +1,11 @@
 {
-  "version": "2026-11-17.1",
+  "version": "2026-11-17.2",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-11-17",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
+    "2026-11-17.2 changes context windows only, no price: six Gemini rows from 1,000,000 to 1,048,576 as each model page states, and the OpenAI rows added in 2026-11-17.1 with 0 now carry the windows on their model pages (gpt-5.5 and gpt-5.4 1,050,000; gpt-5.4-mini, -nano, gpt-5.2, gpt-5.1, gpt-5, -mini, -nano 400,000; o3 200,000; gpt-4.1 and -mini 1,047,576), all read 2026-11-17 and reported by scripts/pricing-watch.py. The window only drives the context fill %.",
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
     "fetched_at is the most recent read, not one date for every row: Anthropic prices were read on 2026-08-18, the non-Anthropic rows on 2026-08-27, the Gemini rows on 2026-09-01, and Fable 5.1 / Mythos 5.1 on 2026-09-02. Each note below carries the date for the rows it describes, because a single date on a table assembled over weeks tells a reader checking a figure nothing about that figure. Since 2026-11-17.1 every row was re-read on 2026-11-17 against the pages named in the notes below; a note with an older date describes when that figure was first entered.",
     "cache_write_5m = 1.25x input, cache_write_1h = 2x input, cache_read = 0.1x input — per Anthropic's published multipliers. Claude Fable 5.1 and Claude Mythos 5.1 are the exception and read 0.025x ($0.25 per 1M), as do Fable 5.2 and Mythos 5.2 ($0.20, read 2026-11-17), so those rows deliberately break the 0.1x rule; both were read from the pricing page on 2026-09-02.",
@@ -605,7 +606,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.075,
       "output": 3.75,
-      "context_window": 1000000,
+      "context_window": 1048576,
       "until": "2026-12-31"
     },
     {
@@ -616,7 +617,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.15,
       "output": 7.5,
-      "context_window": 1000000
+      "context_window": 1048576
     },
     {
       "id": "gemini-3.5-flash",
@@ -636,7 +637,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.03,
       "output": 2.5,
-      "context_window": 1000000
+      "context_window": 1048576
     },
     {
       "id": "gemini-3.1-pro-preview",
@@ -646,7 +647,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.2,
       "output": 12.0,
-      "context_window": 1000000,
+      "context_window": 1048576,
       "tiers": [
         {
           "above_prompt_tokens": 200000,
@@ -686,7 +687,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.125,
       "output": 10.0,
-      "context_window": 1000000,
+      "context_window": 1048576,
       "until": "2026-11-30",
       "tiers": [
         {
@@ -707,7 +708,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.075,
       "output": 3.75,
-      "context_window": 1000000,
+      "context_window": 1048576,
       "until": "2026-12-31"
     },
     {
@@ -718,7 +719,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.15,
       "output": 7.5,
-      "context_window": 1000000
+      "context_window": 1048576
     },
     {
       "id": "gemini-2.5-flash",
@@ -728,7 +729,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.03,
       "output": 2.5,
-      "context_window": 1000000
+      "context_window": 1048576
     },
     {
       "id": "gemini-2.5-flash-lite",
@@ -738,7 +739,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.01,
       "output": 0.4,
-      "context_window": 1000000
+      "context_window": 1048576
     },
     {
       "id": "gpt-5-codex",
@@ -928,7 +929,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.5,
       "output": 30.0,
-      "context_window": 0,
+      "context_window": 1050000,
       "tiers": [
         {
           "above_prompt_tokens": 272000,
@@ -948,7 +949,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.25,
       "output": 15.0,
-      "context_window": 0,
+      "context_window": 1050000,
       "tiers": [
         {
           "above_prompt_tokens": 272000,
@@ -968,7 +969,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.075,
       "output": 4.5,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-5.4-nano",
@@ -978,7 +979,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.02,
       "output": 1.25,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-5.2",
@@ -988,7 +989,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.175,
       "output": 14.0,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-5.1",
@@ -998,7 +999,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.125,
       "output": 10.0,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-5",
@@ -1008,7 +1009,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.125,
       "output": 10.0,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-5-mini",
@@ -1018,7 +1019,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.025,
       "output": 2.0,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-5-nano",
@@ -1028,7 +1029,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.005,
       "output": 0.4,
-      "context_window": 0
+      "context_window": 400000
     },
     {
       "id": "gpt-4.1",
@@ -1038,7 +1039,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.5,
       "output": 8.0,
-      "context_window": 0
+      "context_window": 1047576
     },
     {
       "id": "gpt-4.1-mini",
@@ -1048,7 +1049,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.1,
       "output": 1.6,
-      "context_window": 0
+      "context_window": 1047576
     },
     {
       "id": "o3",
@@ -1058,7 +1059,7 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.5,
       "output": 8.0,
-      "context_window": 0
+      "context_window": 200000
     },
     {
       "id": "cursor-composer-2.5-fast",
