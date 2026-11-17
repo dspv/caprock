@@ -25,6 +25,15 @@ describe('a session cost with turns the pricing table could not price', () => {
   })
 })
 
+describe('a session cost the agent keeps no record of', () => {
+  it('names the agent instead of blaming the pricing table', () => {
+    const c = sessionCost({ cost_usd: 0, unpriced_turns: 4 }, 'claude-4-sonnet', "Cursor doesn't record a cost for this chat")
+    expect(c).toMatchObject({ state: 'unknown', value: '—', note: "Cursor doesn't record a cost for this chat" })
+    // A priced sum stays a priced sum.
+    expect(sessionCost({ cost_usd: 2, unpriced_turns: 1 }, 'm', 'gap').state).toBe('partial')
+  })
+})
+
 describe('the cumulative cost caption', () => {
   const priced = { kind: 'turn.assistant', cost_usd: 0.5, tokens: tok(10) }
   const unpriced = { kind: 'turn.assistant', tokens: tok(10) }

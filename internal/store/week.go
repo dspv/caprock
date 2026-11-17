@@ -143,9 +143,12 @@ type WeekModel struct {
 
 // WeekAgent is one agent's main threads, or its subagents.
 type WeekAgent struct {
-	Agent    string  `json:"agent"`
-	Subagent bool    `json:"subagent"`
+	Agent    string `json:"agent"`
+	Subagent bool   `json:"subagent"`
+	// Turns leaves out usage records (requests.go); Requests is the
+	// requests the agent counted, where it counts them (Cursor), else 0.
 	Turns    int64   `json:"turns"`
+	Requests int64   `json:"requests,omitempty"`
 	CostUSD  float64 `json:"cost_usd"`
 	Sessions int64   `json:"sessions"`
 	// Threads is how many distinct subagents ran; 0 for main threads.
@@ -221,7 +224,16 @@ func WeekStats(ctx context.Context, q Querier, o WeekOptions) (Week, error) {
 	go func() { defer wg.Done(); loopErr = weekLoop(ctx, q, from, to, &lw, o, skipE) }()
 	err = weekActivity(ctx, q, from, to, &w, dayOf, skip)
 	if err == nil {
-		err = weekAgents(ctx, q, from, to, &w, skip)
+		err = weekAgents(ctx, q, from, to, &w, skip, skipE)
+	}
+	if err == nil {
+		// weekActivity counted every assistant row; a usage record is not a
+		// turn (requests.go).
+		var u map[usageKey]usageCount
+		u, err = usageRows(ctx, q, from, to, skipE, "")
+		for _, c := range u {
+			w.Turns = max(0, w.Turns-c.Records)
+		}
 	}
 	if err == nil {
 		err = weekModels(ctx, q, from, to, &w, skip)
@@ -369,8 +381,8 @@ func weekActivity(ctx context.Context, q Querier, from, to int64, w *Week, dayOf
 
 // weekAgents splits the week's turns by agent, and Claude Code's by main
 // thread and subagent.
-func weekAgents(ctx context.Context, q Querier, from, to int64, w *Week, skip string) error {
-	a, err := agentSplit(ctx, q, from, to, skip)
+func weekAgents(ctx context.Context, q Querier, from, to int64, w *Week, skip, skipE string) error {
+	a, err := agentSplit(ctx, q, from, to, skip, skipE)
 	if err != nil {
 		return err
 	}

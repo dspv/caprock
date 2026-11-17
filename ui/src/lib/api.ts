@@ -1,5 +1,6 @@
 // Typed client for the daemon API (.ai/03-contracts.md § HTTP API). snake_case
 // on the wire, kept as-is in the types so the contract is visible in the code.
+import type { Gaps } from './gaps'
 import type { ReapResult, ResourceReport } from './resources'
 import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
@@ -250,6 +251,9 @@ export interface SessionSummary extends Session {
    *  session that has not answered yet. The two look identical from here and
    *  mean opposite things, so the server names which it is. */
   context_note?: string
+  /** What this session's agent does not record, field → "<Agent> doesn't
+   *  record <what>" (lib/gaps.ts). Shown in the slot under the tile. */
+  gaps?: Gaps
   /** What tells this session from the others: the name the user gave it, else
    *  the agent's own title, else the first prompt that says something. */
   description?: string
@@ -480,7 +484,13 @@ export interface ModelShare {
   model: string
   tokens: number
   cost_usd: number
+  /** Assistant turns; a usage record (Cursor, Hermes) is not one. */
   turns: number
+  /** Requests the agent counted for this model's cost, where it counts them
+   *  (Cursor); absent elsewhere. A price per call is read per request then. */
+  requests?: number
+  /** The part of cost_usd those requests cost. */
+  requests_cost_usd?: number
   /** What the model generated — the part of a token total that is entirely its
    *  own work and entirely at the top rate. The combined figure is ~99% cache
    *  read on a normal workload, which swamps everything it is added to. */
@@ -1359,7 +1369,9 @@ export interface GlanceTrend { days: number; prior_from_ms: number; cut_ms: numb
  *  Week card. Nothing in it names a repository, a path, a prompt or a session
  *  title. `estimates` lists the fields a renderer must mark with "≈". */
 export interface WeekDay { day: string; prs_opened: number; cost_usd: number; active: boolean }
-export interface WeekAgent { agent: string; subagent: boolean; turns: number; cost_usd: number; sessions: number; threads?: number }
+/** One agent's main threads or subagents. `requests` is what the agent
+ *  counted where it counts them (Cursor); `turns` leaves out usage records. */
+export interface WeekAgent { agent: string; subagent: boolean; turns: number; requests?: number; cost_usd: number; sessions: number; threads?: number }
 export interface WeekLoop {
   agent: string
   tool: string

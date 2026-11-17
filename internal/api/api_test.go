@@ -1190,3 +1190,64 @@ func TestSettingsPromptsMergeAndValidate(t *testing.T) {
 		}
 	}
 }
+
+// A missing figure reads the same for every agent: "<Agent> doesn't record
+// <what>", in the slot under the tile (agentcat.Gaps). Cursor's turn tokens
+// are sums over requests, so its Context says so rather than measuring a sum
+// against a window — unless the turn carries Cursor's own reading. Gemini's
+// context is measured, and its missing cache writes are named.
+func TestSessionGapsSayWhatTheAgentDoesNotRecord(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	usd := 1.0
+	rec := func(sid, agent, key, model string, tok *event.TokenDelta, cost *float64, payload string) {
+		t.Helper()
+		src := event.SourceTranscript
+		switch agent {
+		case "cursor":
+			src = event.SourceCursor
+		case "gemini":
+			src = event.SourceGemini
+		}
+		if _, err := e.rec.Record(ctx, &event.Event{SessionID: sid, Source: src, Kind: event.KindTurnAssistant, Key: key, Ts: base, Model: model, Tokens: tok, CostUSD: cost, Payload: json.RawMessage(payload)}, rollup.SessionInfo{Cwd: t.TempDir(), Agent: agent}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec("cu-sum", "cursor", "cu:1", "claude-opus-5", &event.TokenDelta{In: 900_000, Out: 20}, &usd, `{"text":"hi"}`)
+	rec("cu-free", "cursor", "cu:2", "claude-4-sonnet", &event.TokenDelta{In: 10, Out: 20}, nil, `{"text":"hi","cost_basis":"none"}`)
+	rec("cu-own", "cursor", "cu:3", "claude-opus-5", &event.TokenDelta{In: 900_000, Out: 20}, &usd, `{"text":"hi","context_tokens":50000,"context_window":200000}`)
+	rec("gem", "gemini", "g:1", "gemini-2.5-pro", &event.TokenDelta{In: 1000, Out: 20, CacheRead: 500}, nil, `{"text":"hi"}`)
+	rec("cc", "claude", "c:1", "claude-opus-5", &event.TokenDelta{In: 1000, Out: 20}, &usd, `{"text":"hi"}`)
+
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	by := map[string]SessionSummary{}
+	for _, s := range list {
+		by[s.SessionID] = s
+	}
+	sum := by["cu-sum"]
+	if sum.Context != nil || sum.ContextNote != "Cursor doesn't record each request's tokens" {
+		t.Errorf("cursor context = %+v, note %q", sum.Context, sum.ContextNote)
+	}
+	if got := sum.Gaps["cache"]; got != "Cursor doesn't record cache reads or writes" {
+		t.Errorf("cursor cache gap = %q", got)
+	}
+	if _, ok := sum.Gaps["cost"]; ok {
+		t.Errorf("a priced cursor chat has a cost gap: %v", sum.Gaps)
+	}
+	if got := by["cu-free"].Gaps["cost"]; got != "Cursor doesn't record a cost for this chat" {
+		t.Errorf("unpriced cursor chat cost gap = %q", got)
+	}
+	if own := by["cu-own"]; own.Context == nil || own.Context.Tokens != 50000 || own.Context.Window != 200000 || own.ContextNote != "" {
+		t.Errorf("cursor's own context reading = %+v, note %q", own.Context, own.ContextNote)
+	}
+	if got := by["gem"].Gaps["cache_write"]; got != "Gemini doesn't record cache writes" {
+		t.Errorf("gemini gaps = %v", by["gem"].Gaps)
+	}
+	if by["cc"].Gaps != nil {
+		t.Errorf("claude code has gaps: %v", by["cc"].Gaps)
+	}
+}

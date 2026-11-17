@@ -1855,7 +1855,16 @@ type ModelShare struct {
 	Model   string  `json:"model"`
 	Tokens  int64   `json:"tokens"`
 	CostUSD float64 `json:"cost_usd"`
-	Turns   int64   `json:"turns"`
+	// Turns are the model's assistant turns. A usage record (requests.go) is
+	// not one: it carries a chat's money and no reply.
+	Turns int64 `json:"turns"`
+	// Requests is how many requests the agent counted for this model's cost,
+	// where it counts them (Cursor's usageData.amount); 0 elsewhere. When set,
+	// it is the unit a price per call is read in, not Turns.
+	Requests int64 `json:"requests,omitempty"`
+	// RequestsCostUSD is the part of CostUSD those requests cost, so a price
+	// per request is never read off another agent's turns of the same model.
+	RequestsCostUSD float64 `json:"requests_cost_usd,omitempty"`
 	// Output is what the model generated, which is the part of a token total
 	// that is entirely this model's work and entirely at the top rate. The
 	// combined figure is ~99% cache read on this workload — a number that is
@@ -2412,6 +2421,9 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 		return s, err
 	}
 	_ = rows.Close()
+	if err := discountUsageRecords(ctx, q, fromMs, agent, &s); err != nil {
+		return s, err
+	}
 	// Which of those models had no price. The model mix above shows an unpriced
 	// model with cost 0.00, which reads as "this model was free" rather than
 	// "we could not price it" — so the volume is carried out separately and the

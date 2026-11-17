@@ -171,7 +171,10 @@ export function heroSize(figure: string, layout: CardLayout): number {
 }
 
 function nums(m: CrewMember): string {
-  return `${new Intl.NumberFormat('en-US').format(m.turns)} turns · ${money(m.cost)}`
+  // Cursor counts its cost in requests; its usage records are not turns.
+  const n = new Intl.NumberFormat('en-US')
+  const count = m.requests && m.requests > 0 ? `${n.format(m.requests)} requests` : `${n.format(m.turns)} turns`
+  return `${count} · ${money(m.cost)}`
 }
 
 function Tally({ items }: { items: TallyItem[] }) {
