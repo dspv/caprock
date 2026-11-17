@@ -147,3 +147,59 @@ export function attachRefusalOf(files: readonly { name: string; size?: number }[
   if (refusedSize(e)) return attachRefusal({ name: '' }, e)
   return errText(e)
 }
+
+/** Whether the daemon keeps a file by this name: its extension is on PASTE_EXTS. */
+export function attachableName(name: string): boolean {
+  const ext = /\.([^./\\]+)$/.exec(name)?.[1]?.toLowerCase()
+  return !!ext && PASTE_EXTS.includes(ext)
+}
+
+/** An image's type by its extension, as a picked File carries it. */
+function imageType(name: string): string {
+  const ext = /\.([^./\\]+)$/.exec(name)?.[1]?.toLowerCase()
+  return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext ?? 'png'}`
+}
+
+/**
+ * A file dropped on an open chat in the desktop app, which hands the page
+ * the file's real path rather than its bytes (DROP_PATHS_EVENT,
+ * lib/xtermInput.ts): what the chat's field attaches for each path, in the
+ * order dropped, and the one line to show for any it turned away.
+ *
+ * - **A type the daemon does not keep** (an `.exe`, a folder) is turned away
+ *   with the line Attach shows for it (attachRefusal).
+ * - **An image** is read by the shell (`read_dropped_image`: only a path of
+ *   that very drop, at most 10 MB) and goes on as the File Attach would
+ *   pick: downscaled, saved by the daemon, an "Image N" chip with its
+ *   thumbnail. Over 10 MB it gets Attach's line; one the shell cannot read
+ *   for any other reason goes by its path, as a terminal types it.
+ * - **Any other kept type** goes by its real path, as the app's terminal
+ *   types a dropped file: the shell reads no other type, and Claude reads
+ *   or edits the original rather than a copy (.ai/21-app.md § Dropping a
+ *   file). Its chip shows its name, as an attached file's does.
+ */
+export async function droppedItems(
+  paths: readonly string[],
+  readImage: (path: string) => Promise<ArrayBuffer>,
+): Promise<{ items: (File | string)[]; refusal: string }> {
+  const items: (File | string)[] = []
+  let refusal = ''
+  for (const p of paths) {
+    const name = baseName(p)
+    if (!attachableName(name)) {
+      const ext = /\.([^./\\]+)$/.exec(name)?.[1]?.toLowerCase()
+      const why = `unsupported file type: ${ext ? `.${ext}` : ''}`
+      refusal = attachRefusal({ name }, new ApiError(415, why, { error: why }))
+      continue
+    }
+    if (!isImageName(name)) { items.push(p); continue }
+    try {
+      const bytes = await readImage(p)
+      items.push(new File([bytes], name, { type: imageType(name) }))
+    } catch (e) {
+      if (/over 10 MB/i.test(e instanceof Error ? e.message : String(e))) refusal = attachRefusal({ name, size: ATTACH_LIMIT_BYTES + 1 }, e)
+      else items.push(p)
+    }
+  }
+  return { items, refusal }
+}

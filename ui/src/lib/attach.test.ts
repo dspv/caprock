@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ApiError } from './api'
-import { ATTACH_ACCEPT, ATTACH_LIMIT_BYTES, FILES_ACCEPT, IMAGE_EXTS, MEDIA_LOOKALIKE_EXTS, PASTE_EXTS, PHOTOS_ACCEPT, attachLabels, attachRefusal, attachRefusalOf, baseName, isPhotoFile } from './attach'
+import { ATTACH_ACCEPT, ATTACH_LIMIT_BYTES, FILES_ACCEPT, IMAGE_EXTS, MEDIA_LOOKALIKE_EXTS, PASTE_EXTS, PHOTOS_ACCEPT, attachLabels, attachRefusal, attachRefusalOf, attachableName, baseName, droppedItems, isPhotoFile } from './attach'
 
 /** The extensions in paste.go's pasteKinds, in order. */
 function goExts(): string[] {
@@ -80,5 +80,31 @@ describe('attach — what a phone may attach', () => {
     expect(isPhotoFile({ name: 'IMG_1.HEIC', type: 'image/heic' })).toBe(true)
     expect(isPhotoFile({ name: 'shot.png', type: '' })).toBe(true)
     expect(isPhotoFile({ name: 'notes.md', type: '' })).toBe(false)
+  })
+})
+
+describe('droppedItems — a file dropped on a chat in the desktop app', () => {
+  it('reads an image through the shell, keeps a document by its real path, and turns away what Attach would', async () => {
+    const read = async (p: string) => {
+      if (p.endsWith('huge.png')) throw 'over 10 MB'
+      if (p.endsWith('gone.png')) throw new Error('No such file')
+      return new Uint8Array([1, 2, 3]).buffer
+    }
+    const { items, refusal } = await droppedItems(
+      ['/Users/u/plan.md', '/Users/u/shot.PNG', '/Users/u/gone.png', '/Users/u/huge.png', '/Users/u/setup.exe'],
+      read,
+    )
+    expect(items.map((i) => (typeof i === 'string' ? i : `file:${i.name}:${i.type}:${i.size}`))).toEqual([
+      '/Users/u/plan.md', 'file:shot.PNG:image/png:3', '/Users/u/gone.png',
+    ])
+    // The last refusal is the one shown, worded as Attach words it.
+    expect(refusal).toBe("setup.exe can't be attached: .exe isn't a supported type. Photos, PDFs, text, Markdown, office, data and source files can.")
+    expect((await droppedItems(['/Users/u/huge.png'], read)).refusal).toBe('huge.png is over 10 MB')
+    expect((await droppedItems(['C:\\Users\\u\\project'], read)).refusal).toBe("project can't be attached: a file with no extension isn't supported. Photos, PDFs, text, Markdown, office, data and source files can.")
+  })
+  it('knows a kept type by its extension, in any case', () => {
+    expect(attachableName('notes.MD')).toBe(true)
+    expect(attachableName('archive.zip')).toBe(false)
+    expect(attachableName('Makefile')).toBe(false)
   })
 })

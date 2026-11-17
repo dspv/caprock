@@ -91,19 +91,43 @@ function onScreen(el: Element): boolean {
   return v ? v.call(el) : true
 }
 
+/** Whether a dialog is on screen: it takes a native drop, not what is under its backdrop. */
+export function dialogOnScreen(doc: Document = document): boolean {
+  return [...doc.querySelectorAll('[data-dialog-backdrop]')].some(onScreen)
+}
+
+/**
+ * The attribute a place outside the terminals sets while it takes a native
+ * drop itself: the chat (components/ChatView), whose field attaches the file
+ * as its Attach button does. A terminal under it — the Full dashboard lays
+ * a chat over its pane's terminal — leaves that drop alone.
+ */
+export const DROP_ZONE_ATTR = 'data-file-drop'
+
+/** The drop zone on screen whose box holds the point, the last in the page when several do. */
+export function dropZoneAt(d: { x: number; y: number }, doc: Document = document): HTMLElement | null {
+  const hit = [...doc.querySelectorAll<HTMLElement>(`[${DROP_ZONE_ATTR}]`)].filter((el) => {
+    if (!shown(el)) return false
+    const r = el.getBoundingClientRect()
+    return d.x >= r.left && d.x < r.right && d.y >= r.top && d.y < r.bottom
+  })
+  return hit[hit.length - 1] ?? null
+}
+
 /**
  * Where a native drop goes. A drop used to reach only the terminal whose box
  * held the point, and was dropped without a word otherwise — onto the tab
  * strip, the composer, a margin, or while any dialog was mounted at all —
  * which read as "drag and drop is broken again" (owner, 2026-10-16). Now: a
  * dialog that is actually on screen takes it (Feedback, a sheet: they listen
- * themselves); else the terminal under the point; else the terminal used
+ * themselves); else a drop zone under the point (an open chat, which attaches
+ * the file itself); else the terminal under the point; else the terminal used
  * last that is on screen; else the one terminal on screen; else a short
  * note says where to drop. Never silent.
  */
-export function routeDrop(d: DroppedPaths, targets: Iterable<DropTarget>, doc: Document = document): DropTarget | 'dialog' | null {
-  const dialog = [...doc.querySelectorAll('[data-dialog-backdrop]')].some(onScreen)
-  if (dialog) return 'dialog'
+export function routeDrop(d: DroppedPaths, targets: Iterable<DropTarget>, doc: Document = document): DropTarget | 'dialog' | 'zone' | null {
+  if (dialogOnScreen(doc)) return 'dialog'
+  if (dropZoneAt(d, doc)) return 'zone'
   const visible = [...targets].filter((t) => shown(t.el))
   const under = visible.find((t) => {
     const r = t.el.getBoundingClientRect()
@@ -133,7 +157,7 @@ function installDropListener() {
     const paths = d.paths.filter((p): p is string => typeof p === 'string' && p !== '')
     if (paths.length === 0) return
     const t = routeDrop(d, dropTargets)
-    if (t === 'dialog') return
+    if (t === 'dialog' || t === 'zone') return
     if (t) t.deliver(paths)
     else dropNote('Drop a file onto a terminal to type its path')
   })
