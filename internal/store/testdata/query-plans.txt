@@ -2194,6 +2194,12 @@ SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE WHEN typeof(e
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## store.SessionCostSeries
+SELECT ts, cost_usd, COALESCE(substr(key,1,9) IN ('cu-usage:','hm-usage:'),0), (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 FROM events INDEXED BY idx_events_attr_work WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NOT NULL AND internal = 0 ORDER BY ts, id
+    SEARCH events USING INDEX idx_events_attr_work (sid=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## store.SessionFiles
 SELECT path FROM session_files WHERE session_id = ? ORDER BY last_ts DESC LIMIT ?
     SEARCH session_files USING INDEX sqlite_autoindex_session_files_1 (session_id=?)

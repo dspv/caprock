@@ -1,4 +1,4 @@
-import type { Event, Stats } from './api'
+import type { CostSeries, Event, Stats } from './api'
 import { fmtUSD } from './format'
 
 /**
@@ -72,4 +72,36 @@ export function cumulativeCaption(events: Pick<Event, 'kind' | 'cost_usd' | 'tok
   if (unpriced > 0 && priced === 0) return `${unpriced} turn${unpriced === 1 ? '' : 's'} · price unknown`
   const head = `${priced} priced turn${priced === 1 ? '' : 's'} · ${fmtUSD(sum)}`
   return unpriced > 0 ? `${head} · + ${unpriced} unpriced` : head
+}
+
+/**
+ * The "Cost, cumulative" line and its caption. From the daemon's series when
+ * it sends one: that runs over the whole session and ends at the Cost tile's
+ * figure. Drawn from the events loaded instead it read $0.00 flat on a Cursor
+ * chat, whose whole cost sits on one reconciled row (ADR-095) that later
+ * work had pushed out of the window. An older daemon sends no series, and
+ * the loaded turns stand in, as before.
+ */
+export function costLine(
+  series: CostSeries | undefined,
+  events: Pick<Event, 'kind' | 'cost_usd' | 'tokens'>[],
+  unpricedTurns = 0,
+): { values: number[]; caption: string } {
+  if (!series) {
+    let acc = 0
+    const values = events.filter((e) => e.kind === 'turn.assistant').map((e) => (acc += e.cost_usd ?? 0))
+    return { values: values.length ? values : [0, 0], caption: cumulativeCaption(events) }
+  }
+  // The line starts from nothing, so a session priced once still rises.
+  const values = [0, ...series.points.map((p) => p.usd)]
+  const sum = series.points.length ? series.points[series.points.length - 1]!.usd : 0
+  const priced = series.priced_turns
+  const unpriced = Math.max(0, unpricedTurns)
+  if (priced === 0 && !(sum > 0)) {
+    const caption = unpriced > 0 ? `${unpriced} turn${unpriced === 1 ? '' : 's'} · price unknown` : '0 priced turns · $0.00'
+    return { values: values.length > 1 ? values : [0, 0], caption }
+  }
+  // Cursor's and Hermes's usage records carry money and are nobody's turn.
+  const head = priced > 0 ? `${priced} priced turn${priced === 1 ? '' : 's'} · ${fmtUSD(sum)}` : `${fmtUSD(sum)} · from the agent's usage totals`
+  return { values, caption: unpriced > 0 ? `${head} · + ${unpriced} unpriced` : head }
 }

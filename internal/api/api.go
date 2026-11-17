@@ -1207,6 +1207,9 @@ type SessionDetail struct {
 	SessionSummary
 	Files  []string      `json:"files"`
 	Events []event.Event `json:"events"`
+	// CostSeries is the session's cumulative cost over all its priced turns,
+	// ending at stats.cost_usd: what the "Cost, cumulative" line plots.
+	CostSeries *store.CostSeries `json:"cost_series,omitempty"`
 	// Repo is where the session's directory lives on the web, from its git
 	// remote; absent when the directory is not in a repository.
 	Repo *gitremote.Repo `json:"repo,omitempty"`
@@ -1637,7 +1640,23 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.notFoundOrFail(w, err)
 		return
 	}
-	sum, last, err := s.summarize(ctx, sess)
+	gen, err := store.ReadEventsGen(ctx, s.d.Store.DB(), sess.SessionID)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	rec := s.recent.entry(sess.SessionID, gen)
+	sum, last, err := s.summarizeAt(ctx, sess, rec)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	// The cost line is read from every priced turn, not from the 60 events
+	// below: Cursor and Hermes keep a chat's cost on one reconciled row, and
+	// a line over the window read $0.00 beside a Cost tile that did not.
+	series, err := readOnce(&rec.mu, &rec.costSeries, func() (store.CostSeries, error) {
+		return store.SessionCostSeries(ctx, s.d.Store.DB(), sess.SessionID)
+	})
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -1660,7 +1679,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err)
 		return
 	}
-	detail := SessionDetail{SessionSummary: sum, Files: files, Events: last, PRs: []store.SessionPR{}, RelayedFrom: from, RelayedTo: to}
+	detail := SessionDetail{SessionSummary: sum, Files: files, Events: last, CostSeries: &series, PRs: []store.SessionPR{}, RelayedFrom: from, RelayedTo: to}
 	if r, ok := s.repos.get(ctx, sess.Cwd); ok {
 		detail.Repo = &r
 	}

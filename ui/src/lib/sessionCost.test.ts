@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cumulativeCaption, isUnpricedTurn, sessionCost } from './sessionCost'
+import { costLine, cumulativeCaption, isUnpricedTurn, sessionCost } from './sessionCost'
 
 const tok = (n: number) => ({ in: n, out: 0, cache_read: 0, cache_write: 0 })
 
@@ -57,5 +57,39 @@ describe('the cumulative cost caption', () => {
     expect(isUnpricedTurn({ kind: 'turn.assistant', tokens: tok(0) })).toBe(false)
     expect(isUnpricedTurn({ kind: 'tool.pre', tokens: tok(5) })).toBe(false)
     expect(isUnpricedTurn(unpriced)).toBe(true)
+  })
+})
+
+describe('the cumulative cost line', () => {
+  const tool = { kind: 'tool.post', tokens: undefined }
+  const reply = { kind: 'turn.assistant', cost_usd: 0, tokens: tok(10) }
+
+  it('follows the whole session, not the 60 events loaded, so a Cursor chat is not $0.00 flat', () => {
+    // The usage record holding the chat's $51.55 is older than every event
+    // loaded: the loaded window alone summed to nothing.
+    const loaded = [reply, ...Array.from({ length: 59 }, () => tool)]
+    const series = { points: [{ ts: 1, usd: 0 }, { ts: 2, usd: 51.55 }], priced_turns: 1 }
+    const line = costLine(series, loaded)
+    expect(line.values).toEqual([0, 0, 51.55])
+    expect(line.values.at(-1)).toBe(51.55)
+    expect(line.caption).toBe('1 priced turn · $51.55')
+  })
+
+  it('names usage totals that are nobody\'s turn', () => {
+    const series = { points: [{ ts: 1, usd: 4.2 }], priced_turns: 0 }
+    expect(costLine(series, []).caption).toBe("$4.20 · from the agent's usage totals")
+  })
+
+  it('keeps unpriced turns beside the sum and never says $0.00 for them alone', () => {
+    expect(costLine({ points: [{ ts: 1, usd: 2 }], priced_turns: 3 }, [], 2).caption).toBe('3 priced turns · $2.00 · + 2 unpriced')
+    const none = costLine({ points: [], priced_turns: 0 }, [], 4)
+    expect(none.caption).toBe('4 turns · price unknown')
+    expect(none.values).toEqual([0, 0])
+  })
+
+  it('falls back to the loaded turns from a daemon that sends no series', () => {
+    const priced = { kind: 'turn.assistant', cost_usd: 0.5, tokens: tok(10) }
+    expect(costLine(undefined, [priced, tool, priced])).toEqual({ values: [0.5, 1], caption: '2 priced turns · $1.00' })
+    expect(costLine(undefined, []).values).toEqual([0, 0])
   })
 })
