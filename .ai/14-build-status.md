@@ -422,6 +422,15 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.182.3: drop a file on a chat, GPT-6.2 priced
+
+A patch release, one PR (#936). A file dropped on an open chat attaches as
+the Attach button does: in a browser it uploads behind a *Drop to attach*
+outline; in the app an image is read as a picked photo and another file goes
+by its real path, and the terminal under the chat no longer also types it.
+OpenAI's `gpt-6.2-astra` and `gpt-6.2-sol` have rows from OpenAI's pricing
+page, read 2026-11-17 (table `2026-11-17.4`).
+
 ### 2026-11-17 — 0.182.2: Cursor's cost chart, Cursor model names, Mail's DeepSeek default
 
 A patch release, one PR (#934). The session's "Cost, cumulative" chart summed
