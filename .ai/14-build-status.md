@@ -422,6 +422,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.180.0: model prices audited; a daily watch of the pricing pages
+
+A minor release, one PR (#926). An audit of every provider Caprock prices
+against the official pages (read 2026-11-17) found Claude Fable 5.2 and
+Mythos 5.2 priced as Fable 5 by prefix, prompt-size tiers missing (Haiku 5.5
+above 100k, GPT-6 and GPT-5.6 above 272K), Kimi unpriced and a stale DeepSeek
+V4 Pro row. Model ids now match exactly (unpriced beats mispriced), rows can
+carry tiers and dated changes ahead, the table is 2026-11-17.1 with
+corrections, and `scripts/pricing-watch.py` runs daily in Actions and files a
+"Pricing drift" issue when a page and the table disagree.
+
 ### 2026-11-17 — 0.179.1: the CI cell finds a PR by the branch the session pushed
 
 A patch release, one PR (#924). The deck's PRs and CI cells knew a session's
