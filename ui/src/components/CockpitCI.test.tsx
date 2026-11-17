@@ -364,8 +364,11 @@ describe('the cockpit’s CI block', () => {
         <CockpitCI sessionId="s1" onOpen={() => {}} />
       </FoldCtx.Provider>,
     )
-    // Folded, the session's PRs are asked; the Pipeline answer is not.
-    await waitFor(() => expect(asked).toEqual(['/v1/sessions/s1/prs']))
+    // Folded, the session's PRs and the Pipeline answer are asked; the kept
+    // Pipeline copy's open #801 is not read again (that answer failed), so no
+    // pull request's checks are asked from it.
+    await waitFor(() => expect([...asked].sort()).toEqual(['/v1/sessions/s1/ci/stats', '/v1/sessions/s1/prs']))
+    expect(asked.some((u) => u.includes('?pr='))).toBe(false)
     // Until that read lands there is no line, and no time from another answer.
     expect(document.querySelector('[data-cockpit-ci-fold]')).toBeNull()
     // The label row is the folded block's one line; the rest is hidden by CSS.
@@ -380,6 +383,68 @@ describe('the cockpit’s CI block', () => {
     expect(head()).toHaveTextContent(/^CIjust now#806/)
     // Merged, the line says so instead of a tally of old checks.
     expect(head()).toHaveTextContent(/#806merged$/)
+  })
+
+  // Owner, 2026-11-17, translated: "in this mode I don't see CI statuses,
+  // that's very strange". Folded, the line read "#930 merged" — the session's
+  // own newest PR — while the release PR #931, opened by a script, ran CI.
+  describe('folded, when the session’s own PR is not open', () => {
+    const json = (body: object) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    const STATS = { connected: true, fetched_at: now, read_at: now, prs: [
+      { number: 931, url: 'https://github.com/a/b/pull/931', title: 'chore(release): 0.182.0', state: 'open', created_at: now - 300_000 },
+      { number: 930, url: 'https://github.com/a/b/pull/930', title: 'feat(cursor): more', state: 'merged', created_at: now - 7_200_000, merged_at: now - 600_000 },
+    ], board: { cards: [], releases: [], flow: { counts: {}, days: 14, merged: 1, ttm_count: 0, release_lag_count: 0, cost_usd: 0 } } }
+    const serve = (own: object[], checks: Record<number, object>, asked: string[]) => vi.fn(async (url: string) => {
+      asked.push(url)
+      if (url.endsWith('/prs')) return json({ connected: true, prs: own })
+      const m = /\/ci\?pr=(\d+)$/.exec(url)
+      if (m) { const n = Number(m[1]); return json({ connected: true, fetched_at: now, pr: { number: n, url: '', repo: 'a/b', live: live(n, checks[n] ?? PASSED) } }) }
+      return json(STATS)
+    })
+    const folded = () => render(
+      <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+        <CockpitCI sessionId="s1" onOpen={() => {}} />
+      </FoldCtx.Provider>,
+    )
+    const fold = () => document.querySelector('[data-cockpit-ci-fold]')
+
+    it('draws the repository’s open PR’s checks in place of "merged"', async () => {
+      const asked: string[] = []
+      vi.stubGlobal('fetch', serve([row(930, live(930, PASSED, { state: 'merged' }))], { 931: RUNNING }, asked))
+      folded()
+      await waitFor(() => expect(fold()).toHaveAttribute('data-cockpit-ci-fold', '931'))
+      expect(fold()).toHaveAttribute('data-cockpit-ci-fold-of', 'repo')
+      expect(fold()).not.toHaveTextContent('merged')
+      // Its checks, as an own open PR's are: one running, two passed.
+      expect(fold()!.querySelector('[data-check-summary]')).toHaveAttribute('data-check-summary', 'running')
+      expect(fold()!.querySelector('[data-check-summary]')!.getAttribute('aria-label')).toMatch(/^#931, the repository’s open pull request: its checks: /)
+      expect(fold()!.querySelector('[title^="#931: the repository’s open pull request"]')).not.toBeNull()
+      expect(asked).toContain('/v1/sessions/s1/ci?pr=931')
+      const time = document.querySelector('section[aria-label="CI"] [data-section-head] [title^="When GitHub was last read"]')!
+      expect(time).toHaveAttribute('title', 'When GitHub was last read for #931’s checks, the repository’s open pull request')
+    })
+
+    it('keeps the session’s own open PR with checks over the repository’s', async () => {
+      const asked: string[] = []
+      vi.stubGlobal('fetch', serve([row(929, live(929, PASSED))], { 931: RUNNING }, asked))
+      folded()
+      await waitFor(() => expect(fold()).toHaveAttribute('data-cockpit-ci-fold', '929'))
+      expect(fold()).toHaveAttribute('data-cockpit-ci-fold-of', 'session')
+      // Nothing more is asked for a line it does not draw.
+      await waitFor(() => expect(asked).toContain('/v1/sessions/s1/ci/stats'))
+      expect(asked.some((u) => u.includes('?pr='))).toBe(false)
+    })
+
+    it('says "#N merged" when the repository has no open PR either', async () => {
+      const asked: string[] = []
+      const fetch = serve([row(930, live(930, PASSED, { state: 'merged' }))], {}, asked)
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => (url.endsWith('/ci/stats') ? (asked.push(url), json({ ...STATS, prs: STATS.prs.slice(1) })) : fetch(url))))
+      folded()
+      await waitFor(() => expect(fold()).toHaveAttribute('data-cockpit-ci-fold', '930'))
+      await waitFor(() => expect(asked).toContain('/v1/sessions/s1/ci/stats'))
+      expect(fold()).toHaveTextContent(/^#930merged$/)
+      expect(asked.some((u) => u.includes('?pr='))).toBe(false)
+    })
   })
 
   it('unfolded, times a kept copy as of its read until it is read again', () => {

@@ -67,7 +67,9 @@ function fromCache<T>(k: string | undefined): PollSnap<T> {
  */
 export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, busy: (d: T) => boolean, fast = CI_RUNNING_MS, cacheKey?: string, keep?: (prev: T, next: T) => boolean): [T | undefined, number, PollMeta] {
   const [snap, setSnap] = useState<PollSnap<T>>(() => fromCache<T>(cacheKey))
-  const [meta, setMeta] = useState<Omit<PollMeta, 'retry'>>({ loading: false, failed: false, confirmed: false })
+  // `of` is the answer `confirmed` speaks for (the cache key, else the poll's
+  // key): a read of another pull request's checks confirms nothing of this one's.
+  const [meta, setMeta] = useState<Omit<PollMeta, 'retry'> & { of?: string }>({ loading: false, failed: false, confirmed: false })
   const retryRef = useRef<() => void>(noRetry)
   const shown = !cacheKey || snap.k === cacheKey ? snap : fromCache<T>(cacheKey)
   const fn = useRef({ read, busy, keep, shown })
@@ -101,12 +103,12 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
           // failure: it is on its way. One the daemon could not replace is:
           // it says why (refresh_error), and the header says it.
           const reason = fresh?.refresh_error || (worse ? (d as { error?: { message?: string } } | undefined)?.error?.message : undefined) || undefined
-          setMeta({ loading: revalidating, failed: (worse || !!reason) && !revalidating, reason, confirmed: !worse })
+          setMeta({ loading: revalidating, failed: (worse || !!reason) && !revalidating, reason, confirmed: !worse, of: cacheKey ?? key })
           if (fn.current.busy(d)) next = fast
           if (revalidating) next = Math.min(next, REFRESHING_MS)
         } catch (e) {
           // The last answer stays, said to be not refreshed, and why.
-          if (alive) setMeta((m) => ({ loading: false, failed: true, reason: errText(e), confirmed: m.confirmed }))
+          if (alive) setMeta((m) => ({ loading: false, failed: true, reason: errText(e), confirmed: m.confirmed, of: m.of }))
         }
       }
       busyTick = false
@@ -119,6 +121,7 @@ export function usePoll<T>(on: boolean, key: string, read: () => Promise<T>, bus
     return () => { alive = false; retryRef.current = noRetry; window.clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
   }, [on, key, fast, cacheKey])
   const retry = useCallback(() => retryRef.current(), [])
-  return [shown.d, shown.at, { ...meta, retry }]
+  const { of, ...said } = meta
+  return [shown.d, shown.at, { ...said, confirmed: said.confirmed && of === (cacheKey ?? key), retry }]
 }
 
