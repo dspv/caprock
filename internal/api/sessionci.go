@@ -41,9 +41,10 @@ func (a SessionCI) stamped(f deckFresh) any {
 // numbered want among the session's latest (a click on its mini pipeline in
 // the PRs cell), else the session's open one, else its newest. Each is read
 // through github.PullByURL, which keeps it, so the PRs cell and this one
-// share the reads.
+// share the reads. The session's pull requests include those found by the
+// branches it pushed (sessionPRList).
 func (s *Server) sessionCIPR(ctx context.Context, id string, want int) (*SessionCIPR, *github.Error, error) {
-	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
+	prs, err := s.sessionPRList(ctx, id)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -362,6 +362,13 @@ func (r *Recorder) apply(ctx context.Context, q store.Querier, ev *event.Event, 
 				return err
 			}
 		}
+		// A branch it pushed: the deck finds a pull request a script opened
+		// by its head branch (migration 0084).
+		if branch, ok := gitremote.PushFromToolPost(ev.Payload); ok {
+			if err := store.RecordPush(ctx, q, ev.SessionID, branch, ev.Ts.UnixMilli()); err != nil {
+				return err
+			}
+		}
 	}
 
 	// The daily "sessions" count used to be driven from here, by asking

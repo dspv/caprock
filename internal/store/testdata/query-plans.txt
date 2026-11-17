@@ -1662,6 +1662,12 @@ SELECT DISTINCT session_id FROM pending_permissions
 DELETE FROM queued_messages WHERE undelivered_at > 0 AND undelivered_at < ?
     SCAN queued_messages
 
+## store.PushToolPosts
+SELECT sid_, ts, p FROM ( SELECT id, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid) AS sid_, ts, (CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END) AS p FROM events WHERE kind = 'tool.post' AND tool = 'Bash') WHERE p LIKE '%"gitOperation":%' AND p LIKE '%"push":{%' ORDER BY id
+    SEARCH events USING INDEX idx_events_kind_id (kind=?)
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
+
 ## store.PutEventTLDR
 INSERT INTO event_tldr(event_id, text, model, cost_usd, created_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(event_id) DO UPDATE SET text = excluded.text, model = excluded.model, cost_usd = excluded.cost_usd, created_at = excluded.created_at
 
@@ -1856,6 +1862,9 @@ SELECT url FROM session_prs WHERE session_id = ? AND number = ? ORDER BY last_at
     SEARCH session_prs USING INDEX sqlite_autoindex_session_prs_1 (session_id=?)
     USE TEMP B-TREE FOR ORDER BY
 
+## store.RecordPush
+INSERT INTO session_branches(session_id, branch, pushed_at) VALUES(?, ?, ?) ON CONFLICT(session_id, branch) DO UPDATE SET pushed_at = MAX(session_branches.pushed_at, excluded.pushed_at)
+
 ## store.RecordRateLimit, store.ReplaceRateLimits
 INSERT INTO rate_limit_history(ts, window, used_percentage, resets_at) VALUES(?, ?, ?, ?)
 
@@ -1982,6 +1991,10 @@ DELETE FROM forced_continues WHERE session_id = ?
     SEARCH forced_continues USING INDEX sqlite_autoindex_forced_continues_1 (session_id=?)
 
 ## store.RemoveSession
+DELETE FROM session_branches WHERE session_id = ?
+    SEARCH session_branches USING INDEX sqlite_autoindex_session_branches_1 (session_id=?)
+
+## store.RemoveSession
 DELETE FROM session_exits WHERE session_id = ?
     SEARCH session_exits USING PRIMARY KEY (session_id=?)
 
@@ -2094,6 +2107,11 @@ SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
 
 ## store.SeedProject
 INSERT INTO projects(root, name, kind, source, remote_url, default_branch, added_at, defaults) VALUES (?, ?, ?, ?, ?, ?, ?, '{}') ON CONFLICT(root) DO NOTHING
+
+## store.SessionBranches
+SELECT session_id, branch, pushed_at FROM session_branches WHERE session_id = ? ORDER BY pushed_at DESC, branch
+    SEARCH session_branches USING INDEX sqlite_autoindex_session_branches_1 (session_id=?)
+    USE TEMP B-TREE FOR ORDER BY
 
 ## store.SessionCalls
 SELECT * FROM ( SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '') FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ?) ORDER BY 2 ASC, 1 ASC

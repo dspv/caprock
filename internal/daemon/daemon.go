@@ -1008,6 +1008,7 @@ func (d *Daemon) run(ctx context.Context) error {
 		d.compactionStatsLoop(ctx)
 	})
 	d.afterMove(ctx, func() { d.backfillPRs(ctx) })
+	d.afterMove(ctx, func() { d.backfillBranches(ctx) })
 	d.afterMove(ctx, func() { d.fillToolFields(ctx) })
 	// Idle-time housekeeping: the data-directory sweep and the daily storage
 	// measurement (cleanup.go). Nothing on a fixed timer reads the whole file.
@@ -1527,6 +1528,32 @@ func (d *Daemon) backfillPRs(ctx context.Context) {
 	_ = d.store.SetMeta(ctx, store.MetaPRsBackfilled, "1")
 	if n > 0 {
 		d.log.Info("read pull requests from history", "component", "daemon", "commands", n)
+	}
+}
+
+// backfillBranches fills session_branches from the `git push` results stored
+// before migration 0084, once, in the background: the same LIKE scan over
+// Bash results as backfillPRs.
+func (d *Daemon) backfillBranches(ctx context.Context) {
+	if v, _ := d.store.GetMeta(ctx, store.MetaBranchesBackfilled); v == "1" {
+		return
+	}
+	n := 0
+	err := store.PushToolPosts(ctx, d.store.DB(), func(sid string, ts int64, payload []byte) error {
+		branch, ok := gitremote.PushFromToolPost(payload)
+		if !ok {
+			return nil
+		}
+		n++
+		return store.RecordPush(ctx, d.store.DB(), sid, branch, ts)
+	})
+	if err != nil {
+		d.log.Warn("could not read pushed branches from history", "component", "daemon", "err", err)
+		return
+	}
+	_ = d.store.SetMeta(ctx, store.MetaBranchesBackfilled, "1")
+	if n > 0 {
+		d.log.Info("read pushed branches from history", "component", "daemon", "pushes", n)
 	}
 }
 

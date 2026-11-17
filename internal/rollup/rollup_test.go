@@ -120,6 +120,34 @@ func TestRecordToolCallsAndFiles(t *testing.T) {
 	}
 }
 
+// A Bash result Claude Code marked as a push records its branch; a failed
+// push and a push from another tool record nothing.
+func TestRecordPushedBranch(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRecorder(t)
+	at := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	for i, e := range []struct {
+		tool, payload string
+	}{
+		{"Bash", `{"tool_input":{"command":"git push -u origin feat/x"},"tool_response":{"gitOperation":{"push":{"branch":"feat/x"}}}}`},
+		{"Bash", `{"is_error":true,"tool_response":{"gitOperation":{"push":{"branch":"feat/failed"}}}}`},
+		{"Read", `{"tool_response":{"gitOperation":{"push":{"branch":"feat/read"}}}}`},
+	} {
+		ev := &event.Event{SessionID: "s1", Source: event.SourceHook, Kind: event.KindToolPost, Tool: e.tool,
+			Key: fmt.Sprintf("p%d", i), Ts: at.Add(time.Duration(i) * time.Second), Payload: json.RawMessage(e.payload)}
+		if _, err := r.Record(ctx, ev, SessionInfo{Cwd: "/p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := store.SessionBranches(ctx, r.Store.DB(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Branch != "feat/x" || got[0].PushedAt != at.UnixMilli() {
+		t.Fatalf("branches = %+v", got)
+	}
+}
+
 func TestUnknownModelLeavesCostNil(t *testing.T) {
 	r, _ := newRecorder(t)
 	ev := &event.Event{SessionID: "s", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Model: "mystery-9", Tokens: &event.TokenDelta{In: 5}}
