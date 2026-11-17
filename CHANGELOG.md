@@ -12,6 +12,26 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.182.2] - 2026-11-17
+
+### Fixed
+
+- **session:** *Cost, cumulative* on a session page plots the whole session
+  and ends at the Cost tile's figure. It summed only the 60 events loaded, so
+  a Cursor chat, whose cost sits on one reconciled row that later work had
+  pushed out of that window, read $0.00 flat beside a priced Cost tile.
+- **mail:** Caprock Mail's AI on the DeepSeek API now defaults to
+  `deepseek-flash`. The old default, `deepseek-chat`, is a legacy name
+  DeepSeek said it would discontinue on 2026-07-24, and it had no price.
+- **pricing:** Cursor's Grok 4.7, 4.6 and 4.5 (with Fast and 500k variants)
+  and Muse Wonder now have rows from Cursor's models page (read 2026-11-17),
+  and Cursor's `gemini-3.1-pro` and the picker's `sonnet-4` map to their
+  Gemini 3.1 Pro and Claude Sonnet 4 rows, so the Cursor overhead's "at list
+  price" column has a figure for them. A Cursor chat is still never priced
+  from the table. `deepseek-chat`, which DeepSeek said it would discontinue
+  on 2026-07-24, gets no row and is an open question (OQ-29). Pricing table
+  `2026-11-17.3`.
+
 ## [0.182.1] - 2026-11-17
 
 ### Fixed
