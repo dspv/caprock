@@ -411,8 +411,29 @@ class CursorTest(unittest.TestCase):
     def test_own_models_under_cursor(self):
         self.assertEqual(self.m["cursor-composer-2.5"].prices["cache_read"], 0.2)
         self.assertEqual(self.m["cursor-composer-2.5-fast"].prices["output"], 15.0)
+        self.assertEqual(self.m["cursor-grok-4.7-500k-fast"].prices["cache_read"], 1.5)
+        self.assertEqual(self.m["cursor-grok-4.5-fast"].prices["output"], 18.0)
+        self.assertEqual(self.m["cursor-muse-wonder"].prices["input"], 4.0)
         self.assertIn("claude-opus-5.5", self.m)
         self.assertIn("gpt-5.6-sol", self.m)
+        self.assertNotIn("grok-4.7", self.m)
+
+    def test_the_table_has_every_cursor_priced_model(self):
+        # The live table against the fixture: every cursor- row is on the page
+        # at its figure and every page name maps to a row.
+        table = json.loads((pw.ROOT / "pricing" / "pricing.json").read_text(encoding="utf-8"))
+        f = run("cursor", self.models, table, cursor_local=pw.cursor_local_ids())
+        self.assertEqual(f["unmapped"], [])
+        self.assertEqual(f["gone"], [])
+        self.assertEqual(f["changed"], [])
+        self.assertEqual(f["missing"], [])
+
+    def test_family_id_map_matches_go(self):
+        src = (pw.ROOT / "internal" / "api" / "cursor.go").read_text(encoding="utf-8")
+        block = re.search(r"cursorFamilyIDs\s*=\s*map\[string\]string\{([^}]*)\}", src)
+        self.assertIsNotNone(block)
+        go = dict(re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', block.group(1)))
+        self.assertEqual(go, pw.CURSOR_FAMILY_ID)
 
     def test_family_matches_internal_modelclass(self):
         # The same cases as internal/modelclass TestFamilyJoinsOneModelAcrossAgents.
@@ -426,11 +447,15 @@ class CursorTest(unittest.TestCase):
         table = {"version": "t", "models": [
             row("cursor-composer-2.5", 0.5, 0, 0, 0.2, 2.5), row("cursor-composer-2.5-fast", 3, 0, 0, 0.5, 15),
             row("claude-opus-5-5", 4, 5, 8, 0.2, 20), row("gpt-5.6-sol", 4, 5, 5, 0.4, 20)]}
+        for pm in self.models:  # the Cursor-priced rows at the page's figures
+            if pm.id.startswith("cursor-") and not pm.id.startswith("cursor-composer"):
+                p = pm.prices
+                table["models"].append(row(pm.id, p["input"], 0, 0, p["cache_read"], p["output"]))
         f = run("cursor", self.models, table, cursor_local=["sonnet-4", "gpt-5.6-sol"])
         unmapped = {i["id"] for i in f["unmapped"]}
-        self.assertIn("grok-4.7", unmapped)
         self.assertIn("gemini-3.1-pro", unmapped)
         self.assertIn("sonnet-4", unmapped)
+        self.assertNotIn("grok-4.7", unmapped)  # Cursor-priced: compared, not mapped
         self.assertNotIn("claude-opus-5.5", unmapped)
         self.assertNotIn("gpt-5.6-sol", unmapped)
         self.assertNotIn("cursor-composer-2.5", unmapped)

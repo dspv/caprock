@@ -9075,11 +9075,13 @@ button: neither the daemon nor `caprock hooks install` writes it.
     `gemini-3.7-flash`; a test holds each to a `pricing.json` note citing
     Zen); a Zen model with no row is listed, and its `-free` variants are
     skipped (`isFreeModel`).
-  - **Cursor** (`cursor.com/docs/models`): the `cursor-composer-*` rows are
-    compared; every other model name, and the ids Caprock's Cursor picker
-    offers (`internal/agentcat` `cursorHelpModels`), is reduced by the
-    script's copy of `modelclass.Family` and `cursorFamilyID` and listed when
-    no row matches, because the Cursor page's model mix and "at list price"
+  - **Cursor** (`cursor.com/docs/models`): the `cursor-` rows, whose figure
+    is Cursor's own (Composer, Grok, and Muse Wonder at Cursor's list price;
+    `CURSOR_PRICED`), are compared; every other model name, and the ids
+    Caprock's Cursor picker offers (`internal/agentcat` `cursorHelpModels`),
+    is reduced by the script's copy of `modelclass.Family` and
+    `cursorFamilyIDs` (a test holds the copy equal to the Go map) and listed
+    when no row matches, because the Cursor page's model mix and "at list price"
     column have no figure for it. A Cursor chat is never priced from the
     table (ADR-095).
   - **Codex's catalog** (`codex-rs/models-manager/models.json` in

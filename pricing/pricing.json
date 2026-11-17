@@ -1,10 +1,11 @@
 {
-  "version": "2026-11-17.2",
+  "version": "2026-11-17.3",
   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
   "fetched_at": "2026-11-17",
   "currency": "USD",
   "unit": "per_million_tokens",
   "notes": [
+    "2026-11-17.3 adds Cursor-sold models read from https://cursor.com/docs/models on 2026-11-17, input / cache read / output per 1M (the page lists no cache write for any of them, so both write columns are 0): Grok 4.7 $2/$0.50/$6, Grok 4.7 (Fast) $4/$1/$12, Grok 4.7 500k $4/$1/$12, Grok 4.7 500k (Fast) $6/$1.50/$18, Grok 4.6 $2/$0.50/$6, Grok 4.6 (Fast) $4/$1/$12, Grok 4.5 $2/$0.50/$6, Grok 4.5 (Fast) $4/$1/$18; and Muse Wonder (Meta, Cursor's model id muse-wonder-1.0) $4/$0.20/$20, which Cursor lists among third-party models billed at \"the model's API list price\" — Cursor's figure, named as such, not read from Meta. The Grok models are Cursor's own (\"Provider: Cursor\" on their model pages, https://cursor.com/docs/models/grok-4-7 and siblings, same date), so they sit under cursor- with the Composer rows; Muse Wonder does too, because its figure is Cursor's. Context windows are 0: the model pages say \"256k\" for the Grok models (Grok 4.7 500k is the 500k variant) and \"300k\", max \"1M\", for Muse Wonder, without saying whether k is 1,000 or 1,024 (as OQ-27), and Cursor's single price for Muse Wonder gives no tier above 300k. These rows only value Cursor's per-request overhead at list price; a Cursor chat is never priced from the table (ADR-095), so no turn was priced by them before and there is no correction. The same version maps Cursor's gemini-3.1-pro to the gemini-3.1-pro-preview row (the page's $2/$0.20/$12 matches it) and Caprock's Cursor picker ids sonnet-4 and sonnet-4-thinking to claude-sonnet-4 (internal/api cursorFamilyID). deepseek-chat gets no row: DeepSeek's change log (https://api-docs.deepseek.com/updates/, read 2026-11-17) says the name was to be discontinued on 2026-07-24, and the pricing page (https://api-docs.deepseek.com/quick_start/pricing, same date) no longer lists it (OQ-29 in .ai/12-risks.md).",
     "2026-11-17.2 changes context windows only, no price: six Gemini rows from 1,000,000 to 1,048,576 as each model page states, and the OpenAI rows added in 2026-11-17.1 with 0 now carry the windows on their model pages (gpt-5.5 and gpt-5.4 1,050,000; gpt-5.4-mini, -nano, gpt-5.2, gpt-5.1, gpt-5, -mini, -nano 400,000; o3 200,000; gpt-4.1 and -mini 1,047,576), all read 2026-11-17 and reported by scripts/pricing-watch.py. The window only drives the context fill %.",
     "First-party Anthropic API prices. Amazon Bedrock and Google Vertex have separate partner pricing (regional endpoints +10%) and are not covered by this table (OQ-02).",
     "fetched_at is the most recent read, not one date for every row: Anthropic prices were read on 2026-08-18, the non-Anthropic rows on 2026-08-27, the Gemini rows on 2026-09-01, and Fable 5.1 / Mythos 5.1 on 2026-09-02. Each note below carries the date for the rows it describes, because a single date on a table assembled over weeks tells a reader checking a figure nothing about that figure. Since 2026-11-17.1 every row was re-read on 2026-11-17 against the pages named in the notes below; a note with an older date describes when that figure was first entered.",
@@ -1079,6 +1080,96 @@
       "cache_write_1h": 0.0,
       "cache_read": 0.2,
       "output": 2.5,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.7-500k-fast",
+      "display": "Grok 4.7 500k (Fast) (Cursor)",
+      "input": 6.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 1.5,
+      "output": 18.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.7-500k",
+      "display": "Grok 4.7 500k (Cursor)",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 1.0,
+      "output": 12.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.7-fast",
+      "display": "Grok 4.7 (Fast) (Cursor)",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 1.0,
+      "output": 12.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.7",
+      "display": "Grok 4.7 (Cursor)",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.5,
+      "output": 6.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.6-fast",
+      "display": "Grok 4.6 (Fast) (Cursor)",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 1.0,
+      "output": 12.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.6",
+      "display": "Grok 4.6 (Cursor)",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.5,
+      "output": 6.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.5-fast",
+      "display": "Grok 4.5 (Fast) (Cursor)",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 1.0,
+      "output": 18.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-grok-4.5",
+      "display": "Grok 4.5 (Cursor)",
+      "input": 2.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.5,
+      "output": 6.0,
+      "context_window": 0
+    },
+    {
+      "id": "cursor-muse-wonder",
+      "display": "Muse Wonder (Meta, at Cursor's list price)",
+      "input": 4.0,
+      "cache_write_5m": 0.0,
+      "cache_write_1h": 0.0,
+      "cache_read": 0.2,
+      "output": 20.0,
       "context_window": 0
     }
   ]

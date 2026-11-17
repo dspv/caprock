@@ -60,12 +60,28 @@ type cursorOverheadResponse struct {
 
 const overheadMethod = "Cursor: the first request Cursor measured in each chat, minus everything readable before it in that turn (prompt, replies, tool calls and results) at 4 bytes a token; a chat counts when that conversation was at most a quarter of the request. Claude Code: the first priced request of each session (input, cache read and cache write, exact), minus the prompt typed, at 4 bytes a token. Both are estimates of what the agent sent that the person did not write."
 
-// cursorFamilyID maps a family to the pricing table's id where the two
-// differ: Cursor's own models are listed under cursor- (pricing.json).
+// cursorFamilyIDs maps a family (modelclass.Family of a Cursor model id) to
+// the pricing table's id where the two differ. Models whose figure is
+// Cursor's own are listed under cursor- (pricing.json); a name Cursor spells
+// differently from the vendor maps to the vendor's row. Family drops -fast,
+// so a Fast variant is valued at its base model's rate, as Composer's is.
+// scripts/pricing-watch.py keeps a copy (CURSOR_FAMILY_ID), held equal by
+// its tests.
+var cursorFamilyIDs = map[string]string{
+	"composer-2.5":    "cursor-composer-2.5",
+	"grok-4.7":        "cursor-grok-4.7",
+	"grok-4.7-500k":   "cursor-grok-4.7-500k",
+	"grok-4.6":        "cursor-grok-4.6",
+	"grok-4.5":        "cursor-grok-4.5",
+	"muse-wonder":     "cursor-muse-wonder",
+	"muse-wonder-1.0": "cursor-muse-wonder",
+	"gemini-3.1-pro":  "gemini-3.1-pro-preview",
+	"sonnet-4":        "claude-sonnet-4",
+}
+
 func cursorFamilyID(family string) string {
-	switch family {
-	case "composer-2.5":
-		return "cursor-composer-2.5"
+	if id, ok := cursorFamilyIDs[family]; ok {
+		return id
 	}
 	return family
 }

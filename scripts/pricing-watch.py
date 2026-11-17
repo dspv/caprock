@@ -703,8 +703,24 @@ def cursor_family(mid: str) -> str:
     return m
 
 
-# internal/api cursorFamilyID: a family whose table id differs.
-CURSOR_FAMILY_ID = {"composer-2.5": "cursor-composer-2.5"}
+# internal/api cursorFamilyIDs: a family whose table id differs. A test holds
+# this copy equal to the Go map.
+CURSOR_FAMILY_ID = {
+    "composer-2.5": "cursor-composer-2.5",
+    "grok-4.7": "cursor-grok-4.7",
+    "grok-4.7-500k": "cursor-grok-4.7-500k",
+    "grok-4.6": "cursor-grok-4.6",
+    "grok-4.5": "cursor-grok-4.5",
+    "muse-wonder": "cursor-muse-wonder",
+    "muse-wonder-1.0": "cursor-muse-wonder",
+    "gemini-3.1-pro": "gemini-3.1-pro-preview",
+    "sonnet-4": "claude-sonnet-4",
+}
+
+# Page names whose row carries Cursor's own figure, under cursor-: Cursor's
+# models (Composer, Grok) and Muse Wonder, which no vendor page of Meta's
+# prices for this table (pricing.json, 2026-11-17.3 note).
+CURSOR_PRICED = ("composer", "grok", "muse")
 
 
 def cursor_local_ids() -> list:
@@ -719,9 +735,10 @@ def cursor_local_ids() -> list:
 
 
 def parse_cursor(text: str) -> list:
-    """cursor.com/docs/models: price tables by display name. Cursor's own
-    models (Composer) are rows under cursor- and are compared; every other
-    name is checked for a vendor row it maps to (compare(), mode cursor)."""
+    """cursor.com/docs/models: price tables by display name. The models whose
+    row is Cursor's figure (CURSOR_PRICED) are under cursor- and compared;
+    every other name is checked for a vendor row it maps to (compare(), mode
+    cursor)."""
     out: dict = {}
     for rows in any_tables(text):
         header = [strip_markup(c).lower() for c in rows[0]]
@@ -736,7 +753,7 @@ def parse_cursor(text: str) -> list:
         for cells in rows[1:]:
             display = strip_markup(cells[0])
             slug = cursor_slug(display)
-            mid = "cursor-" + slug if slug.startswith("composer") else slug
+            mid = "cursor-" + slug if slug.startswith(CURSOR_PRICED) else slug
             if not slug or mid in out:
                 continue
             prices = _blank()
