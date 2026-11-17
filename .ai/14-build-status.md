@@ -422,6 +422,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.181.0: Cursor counts like every agent; a wider price watch; face tabs
+
+A minor release, one batch PR (#928) of four branches. Cursor turns carry the
+model Cursor billed and Cursor's own context reading, and its tool calls get
+result rows, so its sessions find PRs, branches, CI and failed calls; a
+one-time pass repairs stored rows with totals unchanged. Cursor and Hermes
+usage records count as requests, not turns. One per-agent map says what an
+agent does not record, in one sentence and one slot. The daily price watch
+reads eight more sources and a test keeps every offered model priced (table
+2026-11-17.2). The face menu's tabs show each set's face and a short name.
+
 ### 2026-11-17 — 0.180.0: model prices audited; a daily watch of the pricing pages
 
 A minor release, one PR (#926). An audit of every provider Caprock prices
