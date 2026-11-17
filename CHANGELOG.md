@@ -12,6 +12,57 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.181.0] - 2026-11-17
+
+### Changed
+
+- **faces:** the face menu's set tabs show each set's face with a short name,
+  Face · Duck · Pumpkin · Winter · Dobie, with clear borders, and Home and End
+  jump to the first and the last tab. The dobermans are now called Dobies.
+- **pricing:** the daily price watch now also reads DeepSeek, MiniMax and Kimi
+  pricing, OpenCode Zen (for the rows whose figure is Zen's), Cursor's models
+  page (its own models' prices, and the names Caprock cannot map to a priced
+  model), Codex's model catalog (a model its picker lists with no price is
+  drift), the Anthropic, OpenAI and Gemini model lists (context windows,
+  new models, retirement dates) and OpenRouter's model list (new models, as a
+  hint only). Findings that need no change to the table are reported "for
+  information" and never open the "Pricing drift" issue. A new test fails any
+  pull request whose launch menus offer a model the pricing table cannot
+  price.
+
+### Fixed
+
+- **pricing:** the context fill for six Gemini models now uses their real
+  1,048,576-token window, and the older OpenAI models Codex can run (GPT-5.5,
+  5.4, 5.2, 5.1, 5, o3, GPT-4.1) show a context fill at all (pricing table
+  2026-11-17.2).
+- **cursor:** Cursor turns now carry the model Cursor billed for them, not the
+  one its model picker happens to show now: a chat billed to one model files
+  every turn under it, and a chat billed to several says the model is not
+  known rather than guess. Chats stored before are corrected once on the next
+  start, with their total tokens and cost unchanged.
+- **cursor:** the Context meter of a Cursor chat reads Cursor's own measure
+  of how full the window is (a 1M window in max mode), instead of a figure
+  worked out from tokens that were never one request's size.
+- **cursor:** Cursor chats now record what each tool call returned, so they
+  find the pull requests they opened and the branches they pushed (and with
+  them the PR and CI cells), and show failed and rejected tool calls in the
+  timeline and loop alerts, as Claude Code sessions do.
+- **cost:** Cursor's spend is read per request, not per usage record. Cursor
+  keeps its cost per chat and model, and Caprock stored it on records that
+  are not turns, so a model of 2,153 requests and $623 read as "7 turns" and
+  "$89 per turn". Those records no longer count as turns anywhere — the model
+  mix, All time, the agents and the Week card — and a Cursor model shows its
+  requests instead: *2,153 requests · $0.29/request*. Hermes's usage records
+  stop counting as turns too.
+- **session:** a figure an agent does not record reads the same for every
+  agent: "—" with *Cursor doesn't record cache reads or writes*, *Gemini
+  doesn't record cache writes*, *Hermes doesn't record each request's tokens*
+  under the tile it belongs to. Cursor's Context tile no longer measures a sum
+  of requests against a window (or names its model as missing from the
+  pricing table), and a Cursor chat with no cost says Cursor recorded none
+  rather than "price unknown".
+
 ## [0.180.0] - 2026-11-17
 
 ### Added
