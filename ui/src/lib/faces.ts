@@ -21,7 +21,9 @@
  *
  * New Year faces and Dobermans (owner, 2026-11-17, both sets approved from
  * a mockup) are a fourth and fifth group, kept the same way: a tab and a
- * pool each, appended to ALL_FACES and to nothing else.
+ * pool each, appended to ALL_FACES and to nothing else. On screen the
+ * dobermans are Dobies (owner, 2026-11-17); the stored ids keep `dobie-*`
+ * and `random-dobermans`.
  *
  * Kept per viewer, in this browser's storage. Storage that throws or holds
  * garbage reads as nothing chosen, so the hashed face still shows.
@@ -47,10 +49,28 @@ export type Pumpkin = (typeof PUMPKINS)[number]
 export type NewYear = (typeof NEW_YEAR)[number]
 export type Dobie = (typeof DOBERMANS)[number]
 export type Face = ClaudeFace | Duck | Pumpkin | NewYear | Dobie
-/** A random pool — faces only (the default), ducks, pumpkins, New Year or dobermans only, or faces and ducks — or one fixed face for all. */
+/** A random pool — faces only (the default), ducks, pumpkins, New Year faces or dobies (the dobermans) only, or faces and ducks — or one fixed face for all. */
 export type FacePool = 'random' | 'random-ducks' | 'random-pumpkins' | 'random-newyear' | 'random-dobermans' | 'random-all'
 export type FaceDefault = FacePool | Face
 export const FACE_POOLS: readonly FacePool[] = ['random', 'random-ducks', 'random-pumpkins', 'random-newyear', 'random-dobermans', 'random-all']
+
+/** A set of faces: a tab in the face menu and a row in Settings → Appearance. The ids are stored nowhere. */
+export type FaceSet = 'faces' | 'ducks' | 'pumpkins' | 'newyear' | 'dobermans'
+/** The sets, in tab order. */
+export const FACE_SETS: readonly FaceSet[] = ['faces', 'ducks', 'pumpkins', 'newyear', 'dobermans']
+/**
+ * Each set's names and emblem, shared by the face menu's tabs and Settings so
+ * they cannot drift (owner, 2026-11-17, from a mockup): `short` is the word
+ * under the tab's emblem face, `name` its accessible name and tooltip, `pool`
+ * the "one per session" choice that draws from it.
+ */
+export const FACE_SET: Record<FaceSet, { short: string; name: string; emblem: Face; faces: readonly Face[]; pool: FacePool }> = {
+  faces: { short: 'Face', name: 'Faces', emblem: 'beanie', faces: FACES, pool: 'random' },
+  ducks: { short: 'Duck', name: 'Ducks', emblem: 'duck', faces: DUCKS, pool: 'random-ducks' },
+  pumpkins: { short: 'Pumpkin', name: 'Pumpkins', emblem: 'pumpkin', faces: PUMPKINS, pool: 'random-pumpkins' },
+  newyear: { short: 'Winter', name: 'New Year faces', emblem: 'ny-tree', faces: NEW_YEAR, pool: 'random-newyear' },
+  dobermans: { short: 'Dobie', name: 'Dobies', emblem: 'dobie-red', faces: DOBERMANS, pool: 'random-dobermans' },
+}
 
 export const FACE_NAME: Record<Face, string> = {
   cap: 'Hard hat',
@@ -100,7 +120,7 @@ export const POOL_NAME: Record<FacePool, string> = {
   'random-ducks': 'A duck per session',
   'random-pumpkins': 'A pumpkin per session',
   'random-newyear': 'A New Year face per session',
-  'random-dobermans': 'A doberman per session',
+  'random-dobermans': 'A dobie per session',
   'random-all': 'Faces and ducks',
 }
 
