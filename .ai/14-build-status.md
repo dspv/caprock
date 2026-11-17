@@ -422,6 +422,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.182.0: Cursor part 2: compactions, turn ends, old chats, hooks, modes
+
+A minor release, one PR (#930). Cursor's summaries are compactions, its turns
+end and show done or waiting, the nine old-format chats are read, tool names
+and relative paths match the other agents, turn ends carry request and
+thinking time, cursor-agent's observational hooks are registered (no
+`user_email` stored), and Plan, Ask and auto-run modes and accept or reject
+decisions are read. A one-time pass repairs stored chats; on a copy of the
+owner's data the cost stayed $882.16.
+
 ### 2026-11-17 — 0.181.0: Cursor counts like every agent; a wider price watch; face tabs
 
 A minor release, one batch PR (#928) of four branches. Cursor turns carry the
