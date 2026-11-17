@@ -422,6 +422,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-17 — 0.182.2: Cursor's cost chart, Cursor model names, Mail's DeepSeek default
+
+A patch release, one PR (#934). The session's "Cost, cumulative" chart summed
+only the last 60 events, so a Cursor chat, whose cost sits on one reconciled
+row, read $0.00 beside a priced Cost tile; the session detail now carries a
+`cost_series` over every priced turn. Cursor's Grok 4.5–4.7 and Muse Wonder
+have rows from Cursor's models page, and its `gemini-3.1-pro` and `sonnet-4`
+map to existing rows (table `2026-11-17.3`). Caprock Mail's DeepSeek default
+moved from the discontinued `deepseek-chat` to `deepseek-flash` (OQ-29).
+
 ### 2026-11-17 — 0.182.1: the folded CI line shows the open PR's checks
 
 A patch release, one PR (#932). Folded, the CI block showed the session's own
