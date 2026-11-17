@@ -369,9 +369,11 @@ type Bubble struct {
 	// reply of a turn: the context of that turn's last request, and what
 	// that request wrote. Zero on every other row.
 	TokensIn, TokensOut int64
-	// ContextUsed is contextWindowStatusAtCreation.tokensUsed on a prompt.
-	ContextUsed int64
-	Tool        *Tool
+	// ContextUsed and ContextLimit are contextWindowStatusAtCreation on a
+	// prompt: how full Cursor measured the chat's context window as the
+	// prompt was written, and the window's size. Zero when it kept none.
+	ContextUsed, ContextLimit int64
+	Tool                      *Tool
 	// Call is the model request this row belongs to (modelCallId of a tool
 	// call, else usageUuid), "" when Cursor kept none.
 	Call string
@@ -387,8 +389,17 @@ type Tool struct {
 	ID     string
 	Name   string
 	Args   map[string]any
-	Status string
+	Status string // completed, error, cancelled, loading
 	Error  bool
+	// Result is toolFormerData.result, the JSON text Cursor stores the
+	// call's output as ({"output": …} for a terminal command, {"contents":
+	// …} for a read…); "" while the call runs.
+	Result string
+	// ErrorText is what Cursor told the model went wrong, when it did.
+	ErrorText string
+	// Decision is userDecision: accepted or rejected, "" when nobody was
+	// asked.
+	Decision string
 }
 
 type rawBubble struct {
@@ -407,7 +418,8 @@ type rawBubble struct {
 		Out int64 `json:"outputTokens"`
 	} `json:"tokenCount"`
 	Context *struct {
-		Used int64 `json:"tokensUsed"`
+		Used  int64 `json:"tokensUsed"`
+		Limit int64 `json:"tokenLimit"`
 	} `json:"contextWindowStatusAtCreation"`
 	UsageUUID   string `json:"usageUuid"`
 	TerminalCwd string `json:"lastTerminalCwd"`
@@ -419,6 +431,7 @@ type rawBubble struct {
 		RawArgs     string `json:"rawArgs"`
 		Result      string `json:"result"`
 		Error       any    `json:"error"`
+		Decision    string `json:"userDecision"`
 	} `json:"toolFormerData"`
 }
 
@@ -482,17 +495,41 @@ func parseBubble(id string, val []byte) (Bubble, bool) {
 		b.TokensIn, b.TokensOut = max(0, r.TokenCount.In), max(0, r.TokenCount.Out)
 	}
 	if r.Context != nil {
-		b.ContextUsed = r.Context.Used
+		b.ContextUsed, b.ContextLimit = max(0, r.Context.Used), max(0, r.Context.Limit)
 	}
 	b.Visible = len(r.Text) + len(b.Thinking)
 	if t := r.Tool; t != nil && t.Name != "" {
-		b.Tool = &Tool{ID: t.ToolCallID, Name: t.Name, Args: arguments(t.RawArgs), Status: t.Status, Error: t.Error != nil || t.Status == "error"}
+		b.Tool = &Tool{ID: t.ToolCallID, Name: t.Name, Args: arguments(t.RawArgs), Status: t.Status,
+			Error: t.Error != nil || t.Status == "error", Result: t.Result, ErrorText: errorText(t.Error), Decision: t.Decision}
 		if t.ModelCallID != "" {
 			b.Call = t.ModelCallID
 		}
 		b.Visible += len(t.RawArgs) + len(t.Result)
 	}
 	return b, true
+}
+
+// errorText reads toolFormerData.error, a JSON string holding
+// {clientVisibleErrorMessage, modelVisibleErrorMessage}: the model's
+// message, else the one Cursor showed, else the text as it is.
+func errorText(v any) string {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return ""
+	}
+	var e struct {
+		Model  string `json:"modelVisibleErrorMessage"`
+		Client string `json:"clientVisibleErrorMessage"`
+	}
+	if json.Unmarshal([]byte(s), &e) == nil {
+		if e.Model != "" {
+			return e.Model
+		}
+		if e.Client != "" {
+			return e.Client
+		}
+	}
+	return s
 }
 
 // parseTime reads createdAt, which newer rows write as an ISO string and

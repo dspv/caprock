@@ -128,6 +128,10 @@ const (
 	// MetaBranchesBackfilled is "1" once session_branches holds the pushes of
 	// the events stored before migration 0084.
 	MetaBranchesBackfilled = "session_branches_backfilled"
+	// MetaCursorParityRepaired is "1" once the editor chats Cursor's reader
+	// stored before it read the billed model, the context reading and the
+	// tool results were read again (cursor.Ingester's repair).
+	MetaCursorParityRepaired = "cursor_parity_repaired"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

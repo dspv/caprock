@@ -969,6 +969,47 @@ func TestContextNoteSaysWhyContextIsMissing(t *testing.T) {
 	}
 }
 
+// Cursor measures its own window (contextWindowStatusAtCreation) and the
+// meter shows that reading: its turns' tokens are reconciled totals and its
+// model ids are not the table's, so the table fill would be wrong twice.
+func TestContextFromCursorsOwnReading(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	info := rollup.SessionInfo{Cwd: t.TempDir(), Agent: "cursor", Model: "claude-4.1-opus-thinking"}
+	cost := 1.2
+	for _, ev := range []*event.Event{
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:1", Ts: base,
+			Payload: json.RawMessage(`{"prompt":"go","context_tokens":41000,"context_window":176000}`)},
+		// A reconciled total far above the window: never a fill.
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-msg:2", Ts: base.Add(time.Second),
+			Model: "gpt-5", Tokens: &event.TokenDelta{In: 900000, Out: 800}, CostUSD: &cost, Payload: json.RawMessage(`{"text":"done"}`)},
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:3", Ts: base.Add(2 * time.Second),
+			Payload: json.RawMessage(`{"prompt":"more","context_tokens":88000,"context_window":176000}`)},
+		{SessionID: "cu-none", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-msg:9", Ts: base,
+			Model: "gpt-5", Tokens: &event.TokenDelta{In: 900000}, Payload: json.RawMessage(`{"text":"done"}`)},
+	} {
+		if _, err := e.rec.Record(ctx, ev, info); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var list []SessionSummary
+	if code := e.get(t, "/v1/sessions", &list); code != 200 {
+		t.Fatalf("sessions: %d", code)
+	}
+	got := map[string]SessionSummary{}
+	for _, s := range list {
+		got[s.SessionID] = s
+	}
+	c := got["cu"].Context
+	if c == nil || c.Tokens != 88000 || c.Window != 176000 || c.Pct != 50 || c.NextCallUSD != 0 {
+		t.Fatalf("context %+v note %q, want Cursor's 88000 of 176000 and no table price", c, got["cu"].ContextNote)
+	}
+	if s := got["cu-none"]; s.Context != nil || s.ContextNote != "no context reading yet" {
+		t.Fatalf("a chat with no reading: %+v %q", s.Context, s.ContextNote)
+	}
+}
+
 // A turn on a model the pricing table does not carry leaves its cost unknown,
 // and the session's stats count it, so the Cost tile can say "price unknown"
 // instead of a $0.00 that claims the work was free. A session with no such

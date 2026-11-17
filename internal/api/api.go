@@ -1321,6 +1321,30 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 	// with no main-thread turn at all (an OpenCode child session) is measured
 	// by its subagent turns, which are then its own.
 	sum.ContextNote = "no turn yet"
+	if readsOwnContext(sess.Agent) {
+		// The agent measured its window itself (Cursor's
+		// contextWindowStatusAtCreation): that reading is the meter. Its
+		// turns' tokens are reconciled totals, not one request's size, and
+		// its model ids are not the table's, so the fill below would be
+		// wrong twice over.
+		r, found := lastReading(last)
+		if !found {
+			got, err := readOnce(&rec.mu, &rec.reading, func() (foundReading, error) {
+				r, found, err := store.LastContextReading(ctx, q, sess.SessionID)
+				return foundReading{r: r, found: found}, err
+			})
+			if err != nil {
+				return SessionSummary{}, nil, err
+			}
+			r, found = got.r, got.found
+		}
+		if found {
+			sum.Context, sum.ContextNote = s.readingFill(r, sess.Model), ""
+		} else {
+			sum.ContextNote = "no context reading yet"
+		}
+		return sum, last, nil
+	}
 	turn, ok := lastContextTurn(last)
 	if !ok || turn.Subagent() {
 		main, err := readOnce(&rec.mu, &rec.mainTurn, func() (foundEvent, error) {
@@ -1366,6 +1390,48 @@ func (s *Server) contextFill(e event.Event, sessionModel string) (*ContextFill, 
 	f := s.fill(row.ContextWindow, e.Tokens.In+e.Tokens.CacheRead+e.Tokens.CacheWrite, model)
 	f.At = e.Ts.UnixMilli()
 	return f, ""
+}
+
+// readsOwnContext names the agents whose turns carry their own context
+// reading (`context_tokens`, `context_window`) instead of one request's
+// tokens.
+func readsOwnContext(agent string) bool { return agent == "cursor" }
+
+// lastReading is the newest main-thread turn in a window of events that
+// carries an agent's own context reading.
+func lastReading(evs []event.Event) (store.ContextReading, bool) {
+	for i := len(evs) - 1; i >= 0; i-- {
+		e := evs[i]
+		if e.Subagent() || e.Kind != event.KindTurnUser && e.Kind != event.KindTurnAssistant {
+			continue
+		}
+		var p struct {
+			Tokens int64  `json:"context_tokens"`
+			Window int64  `json:"context_window"`
+			Model  string `json:"model"`
+		}
+		if json.Unmarshal(e.Payload, &p) != nil || p.Tokens <= 0 {
+			continue
+		}
+		return store.ContextReading{Tokens: p.Tokens, Window: p.Window, Model: firstNonEmpty(e.Model, p.Model), At: e.Ts.UnixMilli()}, true
+	}
+	return store.ContextReading{}, false
+}
+
+// readingFill is an agent's own reading as the meter shows it. The window
+// is the agent's, else the table's for the model. No next-call price: the
+// agent bills its own way (ADR-095), not by Caprock's table.
+func (s *Server) readingFill(r store.ContextReading, sessionModel string) *ContextFill {
+	window := r.Window
+	if window <= 0 && s.d.Table != nil {
+		if row, ok := s.d.Table.Lookup(firstNonEmpty(r.Model, sessionModel)); ok {
+			window = row.ContextWindow
+		}
+	}
+	if window <= 0 {
+		return nil
+	}
+	return &ContextFill{Tokens: r.Tokens, Window: window, Pct: 100 * float64(r.Tokens) / float64(window), At: r.At}
 }
 
 // fill is toks of a window, priced at model's cache-read rate.
