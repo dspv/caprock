@@ -12,6 +12,16 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.182.4] - 2026-11-18
+
+### Changed
+
+- **app:** the *Updated to X · What's new* line after an update closes itself
+  after 10 seconds, a ring round its × showing the time left. Pointing at it
+  holds the count, and so does the window being in the background.
+- **cockpit:** the CI section's read time says *now* instead of *just now*
+  and stays on one line, where it wrapped in a narrow panel.
+
 ## [0.182.3] - 2026-11-17
 
 ### Fixed
