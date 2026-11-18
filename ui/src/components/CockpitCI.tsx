@@ -265,7 +265,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
       <SectionLabel right={(
         <span className="flex items-center gap-2">
-          <span className="text-[10.5px] text-fg-faint" title={folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '') : ''}</span>
+          <span data-cockpit-ci-age className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint" title={folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '').replace('just now', 'now') : ''}</span>
           {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
           {leadSum && foldLead && (
             <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} className="flex min-w-0 items-center gap-1.5">

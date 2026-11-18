@@ -23,7 +23,7 @@ vi.mock('@/lib/api', async (orig) => {
   }
 })
 
-import { AppAutoUpdate, resetAutoUpdate } from './AppAutoUpdate'
+import { AppAutoUpdate, NOTE_MS, resetAutoUpdate } from './AppAutoUpdate'
 
 const base: UpdateStatus = { enabled: true, current: 'v0.79.0', latest: 'v0.80.0', update_available: true, url: 'https://github.com/dspv/caprock/releases/latest' }
 const flush = async (ms = 0) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
@@ -154,6 +154,29 @@ describe('Update automatically', () => {
     render(<AppAutoUpdate />)
     await flush()
     expect(screen.queryByRole('status', { name: 'Caprock updated' })).toBeNull()
+  })
+
+  it('closes the updated line after a count that holds under the pointer and in the background', async () => {
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+    localStorage.setItem(UPDATED_KEY, 'v0.80.0')
+    app = { ...app, version: '0.80.0' }
+    h.st = { ...base, current: 'v0.80.0', update_available: false }
+    render(<AppAutoUpdate />)
+    await flush()
+    const line = screen.getByRole('status', { name: 'Caprock updated' })
+    fireEvent.pointerEnter(line)
+    await flush(NOTE_MS * 2)
+    expect(screen.getByRole('status', { name: 'Caprock updated' })).toBeTruthy()
+    fireEvent.pointerLeave(line)
+    focus.mockReturnValue(false)
+    await flush(NOTE_MS * 2)
+    expect(screen.getByRole('status', { name: 'Caprock updated' })).toBeTruthy()
+    focus.mockReturnValue(true)
+    await flush(NOTE_MS - 500)
+    expect(screen.getByRole('status', { name: 'Caprock updated' })).toBeTruthy()
+    await flush(600)
+    expect(screen.queryByRole('status', { name: 'Caprock updated' })).toBeNull()
+    focus.mockRestore()
   })
 
   it('is quiet where the app cannot replace itself', async () => {

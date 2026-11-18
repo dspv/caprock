@@ -8,7 +8,8 @@
  * seconds before the restart a card says so, with **Not now** (an hour) and
  * **Restart now**; touching a key or clicking also calls it off until the
  * next quiet moment. After the restart one line says **Updated to vX ·
- * What's new**.
+ * What's new**; it closes itself after NOTE_MS, a ring round its × showing
+ * the time left (owner, 2026-11-18: it stayed forever).
  *
  * Sessions and tabs come back as on any update: each session's terminal
  * lives in its pty-host, which outlives the app and the daemon (ADR-033);
@@ -164,14 +165,52 @@ export function AppAutoUpdate() {
         </div>
       )}
       {note && countdown === null && (
-        <div role="status" aria-label="Caprock updated" data-auto-updated className={`${corner} flex items-center gap-2 py-2 pl-3.5 pr-2`}>
-          <span>Updated to <span className="mono">{note.replace(/^v/, '')}</span></span>
-          <span aria-hidden className="text-fg-faint">·</span>
-          <button type="button" className="link" onClick={whatsNew}>What’s new</button>
-          <button type="button" aria-label="Close" onClick={() => setNote(null)} className="ml-auto rounded-[6px] px-1.5 text-fg-faint hover:text-fg">×</button>
-        </div>
+        <UpdatedNote version={note} className={corner} onWhatsNew={whatsNew} onClose={() => setNote(null)} />
       )}
       {notes && st && createPortal(<NotesDialog u={st} onClose={() => setNotes(false)} />, document.body)}
     </>
+  )
+}
+
+/** How long the Updated to line stays (owner, 2026-11-18: see it once, then let it go). */
+export const NOTE_MS = 10_000
+const NOTE_STEP_MS = 100
+
+/**
+ * The Updated to line. Counts down only while it can be seen and is not
+ * being pointed at: the window in front and visible, the pointer off it.
+ */
+function UpdatedNote({ version, className, onWhatsNew, onClose }: {
+  version: string; className: string; onWhatsNew: () => void; onClose: () => void
+}) {
+  const [left, setLeft] = useState(NOTE_MS)
+  const hover = useRef(false)
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (hover.current || document.hidden || !document.hasFocus()) return
+      setLeft((n) => Math.max(0, n - NOTE_STEP_MS))
+    }, NOTE_STEP_MS)
+    return () => window.clearInterval(t)
+  }, [])
+  useEffect(() => { if (left <= 0) onClose() }, [left, onClose])
+  const r = 9
+  const len = 2 * Math.PI * r
+  return (
+    <div role="status" aria-label="Caprock updated" data-auto-updated className={`${className} flex items-center gap-2 py-2 pl-3.5 pr-2`}
+      onPointerEnter={() => { hover.current = true }}
+      onPointerLeave={() => { hover.current = false; setLeft(NOTE_MS) }}>
+      <span>Updated to <span className="mono">{version.replace(/^v/, '')}</span></span>
+      <span aria-hidden className="text-fg-faint">·</span>
+      <button type="button" className="link" onClick={onWhatsNew}>What’s new</button>
+      <button type="button" aria-label="Close" onClick={onClose} className="relative ml-auto grid size-6 place-items-center rounded-full text-fg-faint hover:text-fg">
+        <svg aria-hidden data-note-ring viewBox="0 0 24 24" className="absolute inset-0 size-6 -rotate-90">
+          <circle cx="12" cy="12" r={r} fill="none" stroke="var(--app-hairline-strong)" strokeWidth="1.5" />
+          <circle cx="12" cy="12" r={r} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+            strokeDasharray={len} strokeDashoffset={len * (1 - left / NOTE_MS)}
+            style={{ transition: `stroke-dashoffset ${NOTE_STEP_MS}ms linear` }} />
+        </svg>
+        <span className="relative leading-none">×</span>
+      </button>
+    </div>
   )
 }
