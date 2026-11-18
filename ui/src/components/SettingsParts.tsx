@@ -98,11 +98,14 @@ export function Toggle({
   onChange,
   label,
   hint,
+  keep = false,
 }: {
   checked: boolean
   onChange: (on: boolean) => void
   label: string
   hint: ReactNode
+  /** Shown even while the section's explanations are hidden: a switch that sends something says what, always (rule 4). */
+  keep?: boolean
 }) {
   return (
     <label className="flex min-h-9 cursor-pointer items-start gap-3">
@@ -114,7 +117,7 @@ export function Toggle({
       />
       <span className="min-w-0">
         <span className="block text-[15.5px] font-medium leading-snug text-fg">{label}</span>
-        <span data-help className="mt-0.5 block text-[14px] leading-normal text-fg-muted">{hint}</span>
+        <span data-help data-keep={keep || undefined} className="mt-0.5 block text-[14px] leading-normal text-fg-muted">{hint}</span>
       </span>
     </label>
   )

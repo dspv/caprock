@@ -3148,7 +3148,10 @@ last read, so a push made since is refused rather than merged over (said as
 repository permission (write)` when GitHub names nothing. Both routes are
 writes to the user's own repository with the user's own token, sent on a
 click and a confirm, never by a poll (rule 4), and are the machine's: not in
-the paired-device lists.
+the paired-device lists. The one exception is opt-in: with *Rerun jobs
+GitHub never ran* on, the daemon sends the same `rerun-failed-jobs` itself
+for a run whose only non-passing jobs got no runner, once per run (§ Rerun
+jobs GitHub never ran).
 
 **`GET /v1/sessions/{id}/ci`** (`?pr=N` optional) → `SessionCI` `{connected,
 pr?, ci?, error?, fetched_at, refreshing?}`: the session deck's CI cell. `pr` `{number, url, title?,
@@ -3163,7 +3166,7 @@ head_sha, state, runs[], runner_ms, by_os[], cost?, at, error?}`, `state` one of
 `running | fail | no_runner | pass | none` (`no_runner`: no run failed but
 for jobs GitHub never gave a machine, below). Each run `{id, name, event?, status,
 conclusion?, attempt?, html_url?, created_at?, updated_at?, started_at?,
-head_branch?, head_sha?, workflow_id?, jobs[], cost?}` (`started_at` is GitHub's
+head_branch?, head_sha?, workflow_id?, jobs[], cost?, auto_rerun?}` (`started_at` is GitHub's
 `run_started_at`; `head_branch` is the tag for a tag push or a release); each
 job `{id, run_id, name, status, conclusion?, started_at?, completed_at?,
 duration_ms?, labels[], os?, runner_name?, runner_group_name?, html_url?,
@@ -3206,6 +3209,43 @@ other run failed and none is unfinished. The re-run is the deck's own
 `/ci/main` says `no_runner` the same way; `/ci/release` keeps `fail`, since
 a release whose job never ran is not built (its job still carries
 `no_runner`).
+
+**Rerun jobs GitHub never ran** (2026-11-18; `internal/github/autorerun.go`).
+Opt-in: `config.json` `github_auto_rerun` (absent = off), switched by
+`PATCH /v1/github {auto_rerun}` and reported as `Status.auto_rerun`; a
+switch publishes an `account` frame so every window's box follows. While
+it is on and GitHub is connected, the daemon re-runs by itself — `POST
+/repos/{o}/{r}/actions/runs/{id}/rerun-failed-jobs`, the deck's Rerun
+request with the same token, so no other scope or permission (a classic
+token's `repo`, a fine-grained token's Actions write) — a run it meets in
+what it already reads: an open pull request's checks (the followed
+worktrees' poll, and `github.PullByURL` for the session decks and the
+Pipeline), a commit's runs (`/ci`), the default branch's newest runs
+(`/ci/main`) and the newest release run (`/ci/release`; a release run is
+re-run as a click on Rerun would, and is said so where the switch is).
+Nothing more is read for it: an open pull request whose checks say
+`no_runner` has its commit's runs read through `github.CIBySHA`, kept as
+always. A run is re-run only when it finished `failure`, `cancelled`,
+`timed_out` or `startup_failure`; every job that did not pass or get
+skipped is `no_runner`; one of those waited at least 10 minutes from
+`started_at` to `completed_at` (GitHub gave up after ~15 minutes in the
+cases measured on 2026-11-18; a job ended sooner was more likely cancelled
+by someone, and is not undone); and it was updated within the last 6 hours
+(turning the switch on does not revive an old commit's CI). **Once per run,
+ever:** the run is written to `<data_dir>/ci-auto-rerun.json` (`0600`,
+`{runs: [{repo, run_id, attempt, at, jobs, error?}]}`, the newest 256)
+before GitHub is asked, so a restart, a second reader or a refused request
+never asks again; the deck's own Rerun reads the runs without it, so a
+click is never doubled. After a re-run the kept answers of that repository
+(its commits holding the run, its default branch and release, its pull
+requests read by link) are dropped, so the next read shows it queued.
+`auto_rerun` `{attempt, at, jobs, error?, again?}` marks such a run on
+`/ci`, `/ci/main` and `/ci/release`, and on a pull request's `checks` (the
+newest such run among them): `attempt` is the one that got no runner, `at`
+when Caprock asked, `error` GitHub's refusal (not asked again), `again`
+that the re-run attempt got no runner either (for checks: a `no_runner`
+check of that run completed after `at`) — Caprock does not re-run it
+twice, it is the user's. Each re-run and refusal is one log line.
 
 **CI baselines.** On the three CI routes (`/ci`, `/ci/release`'s `run`,
 `/ci/main`) each run and each job may carry `baseline` `{median_ms, runs}`:
@@ -6746,7 +6786,7 @@ token**.
 
 ```
 GET    /v1/github                          → Status
-PATCH  /v1/github          {notify}        → Status
+PATCH  /v1/github          {notify?, auto_rerun?} → Status
 DELETE /v1/github                          → Status (disconnected)
 POST   /v1/github/connect  {source: "gh"} | {source: "token", token} → Status
 POST   /v1/github/device                   → {device: Device}
@@ -6773,8 +6813,11 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   html_url?}, scopes, scopes_known, token_kind?, checked_at?, sources: {gh,
   stored, store, store_note?, oauth, client?}, health: {last_ok_at?, error?:
   Error, rate?: {resource, limit, remaining, reset_at, used}, paused_until?},
-  device?, notify, tracked}`. `source` is `gh`, `token` or `oauth` (stored
-  in `config.json` as `github_source`). `scopes` come from `X-OAuth-Scopes`;
+  device?, notify, auto_rerun, tracked}`. `source` is `gh`, `token` or `oauth` (stored
+  in `config.json` as `github_source`). `auto_rerun` is *Rerun jobs GitHub
+  never ran* (`github_auto_rerun`, off unless turned on; § Rerun jobs GitHub
+  never ran); `PATCH` takes `notify`, `auto_rerun` or both (400 with
+  neither). `scopes` come from `X-OAuth-Scopes`;
   a fine-grained token has none (`scopes_known` false, `token_kind`
   `fine-grained`). `token_kind` is read from the token's prefix, never its
   value. `sources.gh` says the GitHub CLI is installed; `store` is
@@ -6805,7 +6848,7 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   changed_files?, commits?, review: approved|changes_requested|review_required|
   commented|"", reviews: [{user, state, at?}], checks: {state:
   pass|fail|pending|no_runner|"", passed, failed, pending, no_runner?, items: [{name, state, url?,
-  status?, started_at?, completed_at?, job_id?, no_runner?}]}, at, error?}`. Checks
+  status?, started_at?, completed_at?, job_id?, no_runner?}], auto_rerun?}, at, error?}`. Checks
   merge check runs and commit statuses on the head; a check run carries its
   own `status` (`queued | in_progress | completed`), its times (unix ms) and,
   when its link is a GitHub Actions job's (`…/actions/runs/{run}/job/{job}`),
@@ -6904,7 +6947,10 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   *Watch GitHub Status* ([ADR-066](08-decisions.md)); and `avatars.githubusercontent.com`, the pull request authors'
   pictures GitHub named, loaded by the page itself (no referrer) on the PRs
   & CI Board and the CI/CD section — any other address draws initials.
-  Settings → GitHub says so.
+  Settings → GitHub says so. The one write Caprock sends without a click —
+  only with *Rerun jobs GitHub never ran* on — goes to `api.github.com` too,
+  with the token, and the switch's line says what it sends and where
+  (ADR-047's pattern).
 - **Where the token lives.** The GitHub CLI's: nowhere in Caprock. A pasted
   or device-flow token: on macOS the login keychain (service
   `dev.caprock.github`, account `caprock`) through `/usr/bin/security`,
@@ -9249,7 +9295,7 @@ A platform without a signed bundle is absent. The signature is minisign over the
 
 ### File permissions
 
-Everything Caprock writes into `<data_dir>` is owner-only on POSIX. The data directory is `0700`; `config.json`, `runtime.json`, `telegram.json` and the log are `0600`; and **`caprock.db` plus its `-wal`/`-shm` siblings are `0600`**.
+Everything Caprock writes into `<data_dir>` is owner-only on POSIX. The data directory is `0700`; `config.json`, `runtime.json`, `telegram.json`, `ci-auto-rerun.json` and the log are `0600`; and **`caprock.db` plus its `-wal`/`-shm` siblings are `0600`**.
 
 The database is included because it stores prompts and responses in cleartext — that is what makes the Memory screen searchable — so a world-readable mode hands every other local account the user's entire session history. It was previously left at whatever the process umask produced, which under a default umask is `0644`, while `config.json` beside it had always been `0600`.
 

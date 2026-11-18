@@ -67,7 +67,9 @@ func (s *Service) PullByURL(ctx context.Context, link string) (PR, *Error) {
 	e, have := s.byURL.m[link]
 	s.byURL.mu.Unlock()
 	if have && now.Sub(e.at) < keepFor(e.pr) {
-		return e.pr, nil
+		pr := e.pr
+		s.markChecks(repo.FullName(), &pr.Checks)
+		return pr, nil
 	}
 	if s.source() == "" {
 		return PR{}, errorf(KindNotConnected, "Reading a pull request", "GitHub is not connected.")
@@ -97,6 +99,7 @@ func (s *Service) PullByURL(ctx context.Context, link string) (PR, *Error) {
 	} else if have {
 		pr.Checks = e.pr.Checks
 	}
+	reran := s.autoRerunChecks(ctx, repo, pr.HeadSHA, pr.State == "open", &pr.Checks)
 	if reviews, _, re := s.readReviews(ctx, repo, pr.Number); re == nil {
 		pr.Reviews = reviews
 	} else if have {
@@ -104,9 +107,11 @@ func (s *Service) PullByURL(ctx context.Context, link string) (PR, *Error) {
 	}
 	pr.Review = reviewState(pr.Reviews, len(p.RequestedReviewers) > 0)
 	pr.Error = nil
-	s.byURL.mu.Lock()
-	s.byURL.m[link] = byURLEntry{pr: pr, at: now}
-	s.byURL.mu.Unlock()
+	if !reran { // re-run just now: the next read shows it queued
+		s.byURL.mu.Lock()
+		s.byURL.m[link] = byURLEntry{pr: pr, at: now}
+		s.byURL.mu.Unlock()
+	}
 	return pr, nil
 }
 
