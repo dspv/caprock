@@ -63,7 +63,7 @@ describe('Add subscription in Quick chat', () => {
     subs.value = state([sub('default', 'Own sign-in'), sub('ab12', 'Personal')])
     render(<QuickChatSheet agents={['claude']} onStart={() => {}} onClose={() => {}} />)
     const select = await screen.findByLabelText<HTMLSelectElement>('Subscription')
-    expect([...select.options].map((o) => o.text)).toEqual(['Own sign-in', 'Personal', 'Add subscription…'])
+    expect([...select.options].map((o) => o.text)).toEqual(['Own sign-in · no figures yet', 'Personal · no figures yet', 'Add subscription…'])
     fireEvent.change(select, { target: { value: '__add__' } })
     expect(await screen.findByPlaceholderText('Work Max')).toBeInTheDocument()
     expect(select.value).toBe('default')

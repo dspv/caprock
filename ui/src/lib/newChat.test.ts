@@ -39,6 +39,24 @@ describe('who works', () => {
     expect(o.map((x) => x.key)).toEqual(['claude:default', 'claude:a1', 'claude:kimi'])
   })
 
+  it('says how much each sign-in has left, and never reorders or marks by it', () => {
+    const now = 1_800_000_000
+    const win = (window: 'five_hour' | 'seven_day', used: number, resets = now + 3600) => ({ window, used_percentage: used, resets_at: resets, observed_at: 0 })
+    const o = whoOptions(['claude', 'codex'], subs([
+      sub({ windows: [win('five_hour', 92), win('seven_day', 40)] }),
+      sub({ id: 'a1', label: 'Work', default: false, windows: [win('five_hour', 38), win('seven_day', 70)] }),
+      sub({ id: 'b2', label: 'Client', default: false, windows: [] }),
+      deepseek,
+    ]), now)
+    expect(o.map((x) => [x.key, x.left])).toEqual([
+      ['claude:default', '8% of 5-hour left'],
+      ['claude:a1', '30% of weekly left'],
+      ['claude:b2', 'no figures yet'],
+      ['claude:deepseek', undefined],
+      ['codex:default', 'no figures yet'],
+    ])
+  })
+
   it('offers Claude and Codex plain where the subscriptions are not served', () => {
     expect(whoOptions(['claude', 'codex'], undefined).map((x) => [x.key, x.subscription])).toEqual([['claude:', undefined], ['codex:', undefined]])
   })

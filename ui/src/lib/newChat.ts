@@ -14,6 +14,7 @@
  */
 import type { FolderLabel, FolderLabelKind, SessionSummary, SpawnRequest, SubscriptionsResponse } from './api'
 import { continueChoices } from './continueOn'
+import { leftText } from './subscriptions'
 import { isQuickChat } from './quickchat'
 import { tildePath } from './projectSearch'
 import type { SpawnAgent } from '@/components/AgentPicker'
@@ -28,6 +29,10 @@ export interface WhoOption {
   label: string
   /** How it is paid for, in a few words. */
   hint: string
+  /** A sign-in's room: how much is left of its tightest current window
+   *  ("62% of 5-hour left", "not signed in", "no figures yet"). Shown for
+   *  the user's choice; the list's order and its mark never follow it. */
+  left?: string
   agent: SpawnAgent
   /** Sent as `subscription`; absent leaves the daemon's default. */
   subscription?: string
@@ -52,17 +57,21 @@ const keyOf = (agent: string, sub?: string) => `${agent}:${sub ?? ''}`
  * here (the catalog); `subs` is `GET /v1/subscriptions`, undefined while it is
  * read or where it is not served — then Claude and Codex are offered plain.
  */
-export function whoOptions(agents: readonly SpawnAgent[], subs: SubscriptionsResponse | undefined): WhoOption[] {
+export function whoOptions(agents: readonly SpawnAgent[], subs: SubscriptionsResponse | undefined, nowSec = Date.now() / 1000): WhoOption[] {
   const out: WhoOption[] = []
+  const room = (agent: 'claude' | 'codex', id?: string) => {
+    const s = id ? subs?.agents.find((g) => g.agent === agent)?.subscriptions.find((x) => x.id === id && !x.provider) : undefined
+    return s ? { left: leftText(s, nowSec) } : {}
+  }
   const claude = agents.includes('claude')
   const codex = agents.includes('codex')
   const choices = continueChoices('', subs)
   if (claude) {
     const own = subs ? 'default' : undefined
-    out.push({ key: keyOf('claude', own), label: 'Claude', hint: 'Your Claude subscription', agent: 'claude', subscription: own, who: 'lead', face: 'cap' })
+    out.push({ key: keyOf('claude', own), label: 'Claude', hint: 'Your Claude subscription', ...room('claude', own), agent: 'claude', subscription: own, who: 'lead', face: 'cap' })
     for (const c of choices) {
       if (c.summary || c.target === 'default' || c.target === 'deepseek' || c.target === 'kimi') continue
-      out.push({ key: keyOf('claude', c.target), label: c.label, hint: 'Another Claude sign-in', agent: 'claude', subscription: c.target, who: c.who, face: c.face })
+      out.push({ key: keyOf('claude', c.target), label: c.label, hint: 'Another Claude sign-in', ...room('claude', c.target), agent: 'claude', subscription: c.target, who: c.who, face: c.face })
     }
     for (const p of ['deepseek', 'kimi'] as const) {
       const c = choices.find((x) => x.target === p)
@@ -71,10 +80,10 @@ export function whoOptions(agents: readonly SpawnAgent[], subs: SubscriptionsRes
   }
   if (codex) {
     const signed = choices.filter((c) => c.summary)
-    if (signed.length === 0) out.push({ key: keyOf('codex', subs ? 'default' : undefined), label: 'Codex', hint: 'ChatGPT sign-in', agent: 'codex', subscription: subs ? 'default' : undefined, who: 'codex' })
+    if (signed.length === 0) out.push({ key: keyOf('codex', subs ? 'default' : undefined), label: 'Codex', hint: 'ChatGPT sign-in', ...room('codex', subs ? 'default' : undefined), agent: 'codex', subscription: subs ? 'default' : undefined, who: 'codex' })
     for (const c of signed) {
       const sub = c.target === 'codex' ? 'default' : c.target
-      out.push({ key: keyOf('codex', sub), label: c.label, hint: 'ChatGPT sign-in', agent: 'codex', subscription: sub, who: 'codex' })
+      out.push({ key: keyOf('codex', sub), label: c.label, hint: 'ChatGPT sign-in', ...room('codex', sub), agent: 'codex', subscription: sub, who: 'codex' })
     }
   }
   for (const a of agents) {

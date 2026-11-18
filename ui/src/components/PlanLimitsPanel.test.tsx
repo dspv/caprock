@@ -55,7 +55,7 @@ describe('plan limits in plain words', () => {
     expect(text()).not.toContain('rolling 5-hour window')
     fireEvent.click(screen.getByRole('button', { name: 'more' }))
     expect(text()).toContain('rolling 5-hour window')
-    expect(text()).toMatch(/Claude is near its limit\. Wait for the reset at .+ \(in 9 min\), or switch to Codex — its weekly window is at 8%\./)
+    expect(text()).toMatch(/Claude is near its limit\. Wait for the reset at .+ \(in 9 min\), or switch to Codex — its weekly window has 92% left\./)
     await waitFor(() => expect(screen.getByText('Claude Max')).toBeTruthy())
   })
 
