@@ -422,6 +422,15 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-18 — 0.182.4: the Updated to line closes itself
+
+A patch release, one PR (#938). The *Updated to X · What's new* line after an
+update stayed until closed by hand; it now closes after 10 seconds, a ring
+round its × showing the time left, the count held while the pointer is on
+it or the window is in the background. The cockpit's CI section says *now*
+for a fresh read and keeps that time on one line, where *just now* wrapped
+in a narrow panel (owner screenshots, 2026-11-18).
+
 ### 2026-11-17 — 0.182.3: drop a file on a chat, GPT-6.2 priced
 
 A patch release, one PR (#936). A file dropped on an open chat attaches as
