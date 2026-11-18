@@ -285,15 +285,16 @@ function Changes({ sessionId, editor, onReview, onOpenFile }: { sessionId: strin
  * counts compacted (+35.2k), then *Review* for the action, then no action,
  * then the file count alone (FitSummary).
  */
-function ChangesSummary({ files, add, del, onReview }: { files?: number; add: number; del: number; onReview?: () => void }) {
+export function ChangesSummary({ files, add, del, onReview }: { files?: number; add: number; del: number; onReview?: () => void }) {
   const review = (label: string) => onReview && (
     <button type="button" onClick={onReview} title="Review and commit" className="text-[11.5px] text-accent underline-offset-2 hover:underline">{label}</button>
   )
   if (files === undefined) return onReview ? <FitSummary variants={[review('Review and commit'), review('Review')]} /> : null
   const count = <span className="text-fg-muted">{files} {files === 1 ? 'file' : 'files'}</span>
+  // Nothing uncommitted: nothing to review, so no action (owner, 2026-11-18:
+  // "none  Review and commit" offered a review of nothing).
   if (files === 0) {
-    const none = <span data-fold-only className="text-fg-muted">none</span>
-    return <FitSummary className="num" variants={[<>{none}{review('Review and commit')}</>, <>{none}{review('Review')}</>, none]} />
+    return <FitSummary variants={[<span data-fold-only className="text-fg-muted">nothing to commit</span>, <span data-fold-only className="text-fg-muted">none</span>]} />
   }
   const lines = (short: boolean) => (
     <span data-fold-only className="text-fg-muted">

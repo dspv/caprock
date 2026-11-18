@@ -84,7 +84,16 @@ export const BESIDE_DELAY_MS = 600
  * element marked `data-checks-edge`, so it never covers the rows; and it closes the moment the
  * pointer leaves, taking no pointer itself.
  */
-export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary', beside = false }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView; beside?: boolean }) {
+/**
+ * How much of the summary a narrow row has room for (CockpitCI's folded
+ * line, through FitSummary; owner, 2026-11-18: "#941 ✕ 1 failed ● 1 running
+ * ✓ 12 · 2 skipped" ran past the panel's edge): `full`, then `noskip` (no
+ * "· N skipped"), then `compact` (the marks and their counts, no words, no
+ * time), then `worst` (the worst state alone, its mark and word).
+ */
+export type CheckFit = 'full' | 'noskip' | 'compact' | 'worst'
+
+export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary', beside = false, fit = 'full' }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView; beside?: boolean; fit?: CheckFit }) {
   const c = s.counts
   const anchor = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
@@ -102,7 +111,18 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
   useEffect(() => () => window.clearTimeout(shut.current), [])
   const sentence = checksSentence(s)
   const time = shortRun(s.ms)
-  const body = view === 'circles' ? <Circles s={s} onPick={onPick} /> : s.green ? (
+  const skips = fit === 'full'
+  const worst: CITone = c.fail ? 'fail' : c.running ? 'running' : c.queued ? 'queued' : c.pass ? 'pass' : 'skipped'
+  const body = view === 'circles' ? <Circles s={s} onPick={onPick} /> : fit === 'worst' ? (
+    <span data-check-part={worst} className={`inline-flex shrink-0 items-center gap-1 ${TEXT[worst]}`}><StateMark tone={worst} /><span>{WORD[worst]}</span></span>
+  ) : fit === 'compact' ? (
+    <>
+      {c.fail > 0 && <Part tone="fail" n={c.fail} word={false} />}
+      {c.running > 0 && <Part tone="running" n={c.running} word={false} />}
+      {c.queued > 0 && <Part tone="queued" n={c.queued} word={false} />}
+      {c.pass > 0 && <Part tone="pass" n={c.pass} word={false} />}
+    </>
+  ) : s.green ? (
     <>
       <span data-check-part="pass" className="inline-flex shrink-0 items-center gap-1 font-medium text-ok">
         <StateMark tone="pass" />
@@ -110,7 +130,7 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
       </span>
       {time && <span className="shrink-0 text-fg-muted">· <span className="num">{time}</span></span>}
       {s.vs?.kind === 'delta' && <span className={`num shrink-0 ${DELTA[s.vs.tone]}`}>{s.vs.text}</span>}
-      {c.skipped > 0 && <span data-check-part="skipped" className="shrink-0 text-fg-faint">· {c.skipped} skipped</span>}
+      {skips && c.skipped > 0 && <span data-check-part="skipped" className="shrink-0 text-fg-faint">· {c.skipped} skipped</span>}
     </>
   ) : (
     <>
@@ -118,12 +138,12 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
       {c.running > 0 && <Part tone="running" n={c.running} />}
       {c.queued > 0 && <Part tone="queued" n={c.queued} />}
       {c.pass > 0 && <Part tone="pass" n={c.pass} word={c.fail + c.running + c.queued === 0} />}
-      {c.skipped > 0 && <span data-check-part="skipped" className="shrink-0 text-fg-faint">{c.pass + c.fail + c.running + c.queued > 0 ? '· ' : ''}{c.skipped} skipped</span>}
+      {skips && c.skipped > 0 && <span data-check-part="skipped" className="shrink-0 text-fg-faint">{c.pass + c.fail + c.running + c.queued > 0 ? '· ' : ''}{c.skipped} skipped</span>}
       {!s.done && time && <span className="shrink-0 text-fg-faint">· <span className="num">{time}</span></span>}
     </>
   )
   return (
-    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : s.done ? 'done' : 'running'} data-check-view={view} tabIndex={focusable ? 0 : undefined}
+    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : s.done ? 'done' : 'running'} data-check-view={view} data-check-fit={fit === 'full' ? undefined : fit} tabIndex={focusable ? 0 : undefined}
       role={view === 'circles' ? 'group' : 'img'} aria-label={`${label}: ${sentence}`}
       onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
       className={`inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[4px] text-[11.5px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${className}`}>

@@ -5,7 +5,7 @@
  * request rows' pills, and one line for the last release. Reads nothing
  * itself.
  */
-import type { ReleaseStatus } from '@/lib/releasestatus'
+import { stripStages, type ReleaseStatus } from '@/lib/releasestatus'
 import { fmtAgo } from '@/lib/format'
 import { openExternal } from '@/lib/nudges'
 import { extProps } from '@/lib/externalLinks'
@@ -52,6 +52,45 @@ export function ReleaseInFlight({ status: s, phone = false }: { status: ReleaseS
         <ReleaseWhy status={s} />
       </div>
       <ReleaseStages status={s} />
+    </div>
+  )
+}
+
+const STRIP_NOW: Record<ReleaseStatus['stages'][number]['tone'], string> = {
+  ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', merged: 'text-merged', accent: 'text-accent', muted: 'text-fg', faint: 'text-fg-muted',
+}
+
+/**
+ * The right panel's one stages strip (owner, 2026-11-18): *Merged ─ Release
+ * PR ─ Tagged ─ ◉ Building ─ Published*, the stage it is at marked ◉ in its
+ * colour (red on a red check or a failed build), done ones muted, the rest
+ * faint; each says on hover what was read of it (lib/releasestatus
+ * stripStages). A tag already under way names its version first, since the
+ * heading under it is the release after.
+ */
+export function ReleaseStrip({ status: s, version }: { status: ReleaseStatus; version?: boolean }) {
+  const stages = stripStages(s)
+  if (!stages.length) return null
+  return (
+    <div data-release-strip data-release-current={stages.find((x) => x.state === 'current')?.key ?? ''} role="list"
+      aria-label={s.version ? `Release ${s.version}: stages` : 'Release stages'}
+      className="flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5 text-[11.5px] leading-[16px]">
+      {version && s.version && <span className="num mr-1 font-semibold text-fg">{s.version}</span>}
+      {stages.map((x, i) => {
+        const now = x.state === 'current'
+        return (
+          <span key={x.key} role="listitem" className="flex items-baseline gap-1 whitespace-nowrap">
+            {i > 0 && <span aria-hidden className="text-fg-faint">─</span>}
+            <span data-strip-stage={x.key} data-step-state={x.state} data-step-unknown={x.unknown ? '' : undefined} title={x.title}
+              aria-current={now ? 'step' : undefined}
+              className={now ? `font-semibold ${STRIP_NOW[x.tone]}` : x.state === 'done' ? 'text-fg-muted' : 'text-fg-faint'}>
+              {now && <span aria-hidden className={x.tone === 'pending' ? 'release-step-pulse mr-0.5' : 'mr-0.5'}>◉</span>}
+              {x.text}
+              {x.unknown && <span aria-hidden>?</span>}
+            </span>
+          </span>
+        )
+      })}
     </div>
   )
 }

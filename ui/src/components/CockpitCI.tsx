@@ -61,8 +61,18 @@
  * an open one in flight, the line is that open PR's checks instead of
  * "#930 merged" (owner, 2026-11-17, translated: "in this mode I don't see CI
  * statuses"; the release PR a script opened was running CI): its checks are
- * asked folded only while it is the line, and drawn only once both the
- * Pipeline answer and that read landed since the block was drawn.
+ * asked folded only while it is the line.
+ *
+ * On a tab switch the line is drawn at once from the answers kept for that
+ * repository (owner, 2026-11-18, translated: "I switch to the tab and only
+ * after ~10 s the CI data comes"): the Pipeline answer (`stats:<repository>`),
+ * the session's pull requests (`prs:<session>`) and the open PR's checks,
+ * kept per repository (`ci:<repository>:<pr>`) so a tab of another session
+ * on the same repository draws what this one read. A kept copy is drawn
+ * muted, beside its own age, until the read since the block was drawn
+ * lands; one older than KEPT_FOLD_MS waits for that read, so a copy of
+ * hours ago never claims checks are running (the 2026-10-23 "#801 · 4
+ * running · 11h").
  */
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
@@ -74,6 +84,7 @@ import { tabRows, spanText } from '@/lib/prstats'
 import { flightLead, inFlight, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { landingOf } from '@/lib/releaseplan'
 import { CheckSummary, StateMark } from './CheckSummary'
+import { FitSummary } from './FitSummary'
 import { SectionLabel, useFolded } from './Cockpit'
 import { JourneyBar, JourneyLegend, ReleaseNoteWord } from './Journey'
 import { CI_IDLE_MS, CI_RUNNING_MS, PRS_PENDING_MS, usePoll } from '@/lib/usePoll'
@@ -85,6 +96,9 @@ import { PipelineHostContext } from '@/lib/pipelineHost'
 import { useCanControl } from '@/lib/useCanControl'
 import { sessionTitle } from '@/lib/sidebar'
 import { keys } from '@/lib/appkeys'
+
+/** How old a kept copy may be to draw the folded line before the read lands: the daemon's own limit on a kept answer (deckMaxStale). */
+export const KEPT_FOLD_MS = 3_600_000
 
 /** The pull request the Ring and By OS views draw, with its checks. */
 type LeadPR = { number: number; live: PullRequest }
@@ -191,35 +205,47 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // Folded, when the session's own newest PR with checks is not open, the
   // repository's open PR in flight (read since the block was drawn) is the line.
   const ownOpen = ownLead?.live?.state === 'open'
-  const foldRepo = folded && !ownOpen && statsMeta.confirmed ? openFlightLead(flight) : undefined
+  // A kept copy young enough to draw before its read lands (KEPT_FOLD_MS).
+  const young = (at: number | undefined) => !!at && Date.now() - at < KEPT_FOLD_MS
+  const foldRepo = folded && !ownOpen && (statsMeta.confirmed || young(statsAt)) ? openFlightLead(flight) : undefined
   const ciNo = foldRepo?.number ?? leadNo
-  const ci = useDeckAnswer<SessionCI>(ciNo ? `ci:${sessionId}:${ciNo}` : '')
+  // A PR's checks are kept per repository when the block knows it, so a tab
+  // of another session on the same repository draws them at once; the
+  // Pipeline page keeps them per session (`ci:<session>:<pr>`), the newer wins.
+  const ciKeyOf = (num: number) => (repoScope ? `ci:${repoScope}:${num}` : `ci:${sessionId}:${num}`)
+  const ciRepo = useDeckAnswer<SessionCI>(ciNo ? ciKeyOf(ciNo) : '')
+  const ciOwn = useDeckAnswer<SessionCI>(ciNo && repoScope ? `ci:${sessionId}:${ciNo}` : '')
+  const ci = (ciOwn.at ?? 0) > (ciRepo.at ?? 0) ? ciOwn : ciRepo
   // A PR's runs, when its CI was read (the Pipeline page or the lead's poll): Fix CI sends the failed job with its log.
   function ciAnswerFor(num: number) {
-    const c = readDeck<SessionCI>(`ci:${sessionId}:${num}`)?.d
+    const a = readDeck<SessionCI>(ciKeyOf(num)), b = readDeck<SessionCI>(`ci:${sessionId}:${num}`)
+    const c = ((b?.at ?? 0) > (a?.at ?? 0) ? b : a)?.d
     return c?.pr?.number === num ? c.ci?.runs : undefined
   }
   // That PR's checks, asked only for Ring and By OS shown unfolded, and only
   // when the session has no PR of its own with checks; folded, only while the
   // repository's open PR is the line.
   const askCI = !!onOpen && ciNo > 0 && (foldRepo ? true : view !== 'dots' && !folded && !ownLead)
-  const [, ciAt, ciMeta] = usePoll<SessionCI>(askCI, `cockpit-ci:${sessionId}:${ciNo}`, () => api.sessionCI(sessionId, ciNo), (d) => ciActive(d.ci), CI_RUNNING_MS, ciNo ? `ci:${sessionId}:${ciNo}` : undefined)
+  const [, ciAt, ciMeta] = usePoll<SessionCI>(askCI, `cockpit-ci:${sessionId}:${ciNo}`, () => api.sessionCI(sessionId, ciNo), (d) => ciActive(d.ci), CI_RUNNING_MS, ciNo ? ciKeyOf(ciNo) : undefined)
   const lead: LeadPR | undefined = ownLead?.live ? { number: ownLead.number, live: ownLead.live }
     : flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
   // A copy kept from before, not read again since the block was drawn, is
   // timed as of when it was read: a check it says runs is not still running
   // now, and its elapsed time does not grow (the read, once it lands, moves it).
   const fresh = ownLead ? prsMeta.confirmed : ciMeta.confirmed
-  // Folded, the line is the session's own newest PR, and only once it was
-  // read since the block was drawn (the PRs it reads are asked folded too).
-  // When that PR is not open, the repository's open PR in flight takes the
-  // line, only once its checks were read since the block was drawn and say
-  // it is still open, so an old copy never claims checks are running.
-  const foldOwn: LeadPR | undefined = folded && ownLead?.live && prsMeta.confirmed ? { number: ownLead.number, live: ownLead.live } : undefined
-  const repoLive = foldRepo && ciMeta.confirmed && ci.d?.pr?.number === foldRepo.number ? ci.d.pr.live : undefined
+  // Folded, the line is the session's own newest PR, once it was read since
+  // the block was drawn or from a copy kept less than KEPT_FOLD_MS ago (the
+  // PRs it reads are asked folded too). When that PR is not open, the
+  // repository's open PR in flight takes the line, once its checks say it is
+  // still open — read since, or kept that recently — so a copy of hours ago
+  // never claims checks are running.
+  const foldOwn: LeadPR | undefined = folded && ownLead?.live && (prsMeta.confirmed || young(prs.at)) ? { number: ownLead.number, live: ownLead.live } : undefined
+  const repoLive = foldRepo && (ciMeta.confirmed || young(ci.at)) && ci.d?.pr?.number === foldRepo.number ? ci.d.pr.live : undefined
   const foldRepoLead: LeadPR | undefined = foldRepo && repoLive?.state === 'open' && repoLive.checks.items.length > 0 ? { number: foldRepo.number, live: repoLive } : undefined
   const foldLead = foldOwn && ownOpen ? foldOwn : foldRepoLead ?? foldOwn
   const foldIsRepo = !!foldLead && foldLead === foldRepoLead
+  // The line drawn from a kept copy not read again since the block was drawn: muted, timed as of its read.
+  const foldKept = !!foldLead && !(foldIsRepo ? ciMeta.confirmed : prsMeta.confirmed)
   const running = rows.some((p) => p.live?.checks.state === 'pending') || lead?.live.checks.state === 'pending' || foldLead?.live.checks.state === 'pending'
   // A clock only while a check runs and the window is shown: the elapsed time moves.
   const [now, setNow] = useState(() => Date.now())
@@ -232,9 +258,10 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   if (!hasStats && !ownLead) return null
   const leadAt = ownLead ? prs.at : (ci.at || ciAt)
   const leadNow = fresh || !leadAt ? now : Math.min(now, leadAt)
-  const leadSum = foldLead ? prChecks(foldLead, now) : undefined
+  const foldAt = foldIsRepo ? (ci.at || ciAt) : foldLead ? prs.at : undefined
+  const leadSum = foldLead ? prChecks(foldLead, foldKept && foldAt ? Math.min(now, foldAt) : now) : undefined
   // The time beside the line is the time of what it shows.
-  const at = folded ? (foldIsRepo ? (ci.at || ciAt) : foldLead ? prs.at : undefined) : view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : leadAt
+  const at = folded ? foldAt : view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : leadAt
   const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
   const listed = flight.rows.length > 0 ? flight.rows : flight.recent
 
@@ -268,13 +295,19 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
           <span data-cockpit-ci-age className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint" title={folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '').replace('just now', 'now') : ''}</span>
           {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
           {leadSum && foldLead && (
-            <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} className="flex min-w-0 items-center gap-1.5">
+            <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} data-cockpit-ci-kept={foldKept ? '' : undefined}
+              title={foldKept ? 'As last read, while it is read again' : undefined} className={`flex min-w-0 items-center gap-1.5${foldKept ? ' opacity-70' : ''}`}>
               <span className="num shrink-0 text-[11.5px] text-fg-muted" title={foldIsRepo ? `#${foldLead.number}: the repository’s open pull request — this session’s own is not open` : `#${foldLead.number}: this session’s newest pull request`}>#{foldLead.number}</span>
               {/* Merged or closed, its checks are history: "#220 merged" says
                 * more than "all 1" (owner, 2026-10-27: "there is zero info here"). */}
               {foldLead.live.state === 'merged' || foldLead.live.state === 'closed'
                 ? <span className="shrink-0 text-[11.5px] text-fg-muted">{foldLead.live.state}</span>
-                : <CheckSummary s={leadSum} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />}
+                // Shortened, never cut at the panel's edge (owner, 2026-11-18):
+                // the skipped count goes first, then the words, then all but
+                // the worst state (CheckSummary `fit`, FitSummary).
+                : <FitSummary variants={(['full', 'noskip', 'compact', 'worst'] as const).map((f) => (
+                  <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
+                ))} />}
             </span>
           )}
           {!folded && (

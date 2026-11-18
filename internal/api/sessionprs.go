@@ -56,8 +56,9 @@ func (s *Server) handleSessionPRs(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordedSessionPRs is the session's pull requests as the daemon recorded
-// them, without GitHub's live state: the quick answer while the composed one
-// still waits on GitHub (serveDeckOrQuick).
+// them, each with GitHub's live state only where the GitHub service already
+// keeps a read of it: the quick answer while the composed one still waits on
+// GitHub (serveDeckOrQuick). Nothing is sent.
 func (s *Server) recordedSessionPRs(ctx context.Context, id string, connected bool) (deckAnswer, error) {
 	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
 	if err != nil {
@@ -69,6 +70,13 @@ func (s *Server) recordedSessionPRs(ctx context.Context, id string, connected bo
 	out := make([]SessionPRLive, len(prs))
 	for i, p := range prs {
 		out[i] = SessionPRLive{SessionPR: p}
+		// What GitHub said of it when last read, kept per pull request:
+		// the right panel draws its CI line from it at once (2026-11-18).
+		if connected {
+			if pr, _, ok := s.d.GitHub.CachedPull(p.URL); ok {
+				out[i].Live = &pr
+			}
+		}
 	}
 	return SessionPRs{Connected: connected, PRs: out}, nil
 }
