@@ -197,12 +197,28 @@ describe('group by project, off', () => {
     // Open's tab, then the heading and the rows with no tab.
     const lists = [screen.getByRole('group', { name: 'Open tabs' }), screen.getByRole('group', { name: 'Running, no tab' })]
     const order = lists.flatMap((list) => [...list.children]).map((li) => li.hasAttribute('data-untabbed-heading') ? 'HEAD' : li.querySelector('[data-tab-row]') ? 'tab' : 'live')
-    expect(order).toEqual(['tab', 'HEAD', 'live', 'live', 'live'])
+    expect(order).toEqual(['tab', 'live', 'live', 'live'])
     expect(document.querySelectorAll('[data-untabbed-heading]')).toHaveLength(1)
     expect(document.querySelector('[data-untabbed-heading]')!.textContent).toBe('Running, no tab')
     cleanup()
     setup(mix(), tabs, { grouped: true })
     expect(document.querySelector('[data-untabbed-heading]')).toBeNull()
+  })
+
+  // The owner, 2026-11-18 (translated): "I'd like to fold this".
+  it('folds Running, no tab to its one line with a count, and keeps it folded', () => {
+    setup(mix(), [], { grouped: false })
+    const head = () => document.querySelector('[data-running-toggle]')!
+    expect(head()).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(head())
+    expect(head()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('group', { name: 'Running, no tab' })).toBeNull()
+    expect(head().textContent).toMatch(/Running, no tab· \d+/)
+    cleanup()
+    setup(mix(), [], { grouped: false })
+    expect(head()).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(head())
+    expect(screen.getByRole('group', { name: 'Running, no tab' })).toBeTruthy()
   })
 })
 
