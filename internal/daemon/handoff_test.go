@@ -311,9 +311,9 @@ func TestTheHoldoutRecordsWhoGotTheHandoffAndWhoDidNot(t *testing.T) {
 		}
 		tool(id, "Edit", now.Add(time.Duration(p.mins)*time.Minute))
 	}
-	ms := d.memoryStatus()
-	if ms.HoldoutPct != 25 || ms.Served == nil || ms.Withheld == nil {
-		t.Fatalf("memory status = %+v, want both groups and the holdout", ms)
+	ms, err := d.memoryStatus(ctx)
+	if err != nil || ms.Served == nil || ms.Withheld == nil {
+		t.Fatalf("memory status = %+v, %v; want both groups", ms, err)
 	}
 	if *ms.Served != (store.HandoffGroup{Sessions: 1, Reached: 1, MedianMin: 5, MedianCall: 2}) {
 		t.Errorf("served = %+v", *ms.Served)

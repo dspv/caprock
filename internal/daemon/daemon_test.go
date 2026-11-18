@@ -324,6 +324,7 @@ func TestStatusSaysNoCopyWasKeptBeforeTheUpgrade(t *testing.T) {
 		}
 	}
 	record(time.Now())
+	d.statusDB.forget()
 	s := d.status(ctx).(Status)
 	if c := s.UpgradeCopySkipped; c == nil || c.FreeBytes != 2<<30 || c.NeedBytes != 5<<30 || c.Before != 73 {
 		t.Fatalf("skipped copy reported as %+v", c)
@@ -338,6 +339,7 @@ func TestStatusSaysNoCopyWasKeptBeforeTheUpgrade(t *testing.T) {
 	// Past the month the copy would have been kept, going back would cost a
 	// month of history anyway: it is no longer reported.
 	record(time.Now().Add(-upgradeCopyKeep - time.Hour))
+	d.statusDB.forget()
 	if s := d.status(ctx).(Status); s.UpgradeCopySkipped != nil {
 		t.Fatalf("still reported after %v: %+v", upgradeCopyKeep, s.UpgradeCopySkipped)
 	}

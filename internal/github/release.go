@@ -229,7 +229,7 @@ func (s *Service) ReleaseByRepo(ctx context.Context, repo Repo, defaultBranch st
 	e, have := s.repoCI.release[key]
 	s.repoCI.mu.Unlock()
 	if have && now.Sub(e.at) < releaseKeep(e.rel) {
-		return e.rel, nil
+		return s.markRelease(e.rel), nil
 	}
 	if ce := s.checkRepo(repo, doing); ce != nil {
 		return ReleaseCI{}, ce
@@ -238,7 +238,7 @@ func (s *Service) ReleaseByRepo(ctx context.Context, repo Repo, defaultBranch st
 	if ce != nil {
 		if have {
 			e.rel.Error = ce
-			return e.rel, nil
+			return s.markRelease(e.rel), nil
 		}
 		return ReleaseCI{}, ce
 	}
@@ -246,7 +246,20 @@ func (s *Service) ReleaseByRepo(ctx context.Context, repo Repo, defaultBranch st
 	bound(s.repoCI.release, key, func(v releaseEntry) time.Time { return v.at })
 	s.repoCI.release[key] = releaseEntry{rel: rel, at: now}
 	s.repoCI.mu.Unlock()
-	return rel, nil
+	if rel.Run != nil {
+		// A release run is re-run like any other (autorerun.go).
+		s.autoRerun(ctx, repo, []CIRun{*rel.Run})
+	}
+	return s.markRelease(rel), nil
+}
+
+// markRelease is rel with Caprock's own re-run marked on its run.
+func (s *Service) markRelease(rel ReleaseCI) ReleaseCI {
+	if rel.Run != nil {
+		run := s.markRuns(rel.Repo, []CIRun{*rel.Run})[0]
+		rel.Run = &run
+	}
+	return rel
 }
 
 func releaseKeep(r ReleaseCI) time.Duration {
@@ -305,6 +318,11 @@ func (s *Service) readRelease(ctx context.Context, repo Repo, defaultBranch stri
 	one := CI{Runs: runs}
 	settle(&one)
 	out.State = one.State
+	if out.State == "no_runner" {
+		// A release whose job GitHub never ran is still not built: its line
+		// keeps saying failed; the job itself carries no_runner.
+		out.State = "fail"
+	}
 	if out.State == "running" {
 		out.Estimate = s.estimate(ctx, repo, defaultBranch, run)
 	} else if run.Conclusion == "success" && out.Tag != "" {
@@ -435,7 +453,7 @@ func (s *Service) MainCI(ctx context.Context, repo Repo, branch string) (CI, *Er
 	e, have := s.repoCI.main[key]
 	s.repoCI.mu.Unlock()
 	if have && now.Sub(e.at) < ciKeep(e.ci) {
-		return e.ci, nil
+		return s.markCI(e.ci), nil
 	}
 	if ce := s.checkRepo(repo, doing); ce != nil {
 		return CI{}, ce
@@ -444,7 +462,7 @@ func (s *Service) MainCI(ctx context.Context, repo Repo, branch string) (CI, *Er
 	if ce != nil {
 		if have {
 			e.ci.Error = ce
-			return e.ci, nil
+			return s.markCI(e.ci), nil
 		}
 		return CI{}, ce
 	}
@@ -469,5 +487,6 @@ func (s *Service) MainCI(ctx context.Context, repo Repo, branch string) (CI, *Er
 	bound(s.repoCI.main, key, func(v mainEntry) time.Time { return v.at })
 	s.repoCI.main[key] = mainEntry{ci: out, at: now}
 	s.repoCI.mu.Unlock()
-	return out, nil
+	s.autoRerun(ctx, repo, out.Runs)
+	return s.markCI(out), nil
 }

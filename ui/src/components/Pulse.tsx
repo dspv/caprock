@@ -591,6 +591,7 @@ export function diffTotals(d: DiffResult | undefined): { add: number; del: numbe
 export function ciWord(ci: SessionCI | undefined): { word: string; tone: string } | null {
   switch (ci?.ci?.state) {
     case 'fail': return { word: 'CI failing', tone: 'text-danger' }
+    case 'no_runner': return { word: 'CI not run', tone: 'text-norunner' }
     case 'running': return { word: 'CI running', tone: 'text-fg-muted' }
     case 'pass': return { word: 'CI passing', tone: 'text-fg-muted' }
     default: return null

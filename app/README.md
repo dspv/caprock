@@ -329,7 +329,8 @@ in the page, so it is not taken for a click on a notification.
   `CustomEvent('caprock:open-session', {detail: <session id>})` on `window`.
 - **Links and files.** `target="_blank"`, `window.open` and any navigation off
   the daemon's origin open in the system browser; a download asks where to
-  save.
+  save. While the daemon restarts (an update), a page on its address is the
+  window reloading itself and is refused without opening a browser tab.
 
 ## Menu bar, badge and global hotkey
 

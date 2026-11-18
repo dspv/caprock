@@ -47,6 +47,8 @@ export interface GitHubStatus {
   health: { last_ok_at?: number; error?: GitHubError; rate?: GitHubRate; paused_until?: number }
   device?: GitHubDevice
   notify: boolean
+  /** The daemon re-runs, once per run, jobs GitHub never gave a machine (off unless turned on). An older daemon leaves it out. */
+  auto_rerun?: boolean
   tracked: number
 }
 
@@ -81,6 +83,21 @@ export interface PRCheck {
   completed_at?: number
   /** The GitHub Actions job this check run is, read from its link; absent for any other check. */
   job_id?: number
+  /** A failed Actions check whose job GitHub never gave a machine (no step
+   *  run, no runner): its code was not tested. Its state stays fail. */
+  no_runner?: boolean
+}
+/** Caprock's own re-run of a run's jobs GitHub never gave a machine (Settings → GitHub). */
+export interface AutoRerun {
+  /** The run attempt that got no runner and was re-run. */
+  attempt: number
+  /** When Caprock asked GitHub, unix ms. */
+  at: number
+  jobs: number
+  /** Why GitHub refused; Caprock does not ask again. */
+  error?: string
+  /** The re-run attempt got no runner either; Caprock re-runs a run only once. */
+  again?: boolean
 }
 export interface PRReview { user: string; state: 'approved' | 'changes_requested' | 'commented' | 'dismissed'; at?: number }
 
@@ -110,7 +127,8 @@ export interface PullRequest {
   commits?: number
   review: '' | 'approved' | 'changes_requested' | 'review_required' | 'commented'
   reviews: PRReview[]
-  checks: { state: 'pass' | 'fail' | 'pending' | 'none'; passed: number; failed: number; pending: number; items: PRCheck[] }
+  /** no_runner: none failed, but GitHub gave some job no machine (`no_runner` counts them; `failed` leaves them out). */
+  checks: { state: 'pass' | 'fail' | 'pending' | 'no_runner' | 'none'; passed: number; failed: number; pending: number; no_runner?: number; items: PRCheck[]; auto_rerun?: AutoRerun }
   at: number
   error?: GitHubError
 }
@@ -169,6 +187,7 @@ export const githubApi = {
   connect: (source: 'gh' | 'token', token?: string) => send<GitHubStatus>('/v1/github/connect', 'POST', { source, token }),
   disconnect: () => send<GitHubStatus>('/v1/github', 'DELETE'),
   setNotify: (notify: boolean) => send<GitHubStatus>('/v1/github', 'PATCH', { notify }),
+  setAutoRerun: (on: boolean) => send<GitHubStatus>('/v1/github', 'PATCH', { auto_rerun: on }),
   startDevice: () => send<{ device: GitHubDevice }>('/v1/github/device', 'POST').then((r) => r.device),
   device: () => send<{ device: GitHubDevice | null }>('/v1/github/device', 'GET').then((r) => r.device),
   cancelDevice: () => send<{ device: null }>('/v1/github/device', 'DELETE'),
@@ -334,6 +353,7 @@ export function checksText(c: PullRequest['checks']): string {
     return `${failed.slice(0, 2).join(', ')}${failed.length > 2 ? ` +${failed.length - 2}` : ''} failed`
   }
   if (c.state === 'pending') return `${c.pending} of ${total} checks running`
+  if (c.state === 'no_runner') return `${c.no_runner ?? 1} not run: GitHub gave no machine`
   return total === 1 ? 'check passed' : `all ${total} checks passed`
 }
 
@@ -360,6 +380,7 @@ export function mergeText(pr: PullRequest): string {
   // Fix CI shot, 2026-10-24). The checks decide before the state does.
   if (pr.checks.state === 'fail') return 'mergeable, checks failed'
   if (pr.checks.state === 'pending') return 'mergeable, checks running'
+  if (pr.checks.state === 'no_runner') return 'mergeable, a job was not run'
   switch (pr.mergeable_state) {
     case 'clean': return 'ready to merge'
     case 'blocked': return 'blocked by branch rules'

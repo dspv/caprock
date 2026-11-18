@@ -52,7 +52,7 @@ import { EndableRow, useEndedHere, type EndedHere } from './PhoneEnd'
 import { BottomSheet, ChipSelect, FoldHeader } from './PhoneParts'
 import { PhoneShareWeek } from './PhoneShareWeek'
 import { PhoneReleases } from './PhoneReleases'
-import { subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
+import { AddSubscriptionHint, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, hasSubscriptions, roomText } from '@/lib/subscriptions'
 import { SUBAGENT_MODELS, rememberSubagentModel, rememberedSubagentModel, type SubagentModel } from '@/lib/subagentModel'
 
@@ -855,6 +855,9 @@ export function NewChatSheet({ projects, onClose }: { projects: Project[]; onClo
           )}
         </>
       )}
+      {/* Where New agent offers Add subscription: under Runs on, or under
+        * Agent with one sign-in or none read. A line, not a button. */}
+      {picks.agents.length > 0 && hasSubscriptions(picks.agent) && <AddSubscriptionHint className="mt-2" />}
       {picks.agent === 'claude' && picks.project && (
         <>
           <FieldLabel>Subagents run on</FieldLabel>

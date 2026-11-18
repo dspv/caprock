@@ -299,7 +299,7 @@ export function stripStages(s: ReleaseStatus): StripStage[] {
 export const OUT_RECENT_MS = 3_600_000
 
 /** A pull request in flight that is not the release one: the batch the next release waits for. */
-export interface BatchPR { number: number; ci?: 'running' | 'fail' | 'pass' | 'none' }
+export interface BatchPR { number: number; ci?: 'running' | 'fail' | 'no_runner' | 'pass' | 'none' }
 
 export interface ReleaseFold {
   /** Which of the approved lines it is (owner, 2026-11-18). */
@@ -319,7 +319,7 @@ export function agoText(ms: number): string {
 
 function batchWord(b: BatchPR | undefined): string {
   if (!b) return ''
-  const w = b.ci === 'pass' ? 'green' : b.ci === 'fail' ? 'CI red' : b.ci === 'running' ? 'CI running' : 'open'
+  const w = b.ci === 'pass' ? 'green' : b.ci === 'fail' ? 'CI red' : b.ci === 'no_runner' ? 'a job not run' : b.ci === 'running' ? 'CI running' : 'open'
   return ` · PR #${b.number} ${w}`
 }
 

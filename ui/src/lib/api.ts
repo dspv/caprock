@@ -5,7 +5,7 @@ import type { ReapResult, ResourceReport } from './resources'
 import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
 import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
-import type { PullRequest } from './github'
+import type { AutoRerun, PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
@@ -640,6 +640,9 @@ export interface CIJob {
   runner_name?: string
   html_url?: string
   steps: CIStep[]
+  /** GitHub never gave it a machine: it ended failed or cancelled with no
+   *  step run and no runner. Its code was not tested; a re-run runs it. */
+  no_runner?: boolean
   /** The median duration of the job of this name in the workflow's last
    *  successful runs (up to 5); absent with fewer than 2 of them. */
   baseline?: CIBaseline
@@ -670,6 +673,8 @@ export interface CIRun {
   baseline?: CIBaseline
   /** The sum of its finished jobs' cost. */
   cost?: CICost
+  /** Caprock re-ran this run's jobs GitHub never gave a machine, by itself (Settings → GitHub). */
+  auto_rerun?: AutoRerun
 }
 /** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
 export interface CIState {
@@ -677,7 +682,8 @@ export interface CIState {
   head_sha: string
   /** Set on a branch's CI (the Main view). */
   branch?: string
-  state: 'running' | 'fail' | 'pass' | 'none'
+  /** no_runner: no run failed but for jobs GitHub never gave a machine. */
+  state: 'running' | 'fail' | 'no_runner' | 'pass' | 'none'
   runs: CIRun[]
   runner_ms: number
   by_os: { os: string; ms: number }[]

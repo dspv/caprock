@@ -162,9 +162,9 @@ type Daemon struct {
 	// its open handle kept caprock.db from being deleted.
 	bg      sync.WaitGroup
 	secrets secretStores
-	// slow holds the status figures that read the event table in bulk.
-	slowMu sync.Mutex
-	slow   slowStatus
+	// statusDB is /v1/status's snapshot of what it reads from the database
+	// (statusdb.go).
+	statusDB statusCache
 	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
 	subSpend subSpendCache
 	// planShareC keeps GET /v1/plan-share's rates (planshare.go).
@@ -250,8 +250,6 @@ type Daemon struct {
 	api    *api.Server
 	rt     config.Runtime
 	start  time.Time
-	// events is /v1/status's stored-event count, taken in the background.
-	events eventCounter
 
 	// storage is the cached measurement of what the data directory holds;
 	// see storage.go.
@@ -1030,7 +1028,7 @@ func (d *Daemon) run(ctx context.Context) error {
 	// The all-time aggregates take a second or more on a large database; work
 	// them out now so the first screen opened finds them cached.
 	d.goBg(func() {
-		d.events.get(ctx, d.store)
+		d.dbStatus()
 		d.api.Warm(ctx)
 	})
 
@@ -1791,7 +1789,6 @@ func (d *Daemon) status(ctx context.Context) any {
 		URL: d.url, DataDir: d.opt.DataDir, Executable: stableExecutable(), UIBuilt: api.UIBuilt(),
 		Pricing: PricingStatus{Version: d.table.Version, Source: d.table.Source, FetchedAt: d.table.FetchedAt, UserOverride: d.table.UserOverride, Models: len(d.table.Models)},
 		LoopK:   d.det.K, LoopTMin: int(d.det.Window / time.Minute),
-		Memory:          d.slowStatus().mem,
 		OpenCode:        d.openCodeStats(),
 		Codex:           d.codexStats(),
 		Deepseek:        d.deepseekStats(),
@@ -1826,11 +1823,18 @@ func (d *Daemon) status(ctx context.Context) any {
 	if err := d.ingestError(); err != nil {
 		st.IngestError = err.Error()
 	}
-	if moved, total, err := d.store.MoveProgress(ctx); err == nil && total > 0 {
-		st.EventsMove = &MoveStatus{Moved: moved, Total: total}
-	}
-	if c, err := d.store.CopySkipped(ctx); err == nil && c != nil && time.Since(time.UnixMilli(c.At)) < upgradeCopyKeep {
+	// What the database says comes from a snapshot renewed in the
+	// background (statusdb.go): this answer never waits on a query.
+	db := d.dbStatus()
+	st.Memory = db.mem
+	st.Memory.HoldoutPct = d.config().MemoryHoldoutPct
+	st.EventsMove = db.move
+	if c := db.copySkipped; c != nil && time.Since(time.UnixMilli(c.At)) < upgradeCopyKeep {
 		st.UpgradeCopySkipped = c
+	}
+	st.Interrupted = db.interrupted
+	if db.eventsOK {
+		st.Events = db.events
 	}
 	// Read on request from a file the machine already has: no storage, no
 	// polling, and absence is a normal answer rather than an error.
@@ -1846,44 +1850,9 @@ func (d *Daemon) status(ctx context.Context) any {
 	d.mu.Lock()
 	st.ActiveLoops = len(d.alerts)
 	d.mu.Unlock()
-	st.Interrupted = d.interrupted(context.Background())
 	st.RetentionDays = d.config().RetentionDays
 	st.CompressOffer = d.compressOffer()
-	if n, ok := d.events.get(context.Background(), d.store); ok {
-		st.Events = n
-	}
 	return st
-}
-
-// statusSlowTTL is how long the status figures that read the event table in
-// bulk are reused: the prose a handoff can reach, polled every 30 s and slow
-// to move (the size of the table has its own counter, eventcount.go). On the
-// owner's 1 GB
-// database they were most of /v1/status — 0.26 s to count 330k events and
-// 0.64 s to find a fortnight's handoff passages, cold, measured 2026-10-04 on
-// a copy — and the Now screen waited on them for its figures.
-const statusSlowTTL = time.Minute
-
-type slowStatus struct {
-	at  time.Time
-	mem MemoryStatus
-}
-
-// slowStatus answers the bulk-read status figures, refreshing them at most once
-// per statusSlowTTL. The first call after a start computes them.
-func (d *Daemon) slowStatus() slowStatus {
-	d.slowMu.Lock()
-	defer d.slowMu.Unlock()
-	if !d.slow.at.IsZero() && time.Since(d.slow.at) < statusSlowTTL {
-		return d.slow
-	}
-	// The event count is not taken here: /v1/status reads it from
-	// d.events (eventcount.go), and a second count of the whole table each
-	// minute that nothing read was 9.4 MB of index pages on the owner's
-	// 1.85 GB database (docs/resource-usage-audit-2026-10-18.md, F17).
-	v := slowStatus{at: time.Now(), mem: d.memoryStatus()}
-	d.slow = v
-	return v
 }
 
 // agentAdapter bridges *agents.Manager to api.AgentController.

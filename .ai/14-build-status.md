@@ -120,6 +120,32 @@ branch's (`fix/daemon-stalls`). `store.ProseSince`, read by `/v1/status`,
 still walks every assistant turn; named in `idx_events_prose`'s terms it
 could be read from the index (not measured).
 
+### 2026-11-18 — unreleased: the status check answers while the database is busy
+
+Branch `fix/daemon-stalls`. The desktop app's `app.log` on the owner's Mac
+held 53 "brief failure" lines from 2026-10-29 to 2026-11-18, 48 of them
+ending in `/v1/status` missing the app's 0.8 s timeout. 45 of the 48 fall
+within 3 s of `HandoffCoverage` or `HandoffEffect` in the daemon's log: the
+memory figures `/v1/status` worked out inside the request once a minute,
+under a mutex every other status caller waited on. Of 1,091 such queries
+logged as slow since 2026-10-13, 447 took 0.8 s or more and 105 were cut at
+the 2 s limit they ran under, which left the status with no memory figures
+for that minute. The other 3 fell on single-row `meta` reads taking
+0.8–2.7 s while the dashboard's aggregates held the pool's connections. A
+15-minute probe of the running daemon showed the same: `/v1/status` p50
+12 ms, and 0.36–2.03 s once a minute, each with those two queries.
+
+Everything the status reads from SQLite now comes from a snapshot renewed in
+the background (`internal/daemon/statusdb.go`, contract in
+[03-contracts.md](03-contracts.md)). Measured on a copy of that database
+(1.09M events) with three dashboards' worth of heavy reads at once, 150 s:
+`/v1/status` max 2,173 ms, p99 2,130 ms before; max 161 ms, p99 158 ms
+after, the same as `/healthz` under that load (156 ms). The 5 `/healthz`
+misses (2026-10-29 twice, 11-02, 11-17, 11-18) fell inside machine-wide
+stalls — a one-row `INSERT` taking 3.5 s, a `meta` read 0.7 s — not
+inside a handler; the app's 20 s grace for timeouts keeps the window on the
+dashboard through them, and the timeout is unchanged.
+
 ### 2026-11-16 — unreleased: Cursor (ADR-095)
 
 Branch `feat/cursor-agent`. Cursor's editor chats are read from its

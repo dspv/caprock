@@ -401,17 +401,45 @@ pub fn drop_script(paths: &[PathBuf], (x, y): (f64, f64), scale: f64) -> Option<
     ))
 }
 
+/// Where a main-frame navigation goes.
+#[derive(Debug, PartialEq, Eq)]
+enum Nav {
+    /// Load it here: this daemon's page, the fallback page, about:.
+    Stay,
+    /// Refuse it and open nothing.
+    Drop,
+    /// Refuse it here and open it in the system browser.
+    Browser,
+}
+
 /// The main window's and the Mail window's navigation rule: main-frame
 /// navigation stays on this daemon or the fallback page; anything else,
 /// another local port included, is a link the user meant for the browser,
 /// opened there and refused here.
-pub fn allow_navigation<R: Runtime>(app: &AppHandle<R>, sup: &Supervisor, url: &Url) -> bool {
-    let port = sup.runtime().map(|rt| rt.port);
+///
+/// With no daemon running (it restarts on every update) a page on
+/// 127.0.0.1 is the window reloading itself, not a link: it is refused
+/// without a browser tab. Handing it to the browser opened a stray
+/// "Caprock Mail" tab after each update, from the Mail window's reload.
+fn navigation(url: &Url, port: Option<u16>) -> Nav {
     if (port.is_some() && is_daemon(url, port)) || is_local(url) || url.scheme() == "about" {
-        return true;
+        Nav::Stay
+    } else if port.is_none() && is_daemon(url, None) {
+        Nav::Drop
+    } else {
+        Nav::Browser
     }
-    open_link(app, url);
-    false
+}
+
+pub fn allow_navigation<R: Runtime>(app: &AppHandle<R>, sup: &Supervisor, url: &Url) -> bool {
+    match navigation(url, sup.runtime().map(|rt| rt.port)) {
+        Nav::Stay => true,
+        Nav::Drop => false,
+        Nav::Browser => {
+            open_link(app, url);
+            false
+        }
+    }
 }
 
 /// An http(s) or mailto link in the system browser or mail app; any other
@@ -733,6 +761,20 @@ mod tests {
         let start = js.find("detail: ").expect("detail") + "detail: ".len();
         let end = js.rfind(" }))").expect("end");
         serde_json::from_str(&js[start..end]).expect("json")
+    }
+
+    #[test]
+    fn a_daemon_page_with_no_daemon_opens_no_browser_tab() {
+        let mail = Url::parse("http://127.0.0.1:4173/?mail=1").unwrap();
+        assert_eq!(navigation(&mail, Some(4173)), Nav::Stay);
+        // The daemon restarting during an update: the Mail window's reload.
+        assert_eq!(navigation(&mail, None), Nav::Drop);
+        // Another local port while the daemon runs is still a link.
+        let dev = Url::parse("http://127.0.0.1:5173/").unwrap();
+        assert_eq!(navigation(&dev, Some(4173)), Nav::Browser);
+        let site = Url::parse("https://caprock.dev/").unwrap();
+        assert_eq!(navigation(&site, None), Nav::Browser);
+        assert_eq!(navigation(&site, Some(4173)), Nav::Browser);
     }
 
     #[test]

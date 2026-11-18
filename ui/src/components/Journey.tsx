@@ -12,6 +12,7 @@ const PILL: Record<StepTone, string> = {
   ok: 'border-ok/55 bg-ok/15 text-ok',
   fail: 'border-danger/60 bg-danger/15 text-danger',
   pending: 'border-warn/55 bg-warn/15 text-warn',
+  norunner: 'border-dashed border-norunner/60 bg-norunner/10 text-norunner',
   merged: 'border-merged/55 bg-merged/15 text-merged',
   accent: 'border-accent/60 bg-accent/15 text-accent',
   muted: 'border-border-strong bg-panel-2 text-fg',
@@ -19,7 +20,7 @@ const PILL: Record<StepTone, string> = {
 }
 
 const BAR: Record<StepTone, string> = {
-  ok: 'bg-ok', fail: 'bg-danger', pending: 'bg-warn', merged: 'bg-merged', accent: 'bg-accent', muted: 'bg-fg-muted', faint: 'bg-[var(--app-hairline-strong)]',
+  ok: 'bg-ok', fail: 'bg-danger', pending: 'bg-warn', norunner: 'bg-norunner', merged: 'bg-merged', accent: 'bg-accent', muted: 'bg-fg-muted', faint: 'bg-[var(--app-hairline-strong)]',
 }
 
 /**

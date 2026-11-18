@@ -261,6 +261,11 @@ type Config struct {
 	// GitHubNotify raises an OS notification when a followed pull request's
 	// CI starts failing or a review lands. On unless switched off.
 	GitHubNotify *bool `json:"github_notify,omitempty"`
+	// GitHubAutoRerun lets the daemon re-run, once per run, the jobs GitHub
+	// never gave a machine (internal/github/autorerun.go): a write to the
+	// user's repositories with the user's token that no click asked for, so
+	// off unless turned on.
+	GitHubAutoRerun bool `json:"github_auto_rerun,omitempty"`
 	// KeepAwake is when the daemon keeps the computer from idle-sleeping
 	// (internal/keepawake, ADR-049): "off", "working" (while an agent
 	// works) or "always" (while Caprock runs). Empty means never chosen,

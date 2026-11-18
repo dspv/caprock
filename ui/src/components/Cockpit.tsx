@@ -325,17 +325,30 @@ export function useFolded(): boolean {
   return !!fold && !fold.full
 }
 
-export function SectionLabel({ children, right }: { children: ReactNode; right?: ReactNode }) {
+/**
+ * A section's head. `after` sits right after the label and takes the room
+ * left (a folded CI line's PR title); `sub` is a second line under it, for a
+ * section whose folded state needs two (CI: its checks and their action).
+ */
+export function SectionLabel({ children, right, after, sub }: { children: ReactNode; right?: ReactNode; after?: ReactNode; sub?: ReactNode }) {
   const fold = useContext(FoldCtx)
   if (fold) {
-    return (
-      <div data-section-head className="flex min-w-0 items-center gap-2">
-        <button type="button" aria-expanded={fold.full} onClick={fold.toggle} title={fold.full ? 'Fold this section to one line' : 'Show the whole section'}
+    const row = (
+      <div data-section-head={sub ? undefined : ''} className="flex min-w-0 items-center gap-2">
+        <button type="button" aria-expanded={fold.full} onClick={fold.toggle} title={fold.full ? 'Fold this section' : 'Show the whole section'}
           className="-mx-1 flex min-w-0 shrink-0 items-center gap-1 rounded-[6px] px-1 py-0.5 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
           <Chevron open={fold.full} />
           <h4 className="truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">{children}</h4>
         </button>
-        {right && <div className="ml-auto flex min-w-0 items-baseline gap-2 text-[11.5px]">{right}</div>}
+        {after}
+        {right && <div className={`ml-auto flex min-w-0 items-baseline gap-2 text-[11.5px]${after ? ' shrink-0' : ''}`}>{right}</div>}
+      </div>
+    )
+    if (!sub) return row
+    return (
+      <div data-section-head className="grid min-w-0 gap-1">
+        {row}
+        <div data-section-sub className="flex min-w-0 items-center">{sub}</div>
       </div>
     )
   }

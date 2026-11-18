@@ -31,6 +31,10 @@ type Check struct {
 	// JobID is the GitHub Actions job a check run is, read from its link
 	// (…/actions/runs/{run}/job/{job}); 0 for any other check.
 	JobID int64 `json:"job_id,omitempty"`
+	// NoRunner is a failed Actions check whose job GitHub never ran: no
+	// machine was given to it, so its code was not tested (norunner.go).
+	// Its State stays fail; Checks counts it apart.
+	NoRunner bool `json:"no_runner,omitempty"`
 }
 
 var jobLink = regexp.MustCompile(`/actions/runs/[0-9]+/job/([0-9]+)`)
@@ -49,13 +53,19 @@ func jobOf(link string) int64 {
 }
 
 // Checks sums a head commit's checks: fail when any failed, else pending
-// when any is still running, else pass; none when there are none.
+// when any is still running, else no_runner when some job GitHub never ran,
+// else pass; none when there are none. Failed leaves out the NoRunner ones,
+// which NoRunner counts.
 type Checks struct {
-	State   string  `json:"state"`
-	Passed  int     `json:"passed"`
-	Failed  int     `json:"failed"`
-	Pending int     `json:"pending"`
-	Items   []Check `json:"items"`
+	State    string  `json:"state"`
+	Passed   int     `json:"passed"`
+	Failed   int     `json:"failed"`
+	Pending  int     `json:"pending"`
+	NoRunner int     `json:"no_runner,omitempty"`
+	Items    []Check `json:"items"`
+	// AutoRerun is set when Caprock re-ran, by itself, a run these checks
+	// belong to (autorerun.go); the newest such re-run.
+	AutoRerun *AutoRerun `json:"auto_rerun,omitempty"`
 }
 
 // Review is one reviewer's latest verdict.
@@ -575,6 +585,9 @@ func (s *Service) refreshPull(ctx context.Context, f *followed, number int) bool
 			checks = prev.Checks
 		}
 	}
+	if s.autoRerunChecks(ctx, t.repo, p.Head.SHA, pr.State == "open", &checks) {
+		changed = true // asked sooner, so the re-run shows queued
+	}
 	pr.Checks = checks
 	changed = changed || ch
 	reviews, ch, e := s.readReviews(ctx, t.repo, p.Number)
@@ -626,10 +639,13 @@ func (s *Service) readChecks(ctx context.Context, repo Repo, sha string) (Checks
 	if e := decode(res, doing, &runs); e != nil {
 		return out, false, e
 	}
+	conclusions := make([]string, 0, len(runs.CheckRuns))
 	for _, r := range runs.CheckRuns {
 		out.Items = append(out.Items, Check{Name: r.Name, State: runState(r.Status, r.Conclusion), URL: r.HTMLURL, Status: r.Status,
 			StartedAt: unixMS(r.StartedAt), CompletedAt: unixMS(r.CompletedAt), JobID: jobOf(r.HTMLURL)})
+		conclusions = append(conclusions, r.Conclusion)
 	}
+	s.markNoRunner(ctx, repo, sha, out.Items, conclusions)
 	res, e = s.call(ctx, request{method: http.MethodGet, path: base + "/status", doing: doing})
 	if e != nil {
 		return out, changed, e
@@ -648,11 +664,20 @@ func (s *Service) readChecks(ctx context.Context, repo Repo, sha string) (Checks
 	for _, x := range st.Statuses {
 		out.Items = append(out.Items, Check{Name: x.Context, State: statusState(x.State), URL: x.TargetURL})
 	}
+	sumChecks(&out)
+	return out, changed, nil
+}
+
+// sumChecks counts the checks and decides their state.
+func sumChecks(out *Checks) {
+	out.Passed, out.Failed, out.Pending, out.NoRunner = 0, 0, 0, 0
 	for _, c := range out.Items {
-		switch c.State {
-		case "pass", "skipped":
+		switch {
+		case c.State == "pass" || c.State == "skipped":
 			out.Passed++
-		case "fail":
+		case c.State == "fail" && c.NoRunner:
+			out.NoRunner++
+		case c.State == "fail":
 			out.Failed++
 		default:
 			out.Pending++
@@ -665,10 +690,11 @@ func (s *Service) readChecks(ctx context.Context, repo Repo, sha string) (Checks
 		out.State = "fail"
 	case out.Pending > 0:
 		out.State = "pending"
+	case out.NoRunner > 0:
+		out.State = "no_runner"
 	default:
 		out.State = "pass"
 	}
-	return out, changed, nil
 }
 
 // runState maps a check run to pass, fail, pending or skipped.
@@ -788,7 +814,7 @@ func (s *Service) notifyChanges(f *followed, prev, pr *PR) {
 	if pr.Checks.State == "fail" && (prev.Checks.State != "fail" || prev.HeadSHA != pr.HeadSHA) {
 		names := []string{}
 		for _, c := range pr.Checks.Items {
-			if c.State == "fail" {
+			if c.State == "fail" && !c.NoRunner {
 				names = append(names, c.Name)
 			}
 		}
