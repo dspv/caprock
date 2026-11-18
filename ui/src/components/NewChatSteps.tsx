@@ -13,6 +13,10 @@
  * 3. **Chat** — the chat opens (screens/Chat), whose context line says what
  *    the agent sees.
  *
+ * Under the Who list, while Claude or Codex is offered, a muted line says
+ * where a subscription is added (AddSubscriptionHint): on the computer, never
+ * from here.
+ *
  * A bottom sheet on a phone, a centred dialog elsewhere (ChatSheet).
  */
 import { useState } from 'react'
@@ -27,6 +31,8 @@ import { quickChoiceLabel, rememberQuickChoice } from './QuickChat'
 import { ChatSheet, type useChatChoice } from './ChatStart'
 import { AgentCharacter } from './Characters'
 import { ChatIcon, ChevronIcon, FolderIcon, MoreIcon } from './AppIcons'
+import { AddSubscriptionHint } from './SubscriptionPicker'
+import { hasSubscriptions } from '@/lib/subscriptions'
 
 type Step = 'who' | 'where' | 'browse'
 
@@ -85,6 +91,9 @@ export function NewChatSteps({ chat, onClose }: { chat: ReturnType<typeof useCha
             </ul>
           )
         )}
+        {/* Where New agent offers Add subscription, the list's last line: the
+          * phone only says where it is done (AddSubscriptionHint). */}
+        {step === 'who' && ready && options.some((o) => hasSubscriptions(o.agent)) && <AddSubscriptionHint className="px-1" />}
         {step === 'where' && who && (
           <Where who={who} home={home} busy={busy} onBack={() => setStep('who')} onBrowse={() => setStep('browse')} onStart={(d) => void start(d)} />
         )}

@@ -10,6 +10,7 @@ import { api, type CatalogEntry, type ChatFile, type FolderLabel, type SessionDe
 import { ChatsScreen } from './Chats'
 import { ChatScreen } from './Chat'
 import { resetQuickReplies } from '@/lib/quickReplies'
+import { ADD_SUBSCRIPTION_HINT } from '@/components/SubscriptionPicker'
 
 const NOW = Date.now()
 
@@ -154,6 +155,44 @@ describe('New chat in a folder (ADR-091)', () => {
     await waitFor(() => expect(spawn).toHaveBeenCalledWith({ chat: true, cwd: '/h/dev/acme', subscription: 'kimi' }))
     await waitFor(() => expect(location.hash).toBe('#/chats/fresh'))
     expect(localStorage.getItem('caprock.newchat.who')).toBe('claude:kimi')
+  })
+
+  // Owner, 2026-11-18: the phone says where a subscription is added — a
+  // line under the list, never a button, since a paired device cannot add one.
+  it('on a phone, says under Who works where a subscription is added, with one, two or none read', async () => {
+    phoneScreen()
+    vi.spyOn(api, 'chats').mockResolvedValue({ items: [], total: 0, chats: 0, archived: 0 })
+    const own = subsResponse.agents[0]!.subscriptions[0]!
+    const one = { ...subsResponse, agents: [{ ...subsResponse.agents[0]!, subscriptions: [own] }, subsResponse.agents[1]!] }
+    const subs = vi.spyOn(api, 'subscriptions').mockResolvedValue(one)
+    const add = vi.spyOn(api, 'addSubscription')
+    for (const answer of ['one', 'two', 'none'] as const) {
+      if (answer === 'two') subs.mockResolvedValue(subsResponse)
+      if (answer === 'none') subs.mockRejectedValue(new Error('not served'))
+      const view = render(<ChatsScreen />)
+      fireEvent.click(await screen.findByRole('button', { name: /New chat/ }))
+      const who = await screen.findByRole('dialog', { name: 'Who works' })
+      await within(who).findAllByRole('button', { name: /Claude/ })
+      const hint = within(who).getByText(ADD_SUBSCRIPTION_HINT)
+      expect(hint.tagName).toBe('P')
+      // The list's last line, after the list itself.
+      expect(within(who).getByRole('list', { name: 'Who works' }).compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(within(who).queryByRole('button', { name: /Add subscription/ })).toBeNull()
+      view.unmount()
+    }
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  it('says nothing about subscriptions when no agent that has them is offered', async () => {
+    phoneScreen()
+    vi.mocked(api.agentCatalog).mockResolvedValue({ agents: [{ ...claude, id: 'gemini', label: 'Gemini CLI' }], licensed: false } as unknown as Awaited<ReturnType<typeof api.agentCatalog>>)
+    vi.spyOn(api, 'chats').mockResolvedValue({ items: [], total: 0, chats: 0, archived: 0 })
+    vi.spyOn(api, 'subscriptions').mockResolvedValue(subsResponse)
+    render(<ChatsScreen />)
+    fireEvent.click(await screen.findByRole('button', { name: /New chat/ }))
+    const who = await screen.findByRole('dialog', { name: 'Who works' })
+    await within(who).findByRole('button', { name: /Gemini/ })
+    expect(within(who).queryByText(ADD_SUBSCRIPTION_HINT)).toBeNull()
   })
 
   it('tags a chat by its folder’s label and filters the list by it', async () => {

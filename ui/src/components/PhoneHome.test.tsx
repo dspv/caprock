@@ -3,13 +3,14 @@
  * docked field in the chosen project with the words as its first message, and
  * Save landing in the Inbox.
  */
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ATTACH_ACCEPT } from '@/lib/attach'
 import { ApiError, api, type CatalogEntry, type InboxItem, type LimitsAnswer, type SessionSummary } from '@/lib/api'
 import { FOLDS_KEY } from '@/lib/phonehome'
 import { projectsApi, type Project } from '@/lib/projects'
 import { PhoneHome } from './PhoneHome'
+import { ADD_SUBSCRIPTION_HINT } from './SubscriptionPicker'
 
 const NOW = Date.now()
 
@@ -155,6 +156,31 @@ describe('PhoneHome', () => {
     fireEvent.click(screen.getByText('Start chat'))
     expect(await screen.findByRole('dialog', { name: 'Start in a project' })).toBeTruthy()
     expect(spawn).not.toHaveBeenCalled()
+  })
+
+  // Owner, 2026-11-18: where New agent offers Add subscription, the phone
+  // says where it is done; a line, not a button (a paired device adds none).
+  it('says in Start in a project where a subscription is added, under Runs on or under Agent', async () => {
+    const sub = (id: string, label: string) => ({ id, agent: 'claude', label, default: id === 'default', dir: '', signed_in: true, login_command: '', windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0 })
+    for (const list of [[], [sub('default', 'Own')], [sub('default', 'Own'), sub('work', 'Work')]]) {
+      stubs()
+      vi.mocked(api.subscriptions).mockResolvedValue({ agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: list }], licensed: false, free_per_agent: 3 } as unknown as Awaited<ReturnType<typeof api.subscriptions>>)
+      const view = render(<PhoneHome />)
+      await screen.findByText('work in alpha')
+      openChats()
+      await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).options.length).toBe(3))
+      fireEvent.change(screen.getByLabelText('Project'), { target: { value: '/home/me/alpha' } })
+      fireEvent.click(screen.getByText('Start chat'))
+      const sheet = await screen.findByRole('dialog', { name: 'Start in a project' })
+      const hint = await within(sheet).findByText(ADD_SUBSCRIPTION_HINT)
+      expect(hint.tagName).toBe('P')
+      if (list.length > 1) {
+        const work = within(sheet).getByRole('button', { name: /^Work/ })
+        expect(work.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      }
+      view.unmount()
+      vi.restoreAllMocks()
+    }
   })
 
   it('lists the newest chats apart from the work, with the way to all of them', async () => {
