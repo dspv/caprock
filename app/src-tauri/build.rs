@@ -27,6 +27,7 @@ fn main() {
             "capture_webview",
             "read_dropped_image",
             "read_dropped_text",
+            "read_dropped_file",
             "set_zoom",
             "open_mail_app",
             "open_mail_window",

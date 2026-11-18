@@ -84,7 +84,7 @@ describe('attach — what a phone may attach', () => {
 })
 
 describe('droppedItems — a file dropped on a chat in the desktop app', () => {
-  it('reads an image through the shell, keeps a document by its real path, and turns away what Attach would', async () => {
+  it('reads an image through the shell, keeps a document by its real path without a file reader, and turns away what Attach would', async () => {
     const read = async (p: string) => {
       if (p.endsWith('huge.png')) throw 'over 10 MB'
       if (p.endsWith('gone.png')) throw new Error('No such file')
@@ -101,6 +101,34 @@ describe('droppedItems — a file dropped on a chat in the desktop app', () => {
     expect(refusal).toBe("setup.exe can't be attached: .exe isn't a supported type. Photos, PDFs, text, Markdown, office, data and source files can.")
     expect((await droppedItems(['/Users/u/huge.png'], read)).refusal).toBe('huge.png is over 10 MB')
     expect((await droppedItems(['C:\\Users\\u\\project'], read)).refusal).toBe("project can't be attached: a file with no extension isn't supported. Photos, PDFs, text, Markdown, office, data and source files can.")
+  })
+  it('reads any other kept file through the shell too, so it attaches by a short name like a picked one', async () => {
+    const image = async () => new Uint8Array([9]).buffer
+    const file = async (p: string) => {
+      if (p.endsWith('big.pdf')) throw 'over 10 MB'
+      if (p.endsWith('gone.csv')) throw new Error('No such file')
+      return new TextEncoder().encode('# plan').buffer as ArrayBuffer
+    }
+    const { items, refusal } = await droppedItems(
+      ['/Users/u/plan.md', 'C:\\Users\\u\\gone.csv', '/Users/u/big.pdf', '/Users/u/shot.png'],
+      image,
+      file,
+    )
+    expect(items.map((i) => (typeof i === 'string' ? i : `file:${i.name}:${i.type}:${i.size}`))).toEqual([
+      'file:plan.md::6', 'C:\\Users\\u\\gone.csv', 'file:shot.png:image/png:1',
+    ])
+    // Over the limit: the line Attach shows for a picked file that size.
+    expect(refusal).toBe('big.pdf is over 10 MB')
+  })
+  it('falls back to the path when the app has no read_dropped_file (an older shell)', async () => {
+    const image = async () => new Uint8Array([9]).buffer
+    // What Tauri answers for a command the app's capability does not grant.
+    const old = async () => { throw 'Command read_dropped_file not allowed by ACL' }
+    const viaOld = await droppedItems(['/Users/u/plan.md', '/Users/u/shot.png'], image, old)
+    expect(viaOld.items.map((i) => (typeof i === 'string' ? i : `file:${i.name}`))).toEqual(['/Users/u/plan.md', 'file:shot.png'])
+    expect(viaOld.refusal).toBe('')
+    const noReader = await droppedItems(['/Users/u/plan.md'], image)
+    expect(noReader.items).toEqual(['/Users/u/plan.md'])
   })
   it('knows a kept type by its extension, in any case', () => {
     expect(attachableName('notes.MD')).toBe(true)

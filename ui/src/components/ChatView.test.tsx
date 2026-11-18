@@ -831,8 +831,35 @@ describe('ChatView: a file dropped on the chat', () => {
     expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
   })
 
-  it('in the app, the drop under the point attaches: an image read by the shell, a document by its path', async () => {
+  it('in the app, the drop under the point attaches as Attach does: an image and a document read by the shell, each by a short name', async () => {
     const read = vi.spyOn(shell, 'readDroppedImage').mockResolvedValue(new Uint8Array([1, 2, 3]).buffer)
+    const readFile = vi.spyOn(shell, 'readDroppedFile').mockResolvedValue(new TextEncoder().encode('# plan').buffer as ArrayBuffer)
+    render(<ChatView sessionId="s" canType />)
+    dropPaths(['/Users/u/plan.md', '/Users/u/shot.png', '/Users/u/setup.exe'], 50, 10)
+    expect(await screen.findByRole('button', { name: 'Remove plan.md' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Remove Image 1' })).toBeInTheDocument()
+    expect(readFile).toHaveBeenCalledWith('/Users/u/plan.md')
+    expect(read).toHaveBeenCalledWith('/Users/u/shot.png')
+    expect((await screen.findByRole('alert')).textContent).toBe(EXE)
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    // Both saved by the daemon, as a picked file is: never the absolute path.
+    await waitFor(() => expect(store.inputs).toEqual(['"/data/paste/plan.md" ', '\x1b[200~"/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
+    read.mockRestore()
+    readFile.mockRestore()
+  })
+
+  it('in the app, a document over 10 MB gets the line Attach gives it', async () => {
+    const readFile = vi.spyOn(shell, 'readDroppedFile').mockRejectedValue('over 10 MB')
+    render(<ChatView sessionId="s" canType />)
+    dropPaths(['/Users/u/big.pdf'], 50, 10)
+    expect((await screen.findByRole('alert')).textContent).toBe('big.pdf is over 10 MB')
+    expect(screen.queryByRole('list', { name: 'Attachments' })).toBeNull()
+    readFile.mockRestore()
+  })
+
+  it('in an app without read_dropped_file (an older shell), a document still attaches by its path', async () => {
+    const read = vi.spyOn(shell, 'readDroppedImage').mockResolvedValue(new Uint8Array([1, 2, 3]).buffer)
+    const readFile = vi.spyOn(shell, 'readDroppedFile').mockRejectedValue('Command read_dropped_file not allowed by ACL')
     render(<ChatView sessionId="s" canType />)
     expect(chatRoot().hasAttribute(DROP_ZONE_ATTR)).toBe(true)
     dropPaths(['/Users/u/plan.md', '/Users/u/shot.png', '/Users/u/setup.exe'], 50, 10)
@@ -844,6 +871,7 @@ describe('ChatView: a file dropped on the chat', () => {
     // The document as the app's terminal types it; the image as Attach saves it.
     await waitFor(() => expect(store.inputs).toEqual(['"/Users/u/plan.md" ', '\x1b[200~"/data/paste/shot.png"\x1b[201~', '\r']), { timeout: 1000 })
     read.mockRestore()
+    readFile.mockRestore()
   })
 
   it("in the app, a drop off the chat or under a dialog is not the chat's", async () => {

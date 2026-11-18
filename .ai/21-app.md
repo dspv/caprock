@@ -2155,6 +2155,16 @@ GitHub by clipboard. In the app three commands do the native parts
   `.md`, `.markdown` or `.txt` file of at most 1 MiB, returned only when it
   is UTF-8. Unit-tested in `capture.rs`; the ACL test refuses it to every
   other origin.
+- **`read_dropped_file`** keeps the same rule for a file dropped on an open
+  chat, which attaches as the Attach button's pick does (§ Dropping a file):
+  one of the last drop's paths, any regular file (a folder is refused), at
+  most 10 MB — the daemon's paste limit, the one Attach has — returned as
+  bytes the page uploads to `POST /v1/paste`. Any type, since the page keeps
+  to the daemon's allow-list and the daemon decides again on upload; what
+  bounds it is that only what the shell just handed over is read. An app
+  built before it has no such command: the page falls back to attaching a
+  document by its path (2026-11-18). Unit-tested in `capture.rs`; the ACL
+  test refuses it to every other origin.
 - **Verified**: macOS by `cargo clippy -D warnings` and `cargo test` (the
   path rules, and the ACL: another origin is refused all three); the Windows
   code by `cargo clippy --target x86_64-pc-windows-msvc -D warnings` on a
@@ -2268,7 +2278,9 @@ that can be typed into marks itself `data-file-drop` and attaches the file
 as its Attach button does, even where it is laid over a terminal
 ([04-ui.md](04-ui.md) § From a phone, *A file dropped on an open chat
 attaches*;
-2026-11-17); else the terminal under the point; else the
+2026-11-17): the shell reads its bytes (`read_dropped_image` for an image,
+`read_dropped_file` for any other kept type, 2026-11-18) and the page
+uploads them under a short name, never the absolute path; else the terminal under the point; else the
 terminal used last that is on screen; else the only terminal on screen;
 else a short note says to drop it onto a terminal. A drop is never dropped
 without a word — it used to reach only a terminal whose box held the point,
