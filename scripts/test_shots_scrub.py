@@ -63,6 +63,9 @@ SESSIONS = [
     # Started in ~/dev: after the username swap that is the stand-in root
     # itself, which must not re-nest every repository flattened before it.
     ("s-devhome", "/Users/ds/dev", "", "dev"),
+    # A second `caprock` is numbered; its siblings must not become `caprock-2-…`.
+    ("s-cap2", "/Users/ds/work/caprock", "/Users/ds/work/caprock", "caprock"),
+    ("s-capops", "/Users/ds/dev/caprock-ops", "/Users/ds/dev/caprock-ops", "caprock-ops"),
 ]
 
 PAYLOADS = [
@@ -80,6 +83,7 @@ PAYLOADS = [
     '{"x":"-Users-ds-dev-shop and /private/tmp/claude-501/-Users-ds-dev-caprock/scratchpad/wt-9/f"}',
     'not json at all /Users/ds/dev/ledger',
     '{"t":"nothing to see"}',
+    '{"cwd":"/Users/ds/dev/caprock-ops","x":"/Users/ds/dev/caprock and /Users/ds/dev/caprock/x"}',
 ]
 
 TOUCH = ["/Users/ds/dev/shop", "/Users/ds/dev/shop/.caprock-worktrees/agent-7",
@@ -126,6 +130,13 @@ def build(path):
                (n, sids[1], "hook", "tool.post", b"\xff\xfe /Users/ds/dev/shop/x"))
     db.execute("INSERT INTO events(ts, sid, source, kind, payload) VALUES (?,?,?,?,?)",
                (n, sids[1], "hook", "tool.post", "head\x00 /Users/ds/dev/shop/x"))
+    # A session that pushed two branches, and the projects list Home leads
+    # with: real roots and names that no session column carries.
+    for b in ("someone/private-idea", "fix/other-thing", "main"):
+        db.execute("INSERT INTO session_branches VALUES (?, ?, 1)", ("s-shop", b))
+    db.execute("INSERT INTO projects(root, name, added_at) VALUES ('/Users/ds/dev/secret-client', 'secret-client', 1)")
+    db.execute("INSERT INTO project_repos VALUES (1, '/Users/ds/dev/secret-client', 1)")
+    db.execute("INSERT INTO folder_labels VALUES ('/Users/ds/dev/secret-client', 'work', 1)")
     for url in ("https://github.com/someone/private/pull/1", "https://github.com/dspv/caprock/pull/2"):
         db.execute("INSERT INTO session_prs(session_id, url, number, title, last_at) VALUES (?,?,1,'t',1)",
                    (ME, url))
@@ -181,6 +192,13 @@ class SinglePassScrub(unittest.TestCase):
         left = db.execute("SELECT payload FROM events WHERE typeof(payload)='text' "
                           "AND instr(payload, '/Users/ds/') > 0").fetchall()
         self.assertEqual(left, [("head\x00 /Users/ds/dev/shop/x",)])
+        for table in ("projects", "project_repos", "folder_labels"):
+            self.assertEqual(db.execute(f"SELECT count(*) FROM {table}").fetchone()[0], 0, table)
+        self.assertEqual(sorted(r[0] for r in db.execute("SELECT branch FROM session_branches")),
+                         [shots.BRANCHES[0], "main"])
+        self.assertEqual(db.execute("SELECT count(*) FROM session_prs WHERE url LIKE '%someone%'").fetchone()[0], 0)
+        self.assertEqual(db.execute("SELECT count(*) FROM sessions WHERE cwd LIKE '%caprock-2-%' "
+                                    "OR repo_root LIKE '%caprock-2-%'").fetchone()[0], 0)
         texts = [r[0].decode("utf-8", "replace") for r in db.execute("SELECT CAST(payload AS BLOB) FROM events WHERE typeof(payload)='text'")]
         self.assertTrue(any(f"/Users/dev/dev/{s}" in t for t in texts for s in shots.STAND_INS))
 
@@ -188,10 +206,12 @@ class SinglePassScrub(unittest.TestCase):
         """_apply against SQLite's REPLACE, = and GLOB, one statement at a time."""
         db = sqlite3.connect(":memory:")
         db.execute("CREATE TABLE t (v TEXT)")
+        db.create_function("scrub_bounded", 3, shots._bounded, deterministic=True)
         ops = [("r", "/a/b", "/X"), ("e", "/X", "/eq"), ("g", "/a/shop", "/T"),
-               ("r", "shop", "~~SCRUB1~~"), ("r", "~~SCRUB1~~", "store"), ("g", "/a/we[b]*", "/W")]
+               ("r", "shop", "~~SCRUB1~~"), ("r", "~~SCRUB1~~", "store"), ("g", "/a/we[b]*", "/W"),
+               ("b", "/a/cap", "/a/cap-2")]
         values = ["/a/b/c", "/a/b", "/a/shop-2/x", "/a/shop-x", "/a/shop-", "/a/shop-9",
-                  "/A/B/c", "shopshop", "/a/we[b]*-1/z", "/a/we[b]*x-1", "καφές /a/b ñ", ""]
+                  "/A/B/c", "shopshop", "/a/we[b]*-1/z", "/a/we[b]*x-1", "καφές /a/b ñ", "", "/a/cap", "/a/cap-ops /a/cap/x /a/cap\" /a/cap.x /a/capé"]
         for v in values:
             db.execute("DELETE FROM t")
             db.execute("INSERT INTO t VALUES (?)", (v,))

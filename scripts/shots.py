@@ -32,7 +32,7 @@ script, feature-shots.py and the site's stand in caprock-web scripts/demo.)
    fixture's allow-list for the stand. Open every PNG before it is
    committed; a green run has published real names twice.
 """
-import base64, json, os, pathlib, re, shutil, sqlite3, subprocess, sys, time, urllib.request
+import base64, functools, json, os, pathlib, re, shutil, sqlite3, subprocess, sys, time, urllib.request
 
 # Overridable so the fixture can live outside the repository — it is a copy of
 # a real database and has no business sitting in a working tree.
@@ -100,12 +100,32 @@ STAND_INS = [
 DEFERRED = (("events", "touch_dir"), ("events", "payload"))
 
 
+@functools.lru_cache(maxsize=None)
+def _bounded_rx(a, as_bytes):
+    """`a` where no path-name character follows it: `/x/caprock` in
+    `/x/caprock/y` and `/x/caprock"`, never in `/x/caprock-web`."""
+    if as_bytes:
+        return re.compile(re.escape(a.encode()) + rb"(?![A-Za-z0-9._-])")
+    return re.compile(re.escape(a) + r"(?![A-Za-z0-9._-])")
+
+
+def _bounded(v, a, b):
+    """The SQL function `scrub_bounded`, on bytes (the statement casts)."""
+    if v is None:
+        return None
+    nb = b.encode()
+    return _bounded_rx(a, True).sub(lambda m: nb, v)
+
+
 def _sql(t, col, op):
     """The statement one rewrite is, exactly as it has always run."""
     kind, a, b = op
     if kind == "r":     # substring, everywhere in the value
         return (f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
                 (a, b, f"%{a}%"))
+    if kind == "b":     # substring at a path-name boundary; TEXT, as REPLACE gives
+        return (f"UPDATE {t} SET {col}=CAST(scrub_bounded(CAST({col} AS BLOB),?,?) AS TEXT) "
+                f"WHERE {col} LIKE ?", (a, b, f"%{a}%"))
     if kind == "e":     # the whole value
         return f"UPDATE {t} SET {col}=? WHERE {col}=?", (b, a)
     # A numbered leaf: `<a>-<digit>...` becomes `<b>-<digit>...`.
@@ -133,6 +153,9 @@ def _apply(groups, v):
             if kind == "r":
                 if a in v:
                     v = v.replace(a, b)
+            elif kind == "b":
+                if a in v:
+                    v = _bounded_rx(a, False).sub(lambda m: b, v)
             elif kind == "e":
                 if v == a:
                     v = b
@@ -171,6 +194,9 @@ class _Rewrites:
     def replace(self, t, col, a, b, key=None):
         self.run(t, col, ("r", a, b), key)
 
+    def bounded(self, t, col, a, b, key=None):
+        self.run(t, col, ("b", a, b), key)
+
     def equal(self, t, col, a, b, key=None):
         self.run(t, col, ("e", a, b), key)
 
@@ -193,7 +219,7 @@ class _Rewrites:
         # statement ever visited; any other goes through SQL.
         least = {}
         for col in cols:
-            sizes = [len(a.replace("%", "")) if k == "r" else len(a) + 2
+            sizes = [len(a.replace("%", "")) if k in ("r", "b") else len(a) + 2
                      for _, ops in self.groups[("events", col)] for k, a, _ in ops if k != "e"]
             least[col] = min(sizes) if sizes else 1 << 62
         sel = ", ".join(
@@ -265,6 +291,7 @@ def scrub(defer=True):
         # A throwaway copy: nothing to lose to a crash mid-write.
         db.execute("PRAGMA synchronous=OFF")
         db.execute("PRAGMA cache_size=-262144")
+        db.create_function("scrub_bounded", 3, _bounded, deterministic=True)
         c = db.cursor()
         w = _Rewrites(c, defer)
         c.execute("UPDATE sessions SET cwd='/Users/dev/dev/acme-api', "
@@ -351,7 +378,11 @@ def scrub(defer=True):
                            ("sessions", "repo_path"), ("sessions", "transcript_path"),
                            ("events", "touch_dir"), ("events", "payload"),
                            ("session_files", "path")):
-                w.replace(t, col, root, flat)
+                # At a path-name boundary: substituting the bare root turned
+                # its siblings `caprock-ops` and `caprock-web-37` into
+                # `caprock-2-ops` and `caprock-2-web-37` when `caprock` was
+                # numbered, and the 0.183 capture printed both on Home.
+                w.bounded(t, col, root, flat)
 
         # A session can sit in a hidden directory UNDER its repository — the
         # orchestrator puts each agent in `<repo>/.caprock-worktrees/<name>` —
@@ -439,13 +470,29 @@ def scrub(defer=True):
         for i, branch in enumerate(sorted(r[0] for r in c.fetchall())):
             c.execute("UPDATE sessions SET git_branch=? WHERE git_branch=?",
                       (BRANCHES[i % len(BRANCHES)], branch))
+        # Every branch a session was on (0084) reaches the same screens.
+        # One neutral name; a session that was on two branches keeps one row.
+        c.execute("UPDATE OR IGNORE session_branches SET branch=? "
+                  "WHERE branch NOT IN ('', 'HEAD', 'main', 'master')", (BRANCHES[0],))
+        c.execute("DELETE FROM session_branches WHERE branch NOT IN ('', 'HEAD', 'main', 'master', ?)",
+                  (BRANCHES[0],))
         # A session's pull requests are links and titles from whatever
         # repository it worked in — private ones included. Only Caprock's own,
-        # public repository may stay.
+        # public repository may stay; the same for the deck's own list.
         c.execute("DELETE FROM session_prs WHERE url NOT LIKE 'https://github.com/dspv/caprock/%'")
+        c.execute("DELETE FROM github_prs WHERE repo != 'dspv/caprock'")
+        # The projects list (0041) holds every repository the machine has, by
+        # its real path and name, sessions or not, and Home leads with it:
+        # the 0.183 capture printed some sixty of them. Nothing else in the
+        # scrub reaches these tables, and a scrubbed path has no `.git` on
+        # disk, so the copy's daemon does not list them again.
+        c.execute("DELETE FROM project_repos")
+        c.execute("DELETE FROM projects")
+        c.execute("DELETE FROM folder_labels")
         c.execute("SELECT session_id FROM sessions ORDER BY session_id")
         for i, (sid,) in enumerate(c.fetchall()):
-            c.execute("UPDATE sessions SET title=?, prompt='' WHERE session_id=?",
+            # `name` is a rename the user typed (0052): their words, like the prompt.
+            c.execute("UPDATE sessions SET title=?, prompt='', name='' WHERE session_id=?",
                       (TITLES[i % len(TITLES)], sid))
         # The feed's own text. Rewritten per row so the list reads as varied
         # work rather than one command repeated eighty times.
@@ -681,6 +728,11 @@ def main():
               'teams-banner': t, 'teams-nudge': t, 'star-dismissed': t,
               'setup-later': t,
             }));
+            // Repos and CI/CD read the projects list and GitHub, and a copy
+            // has neither (the scrub empties the list, the shot daemon has no
+            // token): open, each is a panel saying so (rule 4). Folded, as
+            // the app folds them, they are one header row.
+            localStorage.setItem('caprock.panel.folds', JSON.stringify(['now.repos', 'now.cicd']));
           } catch (e) {}
         """)
 
