@@ -189,17 +189,15 @@ func (d *Daemon) holdoutRoll() int {
 //
 // A feature that acts before anyone types is one nobody can see working. This
 // is how a person checks that it can, without opening a session to find out.
-func (d *Daemon) memoryStatus() MemoryStatus {
+func (d *Daemon) memoryStatus(ctx context.Context) (MemoryStatus, error) {
 	// A daemon assembled for a test may have no store; status must still answer.
 	if d.store == nil || d.rec == nil {
-		return MemoryStatus{}
+		return MemoryStatus{}, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
 	repos, oldest, err := store.HandoffCoverage(ctx, d.store.DB(),
 		d.rec.Now().Add(-handoffMaxAge).UnixMilli(), handoffMinRunes)
 	if err != nil {
-		return MemoryStatus{}
+		return MemoryStatus{}, err
 	}
 	ms := MemoryStatus{Repos: repos}
 	if oldest > 0 {
@@ -208,13 +206,10 @@ func (d *Daemon) memoryStatus() MemoryStatus {
 	if held, err := store.ProseSince(ctx, d.store.DB()); err == nil && held > 0 {
 		ms.Held = time.UnixMilli(held).Format("2006-01-02")
 	}
-	d.cfgMu.RLock()
-	ms.HoldoutPct = d.opt.Config.MemoryHoldoutPct
-	d.cfgMu.RUnlock()
 	if s, w, err := store.HandoffEffect(ctx, d.store.DB()); err == nil && s.Sessions+w.Sessions > 0 {
 		ms.Served, ms.Withheld = &s, &w
 	}
-	return ms
+	return ms, nil
 }
 
 // brainHandoffState is whether a new session in the project would be served
