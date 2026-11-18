@@ -60,6 +60,9 @@ SESSIONS = [
     ("s-crub", "/Users/ds/dev/CRUB", "/Users/ds/dev/CRUB", "CRUB"),
     ("s-app", "/Users/ds/dev/app", "/Users/ds/dev/app", "app"),
     ("s-app2", "/Users/ds/side/app", "/Users/ds/side/app", "app"),
+    # Started in ~/dev: after the username swap that is the stand-in root
+    # itself, which must not re-nest every repository flattened before it.
+    ("s-devhome", "/Users/ds/dev", "", "dev"),
 ]
 
 PAYLOADS = [

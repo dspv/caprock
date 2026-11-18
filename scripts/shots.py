@@ -325,7 +325,15 @@ def scrub(defer=True):
             # the v0.59.0 capture printed a project called
             # "data-pipeline-3Usersdata-pipeline-3devdata-…" at 72% of the
             # month. Such a session is moved onto its own root, by equality.
-            if root.strip("/").count("/") < 2 or not leaf:
+            # So is a root the flattened paths themselves live under: a
+            # session started in ~/dev becomes `/Users/dev/dev` after the
+            # username swap, and substituting THAT (it is the shortest root,
+            # so it runs last) moved every repository flattened before it
+            # down to `/Users/dev/dev/dev/<name>`, where the bounded renames
+            # below no longer reach it — the 0.183 capture stopped on a real
+            # project name surviving in a Codex session's cwd.
+            if (root.strip("/").count("/") < 2 or not leaf
+                    or "/Users/dev/dev/".startswith(root.rstrip("/") + "/")):
                 leaf = leaf or "workspace"
                 n = taken.get(leaf, 0)
                 taken[leaf] = n + 1
@@ -479,8 +487,15 @@ def scrub(defer=True):
             if real not in session_names:
                 continue
             # Bounded like the rewrite: `repo` must not match `reporting`.
+            # Past the stand-in root, which is not a name: it holds `/dev/`, so
+            # a project called `dev` matched every flattened path and the
+            # check could never pass.
             seg = "/" + real
-            c.execute("SELECT COUNT(*) FROM sessions WHERE project=? "
+            c.execute("WITH sessions AS (SELECT project, "
+                      "CASE WHEN cwd LIKE '/Users/dev/dev/%' THEN substr(cwd, 15) ELSE cwd END AS cwd, "
+                      "CASE WHEN repo_root LIKE '/Users/dev/dev/%' THEN substr(repo_root, 15) "
+                      "ELSE repo_root END AS repo_root FROM main.sessions) "
+                      "SELECT COUNT(*) FROM sessions WHERE project=? "
                       "OR cwd LIKE ? OR cwd LIKE ? OR repo_root LIKE ? OR repo_root LIKE ? "
                       "OR cwd GLOB ? OR repo_root GLOB ?",
                       (real, f"%{seg}", f"%{seg}/%", f"%{seg}", f"%{seg}/%",
