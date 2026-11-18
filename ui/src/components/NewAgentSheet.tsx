@@ -43,7 +43,7 @@
  * another: This Mac or one of them. Another computer's start is
  * RemoteAgentSheet, read from and run on that computer.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMachines, machineSessionRoute } from '@/lib/machines'
 import { MachinePicker, RemoteAgentSheet } from './RemoteAgentSheet'
 import { api, errText } from '@/lib/api'
@@ -65,7 +65,7 @@ import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 import { defaultWorktreeName, WORKTREE_NAME } from '@/lib/slug'
 import { isMacPlatform } from '@/lib/appmode'
-import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
+import { AddSubscriptionFlow, SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId, preferredId, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
 import { SUBAGENT_MODELS, isSubagentModel, rememberSubagentModel, rememberedSubagentModel, type SubagentModel } from '@/lib/subagentModel'
 import { useGitHubStatus } from '@/lib/github'
@@ -236,6 +236,8 @@ function LocalAgentSheet({
   // Picking the default remembers nothing, so a later Make default reaches this project too.
   const chooseSub = (id: string) => { rememberSubscription(agent, pid, id === preferredId(subList) ? '' : id); setSubPick((p) => ({ ...p, [subKey]: id })) }
   const pickSubOnce = (id: string) => setSubPick((p) => ({ ...p, [subKey]: id }))
+  // Settings' add form, opened here; the one added is picked for this start.
+  const [addingSub, setAddingSub] = useState(false)
   // The model Claude Code's subagents run on: remembered per project.
   const [subModelPick, setSubModelPick] = useState<Record<string, SubagentModel>>({})
   const subModel = subModelPick[pid] ?? rememberedSubagentModel(pid)
@@ -462,9 +464,14 @@ function LocalAgentSheet({
             )}
             {/* Under Agent, on a row of its own: a third column cut both
               * selects' text off at the sheet's width. */}
-            {canStart && <SubscriptionPicker list={subList} value={subId} onChange={chooseSub} />}
+            {canStart && <SubscriptionPicker list={subList} value={subId} onChange={chooseSub} onAdd={addingSub ? undefined : () => setAddingSub(true)} />}
           </div>
-          {canStart && <SubscriptionNote list={subList} value={subId} onUse={pickSubOnce} />}
+          {canStart && addingSub && (
+            <Suspense fallback={null}>
+              <AddSubscriptionFlow agent={agent} onSetup={onSetup} onAdded={(s) => pickSubOnce(s.id)} onClose={() => setAddingSub(false)} />
+            </Suspense>
+          )}
+          {canStart && !addingSub && <SubscriptionNote list={subList} value={subId} onUse={pickSubOnce} />}
           {entry?.setup && <AgentSetupNote entry={entry} onSetup={onSetup && ((cmd) => { onSetup(cmd, catalog.home); onClose() })} />}
           {entry?.locked && (
             <p role="note" className="text-[12.5px] text-fg-muted">Custom agents are a Premium feature; add a licence key in Settings → Plan &amp; licence to start {entry.label}.</p>

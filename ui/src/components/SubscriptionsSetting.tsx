@@ -25,6 +25,7 @@ import { planFields, planText } from './AccountPlan'
 import { subscriptionsChanged, useSubscriptionsChanged } from './SubscriptionPicker'
 import { useSetupShell } from '@/lib/setupShell'
 import { PremiumModal } from './PremiumModal'
+import { useEscapeToClose } from './Dialog'
 import { Section } from './SettingsParts'
 import { SecretField, type SecretProvider } from './SecretField'
 import { extTitle } from '@/lib/externalLinks'
@@ -359,10 +360,69 @@ function SubscriptionRow({ sub, onSignIn, onSignOut, refresh, choice }: { sub: S
   )
 }
 
+/**
+ * The same add form, opened from where an agent is started — New agent and
+ * Quick chat — so a second sign-in is found where it is used, not only in
+ * Settings (owner, 2026-11-18, translated: he "didn't find it under my
+ * hand"). Nothing differs from Settings: the free number, the Premium path
+ * and the sign-in typed into a shell tab, not run. `onAdded` gets the new one
+ * so the dialog can pick it; `onSetup` is the dialog's way to a shell tab (the
+ * app shell's), else Settings' context; with neither, the command is shown to
+ * copy. Escape closes the form, not the dialog under it.
+ */
+export function AddSubscriptionInline({ agent, onAdded, onClose, onSetup }: {
+  agent: string
+  onAdded: (s: Subscription) => void
+  onClose: () => void
+  onSetup?: (command: string, home?: string) => void
+}) {
+  const res = useApi(() => api.subscriptions(), [], { live: false })
+  const shell = useSetupShell()
+  const toShell = onSetup ?? shell
+  const [added, setAdded] = useState<Subscription | null>(null)
+  useEscapeToClose(onClose)
+  const data = res.data
+  let body: ReactNode = null
+  if (!data) body = res.error ? <p role="note" className="text-[12px] text-fg-faint">This daemon does not offer subscriptions yet.</p> : null
+  else if (added && !toShell) body = <CommandToRun what={`sign ${added.label} in`} command={added.login_command} onClose={onClose} />
+  else if (added) {
+    body = (
+      <p role="note" className="text-[12px] leading-snug text-fg-muted">
+        {added.label} is added and picked. Its sign-in is typed into a shell tab: press Enter there and sign in with the account you want, or start here and the session will ask.{' '}
+        <button type="button" onClick={onClose} className="text-fg-muted underline-offset-2 hover:text-fg hover:underline">Done</button>
+      </p>
+    )
+  } else {
+    body = (
+      <AddSubscription
+        data={data}
+        initialAgent={agent}
+        onCancel={onClose}
+        onAdded={(s) => {
+          subscriptionsChanged()
+          onAdded(s)
+          setAdded(s)
+          toShell?.(s.login_command, data.home)
+        }}
+      />
+    )
+  }
+  // The form's keys stay its own: Enter in Name adds, and Quick chat's Enter
+  // starts and its arrows change the agent. Escape is the window's.
+  return <div className="grid" onKeyDown={(e) => e.stopPropagation()}>{body}</div>
+}
+
 /** The add form, or — at the free number without a licence — the Premium path. */
-function AddSubscription({ data, onAdded }: { data: SubscriptionsResponse; onAdded: (s: Subscription) => void }) {
+function AddSubscription({ data, onAdded, initialAgent, onCancel }: {
+  data: SubscriptionsResponse
+  onAdded: (s: Subscription) => void
+  /** The agent the form opens on (a dialog's own); else the first installed. */
+  initialAgent?: string
+  /** Shown as Cancel when the form is opened from a dialog. */
+  onCancel?: () => void
+}) {
   const installed = data.agents.filter((g) => g.installed).map((g) => g.agent)
-  const [agent, setAgent] = useState<SubscriptionAgentId>(installed[0] ?? 'claude')
+  const [agent, setAgent] = useState<SubscriptionAgentId>(initialAgent === 'claude' || initialAgent === 'codex' ? initialAgent : installed[0] ?? 'claude')
   const [label, setLabel] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -402,6 +462,9 @@ function AddSubscription({ data, onAdded }: { data: SubscriptionsResponse; onAdd
         <button type="button" disabled={busy || (!atLimit && !label.trim())} onClick={() => void add()} className="h-[30px] rounded-[7px] bg-accent px-3 text-[12.5px] font-medium text-panel hover:brightness-110 disabled:opacity-50">
           Add subscription
         </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className="h-[30px] px-1 text-[12.5px] text-fg-muted hover:text-fg">Cancel</button>
+        )}
       </div>
       {atLimit && (
         <p className="text-[12px] leading-snug text-fg-muted">

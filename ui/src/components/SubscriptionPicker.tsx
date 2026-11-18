@@ -9,7 +9,7 @@
  * remembered choice stays, a running session never moves, and nothing is
  * ever picked without the click.
  */
-import { useEffect, useMemo } from 'react'
+import { lazy, useEffect, useMemo } from 'react'
 import { api, type Subscription } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { DEEPSEEK_ID, fullest, hasSubscriptions, isNear, resetText, roomText, windowLabel, withRoom } from '@/lib/subscriptions'
@@ -58,10 +58,21 @@ export function optionText(s: Subscription, nowSec = Date.now() / 1000): string 
   return parts.join(' · ')
 }
 
+/**
+ * Settings → Subscriptions' add form, for New agent and Quick chat
+ * (SubscriptionsSetting's AddSubscriptionInline). Loaded on the click: the
+ * dialogs do not carry the Settings section's code until it is wanted.
+ */
+export const AddSubscriptionFlow = lazy(() => import('./SubscriptionsSetting').then((m) => ({ default: m.AddSubscriptionInline })))
+
+/** The select's last option, which opens the add flow instead of picking. */
+export const ADD_SUBSCRIPTION = '__add__'
+
 export function SubscriptionPicker({
   list,
   value,
   onChange,
+  onAdd,
   className = 'input',
 }: {
   /** This agent's subscriptions (subscriptionsFor). */
@@ -69,9 +80,23 @@ export function SubscriptionPicker({
   value: string
   /** The viewer picked one: remember it. */
   onChange: (id: string) => void
+  /**
+   * Opens Settings' add flow where the agent is started: the select's last
+   * option, or with a single sign-in (no select) a quiet link in its place,
+   * so a second subscription is found where it is used.
+   */
+  onAdd?: () => void
   className?: string
 }) {
-  if (list.length < 2) return null
+  if (list.length < 2) {
+    if (!onAdd || list.length === 0) return null
+    return (
+      // Enter presses the link, not Quick chat's Start.
+      <button type="button" onClick={onAdd} onKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation() }} className="self-end justify-self-start text-[12px] text-fg-muted underline-offset-2 hover:text-fg hover:underline" title="Sign in to this agent with another account and pick it here">
+        Add subscription
+      </button>
+    )
+  }
   return (
     <label className="grid min-w-0 gap-1">
       <span className="text-[11px] text-fg-muted">Subscription</span>
@@ -79,13 +104,14 @@ export function SubscriptionPicker({
         className={className}
         title={(() => { const s = list.find((x) => x.id === value); return s?.account ? `${s.label}: ${s.account}` : undefined })()}
         value={list.some((s) => s.id === value) ? value : 'default'}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => { if (e.target.value === ADD_SUBSCRIPTION) onAdd?.(); else onChange(e.target.value) }}
         // Quick chat's arrows move its own lists; a select keeps its own.
         onKeyDown={(e) => { if (e.key.startsWith('Arrow')) e.stopPropagation() }}
       >
         {list.map((s) => (
           <option key={s.id} value={s.id}>{optionText(s)}</option>
         ))}
+        {onAdd && <option value={ADD_SUBSCRIPTION}>Add subscription…</option>}
       </select>
     </label>
   )
