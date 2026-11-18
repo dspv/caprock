@@ -74,6 +74,10 @@ type CIJob struct {
 	RunnerGroup string   `json:"runner_group_name,omitempty"`
 	HTMLURL     string   `json:"html_url,omitempty"`
 	Steps       []CIStep `json:"steps"`
+	// NoRunner is a job GitHub never ran: it ended failed or cancelled with
+	// no step run and no runner assigned (norunner.go). Its code was not
+	// tested; a re-run of the failed jobs runs it.
+	NoRunner bool `json:"no_runner,omitempty"`
 	// Baseline is the median duration of the job of this name in the
 	// workflow's last successful runs (WithBaselines); absent with fewer
 	// than two of them.
@@ -124,7 +128,8 @@ type CI struct {
 	HeadSHA string `json:"head_sha"`
 	// Branch is set on a branch's CI (MainCI), "" on a commit's.
 	Branch string `json:"branch,omitempty"`
-	// State: running (a run is queued or in progress), fail, pass, or none.
+	// State: running (a run is queued or in progress), fail, no_runner (no
+	// run failed but for jobs GitHub never gave a machine), pass, or none.
 	State    string  `json:"state"`
 	Runs     []CIRun `json:"runs"`
 	RunnerMS int64   `json:"runner_ms"`
@@ -203,6 +208,7 @@ type apiJob struct {
 	StartedAt   string    `json:"started_at"`
 	CompletedAt string    `json:"completed_at"`
 	Labels      []string  `json:"labels"`
+	RunnerID    int64     `json:"runner_id"`
 	RunnerName  string    `json:"runner_name"`
 	RunnerGroup string    `json:"runner_group_name"`
 	HTMLURL     string    `json:"html_url"`
@@ -351,8 +357,13 @@ func (s *Service) withJobs(ctx context.Context, repo Repo, runs []apiRun, prev [
 }
 
 func (s *Service) readJobs(ctx context.Context, repo Repo, runID int64) ([]CIJob, *Error) {
+	return s.jobsAt(ctx, repo, fmt.Sprintf("%s/actions/runs/%d/jobs?per_page=100", repoPath(repo), runID))
+}
+
+// jobsAt reads one page of a run's jobs from path.
+func (s *Service) jobsAt(ctx context.Context, repo Repo, path string) ([]CIJob, *Error) {
 	doing := "Reading the jobs of a GitHub Actions run of " + repo.FullName()
-	res, ce := s.call(ctx, request{method: http.MethodGet, doing: doing, path: fmt.Sprintf("%s/actions/runs/%d/jobs?per_page=100", repoPath(repo), runID)})
+	res, ce := s.call(ctx, request{method: http.MethodGet, doing: doing, path: path})
 	if ce != nil {
 		return nil, ce
 	}
@@ -381,6 +392,7 @@ func (s *Service) readJobs(ctx context.Context, repo Repo, runID int64) ([]CIJob
 			}
 			job.Steps = append(job.Steps, step)
 		}
+		job.NoRunner = job.Status == "completed" && noRunner(job.Conclusion, len(j.Steps), int(j.RunnerID), j.RunnerName)
 		out = append(out, job)
 	}
 	return out, nil
@@ -389,7 +401,7 @@ func (s *Service) readJobs(ctx context.Context, repo Repo, runID int64) ([]CIJob
 // settle sums the runner time of the finished jobs and decides the state.
 func settle(ci *CI) {
 	byOS := map[string]int64{}
-	running, failed := false, false
+	running, failed, blocked := false, false, false
 	for _, r := range ci.Runs {
 		if r.Status != "completed" {
 			running = true
@@ -410,7 +422,15 @@ func settle(ci *CI) {
 		}
 		switch r.Conclusion {
 		case "failure", "timed_out", "startup_failure":
-			failed = true
+			if noRunnerOnly(r) {
+				blocked = true
+			} else {
+				failed = true
+			}
+		case "cancelled":
+			if noRunnerOnly(r) {
+				blocked = true
+			}
 		}
 	}
 	for os, v := range byOS {
@@ -422,6 +442,8 @@ func settle(ci *CI) {
 		ci.State = "running"
 	case failed:
 		ci.State = "fail"
+	case blocked:
+		ci.State = "no_runner" // only jobs GitHub never ran did not pass
 	case len(ci.Runs) > 0:
 		ci.State = "pass" // succeeded, or every run skipped, cancelled or neutral
 	}

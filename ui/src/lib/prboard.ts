@@ -32,7 +32,8 @@ export interface BoardCard {
   stage: Stage
   /** Since when it is in the stage (unix ms). */
   stage_at?: number
-  ci?: 'running' | 'fail' | 'pass' | 'none'
+  /** no_runner: none failed, but GitHub gave some job no machine. */
+  ci?: 'running' | 'fail' | 'no_runner' | 'pass' | 'none'
   why?: 'ci' | 'conflict' | 'changes_requested'
   /** With `why` ci: the failed checks' names (or workflows'), at most three; absent from an older daemon. */
   failed?: string[]
@@ -50,8 +51,8 @@ export interface BoardCard {
 /** One OS's checks on a pull request's head commit (internal/api/prboard.go BoardOS). */
 export interface BoardOS {
   os: 'linux' | 'macos' | 'windows'
-  /** fail when any failed, else running while any is unfinished, else pass. */
-  state: 'pass' | 'fail' | 'running'
+  /** fail when any failed, else running while any is unfinished, else no_runner when GitHub gave one no machine, else pass. */
+  state: 'pass' | 'fail' | 'running' | 'no_runner'
   /** While running: the earliest start of its unfinished checks (unix ms). */
   since?: number
   checks: number

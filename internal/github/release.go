@@ -305,6 +305,11 @@ func (s *Service) readRelease(ctx context.Context, repo Repo, defaultBranch stri
 	one := CI{Runs: runs}
 	settle(&one)
 	out.State = one.State
+	if out.State == "no_runner" {
+		// A release whose job GitHub never ran is still not built: its line
+		// keeps saying failed; the job itself carries no_runner.
+		out.State = "fail"
+	}
 	if out.State == "running" {
 		out.Estimate = s.estimate(ctx, repo, defaultBranch, run)
 	} else if run.Conclusion == "success" && out.Tag != "" {

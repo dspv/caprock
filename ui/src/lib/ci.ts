@@ -9,12 +9,17 @@
 import type { CIBaseline, CIJob, CIRun, CIState, CIStep, ReleaseCI, SessionPRLive } from './api'
 import type { PRCheck } from './github'
 
-export type CITone = 'running' | 'queued' | 'pass' | 'fail' | 'skipped'
+/** norunner: a job GitHub never gave a machine (no step, no runner) — not tested, not failed; a re-run is the fix. */
+export type CITone = 'running' | 'queued' | 'pass' | 'fail' | 'norunner' | 'skipped'
+
+/** What a job GitHub never ran says, wherever it is drawn. */
+export const NO_RUNNER_TITLE = 'GitHub did not give this job a machine; the code was not tested. Rerun it.'
 
 const FAILED = new Set(['failure', 'timed_out', 'startup_failure', 'action_required'])
 
 /** What one job or step is now, in the five states the cell draws. */
-export function ciTone(x: Pick<CIJob | CIStep, 'status' | 'conclusion'>): CITone {
+export function ciTone(x: Pick<CIJob | CIStep, 'status' | 'conclusion'> & { no_runner?: boolean }): CITone {
+  if (x.no_runner) return 'norunner'
   if (x.status === 'in_progress') return 'running'
   if (x.status !== 'completed') return 'queued'
   if (x.conclusion && FAILED.has(x.conclusion)) return 'fail'
@@ -281,11 +286,12 @@ export interface PipeNode {
   step?: string
 }
 
-const TONE_WORD: Record<CITone, string> = { pass: 'passed', fail: 'failed', running: 'running', queued: 'queued', skipped: 'skipped or cancelled' }
+const TONE_WORD: Record<CITone, string> = { pass: 'passed', fail: 'failed', norunner: 'no runner', running: 'running', queued: 'queued', skipped: 'skipped or cancelled' }
 
 /** What a circle's tooltip says: "test (windows) · failed · 3m 07s". */
 export function nodeTitle(n: PipeNode): string {
-  return [n.name, TONE_WORD[n.tone], n.ms !== undefined ? fmtRun(n.ms) : ''].filter(Boolean).join(' · ')
+  const t = [n.name, TONE_WORD[n.tone], n.ms !== undefined ? fmtRun(n.ms) : ''].filter(Boolean).join(' · ')
+  return n.tone === 'norunner' ? `${t}\n${NO_RUNNER_TITLE}` : t
 }
 
 function startOrder<T>(xs: T[], start: (x: T) => number | undefined): T[] {
@@ -305,7 +311,7 @@ export function checkNodes(items: PRCheck[], now: number, runs?: CIRun[]): PipeN
   const jobs = new Map<number, CIJob>()
   for (const r of runs ?? []) for (const j of r.jobs) jobs.set(j.id, j)
   return startOrder(items, (c) => c.started_at).map((c, i) => {
-    const tone: CITone = c.state === 'pass' ? 'pass' : c.state === 'fail' ? 'fail' : c.state === 'skipped' ? 'skipped'
+    const tone: CITone = c.state === 'pass' ? 'pass' : c.state === 'fail' ? (c.no_runner ? 'norunner' : 'fail') : c.state === 'skipped' ? 'skipped'
       : c.status === 'in_progress' ? 'running' : 'queued'
     const ms = c.started_at ? Math.max(0, (c.completed_at || (tone === 'running' ? now : 0)) - c.started_at) : undefined
     const job = c.job_id ? jobs.get(c.job_id) : undefined
@@ -336,10 +342,10 @@ export function osName(os: string | undefined): string {
 }
 
 /** How many of a PR's checks stand in each state. */
-export interface CheckCounts { total: number; pass: number; fail: number; running: number; queued: number; skipped: number }
+export interface CheckCounts { total: number; pass: number; fail: number; norunner: number; running: number; queued: number; skipped: number }
 
 export function countNodes(nodes: PipeNode[]): CheckCounts {
-  const c: CheckCounts = { total: nodes.length, pass: 0, fail: 0, running: 0, queued: 0, skipped: 0 }
+  const c: CheckCounts = { total: nodes.length, pass: 0, fail: 0, norunner: 0, running: 0, queued: 0, skipped: 0 }
   for (const n of nodes) c[n.tone]++
   return c
 }
@@ -365,7 +371,7 @@ export interface ChecksSummary {
   started: PipeNode[]
 }
 
-const TONE_ORDER: Record<CITone, number> = { fail: 0, running: 1, queued: 2, pass: 3, skipped: 4 }
+const TONE_ORDER: Record<CITone, number> = { fail: 0, norunner: 1, running: 2, queued: 3, pass: 4, skipped: 5 }
 
 /** A PR's checks summed up; undefined while GitHub reported none. */
 export function prChecks(p: { live?: { checks: { items: PRCheck[] } } }, now: number, runs?: CIRun[]): ChecksSummary | undefined {
@@ -374,7 +380,7 @@ export function prChecks(p: { live?: { checks: { items: PRCheck[] } } }, now: nu
   const nodes = checkNodes(items, now, runs)
   const counts = countNodes(nodes)
   const done = counts.running === 0 && counts.queued === 0
-  const green = done && counts.fail === 0 && counts.pass > 0
+  const green = done && counts.fail === 0 && counts.norunner === 0 && counts.pass > 0
   const starts = items.map((i) => i.started_at).filter((t): t is number => !!t)
   const ends = items.map((i) => i.completed_at).filter((t): t is number => !!t)
   const first = starts.length ? Math.min(...starts) : undefined
@@ -390,7 +396,7 @@ export function checksSentence(s: ChecksSummary): string {
   const c = s.counts
   if (s.green) return `All ${c.pass} check${c.pass === 1 ? '' : 's'} passed${c.skipped ? `, ${c.skipped} skipped` : ''}`
   const parts = [
-    c.fail && `${c.fail} failed`, c.running && `${c.running} running`, c.queued && `${c.queued} queued`,
+    c.fail && `${c.fail} failed`, c.norunner && `${c.norunner} given no runner by GitHub`, c.running && `${c.running} running`, c.queued && `${c.queued} queued`,
     c.pass && `${c.pass} passed`, c.skipped && `${c.skipped} skipped or cancelled`,
   ].filter(Boolean)
   return `${c.total} check${c.total === 1 ? '' : 's'}: ${parts.join(', ')}`
@@ -425,7 +431,7 @@ export function prDotState(p: SessionPRLive): PRDot {
 }
 
 /** How a word in a PR row is coloured. */
-export type PRWordTone = 'ok' | 'fail' | 'pending' | 'muted' | 'faint'
+export type PRWordTone = 'ok' | 'fail' | 'pending' | 'norunner' | 'muted' | 'faint'
 export interface PRWords { text: string; tone: PRWordTone; title?: string; strong?: boolean }
 
 /** How long after a PR was opened an empty check list still means "not started yet" rather than "no CI here". */
@@ -450,6 +456,11 @@ export function prVerdict(p: SessionPRLive, now: number, runs?: CIRun[]): PRWord
     const failed = c.items.filter((i) => i.state === 'fail')
     const more = failed.length > 1 ? ` +${failed.length - 1}` : ''
     return { text: `✗ failed at ${failed[0]?.name ?? 'a check'}${more}`, tone: 'fail', strong: true, title: `Failed: ${failed.map((i) => i.name).join(', ') || 'a check'}` }
+  }
+  if (c.state === 'no_runner') {
+    const idle = c.items.filter((i) => i.no_runner)
+    const more = idle.length > 1 ? ` +${idle.length - 1}` : ''
+    return { text: `⚠ no runner for ${idle[0]?.name ?? 'a job'}${more}`, tone: 'norunner', strong: true, title: `${NO_RUNNER_TITLE}\n${idle.map((i) => i.name).join(', ')}` }
   }
   if (c.state === 'pending') {
     const starts = c.items.map((i) => i.started_at).filter((t): t is number => !!t)

@@ -108,7 +108,11 @@ export function usePRForce(o: PRForceOptions) {
   }
   const confirmText = (p: SessionPRLive, kind: ForceKind): string => {
     const live = p.live!
-    if (kind === 'rerun') return live.checks.failed > 0 ? `Re-run #${p.number}’s failed jobs on GitHub?` : `Re-run every check of #${p.number} on GitHub?`
+    if (kind === 'rerun') {
+      const idle = live.checks.no_runner ?? 0
+      if (live.checks.failed === 0 && idle > 0) return `Re-run #${p.number}’s ${idle === 1 ? 'job' : `${idle} jobs`} GitHub gave no machine?`
+      return live.checks.failed + idle > 0 ? `Re-run #${p.number}’s failed jobs on GitHub?` : `Re-run every check of #${p.number} on GitHub?`
+    }
     if (kind === 'update') return `Merge ${live.base} into ${live.branch} on GitHub (Update branch)?`
     const plan = fixPlan(p, kind)
     const what = kind === 'conflict' ? `merge origin/${live.base}, resolve the conflicts, run the checks and push` : 'fix #' + p.number + '’s CI and push'

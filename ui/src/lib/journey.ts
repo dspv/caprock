@@ -25,7 +25,7 @@ import type { TabPR } from './prstats'
 export type StepKey = 'open' | 'ci' | 'merged'
 /** done: passed; current: where it is now; todo: still ahead; closed: it stopped here. */
 export type StepState = 'done' | 'current' | 'todo' | 'closed'
-export type StepTone = 'ok' | 'fail' | 'pending' | 'muted' | 'merged' | 'accent' | 'faint'
+export type StepTone = 'ok' | 'fail' | 'pending' | 'norunner' | 'muted' | 'merged' | 'accent' | 'faint'
 
 export interface JourneyStep {
   key: StepKey
@@ -113,6 +113,7 @@ function ciStep(card: JourneyInput['card'], stage: Stage | 'closed'): Pick<Journ
   switch (card?.ci) {
     case 'running': return { text: 'CI running', tone: 'pending', title: 'Its head commit’s checks are running' }
     case 'fail': return { text: 'CI red', tone: 'fail', title: failedTitle(card.failed) }
+    case 'no_runner': return { text: 'No runner', tone: 'norunner', title: 'GitHub did not give a job a machine; the code was not tested. Rerun it.' }
     case 'pass': return { text: 'CI green', tone: 'ok', title: 'Every check on its head commit passed' }
     case 'none': return { text: 'No checks', tone: 'muted', title: 'No check ran on its head commit' }
   }

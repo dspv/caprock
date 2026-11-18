@@ -273,7 +273,7 @@ export function osDots(os: readonly BoardOS[] | undefined, now?: number): OSDot[
     const o = by.get(k)
     if (!o) continue
     const n = `${o.checks} check${o.checks === 1 ? '' : 's'}`
-    const what = o.state === 'fail' ? 'failed' : o.state === 'pass' ? 'passed' : `running${o.since && now ? ` ${spanText(Math.max(0, now - o.since))}` : ''}`
+    const what = o.state === 'fail' ? 'failed' : o.state === 'pass' ? 'passed' : o.state === 'no_runner' ? 'a job GitHub gave no machine, not tested' : `running${o.since && now ? ` ${spanText(Math.max(0, now - o.since))}` : ''}`
     out.push({ os: k, label: OS_LABEL[k], state: o.state, title: `${OS_LABEL[k]}: ${what} (${n})` })
   }
   return out.length ? out : undefined
