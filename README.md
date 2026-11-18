@@ -2,7 +2,10 @@
 
 ### See every coding agent you run, wherever it runs: who is waiting on you, who is stuck, how close the limit is, and every pull request to release with what it cost.
 
-A desktop app for macOS, Windows and Linux. Nothing leaves your machine: open source, no account, no telemetry.
+Caprock is a free, open-source (Apache-2.0) desktop app for macOS, Windows and Linux that runs and tracks every
+Claude Code, Codex, OpenCode and Gemini CLI session on your machine in one place: agents side by side in tabs,
+spend per repo against your plan limits, a searchable history of every session, and your agents from your phone.
+Nothing leaves your machine: no account, no telemetry.
 
 ```bash
 brew install --cask dspv/tap/caprock-app
