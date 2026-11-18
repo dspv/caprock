@@ -447,6 +447,62 @@ describe('the cockpit’s CI block', () => {
     })
   })
 
+  // Owner, 2026-11-18, translated: "I switch to the tab and only after ~10 s
+  // the CI data comes". A tab of another session on the same repository
+  // draws the line from the answers kept for the repository, at once.
+  describe('folded, on a tab switch', () => {
+    const STATS = { connected: true, fetched_at: now - 30_000, read_at: now - 30_000, prs: [
+      { number: 942, url: 'https://github.com/a/b/pull/942', title: 'chore(release): 0.183.0', state: 'open', created_at: now - 300_000 },
+    ], board: { cards: [], releases: [], flow: { counts: {}, days: 14, merged: 0, ttm_count: 0, release_lag_count: 0, cost_usd: 0 } } }
+    const folded = (sessionId: string) => render(
+      <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+        <CockpitCI sessionId={sessionId} repoScope="/w" onOpen={() => {}} />
+      </FoldCtx.Provider>,
+    )
+    const fold = () => document.querySelector('[data-cockpit-ci-fold]')
+
+    it('draws the kept line before any read lands, muted, beside its own age', () => {
+      writeDeck('stats:/w', STATS, now - 30_000)
+      // Kept by another session's block on the same repository.
+      writeDeck('ci:/w:942', { connected: true, fetched_at: now - 120_000, pr: { number: 942, url: '', repo: 'a/b', live: live(942, RUNNING) } }, now - 120_000)
+      const asked: string[] = []
+      vi.stubGlobal('fetch', vi.fn((url: string) => { asked.push(url); return new Promise<Response>(() => {}) }))
+      folded('s2')
+      // Synchronously, on the first draw: no read has answered.
+      expect(fold()).toHaveAttribute('data-cockpit-ci-fold', '942')
+      expect(fold()).toHaveAttribute('data-cockpit-ci-kept')
+      expect(fold()).toHaveClass('opacity-70')
+      expect(document.querySelector('[data-cockpit-ci-age]')).toHaveTextContent('2 min ago')
+      // And the reads go out at once, not after an interval.
+      expect(asked).toEqual(expect.arrayContaining(['/v1/sessions/s2/ci/stats', '/v1/sessions/s2/prs', '/v1/sessions/s2/ci?pr=942']))
+    })
+
+    it('waits for the read when the kept copy is older than an hour', () => {
+      writeDeck('stats:/w', STATS, now - 30_000)
+      writeDeck('ci:/w:942', { connected: true, pr: { number: 942, url: '', repo: 'a/b', live: live(942, RUNNING) } }, now - 2 * 3_600_000)
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+      folded('s2')
+      expect(fold()).toBeNull()
+    })
+
+    it('shortens the checks rather than running past the edge', () => {
+      writeDeck('stats:/w', STATS, now - 30_000)
+      const MANY = { state: 'pending', passed: 12, failed: 1, pending: 1, items: [
+        { name: 'a', state: 'fail' }, { name: 'b', state: 'pending', status: 'in_progress', started_at: now - 60_000 },
+        ...Array.from({ length: 12 }, (_, i) => ({ name: `p${i}`, state: 'pass' })), { name: 's1', state: 'skipped' }, { name: 's2', state: 'skipped' },
+      ] }
+      writeDeck('ci:/w:942', { connected: true, pr: { number: 942, url: '', repo: 'a/b', live: live(942, MANY) } }, now - 10_000)
+      vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+      folded('s2')
+      const variants = [...fold()!.querySelectorAll('[data-fit-variant] [data-check-summary]')]
+      expect(variants.map((v) => v.getAttribute('data-check-fit'))).toEqual([null, 'noskip', 'compact', 'worst'])
+      expect(variants[0]).toHaveTextContent('2 skipped')
+      expect(variants[1]).not.toHaveTextContent('skipped')
+      expect(variants[2]!.textContent).toBe('1112')
+      expect(variants[3]!.textContent).toBe('failed')
+    })
+  })
+
   it('unfolded, times a kept copy as of its read until it is read again', () => {
     const then = now - 11 * 3_600_000
     const STALE = { state: 'pending', passed: 2, failed: 0, pending: 1, items: [

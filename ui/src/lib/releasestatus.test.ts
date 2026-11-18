@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, plainVersion, releasePRVersion, releaseStatus, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, plainVersion, releaseFold, releasePRVersion, releaseStatus, stripStages, tagUnpublished, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -151,5 +151,77 @@ describe('the release status’s stages', () => {
       expect(site.unknown).toBe(true)
       expect(site.state).toBe('todo')
     }
+  })
+})
+
+// Owner, 2026-11-18, translated: "the folded version lacks the release
+// status, and the status when unfolded is unclear". The approved lines, one
+// per phase.
+describe('the right panel’s folded Release line', () => {
+  const fold = (s: ReleaseStatus, o: Partial<Parameters<typeof releaseFold>[1]> = {}) => releaseFold(s, { waiting: 0, now: T, ...o })
+
+  it('says nothing is new since the last tag', () => {
+    const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), releases: [rel('v0.182.4', T - 30 * H, 23)], lastTag: { name: 'v0.182.4', at: T - 30 * H } }))
+    expect(s.phase).toBe('idle')
+    expect(fold(s, { lastTag: 'v0.182.4' })).toMatchObject({ kind: 'idle', text: 'Nothing new since v0.182.4' })
+  })
+
+  it('says a release just published is out, and how long ago', () => {
+    const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - H }, releases: [rel('v0.183.0', T - 5 * 60_000, 23), rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'pass') }))
+    expect(fold(s, { lastTag: 'v0.183.0' })).toMatchObject({ kind: 'out', text: 'v0.183.0 out · 5 min ago', tone: 'ok' })
+    // An hour on, it is "nothing new" again.
+    expect(fold(s, { lastTag: 'v0.183.0', now: T + 2 * H })).toMatchObject({ kind: 'idle', text: 'Nothing new since v0.183.0' })
+  })
+
+  it('counts the changes waiting and names the open batch PR with its checks', () => {
+    const s = releaseStatus(base({ lastTag: { name: 'v0.182.4', at: T - 5 * H }, unreleased: pending({ Added: 2, Fixed: 3 }, 5), releases: [rel('v0.182.4', T - 5 * H, 23)] }))
+    expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'pass' } })).toMatchObject({ kind: 'waiting', text: '0.183.0 · 5 changes waiting · PR #940 green' })
+    expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'fail' } })).toMatchObject({ text: '0.183.0 · 5 changes waiting · PR #940 CI red', tone: 'fail' })
+    expect(fold(s, { waiting: 1 }).text).toBe('0.183.0 · 1 change waiting')
+  })
+
+  it('names the release PR and its CI', () => {
+    const input = { lastTag: { name: 'v0.182.4', at: T - 5 * H }, unreleased: pending({ Added: 1 }, 1), releases: [rel('v0.182.4', T - 5 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0')] }
+    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'running')] }))).text).toBe('0.183.0 · release PR #942 · CI running')
+    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'fail')] })))).toMatchObject({ text: '0.183.0 · release PR #942 · CI red', tone: 'fail' })
+    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'pass')] }))).text).toBe('0.183.0 · release PR #942 · CI green')
+  })
+
+  it('says a tag is building, with the files its release has of the last one’s', () => {
+    const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 120_000, 12), rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'running') }))
+    expect(s.phase).toBe('tagged')
+    expect(fold(s)).toMatchObject({ kind: 'building', text: '0.183.0 · building · 12 of 23 files' })
+    // Read from the run's jobs while no release has files yet.
+    const j = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'running', [job('completed'), job('in_progress'), job('queued')]) }))
+    expect(fold(j).text).toBe('0.183.0 · building · 1 of 3 jobs')
+    const failed = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'fail') }))
+    expect(fold(failed)).toMatchObject({ kind: 'failed', text: '0.183.0 · build failed', tone: 'fail' })
+  })
+
+  it('says a tag no release published yet', () => {
+    expect(tagUnpublished('v0.183.0', [rel('v0.182.4', T, 1)])).toBe(true)
+    expect(tagUnpublished('v0.183.0', [rel('v0.183.0', T, 1)])).toBe(false)
+    expect(tagUnpublished(undefined, [])).toBe(false)
+  })
+})
+
+describe('the right panel’s stages strip', () => {
+  it('names five stages, the release PR and its CI as one, the current one marked', () => {
+    const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0', 'merged')], run: run('v0.183.0', 'running') }))
+    const strip = stripStages(s)
+    expect(strip.map((x) => x.text)).toEqual(['Merged', 'Release PR', 'Tagged', 'Building', 'Published'])
+    expect(strip.map((x) => x.state)).toEqual(['done', 'done', 'done', 'current', 'todo'])
+  })
+
+  it('is at the release PR while its CI runs, red when it failed', () => {
+    const input = { prs: [pr(942, 'chore(release): 0.127.0')] }
+    const running = stripStages(releaseStatus(base({ ...input, cards: [card(942, 'running')] }))).find((x) => x.key === 'pr')!
+    expect(running).toMatchObject({ state: 'current', tone: 'pending' })
+    expect(running.title).toMatch(/checks are running/)
+    expect(stripStages(releaseStatus(base({ ...input, cards: [card(942, 'fail')] }))).find((x) => x.key === 'pr')).toMatchObject({ state: 'current', tone: 'fail' })
+  })
+
+  it('draws nothing while idle', () => {
+    expect(stripStages(releaseStatus(base({ merged: 0, unreleased: pending({}, 0) })))).toEqual([])
   })
 })

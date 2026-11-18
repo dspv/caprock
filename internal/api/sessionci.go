@@ -48,6 +48,24 @@ func (s *Server) sessionCIPR(ctx context.Context, id string, want int) (*Session
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.pickCIPR(ctx, id, want, prs, s.d.GitHub.PullByURL)
+}
+
+// errNotKept is a pull request the GitHub service has not read yet: the
+// quick answer leaves it out rather than ask.
+var errNotKept = &github.Error{Kind: "not_kept", Message: "not read yet"}
+
+// keptPull reads a pull request only from what the GitHub service keeps,
+// however old; nothing is sent.
+func (s *Server) keptPull(_ context.Context, link string) (github.PR, *github.Error) {
+	if pr, _, ok := s.d.GitHub.CachedPull(link); ok {
+		return pr, nil
+	}
+	return github.PR{}, errNotKept
+}
+
+// pickCIPR is sessionCIPR over a given list, each read through read.
+func (s *Server) pickCIPR(ctx context.Context, id string, want int, prs []store.SessionPR, read func(context.Context, string) (github.PR, *github.Error)) (*SessionCIPR, *github.Error, error) {
 	if len(prs) > sessionPRsShown {
 		prs = prs[:sessionPRsShown]
 	}
@@ -74,7 +92,7 @@ func (s *Server) sessionCIPR(ctx context.Context, id string, want int) (*Session
 		if !ok {
 			continue
 		}
-		live, e := s.d.GitHub.PullByURL(ctx, p.URL)
+		live, e := read(ctx, p.URL)
 		if e != nil {
 			if firstErr == nil {
 				firstErr = e
@@ -109,9 +127,34 @@ func wantPR(r *http.Request) int {
 func (s *Server) handleSessionCI(w http.ResponseWriter, r *http.Request) {
 	id, want := r.PathValue("id"), wantPR(r)
 	connected := s.githubConnected()
-	s.serveDeck(w, r, deckKey("ci", id, connected, want), func(ctx context.Context) (deckAnswer, error) {
+	s.serveDeckOrQuick(w, r, deckKey("ci", id, connected, want), func(ctx context.Context) (deckAnswer, error) {
 		return s.composeSessionCI(ctx, id, want, connected)
+	}, func(ctx context.Context) (deckAnswer, error) {
+		return s.keptSessionCI(ctx, id, want, connected)
 	}, s.fail)
+}
+
+// keptSessionCI is the quick answer while a pull request's checks are
+// composed for this session the first time (serveDeckOrQuick): the pull
+// request as the GitHub service last read it — its state and its checks,
+// kept per pull request and so shared by every session that asked — and no
+// runs. Composing them waits on GitHub (the runs, their jobs, the usual
+// times), which took 1.2 s and 15 s on 2026-11-18, and every session's
+// first ask of a newly opened pull request (a release PR) waited that long
+// before the right panel could draw its CI line. Nothing is sent to GitHub.
+func (s *Server) keptSessionCI(ctx context.Context, id string, want int, connected bool) (deckAnswer, error) {
+	if !connected {
+		return s.composeSessionCI(ctx, id, want, connected)
+	}
+	prs, err := store.SessionPRs(ctx, s.d.Store.DB(), id)
+	if err != nil {
+		return nil, err
+	}
+	pr, _, err := s.pickCIPR(ctx, id, want, prs, s.keptPull)
+	if err != nil {
+		return nil, err
+	}
+	return SessionCI{Connected: true, PR: pr}, nil
 }
 
 func (s *Server) composeSessionCI(ctx context.Context, id string, want int, connected bool) (deckAnswer, error) {

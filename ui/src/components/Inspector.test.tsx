@@ -20,7 +20,7 @@ vi.mock('@/lib/api', async (orig) => {
   }
 })
 
-import { Inspector } from './Inspector'
+import { ChangesSummary, Inspector } from './Inspector'
 
 const s = { session_id: 's1', kind: 'shell', cwd: '/w/app/wt/feature', status: 'active', owned: true } as unknown as SessionSummary
 const editors = { editors: [{ id: 'cursor', name: 'Cursor' }], preferred: 'cursor' }
@@ -40,5 +40,20 @@ describe('the inspector’s Open in editor (F18)', () => {
   it('offers nothing without an editor', () => {
     render(<Inspector session={s} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} />)
     expect(screen.queryByRole('button', { name: /Open in/ })).toBeNull()
+  })
+})
+
+// Owner, 2026-11-18: folded, a clean worktree read "none  Review and commit",
+// an action with nothing to review.
+describe('the Changes row with nothing uncommitted', () => {
+  it('says nothing to commit and offers no review', () => {
+    const { container } = render(<ChangesSummary files={0} add={0} del={0} onReview={() => {}} />)
+    expect(screen.queryByRole('button')).toBeNull()
+    expect([...container.querySelectorAll('[data-fit-variant]')].map((e) => e.textContent)).toEqual(['nothing to commit', 'none'])
+  })
+
+  it('keeps Review and commit while files are changed', () => {
+    render(<ChangesSummary files={2} add={3} del={1} onReview={() => {}} />)
+    expect(screen.getAllByRole('button', { name: /Review/ }).length).toBeGreaterThan(0)
   })
 })

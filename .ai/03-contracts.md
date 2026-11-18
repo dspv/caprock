@@ -3090,11 +3090,16 @@ views of the *Pull requests & CI* cell — `…/prs`, `…/ci`, `…/ci/release`
 above, and the composed answer is kept per view, session, pull request
 asked for and whether GitHub is connected (at most 256 keys). A key never
 composed is composed while the request waits, and concurrent requests for
-it share one composition — except `…/prs`: when its first composition takes
-longer than 300 ms (it has to ask GitHub), the request gets the session's
-pull requests as recorded (`SessionPR` fields, no `live`, no `error`) with
-`refreshing: true` at once, and the composition goes on to be kept for the
-next poll (`serveDeckOrQuick`, 2026-10-13). Within 2 s the kept answer is handed back as it
+it share one composition — except `…/prs` and `…/ci`: when the first
+composition takes longer than 300 ms (it has to ask GitHub), the request
+gets a quick answer with `refreshing: true` at once, and the composition
+goes on to be kept for the next poll (`serveDeckOrQuick`, 2026-10-13).
+`…/prs`'s is the session's pull requests as recorded (`SessionPR` fields,
+no `error`), each with `live` only where the GitHub service already keeps a
+read of it (`github.CachedPull`); `…/ci`'s (2026-11-18) is the pull request
+picked as above from the recorded ones and the listed ones, with `live` and
+`state` from that kept read, and no `ci` — the runs come with the
+composition. Neither asks GitHub anything. Within 2 s the kept answer is handed back as it
 is. Past that, the request starts one background composition (on a
 context of its own, 15 s) and waits up to 300 ms for it: when the GitHub
 reads answer from what they keep it lands inside that and is handed back;

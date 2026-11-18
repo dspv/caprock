@@ -8,9 +8,13 @@
  * fresh start of the app shows the last known list too. Nothing here asks
  * anything: it only remembers what the deck was told.
  *
- * Keys name the view and its scope: `prs:<session>`, `ci:<session>:<pr>`,
- * `release:<repository>`, `main:<repository>`, `branches:<folder>`, and the
- * Pipeline page's `stats:<repository>`; Now's Repos section keeps `repos:now`.
+ * Keys name the view and its scope: `prs:<session>`, `ci:<session>:<pr>`
+ * (the Pipeline page) and `ci:<repository>:<pr>` (the cockpit's CI block, so
+ * another session's tab on the repository draws it at once),
+ * `release:<repository>`, `main:<repository>`, `branches:<folder>`, the
+ * Pipeline page's `stats:<repository>`, and `work:<repository>` (a
+ * repository's entry of the Work answer, for the cockpit's folded Release
+ * line); Now's Repos section keeps `repos:now`.
  */
 import { readCache, writeCache } from './swr'
 
