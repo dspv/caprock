@@ -731,8 +731,10 @@ def main():
             // Repos and CI/CD read the projects list and GitHub, and a copy
             // has neither (the scrub empties the list, the shot daemon has no
             // token): open, each is a panel saying so (rule 4). Folded, as
-            // the app folds them, they are one header row.
-            localStorage.setItem('caprock.panel.folds', JSON.stringify(['now.repos', 'now.cicd']));
+            // the app folds them, they are one header row. Cost's Cursor
+            // panel likewise: its hooks hint prints the shot daemon's
+            // throwaway HOME, a /var/folders path, under "No Cursor turns".
+            localStorage.setItem('caprock.panel.folds', JSON.stringify(['now.repos', 'now.cicd', 'cost.cursor']));
           } catch (e) {}
         """)
 
@@ -796,6 +798,7 @@ def main():
                         t = t.replace(/^[0-9a-f]{8} · .*\\n\\$0\\.00\\s*$/gm, '');
                         if (document.querySelector('.skeleton-pulse')) return false;
                         if (t.includes('reading your figures')) return false;
+                        if (/Reading your projects/i.test(t)) return false;
                         if (t.includes('nothing measured')) return false;
                         // A stat still at zero stands on its own line; a
                         // table row can honestly end in $0.00 (a free model).
