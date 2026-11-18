@@ -164,5 +164,9 @@ describe('the Plan limits panel', () => {
     const footer = document.querySelector('[data-overview-source]')?.textContent ?? ''
     expect(footer).toContain("isn't seen here")
     expect(footer).toContain('API list price, not your bill')
+    // Near the line, the advice names the other Claude sign-in with the most
+    // left, as a choice for a new session, before Codex.
+    expect(document.body.textContent).toMatch(/or choose Work for a new session — 62% of 5-hour left\./)
+    expect(document.body.textContent).not.toMatch(/switch to Codex/)
   })
 })

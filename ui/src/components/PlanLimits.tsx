@@ -24,7 +24,7 @@ import { countdown, resetClock } from '@/lib/limitclock'
 import { Banner, BannerButton } from '@/components/Banner'
 import { useSubscriptionsChanged } from '@/components/SubscriptionPicker'
 import { OVERVIEW_SOURCE, SubscriptionsOverview, manySignIns } from '@/components/SubscriptionsOverview'
-import { leftPct, reopened, signIns, windowLabel } from '@/lib/subscriptions'
+import { leftPct, leftText, reopened, signIns, windowLabel, withRoom } from '@/lib/subscriptions'
 
 /** A window's percentage, and whether its reset clock can be believed. */
 export function readWindow(w: RateWindow, now: number) {
@@ -437,11 +437,18 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
   const observed = codex?.five_hour?.observed_at ?? codex?.seven_day?.observed_at
   const near = nearest(limits, now)
   const cdxNear = nearest(codex, now)
+  // Another Claude sign-in with room is named before Codex: the same agent,
+  // the user's own choice for the next session (ADR-048), never a switch.
+  const claudeSubs = all.filter((s) => s.agent === 'claude')
+  const ownClaude = claudeSubs.find((s) => s.default)
+  const otherClaude = many && ownClaude ? withRoom(claudeSubs, ownClaude.id, now / 1000)[0] : undefined
   const advice = near && near.pct >= 85
     ? (
       <>
         <b className="font-semibold">Claude is near its limit.</b> Wait for the reset at <span className="num">{resetClock(near.resetMs, now)}</span> (in {countdown(near.resetMs - now)})
-        {cdxNear && cdxNear.pct < 85 ? <>, or switch to Codex — its {codex?.five_hour ? 'tightest window' : 'weekly window'} has <span className="num">{100 - cdxNear.pct}%</span> left.</> : '.'}
+        {otherClaude
+          ? <>, or choose {otherClaude.label} for a new session — <span className="num">{leftText(otherClaude, now / 1000)}</span>.</>
+          : cdxNear && cdxNear.pct < 85 ? <>, or switch to Codex — its {codex?.five_hour ? 'tightest window' : 'weekly window'} has <span className="num">{100 - cdxNear.pct}%</span> left.</> : '.'}
       </>
     )
     : cdxNear && cdxNear.pct >= 85
