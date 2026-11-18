@@ -24,7 +24,10 @@
 //! 10 MB. Any path at all would turn the command into a file reader for
 //! whatever page the window shows. `read_dropped_text` keeps the same rule
 //! for the brief of New project from a template: a `.md`, `.markdown` or
-//! `.txt` from that drop, at most 1 MiB, UTF-8.
+//! `.txt` from that drop, at most 1 MiB, UTF-8. `read_dropped_file` keeps it
+//! for a file dropped on an open chat, which attaches as the Attach button's
+//! pick does: any regular file from that drop, at most 10 MB (the daemon's
+//! paste limit), whose bytes the page uploads to the daemon's paste store.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -88,6 +91,37 @@ pub fn read_dropped_image(
     dropped: tauri::State<'_, Dropped>,
 ) -> Result<Response, String> {
     read_image(&dropped, Path::new(&path)).map(Response::new)
+}
+
+/// A file attached from a drop on a chat: the daemon's paste limit
+/// (`pasteLimit` in internal/api/paste.go), the one Attach has.
+pub const MAX_FILE_BYTES: u64 = 10 * 1024 * 1024;
+
+/// Reads a file dropped on a chat: one of the last drop's paths, a regular
+/// file, at most MAX_FILE_BYTES. Any type: the page keeps to the daemon's
+/// allow-list and the daemon decides again on upload; the rule that matters
+/// here is that only what the shell just handed over is read.
+pub fn read_file(dropped: &Dropped, path: &Path) -> Result<Vec<u8>, String> {
+    if !dropped.contains(path) {
+        return Err("not a dropped file".into());
+    }
+    let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err("not a file".into());
+    }
+    if meta.len() > MAX_FILE_BYTES {
+        return Err("over 10 MB".into());
+    }
+    std::fs::read(path).map_err(|e| e.to_string())
+}
+
+/// The bytes of a file dropped on a chat, to attach as Attach would.
+#[tauri::command]
+pub fn read_dropped_file(
+    path: String,
+    dropped: tauri::State<'_, Dropped>,
+) -> Result<Response, String> {
+    read_file(&dropped, Path::new(&path)).map(Response::new)
 }
 
 /// The brief New project from a template takes from a file: the daemon's
@@ -316,6 +350,55 @@ mod tests {
             read_image(&dropped, &shot).unwrap_err(),
             "not a dropped file"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_chat_reads_any_dropped_file_up_to_10_mb_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("caprock-dropfile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = dir.join("report.pdf");
+        let csv = dir.join("data.CSV");
+        let shot = dir.join("shot.png");
+        let big = dir.join("big.zip");
+        let edge = dir.join("edge.txt");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+        std::fs::write(&csv, b"a,b").unwrap();
+        std::fs::write(&shot, b"png").unwrap();
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_FILE_BYTES + 1)
+            .unwrap();
+        std::fs::File::create(&edge)
+            .unwrap()
+            .set_len(MAX_FILE_BYTES)
+            .unwrap();
+        let dropped = Dropped::default();
+
+        // Not dropped: refused, whatever it is.
+        assert_eq!(read_file(&dropped, &pdf).unwrap_err(), "not a dropped file");
+
+        dropped.set(&[
+            pdf.clone(),
+            csv.clone(),
+            shot.clone(),
+            big.clone(),
+            edge.clone(),
+            dir.clone(),
+        ]);
+        assert_eq!(read_file(&dropped, &pdf).unwrap(), b"%PDF");
+        assert_eq!(read_file(&dropped, &csv).unwrap(), b"a,b");
+        assert_eq!(read_file(&dropped, &shot).unwrap(), b"png");
+        assert_eq!(
+            read_file(&dropped, &edge).unwrap().len() as u64,
+            MAX_FILE_BYTES
+        );
+        assert_eq!(read_file(&dropped, &big).unwrap_err(), "over 10 MB");
+        assert_eq!(read_file(&dropped, &dir).unwrap_err(), "not a file");
+
+        // A later drop replaces the list.
+        dropped.set(std::slice::from_ref(&csv));
+        assert_eq!(read_file(&dropped, &pdf).unwrap_err(), "not a dropped file");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

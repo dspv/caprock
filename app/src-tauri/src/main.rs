@@ -74,6 +74,7 @@ macro_rules! handler {
             capture::capture_webview,
             capture::read_dropped_image,
             capture::read_dropped_text,
+            capture::read_dropped_file,
             browser::browser_tab,
             commands::app_log
         ]
@@ -473,6 +474,10 @@ mod tests {
                     serde_json::json!({"path": "/etc/hosts"}),
                 ),
                 (
+                    "read_dropped_file",
+                    serde_json::json!({"path": "/etc/hosts"}),
+                ),
+                (
                     "browser_tab",
                     serde_json::json!({"id": "t1", "act": {"do": "hide"}}),
                 ),
@@ -619,10 +624,14 @@ mod tests {
         let brief = serde_json::json!({"path": "/etc/hosts.md"});
         let err = invoke(DAEMON, "read_dropped_text", brief).expect_err("not dropped");
         assert!(err.to_string().contains("not a dropped file"), "{err}");
+        let file = serde_json::json!({"path": "/etc/hosts"});
+        let err = invoke(DAEMON, "read_dropped_file", file).expect_err("not dropped");
+        assert!(err.to_string().contains("not a dropped file"), "{err}");
         for url in ["https://example.com/", "http://localhost:4391/"] {
             for cmd in [
                 "read_dropped_image",
                 "read_dropped_text",
+                "read_dropped_file",
                 "capture_webview",
                 "clipboard_image",
             ] {
