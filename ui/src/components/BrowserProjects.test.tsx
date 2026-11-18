@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, type SessionSummary } from '@/lib/api'
 import { projectsApi, type Project } from '@/lib/projects'
-import { BrowserProjects, browserProjects } from './BrowserProjects'
+import { BrowserProjects, browserProjects, forgetShownProjects } from './BrowserProjects'
 
 const saved: Project[] = [
   { id: '1', name: 'alpha', root: '/work/alpha', kind: 'repo' },
@@ -16,6 +16,7 @@ const session = (id: string, root = '/work/alpha', extra: Partial<SessionSummary
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  forgetShownProjects()
   vi.spyOn(projectsApi, 'list').mockResolvedValue(saved)
   vi.spyOn(api, 'sessionsWithTotal').mockResolvedValue({ items: [session('live')], total: 1 })
   vi.spyOn(api, 'sessionsInDir').mockResolvedValue([session('recent', '/work/alpha', { status: 'ended' })])
@@ -36,6 +37,17 @@ describe('browser projects', () => {
     expect(alpha).toHaveAttribute('aria-expanded', 'true')
     fireEvent.click(alpha)
     expect(screen.queryByRole('link', { name: /Session live/ })).not.toBeInTheDocument()
+  })
+
+  it('never goes back to "Reading your projects…" once it has shown them', async () => {
+    const first = render(<BrowserProjects />)
+    expect(await screen.findByRole('button', { name: /alpha.*1 live/ })).toBeInTheDocument()
+    first.unmount()
+    // Mounted again while the daemon is slow to answer: the last list stays.
+    vi.mocked(api.sessionsWithTotal).mockReturnValue(new Promise(() => {}))
+    render(<BrowserProjects />)
+    expect(screen.getByRole('button', { name: /alpha.*1 live/ })).toBeInTheDocument()
+    expect(screen.queryByText(/Reading your projects/)).not.toBeInTheDocument()
   })
 
   it('includes observed projects and respects archived, nested and multi-repo projects', () => {

@@ -24,13 +24,31 @@ function belongs(s: SessionSummary, p: Project, projects: Project[]): boolean {
   return length >= 0 && !projects.some((other) => other.id !== p.id && matchLength({ ...s, cwd: s.cwd || '' }, other) > length)
 }
 
+/**
+ * The last list this page drew, kept across a remount of the panel.
+ *
+ * Each mount asks both questions afresh, so a remount (Home opened again, the
+ * screen rebuilt under it) read "Reading your projects…" over a list it had
+ * just shown, until the live sessions answered — seconds on a busy daemon,
+ * and what the README's Home capture caught in both themes (2026-11-18). A
+ * panel that has had data never goes back to a loading state: it shows the
+ * last list until the new answers replace it.
+ */
+let lastShown: { projects: Project[]; sessions: SessionSummary[] } | undefined
+
+/** For tests: forget the list kept across mounts. */
+export function forgetShownProjects() { lastShown = undefined }
+
 export function BrowserProjects() {
   const saved = useApi(() => projectsApi.list(), [], { live: false, intervalMs: 60_000 })
   // No recent-history cap: a quiet live session must still be reachable.
   const active = useApi(() => api.sessionsWithTotal(true, '', 0, 'exclude'), [], { intervalMs: 5000, liveMs: 1000 })
-  const sessions = (active.data?.items ?? []).filter((s) => !isChat(s))
-  const loading = (!saved.data && !saved.error) || (!active.data && !active.error)
-  const projects = browserProjects(saved.data ?? [], sessions)
+  const reading = (!saved.data && !saved.error) || (!active.data && !active.error)
+  const kept = reading && !saved.error && !active.error ? lastShown : undefined
+  const sessions = kept ? kept.sessions : (active.data?.items ?? []).filter((s) => !isChat(s))
+  const loading = reading && !kept
+  const projects = kept ? kept.projects : browserProjects(saved.data ?? [], sessions)
+  if (!reading && !saved.error && !active.error) lastShown = { projects, sessions }
   const [open, setOpen] = useState<string | null>(null)
   return (
     <section aria-label="Projects" className="min-w-0">
@@ -52,7 +70,7 @@ export function BrowserProjects() {
                 <span className="block truncate text-[16px] font-medium">{p.name}</span>
                 <span className="block truncate text-[13px] text-fg-muted">{p.root}</span>
               </span>
-              <span className="shrink-0 text-[14px] text-fg-muted">{active.error && !active.data ? 'Sessions unavailable' : !active.data ? 'Reading…' : live.length > 0 ? `${live.length} live` : 'Sessions'}</span>
+              <span className="shrink-0 text-[14px] text-fg-muted">{active.error && !active.data ? 'Sessions unavailable' : !active.data && !kept ? 'Reading…' : live.length > 0 ? `${live.length} live` : 'Sessions'}</span>
               <span aria-hidden="true" className="text-[18px] text-fg-muted">{selected ? '▾' : '▸'}</span>
             </button>
             {selected && <ProjectSessions project={p} projects={projects} live={live} />}
