@@ -30,6 +30,10 @@ func (c *ghConfig) SetSource(s string) error {
 func (c *ghConfig) ClientID() string     { return "" }
 func (c *ghConfig) Notify() bool         { return true }
 func (c *ghConfig) SetNotify(bool) error { return nil }
+func (c *ghConfig) AutoRerun() bool      { return false }
+func (c *ghConfig) SetAutoRerun(bool) error {
+	return nil
+}
 
 // ghStore keeps the token in memory.
 type ghStore struct {

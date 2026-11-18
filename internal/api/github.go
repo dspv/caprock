@@ -145,15 +145,24 @@ func (s *Server) handleGitHubPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Notify *bool `json:"notify"`
+		// AutoRerun: the daemon re-runs jobs GitHub never ran, once per run.
+		AutoRerun *bool `json:"auto_rerun"`
 	}
 	if !changeBody(w, r, &req) {
 		return
 	}
-	if req.Notify == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nothing to change: send {notify}"})
+	if req.Notify == nil && req.AutoRerun == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nothing to change: send {notify} or {auto_rerun}"})
 		return
 	}
-	st, err := s.d.GitHub.SetNotify(*req.Notify)
+	var st github.Status
+	var err error
+	if req.Notify != nil {
+		st, err = s.d.GitHub.SetNotify(*req.Notify)
+	}
+	if err == nil && req.AutoRerun != nil {
+		st, err = s.d.GitHub.SetAutoRerun(*req.AutoRerun)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

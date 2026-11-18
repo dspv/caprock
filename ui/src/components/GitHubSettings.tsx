@@ -24,7 +24,7 @@ import { extTitle } from '@/lib/externalLinks'
 const GITHUB_PROVIDER: SecretProvider = {
   name: 'GitHub',
   host: 'api.github.com',
-  sentWhen: 'when Caprock reads your pull requests and checks, or opens a pull request you asked for.',
+  sentWhen: 'when Caprock reads your pull requests and checks, opens a pull request you asked for, or — only with Rerun jobs GitHub never ran ticked — re-runs a job GitHub never gave a machine.',
   revokeAt: 'github.com/settings/tokens',
   revokeHow: 'delete the token there.',
 }
@@ -207,6 +207,9 @@ function Connected({ s, owner, onStatus }: { s: GitHubStatus; owner: boolean; on
   const notify = async (on: boolean) => {
     try { onStatus(await githubApi.setNotify(on)) } catch (e) { setError(githubErrorText(e)) }
   }
+  const autoRerun = async (on: boolean) => {
+    try { onStatus(await githubApi.setAutoRerun(on)) } catch (e) { setError(githubErrorText(e)) }
+  }
   const h = s.health
   return (
     <div className="grid gap-3">
@@ -238,6 +241,17 @@ function Connected({ s, owner, onStatus }: { s: GitHubStatus; owner: boolean; on
             label="Tell me when CI fails or a review arrives"
             hint="A notification from the desktop app for the pull requests of your worktrees. Caprock checks each at most once a minute."
           />
+          {/* Off unless ticked: a write to your repositories no click asked
+            * for (rule 4, ADR-047), so it says what it sends and where. */}
+          {s.auto_rerun !== undefined && (
+            <Toggle
+              checked={s.auto_rerun}
+              onChange={(on) => void autoRerun(on)}
+              label="Rerun jobs GitHub never ran"
+              keep
+              hint={<span data-auto-rerun-hint>Sometimes GitHub never gives a CI job a machine: it waits, then ends with no step run, and your code was not tested. With this on, when nothing else in that run failed, Caprock asks GitHub to re-run that run’s failed jobs — once per run, never again if GitHub starves it a second time — the same request as the Rerun button. It sends that request to api.github.com with your GitHub token, for your repositories only, while Caprock is running; release runs included. The run says <i>re-run by Caprock</i>. Off: you click Rerun.</span>}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" className={BUTTON} disabled={busy} onClick={() => void disconnect()}>{busy ? 'Disconnecting…' : 'Disconnect'}</button>
             <span className="text-[12px] text-fg-faint">

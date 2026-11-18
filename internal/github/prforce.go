@@ -68,7 +68,7 @@ func (s *Service) RerunChecks(ctx context.Context, repo Repo, sha string) (Rerun
 		return Rerun{}, e
 	}
 	s.forgetCI(repo, sha)
-	ci, e := s.CIBySHA(ctx, repo, sha)
+	ci, e := s.ciBySHA(ctx, repo, sha, false)
 	if e != nil {
 		return Rerun{}, e
 	}

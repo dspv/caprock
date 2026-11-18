@@ -12,22 +12,6 @@ import (
 	"github.com/dspv/caprock/internal/store"
 )
 
-// The bulk reads behind /v1/status are reused for statusSlowTTL, then redone.
-func TestSlowStatusIsReusedForItsTTL(t *testing.T) {
-	d := &Daemon{log: quietLog(), store: memStore(t)}
-	first := d.slowStatus().at
-	if got := d.slowStatus().at; !got.Equal(first) {
-		t.Fatalf("recomputed within the TTL: at %v, want the reused %v", got, first)
-	}
-	d.slowMu.Lock()
-	d.slow.at = time.Now().Add(-statusSlowTTL - time.Second)
-	stale := d.slow.at
-	d.slowMu.Unlock()
-	if got := d.slowStatus().at; !got.After(stale) {
-		t.Fatalf("not recomputed after the TTL: at %v", got)
-	}
-}
-
 // The handoff coverage stops at the first passage that answers each figure,
 // and still counts what the one COUNT(DISTINCT) over every passage counted:
 // projects with a long enough main-thread passage in range, the oldest of

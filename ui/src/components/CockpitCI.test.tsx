@@ -380,9 +380,10 @@ describe('the cockpit’s CI block', () => {
     })
     await waitFor(() => expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveAttribute('data-cockpit-ci-fold', '806'))
     expect(head()).not.toHaveTextContent(/running|#801/)
-    expect(head()).toHaveTextContent(/^CInow#806/)
+    // Two lines: the PR and its age, then its checks.
+    expect(head()).toHaveTextContent(/^CI#806.*now/)
     // Merged, the line says so instead of a tally of old checks.
-    expect(head()).toHaveTextContent(/#806merged$/)
+    expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveTextContent(/^merged$/)
   })
 
   // Owner, 2026-11-17, translated: "in this mode I don't see CI statuses,
@@ -418,7 +419,7 @@ describe('the cockpit’s CI block', () => {
       // Its checks, as an own open PR's are: one running, two passed.
       expect(fold()!.querySelector('[data-check-summary]')).toHaveAttribute('data-check-summary', 'running')
       expect(fold()!.querySelector('[data-check-summary]')!.getAttribute('aria-label')).toMatch(/^#931, the repository’s open pull request: its checks: /)
-      expect(fold()!.querySelector('[title^="#931: the repository’s open pull request"]')).not.toBeNull()
+      expect(document.querySelector('[data-cockpit-ci-fold-pr="931"][title^="#931: the repository’s open pull request"]')).not.toBeNull()
       expect(asked).toContain('/v1/sessions/s1/ci?pr=931')
       const time = document.querySelector('section[aria-label="CI"] [data-section-head] [title^="When GitHub was last read"]')!
       expect(time).toHaveAttribute('title', 'When GitHub was last read for #931’s checks, the repository’s open pull request')
@@ -442,7 +443,8 @@ describe('the cockpit’s CI block', () => {
       folded()
       await waitFor(() => expect(fold()).toHaveAttribute('data-cockpit-ci-fold', '930'))
       await waitFor(() => expect(asked).toContain('/v1/sessions/s1/ci/stats'))
-      expect(fold()).toHaveTextContent(/^#930merged$/)
+      expect(fold()).toHaveTextContent(/^merged$/)
+      expect(document.querySelector('[data-cockpit-ci-fold-pr]')).toHaveAttribute('data-cockpit-ci-fold-pr', '930')
       expect(asked.some((u) => u.includes('?pr='))).toBe(false)
     })
   })

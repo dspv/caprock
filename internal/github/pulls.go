@@ -63,6 +63,9 @@ type Checks struct {
 	Pending  int     `json:"pending"`
 	NoRunner int     `json:"no_runner,omitempty"`
 	Items    []Check `json:"items"`
+	// AutoRerun is set when Caprock re-ran, by itself, a run these checks
+	// belong to (autorerun.go); the newest such re-run.
+	AutoRerun *AutoRerun `json:"auto_rerun,omitempty"`
 }
 
 // Review is one reviewer's latest verdict.
@@ -581,6 +584,9 @@ func (s *Service) refreshPull(ctx context.Context, f *followed, number int) bool
 		if prev != nil {
 			checks = prev.Checks
 		}
+	}
+	if s.autoRerunChecks(ctx, t.repo, p.Head.SHA, pr.State == "open", &checks) {
+		changed = true // asked sooner, so the re-run shows queued
 	}
 	pr.Checks = checks
 	changed = changed || ch

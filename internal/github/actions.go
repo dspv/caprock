@@ -110,6 +110,9 @@ type CIRun struct {
 	Baseline *CIEstimate `json:"baseline,omitempty"`
 	// Cost sums the run's finished jobs (runnercost.go).
 	Cost *CICost `json:"cost,omitempty"`
+	// AutoRerun is set when Caprock re-ran this run's jobs GitHub never ran
+	// by itself (autorerun.go).
+	AutoRerun *AutoRerun `json:"auto_rerun,omitempty"`
 }
 
 // CIOS is the runner time of the finished jobs on one OS.
@@ -259,6 +262,12 @@ func runnerOS(labels []string) string {
 // from GitHub and kept for ciRunning while any run is unfinished, else for
 // ciSettled. Nothing is sent while GitHub is not connected.
 func (s *Service) CIBySHA(ctx context.Context, repo Repo, sha string) (CI, *Error) {
+	return s.ciBySHA(ctx, repo, sha, true)
+}
+
+// ciBySHA is CIBySHA; auto false leaves Caprock's own re-run out (the deck's
+// Rerun reads through it and asks GitHub itself).
+func (s *Service) ciBySHA(ctx context.Context, repo Repo, sha string, auto bool) (CI, *Error) {
 	s.init()
 	if sha == "" || !namePart.MatchString(repo.Owner) || !namePart.MatchString(repo.Name) {
 		return CI{}, errorf(KindInvalid, "Reading the CI", "No repository or commit to read the CI of.")
@@ -272,7 +281,7 @@ func (s *Service) CIBySHA(ctx context.Context, repo Repo, sha string) (CI, *Erro
 	e, have := s.ci.runs[key]
 	s.ci.mu.Unlock()
 	if have && now.Sub(e.at) < ciKeep(e.ci) {
-		return e.ci, nil
+		return s.markCI(e.ci), nil
 	}
 	if s.source() == "" {
 		return CI{}, errorf(KindNotConnected, "Reading the CI", "GitHub is not connected.")
@@ -281,7 +290,7 @@ func (s *Service) CIBySHA(ctx context.Context, repo Repo, sha string) (CI, *Erro
 	if ce != nil {
 		if have {
 			e.ci.Error = ce
-			return e.ci, nil
+			return s.markCI(e.ci), nil
 		}
 		return CI{}, ce
 	}
@@ -298,7 +307,16 @@ func (s *Service) CIBySHA(ctx context.Context, repo Repo, sha string) (CI, *Erro
 	}
 	s.ci.runs[key] = ciEntry{ci: ci, at: now}
 	s.ci.mu.Unlock()
-	return ci, nil
+	if auto {
+		s.autoRerun(ctx, repo, ci.Runs)
+	}
+	return s.markCI(ci), nil
+}
+
+// markCI is ci with Caprock's own re-runs marked on its runs (autorerun.go).
+func (s *Service) markCI(ci CI) CI {
+	ci.Runs = s.markRuns(ci.Repo, ci.Runs)
+	return ci
 }
 
 func ciKeep(ci CI) time.Duration {

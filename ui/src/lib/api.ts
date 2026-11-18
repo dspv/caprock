@@ -5,7 +5,7 @@ import type { ReapResult, ResourceReport } from './resources'
 import type { EndIdleResult, MemoryReport, RestartEnd } from './memory'
 import type { ResourceHistory } from './resourceHistory'
 import type { Footprint, OrphanStopResult, OrphanTarget } from './footprint'
-import type { PullRequest } from './github'
+import type { AutoRerun, PullRequest } from './github'
 import type { Usual } from './usual'
 import type { ActionsUsage, CICost, RunnerCost } from './runnercost'
 import type { BranchPR, SessionBranches } from './branches'
@@ -673,6 +673,8 @@ export interface CIRun {
   baseline?: CIBaseline
   /** The sum of its finished jobs' cost. */
   cost?: CICost
+  /** Caprock re-ran this run's jobs GitHub never gave a machine, by itself (Settings → GitHub). */
+  auto_rerun?: AutoRerun
 }
 /** A commit's GitHub Actions. runner_ms sums the finished jobs; by_os splits it, no billing multiplier. */
 export interface CIState {

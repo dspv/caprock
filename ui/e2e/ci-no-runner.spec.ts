@@ -128,7 +128,7 @@ test('a job GitHub never ran reads "no runner", not failed, with Rerun on the fo
   await expect(app.tabs.getByRole('tab', { name: new RegExp(`^${alpha.name}`), selected: true })).toBeVisible()
   await page.evaluate(() => document.documentElement.style.setProperty('--app-inspector-w', '324px'))
   const row = inspector.locator('[data-cockpit-ci-pr="941"]')
-  await expect(row.locator('[data-cockpit-ci-norunner]')).toHaveText('1 no runner')
+  await expect(row.locator('[data-cockpit-ci-norunner] [data-check-part="norunner"]')).toHaveText('1 no runner')
   await expect(row.locator('[data-cockpit-ci-action]')).toHaveAttribute('data-cockpit-ci-action', 'rerun')
   await expect(row.locator('[data-journey-seg="ci"]')).toHaveClass(/bg-norunner/)
   await page.waitForTimeout(400)
