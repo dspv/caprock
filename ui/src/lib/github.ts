@@ -81,6 +81,9 @@ export interface PRCheck {
   completed_at?: number
   /** The GitHub Actions job this check run is, read from its link; absent for any other check. */
   job_id?: number
+  /** A failed Actions check whose job GitHub never gave a machine (no step
+   *  run, no runner): its code was not tested. Its state stays fail. */
+  no_runner?: boolean
 }
 export interface PRReview { user: string; state: 'approved' | 'changes_requested' | 'commented' | 'dismissed'; at?: number }
 
@@ -110,7 +113,8 @@ export interface PullRequest {
   commits?: number
   review: '' | 'approved' | 'changes_requested' | 'review_required' | 'commented'
   reviews: PRReview[]
-  checks: { state: 'pass' | 'fail' | 'pending' | 'none'; passed: number; failed: number; pending: number; items: PRCheck[] }
+  /** no_runner: none failed, but GitHub gave some job no machine (`no_runner` counts them; `failed` leaves them out). */
+  checks: { state: 'pass' | 'fail' | 'pending' | 'no_runner' | 'none'; passed: number; failed: number; pending: number; no_runner?: number; items: PRCheck[] }
   at: number
   error?: GitHubError
 }
@@ -334,6 +338,7 @@ export function checksText(c: PullRequest['checks']): string {
     return `${failed.slice(0, 2).join(', ')}${failed.length > 2 ? ` +${failed.length - 2}` : ''} failed`
   }
   if (c.state === 'pending') return `${c.pending} of ${total} checks running`
+  if (c.state === 'no_runner') return `${c.no_runner ?? 1} not run: GitHub gave no machine`
   return total === 1 ? 'check passed' : `all ${total} checks passed`
 }
 
@@ -360,6 +365,7 @@ export function mergeText(pr: PullRequest): string {
   // Fix CI shot, 2026-10-24). The checks decide before the state does.
   if (pr.checks.state === 'fail') return 'mergeable, checks failed'
   if (pr.checks.state === 'pending') return 'mergeable, checks running'
+  if (pr.checks.state === 'no_runner') return 'mergeable, a job was not run'
   switch (pr.mergeable_state) {
     case 'clean': return 'ready to merge'
     case 'blocked': return 'blocked by branch rules'

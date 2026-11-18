@@ -42,12 +42,14 @@ export function prChips(p: SessionPRLive): PRChip[] {
  * first alone (owner, 2026-10-13, translated: "I understand it could get
  * overloaded"); the rest go in its tooltip and the opened row.
  */
-export type PRProblem = PRChipWord | 'ci'
+export type PRProblem = PRChipWord | 'ci' | 'norunner'
 export function prProblems(p: SessionPRLive): PRProblem[] {
   const chips = prChips(p).map((c) => c.word)
   const out: PRProblem[] = []
   if (chips.includes('conflict')) out.push('conflict')
   if (p.live?.state === 'open' && p.live.checks.state === 'fail') out.push('ci')
+  // A job GitHub never gave a machine: not the code's failure; a re-run is the fix.
+  if (p.live?.state === 'open' && p.live.checks.state === 'no_runner') out.push('norunner')
   for (const w of ['behind', 'review', 'draft'] as const) if (chips.includes(w)) out.push(w)
   return out
 }
@@ -61,15 +63,15 @@ export function topChip(p: SessionPRLive): { chip?: PRChip; more: string[] } {
   const probs = prProblems(p)
   const chips = prChips(p)
   const top = probs[0]
-  const words: Record<PRProblem, string> = { conflict: 'conflicts with the base', ci: 'CI failed', behind: 'behind the base', review: 'changes requested', draft: 'a draft' }
-  return { chip: top && top !== 'ci' ? chips.find((c) => c.word === top) : undefined, more: probs.slice(1).map((w) => words[w]) }
+  const words: Record<PRProblem, string> = { conflict: 'conflicts with the base', ci: 'CI failed', norunner: 'a job GitHub gave no machine', behind: 'behind the base', review: 'changes requested', draft: 'a draft' }
+  return { chip: top && top !== 'ci' && top !== 'norunner' ? chips.find((c) => c.word === top) : undefined, more: probs.slice(1).map((w) => words[w]) }
 }
 
-/** The one-word actions beside the row's problem: conflict → Fix, failed CI → Fix and Re-run, behind → Update. */
+/** The one-word actions beside the row's problem: conflict → Fix, failed CI → Fix and Re-run, a job given no runner → Re-run, behind → Update. */
 export type QuickKind = 'conflict' | 'ci' | 'rerun' | 'update'
 export function quickActions(p: SessionPRLive): QuickKind[] {
   const top = prProblems(p)[0]
-  return top === 'conflict' ? ['conflict'] : top === 'ci' ? ['ci', 'rerun'] : top === 'behind' ? ['update'] : []
+  return top === 'conflict' ? ['conflict'] : top === 'ci' ? ['ci', 'rerun'] : top === 'norunner' ? ['rerun'] : top === 'behind' ? ['update'] : []
 }
 export const QUICK_LABEL: Record<QuickKind, string> = { conflict: 'Fix', ci: 'Fix', rerun: 'Re-run', update: 'Update' }
 

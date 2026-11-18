@@ -171,6 +171,8 @@ type Service struct {
 	byURL byURLCache
 	// ci keeps commits' Actions runs and failed jobs' log tails (actions.go).
 	ci ciCache
+	// noRun keeps whether a finished job had no runner (norunner.go).
+	noRun noRunnerCache
 	// repoCI keeps the release and default-branch CI (release.go).
 	repoCI repoCI
 	// baseline keeps past successful runs for the CI baselines (baseline.go).

@@ -113,8 +113,18 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 			return c.Store(uids, &imap.StoreFlags{Op: op, Silent: true, Flags: []imap.Flag{flag}}, nil).Close()
 		})
 	}
+	// setLocal writes a flag change to the stored rows, read fresh so it
+	// keeps whatever else a sync changed meanwhile.
 	setLocal := func(f func(m *store.Message)) error {
-		for _, m := range ms {
+		ids := make([]int64, len(ms))
+		for i, m := range ms {
+			ids[i] = m.ID
+		}
+		fresh, err := e.st.Messages(ctx, ids)
+		if err != nil {
+			return err
+		}
+		for _, m := range fresh {
 			f(&m)
 			if err := e.st.SetFlags(ctx, m.ID, m.Seen, m.Flagged, m.Answered); err != nil {
 				return err
@@ -125,24 +135,32 @@ func (e *Engine) applyGroup(ctx context.Context, accountID, folderID int64, ms [
 	switch action {
 	case ActRead, ActUnread:
 		seen := action == ActRead
-		if err := setLocal(func(m *store.Message) { m.Seen = seen }); err != nil {
+		mark := func(m *store.Message) { m.Seen = seen }
+		if err := setLocal(mark); err != nil {
 			return err
 		}
 		op := imap.StoreFlagsAdd
 		if !seen {
 			op = imap.StoreFlagsDel
 		}
-		return storeFlags(op, imap.FlagSeen)
+		if err := storeFlags(op, imap.FlagSeen); err != nil {
+			return err
+		}
+		return setLocal(mark) // a sync queued before the STORE wrote the old flags back
 	case ActFlag, ActUnflag:
 		fl := action == ActFlag
-		if err := setLocal(func(m *store.Message) { m.Flagged = fl }); err != nil {
+		mark := func(m *store.Message) { m.Flagged = fl }
+		if err := setLocal(mark); err != nil {
 			return err
 		}
 		op := imap.StoreFlagsAdd
 		if !fl {
 			op = imap.StoreFlagsDel
 		}
-		return storeFlags(op, imap.FlagFlagged)
+		if err := storeFlags(op, imap.FlagFlagged); err != nil {
+			return err
+		}
+		return setLocal(mark) // a sync queued before the STORE wrote the old flags back
 	case ActArchive, ActTrash, ActSpam, ActNotSpam, ActMove:
 		dst, err := e.target(ctx, w, accountID, action, targetFolder)
 		if err != nil {

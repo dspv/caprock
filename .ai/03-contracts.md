@@ -3160,13 +3160,14 @@ session's open one among them, else the newest (each read through `github.PullBy
 cell's reads; `live` is that `github.PR`, for the tab's review, merge state
 and diff size). `ci` is `github.CI` for that PR's head commit: `{repo,
 head_sha, state, runs[], runner_ms, by_os[], cost?, at, error?}`, `state` one of
-`running | fail | pass | none`. Each run `{id, name, event?, status,
+`running | fail | no_runner | pass | none` (`no_runner`: no run failed but
+for jobs GitHub never gave a machine, below). Each run `{id, name, event?, status,
 conclusion?, attempt?, html_url?, created_at?, updated_at?, started_at?,
 head_branch?, head_sha?, workflow_id?, jobs[], cost?}` (`started_at` is GitHub's
 `run_started_at`; `head_branch` is the tag for a tag push or a release); each
 job `{id, run_id, name, status, conclusion?, started_at?, completed_at?,
 duration_ms?, labels[], os?, runner_name?, runner_group_name?, html_url?,
-steps[], cost?}`; each step
+steps[], no_runner?, cost?}`; each step
 
 head_branch?, head_sha?, workflow_id?, jobs[], baseline?}` (`started_at` is GitHub's
 `run_started_at`; `head_branch` is the tag for a tag push or a release); each
@@ -3187,6 +3188,24 @@ settled (`github.CIBySHA`); a settled run whose `updated_at` and attempt
 are unchanged keeps the jobs read before. While GitHub is not connected
 nothing is sent: `connected` is false, `pr` is the newest recorded one and
 `ci` is absent. A failed read keeps the last answer with `ci.error` set.
+
+**A job GitHub never ran** (2026-11-18; `internal/github/norunner.go`).
+GitHub-hosted macOS jobs sometimes wait ~15 minutes for a machine and are
+then ended with no step run, no runner and the annotation *The job was not
+acquired by Runner of type hosted even after multiple attempts* (11 such
+jobs in 3 days on this repository, e.g. run 44324234291, job 134871157816);
+a re-run of the failed jobs has always fixed it. A job is `no_runner: true`
+when it is `completed` with `conclusion` `failure` or `cancelled`, `steps`
+empty, and GitHub's `runner_id` 0 and `runner_name` empty — read from the
+jobs answer already fetched; the annotation is not read. A finished run
+that did not pass, whose every job that did not pass or get skipped is
+`no_runner`, is not counted as failed: `ci.state` is `no_runner` when no
+other run failed and none is unfinished. The re-run is the deck's own
+(`POST …/prs/{number}/rerun`, below): such a run's `conclusion` is
+`failure` or `cancelled`, so it is re-run with `rerun-failed-jobs`.
+`/ci/main` says `no_runner` the same way; `/ci/release` keeps `fail`, since
+a release whose job never ran is not built (its job still carries
+`no_runner`).
 
 **CI baselines.** On the three CI routes (`/ci`, `/ci/release`'s `run`,
 `/ci/main`) each run and each job may carry `baseline` `{median_ms, runs}`:
@@ -3238,7 +3257,8 @@ over the 14 local calendar days ending today:
   default_branch?, ships_by?, closed[]}`, the tab's Board view (`internal/api/prboard.go`). Each
   `BoardCard` `{number, stage, stage_at?, ci?, why?, failed[]?, os[]?, ci_ms?, review?, release?,
   spend, stale?}` is a pull request of `prs` (its title, `author`, `author_avatar`
-  and link are that entry's); closed unmerged ones and merges before the 14
+  and link are that entry's; `ci` is `running | fail | no_runner | pass |
+  none`, and `no_runner` keeps it `open`, never `fix`); closed unmerged ones and merges before the 14
   days are left out. `stage` is `draft`, `open` (checks running, or not
   read), `fix` (`why`: `ci` a failed check, `conflict` GitHub's `mergeable`
   false or `mergeable_state` `dirty`, `changes_requested`; with `ci`,
@@ -3247,7 +3267,8 @@ over the 14 local calendar days ending today:
   (windows-latest)*, *test (ubuntu-24.04)*; skipped ones left out), each
   `{os, state, since?, checks}` — `os` `linux`, `macos` or `windows` in that
   order, `state` `fail` when any failed, else `running` while any is
-  unfinished (`since` its unfinished checks' earliest start), else `pass`;
+  unfinished (`since` its unfinished checks' earliest start), else
+  `no_runner` when one is a job GitHub never ran, else `pass`;
   absent with no live read or when no check names an OS (2026-10-16, the
   release plan's dots), `ci_ms` the span of its live-read (else
   runs-list) checks from the first start to the last finish once they
@@ -6783,12 +6804,23 @@ POST   /v1/projects/{id}/github/repo  {name, owner?, private?, description?, pro
   mergeable_state?, auto_merge?, created_at?, merged_at?, additions?, deletions?,
   changed_files?, commits?, review: approved|changes_requested|review_required|
   commented|"", reviews: [{user, state, at?}], checks: {state:
-  pass|fail|pending|"", passed, failed, pending, items: [{name, state, url?,
-  status?, started_at?, completed_at?, job_id?}]}, at, error?}`. Checks
+  pass|fail|pending|no_runner|"", passed, failed, pending, no_runner?, items: [{name, state, url?,
+  status?, started_at?, completed_at?, job_id?, no_runner?}]}, at, error?}`. Checks
   merge check runs and commit statuses on the head; a check run carries its
   own `status` (`queued | in_progress | completed`), its times (unix ms) and,
   when its link is a GitHub Actions job's (`…/actions/runs/{run}/job/{job}`),
-  that `job_id` — the deck's mini pipeline draws them;
+  that `job_id` — the deck's mini pipeline draws them; a failed or
+  cancelled Actions check whose job GitHub never ran (§ A job GitHub never
+  ran) carries `no_runner: true`, keeps `state: fail`, and is counted in
+  `checks.no_runner`, not `failed`; `checks.state` is `fail` when any other
+  failed, else `pending` while any runs, else `no_runner` when there is
+  one, else `pass`. The verdict is kept per job id for the daemon's
+  lifetime (512 at most): from the commit's runs when `github.CIBySHA`
+  keeps them, else one `GET …/actions/runs/{id}/jobs?filter=all&per_page=100`
+  per run that has such a check, never per job and never for checks that
+  passed or still run; a read that fails leaves the check failed. The
+  *CI failed* notification fires on `fail` only and names no `no_runner`
+  check;
   `mergeable` null is GitHub still computing it; `auto_merge` is true while
   GitHub's auto-merge is enabled (its pull request object's `auto_merge`
   not null, read with the rest, no call of its own). `created_at` and

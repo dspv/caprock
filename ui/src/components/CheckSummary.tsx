@@ -18,10 +18,18 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type ChecksView, type DeltaTone, type PipeNode } from '@/lib/ci'
+import { NO_RUNNER_TITLE, checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type ChecksView, type DeltaTone, type PipeNode } from '@/lib/ci'
 
-/** A state's circle: ✓ on green, ✗ on red, amber pulsing while running, hollow queued, a slash skipped. */
+/** A state's circle: ✓ on green, ✗ on red, amber pulsing while running, hollow queued, a slash skipped; a muted-amber ⚠ for a job GitHub never gave a machine. */
 export function StateMark({ tone }: { tone: CITone }) {
+  if (tone === 'norunner') {
+    return (
+      <svg aria-hidden viewBox="0 0 10 10" data-mark={tone} className="h-[10px] w-[10px] shrink-0 text-norunner">
+        <path d="M5 0.6 9.6 9.2H0.4Z" fill="currentColor" />
+        <path d="M5 3.6V6M5 7.4V7.5" fill="none" stroke="var(--app-chrome-bg, #fff)" strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+    )
+  }
   if (tone === 'pass' || tone === 'fail') {
     return (
       <svg aria-hidden viewBox="0 0 10 10" data-mark={tone} className={`h-[10px] w-[10px] shrink-0 ${tone === 'pass' ? 'text-ok' : 'text-danger'}`}>
@@ -33,14 +41,14 @@ export function StateMark({ tone }: { tone: CITone }) {
   return <span aria-hidden data-mark={tone} className="pipe-node" data-tone={tone} />
 }
 
-const WORD: Record<CITone, string> = { pass: 'passed', fail: 'failed', running: 'running', queued: 'queued', skipped: 'skipped' }
-const TEXT: Record<CITone, string> = { pass: 'text-ok', fail: 'text-danger', running: 'text-warn', queued: 'text-fg-muted', skipped: 'text-fg-faint' }
+const WORD: Record<CITone, string> = { pass: 'passed', fail: 'failed', norunner: 'no runner', running: 'running', queued: 'queued', skipped: 'skipped' }
+const TEXT: Record<CITone, string> = { pass: 'text-ok', fail: 'text-danger', norunner: 'text-norunner', running: 'text-warn', queued: 'text-fg-muted', skipped: 'text-fg-faint' }
 const DELTA: Record<DeltaTone, string> = { warn: 'text-warn', ok: 'text-ok', muted: 'text-fg-faint' }
 
 /** One state's group: its circle, the count and, but for passed beside others, the word. */
 function Part({ tone, n, word = true }: { tone: CITone; n: number; word?: boolean }) {
   return (
-    <span data-check-part={tone} className={`inline-flex shrink-0 items-center gap-1 ${TEXT[tone]}`}>
+    <span data-check-part={tone} title={tone === 'norunner' ? NO_RUNNER_TITLE : undefined} className={`inline-flex shrink-0 items-center gap-1 ${TEXT[tone]}`}>
       <StateMark tone={tone} />
       <span><span className="num">{n}</span>{word ? ` ${WORD[tone]}` : ''}</span>
     </span>
@@ -112,12 +120,13 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
   const sentence = checksSentence(s)
   const time = shortRun(s.ms)
   const skips = fit === 'full'
-  const worst: CITone = c.fail ? 'fail' : c.running ? 'running' : c.queued ? 'queued' : c.pass ? 'pass' : 'skipped'
+  const worst: CITone = c.fail ? 'fail' : c.norunner ? 'norunner' : c.running ? 'running' : c.queued ? 'queued' : c.pass ? 'pass' : 'skipped'
   const body = view === 'circles' ? <Circles s={s} onPick={onPick} /> : fit === 'worst' ? (
-    <span data-check-part={worst} className={`inline-flex shrink-0 items-center gap-1 ${TEXT[worst]}`}><StateMark tone={worst} /><span>{WORD[worst]}</span></span>
+    <span data-check-part={worst} title={worst === 'norunner' ? NO_RUNNER_TITLE : undefined} className={`inline-flex shrink-0 items-center gap-1 ${TEXT[worst]}`}><StateMark tone={worst} /><span>{WORD[worst]}</span></span>
   ) : fit === 'compact' ? (
     <>
       {c.fail > 0 && <Part tone="fail" n={c.fail} word={false} />}
+      {c.norunner > 0 && <Part tone="norunner" n={c.norunner} word={false} />}
       {c.running > 0 && <Part tone="running" n={c.running} word={false} />}
       {c.queued > 0 && <Part tone="queued" n={c.queued} word={false} />}
       {c.pass > 0 && <Part tone="pass" n={c.pass} word={false} />}
@@ -135,15 +144,16 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
   ) : (
     <>
       {c.fail > 0 && <Part tone="fail" n={c.fail} />}
+      {c.norunner > 0 && <Part tone="norunner" n={c.norunner} />}
       {c.running > 0 && <Part tone="running" n={c.running} />}
       {c.queued > 0 && <Part tone="queued" n={c.queued} />}
-      {c.pass > 0 && <Part tone="pass" n={c.pass} word={c.fail + c.running + c.queued === 0} />}
-      {skips && c.skipped > 0 && <span data-check-part="skipped" className="shrink-0 text-fg-faint">{c.pass + c.fail + c.running + c.queued > 0 ? '· ' : ''}{c.skipped} skipped</span>}
+      {c.pass > 0 && <Part tone="pass" n={c.pass} word={c.fail + c.norunner + c.running + c.queued === 0} />}
+      {skips && c.skipped > 0 && <span data-check-part="skipped" className="shrink-0 text-fg-faint">{c.pass + c.fail + c.norunner + c.running + c.queued > 0 ? '· ' : ''}{c.skipped} skipped</span>}
       {!s.done && time && <span className="shrink-0 text-fg-faint">· <span className="num">{time}</span></span>}
     </>
   )
   return (
-    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : s.done ? 'done' : 'running'} data-check-view={view} data-check-fit={fit === 'full' ? undefined : fit} tabIndex={focusable ? 0 : undefined}
+    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : c.norunner && s.done ? 'norunner' : s.done ? 'done' : 'running'} data-check-view={view} data-check-fit={fit === 'full' ? undefined : fit} tabIndex={focusable ? 0 : undefined}
       role={view === 'circles' ? 'group' : 'img'} aria-label={`${label}: ${sentence}`}
       onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
       className={`inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[4px] text-[11.5px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${className}`}>
@@ -197,6 +207,7 @@ function CheckList({ s, label, anchor, onEnter, onLeave, onPick, beside }: { s: 
             <span className={TEXT[n.tone]}>{WORD[n.tone]}</span>
             <span className="num text-right text-fg-muted">{n.ms !== undefined ? fmtRun(n.ms) : ''}</span>
             {n.step && <span data-check-step className="col-span-4 col-start-2 -mt-[2px] truncate text-[11px] text-danger" title={n.step}>failed at {n.step}</span>}
+            {n.tone === 'norunner' && <span data-check-norunner className="col-span-4 col-start-2 -mt-[2px] text-[11px] text-norunner">{NO_RUNNER_TITLE}</span>}
           </li>
         ))}
       </ul>

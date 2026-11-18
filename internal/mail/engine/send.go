@@ -201,21 +201,36 @@ func (e *Engine) Send(ctx context.Context, d Draft) error {
 	}
 	if d.InReplyTo != 0 {
 		if orig, err := e.st.Message(ctx, d.InReplyTo); err == nil {
-			_ = e.st.SetFlags(ctx, orig.ID, orig.Seen, orig.Flagged, true)
+			e.markAnsweredLocally(ctx, orig.ID)
 			if w, err := e.worker(orig.AccountID); err == nil {
 				if f, err := e.st.Folder(ctx, orig.FolderID); err == nil {
-					_ = w.do(func(c *imapclient.Client, _ store.Account) error {
+					err := w.do(func(c *imapclient.Client, _ store.Account) error {
 						if _, err := c.Select(f.Name, nil).Wait(); err != nil {
 							return err
 						}
 						return c.Store(imap.UIDSetNum(imap.UID(orig.UID)), &imap.StoreFlags{Op: imap.StoreFlagsAdd, Silent: true, Flags: []imap.Flag{imap.FlagAnswered}}, nil).Close()
 					})
+					if err == nil {
+						// A sync queued before the STORE (it holds the
+						// command connection for its whole pass) read the
+						// server's old flags and wrote them over the local
+						// mark above. The server has it now: write it again.
+						e.markAnsweredLocally(ctx, orig.ID)
+					}
 				}
 			}
 		}
 	}
 	e.notify("messages", a.ID)
 	return nil
+}
+
+// markAnsweredLocally sets the answered flag on a stored message, keeping its
+// current seen and flagged state.
+func (e *Engine) markAnsweredLocally(ctx context.Context, id int64) {
+	if m, err := e.st.Message(ctx, id); err == nil {
+		_ = e.st.SetFlags(ctx, m.ID, m.Seen, m.Flagged, true)
+	}
 }
 
 func sendSMTP(a store.Account, password string, rcpt []string, raw []byte) error {

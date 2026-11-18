@@ -9,14 +9,14 @@ import { githubApi } from '@/lib/github'
 import { PIPELINE_KEY, keys } from '@/lib/appkeys'
 
 const CI_TEXT: Record<CITone, string> = {
-  running: 'text-warn', queued: 'text-fg-faint', pass: 'text-ok', fail: 'text-danger', skipped: 'text-fg-faint',
+  running: 'text-warn', queued: 'text-fg-faint', pass: 'text-ok', fail: 'text-danger', norunner: 'text-norunner', skipped: 'text-fg-faint',
 }
 
 /** A job's or a step's state as a mark: a turning ring while it runs. */
 export function CIMark({ tone }: { tone: CITone }) {
   if (tone === 'running') return <span role="img" aria-label="running" className="ci-spin inline-block h-[9px] w-[9px] shrink-0 rounded-full" />
-  const mark = tone === 'pass' ? '✓' : tone === 'fail' ? '✗' : tone === 'queued' ? '○' : '–'
-  return <span role="img" aria-label={tone === 'pass' ? 'passed' : tone === 'fail' ? 'failed' : tone} className={`w-[9px] shrink-0 text-center text-[11px] leading-none ${CI_TEXT[tone]}`}>{mark}</span>
+  const mark = tone === 'pass' ? '✓' : tone === 'fail' ? '✗' : tone === 'norunner' ? '⚠' : tone === 'queued' ? '○' : '–'
+  return <span role="img" aria-label={tone === 'pass' ? 'passed' : tone === 'fail' ? 'failed' : tone === 'norunner' ? 'no runner: GitHub did not give it a machine' : tone} className={`w-[9px] shrink-0 text-center text-[11px] leading-none ${CI_TEXT[tone]}`}>{mark}</span>
 }
 
 /** Three grey rows in the shape of the list: the first read ever of a view. */

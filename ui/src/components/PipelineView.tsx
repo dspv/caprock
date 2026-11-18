@@ -453,6 +453,7 @@ type Kit = ReturnType<typeof usePRForce>
 
 const PILL: Record<string, string> = {
   ok: 'border-ok/40 bg-ok/10 text-ok', fail: 'border-danger/45 bg-danger/10 text-danger', pending: 'border-warn/40 bg-warn/10 text-warn',
+  norunner: 'border-dashed border-norunner/50 bg-norunner/10 text-norunner',
   warn: 'border-warn/40 bg-warn/10 text-warn', muted: 'border-[var(--app-hairline)] text-fg-muted', faint: 'border-[var(--app-hairline)] text-fg-faint',
   merged: 'border-merged/45 bg-merged/10 text-merged',
 }
@@ -544,7 +545,7 @@ function RunLine({ runs, now }: { runs: CIRun[]; now: number }) {
 }
 
 const CELL: Record<CITone, string> = {
-  fail: 'border-danger/45 bg-danger/10', running: 'border-warn/40 bg-warn/[0.07]', pass: 'border-[var(--app-hairline)] bg-[var(--app-row-hover)]',
+  fail: 'border-danger/45 bg-danger/10', norunner: 'border-dashed border-norunner/50 bg-norunner/[0.06]', running: 'border-warn/40 bg-warn/[0.07]', pass: 'border-[var(--app-hairline)] bg-[var(--app-row-hover)]',
   queued: 'border-dashed border-[var(--app-hairline-strong)]', skipped: 'border-[var(--app-hairline)]',
 }
 const VS_TEXT = { warn: 'text-warn', ok: 'text-ok', muted: 'text-fg-faint' } as const

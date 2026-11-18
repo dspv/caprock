@@ -45,7 +45,7 @@ func repoCIRoutes(w http.ResponseWriter, r *http.Request) {
 	case "/repos/ada/repo/actions/runs/30/jobs":
 		_, _ = w.Write([]byte(`{"jobs":[{"id":301,"run_id":30,"name":"goreleaser","status":"in_progress","started_at":"2026-10-11T10:00:10Z","labels":["ubuntu-latest"],"steps":[]}]}`))
 	case "/repos/ada/repo/actions/runs/29/jobs":
-		_, _ = w.Write([]byte(`{"jobs":[{"id":291,"run_id":29,"name":"test","status":"completed","conclusion":"failure","started_at":"2026-10-11T09:50:00Z","completed_at":"2026-10-11T09:59:00Z","labels":["windows-latest"],"steps":[]}]}`))
+		_, _ = w.Write([]byte(`{"jobs":[{"id":291,"run_id":29,"name":"test","status":"completed","conclusion":"failure","started_at":"2026-10-11T09:50:00Z","completed_at":"2026-10-11T09:59:00Z","labels":["windows-latest"],"runner_id":7,"runner_name":"GitHub Actions 7","steps":[]}]}`))
 	default:
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"message":"Not Found"}`))

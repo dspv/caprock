@@ -65,6 +65,20 @@ export function optionText(s: Subscription, nowSec = Date.now() / 1000): string 
  */
 export const AddSubscriptionFlow = lazy(() => import('./SubscriptionsSetting').then((m) => ({ default: m.AddSubscriptionInline })))
 
+/** What the phone says where the computer offers "Add subscription". */
+export const ADD_SUBSCRIPTION_HINT = 'Add subscription — on your Mac: Settings → Subscriptions'
+
+/**
+ * The phone's stand-in for New agent's *Add subscription* (owner,
+ * 2026-11-18): a muted line, not a button. A paired device is refused every
+ * subscription write (`subscriptionsWritable`, ADR-067), and adding one types
+ * a sign-in into a terminal and signs in through a browser on the computer,
+ * so the phone only says where it is done.
+ */
+export function AddSubscriptionHint({ className = '' }: { className?: string }) {
+  return <p data-add-subscription-hint className={`text-[13px] leading-[1.4] text-fg-muted [overflow-wrap:anywhere] ${className}`}>{ADD_SUBSCRIPTION_HINT}</p>
+}
+
 /** The select's last option, which opens the add flow instead of picking. */
 export const ADD_SUBSCRIPTION = '__add__'
 

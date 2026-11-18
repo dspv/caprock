@@ -99,8 +99,9 @@ type BoardCard struct {
 	// StageAt is since when it is in the stage (unix ms): opened, its checks'
 	// start or end, merged, released. Absent when not known.
 	StageAt int64 `json:"stage_at,omitempty"`
-	// CI is its head commit's checks: running | fail | pass | none; absent
-	// when not read.
+	// CI is its head commit's checks: running | fail | no_runner | pass |
+	// none; absent when not read. no_runner: none failed, but GitHub gave
+	// some job no machine, so its code was not tested (github.Check.NoRunner).
 	CI string `json:"ci,omitempty"`
 	// Why is what put it in fix: ci | conflict | changes_requested.
 	Why string `json:"why,omitempty"`
@@ -375,6 +376,8 @@ func openStage(p github.BranchPR, live github.PR, runs []github.CIRun, c *BoardC
 			ci = "running"
 		case "fail":
 			ci = "fail"
+		case "no_runner":
+			ci = "no_runner" // not red: GitHub never ran a job; a re-run is the fix
 		case "pass":
 			ci = "pass"
 		case "none":
@@ -448,7 +451,7 @@ func checksByOS(items []github.Check) []BoardOS {
 	var out []BoardOS
 	for _, o := range checkOS {
 		b := BoardOS{OS: o.os}
-		fail, running := false, false
+		fail, running, blocked := false, false, false
 		for _, k := range items {
 			if k.State == "skipped" || osOfCheck(k.Name) != o.os {
 				continue
@@ -456,7 +459,11 @@ func checksByOS(items []github.Check) []BoardOS {
 			b.Checks++
 			switch k.State {
 			case "fail":
-				fail = true
+				if k.NoRunner {
+					blocked = true
+				} else {
+					fail = true
+				}
 			case "pending":
 				running = true
 				if k.StartedAt > 0 && (b.Since == 0 || k.StartedAt < b.Since) {
@@ -472,6 +479,8 @@ func checksByOS(items []github.Check) []BoardOS {
 			b.State, b.Since = "fail", 0
 		case running:
 			b.State = "running"
+		case blocked:
+			b.State, b.Since = "no_runner", 0
 		default:
 			b.State, b.Since = "pass", 0
 		}
@@ -494,7 +503,7 @@ func failedChecks(sha string, live github.PR, runs []github.CIRun) []string {
 	}
 	if live.Number != 0 {
 		for _, k := range live.Checks.Items {
-			if k.State == "fail" {
+			if k.State == "fail" && !k.NoRunner {
 				add(k.Name)
 			}
 		}

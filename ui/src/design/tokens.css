@@ -32,6 +32,10 @@
   --color-danger: #ff8080;  /* loop / error / over budget */
   --color-info: #feb157;    /* links — the brand amber, not a stray blue */
   --color-merged: #a371f7;  /* a merged pull request, as GitHub draws it */
+  /* a CI job GitHub never gave a machine: amber, muted toward the text so it
+   * reads as "not tested" beside red "failed" and bright amber "running";
+   * worked from each theme's own warn and muted ink */
+  --color-norunner: color-mix(in srgb, var(--color-warn) 68%, var(--color-fg-muted));
 
   /* brand accent — warm amber, one hue for every interactive element */
   --color-accent: #feb157;
@@ -1092,6 +1096,7 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 .pipe-node[data-tone="pass"] { background: var(--color-ok); }
 .pipe-node[data-tone="fail"] { background: var(--color-danger); }
 .pipe-node[data-tone="queued"] { border: 1.5px solid var(--color-fg-faint); }
+.pipe-node[data-tone="norunner"] { border: 1.5px dashed var(--color-norunner); }
 .pipe-node[data-tone="skipped"] { border: 1.5px solid var(--color-fg-faint); background: linear-gradient(135deg, transparent 43%, var(--color-fg-faint) 43%, var(--color-fg-faint) 57%, transparent 57%); }
 /* A pull request's state: open green, merged violet, closed
    grey, a draft a hollow ring. */

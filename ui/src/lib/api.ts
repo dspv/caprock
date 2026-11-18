@@ -640,6 +640,9 @@ export interface CIJob {
   runner_name?: string
   html_url?: string
   steps: CIStep[]
+  /** GitHub never gave it a machine: it ended failed or cancelled with no
+   *  step run and no runner. Its code was not tested; a re-run runs it. */
+  no_runner?: boolean
   /** The median duration of the job of this name in the workflow's last
    *  successful runs (up to 5); absent with fewer than 2 of them. */
   baseline?: CIBaseline
@@ -677,7 +680,8 @@ export interface CIState {
   head_sha: string
   /** Set on a branch's CI (the Main view). */
   branch?: string
-  state: 'running' | 'fail' | 'pass' | 'none'
+  /** no_runner: no run failed but for jobs GitHub never gave a machine. */
+  state: 'running' | 'fail' | 'no_runner' | 'pass' | 'none'
   runs: CIRun[]
   runner_ms: number
   by_os: { os: string; ms: number }[]
