@@ -73,6 +73,17 @@ type statusCache struct {
 	// that refresh has published its single-row figures.
 	running bool
 	first   chan struct{}
+	// now is the clock the TTLs are measured on; nil means time.Now. Tests
+	// set it, since two reads of the wall clock a few milliseconds apart
+	// can be equal on Windows.
+	now func() time.Time
+}
+
+func (c *statusCache) clock() time.Time {
+	if c.now != nil {
+		return c.now()
+	}
+	return time.Now()
 }
 
 // forget drops the snapshot, so the next read waits for a fresh one (up to
@@ -90,7 +101,7 @@ func (c *statusCache) forget() {
 func (d *Daemon) dbStatus() dbStatus {
 	c := &d.statusDB
 	c.mu.Lock()
-	if !c.running && (!c.ok || time.Since(c.v.at) >= statusDBTTL) {
+	if !c.running && (!c.ok || c.clock().Sub(c.v.at) >= statusDBTTL) {
 		c.running = true
 		c.first = make(chan struct{})
 		go d.refreshDBStatus(c.v, c.first)
@@ -144,13 +155,13 @@ func (d *Daemon) refreshDBStatus(prev dbStatus, first chan struct{}) {
 				v.move = &MoveStatus{Moved: moved, Total: total}
 			}
 		}
-		if !v.eventsOK || time.Since(v.eventsAt) >= eventCountTTL {
+		if !v.eventsOK || c.clock().Sub(v.eventsAt) >= eventCountTTL {
 			if n, err := store.CountEvents(ctx, d.store.DB()); err == nil {
-				v.events, v.eventsAt, v.eventsOK = n, time.Now(), true
+				v.events, v.eventsAt, v.eventsOK = n, c.clock(), true
 			}
 		}
 	}
-	v.at = time.Now()
+	v.at = c.clock()
 	publish := func() {
 		c.mu.Lock()
 		// A forget while this ran: keep what was read, it is fresher than
@@ -161,11 +172,11 @@ func (d *Daemon) refreshDBStatus(prev dbStatus, first chan struct{}) {
 	publish()
 	close(first)
 	firstDone = true
-	if !v.memAt.IsZero() && time.Since(v.memAt) < statusSlowTTL {
+	if !v.memAt.IsZero() && c.clock().Sub(v.memAt) < statusSlowTTL {
 		return
 	}
 	if ms, err := d.memoryStatus(ctx); err == nil {
-		v.mem, v.memAt = ms, time.Now()
+		v.mem, v.memAt = ms, c.clock()
 		publish()
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,12 +31,31 @@ func settled(t *testing.T, d *Daemon) dbStatus {
 	}
 }
 
-// age makes the snapshot older than every TTL.
-func age(d *Daemon) {
-	d.statusDB.mu.Lock()
-	old := time.Now().Add(-statusSlowTTL - time.Second)
-	d.statusDB.v.at, d.statusDB.v.eventsAt, d.statusDB.v.memAt = old, old, old
-	d.statusDB.mu.Unlock()
+// fakeClock is the status cache's clock, moved by hand: the wall clock
+// can read the same twice a few milliseconds apart on Windows, so a test
+// that compares two refreshes' times must not depend on it.
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (f *fakeClock) now() time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.t
+}
+
+func (f *fakeClock) advance(by time.Duration) {
+	f.mu.Lock()
+	f.t = f.t.Add(by)
+	f.mu.Unlock()
+}
+
+// withClock gives d's status cache a fake clock and returns it.
+func withClock(d *Daemon) *fakeClock {
+	c := &fakeClock{t: time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)}
+	d.statusDB.now = c.now
+	return c
 }
 
 // holdPool takes every connection the store's pool will give, so any query
@@ -64,6 +84,7 @@ func holdPool(t *testing.T, st *store.Store) (release func()) {
 // eventCountTTL, and the single-row figures for statusDBTTL.
 func TestStatusFiguresAreReusedForTheirTTL(t *testing.T) {
 	d := &Daemon{log: quietLog(), store: memStore(t)}
+	clk := withClock(d)
 	d.dbStatus()
 	first := settled(t, d)
 	if !first.eventsOK || first.memAt.IsZero() {
@@ -74,15 +95,13 @@ func TestStatusFiguresAreReusedForTheirTTL(t *testing.T) {
 		t.Fatalf("read again within the TTL: %+v, want the reused %+v", got, first)
 	}
 	// Past the short TTL only: the single-row figures again, not the rest.
-	d.statusDB.mu.Lock()
-	d.statusDB.v.at = time.Now().Add(-statusDBTTL - time.Second)
-	d.statusDB.mu.Unlock()
+	clk.advance(statusDBTTL)
 	d.dbStatus()
 	got := settled(t, d)
 	if !got.at.After(first.at) || !got.memAt.Equal(first.memAt) || !got.eventsAt.Equal(first.eventsAt) {
 		t.Fatalf("after %v: %+v; want only the single-row figures read again", statusDBTTL, got)
 	}
-	age(d)
+	clk.advance(statusSlowTTL)
 	d.dbStatus()
 	if got := settled(t, d); !got.memAt.After(first.memAt) || !got.eventsAt.After(first.eventsAt) {
 		t.Fatalf("not read again after every TTL: %+v", got)
@@ -97,13 +116,14 @@ func TestStatusAnswersWhileTheDatabaseIsBusy(t *testing.T) {
 	ctx := context.Background()
 	st := memStore(t)
 	d := &Daemon{log: quietLog(), store: st, opt: Options{Config: config.Defaults()}}
+	clk := withClock(d)
 	d.dbStatus()
 	before := settled(t, d)
 	if _, err := store.InsertEvent(ctx, st.DB(), &event.Event{SessionID: "s", Source: event.SourceHook,
 		Kind: event.KindToolPre, Tool: "Read", Key: "k", Ts: time.Now(), Payload: json.RawMessage(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
-	age(d)
+	clk.advance(statusSlowTTL)
 	release := holdPool(t, st)
 	start := time.Now()
 	got := d.dbStatus()
