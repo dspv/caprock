@@ -1523,6 +1523,22 @@ Anything added to the summary aggregates should either use these columns or exte
 
 Plan-limit windows relayed by `caprock statusline` are **validated before storage**: a percentage outside 0–100, or a reset more than eight days ahead, is dropped rather than recorded. A reset already in the past is kept — that is a legitimately stale sample, and the dashboard labels it as such instead of formatting it as a clock.
 
+**`GET /v1/status` never waits on the database** (2026-11-18). Everything it
+reports from SQLite — `memory`, `events`, `interrupted`, `events_move`,
+`upgrade_copy_skipped` — comes from a snapshot the daemon renews in the
+background (`internal/daemon/statusdb.go`); a request copies it, and one that
+finds it stale starts a single refresh and answers with what it has. How old a
+figure may be: `interrupted`, `events_move` and `upgrade_copy_skipped` 5 s,
+`events` 30 s, `memory` a minute (`memory.holdout_pct` is the setting, read per
+request). Only the first status after a start waits for the first refresh, and
+at most 250 ms; past that it answers with `events` 0 and `memory` empty, and the
+next answer has them. A figure whose read fails keeps its last value. Why: the
+desktop app gives `/healthz` and `/v1/status` 0.8 s, and the handoff figures,
+worked out inside the request once a minute, took 0.8 s or more in 447 of
+1,091 slow-query lines on the owner's 2 GB database (2026-10-13 to
+2026-11-18), so the app logged the daemon as failing several times a day
+([14-build-status.md](14-build-status.md), 2026-11-18).
+
 `GET /v1/status` carries `shell_env`: `source` is `login-shell` (with `shell` and `resolved_at_ms`), `resolving` before the first resolution ends, `daemon` when it failed and none was ever had (with `error`), or `inherited` on Windows; `error` also appears beside `login-shell` when the latest refresh failed and the older copy is still served. It is what a user reads when a session Caprock started cannot find `gcloud` and a terminal can (FB-033); `caprock status` prints it as the `env:` line.
 
 `GET /v1/status` carries `interrupted` — `{stopped_at, ids}` — the sessions
