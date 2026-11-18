@@ -51,6 +51,8 @@ var plainPayloadReads = map[string]string{
 	"internal/store/queries.go:FirstPrompts":                         "turn.user",
 	"internal/store/queries.go:sessionQueryFilter":                   "turn.user",
 	"internal/store/queries.go:assistantTextWhere":                   "turn.assistant",
+	"internal/store/queries.go:proseText":                            "turn.assistant, as idx_events_prose indexes it",
+	"internal/store/queries.go:promptPrefilter":                      "turn.user",
 	"internal/store/queries.go:MainThreadWhere":                      "prose; tool rows use mainThreadToolWhere",
 	"internal/store/queries.go:SessionNotes":                         "turn.assistant",
 	"internal/store/queries.go:SearchNotes":                          "turn.assistant and turn.user",

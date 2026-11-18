@@ -1403,7 +1403,7 @@ The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeli
 
 **Session todos.** `GET /v1/sessions/{id}/todos` → `{items: TodoItem[], updated_at}`: the task list the session's agent keeps for itself, rebuilt per request from its own `tool.pre` calls, nothing stored. Each `TodoItem` is `{id, text, status, active_form?}`, `status` one of `pending`, `in_progress`, `completed`, `cancelled` (OpenCode's `planned` and anything unknown read as `pending`); `updated_at` is the unix ms of the call that last changed the list, `0` with `items: []` when the session never kept one or the id is unknown — never `404`, never `null`. Four tools feed it. `TodoWrite` (Claude Code's older tool, and OpenCode's `todowrite`, stored under the same name) carries the whole list as `todos: [{content, status, activeForm}]`, so the newest call is the list; `update_plan` (Codex) the same as `plan: [{step, status}]`. `TaskCreate` (`{subject, description, activeForm}`) adds one task and `TaskUpdate` (`{taskId, status?, subject?, activeForm?, description?}`, `status: "deleted"` removes it) changes one; the ids are the ones Claude Code gives back (*Task #3 created successfully*), which number the creates 1, 2, 3 within the session, so the fold numbers them the same way rather than joining each `tool.post` — on a copy of the owner's database (2026-10-11) every session's highest `TaskUpdate` id equalled its count of `TaskCreate`. An update to an id the session never created changes nothing. Whichever of the two families changed last is the list. Only the main thread counts (a subagent's `TodoWrite` is its own list), and a call stored on both planes is folded once by `tool_use_id`. `TaskList` and `TaskGet` only read the list and are not read. The query pins `idx_events_todo` (migration 0066, § Task-list DDL), a partial index of the four tools' calls, so only they are read; through `idx_events_attr_work` it walked the session's whole index range, and SQLite's own choice, `idx_events_kind_id`, walks every `tool.pre` in the database. The cockpit's *Tasks* block reads it ([04-ui.md](04-ui.md)); a paired viewer may read it, as it may read the events it is made from.
 
-**Session calls.** `GET /v1/sessions/{id}/calls` → `SessionCall[]`, oldest first: the main thread's priced model calls — `turn.assistant` with a `cost_usd`, no `agent_id`, not a sidechain, not internal; the newest `limit` of them (default and ceiling 20,000). Each: `id` (the event's), `ts` (unix ms), `model`, `model_display` (the pricing table's short name; omitted when it does not know the model), `cost_usd`, `tokens` (`TokenDelta`; omitted when the call reported none), `tools` (the first six `tool.pre` of the main thread with the same `msg_id` — exact, a tool_use block and the usage billed for it share the message id — each `{tool, detail}` with the short line the subagent list uses; omitted when none is linked, which is also what an agent that records no message id gets) and `tool_count` (all of them). No prose and no tool results, so a session of thousands of calls is one small response. The cockpit's spend scrubber reads it each time it opens; a paired viewer may read it, as it may read the events it is made from.
+**Session calls.** `GET /v1/sessions/{id}/calls` → `SessionCall[]`, oldest first: the main thread's priced model calls — `turn.assistant` with a `cost_usd`, no `agent_id`, not a sidechain, not internal; the newest `limit` of them (default and ceiling 20,000). Each: `id` (the event's), `ts` (unix ms), `model`, `model_display` (the pricing table's short name; omitted when it does not know the model), `cost_usd`, `tokens` (`TokenDelta`; omitted when the call reported none), `tools` (the first six `tool.pre` of the main thread with the same `msg_id` — exact, a tool_use block and the usage billed for it share the message id — each `{tool, detail}` with the short line the subagent list uses; omitted when none is linked, which is also what an agent that records no message id gets) and `tool_count` (all of them). No prose and no tool results, so a session of thousands of calls is one small response. Both reads walk the session's rows on `idx_events_attr_work`, which holds the kind, cost and message id they test, so a row is read from the table only when it is a candidate; on the session's own `(sid, ts)` index every event was, 203,608 of them for the owner's longest session to return its 10,222 calls. The cockpit's spend scrubber reads it each time it opens; a paired viewer may read it, as it may read the events it is made from.
 
 **An unmatched `/v1/` path is `404` with a JSON body**, not the dashboard. The UI is served from `/` so client-side routes resolve, which previously meant any unknown API path fell through to `index.html` — a caller that mistyped an endpoint, or used one removed in an upgrade, got `200` and a document, then failed later parsing HTML as JSON. Page routes (`/`, `/cost`, `/session/{id}`) still serve the SPA.
 
@@ -1464,7 +1464,7 @@ change is a `permission` frame. The prompts are stored, and a session
 reattached after a daemon restart is waiting on them again under the same ids
 (migrations 0039, 0042, 0043).
 
-`/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). A search that matches nothing scans every note either way; the prompt lookups walk `(sid, ts)` indexes and cost about the same. The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
+`/v1/sessions/{id}/notes` and `/v1/notes` return `AssistantNote[]` — `{event_id, session_id, project, ts, model, text, fragment}` — the prose Claude wrote, as opposed to the tool calls it made. Three rules are baked into the query rather than left to callers. **Subagent sidechains are excluded** (`agent_id = ''` and `payload.sidechain IS NOT 1`): about 45% of assistant turns are subagent chatter, so an unfiltered "what did Claude say" answers with a subagent's words roughly half the time. **`fragment` marks a note shorter than 240 runes** — mid-thought asides like "Let me check that" — so a caller can avoid presenting one as a session's conclusion; ~60% of all notes are legitimately short, so the flag qualifies a *final* note and must never be used to hide prose. **Search matches Claude's prose OR the prompt that produced it** — people remember their own question ("the SSO thing") far better than Claude's phrasing of the answer, so searching only the reply misses how memory works. Only the nearest preceding `turn.user` within a short event window counts, or every reply in an exchange would match rather than the passage that answers it; the row returned is always Claude's reply. "Preceding" is in time within the reply's own session — `(ts, id)` order, the prompt inside the reply's last 60 events there — not in event id: an id is when Caprock stored a row, and a prompt imported after its replies (OpenCode's history, a transcript read after its hooks) sits after them by id. Measured on a copy of the owner's database (2026-10-01): under the id window none of 3,048 OpenCode replies had a question, and 24 Claude Code replies matched a prompt older than the one they answered; in time order 2,878 OpenCode replies have one and Claude Code replies with a prompt in the window went from 17,679 to 17,773 of 31,521 (363 fell out of the window's edge, 457 came in). The search reads `idx_events_prose` (§ Prose search DDL), never a payload it does not return, in two steps: the replies whose own text matches, newest first up to the page; then the replies found by their prompt — over the span newer than that page's oldest reply when the text filled a page (a reply found by its prompt can only displace text matches newer than that), else over all of history but only in the sessions where some prompt matches at all, a set read once from the prompts. The page is the newest `limit` of both together, so paging by `before` is unchanged. That set is read from each prompt row's stored JSON when the search is printable ASCII without `"`, `\`, `/`, `<`, `>` or `&` — characters JSON writers may escape — and from the prompt read out of it otherwise; the stored form holds such a search verbatim, so it finds every prompt the read-out text would, at 80 ms against 300 ms over the owner's 23,610 prompts (2026-11-18). The prompt's text is `payload.prompt` (Claude Code, Gemini, OpenCode) or `payload.text` (DeepSeek Harness), read through one `COALESCE`; reading only `prompt` left every DeepSeek question unsearchable. **Wildcards are escaped**, so a query containing `%` or `_` matches literally; the corpus is one developer's own sessions, so a scan is cheap and avoids an FTS table that would need rebuilding for historical rows.
 
 `payload.text` on `turn.assistant` is capped at **16000 runes** (`ingest.MaxAssistantText`), clipped on a rune boundary. Parser schema v1 capped at 2000 **bytes** and sliced at an arbitrary offset, which cut multi-byte prose at roughly half the intended length and left `U+FFFD` at the end of about a fifth of clipped rows — disproportionately on closing summaries. `ingest.SchemaVersion` was raised to **2** for this (it is now **3**: v3 reads `ai-title` into `sessions.title`, see § Session title DDL), and a daemon started against a v1 database re-derives the affected rows once from the transcripts still on disk (`ingest.RepairAssistantText`), rewriting only `payload.text` and leaving every other key, event id, and cost untouched. Rows whose transcript is gone keep what they have.
 
@@ -8615,6 +8615,50 @@ written to `session_prs`. `meta.session_branches_backfilled` gates a one-off
 pass over the `tool.post` rows already stored (`store.PushToolPosts`), run in
 the background after the port opens. Removing a session removes its rows.
 
+### Prose search DDL (migration 0085)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_prose
+  ON events(id, sid, ts,
+            (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.sidechain') END),
+            (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.text') END))
+  WHERE kind = 'turn.assistant' AND internal = 0 AND COALESCE(agent_id, '') = '';
+```
+
+What `GET /v1/notes` (the Search screen) tests, so its scan never opens a
+payload it does not return. It read every main-thread assistant turn newest
+first until a page of matches filled, each one's payload opened for its text
+and its sidechain flag; a phrase with fewer matches than a page walked all of
+them. The index holds the turn's session, time, sidechain flag and text, in
+id order, and `store.SearchNotes` names the same two expressions character
+for character (`store.proseText`, `store.proseSidechain`), so SQLite reads
+them from the index. `json_valid` guards each extraction, as in
+`idx_events_agent_task` (§ Subagent reads DDL): `json_extract` raises an error
+on malformed JSON, which in an index expression would fail the `INSERT`, and
+an event must never be lost to an index; a malformed turn is NULL there and
+skipped by the search.
+
+Measured on a copy of the owner's database (2026-11-18: 2.06 GB, 1,092,541
+events, 306,635 assistant turns of which 77,215 are main-thread prose; tool
+payloads compressed, as he has them; the machine's load average 20–30 from
+other work, so single figures move by about a third). Warm median and
+slowest of five, after one cold request:
+
+| `GET /v1/notes?…`        | Before (median / max) | After (median / max) |
+| ------------------------ | --------------------- | -------------------- |
+| `q=covering index`       | 3,135 / 4,329 ms      | 311 / 333 ms         |
+| `q=` a phrase in nothing | 2,044 / 2,100 ms      | 176 / 217 ms         |
+| `q=résumé`               | 2,147 / 3,004 ms      | 351 / 373 ms         |
+| `q=index` (common)       | 38 / 39 ms            | 44 / 45 ms           |
+| `q=release` (common)     | 15 / 15 ms            | 22 / 22 ms           |
+| no query                 | 1.5 / 7 ms            | 1.0 / 1 ms           |
+
+The first request for the rare phrase went from 4.9 s to 0.9 s; in an
+earlier run on a copy whose tool payloads the daemon was decompressing, from
+10–11 s to 0.2–0.3 s. A common word costs a few milliseconds more, the price
+of a second statement. The index is 72.5 MB (3.5% of that file); building it
+took 6.4 s and 10.6 s on two runs of the migration.
+
 ### GitHub pull requests DDL (migration 0071)
 
 ```sql
@@ -8967,7 +9011,11 @@ Claude Code's `claude-sonnet-4-5-20250929` are both `claude-sonnet-4-5`; the
 dropped. Cursor's rows are its `context.overhead` events in sessions active in
 the range. Claude Code's are each main-thread session's first priced
 `turn.assistant`: `tokens_in + cache_read + cache_write` (exact, from the API)
-minus the session's first prompt's bytes / 4; every one is clean. `rates` are
+minus the session's first prompt's bytes / 4; every one is clean. Each
+session's first priced turn is found by walking its events in id order and
+stopping at it, never as `MIN(id)` over every assistant turn of the range, and
+Cursor's rows by their kind (`idx_events_kind_id`), never by every event of
+every chat. `rates` are
 the table's list rates for each Cursor family it has a row for (Cursor's own
 models under `cursor-<family>`), so the screen can value the overhead.
 `method` is the sentence the screen shows.
@@ -8975,7 +9023,9 @@ models under `cursor-<family>`), so the screen can value the overhead.
 **`GET /v1/sessions/{id}/overhead`** → `{model, request_tokens, typed_tokens,
 visible_tokens, overhead_tokens, model_calls, clean, family?, cursor_family?,
 claude_family?, method}` for a Cursor chat with an estimate, `null`
-otherwise; the two family rows are the last 90 days'.
+otherwise; the two family rows are the last 90 days'. The chat's row is found
+by its kind, then its session, so a long Claude Code session — which has none
+— is not read event by event to learn that.
 
 **`GET /v1/cursor/hooks`** and **`POST /v1/cursor/hooks`** (`{"action":
 "install"|"uninstall"}`) → `{path, installed, missing?, others, exists}` for

@@ -77,6 +77,49 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-18 — unreleased: faster on a large database
+
+Branch `perf/large-db`. Every GET the main screens call on load and on poll
+(61 requests: Now, Cost, Week, the sessions list, a session's page, search,
+Pipeline, Work, Brain) was timed on a copy of the owner's database (2.06 GB,
+1,092,541 events, 9,963 sessions) by an isolated daemon, cold and five times
+warm. Most answer in milliseconds, or from the answer caches after one cold
+read. The slowest were the prose search, the Cursor overhead report, a
+session's overhead estimate, the session search and the cockpit's calls; the
+relay brief (`/v1/sessions/{id}/relay`, 1.0–1.5 s, its `relay.PullRequests`
+decompressing every Bash result of the session) is opened by a click, not on
+load, and is left for later. Fixed: the prose search reads a new index,
+`idx_events_prose` (migration 0085, § Prose search DDL), and looks up a
+reply's prompt only where it can match; `ContextOverhead` finds each
+session's first priced turn by a seek instead of `MIN(id)` over every
+assistant turn, and Cursor's estimates by their kind; `SessionOverheadFor`
+finds a chat's estimate by its kind; `SessionCalls` walks
+`idx_events_attr_work`; the session search no longer tries an ASCII search
+again capitalised, which LIKE already folds. Warm median / slowest of five
+(load average 20–30 from other work on the machine; single figures move by
+about a third):
+
+| Endpoint                           | Before           | After        |
+| ---------------------------------- | ---------------- | ------------ |
+| `/v1/notes?q=covering index`       | 3,135 / 4,329 ms | 311 / 333 ms |
+| `/v1/notes?q=` a phrase in nothing | 2,044 / 2,100 ms | 176 / 217 ms |
+| `/v1/notes?q=résumé`               | 2,147 / 3,004 ms | 351 / 373 ms |
+| `/v1/cursor/overhead?range=30d`    | 454 / 467 ms     | 202 / 214 ms |
+| `/v1/sessions/{id}/overhead`       | 70 / 73 ms       | 0.4 / 0.4 ms |
+| `/v1/sessions?q=release`           | 360 / 522 ms     | 197 / 207 ms |
+| `/v1/sessions?q=covering index`    | 464 / 538 ms     | 260 / 261 ms |
+| `/v1/sessions/{id}/calls` (10,222) | 424 / 428 ms     | 354 / 428 ms |
+| `/v1/notes?q=index`                | 38 / 39 ms       | 44 / 45 ms   |
+
+The session overhead estimate was a long session's 82 ms cold, 1 ms after.
+Not changed: the aggregates behind Now, Cost and Week (`/v1/week`,
+`/v1/glance`, `/v1/history`, `/v1/tools/drill`, `/v1/repos/activity`) cost
+1–4 s on their first read after a start and under a millisecond after, from
+their stale-while-revalidate caches; `/healthz` and `/v1/status` are another
+branch's (`fix/daemon-stalls`). `store.ProseSince`, read by `/v1/status`,
+still walks every assistant turn; named in `idx_events_prose`'s terms it
+could be read from the index (not measured).
+
 ### 2026-11-16 — unreleased: Cursor (ADR-095)
 
 Branch `feat/cursor-agent`. Cursor's editor chats are read from its

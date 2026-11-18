@@ -42,8 +42,12 @@ type CallTool struct {
 // SessionCalls returns the newest n priced main-thread model calls of a
 // session, oldest first, each with the tool calls it requested. Internal
 // model calls and unpriced turns are left out, as the cockpit's spark leaves
-// them out; a subagent's calls are its own. Both queries pin the session's
-// index (`+kind`), as the subagent queries do.
+// them out; a subagent's calls are its own. Both queries walk the session's
+// rows on idx_events_attr_work, which holds the kind, cost and message id they
+// test, so a row is read from the table only when it is a candidate: on the
+// session's own (sid, ts) index every event of the session was, 203,608 of
+// them for the owner's longest session to return its 10,222 calls (a copy
+// of his database, 2026-11-18; timings in 03-contracts.md § Session calls).
 func SessionCalls(ctx context.Context, q Querier, sessionID string, n int) ([]SessionCall, error) {
 	if n <= 0 || n > MaxSessionCalls {
 		n = MaxSessionCalls
@@ -51,8 +55,8 @@ func SessionCalls(ctx context.Context, q Querier, sessionID string, n int) ([]Se
 	rows, err := q.QueryContext(ctx, `
 		SELECT * FROM (
 		  SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '')
-		    FROM events e
-		   WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND `+MainThreadWhere+`
+		    FROM events e INDEXED BY idx_events_attr_work
+		   WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND `+MainThreadWhere+`
 		   ORDER BY e.ts DESC, e.id DESC LIMIT ?)
 		 ORDER BY 2 ASC, 1 ASC`, sessionID, n)
 	if err != nil {
@@ -90,8 +94,8 @@ func SessionCalls(ctx context.Context, q Querier, sessionID string, n int) ([]Se
 	}
 	tools, err := q.QueryContext(ctx, `
 		SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract(`+ZPayloadE+`, '$.tool_input'), '')
-		  FROM events e
-		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND `+mainThreadToolWhere+`
+		  FROM events e INDEXED BY idx_events_attr_work
+		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND `+mainThreadToolWhere+`
 		 ORDER BY e.ts ASC, e.id ASC`, sessionID)
 	if err != nil {
 		return nil, err
