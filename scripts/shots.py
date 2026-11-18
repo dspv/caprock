@@ -90,7 +90,170 @@ STAND_INS = [
 ]
 
 
-def scrub():
+# The columns of `events` the scrub rewrites. Every rewrite below used to be
+# one UPDATE ... WHERE col LIKE '%needle%', and on events each is a full scan
+# of the biggest table: on a 2 GB copy (1.09M events, 155 roots, 136 names)
+# that was thousands of scans and the scrub had not finished after two hours.
+# So for these two columns the rewrites are recorded in order instead, and
+# applied in ONE pass over the table (_Rewrites.flush). Every other table is
+# small and keeps its SQL.
+DEFERRED = (("events", "touch_dir"), ("events", "payload"))
+
+
+def _sql(t, col, op):
+    """The statement one rewrite is, exactly as it has always run."""
+    kind, a, b = op
+    if kind == "r":     # substring, everywhere in the value
+        return (f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
+                (a, b, f"%{a}%"))
+    if kind == "e":     # the whole value
+        return f"UPDATE {t} SET {col}=? WHERE {col}=?", (b, a)
+    # A numbered leaf: `<a>-<digit>...` becomes `<b>-<digit>...`.
+    glob = "".join(f"[{ch}]" if ch in "*?[" else ch for ch in a)
+    return (f"UPDATE {t} SET {col}=? || substr({col}, ?) WHERE {col} GLOB ?",
+            (b, len(a) + 1, glob + "-[0-9]*"))
+
+
+def _apply(groups, v):
+    """The value the recorded rewrites leave, in Python, for a TEXT value.
+
+    The same result as running each statement of _sql in turn: REPLACE is
+    case-sensitive and replaces every occurrence left to right, `=` is exact,
+    and the GLOB is a literal prefix, a dash and a digit. The LIKE in front of
+    each REPLACE only decides which rows a statement visits — it is
+    case-insensitive, so it visits a superset, and REPLACE changes nothing in
+    a row that does not hold the needle. A group carries a key every needle
+    in it contains, so when the key is absent no rewrite in the group can
+    fire and the group is skipped with one search instead of five.
+    """
+    for key, ops in groups:
+        if key is not None and key not in v:
+            continue
+        for kind, a, b in ops:
+            if kind == "r":
+                if a in v:
+                    v = v.replace(a, b)
+            elif kind == "e":
+                if v == a:
+                    v = b
+            else:
+                n = len(a)
+                if len(v) > n + 1 and v.startswith(a) and v[n] == "-" and "0" <= v[n + 1] <= "9":
+                    v = b + v[n:]
+    return v
+
+
+class _Rewrites:
+    """Runs a rewrite now, or records it for one pass over `events` later.
+
+    defer=False runs every statement as it is asked for — the scrub as it was
+    before the single pass, kept as the reference the equivalence test
+    (scripts/test_shots_scrub.py) holds the single pass to.
+    """
+
+    def __init__(self, c, defer=True):
+        self.c, self.defer = c, defer
+        self.groups = {tc: [] for tc in DEFERRED}
+
+    def run(self, t, col, op, key=None):
+        if not (self.defer and (t, col) in self.groups):
+            self.c.execute(*_sql(t, col, op))
+            return
+        # The key is only a shortcut if every needle holds it; a wrong one
+        # would silently skip a rewrite, so it is checked, not trusted.
+        assert key is None or key in op[1], (key, op)
+        groups = self.groups[(t, col)]
+        if groups and key is not None and groups[-1][0] == key:
+            groups[-1][1].append(op)
+        else:
+            groups.append((key, [op]))
+
+    def replace(self, t, col, a, b, key=None):
+        self.run(t, col, ("r", a, b), key)
+
+    def equal(self, t, col, a, b, key=None):
+        self.run(t, col, ("e", a, b), key)
+
+    def numbered(self, t, col, a, b, key=None):
+        self.run(t, col, ("g", a, b), key)
+
+    def flush(self):
+        """Apply everything recorded, one read of `events`, writing only rows
+        that change. Rows Python cannot prove it handles exactly as SQLite
+        would go through the recorded statements themselves, one row each."""
+        if not self.defer or not any(self.groups.values()):
+            return
+        c = self.c
+        cols = [col for _, col in DEFERRED]
+        # A compressed payload is a BLOB (ADR-093): 0xEA, a four-byte length,
+        # a zstd frame. LIKE and GLOB read a BLOB as a C string, up to its
+        # first NUL — which the length puts at byte 2 of every frame under
+        # 16 MB — and `=` never matches a BLOB against TEXT. So a BLOB whose
+        # text before the first NUL is shorter than every needle is one no
+        # statement ever visited; any other goes through SQL.
+        least = {}
+        for col in cols:
+            sizes = [len(a.replace("%", "")) if k == "r" else len(a) + 2
+                     for _, ops in self.groups[("events", col)] for k, a, _ in ops if k != "e"]
+            least[col] = min(sizes) if sizes else 1 << 62
+        sel = ", ".join(
+            f"typeof({col}), CASE WHEN typeof({col})='text' THEN CAST({col} AS BLOB) END, "
+            f"CASE WHEN typeof({col})='blob' THEN coalesce(nullif(instr({col}, x'00'), 0) - 1, length({col})) END"
+            for col in cols)
+        slow, last, changed = [], 0, 0
+        while True:
+            rows = c.execute(f"SELECT id, {sel} FROM events WHERE id > ? ORDER BY id LIMIT 20000",
+                             (last,)).fetchall()
+            if not rows:
+                break
+            last = rows[-1][0]
+            updates = {col: [] for col in cols}
+            for row in rows:
+                rid, go_slow, new = row[0], False, {}
+                for i, col in enumerate(cols):
+                    kind, raw, cstr = row[1 + 3 * i: 4 + 3 * i]
+                    groups = self.groups[("events", col)]
+                    if kind == "null" or not groups:
+                        continue
+                    if kind == "blob":
+                        if cstr >= least[col]:
+                            go_slow = True
+                        continue
+                    if kind != "text":
+                        go_slow = True
+                        continue
+                    try:
+                        v = raw.decode("utf-8")
+                    except UnicodeDecodeError:
+                        go_slow = True
+                        continue
+                    # GLOB and LIKE stop at a NUL; REPLACE does not.
+                    if "\x00" in v:
+                        go_slow = True
+                        continue
+                    out = _apply(groups, v)
+                    if out != v:
+                        new[col] = out
+                if go_slow:
+                    slow.append(rid)
+                    continue
+                for col, out in new.items():
+                    updates[col].append((out, rid))
+            for col in cols:
+                if updates[col]:
+                    c.executemany(f"UPDATE events SET {col}=? WHERE id=?", updates[col])
+                    changed += len(updates[col])
+        for rid in slow:
+            for t, col in DEFERRED:
+                for _, ops in self.groups[(t, col)]:
+                    for op in ops:
+                        q, args = _sql(t, col, op)
+                        c.execute(q + " AND id=?", (*args, rid))
+        print(f"  rewrote {changed} event column(s) in one pass; {len(slow)} row(s) by statement")
+        self.groups = {tc: [] for tc in DEFERRED}
+
+
+def scrub(defer=True):
     """Hide the capturing session and any real path it reintroduced.
 
     Deleting it outright leaves Live activity empty, which reads as a broken
@@ -99,7 +262,11 @@ def scrub():
     """
     try:
         db = sqlite3.connect(DB, timeout=5)
+        # A throwaway copy: nothing to lose to a crash mid-write.
+        db.execute("PRAGMA synchronous=OFF")
+        db.execute("PRAGMA cache_size=-262144")
         c = db.cursor()
+        w = _Rewrites(c, defer)
         c.execute("UPDATE sessions SET cwd='/Users/dev/dev/acme-api', "
                   "project='acme-api', repo_root='/Users/dev/dev/acme-api', "
                   "repo_path='/Users/dev/dev/acme-api' WHERE session_id=?",
@@ -112,8 +279,7 @@ def scrub():
                                   "/Users/dev/dev/acme-api"),
                                  ("/Users/ds/", "/Users/dev/"),
                                  ("-Users-ds-", "-Users-dev-")):
-                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
-                          (old_s, new_s, f"%{old_s}%"))
+                w.replace(t, col, old_s, new_s)
         # A session can run in a checkout that lives OUTSIDE its repository —
         # a worktree manager that keeps its workspaces in a directory of its
         # own (`~/orca/workspaces/<repo>/<name>`). Flattening below rewrites
@@ -177,8 +343,7 @@ def scrub():
                            ("sessions", "repo_path"), ("sessions", "transcript_path"),
                            ("events", "touch_dir"), ("events", "payload"),
                            ("session_files", "path")):
-                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
-                          (root, flat, f"%{root}%"))
+                w.replace(t, col, root, flat)
 
         # A session can sit in a hidden directory UNDER its repository — the
         # orchestrator puts each agent in `<repo>/.caprock-worktrees/<name>` —
@@ -241,25 +406,23 @@ def scrub():
             c.execute("UPDATE daily_sessions SET project=? WHERE project=?", (token, real))
             for t, col in path_cols:
                 for a, b in ((root + real + "/", root + token + "/"), (root + real + '"', root + token + '"')):
-                    c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
-                              (a, b, f"%{a}%"))
-                c.execute(f"UPDATE {t} SET {col}=? WHERE {col}=?", (root + token, root + real))
+                    w.replace(t, col, a, b, key=real)
+                w.equal(t, col, root + real, root + token, key=real)
                 # A leaf that collided while flattening was numbered —
                 # `<name>-2` — and neither bounded form above matches it; the
                 # v0.63.0 capture printed a Codex folder name that way.
-                glob = "".join(f"[{ch}]" if ch in "*?[" else ch for ch in root + real)
-                c.execute(f"UPDATE {t} SET {col}=? || substr({col}, ?) WHERE {col} GLOB ?",
-                          (root + token, len(root + real) + 1, glob + "-[0-9]*"))
+                w.numbered(t, col, root + real, root + token, key=real)
             if len(real) >= 4:
                 for t, col in (("events", "touch_dir"), ("events", "payload"), ("session_files", "path")):
-                    c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
-                              (real, token, f"%{real}%"))
+                    w.replace(t, col, real, token, key=real)
         for _, token, fake in mapping:
             c.execute("UPDATE daily_stats SET project=? WHERE project=?", (fake, token))
             c.execute("UPDATE daily_sessions SET project=? WHERE project=?", (fake, token))
             for t, col in cols:
-                c.execute(f"UPDATE {t} SET {col}=REPLACE({col},?,?) WHERE {col} LIKE ?",
-                          (token, fake, f"%{token}%"))
+                w.replace(t, col, token, fake, key="~~SCRUB")
+        # Everything below reads `events` (the feed rewrite selects on
+        # payload), so the recorded rewrites land first.
+        w.flush()
         # Branch names are the owner's words too — the v0.70.1 Live pulse
         # printed `dspv/assess-minimum-lovable` beside a scrubbed project.
         # Anything but the generic names becomes a neutral one.
