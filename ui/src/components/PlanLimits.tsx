@@ -11,8 +11,9 @@
  * The staleness rule below is subtle enough that two copies of it would drift,
  * and the copy that drifts is the one nobody is looking at.
  */
-import { useState, type ReactNode } from 'react'
-import type { RateLimits, RateWindow, Settings } from '@/lib/api'
+import { useMemo, useState, type ReactNode } from 'react'
+import { api, type RateLimits, type RateWindow, type Settings, type Subscription } from '@/lib/api'
+import { useApi } from '@/lib/useApi'
 import { Panel, Stat, usePanelOpen } from '@/components/ui'
 import { ShareWith } from '@/components/PanelShare'
 import { mdTable } from '@/lib/panelShare'
@@ -21,6 +22,9 @@ import { PlanOptions, usePlan } from '@/components/PlanPicker'
 import { AgentCharacter, type Character } from '@/components/Characters'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { Banner, BannerButton } from '@/components/Banner'
+import { useSubscriptionsChanged } from '@/components/SubscriptionPicker'
+import { OVERVIEW_SOURCE, SubscriptionsOverview, manySignIns } from '@/components/SubscriptionsOverview'
+import { leftPct, reopened, signIns, windowLabel } from '@/lib/subscriptions'
 
 /** A window's percentage, and whether its reset clock can be believed. */
 export function readWindow(w: RateWindow, now: number) {
@@ -306,6 +310,25 @@ export function limitsText(groups: [string, [string, RateWindow][]][], now: numb
   return `Your plan's limits, per 5 hours and per week.\n\n${mdTable(['Agent', 'Window', 'Used', 'Resets'], rows)}`
 }
 
+/** Every sign-in's windows as a Markdown table, as what is left of each. */
+export function subscriptionsText(all: readonly Subscription[], now: number): string {
+  const rows: string[][] = []
+  for (const agent of ['claude', 'codex'] as const) {
+    for (const s of signIns(all.filter((x) => x.agent === agent))) {
+      const who = `${agent === 'codex' ? 'Codex' : 'Claude Code'} · ${s.label}`
+      if (!s.signed_in) { rows.push([who, '–', 'not signed in', '–']); continue }
+      if (s.windows.length === 0) { rows.push([who, '–', 'no figures yet', '–']); continue }
+      for (const w of s.windows) {
+        const at = resetClock(w.resets_at * 1000, now)
+        rows.push(reopened(w, now / 1000)
+          ? [who, windowLabel(w.window), 'reopened', at]
+          : [who, windowLabel(w.window), `${leftPct(w)}%`, `${at} (in ${countdown(w.resets_at * 1000 - now)})`])
+      }
+    }
+  }
+  return `Every sign-in's plan limits, as what is left.\n\n${mdTable(['Subscription', 'Window', 'Left', 'Resets'], rows)}`
+}
+
 /** The live window closest to its limit, with what the gauge reads for it. */
 function nearest(l: RateLimits | undefined, now: number) {
   let best: { pct: number; resetMs: number } | undefined
@@ -395,13 +418,20 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
   const [plan, savePlan] = usePlan()
   const [more, setMore] = useState(false)
   const open = usePanelOpen('plan-limits')
+  // Every sign-in (ADR-048). With more than one for an agent the panel lists
+  // them all instead of the two cards; figures age, so it is read again
+  // every minute and whenever a list changes elsewhere.
+  const subs = useApi(() => api.subscriptions(), [], { live: false, intervalMs: 60_000, share: 'subscriptions' })
+  useSubscriptionsChanged(useMemo(() => () => subs.refresh?.(), [subs.refresh]))
+  const all = useMemo(() => subs.data?.agents?.flatMap((a) => a.subscriptions ?? []) ?? [], [subs.data])
+  const many = manySignIns(all)
   const claude: [string, RateWindow][] = []
   if (limits?.five_hour) claude.push(['5-hour window', limits.five_hour])
   if (limits?.seven_day) claude.push(['Weekly', limits.seven_day])
   const cdx: [string, RateWindow][] = []
   if (codex?.five_hour) cdx.push(['5-hour window', codex.five_hour])
   if (codex?.seven_day) cdx.push(['Weekly', codex.seven_day])
-  if (claude.length === 0 && cdx.length === 0) {
+  if (claude.length === 0 && cdx.length === 0 && !many) {
     return empty ? <div id={id} className={`scroll-mt-16 ${className}`}><Panel title="Plan limits">{empty}</Panel></div> : null
   }
   const observed = codex?.five_hour?.observed_at ?? codex?.seven_day?.observed_at
@@ -411,17 +441,18 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
     ? (
       <>
         <b className="font-semibold">Claude is near its limit.</b> Wait for the reset at <span className="num">{resetClock(near.resetMs, now)}</span> (in {countdown(near.resetMs - now)})
-        {cdxNear && cdxNear.pct < 85 ? <>, or switch to Codex — its {codex?.five_hour ? 'tightest window' : 'weekly window'} is at <span className="num">{cdxNear.pct}%</span>.</> : '.'}
+        {cdxNear && cdxNear.pct < 85 ? <>, or switch to Codex — its {codex?.five_hour ? 'tightest window' : 'weekly window'} has <span className="num">{100 - cdxNear.pct}%</span> left.</> : '.'}
       </>
     )
     : cdxNear && cdxNear.pct >= 85
-      ? <><b className="font-semibold">Codex is near its limit.</b> Its window resets <span className="num">{resetClock(cdxNear.resetMs, now)}</span> (in {countdown(cdxNear.resetMs - now)}){near && near.pct < 85 ? <>; Claude is at <span className="num">{near.pct}%</span>.</> : '.'}</>
+      ? <><b className="font-semibold">Codex is near its limit.</b> Its window resets <span className="num">{resetClock(cdxNear.resetMs, now)}</span> (in {countdown(cdxNear.resetMs - now)}){near && near.pct < 85 ? <>; Claude has <span className="num">{100 - near.pct}%</span> left.</> : '.'}</>
       : null
   return (
     <div id={id} className={`scroll-mt-16 ${className}`}>
       <Panel fold="plan-limits" title="Plan limits" share="Plan limits"
         folded={open ? undefined : <FoldedLimits claude={claude} cdx={cdx} now={now} />}>
-        <ShareWith toText={() => limitsText([['Claude', claude], ['Codex', cdx]], now)} />
+        <ShareWith toText={() => (many ? subscriptionsText(all, now) : limitsText([['Claude', claude], ['Codex', cdx]], now))} />
+        {many ? <SubscriptionsOverview all={all} settings={plan} now={now} own={limits} /> : (
         <div className={`grid gap-3 px-3 py-3 ${cdx.length > 0 ? 'lg:grid-cols-2' : ''}`}>
           <LimitCard who="lead" name={planName(plan)} l={limits} now={now} source="Claude Code" weekOnly={!limits?.five_hour && !!limits?.seven_day} />
           {cdx.length > 0 && (
@@ -429,6 +460,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
               note={observed ? <>as of {fmtObserved(observed, now)}</> : undefined} />
           )}
         </div>
+        )}
         {plan && !plan.plan_kind && <SetPlanBanner onSave={savePlan} />}
         {advice && (
           <div className="mx-3 mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-fg" role="note">{advice}</div>
@@ -441,6 +473,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
             {more ? 'less' : 'more'}
           </button>
           {more && <p className="mt-1 text-fg-faint">{EXPLAIN(cdx.length > 0)}</p>}
+          {many && <p data-overview-source className="mt-1 text-fg-faint">{OVERVIEW_SOURCE}</p>}
         </div>
       </Panel>
     </div>

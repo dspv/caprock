@@ -495,7 +495,7 @@ describe('the subscription picker', () => {
     withSubs()
     try {
       open()
-      expect(await screen.findByText(/Default: 95% of its 5-hour window used/)).toBeInTheDocument()
+      expect(await screen.findByText(/Default: 5% of its 5-hour window left/)).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Personal' }))
       expect(screen.getByLabelText<HTMLSelectElement>('Subscription').value).toBe('ab12')
       // Picked for this session only: nothing remembered.

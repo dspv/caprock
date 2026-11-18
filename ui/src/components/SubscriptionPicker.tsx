@@ -12,7 +12,7 @@
 import { lazy, useEffect, useMemo } from 'react'
 import { api, type Subscription } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { DEEPSEEK_ID, fullest, hasSubscriptions, isNear, resetText, roomText, windowLabel, withRoom } from '@/lib/subscriptions'
+import { DEEPSEEK_ID, fullest, hasSubscriptions, isNear, leftPct, leftText, resetText, windowLabel, withRoom } from '@/lib/subscriptions'
 
 // Every list on screen refreshes after a change made from any of them: a
 // plan set in Settings is the plan the cockpit's chip shows.
@@ -46,16 +46,15 @@ export function subscriptionsFor(all: readonly Subscription[], agent: string): S
   return hasSubscriptions(agent) ? all.filter((s) => s.agent === agent) : []
 }
 
-/** What an option says: its name, and what is in the way. */
+/**
+ * What an option says: its name and how much is left of its tightest
+ * current window — "Work (default) · 62% of 5-hour left", "· not signed in",
+ * "· no figures yet". The figures inform the user's choice; the select still
+ * opens on the remembered or default one, never on the one with most left.
+ */
 export function optionText(s: Subscription, nowSec = Date.now() / 1000): string {
   if (s.provider) return `${s.label} · your API key`
-  const parts = [s.preferred ? `${s.label} (default)` : s.label]
-  if (!s.signed_in) parts.push('not signed in')
-  else {
-    const f = fullest(s, nowSec)
-    if (f) parts.push(`${Math.round(f.used_percentage)}% ${windowLabel(f.window)}`)
-  }
-  return parts.join(' · ')
+  return `${s.preferred ? `${s.label} (default)` : s.label} · ${leftText(s, nowSec)}`
 }
 
 /**
@@ -168,7 +167,7 @@ export function SubscriptionNote({
   return (
     <div role="note" className="grid gap-1.5 rounded-[8px] border border-border px-3 py-2 text-[12px] leading-snug">
       <p className="text-fg">
-        {chosen.label}: {Math.round(f.used_percentage)}% of its {windowLabel(f.window)} window used
+        {chosen.label}: {leftPct(f)}% of its {windowLabel(f.window)} window left
         {f.resets_at ? <>, resets {resetText(f.resets_at)}</> : null}.
       </p>
       {other && (
@@ -177,7 +176,7 @@ export function SubscriptionNote({
           <button type="button" onClick={() => onUse(other.id)} className="text-accent underline-offset-2 hover:underline">
             {other.label}
           </button>{' '}
-          <span className="text-fg-faint">({roomText(other)})</span>. Running sessions stay where they are.
+          <span className="text-fg-faint">({leftText(other)})</span>. Running sessions stay where they are.
         </p>
       )}
     </div>
