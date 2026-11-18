@@ -117,3 +117,11 @@ func gapLabel(agent string) string {
 	}
 	return agent
 }
+
+// ShareOnly is the Context tile's sub-line for a reading that is a share of
+// the window alone, with no tokens and no window size: what Cursor's
+// November 2025 builds keep (contextUsagePercent, percentageRemaining).
+// The tile shows the share; this sits where "120k / 200k" would.
+func ShareOnly(agent string) string {
+	return DoesntRecord(gapLabel(agent), "this chat's context in tokens")
+}

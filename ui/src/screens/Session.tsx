@@ -7,6 +7,7 @@ import { live, useLiveLink } from '@/lib/live'
 import { LoopAlertCard } from '@/components/LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, basename } from '@/lib/format'
+import { contextSize } from '@/lib/gaps'
 import { costLine, sessionCost } from '@/lib/sessionCost'
 import { Badge, Empty, Panel, Skeleton, Sparkline, StaleNote, Stat } from '@/components/ui'
 import { CursorOverheadPanel } from '@/components/CursorOverhead'
@@ -372,7 +373,7 @@ export function SessionScreen({ id, tab, at }: { id: string; tab?: string; at?: 
           <Stat label="Cache" value={gaps.cache || gaps.tokens ? '—' : fmtPct((s.savings?.hit_rate ?? 0) * 100)}
             sub={gaps.cache ?? gaps.tokens ?? (gaps.cache_write ? <span title={`read ${fmtTokens(s.stats.cache_read)}`}>{gaps.cache_write}</span> : `read ${fmtTokens(s.stats.cache_read)} · write ${fmtTokens(s.stats.cache_write)}`)}
             tone={!gaps.cache && (s.savings?.hit_rate ?? 0) > 0.5 ? 'ok' : undefined} />
-          <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? `${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)}` : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
+          <Stat label="Context" value={s.context ? fmtPct(s.context.pct) : '—'} sub={s.context ? contextSize(s.context, s.context_note, fmtTokens) : (s.context_note || 'no turn yet')} tone={s.context && s.context.pct >= 85 ? 'danger' : s.context && s.context.pct >= 60 ? 'warn' : undefined} />
           {/* Cursor counts requests, not turns, for its cost: a usage record
             * is not a turn, and the requests it carries are shown beside. */}
           <Stat label="Turns" value={s.stats.turns} sub={s.stats.requests ? `${s.stats.requests.toLocaleString('en-US')} requests · ${s.stats.tool_calls} tool calls` : `${s.stats.tool_calls} tool calls`} />

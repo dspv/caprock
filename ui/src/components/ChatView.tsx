@@ -509,7 +509,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
       if (!d || paths.length === 0 || typeof d.x !== 'number' || typeof d.y !== 'number') return
       if (dialogOnScreen() || dropZoneAt({ x: d.x, y: d.y }) !== root.current) return
       void (async () => {
-        const { items, refusal } = await droppedItems(paths, (p) => shell.readDroppedImage(p))
+        const { items, refusal } = await droppedItems(paths, (p) => shell.readDroppedImage(p), (p) => shell.readDroppedFile(p))
         const done = attachIn.current?.(items)
         // A file saved now clears the last refusal itself; this drop's own stays.
         if (refusal || items.every((i) => typeof i === 'string')) setSendError(refusal)

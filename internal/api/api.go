@@ -1365,6 +1365,11 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 		}
 		if found {
 			sum.Context, sum.ContextNote = s.readingFill(r, sess.Model), ""
+			if sum.Context != nil && sum.Context.Window == 0 {
+				// A share alone: the tile shows it, and its sub-line says
+				// what is missing where the tokens would be.
+				sum.ContextNote = agentcat.ShareOnly(sess.Agent)
+			}
 		} else {
 			sum.ContextNote = "no context reading yet"
 		}
@@ -1459,32 +1464,45 @@ func lastReading(evs []event.Event) (store.ContextReading, bool) {
 			continue
 		}
 		var p struct {
-			Tokens int64  `json:"context_tokens"`
-			Window int64  `json:"context_window"`
-			Model  string `json:"model"`
+			Tokens int64    `json:"context_tokens"`
+			Window int64    `json:"context_window"`
+			Pct    *float64 `json:"context_pct"`
+			Model  string   `json:"model"`
 		}
-		if json.Unmarshal(e.Payload, &p) != nil || p.Tokens <= 0 {
+		if json.Unmarshal(e.Payload, &p) != nil || p.Tokens <= 0 && p.Pct == nil {
 			continue
 		}
-		return store.ContextReading{Tokens: p.Tokens, Window: p.Window, Model: firstNonEmpty(e.Model, p.Model), At: e.Ts.UnixMilli()}, true
+		r := store.ContextReading{Tokens: max(0, p.Tokens), Window: p.Window, Model: firstNonEmpty(e.Model, p.Model), At: e.Ts.UnixMilli()}
+		if p.Pct != nil {
+			r.Pct, r.HasPct = *p.Pct, true
+		}
+		return r, true
 	}
 	return store.ContextReading{}, false
 }
 
-// readingFill is an agent's own reading as the meter shows it. The window
-// is the agent's, else the table's for the model. No next-call price: the
-// agent bills its own way (ADR-095), not by Caprock's table.
+// readingFill is an agent's own reading as the meter shows it. With tokens,
+// the window is the agent's, else the table's for the model. A reading that
+// is a share alone (Cursor's November 2025 builds) is shown as that share,
+// with no tokens and no window (both 0): the window Cursor measured against
+// is not recorded, and the table's may not be it (Cursor gives Claude 176k
+// or 200k where the table says 1M), so no token count is made up from it.
+// No next-call price: the agent bills its own way (ADR-095), not by
+// Caprock's table.
 func (s *Server) readingFill(r store.ContextReading, sessionModel string) *ContextFill {
 	window := r.Window
-	if window <= 0 && s.d.Table != nil {
+	if r.Tokens > 0 && window <= 0 && s.d.Table != nil {
 		if row, ok := s.d.Table.Lookup(firstNonEmpty(r.Model, sessionModel)); ok {
 			window = row.ContextWindow
 		}
 	}
-	if window <= 0 {
-		return nil
+	if r.Tokens > 0 && window > 0 {
+		return &ContextFill{Tokens: r.Tokens, Window: window, Pct: 100 * float64(r.Tokens) / float64(window), At: r.At}
 	}
-	return &ContextFill{Tokens: r.Tokens, Window: window, Pct: 100 * float64(r.Tokens) / float64(window), At: r.At}
+	if r.HasPct {
+		return &ContextFill{Pct: min(100, max(0, r.Pct)), At: r.At}
+	}
+	return nil
 }
 
 // fill is toks of a window, priced at model's cache-read rate.

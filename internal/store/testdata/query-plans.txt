@@ -112,6 +112,18 @@ UPDATE daily_stats SET tokens_total = tokens_total - ?, cost_usd = cost_usd - ? 
 UPDATE sessions SET model = ? WHERE session_id = ? AND model IS NOT ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
+## cursor.(*Ingester).latestReading
+UPDATE events SET payload = json_set((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_pct', ?) WHERE (json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_pct') IS NOT ?) AND sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?
+    SEARCH events USING INDEX idx_events_sid_key (sid=? AND key=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## cursor.(*Ingester).latestReading
+UPDATE events SET payload = json_set(json_set(json_set((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_tokens', ?), '$.context_window', ?), '$.context_pct', ?) WHERE (json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_tokens') IS NOT ? OR json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_window') IS NOT ? OR json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_pct') IS NOT ?) AND sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?
+    SEARCH events USING INDEX idx_events_sid_key (sid=? AND key=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## cursor.(*Ingester).pending
 SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cost_usd),0), COALESCE(SUM(json_extract(payload,'$.requests')),0) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND kind = 'turn.assistant' GROUP BY 1
     SEARCH events USING INDEX idx_events_session_id (sid=?)
@@ -132,7 +144,7 @@ UPDATE sessions SET model = ? WHERE session_id = ?
     SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## cursor.(*Ingester).storedRows
-SELECT id, key, kind, ts, COALESCE(model,''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.model'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.model_source'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.tool_use_id'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.context_tokens'),0), tokens_in IS NOT NULL, COALESCE(tokens_in,0), COALESCE(tokens_out,0), cost_usd, COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.cwd'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.usage_only'),0), COALESCE(tool,''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.tool_name'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.tool_input.file_path'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.permission_mode'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.user_decision'),'') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND key >= 'cu-' AND key < 'cu.' AND key NOT LIKE 'cu-hook-%'
+SELECT id, key, kind, ts, COALESCE(model,''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.model'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.model_source'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.tool_use_id'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.context_tokens'),0), json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.context_pct'), tokens_in IS NOT NULL, COALESCE(tokens_in,0), COALESCE(tokens_out,0), cost_usd, COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.cwd'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.usage_only'),0), COALESCE(tool,''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.tool_name'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.tool_input.file_path'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.permission_mode'),''), COALESCE(json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END),'$.user_decision'),'') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source = ? AND key >= 'cu-' AND key < 'cu.' AND key NOT LIKE 'cu-hook-%'
     SEARCH events USING INDEX idx_events_sid_key (sid=? AND key>? AND key<?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
@@ -143,6 +155,10 @@ SELECT COALESCE(last_event_at,0) FROM sessions WHERE session_id = ?
 
 ## cursor.fix
 UPDATE events SET model = ?, tool = ? WHERE id = ?
+    SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
+
+## cursor.fix
+UPDATE events SET payload = json_set((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.context_pct', ?), model = ?, tool = ? WHERE id = ?
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
 
 ## cursor.fix
@@ -1338,7 +1354,7 @@ SELECT b.ts, b.trigger, b.pre, b.dur, COALESCE(b.post, ( SELECT COALESCE(t.token
         SEARCH t USING INDEX idx_events_session_ts (sid=? AND ts>? AND ts<?)
 
 ## store.LastContextReading
-SELECT e.ts, COALESCE(e.model, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.model'), ''), json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_tokens'), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_window'), 0) FROM (SELECT * FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) ORDER BY ts DESC, id DESC LIMIT ?) e WHERE e.kind IN ('turn.user','turn.assistant') AND COALESCE(e.agent_id,'') = '' AND json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_tokens') > 0 ORDER BY e.ts DESC, e.id DESC LIMIT 1
+SELECT e.ts, COALESCE(e.model, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.model'), ''), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_tokens'), 0), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_window'), 0), json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_pct') FROM (SELECT * FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) ORDER BY ts DESC, id DESC LIMIT ?) e WHERE e.kind IN ('turn.user','turn.assistant') AND COALESCE(e.agent_id,'') = '' AND (json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_tokens') > 0 OR json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END),'$.context_pct') IS NOT NULL) ORDER BY e.ts DESC, e.id DESC LIMIT 1
     CO-ROUTINE e
         SEARCH events USING INDEX idx_events_session_ts (sid=?)
         SCALAR SUBQUERY 1

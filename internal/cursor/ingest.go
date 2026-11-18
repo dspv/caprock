@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,7 +214,7 @@ func (in *Ingester) Once(ctx context.Context) error {
 		}
 		if err == nil {
 			in.repairChecked = true
-			in.log.Info("cursor chats read again for models, readings, results, compactions, turn ends, legacy chats, names, paths and modes",
+			in.log.Info("cursor chats read again for models, readings, results, compactions, turn ends, legacy chats, names, paths, modes and context shares",
 				"component", "cursor", "chats", repaired)
 		}
 	} else if !repairAll {
@@ -227,7 +228,7 @@ func (in *Ingester) Once(ctx context.Context) error {
 }
 
 // repairMetas are the one-time repairs of stored chats (repair), in order.
-var repairMetas = []string{store.MetaCursorParityRepaired, store.MetaCursorParity2Repaired}
+var repairMetas = []string{store.MetaCursorParityRepaired, store.MetaCursorParity2Repaired, store.MetaCursorContextPctRepaired}
 
 // folder is the chat's folder: its window's, else the folder Cursor's
 // terminal was last in, else the repository of the first absolute path a
@@ -418,7 +419,7 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 				continue
 			}
 			fields := common(map[string]any{"prompt": ingest.ClipAssistantText(b.Text), "cwd": cwd, "model": turn, "model_source": source})
-			reading(fields, b.ContextUsed, b.ContextLimit)
+			reading(fields, b.ContextUsed, b.ContextLimit, b.ContextPct, b.HasContextPct)
 			if m := chatMode(c.Mode); m != "" {
 				fields["permission_mode"] = m
 			}
@@ -473,7 +474,7 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 			if start+i == len(ids)-1 && (c.Status == "completed" || c.Status == "aborted") {
 				// The chat's last reply, finished: Cursor's own reading
 				// of the window after it (composerData.contextTokensUsed).
-				reading(fields, c.ContextUsed, c.ContextLimit)
+				reading(fields, c.ContextUsed, c.ContextLimit, c.ContextPct, c.HasContextPct)
 			}
 			ev := &event.Event{
 				Ts: ts, SessionID: c.ID, Source: event.SourceCursor, Kind: event.KindTurnAssistant,
@@ -499,6 +500,9 @@ func (in *Ingester) chat(ctx context.Context, c Composer, full bool) error {
 		if err := endTurn(time.Time{}, true); err != nil {
 			return err
 		}
+	}
+	if err := in.latestReading(ctx, c, bubbles, ids); err != nil {
+		return err
 	}
 	// Whatever no new reply carried — every model on a chat's first read but
 	// the newest turn's, and usage that arrived after its reply was stored —
@@ -587,17 +591,81 @@ func sessionModel(c Composer) string {
 }
 
 // reading puts Cursor's own context reading on a turn's payload, in the
-// fields the Context meter reads first (api.contextFill): how many tokens
-// the window held and how big it was.
-func reading(fields map[string]any, used, limit int64) {
-	if used <= 0 {
-		return
+// fields the Context meter reads (api.lastReading): how many tokens the
+// window held and how big it was, where Cursor kept them, and the share of
+// the window it measured as used (`context_pct`). A chat on Cursor's
+// November 2025 builds keeps only the share, so a payload may carry it
+// alone.
+func reading(fields map[string]any, used, limit int64, pct float64, hasPct bool) {
+	if used > 0 {
+		fields["context_tokens"] = used
+		if limit > 0 {
+			fields["context_window"] = limit
+		}
 	}
-	fields["context_tokens"] = used
-	if limit > 0 {
-		fields["context_window"] = limit
+	if hasPct {
+		fields["context_pct"] = roundPct(pct)
 	}
 }
+
+// latestReading puts the composer's reading — Cursor's measure of the window
+// after the chat's last reply — on that reply's stored row when it is not
+// there yet. The reply is usually stored while Cursor is still writing it,
+// before the reading exists, and a stored row is never recorded again by its
+// key, so without this a live chat's meter stayed on its last prompt's
+// reading, taken before the turn ran. A turn that ends on a tool call or a
+// reply with no words (a stopped one, mostly) puts it on the newest stored
+// reply: one of the owner's 10 composer-1 chats, stopped after a prompt
+// with no words, otherwise kept an earlier prompt's 78.9% where Cursor said
+// 95.7% (2026-11-18).
+func (in *Ingester) latestReading(ctx context.Context, c Composer, bubbles []Bubble, ids []string) error {
+	if in.rec == nil || in.rec.Store == nil || len(bubbles) == 0 || len(ids) == 0 ||
+		bubbles[len(bubbles)-1].ID != ids[len(ids)-1] ||
+		c.Status != "completed" && c.Status != "aborted" || c.Generating > 0 {
+		return nil
+	}
+	var b Bubble
+	// A prompt with no words is not stored (chat), so it does not end the
+	// search: the reading goes on the newest stored row.
+	for i := len(bubbles) - 1; i >= 0 && (!bubbles[i].User || bubbles[i].Text == ""); i-- {
+		if !bubbles[i].User && bubbles[i].Tool == nil && (bubbles[i].Text != "" || bubbles[i].TokensIn > 0) {
+			b = bubbles[i]
+			break
+		}
+	}
+	if b.ID == "" {
+		return nil
+	}
+	fields := map[string]any{}
+	reading(fields, c.ContextUsed, c.ContextLimit, c.ContextPct, c.HasContextPct)
+	if len(fields) == 0 {
+		return nil
+	}
+	expr, args, cond := store.ZPayload, []any{}, []string{}
+	for _, k := range []string{"context_tokens", "context_window", "context_pct"} {
+		v, ok := fields[k]
+		if !ok {
+			continue
+		}
+		expr = `json_set(` + expr + `, '$.` + k + `', ?)`
+		args = append(args, v)
+		cond = append(cond, `json_extract(`+store.ZPayload+`, '$.`+k+`') IS NOT ?`)
+	}
+	for _, k := range []string{"context_tokens", "context_window", "context_pct"} {
+		if v, ok := fields[k]; ok {
+			args = append(args, v)
+		}
+	}
+	args = append(args, c.ID, "cu-msg:"+b.ID)
+	_, err := in.rec.Store.DB().ExecContext(ctx, `UPDATE events SET payload = `+expr+`
+		 WHERE (`+strings.Join(cond, " OR ")+`)
+		   AND sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?`, args...)
+	return err
+}
+
+// roundPct keeps a share to two decimals: Cursor writes float32 noise
+// (77.395999908447266) that no screen shows.
+func roundPct(p float64) float64 { return math.Round(p*100) / 100 }
 
 // useID pairs a call with its result: Cursor's toolCallId, else the row's
 // own id.

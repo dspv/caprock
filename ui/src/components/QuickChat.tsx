@@ -27,14 +27,14 @@
  * process only to kill it, and a conversation already begun cannot change
  * vendor. The chooser starts exactly one.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { type CatalogEntry, type SpawnRequest } from '@/lib/api'
 import { isMacPlatform } from '@/lib/appmode'
 import { agentLabel, isCustomAgent, SPAWN_AGENTS, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { AgentObservedNote, AgentSetupNote } from './AgentSetup'
 import { DEFAULT_MODELS, GEMINI_MODELS, listedModels, MODELS } from './SpawnDialog'
 import { Sheet, SheetButton } from './Sheet'
-import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
+import { AddSubscriptionFlow, SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { InboxList } from './InboxList'
 import { chosenId, hasSubscriptions, preferredId, rememberedSubscription, rememberSubscription } from '@/lib/subscriptions'
 
@@ -144,6 +144,8 @@ export function QuickChatSheet({
   const subWanted = subPick[agent] ?? rememberedSubscription(agent, '')
   const subId = chosenId(subList, subWanted)
   const subscription = subList.length > 1 ? subId : undefined
+  // Settings' add form, opened here (owner, 2026-11-18).
+  const [addingSub, setAddingSub] = useState(false)
 
   const start = (m = model, a = agent) => onStart({ agent: a, model: m, ...(a === agent && subscription ? { subscription } : {}) })
   const step = (d: number) => {
@@ -212,8 +214,14 @@ export function QuickChatSheet({
                 </button>
               ))}
             </div>
-            <SubscriptionPicker list={subList} value={subId} onChange={(id) => { rememberSubscription(agent, '', id === preferredId(subList) ? '' : id); setSubPick((p) => ({ ...p, [agent]: id })) }} />
-            <SubscriptionNote list={subList} value={subId} onUse={(id) => setSubPick((p) => ({ ...p, [agent]: id }))} />
+            <SubscriptionPicker list={subList} value={subId} onChange={(id) => { rememberSubscription(agent, '', id === preferredId(subList) ? '' : id); setSubPick((p) => ({ ...p, [agent]: id })) }} onAdd={addingSub ? undefined : () => setAddingSub(true)} />
+            {addingSub && (
+              <Suspense fallback={null}>
+                {/* The one added is picked for this chat; the shell tab opens behind the sheet. */}
+                <AddSubscriptionFlow agent={agent} onSetup={onSetup} onAdded={(s) => setSubPick((p) => ({ ...p, [agent]: s.id }))} onClose={() => { setAddingSub(false); list.current?.focus() }} />
+              </Suspense>
+            )}
+            {!addingSub && <SubscriptionNote list={subList} value={subId} onUse={(id) => setSubPick((p) => ({ ...p, [agent]: id }))} />}
             {entry?.setup && <AgentSetupNote entry={entry} onSetup={setup} />}
             <ul
               ref={list}

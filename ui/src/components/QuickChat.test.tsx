@@ -5,6 +5,7 @@ import type { CatalogEntry } from '@/lib/api'
 const entry = (id: string, more: Partial<CatalogEntry> = {}): CatalogEntry => ({ id, label: id, installed: true, ready: true, models: [], observed: true, prompt: true, ...more })
 const catalog = vi.hoisted(() => ({ agents: [] as unknown[] }))
 const inbox = vi.hoisted(() => ({ items: [] as unknown[], removed: [] as number[] }))
+const subs = vi.hoisted(() => ({ value: undefined as unknown, add: (async () => ({})) as (agent: string, label: string) => Promise<unknown> }))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
@@ -14,6 +15,8 @@ vi.mock('@/lib/api', async (orig) => {
       agentCatalog: async () => ({ agents: catalog.agents, licensed: false, home: '/h' }),
       inbox: async () => ({ items: inbox.items, max: 500 }),
       removeInbox: async (id: number) => { inbox.removed.push(id) },
+      subscriptions: async () => { if (!subs.value) throw new Error('not offered'); return subs.value },
+      addSubscription: async (agent: string, label: string) => subs.add(agent, label),
     },
   }
 })
@@ -21,7 +24,51 @@ vi.mock('@/lib/appmode', async (orig) => ({ ...(await orig<typeof import('@/lib/
 
 import { QuickChatSheet, quickChatRequest, quickModels, rememberQuickChoice, rememberedQuickChoice } from './QuickChat'
 
-beforeEach(() => { localStorage.clear(); catalog.agents = []; inbox.items = []; inbox.removed = [] })
+beforeEach(() => { localStorage.clear(); catalog.agents = []; inbox.items = []; inbox.removed = []; subs.value = undefined })
+
+/** ADR-048: a second sign-in, found where a chat is started (owner, 2026-11-18). */
+describe('Add subscription in Quick chat', () => {
+  const sub = (id: string, label: string, more: Record<string, unknown> = {}) => ({
+    id, agent: 'claude', label, default: id === 'default', dir: `/d/${id}`, signed_in: true, login_command: 'claude auth login',
+    windows: [], sessions_7d: 0, cost_7d_usd: 0, running: 0, ...more,
+  })
+  const state = (list: unknown[]) => ({ licensed: false, free_per_agent: 3, home: '/h', agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: list }] })
+
+  it('is a quiet link with one sign-in, and adds one in place that the chat then starts on', async () => {
+    subs.value = state([sub('default', 'Own sign-in')])
+    const added = sub('w1', 'Work', { signed_in: false, login_command: 'CLAUDE_CONFIG_DIR=/d/w1 claude auth login' })
+    subs.add = async () => { subs.value = state([sub('default', 'Own sign-in'), added]); return added }
+    const onSetup = vi.fn()
+    const onStart = vi.fn()
+    render(<QuickChatSheet agents={['claude']} onStart={onStart} onClose={() => {}} onSetup={onSetup} />)
+    const link = await screen.findByRole('button', { name: 'Add subscription' })
+    expect(screen.queryByLabelText('Subscription')).toBeNull()
+    // Enter on the link opens it; it does not start the chat.
+    fireEvent.keyDown(link, { key: 'Enter' })
+    expect(onStart).not.toHaveBeenCalled()
+    fireEvent.click(link)
+    const name = await screen.findByPlaceholderText('Work Max')
+    fireEvent.change(name, { target: { value: 'Work' } })
+    // Enter in Name adds; it does not start the chat either.
+    fireEvent.keyDown(name, { key: 'Enter' })
+    expect(onStart).not.toHaveBeenCalled()
+    await waitFor(() => expect(onSetup).toHaveBeenCalledWith('CLAUDE_CONFIG_DIR=/d/w1 claude auth login', '/h'))
+    await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>('Subscription').value).toBe('w1'))
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Enter' })
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ agent: 'claude', subscription: 'w1' }))
+  })
+
+  it('is the last option of the picker with two, and opens the add form', async () => {
+    subs.value = state([sub('default', 'Own sign-in'), sub('ab12', 'Personal')])
+    render(<QuickChatSheet agents={['claude']} onStart={() => {}} onClose={() => {}} />)
+    const select = await screen.findByLabelText<HTMLSelectElement>('Subscription')
+    expect([...select.options].map((o) => o.text)).toEqual(['Own sign-in', 'Personal', 'Add subscription…'])
+    fireEvent.change(select, { target: { value: '__add__' } })
+    expect(await screen.findByPlaceholderText('Work Max')).toBeInTheDocument()
+    expect(select.value).toBe('default')
+  })
+})
 
 describe('the quick chat choice', () => {
   it('is Claude Code on its default until something else was used', () => {

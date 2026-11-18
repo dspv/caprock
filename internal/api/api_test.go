@@ -1010,6 +1010,40 @@ func TestContextFromCursorsOwnReading(t *testing.T) {
 	}
 }
 
+// Cursor's November 2025 builds keep a share of the window and no tokens
+// (contextUsagePercent, percentageRemaining): the meter shows that share,
+// newer than an older token reading, with no window or tokens made up from
+// the table, and its sub-line says what Cursor does not record.
+func TestContextFromCursorsShareReading(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	base := time.Now().Add(-time.Minute)
+	info := rollup.SessionInfo{Cwd: t.TempDir(), Agent: "cursor", Model: "composer-1"}
+	for _, ev := range []*event.Event{
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:1", Ts: base,
+			Payload: json.RawMessage(`{"prompt":"go","context_tokens":287000,"context_window":1000000,"context_pct":28.7}`)},
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnUser, Key: "cu-user:2", Ts: base.Add(time.Second),
+			Payload: json.RawMessage(`{"prompt":"more","context_pct":40.38}`)},
+		{SessionID: "cu", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Key: "cu-msg:3", Ts: base.Add(2 * time.Second),
+			Model: "composer-1", Tokens: &event.TokenDelta{In: 900000, Out: 800}, Payload: json.RawMessage(`{"text":"done","context_pct":42.6}`)},
+	} {
+		if _, err := e.rec.Record(ctx, ev, info); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var sum SessionSummary
+	if code := e.get(t, "/v1/sessions/cu", &sum); code != 200 {
+		t.Fatalf("session: %d", code)
+	}
+	c := sum.Context
+	if c == nil || c.Pct != 42.6 || c.Tokens != 0 || c.Window != 0 || c.NextCallUSD != 0 {
+		t.Fatalf("context %+v, want Cursor's 42.6%% and nothing else", c)
+	}
+	if sum.ContextNote != "Cursor doesn't record this chat's context in tokens" {
+		t.Fatalf("note %q", sum.ContextNote)
+	}
+}
+
 // A turn on a model the pricing table does not carry leaves its cost unknown,
 // and the session's stats count it, so the Cost tile can say "price unknown"
 // instead of a $0.00 that claims the work was free. A session with no such

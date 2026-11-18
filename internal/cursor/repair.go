@@ -20,6 +20,7 @@ type stored struct {
 	model, payModel   string
 	source, useID     string
 	ctxTokens         int64
+	ctxPct            sql.NullFloat64
 	hasTokens         bool
 	tin, tout         int64
 	cost              sql.NullFloat64
@@ -34,7 +35,10 @@ type stored struct {
 type target struct {
 	model, source     string
 	ctxUsed, ctxLimit int64
-	useID             string
+	// ctxPct is the reading as a share of the window, when hasPct.
+	ctxPct float64
+	hasPct bool
+	useID  string
 	// tool is the call's name (callName), filePath its tool_input's file
 	// (ToolInput), mode its permission_mode and decision the person's
 	// answer; "" where the row carries none.
@@ -50,7 +54,9 @@ type target struct {
 //
 //   - A turn's model is the one Cursor billed (turnModel), not the one the
 //     picker shows now; each prompt and reply row is re-labelled.
-//   - A prompt gains Cursor's context reading, and a tool call the
+//   - A prompt gains Cursor's context reading — its tokens and its share
+//     of the window (`context_pct`, the only figure Cursor's November 2025
+//     builds keep) — and a tool call the
 //     `tool_use_id` its result pairs with.
 //   - When any turn changes model, the chat's reconciled usage — Cursor's
 //     totals, filed per model on a reply or on a row of their own (see
@@ -77,7 +83,7 @@ func (in *Ingester) repair(ctx context.Context, c Composer, bubbles []Bubble, se
 		switch {
 		case b.User:
 			want["cu-user:"+b.ID] = target{model: turn, source: source, ctxUsed: b.ContextUsed, ctxLimit: b.ContextLimit,
-				mode: chatMode(c.Mode)}
+				ctxPct: b.ContextPct, hasPct: b.HasContextPct, mode: chatMode(c.Mode)}
 			// The turn's end carries its model too (turnSpan.stop).
 			want["cu-stop:"+c.ID+":"+b.ID] = target{model: turn}
 			if i == 0 {
@@ -92,6 +98,7 @@ func (in *Ingester) repair(ctx context.Context, c Composer, bubbles []Bubble, se
 			w := target{model: turn, source: source}
 			if i == len(bubbles)-1 && (c.Status == "completed" || c.Status == "aborted") {
 				w.ctxUsed, w.ctxLimit = c.ContextUsed, c.ContextLimit // as chat() puts it
+				w.ctxPct, w.hasPct = c.ContextPct, c.HasContextPct
 			}
 			want["cu-msg:"+b.ID] = w
 		}
@@ -246,6 +253,10 @@ func fix(ctx context.Context, q store.Querier, r stored, w target) error {
 				args = append(args, w.ctxLimit)
 			}
 		}
+		if w.hasPct && (!r.ctxPct.Valid || r.ctxPct.Float64 != roundPct(w.ctxPct)) {
+			expr = `json_set(` + expr + `, '$.context_pct', ?)`
+			args = append(args, roundPct(w.ctxPct))
+		}
 	}
 	modelChanged := r.model != w.model
 	toolChanged := w.tool != "" && r.tool != w.tool
@@ -300,6 +311,7 @@ func (in *Ingester) storedRows(ctx context.Context, chat string) ([]stored, stri
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.model_source'),''),
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.tool_use_id'),''),
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.context_tokens'),0),
+		       json_extract(`+store.ZPayload+`,'$.context_pct'),
 		       tokens_in IS NOT NULL, COALESCE(tokens_in,0), COALESCE(tokens_out,0), cost_usd,
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.cwd'),''),
 		       COALESCE(json_extract(`+store.ZPayload+`,'$.usage_only'),0),
@@ -319,7 +331,7 @@ func (in *Ingester) storedRows(ctx context.Context, chat string) ([]stored, stri
 	for rows.Next() {
 		var r stored
 		var usage int
-		if err := rows.Scan(&r.id, &r.key, &r.kind, &r.ts, &r.model, &r.payModel, &r.source, &r.useID, &r.ctxTokens,
+		if err := rows.Scan(&r.id, &r.key, &r.kind, &r.ts, &r.model, &r.payModel, &r.source, &r.useID, &r.ctxTokens, &r.ctxPct,
 			&r.hasTokens, &r.tin, &r.tout, &r.cost, &r.cwd, &usage, &r.tool, &r.payTool, &r.filePath, &r.mode, &r.decision); err != nil {
 			return nil, "", err
 		}

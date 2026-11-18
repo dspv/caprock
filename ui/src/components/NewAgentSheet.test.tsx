@@ -13,6 +13,7 @@ const status = { accepted: undefined as boolean | undefined, opencode: undefined
 const saved: unknown[] = []
 const catalogExtra = vi.hoisted(() => ({ agents: [] as unknown[] }))
 const subsState = vi.hoisted(() => ({ value: undefined as unknown }))
+const addSubscription = vi.fn(async (_agent: string, _label: string): Promise<unknown> => ({}))
 vi.mock('@/lib/api', async (orig) => {
   const actual = await orig<typeof import('@/lib/api')>()
   return {
@@ -33,6 +34,7 @@ vi.mock('@/lib/api', async (orig) => {
       saveSettings: async (s: unknown) => { saved.push(s); return s },
       spawn: (req: unknown) => spawn(req),
       subscriptions: async () => { if (!subsState.value) throw new Error('not offered'); return subsState.value },
+      addSubscription: (agent: string, label: string) => addSubscription(agent, label),
       acceptBypass: () => acceptBypass(),
       recentDirs: async () => [],
       localRepos: async () => ({ root: '/w', home: '/h', scanned_at: 0, repos: [{ name: 'caprock-web', path: '/w/caprock-web' }] }),
@@ -522,6 +524,74 @@ describe('the subscription picker', () => {
     } finally {
       subsState.value = undefined
       localStorage.removeItem('caprock.subscription.claude.1')
+    }
+  })
+
+  // Owner, 2026-11-18 (translated): he "didn't find it under my hand".
+  it('offers Add subscription beside the agent with one sign-in, and adds and picks it in place', async () => {
+    const own = sub('default', 'Own sign-in', 10)
+    subsState.value = { licensed: false, free_per_agent: 3, home: '/h', agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: [own] }] }
+    const work = { ...sub('w1', 'Work', 0), signed_in: false, windows: [], login_command: 'CLAUDE_CONFIG_DIR=/d/w1 claude auth login' }
+    addSubscription.mockImplementation(async (agent: string, label: string) => {
+      subsState.value = { licensed: false, free_per_agent: 3, home: '/h', agents: [{ agent, label: 'Claude Code', installed: true, subscriptions: [own, { ...work, label }] }] }
+      return { ...work, label }
+    })
+    const onSetup = vi.fn()
+    try {
+      render(<NewAgentSheet projects={projects} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} onSetup={onSetup} />)
+      fireEvent.click(await screen.findByRole('button', { name: 'Add subscription' }))
+      expect(screen.queryByLabelText('Subscription')).toBeNull()
+      // Settings' own form, on the dialog's agent.
+      const name = await screen.findByPlaceholderText('Work Max')
+      expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(2)
+      fireEvent.change(name, { target: { value: 'Work' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add subscription' }))
+      await waitFor(() => expect(addSubscription).toHaveBeenCalledWith('claude', 'Work'))
+      // The sign-in is typed into a shell tab, not run, and the dialog stays.
+      expect(onSetup).toHaveBeenCalledWith('CLAUDE_CONFIG_DIR=/d/w1 claude auth login', '/h')
+      expect(await screen.findByText(/Work is added and picked/)).toBeInTheDocument()
+      // Back in the dialog with it selectable, and picked for this start.
+      await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>('Subscription').value).toBe('w1'))
+      fireEvent.click(screen.getByRole('button', { name: /^Start/ }))
+      await waitFor(() => expect(spawn).toHaveBeenCalled())
+      expect(spawn.mock.calls[0]![0]).toMatchObject({ subscription: 'w1' })
+    } finally {
+      subsState.value = undefined
+      addSubscription.mockReset()
+    }
+  })
+
+  it('ends the select with Add subscription…, which opens the add form and picks nothing', async () => {
+    withSubs()
+    try {
+      open()
+      const select = await screen.findByLabelText<HTMLSelectElement>('Subscription')
+      const options = [...select.options].map((o) => o.text)
+      expect(options[options.length - 1]).toBe('Add subscription…')
+      const before = select.value
+      fireEvent.change(select, { target: { value: '__add__' } })
+      expect(await screen.findByPlaceholderText('Work Max')).toBeInTheDocument()
+      expect(screen.getByLabelText<HTMLSelectElement>('Subscription').value).toBe(before)
+      expect(localStorage.getItem('caprock.subscription.claude.1')).toBeNull()
+      // Escape closes the form, not the dialog.
+      fireEvent.keyDown(window, { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByPlaceholderText('Work Max')).toBeNull())
+      expect(screen.getByLabelText('Subscription')).toBeInTheDocument()
+    } finally {
+      subsState.value = undefined
+    }
+  })
+
+  it('opens the Premium path from the dialog at the free number', async () => {
+    const three = [sub('default', 'Own', 10), sub('a', 'A', 10), sub('b', 'B', 10)]
+    subsState.value = { licensed: false, free_per_agent: 3, agents: [{ agent: 'claude', label: 'Claude Code', installed: true, subscriptions: three }] }
+    try {
+      open()
+      fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Subscription'), { target: { value: '__add__' } })
+      expect(await screen.findByText(/has 3 subscriptions, the free number/)).toBeInTheDocument()
+      expect(addSubscription).not.toHaveBeenCalled()
+    } finally {
+      subsState.value = undefined
     }
   })
 

@@ -43,11 +43,16 @@ func UnrecordTurnUsage(ctx context.Context, q Querier, t UnrecordedTurn) error {
 
 // ContextReading is an agent's own measure of how full a session's context
 // window is, carried on a turn's payload as `context_tokens` and
-// `context_window` by an agent that records one (Cursor). Claude Code's
+// `context_window`, and as `context_pct` (the share of the window used), by
+// an agent that records one (Cursor). Cursor's November 2025 builds keep
+// only the share, so a reading may have a Pct and no Tokens. Claude Code's
 // fill is worked out from a turn's tokens instead (api.contextFill).
 type ContextReading struct {
-	Tokens int64
+	Tokens int64 // 0 when the agent did not say
 	Window int64 // 0 when the agent did not say
+	// Pct is the share of the window used, in percent, when HasPct.
+	Pct    float64
+	HasPct bool
 	Model  string
 	At     int64 // unix ms of the turn that carried it
 }
@@ -60,15 +65,19 @@ const readingScan = 5000
 // carries an agent's own context reading.
 func LastContextReading(ctx context.Context, q Querier, sessionID string) (ContextReading, bool, error) {
 	var r ContextReading
+	var pct sql.NullFloat64
 	err := q.QueryRowContext(ctx, `
 		SELECT e.ts, COALESCE(e.model, json_extract(`+ZPayloadE+`,'$.model'), ''),
-		       json_extract(`+ZPayloadE+`,'$.context_tokens'),
-		       COALESCE(json_extract(`+ZPayloadE+`,'$.context_window'), 0)
+		       COALESCE(json_extract(`+ZPayloadE+`,'$.context_tokens'), 0),
+		       COALESCE(json_extract(`+ZPayloadE+`,'$.context_window'), 0),
+		       json_extract(`+ZPayloadE+`,'$.context_pct')
 		  FROM (SELECT * FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)
 		         ORDER BY ts DESC, id DESC LIMIT ?) e
 		 WHERE e.kind IN ('turn.user','turn.assistant') AND COALESCE(e.agent_id,'') = ''
-		   AND json_extract(`+ZPayloadE+`,'$.context_tokens') > 0
-		 ORDER BY e.ts DESC, e.id DESC LIMIT 1`, sessionID, readingScan).Scan(&r.At, &r.Model, &r.Tokens, &r.Window)
+		   AND (json_extract(`+ZPayloadE+`,'$.context_tokens') > 0
+		        OR json_extract(`+ZPayloadE+`,'$.context_pct') IS NOT NULL)
+		 ORDER BY e.ts DESC, e.id DESC LIMIT 1`, sessionID, readingScan).Scan(&r.At, &r.Model, &r.Tokens, &r.Window, &pct)
+	r.Pct, r.HasPct = pct.Float64, pct.Valid
 	if errors.Is(err, sql.ErrNoRows) {
 		return ContextReading{}, false, nil
 	}

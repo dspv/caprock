@@ -664,7 +664,7 @@ function LiveSession({ x, now, hourCost }: { x: SessionSummary; now: number; hou
           {hourCost !== undefined && <span title="What it cost in the last hour"> · {fmtUSD(hourCost)}/h</span>}
           <span title={`Started ${fmtAgo(x.started_at, now)}`}> · {fmtRunning(now - x.started_at)}</span>
           {ctx && (
-            <span className={ctx.pct >= 85 ? 'text-warn' : ''} title={`${fmtTokens(ctx.tokens)} of ${fmtTokens(ctx.window)} context`}> · ctx {fmtPct(ctx.pct)}</span>
+            <span className={ctx.pct >= 85 ? 'text-warn' : ''} title={ctx.window > 0 ? `${fmtTokens(ctx.tokens)} of ${fmtTokens(ctx.window)} context` : `${fmtPct(ctx.pct)} of the context window used`}> · ctx {fmtPct(ctx.pct)}</span>
           )}
         </div>
         {(branch || changes || pr) && (

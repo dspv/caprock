@@ -562,6 +562,27 @@ d('SessionCard context tax', () => {
     expect(screen.getByText('unknown model')).toBeInTheDocument()
     expect(screen.queryByText(/\/call/)).not.toBeInTheDocument()
   })
+
+  // Cursor's newer builds keep a share of the window and no tokens: the
+  // card shows the share and says what is missing, never "0 / 0".
+  it('shows a share-only reading with the sentence in place of the sizes', () => {
+    const s = {
+      session_id: 'c0ffee00-0001',
+      project: 'caprock',
+      status: 'active',
+      agent: 'cursor',
+      model: 'composer-1',
+      last_event_at: Date.now(),
+      stats: { session_id: 'c0ffee00-0001', turns: 3, tool_calls: 7, files_touched: 2, tokens_in: 100, tokens_out: 50, cache_read: 0, cache_write: 0, cost_usd: 0.12 },
+      activity: { phrase: 'done', tool: '', at: new Date().toISOString(), health: 'idle' },
+      savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },
+      context: { tokens: 0, window: 0, pct: 42.6, next_call_usd: 0 },
+      context_note: "Cursor doesn't record this chat's context in tokens",
+    } as never
+    render(<SessionCard s={s} now={Date.now()} />)
+    expect(screen.getByText("Cursor doesn't record this chat's context in tokens")).toBeInTheDocument()
+    expect(screen.getAllByText(/^42%$/).length).toBeGreaterThan(0)
+  })
 })
 
 d('session page from the kept copy', () => {

@@ -112,8 +112,9 @@ const HIDDEN_SESSIONS_MAX = 300
 export const FOLDS_KEY = 'caprock.app.project-folds'
 
 /** `footer`: the bottom block (feedback, Dashboard, Settings) collapsed to one row of icons.
- *  `background`: the Flat list's Background · N row opened. */
-type Fold = 'footer' | 'background'
+ *  `background`: the Flat list's Background · N row opened.
+ *  `running-folded`: the Flat list's Running, no tab folded to its one line. */
+type Fold = 'footer' | 'background' | 'running-folded'
 
 function loadIds(key: string): Set<string> {
   try {
@@ -382,7 +383,7 @@ export function Sidebar(props: SidebarProps) {
       if (x && isBackgroundSession(x.session, { now, hasPermission: !!x.asks, inProject: r.projectId !== OTHER_FOLDERS_ID })) bg.push(r)
       else fg.push(r)
     }
-    return { fg, bg, bgWaiting: bg.filter((r) => r.node?.waiting).length }
+    return { fg, bg, fgWaiting: fg.filter((r) => r.node?.waiting).length, bgWaiting: bg.filter((r) => r.node?.waiting).length }
   }, [flat, now, closed])
   // The Open section: every tab, in the strip's order, with its project's
   // name and its phase (mockup V1, owner, 2026-11-05).
@@ -402,6 +403,7 @@ export function Sidebar(props: SidebarProps) {
     if (tabIds.length) onOrderTabs?.(tabIds)
   }, [openRows, onOrderTabs])
   const backgroundOpen = folds.has('background')
+  const runningOpen = !folds.has('running-folded')
   const [menuAt, setMenuAt] = useState<ProjectMenuAt | null>(null)
   const menuFrom = useRef<HTMLElement | null>(null)
   const onMenu = useCallback((projectId: string, at: { x: number; y: number }, from: HTMLElement | null) => {
@@ -680,12 +682,31 @@ export function Sidebar(props: SidebarProps) {
                   * tabs; below it, what runs with no tab as one list, not by
                   * project. Each part is a view of the one flat order
                   * (`visible`), so a row moved in any of them keeps it. */}
-                {flatParts.fg.length > 0 ? (
-                  <SessionList items={flat} visible={flatParts.fg} ariaLabel="Running, no tab" untabbedHeading="Running, no tab" {...flatListProps} />
-                ) : flatParts.bg.length > 0 && (
-                  <p data-untabbed-heading className="px-2 pb-0.5 pt-2.5 text-[10.5px] font-medium uppercase tracking-[0.06em] text-fg-faint">Running, no tab</p>
+                {/* Running, no tab folds to its one line, Background and all
+                  * (owner, 2026-11-18); folded, it keeps the count and an
+                  * amber dot when a row in it waits on you. */}
+                {(flatParts.fg.length > 0 || flatParts.bg.length > 0) && (
+                  <button
+                    type="button"
+                    data-untabbed-heading
+                    data-running-toggle
+                    aria-expanded={runningOpen}
+                    title={runningOpen ? 'Fold the sessions running with no tab' : 'Show the sessions running with no tab'}
+                    onClick={() => toggleFold('running-folded')}
+                    className="flex w-full min-w-0 items-center gap-1 px-2 pb-0.5 pt-2.5 text-left text-[10.5px] font-medium uppercase tracking-[0.06em] text-fg-faint hover:text-fg-muted"
+                  >
+                    <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden className={`shrink-0 transition-transform duration-100 motion-reduce:transition-none ${runningOpen ? 'rotate-90' : ''}`}>
+                      <path d="M3.5 2 7 5 3.5 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    <span>Running, no tab</span>
+                    {!runningOpen && <span className="num normal-case tracking-normal">· {flatParts.fg.length + flatParts.bg.length}</span>}
+                    {!runningOpen && flatParts.fgWaiting + flatParts.bgWaiting > 0 && <span aria-label={`${flatParts.fgWaiting + flatParts.bgWaiting} waiting on you`} className="inline-block h-[6px] w-[6px] shrink-0 rounded-full bg-warn" />}
+                  </button>
                 )}
-                {flatParts.bg.length > 0 && (
+                {runningOpen && flatParts.fg.length > 0 && (
+                  <SessionList items={flat} visible={flatParts.fg} ariaLabel="Running, no tab" {...flatListProps} />
+                )}
+                {runningOpen && flatParts.bg.length > 0 && (
                   <div data-background-fold>
                     <button
                       type="button"
