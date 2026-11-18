@@ -136,6 +136,10 @@ const (
 	// the reader recorded compactions, turn ends, legacy chats, MCP names,
 	// fixed relative paths, modes and decisions were read again.
 	MetaCursorParity2Repaired = "cursor_parity2_repaired"
+	// MetaCursorContextPctRepaired is "1" once the editor chats stored
+	// before the reader kept Cursor's context reading as a share of the
+	// window (`context_pct`) were read again for it.
+	MetaCursorContextPctRepaired = "cursor_context_pct_repaired"
 	// ToolLinkDone is the MetaToolLinkCursor value meaning "no rows left".
 	// A cursor alone cannot say so: the pass ends by reading a short batch, and
 	// new unlinked rows never appear behind the cursor.

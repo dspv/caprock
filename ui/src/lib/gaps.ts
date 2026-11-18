@@ -18,3 +18,14 @@ export type Gaps = Partial<Record<GapField, string>>
 export function doesntRecord(agentLabel: string, what: string): string {
   return `${agentLabel} doesn't record ${what}`
 }
+
+/**
+ * The size behind a context reading: "120k / 200k", or — for a reading that
+ * is a share of the window alone, with no tokens and no window (Cursor's
+ * November 2025 builds keep only `contextUsagePercent`) — the session's
+ * `context_note`, "Cursor doesn't record this chat's context in tokens".
+ */
+export function contextSize(ctx: { tokens: number; window: number }, note: string | undefined, fmt: (n: number) => string): string {
+  if (ctx.window > 0) return `${fmt(ctx.tokens)} / ${fmt(ctx.window)}`
+  return note || 'share of the window'
+}

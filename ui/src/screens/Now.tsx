@@ -4,6 +4,7 @@ import { navigate } from '@/lib/router'
 import { live, useLiveAlerts } from '@/lib/live'
 import { branchLabel, projectLabels, sessionHealth } from '@/lib/sessionLabels'
 import { fmtAgo, fmtPct, fmtSpan, fmtTokens, fmtUSD, fmtWhen, shortId } from '@/lib/format'
+import { contextSize } from '@/lib/gaps'
 import { sessionCost } from '@/lib/sessionCost'
 import { foldChains } from '@/lib/chains'
 import { ContinueSession } from '@/components/ContinueSession'
@@ -870,7 +871,7 @@ export function SessionCard({ s, now, earlier, projectLabel }: { s: SessionSumma
         <Stat
           label="Context"
           value={ctx ? fmtPct(ctx.pct) : '—'}
-          sub={ctx ? ctx.next_call_usd > 0 ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : fmtTokens(ctx.tokens) : (s.context_note || 'no turn yet')}
+          sub={ctx ? ctx.next_call_usd > 0 ? <><span title="what the next tool call costs at this context, before it does any work">{fmtUSD(ctx.next_call_usd)}/call</span> <span className="text-fg-faint">· {fmtTokens(ctx.tokens)}</span></> : ctx.window > 0 ? fmtTokens(ctx.tokens) : contextSize(ctx, s.context_note, fmtTokens) : (s.context_note || 'no turn yet')}
           tone={ctxTone}
         />
         <Stat label="Activity" value={s.stats.tool_calls} sub={`${s.stats.turns} turns · ${s.stats.files_touched} files`} />

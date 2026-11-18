@@ -32,13 +32,18 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
     `usageData` (`{<model>: {costInCents, amount}}`, Cursor's cost and request
     count per model — present on 22 of 58 chats with messages),
     `contextTokensUsed` / `contextTokenLimit` (Cursor's latest reading of
-    the chat's context window).
+    the chat's context window) and `contextUsagePercent` (the same as a
+    share). Chats from Cursor's November 2025 builds (composer-1 and Auto,
+    10 of the owner's 58 chats with messages on 2026-11-18, all of his
+    newest) keep only `contextUsagePercent`.
   - `bubbleId:<chat id>:<message id>` — one row per message: `type` (1 user,
     2 assistant), `text`, `thinking.text`, `modelInfo.modelName`,
     `tokenCount {inputTokens, outputTokens}` (only on the last reply of a
     turn, and it is that one request's size, not the turn's sum),
     `contextWindowStatusAtCreation {tokensUsed, tokenLimit,
-    percentageRemaining}` on a prompt (3,002 of 3,956 prompts on 2026-11-17),
+    percentageRemaining, percentageRemainingFloat}` on a prompt (3,002 of
+    3,956 prompts on 2026-11-17); a composer-1 or Auto prompt of the
+    November 2025 builds keeps only the two percentages,
     `toolFormerData {name, rawArgs, result, status, error, userDecision,
     toolCallId, modelCallId}` — `result` is JSON text (`{output, exitCodeV2,
     rejected, outputRaw, …}` for a terminal command), `error` JSON text with
@@ -83,14 +88,40 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
   tool call, result — carries that model; the session is named by its
   newest turn's, else by the model it was billed most for.
 - **The Context meter** reads Cursor's own measure: each prompt carries its
-  `contextWindowStatusAtCreation` as `context_tokens` / `context_window`, and
-  the chat's last finished reply carries the composer's latest
-  `contextTokensUsed` / `contextTokenLimit`. The meter shows the newest of
-  them (a 1M window in max mode, 176k or 200k otherwise) and never the
-  turn's tokens, which are reconciled totals, not one request's size. A
-  chat with no reading says "no context reading yet". No next-call price is
-  shown for it: that is the table's arithmetic, and Cursor bills its own
-  way.
+  `contextWindowStatusAtCreation` as `context_tokens` / `context_window` and
+  as a share, `context_pct`, and the chat's last finished reply carries the
+  composer's latest `contextTokensUsed` / `contextTokenLimit` and
+  `contextUsagePercent`. The meter shows the newest of them (a 1M window in
+  max mode, 176k or 200k otherwise) and never the turn's tokens, which are
+  reconciled totals, not one request's size. A chat with no reading says
+  "no context reading yet". No next-call price is shown for it: that is
+  the table's arithmetic, and Cursor bills its own way.
+- **A share alone.** Cursor's November 2025 builds stopped writing the
+  tokens: a composer-1 or Auto prompt keeps `percentageRemaining` and
+  `percentageRemainingFloat`, the composer `contextUsagePercent`, and
+  nothing says how big the window was. Caprock read only the tokens, so
+  every chat the owner had worked in since showed "no context reading yet"
+  (10 of 10 composer-1 chats on 2026-11-18), and a chat that moved from
+  Claude to Auto kept its last Claude prompt's 28.7% while Cursor said
+  42.6%. The share is now the reading (`context_pct`, 100 minus
+  `percentageRemainingFloat` on a prompt, `contextUsagePercent` on the last
+  reply); the meter shows it with "Cursor doesn't record this chat's
+  context in tokens" where the sizes go. No token count is made from the
+  pricing table's window: the window Cursor measured against is not
+  recorded, and it is not always the table's (Cursor gives Claude 176k or
+  200k where the table has 1M).
+- **The last reply's reading arrives late.** A live chat's newest reply is
+  stored while Cursor is still writing it, before the composer has a
+  reading, and a stored row is never recorded twice; the reading is set on
+  that row when Cursor stops (`Ingester.latestReading`) and moved when it
+  measures again, so the meter does not stay on the prompt's reading,
+  taken before the turn ran. A turn that ends on a tool call, or on a
+  prompt and reply with no words (not stored), puts it on the newest stored
+  reply instead. Read from the owner's database into a throwaway store
+  (2026-11-18), each of his 11 newest chats — 10 composer-1, one Auto —
+  shows exactly Cursor's `contextUsagePercent`. Chats stored before the share was read are
+  read once more for it on the first start that has it (meta
+  `cursor_context_pct_repaired`).
 - **Tool results** are `tool.post` rows (`cu-post:<message>`) in Claude
   Code's shape: `tool_use_id` (Cursor's `toolCallId`, also on the call),
   `tool_input`, `tool_response` — `{stdout: output}` for a terminal command,
@@ -194,6 +225,14 @@ Read on the owner's machine on 2026-11-16 (Cursor 2.3.41, `cursor-agent`
   file edit's old and new strings. `afterShellExecution` and `postToolUse`
   both report a command; they are keyed by generation and command, so it is
   one result.
+- **A CLI chat has no Context reading.** No hook but `preCompact` carries a
+  context figure (`context_tokens` of `context_window_size`), and that is
+  the window just before Cursor summarizes it — the opposite of the size
+  after — so it is kept on the compaction row and never shown as the
+  current fill. The CLI's own `store.db` keeps its messages as
+  content-addressed protobuf blobs, which are not read, and the owner's
+  machine had no CLI chat to learn their shape from (2026-11-18). A CLI
+  chat's Context tile says "no context reading yet".
 
 ## Cost
 

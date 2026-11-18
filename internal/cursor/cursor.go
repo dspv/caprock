@@ -187,6 +187,12 @@ type Composer struct {
 	// ContextUsed and ContextLimit are Cursor's last reading of the chat's
 	// context window, 0 when it kept none.
 	ContextUsed, ContextLimit int64
+	// ContextPct is contextUsagePercent, the share of the window Cursor last
+	// measured as used, when HasContextPct. Since Cursor's November 2025
+	// builds (composer-1, Auto) it is the only reading a chat keeps:
+	// contextTokensUsed and contextTokenLimit are no longer written.
+	ContextPct    float64
+	HasContextPct bool
 	// Generating is how many messages Cursor is still writing
 	// (generatingBubbleIds): non-zero while a turn runs.
 	Generating int
@@ -215,7 +221,7 @@ func (c Composer) Finished() bool {
 // Fingerprint changes whenever anything Caprock reads from the chat changes.
 func (c Composer) Fingerprint() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d|%d|%s|%s|%d|%s|%d", c.Updated.UnixMilli(), c.Messages, c.Model, c.Name, c.ContextUsed, c.Status, c.Generating)
+	fmt.Fprintf(&b, "%d|%d|%s|%s|%d|%g|%s|%d", c.Updated.UnixMilli(), c.Messages, c.Model, c.Name, c.ContextUsed, c.ContextPct, c.Status, c.Generating)
 	for _, m := range sortedKeys(c.Usage) {
 		u := c.Usage[m]
 		fmt.Fprintf(&b, "|%s:%d:%g", m, u.Requests, u.Cents)
@@ -249,6 +255,7 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 		       COALESCE(json_extract(value,'$.usageData'),''),
 		       COALESCE(json_extract(value,'$.contextTokensUsed'),0),
 		       COALESCE(json_extract(value,'$.contextTokenLimit'),0),
+		       COALESCE(json_extract(value,'$.contextUsagePercent'),-1),
 		       COALESCE(json_array_length(value,'$.generatingBubbleIds'),0),
 		       COALESCE(json_array_length(value,'$.conversation'),0)
 		FROM cursorDiskKV
@@ -262,9 +269,9 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 		var c Composer
 		var key, usage string
 		var maxMode, archived int
-		var created, updated, used, limit float64
+		var created, updated, used, limit, pct float64
 		var legacy int
-		if err := rows.Scan(&key, &c.Name, &c.Model, &maxMode, &c.Mode, &c.Status, &created, &updated, &c.Messages, &archived, &usage, &used, &limit, &c.Generating, &legacy); err != nil {
+		if err := rows.Scan(&key, &c.Name, &c.Model, &maxMode, &c.Mode, &c.Status, &created, &updated, &c.Messages, &archived, &usage, &used, &limit, &pct, &c.Generating, &legacy); err != nil {
 			return nil, fmt.Errorf("cursor: read chat: %w", err)
 		}
 		c.ID = strings.TrimPrefix(key, "composerData:")
@@ -276,6 +283,7 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 			c.Updated = c.Created
 		}
 		c.ContextUsed, c.ContextLimit = int64(used), int64(limit)
+		c.ContextPct, c.HasContextPct = fillPct(c.ContextUsed, c.ContextLimit, pct)
 		c.Usage = parseUsage(usage)
 		if c.Messages == 0 && legacy > 0 {
 			c.Messages, c.Legacy = legacy, true
@@ -283,6 +291,19 @@ func Composers(ctx context.Context, db *sql.DB) ([]Composer, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// fillPct is a context reading as a share of the window, in percent: the
+// tokens over the window when Cursor kept both, else pct (contextUsagePercent,
+// or 100 minus percentageRemaining), else none (pct < 0).
+func fillPct(used, limit int64, pct float64) (float64, bool) {
+	if used > 0 && limit > 0 {
+		return 100 * float64(used) / float64(limit), true
+	}
+	if pct < 0 {
+		return 0, false
+	}
+	return min(pct, 100), true
 }
 
 // parseUsage reads usageData: {"<model>": {"costInCents": n, "amount": n}}.
@@ -403,7 +424,13 @@ type Bubble struct {
 	// prompt: how full Cursor measured the chat's context window as the
 	// prompt was written, and the window's size. Zero when it kept none.
 	ContextUsed, ContextLimit int64
-	Tool                      *Tool
+	// ContextPct is the same reading as a share of the window, when
+	// HasContextPct: from the tokens when Cursor kept them, else 100 minus
+	// its percentageRemainingFloat (percentageRemaining), the only figure
+	// Cursor's November 2025 builds keep on a composer-1 or Auto prompt.
+	ContextPct    float64
+	HasContextPct bool
+	Tool          *Tool
 	// Call is the model request this row belongs to (modelCallId of a tool
 	// call, else usageUuid), "" when Cursor kept none.
 	Call string
@@ -475,8 +502,10 @@ type rawBubble struct {
 		Out int64 `json:"outputTokens"`
 	} `json:"tokenCount"`
 	Context *struct {
-		Used  int64 `json:"tokensUsed"`
-		Limit int64 `json:"tokenLimit"`
+		Used       int64    `json:"tokensUsed"`
+		Limit      int64    `json:"tokenLimit"`
+		Remaining  *float64 `json:"percentageRemaining"`
+		RemainingF *float64 `json:"percentageRemainingFloat"`
 	} `json:"contextWindowStatusAtCreation"`
 	UsageUUID   string          `json:"usageUuid"`
 	TerminalCwd string          `json:"lastTerminalCwd"`
@@ -581,6 +610,13 @@ func parseBubble(id string, val []byte) (Bubble, bool) {
 	}
 	if r.Context != nil {
 		b.ContextUsed, b.ContextLimit = max(0, r.Context.Used), max(0, r.Context.Limit)
+		used := -1.0
+		if rem := r.Context.RemainingF; rem != nil {
+			used = 100 - *rem
+		} else if rem := r.Context.Remaining; rem != nil {
+			used = 100 - *rem
+		}
+		b.ContextPct, b.HasContextPct = fillPct(b.ContextUsed, b.ContextLimit, used)
 	}
 	b.Visible = len(r.Text) + len(b.Thinking)
 	b.ThinkingMs = max(0, int64(r.ThinkingMs))

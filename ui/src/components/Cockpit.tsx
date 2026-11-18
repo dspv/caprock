@@ -17,6 +17,7 @@ import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDShort } from '@/lib/format'
+import { contextSize } from '@/lib/gaps'
 import { isUnpricedTurn } from '@/lib/sessionCost'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
@@ -543,7 +544,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
         </div>
         {(model || effort || s.context || (s.started_at > 0 && state !== 'ended')) && (
           <div data-hero-config className="flex min-w-0 flex-wrap gap-1"
-            title={[model, effort ? `${effort} reasoning effort` : '', s.context ? `${fmtPct(s.context.pct)} of the context window used (${fmtTokens(s.context.tokens)} / ${fmtTokens(s.context.window)})` : ''].filter(Boolean).join(' · ')}>
+            title={[model, effort ? `${effort} reasoning effort` : '', s.context ? `${fmtPct(s.context.pct)} of the context window used (${contextSize(s.context, s.context_note, fmtTokens)})` : ''].filter(Boolean).join(' · ')}>
             {model ? (
               <span data-hero-model className={HERO_CHIP}>
                 <span className="font-semibold text-fg">{model}{effort ? <span data-hero-effort className="font-normal text-fg-muted" aria-label={`${effort} reasoning effort`}> · {effort}</span> : null}</span>
@@ -1079,7 +1080,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   const ink = tone === 'danger' ? 'text-danger' : tone === 'warn' ? 'text-warn' : 'text-fg'
   const running = compact.phase.kind === 'running'
   const nextCall = shown.tokens === ctx.tokens ? ctx.next_call_usd : 0
-  const ghost = shown.was && last ? { id: `${s.session_id}:${last.at}`, from: Math.min(100, (100 * shown.was) / ctx.window) } : undefined
+  const ghost = shown.was && last && ctx.window > 0 ? { id: `${s.session_id}:${last.at}`, from: Math.min(100, (100 * shown.was) / ctx.window) } : undefined
   const meter = (h: string) => <ContextBar h={h} pct={pct} tone={tone} running={running} ghost={ghost} />
   if (!full) {
     return (
@@ -1088,7 +1089,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
         <LookLabel name="Context" full={false} onToggle={toggle} />
         <div className="min-w-[24px] flex-1">{meter('h-[5px]')}</div>
         <span className="num shrink-0 whitespace-nowrap text-[11.5px] text-fg-muted">
-          {running ? <CompactingLine view={compact.view} brief /> : <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span>} · <span className="text-fg">{fmtTokens(shown.tokens)}</span> / {fmtTokens(ctx.window)}
+          {running ? <CompactingLine view={compact.view} brief /> : <span className={`font-medium ${ink}`}>{fmtPct(pct)}</span>}{ctx.window > 0 && <> · <span className="text-fg">{fmtTokens(shown.tokens)}</span> / {fmtTokens(ctx.window)}</>}
         </span>
         <CompactIcon c={compact} />
       </section>
@@ -1098,7 +1099,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
     <section aria-label="Context" data-look="full" className="grid gap-2">
       <div className="flex items-center gap-2">
         <LookLabel name="Context" full onToggle={toggle} />
-        <span className="num ml-auto text-[11.5px] text-fg-muted"><span className="text-fg">{fmtTokens(shown.tokens)}</span> / {fmtTokens(ctx.window)}</span>
+        <span className="num ml-auto text-[11.5px] text-fg-muted">{ctx.window > 0 ? <><span className="text-fg">{fmtTokens(shown.tokens)}</span> / {fmtTokens(ctx.window)}</> : contextSize(ctx, s.context_note, fmtTokens)}</span>
       </div>
       {meter('h-[9px]')}
       <p className="text-[11.5px] text-fg-muted">
