@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -55,6 +56,10 @@ func (d *Daemon) newGitHub() *github.Service {
 		}
 	}
 	s.GH = gh
+	if d.opt.DataDir != "" {
+		// The runs Caprock re-ran by itself, so a restart never repeats one.
+		s.AutoRerunFile = filepath.Join(d.opt.DataDir, "ci-auto-rerun.json")
+	}
 	s.Store = github.DefaultStore(d.opt.DataDir, github.KeychainService, github.UserHome(context.Background()))
 	if d.projs != nil {
 		s.Projects = d.projs
@@ -109,6 +114,7 @@ type githubConfig struct{ d *Daemon }
 func (g *githubConfig) Source() string   { return g.d.config().GitHubSource }
 func (g *githubConfig) ClientID() string { return strings.TrimSpace(g.d.config().GitHubClientID) }
 func (g *githubConfig) Notify() bool     { return g.d.config().GitHubNotifyOn() }
+func (g *githubConfig) AutoRerun() bool  { return g.d.config().GitHubAutoRerun }
 
 func (g *githubConfig) SetSource(src string) error {
 	return g.save(func(c *config.Config) { c.GitHubSource = src })
@@ -116,6 +122,10 @@ func (g *githubConfig) SetSource(src string) error {
 
 func (g *githubConfig) SetNotify(on bool) error {
 	return g.save(func(c *config.Config) { c.GitHubNotify = &on })
+}
+
+func (g *githubConfig) SetAutoRerun(on bool) error {
+	return g.save(func(c *config.Config) { c.GitHubAutoRerun = on })
 }
 
 func (g *githubConfig) save(change func(*config.Config)) error {

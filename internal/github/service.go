@@ -48,6 +48,9 @@ type Config interface {
 	ClientID() string
 	Notify() bool
 	SetNotify(bool) error
+	// AutoRerun is the opt-in re-run of jobs GitHub never ran (autorerun.go).
+	AutoRerun() bool
+	SetAutoRerun(bool) error
 }
 
 // Worktrees is what the service needs from the projects list
@@ -109,7 +112,10 @@ type Status struct {
 	Health      Health   `json:"health"`
 	Device      *Device  `json:"device,omitempty"`
 	Notify      bool     `json:"notify"`
-	Tracked     int      `json:"tracked"`
+	// AutoRerun: the daemon re-runs, once per run, jobs GitHub never gave a
+	// machine (autorerun.go). Off unless turned on.
+	AutoRerun bool `json:"auto_rerun"`
+	Tracked   int  `json:"tracked"`
 }
 
 // Service is the integration. Fill the exported fields, then Start.
@@ -139,6 +145,10 @@ type Service struct {
 	// called for a list handed back from what was kept. Called without
 	// locks held.
 	OnPulls func(repo Repo, prs []BranchPR)
+	// AutoRerunFile is where the runs Caprock re-ran by itself are written
+	// down (<data_dir>/ci-auto-rerun.json), so a restart never re-runs one
+	// again; "" keeps them in memory only (tests).
+	AutoRerunFile string
 
 	c    *client
 	once sync.Once
@@ -173,6 +183,8 @@ type Service struct {
 	ci ciCache
 	// noRun keeps whether a finished job had no runner (norunner.go).
 	noRun noRunnerCache
+	// reruns keeps the runs Caprock re-ran by itself (autorerun.go).
+	reruns autoReruns
 	// repoCI keeps the release and default-branch CI (release.go).
 	repoCI repoCI
 	// baseline keeps past successful runs for the CI baselines (baseline.go).
@@ -419,6 +431,7 @@ func (s *Service) Status() Status {
 		st.Sources.Client = s.Config.ClientID()
 		st.Sources.OAuth = st.Sources.Client != ""
 		st.Notify = s.Config.Notify()
+		st.AutoRerun = s.Config.AutoRerun()
 	}
 	if s.device != nil {
 		d := *s.device

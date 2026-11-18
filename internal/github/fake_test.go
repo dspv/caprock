@@ -304,6 +304,7 @@ type memConfig struct {
 	source   string
 	clientID string
 	notify   bool
+	rerun    bool
 }
 
 func (c *memConfig) Source() string { c.mu.Lock(); defer c.mu.Unlock(); return c.source }
@@ -319,6 +320,13 @@ func (c *memConfig) SetNotify(on bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.notify = on
+	return nil
+}
+func (c *memConfig) AutoRerun() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.rerun }
+func (c *memConfig) SetAutoRerun(on bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rerun = on
 	return nil
 }
 

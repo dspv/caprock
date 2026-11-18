@@ -121,7 +121,7 @@ describe('a job GitHub never ran', () => {
     const s = { session_id: 's1', owned: true, status: 'active', title: 'Agent', cwd: '/w', repo_root: '/w' }
     render(<CockpitCI sessionId="s1" s={s as never} repoScope="/w" onOpen={() => {}} />)
     const note = await waitFor(() => {
-      const n = document.querySelector('[data-cockpit-ci-pr="941"] [data-cockpit-ci-norunner]')
+      const n = document.querySelector('[data-cockpit-ci-pr="941"] [data-cockpit-ci-norunner="1"] [data-check-part="norunner"]')
       if (!n) throw new Error('no note')
       return n
     })

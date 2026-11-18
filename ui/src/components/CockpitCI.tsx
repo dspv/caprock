@@ -51,9 +51,15 @@
  * it. The session's pull requests (`prs:<session>`) are asked here, folded
  * too; the Pipeline page asks the same route under the same key.
  *
- * Folded, the block is one line: the session's own newest PR and its
- * checks, drawn only once that read landed since the block was drawn, the
- * time beside it that read's. A copy kept from before is never drawn there
+ * Folded, the block is two lines (owner, 2026-11-18): the PR it summarizes
+ * — number and title, cut with an ellipsis — and the age; under them its
+ * checks and the one action the state calls for (Fix CI on a real failure;
+ * Rerun and the *Always rerun these* switch on a job GitHub never gave a
+ * machine; nothing while running or green). The PR is the one the unfolded
+ * views draw too (`lead`), counted by the same function (lib/ci
+ * checkCounts), so folded and unfolded never disagree. It is the session's
+ * own newest PR and its checks, drawn only once that read landed since the
+ * block was drawn, the time beside it that read's. A copy kept from before is never drawn there
  * as running (owner, 2026-10-23: "#801 · 4 running · 11h" of a PR merged 11
  * hours earlier); unfolded, a kept copy not read again yet is timed as of its
  * read, so its elapsed time does not grow. When the session's own newest PR
@@ -75,9 +81,9 @@
  * running · 11h").
  */
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
-import type { PRCheck, PullRequest } from '@/lib/github'
-import { NO_RUNNER_TITLE, ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
+import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
+import { githubApi, githubErrorText, useGitHubStatus, type AutoRerun, type PRCheck, type PullRequest } from '@/lib/github'
+import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
@@ -129,23 +135,21 @@ export function useDeckAnswer<T>(key: string): { d?: T; at?: number } {
   return { d: snap?.d, at: snap?.at }
 }
 
-/** Where a PR's checks stand: how many of each, and how long since the first started. */
-export function checkSummary(items: PRCheck[], now: number): { total: number; pass: number; fail: number; norunner: number; running: number; queued: number; ms?: number } {
-  let pass = 0, fail = 0, norunner = 0, running = 0, queued = 0
+/**
+ * Where a PR's checks stand: how many of each, and how long since the first
+ * started. The counts are lib/ci checkCounts — the folded line, the rows,
+ * Ring and By OS all count through it, so they never disagree.
+ */
+export function checkSummary(items: PRCheck[], now: number): CheckCounts & { ms?: number } {
+  const c = checkCounts(items)
   let start = Infinity, end = 0
-  for (const c of items) {
-    if (c.state === 'pass') pass++
-    else if (c.state === 'fail' && c.no_runner) norunner++
-    else if (c.state === 'fail') fail++
-    else if (c.state === 'skipped') { /* counted in the total only */ }
-    else if (c.status === 'in_progress') running++
-    else queued++
-    if (c.started_at) start = Math.min(start, c.started_at)
-    end = Math.max(end, c.completed_at || 0)
+  for (const x of items) {
+    if (x.started_at) start = Math.min(start, x.started_at)
+    end = Math.max(end, x.completed_at || 0)
   }
-  const done = running === 0 && queued === 0
+  const done = c.running === 0 && c.queued === 0
   const ms = start === Infinity ? undefined : Math.max(0, (done ? end : now) - start)
-  return { total: items.length, pass, fail, norunner, running, queued, ms: ms || undefined }
+  return { ...c, ms: ms || undefined }
 }
 
 /** The one action a PR row of the inspector offers, worded short for its narrow column. */
@@ -208,8 +212,10 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const ownOpen = ownLead?.live?.state === 'open'
   // A kept copy young enough to draw before its read lands (KEPT_FOLD_MS).
   const young = (at: number | undefined) => !!at && Date.now() - at < KEPT_FOLD_MS
-  const foldRepo = folded && !ownOpen && (statsMeta.confirmed || young(statsAt)) ? openFlightLead(flight) : undefined
-  const ciNo = foldRepo?.number ?? leadNo
+  // When the session's own newest PR is not open, the repository's open PR
+  // in flight is the one the block summarizes — folded and unfolded alike.
+  const repoPick = !ownOpen && (statsMeta.confirmed || young(statsAt)) ? openFlightLead(flight) : undefined
+  const ciNo = repoPick?.number ?? leadNo
   // A PR's checks are kept per repository when the block knows it, so a tab
   // of another session on the same repository draws them at once; the
   // Pipeline page keeps them per session (`ci:<session>:<pr>`), the newer wins.
@@ -223,26 +229,34 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     const c = ((b?.at ?? 0) > (a?.at ?? 0) ? b : a)?.d
     return c?.pr?.number === num ? c.ci?.runs : undefined
   }
-  // That PR's checks, asked only for Ring and By OS shown unfolded, and only
-  // when the session has no PR of its own with checks; folded, only while the
-  // repository's open PR is the line.
-  const askCI = !!onOpen && ciNo > 0 && (foldRepo ? true : view !== 'dots' && !folded && !ownLead)
+  // That PR's checks: while the repository's open PR is the one summarized
+  // (its row and the folded line draw them), else only for Ring and By OS
+  // shown unfolded when the session has no PR of its own with checks.
+  const askCI = !!onOpen && ciNo > 0 && (repoPick ? true : view !== 'dots' && !folded && !ownLead)
   const [, ciAt, ciMeta] = usePoll<SessionCI>(askCI, `cockpit-ci:${sessionId}:${ciNo}`, () => api.sessionCI(sessionId, ciNo), (d) => ciActive(d.ci), CI_RUNNING_MS, ciNo ? ciKeyOf(ciNo) : undefined)
-  const lead: LeadPR | undefined = ownLead?.live ? { number: ownLead.number, live: ownLead.live }
-    : flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
+  const ownL: LeadPR | undefined = ownLead?.live ? { number: ownLead.number, live: ownLead.live } : undefined
+  const repoLive = repoPick && ci.d?.pr?.number === repoPick.number ? ci.d.pr.live : undefined
+  const repoLead: LeadPR | undefined = repoPick && repoLive?.state === 'open' && repoLive.checks.items.length > 0 ? { number: repoPick.number, live: repoLive } : undefined
+  const flownL: LeadPR | undefined = flown && ci.d?.pr?.number === flown.number && ci.d.pr.live ? { number: flown.number, live: ci.d.pr.live } : undefined
+  // The one PR the block summarizes, folded and unfolded (owner, 2026-11-18:
+  // the folded line and the unfolded views must say the same): the
+  // session's own newest when open, else the repository's open one in
+  // flight, else the session's own newest, else the newest in flight. Its
+  // counts everywhere come from one function over the same checks
+  // (lib/ci prChecks → checkNodes → countNodes).
+  const lead: LeadPR | undefined = ownOpen ? ownL : repoLead ?? ownL ?? flownL
   // A copy kept from before, not read again since the block was drawn, is
   // timed as of when it was read: a check it says runs is not still running
   // now, and its elapsed time does not grow (the read, once it lands, moves it).
-  const fresh = ownLead ? prsMeta.confirmed : ciMeta.confirmed
+  const fresh = lead === ownL ? prsMeta.confirmed : ciMeta.confirmed
   // Folded, the line is the session's own newest PR, once it was read since
   // the block was drawn or from a copy kept less than KEPT_FOLD_MS ago (the
   // PRs it reads are asked folded too). When that PR is not open, the
   // repository's open PR in flight takes the line, once its checks say it is
   // still open — read since, or kept that recently — so a copy of hours ago
   // never claims checks are running.
-  const foldOwn: LeadPR | undefined = folded && ownLead?.live && (prsMeta.confirmed || young(prs.at)) ? { number: ownLead.number, live: ownLead.live } : undefined
-  const repoLive = foldRepo && (ciMeta.confirmed || young(ci.at)) && ci.d?.pr?.number === foldRepo.number ? ci.d.pr.live : undefined
-  const foldRepoLead: LeadPR | undefined = foldRepo && repoLive?.state === 'open' && repoLive.checks.items.length > 0 ? { number: foldRepo.number, live: repoLive } : undefined
+  const foldOwn = folded && ownL && (prsMeta.confirmed || young(prs.at)) ? ownL : undefined
+  const foldRepoLead = folded && repoLead && (ciMeta.confirmed || young(ci.at)) ? repoLead : undefined
   const foldLead = foldOwn && ownOpen ? foldOwn : foldRepoLead ?? foldOwn
   const foldIsRepo = !!foldLead && foldLead === foldRepoLead
   // The line drawn from a kept copy not read again since the block was drawn: muted, timed as of its read.
@@ -257,7 +271,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
     return () => window.clearInterval(t)
   }, [running, prs.at, ci.at])
   if (!hasStats && !ownLead) return null
-  const leadAt = ownLead ? prs.at : (ci.at || ciAt)
+  const leadAt = lead === ownL && ownL ? prs.at : (ci.at || ciAt)
   const leadNow = fresh || !leadAt ? now : Math.min(now, leadAt)
   const foldAt = foldIsRepo ? (ci.at || ciAt) : foldLead ? prs.at : undefined
   const leadSum = foldLead ? prChecks(foldLead, foldKept && foldAt ? Math.min(now, foldAt) : now) : undefined
@@ -279,10 +293,15 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
           const p = mine.get(r.number)
           const agents = p ? prAgents(p.live?.branch, worktrees) : []
           const acts = !!s && !!p && (quickActions(p).length > 0 || kit.confirm?.pr === p.number || !!kit.standing(p, agents, now))
-          return <JourneyRow key={r.number} r={r} now={now} ships={ships}
+          // The row's checks: the same PR's, read the same way, as the
+          // folded line counts them (the summarized PR's own copy when it is this one).
+          const rowLive = lead?.number === r.number ? lead.live : p?.live
+          const sum = rowLive?.state === 'open' ? prChecks({ live: rowLive }, now) : undefined
+          return <JourneyRow key={r.number} r={r} now={now} ships={ships} sum={sum}
             act={acts && p ? <RowAction p={p} kit={kit} worktrees={worktrees} now={now} /> : null}
             agent={agents[0]}
-            idle={noRunnerOf(p)}
+            idle={sum?.counts.norunner ?? 0}
+            auto={rowLive?.state === 'open' ? rowLive.checks.auto_rerun : undefined}
             onLog={onOpen ? () => onOpen(r.number) : undefined} />
         })}
       </ul>}
@@ -292,31 +311,51 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
 
   return (
     <section aria-label="CI" data-cockpit-ci={view} data-checks-edge className="grid gap-2">
-      <SectionLabel right={(
+      <SectionLabel
+        // Folded, two lines (owner, 2026-11-18): the PR it summarizes — its
+        // number and title — beside the label, the age at the right; under
+        // them its checks at the left and the one action the state calls for
+        // at the right. Never a third line.
+        after={foldLead ? (
+          <span data-fold-only data-cockpit-ci-fold-pr={foldLead.number} className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[11.5px]"
+            title={`${foldIsRepo ? `#${foldLead.number}: the repository’s open pull request — this session’s own is not open` : `#${foldLead.number}: this session’s newest pull request`}\n${foldLead.live.title}`}>
+            <span className="num shrink-0 text-fg-muted">#{foldLead.number}</span>
+            <span className="min-w-0 truncate text-fg">{foldLead.live.title}</span>
+          </span>
+        ) : undefined}
+        sub={leadSum && foldLead ? (
+          <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} data-cockpit-ci-kept={foldKept ? '' : undefined}
+            title={foldKept ? 'As last read, while it is read again' : undefined} className={`@container flex min-w-0 flex-1 items-center gap-2${foldKept ? ' opacity-70' : ''}`}>
+            {/* Merged or closed, its checks are history: "merged" says
+              * more than "all 1" (owner, 2026-10-27: "there is zero info here"). */}
+            {foldLead.live.state === 'merged' || foldLead.live.state === 'closed'
+              ? <span className="min-w-0 flex-1 text-[11.5px] text-fg-muted">{foldLead.live.state}</span>
+              // Shortened, never cut at the panel's edge (owner, 2026-11-18):
+              // the skipped count goes first, then the words, then all but
+              // the worst state (CheckSummary `fit`, FitSummary).
+              : <FitSummary className="justify-items-start" variants={(['full', 'noskip', 'compact', 'worst'] as const).map((f) => (
+                <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
+              ))} />}
+            {foldLead.live.state === 'open' && (
+              <span data-cockpit-ci-fold-act className="ml-auto flex shrink-0 items-center gap-2">
+                {/* The one action the state calls for: Fix CI on a real
+                  * failure; on a job GitHub never gave a machine, Rerun and
+                  * the switch that makes Caprock do it (or what Caprock did).
+                  * Each asks once, as every force action does. */}
+                {leadSum.counts.fail > 0 && !!s && <FoldAction kind="ci" p={mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live }} kit={kit} now={now} />}
+                {leadSum.counts.fail === 0 && leadSum.counts.norunner > 0 && !!s && (
+                  <FoldAction kind="rerun" p={mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live }} kit={kit} now={now} />
+                )}
+                {foldLead.live.checks.auto_rerun
+                  ? <AutoRerunWord a={foldLead.live.checks.auto_rerun} />
+                  : leadSum.counts.fail === 0 && leadSum.counts.norunner > 0 && <AutoRerunSwitch short />}
+              </span>
+            )}
+          </span>
+        ) : undefined}
+        right={(
         <span className="flex items-center gap-2">
-          <span data-cockpit-ci-age className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint" title={folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : ownLead ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '').replace('just now', 'now') : ''}</span>
-          {/* Folded, the newest PR's checks are its one line, in place of the view tabs. */}
-          {leadSum && foldLead && (
-            <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} data-cockpit-ci-kept={foldKept ? '' : undefined}
-              title={foldKept ? 'As last read, while it is read again' : undefined} className={`flex min-w-0 items-center gap-1.5${foldKept ? ' opacity-70' : ''}`}>
-              <span className="num shrink-0 text-[11.5px] text-fg-muted" title={foldIsRepo ? `#${foldLead.number}: the repository’s open pull request — this session’s own is not open` : `#${foldLead.number}: this session’s newest pull request`}>#{foldLead.number}</span>
-              {/* Merged or closed, its checks are history: "#220 merged" says
-                * more than "all 1" (owner, 2026-10-27: "there is zero info here"). */}
-              {foldLead.live.state === 'merged' || foldLead.live.state === 'closed'
-                ? <span className="shrink-0 text-[11.5px] text-fg-muted">{foldLead.live.state}</span>
-                // Shortened, never cut at the panel's edge (owner, 2026-11-18):
-                // the skipped count goes first, then the words, then all but
-                // the worst state (CheckSummary `fit`, FitSummary).
-                : <FitSummary variants={(['full', 'noskip', 'compact', 'worst'] as const).map((f) => (
-                  <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
-                ))} />}
-              {/* A job GitHub never gave a machine: the re-run, right here
-                * (owner, 2026-11-18). A click asks once, as every force action does. */}
-              {foldLead.live.state === 'open' && leadSum.counts.norunner > 0 && !!s && (
-                <FoldRerun p={mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live }} kit={kit} now={now} />
-              )}
-            </span>
-          )}
+          <span data-cockpit-ci-age className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint" title={folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : lead === ownL && ownL ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '').replace('just now', 'now') : ''}</span>
           {!folded && (
             <span role="tablist" aria-label="CI view" className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
               {VIEWS.map((x) => (
@@ -352,7 +391,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
  * as a bar; a merge waiting for a release says so in a word ("next release",
  * "in v0.132.0"), the whole of it on hover.
  */
-function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0 }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; onLog?: () => void; idle?: number }) {
+function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0, auto, sum }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; onLog?: () => void; idle?: number; auto?: AutoRerun; sum?: ChecksSummary }) {
   const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const steps = journey(r)
   const said = releaseNote(r, ships)
@@ -369,15 +408,13 @@ function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0 }: { r: Pipelin
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
       </span>
       <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
-      {(cost || who || act || idle > 0 || ((failing || act) && onLog)) && (
+      {(cost || who || act || sum || auto || ((failing || act) && onLog)) && (
         <span data-cockpit-ci-pr-meta className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-fg-faint">
-          {idle > 0 && (
-            <span data-cockpit-ci-norunner={idle} title={NO_RUNNER_TITLE} className="inline-flex shrink-0 items-center gap-1 text-norunner">
-              <StateMark tone="norunner" /><span><span className="num">{idle}</span> no runner</span>
-            </span>
-          )}
+          {/* Its checks, counted as the folded line counts them (one function, the same read). */}
+          {sum && <span data-cockpit-ci-row-checks={r.number} data-cockpit-ci-norunner={idle || undefined} className="inline-flex shrink-0"><CheckSummary s={sum} label={`#${r.number}: its checks`} beside className="shrink-0 text-[10.5px]" /></span>}
+          {auto ? <AutoRerunWord a={auto} /> : idle > 0 && <AutoRerunSwitch />}
           {(cost || who) && (
-            <span className="min-w-0 flex-1 truncate" title={[r.card && cost ? costTitle(r.card.spend) : '', agent ? `${sessionTitle(agent.session)} — ${agent.word}` : ''].filter(Boolean).join('\n')}>
+            <span className="min-w-[4rem] flex-1 truncate" title={[r.card && cost ? costTitle(r.card.spend) : '', agent ? `${sessionTitle(agent.session)} — ${agent.word}` : ''].filter(Boolean).join('\n')}>
               {cost && <span data-cockpit-ci-cost className="num">{cost}</span>}{cost && who ? ' · ' : ''}{who && <span data-cockpit-ci-agent>{who}</span>}
             </span>
           )}
@@ -394,40 +431,81 @@ function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0 }: { r: Pipelin
 
 type Kit = ReturnType<typeof usePRForce>
 
-/** How many of an open PR's jobs GitHub never gave a machine (muted amber on its row, apart from a failure). */
-function noRunnerOf(p: SessionPRLive | undefined): number {
-  const l = p?.live
-  return l?.state === 'open' ? (l.checks.no_runner ?? l.checks.items.filter((c) => c.no_runner).length) : 0
+const AUTO_TONE = { muted: 'text-fg-faint', norunner: 'text-norunner', danger: 'text-danger' } as const
+
+/** "re-run by Caprock": Caprock re-ran this PR's jobs GitHub never gave a machine; when, and what came of it, on hover. */
+function AutoRerunWord({ a }: { a: AutoRerun }) {
+  const w = autoRerunWords(a)
+  if (!w) return null
+  return <span data-auto-rerun={a.error ? 'error' : a.again ? 'again' : 'done'} title={w.title} className={`min-w-0 shrink truncate whitespace-nowrap text-[10.5px] ${AUTO_TONE[w.tone]}`}>{w.text}</span>
 }
 
 /**
- * The folded line's re-run of the jobs GitHub never gave a machine: *Rerun*
- * (muted amber, the tooltip saying why), then *Re-run? Confirm · Cancel*,
- * then what it is doing until GitHub shows the checks running again. It is
- * the deck's own Re-run (lib/usePRForce): the run's failed jobs, never
- * automatic, refused with the reason on a device that may only watch.
+ * The switch Settings → GitHub has (*Rerun jobs GitHub never ran*), beside a
+ * job GitHub never gave a machine: the same setting, ticked here or there.
+ * Shown only on this computer (a paired device may not change it) and by a
+ * daemon that has it. `short` is the folded line's one word.
  */
-function FoldRerun({ p, kit, now }: { p: SessionPRLive; kit: Kit; now: number }) {
+function AutoRerunSwitch({ short = false }: { short?: boolean }) {
+  const { status, set } = useGitHubStatus()
+  // The box moves at once; a refusal puts it back and says why on hover.
+  const [want, setWant] = useState<boolean | undefined>(undefined)
+  const [error, setError] = useState('')
+  if (isPairedDevice() || !status?.connected || status.auto_rerun === undefined) return null
+  const on = want ?? status.auto_rerun
+  const busy = want !== undefined
+  const flip = async (v: boolean) => {
+    setWant(v)
+    setError('')
+    try { set(await githubApi.setAutoRerun(v)) } catch (e) { setError(githubErrorText(e)) } finally { setWant(undefined) }
+  }
+  return (
+    <label data-auto-rerun-switch={short ? 'short' : 'full'} title={error || `${AUTO_RERUN_HINT}\nThe same switch as Settings → GitHub.`}
+      className={`inline-flex min-w-0 shrink cursor-pointer items-center gap-1 whitespace-nowrap text-[10.5px] ${error ? 'text-danger' : 'text-fg-muted hover:text-fg'}`}>
+      <input type="checkbox" checked={on} disabled={busy} onChange={(e) => void flip(e.target.checked)}
+        aria-label="Always rerun jobs GitHub never ran" className="h-[11px] w-[11px] shrink-0 accent-[var(--color-accent)]" />
+      {/* Folded, the words go before the line would overflow: under 400 px
+        * of line only the box and ↻ stay, the whole of it on hover. */}
+      {short ? (
+        <>
+          <span aria-hidden className="@min-[400px]:hidden">↻</span>
+          <span className="hidden truncate @min-[400px]:inline">Always rerun these</span>
+        </>
+      ) : <span className="truncate">Always rerun these</span>}
+    </label>
+  )
+}
+
+
+/**
+ * The folded line's one action: *Fix CI* on a real failure, *Rerun* on a job
+ * GitHub never gave a machine (the tooltip saying why). A click asks once —
+ * *Fix CI? / Re-run? Confirm · Cancel* — then says what it is doing until
+ * GitHub shows the checks running again. They are the deck's own actions
+ * (lib/usePRForce), refused with the reason on a device that may only watch.
+ */
+function FoldAction({ kind, p, kit, now }: { kind: 'ci' | 'rerun'; p: SessionPRLive; kit: Kit; now: number }) {
   const g = kit.standing(p, [], now)
   // One word on the narrow line, the whole of it on hover.
-  if (g) return <span data-cockpit-ci-fold-progress title={g.text} className="shrink-0 whitespace-nowrap text-[11px] text-accent">re-running…</span>
-  if (kit.confirm?.pr === p.number && kit.confirm.kind === 'rerun') {
+  if (g) return <span data-cockpit-ci-fold-progress title={g.text} className="shrink-0 whitespace-nowrap text-[11px] text-accent">{kind === 'ci' ? 'fixing…' : 're-running…'}</span>
+  if (kit.confirm?.pr === p.number && kit.confirm.kind === kind) {
     return (
       <span data-cockpit-ci-fold-confirm className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px]">
-        <span className="text-fg" title={kit.confirmText(p, 'rerun')}>Re-run?</span>
-        <button type="button" data-cockpit-ci-fold-confirm-yes autoFocus onClick={() => void kit.force(p, 'rerun')}
+        <span className="text-fg" title={kit.confirmText(p, kind)}>{kind === 'ci' ? 'Fix CI?' : 'Re-run?'}</span>
+        <button type="button" data-cockpit-ci-fold-confirm-yes autoFocus onClick={() => void kit.force(p, kind)}
           className="rounded-[4px] border border-accent/60 bg-accent/10 px-1 font-medium text-accent hover:bg-accent/20">Confirm</button>
         <button type="button" onClick={() => kit.setConfirm(undefined)} onKeyDown={(e) => { if (e.key === 'Escape') kit.setConfirm(undefined) }} title={`Cancel (${keys('Esc')})`}
           className="rounded-[4px] px-1 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">Cancel</button>
       </span>
     )
   }
-  const no = kit.forceWhy(p, 'rerun')
+  const no = kit.forceWhy(p, kind)
+  const tone = kind === 'ci' ? 'border-accent/50 text-accent hover:bg-accent/10' : 'border-norunner/60 text-norunner hover:bg-norunner/10'
   return (
-    <button type="button" data-cockpit-ci-fold-rerun disabled={!!no || kit.forcing === p.number} onClick={() => kit.setConfirm({ pr: p.number, kind: 'rerun' })}
-      title={no || `${NO_RUNNER_TITLE} ${FORCE_TITLE.rerun}`}
-      className="shrink-0 rounded-[4px] border border-norunner/60 px-1 text-[10.5px] font-medium leading-[15px] text-norunner hover:bg-norunner/10 disabled:cursor-not-allowed disabled:border-[var(--app-hairline)] disabled:font-normal disabled:text-fg-faint">
-      Rerun
+    <button type="button" data-cockpit-ci-fold-action={kind} data-cockpit-ci-fold-rerun={kind === 'rerun' ? '' : undefined} disabled={!!no || kit.forcing === p.number} onClick={() => kit.setConfirm({ pr: p.number, kind })}
+      title={no || (kind === 'rerun' ? `${NO_RUNNER_TITLE} ${FORCE_TITLE.rerun}` : FORCE_TITLE.ci)}
+      className={`shrink-0 rounded-[4px] border px-1 text-[10.5px] font-medium leading-[15px] ${tone} disabled:cursor-not-allowed disabled:border-[var(--app-hairline)] disabled:font-normal disabled:text-fg-faint`}>
+      {kind === 'ci' ? 'Fix CI' : 'Rerun'}
     </button>
   )
 }

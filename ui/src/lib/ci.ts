@@ -7,13 +7,26 @@
  * up here (rule 6).
  */
 import type { CIBaseline, CIJob, CIRun, CIState, CIStep, ReleaseCI, SessionPRLive } from './api'
-import type { PRCheck } from './github'
+import type { AutoRerun, PRCheck } from './github'
 
 /** norunner: a job GitHub never gave a machine (no step, no runner) — not tested, not failed; a re-run is the fix. */
 export type CITone = 'running' | 'queued' | 'pass' | 'fail' | 'norunner' | 'skipped'
 
 /** What a job GitHub never ran says, wherever it is drawn. */
 export const NO_RUNNER_TITLE = 'GitHub did not give this job a machine; the code was not tested. Rerun it.'
+
+/** What the switch that re-runs these does, where it is offered (Settings → GitHub, and beside Rerun). */
+export const AUTO_RERUN_HINT = 'Caprock reruns a job GitHub never gave a machine, once per run, while it is running: it asks GitHub with your GitHub token, for your repositories only. Off: you click Rerun.'
+
+/** The short words and the hover of Caprock's own re-run, when it did one. */
+export function autoRerunWords(a: AutoRerun | undefined): { text: string; title: string; tone: 'muted' | 'norunner' | 'danger' } | undefined {
+  if (!a) return undefined
+  const at = new Date(a.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const jobs = `${a.jobs} job${a.jobs === 1 ? '' : 's'}`
+  if (a.error) return { text: 'Caprock could not re-run', tone: 'danger', title: `Caprock asked GitHub to rerun ${jobs} GitHub never gave a machine at ${at}; GitHub refused: ${a.error}\nIt does not ask again. Rerun it yourself.` }
+  if (a.again) return { text: 're-run by Caprock once', tone: 'norunner', title: `Caprock reran ${jobs} GitHub never gave a machine at ${at}, and GitHub gave the rerun no machine either.\nCaprock reruns a run only once. Rerun it yourself.` }
+  return { text: 're-run by Caprock', tone: 'muted', title: `Caprock reran ${jobs} GitHub never gave a machine at ${at} (attempt ${a.attempt}). It does this once per run.\nSettings → GitHub → Rerun jobs GitHub never ran.` }
+}
 
 const FAILED = new Set(['failure', 'timed_out', 'startup_failure', 'action_required'])
 
@@ -343,6 +356,11 @@ export function osName(os: string | undefined): string {
 
 /** How many of a PR's checks stand in each state. */
 export interface CheckCounts { total: number; pass: number; fail: number; norunner: number; running: number; queued: number; skipped: number }
+
+/** How many of a PR's checks stand in each state: the one count every CI view draws (prChecks counts the same nodes). */
+export function checkCounts(items: PRCheck[]): CheckCounts {
+  return countNodes(checkNodes(items, 0))
+}
 
 export function countNodes(nodes: PipeNode[]): CheckCounts {
   const c: CheckCounts = { total: nodes.length, pass: 0, fail: 0, norunner: 0, running: 0, queued: 0, skipped: 0 }
