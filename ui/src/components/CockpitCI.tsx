@@ -77,7 +77,7 @@
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
 import type { PRCheck, PullRequest } from '@/lib/github'
-import { ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
+import { NO_RUNNER_TITLE, ciActive, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
@@ -130,11 +130,12 @@ export function useDeckAnswer<T>(key: string): { d?: T; at?: number } {
 }
 
 /** Where a PR's checks stand: how many of each, and how long since the first started. */
-export function checkSummary(items: PRCheck[], now: number): { total: number; pass: number; fail: number; running: number; queued: number; ms?: number } {
-  let pass = 0, fail = 0, running = 0, queued = 0
+export function checkSummary(items: PRCheck[], now: number): { total: number; pass: number; fail: number; norunner: number; running: number; queued: number; ms?: number } {
+  let pass = 0, fail = 0, norunner = 0, running = 0, queued = 0
   let start = Infinity, end = 0
   for (const c of items) {
     if (c.state === 'pass') pass++
+    else if (c.state === 'fail' && c.no_runner) norunner++
     else if (c.state === 'fail') fail++
     else if (c.state === 'skipped') { /* counted in the total only */ }
     else if (c.status === 'in_progress') running++
@@ -144,7 +145,7 @@ export function checkSummary(items: PRCheck[], now: number): { total: number; pa
   }
   const done = running === 0 && queued === 0
   const ms = start === Infinity ? undefined : Math.max(0, (done ? end : now) - start)
-  return { total: items.length, pass, fail, running, queued, ms: ms || undefined }
+  return { total: items.length, pass, fail, norunner, running, queued, ms: ms || undefined }
 }
 
 /** The one action a PR row of the inspector offers, worded short for its narrow column. */
@@ -281,6 +282,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
           return <JourneyRow key={r.number} r={r} now={now} ships={ships}
             act={acts && p ? <RowAction p={p} kit={kit} worktrees={worktrees} now={now} /> : null}
             agent={agents[0]}
+            idle={noRunnerOf(p)}
             onLog={onOpen ? () => onOpen(r.number) : undefined} />
         })}
       </ul>}
@@ -308,6 +310,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
                 : <FitSummary variants={(['full', 'noskip', 'compact', 'worst'] as const).map((f) => (
                   <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
                 ))} />}
+              {/* A job GitHub never gave a machine: the re-run, right here
+                * (owner, 2026-11-18). A click asks once, as every force action does. */}
+              {foldLead.live.state === 'open' && leadSum.counts.norunner > 0 && !!s && (
+                <FoldRerun p={mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live }} kit={kit} now={now} />
+              )}
             </span>
           )}
           {!folded && (
@@ -345,7 +352,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
  * as a bar; a merge waiting for a release says so in a word ("next release",
  * "in v0.132.0"), the whole of it on hover.
  */
-function JourneyRow({ r, now, ships, act, agent, onLog }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; onLog?: () => void }) {
+function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0 }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; onLog?: () => void; idle?: number }) {
   const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const steps = journey(r)
   const said = releaseNote(r, ships)
@@ -362,8 +369,13 @@ function JourneyRow({ r, now, ships, act, agent, onLog }: { r: PipelineRow; now:
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
       </span>
       <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
-      {(cost || who || act || ((failing || act) && onLog)) && (
+      {(cost || who || act || idle > 0 || ((failing || act) && onLog)) && (
         <span data-cockpit-ci-pr-meta className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-fg-faint">
+          {idle > 0 && (
+            <span data-cockpit-ci-norunner={idle} title={NO_RUNNER_TITLE} className="inline-flex shrink-0 items-center gap-1 text-norunner">
+              <StateMark tone="norunner" /><span><span className="num">{idle}</span> no runner</span>
+            </span>
+          )}
           {(cost || who) && (
             <span className="min-w-0 flex-1 truncate" title={[r.card && cost ? costTitle(r.card.spend) : '', agent ? `${sessionTitle(agent.session)} — ${agent.word}` : ''].filter(Boolean).join('\n')}>
               {cost && <span data-cockpit-ci-cost className="num">{cost}</span>}{cost && who ? ' · ' : ''}{who && <span data-cockpit-ci-agent>{who}</span>}
@@ -381,6 +393,44 @@ function JourneyRow({ r, now, ships, act, agent, onLog }: { r: PipelineRow; now:
 }
 
 type Kit = ReturnType<typeof usePRForce>
+
+/** How many of an open PR's jobs GitHub never gave a machine (muted amber on its row, apart from a failure). */
+function noRunnerOf(p: SessionPRLive | undefined): number {
+  const l = p?.live
+  return l?.state === 'open' ? (l.checks.no_runner ?? l.checks.items.filter((c) => c.no_runner).length) : 0
+}
+
+/**
+ * The folded line's re-run of the jobs GitHub never gave a machine: *Rerun*
+ * (muted amber, the tooltip saying why), then *Re-run? Confirm · Cancel*,
+ * then what it is doing until GitHub shows the checks running again. It is
+ * the deck's own Re-run (lib/usePRForce): the run's failed jobs, never
+ * automatic, refused with the reason on a device that may only watch.
+ */
+function FoldRerun({ p, kit, now }: { p: SessionPRLive; kit: Kit; now: number }) {
+  const g = kit.standing(p, [], now)
+  // One word on the narrow line, the whole of it on hover.
+  if (g) return <span data-cockpit-ci-fold-progress title={g.text} className="shrink-0 whitespace-nowrap text-[11px] text-accent">re-running…</span>
+  if (kit.confirm?.pr === p.number && kit.confirm.kind === 'rerun') {
+    return (
+      <span data-cockpit-ci-fold-confirm className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px]">
+        <span className="text-fg" title={kit.confirmText(p, 'rerun')}>Re-run?</span>
+        <button type="button" data-cockpit-ci-fold-confirm-yes autoFocus onClick={() => void kit.force(p, 'rerun')}
+          className="rounded-[4px] border border-accent/60 bg-accent/10 px-1 font-medium text-accent hover:bg-accent/20">Confirm</button>
+        <button type="button" onClick={() => kit.setConfirm(undefined)} onKeyDown={(e) => { if (e.key === 'Escape') kit.setConfirm(undefined) }} title={`Cancel (${keys('Esc')})`}
+          className="rounded-[4px] px-1 text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg">Cancel</button>
+      </span>
+    )
+  }
+  const no = kit.forceWhy(p, 'rerun')
+  return (
+    <button type="button" data-cockpit-ci-fold-rerun disabled={!!no || kit.forcing === p.number} onClick={() => kit.setConfirm({ pr: p.number, kind: 'rerun' })}
+      title={no || `${NO_RUNNER_TITLE} ${FORCE_TITLE.rerun}`}
+      className="shrink-0 rounded-[4px] border border-norunner/60 px-1 text-[10.5px] font-medium leading-[15px] text-norunner hover:bg-norunner/10 disabled:cursor-not-allowed disabled:border-[var(--app-hairline)] disabled:font-normal disabled:text-fg-faint">
+      Rerun
+    </button>
+  )
+}
 
 /**
  * The one action a row offers (owner, 2026-10-20: the deck's per-PR actions
@@ -445,12 +495,12 @@ function Ring({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
   const c = 2 * Math.PI * r
   const arc = (n: number) => (s.total ? (n / s.total) * c : 0)
   const segs: { n: number; color: string }[] = [
-    { n: s.pass, color: 'var(--color-ok)' }, { n: s.fail, color: 'var(--color-danger)' }, { n: s.running, color: 'var(--color-warn)' },
+    { n: s.pass, color: 'var(--color-ok)' }, { n: s.fail, color: 'var(--color-danger)' }, { n: s.norunner, color: 'var(--color-norunner)' }, { n: s.running, color: 'var(--color-warn)' },
   ]
   let off = 0
   const run = ci?.pr?.number === p.number ? ci.ci?.runs?.[0] : undefined
   const vs = run ? runVsMedian(run, now) : undefined
-  const done = s.pass + s.fail
+  const done = s.pass + s.fail + s.norunner
   return (
     <span data-cockpit-ci-ring className="flex items-center gap-3">
       <svg width="38" height="38" viewBox="0 0 38 38" role="img" aria-label={`${done} of ${s.total} checks done`} className="shrink-0 -rotate-90">
@@ -465,7 +515,7 @@ function Ring({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
       <span className="grid min-w-0 gap-0.5">
         <span className="num text-[15px] font-semibold leading-none text-fg">{done}/{s.total}{s.ms ? <span className="text-[12px] font-normal text-fg-muted"> · {fmtRun(s.ms)}</span> : null}</span>
         <span className="truncate text-[11px] text-fg-muted">
-          #{p.number}{s.fail ? <span className="text-danger"> · {s.fail} failed</span> : null}{s.running ? <span className="text-warn"> · {s.running} running</span> : null}
+          #{p.number}{s.fail ? <span className="text-danger"> · {s.fail} failed</span> : null}{s.norunner ? <span className="text-norunner" title={NO_RUNNER_TITLE}> · {s.norunner} no runner</span> : null}{s.running ? <span className="text-warn"> · {s.running} running</span> : null}
           {vs ? <span className={vs.tone === 'warn' ? 'text-warn' : 'text-fg-faint'}> · {vs.text}</span> : null}
         </span>
       </span>
@@ -473,8 +523,8 @@ function Ring({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
   )
 }
 
-const OS_WORD = { pass: 'passed', fail: 'failed', running: 'running', queued: 'queued', skipped: 'skipped' } as const
-const OS_TEXT = { pass: 'text-ok', fail: 'text-danger', running: 'text-warn', queued: 'text-fg-muted', skipped: 'text-fg-faint' } as const
+const OS_WORD = { pass: 'passed', fail: 'failed', norunner: 'no runner', running: 'running', queued: 'queued', skipped: 'skipped' } as const
+const OS_TEXT = { pass: 'text-ok', fail: 'text-danger', norunner: 'text-norunner', running: 'text-warn', queued: 'text-fg-muted', skipped: 'text-fg-faint' } as const
 
 /**
  * The newest PR's checks by runner OS, one line each: *Linux ✓ passed 1m 48s

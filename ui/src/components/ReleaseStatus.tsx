@@ -57,7 +57,7 @@ export function ReleaseInFlight({ status: s, phone = false }: { status: ReleaseS
 }
 
 const STRIP_NOW: Record<ReleaseStatus['stages'][number]['tone'], string> = {
-  ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', merged: 'text-merged', accent: 'text-accent', muted: 'text-fg', faint: 'text-fg-muted',
+  ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', norunner: 'text-norunner', merged: 'text-merged', accent: 'text-accent', muted: 'text-fg', faint: 'text-fg-muted',
 }
 
 /**

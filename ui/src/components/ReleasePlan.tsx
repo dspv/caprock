@@ -365,7 +365,7 @@ function WaitFor({ wait: w, compact }: { wait: Wait; compact: boolean }) {
   )
 }
 
-const DOT_TONE: Record<OSDot['state'], string> = { pass: 'bg-ok', fail: 'bg-danger', running: 'bg-accent release-step-pulse' }
+const DOT_TONE: Record<OSDot['state'], string> = { pass: 'bg-ok', fail: 'bg-danger', no_runner: 'bg-norunner', running: 'bg-accent release-step-pulse' }
 
 /** A dot per OS its checks ran on, macOS · Linux · Windows, each named on hover. */
 function OSDots({ dots }: { dots: OSDot[] }) {
