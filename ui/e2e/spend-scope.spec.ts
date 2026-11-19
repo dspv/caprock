@@ -1,7 +1,7 @@
 /**
  * The cockpit's Spend header and Numbers row at every inspector width
  * (owner, 2026-11-19): the header carries whose spend (*session | all*) and
- * over when (*whole · today · 7d · 30d*) beside *Chart | Numbers*, and none
+ * over when (*since start · today · 7d · 30d*) beside *Chart | Numbers*, and none
  * of it may reach past the panel; Numbers read "SPENT $7,924…", cut in its
  * third of the cockpit, and now draws $7.92k and 13.71B whole. The 30-day
  * summary is stubbed at the page with the owner's figures; nothing is typed.

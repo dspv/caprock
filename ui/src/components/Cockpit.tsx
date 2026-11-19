@@ -801,7 +801,7 @@ function HeroSecondaries({ figures, end }: { figures: SpendFigures; end?: boolea
  * (FoldSpark). The header carries two choices, per tab and in memory only
  * (owner, 2026-10-22): whose spend — *session | all* (this session, all
  * sessions; owner, 2026-11-19: "I'd switch between this session and all
- * sessions") — and over when — *whole · today · 7d · 30d*, *whole* (the
+ * sessions") — and over when — *since start · today · 7d · 30d*, *since start* (the
  * session start to now) for this session only and the default. Then
  * *Chart | Numbers*, remembered per viewer (owner, 2026-10-12: "you can
  * choose what you see — the chart or the numbers — and which ones").

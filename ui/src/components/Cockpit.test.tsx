@@ -853,7 +853,7 @@ describe('the spend details', () => {
     const { unmount } = await act(async () => show(agent({ started_at: now - 72 * 60_000, worked_at: now })))
     expect(spend()).toHaveAttribute('data-spend-view', 'chart')
     expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(spend()).getByRole('group', { name: /^Spend by .*, whole session$/ })).toBeInTheDocument()
+    expect(within(spend()).getByRole('group', { name: /^Spend by .*, since start · this session$/ })).toBeInTheDocument()
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
     const toggle = within(spend()).getByRole('button', { name: /^Spend$/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
@@ -928,13 +928,13 @@ describe('the spend details', () => {
     await act(async () => { show(agent(), today) })
     showNumbers()
     const fig = (name: RegExp) => within(spend()).getByLabelText(name)
-    expect(fig(/^Cache hit rate, whole session/)).toHaveTextContent('95%')
+    expect(fig(/^Cache hit rate, since start · this session/)).toHaveTextContent('95%')
     expect(within(spend()).getByRole('button', { name: 'This session' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(spend()).getByRole('button', { name: 'Whole session' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(spend()).getByRole('button', { name: 'Since start' })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
     // All sessions has no whole span: it opens on today, and offers no whole.
     expect(within(spend()).getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(spend()).queryByRole('button', { name: 'Whole session' })).toBeNull()
+    expect(within(spend()).queryByRole('button', { name: 'Since start' })).toBeNull()
     // Today is the summary the window already holds: no extra request. A
     // Caprock-wide figure is not the ones beside the agent, so Spent is back.
     expect(slots()).toEqual(['cost', 'tokens', 'cache'])
@@ -993,7 +993,7 @@ describe('the spend details', () => {
     expect(within(menu).getByRole('menuitemradio', { name: /Last call/ })).toHaveAttribute('aria-checked', 'true')
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Turns/ }))
     expect(slots()).toEqual(['turns', 'time', 'cache'])
-    expect(within(spend()).getByLabelText(/^Time working, whole session/)).toHaveTextContent('1h 12m')
+    expect(within(spend()).getByLabelText(/^Time working, since start · this session/)).toHaveTextContent('1h 12m')
     // Picking what another figure shows swaps the two.
     menuOf(2)
     fireEvent.click(within(spend()).getByRole('menuitemradio', { name: /Time working/ }))
@@ -1062,7 +1062,7 @@ describe('the spend details', () => {
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
     expect(fig(/^Spent, 30 days · this session/)).toHaveTextContent('$4.50')
     // The whole session is the daemon's own figure.
-    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Whole session' })) })
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Since start' })) })
     expect(spend()).toHaveAttribute('data-spend-period', 'whole')
     expect(spend().querySelector('[data-spend-empty]')).toBeNull()
   })

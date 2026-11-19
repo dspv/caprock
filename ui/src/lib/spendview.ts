@@ -726,21 +726,21 @@ export const SCOPE_NAMES: Record<SpendScope, { short: string; long: string }> = 
 
 /** The period control's words, and its full name on hover and for a screen reader. */
 export const WINDOW_NAMES: Record<SpendWindow, { short: string; long: string }> = {
-  whole: { short: 'whole', long: 'Whole session' },
+  whole: { short: 'since start', long: 'Since start' },
   today: { short: 'today', long: 'Today' },
   '7d': { short: '7d', long: 'Last 7 days' },
   '30d': { short: '30d', long: 'Last 30 days' },
 }
 
 /**
- * Whose money the figures are and over when, both always said: "Whole
- * session", "Today · this session", "30 days · all sessions" (owner,
+ * Whose money the figures are and over when, both always said: "Since
+ * start · this session", "Today · this session", "30 days · all sessions" (owner,
  * 2026-11-19: three tabs on 30d drew the same chart and nothing said it
  * was every session's).
  */
 export function spendLabel(pick: SpendPick): string {
   const p = shownPick(pick)
-  if (isWholeSession(p)) return 'Whole session'
+  if (isWholeSession(p)) return 'Since start · this session'
   const when = p.window === 'today' ? 'Today' : p.window === '7d' ? '7 days' : '30 days'
   return `${when} · ${p.scope === 'session' ? 'this session' : 'all sessions'}`
 }

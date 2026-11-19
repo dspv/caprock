@@ -95,7 +95,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   now: number
   /** The period's own figure for the metric, on the top line; undefined leaves it out. */
   total?: number
-  /** Whose money and when: "whole session", "today · this session", "7 days · all sessions". */
+  /** Whose money and when: "since start · this session", "today · this session", "7 days · all sessions". */
   scope: string
   metric?: ChartMetric
   /** The ▾ that picks the metric, drawn after the total at rest. */
@@ -282,9 +282,9 @@ export function SpendOverTime({ sessionId, events, now, total, metric = 'cost', 
 }
 
 /** The session's chart from bars already read: "No priced calls yet." until there are some. */
-export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost, scope = 'whole session' }: {
+export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost, scope = 'since start · this session' }: {
   sessionId: string; bars: readonly ChartBar[]; step: number; now: number; total?: number; metric?: ChartMetric; chooser?: ReactNode; usual?: Usual; cost?: CostNote
-  /** Whose and when, lower case: "whole session", "today · this session". */
+  /** Whose and when, lower case: "since start · this session", "today · this session". */
   scope?: string
 }) {
   // A session whose every turn ran unpriced has no priced call, and says why.

@@ -2,7 +2,7 @@
 kind: Changed
 ---
 - **cockpit:** Spend's period chip is split into whose and when: *session |
-  all* and *whole · today · 7d · 30d* (*whole*, from the session's start,
+  all* and *since start · today · 7d · 30d* (*since start*, from the session's start,
   for this session only). This session over today, 7 or 30 days is its own
   calls in that window, by the hour or by the day, so three tabs on 30 days
   no longer draw the same chart; a window with no calls says so instead of

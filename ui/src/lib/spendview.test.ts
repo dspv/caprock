@@ -170,7 +170,7 @@ describe('the spend figures', () => {
     // No spark in the summary: no series, rather than an empty line.
     expect(rangeFigures({ ...sum, projects: [] } as Summary).series).toBeUndefined()
     // The label says whose and when, both, every time.
-    expect(spendLabel(WHOLE_SESSION)).toBe('Whole session')
+    expect(spendLabel(WHOLE_SESSION)).toBe('Since start · this session')
     expect(spendLabel({ scope: 'session', window: 'today' })).toBe('Today · this session')
     expect(spendLabel({ scope: 'session', window: '7d' })).toBe('7 days · this session')
     expect(spendLabel({ scope: 'all', window: '30d' })).toBe('30 days · all sessions')

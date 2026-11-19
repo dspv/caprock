@@ -618,8 +618,8 @@ others. Installing it: [install-app.md](install-app.md).
   *62% · 124.0k / 200.0k* and *5h 41% · 05:40  Week 24% · Mon 13:00*; click
   *Context* or *Plan* for the full meter, what every call now pays to
   re-read the context and each window's bar and forecast, remembered —
-  then its spend: whose — *session | all* — and over when — the whole
-  session, today, 7 or 30 days — each tab on its own whole session until
+  then its spend: whose — *session | all* — and over when — *since start*
+  of the session, today, 7 or 30 days — each tab on *since start* until
   you pick (both picks stay in that tab; the label says both, *Today ·
   this session*, *30 days · all sessions*; folded, a chip says *session*,
   *today · session* or *today · all*), as a chart or as three more figures you choose
