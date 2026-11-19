@@ -38,6 +38,11 @@ export interface Stick {
   /** Attach to the scrolling element. */
   ref: (el: HTMLElement | null) => void
   atEdge: boolean
+  /**
+   * Following the edge as of the last scroll event, not the last render:
+   * `atEdge` lags a scroll by a render.
+   */
+  following: () => boolean
   /** Rows received since the reader left the edge. */
   newCount: number
   /** Go to the edge and follow again. */
@@ -141,5 +146,7 @@ export function useStickToBottom({ edge = 'bottom', total }: StickOptions): Stic
     remember(node)
   }, [node, edge, remember])
 
-  return { ref, atEdge, newCount: atEdge ? 0 : Math.max(0, total - leftAt), jump }
+  const isFollowing = useCallback(() => following.current, [])
+
+  return { ref, atEdge, following: isFollowing, newCount: atEdge ? 0 : Math.max(0, total - leftAt), jump }
 }
