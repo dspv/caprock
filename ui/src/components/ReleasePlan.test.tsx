@@ -390,7 +390,7 @@ describe('where it is drawn', () => {
     const plan = region.querySelector('[data-release-plan]')!
     expect(plan.firstElementChild).toHaveAttribute('data-release-group', 'head')
     expect(plan.firstElementChild!.lastElementChild).toHaveAttribute('data-release-strip')
-    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^0\.117\.5patch: fixes only·last (\d+[mhd] ago|just now)$/)
+    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^0\.117\.5patch·last (\d+[mhd] ago|just now)$/)
     // Grouped by kind in Keep a Changelog order, each in its own words.
     const kinds = [...region.querySelectorAll('[data-release-kind]')]
     expect(kinds.map((k) => k.querySelector('h5')!.textContent)).toEqual(['Changed', 'Fixed'])

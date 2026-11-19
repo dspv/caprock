@@ -145,13 +145,14 @@ describe('the cockpit’s Release section', () => {
     const strip = document.querySelector('[data-release-strip]')!
     expect(strip).toHaveAttribute('data-release-current', 'merged')
     expect(strip).toHaveAttribute('aria-label', 'Release stage 1 of 5: Merged')
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Merged · waiting: merge #949$/)
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Merged · waiting to merge$/)
     // The batch's checks and state: one via line, the first of the bottom group, never twice.
     const via = document.querySelectorAll('[data-release-via]')
     expect(via).toHaveLength(1)
     expect(via[0]).toHaveTextContent('via#949●green·ready to merge')
     expect(via[0]!.parentElement).toHaveAttribute('data-release-group', 'later')
     expect(via[0]!.parentElement!.firstElementChild).toBe(via[0])
+    expect(document.querySelector('[data-release-plan]')!.textContent!.match(/#949/g)).toHaveLength(1)
     // Three groups apart: the head, the entries and the bottom lines, each after a hairline.
     const groups = [...document.querySelector('[data-release-plan]')!.children]
     expect(groups.map((g) => g.getAttribute('data-release-group'))).toEqual(['head', 'entries', 'later'])
@@ -167,7 +168,7 @@ describe('the cockpit’s Release section', () => {
     expect(line()).toHaveClass('text-danger')
     unmount()
     draw(false)
-    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^0\.183\.1patch: fixes only·last 1h ago$/)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^0\.183\.1patch·last 1h ago$/)
     expect(document.querySelector('[data-release-via]')).toHaveTextContent('via#949●CI red·fix: go (windows-latest)')
     // Nothing is merged yet: the strip waits at Merged.
     expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'merged')

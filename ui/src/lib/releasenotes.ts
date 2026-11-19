@@ -5,8 +5,8 @@
  * A, with B's next step in the folded line). Pure; drawn by
  * components/ReleasePlan CockpitRelease.
  *
- *   0.183.1  patch: fixes only · last 8h ago
- *   ◉──○──○──○──○  Merged · waiting: merge #949
+ *   0.183.1  patch · last 8h ago
+ *   ◉──○──○──○──○  Merged · waiting to merge
  *   ────────────────────────────────────────
  *   FIXED
  *    PR from another repo no longer shows as this one's
@@ -69,7 +69,7 @@ export interface NotesHeading {
   state: NotesState
   /** "0.183.1", "Shipping 0.183.1", "v0.183.1 out", "Nothing new since v0.183.0". */
   text: string
-  /** "patch: fixes only": the bump and why, with a version predicted. */
+  /** "patch": the bump word, its reason on hover, with a version predicted. */
   why?: { text: string; title: string }
   /** "last 8h ago", "5 min ago", "8h ago": the last release's age. */
   age?: string
@@ -114,11 +114,15 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
 /** "8h ago", "just now". */
 const ago = (ms: number) => { const t = ageText(ms); return t === 'now' ? 'just now' : `${t} ago` }
 
-/** "patch: fixes only", "minor: a feature": the bump and the words of its reason. */
+/**
+ * "patch", "minor": the bump word alone (owner, 2026-11-19, variant A's
+ * *0.184.1  patch · last 57m ago*); its reason, *fixes only*, *a feature*,
+ * leads the hover.
+ */
 function whyWords(s: ReleaseStatus): NotesHeading['why'] {
   if (!s.bump || !s.why) return undefined
   const reason = s.bump === 'minor' ? 'a feature' : s.bump === 'patch' ? 'fixes only' : 'a breaking change'
-  return { text: `${s.bump}: ${reason}`, title: s.why.title }
+  return { text: s.bump, title: `${s.bump}: ${reason}.\n${s.why.title}` }
 }
 
 /**

@@ -234,7 +234,7 @@ test('the unfolded Release section keeps its stage dots on one line and inside t
   const cases = [
     { name: 'release-pr', words: /^Release PR #942 · CI 1\/3$/,
       stats: statsOf([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', 1_800_000)], [{ ...card(942, 'open', 'running'), os }, card(940, 'merged')], [rel('v0.182.4', 86_400_000, 23)]) },
-    { name: 'waiting', words: /^Merged · waiting: merge #941$/,
+    { name: 'waiting', words: /^Merged · waiting to merge$/,
       stats: statsOf([pr(941, 'feat: the next batch with a title long enough to fill the line', 'open')], [card(941, 'ready', 'pass')], [rel('v0.182.4', 86_400_000, 23)]), onPR: true },
   ]
   let c = cases[0]!

@@ -767,7 +767,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
-          {head.state !== 'idle' && <ReleaseStrip status={status} out={head.state === 'out'} cards={board?.cards} next={via?.next} now={now} />}
+          {head.state !== 'idle' && <ReleaseStrip status={status} out={head.state === 'out'} cards={board?.cards} now={now} />}
         </div>
         {entries.length > 0 && (
           <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
@@ -783,7 +783,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   )
 }
 
-/** The section's heading: *0.183.1 · patch: fixes only · last 8h ago*, *Shipping 0.183.1*, *v0.183.1 out · 5 min ago*, *Nothing new since v0.183.0 · 8h ago*. */
+/** The section's heading: *0.183.1  patch · last 8h ago*, *Shipping 0.183.1*, *v0.183.1 out · 5 min ago*, *Nothing new since v0.183.0 · 8h ago*. */
 function NotesHead({ head: h }: { head: NotesHeading }) {
   const dot = <span aria-hidden className="text-fg-faint">·</span>
   const big = h.state === 'waiting' || h.state === 'shipping'

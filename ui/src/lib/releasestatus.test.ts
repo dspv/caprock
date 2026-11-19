@@ -263,7 +263,7 @@ describe('the right panel’s stages strip', () => {
 
 // Owner, 2026-11-19, variant A: only the stage it is at is named, with its detail.
 describe('the words beside the stage dots', () => {
-  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; next?: string; out?: boolean } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
+  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; out?: boolean } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
   it('names the release PR with its draft, its CI per OS, or its red CI', () => {
     const input = { prs: [pr(952, 'chore(release): 0.127.0')] }
     const os: BoardCard['os'] = [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'macos', state: 'running', checks: 3 }, { os: 'windows', state: 'running', checks: 3 }]
@@ -285,10 +285,10 @@ describe('the words beside the stage dots', () => {
     expect(words(s('fail'))).toMatchObject({ text: 'Building · failed at 12 of 23 files', tone: 'fail' })
   })
 
-  it('names Merged with the batch’s next step, and Published with its age within the hour', () => {
+  it('names Merged without the batch’s number (its via line says it), and Published with its age within the hour', () => {
     const onPR: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 }, via: { number: 949, head: 'feat/batch', sha: 'abc' }, entries: [{ text: 'a', kind: 'Fixed', source: 'pr' }] }
     const w = releaseStatus(base({ merged: 0, unreleased: onPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
-    expect(words(w, { next: 'merge #949' })).toMatchObject({ key: 'merged', index: 1, text: 'Merged · waiting: merge #949' })
+    expect(words(w)).toMatchObject({ key: 'merged', index: 1, text: 'Merged · waiting to merge' })
     const idle = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), releases: [rel('v0.183.0', T - 5 * 60_000, 23)] }))
     expect(words(idle, { out: true })).toMatchObject({ key: 'published', index: 5, text: 'Published · 5 min ago', tone: 'ok' })
   })

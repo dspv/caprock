@@ -316,7 +316,7 @@ function idleStrip(s: ReleaseStatus, out: boolean): StripStage[] {
 /**
  * The words beside the right panel's stage dots (owner, 2026-11-19, variant
  * A, translated: "dots, one word — looks more logical"): only the stage it
- * is at is named, with what was read of it — *Merged · waiting: merge #949*,
+ * is at is named, with what was read of it — *Merged · waiting to merge*,
  * *Release PR #952 · CI 1/3*, *Tagged · waiting for v0.184.1*, *Building ·
  * 12 of 23 files*, *Published · 5 min ago*. `fail` when that stage failed
  * (the dot and the words red). With no stage current (every knowable one
@@ -331,7 +331,7 @@ export interface StageWords {
   tone: 'fail' | 'ok' | 'pending'
 }
 
-export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; next?: string; out?: boolean; now: number }): StageWords | undefined {
+export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number }): StageWords | undefined {
   let i = strip.findIndex((x) => x.state === 'current')
   if (i < 0) {
     for (let j = strip.length - 1; j >= 0; j--) if (strip[j]!.state === 'done') { i = j; break }
@@ -346,7 +346,8 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
   const at = (k: ReleaseStageKey) => s.stages.find((y) => y.key === k)
   switch (x.key) {
     case 'merged':
-      return say(`waiting: ${o.next ?? 'a merge'}`)
+      // The batch pull request's number and checks are the via line's, said once.
+      return say('waiting to merge')
     case 'pr': {
       if (!s.pr) return say('none open yet')
       const name = `Release PR #${s.pr.number}`

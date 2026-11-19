@@ -77,16 +77,14 @@ const WORDS_NOW: Record<StageWords['tone'], string> = { pending: 'text-warn', fa
  * cut with an ellipsis before it wraps. `version` puts a tag already under
  * way first, where no heading above names it.
  */
-export function ReleaseStrip({ status: s, version, out, cards, next, now = Date.now() }: {
+export function ReleaseStrip({ status: s, version, out, cards, now = Date.now() }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
   /** The board's cards: the release pull request's checks per OS, for *CI 1/3*. */
   cards?: readonly BoardCard[]
-  /** The batch pull request's next step, for *Merged · waiting: merge #949*. */
-  next?: string
   now?: number
 }) {
   const stages = stripStages(s, { out })
-  const w = stageWords(s, stages, { cards, next, out, now })
+  const w = stageWords(s, stages, { cards, out, now })
   if (!stages.length || !w) return null
   const at = w.index - 1
   const current = stages[at]?.state === 'current'
