@@ -14,7 +14,10 @@
  * Matching is on the name first and the path second: a prefix of the name
  * beats a word inside it, which beats a substring, which beats the letters in
  * order ("cpw" finds caprock-web). Within one quality, the more trusted source
- * wins, then the shorter name.
+ * wins, then the one worked in last, then the shorter name. With nothing
+ * typed every name matches equally, so the list is the projects by when they
+ * were last worked in (owner, 2026-11-19: the shortest names — kit, ktl, MVP —
+ * led it, not the projects in use).
  */
 
 export type CandidateKind = 'project' | 'recent' | 'repo'
@@ -26,6 +29,8 @@ export interface Candidate {
   name: string
   /** The project's id, for kind 'project'. */
   projectId?: string
+  /** When it was last worked in (ms), the newest any source knows; absent when none says. */
+  at?: number
 }
 
 export interface Ranked extends Candidate {
@@ -49,7 +54,9 @@ export function mergeCandidates(sources: Candidate[][]): Candidate[] {
     for (const c of list) {
       const key = c.path.replace(/[\\/]+$/, '')
       const prev = seen.get(key)
-      if (!prev || KIND_ORDER[c.kind] < KIND_ORDER[prev.kind]) seen.set(key, { ...c, path: key })
+      const at = Math.max(prev?.at ?? 0, c.at ?? 0) || undefined
+      if (!prev || KIND_ORDER[c.kind] < KIND_ORDER[prev.kind]) seen.set(key, { ...c, path: key, at })
+      else if (at !== prev.at) seen.set(key, { ...prev, at })
     }
   }
   return [...seen.values()]
@@ -102,7 +109,7 @@ export function rankCandidates(q: string, candidates: Candidate[], limit = 50, h
     // The path, for "work/api" or a parent folder's name.
     if (fq.length >= 2 && fold(tildePath(c.path, home)).includes(fq)) out.push({ ...c, score: 10, hits: [] })
   }
-  out.sort((a, b) => b.score - a.score || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.name.length - b.name.length || a.name.localeCompare(b.name))
+  out.sort((a, b) => b.score - a.score || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || (b.at ?? 0) - (a.at ?? 0) || a.name.length - b.name.length || a.name.localeCompare(b.name))
   return out.slice(0, limit)
 }
 
