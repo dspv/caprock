@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CIJob, CIRun, CIState, ReleaseCI, SessionPRLive } from './api'
-import { checksSentence, nameOS, osRollup, nodeBaseName, prChecks, shortRun, jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
+import { checkBar, checkBarWords, checksSentence, nameOS, osRollup, nodeBaseName, prChecks, shortRun, jobVsMedian, runningVsMedian, runVsMedian, slowestVsMedian, vsMedian, ago, byOSLine, orderPRs, prAge, prDotState, prMergeText, prReviewText, prVerdict, ciElapsed, ciTone, fmtRun, investigateMessage, keyStep, readCIView, releaseChip, releaseDoneText, releaseEstimateText, runnerTime, saveCIView } from './ci'
 
 describe('the Investigate message', () => {
   it('names the PR, workflow, job and step, links the job, carries the log’s last 40 lines and says what to do', () => {
@@ -265,5 +265,63 @@ describe('checks by runner OS', () => {
     const r = osRollup([n('a', 'windows', 'running', 90_000), n('b', 'linux', 'pass', 108_000), n('c', 'linux', 'pass', 30_000), n('d', 'macos', 'fail', 200_000), n('e', 'macos', 'pass'), n('f', undefined, 'pass'), n('g', 'windows', 'skipped')])
     expect(r.map((x) => [x.os, x.tone, x.counts.total, x.ms])).toEqual([['linux', 'pass', 2, 108_000], ['macos', 'fail', 2, 200_000], ['windows', 'running', 2, 90_000]])
     expect(osRollup([n('f', undefined, 'pass')])).toEqual([])
+  })
+})
+
+describe('the folded CI line’s bar and count', () => {
+  const t0 = 1_000_000
+  const at = t0 + 5 * 60_000
+  const ok = (name: string) => ({ name, state: 'pass' as const, status: 'completed', started_at: t0, completed_at: t0 + 60_000 })
+  const bad = (name: string, extra: object = {}) => ({ name, state: 'fail' as const, status: 'completed', started_at: t0, completed_at: t0 + 60_000, ...extra })
+  const run = (name: string) => ({ name, state: 'pending' as const, status: 'in_progress', started_at: t0 })
+  const wait = (name: string) => ({ name, state: 'pending' as const, status: 'queued' })
+  const skip = (name: string) => ({ name, state: 'skipped' as const, status: 'completed' })
+  const sum = (items: object[]) => prChecks({ live: { checks: { items } } } as never, at)!
+  const words = (items: object[]) => checkBarWords(sum(items)).map((w) => `${w.tone}:${w.text}`)
+  const tones = (b: ReturnType<typeof checkBar>) => b.parts.flatMap((p) => Array.from({ length: p.n }, () => p.tone))
+
+  it('one passed check is one full segment: "1/1 passed"', () => {
+    const s = sum([ok('a')])
+    expect(checkBar(s.counts, 96)).toEqual({ mode: 'segments', parts: [{ tone: 'pass', n: 1 }], total: 1 })
+    expect(words([ok('a')])).toEqual(['pass:1/1 passed', 'time:1m'])
+  })
+
+  it('running: passed then running then queued; "11/13 · 2 running · 5m"', () => {
+    const items = [run('r1'), ...Array.from({ length: 11 }, (_, i) => ok(`p${i}`)), run('r2'), skip('s1'), skip('s2')]
+    const b = checkBar(sum(items).counts, 96)
+    expect(b.mode).toBe('segments')
+    expect(tones(b)).toEqual([...Array(11).fill('pass'), 'running', 'running'])
+    expect(words(items)).toEqual(['pass:11/13', 'running:2 running', 'time:5m', 'skipped:2 skipped'])
+    expect(words([run('r'), wait('q')])).toEqual(['count:0/2', 'running:1 running', 'queued:1 queued', 'time:5m'])
+    expect(tones(checkBar(sum([wait('q'), run('r'), ok('p')]).counts, 96))).toEqual(['pass', 'running', 'queued'])
+  })
+
+  it('failed: the failure at the left edge; "1 failed · 12/13"', () => {
+    const items = [...Array.from({ length: 12 }, (_, i) => ok(`p${i}`)), bad('f')]
+    expect(tones(checkBar(sum(items).counts, 96))).toEqual(['fail', ...Array(12).fill('pass')])
+    expect(words(items)).toEqual(['fail:1 failed', 'pass:12/13'])
+  })
+
+  it('no runner: after the failures, before the passed; "12/13 · 1 no runner"', () => {
+    const items = [ok('a'), bad('n', { no_runner: true }), bad('f'), ...Array.from({ length: 10 }, (_, i) => ok(`p${i}`))]
+    expect(tones(checkBar(sum(items).counts, 96)).slice(0, 3)).toEqual(['fail', 'norunner', 'pass'])
+    expect(words(items)).toEqual(['fail:1 failed', 'pass:11/13', 'norunner:1 no runner'])
+    expect(words([bad('n', { no_runner: true }), ...Array.from({ length: 12 }, (_, i) => ok(`p${i}`))])).toEqual(['pass:12/13', 'norunner:1 no runner'])
+  })
+
+  it('too many checks for a segment each: the bar fills in proportion, in the same order', () => {
+    // At 96 px with 2 px gaps a segment is 3 px or wider up to 19 checks.
+    const c = (pass: number) => ({ total: pass + 2, pass, fail: 1, norunner: 0, running: 1, queued: 0, skipped: 0 })
+    expect(checkBar(c(17), 96).mode).toBe('segments')
+    expect(checkBar(c(18), 96)).toEqual({ mode: 'fill', total: 20, parts: [{ tone: 'fail', n: 1 }, { tone: 'pass', n: 18 }, { tone: 'running', n: 1 }] })
+    // Narrower, it gives up sooner.
+    expect(checkBar(c(6), 40).mode).toBe('segments')
+    expect(checkBar(c(7), 40).mode).toBe('fill')
+  })
+
+  it('skipped checks are no segment, and all skipped draws no bar', () => {
+    expect(checkBar(sum([ok('a'), skip('s')]).counts, 96).total).toBe(1)
+    expect(checkBar(sum([skip('s')]).counts, 96).total).toBe(0)
+    expect(words([skip('s')])).toEqual(['skipped:1 skipped'])
   })
 })

@@ -497,11 +497,19 @@ describe('the cockpit’s CI block', () => {
       vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
       folded('s2')
       const variants = [...fold()!.querySelectorAll('[data-fit-variant] [data-check-summary]')]
-      expect(variants.map((v) => v.getAttribute('data-check-fit'))).toEqual([null, 'noskip', 'compact', 'worst'])
-      expect(variants[0]).toHaveTextContent('2 skipped')
-      expect(variants[1]).not.toHaveTextContent('skipped')
-      expect(variants[2]!.textContent).toBe('1112')
-      expect(variants[3]!.textContent).toBe('failed')
+      // The bar shrinks first, 96 → 64 → 40 px, and only then do words go.
+      expect(variants.map((v) => [v.getAttribute('data-check-fit'), v.getAttribute('data-check-bar-w')])).toEqual([
+        [null, '96'], [null, '64'], [null, '40'], ['noskip', '40'], ['compact', '40'], ['worst', '40']])
+      expect(variants[0]!.textContent).toBe('1 failed · 12/14 · 1 running · 50s · 2 skipped')
+      expect(variants[2]!.textContent).toBe(variants[0]!.textContent)
+      expect(variants[3]!.textContent).toBe('1 failed · 12/14 · 1 running · 50s')
+      expect(variants[4]!.textContent).toBe('1 · 12/14 · 1')
+      expect(variants[5]!.textContent).toBe('failed')
+      // Every wording keeps the bar, a failure at its left edge; the bar is not read aloud.
+      // 14 checks are a segment each at 96 px; narrower, they fill in proportion.
+      expect(variants.map((v) => v.querySelector('[data-check-bar]')?.getAttribute('data-check-bar'))).toEqual(['segments', 'fill', 'fill', 'fill', 'fill', 'fill'])
+      for (const v of variants) expect(v.querySelector('[data-check-bar]')).toHaveAttribute('aria-hidden')
+      expect(variants[0]!.querySelector('[data-check-bar] i')).toHaveAttribute('data-tone', 'fail')
     })
   })
 

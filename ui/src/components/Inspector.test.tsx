@@ -43,6 +43,23 @@ describe('the inspector’s Open in editor (F18)', () => {
   })
 })
 
+// Owner, 2026-11-19: the four full-width action rows took ~160px; they sit
+// two by two in short words, each named in full on hover and for a screen reader.
+describe('the inspector’s actions', () => {
+  it('sit two by two in short words, named in full', () => {
+    render(<Inspector session={s} sessionId="s1" hasPermission={false} onClose={() => {}} onDetach={() => {}} editors={editors} onOpenInEditor={() => {}} />)
+    const box = document.querySelector('[data-inspector-actions]') as HTMLElement
+    expect(box.className).toContain('grid-cols-2')
+    const words = Array.from(box.querySelectorAll('button')).map((b) => b.textContent ?? '')
+    expect(words[0]).toBe('Cursor')
+    expect(words[1]).toMatch(/^Close shell(⌘W|Ctrl\+Shift\+W)$/)
+    expect(words[2]).toBe('Stop shell…')
+    expect(words).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'Close the shell' })).toHaveAttribute('title', 'Close the shell')
+    expect(screen.getByRole('button', { name: 'Stop the shell…' })).toBeInTheDocument()
+  })
+})
+
 // Owner, 2026-11-18: folded, a clean worktree read "none  Review and commit",
 // an action with nothing to review.
 describe('the Changes row with nothing uncommitted', () => {

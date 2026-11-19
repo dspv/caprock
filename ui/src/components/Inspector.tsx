@@ -172,23 +172,31 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
   )
 }
 
+/**
+ * The session's actions, two by two (owner, 2026-11-19, picked from a
+ * one-row and a two-by-two mockup: the four 30px rows took ~160px). Short
+ * words; the full name stays the button's name, on hover and for a screen
+ * reader. Stop's confirmation takes the whole width.
+ */
 function Actions({ s, sessionId, isShell, ended, editor, onDetach }: { s?: SessionSummary; sessionId: string; isShell: boolean; ended: boolean; editor?: EditorAction; onDetach: () => void }) {
+  const cell = 'app-row flex h-[28px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-left text-[12px] text-fg-muted hover:text-fg'
+  const close = isShell ? 'Close the shell' : 'Close the tab'
   return (
-      <div className="grid gap-1.5 border-t border-[var(--app-hairline)] pt-4">
+      <div data-inspector-actions className="grid grid-cols-2 gap-x-1.5 gap-y-0.5 border-t border-[var(--app-hairline)] pt-3">
         {!isShell && (
-          <a href={href({ name: 'session', id: sessionId })} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-[12.5px] text-fg no-underline">
-            <ExternalIcon size={14} className="text-fg-muted" /> Open in the dashboard
+          <a href={href({ name: 'session', id: sessionId })} aria-label="Open in the dashboard" title="Open in the dashboard" className={`${cell} no-underline`}>
+            <ExternalIcon size={14} className="shrink-0" /><span className="truncate">Dashboard</span>
           </a>
         )}
         {editor && s?.cwd && (
-          <button type="button" onClick={() => editor.open(s.cwd!, 'the folder')} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg" title={s.cwd}>
-            <ExternalIcon size={14} className="text-fg-muted" /> Open in {editor.name}
+          <button type="button" onClick={() => editor.open(s.cwd!, 'the folder')} aria-label={`Open in ${editor.name}`} className={cell} title={`Open in ${editor.name}: ${s.cwd}`}>
+            <ExternalIcon size={14} className="shrink-0" /><span className="truncate">{editor.name}</span>
           </button>
         )}
-        <button type="button" onClick={onDetach} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-fg">
-          <CloseIcon size={14} className="text-fg-muted" />
-          <span className="flex-1">{isShell ? 'Close the shell' : 'Close the tab'}</span>
-          <kbd className="mono text-[10.5px] text-fg-faint">{keys('⌘W')}</kbd>
+        <button type="button" onClick={onDetach} aria-label={close} title={close} className={cell}>
+          <CloseIcon size={14} className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{isShell ? 'Close shell' : 'Close tab'}</span>
+          <kbd className="mono shrink-0 text-[10.5px] text-fg-faint">{keys('⌘W')}</kbd>
         </button>
         {s?.owned && !ended && <StopButton sessionId={sessionId} what={isShell ? 'shell' : 'session'} />}
       </div>
@@ -325,10 +333,10 @@ function StopButton({ sessionId, what }: { sessionId: string; what: StopWhat }) 
   const [confirming, setConfirming] = useState(false)
   if (!confirming) {
     return (
-      <button type="button" onClick={() => setConfirming(true)} className="app-row flex h-[30px] items-center gap-2 rounded-[7px] px-2 text-left text-[12.5px] text-danger">
-        <StopIcon size={14} /> {stopLabel(what)}
+      <button type="button" onClick={() => setConfirming(true)} aria-label={stopLabel(what)} title={stopLabel(what)} className="app-row flex h-[28px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-left text-[12px] text-danger">
+        <StopIcon size={14} className="shrink-0" /><span className="truncate">Stop {what}…</span>
       </button>
     )
   }
-  return <StopConfirm sessionId={sessionId} what={what} onDone={() => setConfirming(false)} />
+  return <div className="col-span-2"><StopConfirm sessionId={sessionId} what={what} onDone={() => setConfirming(false)} /></div>
 }

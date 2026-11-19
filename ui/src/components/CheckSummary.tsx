@@ -18,7 +18,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { NO_RUNNER_TITLE, checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type ChecksView, type DeltaTone, type PipeNode } from '@/lib/ci'
+import { CHECK_BAR_GAP, NO_RUNNER_TITLE, checkBar, checkBarWords, checksSentence, fmtRun, nodeBaseName, osName, shortRun, type CITone, type ChecksSummary, type ChecksView, type CheckBarWord, type DeltaTone, type PipeNode } from '@/lib/ci'
 
 /** A state's circle: ✓ on green, ✗ on red, amber pulsing while running, hollow queued, a slash skipped; a muted-amber ⚠ for a job GitHub never gave a machine. */
 export function StateMark({ tone }: { tone: CITone }) {
@@ -81,6 +81,47 @@ function Circles({ s, onPick }: { s: ChecksSummary; onPick?: (n: PipeNode) => vo
   )
 }
 
+/**
+ * The folded line's bar (owner, 2026-11-19): a segment per check, coloured
+ * by its state, failed at the left edge (lib/ci checkBar); too many to tell
+ * apart, the same order fills the bar in proportion. Decorative: the
+ * summary's accessible name says it in words.
+ */
+export function CheckBarMark({ s, width }: { s: ChecksSummary; width: number }) {
+  const b = checkBar(s.counts, width)
+  if (b.total === 0) return null
+  return (
+    <span aria-hidden data-check-bar={b.mode} style={{ width, gap: b.mode === 'segments' ? CHECK_BAR_GAP : 0 }}
+      className={`check-bar flex h-[6px] shrink-0 overflow-hidden${b.mode === 'fill' ? ' rounded-[2px]' : ''}`}>
+      {b.mode === 'segments'
+        ? b.parts.flatMap((p) => Array.from({ length: p.n }, (_, i) => <i key={`${p.tone}${i}`} data-tone={p.tone} className="check-bar-seg flex-1 rounded-[2px]" />))
+        : b.parts.map((p) => <i key={p.tone} data-tone={p.tone} className="check-bar-seg" style={{ flex: `${p.n} 1 0` }} />)}
+    </span>
+  )
+}
+
+const BAR_TEXT: Record<CheckBarWord['tone'], string> = { ...TEXT, queued: 'text-fg-muted', pass: 'text-fg-muted', count: 'text-fg-muted', time: 'text-fg-faint' }
+
+/** The words after the bar: "11/13 · 2 running · 5m"; `words: false` keeps the figures alone. */
+function BarWords({ s, skips, words = true }: { s: ChecksSummary; skips: boolean; words?: boolean }) {
+  const ws = checkBarWords(s).filter((w) => (skips || w.tone !== 'skipped') && (words || (w.tone !== 'time' && w.tone !== 'skipped')))
+  return (
+    <span className="inline-flex shrink-0 items-baseline">
+      {ws.map((w, i) => {
+        const tone = w.tone === 'pass' && s.green ? 'font-medium text-ok' : BAR_TEXT[w.tone]
+        const text = words ? w.text : w.text.split(' ')[0]
+        const part = w.tone === 'count' || w.tone === 'time' ? undefined : w.tone
+        return (
+          <span key={w.tone} className="inline-flex shrink-0 items-baseline">
+            {i > 0 && <span className="whitespace-pre text-fg-faint"> · </span>}
+            <span data-check-part={part} data-check-count={w.tone === 'count' || undefined} title={w.tone === 'norunner' ? NO_RUNNER_TITLE : undefined} className={`tabular-nums ${tone}`}>{text}</span>
+          </span>
+        )
+      })}
+    </span>
+  )
+}
+
 /** How long the pointer rests on a summary in the cockpit before its list opens. */
 export const BESIDE_DELAY_MS = 600
 
@@ -101,7 +142,13 @@ export const BESIDE_DELAY_MS = 600
  */
 export type CheckFit = 'full' | 'noskip' | 'compact' | 'worst'
 
-export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary', beside = false, fit = 'full' }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView; beside?: boolean; fit?: CheckFit }) {
+/**
+ * bar: the folded CI line's way (owner, 2026-11-19): the segmented bar this
+ * many pixels wide, then the count — "1/1 passed", "11/13 · 2 running · 5m",
+ * "1 failed · 12/13". `fit` shortens it the same way: the skipped count
+ * goes, then the words, then all but the worst state's word.
+ */
+export function CheckSummary({ s, label, onPick, focusable = true, className = '', view = 'summary', beside = false, fit = 'full', bar }: { s: ChecksSummary; label: string; onPick?: (n: PipeNode) => void; focusable?: boolean; className?: string; view?: ChecksView; beside?: boolean; fit?: CheckFit; bar?: number }) {
   const c = s.counts
   const anchor = useRef<HTMLSpanElement>(null)
   const [open, setOpen] = useState(false)
@@ -121,7 +168,14 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
   const time = shortRun(s.ms)
   const skips = fit === 'full'
   const worst: CITone = c.fail ? 'fail' : c.norunner ? 'norunner' : c.running ? 'running' : c.queued ? 'queued' : c.pass ? 'pass' : 'skipped'
-  const body = view === 'circles' ? <Circles s={s} onPick={onPick} /> : fit === 'worst' ? (
+  const body = view === 'circles' ? <Circles s={s} onPick={onPick} /> : bar !== undefined ? (
+    <>
+      <CheckBarMark s={s} width={bar} />
+      {fit === 'worst'
+        ? <span data-check-part={worst} title={worst === 'norunner' ? NO_RUNNER_TITLE : undefined} className={TEXT[worst]}>{WORD[worst]}</span>
+        : <BarWords s={s} skips={skips} words={fit !== 'compact'} />}
+    </>
+  ) : fit === 'worst' ? (
     <span data-check-part={worst} title={worst === 'norunner' ? NO_RUNNER_TITLE : undefined} className={`inline-flex shrink-0 items-center gap-1 ${TEXT[worst]}`}><StateMark tone={worst} /><span>{WORD[worst]}</span></span>
   ) : fit === 'compact' ? (
     <>
@@ -153,7 +207,7 @@ export function CheckSummary({ s, label, onPick, focusable = true, className = '
     </>
   )
   return (
-    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : c.norunner && s.done ? 'norunner' : s.done ? 'done' : 'running'} data-check-view={view} data-check-fit={fit === 'full' ? undefined : fit} tabIndex={focusable ? 0 : undefined}
+    <span ref={anchor} data-check-summary={s.green ? 'green' : c.fail ? 'fail' : c.norunner && s.done ? 'norunner' : s.done ? 'done' : 'running'} data-check-view={view} data-check-fit={fit === 'full' ? undefined : fit} data-check-bar-w={bar} tabIndex={focusable ? 0 : undefined}
       role={view === 'circles' ? 'group' : 'img'} aria-label={`${label}: ${sentence}`}
       onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
       className={`inline-flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap rounded-[4px] text-[11.5px] outline-none focus-visible:ring-1 focus-visible:ring-accent ${className}`}>
