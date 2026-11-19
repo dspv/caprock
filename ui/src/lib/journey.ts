@@ -212,6 +212,8 @@ export function pipelineRows(rows: TabPR[], board: PRBoard | undefined, repo: Br
   const closed = new Map((board?.closed ?? []).map((c) => [c.number, c]))
   const listed = new Map(repo.map((p) => [p.number, p]))
   return journeyOrder(rows.map((r) => {
+    // Another repository's pull request is not this one's same number.
+    if (r.foreign) return r
     const b = listed.get(r.number)
     const card = cards.get(r.number)
     return { ...r, card, spend: card?.spend ?? closed.get(r.number)?.spend, labels: b?.labels, author: b?.author, author_avatar: b?.author_avatar }
