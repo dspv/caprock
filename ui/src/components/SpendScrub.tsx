@@ -88,7 +88,7 @@ export function SpendBars({ bars, metric, height, at, pace }: { bars: readonly S
 }
 
 /** A period by time as bars, in flow, as wide as the cockpit. */
-export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost', chooser, usual, cost }: {
+export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost', chooser, usual, cost, whose }: {
   id: string
   bars: readonly ChartBar[]
   step: number
@@ -104,6 +104,8 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   usual?: Usual
   /** For cost: some turns had no price, so the total is partial or unknown (lib/spendview costNote). */
   cost?: CostNote
+  /** Whose spend, a ▾ at the top line's right in place of the scope's words (the cockpit's WhoseMenu). */
+  whose?: ReactNode
 }) {
   const pace = useMemo(() => paceOf(metric, bars, usual), [metric, bars, usual])
   const { values, max, known } = barValues(bars, metric, pace)
@@ -140,7 +142,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
       {total !== undefined && <span data-spend-total data-cost-state={metric === 'cost' ? cost?.state : undefined} className={big} title={metric === 'cost' ? cost?.title : undefined}>{totalText}</span>}
       {total === undefined && metric === 'cost' && cost?.state === 'unknown' && <span data-spend-total data-cost-state="unknown" className={big} title={cost.title}>—</span>}
       {chooser}
-      <span className="ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] text-fg-faint" title={scope}>{scope}</span>
+      {whose ?? <span className="ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] text-fg-faint" title={scope}>{scope}</span>}
     </>
   )
   if (bars.length === 0 || !known || max <= 0) {
@@ -282,14 +284,17 @@ export function SpendOverTime({ sessionId, events, now, total, metric = 'cost', 
 }
 
 /** The session's chart from bars already read: "No priced calls yet." until there are some. */
-export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost, scope = 'since start · this session' }: {
+export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost, scope = 'since start · this session', whose }: {
   sessionId: string; bars: readonly ChartBar[]; step: number; now: number; total?: number; metric?: ChartMetric; chooser?: ReactNode; usual?: Usual; cost?: CostNote
   /** Whose and when, lower case: "since start · this session", "today · this session". */
   scope?: string
+  /** Whose spend, a ▾ at the top line's right (SpendChart). */
+  whose?: ReactNode
 }) {
   // A session whose every turn ran unpriced has no priced call, and says why.
   if (bars.length === 0 && cost?.state !== 'unknown') {
-    return <p id={`spend-time-${sessionId}`} data-spend-time data-spend-empty className="text-[12px] text-fg-muted">No priced calls yet.</p>
+    const none = <p id={`spend-time-${sessionId}`} data-spend-time data-spend-empty className="text-[12px] text-fg-muted">No priced calls yet.</p>
+    return whose ? <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1"><div data-spend-top className={TOP_LINE}>{whose}</div>{none}</div> : none
   }
-  return <SpendChart id={`spend-time-${sessionId}`} bars={bars} step={step} now={now} total={total} scope={scope} metric={metric} chooser={chooser} usual={usual} cost={cost} />
+  return <SpendChart id={`spend-time-${sessionId}`} bars={bars} step={step} now={now} total={total} scope={scope} metric={metric} chooser={chooser} usual={usual} cost={cost} whose={whose} />
 }

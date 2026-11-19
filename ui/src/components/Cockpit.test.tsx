@@ -848,6 +848,12 @@ describe('the spend details', () => {
   const spend = () => screen.getByRole('region', { name: 'Spend' })
   const stored = () => JSON.parse(localStorage.getItem('caprock.app.cockpit.spend') ?? '{}')
   const slots = () => Array.from(spend().querySelectorAll('[data-slot]')).map((d) => d.getAttribute('data-slot'))
+  // Whose spend: the ▾ at the right of the line under the header, a menu of two.
+  const whoseButton = () => within(spend()).getByRole('button', { name: /\. Choose whose spend$/ })
+  const pickWhose = (name: 'This session' | 'All sessions') => {
+    fireEvent.click(whoseButton())
+    fireEvent.click(within(spend()).getByRole('menu', { name: 'Whose spend' }).querySelector(`[role="menuitemradio"]:nth-child(${name === 'This session' ? 1 : 2})`)!)
+  }
 
   it('opens on the session’s chart by default, folds to a strip of bars and figures, and remembers it', async () => {
     const { unmount } = await act(async () => show(agent({ started_at: now - 72 * 60_000, worked_at: now })))
@@ -929,9 +935,20 @@ describe('the spend details', () => {
     showNumbers()
     const fig = (name: RegExp) => within(spend()).getByLabelText(name)
     expect(fig(/^Cache hit rate, since start · this session/)).toHaveTextContent('95%')
-    expect(within(spend()).getByRole('button', { name: 'This session' })).toHaveAttribute('aria-pressed', 'true')
+    // Whose is said in words on its ▾, the period with it in its name.
+    expect(whoseButton()).toHaveTextContent('this session')
+    expect(whoseButton()).toHaveAccessibleName('Since start · this session. Choose whose spend')
+    fireEvent.click(whoseButton())
+    const menu = within(spend()).getByRole('menu', { name: 'Whose spend' })
+    expect(within(menu).getAllByRole('menuitemradio').map((b) => [b.textContent, b.getAttribute('aria-checked')])).toEqual([['This session', 'true'], ['All sessions', 'false']])
+    fireEvent.click(whoseButton())
+    expect(within(spend()).queryByRole('menu', { name: 'Whose spend' })).toBeNull()
     expect(within(spend()).getByRole('button', { name: 'Since start' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    // The header holds when and the view; whose left it for the line under it.
+    const head = spend().querySelector('[data-spend-head]')!
+    expect(within(head as HTMLElement).getByRole('group', { name: 'Period: Since start · this session' })).toHaveTextContent(/^starttoday7d30d$/)
+    expect(head.querySelector('[data-spend-whose]')).toBeNull()
+    pickWhose('All sessions')
     // All sessions has no whole span: it opens on today, and offers no whole.
     expect(within(spend()).getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(spend()).queryByRole('button', { name: 'Since start' })).toBeNull()
@@ -939,6 +956,7 @@ describe('the spend details', () => {
     // Caprock-wide figure is not the ones beside the agent, so Spent is back.
     expect(slots()).toEqual(['cost', 'tokens', 'cache'])
     expect(fig(/^Spent, today · all sessions/)).toHaveTextContent('$12.25')
+    expect(whoseButton()).toHaveTextContent('all sessions')
     expect(fig(/^Cache hit rate, today/)).toHaveTextContent('75%')
     expect(h.summaryAsked).toEqual([])
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 7 days' })) })
@@ -1012,7 +1030,7 @@ describe('the spend details', () => {
     expect(spend()).toHaveAttribute('data-spend-scope', 'session')
     expect(spend()).toHaveAttribute('data-spend-period', 'whole')
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
-    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    pickWhose('All sessions')
     expect(spend()).toHaveAttribute('data-spend-scope', 'all')
     expect(spend()).toHaveAttribute('data-spend-period', 'today')
     // Another tab opens on its own agent's spend, not every session's today.
@@ -1051,7 +1069,9 @@ describe('the spend details', () => {
     // Today's own calls by the hour, the scope saying both.
     const chart = within(spend()).getByRole('group', { name: 'Spend by 1 h, today · this session' })
     expect(chart.querySelector('[data-spend-total]')).toHaveTextContent('$0.50')
-    expect(top()).toHaveTextContent('today · this session')
+    // The top line names whose; the header's chip names when, and the ▾ says both.
+    expect(top()).toHaveTextContent(/this session▾$/)
+    expect(within(top() as HTMLElement).getByRole('button', { name: 'Today · this session. Choose whose spend' })).toBeInTheDocument()
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 7 days' })) })
     expect(within(spend()).getByRole('group', { name: 'Spend by 1 day, 7 days · this session' }).querySelectorAll('rect')).toHaveLength(7)
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$4.50')
@@ -1074,6 +1094,8 @@ describe('the spend details', () => {
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Today' })) })
     expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('This session made no calls today.')
     expect(spend().querySelector('[data-spend-total]')).toBeNull()
+    // With no chart to carry it, whose keeps a line of its own.
+    expect(whoseButton().closest('[data-spend-whose-line]')).not.toBeNull()
     showNumbers()
     expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('This session made no calls today.')
     expect(spend().querySelector('[data-slot]')).toBeNull()
@@ -1085,7 +1107,7 @@ describe('the spend details', () => {
     const two = agent({ session_id: 's2', stats: { ...agent().stats!, session_id: 's2', cost_usd: 7.5 } })
     const view = (s: SessionSummary) => <Inspector session={s} sessionId={s.session_id} hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={summary} />
     const { rerender } = await act(async () => render(view(one)))
-    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    pickWhose('All sessions')
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
     await act(async () => { rerender(view(two)) })
     expect(spend()).toHaveAttribute('data-spend-scope', 'session')
@@ -1094,7 +1116,8 @@ describe('the spend details', () => {
     await act(async () => { rerender(view(one)) })
     expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['all', '30d'])
     // Back to this session, the first tab keeps its 30 days.
-    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'This session' })) })
+    pickWhose('This session')
+    await act(async () => {})
     expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['session', '30d'])
     await act(async () => { rerender(view(two)) })
     expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['session', 'today'])
@@ -1104,7 +1127,7 @@ describe('the spend details', () => {
     h.summaries = { '30d': { range: '30d', cost_usd: 7924.31, tokens_in: 13_000_000_000, cache_read: 710_000_000, cache_write: 0, savings: { hit_rate: 0.05 }, projects: [] } as unknown as Summary }
     await act(async () => { show(agent()) })
     showNumbers()
-    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    pickWhose('All sessions')
     await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
     const spent = within(spend()).getByLabelText('Spent, 30 days · all sessions: $7,924.31')
     expect(spent).toHaveTextContent(/^\$7\.92k$/)

@@ -718,15 +718,22 @@ export function periodChip(pick: SpendPick): string {
   return `${p.window} · ${p.scope}`
 }
 
-/** The two words of the scope control, short for the 280–460px cockpit, and its full name. */
+/**
+ * Whose spend in words: the face of the ▾ on the chart's top line (*this
+ * session ▾*, *all sessions ▾*) and the items of its menu.
+ */
 export const SCOPE_NAMES: Record<SpendScope, { short: string; long: string }> = {
-  session: { short: 'session', long: 'This session' },
-  all: { short: 'all', long: 'All sessions' },
+  session: { short: 'this session', long: 'This session' },
+  all: { short: 'all sessions', long: 'All sessions' },
 }
 
-/** The period control's words, and its full name on hover and for a screen reader. */
+/**
+ * The period control's words, and its full name on hover and for a screen
+ * reader. *Since start* reads *start* in the chip, so the four fit one line
+ * of a 280px cockpit beside *Chart | Numbers* (owner, 2026-11-19).
+ */
 export const WINDOW_NAMES: Record<SpendWindow, { short: string; long: string }> = {
-  whole: { short: 'since start', long: 'Since start' },
+  whole: { short: 'start', long: 'Since start' },
   today: { short: 'today', long: 'Today' },
   '7d': { short: '7d', long: 'Last 7 days' },
   '30d': { short: '30d', long: 'Last 30 days' },
