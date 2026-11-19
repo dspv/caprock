@@ -268,10 +268,23 @@ describe('the words beside the stage dots', () => {
     const input = { prs: [pr(952, 'chore(release): 0.127.0')] }
     const os: BoardCard['os'] = [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'macos', state: 'running', checks: 3 }, { os: 'windows', state: 'running', checks: 3 }]
     const running = [card(952, 'running', { os })]
-    expect(words(releaseStatus(base({ ...input, cards: running })), { cards: running })).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Release PR #952 · CI 1/3', tone: 'pending' })
+    // Owner, 2026-11-19: the count is of operating systems, said so, and named on hover.
+    expect(words(releaseStatus(base({ ...input, cards: running })), { cards: running })).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Release PR #952 · CI 1/3 systems', tone: 'pending',
+      title: '1 of 3 systems (macOS, Windows, Linux) passed; the rest are running.' })
+    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'running')] })))?.title).toBeUndefined()
     expect(words(releaseStatus(base({ ...input, cards: [card(952, 'running')] })))?.text).toBe('Release PR #952 · CI running')
     expect(words(releaseStatus(base({ ...input, cards: [card(952, 'fail')] })))).toMatchObject({ text: 'Release PR #952 · CI red', tone: 'fail' })
     expect(words(releaseStatus(base({ prs: [{ ...pr(952, 'chore(release): 0.127.0'), draft: true }] })))?.text).toBe('Release PR #952 · draft')
+  })
+
+  it('says a release PR not opened yet', () => {
+    expect(words(releaseStatus(base()))).toMatchObject({ key: 'pr', text: 'Release PR · not opened yet' })
+  })
+
+  it('names a draft GitHub release as not public', () => {
+    const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.127.0', at: T - 600_000 }, releases: [rel('v0.126.0', T - 5 * H, 14)], prs: [pr(952, 'chore(release): 0.127.0', 'merged')],
+      run: run('v0.127.0', 'pass', [], { url: 'u', draft: true }) }))
+    expect(words(s)).toMatchObject({ key: 'published', text: 'Published · draft only, not public' })
   })
 
   it('names Tagged while a green release PR waits to merge, and once merged the tag it waits for', () => {

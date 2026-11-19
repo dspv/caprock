@@ -110,7 +110,7 @@ describe('the cockpit’s Release section', () => {
     expect(dots[1]).toHaveClass('bg-warn')
     expect([...strip.querySelectorAll('[data-strip-line]')].map((e) => e.getAttribute('data-strip-line'))).toEqual(['done', 'todo', 'todo', 'todo'])
     // Only the current stage is named, with its checks per OS.
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Release PR #942 · CI 1\/3$/)
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Release PR #942 · CI 1\/3 systems$/)
     expect(strip.textContent).not.toMatch(/Tagged|Building|Published/)
     // The version heads the section; the dots sit under it, the entries apart.
     const plan = document.querySelector('[data-release-plan]')!
