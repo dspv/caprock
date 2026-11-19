@@ -12,6 +12,139 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.183.0] - 2026-11-19
+
+### Added
+
+- **ui:** add a second Claude Code or Codex subscription right where an agent
+  starts. In New agent and Quick chat the Subscription picker ends with
+  *Add subscription…*, and with a single sign-in a quiet *Add subscription*
+  link sits where the picker would be. It opens the same add form as
+  Settings → Subscriptions in the dialog, with the same free number and
+  Premium path; the sign-in is typed into a shell tab, and the new
+  subscription is picked for that start. Adding still needs the computer;
+  the phone's New chat says where it is done.
+- **sidebar:** *Running, no tab* folds to its one line with a click, Background
+  and all, showing how many run and an amber dot when one waits on you; the
+  choice is kept.
+- **phone:** the phone's New chat says where a second Claude Code or Codex
+  subscription is added. Under *Who works*, and in *Start in a project*
+  under *Runs on* (or under Agent with a single sign-in), a muted line reads
+  *Add subscription — on your Mac: Settings → Subscriptions*. It is a hint,
+  not a button: adding signs in through a terminal and a browser on the
+  computer, and a phone cannot add one.
+- **ci:** *Rerun jobs GitHub never ran*, a switch in Settings → GitHub and
+  right beside **Rerun** on a job GitHub gave no machine (*Always rerun
+  these*). Off unless you turn it on. While Caprock runs, it then asks
+  GitHub to re-run that run's failed jobs itself — the same request as the
+  Rerun button, sent to api.github.com with your GitHub token, for your
+  repositories only — when nothing else in the run failed, release runs
+  included. Once per run, remembered across restarts: if GitHub gives the
+  re-run no machine either, it is shown and left to you. The run then says
+  *re-run by Caprock* on the folded CI line and in the list, with when and
+  what on hover.
+- **ui:** with more than one Claude Code or Codex sign-in, Plan limits on Now
+  and Cost lists every one, grouped by agent: its plan, the default badge, how
+  old its figures are, what is left of its 5-hour and weekly windows and when
+  each resets ("reopened 18:20" once a reset has passed), seven days of spend
+  at API price, sessions running on it and, while continuing on a limit is
+  automatic, its place in that order. The Subscription select in New agent
+  and Quick chat, and the phone's Who works rows, say how much is left of each
+  option's tightest window ("62% of 5-hour left"). You still choose: nothing
+  is picked for you by these figures.
+
+### Changed
+
+- **app:** a file dropped on an open chat in the desktop app now attaches
+  exactly as the Attach button's pick does, whatever its type: the app reads
+  its bytes (only a file from that very drop, at most 10 MB), Caprock saves a
+  copy and the chip shows its short name — not the file's full path, which is
+  how a dropped PDF, Markdown or source file used to go. Over 10 MB it gets
+  Attach's line. A folder is still turned away as before; an app built before
+  this keeps attaching a dropped document by its path.
+- **docs:** the README's first paragraph says in one sentence what Caprock is and which agents it runs, so a
+  reader, or an AI assistant asked about it, gets the answer before the screenshot.
+- **ui:** the right panel's CI line is drawn the moment you switch to a tab,
+  from what was last read for that repository (muted, with its age), while
+  it is read again; it used to wait for the daemon to compose the pull
+  request's checks for that session, seconds and up to 15 s when measured.
+  The daemon answers such a first ask at once from the pull request it
+  already keeps. Folded, the CI line's check summary shortens in a narrow
+  panel instead of running past its edge.
+- **ui:** folded, the Release section now says where the release is —
+  *Nothing new since v1.4.0*, *1.5.0 · 5 changes waiting · PR #40 green*,
+  *1.5.0 · release PR #42 · CI running*, *1.5.0 · building · 12 of 23
+  files*, *v1.5.0 out · 5 min ago* — and unfolded it opens on one stages
+  strip, *Merged ─ Release PR ─ Tagged ─ Building ─ Published*, the current
+  stage marked.
+- **ui:** the folded Changes row of a clean worktree says *nothing to
+  commit*, without a *Review and commit* action that had nothing to review.
+- **ci:** a CI job GitHub never ran — it waited for a machine, then ended with
+  no step run and no runner, as hosted macOS jobs sometimes do — is no longer
+  shown as a failure. The check summary says *⚠ 1 no runner* in muted amber,
+  its hover says the code was not tested, and the folded CI line offers
+  **Rerun** right there (a click and a confirm; it re-runs the failed jobs
+  with the GitHub connection you set up). A pull request whose only
+  non-passing jobs got no runner is not counted as failed and sends no *CI
+  failed* notification; real failures stay red.
+- **ci:** folded, the CI section is two lines: the pull request it
+  summarizes — number and title — with the time it was read, then its
+  checks with the one action that fits (**Fix CI** on a failure, **Rerun**
+  on a job GitHub gave no machine, nothing while running or green). It
+  fits from 280 to 460 px without a third line. The folded line and the
+  unfolded views now count the same pull request's checks the same way,
+  and each open pull request's row shows its checks.
+
+### Fixed
+
+- **cursor:** Cursor chats show their Context reading again. Cursor's newer
+  builds (composer-1 and Auto chats) record only how full the window is as a
+  percentage, not in tokens, and Caprock read only the tokens, so those chats
+  said *no context reading yet* — or kept an older, lower reading. The
+  Context tile, the cockpit's Context line and the Now card now show Cursor's
+  percentage, with *Cursor doesn't record this chat's context in tokens*
+  where the sizes go, and a live chat's reading follows Cursor's latest
+  measure after each reply instead of staying on the one taken before it.
+  Chats already imported are read again once to pick it up. A `cursor-agent`
+  (CLI) chat still has no reading: its hooks carry none.
+- **mail:** a reply's original stays marked answered, and a message you mark
+  read, unread, flagged or unflagged keeps that mark, when a sync was already
+  under way. That sync read the server's old flags and wrote them back over
+  yours until the next sync, up to five minutes later.
+- **app:** an update no longer opens a stray *Caprock Mail* tab in the
+  browser. The Mail window reloads while the daemon restarts, and with no
+  daemon running the app took its own page for a link and handed it to the
+  browser; a page on the daemon's address is now refused quietly until the
+  daemon is back.
+- **daemon:** the status check answers at once while the database is busy.
+  Once a minute it used to work out the memory figures inside the request,
+  which on a 2 GB database often took over a second, so the desktop app's
+  0.8-second check gave up and logged the daemon as failing, up to 24 times
+  in ten minutes. Those figures now come from a copy refreshed in the
+  background, a few seconds to a minute old: under heavy dashboard reads the
+  slowest status answer went from 2.2 s to 0.16 s on a copy of that database.
+- **store:** faster on a large history. Searching Claude's prose for a phrase
+  it rarely wrote read every assistant turn on the machine; a new index
+  (migration 0085) holds what the search tests, and a reply's prompt is
+  looked up only where it can match. The Cursor overhead report and a
+  session's overhead estimate no longer read every event of every session,
+  the cockpit's call list reads only its candidate rows, and the session
+  search no longer reads every prompt a second time for a capitalised
+  spelling SQLite already folds. On a copy of a 2 GB, 1.09M-event database
+  (2026-11-18, warm medians): a rare-phrase prose search 3.1 s to 0.31 s, the
+  overhead report 454 ms to 202 ms, a session's overhead estimate 70 ms to
+  under 1 ms, a session search 360 ms to 197 ms. Building the index takes a
+  few seconds once, on the first start after the update.
+- **ui:** Home's *Projects* no longer goes back to "Reading your projects…"
+  over a list it has already shown. Opened again, the panel keeps the last
+  list it drew until the daemon answers, instead of waiting seconds on a
+  busy one.
+- **ui:** Lifetime's *Daily cost* chart draws its bars on *all* again over a
+  long history. The 3px gap between bars did not shrink, so a history of 585
+  days needed more room for its gaps than the panel had and every bar was
+  squeezed to nothing; the gap now shrinks with the bars, on Cost's daily
+  chart too.
+
 ## [0.182.4] - 2026-11-18
 
 ### Changed
