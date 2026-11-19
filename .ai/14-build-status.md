@@ -491,6 +491,15 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-19 — 0.184.2: Release stages as dots, Spend header on one line
+
+A patch release, #955 with #953 and #954. The Release section draws its five
+stages as dots and names only the current one, with hairlines between its
+parts. The Spend header holds the period chip and Chart | Numbers on one
+line from 280px; whose spend moved beside the burn figure as *this session ▾*
+/ *all sessions ▾*. The New agent project list leads with the projects worked
+in last, and a chat page revealed at the top is no longer trimmed away.
+
 ### 2026-11-19 — 0.184.1: session actions two by two, folded CI draws a segmented bar
 
 A patch release, #951. The session panel's four full-width action rows sit

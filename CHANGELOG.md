@@ -12,6 +12,29 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.184.2] - 2026-11-19
+
+### Changed
+
+- **cockpit:** the Release section's stages are five dots on one line under
+  the version, and only the stage the release is at is named, with its detail:
+  *Release PR #952 · CI 1/3*, *Building · 12 of 23 files*, *Published · 5 min
+  ago*; red when that stage failed. The word strip no longer wraps in a narrow
+  panel, and hairlines set the heading, the entries and the lines below apart.
+- **cockpit:** the Spend header is one line from 280 to 460px: the period
+  (`start · today · 7d · 30d`, *Since start* on hover) and Chart | Numbers.
+  Whose spend moved to the right of the line under it, *this session ▾* or
+  *all sessions ▾*, a menu of the two; in a 330px cockpit the three switches
+  had wrapped into three ragged rows.
+
+### Fixed
+
+- **chat:** scrolling straight to the top of a long chat just after it opens
+  keeps the older messages it reveals; the first page's trim to the newest
+  messages could run a moment later and take them back.
+- **ui:** New agent's project list, with nothing typed, lists the projects you
+  worked in last first, not the ones with the shortest names.
+
 ## [0.184.1] - 2026-11-19
 
 ### Changed
