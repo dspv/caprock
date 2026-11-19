@@ -35,6 +35,18 @@ export function gridLines(max: number): number[] {
   return lines
 }
 
+/**
+ * How much of its slot a bar fills: all of it but a 3px gap, and never less
+ * than 60% of it.
+ *
+ * The gap used to be the flex container's own, `gap-[3px]`, which does not
+ * shrink. Lifetime's "all" on a history reaching back 585 days needed 1,752px
+ * of gaps alone in a panel 1,500px wide, so every bar was squeezed to zero
+ * width and the panel drew nothing but its ruler. A gap inside the slot
+ * scales with it: 30 bars look exactly as before, 600 still draw.
+ */
+export const BAR_WIDTH = 'max(60%, calc(100% - 3px))'
+
 export interface Bar {
   /** ISO day, e.g. "2026-08-20". */
   day: string
@@ -82,7 +94,7 @@ export function BarChart({ bars, active, onActive, height = 112, showDayLabels =
 
   return (
     <div
-      className={`relative px-3 flex items-end gap-[3px] ${axis ? 'pt-3 pb-6' : 'py-3'}`}
+      className={`relative px-3 flex items-end ${axis ? 'pt-3 pb-6' : 'py-3'}`}
       style={{ height: axis ? height + 12 : height }}
       onMouseLeave={() => onActive(null)}
     >
@@ -119,8 +131,8 @@ export function BarChart({ bars, active, onActive, height = 112, showDayLabels =
             aria-label={`${b.day}: ${fmtUSD(num(b.cost))}`}
           >
             <div
-              className={`w-full rounded-t-sm transition-colors ${on ? 'bg-accent' : 'bg-accent/70'}`}
-              style={{ height: Math.max(2, Math.round((barHeight * num(b.cost)) / max)) }}
+              className={`rounded-t-sm transition-colors ${on ? 'bg-accent' : 'bg-accent/70'}`}
+              style={{ width: BAR_WIDTH, height: Math.max(2, Math.round((barHeight * num(b.cost)) / max)) }}
             />
             {showDayLabels && (
               <div className={`num text-[9px] ${on ? 'text-fg' : 'text-fg-faint'}`}>{b.day.slice(8)}</div>

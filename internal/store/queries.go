@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -1227,11 +1228,16 @@ func sessionQueryFilter(f SessionQuery) (string, []any) {
 	return " WHERE " + strings.Join(conds, " AND "), args
 }
 
+// searchVariants are the spellings a search is tried in. LIKE folds ASCII
+// case itself, so a spelling that differs from one already tried only in
+// ASCII letters is dropped: "release" was also tried as "Release", and each
+// spelling reads every prompt on the machine, twice a request (the page and
+// its total) — about 80 ms a read on the owner's 23,610 prompts (2026-11-18).
 func searchVariants(s string) []string {
 	out := []string{s}
 	add := func(v string) {
 		for _, o := range out {
-			if o == v {
+			if asciiFold(o) == asciiFold(v) {
 				return
 			}
 		}
@@ -1243,6 +1249,17 @@ func searchVariants(s string) []string {
 		add(string(unicode.ToUpper(r)) + lower[size:])
 	}
 	return out
+}
+
+// asciiFold lowers the ASCII letters of s and leaves every other rune as it
+// is: the case folding SQLite's LIKE does.
+func asciiFold(s string) string {
+	return strings.Map(func(r rune) rune {
+		if 'A' <= r && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return r
+	}, s)
 }
 
 const eventCols = `id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), source, kind, COALESCE(tool,''), ` + ZPayloadE + `, tokens_in, tokens_out, cache_read, cache_write, cost_usd, COALESCE(key,''), COALESCE(model,''), cache_write_1h, COALESCE(agent_id,'')`
@@ -1311,6 +1328,25 @@ const assistantTextWhere = `
 // 20 ms. TestSessionNotesUsesTheSessionIndex holds the plan.
 var sessionAssistantTextWhere = strings.Replace(assistantTextWhere, "e.kind = 'turn.assistant'", "+e.kind = 'turn.assistant'", 1)
 
+// proseText and proseSidechain are a turn's text and sidechain flag spelled
+// exactly as idx_events_prose (migration 0085) indexes them, so a statement
+// that names them reads the index rather than the payload. json_valid makes
+// a malformed payload NULL instead of an error, which is what lets them sit
+// in an index at all.
+const (
+	proseText      = `(CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)`
+	proseSidechain = `(CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END)`
+)
+
+// proseWhere is assistantTextWhere in idx_events_prose's terms: the
+// partial index's own three conditions, then its two expressions.
+const proseWhere = `
+	e.kind = 'turn.assistant'
+	AND e.internal = 0
+	AND COALESCE(e.agent_id, '') = ''
+	AND ` + proseSidechain + ` IS NOT 1
+	AND COALESCE(` + proseText + `, '') != ''`
+
 // MainThreadWhere keeps the events of a session's main thread and drops its
 // subagents', for a query over `events e`. It is the SQL twin of
 // event.Event.Subagent and must say the same thing.
@@ -1361,62 +1397,126 @@ func SearchNotes(ctx context.Context, q Querier, query string, limit int, before
 	if limit > MaxEventPage {
 		limit = MaxEventPage
 	}
-	sql := `
+	// Every read walks idx_events_prose (migration 0085) newest first and
+	// tests each turn's text there, so a turn is read from the table only when
+	// it is returned. Through idx_events_kind_id every assistant turn's payload
+	// was opened: a phrase with fewer matches than a page took 9.5 s on a copy
+	// of the owner's 2 GB database (2026-11-18). `e.id < ?` is always bound,
+	// the first page with the largest id, so each plan is one seek.
+	if before <= 0 {
+		before = math.MaxInt64
+	}
+	const cols = `
 		SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
-		       COALESCE(json_extract(e.payload, '$.text'), '')
-		FROM events e LEFT JOIN sessions se ON se.sid = e.sid
-		WHERE ` + assistantTextWhere
-	args := []any{}
-	if trimmed := strings.TrimSpace(query); trimmed != "" {
-		// Match the assistant's prose OR the prompt that produced it. People
-		// remember their own question — "the SSO thing", "that Windows CI
-		// question" — far better than Claude's phrasing of the answer, so
-		// searching only the answer misses the way memory actually works. The
-		// row returned is still Claude's reply; the prompt is only a way in.
-		//
-		// LIKE with an escaped pattern: the corpus is one developer's own
-		// sessions, so a scan is cheap, and it avoids an FTS table that would
-		// need migrating and rebuilding for historical rows — and that would
-		// match whole words, losing the fragments people actually search for.
-		pattern := "%" + escapeLike(trimmed) + "%"
-		sql += ` AND (json_extract(e.payload, '$.text') LIKE ? ESCAPE '\'
-		         OR (
-		              SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text'))
-		              FROM events p
-		              WHERE p.sid = e.sid AND p.kind = 'turn.user'
-		                AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id)
-		                AND p.ts >= COALESCE((
-		                      SELECT w.ts FROM events w
-		                      WHERE w.sid = e.sid
-		                        AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id)
-		                      ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0)
-		              ORDER BY p.ts DESC, p.id DESC LIMIT 1
-		            ) LIKE ? ESCAPE '\')`
-		// Only the NEAREST preceding prompt, within a short window: matching any
-		// prompt nearby would return every reply in an exchange rather than the
-		// passage that answers the question.
-		//
-		// "Preceding" is in time, within the reply's own session, not in event
-		// id. An id says when Caprock stored a row, and a prompt imported after
-		// its replies — OpenCode's history, a Claude Code transcript read after
-		// its hooks — sits after them by id: on a copy of the owner's database
-		// none of 3,048 OpenCode replies could be found by their question under
-		// the id window, and 24 Claude Code replies matched a prompt minutes
-		// older than the one they answered. The window is the reply's last
-		// promptLookback events in that session, and the lookups walk
-		// (sid, ts) indexes.
-		//
-		// The prompt's field depends on who wrote it: Claude Code, Gemini and
-		// OpenCode carry `prompt`, DeepSeek Harness `text` (as FirstPrompts reads
-		// it). Reading only `prompt` made every DeepSeek question unsearchable.
-		args = append(args, pattern, promptLookback-1, pattern)
+		       COALESCE(` + proseText + `, '')
+		FROM events e INDEXED BY idx_events_prose LEFT JOIN sessions se ON se.sid = e.sid
+		WHERE ` + proseWhere + ` AND e.id < ?`
+	trimmed := strings.TrimSpace(query)
+	if trimmed == "" {
+		return queryNotes(ctx, q, cols+` ORDER BY e.id DESC LIMIT ?`, before, limit)
 	}
-	if before > 0 {
-		sql += ` AND e.id < ?`
-		args = append(args, before)
+	// Match the assistant's prose OR the prompt that produced it. People
+	// remember their own question — "the SSO thing", "that Windows CI
+	// question" — far better than Claude's phrasing of the answer, so
+	// searching only the answer misses the way memory actually works. The
+	// row returned is still Claude's reply; the prompt is only a way in.
+	//
+	// LIKE with an escaped pattern: the corpus is one developer's own
+	// sessions, so a scan is cheap, and it avoids an FTS table that would
+	// need migrating and rebuilding for historical rows — and that would
+	// match whole words, losing the fragments people actually search for.
+	pattern := "%" + escapeLike(trimmed) + "%"
+	textLike := proseText + ` LIKE ? ESCAPE '\'`
+	byText, err := queryNotes(ctx, q, cols+` AND `+textLike+` ORDER BY e.id DESC LIMIT ?`, before, pattern, limit)
+	if err != nil {
+		return nil, err
 	}
-	sql += ` ORDER BY e.id DESC LIMIT ?`
-	args = append(args, limit)
+	// Then the replies found by their prompt. The lookup is most of a
+	// search's cost, about 12 µs a reply, so it runs over as few as can
+	// matter. A page is the newest `limit` of both kinds together. When the
+	// replies' own text filled a page, the answer lies between that page's
+	// oldest reply and `before`, and one scan of that span tests each reply
+	// by its text, then its prompt, stopping at the page: the replies a
+	// single scan always read, now without opening their payloads. When it
+	// did not, the span is all of history, and the lookup runs only in the
+	// sessions where some prompt matches at all — a set read once, from the
+	// prompts alone — for the replies the text did not match, which then
+	// join the text's. Run for every one of the owner's 77k prose turns, the
+	// lookup took a second (2026-11-18). The set only narrows: a reply whose
+	// nearest prompt matches is in a session with a matching prompt.
+	full := len(byText) == limit
+	sql := cols
+	args := []any{before}
+	if full {
+		sql += ` AND e.id >= ? AND (` + textLike + ` OR `
+		args = append(args, byText[len(byText)-1].EventID, pattern)
+	} else {
+		sql += ` AND NOT (` + textLike + `)
+		  AND e.sid IN (SELECT q.sid FROM events q WHERE q.kind = 'turn.user' AND ` + promptPrefilter(trimmed) + ` LIKE ? ESCAPE '\') AND (`
+		args = append(args, pattern, pattern)
+	}
+	sql += `(
+		      SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text'))
+		      FROM events p
+		      WHERE p.sid = e.sid AND p.kind = 'turn.user'
+		        AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id)
+		        AND p.ts >= COALESCE((
+		              SELECT w.ts FROM events w
+		              WHERE w.sid = e.sid
+		                AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id)
+		              ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0)
+		      ORDER BY p.ts DESC, p.id DESC LIMIT 1
+		    ) LIKE ? ESCAPE '\')
+		ORDER BY e.id DESC LIMIT ?`
+	// Only the NEAREST preceding prompt, within a short window: matching any
+	// prompt nearby would return every reply in an exchange rather than the
+	// passage that answers the question.
+	//
+	// "Preceding" is in time, within the reply's own session, not in event
+	// id. An id says when Caprock stored a row, and a prompt imported after
+	// its replies — OpenCode's history, a Claude Code transcript read after
+	// its hooks — sits after them by id: on a copy of the owner's database
+	// none of 3,048 OpenCode replies could be found by their question under
+	// the id window, and 24 Claude Code replies matched a prompt minutes
+	// older than the one they answered. The window is the reply's last
+	// promptLookback events in that session, and the lookups walk
+	// (sid, ts) indexes.
+	//
+	// The prompt's field depends on who wrote it: Claude Code, Gemini and
+	// OpenCode carry `prompt`, DeepSeek Harness `text` (as FirstPrompts reads
+	// it). Reading only `prompt` made every DeepSeek question unsearchable.
+	args = append(args, promptLookback-1, pattern, limit)
+	found, err := queryNotes(ctx, q, sql, args...)
+	if err != nil || full {
+		return found, err
+	}
+	byText = append(byText, found...)
+	sort.Slice(byText, func(i, j int) bool { return byText[i].EventID > byText[j].EventID })
+	if len(byText) > limit {
+		byText = byText[:limit]
+	}
+	return byText, nil
+}
+
+// promptPrefilter is what the sessions with a matching prompt are found by:
+// the prompt row's stored JSON as it is, when the search can only appear in
+// it verbatim, else the prompt read out of it. The stored text holds a
+// prompt's printable ASCII unescaped, so a LIKE on it finds every prompt the
+// read-out text would — and a few more, harmlessly, whose other fields match
+// — at a sixth of the cost: 80 ms against 300 ms over the owner's 23,610
+// prompts (2026-11-18). A quote, a backslash, a slash, `<`, `>`, `&` or any
+// character outside printable ASCII may be escaped in it (`\"`, `\u003c`,
+// `\u00e9`), so a search holding one reads the prompt out instead.
+func promptPrefilter(search string) string {
+	for _, r := range search {
+		if r < 0x20 || r > 0x7e || strings.ContainsRune(`"\/<>&`, r) {
+			return `(CASE WHEN json_valid(q.payload) THEN COALESCE(json_extract(q.payload, '$.prompt'), json_extract(q.payload, '$.text')) END)`
+		}
+	}
+	return `q.payload`
+}
+
+func queryNotes(ctx context.Context, q Querier, sql string, args ...any) ([]AssistantNote, error) {
 	rows, err := q.QueryContext(ctx, sql, args...)
 	if err != nil {
 		return nil, err

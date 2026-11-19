@@ -142,12 +142,15 @@ type OverheadReport struct {
 func ContextOverhead(ctx context.Context, q Querier, fromMs int64) (*OverheadReport, error) {
 	out := &OverheadReport{}
 	cur := map[string]*famAcc{}
+	// The rows are found by their kind — one a Cursor chat — and their
+	// session checked after: through the sessions' own index every event of
+	// every Cursor chat in the range was read from the table to test its kind.
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(e.model,''),
 		       COALESCE(json_extract(e.payload,'$.overhead_tokens'),0),
 		       COALESCE(json_extract(e.payload,'$.clean'),0)
-		FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid
-		WHERE s.agent = 'cursor' AND s.last_event_at >= ? AND e.kind = 'context.overhead'
+		FROM events e INDEXED BY idx_events_kind_id CROSS JOIN sessions s ON s.sid = e.sid
+		WHERE e.kind = 'context.overhead' AND s.agent = 'cursor' AND s.last_event_at >= ?
 		  AND json_valid(e.payload)`, fromMs)
 	if err != nil {
 		return nil, err
@@ -167,14 +170,20 @@ func ContextOverhead(ctx context.Context, q Querier, fromMs int64) (*OverheadRep
 		return nil, err
 	}
 	cl := map[string]*famAcc{}
+	// Each session's first priced main-thread turn is found by walking the
+	// session's events in id order and stopping at it, a few rows in. As
+	// MIN(id) over a GROUP BY it read every assistant turn of every session in
+	// the range, payload and all, to keep one: 0.5 s warm and 5-9 s cold for
+	// 30 days on a copy of the owner's 2 GB database (2026-11-18).
 	rows, err = q.QueryContext(ctx, `
 		WITH first AS (
-		  SELECT e.sid, MIN(e.id) AS id
-		  FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid
-		  WHERE s.agent = 'claude' AND s.started_at >= ? AND s.chat = 0
-		    AND e.kind = 'turn.assistant' AND e.internal = 0 AND `+MainThreadWhere+`
-		    AND COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0
-		  GROUP BY e.sid)
+		  SELECT (SELECT e.id FROM events e INDEXED BY idx_events_session_id
+		           WHERE e.sid = s.sid
+		             AND e.kind = 'turn.assistant' AND e.internal = 0 AND `+MainThreadWhere+`
+		             AND COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0
+		           ORDER BY e.id LIMIT 1) AS id
+		  FROM sessions s
+		  WHERE s.agent = 'claude' AND s.started_at >= ? AND s.chat = 0)
 		SELECT COALESCE(e.model,''),
 		       COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0),
 		       COALESCE((SELECT LENGTH(CAST(json_extract(u.payload,'$.prompt') AS BLOB))
@@ -275,6 +284,11 @@ type SessionOverhead struct {
 }
 
 // SessionOverheadFor reads a session's context.overhead row.
+//
+// The estimates are found by their kind, a few dozen rows on the whole
+// machine, and their session checked after: through the session's own index
+// every event of a long Claude Code session was read from the table to learn
+// it had none (93 ms warm, 203,608 events; 2026-11-18).
 func SessionOverheadFor(ctx context.Context, q Querier, sessionID string) (*SessionOverhead, error) {
 	var o SessionOverhead
 	var clean int
@@ -286,8 +300,8 @@ func SessionOverheadFor(ctx context.Context, q Querier, sessionID string) (*Sess
 		       COALESCE(json_extract(e.payload,'$.overhead_tokens'),0),
 		       COALESCE(json_extract(e.payload,'$.model_calls'),0),
 		       COALESCE(json_extract(e.payload,'$.clean'),0)
-		FROM events e
-		WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'context.overhead'
+		FROM events e INDEXED BY idx_events_kind_id
+		WHERE e.kind = 'context.overhead' AND e.sid = (SELECT sid FROM sessions WHERE session_id = ?)
 		  AND json_valid(e.payload)
 		ORDER BY e.id LIMIT 1`, sessionID).Scan(&o.Model, &o.RequestTokens, &o.TypedTokens, &o.VisibleTokens, &o.OverheadTokens, &o.ModelCalls, &clean)
 	if err != nil {

@@ -53,7 +53,7 @@ import { BottomSheet, ChipSelect, FoldHeader } from './PhoneParts'
 import { PhoneShareWeek } from './PhoneShareWeek'
 import { PhoneReleases } from './PhoneReleases'
 import { AddSubscriptionHint, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
-import { chosenId, hasSubscriptions, roomText } from '@/lib/subscriptions'
+import { chosenId, hasSubscriptions, leftText } from '@/lib/subscriptions'
 import { SUBAGENT_MODELS, rememberSubagentModel, rememberedSubagentModel, type SubagentModel } from '@/lib/subagentModel'
 
 /** The last project, agent and sign-in a chat was started on from here. */
@@ -742,8 +742,7 @@ function Dock({ projects, canControl, saved, onSave, onNewChat }: {
 
 function subText(s: Subscription): string {
   if (s.provider) return s.label
-  const room = roomText(s)
-  return room ? `${s.label} · ${room}` : s.label
+  return `${s.label} · ${leftText(s)}`
 }
 
 function FieldLabel({ children }: { children: ReactNode }) {

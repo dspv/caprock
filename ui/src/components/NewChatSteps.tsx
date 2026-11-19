@@ -4,7 +4,9 @@
  * 1. **Who works** — Claude on the user's subscription, another Claude
  *    sign-in, DeepSeek or Kimi on the user's key (only while it is set),
  *    Codex on a ChatGPT sign-in, then any other agent here (lib/newChat
- *    whoOptions). The last pick is marked and remembered.
+ *    whoOptions). A sign-in's row says how much is left of its tightest
+ *    current window ("62% of 5-hour left"), for the user's choice: nothing
+ *    is ordered or preselected by it. The last pick is marked and remembered.
  * 2. **Where** — *Just a chat* (a folder of its own, as Quick chat has
  *    always made), the recent folders (`GET /v1/recent-dirs`: deduped,
  *    newest first, at most eight, never a temp or a chat folder) each with
@@ -77,11 +79,12 @@ export function NewChatSteps({ chat, onClose }: { chat: ReturnType<typeof useCha
             <ul aria-label="Who works" className="overflow-hidden rounded-[12px] border border-border bg-bg">
               {options.map((o) => (
                 <li key={o.key} className="border-b border-border last:border-b-0">
-                  <button type="button" data-who={o.key} onClick={() => pickWho(o)} className={`flex min-h-[60px] w-full min-w-0 items-center gap-3 px-3 text-left active:bg-panel-2 ${last?.key === o.key ? 'bg-accent/10' : ''}`}>
+                  <button type="button" data-who={o.key} onClick={() => pickWho(o)} className={`flex min-h-[60px] w-full min-w-0 items-center gap-3 px-3 py-1.5 text-left active:bg-panel-2 ${last?.key === o.key ? 'bg-accent/10' : ''}`}>
                     <AgentCharacter who={o.who} face={o.face} size={34} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[16px] font-medium text-fg">{o.label}</span>
                       {o.hint && <span className="block truncate text-[13px] text-fg-muted">{o.hint}</span>}
+                      {o.left && <span data-who-left className="block truncate text-[12.5px] text-fg-faint">{o.left}</span>}
                     </span>
                     {last?.key === o.key && <span className="shrink-0 text-[12px] text-accent">last used</span>}
                     <span className="shrink-0 text-fg-faint"><ChevronIcon size={14} /></span>

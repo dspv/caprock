@@ -2819,6 +2819,17 @@ daemon, on a timer).
 **Revisit if** Claude Code or Codex add a documented account switch that does
 not move the whole configuration directory, or stop keying credentials to it.
 
+**Reconfirmed 2026-11-18: manual choice, no Auto.** The owner weighed an
+*Auto* subscription option — start each session on the sign-in with the most
+left — in mockups (branch `mock/subscription-pool`) and chose against it
+(translated): "manual choice only, no Auto option." What shipped instead is
+information for that choice: the Plan limits panel lists every sign-in with
+what is left of each window, and the Subscription select, Quick chat and the
+phone's *Who works* say how much is left of each option's tightest window.
+Nothing preselects by headroom; the default stays the remembered or default
+subscription, and the copy stays "you choose which subscription this session
+uses".
+
 **Amended 2026-10-12: Make default and a plan per account.** A tester could
 not change which account new sessions use without signing the default in
 again, and had one plan picker for accounts on different plans. The own

@@ -6,7 +6,7 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { BarChart, BarReadout, type Bar } from './BarChart'
+import { BAR_WIDTH, BarChart, BarReadout, type Bar } from './BarChart'
 
 const bars: Bar[] = [
   { day: '2026-08-18', cost: 10, tokens: 1_000_000, sessions: 2 },
@@ -35,6 +35,22 @@ describe('BarChart', () => {
       (el) => parseInt((el as HTMLElement).style.height, 10),
     )
     expect(Math.min(...heights)).toBeGreaterThan(0)
+  })
+
+  it('draws a long history: the gap between bars shrinks with them', () => {
+    // Lifetime's "all" over 585 days drew an empty panel: a fixed 3px flex gap
+    // between every bar outgrew the panel and squeezed each bar to zero width.
+    const many: Bar[] = Array.from({ length: 600 }, (_, i) => ({
+      day: new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10), cost: 1 + (i % 7), tokens: 1,
+    }))
+    const { container } = render(<BarChart bars={many} active={null} onActive={vi.fn()} axis />)
+    const row = container.firstElementChild as HTMLElement
+    expect(row.className).not.toMatch(/\bgap-/)
+    const els = [...container.querySelectorAll('.rounded-t-sm')] as HTMLElement[]
+    expect(els).toHaveLength(600)
+    // Never a fixed width or the full slot: a share of the slot, floored.
+    expect(BAR_WIDTH).toMatch(/^max\(60%, /)
+    for (const el of els) expect(el.style.width).toMatch(/^max\(60%, /)
   })
 
   it('scales bars against the largest day', () => {

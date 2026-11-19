@@ -61,10 +61,31 @@ export function withRoom(list: readonly Subscription[], chosenId: string, nowSec
   return [...rest].sort((a, b) => pct(a) - pct(b))
 }
 
-/** "12% of the 5-hour window" or "no figures yet". */
-export function roomText(sub: Subscription, nowSec = Date.now() / 1000): string {
+/** How much of a window is left, 0–100, from its latest reading. */
+export function leftPct(w: SubscriptionWindow): number {
+  return Math.max(0, Math.min(100, 100 - Math.round(w.used_percentage)))
+}
+
+/** A window whose reset has passed since its latest reading: it has reopened,
+ *  and how much is used now is not known until a session reports again. */
+export function reopened(w: SubscriptionWindow, nowSec = Date.now() / 1000): boolean {
+  return !!w.resets_at && w.resets_at <= nowSec
+}
+
+/**
+ * What a picker says about a sign-in's room, always as what is LEFT of its
+ * tightest current window: "62% of 5-hour left", "not signed in", "no
+ * figures yet", or "5-hour reopened 11:40" when every reading predates its
+ * reset. Information for the user's own choice; nothing picks by it.
+ */
+export function leftText(sub: Subscription, nowSec = Date.now() / 1000): string {
+  if (sub.provider) return 'your API key'
+  if (!sub.signed_in) return 'not signed in'
   const f = fullest(sub, nowSec)
-  return f ? `${Math.round(f.used_percentage)}% of the ${windowLabel(f.window)} window` : 'no figures yet'
+  if (f) return `${leftPct(f)}% of ${windowLabel(f.window)} left`
+  const past = sub.windows.find((w) => reopened(w, nowSec))
+  if (past) return `${windowLabel(past.window)} reopened ${resetText(past.resets_at, new Date(nowSec * 1000))}`
+  return 'no figures yet'
 }
 
 /** HH:MM, or a weekday and HH:MM when the reset is not today. */

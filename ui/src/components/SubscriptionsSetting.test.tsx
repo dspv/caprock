@@ -234,7 +234,7 @@ describe('DeepSeek', () => {
     expect(screen.getByRole('note')).toHaveTextContent(/Caprock sends nothing/)
     unmount()
     render(<SubscriptionNote list={[full, deepseek]} value="default" onUse={() => {}} />)
-    expect(screen.getByRole('note')).toHaveTextContent('95% of its 5-hour window used')
+    expect(screen.getByRole('note')).toHaveTextContent('5% of its 5-hour window left')
     expect(screen.queryByRole('button', { name: 'DeepSeek' })).toBeNull()
   })
 
@@ -253,7 +253,7 @@ describe('the near-limit note', () => {
   it('says how full the chosen one is and offers one with room for this session', () => {
     const use = vi.fn()
     render(<SubscriptionNote list={list} value="default" onUse={use} />)
-    expect(screen.getByRole('note')).toHaveTextContent('Default: 93% of its 5-hour window used')
+    expect(screen.getByRole('note')).toHaveTextContent('Default: 7% of its 5-hour window left')
     fireEvent.click(screen.getByRole('button', { name: 'Personal' }))
     expect(use).toHaveBeenCalledWith('a1')
   })

@@ -896,19 +896,17 @@ SELECT s.session_id, COALESCE(s.transcript_path, '') FROM sessions s WHERE s.sid
         SCAN compaction_stats
 
 ## store.ContextOverhead
-SELECT COALESCE(e.model,''), COALESCE(json_extract(e.payload,'$.overhead_tokens'),0), COALESCE(json_extract(e.payload,'$.clean'),0) FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid WHERE s.agent = 'cursor' AND s.last_event_at >= ? AND e.kind = 'context.overhead' AND json_valid(e.payload)
-    SEARCH s USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
-    SEARCH e USING INDEX idx_events_session_ts (sid=?)
+SELECT COALESCE(e.model,''), COALESCE(json_extract(e.payload,'$.overhead_tokens'),0), COALESCE(json_extract(e.payload,'$.clean'),0) FROM events e INDEXED BY idx_events_kind_id CROSS JOIN sessions s ON s.sid = e.sid WHERE e.kind = 'context.overhead' AND s.agent = 'cursor' AND s.last_event_at >= ? AND json_valid(e.payload)
+    SEARCH e USING INDEX idx_events_kind_id (kind=?)
+    SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.ContextOverhead
-WITH first AS ( SELECT e.sid, MIN(e.id) AS id FROM sessions s JOIN events e INDEXED BY idx_events_session_ts ON e.sid = s.sid WHERE s.agent = 'claude' AND s.started_at >= ? AND s.chat = 0 AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0 GROUP BY e.sid) SELECT COALESCE(e.model,''), COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0), COALESCE((SELECT LENGTH(CAST(json_extract(u.payload,'$.prompt') AS BLOB)) FROM events u INDEXED BY idx_events_session_id WHERE u.sid = e.sid AND u.id < e.id AND u.kind = 'turn.user' ORDER BY u.id LIMIT 1),0) FROM first f JOIN events e ON e.id = f.id
-    CO-ROUTINE first
-        SEARCH s USING INDEX idx_sessions_agent (agent=?)
-        SEARCH e USING INDEX idx_events_session_ts (sid=?)
-        USE TEMP B-TREE FOR GROUP BY
-    SCAN f
+WITH first AS ( SELECT (SELECT e.id FROM events e INDEXED BY idx_events_session_id WHERE e.sid = s.sid AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0) > 0 ORDER BY e.id LIMIT 1) AS id FROM sessions s WHERE s.agent = 'claude' AND s.started_at >= ? AND s.chat = 0) SELECT COALESCE(e.model,''), COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0), COALESCE((SELECT LENGTH(CAST(json_extract(u.payload,'$.prompt') AS BLOB)) FROM events u INDEXED BY idx_events_session_id WHERE u.sid = e.sid AND u.id < e.id AND u.kind = 'turn.user' ORDER BY u.id LIMIT 1),0) FROM first f JOIN events e ON e.id = f.id
+    SEARCH s USING INDEX idx_sessions_agent (agent=?)
     SEARCH e USING INTEGER PRIMARY KEY (rowid=?)
-    CORRELATED SCALAR SUBQUERY 2
+    CORRELATED SCALAR SUBQUERY 1
+        SEARCH e USING INDEX idx_events_session_id (sid=?)
+    CORRELATED SCALAR SUBQUERY 3
         SEARCH u USING INDEX idx_events_session_id (sid=? AND id<?)
 
 ## store.CountBrainMemories
@@ -981,12 +979,9 @@ SELECT COUNT(*) FROM sessions WHERE chat = 1 AND archived_at = 0
     SCAN sessions USING INDEX idx_sessions_chat
 
 ## store.CountSessionsQuery
-SELECT COUNT(*) FROM sessions WHERE chat = 1 AND archived_at = 0 AND ((COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\' OR name LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\' OR sid IN (SELECT sid FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\')) OR (COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\' OR name LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\' OR sid IN (SELECT sid FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\')))
+SELECT COUNT(*) FROM sessions WHERE chat = 1 AND archived_at = 0 AND ((COALESCE(project,'') LIKE ? ESCAPE '\' OR COALESCE(cwd,'') LIKE ? ESCAPE '\' OR COALESCE(git_branch,'') LIKE ? ESCAPE '\' OR title LIKE ? ESCAPE '\' OR name LIKE ? ESCAPE '\' OR prompt LIKE ? ESCAPE '\' OR session_id LIKE ? ESCAPE '\' OR sid IN (SELECT sid FROM events WHERE kind = 'turn.user' AND payload LIKE ? ESCAPE '\')))
     SCAN sessions USING INDEX idx_sessions_chat
     LIST SUBQUERY 1
-        SEARCH events USING INDEX idx_events_kind_id (kind=?)
-        CREATE BLOOM FILTER
-    LIST SUBQUERY 2
         SEARCH events USING INDEX idx_events_kind_id (kind=?)
         CREATE BLOOM FILTER
 
@@ -2159,34 +2154,6 @@ UPDATE brain_nodes SET title = ?, norm = ?, summary = ?, keywords = ?, search = 
 UPDATE brain_vault_notes SET excerpt = ? WHERE id = ?
     SEARCH brain_vault_notes USING INTEGER PRIMARY KEY (rowid=?)
 
-## store.SearchNotes
-SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE(json_extract(e.payload, '$.text'), '') FROM events e LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != '' AND (json_extract(e.payload, '$.text') LIKE ? ESCAPE '\' OR ( SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text')) FROM events p WHERE p.sid = e.sid AND p.kind = 'turn.user' AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id) AND p.ts >= COALESCE(( SELECT w.ts FROM events w WHERE w.sid = e.sid AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id) ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0) ORDER BY p.ts DESC, p.id DESC LIMIT 1 ) LIKE ? ESCAPE '\') AND e.id < ? ORDER BY e.id DESC LIMIT ?
-    SEARCH e USING INDEX idx_events_kind_id (kind=? AND id<?)
-    CORRELATED SCALAR SUBQUERY 2
-        SEARCH p USING INDEX idx_events_user_turn (sid=? AND ts>? AND ts<?)
-        CORRELATED SCALAR SUBQUERY 1
-            SEARCH w USING COVERING INDEX idx_events_session_ts (sid=? AND ts<?)
-    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
-
-## store.SearchNotes
-SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE(json_extract(e.payload, '$.text'), '') FROM events e LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != '' AND (json_extract(e.payload, '$.text') LIKE ? ESCAPE '\' OR ( SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text')) FROM events p WHERE p.sid = e.sid AND p.kind = 'turn.user' AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id) AND p.ts >= COALESCE(( SELECT w.ts FROM events w WHERE w.sid = e.sid AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id) ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0) ORDER BY p.ts DESC, p.id DESC LIMIT 1 ) LIKE ? ESCAPE '\') ORDER BY e.id DESC LIMIT ?
-    SEARCH e USING INDEX idx_events_kind_id (kind=?)
-    CORRELATED SCALAR SUBQUERY 2
-        SEARCH p USING INDEX idx_events_user_turn (sid=? AND ts>? AND ts<?)
-        CORRELATED SCALAR SUBQUERY 1
-            SEARCH w USING COVERING INDEX idx_events_session_ts (sid=? AND ts<?)
-    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
-
-## store.SearchNotes
-SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE(json_extract(e.payload, '$.text'), '') FROM events e LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != '' AND e.id < ? ORDER BY e.id DESC LIMIT ?
-    SEARCH e USING INDEX idx_events_kind_id (kind=? AND id<?)
-    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
-
-## store.SearchNotes
-SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE(json_extract(e.payload, '$.text'), '') FROM events e LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != '' ORDER BY e.id DESC LIMIT ?
-    SEARCH e USING INDEX idx_events_kind_id (kind=?)
-    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
-
 ## store.SeedProject
 INSERT INTO projects(root, name, kind, source, remote_url, default_branch, added_at, defaults) VALUES (?, ?, ?, ?, ?, ?, ?, '{}') ON CONFLICT(root) DO NOTHING
 
@@ -2196,17 +2163,17 @@ SELECT session_id, branch, pushed_at FROM session_branches WHERE session_id = ? 
     USE TEMP B-TREE FOR ORDER BY
 
 ## store.SessionCalls
-SELECT * FROM ( SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '') FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ?) ORDER BY 2 ASC, 1 ASC
+SELECT * FROM ( SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ?) ORDER BY 2 ASC, 1 ASC
     CO-ROUTINE (subquery-2)
-        SEARCH e USING INDEX idx_events_session_ts (sid=?)
+        SEARCH e USING INDEX idx_events_attr_work (sid=?)
         SCALAR SUBQUERY 1
             SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     SCAN (subquery-2)
     USE TEMP B-TREE FOR ORDER BY
 
 ## store.SessionCalls
-SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_input'), '') FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND +e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND COALESCE(e.agent_id, '') = '' AND json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.sidechain') IS NOT 1 ORDER BY e.ts ASC, e.id ASC
-    SEARCH e USING INDEX idx_events_session_ts (sid=?)
+SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_input'), '') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND COALESCE(e.agent_id, '') = '' AND json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.sidechain') IS NOT 1 ORDER BY e.ts ASC, e.id ASC
+    SEARCH e USING INDEX idx_events_attr_work (sid=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -2233,8 +2200,8 @@ SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
     SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
 
 ## store.SessionOverheadFor
-SELECT COALESCE(e.model,''), COALESCE(json_extract(e.payload,'$.request_tokens'),0), COALESCE(json_extract(e.payload,'$.typed_tokens'),0), COALESCE(json_extract(e.payload,'$.visible_tokens'),0), COALESCE(json_extract(e.payload,'$.overhead_tokens'),0), COALESCE(json_extract(e.payload,'$.model_calls'),0), COALESCE(json_extract(e.payload,'$.clean'),0) FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'context.overhead' AND json_valid(e.payload) ORDER BY e.id LIMIT 1
-    SEARCH e USING INDEX idx_events_session_id (sid=?)
+SELECT COALESCE(e.model,''), COALESCE(json_extract(e.payload,'$.request_tokens'),0), COALESCE(json_extract(e.payload,'$.typed_tokens'),0), COALESCE(json_extract(e.payload,'$.visible_tokens'),0), COALESCE(json_extract(e.payload,'$.overhead_tokens'),0), COALESCE(json_extract(e.payload,'$.model_calls'),0), COALESCE(json_extract(e.payload,'$.clean'),0) FROM events e INDEXED BY idx_events_kind_id WHERE e.kind = 'context.overhead' AND e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND json_valid(e.payload) ORDER BY e.id LIMIT 1
+    SEARCH e USING INDEX idx_events_kind_id (kind=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -3186,6 +3153,49 @@ SELECT COALESCE(NULLIF(e.model,''), s.model, ''), COUNT(*), COALESCE(SUM(COALESC
     SEARCH s USING INTEGER PRIMARY KEY (rowid=?)
     USE TEMP B-TREE FOR GROUP BY
     USE TEMP B-TREE FOR ORDER BY
+
+## store.queryNotes
+SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') FROM events e INDEXED BY idx_events_prose LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') != '' AND e.id < ? AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END) LIKE ? ESCAPE '\' ORDER BY e.id DESC LIMIT ?
+    SEARCH e USING INDEX idx_events_prose (id<?)
+    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+
+## store.queryNotes
+SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') FROM events e INDEXED BY idx_events_prose LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') != '' AND e.id < ? AND NOT ((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END) LIKE ? ESCAPE '\') AND e.sid IN (SELECT q.sid FROM events q WHERE q.kind = 'turn.user' AND (CASE WHEN json_valid(q.payload) THEN COALESCE(json_extract(q.payload, '$.prompt'), json_extract(q.payload, '$.text')) END) LIKE ? ESCAPE '\') AND (( SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text')) FROM events p WHERE p.sid = e.sid AND p.kind = 'turn.user' AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id) AND p.ts >= COALESCE(( SELECT w.ts FROM events w WHERE w.sid = e.sid AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id) ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0) ORDER BY p.ts DESC, p.id DESC LIMIT 1 ) LIKE ? ESCAPE '\') ORDER BY e.id DESC LIMIT ?
+    SEARCH e USING INDEX idx_events_prose (id<?)
+    LIST SUBQUERY 1
+        SEARCH q USING INDEX idx_events_kind_id (kind=?)
+        CREATE BLOOM FILTER
+    CORRELATED SCALAR SUBQUERY 3
+        SEARCH p USING INDEX idx_events_user_turn (sid=? AND ts>? AND ts<?)
+        CORRELATED SCALAR SUBQUERY 2
+            SEARCH w USING COVERING INDEX idx_events_session_ts (sid=? AND ts<?)
+    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+
+## store.queryNotes
+SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') FROM events e INDEXED BY idx_events_prose LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') != '' AND e.id < ? AND NOT ((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END) LIKE ? ESCAPE '\') AND e.sid IN (SELECT q.sid FROM events q WHERE q.kind = 'turn.user' AND q.payload LIKE ? ESCAPE '\') AND (( SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text')) FROM events p WHERE p.sid = e.sid AND p.kind = 'turn.user' AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id) AND p.ts >= COALESCE(( SELECT w.ts FROM events w WHERE w.sid = e.sid AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id) ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0) ORDER BY p.ts DESC, p.id DESC LIMIT 1 ) LIKE ? ESCAPE '\') ORDER BY e.id DESC LIMIT ?
+    SEARCH e USING INDEX idx_events_prose (id<?)
+    LIST SUBQUERY 1
+        SEARCH q USING INDEX idx_events_kind_id (kind=?)
+        CREATE BLOOM FILTER
+    CORRELATED SCALAR SUBQUERY 3
+        SEARCH p USING INDEX idx_events_user_turn (sid=? AND ts>? AND ts<?)
+        CORRELATED SCALAR SUBQUERY 2
+            SEARCH w USING COVERING INDEX idx_events_session_ts (sid=? AND ts<?)
+    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+
+## store.queryNotes
+SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') FROM events e INDEXED BY idx_events_prose LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') != '' AND e.id < ? AND e.id >= ? AND ((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END) LIKE ? ESCAPE '\' OR ( SELECT COALESCE(json_extract(p.payload, '$.prompt'), json_extract(p.payload, '$.text')) FROM events p WHERE p.sid = e.sid AND p.kind = 'turn.user' AND p.ts <= e.ts AND (p.ts < e.ts OR p.id < e.id) AND p.ts >= COALESCE(( SELECT w.ts FROM events w WHERE w.sid = e.sid AND w.ts <= e.ts AND (w.ts < e.ts OR w.id < e.id) ORDER BY w.ts DESC, w.id DESC LIMIT 1 OFFSET ?), 0) ORDER BY p.ts DESC, p.id DESC LIMIT 1 ) LIKE ? ESCAPE '\') ORDER BY e.id DESC LIMIT ?
+    SEARCH e USING INDEX idx_events_prose (id>? AND id<?)
+    CORRELATED SCALAR SUBQUERY 2
+        SEARCH p USING INDEX idx_events_user_turn (sid=? AND ts>? AND ts<?)
+        CORRELATED SCALAR SUBQUERY 1
+            SEARCH w USING COVERING INDEX idx_events_session_ts (sid=? AND ts<?)
+    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+
+## store.queryNotes
+SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''), COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') FROM events e INDEXED BY idx_events_prose LEFT JOIN sessions se ON se.sid = e.sid WHERE e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND COALESCE((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END), '') != '' AND e.id < ? ORDER BY e.id DESC LIMIT ?
+    SEARCH e USING INDEX idx_events_prose (id<?)
+    SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
 
 ## store.queryUnpriced
 SELECT COALESCE(model,''), COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0) FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = ?) GROUP BY model ORDER BY 3 DESC

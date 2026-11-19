@@ -783,9 +783,7 @@ def main():
                 # database and re-reads every transcript on start, so a busy
                 # machine takes minutes, not seconds — and a timeout is a
                 # failure, never a capture of whatever was on screen.
-                for _ in range(600):
-                    time.sleep(0.5)
-                    ready = evaluate(ws, """
+                ready_js = """
                       ((wantMoney) => {
                         // One session's own figures can honestly read $0.00
                         // (a session that has not answered yet); they are
@@ -793,9 +791,13 @@ def main():
                         let t = document.body.innerText;
                         for (const el of document.querySelectorAll('[data-session-figures]')) t = t.replace(el.innerText, '');
                         // The live pulse's rows carry no such mark: a row is
-                        // the session's short id and state, then its cost on
-                        // a line of its own, $0.00 for one just started.
-                        t = t.replace(/^[0-9a-f]{8} · .*\\n\\$0\\.00\\s*$/gm, '');
+                        // the session's short id and state — now after its
+                        // project, "acme-api · 7d492593 · …" — then its
+                        // cost on a line of its own, $0.00 for one just
+                        // started. Missing the project form held the 0.182.4
+                        // Home capture on a live session's $0.00 until it
+                        // timed out.
+                        t = t.replace(/^(?:.* · )?[0-9a-f]{8}(?: · .*)?\\n\\$0\\.00\\s*$/gm, '');
                         if (document.querySelector('.skeleton-pulse')) return false;
                         if (t.includes('reading your figures')) return false;
                         if (/Reading your projects/i.test(t)) return false;
@@ -805,9 +807,10 @@ def main():
                         if (/^\\$0\\.00\\s*$/m.test(t)) return false;
                         // Tasks carries no money; the placeholders are all it has.
                         return !wantMoney || /\\$[0-9][0-9,]*\\.[0-9]{2}/.test(t);
-                      })(""" + ("false" if route in NO_MONEY else "true") + """)
-                    """)
-                    if ready:
+                      })(""" + ("false" if route in NO_MONEY else "true") + ")"
+                for _ in range(600):
+                    time.sleep(0.5)
+                    if evaluate(ws, ready_js):
                         break
                 else:
                     # Say which placeholder was still there: "never finished
@@ -816,7 +819,7 @@ def main():
                       (() => {
                         let t = document.body.innerText;
                         for (const el of document.querySelectorAll('[data-session-figures]')) t = t.replace(el.innerText, '');
-                        t = t.replace(/^[0-9a-f]{8} · .*\n\$0\.00\s*$/gm, '');
+                        t = t.replace(/^(?:.* · )?[0-9a-f]{8}(?: · .*)?\n\$0\.00\s*$/gm, '');
                         const z = t.search(/^\$0\.00\s*$/m);
                         return JSON.stringify({
                           skeletons: document.querySelectorAll('.skeleton-pulse').length,
@@ -906,6 +909,16 @@ def main():
                 if cur != theme:
                     raise SystemExit(
                         f"theme mismatch on {route}: asked for {theme}, page rendered {cur}")
+
+                # Ready once is not ready now: a panel that went back to a
+                # placeholder in the seconds since (Home's Projects did) is
+                # captured as one. Ask again at the last moment.
+                for _ in range(120):
+                    if evaluate(ws, ready_js):
+                        break
+                    time.sleep(0.5)
+                else:
+                    sys.exit(f"{name} ({theme}) went back to a placeholder before the capture; refusing")
 
                 shot = rpc(ws, "Page.captureScreenshot", {
                     "format": "png",
