@@ -26,6 +26,15 @@ const repo = (tag: string, entries: number) => ({
   unreleased: { ref: 'origin/master', items: [], count: entries, kinds: entries ? { Added: 2, Fixed: entries - 2 } : {} },
 })
 
+// Two entries the open batch pull request's branch carries, none merged yet.
+const onBatch = {
+  ref: 'origin/master', items: ['a', 'b'], count: 2, kinds: { Changed: 1, Fixed: 1 }, via: { number: 949, head: 'feat/batch', sha: 'abc' },
+  entries: [
+    { text: 'PR from another repo no longer shows as this one’s', scope: 'ui', kind: 'Fixed', source: 'pr' as const },
+    { text: 'Folded CI second line under the word CI', scope: 'ui', kind: 'Changed', source: 'pr' as const },
+  ],
+}
+
 const asked: string[] = []
 beforeEach(() => {
   asked.length = 0
@@ -42,13 +51,13 @@ const draw = (folded: boolean) => render(
 const line = () => document.querySelector('[data-release-fold]')
 
 describe('the cockpit’s Release section', () => {
-  it('folded, says the version, the changes waiting and the batch PR from the kept answers, without the Work read', () => {
+  it('folded, says the version, the changes waiting and the next step from the kept answers, without the Work read', () => {
     writeDeck(`stats:${ROOT}`, stats([pr(941, 'feat: the batch', 'open'), pr(940, 'feat: a batch', 'merged', now - 1_800_000)],
       [{ number: 941, stage: 'ready', ci: 'pass', spend: SPEND }, { number: 940, stage: 'merged', spend: SPEND }], [rel('v0.182.4', 86_400_000, 23)]))
     writeDeck(workRepoKey(ROOT), repo('v0.182.4', 5))
     draw(true)
     expect(line()).toHaveAttribute('data-release-fold', 'waiting')
-    expect(line()).toHaveAttribute('aria-label', '0.183.0 · 5 changes waiting · PR #941 green')
+    expect(line()).toHaveAttribute('aria-label', '0.183.0 · 5 changes · next: merge #941')
     // The kept entry is fresh: the Work answer is not read folded.
     expect(asked.some((u) => u.startsWith('/v1/work'))).toBe(false)
   })
@@ -92,5 +101,40 @@ describe('the cockpit’s Release section', () => {
     const plan = document.querySelector('[data-release-plan]')!
     expect(plan.firstElementChild).toBe(strip)
     expect(plan.querySelector('[data-release-stages]')).toBeNull()
+  })
+
+  it('folded, says the batch PR’s red CI; unfolded, its via line names the failing check', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(949, 'fix: the batch', 'open')],
+      [{ number: 949, stage: 'fix', ci: 'fail', why: 'ci', failed: ['go (windows-latest)'], spend: SPEND }], [rel('v0.183.0', 8 * 3_600_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), unreleased: onBatch })
+    const { unmount } = draw(true)
+    expect(line()).toHaveAttribute('aria-label', '0.183.1 · 2 changes · batch CI red')
+    expect(line()).toHaveClass('text-danger')
+    unmount()
+    draw(false)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^0\.183\.1patch: fixes only·last 1h ago$/)
+    expect(document.querySelector('[data-release-via]')).toHaveTextContent('via#949●CI red·fix: go (windows-latest)')
+    // Nothing is merged yet: the strip waits at Merged.
+    expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'merged')
+  })
+
+  it('unfolded while shipping: the heading says Shipping, the strip marks the stage, the entries stay', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(950, 'chore(release): 0.183.1', 'open')], [{ number: 950, stage: 'open', ci: 'running', spend: SPEND }], [rel('v0.183.0', 8 * 3_600_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), unreleased: { ...onBatch, entries: onBatch.entries!.map((e) => ({ ...e, source: 'master' as const })), via: undefined } })
+    draw(false)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Shipping 0\.183\.1/)
+    expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'pr')
+    expect([...document.querySelectorAll('[data-release-kind] h5')].map((e) => e.textContent)).toEqual(['Changed', 'Fixed'])
+    expect(document.querySelector('[data-release-via]')).toBeNull()
+  })
+
+  it('unfolded within the hour of a release: out, with that release’s own notes', () => {
+    writeDeck(`stats:${ROOT}`, stats([], [], [rel('v0.183.1', 300_000, 23), rel('v0.183.0', 8 * 3_600_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.1', 0), tags: { last: { name: 'v0.183.1', at: now - 600_000 }, gaps: 0 },
+      released: { version: '0.183.1', count: 1, entries: [{ text: 'PR from another repo no longer shows as this one’s', scope: 'ui', kind: 'Fixed' }] } })
+    draw(false)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent('v0.183.1 out·5 min ago')
+    expect(document.querySelector('[data-release-entries]')).toHaveTextContent('FixedPR from another repo no longer shows as this one’s')
+    expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'published')
   })
 })

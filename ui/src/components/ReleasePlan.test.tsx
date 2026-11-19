@@ -315,13 +315,27 @@ describe('where it is drawn', () => {
     expect(document.querySelector('[data-work-next-release]')).toBeNull()
   })
 
+  // The release notes of 2026-11-19 are the right panel's alone.
+  it('keeps the Work page’s and the phone’s rows: pull requests, merges and agents in their sections', () => {
+    const { unmount } = render(<WorkView work={withKinds()} stats={new Map([['/w/caprock', statsFixture()]])} now={NOW} passed={0} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Release' }))
+    const sections = () => [...document.querySelectorAll('[data-release-plan="caprock"] [data-release-section]')].map((e) => e.firstChild?.textContent)
+    expect(sections()).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Agents working now · 1'])
+    expect(document.querySelector('[data-release-entries]')).toBeNull()
+    unmount()
+    render(<ReleasePlan plan={plan()} phone />)
+    expect(document.querySelector('[data-release-phone]')).not.toBeNull()
+    expect(sections()).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Agents working now · 1'])
+    expect(document.querySelector('[data-release-via]')).toBeNull()
+  })
+
   it('is the right panel’s Release section: the kept Pipeline answer and one Work read, again on GitHub news only', async () => {
     h.data = withKinds()
     writeDeck('stats:/w/caprock', statsFixture())
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
     expect(await within(region).findByRole('heading', { name: '0.118.0' })).toBeInTheDocument()
-    expect(region.querySelectorAll('[data-release-row]').length).toBeGreaterThan(0)
+    expect(region.querySelectorAll('[data-release-entry]').length).toBeGreaterThan(0)
     expect(h.work).toBe(1)
     vi.useFakeTimers()
     try {
@@ -337,42 +351,95 @@ describe('where it is drawn', () => {
     }
   })
 
-  // Owner, 2026-10-18, translated: "it shows vaguely what's going on on the
-  // way to the release". The pushed branches and the working subagents, in
-  // sections with counts, compact.
-  it('lists in the right panel the pushed branches with no pull request and the session’s working subagents, in sections', async () => {
+  // Owner, 2026-11-19, translated: "the Release section is unclear, it looks
+  // more like a list of PRs". Variant A: the strip, the version and why, the
+  // entries by kind, the batch PR as one line, what is not in it folded.
+  it('reads as release notes: the strip, the version and why, the entries by kind, the batch as one via line', async () => {
+    const w = withKinds()
+    w.repos[0]!.unreleased = {
+      ref: 'origin/master', items: ['x', 'y', 'z'], count: 3, kinds: { Changed: 1, Fixed: 2 }, via: { number: 631, head: 'feat/folder-search', sha: 'abc' },
+      entries: [
+        { text: 'merged already, on the default branch.', scope: 'db', kind: 'Fixed', source: 'master' },
+        { text: 'Folded CI second line under the word CI', scope: 'ui', kind: 'Changed', source: 'pr' },
+        { text: 'PR from another repo no longer shows as this one’s', scope: 'ui', kind: 'Fixed', source: 'pr' },
+      ],
+    }
+    h.data = w
+    writeDeck('stats:/w/caprock', statsFixture())
+    const subs = { working: [{ agent_id: 'a1', description: 'Port the ring', tool_calls: 3, started_at: Date.now() - 12 * 60_000, last_at: Date.now(), running: true, asking: false }], finished: 0 }
+    render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    // A patch: no Added entry, predicted from the batch PR's fragments too.
+    await within(region).findByRole('heading', { name: '0.117.5' })
+    // The strip is drawn first, always.
+    const plan = region.querySelector('[data-release-plan]')!
+    expect(plan.firstElementChild).toHaveAttribute('data-release-strip')
+    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^0\.117\.5patch: fixes only·last (\d+[mhd] ago|just now)$/)
+    // Grouped by kind in Keep a Changelog order, each in its own words.
+    const kinds = [...region.querySelectorAll('[data-release-kind]')]
+    expect(kinds.map((k) => k.querySelector('h5')!.textContent)).toEqual(['Changed', 'Fixed'])
+    expect([...kinds[1]!.querySelectorAll('li')].map((e) => e.textContent)).toEqual(['merged already, on the default branch.', 'PR from another repo no longer shows as this one’s'])
+    expect(kinds[0]!.querySelector('li')).toHaveClass('line-clamp-2')
+    expect(kinds[0]!.querySelector('li')).toHaveAttribute('data-release-entry', 'pr')
+    // The batch: one line with its checks and what it waits for; it opens as a row did.
+    const via = region.querySelector<HTMLAnchorElement>('[data-release-via]')!
+    expect(via).toHaveTextContent('via#631●CI running·checks running')
+    expect(via.getAttribute('href')).toContain('pr=631')
+    // No pull request rows, no merged rows, no agent rows: the CI and
+    // Subagents sections say those.
+    expect(region.querySelector('[data-release-row="630"]')).toBeNull()
+    expect(region.querySelector('[data-release-row="sa:a1"]')).toBeNull()
+    expect(region.textContent).not.toMatch(/Open PRs|Shipping \(|Agents working/)
+    // The other open pull request is not in it yet, folded.
+    const later = region.querySelector('[data-release-section="branch"]')!
+    expect(later).toHaveTextContent('Not in it yet: 1 other PR▸')
+    expect(region.querySelector('[data-release-row="633"]')).toBeNull()
+    fireEvent.click(later)
+    expect(region.querySelector('[data-release-row="633"] [data-release-state]')).toHaveTextContent('ready')
+  })
+
+  it('says a batch PR’s red CI on its via line with the failing check', async () => {
+    h.data = withKinds()
+    const stats = statsFixture()
+    const c = stats.board!.cards.find((x) => x.number === 631)!
+    Object.assign(c, { ci: 'fail', why: 'ci', stage: 'fix', failed: ['go (windows-latest)'] })
+    writeDeck('stats:/w/caprock', stats)
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: '0.118.0' })
+    const via = region.querySelector('[data-release-via]')!
+    expect(via.querySelector('[data-via-ci]')).toHaveAttribute('data-via-ci', 'fail')
+    expect(via.querySelector('[data-via-state]')).toHaveTextContent('fix: go (windows-latest)')
+    expect(via.querySelector('[data-via-state]')).toHaveClass('text-danger')
+  })
+
+  // Owner, 2026-10-18 (revisited 2026-11-19): the pushed branches stay, as
+  // one folded line; the subagents are the Subagents section's.
+  it('folds the pushed branches with no pull request into Not in it yet, remembered per viewer', async () => {
     h.data = withKinds()
     writeDeck('stats:/w/caprock', statsFixture())
     writeDeck('branches:/w/caprock', { connected: true, repo: 'dspv/caprock', default: 'master', base: 'origin/master', fetched_at: NOW,
       branches: [{ name: 'feat/batch-1', local: false, remote: true, ahead: 2, behind: 0, committed_ms: Date.now() - 30 * 60_000, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: 'fix(deck): the ring' }] })
-    const subs = { working: [{ agent_id: 'a1', description: 'Port the ring', tool_calls: 3, started_at: Date.now() - 12 * 60_000, last_at: Date.now(), running: true, asking: false }], finished: 0 }
-    render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
     await within(region).findByRole('heading', { name: '0.118.0' })
-    const sections = [...region.querySelectorAll('[data-release-section]')].map((e) => e.textContent)
-    expect(sections).toEqual(['Shipping (1 merged, not released)', 'Open PRs (2)', 'Branches without a PR (1)▸', 'Agents working (2)'])
-    // Folded by default; the heading opens it, remembered per viewer.
+    const later = region.querySelector('[data-release-section="branch"]')!
+    await within(region).findByText(/1 branch, no PR/)
+    expect(later).toHaveTextContent('Not in it yet: 1 branch, no PR · 1 other PR▸')
+    // Folded by default; the line opens it, remembered per viewer.
     expect(region.querySelector('[data-release-row="b:feat/batch-1"]')).toBeNull()
-    fireEvent.click(region.querySelector('[data-release-section="branch"]')!)
-    expect(region.querySelector('[data-release-section="branch"]')).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(later)
+    expect(later).toHaveAttribute('aria-expanded', 'true')
     expect(localStorage.getItem('caprock.panel.folds')).toContain('release-branches-shown')
     // One line: the name and the age; the subject on hover; the row opens the comparison.
     const branch = region.querySelector('[data-release-row="b:feat/batch-1"]')!
     expect(branch).toHaveTextContent(/^feat\/batch-130m$/)
-    expect(branch.querySelector('[data-release-bar]')).toBeNull()
     const link = branch.querySelector('a')!
     expect(link).toHaveAttribute('href', 'https://github.com/dspv/caprock/compare/master...feat/batch-1')
     expect(link.title).toContain('fix(deck): the ring')
-    expect(branch).not.toHaveTextContent('↗')
-    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-state]')).toHaveTextContent('working 12m')
-    expect(region.querySelector('[data-release-row="sa:a1"] [data-release-age]')).toBeNull()
   })
 
-  // Owner, 2026-10-19, translated: "the information isn't perceivable like
-  // this". Five branches at rest, then Show all; a week without a commit
-  // waits behind +N older; a branch an open pull request carries is that
-  // pull request's +N branches, not a row.
-  it('shows five pushed branches, then Show all N, and the week-old ones behind +N older; carried branches on their pull request', async () => {
+  it('shows five pushed branches, then Show all N, and the week-old ones behind +N older; carried branches are not listed', async () => {
     h.data = withKinds()
     writeDeck('stats:/w/caprock', statsFixture())
     const br = (i: number, ago: number) => ({ name: `fix/b-${i}`, local: false, remote: true, ahead: 1, behind: 0, committed_ms: Date.now() - ago, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: `fix(b): change ${i}` })
@@ -386,27 +453,28 @@ describe('where it is drawn', () => {
     const region = await screen.findByRole('region', { name: 'Release' })
     await within(region).findByRole('heading', { name: '0.118.0' })
     const rows = () => [...region.querySelectorAll('[data-stage="branch"]')].map((e) => e.getAttribute('data-release-row'))
-    expect(region.querySelector('[data-release-section="branch"]')!.textContent).toBe('Branches without a PR (7)▸')
+    await within(region).findByText(/7 branches, no PR/)
+    expect(region.querySelector('[data-release-section="branch"]')!.textContent).toBe('Not in it yet: 7 branches, no PR · 1 other PR▸')
     expect(rows()).toEqual(['b:fix/b-0', 'b:fix/b-1', 'b:fix/b-2', 'b:fix/b-3', 'b:fix/b-4'])
     fireEvent.click(within(region).getByRole('button', { name: 'Show all 7' }))
     expect(rows()).toHaveLength(7)
     fireEvent.click(within(region).getByRole('button', { name: '+2 older' }))
     expect(rows()).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8].map((i) => `b:fix/b-${i}`))
     expect(region.querySelector('[data-release-older]')).toBeNull()
-    const carried = region.querySelector<HTMLElement>('[data-release-row="631"] [data-release-carried]')!
-    expect(carried).toHaveTextContent('+2 branches')
-    fireEvent.click(carried)
-    expect(region.querySelector('[data-release-row="631"] [data-release-carried-names]')).toHaveTextContent('fix/b-9fix/b-10')
   })
 
   // Owner, 2026-11-16: the section vanished after every release.
-  it('keeps the Release section with one line when nothing is new since the last tag', async () => {
+  it('keeps the Release section with one line and the idle strip when nothing is new since the last tag', async () => {
     const w = workFixture()
     h.data = { ...w, sessions: [], repos: w.repos.map((r) => ({ ...r, unreleased: undefined })) }
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    await within(region).findByText(/Nothing new since/)
+    await within(region).findByText(/Nothing new since v0\.117\.4/)
     expect(region).toHaveAttribute('data-release-empty')
+    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^Nothing new since v0\.117\.4·(\d+[mhd] ago|just now)$/)
+    const strip = region.querySelector('[data-release-strip]')!
+    expect(strip).toHaveAttribute('data-release-current', 'merged')
+    expect(region.querySelector('[data-release-entries]')).toBeNull()
   })
 
   it('draws nothing in the right panel for a session outside a repository', () => {

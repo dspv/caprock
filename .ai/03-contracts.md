@@ -6064,12 +6064,12 @@ GET /v1/work → Work
   messages in owned sessions' queues, `text` clipped to 200 characters,
   `start`/`finish` as the Queue's.
 - **`WorkRepo`** — `{root, name, remote?, via_session, live, unreleased?,
-  tags?, ahead_of_tag?}`: the live sessions' repositories (most live
+  released?, tags?, ahead_of_tag?}`: the live sessions' repositories (most live
   sessions first), then those any session recorded something in within 24
   hours (newest first), at most 8. `remote` is `owner/name` from origin's
   web address; `via_session` the newest session that brought it; `live`
   how many live sessions it has. `unreleased` `{ref, items, count, more?,
-  kinds?}`
+  kinds?, entries?, via?}`
   is the `CHANGELOG.md` `[Unreleased]` section at the remote's default
   branch as the clone knows it (`ref`, `origin/<default>`, from
   `refs/remotes/origin/HEAD`): `items` the first lines of its top-level
@@ -6084,20 +6084,41 @@ GET /v1/work → Work
   `kind:`, case ignored; an entry under no such heading, or a fragment
   without front matter, counts in `count` only; absent when no entry has a
   kind. The release plan predicts the next version from it (04-ui.md §
-  Release plan). Absent when neither the section nor the
-  directory is there. `tags` `{last?: {name, at},
+  Release plan). Since 2026-11-19 it also counts the fragments the
+  repository's open batch pull request carries before it merges: the newest
+  open pull request that is not a release one (a title like
+  `chore(release): x.y.z`) and names a head branch, in the GitHub lists the
+  daemon already read and kept (`github_prs`, seen within 3 days), whose
+  `origin/<head>` the clone knows locally (never fetched). Its fragments
+  that are neither at the default branch nor at the merge base (a fragment
+  the branch only kept from before a release is not its own), by file name,
+  are added after the default branch's; `via` `{number, head, sha}` names
+  that pull request, absent when none was read. `entries` (since
+  2026-11-19) are the same entries whole, at most 30, in `items`' order:
+  `{text, scope?, kind?, source}` — `text` the bullet with its continuation
+  lines, the leading `**scope:**` taken off into `scope`, bold, italics,
+  code ticks and link targets dropped, at most 280 characters; `source`
+  `master` (the default branch, whatever its name) or `pr` (the batch
+  branch alone). Absent when neither the section, the directory nor a batch
+  branch's directory is there. `released` `{version, entries, count}` is
+  the CHANGELOG's newest released section at that branch (the first `## [`
+  heading after `[Unreleased]`), `entries` as above without `source`: the
+  notes of the release just cut. `tags` `{last?: {name, at},
   gap_median_ms?, gaps}` reads the newest 11 tags by creation date;
   `gap_median_ms` is the median time between them, absent with fewer than
   three gaps. `ahead_of_tag` counts the default branch's commits past the
   last tag.
 - **Local only.** Git is read, never fetched: `git show <ref>:CHANGELOG.md`,
   `git ls-tree <ref> changes/unreleased/` and one `git cat-file --batch`
-  for the fragments,
+  for the fragments, for a batch pull request `git rev-parse
+  refs/remotes/origin/<head>`, `git merge-base` and the same two reads at
+  its head and the base,
   `git for-each-ref refs/tags --sort=-creatordate --count=11`, `git
   rev-list --count`, `git symbolic-ref`, `git remote get-url origin`, each
   hidden on Windows (`internal/hidewin`). A repository's reads are kept 60
-  seconds, and the CHANGELOG is reused while the default branch's commit
-  has not moved. Everything from git is only as fresh as the user's last
+  seconds, and the CHANGELOG and fragments are reused while neither the
+  default branch's commit nor the batch branch's has moved. The batch pull
+  request is one primary-key range read of `github_prs`. Everything from git is only as fresh as the user's last
   fetch, and the page says so. GitHub is never asked by this route. Nothing
   is written. No DDL.
 - **Live.** Nothing polls: the page asks again on live frames, as the Queue

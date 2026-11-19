@@ -66,10 +66,12 @@ const STRIP_NOW: Record<ReleaseStatus['stages'][number]['tone'], string> = {
  * colour (red on a red check or a failed build), done ones muted, the rest
  * faint; each says on hover what was read of it (lib/releasestatus
  * stripStages). A tag already under way names its version first, since the
- * heading under it is the release after.
+ * heading under it is the release after. With nothing under way it is still
+ * drawn (owner, 2026-11-19), its first stage current and dim; within the
+ * hour of a release's publishing (`out`), every stage done.
  */
-export function ReleaseStrip({ status: s, version }: { status: ReleaseStatus; version?: boolean }) {
-  const stages = stripStages(s)
+export function ReleaseStrip({ status: s, version, out }: { status: ReleaseStatus; version?: boolean; out?: boolean }) {
+  const stages = stripStages(s, { out })
   if (!stages.length) return null
   return (
     <div data-release-strip data-release-current={stages.find((x) => x.state === 'current')?.key ?? ''} role="list"

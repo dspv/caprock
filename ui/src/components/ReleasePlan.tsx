@@ -30,18 +30,19 @@
  * *state · extra · age* (CompactRows).
  */
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkRepo } from '@/lib/api'
+import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { agoText, OUT_RECENT_MS, releaseFold, releasePRVersion, releaseStatus, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
+import { OUT_RECENT_MS, releaseFold, releaseStatus, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
+import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
-import { ageText, BLOCKS, planEmpty, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { ageText, BLOCKS, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from '@/lib/usePoll'
 import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS, titleIsNumber } from '@/lib/work'
-import { SectionLabel, SessionSubagents, useFolded } from './Cockpit'
+import { SectionLabel, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
 import { writeDeck } from '@/lib/deckCache'
 import { Panel, usePanelFold } from './ui'
@@ -656,27 +657,35 @@ function keptWork(repo: WorkRepo, now: number): Work {
 
 /**
  * The right panel's *Release* section: the session's repository's next
- * release, compact. It asks GitHub nothing for itself: it draws the Pipeline
- * answer the CI section, the Pipeline page or the Work page last read for
- * that repository (lib/deckCache), and the Work answer, read while the
- * section is unfolded and again only on GitHub news (changesRelease) —
- * never on every turn of the agent beside it.
+ * release, as release notes (owner, 2026-11-19, translated: "the Release
+ * section is unclear, it looks more like a list of PRs" — variant A, with
+ * B's next step in the folded line; lib/releasenotes). It asks GitHub
+ * nothing for itself: it draws the Pipeline answer the CI section, the
+ * Pipeline page or the Work page last read for that repository
+ * (lib/deckCache), and the Work answer, read while the section is unfolded
+ * and again only on GitHub news (changesRelease) — never on every turn of
+ * the agent beside it.
  *
- * Folded, its one line says where the release is (owner, 2026-11-18,
- * translated: "the folded version lacks the release status"; lib/
- * releasestatus releaseFold): *Nothing new since v0.182.4*, *0.183.0 · 5
- * changes waiting · PR #940 green*, *0.183.0 · release PR #942 · CI
- * running*, *0.183.0 · building · 12 of 23 files*, *v0.183.0 out · 5 min
- * ago*. It needs the repository's tags and changelog entries: the entry of
- * the Work answer kept whenever a page read it (`work:<root>`), the Work
- * answer read folded only when none is kept or the kept one is older than
- * REPO_KEPT_MS. The release run is the copy the Pipeline kept
- * (`release:<root>`), asked here only while a release is under way — a
- * release pull request listed, a tag no release has published yet, a run
- * running — and the daemon answers it from the run it keeps.
+ * Folded, its one line says where the release is (owner, 2026-11-18;
+ * lib/releasestatus releaseFold): *Nothing new since v0.182.4*, *0.183.1 ·
+ * 2 changes · next: merge #949*, *0.183.1 · 2 changes · batch CI red*,
+ * *0.183.0 · release PR #942 · CI running*, *0.183.0 · building · 12 of 23
+ * files*, *v0.183.0 out · 5 min ago*. It needs the repository's tags and
+ * changelog entries: the entry of the Work answer kept whenever a page read
+ * it (`work:<root>`), the Work answer read folded only when none is kept or
+ * the kept one is older than REPO_KEPT_MS. The release run is the copy the
+ * Pipeline kept (`release:<root>`), asked here only while a release is
+ * under way — a release pull request listed, a tag no release has published
+ * yet, a run running — and the daemon answers it from the run it keeps.
  *
- * Unfolded, one stages strip at the top (*Merged ─ Release PR ─ Tagged ─
- * ◉ Building ─ Published*), then the work going into the version.
+ * Unfolded: the stages strip, always (idle too); the heading (the version,
+ * its bump and why, the last release's age — or *Shipping 0.183.1*, *v0.183.1
+ * out · 5 min ago*, *Nothing new since v0.183.0 · 8h ago*); the entries
+ * grouped by kind in their own words; the batch pull request as one *via*
+ * line; and *Not in it yet*, folded: pushed branches with no pull request
+ * and other open pull requests. The pull request and agent rows of
+ * 2026-10-18 are gone: the CI section lists the pull requests, the
+ * Subagents section the agents.
  */
 export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; repoRoot?: string }) {
   const folded = useFolded()
@@ -690,10 +699,9 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   // The pushed branches with no pull request: the deck's Branches answer
   // (local git, kept by the daemon), read unfolded, once a minute.
   const [branches] = usePoll<SessionBranches>(!folded && !!repoRoot, `release-branches:${sessionId}`, () => api.sessionBranches(sessionId), () => false, CI_IDLE_MS, `branches:${repoRoot || sessionId}`)
-  const subagents = useContext(SessionSubagents)
   const now = useNow(60_000)
   const workFor = useMemo(() => work.data ?? (kept.d ? keptWork(kept.d, now) : undefined), [work.data, kept.d, now])
-  const plan = useMemo(() => (repoRoot ? planForRepo(workFor, repoRoot, stats.d, now, { branches, subagents }) : undefined), [workFor, repoRoot, stats.d, now, branches, subagents])
+  const plan = useMemo(() => (repoRoot ? planForRepo(workFor, repoRoot, stats.d, now, { branches }) : undefined), [workFor, repoRoot, stats.d, now, branches])
   const board = useMemo(() => asBoard(stats.d?.board), [stats.d?.board])
   const merged = plan ? plan.rows.filter((r) => r.stage === 'merged').length : 0
   const statusOf = (run: ReleaseCI | undefined) => releaseStatus({
@@ -713,10 +721,9 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
     (prev, next) => !!next.error && !!prev.release && !next.release)
   const status = run?.release === keptRun.d?.release ? before : statusOf(run?.release)
   // The open pull request in flight that is not the release one: the batch.
-  const batch = useMemo((): BatchPR | undefined => {
-    const open = (stats.d?.prs ?? []).filter((p) => p.state === 'open' && !releasePRVersion(p.title)).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0))[0]
-    return open && { number: open.number, ci: board?.cards.find((c) => c.number === open.number)?.ci }
-  }, [stats.d?.prs, board])
+  const batchPR = useMemo(() => batchOf(stats.d?.prs ?? [], repo?.unreleased?.via?.number), [stats.d?.prs, repo?.unreleased?.via?.number])
+  const via = useMemo(() => (batchPR ? viaLine(batchPR, board?.cards.find((c) => c.number === batchPR.number)) : undefined), [batchPR, board])
+  const batch = useMemo((): BatchPR | undefined => batchPR && { number: batchPR.number, ci: board?.cards.find((c) => c.number === batchPR.number)?.ci, next: via?.next }, [batchPR, board, via])
   if (!plan) return null
   const n = plan.rows.length
   const merge = plan.ships === 'merge'
@@ -736,25 +743,121 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <span data-fold-only className="num flex min-w-0 items-baseline gap-1.5 text-fg-muted"><span>{n} in flight</span></span>
     ))}>Release</SectionLabel>
   )
-  // Nothing new since the last tag: the section stays and says so. Hiding
-  // it made it vanish after every release (owner, 2026-11-16).
-  if (planEmpty(plan)) {
+  // Where work ships on merge there is no release to write notes for: the
+  // plan's own compact rows, as before.
+  if (merge) {
     return (
-      <section aria-label="Release" data-cockpit-release data-release-empty className="grid gap-2">
+      <section aria-label="Release" data-cockpit-release className="grid gap-2">
         {label}
-        {status.phase === 'tagged' && <ReleaseStrip status={status} version />}
-        <p className="text-[12px] text-fg-muted">
-          {!repo && !work.data ? 'Reading…' : status.phase === 'idle' && fold?.kind === 'out' && status.last
-            ? <><span className="num text-fg">{status.last.tag}</span> out · {agoText(now - status.last.at)}</>
-            : plan.last ? <>Nothing new since <span className="num text-fg">{plan.last.name}</span></> : 'Nothing new since the last release'}
-        </p>
+        <ReleasePlan plan={plan} compact now={now} status={status} empty="No pull request open here." />
       </section>
     )
   }
+  const head = notesHeading(status, repo?.tags?.last ?? plan.last, now)
+  const entries = notesOf(repo, head, status)
+  const others = notInIt(plan.rows, batchPR?.number)
+  // Nothing new since the last tag: the section stays and says so. Hiding
+  // it made it vanish after every release (owner, 2026-11-16).
+  const empty = head.state === 'idle' && !entries.length
   return (
-    <section aria-label="Release" data-cockpit-release className="grid gap-2">
+    <section aria-label="Release" data-cockpit-release data-release-empty={empty ? '' : undefined} data-release-notes={head.state} className="grid gap-2">
       {label}
-      <ReleasePlan plan={plan} compact now={now} status={status} />
+      <div data-release-plan={plan.name} className="grid min-w-0 gap-1.5">
+        <ReleaseStrip status={status} version={status.phase === 'tagged' && head.state !== 'shipping'} out={head.state === 'out'} />
+        {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
+        {entries.length > 0 && <ReleaseNotes entries={entries} />}
+        {via && head.state !== 'shipping' && <ViaRow via={via} root={plan.root} />}
+        {others.text && <NotInItRows others={others} root={plan.root} />}
+      </div>
     </section>
+  )
+}
+
+/** The section's heading: *0.183.1 · patch: fixes only · last 8h ago*, *Shipping 0.183.1*, *v0.183.1 out · 5 min ago*, *Nothing new since v0.183.0 · 8h ago*. */
+function NotesHead({ head: h }: { head: NotesHeading }) {
+  const dot = <span aria-hidden className="text-fg-faint">·</span>
+  const big = h.state === 'waiting' || h.state === 'shipping'
+  return (
+    <header data-release-head={h.state} className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11.5px] text-fg-muted">
+      <h3 data-release-version title={h.title} className={`num cursor-help ${big ? 'text-[13px] font-semibold text-fg' : 'text-[12px] text-fg-muted'}`}>{h.text}</h3>
+      {h.why && <><span data-release-why title={h.why.title} className="cursor-help whitespace-nowrap">{h.why.text}</span></>}
+      {h.age && <>{(h.why || h.state !== 'waiting') && dot}<span data-release-since className="num whitespace-nowrap">{h.age}</span></>}
+    </header>
+  )
+}
+
+/** The entries under their kinds, in capitals, each in its own words, two lines at most. */
+function ReleaseNotes({ entries }: { entries: readonly WorkEntry[] }) {
+  const head = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint'
+  return (
+    <div data-release-entries className="grid min-w-0 gap-1.5">
+      {groupNotes(entries).map((g) => (
+        <div key={g.kind} data-release-kind={g.kind} className="grid min-w-0 gap-0.5">
+          <h5 className={head}>{g.kind}</h5>
+          <ul className="grid min-w-0 gap-1">
+            {g.entries.map((e, i) => (
+              <li key={i} data-release-entry={e.source ?? ''} title={`${e.scope ? `${e.scope}: ` : ''}${e.text}${e.source === 'pr' ? '\nOn the batch pull request’s branch, not merged yet.' : ''}`}
+                className="line-clamp-2 min-w-0 pl-2 text-[12px] leading-[1.35] text-fg [overflow-wrap:anywhere]">{e.text}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const VIA_TONE: Record<ViaLine['ci']['tone'], string> = { ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', warn: 'text-warn', muted: 'text-fg-faint' }
+
+/** The batch pull request as one line: *via #949 ● green · ready to merge*; it opens as a row does, on the Pipeline. */
+function ViaRow({ via: v, root }: { via: ViaLine; root: string }) {
+  return (
+    <a data-release-via={v.number} href={pipelineHref(root, v.number)} title={v.title}
+      className="flex min-w-0 items-baseline gap-1.5 border-t border-border pt-1.5 text-[11.5px] text-fg-muted no-underline hover:[&>[data-via-number]]:text-accent">
+      <span className="shrink-0 text-fg-faint">via</span>
+      <span data-via-number className="num shrink-0 font-medium text-fg">#{v.number}</span>
+      <span data-via-ci={v.ci.tone} className={`shrink-0 whitespace-nowrap ${VIA_TONE[v.ci.tone]}`}><span aria-hidden className={v.ci.tone === 'pending' ? 'release-step-pulse mr-0.5' : 'mr-0.5'}>●</span>{v.ci.text}</span>
+      <span aria-hidden className="shrink-0 text-fg-faint">·</span>
+      <span data-via-state className={`min-w-0 truncate ${v.state.tone === 'danger' ? 'text-danger' : v.state.tone === 'warn' ? 'text-warn' : ''}`}>{v.state.text}</span>
+    </a>
+  )
+}
+
+/**
+ * *Not in it yet: 1 branch, no PR ▸*: the pushed branches with no pull
+ * request and the open pull requests other than the batch, folded to one
+ * line until asked, remembered per viewer; unfolded, the branches as names
+ * and ages (as 2026-10-19's) and the pull requests as the panel's rows.
+ */
+function NotInItRows({ others, root }: { others: NotInIt; root: string }) {
+  const [open, setOpen] = useState<{ all?: boolean; older?: boolean }>({})
+  // usePanelFold keeps the keys a viewer folded; here the key's presence means shown, so the default is folded.
+  const [folded, toggle] = usePanelFold(BRANCHES_FOLD)
+  const shown = shownRows('branch', others.branches, open)
+  return (
+    <div data-release-later="not-in-it" className="grid min-w-0 gap-0.5">
+      <button type="button" data-release-section="branch" aria-expanded={!folded} onClick={toggle}
+        title="On its way but not in this release: pushed branches with no pull request yet, and open pull requests other than the batch"
+        className="flex min-w-0 cursor-pointer items-baseline justify-between gap-2 text-left text-[11.5px] text-fg-muted hover:text-fg">
+        <span className="min-w-0 truncate"><span className="text-fg-faint">Not in it yet:</span> {others.text}</span>
+        <span aria-hidden className={`shrink-0 text-[11px] leading-none transition-transform ${!folded ? 'rotate-90' : ''}`}>▸</span>
+      </button>
+      {!folded && (
+        <>
+          {others.prs.length > 0 && (
+            <ul className="grid min-w-0 gap-1.5">
+              {byUrgency(others.prs).map((r) => <CompactRow key={r.key} row={r} root={root} mark />)}
+            </ul>
+          )}
+          {others.branches.length > 0 && (
+            <ul className="grid min-w-0">
+              {shown.rows.map((r) => <CompactBranch key={r.key} row={r} />)}
+              {(shown.more > 0 || shown.old > 0) && (
+                <li className="text-[10.5px]"><MoreRows shown={shown} onAll={() => setOpen((o) => ({ ...o, all: true }))} onOlder={() => setOpen((o) => ({ ...o, older: true }))} /></li>
+              )}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
   )
 }

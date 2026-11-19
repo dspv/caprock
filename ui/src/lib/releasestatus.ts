@@ -171,6 +171,13 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   return { phase, version, bump, why, stages, current, last, pr }
 }
 
+/** The entries on the default branch: all of them but those read from the batch pull request's branch alone. */
+export function mergedEntries(u: WorkRepo['unreleased']): number {
+  if (!u) return 0
+  const onPR = u.entries?.filter((x) => x.source === 'pr').length ?? 0
+  return Math.max(0, u.count - onPR)
+}
+
 interface StageFacts {
   phase: 'pre' | 'tagged'
   version?: string
@@ -195,11 +202,12 @@ export function stagesOf(f: StageFacts): ReleaseStage[] {
   const past = f.tagged
   const out: Draft[] = []
 
-  // PRs merged.
-  const n = f.merged, e = f.u?.count ?? 0
+  // PRs merged. Entries only on the batch pull request's branch are not
+  // merged yet: they wait for it.
+  const n = f.merged, e = mergedEntries(f.u), onPR = (f.u?.count ?? 0) - e
   out.push(n > 0 || e > 0 || past || !!pr
     ? { key: 'merged', text: n > 0 ? `${n} merged` : e > 0 ? plural(e, 'entry', 'entries') : 'merged', state: 'done', tone: 'ok', title: n > 0 ? `${plural(n, 'pull request')} merged since the last tag.` : e > 0 ? `${plural(e, 'changelog entry', 'changelog entries')} waiting for a release.` : 'The work for it is merged.' }
-    : { key: 'merged', text: 'merged', state: 'todo', tone: 'faint', title: 'Nothing merged since the last tag yet.' })
+    : { key: 'merged', text: 'merged', state: 'todo', tone: 'faint', title: onPR > 0 && f.u?.via ? `${plural(onPR, 'changelog entry', 'changelog entries')} on #${f.u.via.number}’s branch, waiting for it to merge.` : 'Nothing merged since the last tag yet.' })
 
   // The release pull request.
   if (pr) {
@@ -280,8 +288,8 @@ export interface StripStage { key: StripKey; text: string; state: ReleaseStage['
 
 const STRIP_TEXT: Record<StripKey, string> = { merged: 'Merged', pr: 'Release PR', tag: 'Tagged', builds: 'Building', published: 'Published' }
 
-export function stripStages(s: ReleaseStatus): StripStage[] {
-  if (!s.stages.length) return []
+export function stripStages(s: ReleaseStatus, o: { out?: boolean } = {}): StripStage[] {
+  if (!s.stages.length) return s.phase === 'idle' ? idleStrip(s, !!o.out) : []
   const at = (k: ReleaseStageKey) => s.stages.find((x) => x.key === k)
   const one = (key: StripKey, from: ReleaseStage | undefined): StripStage | undefined =>
     from && { key, text: STRIP_TEXT[key], state: from.state, tone: from.tone, title: from.title, unknown: from.unknown }
@@ -295,11 +303,33 @@ export function stripStages(s: ReleaseStatus): StripStage[] {
     .filter((x): x is StripStage => !!x)
 }
 
+/**
+ * The strip with nothing under way (owner, 2026-11-19: the strip is always
+ * drawn): the first stage current and dim, the rest to come; within the hour
+ * of a release's publishing, every stage done and *Published* marked.
+ */
+function idleStrip(s: ReleaseStatus, out: boolean): StripStage[] {
+  const keys: StripKey[] = ['merged', 'pr', 'tag', 'builds', 'published']
+  if (out && s.last) {
+    return keys.map((key) => key === 'published'
+      ? { key, text: STRIP_TEXT[key], state: 'current', tone: 'ok', title: `${s.last!.tag} is published on GitHub.` }
+      : { key, text: STRIP_TEXT[key], state: 'done', tone: 'ok', title: `Done for ${s.last!.tag}.` })
+  }
+  return keys.map((key, i) => i === 0
+    ? { key, text: STRIP_TEXT[key], state: 'current', tone: 'faint', title: 'Nothing merged and no changelog entry waiting since the last release: the next one starts with a merge.' }
+    : { key, text: STRIP_TEXT[key], state: 'todo', tone: 'faint', title: 'To come, once there is something to release.' })
+}
+
 /** How long after a release is published the folded line says it is out, rather than "nothing new". */
 export const OUT_RECENT_MS = 3_600_000
 
 /** A pull request in flight that is not the release one: the batch the next release waits for. */
-export interface BatchPR { number: number; ci?: 'running' | 'fail' | 'no_runner' | 'pass' | 'none' }
+export interface BatchPR {
+  number: number
+  ci?: 'running' | 'fail' | 'no_runner' | 'pass' | 'none'
+  /** The next step it waits for, in a few words (lib/releasenotes viaLine): "merge #949", "wait for CI". */
+  next?: string
+}
 
 export interface ReleaseFold {
   /** Which of the approved lines it is (owner, 2026-11-18). */
@@ -330,9 +360,11 @@ function batchWord(b: BatchPR | undefined): string {
  *
  * - idle: *Nothing new since v0.182.4*, or *v0.183.0 out · 5 min ago* within
  *   OUT_RECENT_MS of its publishing;
- * - waiting: *0.183.0 · 5 changes waiting · PR #940 green* — the changelog
+ * - waiting: *0.183.1 · 2 changes · next: merge #949* — the changelog
  *   entries waiting (else the pull requests merged since the last tag), and
- *   the open pull request in flight with its checks;
+ *   the next step: the batch pull request's (*merge #949*, *wait for CI*,
+ *   *rebase #949*), *batch CI red*, or *release PR* with no batch open
+ *   (owner, 2026-11-19);
  * - a release pull request: *0.183.0 · release PR #942 · CI running*;
  * - tagged: *0.183.0 · building · 12 of 23 files*, *build failed*,
  *   *publishing*.
@@ -371,12 +403,16 @@ export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: Batc
           : ci?.state === 'done' ? 'CI green' : 'CI not read'
     return { kind: 'release-pr', text: `${head}release PR #${s.pr.number} · ${word}`, title: [pr?.title, ci?.title].filter(Boolean).join('\n'), tone: word === 'CI red' ? 'fail' : word === 'CI green' ? 'ok' : 'pending' }
   }
+  // What waits, then the next step (owner, 2026-11-19: variant B's next
+  // step): the batch's red CI, its own next step, else a release PR to cut.
   const n = o.waiting
-  const waiting = n > 0 ? `${n} ${n === 1 ? 'change' : 'changes'} waiting` : 'changes waiting'
+  const waiting = n > 0 ? `${n} ${n === 1 ? 'change' : 'changes'}` : 'changes waiting'
+  const b = o.batch
+  const next = b ? (b.ci === 'fail' ? 'batch CI red' : `next: ${b.next ?? `merge #${b.number}`}`) : 'next: release PR'
   return {
-    kind: 'waiting', text: `${head}${waiting}${batchWord(o.batch)}`,
-    title: `${s.why?.title ?? 'No version is predicted: no changelog entry of a known kind was read.'}${o.batch ? `\nPR #${o.batch.number} is open.` : ''}`,
-    tone: o.batch?.ci === 'fail' ? 'fail' : 'muted',
+    kind: 'waiting', text: `${head}${waiting} · ${next}`,
+    title: `${s.why?.title ?? 'No version is predicted: no changelog entry of a known kind was read.'}${b ? `\nPR #${b.number} is open: the batch the entries ship in.` : '\nNo batch pull request open: the next step is a release pull request.'}`,
+    tone: b?.ci === 'fail' ? 'fail' : 'muted',
   }
 }
 

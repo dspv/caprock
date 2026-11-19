@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -55,9 +57,13 @@ type repoGit struct {
 	remote        string
 	defaultBranch string
 	sha           string
-	unreleased    *api.WorkUnreleased
-	tags          *api.WorkTags
-	ahead         *int
+	// notesKey is what the notes were read at: the default branch's commit
+	// and the batch pull request's head, reused while neither moves.
+	notesKey   string
+	unreleased *api.WorkUnreleased
+	released   *api.WorkReleased
+	tags       *api.WorkTags
+	ahead      *int
 }
 
 type repoGitEntry struct {
@@ -82,8 +88,34 @@ type workBoard struct {
 }
 
 func newWorkBoard(d *Daemon, q *msgQueue) *workBoard {
-	return &workBoard{d: d, q: q, now: time.Now, readRepo: readRepoGit, repos: map[string]repoGitEntry{}}
+	w := &workBoard{d: d, q: q, now: time.Now, repos: map[string]repoGitEntry{}}
+	w.readRepo = func(ctx context.Context, root string, prev *repoGit) repoGit {
+		return readRepoGit(ctx, root, prev, w.batchPR)
+	}
+	return w
 }
+
+// workBatchSeen is how recently a pull request list must have said a batch
+// pull request is open for its branch to be read: a list not read for days
+// (GitHub disconnected) no longer says what is open.
+const workBatchSeen = 3 * 24 * time.Hour
+
+// batchPR is the repository's open batch pull request, from the lists the
+// daemon already read (github_prs); nothing is sent to GitHub.
+func (w *workBoard) batchPR(ctx context.Context, remote string) (store.GitHubPR, bool) {
+	if w.d == nil || w.d.store == nil {
+		return store.GitHubPR{}, false
+	}
+	p, ok, err := store.BatchPR(ctx, w.d.store.DB(), remote, w.now().Add(-workBatchSeen).UnixMilli())
+	if err != nil {
+		return store.GitHubPR{}, false
+	}
+	return p, ok
+}
+
+// batchFunc finds a repository's open batch pull request by its remote
+// ("owner/name").
+type batchFunc func(ctx context.Context, remote string) (store.GitHubPR, bool)
 
 // Work is GET /v1/work.
 func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
@@ -144,7 +176,7 @@ func (w *workBoard) Work(ctx context.Context) (api.Work, error) {
 	for i := range repos {
 		g := gits[i]
 		repos[i].Remote = g.remote
-		repos[i].Unreleased, repos[i].Tags, repos[i].AheadOfTag = g.unreleased, g.tags, g.ahead
+		repos[i].Unreleased, repos[i].Released, repos[i].Tags, repos[i].AheadOfTag = g.unreleased, g.released, g.tags, g.ahead
 		if g.defaultBranch != "" {
 			defaults[repos[i].Root] = g.defaultBranch
 		}
@@ -553,9 +585,13 @@ func prevOf(e repoGitEntry, ok bool) *repoGit {
 // readRepoGit reads one repository from local git alone: origin's address,
 // the remote default branch as the clone knows it, what waits on that branch
 // for a release — the CHANGELOG's [Unreleased] section plus any
-// changes/unreleased/ fragments (reused while the branch has not moved) — the newest tags and how far the branch is past the last one.
-// Anything git cannot say is left out.
-func readRepoGit(ctx context.Context, root string, prev *repoGit) repoGit {
+// changes/unreleased/ fragments, and the fragments the open batch pull
+// request's branch adds (origin/<head> as the clone knows it; batch says
+// which, from the lists already read) — the newest released section, the
+// newest tags and how far the branch is past the last one. The notes are
+// reused while neither branch has moved. Anything git cannot say is left
+// out.
+func readRepoGit(ctx context.Context, root string, prev *repoGit, batch batchFunc) repoGit {
 	var g repoGit
 	if raw, err := relplan.OriginURL(ctx, root); err == nil {
 		if web, ok := gitremote.WebURL(raw); ok {
@@ -567,27 +603,22 @@ func readRepoGit(ctx context.Context, root string, prev *repoGit) repoGit {
 		return g
 	}
 	g.defaultBranch, g.sha = strings.TrimPrefix(ref, "origin/"), sha
-	if prev != nil && prev.sha == sha {
-		g.unreleased = prev.unreleased
+	var via *api.WorkVia
+	if batch != nil && g.remote != "" {
+		if p, ok := batch(ctx, g.remote); ok && p.Head != g.defaultBranch {
+			if head, ok := relplan.RemoteBranch(ctx, root, p.Head); ok && head != sha {
+				via = &api.WorkVia{Number: p.Number, Head: p.Head, SHA: head}
+			}
+		}
+	}
+	g.notesKey = sha
+	if via != nil {
+		g.notesKey += " " + via.SHA + " " + strconv.Itoa(via.Number)
+	}
+	if prev != nil && prev.notesKey == g.notesKey {
+		g.unreleased, g.released = prev.unreleased, prev.released
 	} else {
-		var u relplan.Unreleased
-		found := false
-		if cl, ok := relplan.Changelog(ctx, root, sha); ok {
-			u, found = relplan.ParseUnreleased(cl)
-		}
-		if frags, ok := relplan.Fragments(ctx, root, sha); ok {
-			found = true
-			for _, f := range frags {
-				relplan.AddFragment(&u, f)
-			}
-		}
-		if found {
-			items := u.Items
-			if items == nil {
-				items = []string{}
-			}
-			g.unreleased = &api.WorkUnreleased{Ref: ref, Items: items, Count: u.Count, More: u.Count > len(items), Kinds: u.Kinds}
-		}
+		g.unreleased, g.released = readNotes(ctx, root, ref, sha, via)
 	}
 	tags, err := relplan.Tags(ctx, root)
 	if err != nil || len(tags) == 0 {
@@ -600,6 +631,80 @@ func readRepoGit(ctx context.Context, root string, prev *repoGit) repoGit {
 		g.ahead = &n
 	}
 	return g
+}
+
+// readNotes reads what waits for a release at sha (the default branch) and,
+// with via, the fragments the batch pull request's branch added since it
+// left the default branch that the default branch does not have (by file
+// name); and the CHANGELOG's newest released section.
+func readNotes(ctx context.Context, root, ref, sha string, via *api.WorkVia) (*api.WorkUnreleased, *api.WorkReleased) {
+	var u relplan.Unreleased
+	var released *api.WorkReleased
+	found := false
+	if cl, ok := relplan.Changelog(ctx, root, sha); ok {
+		u, found = relplan.ParseUnreleased(cl)
+		if v, r, ok := relplan.ParseRelease(cl); ok {
+			released = &api.WorkReleased{Version: v, Entries: workEntries(r.Entries, ""), Count: r.Count}
+		}
+	}
+	onMaster := map[string]bool{}
+	if names, ok := relplan.FragmentNames(ctx, root, sha); ok {
+		found = true
+		for _, n := range names {
+			onMaster[path.Base(n)] = true
+		}
+		if frags, ok := relplan.ReadFragments(ctx, root, sha, names); ok {
+			for _, f := range frags {
+				relplan.AddFragmentFile(&u, f.Name, f.Body)
+			}
+		}
+	}
+	mark := len(u.Entries)
+	if via != nil {
+		if names, ok := relplan.FragmentNames(ctx, root, via.SHA); ok {
+			found = true
+			// A fragment the branch only kept from where it left the default
+			// branch is not its own: a release since may have shipped it.
+			atBase := map[string]bool{}
+			if base, ok := relplan.MergeBase(ctx, root, sha, via.SHA); ok {
+				if bn, ok := relplan.FragmentNames(ctx, root, base); ok {
+					for _, n := range bn {
+						atBase[path.Base(n)] = true
+					}
+				}
+			}
+			var own []string
+			for _, n := range names {
+				if b := path.Base(n); !onMaster[b] && !atBase[b] {
+					own = append(own, n)
+				}
+			}
+			if frags, ok := relplan.ReadFragments(ctx, root, via.SHA, own); ok {
+				for _, f := range frags {
+					relplan.AddFragmentFile(&u, f.Name, f.Body)
+				}
+			}
+		}
+	}
+	if !found {
+		return nil, released
+	}
+	items := u.Items
+	if items == nil {
+		items = []string{}
+	}
+	out := &api.WorkUnreleased{Ref: ref, Items: items, Count: u.Count, More: u.Count > len(items), Kinds: u.Kinds, Via: via}
+	out.Entries = append(workEntries(u.Entries[:mark], "master"), workEntries(u.Entries[mark:], "pr")...)
+	return out, released
+}
+
+// workEntries are relplan's entries as the Work answer says them.
+func workEntries(es []relplan.Entry, source string) []api.WorkEntry {
+	out := make([]api.WorkEntry, 0, len(es))
+	for _, e := range es {
+		out = append(out, api.WorkEntry{Text: e.Text, Scope: e.Scope, Kind: e.Kind, Source: source})
+	}
+	return out
 }
 
 // ownerName is "owner/name" from a repository's web address.

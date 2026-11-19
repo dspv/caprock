@@ -227,7 +227,7 @@ export function bumpOf(u: WorkRepo['unreleased']): Bump | undefined {
  */
 export function nextVersion(lastTag: string | undefined, u: WorkRepo['unreleased']): NextVersion | undefined {
   if (!u || u.count <= 0) return undefined
-  const from = `read from ${u.ref}’s changelog entries as of your last fetch`
+  const from = `read from ${u.ref}’s changelog entries${u.via ? ` and #${u.via.number}’s` : ''} as of your last fetch`
   const rule = 'Next version, by the pending changes: a feature (an Added entry) makes a minor release, fixes and other changes alone a patch'
   const bump = bumpOf(u)
   const parsed = lastTag ? parseVersion(lastTag) : undefined
