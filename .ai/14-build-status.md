@@ -491,6 +491,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-19 — 0.184.1: session actions two by two, folded CI draws a segmented bar
+
+A patch release, #951. The session panel's four full-width action rows sit
+two by two in short words (*Dashboard*, the editor, *Close tab* ⌘W, *Stop
+session…*), each named in full on hover. Folded, CI's second line draws a
+segmented bar, one segment per check — failed, no runner, passed, running —
+and a count: *1/1 passed*, *11/13 · 2 running*, *1 failed · 12/13*.
+
 ### 2026-11-19 — 0.184.0: Release reads as release notes, Spend switches this session / all sessions
 
 A minor release, #949. The cockpit's *Release* section leads with the next
