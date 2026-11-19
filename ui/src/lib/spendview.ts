@@ -3,7 +3,7 @@
  * Inspector): which three figures stand beside the agent (the headline and
  * two smaller lines), whether the Spend details are folded, whether they
  * read as a chart or numbers, which three figures, and the figures
- * themselves; and, per tab, over which period. Kept
+ * themselves; and, per tab, whose spend (this session or all) over when. Kept
  * apart from the components so the arithmetic and the choice of figures
  * are tested.
  *
@@ -14,7 +14,7 @@
 import { useSyncExternalStore } from 'react'
 import type { SessionSummary, Summary } from './api'
 import type { CallPoint } from './scrub'
-import { fmtDuration, fmtPct, fmtTokens, fmtUSD } from './format'
+import { fmtCountCompact, fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtUSDCompact } from './format'
 
 /** What a figure can be, beside the agent or in the Numbers row. */
 export type Metric = 'cost' | 'burn' | 'tokens' | 'turns' | 'cache' | 'time' | 'tools' | 'last'
@@ -96,7 +96,7 @@ export const METRICS: readonly { id: Metric; name: string; label: string; hint: 
   { id: 'tools', name: 'Tool calls', label: 'Tools', hint: 'tool calls made' },
 ]
 
-/** The metrics only a session has: a Caprock-wide period draws a dash for them. */
+/** The metrics only a session has: an *all sessions* period draws a dash for them. */
 export const SESSION_ONLY: ReadonlySet<Metric> = new Set<Metric>(['burn', 'time', 'last'])
 
 /** The three figures before a viewer picks: what #472's Compact showed. */
@@ -110,14 +110,15 @@ export function normalizeSlots(raw: unknown): Metric[] {
 }
 
 /**
- * The three figures as drawn. For *session*, a slot holding one of the
- * figures beside the agent shows the next metric not already shown
+ * The three figures as drawn. For the whole session, a slot holding one of
+ * the figures beside the agent shows the next metric not already shown
  * instead: the same figure twice, a few lines apart, says nothing new. A
- * Caprock-wide period is a different figure, so it keeps it.
+ * window of the session, or every session's, is a different figure, so it
+ * keeps it.
  */
-export function shownSlots(slots: readonly Metric[], period: SpendPeriod, hero: readonly Metric[]): Metric[] {
+export function shownSlots(slots: readonly Metric[], pick: SpendPick, hero: readonly Metric[]): Metric[] {
   const out = normalizeSlots(slots)
-  if (period !== 'session') return out
+  if (!isWholeSession(pick)) return out
   const beside = new Set(hero)
   const shown: Metric[] = []
   out.forEach((m, i) => {
@@ -135,9 +136,47 @@ export function pickSlot(slots: readonly Metric[], i: number, m: Metric): Metric
 
 /** How the unfolded Spend block reads: the period's spend as a chart, or three figures. */
 export type SpendView = 'numbers' | 'chart'
-/** What the figures and the chart cover: this session, or every session on the machine over a range. */
-export type SpendPeriod = 'session' | 'today' | '7d' | '30d'
-export const SPEND_PERIODS: readonly SpendPeriod[] = ['session', 'today', '7d', '30d']
+/**
+ * Whose spend the figures and the chart are: this session's, or every
+ * session's on the machine (owner, 2026-11-19: "I'd switch between this
+ * session and all sessions", translated).
+ */
+export type SpendScope = 'session' | 'all'
+export const SPEND_SCOPES: readonly SpendScope[] = ['session', 'all']
+/**
+ * Over when: the whole session (this session only, from its start), or
+ * today, the last 7 or 30 days, each starting at a local midnight like the
+ * daemon's own ranges.
+ */
+export type SpendWindow = 'whole' | 'today' | '7d' | '30d'
+/** The windows that are a range of days: the only ones *all sessions* has. */
+export type RangeWindow = Exclude<SpendWindow, 'whole'>
+export const RANGE_WINDOWS: readonly RangeWindow[] = ['today', '7d', '30d']
+/** The windows a scope offers, in their order. */
+export function windowsFor(scope: SpendScope): readonly SpendWindow[] {
+  return scope === 'session' ? ['whole', ...RANGE_WINDOWS] : RANGE_WINDOWS
+}
+
+/** A tab's two choices. */
+export interface SpendPick {
+  readonly scope: SpendScope
+  readonly window: SpendWindow
+}
+/** What every tab opens on: its own session, start to now. */
+export const WHOLE_SESSION: SpendPick = Object.freeze({ scope: 'session', window: 'whole' })
+
+export function isWholeSession(p: SpendPick): boolean {
+  return p.scope === 'session' && p.window === 'whole'
+}
+
+/**
+ * The pick as drawn: *all sessions* has no whole span, so a tab on *whole*
+ * that switches to all sessions reads today, and is back on the whole
+ * session when it switches back — the window is only rewritten by a pick.
+ */
+export function shownPick(p: SpendPick): SpendPick {
+  return p.scope === 'all' && p.window === 'whole' ? { scope: 'all', window: 'today' } : p
+}
 
 export interface SpendPrefs {
   /** The Spend details folded to one line; unfolded by default, so the chart is in sight. */
@@ -192,7 +231,7 @@ const KEY = 'caprock.app.cockpit.spend'
  * it was one choice for every tab, so a Caprock-wide period picked once
  * put the same chart and dollars in every tab's cockpit (owner,
  * 2026-10-22). A stored period is dropped once and each tab opens on its
- * own session (`useSpendPeriod`).
+ * own session (`useSpendPick`).
  */
 const VERSION = 6
 const listeners = new Set<() => void>()
@@ -263,7 +302,7 @@ export function setSpendPrefs(patch: Partial<SpendPrefs>): void {
 /** For tests: forget what was read, so the next read is from storage. */
 export function resetSpendPrefsForTest(): void {
   current = undefined
-  periods.clear()
+  picks.clear()
 }
 
 export function useSpendPrefs(): SpendPrefs {
@@ -275,33 +314,62 @@ export function useSpendPrefs(): SpendPrefs {
 }
 
 /**
- * The period each tab's cockpit shows, by session id, for as long as the
- * window is open. A tab opens on *session* — its own agent's burn and
- * spend — and a Caprock-wide period picked in one tab stays in that tab
- * only (owner, 2026-10-22: one stored period made every tab show the same
- * chart and dollars). Not stored: a reload opens every tab on its session.
+ * The scope and window each tab's cockpit shows, by session id, for as long
+ * as the window is open. A tab opens on its own session, start to now — its
+ * own agent's burn and spend — and a pick in one tab stays in that tab only
+ * (owner, 2026-10-22: one stored period made every tab show the same chart
+ * and dollars). Not stored: a reload opens every tab on its session.
  */
-const periods = new Map<string, SpendPeriod>()
-const periodListeners = new Set<() => void>()
+const picks = new Map<string, SpendPick>()
+const pickListeners = new Set<() => void>()
 
-export function getSpendPeriod(sessionId: string): SpendPeriod {
-  return periods.get(sessionId) ?? 'session'
+/** The tab's pick as made; `shownPick` says what it draws. */
+export function getSpendPick(sessionId: string): SpendPick {
+  return picks.get(sessionId) ?? WHOLE_SESSION
 }
 
-/** The period of one tab's cockpit; the others keep theirs. */
-export function setSpendPeriod(sessionId: string, p: SpendPeriod): void {
-  if (!SPEND_PERIODS.includes(p)) return
-  if (p === 'session') periods.delete(sessionId)
-  else periods.set(sessionId, p)
-  for (const fn of periodListeners) fn()
+function putPick(sessionId: string, p: SpendPick): void {
+  if (isWholeSession(p)) picks.delete(sessionId)
+  else picks.set(sessionId, p)
+  for (const fn of pickListeners) fn()
 }
 
-export function useSpendPeriod(sessionId: string): SpendPeriod {
+/** Whose spend one tab's cockpit shows; the others keep theirs, and this one keeps its window. */
+export function setSpendScope(sessionId: string, scope: SpendScope): void {
+  if (!SPEND_SCOPES.includes(scope)) return
+  putPick(sessionId, { scope, window: getSpendPick(sessionId).window })
+}
+
+/** Over when one tab's cockpit shows it; *whole* is the session's alone. */
+export function setSpendWindow(sessionId: string, w: SpendWindow): void {
+  const { scope } = getSpendPick(sessionId)
+  if (!windowsFor(scope).includes(w)) return
+  putPick(sessionId, { scope, window: w })
+}
+
+export function useSpendPick(sessionId: string): SpendPick {
   return useSyncExternalStore(
-    (fn) => { periodListeners.add(fn); return () => { periodListeners.delete(fn) } },
-    () => getSpendPeriod(sessionId),
-    () => getSpendPeriod(sessionId),
+    (fn) => { pickListeners.add(fn); return () => { pickListeners.delete(fn) } },
+    () => getSpendPick(sessionId),
+    () => getSpendPick(sessionId),
   )
+}
+
+/** Where a window starts: local midnight today, six or 29 days before it (the daemon's rangeFrom). */
+export function windowStart(w: RangeWindow, now: number): number {
+  const d = new Date(now)
+  const back = w === 'today' ? 0 : w === '7d' ? 6 : 29
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - back).getTime()
+}
+
+/** A window in a sentence: "today", "in the last 7 days". */
+export function windowPhrase(w: SpendWindow): string {
+  switch (w) {
+    case 'whole': return 'since it started'
+    case 'today': return 'today'
+    case '7d': return 'in the last 7 days'
+    case '30d': return 'in the last 30 days'
+  }
 }
 
 /** One hour, the burn rate's window. */
@@ -418,11 +486,15 @@ export function costNote(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedM
   }
 }
 
-/** A cost as the figures draw it: a dash when unknown, a trailing + when partial. */
-export function costText(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels'>, v = f.cost): string {
+/**
+ * A cost as the figures draw it: a dash when unknown, a trailing + when
+ * partial; `compact` for a narrow cell ($7.92k, lib/format fmtUSDCompact).
+ */
+export function costText(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels'>, v = f.cost, compact = false): string {
   const c = costNote(f)
   if (v === undefined || c?.state === 'unknown') return '—'
-  return c ? `${fmtUSD(v)}+` : fmtUSD(v)
+  const t = compact ? fmtUSDCompact(v) : fmtUSD(v)
+  return c ? `${t}+` : t
 }
 
 /** A short duration: "1h 12m", "14m", "40s". */
@@ -433,33 +505,56 @@ export function fmtSpan(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-/** A metric's value as a figure or the headline draws it; a dash when unknown. */
-export function metricValue(m: Metric, f: PeriodFigures): string {
+/**
+ * A metric's value as a figure or the headline draws it; a dash when
+ * unknown. `compact` is the Numbers row's: from 1,000 up a k, M or B with
+ * two decimals ($7.92k, 13.71B), so a big figure fits its third of a 280px
+ * cockpit instead of being cut (owner, 2026-11-19); the exact value is in
+ * the cell's title and its spoken name.
+ */
+export function metricValue(m: Metric, f: PeriodFigures, compact = false): string {
+  const usd = compact ? fmtUSDCompact : fmtUSD
+  const count = (v: number) => (compact ? fmtCountCompact(v) : v.toLocaleString('en-US'))
   switch (m) {
-    case 'cost': return costText(f)
-    case 'burn': return f.burn ? `${fmtUSD(f.burn.perHour)}/h` : '—'
-    case 'tokens': return f.tokens === undefined ? '—' : fmtTokens(f.tokens)
-    case 'turns': return f.turns === undefined ? '—' : f.turns.toLocaleString('en-US')
-    case 'tools': return f.tools === undefined ? '—' : f.tools.toLocaleString('en-US')
+    case 'cost': return costText(f, f.cost, compact)
+    case 'burn': return f.burn ? `${usd(f.burn.perHour)}/h` : '—'
+    case 'tokens': return f.tokens === undefined ? '—' : compact ? fmtCountCompact(f.tokens) : fmtTokens(f.tokens)
+    case 'turns': return f.turns === undefined ? '—' : count(f.turns)
+    case 'tools': return f.tools === undefined ? '—' : count(f.tools)
     case 'cache': return f.cache === undefined ? '—' : fmtPct(f.cache)
     case 'time': return f.timeMs === undefined ? '—' : fmtSpan(f.timeMs)
-    case 'last': return f.last === undefined ? '—' : fmtUSD(f.last)
+    case 'last': return f.last === undefined ? '—' : usd(f.last)
   }
 }
 
-/** What hovering a metric explains; for a Caprock-wide period, whose figure it is. */
-export function metricTitle(m: Metric, f: PeriodFigures, period: SpendPeriod = 'session'): string {
-  const base = metricTitleBase(m, f, period)
+/** What hovering a metric explains: what it is, and for a window or every session, whose and when. */
+export function metricTitle(m: Metric, f: PeriodFigures, pick: SpendPick = WHOLE_SESSION): string {
+  const base = metricTitleBase(m, f, shownPick(pick))
   const c = costNote(f)
   // Burn and the last call are summed from priced calls only.
-  if (!c || !(m === 'cost' || (period === 'session' && (m === 'burn' || m === 'last')))) return base
+  if (!c || !(m === 'cost' || (pick.scope === 'session' && (m === 'burn' || m === 'last')))) return base
   return `${base} · ${m === 'cost' ? c.title : c.state === 'unknown' ? c.title : 'priced calls only'}`
 }
 
-function metricTitleBase(m: Metric, f: PeriodFigures, period: SpendPeriod): string {
-  if (period !== 'session') {
-    const when = periodScope(period).split(' · ')[0]!.toLowerCase()
-    if (SESSION_ONLY.has(m)) return 'A session’s own figure: pick session to see it'
+function metricTitleBase(m: Metric, f: PeriodFigures, pick: SpendPick): string {
+  if (pick.scope === 'session' && pick.window !== 'whole') {
+    const when = windowPhrase(pick.window)
+    switch (m) {
+      case 'cost': return `What the session spent ${when}, at API list price`
+      case 'burn': return f.burn
+        ? (f.burn.minutes >= 60 ? `Spent in its last hour of activity ${when}, per hour` : `Spent per hour over its ${f.burn.minutes} minutes of activity ${when}`)
+        : `Needs two priced calls ${when}`
+      case 'tokens': return f.tokens === undefined ? `Input tokens ${when}` : `${fmtTokens(f.tokens)} in · ${fmtTokens(f.tokensOut)} out, ${when}`
+      case 'turns': return `Model calls the session made ${when}`
+      case 'tools': return 'Tool calls are counted over the whole session only: pick whole to see them'
+      case 'cache': return `Share of input tokens read from the prompt cache, ${when}`
+      case 'time': return `From its first to its last call ${when}`
+      case 'last': return 'What the newest model call cost'
+    }
+  }
+  if (pick.scope === 'all') {
+    const when = spendLabel(pick).split(' · ')[0]!.toLowerCase()
+    if (SESSION_ONLY.has(m)) return 'A session’s own figure: pick this session to see it'
     switch (m) {
       case 'cost': return `What every session spent, ${when}, at API list price`
       case 'tokens': return `Input tokens of every session, ${when}, cache reads and writes included`
@@ -496,6 +591,8 @@ export interface PeriodFigures extends Omit<SpendFigures, 'cost'> {
    * burn rate would read. Otherwise it is read from the bars.
    */
   activeBurn?: number
+  /** A window of this session that holds no call: drawn as a sentence, never as zeros. */
+  empty?: boolean
 }
 
 /**
@@ -608,36 +705,88 @@ export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined
   }
 }
 
-/** Whose money the figures are: "This session", "Today · all sessions". */
 /**
- * The folded strip's chip: *session* for the tab's own agent, and the
- * range with *all* for a Caprock-wide one (*today · all*), so a strip that
- * is every session's is never read as this agent's. Short: the cockpit is
- * about 330px.
+ * The folded strip's chip: *session* for the tab's whole session, the
+ * window with *session* for a part of it (*today · session*), and with
+ * *all* for every session's (*today · all*), so a strip that is every
+ * session's is never read as this agent's. Short: the cockpit is about
+ * 330px.
  */
-export function periodChip(p: SpendPeriod): string {
-  return p === 'session' ? 'session' : `${p} · all`
+export function periodChip(pick: SpendPick): string {
+  const p = shownPick(pick)
+  if (isWholeSession(p)) return 'session'
+  return `${p.window} · ${p.scope}`
 }
 
-export function periodScope(p: SpendPeriod): string {
-  switch (p) {
-    case 'session': return 'This session'
-    case 'today': return 'Today · all sessions'
-    case '7d': return '7 days · all sessions'
-    case '30d': return '30 days · all sessions'
+/** The two words of the scope control, short for the 280–460px cockpit, and its full name. */
+export const SCOPE_NAMES: Record<SpendScope, { short: string; long: string }> = {
+  session: { short: 'session', long: 'This session' },
+  all: { short: 'all', long: 'All sessions' },
+}
+
+/** The period control's words, and its full name on hover and for a screen reader. */
+export const WINDOW_NAMES: Record<SpendWindow, { short: string; long: string }> = {
+  whole: { short: 'whole', long: 'Whole session' },
+  today: { short: 'today', long: 'Today' },
+  '7d': { short: '7d', long: 'Last 7 days' },
+  '30d': { short: '30d', long: 'Last 30 days' },
+}
+
+/**
+ * Whose money the figures are and over when, both always said: "Whole
+ * session", "Today · this session", "30 days · all sessions" (owner,
+ * 2026-11-19: three tabs on 30d drew the same chart and nothing said it
+ * was every session's).
+ */
+export function spendLabel(pick: SpendPick): string {
+  const p = shownPick(pick)
+  if (isWholeSession(p)) return 'Whole session'
+  const when = p.window === 'today' ? 'Today' : p.window === '7d' ? '7 days' : '30 days'
+  return `${when} · ${p.scope === 'session' ? 'this session' : 'all sessions'}`
+}
+
+/**
+ * A window of this session, from its own calls (the full series the cockpit
+ * reads from `/v1/sessions/{id}/calls`, with the held events merged in):
+ * those inside [from, to] summed. Turns are its model calls; tool calls
+ * stay a dash, since a call does not always carry its tools. No call in
+ * the window: `empty`, every figure a dash, never a zero.
+ */
+export function windowFigures(calls: readonly CallPoint[], from: number, to: number): PeriodFigures {
+  const inside = calls.filter((c) => Number.isFinite(c.ts) && c.ts >= from && c.ts <= to).sort((a, z) => a.ts - z.ts)
+  if (inside.length === 0) return { empty: true }
+  let cost = 0, input = 0, read = 0, out = 0, carry = false
+  for (const c of inside) {
+    if (Number.isFinite(c.cost)) cost += c.cost
+    if (c.tokens) {
+      carry = true
+      input += (c.tokens.in || 0) + (c.tokens.cache_read || 0) + (c.tokens.cache_write || 0)
+      read += c.tokens.cache_read || 0
+      out += c.tokens.out || 0
+    }
+  }
+  const first = inside[0]!.ts
+  const last = inside[inside.length - 1]!
+  return {
+    cost,
+    burn: burnRate(inside),
+    tokens: carry ? input : undefined,
+    tokensOut: carry ? out : undefined,
+    cache: carry && input > 0 ? (read / input) * 100 : undefined,
+    turns: inside.length,
+    timeMs: last.ts > first ? last.ts - first : undefined,
+    last: last.cost,
   }
 }
 
 /**
- * The figures for a period. *session* is this session's own figures (its
- * chart is drawn from its full call series, `SpendOverTime`). today, 7d and
- * 30d are Caprock-wide, from that range's `/v1/stats/summary`: its totals,
- * its savings' hit rate, and the projects' sparks (24 hours, 7 or 30 days)
- * summed bucket by bucket into the chart's bars — no new query. No summary
- * yet: dashes, never zeros; no spark in it: no series.
+ * Every session's figures over a range, from that range's
+ * `/v1/stats/summary`: its totals, its savings' hit rate, and the projects'
+ * sparks (24 hours, 7 or 30 days) summed bucket by bucket into the chart's
+ * bars — no new query. No summary yet: dashes, never zeros; no spark in
+ * it: no series.
  */
-export function periodFigures(p: SpendPeriod, f: SpendFigures, summary: Summary | undefined): PeriodFigures {
-  if (p === 'session') return f
+export function rangeFigures(summary: Summary | undefined): PeriodFigures {
   if (!summary) return {}
   const tokens = summary.tokens_in + summary.cache_read + summary.cache_write
   const sums: number[] = []

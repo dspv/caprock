@@ -273,6 +273,58 @@ export function timeBars(calls: readonly CallPoint[], minStepMin = 0): { step: n
   return { step, bars }
 }
 
+/**
+ * A session's calls inside a window, as bars that cover the window rather
+ * than the calls' own span (owner, 2026-11-19: *this session* over today,
+ * 7d or 30d): local hours from `from` for a window of a day, local days
+ * for a longer one — the same grid as the Caprock-wide sparks. The bars
+ * run to the stretch holding `to`, never past it; calls outside
+ * [from, to] are left out. Every bar carries its active hours, since none
+ * is under an hour.
+ */
+export function windowBars(calls: readonly CallPoint[], from: number, to: number, unit: 'hour' | 'day'): { step: number; bars: TimeBar[] } {
+  if (!(to >= from)) return { step: 0, bars: [] }
+  const bars: TimeBar[] = []
+  if (unit === 'hour') {
+    for (let s = from; s <= to; s += HOUR_MS) bars.push({ start: s, end: s + HOUR_MS, cost: 0, calls: 0, tokens: 0, tools: new Map() })
+  } else {
+    // Local days, so a daylight-saving change never shifts a midnight.
+    const d0 = new Date(from)
+    for (let i = 0; ; i++) {
+      const s = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i).getTime()
+      if (s > to) break
+      bars.push({ start: s, end: new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + i + 1).getTime(), cost: 0, calls: 0, tokens: 0, tools: new Map() })
+    }
+  }
+  const at = (ts: number) => bars.findIndex((b) => ts >= b.start && ts < b.end)
+  const hours = new Map<number, { calls: number; cost: number }>()
+  for (const c of calls) {
+    if (!(c.ts >= from && c.ts <= to)) continue
+    const i = at(c.ts)
+    if (i < 0) continue
+    const b = bars[i]!
+    b.cost += c.cost
+    b.calls++
+    if (c.tokens) b.tokens += (c.tokens.in || 0) + (c.tokens.cache_read || 0) + (c.tokens.cache_write || 0)
+    for (const t of c.tools ?? []) b.tools.set(t.tool, (b.tools.get(t.tool) ?? 0) + 1)
+    if (!Number.isFinite(c.cost)) continue
+    const h = Math.floor((c.ts - from) / HOUR_MS)
+    const v = hours.get(h) ?? { calls: 0, cost: 0 }
+    v.calls++
+    v.cost += c.cost
+    hours.set(h, v)
+  }
+  for (const b of bars) { b.activeHours = 0; b.activeCost = 0 }
+  for (const [h, v] of hours) {
+    if (v.calls < USUAL_MIN_CALLS || !(v.cost > 0)) continue
+    const b = bars[at(from + h * HOUR_MS)]
+    if (!b) continue
+    b.activeHours!++
+    b.activeCost! += v.cost
+  }
+  return { step: unit === 'hour' ? HOUR_MS : 24 * HOUR_MS, bars }
+}
+
 /** "Today 14:00–15:00", "Fri 22:00–Sat 01:00", "Mon 6 Oct" for a day. */
 export function barLabel(b: Pick<TimeBar, 'start' | 'end'>, step: number, now: number): string {
   const d = new Date(b.start)
