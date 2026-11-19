@@ -12,6 +12,42 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.184.0] - 2026-11-19
+
+### Changed
+
+- **ui:** folded, the CI section's second line starts under the word *CI*,
+  not under its chevron, so it reads as part of the section.
+- **cockpit:** the right panel's *Release* section reads as release notes:
+  the stages strip always on top, the predicted version with its bump and
+  why, the changelog entries in their own words grouped by kind, the batch
+  pull request as one *via* line with its checks, and *Not in it yet* folded
+  for pushed branches with no pull request. The entries the open batch pull
+  request carries count before it merges, read from its branch as this
+  machine last fetched it, so the version is predicted then too. Folded, the
+  line says the next step: *0.183.1 · 2 changes · next: merge #949*. The
+  pull request and agent rows are gone from it: the CI and Subagents sections
+  show those.
+- **cockpit:** Spend's period chip is split into whose and when: *session |
+  all* and *since start · today · 7d · 30d* (*since start*, from the session's start,
+  for this session only). This session over today, 7 or 30 days is its own
+  calls in that window, by the hour or by the day, so three tabs on 30 days
+  no longer draw the same chart; a window with no calls says so instead of
+  showing zeros. Each tab keeps both picks, and the label always says both
+  (*Today · this session*, *30 days · all sessions*).
+- **cockpit:** Spend's Numbers row draws a figure from 1,000 up with a
+  multiplier and two decimals (*$7.92k*, *$1.25M*, *13.71B*) instead of
+  cutting it off; the exact value is on hover and for a screen reader.
+
+### Fixed
+
+- **ui:** a pull request a session opened in another repository no longer
+  shows as this repository's. The right panel's *Release* and the Work board
+  list only the repository's own pull requests; the cockpit's CI block and
+  the Pipeline's *This session* list still show it, named with its repository
+  before the number (*caprock-web #247*), and the CI line prefers this
+  repository's open pull request over it.
+
 ## [0.183.0] - 2026-11-19
 
 ### Added
