@@ -348,7 +348,8 @@ export function SectionLabel({ children, right, after, sub }: { children: ReactN
     return (
       <div data-section-head className="grid min-w-0 gap-1">
         {row}
-        <div data-section-sub className="flex min-w-0 items-center">{sub}</div>
+        {/* Under the section's word, not its chevron (12px and a 4px gap): the line belongs to the section (owner, 2026-11-19). */}
+        <div data-section-sub className="flex min-w-0 items-center pl-4">{sub}</div>
       </div>
     )
   }
