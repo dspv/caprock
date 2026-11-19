@@ -12,6 +12,19 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.184.1] - 2026-11-19
+
+### Changed
+
+- **cockpit:** the folded CI line draws its checks as a bar, one segment per
+  check coloured by its state with a failure at the left edge, followed by a
+  count: *1/1 passed*, *11/13 · 2 running · 5m*, *1 failed · 12/13*. A single
+  check now shows how full the run is; too many checks for a segment each fill
+  the bar in proportion.
+- **cockpit:** the session panel's actions sit two by two in short words
+  (*Dashboard*, the editor, *Close tab* ⌘W, *Stop session…*) instead of four
+  full-width rows; each keeps its full name on hover and for a screen reader.
+
 ## [0.184.0] - 2026-11-19
 
 ### Changed
