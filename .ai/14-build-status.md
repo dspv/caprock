@@ -491,6 +491,20 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-19 — 0.184.0: Release reads as release notes, Spend switches this session / all sessions
+
+A minor release, #949. The cockpit's *Release* section leads with the next
+version, why it bumps that way and the changelog entries it will carry,
+read from the open batch pull request before it merges; the batch is one
+*via* line, the stages strip is always drawn, and folded it says the next
+step (*next: merge #949*). Spend's period chip is split into whose
+(*session | all*) and when (*since start · today · 7d · 30d*), so three
+tabs on 30 days no longer draw the same Caprock-wide chart; big figures
+read $7.92k and 13.71B instead of being cut off. A pull request a session
+opened in another repository no longer shows as this repository's: it is
+labelled with its repository in CI and left out of Release. Folded, CI's
+second line starts under the word *CI*.
+
 ### 2026-11-19 — 0.183.0: CI tells GitHub's missing machines apart, every sign-in on Plan limits, faster on a large database
 
 A minor release, #940–#945 and #946. Cursor chats read their context as a
