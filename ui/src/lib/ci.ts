@@ -420,6 +420,51 @@ export function checksSentence(s: ChecksSummary): string {
   return `${c.total} check${c.total === 1 ? '' : 's'}: ${parts.join(', ')}`
 }
 
+/**
+ * The folded CI line's bar (owner, 2026-11-19, translated: "with only one
+ * check the indicator says nothing about how full it is"; he picked the
+ * segmented bar): one segment per check, coloured by its state, a failure at
+ * the left edge — failed, no runner, passed, running, queued (the track's
+ * colour: not started). Skipped checks are no segment. When a segment would
+ * be narrower than CHECK_BAR_MIN_SEG at the bar's width, the bar keeps its
+ * width and fills in proportion instead, in the same order.
+ */
+export type CheckBarTone = 'fail' | 'norunner' | 'pass' | 'running' | 'queued'
+export interface CheckBar { mode: 'segments' | 'fill'; parts: { tone: CheckBarTone; n: number }[]; total: number }
+
+export const CHECK_BAR_ORDER: CheckBarTone[] = ['fail', 'norunner', 'pass', 'running', 'queued']
+export const CHECK_BAR_GAP = 2
+export const CHECK_BAR_MIN_SEG = 3
+
+export function checkBar(c: CheckCounts, width: number): CheckBar {
+  const parts = CHECK_BAR_ORDER.map((tone) => ({ tone, n: c[tone] })).filter((p) => p.n > 0)
+  const total = parts.reduce((s, p) => s + p.n, 0)
+  const seg = total > 0 ? (width - CHECK_BAR_GAP * (total - 1)) / total : width
+  return { mode: seg < CHECK_BAR_MIN_SEG ? 'fill' : 'segments', parts, total }
+}
+
+/**
+ * The words after the bar, in order, each with the state it speaks for:
+ * "1/1 passed", "11/13 · 2 running · 5m", "1 failed · 12/13",
+ * "12/13 · 1 no runner". The fraction is passed of the checks that count
+ * (skipped ones do not); `time` is said while any still runs.
+ */
+export interface CheckBarWord { tone: CITone | 'count' | 'time'; text: string }
+export function checkBarWords(s: ChecksSummary): CheckBarWord[] {
+  const c = s.counts
+  const counted = c.total - c.skipped
+  const out: CheckBarWord[] = []
+  if (c.fail) out.push({ tone: 'fail', text: `${c.fail} failed` })
+  if (counted > 0) out.push({ tone: c.pass ? 'pass' : 'count', text: `${c.pass}/${counted}${s.green ? ' passed' : ''}` })
+  if (c.norunner) out.push({ tone: 'norunner', text: `${c.norunner} no runner` })
+  if (c.running) out.push({ tone: 'running', text: `${c.running} running` })
+  if (c.queued) out.push({ tone: 'queued', text: `${c.queued} queued` })
+  const time = shortRun(s.ms)
+  if (time && (!s.done || s.green)) out.push({ tone: 'time', text: time })
+  if (c.skipped) out.push({ tone: 'skipped', text: `${c.skipped} skipped` })
+  return out
+}
+
 /** A duration in a row, to the minute past one: "42s", "6m", "1h 02m". The hover has the seconds. */
 export function shortRun(ms: number | undefined): string {
   if (ms === undefined || !Number.isFinite(ms)) return ''

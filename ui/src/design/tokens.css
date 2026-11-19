@@ -1111,6 +1111,13 @@ html[data-app][data-tauri], html[data-app][data-tauri] body { background: transp
 .pipe-node[data-tone="running"] { background: var(--color-warn); animation: pipePulse 1200ms ease-in-out infinite; }
 @keyframes pipePulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .pipe-node[data-tone="running"] { animation: none; } }
+/* The folded CI line's bar: a segment per check (CheckSummary CheckBarMark);
+   queued is the track, not started. */
+.check-bar-seg { display: block; min-width: 0; background: var(--color-border-strong); }
+.check-bar-seg[data-tone="pass"] { background: var(--color-ok); }
+.check-bar-seg[data-tone="fail"] { background: var(--color-danger); }
+.check-bar-seg[data-tone="norunner"] { background: var(--color-norunner); }
+.check-bar-seg[data-tone="running"] { background: var(--color-warn); }
 .pipe-link { display: inline-block; width: 4px; height: 1px; flex: none; background: var(--color-fg-faint); opacity: 0.6; }
 .ci-failed-step { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
 .ci-failed-step:hover { background: color-mix(in srgb, var(--color-danger) 17%, transparent); }

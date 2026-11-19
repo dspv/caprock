@@ -89,7 +89,7 @@ import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
 import { flightLead, inFlight, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
 import { landingOf } from '@/lib/releaseplan'
-import { CheckSummary, StateMark } from './CheckSummary'
+import { CheckSummary, StateMark, type CheckFit } from './CheckSummary'
 import { FitSummary } from './FitSummary'
 import { SectionLabel, useFolded } from './Cockpit'
 import { JourneyBar, JourneyLegend, ReleaseNoteWord } from './Journey'
@@ -346,8 +346,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
               // Shortened, never cut at the panel's edge (owner, 2026-11-18):
               // the skipped count goes first, then the words, then all but
               // the worst state (CheckSummary `fit`, FitSummary).
-              : <FitSummary className="justify-items-start" variants={(['full', 'noskip', 'compact', 'worst'] as const).map((f) => (
-                <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `${prNoText(foldLead, own)}: its checks`} focusable={false} beside className="shrink-0" />
+              // The bar shrinks first (96 → 64 → 40 px), then the words go.
+              // A segment per check (owner, 2026-11-19: one check said
+              // nothing of how full the run is).
+              : <FitSummary className="justify-items-start" variants={FOLD_FITS.map(([f, w]) => (
+                <CheckSummary key={`${f}${w}`} s={leadSum} fit={f} bar={w} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `${prNoText(foldLead, own)}: its checks`} focusable={false} beside className="shrink-0" />
               ))} />}
             {foldLead.live.state === 'open' && (
               <span data-cockpit-ci-fold-act className="ml-auto flex shrink-0 items-center gap-2">
@@ -613,6 +616,9 @@ function Ring({ p, ci, now, own }: { p: LeadPR; ci?: SessionCI; now: number; own
     </span>
   )
 }
+
+/** The folded line's wordings, widest first: the bar's width, then what the words keep. */
+const FOLD_FITS: [CheckFit, number][] = [['full', 96], ['full', 64], ['full', 40], ['noskip', 40], ['compact', 40], ['worst', 40]]
 
 const OS_WORD = { pass: 'passed', fail: 'failed', norunner: 'no runner', running: 'running', queued: 'queued', skipped: 'skipped' } as const
 const OS_TEXT = { pass: 'text-ok', fail: 'text-danger', norunner: 'text-norunner', running: 'text-warn', queued: 'text-fg-muted', skipped: 'text-fg-faint' } as const
