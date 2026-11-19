@@ -31,7 +31,7 @@ describe('the release notes', () => {
   it('predicts the version from the batch PR’s fragments and lists them while waiting', () => {
     const s = status({ unreleased: onBatch })
     const h = notesHeading(s, { name: 'v0.183.0', at: T - 8 * H }, T)
-    expect(h).toMatchObject({ state: 'waiting', text: '0.183.1', why: { text: 'patch: fixes only' }, age: 'last 8h ago' })
+    expect(h).toMatchObject({ state: 'waiting', text: '0.183.1', why: { text: 'patch', title: expect.stringMatching(/^patch: fixes only\.\n/) }, age: 'last 8h ago' })
     expect(notesOf(repo(), h, s).map((e) => e.text)).toEqual(['b fixed', 'a changed'])
   })
 

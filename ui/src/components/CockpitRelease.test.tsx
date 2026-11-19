@@ -2,7 +2,8 @@
  * The right panel's Release section (owner, 2026-11-18, translated: "the
  * folded version lacks the release status, and the status when unfolded is
  * unclear"): folded, one line of where the release is, drawn at once from
- * the answers kept for the repository; unfolded, one stages strip on top.
+ * the answers kept for the repository; unfolded, the version, then the
+ * stages as dots with only the current one named (variant A, 2026-11-19).
  */
 import { render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -87,20 +88,49 @@ describe('the cockpit’s Release section', () => {
     expect(asked).toContain('/v1/sessions/s1/ci/release')
   })
 
-  it('unfolded, draws one stages strip on top, the current stage marked', () => {
+  // Owner, 2026-11-19, variant A (translated: "dots, one word — looks more
+  // logical"): the word strip wrapped at 330px.
+  it('unfolded, the version first, then five dots with only the current stage named', () => {
     writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', now - 1_800_000)],
-      [{ number: 942, stage: 'open', ci: 'running', spend: SPEND }, { number: 940, stage: 'merged', spend: SPEND }], [rel('v0.182.4', 86_400_000, 23)]))
+      [{ number: 942, stage: 'open', ci: 'running', spend: SPEND, os: [{ os: 'linux', state: 'pass', checks: 4 }, { os: 'macos', state: 'running', checks: 4 }, { os: 'windows', state: 'running', checks: 4 }] },
+        { number: 940, stage: 'merged', spend: SPEND }], [rel('v0.182.4', 86_400_000, 23)]))
     writeDeck(workRepoKey(ROOT), repo('v0.182.4', 5))
     draw(false)
     const strip = document.querySelector('[data-release-strip]')!
-    expect(strip).not.toBeNull()
-    expect([...strip.querySelectorAll('[data-strip-stage]')].map((e) => e.textContent)).toEqual(['Merged', '◉Release PR', 'Tagged', 'Building', 'Published'])
     expect(strip).toHaveAttribute('data-release-current', 'pr')
-    expect(strip.querySelector('[aria-current="step"]')).toHaveTextContent('◉Release PR')
-    // The strip is first; the work going into the version follows it.
+    expect(strip).toHaveAttribute('role', 'group')
+    expect(strip).toHaveAttribute('aria-label', 'Release stage 2 of 5: Release PR')
+    const dots = [...strip.querySelectorAll('[data-strip-stage]')]
+    expect(dots.map((e) => e.getAttribute('data-strip-stage'))).toEqual(['merged', 'pr', 'tag', 'builds', 'published'])
+    expect(dots.map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'current', 'todo', 'todo', 'todo'])
+    expect(dots.map((e) => e.textContent)).toEqual(['', '', '', '', ''])
+    // Each dot says its stage on hover.
+    expect(dots.map((e) => e.getAttribute('title')!.split('\n')[0])).toEqual(['Merged', 'Release PR', 'Tagged', 'Building', 'Published'])
+    expect(dots[0]).toHaveClass('bg-ok')
+    expect(dots[1]).toHaveClass('bg-warn')
+    expect([...strip.querySelectorAll('[data-strip-line]')].map((e) => e.getAttribute('data-strip-line'))).toEqual(['done', 'todo', 'todo', 'todo'])
+    // Only the current stage is named, with its checks per OS.
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Release PR #942 · CI 1\/3$/)
+    expect(strip.textContent).not.toMatch(/Tagged|Building|Published/)
+    // The version heads the section; the dots sit under it, the entries apart.
     const plan = document.querySelector('[data-release-plan]')!
-    expect(plan.firstElementChild).toBe(strip)
+    const head = plan.querySelector('[data-release-group="head"]')!
+    expect(plan.firstElementChild).toBe(head)
+    expect(head.firstElementChild).toHaveAttribute('data-release-head')
+    expect(head.lastElementChild).toBe(strip)
     expect(plan.querySelector('[data-release-stages]')).toBeNull()
+  })
+
+  it('draws a failed stage red, the dot and the words', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'open')], [{ number: 942, stage: 'fix', ci: 'fail', why: 'ci', spend: SPEND }], [rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.182.4', 5))
+    draw(false)
+    const strip = document.querySelector('[data-release-strip]')!
+    expect(strip).toHaveAttribute('data-release-tone', 'fail')
+    expect(strip.querySelector('[data-strip-stage="pr"]')).toHaveClass('bg-danger')
+    const words = strip.querySelector('[data-release-stage-words]')!
+    expect(words).toHaveTextContent('Release PR #942 · CI red')
+    expect(words).toHaveClass('text-danger')
   })
 
   // Coordinator, 2026-11-19: with every entry on the open batch PR the strip
@@ -114,8 +144,19 @@ describe('the cockpit’s Release section', () => {
     draw(false)
     const strip = document.querySelector('[data-release-strip]')!
     expect(strip).toHaveAttribute('data-release-current', 'merged')
-    expect([...strip.querySelectorAll('[data-strip-stage]')].map((e) => e.textContent)).toEqual(['◉Merged', 'Release PR', 'Tagged', 'Building', 'Published'])
-    expect(document.querySelector('[data-release-via]')).toHaveTextContent('via#949●green·ready to merge')
+    expect(strip).toHaveAttribute('aria-label', 'Release stage 1 of 5: Merged')
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Merged · waiting to merge$/)
+    // The batch's checks and state: one via line, the first of the bottom group, never twice.
+    const via = document.querySelectorAll('[data-release-via]')
+    expect(via).toHaveLength(1)
+    expect(via[0]).toHaveTextContent('via#949●green·ready to merge')
+    expect(via[0]!.parentElement).toHaveAttribute('data-release-group', 'later')
+    expect(via[0]!.parentElement!.firstElementChild).toBe(via[0])
+    expect(document.querySelector('[data-release-plan]')!.textContent!.match(/#949/g)).toHaveLength(1)
+    // Three groups apart: the head, the entries and the bottom lines, each after a hairline.
+    const groups = [...document.querySelector('[data-release-plan]')!.children]
+    expect(groups.map((g) => g.getAttribute('data-release-group'))).toEqual(['head', 'entries', 'later'])
+    expect(groups.map((g) => g.classList.contains('border-t'))).toEqual([false, true, true])
   })
 
   it('folded, says the batch PR’s red CI; unfolded, its via line names the failing check', () => {
@@ -127,7 +168,7 @@ describe('the cockpit’s Release section', () => {
     expect(line()).toHaveClass('text-danger')
     unmount()
     draw(false)
-    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^0\.183\.1patch: fixes only·last 1h ago$/)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^0\.183\.1patch·last 1h ago$/)
     expect(document.querySelector('[data-release-via]')).toHaveTextContent('via#949●CI red·fix: go (windows-latest)')
     // Nothing is merged yet: the strip waits at Merged.
     expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'merged')
@@ -151,5 +192,28 @@ describe('the cockpit’s Release section', () => {
     expect(document.querySelector('[data-release-head]')).toHaveTextContent('v0.183.1 out·5 min ago')
     expect(document.querySelector('[data-release-entries]')).toHaveTextContent('FixedPR from another repo no longer shows as this one’s')
     expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'published')
+    expect(document.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Published · 5 min ago$/)
+    expect([...document.querySelectorAll('[data-strip-stage]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done', 'current'])
+  })
+
+  it('unfolded while a tag builds: four dots on, Building named with its files', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'merged', now - 900_000)], [{ number: 942, stage: 'merged', spend: SPEND }],
+      [rel('v0.183.0', 120_000, 12), rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), tags: { last: { name: 'v0.183.0', at: now - 600_000 }, gaps: 0 } })
+    writeDeck(`release:${ROOT}`, { connected: true, repo: 'acme/app', release: { repo: 'acme/app', tag: 'v0.183.0', state: 'running', at: now, run: { id: 1, name: 'release', status: 'in_progress', jobs: [] } } })
+    draw(false)
+    const strip = document.querySelector('[data-release-strip]')!
+    expect(strip).toHaveAttribute('aria-label', 'Release stage 4 of 5: Building')
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Building · 12 of 23 files$/)
+    expect([...strip.querySelectorAll('[data-strip-stage]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'current', 'done'])
+  })
+
+  it('unfolded with nothing new: the line stays, no dots', () => {
+    writeDeck(`stats:${ROOT}`, stats([], [], [rel('v0.182.4', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), repo('v0.182.4', 0))
+    draw(false)
+    expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Nothing new since v0\.182\.4/)
+    expect(document.querySelector('[data-release-strip]')).toBeNull()
+    expect(document.querySelector('[data-strip-stage]')).toBeNull()
   })
 })
