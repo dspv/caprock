@@ -491,6 +491,23 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-19 — 0.183.0: CI tells GitHub's missing machines apart, every sign-in on Plan limits, faster on a large database
+
+A minor release, #940–#945 and #946. Cursor chats read their context as a
+percentage; a subscription can be added where an agent starts; any dropped
+file attaches by its short name; *Running, no tab* folds. The cockpit draws
+CI at once on a tab switch, folds it into two lines whose counts match the
+unfolded view, and says where a release is. A job GitHub never gave a
+machine reads *no runner* with Rerun, and an opt-in setting reruns it once.
+`/v1/status` answers from a snapshot: the per-minute handoff queries had
+timed the app's 0.8 s check out (45 of 48 logged failures; 2173 → 161 ms
+max under load on a copy of the owner's 1.09M-event database). Prose search
+for a rare phrase went 3.1 s → 0.31 s on the same copy. With more than one
+sign-in, Plan limits lists each with what is left; the choice stays the
+user's (ADR-048, reconfirmed 2026-11-18). An update no longer opens a stray
+Caprock Mail browser tab; the Lifetime daily chart draws on *all*; the
+screenshot scrub runs in one pass and closed three leaks.
+
 ### 2026-11-18 — 0.182.4: the Updated to line closes itself
 
 A patch release, one PR (#938). The *Updated to X · What's new* line after an
