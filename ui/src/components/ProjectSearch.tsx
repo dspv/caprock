@@ -22,8 +22,8 @@ export function useProjectCandidates(projects: readonly Project[]): { candidates
   const recent = useApi(() => api.recentDirs(), [], { live: false })
   const repos = useApi(() => api.localRepos(), [], { live: false })
   const candidates = useMemo(() => mergeCandidates([
-    projects.map((p): Candidate => ({ kind: 'project', path: p.root, name: p.name, projectId: p.id })),
-    (recent.data ?? []).map((d): Candidate => ({ kind: 'recent', path: d.dir, name: d.name })),
+    projects.map((p): Candidate => ({ kind: 'project', path: p.root, name: p.name, projectId: p.id, at: p.last_activity || undefined })),
+    (recent.data ?? []).map((d): Candidate => ({ kind: 'recent', path: d.dir, name: d.name, at: d.last_event_at || undefined })),
     (repos.data?.repos ?? []).map((r): Candidate => ({ kind: 'repo', path: r.path, name: r.name })),
   ]), [projects, recent.data, repos.data])
   return { candidates, home: repos.data?.home, root: repos.data?.root }

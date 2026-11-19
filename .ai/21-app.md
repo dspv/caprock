@@ -384,7 +384,11 @@ One window, three regions:
   Enter keeps it, a second Enter starts. Typing ranks projects, recent
   folders and repositories under the default folder by name (prefix, word,
   substring, then the letters in order; then the path), matched letters in
-  bold; ↑ ↓ Enter pick, Esc closes the list before the sheet. A recent folder
+  bold; ↑ ↓ Enter pick, Esc closes the list before the sheet. Ties go to the
+  more trusted source, then to the one worked in last (a project's
+  `last_activity` or its folder's newest session), then the shorter name, so
+  with nothing typed the list is the projects by when they were last used
+  (owner, 2026-11-19: kit, ktl and MVP led it as the shortest names). A recent folder
   or repository is added (`POST /v1/projects {path}`) when picked and
   selected. The same ranking serves the Add project sheet.
 - **A folder of repositories** (2026-10-12, ADR-055): *Add* on an

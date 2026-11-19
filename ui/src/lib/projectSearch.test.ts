@@ -22,6 +22,18 @@ describe('project search', () => {
     expect(rankCandidates('web', all)[0]!.name).toBe('caprock-web')
   })
 
+  // Owner, 2026-11-19: with nothing typed, kit, ktl and MVP led the list
+  // because they were the shortest names, not the projects in use.
+  it('lists the projects last worked in first when nothing is typed', () => {
+    const list = mergeCandidates([
+      [{ ...c('project', '/h/dev/kit'), projectId: 'k', at: 100 }, { ...c('project', '/h/dev/caprock-web'), projectId: 'w', at: 900 }, { ...c('project', '/h/dev/caprock'), projectId: 'c' }],
+      // A session in caprock is newer than the project's own figure.
+      [{ ...c('recent', '/h/dev/caprock'), at: 1000 }],
+    ])
+    expect(list.find((x) => x.name === 'caprock')).toMatchObject({ kind: 'project', at: 1000 })
+    expect(rankCandidates('', list).map((x) => x.name)).toEqual(['caprock', 'caprock-web', 'kit'])
+  })
+
   it('takes the letters in order, and the path', () => {
     expect(rankCandidates('cpw', all).map((x) => x.name)).toEqual(['caprock-web'])
     expect(rankCandidates('work', all).map((x) => x.name)).toEqual(['api'])

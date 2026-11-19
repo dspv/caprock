@@ -285,8 +285,14 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   // keeps its newest CHAT_WINDOW messages once it holds CHAT_HELD_MAX. A
   // result belongs to its call, so cutting at a message's own event leaves
   // every kept call with its result; a result whose call was cut draws nothing.
+  // It also asks whether the view follows now (`stick.following()`, set by
+  // the scroll itself): `stick.atEdge` lags a scroll by a render, and a trim
+  // run then — the first page's, still pending when a reader scrolled
+  // straight up — undid the older page just revealed (CI run 44537438914;
+  // 4 of 8 runs under load).
   useEffect(() => {
     if (!loaded || !stick.atEdge || busy.current || messages.length <= CHAT_HELD_MAX) return
+    if (!stick.following()) return
     const cut = keyOf(messages[messages.length - CHAT_WINDOW])
     if (!cut) return
     const held = eventsRef.current
@@ -298,7 +304,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
     setEvents(next)
     setStartKey(cut)
     setExhausted(false)
-  }, [loaded, stick.atEdge, messages])
+  }, [loaded, stick.atEdge, stick.following, messages])
 
   const revealOlder = useCallback(async () => {
     if (busy.current || !loaded) return
