@@ -3412,6 +3412,17 @@ export interface WorkQueued {
   finish?: ETA
 }
 
+/** One changelog entry as release notes say it (`api.WorkEntry`). */
+export interface WorkEntry {
+  /** The entry whole, its scope taken off, markdown dropped; at most 280 characters. */
+  text: string
+  scope?: string
+  /** Added, Changed, Deprecated, Removed, Fixed or Security; absent when none is said. */
+  kind?: string
+  /** master: on the default branch; pr: on the batch pull request's branch alone. */
+  source?: 'master' | 'pr'
+}
+
 /** A repository on the Work board: its release cadence and what waits for the next release. */
 export interface WorkRepo {
   root: string
@@ -3424,7 +3435,15 @@ export interface WorkRepo {
   /** CHANGELOG's [Unreleased] section on `ref`, as of the last fetch; `kinds`
    *  counts its entries by Keep a Changelog kind (Added, Fixed, …), absent from
    *  an older daemon or when no entry has a kind. */
-  unreleased?: { ref: string; items: string[]; count: number; more?: boolean; kinds?: Partial<Record<string, number>> }
+  unreleased?: {
+    ref: string; items: string[]; count: number; more?: boolean; kinds?: Partial<Record<string, number>>
+    /** The same entries whole, in plain words (since 2026-11-19): the right panel's release notes. */
+    entries?: WorkEntry[]
+    /** The open batch pull request whose branch's fragments were added (read locally, never fetched). */
+    via?: { number: number; head: string; sha: string }
+  }
+  /** The CHANGELOG's newest released section on `ref`: the notes of the release just cut. */
+  released?: { version: string; entries: WorkEntry[]; count: number }
   tags?: { last?: { name: string; at: number }; gap_median_ms?: number; gaps: number }
   /** Commits on the default branch since the last tag. */
   ahead_of_tag?: number

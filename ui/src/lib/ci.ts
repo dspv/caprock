@@ -430,13 +430,44 @@ export function shortRun(ms: number | undefined): string {
   return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`
 }
 
+const PR_URL = /github\.com\/([^/\s]+\/[^/\s]+)\/pull\/\d+/i
+
+/**
+ * The repository a pull request is in, as owner/name: what GitHub said of it,
+ * else read from its address (github.com/{owner}/{repo}/pull/{n}). A session
+ * may open one in another repository than its own (`gh pr create` run there).
+ */
+export function prRepoOf(p: { url?: string; live?: { repo?: string; url?: string } }): string | undefined {
+  if (p.live?.repo) return p.live.repo
+  return PR_URL.exec(p.live?.url || p.url || '')?.[1]
+}
+
+/**
+ * A pull request's repository when it is not `own` (owner/name): it belongs
+ * to that one, never to this repository's rows. Undefined when it is this
+ * repository's, or either is unknown — nothing is foreign then.
+ */
+export function foreignRepo(p: { url?: string; live?: { repo?: string; url?: string } }, own: string | undefined): string | undefined {
+  const r = prRepoOf(p)
+  return own && r && r.toLowerCase() !== own.toLowerCase() ? r : undefined
+}
+
+/** A repository's name without its owner: "cybrixcc/caprock-web" → "caprock-web", the label before a foreign pull request's number. */
+export function repoShort(full: string): string {
+  return full.split('/').pop() || full
+}
+
 /**
  * The session's pull requests in the deck's order (owner, 2026-10-12): the
  * open one — the newest open, the one the session is on — first, then the
- * others as the daemon lists them, newest first.
+ * others as the daemon lists them, newest first. With `own`, the
+ * repository's owner/name, its open one comes first; one the session opened
+ * in another repository only when this one has none open.
  */
-export function orderPRs<T extends SessionPRLive>(prs: T[]): T[] {
-  const i = prs.findIndex((p) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at))
+export function orderPRs<T extends SessionPRLive>(prs: T[], own?: string): T[] {
+  const open = (p: T) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at)
+  const here = prs.findIndex((p) => open(p) && !foreignRepo(p, own))
+  const i = here >= 0 ? here : prs.findIndex(open)
   if (i <= 0) return prs
   return [prs[i]!, ...prs.slice(0, i), ...prs.slice(i + 1)]
 }

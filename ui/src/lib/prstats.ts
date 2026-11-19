@@ -7,7 +7,7 @@
  */
 import type { CIJob, CIRun, RepoStats, SessionPRLive } from './api'
 import type { BranchPR } from './branches'
-import { ciTone, fmtRun } from './ci'
+import { ciTone, fmtRun, foreignRepo } from './ci'
 
 /** The OS a runner is, as a column of the grid. */
 export type GridOS = 'linux' | 'macos' | 'windows' | 'other'
@@ -122,38 +122,53 @@ export interface TabPR {
   merged_at?: number
   /** One of this session's own, with what GitHub said of it. */
   mine?: SessionPRLive
+  /** A session's own opened in another repository than this one: its owner/name (prRepoOf). */
+  foreign?: string
 }
 
 export type TabScope = 'session' | 'repo' | 'open'
 export const SCOPE_LABEL: Record<TabScope, string> = { session: 'This session', repo: 'Repository', open: 'Open' }
 
-/** The list in a scope: the session's own (open first), the repository's newest updated, or every open one of both. */
-export function tabRows(scope: TabScope, session: SessionPRLive[], repo: BranchPR[]): TabPR[] {
-  const mine = new Map(session.map((p) => [p.number, p]))
-  const fromSession = (p: SessionPRLive): TabPR => ({
-    number: p.number, url: p.live?.url || p.url, title: p.live?.title || p.title || `#${p.number}`,
-    state: p.live?.state ?? (p.merged_at ? 'merged' : p.closed_at ? 'closed' : 'open'), draft: p.live?.draft,
-    created_at: p.live?.created_at ?? p.opened_at, merged_at: p.live?.merged_at ?? p.merged_at, mine: p,
-  })
+/**
+ * The list in a scope: the session's own (open first), the repository's
+ * newest updated, or every open one of both. `own` is the repository's
+ * owner/name: a session's own opened in another repository shows in its own
+ * scope, marked `foreign`, and never in the repository's scopes, where rows
+ * match the session's by number within this repository only.
+ */
+export function tabRows(scope: TabScope, session: SessionPRLive[], repo: BranchPR[], own?: string): TabPR[] {
+  const here = session.filter((p) => !foreignRepo(p, own))
+  const mine = new Map(here.map((p) => [p.number, p]))
+  const fromSession = (p: SessionPRLive): TabPR => {
+    const foreign = foreignRepo(p, own)
+    return {
+      number: p.number, url: p.live?.url || p.url, title: p.live?.title || p.title || `#${p.number}`,
+      state: p.live?.state ?? (p.merged_at ? 'merged' : p.closed_at ? 'closed' : 'open'), draft: p.live?.draft,
+      created_at: p.live?.created_at ?? p.opened_at, merged_at: p.live?.merged_at ?? p.merged_at, mine: p,
+      ...(foreign ? { foreign } : {}),
+    }
+  }
   const fromRepo = (p: BranchPR): TabPR => ({
     number: p.number, url: p.url, title: p.title || `#${p.number}`, state: p.state, draft: p.draft, created_at: p.created_at, merged_at: p.merged_at, mine: mine.get(p.number),
   })
   if (scope === 'session') {
     const rows = session.map(fromSession)
-    const i = rows.findIndex((r) => r.state === 'open')
+    // This repository's open one first; another repository's only when none is.
+    const i0 = rows.findIndex((r) => r.state === 'open' && !r.foreign)
+    const i = i0 >= 0 ? i0 : rows.findIndex((r) => r.state === 'open')
     return i > 0 ? [rows[i]!, ...rows.slice(0, i), ...rows.slice(i + 1)] : rows
   }
   const repoRows = repo.map(fromRepo)
   const listed = new Set(repoRows.map((r) => r.number))
   // The session's own that the repository's newest 50 left out still show.
-  const extra = session.filter((p) => !listed.has(p.number)).map(fromSession)
+  const extra = here.filter((p) => !listed.has(p.number)).map(fromSession)
   const all = [...repoRows, ...extra]
   return scope === 'open' ? all.filter((r) => r.state === 'open') : all
 }
 
-/** The pull request to show first: the session's open one, else the first listed. */
-export function firstPick(rows: TabPR[], session: SessionPRLive[]): number | undefined {
-  const open = session.find((p) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at))
+/** The pull request to show first: the session's open one in this repository, else the first listed. */
+export function firstPick(rows: TabPR[], session: SessionPRLive[], own?: string): number | undefined {
+  const open = session.find((p) => (p.live ? p.live.state === 'open' : !p.merged_at && !p.closed_at) && !foreignRepo(p, own))
   if (open && rows.some((r) => r.number === open.number)) return open.number
   return rows[0]?.number
 }

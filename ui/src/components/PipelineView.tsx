@@ -27,7 +27,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, errText, type CIJob, type CIRun, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionRepoCI, type SessionSummary, type SpawnRequest } from '@/lib/api'
-import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prReviewText, prVerdict, type CITone } from '@/lib/ci'
+import { ciActive, ciTone, fmtRun, investigateMessage, jobVsMedian, keyStep, prReviewText, prVerdict, repoShort, type CITone } from '@/lib/ci'
 import { hasConflict, isBehind, topChip, type DeckWorktree } from '@/lib/prforce'
 import { FORCE_LABEL, FORCE_TITLE, usePRForce, type ForceKind } from '@/lib/usePRForce'
 import { GRID_OS_LABEL, SCOPE_LABEL, jobGrid, spanText, tabRows, vsMedianText, type TabPR, type TabScope } from '@/lib/prstats'
@@ -173,9 +173,9 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
   const onScopePick = (v: TabScope) => { before.current = undefined; setScope(v) }
   useEffect(() => { setBucket(undefined); before.current = undefined }, [sessionId])
   const rows = useMemo(() => {
-    const all = pipelineRows(tabRows(scope, sessionPRs, stats?.prs ?? []), board, stats?.prs ?? [])
+    const all = pipelineRows(tabRows(scope, sessionPRs, stats?.prs ?? [], stats?.repo), board, stats?.prs ?? [])
     return bucket ? all.filter((r) => inBucket(r, bucket)) : all
-  }, [scope, sessionPRs, stats?.prs, board, bucket])
+  }, [scope, sessionPRs, stats?.prs, stats?.repo, board, bucket])
   // What left Needs a fix lately, from the answers this page already read.
   const fixKey = stats?.repo || s.repo_root || s.cwd || sessionId
   const [fixSeen, setFixSeen] = useState<FixSeen>(() => readFixSeen(fixKey))
@@ -218,7 +218,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
     return () => window.clearInterval(t)
   }, [running, visible])
 
-  const row = rows.find((r) => r.number === pick) ?? pipelineRows(tabRows('repo', sessionPRs, stats?.prs ?? []), board, stats?.prs ?? []).find((r) => r.number === pick)
+  const row = rows.find((r) => r.number === pick) ?? pipelineRows(tabRows('repo', sessionPRs, stats?.prs ?? [], stats?.repo), board, stats?.prs ?? []).find((r) => r.number === pick)
   const runs: CIRun[] = useMemo(() => ci?.ci?.runs ?? [], [ci?.ci?.runs])
   // The chosen pull request as the session's own rows carry it, so the PR words and actions apply.
   const p: SessionPRLive | undefined = row ? {
@@ -241,7 +241,7 @@ function ViewBody({ sessionId, session: s, visible, onBack, onToast, worktrees, 
     setConnecting(false)
   }
   const ready = !stats?.reason && stats?.connected !== false
-  const counts = { session: sessionPRs.length, repo: tabRows('repo', sessionPRs, stats?.prs ?? []).length, open: tabRows('open', sessionPRs, stats?.prs ?? []).length }
+  const counts = { session: sessionPRs.length, repo: tabRows('repo', sessionPRs, stats?.prs ?? [], stats?.repo).length, open: tabRows('open', sessionPRs, stats?.prs ?? [], stats?.repo).length }
 
   return (
     <div data-prs-tab onKeyDown={(e) => {
@@ -362,7 +362,7 @@ function PipelineList({ rows, scope, onScope, pick, onPick, now, counts, loaded,
               <span className="whitespace-nowrap text-right" title={AGENT_COST_NOTE}>Agent cost</span>
             </div>
             <ul>
-              {shown.map((r) => <PipelineItem key={r.number} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} ships={ships} />)}
+              {shown.map((r) => <PipelineItem key={`${r.foreign ?? ''}#${r.number}`} r={r} on={r.number === pick} onPick={() => onPick(r.number)} now={now} dim={dim || !!r.card?.stale} ships={ships} />)}
               {hidden > 0 && (
                 <li><button type="button" data-prs-more onClick={() => setAllReleased(true)} className="w-full px-3 py-2.5 text-left text-[13px] text-accent hover:bg-[var(--app-row-hover)]">Show {hidden} more released</button></li>
               )}
@@ -409,7 +409,10 @@ function PipelineItem({ r, on, onPick, now, dim, ships }: { r: PipelineRow; on: 
         title={dim ? 'Not re-confirmed: from an earlier read of GitHub' : undefined}
         className={`${ROW_GRID} w-full gap-y-2 px-3 py-2.5 text-left transition-colors hover:bg-[var(--app-row-hover)] motion-reduce:transition-none ${on ? 'bg-[var(--app-row-active)] shadow-[inset_3px_0_0_var(--color-accent)]' : ''} ${dim ? 'opacity-60' : ''}`}>
         <span className="flex min-w-0 items-baseline gap-2 @max-[820px]/list:col-span-2">
-          {!titleIsNumber(r.number, r.title) && <span className="num shrink-0 text-[13px] text-fg-muted">#{r.number}</span>}
+          {/* Opened in another repository: its name before the number, the whole owner/name on hover. */}
+          {r.foreign
+            ? <span data-prs-foreign={r.foreign} title={`${r.foreign} #${r.number}: opened by this session in another repository`} className="num shrink-0 text-[13px] text-fg-muted">{repoShort(r.foreign)} #{r.number}</span>
+            : !titleIsNumber(r.number, r.title) && <span className="num shrink-0 text-[13px] text-fg-muted">#{r.number}</span>}
           <span className="min-w-0 flex-1">
             <span data-prs-title className="block text-[14px] font-medium leading-[1.35] text-fg [overflow-wrap:anywhere]">{r.title}</span>
             {(r.labels?.length || r.author || r.mine) && (

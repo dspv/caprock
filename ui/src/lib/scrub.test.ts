@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Event } from './api'
-import { MAX_TIME_BARS, barLabel, barLabelShort, bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, stepText, timeBars, topTools, type CallPoint } from './scrub'
+import { MAX_TIME_BARS, barLabel, barLabelShort, bucketCost, bucketOf, bucketize, callAt, callsFromEvents, callsFromSeries, clock, cursorX, mergeCalls, readout, slotsFor, stepText, timeBars, topTools, windowBars, type CallPoint } from './scrub'
 
 const T0 = Date.UTC(2026, 9, 9, 12, 0, 0)
 const pt = (id: number, cost: number, p: Partial<CallPoint> = {}): CallPoint => ({ id, ts: T0 + id * 1000, cost, ...p })
@@ -210,5 +210,32 @@ describe('timeBars for burn rate', () => {
     const t = timeBars([...hour(0, 1, 0), ...hour(1, 2, 10), ...hour(50, 1, 20)], 60)
     expect(t.step).toBe(3 * H)
     expect(t.bars[0]).toMatchObject({ activeHours: 2, activeCost: 15 })
+  })
+})
+
+describe('a window of the session as bars', () => {
+  const H = 3_600_000
+  const from = new Date(2026, 10, 19).getTime()
+
+  it('covers today by the hour up to the current one, with only the calls inside it', () => {
+    const calls: CallPoint[] = [
+      { id: 1, ts: from - 1, cost: 9 },
+      ...Array.from({ length: 5 }, (_, i): CallPoint => ({ id: 2 + i, ts: from + 2 * H + i * 60_000, cost: 1 })),
+    ]
+    const { step, bars } = windowBars(calls, from, from + 3 * H + 5, 'hour')
+    expect(step).toBe(H)
+    expect(bars).toHaveLength(4)
+    expect(bars.map((b) => b.cost)).toEqual([0, 0, 5, 0])
+    // Five priced calls in one hour: an active hour.
+    expect(bars.map((b) => b.activeHours)).toEqual([0, 0, 1, 0])
+    expect(bars[2]!.activeCost).toBe(5)
+  })
+
+  it('covers 7 days by local day, ending with today', () => {
+    const start = new Date(2026, 10, 13).getTime()
+    const { bars } = windowBars([{ id: 1, ts: from + H, cost: 2 }], start, from + 12 * H, 'day')
+    expect(bars).toHaveLength(7)
+    expect(new Date(bars[6]!.start).getDate()).toBe(19)
+    expect(bars[6]!.cost).toBe(2)
   })
 })

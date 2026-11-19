@@ -22,6 +22,7 @@ import type { SessionCIStats, Work, WorkPR, WorkQueued, WorkRepo, WorkSession, W
 import type { BranchPR } from './branches'
 import { asBoard, type BoardCard, type BoardFlow, type PRBoard, type ShipsBy } from './prboard'
 import { basisLabel, etaRange } from './queueboard'
+import { foreignRepo } from './ci'
 import { spanText } from './prstats'
 import { href } from './router'
 
@@ -210,6 +211,9 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
   const byBranch = new Map<string, WorkItem>()
   const byNumber = new Map<string, WorkItem>()
   const repoName = new Map((work.repos ?? []).map((r) => [r.root, r.name]))
+  // Each repository's owner/name on GitHub: a session's pull request opened
+  // in another repository (`gh pr create` run there) is never a row of its own.
+  const remote = new Map((work.repos ?? []).map((r) => [r.root, r.remote]))
   const named = (root: string) => ({ root, name: repoName.get(root) || nameOf(root) })
 
   const put = (it: WorkItem) => {
@@ -241,11 +245,13 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
     }
   }
 
-  // 2. Sessions: onto their newest pull request, else their branch's, else a row of their own.
+  // 2. Sessions: onto their newest pull request in their own repository, else their branch's, else a row of their own.
   for (const s of work.sessions ?? []) {
     const root = s.repo_root || ''
     let target: WorkItem | undefined
-    const newest = newestPR(s.prs ?? [], (n) => gone.has(`${root}\0${n}`))
+    const own = remote.get(root) || stats.get(root)?.repo
+    const prs = (s.prs ?? []).filter((p) => !foreignRepo(p, own))
+    const newest = newestPR(prs, (n) => gone.has(`${root}\0${n}`))
     if (newest && root) {
       target = byNumber.get(`${root}\0${newest.number}`)
       if (!target) {
@@ -263,7 +269,7 @@ export function buildWork(work: Work, stats: ReadonlyMap<string, SessionCIStats 
     }
     if (!target) {
       // Its pull requests all done: which one, so the row says so.
-      const last = !newest ? newestPR((s.prs ?? []).map((p) => ({ ...p, closed_at: undefined }))) : undefined
+      const last = !newest ? newestPR(prs.map((p) => ({ ...p, closed_at: undefined }))) : undefined
       const lastState = last ? (gone.get(`${root}\0${last.number}`) ?? (last.merged_at ? 'merged' : 'closed')) : undefined
       target = {
         key: `s:${s.session_id}`, kind: 'session', repo: root ? named(root) : undefined, title: sessionTitle(s), branch: s.on_default ? undefined : s.branch,

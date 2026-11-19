@@ -576,6 +576,10 @@ SELECT COALESCE(SUM(e.cost_usd), 0) FROM task_assignments a JOIN sessions s ON s
 UPDATE tasks SET cost_usd = ? WHERE id = ?
     SEARCH tasks USING INDEX sqlite_autoindex_tasks_1 (id=?)
 
+## store.BatchPR
+SELECT number, url, title, head, created_at, updated_at FROM github_prs WHERE repo = ? AND state = 'open' AND seen_at >= ? ORDER BY number DESC LIMIT ?
+    SEARCH github_prs USING PRIMARY KEY (repo=?)
+
 ## store.BrainAgentNodes
 SELECT n.id FROM brain_nodes n WHERE n.id IN (SELECT value FROM json_each(?)) AND (NOT EXISTS (SELECT 1 FROM brain_vault_notes s JOIN brain_vaults v ON v.id = s.vault_id WHERE s.node_id = n.id AND v.agents = 0) AND NOT (n.vault_id IS NOT NULL AND EXISTS (SELECT 1 FROM brain_vaults v WHERE v.id = n.vault_id AND v.agents = 0)))
     SEARCH n USING INTEGER PRIMARY KEY (rowid=?)

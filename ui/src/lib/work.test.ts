@@ -58,6 +58,36 @@ describe('a closed pull request is not in flight', () => {
   })
 })
 
+// A session in dspv/caprock opened cybrixcc/caprock-web #247 with `gh pr
+// create` run there (2026-11-19): the right panel's Release listed it as
+// caprock's open pull request.
+describe('a pull request a session opened in another repository', () => {
+  const web = (n: number) => ({ number: n, url: `https://github.com/cybrixcc/caprock-web/pull/${n}`, title: 'feat(home): analytics first', opened_at: NOW - 10 * MIN })
+  it('is never a row of the session’s repository: the session is its own agent row', () => {
+    const w = workFixture()
+    w.sessions = [session('c', { prs: [web(247)] })]
+    const items = buildWork(w, stats(), NOW).items
+    expect(items.some((it) => it.pr?.number === 247)).toBe(false)
+    expect(row(items, 's:c')).toMatchObject({ kind: 'session', word: 'agent' })
+    expect(row(items, 's:c')!.donePR).toBeUndefined()
+  })
+  it('leaves the session on its own repository’s newest instead', () => {
+    const w = workFixture()
+    w.sessions = [session('c', { prs: [{ number: 633, url: 'https://github.com/dspv/caprock/pull/633', opened_at: NOW - 60 * MIN }, web(247)] })]
+    const items = buildWork(w, stats(), NOW).items
+    expect(row(items, '633')!.sessions.map((s) => s.session_id)).toContain('c')
+    expect(items.some((it) => it.pr?.number === 247)).toBe(false)
+  })
+  it('counts as this repository’s when the repository’s remote is unknown', () => {
+    const w = workFixture()
+    w.repos = w.repos.map((r) => ({ ...r, remote: undefined }))
+    w.sessions = [session('c', { prs: [web(247)] })]
+    const st = statsFixture()
+    st.repo = undefined
+    expect(buildWork(w, new Map([['/w/caprock', st]]), NOW).items.some((it) => it.pr?.number === 247)).toBe(true)
+  })
+})
+
 describe('the Work board’s rows', () => {
   const b = buildWork(workFixture(), stats(), NOW)
 

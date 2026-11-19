@@ -66,8 +66,9 @@ func TestAddFragment(t *testing.T) {
 
 func TestParseBatch(t *testing.T) {
 	out := "abc blob 5\nhello\nmissing-ref missing\ndef blob 0\n\nxyz blob 3\na\nb\n"
-	got := parseBatch([]byte(out))
-	if len(got) != 3 || string(got[0]) != "hello" || len(got[1]) != 0 || string(got[2]) != "a\nb" {
+	got := parseBatch([]byte(out), []string{"d/one.md", "d/gone.md", "d/two.md", "d/three.md"})
+	if len(got) != 3 || string(got[0].Body) != "hello" || len(got[1].Body) != 0 || string(got[2].Body) != "a\nb" ||
+		got[0].Name != "one.md" || got[1].Name != "two.md" || got[2].Name != "three.md" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -176,10 +177,13 @@ func TestReadsAClone(t *testing.T) {
 	}
 	var fu Unreleased
 	for _, f := range frags {
-		AddFragment(&fu, f)
+		AddFragmentFile(&fu, f.Name, f.Body)
 	}
 	if fu.Count != 2 || fu.Items[0] != "**a:** first by name." || fu.Items[1] != "**b:** second." || fu.Kinds["Added"] != 1 || fu.Kinds["Fixed"] != 1 {
 		t.Fatalf("fragment items = %+v", fu)
+	}
+	if e := fu.Entries[0]; e.Text != "first by name. continued." || e.Scope != "a" || e.Kind != "Added" || e.File != "a.md" {
+		t.Fatalf("fragment entry = %+v", e)
 	}
 	if _, ok := Fragments(ctx, up, "v0.0.0"); ok {
 		t.Fatal("a commit without changes/unreleased read fragments")
@@ -247,5 +251,101 @@ func TestKinds(t *testing.T) {
 	AddFragment(&none, []byte("- **bare:** no kind.\n"))
 	if none.Kinds != nil {
 		t.Fatalf("no kind: got %+v", none.Kinds)
+	}
+}
+
+// Release notes say a bullet whole, in plain words: the scope apart, the
+// continuation lines joined, emphasis, code ticks and link targets dropped.
+func TestPlain(t *testing.T) {
+	for _, c := range []struct{ in, scope, text string }{
+		{"**ui:** folded, the *CI* section's `second` line", "ui", "folded, the CI section's second line"},
+		{"no scope, **bold** and a [link](https://x.example)", "", "no scope, bold and a link"},
+		{"**a b:** snake_case_name stays * alone", "a b", "snake_case_name stays * alone"},
+		{"**ui:**   spaced   out  ", "ui", "spaced out"},
+	} {
+		if scope, text := Plain(c.in); scope != c.scope || text != c.text {
+			t.Errorf("Plain(%q) = %q, %q; want %q, %q", c.in, scope, text, c.scope, c.text)
+		}
+	}
+	_, long := Plain(strings.Repeat("ab ", 200))
+	if r := []rune(long); len(r) > EntryRunes || len(r) < EntryRunes-2 || !strings.HasSuffix(long, "…") {
+		t.Fatalf("long: %d runes %q", len(r), long[len(long)-8:])
+	}
+}
+
+func TestEntries(t *testing.T) {
+	u, ok := ParseUnreleased([]byte("## [Unreleased]\n\n### Fixed\n\n- **ui:** one\n  goes on.\n  - nested\n  not this.\n- **ui:** two\n\n## [1.0.0]\n- old\n"))
+	if !ok || len(u.Entries) != 2 || u.Entries[0] != (Entry{Text: "one goes on.", Scope: "ui", Kind: "Fixed"}) || u.Entries[1].Text != "two" {
+		t.Fatalf("entries = %+v", u.Entries)
+	}
+	if fmt.Sprint(u.Items) != "[**ui:** one **ui:** two]" {
+		t.Fatalf("items = %q", u.Items)
+	}
+}
+
+// The newest released section: the first versioned heading after
+// [Unreleased], its entries grouped as written.
+func TestParseRelease(t *testing.T) {
+	v, u, ok := ParseRelease([]byte("# Changelog\n\n## [Unreleased]\n\n- pending\n\n## [0.183.0] - 2026-11-19\n\n### Added\n\n- **a:** new\n\n### Fixed\n\n- **b:** fixed\n\n## [0.182.0]\n\n- older\n"))
+	if !ok || v != "0.183.0" || u.Count != 2 || u.Entries[0].Kind != "Added" || u.Entries[1] != (Entry{Text: "fixed", Scope: "b", Kind: "Fixed"}) {
+		t.Fatalf("release %q %+v ok %v", v, u, ok)
+	}
+	if _, _, ok := ParseRelease([]byte("## [Unreleased]\n- only\n")); ok {
+		t.Fatal("no released section read one")
+	}
+}
+
+// The batch pull request's branch, as the clone knows it: its fragments are
+// read from origin/<branch> without a fetch, and only those it added past
+// where it left the default branch.
+func TestReadsABatchBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ctx := context.Background()
+	root := t.TempDir()
+	up := filepath.Join(root, "up")
+	if err := os.MkdirAll(filepath.Join(up, FragmentsDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(up, FragmentsDir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		gitAt(t, up, at, "add", "-A")
+		gitAt(t, up, at, "commit", "-q", "-m", name)
+	}
+	gitAt(t, up, at, "init", "-q", "-b", "master")
+	write("old.md", "---\nkind: Fixed\n---\n- **x:** on master.\n")
+	gitAt(t, up, at, "checkout", "-q", "-b", "feat/batch")
+	write("new.md", "---\nkind: Changed\n---\n- **y:** in the batch.\n")
+	gitAt(t, up, at, "checkout", "-q", "master")
+	gitAt(t, root, at, "clone", "-q", up, "clone")
+	clone := filepath.Join(root, "clone")
+
+	head, ok := RemoteBranch(ctx, clone, "feat/batch")
+	if !ok || len(head) < 40 {
+		t.Fatalf("origin/feat/batch: %q %v", head, ok)
+	}
+	if _, ok := RemoteBranch(ctx, clone, "feat/never-pushed"); ok {
+		t.Fatal("a branch the clone does not know was read")
+	}
+	_, master, err := DefaultRef(ctx, clone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, ok := MergeBase(ctx, clone, master, head)
+	if !ok || base != master {
+		t.Fatalf("merge base %q, master %q", base, master)
+	}
+	names, ok := FragmentNames(ctx, clone, head)
+	if !ok || fmt.Sprint(names) != "[changes/unreleased/new.md changes/unreleased/old.md]" {
+		t.Fatalf("names %q ok %v", names, ok)
+	}
+	frags, ok := ReadFragments(ctx, clone, head, names[:1])
+	if !ok || len(frags) != 1 || frags[0].Name != "new.md" || !strings.Contains(string(frags[0].Body), "in the batch") {
+		t.Fatalf("frags %+v", frags)
 	}
 }

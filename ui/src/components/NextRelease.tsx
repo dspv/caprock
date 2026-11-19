@@ -8,6 +8,7 @@
  * call (rule 6).
  */
 import type { SessionCIStats, WorkRepo } from '@/lib/api'
+import { onMaster } from '@/lib/releaseplan'
 import { boardOf, cadence, pipelineHref, repoState, titleIsNumber, type WorkItem } from '@/lib/work'
 
 export interface NextReleaseProps {
@@ -20,7 +21,7 @@ export interface NextReleaseProps {
 
 /** The repositories the strip speaks of: a tag, merged work, unreleased notes or commits, or a GitHub state to say. */
 export function releaseRepos(repos: readonly WorkRepo[], items: readonly WorkItem[]): WorkRepo[] {
-  return repos.filter((r) => r.tags?.last || r.unreleased?.count || r.ahead_of_tag || items.some((it) => it.stage === 'merged' && it.repo?.root === r.root))
+  return repos.filter((r) => r.tags?.last || onMaster(r.unreleased)?.count || r.ahead_of_tag || items.some((it) => it.stage === 'merged' && it.repo?.root === r.root))
 }
 
 export function NextRelease({ repos, stats, items, now }: NextReleaseProps) {
@@ -33,7 +34,8 @@ export function NextRelease({ repos, stats, items, now }: NextReleaseProps) {
         const st = stats.get(r.root)
         const c = cadence(r, boardOf(st)?.flow, now)
         const merged = items.filter((it) => it.stage === 'merged' && it.repo?.root === r.root)
-        const u = r.unreleased
+        // Merged entries only: the batch pull request's are the right panel's.
+        const u = onMaster(r.unreleased)
         return (
           <article key={r.root} data-work-release-repo={r.name} className="min-w-0 rounded-[var(--radius-panel)] border border-border bg-panel px-3 py-2.5 shadow-[var(--shadow-panel)]">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">

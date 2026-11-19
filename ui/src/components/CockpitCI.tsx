@@ -83,7 +83,7 @@
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
 import { githubApi, githubErrorText, useGitHubStatus, type AutoRerun, type PRCheck, type PullRequest } from '@/lib/github'
-import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, orderPRs, osName, osRollup, prChecks, readCockpitCIView, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
+import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, foreignRepo, orderPRs, osName, osRollup, prChecks, readCockpitCIView, repoShort, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
 import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
@@ -108,6 +108,12 @@ export const KEPT_FOLD_MS = 3_600_000
 
 /** The pull request the Ring and By OS views draw, with its checks. */
 type LeadPR = { number: number; live: PullRequest }
+
+/** A PR's number as the block says it: "#247", or "caprock-web #247" for one opened in another repository than `own`. */
+function prNoText(p: LeadPR, own: string | undefined): string {
+  const other = foreignRepo(p.live, own)
+  return other ? `${repoShort(other)} #${p.number}` : `#${p.number}`
+}
 
 /** The most pull requests the PRs view lists (it scrolls). */
 const LISTED = 40
@@ -187,8 +193,12 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const [n, setN] = useState(0)
   const [prsPolled, prsAt, prsMeta] = usePoll<SessionPRs>(!!onOpen, `cockpit-prs:${sessionId}:${n}`, () => api.sessionPRs(sessionId), (d) => d.prs.some((p) => p.live?.checks.state === 'pending'), PRS_PENDING_MS, `prs:${sessionId}`, keepPRs)
   const prs = { d: prsPolled, at: prsAt || undefined }
-  const rows = orderPRs(prs.d?.prs ?? []).filter((p) => !!p.live)
-  const mine = useMemo(() => new Map((prs.d?.prs ?? []).map((p) => [p.number, p])), [prs.d])
+  // The repository's owner/name: a pull request the session opened in
+  // another one is labelled with that one's name, leads only when this one
+  // has none open, and never stands for a row of this repository's list.
+  const own = stats?.repo
+  const rows = orderPRs(prs.d?.prs ?? [], own).filter((p) => !!p.live)
+  const mine = useMemo(() => new Map((prs.d?.prs ?? []).filter((p) => !foreignRepo(p, own)).map((p) => [p.number, p])), [prs.d, own])
   // The force actions the deck had, on the row of the PR they apply to
   // (lib/usePRForce, shared with the Pipeline page): each asks once, in the row.
   const host = useContext(PipelineHostContext)
@@ -209,7 +219,8 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const leadNo = ownLead?.number ?? flown?.number ?? 0
   // Folded, when the session's own newest PR with checks is not open, the
   // repository's open PR in flight (read since the block was drawn) is the line.
-  const ownOpen = ownLead?.live?.state === 'open'
+  // One opened in another repository is not this one's open PR: the repository's own open one in flight leads over it.
+  const ownOpen = ownLead?.live?.state === 'open' && !foreignRepo(ownLead, own)
   // A kept copy young enough to draw before its read lands (KEPT_FOLD_MS).
   const young = (at: number | undefined) => !!at && Date.now() - at < KEPT_FOLD_MS
   // When the session's own newest PR is not open, the repository's open PR
@@ -261,6 +272,8 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const foldIsRepo = !!foldLead && foldLead === foldRepoLead
   // The line drawn from a kept copy not read again since the block was drawn: muted, timed as of its read.
   const foldKept = !!foldLead && !(foldIsRepo ? ciMeta.confirmed : prsMeta.confirmed)
+  const foldElse = foldLead ? foreignRepo(foldLead.live, own) : undefined
+  const foldPR = foldLead ? (foldIsRepo ? mine.get(foldLead.number) : ownLead) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live } : undefined
   const running = rows.some((p) => p.live?.checks.state === 'pending') || lead?.live.checks.state === 'pending' || foldLead?.live.checks.state === 'pending'
   // A clock only while a check runs and the window is shown: the elapsed time moves.
   const [now, setNow] = useState(() => Date.now())
@@ -283,7 +296,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const faint = (text: string) => <span className="text-[11.5px] text-fg-faint">{text}</span>
   const checksOf = (draw: (p: LeadPR) => ReactNode) =>
     lead ? draw(lead) : quiet ?? (flown ? faint(ci.d?.pr?.number === flown.number ? `#${flown.number}’s checks could not be read.` : `Reading #${flown.number}’s checks…`) : faint('Reading the repository’s pull requests…'))
-  const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={leadNow} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={leadNow} />) : (
+  const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={leadNow} own={own} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={leadNow} own={own} />) : (
     !hasStats ? faint('Reading the repository’s pull requests…') : (
       <div className="grid gap-1">
       {quiet}
@@ -318,8 +331,8 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
         // at the right. Never a third line.
         after={foldLead ? (
           <span data-fold-only data-cockpit-ci-fold-pr={foldLead.number} className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[11.5px]"
-            title={`${foldIsRepo ? `#${foldLead.number}: the repository’s open pull request — this session’s own is not open` : `#${foldLead.number}: this session’s newest pull request`}\n${foldLead.live.title}`}>
-            <span className="num shrink-0 text-fg-muted">#{foldLead.number}</span>
+            title={`${foldIsRepo ? `#${foldLead.number}: the repository’s open pull request — this session’s own is not open` : foldElse ? `${foldElse} #${foldLead.number}: this session’s pull request in another repository` : `#${foldLead.number}: this session’s newest pull request`}\n${foldLead.live.title}`}>
+            <span data-cockpit-ci-fold-repo={foldElse} className="num shrink-0 text-fg-muted">{prNoText(foldLead, own)}</span>
             <span className="min-w-0 truncate text-fg">{foldLead.live.title}</span>
           </span>
         ) : undefined}
@@ -334,7 +347,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
               // the skipped count goes first, then the words, then all but
               // the worst state (CheckSummary `fit`, FitSummary).
               : <FitSummary className="justify-items-start" variants={(['full', 'noskip', 'compact', 'worst'] as const).map((f) => (
-                <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `#${foldLead.number}: its checks`} focusable={false} beside className="shrink-0" />
+                <CheckSummary key={f} s={leadSum} fit={f} label={foldIsRepo ? `#${foldLead.number}, the repository’s open pull request: its checks` : `${prNoText(foldLead, own)}: its checks`} focusable={false} beside className="shrink-0" />
               ))} />}
             {foldLead.live.state === 'open' && (
               <span data-cockpit-ci-fold-act className="ml-auto flex shrink-0 items-center gap-2">
@@ -342,9 +355,9 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
                   * failure; on a job GitHub never gave a machine, Rerun and
                   * the switch that makes Caprock do it (or what Caprock did).
                   * Each asks once, as every force action does. */}
-                {leadSum.counts.fail > 0 && !!s && <FoldAction kind="ci" p={mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live }} kit={kit} now={now} />}
+                {leadSum.counts.fail > 0 && !!s && <FoldAction kind="ci" p={foldPR!} kit={kit} now={now} />}
                 {leadSum.counts.fail === 0 && leadSum.counts.norunner > 0 && !!s && (
-                  <FoldAction kind="rerun" p={mine.get(foldLead.number) ?? { session_id: sessionId, url: foldLead.live.url, number: foldLead.number, last_at: 0, live: foldLead.live }} kit={kit} now={now} />
+                  <FoldAction kind="rerun" p={foldPR!} kit={kit} now={now} />
                 )}
                 {foldLead.live.checks.auto_rerun
                   ? <AutoRerunWord a={foldLead.live.checks.auto_rerun} />
@@ -567,7 +580,7 @@ function Quiet({ f, now }: { f: Flight; now: number }) {
 }
 
 /** One ring for the lead PR: its checks done of all, its time, and its run against the median. */
-function Ring({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
+function Ring({ p, ci, now, own }: { p: LeadPR; ci?: SessionCI; now: number; own?: string }) {
   const s = checkSummary(p.live.checks.items, now)
   const r = 15
   const c = 2 * Math.PI * r
@@ -593,7 +606,7 @@ function Ring({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
       <span className="grid min-w-0 gap-0.5">
         <span className="num text-[15px] font-semibold leading-none text-fg">{done}/{s.total}{s.ms ? <span className="text-[12px] font-normal text-fg-muted"> · {fmtRun(s.ms)}</span> : null}</span>
         <span className="truncate text-[11px] text-fg-muted">
-          #{p.number}{s.fail ? <span className="text-danger"> · {s.fail} failed</span> : null}{s.norunner ? <span className="text-norunner" title={NO_RUNNER_TITLE}> · {s.norunner} no runner</span> : null}{s.running ? <span className="text-warn"> · {s.running} running</span> : null}
+          <span title={foreignRepo(p.live, own)}>{prNoText(p, own)}</span>{s.fail ? <span className="text-danger"> · {s.fail} failed</span> : null}{s.norunner ? <span className="text-norunner" title={NO_RUNNER_TITLE}> · {s.norunner} no runner</span> : null}{s.running ? <span className="text-warn"> · {s.running} running</span> : null}
           {vs ? <span className={vs.tone === 'warn' ? 'text-warn' : 'text-fg-faint'}> · {vs.text}</span> : null}
         </span>
       </span>
@@ -612,11 +625,11 @@ const OS_TEXT = { pass: 'text-ok', fail: 'text-danger', norunner: 'text-norunner
  * carries (with their jobs when the deck read them), so it always has
  * something to show unless no check names an OS.
  */
-function ByOS({ p, ci, now }: { p: LeadPR; ci?: SessionCI; now: number }) {
+function ByOS({ p, ci, now, own }: { p: LeadPR; ci?: SessionCI; now: number; own?: string }) {
   const runs = ci?.pr?.number === p.number ? ci.ci?.runs : undefined
   const sum = prChecks(p, now, runs)
   const rows = sum ? osRollup(sum.nodes) : []
-  if (rows.length === 0) return <span className="text-[11.5px] text-fg-faint">#{p.number}’s checks name no runner OS.</span>
+  if (rows.length === 0) return <span className="text-[11.5px] text-fg-faint">{prNoText(p, own)}’s checks name no runner OS.</span>
   return (
     <span data-cockpit-ci-os className="grid grid-cols-[auto_10px_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11.5px]">
       {rows.map((r) => (

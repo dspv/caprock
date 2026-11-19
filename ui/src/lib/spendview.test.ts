@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { costNote, metricTitle, spendFigures, getSpendPeriod, periodChip, resetSpendPrefsForTest, setSpendPeriod, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, periodFigures, periodScope, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
+import { costNote, metricTitle, spendFigures, getSpendPick, periodChip, resetSpendPrefsForTest, setSpendScope, setSpendWindow, shownPick, spendLabel, windowFigures, windowStart, WHOLE_SESSION, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, rangeFigures, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
 import type { SessionSummary, Summary } from './api'
 
@@ -15,14 +15,15 @@ describe('the spend figures', () => {
     expect(pickSlot(['cost', 'tokens', 'cache'], 0, 'cache')).toEqual(['cache', 'tokens', 'cost'])
     expect(pickSlot(['cost', 'tokens', 'cache'], 1, 'burn')).toEqual(['cost', 'burn', 'cache'])
     // The figures beside the agent are shown already: their slots show the next ones not shown.
-    expect(shownSlots(['cost', 'tokens', 'cache'], 'session', ['cost', 'burn', 'tokens'])).toEqual(['last', 'time', 'cache'])
-    expect(shownSlots(['cost', 'tokens', 'cache'], 'session', ['turns', 'last', 'tools'])).toEqual(['cost', 'tokens', 'cache'])
-    // A Caprock-wide period is another figure: it keeps it.
-    expect(shownSlots(['cost', 'tokens', 'cache'], '7d', ['cost', 'burn', 'tokens'])).toEqual(['cost', 'tokens', 'cache'])
+    expect(shownSlots(['cost', 'tokens', 'cache'], WHOLE_SESSION, ['cost', 'burn', 'tokens'])).toEqual(['last', 'time', 'cache'])
+    expect(shownSlots(['cost', 'tokens', 'cache'], WHOLE_SESSION, ['turns', 'last', 'tools'])).toEqual(['cost', 'tokens', 'cache'])
+    // Every session's period, or a part of this one, is another figure: it keeps it.
+    expect(shownSlots(['cost', 'tokens', 'cache'], { scope: 'all', window: '7d' }, ['cost', 'burn', 'tokens'])).toEqual(['cost', 'tokens', 'cache'])
+    expect(shownSlots(['cost', 'tokens', 'cache'], { scope: 'session', window: 'today' }, ['cost', 'burn', 'tokens'])).toEqual(['cost', 'tokens', 'cache'])
     const all = ['cost', 'burn', 'tokens', 'turns', 'cache', 'time', 'last', 'tools'] as const
     for (const a of all) for (const b of all) for (const c of all) {
       if (a === b || b === c || a === c) continue
-      const shown = shownSlots(['cost', 'tokens', 'cache'], 'session', [a, b, c])
+      const shown = shownSlots(['cost', 'tokens', 'cache'], WHOLE_SESSION, [a, b, c])
       for (const m of [a, b, c]) expect(shown).not.toContain(m)
       expect(new Set(shown).size).toBe(3)
     }
@@ -138,13 +139,12 @@ describe('the spend figures', () => {
 
   it('takes the figures from the session, or from the range summary with its sparks as the chart', () => {
     const f: SpendFigures = { cost: 2, tokens: 1_000, cache: 80, last: 0.25 }
-    expect(periodFigures('session', f, undefined)).toBe(f)
-    expect(periodFigures('7d', f, undefined)).toEqual({})
+    expect(rangeFigures(undefined)).toEqual({})
     const sum = {
       cost_usd: 9, tokens_in: 10, cache_read: 30, cache_write: 0, turns: 7, tool_calls: 21, savings: { hit_rate: 0.75 },
       projects: [{ spark: { from_ms: 1_000, width_ms: H, cost: [1, 0, 2] } }, { spark: { from_ms: 1_000, width_ms: H, cost: [0, 4] } }, {}],
     } as unknown as Summary
-    const pf = periodFigures('today', f, sum)
+    const pf = rangeFigures(sum)
     expect(pf).toMatchObject({ cost: 9, tokens: 40, cache: 75, turns: 7, tools: 21 })
     expect(pf.series?.step).toBe(H)
     expect(pf.series?.bars).toEqual([
@@ -160,7 +160,7 @@ describe('the spend figures', () => {
         { spark: { from_ms: 1_000, width_ms: H, cost: [0, 4], tokens: [0, 0], input: [100, 50], turns: [1, 3] } },
       ],
     } as unknown as Summary
-    expect(periodFigures('7d', f, full).series?.bars).toEqual([
+    expect(rangeFigures(full).series?.bars).toEqual([
       { start: 1_000, end: 1_000 + H, cost: 1, tokens: 200, turns: 3 },
       { start: 1_000 + H, end: 1_000 + 2 * H, cost: 4, tokens: 50, turns: 3 },
     ])
@@ -168,14 +168,19 @@ describe('the spend figures', () => {
     expect(metricValue('last', pf)).toBe('—')
     expect(metricValue('last', f)).toBe('$0.25')
     // No spark in the summary: no series, rather than an empty line.
-    expect(periodFigures('30d', f, { ...sum, projects: [] } as Summary).series).toBeUndefined()
-    expect(periodScope('session')).toBe('This session')
-    expect(periodScope('30d')).toBe('30 days · all sessions')
+    expect(rangeFigures({ ...sum, projects: [] } as Summary).series).toBeUndefined()
+    // The label says whose and when, both, every time.
+    expect(spendLabel(WHOLE_SESSION)).toBe('Since start · this session')
+    expect(spendLabel({ scope: 'session', window: 'today' })).toBe('Today · this session')
+    expect(spendLabel({ scope: 'session', window: '7d' })).toBe('7 days · this session')
+    expect(spendLabel({ scope: 'all', window: '30d' })).toBe('30 days · all sessions')
+    // All sessions has no whole span: it reads today.
+    expect(spendLabel({ scope: 'all', window: 'whole' })).toBe('Today · all sessions')
     // The folded chip: whose figures they are, short enough for a 330px cockpit.
-    expect(periodChip('session')).toBe('session')
-    expect(periodChip('today')).toBe('today · all')
-    expect(periodChip('7d')).toBe('7d · all')
-    expect(periodChip('30d')).toBe('30d · all')
+    expect(periodChip(WHOLE_SESSION)).toBe('session')
+    expect(periodChip({ scope: 'session', window: '7d' })).toBe('7d · session')
+    expect(periodChip({ scope: 'all', window: 'today' })).toBe('today · all')
+    expect(periodChip({ scope: 'all', window: '30d' })).toBe('30d · all')
   })
 })
 
@@ -195,7 +200,6 @@ describe('burn rate on the chart', () => {
   })
 
   it('totals the period as every active hour’s cost over every active hour, read from the summary’s sparks', () => {
-    const f: SpendFigures = { cost: 1 }
     const sum = {
       range: '7d', cost_usd: 22, tokens_in: 0, cache_read: 0, cache_write: 0, turns: 40, tool_calls: 0, savings: { hit_rate: 0 },
       projects: [
@@ -203,14 +207,14 @@ describe('burn rate on the chart', () => {
         { project: 'b', tokens: 0, cost_usd: 9, sessions: 2, spark: { from_ms: 0, width_ms: 24 * H, cost: [0, 9], tokens: [0, 0], input: [0, 0], turns: [0, 12], active_hours: [0, 2], active_cost: [0, 9] } },
       ],
     } as unknown as Summary
-    const pf = periodFigures('7d', f, sum)
+    const pf = rangeFigures(sum)
     expect(pf.series!.bars.map((b) => [b.activeHours, b.activeCost])).toEqual([[1, 5], [2, 9]])
     expect(periodBurn(pf.series!.bars)).toBeCloseTo(14 / 3)
     expect(chartTotal('burn', pf)).toBeCloseTo(14 / 3)
     // The session's own, when its bars are too fine to carry hours.
     expect(chartTotal('burn', { activeBurn: 2.5 })).toBe(2.5)
     // An older daemon sends no active hours: no burn, never $0/h.
-    const old = periodFigures('7d', f, { ...sum, projects: sum.projects!.map((p) => ({ ...p, spark: { ...p.spark!, active_hours: undefined, active_cost: undefined } })) } as Summary)
+    const old = rangeFigures({ ...sum, projects: sum.projects!.map((p) => ({ ...p, spark: { ...p.spark!, active_hours: undefined, active_cost: undefined } })) } as Summary)
     expect(old.series!.bars[0]!.activeHours).toBeUndefined()
     expect(chartTotal('burn', old)).toBeUndefined()
   })
@@ -221,20 +225,87 @@ describe('burn rate on the chart', () => {
   })
 })
 
-describe('the period of each tab', () => {
-  it('opens every tab on its own session, and keeps a pick to the tab it was made in', () => {
+describe('the scope and period of each tab', () => {
+  it('opens every tab on its whole session, and keeps each pick to the tab it was made in', () => {
     resetSpendPrefsForTest()
-    expect(getSpendPeriod('a')).toBe('session')
-    setSpendPeriod('a', 'today')
-    expect(getSpendPeriod('a')).toBe('today')
-    expect(getSpendPeriod('b')).toBe('session')
-    setSpendPeriod('a', 'session')
-    expect(getSpendPeriod('a')).toBe('session')
+    expect(getSpendPick('a')).toBe(WHOLE_SESSION)
+    setSpendScope('a', 'all')
+    // All sessions has no whole span: the tab draws today, and its window is kept as picked.
+    expect(getSpendPick('a')).toEqual({ scope: 'all', window: 'whole' })
+    expect(shownPick(getSpendPick('a'))).toEqual({ scope: 'all', window: 'today' })
+    setSpendWindow('a', '30d')
+    expect(getSpendPick('a')).toEqual({ scope: 'all', window: '30d' })
+    // The other tabs keep theirs, both choices.
+    expect(getSpendPick('b')).toBe(WHOLE_SESSION)
+    setSpendWindow('b', '7d')
+    expect(getSpendPick('b')).toEqual({ scope: 'session', window: '7d' })
+    expect(getSpendPick('a')).toEqual({ scope: 'all', window: '30d' })
+    // Switching scope keeps the window: this session over the same 30 days.
+    setSpendScope('a', 'session')
+    expect(getSpendPick('a')).toEqual({ scope: 'session', window: '30d' })
+    // Whole is the session's alone.
+    setSpendScope('a', 'all')
+    setSpendWindow('a', 'whole')
+    expect(getSpendPick('a')).toEqual({ scope: 'all', window: '30d' })
+    // A tab back on the whole session after a trip to all sessions.
+    setSpendScope('c', 'all')
+    setSpendScope('c', 'session')
+    expect(getSpendPick('c')).toBe(WHOLE_SESSION)
     // Not stored: nothing of it reaches the viewer's saved choices.
-    setSpendPeriod('b', '7d')
-    expect(localStorage.getItem('caprock.app.cockpit.spend') ?? '').not.toMatch(/period/)
+    expect(localStorage.getItem('caprock.app.cockpit.spend') ?? '').not.toMatch(/period|scope|window/)
     resetSpendPrefsForTest()
-    expect(getSpendPeriod('b')).toBe('session')
+    expect(getSpendPick('b')).toBe(WHOLE_SESSION)
+  })
+})
+
+describe('a window of this session', () => {
+  const now = new Date(2026, 10, 19, 15, 30).getTime()
+  const tok = (inp: number, read: number) => ({ in: inp, out: 10, cache_read: read, cache_write: 0 })
+
+  it('starts at local midnight, like the daemon’s ranges', () => {
+    expect(windowStart('today', now)).toBe(new Date(2026, 10, 19).getTime())
+    expect(windowStart('7d', now)).toBe(new Date(2026, 10, 13).getTime())
+    expect(windowStart('30d', now)).toBe(new Date(2026, 9, 21).getTime())
+  })
+
+  it('sums only the calls inside it', () => {
+    const today = windowStart('today', now)
+    const calls: CallPoint[] = [
+      { id: 1, ts: today - H, cost: 5, tokens: tok(100, 900) },
+      { id: 2, ts: today + 9 * H, cost: 1, tokens: tok(100, 300) },
+      { id: 3, ts: today + 9 * H + 600_000, cost: 0.5, tokens: tok(0, 600) },
+    ]
+    const f = windowFigures(calls, today, now)
+    expect(f.empty).toBeUndefined()
+    expect(f).toMatchObject({ cost: 1.5, tokens: 1_000, turns: 2, timeMs: 600_000, last: 0.5 })
+    expect(f.cache).toBeCloseTo(90)
+    expect(f.burn?.perHour).toBeCloseTo(1.5 / (10 / 60))
+    // Its tool calls are not carried by every call: a dash.
+    expect(metricValue('tools', f)).toBe('—')
+    // The 7 days hold the call before midnight too.
+    expect(windowFigures(calls, windowStart('7d', now), now).cost).toBe(6.5)
+    expect(metricTitle('cost', f, { scope: 'session', window: 'today' })).toBe('What the session spent today, at API list price')
+  })
+
+  it('is empty, not zeros, when the session made no call in it', () => {
+    const f = windowFigures([{ id: 1, ts: windowStart('7d', now) - H, cost: 3 }], windowStart('7d', now), now)
+    expect(f).toEqual({ empty: true })
+    expect(metricValue('cost', f)).toBe('—')
+  })
+})
+
+describe('the numbers row in a narrow cockpit', () => {
+  it('draws a big figure with k, M or B and two decimals, the rest as before', () => {
+    const f = { cost: 7924.31, tokens: 13_710_000_000, turns: 182_050, tools: 999, last: 412.3 }
+    expect(metricValue('cost', f, true)).toBe('$7.92k')
+    expect(metricValue('tokens', f, true)).toBe('13.71B')
+    expect(metricValue('turns', f, true)).toBe('182.05k')
+    expect(metricValue('tools', f, true)).toBe('999')
+    expect(metricValue('last', f, true)).toBe('$412.30')
+    expect(metricValue('cost', { cost: 1_250_000 }, true)).toBe('$1.25M')
+    expect(metricValue('cost', { cost: 7924.31, unpriced: 1 }, true)).toBe('$7.92k+')
+    // Without compact, the exact figure, as everywhere else.
+    expect(metricValue('cost', f)).toBe('$7,924.31')
   })
 })
 
@@ -262,6 +333,6 @@ describe('a cost with unpriced turns', () => {
 
   it('counts a period’s unpriced turns from its summary', () => {
     const sum = { tokens_in: 0, cache_read: 0, cache_write: 0, cost_usd: 4, turns: 3, tool_calls: 0, projects: [], unpriced: { turns: 2, tokens: 9, models: ['deepseek-v9'] } } as unknown as Summary
-    expect(metricValue('cost', periodFigures('today', { cost: 0 }, sum))).toBe('$4.00+')
+    expect(metricValue('cost', rangeFigures(sum))).toBe('$4.00+')
   })
 })

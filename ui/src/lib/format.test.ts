@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basename, fmtAgo, fmtCountShort, fmtPct, fmtTokens, fmtUSD, fmtUSDk, fmtUSDShort, shortId, fmtTool } from './format'
+import { basename, fmtAgo, fmtCountCompact, fmtCountShort, fmtPct, fmtTokens, fmtUSD, fmtUSDCompact, fmtUSDk, fmtUSDShort, shortId, fmtTool } from './format'
 
 describe('format', () => {
   it('formats USD with more precision for tiny amounts', () => {
@@ -58,5 +58,27 @@ describe('short dollar figures', () => {
     expect(fmtUSDk(16817.53)).toBe('$16.818k')
     expect(fmtUSDk(1234)).toBe('$1.234k')
     expect(fmtUSDk(512.3)).toBe('$512.30')
+  })
+})
+
+describe('compact figures for a narrow cell', () => {
+  it('keeps dollars below $1,000 as they are, then k, M and B with two decimals', () => {
+    expect(fmtUSDCompact(412.3)).toBe('$412.30')
+    expect(fmtUSDCompact(999)).toBe('$999.00')
+    expect(fmtUSDCompact(0.004)).toBe('$0.0040')
+    expect(fmtUSDCompact(7924.31)).toBe('$7.92k')
+    expect(fmtUSDCompact(1_250_000)).toBe('$1.25M')
+    expect(fmtUSDCompact(3_400_000_000)).toBe('$3.40B')
+    expect(fmtUSDCompact(-7924.31)).toBe('-$7.92k')
+    // 999,999 rounds to 1000.00k: it steps up to the next unit.
+    expect(fmtUSDCompact(999_999)).toBe('$1.00M')
+    expect(fmtUSDCompact(undefined)).toBe('—')
+  })
+  it('counts to 999 in full, then k, M and B with two decimals', () => {
+    expect(fmtCountCompact(999)).toBe('999')
+    expect(fmtCountCompact(182_050)).toBe('182.05k')
+    expect(fmtCountCompact(13_710_000_000)).toBe('13.71B')
+    expect(fmtCountCompact(1_250_000)).toBe('1.25M')
+    expect(fmtCountCompact(NaN)).toBe('—')
   })
 })

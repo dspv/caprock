@@ -121,7 +121,7 @@ const statsOf = (prs: object[], cards: object[], releases: object[]) => ({ conne
 const PHASES: Phase[] = [
   { name: 'idle', line: /^Nothing new since v0\.182\.4$/, tag: 'v0.182.4', entries: 0,
     stats: statsOf([pr(939, 'chore(release): 0.182.4', 'merged', 86_500_000)], [card(939, 'released')], [rel('v0.182.4', 86_400_000, 23)]) },
-  { name: 'waiting', line: /^0\.183\.0 · 5 changes waiting · PR #941 green$/, tag: 'v0.182.4', entries: 5,
+  { name: 'waiting', line: /^0\.183\.0 · 5 changes · next: merge #941$/, tag: 'v0.182.4', entries: 5,
     stats: statsOf([pr(941, 'feat: the next batch', 'open'), pr(940, 'feat: a batch', 'merged', 1_800_000)], [card(941, 'ready', 'pass'), card(940, 'merged')], [rel('v0.182.4', 86_400_000, 23)]) },
   { name: 'release-pr', line: /^0\.183\.0 · release PR #942 · CI running$/, tag: 'v0.182.4', entries: 5,
     stats: statsOf([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', 1_800_000)], [card(942, 'open', 'running'), card(940, 'merged')], [rel('v0.182.4', 86_400_000, 23)]) },
@@ -143,11 +143,15 @@ test('photographs the Release section in each phase, folded and unfolded', async
   // The tags and changelog entries are this machine's: the stand's repository has none, so they are said here.
   await page.route(/\/v1\/work$/, async (r) => {
     const res = await r.fetch()
-    const w = await res.json() as { repos?: { root: string; remote?: string; unreleased?: object; tags?: object }[] }
+    const w = await res.json() as { repos?: { root: string; remote?: string; unreleased?: object; released?: object; tags?: object }[] }
     for (const x of w.repos ?? []) {
       x.remote = 'acme/app'
       x.tags = { last: { name: phase.tag, at: phase.tag === 'v0.183.0' ? now - 500_000 : now - 86_400_000 }, gaps: 0 }
-      x.unreleased = { ref: 'origin/master', items: Array.from({ length: phase.entries }, (_, i) => `entry ${i}`), count: phase.entries, kinds: phase.entries ? { Added: 2, Fixed: phase.entries - 2 } : {} }
+      const kind = (i: number) => (i < 2 ? 'Added' : 'Fixed')
+      x.unreleased = { ref: 'origin/master', items: Array.from({ length: phase.entries }, (_, i) => `entry ${i}`), count: phase.entries, kinds: phase.entries ? { Added: 2, Fixed: phase.entries - 2 } : {},
+        entries: Array.from({ length: phase.entries }, (_, i) => ({ text: `Entry ${i}: what changed, written for a person reading the release notes, long enough to wrap onto a second line`, scope: 'ui', kind: kind(i), source: i % 2 ? 'pr' : 'master' })) }
+      // The release's own notes once its pull request merged: the CHANGELOG's section by that version.
+      if (phase.tag === 'v0.183.0') x.released = { version: '0.183.0', count: 2, entries: [{ text: 'A feature that shipped in 0.183.0', kind: 'Added' }, { text: 'A fix that shipped in 0.183.0', kind: 'Fixed' }] }
     }
     await r.fulfill({ response: res, json: w })
   })

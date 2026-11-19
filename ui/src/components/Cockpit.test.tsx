@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   events: undefined as Event[] | undefined,
   compaction: { session_id: 's1', running: false, queued: false } as CompactionView,
   compacted: [] as string[],
+  calls: [] as unknown[],
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -36,7 +37,7 @@ vi.mock('@/lib/api', async (orig) => {
       permission: async () => ({ permission: h.permission }),
       compaction: async () => h.compaction,
       compact: async (id: string) => { h.compacted.push(id); return { sent: true, queue: { session_id: id, messages: [], waiting: 'turn' } } },
-      sessionCalls: async () => [],
+      sessionCalls: async () => h.calls,
       overlap: async () => h.overlap,
       summary: async (range: string) => {
         h.summaryAsked.push(range)
@@ -76,6 +77,7 @@ beforeEach(() => {
   h.events = undefined
   h.compaction = { session_id: 's1', running: false, queued: false }
   h.compacted = []
+  h.calls = []
   h.summaries = {}
   h.summaryAsked = []
 })
@@ -851,7 +853,7 @@ describe('the spend details', () => {
     const { unmount } = await act(async () => show(agent({ started_at: now - 72 * 60_000, worked_at: now })))
     expect(spend()).toHaveAttribute('data-spend-view', 'chart')
     expect(within(spend()).getByRole('button', { name: 'Chart' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(spend()).getByRole('group', { name: /^Spend by .*, this session$/ })).toBeInTheDocument()
+    expect(within(spend()).getByRole('group', { name: /^Spend by .*, since start · this session$/ })).toBeInTheDocument()
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
     const toggle = within(spend()).getByRole('button', { name: /^Spend$/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
@@ -891,7 +893,8 @@ describe('the spend details', () => {
     const { unmount } = await act(async () => show(agent()))
     expect(spend()).toHaveAttribute('data-spend-view', 'chart')
     // A stored period served every tab; each tab opens on its session now.
-    expect(spend()).toHaveAttribute('data-spend-period', 'session')
+    expect(spend()).toHaveAttribute('data-spend-scope', 'session')
+    expect(spend()).toHaveAttribute('data-spend-period', 'whole')
     // A pick after that holds.
     showNumbers()
     expect(stored()).toMatchObject({ view: 'numbers', v: 6 })
@@ -925,19 +928,24 @@ describe('the spend details', () => {
     await act(async () => { show(agent(), today) })
     showNumbers()
     const fig = (name: RegExp) => within(spend()).getByLabelText(name)
-    expect(fig(/^Cache hit rate, this session/)).toHaveTextContent('95%')
-    expect(within(spend()).getByRole('button', { name: 'session' })).toHaveAttribute('aria-pressed', 'true')
-    fireEvent.click(within(spend()).getByRole('button', { name: 'today' }))
+    expect(fig(/^Cache hit rate, since start · this session/)).toHaveTextContent('95%')
+    expect(within(spend()).getByRole('button', { name: 'This session' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(spend()).getByRole('button', { name: 'Since start' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    // All sessions has no whole span: it opens on today, and offers no whole.
+    expect(within(spend()).getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(spend()).queryByRole('button', { name: 'Since start' })).toBeNull()
     // Today is the summary the window already holds: no extra request. A
     // Caprock-wide figure is not the ones beside the agent, so Spent is back.
     expect(slots()).toEqual(['cost', 'tokens', 'cache'])
     expect(fig(/^Spent, today · all sessions/)).toHaveTextContent('$12.25')
     expect(fig(/^Cache hit rate, today/)).toHaveTextContent('75%')
     expect(h.summaryAsked).toEqual([])
-    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '7d' })) })
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 7 days' })) })
     expect(h.summaryAsked).toEqual(['7d'])
     expect(fig(/^Spent, 7 days/)).toHaveTextContent('$84.50')
-    expect(fig(/^Tokens, 7 days/)).toHaveTextContent('10.0k')
+    // Numbers draws 1,000 and up with two decimals and a multiplier.
+    expect(fig(/^Tokens, 7 days/)).toHaveTextContent('10.00k')
     expect(fig(/^Cache hit rate, 7 days/)).toHaveTextContent('90%')
     // The chart: the projects' sparks summed bucket by bucket, [1, 3, 3].
     fireEvent.click(within(spend()).getByRole('button', { name: 'Chart' }))
@@ -949,7 +957,7 @@ describe('the spend details', () => {
     fireEvent.keyDown(chart, { code: 'ArrowRight', key: 'ArrowRight' })
     expect(chart.querySelector('[data-spend-readout]')).toHaveTextContent('$3.00')
     expect(chart.querySelector('[data-spend-total]')).toBeNull()
-    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: '30d' })) })
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
     // No spark in the range: it says so, never an empty line.
     expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('no spend by time to draw')
     expect(within(spend()).queryByRole('group', { name: /^Spend by/ })).toBeNull()
@@ -985,7 +993,7 @@ describe('the spend details', () => {
     expect(within(menu).getByRole('menuitemradio', { name: /Last call/ })).toHaveAttribute('aria-checked', 'true')
     fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Turns/ }))
     expect(slots()).toEqual(['turns', 'time', 'cache'])
-    expect(within(spend()).getByLabelText(/^Time working, this session/)).toHaveTextContent('1h 12m')
+    expect(within(spend()).getByLabelText(/^Time working, since start · this session/)).toHaveTextContent('1h 12m')
     // Picking what another figure shows swaps the two.
     menuOf(2)
     fireEvent.click(within(spend()).getByRole('menuitemradio', { name: /Time working/ }))
@@ -1001,13 +1009,16 @@ describe('the spend details', () => {
     const two = agent({ session_id: 's2', stats: { ...agent().stats!, session_id: 's2', cost_usd: 7.5 } })
     const view = (s: SessionSummary) => <Inspector session={s} sessionId={s.session_id} hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={today} />
     const { rerender } = await act(async () => render(view(one)))
-    expect(spend()).toHaveAttribute('data-spend-period', 'session')
+    expect(spend()).toHaveAttribute('data-spend-scope', 'session')
+    expect(spend()).toHaveAttribute('data-spend-period', 'whole')
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$1.84')
-    fireEvent.click(within(spend()).getByRole('button', { name: 'today' }))
+    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    expect(spend()).toHaveAttribute('data-spend-scope', 'all')
     expect(spend()).toHaveAttribute('data-spend-period', 'today')
-    // Another tab opens on its own agent's spend, not the Caprock-wide today.
+    // Another tab opens on its own agent's spend, not every session's today.
     await act(async () => { rerender(view(two)) })
-    expect(spend()).toHaveAttribute('data-spend-period', 'session')
+    expect(spend()).toHaveAttribute('data-spend-scope', 'session')
+    expect(spend()).toHaveAttribute('data-spend-period', 'whole')
     expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$7.50')
     // Folded, the strip draws the session's own bars and says so.
     fireEvent.click(within(spend()).getByRole('button', { name: /^Spend$/ }))
@@ -1020,6 +1031,85 @@ describe('the spend details', () => {
     expect(strip().querySelector('[data-fold-period]')).toHaveTextContent(/^today · all$/)
     expect(strip()).toHaveTextContent('$12.25')
     expect(stored()).not.toHaveProperty('period')
+  })
+
+  it('reads this session over today, 7 or 30 days from its own calls, and says when a window has none', async () => {
+    const midnight = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate()).getTime()
+    const tok = { in: 100, out: 10, cache_read: 900, cache_write: 0 }
+    // One call today, one three days ago, one forty days ago.
+    h.calls = [
+      { id: 1, ts: now - 40 * 86_400_000, cost_usd: 50, tokens: tok },
+      { id: 2, ts: midnight - 3 * 86_400_000 + 3_600_000, cost_usd: 4, tokens: tok },
+      { id: 3, ts: Math.max(midnight, now - 60_000), cost_usd: 0.5, tokens: tok },
+    ]
+    h.events = []
+    await act(async () => { show(agent()) })
+    const top = () => spend().querySelector('[data-spend-top]')!
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Today' })) })
+    expect(spend()).toHaveAttribute('data-spend-scope', 'session')
+    expect(spend()).toHaveAttribute('data-spend-period', 'today')
+    // Today's own calls by the hour, the scope saying both.
+    const chart = within(spend()).getByRole('group', { name: 'Spend by 1 h, today · this session' })
+    expect(chart.querySelector('[data-spend-total]')).toHaveTextContent('$0.50')
+    expect(top()).toHaveTextContent('today · this session')
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 7 days' })) })
+    expect(within(spend()).getByRole('group', { name: 'Spend by 1 day, 7 days · this session' }).querySelectorAll('rect')).toHaveLength(7)
+    expect(spend().querySelector('[data-spend-total]')).toHaveTextContent('$4.50')
+    showNumbers()
+    const fig = (name: RegExp) => within(spend()).getByLabelText(name)
+    expect(fig(/^Spent, 7 days · this session/)).toHaveTextContent('$4.50')
+    expect(fig(/^Tokens, 7 days · this session/)).toHaveTextContent('2.00k')
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
+    expect(fig(/^Spent, 30 days · this session/)).toHaveTextContent('$4.50')
+    // The whole session is the daemon's own figure.
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Since start' })) })
+    expect(spend()).toHaveAttribute('data-spend-period', 'whole')
+    expect(spend().querySelector('[data-spend-empty]')).toBeNull()
+  })
+
+  it('says a window of the session with no calls is empty, rather than drawing zeros', async () => {
+    h.calls = [{ id: 1, ts: now - 40 * 86_400_000, cost_usd: 50 }]
+    h.events = []
+    await act(async () => { show(agent()) })
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Today' })) })
+    expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('This session made no calls today.')
+    expect(spend().querySelector('[data-spend-total]')).toBeNull()
+    showNumbers()
+    expect(spend().querySelector('[data-spend-empty]')).toHaveTextContent('This session made no calls today.')
+    expect(spend().querySelector('[data-slot]')).toBeNull()
+  })
+
+  it('keeps both choices to their tab: one on all sessions over 30 days, the other on its own today', async () => {
+    h.summaries = { '30d': { range: '30d', cost_usd: 310, tokens_in: 0, cache_read: 0, cache_write: 0, savings: { hit_rate: 0 }, projects: [] } as unknown as Summary }
+    const one = agent()
+    const two = agent({ session_id: 's2', stats: { ...agent().stats!, session_id: 's2', cost_usd: 7.5 } })
+    const view = (s: SessionSummary) => <Inspector session={s} sessionId={s.session_id} hasPermission={false} onClose={() => {}} onDetach={() => {}} summary={summary} />
+    const { rerender } = await act(async () => render(view(one)))
+    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
+    await act(async () => { rerender(view(two)) })
+    expect(spend()).toHaveAttribute('data-spend-scope', 'session')
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Today' })) })
+    expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['session', 'today'])
+    await act(async () => { rerender(view(one)) })
+    expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['all', '30d'])
+    // Back to this session, the first tab keeps its 30 days.
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'This session' })) })
+    expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['session', '30d'])
+    await act(async () => { rerender(view(two)) })
+    expect([spend().getAttribute('data-spend-scope'), spend().getAttribute('data-spend-period')]).toEqual(['session', 'today'])
+  })
+
+  it('draws a big figure with a multiplier in Numbers, the exact one on hover and for a screen reader', async () => {
+    h.summaries = { '30d': { range: '30d', cost_usd: 7924.31, tokens_in: 13_000_000_000, cache_read: 710_000_000, cache_write: 0, savings: { hit_rate: 0.05 }, projects: [] } as unknown as Summary }
+    await act(async () => { show(agent()) })
+    showNumbers()
+    fireEvent.click(within(spend()).getByRole('button', { name: 'All sessions' }))
+    await act(async () => { fireEvent.click(within(spend()).getByRole('button', { name: 'Last 30 days' })) })
+    const spent = within(spend()).getByLabelText('Spent, 30 days · all sessions: $7,924.31')
+    expect(spent).toHaveTextContent(/^\$7\.92k$/)
+    expect(spent.getAttribute('title')).toMatch(/^\$7,924\.31 · /)
+    expect(within(spend()).getByLabelText(/^Tokens, 30 days · all sessions/)).toHaveTextContent(/^13\.71B$/)
   })
 
   it('draws the chart in the flow of the block, never over it', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CIJob, CIRun, RepoStats, SessionPRLive } from './api'
 import type { BranchPR } from './branches'
+import { foreignRepo, prRepoOf, repoShort } from './ci'
 import { firstPick, jobFamily, jobGrid, pctText, spanText, statsWords, tabRows, vsMedianText } from './prstats'
 
 const job = (id: number, name: string, os: string, conclusion = 'success', status = 'completed'): CIJob =>
@@ -79,5 +80,43 @@ describe('the Pipeline page', () => {
     expect(firstPick(all, session)).toBe(9)
     expect(firstPick(tabRows('repo', [], repo), [])).toBe(11)
     expect(firstPick([], [])).toBeUndefined()
+  })
+
+  // A session in dspv/caprock opened cybrixcc/caprock-web #247 (2026-11-19).
+  it('keeps a pull request the session opened in another repository out of the repository’s scopes, matching by repository and number', () => {
+    const live = (n: number, repo: string) => ({ number: n, url: `https://github.com/${repo}/pull/${n}`, repo, title: `t${n}`, state: 'open', draft: false, checks: { state: 'pass', passed: 1, failed: 0, pending: 0, items: [] } })
+    const session = [
+      { session_id: 's', url: 'https://github.com/c/web/pull/247', number: 247, last_at: 2, live: live(247, 'c/web') },
+      // Read from its address alone: GitHub not read.
+      { session_id: 's', url: 'https://github.com/c/web/pull/12', number: 12, last_at: 1 },
+      { session_id: 's', url: 'https://github.com/a/b/pull/9', number: 9, last_at: 0, live: live(9, 'a/b') },
+    ] as unknown as SessionPRLive[]
+    const repo: BranchPR[] = [
+      { number: 247, url: 'https://github.com/a/b/pull/247', title: 'own 247', state: 'open' },
+      { number: 9, url: 'https://github.com/a/b/pull/9', title: 't9', state: 'open' },
+    ]
+    // Its own scope keeps them all, this repository's open one first, the others marked.
+    const mineRows = tabRows('session', session, repo, 'a/b')
+    expect(mineRows.map((r) => [r.number, r.foreign])).toEqual([[9, undefined], [247, 'c/web'], [12, 'c/web']])
+    // The repository's #247 is not the session's.
+    const all = tabRows('repo', session, repo, 'a/b')
+    expect(all.map((r) => r.number)).toEqual([247, 9])
+    expect(all.find((r) => r.number === 247)?.mine).toBeUndefined()
+    expect(all.find((r) => r.number === 9)?.mine?.number).toBe(9)
+    expect(all.some((r) => r.foreign)).toBe(false)
+    expect(tabRows('open', session, repo, 'a/b').map((r) => r.number)).toEqual([247, 9])
+    expect(firstPick(all, session, 'a/b')).toBe(9)
+    // Without the repository's name nothing is foreign: as before.
+    expect(tabRows('session', session, repo).some((r) => r.foreign)).toBe(false)
+  })
+
+  it('reads a pull request’s repository from GitHub’s answer or its address', () => {
+    expect(prRepoOf({ url: 'https://github.com/cybrixcc/caprock-web/pull/247' })).toBe('cybrixcc/caprock-web')
+    expect(prRepoOf({ url: 'x', live: { repo: 'dspv/caprock' } })).toBe('dspv/caprock')
+    expect(prRepoOf({ url: 'not a pull request' })).toBeUndefined()
+    expect(foreignRepo({ url: 'https://github.com/cybrixcc/caprock-web/pull/247' }, 'dspv/caprock')).toBe('cybrixcc/caprock-web')
+    expect(foreignRepo({ url: 'https://github.com/DSPV/Caprock/pull/9' }, 'dspv/caprock')).toBeUndefined()
+    expect(foreignRepo({ url: 'https://github.com/cybrixcc/caprock-web/pull/247' }, undefined)).toBeUndefined()
+    expect(repoShort('cybrixcc/caprock-web')).toBe('caprock-web')
   })
 })

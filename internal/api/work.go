@@ -136,14 +136,18 @@ type WorkRepo struct {
 	// Live counts its live sessions.
 	Live       int             `json:"live"`
 	Unreleased *WorkUnreleased `json:"unreleased,omitempty"`
-	Tags       *WorkTags       `json:"tags,omitempty"`
+	// Released is the newest released section of the CHANGELOG on the
+	// remote's default branch: the notes of the release just cut.
+	Released *WorkReleased `json:"released,omitempty"`
+	Tags     *WorkTags     `json:"tags,omitempty"`
 	// AheadOfTag is how many commits the default branch has past the last
 	// tag, as of the last fetch.
 	AheadOfTag *int `json:"ahead_of_tag,omitempty"`
 }
 
 // WorkUnreleased is the CHANGELOG's [Unreleased] section on the remote's
-// default branch, as of the last fetch.
+// default branch, as of the last fetch, and the changelog fragments there
+// and on the open batch pull request's branch.
 type WorkUnreleased struct {
 	// Ref is the branch it was read from, "origin/main".
 	Ref string `json:"ref"`
@@ -156,6 +160,43 @@ type WorkUnreleased struct {
 	// the `### ` heading in the section, a fragment's `kind:`. An entry of
 	// no kind counts in Count only. Absent when none has a kind.
 	Kinds map[string]int `json:"kinds,omitempty"`
+	// Entries are the same entries whole, in plain words, at most 30, in
+	// Items' order: the right panel's release notes.
+	Entries []WorkEntry `json:"entries,omitempty"`
+	// Via is the open batch pull request whose branch's fragments were
+	// added; absent when none was read.
+	Via *WorkVia `json:"via,omitempty"`
+}
+
+// WorkEntry is one changelog entry as release notes say it.
+type WorkEntry struct {
+	// Text is the entry whole, its `**scope:**` taken off and markdown
+	// emphasis dropped, at most 280 characters.
+	Text  string `json:"text"`
+	Scope string `json:"scope,omitempty"`
+	// Kind is Added, Changed, Deprecated, Removed, Fixed or Security;
+	// absent when none is said.
+	Kind string `json:"kind,omitempty"`
+	// Source: "master" (the default branch, whatever its name) or "pr" (the
+	// batch pull request's branch alone).
+	Source string `json:"source,omitempty"`
+}
+
+// WorkVia is the batch pull request the unreleased entries were also read
+// from: its number, head branch and that branch's commit as the clone knows
+// it.
+type WorkVia struct {
+	Number int    `json:"number"`
+	Head   string `json:"head"`
+	SHA    string `json:"sha"`
+}
+
+// WorkReleased is the newest released section of the CHANGELOG.
+type WorkReleased struct {
+	// Version is its bracketed name, "0.183.0".
+	Version string      `json:"version"`
+	Entries []WorkEntry `json:"entries"`
+	Count   int         `json:"count"`
 }
 
 // WorkTags is the newest tags, read locally.

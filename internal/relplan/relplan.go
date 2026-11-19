@@ -16,6 +16,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,7 +52,29 @@ type Unreleased struct {
 	// alone. Nil when no bullet has a kind. The release plan predicts the
 	// next version from it: an Added entry is a minor release.
 	Kinds map[string]int
+	// Entries are the same bullets whole, at most MaxItems: the text with
+	// its continuation lines, in plain words (Plain), its scope and kind.
+	// The right panel's release notes draw them.
+	Entries []Entry
 }
+
+// Entry is one changelog bullet as release notes say it.
+type Entry struct {
+	// Text is the bullet whole, continuation lines joined, the leading
+	// `**scope:**` taken off and markdown emphasis dropped; at most
+	// EntryRunes runes.
+	Text string
+	// Scope is the `**scope:**` the bullet starts with, "" without one.
+	Scope string
+	// Kind is its Keep a Changelog kind, "" when none is said.
+	Kind string
+	// File is the fragment file it came from (base name), "" for a
+	// CHANGELOG bullet.
+	File string
+}
+
+// EntryRunes bounds an entry's text: release notes say it in two lines.
+const EntryRunes = 280
 
 // Kinds are Keep a Changelog's six kinds, the ones Unreleased.Kinds counts.
 var Kinds = []string{"Added", "Changed", "Deprecated", "Removed", "Fixed", "Security"}
@@ -67,11 +91,14 @@ func kindOf(s string) string {
 	return ""
 }
 
-// add counts one bullet into u, under kind when it has one.
-func (u *Unreleased) add(item, kind string) {
+// add counts one bullet into u, under kind when it has one: item is its
+// first line, whole is the bullet with its continuation lines.
+func (u *Unreleased) add(item, whole, kind, file string) {
 	u.Count++
 	if len(u.Items) < MaxItems {
 		u.Items = append(u.Items, item)
+		scope, text := Plain(whole)
+		u.Entries = append(u.Entries, Entry{Text: text, Scope: scope, Kind: kind, File: file})
 	}
 	if kind != "" {
 		if u.Kinds == nil {
@@ -87,8 +114,44 @@ func (u *Unreleased) add(item, kind string) {
 // …"), and CRLF line ends read as LF.
 func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 	var u Unreleased
+	lines, found := section(changelog, func(h string) bool {
+		return strings.HasPrefix(strings.ToLower(h), "[unreleased]")
+	})
+	for _, b := range bullets(lines) {
+		u.add(b.first, b.whole, b.kind, "")
+	}
+	return u, found
+}
+
+// ParseRelease reads the newest released section of a Keep a Changelog
+// file: the first `## [x.y.z]` heading that is not [Unreleased]. version is
+// its bracketed name ("0.183.0"); ok is false when there is none.
+func ParseRelease(changelog []byte) (version string, u Unreleased, ok bool) {
+	lines, found := section(changelog, func(h string) bool {
+		if !strings.HasPrefix(h, "[") || strings.HasPrefix(strings.ToLower(h), "[unreleased]") {
+			return false
+		}
+		end := strings.IndexByte(h, ']')
+		if end < 2 {
+			return false
+		}
+		version = h[1:end]
+		return true
+	})
+	if !found {
+		return "", Unreleased{}, false
+	}
+	for _, b := range bullets(lines) {
+		u.add(b.first, b.whole, b.kind, "")
+	}
+	return version, u, true
+}
+
+// section is the lines under the first `## ` heading match takes (its text
+// after "## ", trimmed), up to the next `## `; CRLF read as LF.
+func section(changelog []byte, match func(heading string) bool) ([]string, bool) {
+	var out []string
 	in, found := false, false
-	kind := ""
 	sc := bufio.NewScanner(bytes.NewReader(changelog))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
@@ -97,31 +160,82 @@ func ParseUnreleased(changelog []byte) (Unreleased, bool) {
 			if in {
 				break
 			}
-			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(line[3:])), "[unreleased]") {
+			if match(strings.TrimSpace(line[3:])) {
 				in, found = true, true
 			}
 			continue
 		}
-		if !in {
-			continue
+		if in {
+			out = append(out, line)
 		}
-		if h, ok := strings.CutPrefix(line, "### "); ok {
-			kind = kindOf(h)
-			continue
-		}
-		// A top-level bullet starts at the first column; an indented one is
-		// nested under the one before it, and anything else is a heading or
-		// a continuation line.
-		if !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ") {
-			continue
-		}
-		text := strings.TrimSpace(line[2:])
-		if text == "" {
-			continue
-		}
-		u.add(text, kind)
 	}
-	return u, found
+	return out, found
+}
+
+type bullet struct {
+	first, whole, kind string
+}
+
+// bullets are the top-level bullets in lines: a `### ` heading sets the kind
+// of those under it; a top-level bullet starts at the first column, its
+// indented continuation lines are part of it, and a nested bullet (and what
+// follows it) is not.
+func bullets(lines []string) []bullet {
+	var out []bullet
+	kind := ""
+	open := false // the last bullet may still take continuation lines
+	for _, line := range lines {
+		if h, ok := strings.CutPrefix(line, "### "); ok {
+			kind, open = kindOf(h), false
+			continue
+		}
+		if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") {
+			text := strings.TrimSpace(line[2:])
+			if text == "" {
+				open = false
+				continue
+			}
+			out = append(out, bullet{first: text, whole: text, kind: kind})
+			open = true
+			continue
+		}
+		t := strings.TrimSpace(line)
+		switch {
+		case t == "" || strings.HasPrefix(line, "#"):
+			open = false
+		case strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* "):
+			open = false // a nested bullet
+		case open && line != t:
+			out[len(out)-1].whole += " " + t
+		}
+	}
+	return out
+}
+
+var (
+	scopeRe  = regexp.MustCompile(`^\*\*([^*]+?):\*\*\s*`)
+	strongRe = regexp.MustCompile(`\*\*([^*]+?)\*\*`)
+	emRe     = regexp.MustCompile(`(^|[^\w*])\*([^*\s][^*]*?)\*`)
+	linkRe   = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+)
+
+// Plain is a changelog bullet in plain words: its leading `**scope:**` taken
+// off and returned apart, bold, italics, code ticks and link targets dropped
+// (a link keeps its words), cut to EntryRunes runes with an ellipsis.
+func Plain(s string) (scope, text string) {
+	s = strings.TrimSpace(s)
+	if m := scopeRe.FindStringSubmatch(s); m != nil {
+		scope, s = strings.TrimSpace(m[1]), s[len(m[0]):]
+	}
+	s = linkRe.ReplaceAllString(s, "$1")
+	s = strongRe.ReplaceAllString(s, "$1")
+	s = emRe.ReplaceAllString(s, "$1$2")
+	s = strings.ReplaceAll(s, "`", "")
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > EntryRunes {
+		s = strings.TrimSpace(string(r[:EntryRunes-1])) + "…"
+	}
+	return scope, s
 }
 
 // FragmentsDir is where a repository that keeps one file per change holds
@@ -134,6 +248,12 @@ const FragmentsDir = "changes/unreleased"
 // `kind:` and skipped, and a file without a closing `---` is read as bullets
 // alone, of no kind.
 func AddFragment(u *Unreleased, fragment []byte) {
+	AddFragmentFile(u, "", fragment)
+}
+
+// AddFragmentFile is AddFragment for a fragment named file, the name its
+// entries carry.
+func AddFragmentFile(u *Unreleased, file string, fragment []byte) {
 	text := strings.ReplaceAll(string(fragment), "\r\n", "\n")
 	kind := ""
 	if rest, ok := strings.CutPrefix(text, "---\n"); ok {
@@ -146,15 +266,9 @@ func AddFragment(u *Unreleased, fragment []byte) {
 			}
 		}
 	}
-	for _, line := range strings.Split(text, "\n") {
-		if !strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "* ") {
-			continue
-		}
-		item := strings.TrimSpace(line[2:])
-		if item == "" {
-			continue
-		}
-		u.add(item, kind)
+	for _, b := range bullets(strings.Split(text, "\n")) {
+		// A fragment has no headings: its kind is the front matter's.
+		u.add(b.first, b.whole, kind, file)
 	}
 }
 
@@ -242,10 +356,26 @@ func Changelog(ctx context.Context, dir, rev string) ([]byte, bool) {
 	return out, true
 }
 
-// Fragments is the text of every `.md` file in FragmentsDir at rev, in file
-// name order, read with two git processes however many there are. ok is
-// false when rev has no such directory.
-func Fragments(ctx context.Context, dir, rev string) ([][]byte, bool) {
+// Fragment is one changelog fragment file: its base name and its text.
+type Fragment struct {
+	Name string
+	Body []byte
+}
+
+// Fragments is every `.md` file in FragmentsDir at rev, in file name order,
+// read with two git processes however many there are. ok is false when rev
+// has no such directory.
+func Fragments(ctx context.Context, dir, rev string) ([]Fragment, bool) {
+	paths, ok := FragmentNames(ctx, dir, rev)
+	if !ok || len(paths) == 0 {
+		return nil, ok
+	}
+	return ReadFragments(ctx, dir, rev, paths)
+}
+
+// FragmentNames is the `.md` files in FragmentsDir at rev, as paths from the
+// repository's root, sorted. ok is false when rev has no such directory.
+func FragmentNames(ctx context.Context, dir, rev string) ([]string, bool) {
 	out, err := runRaw(ctx, dir, "ls-tree", "-z", "--name-only", rev, FragmentsDir+"/")
 	if err != nil {
 		return nil, false
@@ -256,10 +386,16 @@ func Fragments(ctx context.Context, dir, rev string) ([][]byte, bool) {
 			paths = append(paths, p)
 		}
 	}
-	if len(paths) == 0 {
-		return nil, len(out) > 0
-	}
 	sort.Strings(paths)
+	return paths, len(out) > 0
+}
+
+// ReadFragments reads the files at paths (FragmentNames') at rev with one
+// `git cat-file --batch`. A path git cannot find is left out.
+func ReadFragments(ctx context.Context, dir, rev string, paths []string) ([]Fragment, bool) {
+	if len(paths) == 0 {
+		return nil, true
+	}
 	var in strings.Builder
 	for _, p := range paths {
 		in.WriteString(rev + ":" + p + "\n")
@@ -273,14 +409,33 @@ func Fragments(ctx context.Context, dir, rev string) ([][]byte, bool) {
 	if err := cmd.Run(); err != nil {
 		return nil, false
 	}
-	return parseBatch(buf.Bytes()), true
+	return parseBatch(buf.Bytes(), paths), true
 }
 
-// parseBatch splits `git cat-file --batch` output into the blobs' contents:
-// "<sha> blob <size>\n<content>\n" each; a "missing" line is skipped.
-func parseBatch(b []byte) [][]byte {
-	var blobs [][]byte
-	for len(b) > 0 {
+// RemoteBranch is the commit of origin/<branch> as this clone knows it;
+// ok is false when the clone has no such remote-tracking branch. Nothing is
+// fetched.
+func RemoteBranch(ctx context.Context, dir, branch string) (string, bool) {
+	if branch == "" || strings.HasPrefix(branch, "-") {
+		return "", false
+	}
+	sha, err := run(ctx, dir, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+branch+"^{commit}")
+	return sha, err == nil && sha != ""
+}
+
+// MergeBase is the best common ancestor of a and b; ok is false when git
+// cannot say.
+func MergeBase(ctx context.Context, dir, a, b string) (string, bool) {
+	sha, err := run(ctx, dir, "merge-base", a, b)
+	return sha, err == nil && sha != ""
+}
+
+// parseBatch splits `git cat-file --batch` output into the blobs, each
+// named after the path it was asked for, in order: "<sha> blob
+// <size>\n<content>\n" each; a "missing" answer skips its path.
+func parseBatch(b []byte, paths []string) []Fragment {
+	var out []Fragment
+	for i := 0; len(b) > 0 && i < len(paths); i++ {
 		nl := bytes.IndexByte(b, '\n')
 		if nl < 0 {
 			break
@@ -294,13 +449,13 @@ func parseBatch(b []byte) [][]byte {
 		if err != nil || n > len(b) {
 			break
 		}
-		blobs = append(blobs, b[:n])
+		out = append(out, Fragment{Name: path.Base(paths[i]), Body: b[:n]})
 		b = b[n:]
 		if len(b) > 0 && b[0] == '\n' {
 			b = b[1:]
 		}
 	}
-	return blobs
+	return out
 }
 
 // Tags is the repository's newest TagsRead tags, newest first.

@@ -518,4 +518,43 @@ describe('the cockpit’s CI block', () => {
     // 4 minutes as of the read, not 11 hours and growing.
     expect(document.querySelector('[data-cockpit-ci-ring]')).toHaveTextContent('1/2 · 4m 00s')
   })
+
+  // A session in dspv/caprock opened cybrixcc/caprock-web #247 with `gh pr
+  // create` run there (2026-11-19): the block read "CI #247" as this
+  // repository's own.
+  describe('a pull request the session opened in another repository', () => {
+    const web = (n: number, checks: object) => ({ ...row(n, live(n, checks, { url: `https://github.com/c/web/pull/${n}`, repo: 'c/web' })), url: `https://github.com/c/web/pull/${n}` })
+    const keep = (prs: object[]) => {
+      writeDeck('prs:s1', { connected: true, prs })
+      writeDeck('stats:s1', { connected: true, repo: 'a/b', fetched_at: now, read_at: now, prs: [] })
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })))
+    }
+    it('leads only when this repository has none open', () => {
+      keep([web(247, RUNNING), row(9, live(9, PASSED))])
+      localStorage.setItem('caprock.cockpit.ciView', 'ring')
+      render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+      const ring = document.querySelector('[data-cockpit-ci-ring]')!
+      expect(ring).toHaveTextContent('1/1')
+      expect(ring).toHaveTextContent('#9')
+      expect(ring).not.toHaveTextContent(/web|#247/)
+    })
+    it('is labelled with its repository’s name before the number, the whole owner/name on hover', () => {
+      keep([web(247, RUNNING)])
+      localStorage.setItem('caprock.cockpit.ciView', 'ring')
+      render(<CockpitCI sessionId="s1" onOpen={() => {}} />)
+      expect(document.querySelector('[data-cockpit-ci-ring]')).toHaveTextContent('web #247')
+      expect(screen.getByText('web #247')).toHaveAttribute('title', 'c/web')
+    })
+    it('folded, says its repository on the line', () => {
+      keep([web(247, RUNNING)])
+      render(
+        <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+          <CockpitCI sessionId="s1" onOpen={() => {}} />
+        </FoldCtx.Provider>,
+      )
+      const pr = document.querySelector('[data-cockpit-ci-fold-pr="247"]')!
+      expect(pr.querySelector('[data-cockpit-ci-fold-repo="c/web"]')).toHaveTextContent(/^web #247$/)
+      expect(pr.getAttribute('title')).toMatch(/^c\/web #247: this session’s pull request in another repository/)
+    })
+  })
 })

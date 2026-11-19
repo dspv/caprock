@@ -27,7 +27,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { api, type Event } from '@/lib/api'
-import { barLabel, barLabelShort, callsFromEvents, callsFromSeries, mergeCalls, stepText, timeBars, topTools, type CallPoint } from '@/lib/scrub'
+import { barLabel, barLabelShort, callsFromEvents, callsFromSeries, mergeCalls, stepText, timeBars, topTools, windowBars, type CallPoint, type TimeBar } from '@/lib/scrub'
 import { CHART_METRICS, barCarries, barValue, chartValueText, periodBurn, type ChartMetric, type CostNote, type SpendBar } from '@/lib/spendview'
 import { barPace, paceLabel, paceOf, paceSentence, paceTitle, type Pace, type Usual } from '@/lib/usual'
 
@@ -95,7 +95,7 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   now: number
   /** The period's own figure for the metric, on the top line; undefined leaves it out. */
   total?: number
-  /** Whose money and when: "this session", "7 days · all sessions". */
+  /** Whose money and when: "since start · this session", "today · this session", "7 days · all sessions". */
   scope: string
   metric?: ChartMetric
   /** The ▾ that picks the metric, drawn after the total at rest. */
@@ -213,40 +213,64 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   )
 }
 
+/** A window the session's bars cover instead of its calls' own span: [from, to], by hour or by day. */
+export interface BarWindow {
+  from: number
+  to: number
+  unit: 'hour' | 'day'
+}
+
+/** Time bars as the chart draws them, with what each stretch's calls did. */
+function chartBars(bars: readonly TimeBar[]): ChartBar[] {
+  return bars.map((b): ChartBar => ({
+    start: b.start, end: b.end, cost: b.cost, tokens: b.tokens, turns: b.calls,
+    ...(b.activeHours !== undefined ? { activeHours: b.activeHours, activeCost: b.activeCost } : {}),
+    detail: b.calls === 0 ? 'nothing ran' : [`${b.calls} ${b.calls === 1 ? 'call' : 'calls'}`, topTools(b)].filter(Boolean).join(' · '),
+  }))
+}
+
 /**
  * The session's bars by time. Its calls are read in full once per session;
  * the held events add what came since. Empty until there is a call. For
  * burn rate the bars are an hour at the finest, since the rate is per
- * active hour. `enabled` false reads nothing: the Numbers view has no bars.
+ * active hour. `enabled` false reads nothing: the Numbers view of the whole
+ * session has no bars. With `win`, the bars cover that window (today by
+ * hour, 7 or 30 days by day) and hold only the calls inside it. `calls` is
+ * every call read, for the window's figures; `loaded` is false until the
+ * full series has answered (or failed, on an older daemon).
  */
-export function useSessionBars(sessionId: string, events: readonly Event[], metric: ChartMetric = 'cost', enabled = true): { step: number; bars: ChartBar[]; burn?: number } {
+export function useSessionBars(sessionId: string, events: readonly Event[], metric: ChartMetric = 'cost', enabled = true, win?: BarWindow): { step: number; bars: ChartBar[]; burn?: number; calls: CallPoint[]; loaded: boolean } {
   const held = useMemo(() => (enabled ? callsFromEvents(events) : []), [events, enabled])
-  const [series, setSeries] = useState<CallPoint[] | undefined>(undefined)
+  const [series, setSeries] = useState<{ id: string; calls?: CallPoint[] } | undefined>(undefined)
   useEffect(() => {
     if (!enabled) return
     let alive = true
     setSeries(undefined)
     api.sessionCalls(sessionId)
-      .then((list) => { if (alive && Array.isArray(list)) setSeries(callsFromSeries(list)) })
-      .catch(() => { /* an older daemon: the held calls are what there is */ })
+      .then((list) => { if (alive) setSeries({ id: sessionId, calls: Array.isArray(list) ? callsFromSeries(list) : undefined }) })
+      .catch(() => { if (alive) setSeries({ id: sessionId }) /* an older daemon: the held calls are what there is */ })
     return () => { alive = false }
   }, [sessionId, enabled])
-  const calls = useMemo(() => (series ? mergeCalls(series, held) : held), [series, held])
+  const own = series?.id === sessionId ? series : undefined
+  const calls = useMemo(() => (own?.calls ? mergeCalls(own.calls, held) : held), [own, held])
   const minStep = metric === 'burn' ? 60 : 0
+  const from = win?.from, to = win?.to, unit = win?.unit
   return useMemo(() => {
+    if (from !== undefined && to !== undefined && unit) {
+      const t = windowBars(calls, from, to, unit)
+      return { step: t.step, bars: chartBars(t.bars), burn: periodBurn(t.bars), calls, loaded: own !== undefined }
+    }
     const t = timeBars(calls, minStep)
     return {
       step: t.step,
       // The session's own dollars per active hour, for the menu and the
       // folded strip, whatever the bars' step: hours, however they are drawn.
       burn: periodBurn(minStep >= 60 ? t.bars : timeBars(calls, 60).bars),
-      bars: t.bars.map((b): ChartBar => ({
-        start: b.start, end: b.end, cost: b.cost, tokens: b.tokens, turns: b.calls,
-        ...(b.activeHours !== undefined ? { activeHours: b.activeHours, activeCost: b.activeCost } : {}),
-        detail: b.calls === 0 ? 'nothing ran' : [`${b.calls} ${b.calls === 1 ? 'call' : 'calls'}`, topTools(b)].filter(Boolean).join(' · '),
-      })),
+      bars: chartBars(t.bars),
+      calls,
+      loaded: own !== undefined,
     }
-  }, [calls, minStep])
+  }, [calls, minStep, from, to, unit, own])
 }
 
 /** The session's chart. */
@@ -258,12 +282,14 @@ export function SpendOverTime({ sessionId, events, now, total, metric = 'cost', 
 }
 
 /** The session's chart from bars already read: "No priced calls yet." until there are some. */
-export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost }: {
+export function SessionChart({ sessionId, bars, step, now, total, metric = 'cost', chooser, usual, cost, scope = 'since start · this session' }: {
   sessionId: string; bars: readonly ChartBar[]; step: number; now: number; total?: number; metric?: ChartMetric; chooser?: ReactNode; usual?: Usual; cost?: CostNote
+  /** Whose and when, lower case: "since start · this session", "today · this session". */
+  scope?: string
 }) {
   // A session whose every turn ran unpriced has no priced call, and says why.
   if (bars.length === 0 && cost?.state !== 'unknown') {
     return <p id={`spend-time-${sessionId}`} data-spend-time data-spend-empty className="text-[12px] text-fg-muted">No priced calls yet.</p>
   }
-  return <SpendChart id={`spend-time-${sessionId}`} bars={bars} step={step} now={now} total={total} scope="this session" metric={metric} chooser={chooser} usual={usual} cost={cost} />
+  return <SpendChart id={`spend-time-${sessionId}`} bars={bars} step={step} now={now} total={total} scope={scope} metric={metric} chooser={chooser} usual={usual} cost={cost} />
 }
