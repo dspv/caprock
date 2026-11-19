@@ -860,8 +860,9 @@ takes the pasted link and lists the steps for the other computer; with no
 computer linked yet, the sidebar's **+ Add a machine** opens it. Once a
 computer is allowed, the sidebar lists the sessions running on it, tagged by
 its name, and opens one — its conversation and its terminal — through this
-Caprock. Starting a session there from the app comes next; for now start it
-on that computer, or over SSH.
+Caprock. **New agent** starts one there too: pick the computer, a folder on
+it, the agent and a first message; it runs there and opens here
+([docs/machines.md](docs/machines.md)).
 
 An allowed computer can start, type into and stop sessions there, open shells
 and run tasks — never that computer's settings, pairing, updates or the
