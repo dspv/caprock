@@ -317,7 +317,7 @@ function idleStrip(s: ReleaseStatus, out: boolean): StripStage[] {
  * The words beside the right panel's stage dots (owner, 2026-11-19, variant
  * A, translated: "dots, one word — looks more logical"): only the stage it
  * is at is named, with what was read of it — *Merged · waiting to merge*,
- * *Release PR #952 · CI 1/3*, *Tagged · waiting for v0.184.1*, *Building ·
+ * *Release PR #952 · CI 1/3 systems*, *Tagged · waiting for v0.184.1*, *Building ·
  * 12 of 23 files*, *Published · 5 min ago*. `fail` when that stage failed
  * (the dot and the words red). With no stage current (every knowable one
  * done), the last one done, alone.
@@ -329,7 +329,12 @@ export interface StageWords {
   name: string
   text: string
   tone: 'fail' | 'ok' | 'pending'
+  /** Its hover when the stage's own title would not explain the words (the OS groups behind *CI 1/3 systems*). */
+  title?: string
 }
+
+/** The OS groups in the order the hover names them. */
+const WORDS_OS: readonly { os: string; label: string }[] = [{ os: 'macos', label: 'macOS' }, { os: 'windows', label: 'Windows' }, { os: 'linux', label: 'Linux' }]
 
 export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number }): StageWords | undefined {
   let i = strip.findIndex((x) => x.state === 'current')
@@ -341,7 +346,7 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
   }
   const x = strip[i]!
   const tone: StageWords['tone'] = x.tone === 'fail' ? 'fail' : x.tone === 'ok' ? 'ok' : 'pending'
-  const say = (detail: string, name = x.text) => ({ key: x.key, index: i + 1, name: x.text, text: detail ? `${name} · ${detail}` : name, tone })
+  const say = (detail: string, name = x.text, title?: string): StageWords => ({ key: x.key, index: i + 1, name: x.text, text: detail ? `${name} · ${detail}` : name, tone, ...(title ? { title } : {}) })
   const v = s.version ? `v${s.version}` : 'the next version'
   const at = (k: ReleaseStageKey) => s.stages.find((y) => y.key === k)
   switch (x.key) {
@@ -349,14 +354,19 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
       // The batch pull request's number and checks are the via line's, said once.
       return say('waiting to merge')
     case 'pr': {
-      if (!s.pr) return say('none open yet')
+      if (!s.pr) return say('not opened yet')
       const name = `Release PR #${s.pr.number}`
       if (at('pr')?.state === 'current') return say('draft', name)
       const ci = at('ci')
       if (ci?.tone === 'fail') return say('CI red', name)
       if (ci?.tone === 'pending') {
         const os = o.cards?.find((c) => c.number === s.pr!.number)?.os ?? []
-        return say(os.length ? `CI ${os.filter((y) => y.state === 'pass').length}/${os.length}` : 'CI running', name)
+        if (!os.length) return say('CI running', name)
+        // Owner, 2026-11-19: a bare *CI 1/3* read like a count of checks; it counts operating systems.
+        const passed = os.filter((y) => y.state === 'pass').length
+        const names = WORDS_OS.filter((w) => os.some((y) => y.os === w.os)).map((w) => w.label).join(', ')
+        const title = `${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'} (${names}) passed${passed < os.length ? '; the rest are running' : ''}.`
+        return say(`CI ${passed}/${os.length} systems`, name, title)
       }
       return say(ci?.state === 'done' ? 'CI green' : 'CI not read', name)
     }
@@ -371,7 +381,7 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
     }
     case 'published':
       if (o.out && s.phase === 'idle' && s.last) return say(agoText(o.now - s.last.at))
-      return say(/a draft\./.test(x.title) ? 'a draft' : 'not yet')
+      return say(/a draft\./.test(x.title) ? 'draft only, not public' : 'not yet')
   }
 }
 

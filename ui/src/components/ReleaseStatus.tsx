@@ -79,7 +79,7 @@ const WORDS_NOW: Record<StageWords['tone'], string> = { pending: 'text-warn', fa
  */
 export function ReleaseStrip({ status: s, version, out, cards, now = Date.now() }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
-  /** The board's cards: the release pull request's checks per OS, for *CI 1/3*. */
+  /** The board's cards: the release pull request's checks per OS, for *CI 1/3 systems*. */
   cards?: readonly BoardCard[]
   now?: number
 }) {
@@ -107,7 +107,7 @@ export function ReleaseStrip({ status: s, version, out, cards, now = Date.now() 
           )
         })}
       </span>
-      <span data-release-stage-words title={stages[at]?.title} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? WORDS_NOW[w.tone] : 'text-fg-muted'}`}>{w.text}</span>
+      <span data-release-stage-words title={w.title ?? stages[at]?.title} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? WORDS_NOW[w.tone] : 'text-fg-muted'}`}>{w.text}</span>
     </div>
   )
 }
