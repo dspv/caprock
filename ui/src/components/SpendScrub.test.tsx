@@ -21,7 +21,7 @@ describe('the spend by time', () => {
       { id: 3, ts: now - 60_000, cost_usd: 0.25, tools: [{ tool: 'Bash' }] },
     ]
     await act(async () => { render(<SpendOverTime sessionId="s1" events={[ev(2, 2 * 60_000, 0.5), ev(3, 60_000, 0.25)]} now={now} total={2.75} />) })
-    const box = screen.getByRole('group', { name: /^Spend by .*, this session$/ })
+    const box = screen.getByRole('group', { name: /^Spend by .*, whole session$/ })
     expect(box.className).not.toMatch(/\b(absolute|fixed)\b/)
     // At rest: the total, and no stretch read or singled out.
     expect(box.querySelector('[data-spend-total]')).toHaveTextContent('$2.75')

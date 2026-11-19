@@ -81,6 +81,39 @@ export function fmtUSDk(v: number | undefined | null): string {
   return `${v < 0 ? '-' : ''}$${(Math.abs(v) / 1000).toFixed(3)}k`
 }
 
+/**
+ * k, M or B with two decimals from 1,000 up: 7.92k, 1.25M, 13.71B; below
+ * 1,000 undefined, for the caller's own precision. A value that rounds to
+ * 1000.00 of a unit steps up to the next (999,999 → 1.00M).
+ */
+function compactUnit(v: number): string | undefined {
+  const abs = Math.abs(v)
+  if (abs < 1_000) return undefined
+  const units = [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']] as const
+  let i = abs >= 1e9 ? 2 : abs >= 1e6 ? 1 : 0
+  while (i < units.length - 1 && Number((abs / units[i]![0]).toFixed(2)) >= 1000) i++
+  const [div, unit] = units[i]!
+  return `${v < 0 ? '-' : ''}${(abs / div).toFixed(2)}${unit}`
+}
+
+/**
+ * A big figure in a narrow cell (the cockpit's Spend Numbers, owner,
+ * 2026-11-19: "use multipliers k, M… up to two decimals"): $412.30 below
+ * $1,000, then $7.92k, $1.25M, $3.40B. The exact sum goes in its title.
+ */
+export function fmtUSDCompact(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  const c = compactUnit(v as number)
+  if (c === undefined) return fmtUSD(v)
+  return c.startsWith('-') ? `-$${c.slice(1)}` : `$${c}`
+}
+
+/** A count in a narrow cell: 999, then 182.05k, 1.25M, 13.71B. */
+export function fmtCountCompact(v: number | undefined | null): string {
+  if (finite(v) === null) return '—'
+  return compactUnit(v as number) ?? int.format(Math.round(v as number))
+}
+
 function trim(n: number, digits: number): string {
   return n.toFixed(digits).replace(/\.0+$/, '')
 }
