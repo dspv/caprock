@@ -30,7 +30,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CHART_METRICS, HEADLINES, costNote, costText, METRICS, SCOPE_NAMES, SPEND_SCOPES, WINDOW_NAMES, chartTotal, chartValueText, foldedFigures, isWholeSession, metricTitle, metricValue, periodChip, pickHero, pickSlot, rangeFigures, setSpendPrefs, setSpendScope, setSpendWindow, shownPick, shownSlots, spendFigures, spendLabel, useSpendPick, useSpendPrefs, windowFigures, windowPhrase, windowStart, windowsFor, type ChartMetric, type Metric, type PeriodFigures, type RangeWindow, type SpendBar, type SpendFigures, type SpendPick, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, costNote, costText, METRICS, SCOPE_NAMES, SPEND_SCOPES, WINDOW_NAMES, chartTotal, chartValueText, foldedFigures, isWholeSession, metricTitle, metricValue, periodChip, pickHero, pickSlot, rangeFigures, setSpendPrefs, setSpendScope, setSpendWindow, shownPick, shownSlots, spendFigures, spendLabel, useSpendPick, useSpendPrefs, windowFigures, windowPhrase, windowStart, windowsFor, type ChartMetric, type Metric, type PeriodFigures, type RangeWindow, type SpendBar, type SpendFigures, type SpendPick, type SpendScope, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
@@ -798,17 +798,20 @@ function HeroSecondaries({ figures, end }: { figures: SpendFigures; end?: boolea
 
 /**
  * The spend details under Now, unfolded by default, foldable to one strip
- * (FoldSpark). The header carries two choices, per tab and in memory only
- * (owner, 2026-10-22): whose spend — *session | all* (this session, all
- * sessions; owner, 2026-11-19: "I'd switch between this session and all
- * sessions") — and over when — *since start · today · 7d · 30d*, *since start* (the
- * session start to now) for this session only and the default. Then
- * *Chart | Numbers*, remembered per viewer (owner, 2026-10-12: "you can
+ * (FoldSpark). Two choices, per tab and in memory only (owner, 2026-10-22):
+ * over when — *start · today · 7d · 30d* in the header, *start* (since the
+ * session started, to now) for this session only and the default — and
+ * whose spend, this session's or all sessions' (owner, 2026-11-19: "I'd
+ * switch between this session and all sessions"), as *this session ▾* at
+ * the right of the line under the header (WhoseMenu). The header holds the
+ * period and *Chart | Numbers* on one line from 280 to 460px (owner,
+ * 2026-11-19, variant B: three ragged rows at 330px were "not very tidy").
+ * *Chart | Numbers* is remembered per viewer (owner, 2026-10-12: "you can
  * choose what you see — the chart or the numbers — and which ones").
  * **Chart**, the default since the figures beside the agent carry the
  * numbers (owner, 2026-10-12: "where did you put the chart?"): the
- * period's spend by time, its total on the top line, whose and when at its
- * right, and what the bars measure — cost, burn rate, tokens or turns —
+ * period's spend by time, its total on the top line, whose at its right,
+ * and what the bars measure — cost, burn rate, tokens or turns —
  * picked from the ▾ after the total (ChartChooser), with a dashed pace line
  * for the usual stretch. **Numbers**: three figures in one row, each label a
  * menu that picks what sits there, never one twice and, for the whole
@@ -841,6 +844,9 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   // The usual is the last 30 days whatever the period; today's summary carries it.
   const usual = range?.usual ?? summary?.usual
   const chooser = <ChartChooser metric={chartBy} figures={pf} />
+  const whose = <WhoseMenu pick={pick} label={label} onPick={(x) => setSpendScope(sessionId, x)} />
+  // Whose, on a line of its own where no chart top line carries it.
+  const whoseLine = <div data-spend-whose-line className="flex h-[18px] min-w-0 items-baseline text-[11px] leading-[18px]">{whose}</div>
   // Turns with no price: the cost total says partial, or unknown, never $0.00.
   const cost = chartBy === 'cost' ? costNote(pf) : undefined
   // A window of the session before its calls are read, or with none in it: a sentence, not zeros.
@@ -850,14 +856,13 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
   return (
     <section aria-label="Spend" data-spend-view={folded ? undefined : view} data-spend-scope={folded ? undefined : pick.scope} data-spend-period={folded ? undefined : pick.window}
       className="@container grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-      {/* The choices wrap under the title, right-aligned and together, when a
-        * narrow cockpit cannot hold them on one line, and Chart | Numbers
-        * under them when even that is too wide; the title keeps its word. */}
-      <div data-spend-head className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
+      {/* One line from 280px: the period and Chart | Numbers at the right,
+        * their paddings narrower under 300px; the title gives way first. */}
+      <div data-spend-head className="flex min-w-0 items-center justify-end gap-x-1.5 @max-[300px]:gap-x-1">
         <button type="button" aria-expanded={!folded} onClick={() => setSpendPrefs({ folded: !folded })}
           aria-label={folded ? `Spend ${foldedFigures(chartBy, pf).map((f) => (foldWord(f.id) ? `${f.value} ${foldWord(f.id)}` : f.value)).join(' · ')}` : undefined}
           title={folded ? `Show the spend details · ${label}` : 'Fold the spend details'}
-          className={`-ml-1 flex min-w-[64px] flex-1 items-center gap-1.5 rounded-[6px] px-1 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${folded ? 'min-w-0 py-1' : 'py-0.5'}`}>
+          className={`-ml-1 flex min-w-[56px] flex-1 items-center gap-1.5 rounded-[6px] px-1 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${folded ? 'min-w-0 py-1' : 'py-0.5'}`}>
           <Chevron open={!folded} />
           {folded ? (
             <FoldSpark bars={pf.series?.bars} metric={chartBy} figures={pf} pick={pick} usual={usual} />
@@ -866,37 +871,58 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
           )}
         </button>
         {!folded && (
-          <span data-spend-choices className="flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
-            <Segmented label={`Whose spend: ${SCOPE_NAMES[pick.scope].long}`} value={pick.scope} spoken
-              options={SPEND_SCOPES.map((x) => [x, <ScopeWord key={x} short={SCOPE_NAMES[x].short} long={SCOPE_NAMES[x].long} />, SCOPE_NAMES[x].long] as const)}
-              onPick={(x) => setSpendScope(sessionId, x)} />
-            <Segmented label={`Period: ${label}`} value={pick.window} spoken
+          <span data-spend-choices className="flex shrink-0 items-center gap-x-1.5 @max-[300px]:gap-x-1">
+            <Segmented label={`Period: ${label}`} value={pick.window} spoken dense
               options={windowsFor(pick.scope).map((w) => [w, WINDOW_NAMES[w].short, WINDOW_NAMES[w].long] as const)}
               onPick={(w) => setSpendWindow(sessionId, w)} />
-            <Segmented label="Spend view" value={view} options={VIEW_OPTIONS} onPick={(v) => setSpendPrefs({ view: v })} />
+            <Segmented label="Spend view" value={view} options={VIEW_OPTIONS} dense onPick={(v) => setSpendPrefs({ view: v })} />
           </span>
         )}
       </div>
+      {!folded && (partNote || view === 'numbers' || (pick.scope === 'all' && !pf.series)) && whoseLine}
       {!folded && partNote && <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">{partNote}</p>}
       {!folded && !partNote && view === 'numbers' && <SpendNumbers pick={pick} hero={hero} slots={slots} figures={pf} label={label} />}
       {!folded && !partNote && view === 'chart' && (pick.scope === 'session'
-        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} cost={cost} scope={label.toLowerCase()} />
+        ? <SessionChart sessionId={sessionId} bars={own.bars} step={own.step} now={now} total={chartTotal(chartBy, pf)} metric={chartBy} chooser={chooser} usual={usual} cost={cost} scope={label.toLowerCase()} whose={whose} />
         : !range
           ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">Reading {label.split(' · ')[0]!.toLowerCase()}…</p>
           : !pf.series
             ? <p data-spend-time data-spend-empty className="text-[12px] text-fg-muted">This range’s summary has no spend by time to draw.</p>
-            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={label.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} cost={cost} />)}
+            : <SpendChart id={`spend-time-${sessionId}`} bars={pf.series.bars} step={pf.series.step} now={now} total={chartTotal(chartBy, pf)} scope={label.toLowerCase()} metric={chartBy} chooser={chooser} usual={usual} cost={cost} whose={whose} />)}
     </section>
   )
 }
 
-/** A scope's word: the full name where the cockpit has room, the short one under 420px. */
-function ScopeWord({ short, long }: { short: string; long: string }) {
+/**
+ * Whose spend, at the right of the chart's top line (or of its own line
+ * over Numbers and the notes): *this session ▾* or *all sessions ▾*, a menu
+ * of the two. The period is the header's chip, so the face leaves it out;
+ * the spoken and hover name says both (*30 days · this session*).
+ */
+function WhoseMenu({ pick, label, onPick }: { pick: SpendPick; label: string; onPick: (s: SpendScope) => void }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLSpanElement>(null)
+  useMenuDismiss(open, box, () => setOpen(false))
   return (
-    <>
-      <span aria-hidden className="@[420px]:hidden">{short}</span>
-      <span aria-hidden className="hidden @[420px]:inline">{long.toLowerCase()}</span>
-    </>
+    <span ref={box} data-spend-whose={pick.scope} className="relative ml-auto flex min-w-0 justify-end">
+      <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={`${label}. Choose whose spend`}
+        title={`${label} · choose whose spend`} onClick={() => setOpen((o) => !o)}
+        className="inline-flex min-w-0 max-w-full items-baseline gap-1 whitespace-nowrap rounded-[5px] px-1 text-[11px] leading-[18px] text-fg-muted outline-none hover:bg-panel-2 hover:text-fg focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
+        <span className="min-w-0 truncate">{SCOPE_NAMES[pick.scope].short}</span><span aria-hidden className="shrink-0 text-[9px]">▾</span>
+      </button>
+      {open && (
+        <div role="menu" aria-label="Whose spend" onKeyDown={onMenuKey}
+          className="absolute right-0 top-full z-30 mt-1 grid w-max min-w-[140px] gap-0.5 rounded-[9px] border border-border-strong bg-panel p-1 shadow-lg">
+          {SPEND_SCOPES.map((x) => (
+            <button key={x} type="button" role="menuitemradio" aria-checked={x === pick.scope}
+              onClick={() => { onPick(x); setOpen(false) }}
+              className={`rounded-[6px] px-2 py-1 text-left text-[12.5px] text-fg outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10 ${x === pick.scope ? 'font-semibold' : ''}`}>
+              {SCOPE_NAMES[x].long}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   )
 }
 
@@ -1057,13 +1083,13 @@ function Chevron({ open }: { open: boolean }) {
  * reader when its face is not a word — or, with `spoken`, always: a short
  * face (*all*, *7d*) is read by its full name.
  */
-function Segmented<T extends string>({ label, value, options, onPick, spoken }: { label: string; value: T; options: readonly (readonly [T, ReactNode, string?])[]; onPick: (v: T) => void; spoken?: boolean }) {
+function Segmented<T extends string>({ label, value, options, onPick, spoken, dense }: { label: string; value: T; options: readonly (readonly [T, ReactNode, string?])[]; onPick: (v: T) => void; spoken?: boolean; dense?: boolean }) {
   return (
     <div role="group" aria-label={label} className="flex shrink-0 items-center rounded-[6px] border border-[var(--app-hairline)] p-px">
       {options.map(([id, name, title]) => (
         <button key={id} type="button" aria-pressed={id === value} onClick={() => onPick(id)}
           aria-label={typeof name === 'string' && !spoken ? undefined : title} title={title}
-          className={`grid h-[18px] place-items-center rounded-[5px] px-1.5 text-[11px] leading-[16px] outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${id === value ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
+          className={`grid h-[18px] place-items-center rounded-[5px] px-1.5 text-[11px] leading-[16px] ${dense ? '@max-[300px]:px-1' : ''} outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${id === value ? 'bg-panel-2 font-medium text-fg' : 'text-fg-muted hover:text-fg'}`}>
           {name}
         </button>
       ))}
