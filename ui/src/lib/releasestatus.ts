@@ -313,6 +313,67 @@ function idleStrip(s: ReleaseStatus, out: boolean): StripStage[] {
     : { key, text: STRIP_TEXT[key], state: 'todo', tone: 'faint', title: 'To come, once there is something to release.' })
 }
 
+/**
+ * The words beside the right panel's stage dots (owner, 2026-11-19, variant
+ * A, translated: "dots, one word — looks more logical"): only the stage it
+ * is at is named, with what was read of it — *Merged · waiting: merge #949*,
+ * *Release PR #952 · CI 1/3*, *Tagged · waiting for v0.184.1*, *Building ·
+ * 12 of 23 files*, *Published · 5 min ago*. `fail` when that stage failed
+ * (the dot and the words red). With no stage current (every knowable one
+ * done), the last one done, alone.
+ */
+export interface StageWords {
+  key: StripKey
+  /** Its place among the five, from 1. */
+  index: number
+  name: string
+  text: string
+  tone: 'fail' | 'ok' | 'pending'
+}
+
+export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; next?: string; out?: boolean; now: number }): StageWords | undefined {
+  let i = strip.findIndex((x) => x.state === 'current')
+  if (i < 0) {
+    for (let j = strip.length - 1; j >= 0; j--) if (strip[j]!.state === 'done') { i = j; break }
+    if (i < 0) return undefined
+    const x = strip[i]!
+    return { key: x.key, index: i + 1, name: x.text, text: x.text, tone: 'ok' }
+  }
+  const x = strip[i]!
+  const tone: StageWords['tone'] = x.tone === 'fail' ? 'fail' : x.tone === 'ok' ? 'ok' : 'pending'
+  const say = (detail: string, name = x.text) => ({ key: x.key, index: i + 1, name: x.text, text: detail ? `${name} · ${detail}` : name, tone })
+  const v = s.version ? `v${s.version}` : 'the next version'
+  const at = (k: ReleaseStageKey) => s.stages.find((y) => y.key === k)
+  switch (x.key) {
+    case 'merged':
+      return say(`waiting: ${o.next ?? 'a merge'}`)
+    case 'pr': {
+      if (!s.pr) return say('none open yet')
+      const name = `Release PR #${s.pr.number}`
+      if (at('pr')?.state === 'current') return say('draft', name)
+      const ci = at('ci')
+      if (ci?.tone === 'fail') return say('CI red', name)
+      if (ci?.tone === 'pending') {
+        const os = o.cards?.find((c) => c.number === s.pr!.number)?.os ?? []
+        return say(os.length ? `CI ${os.filter((y) => y.state === 'pass').length}/${os.length}` : 'CI running', name)
+      }
+      return say(ci?.state === 'done' ? 'CI green' : 'CI not read', name)
+    }
+    case 'tag':
+      return say(s.pr && !s.pr.merged ? `waiting: merge #${s.pr.number}` : `waiting for ${v}`)
+    case 'builds': {
+      const b = at('builds')
+      const m = b && /(\d+)\/(\d+)/.exec(b.text)
+      const count = m ? `${m[1]} of ${m[2]} ${/ files? on /.test(b!.title) ? 'files' : 'jobs'}` : ''
+      if (tone === 'fail') return say(count ? `failed at ${count}` : 'failed')
+      return say(count)
+    }
+    case 'published':
+      if (o.out && s.phase === 'idle' && s.last) return say(agoText(o.now - s.last.at))
+      return say(/a draft\./.test(x.title) ? 'a draft' : 'not yet')
+  }
+}
+
 /** How long after a release is published the folded line says it is out, rather than "nothing new". */
 export const OUT_RECENT_MS = 3_600_000
 

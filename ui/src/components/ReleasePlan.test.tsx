@@ -327,6 +327,8 @@ describe('where it is drawn', () => {
     expect(document.querySelector('[data-release-phone]')).not.toBeNull()
     expect(sections()).toEqual(['In this release · 1 merged', 'Pull requests · 2 open', 'Agents working now · 1'])
     expect(document.querySelector('[data-release-via]')).toBeNull()
+    // The stage dots are the right panel's alone.
+    expect(document.querySelector('[data-release-strip]')).toBeNull()
   })
 
   // Coordinator, 2026-11-19: the Work page counts the default branch's entries only.
@@ -384,9 +386,10 @@ describe('where it is drawn', () => {
     const region = await screen.findByRole('region', { name: 'Release' })
     // A patch: no Added entry, predicted from the batch PR's fragments too.
     await within(region).findByRole('heading', { name: '0.117.5' })
-    // The strip is drawn first, always.
+    // The version first, the stage dots under it.
     const plan = region.querySelector('[data-release-plan]')!
-    expect(plan.firstElementChild).toHaveAttribute('data-release-strip')
+    expect(plan.firstElementChild).toHaveAttribute('data-release-group', 'head')
+    expect(plan.firstElementChild!.lastElementChild).toHaveAttribute('data-release-strip')
     expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^0\.117\.5patch: fixes only·last (\d+[mhd] ago|just now)$/)
     // Grouped by kind in Keep a Changelog order, each in its own words.
     const kinds = [...region.querySelectorAll('[data-release-kind]')]
@@ -477,7 +480,7 @@ describe('where it is drawn', () => {
   })
 
   // Owner, 2026-11-16: the section vanished after every release.
-  it('keeps the Release section with one line and the idle strip when nothing is new since the last tag', async () => {
+  it('keeps the Release section with one line and no stage dots when nothing is new since the last tag', async () => {
     const w = workFixture()
     h.data = { ...w, sessions: [], repos: w.repos.map((r) => ({ ...r, unreleased: undefined })) }
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
@@ -485,8 +488,7 @@ describe('where it is drawn', () => {
     await within(region).findByText(/Nothing new since v0\.117\.4/)
     expect(region).toHaveAttribute('data-release-empty')
     expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^Nothing new since v0\.117\.4·(\d+[mhd] ago|just now)$/)
-    const strip = region.querySelector('[data-release-strip]')!
-    expect(strip).toHaveAttribute('data-release-current', 'merged')
+    expect(region.querySelector('[data-release-strip]')).toBeNull()
     expect(region.querySelector('[data-release-entries]')).toBeNull()
   })
 

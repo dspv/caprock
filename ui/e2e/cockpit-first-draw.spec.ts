@@ -225,3 +225,72 @@ test('the folded CI line shortens at narrow widths and never passes the edge', a
     if (shotsDir) await inspector.locator('[data-section-frame="ci"]').screenshot({ path: path.join(shotsDir, `ci-fold-${w}.png`) })
   }
 })
+
+// Owner, 2026-11-19: the word strip wrapped "Published" to a second line at
+// 330px. Variant A's dots and one named stage stay one line, and nothing in
+// the unfolded section passes the panel's edge, at every width.
+test('the unfolded Release section keeps its stage dots on one line and inside the edge', async ({ app, page }) => {
+  const os = [{ os: 'linux', state: 'pass', checks: 4 }, { os: 'macos', state: 'running', checks: 4 }, { os: 'windows', state: 'running', checks: 4 }]
+  const cases = [
+    { name: 'release-pr', words: /^Release PR #942 · CI 1\/3$/,
+      stats: statsOf([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', 1_800_000)], [{ ...card(942, 'open', 'running'), os }, card(940, 'merged')], [rel('v0.182.4', 86_400_000, 23)]) },
+    { name: 'waiting', words: /^Merged · waiting: merge #941$/,
+      stats: statsOf([pr(941, 'feat: the next batch with a title long enough to fill the line', 'open')], [card(941, 'ready', 'pass')], [rel('v0.182.4', 86_400_000, 23)]), onPR: true },
+  ]
+  let c = cases[0]!
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\/stats$/, (r) => r.fulfill(json(c.stats)))
+  await page.route(/\/v1\/sessions\/[^/]+\/prs$/, (r) => r.fulfill(json({ connected: true, fetched_at: now, prs: [] })))
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\?pr=\d+$/, (r) => r.fulfill(json({ connected: true, fetched_at: now, pr: { number: 942, url: '', repo: 'acme/app', live: live(942, 'open', RUNNING) } })))
+  await page.route(/\/v1\/sessions\/[^/]+\/ci\/release$/, (r) => r.fulfill(json({ connected: true, repo: 'acme/app', fetched_at: now, release: { repo: 'acme/app', state: 'none', at: now } })))
+  await page.route(/\/v1\/work$/, async (r) => {
+    const res = await r.fetch()
+    const w = await res.json() as { repos?: { root: string; remote?: string; unreleased?: object; tags?: object }[] }
+    for (const x of w.repos ?? []) {
+      x.remote = 'acme/app'
+      x.tags = { last: { name: 'v0.182.4', at: now - 86_400_000 }, gaps: 0 }
+      const source = (i: number) => ('onPR' in c ? 'pr' : i % 2 ? 'pr' : 'master')
+      x.unreleased = { ref: 'origin/master', items: ['a', 'b', 'c'], count: 3, kinds: { Changed: 1, Fixed: 2 }, ...('onPR' in c ? { via: { number: 941, head: 'feat/batch', sha: 'abc' } } : {}),
+        entries: [0, 1, 2].map((i) => ({ text: `Entry ${i}: what changed, written for a person reading the release notes, long enough to wrap onto a second line`, scope: 'ui', kind: i ? 'Fixed' : 'Changed', source: source(i) })) }
+    }
+    await r.fulfill({ response: res, json: w })
+  })
+  await page.addInitScript(() => {
+    localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({ ci: 'compact', release: 'full', changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', subagents: 'compact', tools: 'compact' }))
+  })
+  await app.open()
+  const alpha = app.session('alpha')
+  await app.openSession('alpha').catch(async () => { await app.row(alpha.name).first().click() })
+  const inspector = page.getByRole('complementary', { name: 'Inspector' })
+  for (const k of cases) {
+    c = k
+    await page.evaluate(() => { for (const key of Object.keys(localStorage)) if (key.includes('deck:')) localStorage.removeItem(key) })
+    await page.reload()
+    await expect(app.tabs.getByRole('tab', { name: new RegExp(`^${alpha.name}`), selected: true })).toBeVisible()
+    const words = inspector.locator('section[aria-label="Release"] [data-release-stage-words]')
+    await expect(words).toHaveText(k.words)
+    for (const w of [280, 300, 330, 360, 460]) {
+      await page.evaluate((px) => document.documentElement.style.setProperty('--app-inspector-w', `${px}px`), w)
+      await page.waitForTimeout(200)
+      const over = await page.evaluate(() => {
+        const sec = document.querySelector('section[aria-label="Release"]') as HTMLElement
+        const edge = sec.getBoundingClientRect().right + 0.5
+        const out: string[] = []
+        for (const el of sec.querySelectorAll<HTMLElement>('[data-release-plan] *')) {
+          if (el.offsetWidth === 0) continue
+          const r = el.getBoundingClientRect()
+          if (r.right > edge) out.push(`"${(el.textContent ?? '').slice(0, 40)}" ends at ${Math.round(r.right)} > ${Math.round(edge)}`)
+        }
+        const strip = sec.querySelector('[data-release-strip]') as HTMLElement
+        if (strip.getBoundingClientRect().height > 18) out.push(`the stage row wraps: ${strip.getBoundingClientRect().height}px`)
+        const words = strip.querySelector('[data-release-stage-words]') as HTMLElement
+        if (words.getBoundingClientRect().height > 18) out.push(`the stage words wrap: ${words.textContent}`)
+        for (const line of sec.querySelectorAll<HTMLElement>('[data-release-via], [data-release-section="branch"]')) {
+          if (line.getBoundingClientRect().height > 20) out.push(`wraps: ${line.textContent}`)
+        }
+        return out
+      })
+      expect(over, `${k.name} at ${w}px`).toEqual([])
+      if (shotsDir) await inspector.locator('[data-section-frame="release"]').screenshot({ path: path.join(shotsDir, `release-dots-${k.name}-${w}.png`) })
+    }
+  }
+})

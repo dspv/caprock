@@ -678,12 +678,14 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * under way — a release pull request listed, a tag no release has published
  * yet, a run running — and the daemon answers it from the run it keeps.
  *
- * Unfolded: the stages strip, always (idle too); the heading (the version,
- * its bump and why, the last release's age — or *Shipping 0.183.1*, *v0.183.1
- * out · 5 min ago*, *Nothing new since v0.183.0 · 8h ago*); the entries
- * grouped by kind in their own words; the batch pull request as one *via*
- * line; and *Not in it yet*, folded: pushed branches with no pull request
- * and other open pull requests. The pull request and agent rows of
+ * Unfolded, three groups split by hairlines (owner, 2026-11-19, variant A):
+ * the heading (the version, its bump and why, the last release's age — or
+ * *Shipping 0.183.1*, *v0.183.1 out · 5 min ago*, *Nothing new since
+ * v0.183.0 · 8h ago*) over the stage dots with the current stage named
+ * (none while nothing is new); the entries grouped by kind in their own
+ * words; then the batch pull request as one *via* line and *Not in it yet*,
+ * folded: pushed branches with no pull request and other open pull
+ * requests. The pull request and agent rows of
  * 2026-10-18 are gone: the CI section lists the pull requests, the
  * Subagents section the agents.
  */
@@ -762,12 +764,20 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   return (
     <section aria-label="Release" data-cockpit-release data-release-empty={empty ? '' : undefined} data-release-notes={head.state} className="grid gap-2">
       {label}
-      <div data-release-plan={plan.name} className="grid min-w-0 gap-1.5">
-        <ReleaseStrip status={status} version={status.phase === 'tagged' && head.state !== 'shipping'} out={head.state === 'out'} />
-        {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
-        {entries.length > 0 && <ReleaseNotes entries={entries} />}
-        {via && head.state !== 'shipping' && <ViaRow via={via} root={plan.root} />}
-        {others.text && <NotInItRows others={others} root={plan.root} />}
+      <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
+        <div data-release-group="head" className="grid min-w-0 gap-1.5">
+          {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
+          {head.state !== 'idle' && <ReleaseStrip status={status} out={head.state === 'out'} cards={board?.cards} next={via?.next} now={now} />}
+        </div>
+        {entries.length > 0 && (
+          <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
+        )}
+        {((via && head.state !== 'shipping') || others.text) && (
+          <div data-release-group="later" className="grid min-w-0 gap-1.5 border-t border-[var(--app-hairline)] pt-2">
+            {via && head.state !== 'shipping' && <ViaRow via={via} root={plan.root} />}
+            {others.text && <NotInItRows others={others} root={plan.root} />}
+          </div>
+        )}
       </div>
     </section>
   )
@@ -812,7 +822,7 @@ const VIA_TONE: Record<ViaLine['ci']['tone'], string> = { ok: 'text-ok', fail: '
 function ViaRow({ via: v, root }: { via: ViaLine; root: string }) {
   return (
     <a data-release-via={v.number} href={pipelineHref(root, v.number)} title={v.title}
-      className="flex min-w-0 items-baseline gap-1.5 border-t border-border pt-1.5 text-[11.5px] text-fg-muted no-underline hover:[&>[data-via-number]]:text-accent">
+      className="flex min-w-0 items-baseline gap-1.5 text-[11.5px] text-fg-muted no-underline hover:[&>[data-via-number]]:text-accent">
       <span className="shrink-0 text-fg-faint">via</span>
       <span data-via-number className="num shrink-0 font-medium text-fg">#{v.number}</span>
       <span data-via-ci={v.ci.tone} className={`shrink-0 whitespace-nowrap ${VIA_TONE[v.ci.tone]}`}><span aria-hidden className={v.ci.tone === 'pending' ? 'release-step-pulse mr-0.5' : 'mr-0.5'}>●</span>{v.ci.text}</span>

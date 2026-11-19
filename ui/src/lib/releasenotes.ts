@@ -5,11 +5,13 @@
  * A, with B's next step in the folded line). Pure; drawn by
  * components/ReleasePlan CockpitRelease.
  *
- *   Merged ─ Release PR ─ Tagged ─ Building ─ Published
  *   0.183.1  patch: fixes only · last 8h ago
+ *   ◉──○──○──○──○  Merged · waiting: merge #949
+ *   ────────────────────────────────────────
  *   FIXED
  *    PR from another repo no longer shows as this one's
- *   ── via #949 ● green · ready to merge
+ *   ────────────────────────────────────────
+ *   via #949 ● green · ready to merge
  *   Not in it yet: 1 branch, no PR        ▸
  *
  * - **The heading** (`notesHeading`) says the release in one line: the

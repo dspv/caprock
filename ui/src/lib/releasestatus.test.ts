@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, plainVersion, releaseFold, releasePRVersion, releaseStatus, stripStages, tagUnpublished, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, plainVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -258,5 +258,38 @@ describe('the right panel’s stages strip', () => {
     expect(s.version).toBe('0.183.1')
     expect(s.current).toBe('merged')
     expect(s.stages[0]!.title).toBe('2 changelog entries on #949’s branch, waiting for it to merge.')
+  })
+})
+
+// Owner, 2026-11-19, variant A: only the stage it is at is named, with its detail.
+describe('the words beside the stage dots', () => {
+  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; next?: string; out?: boolean } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
+  it('names the release PR with its draft, its CI per OS, or its red CI', () => {
+    const input = { prs: [pr(952, 'chore(release): 0.127.0')] }
+    const os: BoardCard['os'] = [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'macos', state: 'running', checks: 3 }, { os: 'windows', state: 'running', checks: 3 }]
+    const running = [card(952, 'running', { os })]
+    expect(words(releaseStatus(base({ ...input, cards: running })), { cards: running })).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Release PR #952 · CI 1/3', tone: 'pending' })
+    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'running')] })))?.text).toBe('Release PR #952 · CI running')
+    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'fail')] })))).toMatchObject({ text: 'Release PR #952 · CI red', tone: 'fail' })
+    expect(words(releaseStatus(base({ prs: [{ ...pr(952, 'chore(release): 0.127.0'), draft: true }] })))?.text).toBe('Release PR #952 · draft')
+  })
+
+  it('names Tagged while a green release PR waits to merge, and once merged the tag it waits for', () => {
+    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0')], cards: [card(952, 'pass')] })))?.text).toBe('Tagged · waiting: merge #952')
+    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0', 'merged')] })))?.text).toBe('Tagged · waiting for v0.127.0')
+  })
+
+  it('names Building with its files, red when the build failed', () => {
+    const s = (state: ReleaseCI['state']) => releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 60_000, 12), rel('v0.182.4', T - 30 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0', 'merged')], run: run('v0.183.0', state) }))
+    expect(words(s('running'))).toMatchObject({ key: 'builds', index: 4, text: 'Building · 12 of 23 files', tone: 'pending' })
+    expect(words(s('fail'))).toMatchObject({ text: 'Building · failed at 12 of 23 files', tone: 'fail' })
+  })
+
+  it('names Merged with the batch’s next step, and Published with its age within the hour', () => {
+    const onPR: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 }, via: { number: 949, head: 'feat/batch', sha: 'abc' }, entries: [{ text: 'a', kind: 'Fixed', source: 'pr' }] }
+    const w = releaseStatus(base({ merged: 0, unreleased: onPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
+    expect(words(w, { next: 'merge #949' })).toMatchObject({ key: 'merged', index: 1, text: 'Merged · waiting: merge #949' })
+    const idle = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), releases: [rel('v0.183.0', T - 5 * 60_000, 23)] }))
+    expect(words(idle, { out: true })).toMatchObject({ key: 'published', index: 5, text: 'Published · 5 min ago', tone: 'ok' })
   })
 })
