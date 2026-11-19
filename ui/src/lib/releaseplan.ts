@@ -242,6 +242,39 @@ export function nextVersion(lastTag: string | undefined, u: WorkRepo['unreleased
   return { version, bump, title: `${rule}: ${what} since ${lastTag}, ${from}. When it ships is your call.` }
 }
 
+/**
+ * The entries on the default branch, the only ones merged: those the daemon
+ * says came from `master`. Entries past the listed ones (more than 30) count
+ * as merged unless the last listed came from the batch pull request's branch
+ * (the daemon lists the default branch's first). A daemon that says no
+ * sources: every entry.
+ */
+export function mergedEntries(u: WorkRepo['unreleased']): number {
+  if (!u) return 0
+  const es = u.entries
+  if (!es?.length) return u.count
+  const listed = es.filter((x) => x.source !== 'pr').length
+  const past = Math.max(0, u.count - es.length)
+  return listed + (es[es.length - 1]!.source === 'pr' ? 0 : past)
+}
+
+/**
+ * The unreleased entries on the default branch alone, for the views that
+ * speak of what is merged (the Work page, the phone, the Pipeline page;
+ * owner's call relayed 2026-11-19: "Work stays as before"): the batch pull
+ * request's entries taken out of the items, the count and the kinds.
+ */
+export function onMaster(u: WorkRepo['unreleased']): WorkRepo['unreleased'] {
+  if (!u?.entries?.some((x) => x.source === 'pr')) return u
+  const es = u.entries
+  const items = u.items.filter((_, i) => es[i]?.source !== 'pr')
+  const kinds: Partial<Record<string, number>> = { ...u.kinds }
+  for (const e of es) if (e.source === 'pr' && e.kind && kinds[e.kind]) kinds[e.kind] = kinds[e.kind]! - 1
+  for (const k of Object.keys(kinds)) if (!kinds[k]) delete kinds[k]
+  const count = mergedEntries(u)
+  return { ref: u.ref, items, count, more: count > items.length || undefined, kinds: Object.keys(kinds).length ? kinds : undefined, entries: es.filter((x) => x.source !== 'pr') }
+}
+
 /** A landing-queue label on a pull request, as its stage word; the red and warn ones say so. */
 export function landingOf(labels: BranchPR['labels']): { word: string; red: boolean; warn: boolean } | undefined {
   const l = labels?.find((x) => x.name.toLowerCase().startsWith(LANDING_PREFIX))
@@ -702,7 +735,8 @@ export function releasePlan(input: { root: string; name?: string; repo?: WorkRep
       since: { text: SHIPS_ON_MERGE, title: 'No release is published on GitHub and no version tag was made in the last 180 days, so merged is the last step here: there is no next release to wait for.' },
     }
   }
-  const next = nextVersion(last?.name, repo?.unreleased)
+  // Merged work only: the batch pull request's entries are the right panel's (lib/releasenotes).
+  const next = nextVersion(last?.name, onMaster(repo?.unreleased))
   return {
     root,
     name,

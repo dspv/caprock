@@ -27,7 +27,7 @@ import type { ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { JourneyPillStep } from './journey'
 import type { BoardCard, BoardRelease } from './prboard'
-import { nextVersion, parseVersion, type Bump } from './releaseplan'
+import { mergedEntries, nextVersion, parseVersion, type Bump } from './releaseplan'
 
 export type ReleaseStageKey = 'merged' | 'pr' | 'ci' | 'tag' | 'builds' | 'published' | 'site'
 export const RELEASE_STAGES: readonly ReleaseStageKey[] = ['merged', 'pr', 'ci', 'tag', 'builds', 'published', 'site']
@@ -169,13 +169,6 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   const last = lastLine(releases.find((r) => plainVersion(r.tag) !== version || phase === 'pre'))
   const pr = ownPR ? { number: ownPR.number, merged: ownPR.state === 'merged' } : undefined
   return { phase, version, bump, why, stages, current, last, pr }
-}
-
-/** The entries on the default branch: all of them but those read from the batch pull request's branch alone. */
-export function mergedEntries(u: WorkRepo['unreleased']): number {
-  if (!u) return 0
-  const onPR = u.entries?.filter((x) => x.source === 'pr').length ?? 0
-  return Math.max(0, u.count - onPR)
 }
 
 interface StageFacts {

@@ -35,7 +35,7 @@ import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { OUT_RECENT_MS, releaseFold, releaseStatus, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
-import { ageText, BLOCKS, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from '@/lib/usePoll'
@@ -620,7 +620,7 @@ export function PipelineRelease({ root, stats, run, visible, now, onOpen }: { ro
   const status = useMemo(() => {
     const board = asBoard(stats?.board)
     return releaseStatus({
-      lastTag: repo?.tags?.last, unreleased: repo?.unreleased, merged: plan.rows.filter((r) => r.stage === 'merged').length,
+      lastTag: repo?.tags?.last, unreleased: onMaster(repo?.unreleased), merged: plan.rows.filter((r) => r.stage === 'merged').length,
       prs: stats?.prs ?? [], cards: board?.cards, releases: board?.releases ?? [], run,
     })
   }, [repo, plan.rows, stats, run])

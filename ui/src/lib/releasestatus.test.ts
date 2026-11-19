@@ -236,6 +236,21 @@ describe('the right panel’s stages strip', () => {
     expect(out[4]!.tone).toBe('ok')
   })
 
+  // Coordinator, 2026-11-19: only the default branch's entries are merged;
+  // with every entry on the open batch PR, the strip waits at Merged.
+  it('counts only the default branch’s entries as merged', () => {
+    const mixed: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a', 'b'], count: 2, kinds: { Fixed: 2 }, via: { number: 949, head: 'feat/batch', sha: 'abc' },
+      entries: [{ text: 'a', kind: 'Fixed', source: 'master' }, { text: 'b', kind: 'Fixed', source: 'pr' }] }
+    const s = releaseStatus(base({ merged: 0, unreleased: mixed, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
+    expect(s.stages[0]).toMatchObject({ key: 'merged', state: 'done', text: '1 entry' })
+    expect(s.current).toBe('pr')
+    // Every entry on the batch: Merged is where it is, in the strip too, as the folded line's "next: merge #949".
+    const allPR = { ...mixed, entries: mixed.entries!.map((e) => ({ ...e, source: 'pr' as const })) }
+    const w = releaseStatus(base({ merged: 0, unreleased: allPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
+    expect(stripStages(w).find((x) => x.state === 'current')?.key).toBe('merged')
+    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'pass', next: 'merge #949' } }).text).toBe('0.183.1 · 2 changes · next: merge #949')
+  })
+
   it('keeps Merged to come while the entries are only on the batch PR’s branch', () => {
     const onPR: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a', 'b'], count: 2, kinds: { Fixed: 2 }, via: { number: 949, head: 'feat/batch', sha: 'abc' },
       entries: [{ text: 'a', kind: 'Fixed', source: 'pr' }, { text: 'b', kind: 'Fixed', source: 'pr' }] }

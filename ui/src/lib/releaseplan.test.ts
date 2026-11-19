@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PlanRow } from './releaseplan'
 import type { Subagent, WorkRepo } from './api'
 import type { SessionBranch, SessionBranches } from './branches'
-import { ageText, BLOCKS, carriedBranches, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, nextVersion, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
+import { ageText, BLOCKS, carriedBranches, BRANCHES_LISTED, BRANCHES_SHOWN, branchRows, bumpOf, landingOf, mergedEntries, nextVersion, onMaster, osDots, parseVersion, pickSession, planEmpty, planForRepo, planSections, releaseLine, releasePlan, rowOf, shownRows, sinceLine, subagentRows } from './releaseplan'
 import type { BoardCard } from './prboard'
 import { buildWork, type WorkItem } from './work'
 import { NOW, session, statsFixture, workFixture } from './work.fixture'
@@ -285,5 +285,24 @@ describe('the release line', () => {
   it('says a quiet state, and nothing when nothing is merged or under way', () => {
     expect(text(releaseLine([row('merged')], last, 7, NOW))).toBe('Next release · 7 merged, nothing in progress · last v0.134.0 18h ago')
     expect(releaseLine([], last, 0, NOW)).toBeUndefined()
+  })
+})
+
+// The Work page, the phone and the Pipeline page speak of merged work only.
+describe('the default branch’s entries', () => {
+  const u = { ref: 'origin/master', items: ['**a:** m', '**b:** p1', '**c:** p2'], count: 3, kinds: { Added: 1, Fixed: 2 }, via: { number: 949, head: 'feat/batch', sha: 'abc' },
+    entries: [{ text: 'm', kind: 'Fixed', source: 'master' as const }, { text: 'p1', kind: 'Added', source: 'pr' as const }, { text: 'p2', kind: 'Fixed', source: 'pr' as const }] }
+  it('takes the batch PR’s entries out of the items, the count and the kinds', () => {
+    expect(onMaster(u)).toEqual({ ref: 'origin/master', items: ['**a:** m'], count: 1, more: undefined, kinds: { Fixed: 1 }, entries: [u.entries[0]] })
+    expect(mergedEntries(u)).toBe(1)
+    // A patch from the merged entry alone, not the batch's minor.
+    expect(nextVersion('v0.183.0', onMaster(u))?.version).toBe('0.183.1')
+    expect(nextVersion('v0.183.0', u)?.version).toBe('0.184.0')
+  })
+  it('leaves an answer with no batch entries as it is', () => {
+    const plain = { ref: 'origin/master', items: ['x'], count: 4, kinds: { Fixed: 4 } }
+    expect(onMaster(plain)).toBe(plain)
+    expect(mergedEntries(plain)).toBe(4)
+    expect(onMaster(undefined)).toBeUndefined()
   })
 })

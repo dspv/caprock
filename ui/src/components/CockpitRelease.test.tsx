@@ -103,6 +103,21 @@ describe('the cockpit’s Release section', () => {
     expect(plan.querySelector('[data-release-stages]')).toBeNull()
   })
 
+  // Coordinator, 2026-11-19: with every entry on the open batch PR the strip
+  // waits at Merged, as the folded line says to merge it.
+  it('with every entry on a green batch PR: next: merge, and the strip at Merged', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(949, 'fix: the batch', 'open')], [{ number: 949, stage: 'ready', ci: 'pass', spend: SPEND }], [rel('v0.183.0', 8 * 3_600_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), unreleased: onBatch })
+    const { unmount } = draw(true)
+    expect(line()).toHaveAttribute('aria-label', '0.183.1 · 2 changes · next: merge #949')
+    unmount()
+    draw(false)
+    const strip = document.querySelector('[data-release-strip]')!
+    expect(strip).toHaveAttribute('data-release-current', 'merged')
+    expect([...strip.querySelectorAll('[data-strip-stage]')].map((e) => e.textContent)).toEqual(['◉Merged', 'Release PR', 'Tagged', 'Building', 'Published'])
+    expect(document.querySelector('[data-release-via]')).toHaveTextContent('via#949●green·ready to merge')
+  })
+
   it('folded, says the batch PR’s red CI; unfolded, its via line names the failing check', () => {
     writeDeck(`stats:${ROOT}`, stats([pr(949, 'fix: the batch', 'open')],
       [{ number: 949, stage: 'fix', ci: 'fail', why: 'ci', failed: ['go (windows-latest)'], spend: SPEND }], [rel('v0.183.0', 8 * 3_600_000, 23)]))

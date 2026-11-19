@@ -329,6 +329,19 @@ describe('where it is drawn', () => {
     expect(document.querySelector('[data-release-via]')).toBeNull()
   })
 
+  // Coordinator, 2026-11-19: the Work page counts the default branch's entries only.
+  it('leaves the batch PR’s entries out of the Work page: its strip and the plan’s version', () => {
+    const w = withKinds()
+    w.repos[0]!.unreleased = { ref: 'origin/master', items: ['**a:** on master', '**b:** on the batch'], count: 2, kinds: { Fixed: 1, Added: 1 }, via: { number: 631, head: 'feat/folder-search', sha: 'abc' },
+      entries: [{ text: 'on master', kind: 'Fixed', source: 'master' }, { text: 'on the batch', kind: 'Added', source: 'pr' }] }
+    render(<WorkView work={w} stats={new Map([['/w/caprock', statsFixture()]])} now={NOW} passed={0} />)
+    const notes = document.querySelector('[data-work-unreleased]')!
+    expect([...notes.querySelectorAll('li')].map((e) => e.textContent)).toEqual(['**a:** on master'])
+    fireEvent.click(screen.getByRole('tab', { name: 'Release' }))
+    // A patch from the merged entry, not the batch's Added.
+    expect(screen.getByRole('heading', { name: '0.117.5' })).toBeInTheDocument()
+  })
+
   it('is the right panel’s Release section: the kept Pipeline answer and one Work read, again on GitHub news only', async () => {
     h.data = withKinds()
     writeDeck('stats:/w/caprock', statsFixture())
