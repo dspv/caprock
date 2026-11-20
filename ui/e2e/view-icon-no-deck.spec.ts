@@ -86,7 +86,7 @@ test('a failing pull request of the session offers Fix CI in the inspector, asks
   await expect(action).toHaveText('Fix CI')
   await expect(row.locator('[data-cockpit-ci-cost]')).toHaveText('$1.25')
   await action.click()
-  await expect(row.locator('[data-cockpit-ci-confirm]')).toContainText('fix #9’s CI and push?')
+  await expect(row.locator('[data-cockpit-ci-confirm]')).toContainText('Ask to fix #9 CI?')
   expect(queued).toEqual([])
   await row.locator('[data-cockpit-ci-confirm-yes]').click()
   await expect.poll(() => queued.length).toBe(1)
@@ -94,7 +94,10 @@ test('a failing pull request of the session offers Fix CI in the inspector, asks
   await expect(row.locator('[data-cockpit-ci-progress]')).toHaveText('agent fixing…')
   await page.screenshot({ path: test.info().outputPath('inspector-pr-action.png') })
 
-  await row.locator('[data-cockpit-ci-log]').click()
+  // One link under the list: on a failing pull request it opens that one's log.
+  const link = page.locator('[data-cockpit-ci-open]')
+  await expect(link).toHaveText(/^#9 log in Pipeline/)
+  await link.click()
   await expect.poll(() => page.evaluate(() => location.hash)).toContain('pr=9')
   await expect(page.locator('[data-prs-detail]')).toBeVisible()
 })

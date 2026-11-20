@@ -396,7 +396,8 @@ describe('where it is drawn', () => {
     expect(kinds.map((k) => k.querySelector('h5')!.textContent)).toEqual(['Changed', 'Fixed'])
     expect([...kinds[1]!.querySelectorAll('li')].map((e) => e.textContent)).toEqual(['•merged already, on the default branch.', '•PR from another repo no longer shows as this one’s'])
     expect(kinds[1]!.querySelector('[data-release-kind-count]')).toHaveTextContent('2')
-    expect(kinds[0]!.querySelector('li > span:last-child')).toHaveClass('line-clamp-1')
+    // Two lines at most (owner, 2026-11-20: one line cut every entry mid-word at 330px).
+    expect(kinds[0]!.querySelector('li > span:last-child')).toHaveClass('line-clamp-2')
     // A kind folds on its heading, and opens again.
     fireEvent.click(kinds[1]!.querySelector('button')!)
     expect(kinds[1]!.querySelector('ul')).toBeNull()
@@ -420,7 +421,7 @@ describe('where it is drawn', () => {
     expect(region.querySelector('[data-release-row="633"] [data-release-state]')).toHaveTextContent('ready')
   })
 
-  it('says a batch PR’s red CI on its via line with the failing check', async () => {
+  it('says a batch PR’s red CI on its via line, the failing check in plain words', async () => {
     h.data = withKinds()
     const stats = statsFixture()
     const c = stats.board!.cards.find((x) => x.number === 631)!
@@ -431,7 +432,7 @@ describe('where it is drawn', () => {
     await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
     const via = region.querySelector('[data-release-via]')!
     expect(via.querySelector('[data-via-ci]')).toHaveAttribute('data-via-ci', 'fail')
-    expect(via.querySelector('[data-via-state]')).toHaveTextContent('fix: go (windows-latest)')
+    expect(via.querySelector('[data-via-state]')).toHaveTextContent(/^go failed$/)
     expect(via.querySelector('[data-via-state]')).toHaveClass('text-danger')
   })
 

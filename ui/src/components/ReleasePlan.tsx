@@ -34,6 +34,7 @@ import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRep
 import { asBoard, type ShipsBy } from '@/lib/prboard'
 import { OUT_RECENT_MS, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
+import { stageWords, stripStages } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
 import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
@@ -43,7 +44,7 @@ import { changesRelease, useWork } from '@/lib/useWork'
 import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS, titleIsNumber } from '@/lib/work'
 import { SectionLabel, useFolded } from './Cockpit'
-import { useDeckAnswer } from './CockpitCI'
+import { asOfText, KEPT_CLASS, useDeckAnswer, useKeptCopy } from './CockpitCI'
 import { workRepoKey, writeDeck } from '@/lib/deckCache'
 import { Panel, usePanelFold } from './ui'
 import { extTitle } from '@/lib/externalLinks'
@@ -693,6 +694,9 @@ function keptWork(repo: WorkRepo, now: number): Work {
 export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; repoRoot?: string }) {
   const folded = useFolded()
   const stats = useDeckAnswer<SessionCIStats>(`stats:${repoRoot || sessionId}`)
+  // The Pipeline answer the CI section reads: while its kept copy is being
+  // read again, its CI words here are faint too, as of its age.
+  const statsKept = useKeptCopy(`stats:${repoRoot || sessionId}`)
   const kept = useDeckAnswer<WorkRepo>(repoRoot ? workRepoKey(repoRoot) : '')
   const keptOld = !kept.d || !kept.at || Date.now() - kept.at > REPO_KEPT_MS
   const work = useWork({ on: !!repoRoot && (!folded || keptOld), changes: changesRelease })
@@ -726,18 +730,25 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   // The open pull request in flight that is not the release one: the batch.
   const batchPR = useMemo(() => batchOf(stats.d?.prs ?? [], repo?.unreleased?.via?.number), [stats.d?.prs, repo?.unreleased?.via?.number])
   const via = useMemo(() => (batchPR ? viaLine(batchPR, board?.cards.find((c) => c.number === batchPR.number)) : undefined), [batchPR, board])
-  const batch = useMemo((): BatchPR | undefined => batchPR && { number: batchPR.number, ci: board?.cards.find((c) => c.number === batchPR.number)?.ci, next: via?.next }, [batchPR, board, via])
+  const batch = useMemo((): BatchPR | undefined => {
+    if (!batchPR) return undefined
+    const card = board?.cards.find((c) => c.number === batchPR.number)
+    // Its state beside the dots: what the via line said, but never its
+    // *fix: <job>*, which is CI red in plain words with the job on hover.
+    return { number: batchPR.number, ci: card?.ci, next: via?.next, failed: card?.failed, state: via && via.ci.tone !== 'fail' ? via.state : undefined }
+  }, [batchPR, board, via])
   if (!plan) return null
   const n = plan.rows.length
   const merge = plan.ships === 'merge'
   const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards })
+  const keptText = statsKept.kept && statsKept.at ? asOfText(now - statsKept.at) : undefined
   const label = (
-    <SectionLabel right={folded && (fold ? (
+    <SectionLabel right={!folded ? (keptText ? <span data-release-kept-age title="The pull requests and their checks as last read, drawn faint while they are read again" className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint">{keptText}</span> : undefined) : (fold ? (
       // One line in a narrow panel: the parts that do not fit wrap under it
       // and are clipped, the last first — never one cut mid-word
       // (*PR #941 gr…*). The whole line is the hover and the accessible name.
-      <span data-fold-only data-release-fold={fold.kind} title={`${fold.text}\n${fold.title}`} aria-label={fold.text}
-        className={`flex h-[16px] min-w-0 flex-wrap items-center justify-end gap-x-1 overflow-hidden leading-[16px] tabular-nums ${STATUS_TEXT[fold.tone]}`}>
+      <span data-fold-only data-release-fold={fold.kind} data-release-kept={keptText ? '' : undefined} title={`${fold.text}\n${fold.title}${keptText ? `\n${keptText}, being read again` : ''}`} aria-label={fold.text}
+        className={`flex h-[16px] min-w-0 flex-wrap items-center justify-end gap-x-1 overflow-hidden leading-[16px] tabular-nums ${STATUS_TEXT[fold.tone]}${keptText ? ` ${KEPT_CLASS}` : ''}`}>
         {fold.tone === 'active' && <span aria-hidden data-release-fold-pulse className="release-step-pulse block size-[6px] shrink-0 rounded-full bg-progress" />}
         {fold.text.split(' · ').map((part, i) => (
           <span key={i} data-release-fold-part className={i === 0 ? 'min-w-0 truncate' : 'whitespace-nowrap'}>{i > 0 && <span aria-hidden className="mr-1 text-fg-faint">·</span>}{part}</span>
@@ -760,6 +771,14 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const head = notesHeading(status, repo?.tags?.last ?? plan.last, now)
   const entries = notesOf(repo, head, status)
   const others = notInIt(plan.rows, batchPR?.number)
+  // The words beside the dots name the batch and its state while the
+  // release waits for it (*Waiting for #977 · CI red*): the via line would
+  // say the same again (owner, 2026-11-20), so it goes, and the words open
+  // the Pipeline on it as the via line did.
+  const out = head.state === 'out'
+  const words = head.state !== 'idle' ? stageWords(status, stripStages(status, { out }), { cards: board?.cards, out, now, batch }) : undefined
+  const viaInWords = !!via && words?.key === 'merged'
+  const showVia = !!via && head.state !== 'shipping' && !viaInWords
   // Nothing new since the last tag: the section stays and says so. Hiding
   // it made it vanish after every release (owner, 2026-11-16).
   const empty = head.state === 'idle' && !entries.length
@@ -769,14 +788,15 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
-          {head.state !== 'idle' && <ReleaseStrip status={status} out={head.state === 'out'} cards={board?.cards} batch={batch} now={now} />}
+          {head.state !== 'idle' && <ReleaseStrip status={status} out={out} cards={board?.cards} batch={batch} now={now}
+            href={viaInWords && via ? pipelineHref(plan.root, via.number) : undefined} kept={keptText ? `${keptText}, being read again` : undefined} />}
         </div>
         {entries.length > 0 && (
           <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
         )}
-        {((via && head.state !== 'shipping') || others.text) && (
+        {(showVia || others.text) && (
           <div data-release-group="later" className="grid min-w-0 gap-1.5 border-t border-[var(--app-hairline)] pt-2">
-            {via && head.state !== 'shipping' && <ViaRow via={via} root={plan.root} />}
+            {showVia && via && <ViaRow via={via} root={plan.root} kept={!!keptText} />}
             {others.text && <NotInItRows others={others} root={plan.root} />}
           </div>
         )}
@@ -788,28 +808,35 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
 /**
  * The section's heading: *Next release 0.183.1 · patch · last release 8h
  * ago*, *Releasing 0.183.1 · patch*, *0.183.1 released · 5 min ago*,
- * *Nothing new since v0.183.0 · 8h ago*. It is one line at any width: the
- * age's *release* goes below 350px of panel (*Next release 0.183.1 · patch
- * · last 8h ago*, the 330px cockpit), the version's below 290px (*Next
- * 0.183.1 · …*), and narrower still the age is cut with an ellipsis.
+ * *Nothing new since v0.183.0 · 8h ago*. It is one line at any width,
+ * words going before anything is cut (owner, 2026-11-20): the age's *last
+ * release* goes below 400px of panel (*Next release 0.183.1 · patch · 8h
+ * ago*), the version's *release* below 340px (*Next 0.183.1 · patch · 8h
+ * ago*, the 330px cockpit), and narrower still the age is cut with an
+ * ellipsis.
  */
 function NotesHead({ head: h }: { head: NotesHeading }) {
   const dot = <span aria-hidden className="shrink-0 text-fg-faint">·</span>
   const big = h.state === 'waiting' || h.state === 'shipping'
-  // The short form is the full one without " release": that word alone is
+  // The short form is the full one with some words out (*Next release* →
+  // *Next*, *last release 36m ago* → *36m ago*): those words alone are
   // hidden in a narrow panel, so the words read are the same at any width.
   const narrow = (full: string, short: string | undefined, wide: string) => {
-    const k = full.indexOf(' release')
-    if (!short || k < 0 || full.slice(0, k) + full.slice(k + 8) !== short) return full
-    return <>{full.slice(0, k)}<span data-head-wide className={wide}> release</span>{full.slice(k + 8)}</>
+    if (!short || short === full) return full
+    let a = 0
+    while (a < short.length && full[a] === short[a]) a++
+    let b = 0
+    while (b < short.length - a && full[full.length - 1 - b] === short[short.length - 1 - b]) b++
+    if (a + b !== short.length) return full
+    return <>{full.slice(0, a)}<span data-head-wide className={wide}>{full.slice(a, full.length - b)}</span>{full.slice(full.length - b)}</>
   }
   return (
     <header data-release-head={h.state} className="@container/head min-w-0">
       <div className="flex min-w-0 items-baseline gap-x-1.5 whitespace-nowrap text-[11.5px] text-fg-muted">
         <h3 data-release-version title={h.title} aria-label={h.text}
-          className={`num cursor-help ${big ? 'shrink-0 text-[13px] font-semibold text-fg' : 'min-w-0 truncate text-[12px] text-fg-muted'}`}>{narrow(h.text, h.short, 'hidden @[290px]/head:inline')}</h3>
+          className={`num cursor-help ${big ? 'shrink-0 text-[13px] font-semibold text-fg' : 'min-w-0 truncate text-[12px] text-fg-muted'}`}>{narrow(h.text, h.short, 'hidden @[340px]/head:inline')}</h3>
         {h.why && <>{dot}<span data-release-why title={h.why.title} className="shrink-0 cursor-help">{h.why.text}</span></>}
-        {h.age && <>{dot}<span data-release-since className={`num min-w-0 ${big ? 'truncate' : 'shrink-0'}`}>{narrow(h.age, h.ageShort, 'hidden @[350px]/head:inline')}</span></>}
+        {h.age && <>{dot}<span data-release-since title={h.age} className={`num min-w-0 ${big ? 'truncate' : 'shrink-0'}`}>{narrow(h.age, h.ageShort, 'hidden @[400px]/head:inline')}</span></>}
       </div>
     </header>
   )
@@ -846,7 +873,7 @@ function NotesKind({ kind, entries }: { kind: string; entries: readonly WorkEntr
             <li key={i} data-release-entry={e.source ?? ''} title={`${e.scope ? `${e.scope}: ` : ''}${e.text}${e.source === 'pr' ? '\nOn the batch pull request’s branch, not merged yet.' : ''}`}
               className="flex min-w-0 items-baseline gap-1.5 text-[12px] leading-[1.35] text-fg">
               <span aria-hidden className="shrink-0 text-fg-faint">•</span>
-              <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">{e.text}</span>
+              <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">{e.text}</span>
             </li>
           ))}
         </ul>
@@ -858,10 +885,10 @@ function NotesKind({ kind, entries }: { kind: string; entries: readonly WorkEntr
 const VIA_TONE: Record<ViaLine['ci']['tone'], string> = { ok: 'text-ok', fail: 'text-danger', pending: 'text-warn', warn: 'text-warn', muted: 'text-fg-faint' }
 
 /** The batch pull request as one line: *via #949 ● green · ready to merge*; it opens as a row does, on the Pipeline. */
-function ViaRow({ via: v, root }: { via: ViaLine; root: string }) {
+function ViaRow({ via: v, root, kept }: { via: ViaLine; root: string; kept?: boolean }) {
   return (
     <a data-release-via={v.number} href={pipelineHref(root, v.number)} title={v.title}
-      className="flex min-w-0 items-baseline gap-1.5 text-[11.5px] text-fg-muted no-underline hover:[&>[data-via-number]]:text-accent">
+      className={`flex min-w-0 items-baseline gap-1.5 text-[11.5px] text-fg-muted no-underline hover:[&>[data-via-number]]:text-accent${kept ? ` ${KEPT_CLASS}` : ''}`}>
       <span className="shrink-0 text-fg-faint">via</span>
       <span data-via-number className="num shrink-0 font-medium text-fg">#{v.number}</span>
       <span data-via-ci={v.ci.tone} className={`shrink-0 whitespace-nowrap ${VIA_TONE[v.ci.tone]}`}><span aria-hidden className={v.ci.tone === 'pending' ? 'release-step-pulse mr-0.5' : 'mr-0.5'}>●</span>{v.ci.text}</span>

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, plainVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, plainVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type BatchPR, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -252,7 +252,7 @@ describe('the right panel’s stages strip', () => {
     const w = releaseStatus(base({ merged: 0, unreleased: allPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
     expect(stripStages(w).find((x) => x.state === 'current')?.key).toBe('merged')
     expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'pass', next: 'merge #949' } })).toMatchObject({ kind: 'waiting', text: 'Waiting for #949 to merge · 0.183.1 · 2 changes', tone: 'waiting' })
-    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'fail' } })).toMatchObject({ kind: 'stopped', text: 'Waiting for #949 to merge · its checks failed · 0.183.1 · 2 changes', tone: 'fail' })
+    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'fail' } })).toMatchObject({ kind: 'stopped', text: 'Waiting for #949 to merge · CI red · 0.183.1 · 2 changes', tone: 'fail' })
   })
 
   it('keeps Merged to come while the entries are only on the batch PR’s branch', () => {
@@ -270,7 +270,7 @@ describe('the right panel’s stages strip', () => {
 // status exactly"): the state first in plain words, in one colour language —
 // grey nothing happening, blue in progress, amber waiting, red stopped, green done.
 describe('the words beside the stage dots', () => {
-  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; out?: boolean; batch?: { number: number; ci?: BoardCard['ci'] } } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
+  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; out?: boolean; batch?: BatchPR } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
 
   it('merged, no release PR: ready to release, not started, grey', () => {
     expect(words(releaseStatus(base()))).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Ready to release · not started', tone: 'idle' })
@@ -280,7 +280,11 @@ describe('the words beside the stage dots', () => {
     const onPR: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 }, via: { number: 949, head: 'feat/batch', sha: 'abc' }, entries: [{ text: 'a', kind: 'Fixed', source: 'pr' }] }
     const w = releaseStatus(base({ merged: 0, unreleased: onPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
     expect(words(w)).toMatchObject({ key: 'merged', index: 1, text: 'Waiting for #949 to merge', tone: 'waiting' })
-    expect(words(w, { batch: { number: 949, ci: 'fail' } })).toMatchObject({ text: 'Waiting for #949 to merge · its checks failed', tone: 'fail' })
+    // Once its state is read the number is followed by it, not *to merge*:
+    // *Waiting for #949 · CI red* (owner, 2026-11-20); the folded line keeps *to merge*.
+    expect(words(w, { batch: { number: 949, ci: 'fail', failed: ['e2e (headless shell)'] } })).toMatchObject({ text: 'Waiting for #949 · CI red', vlead: 'Waiting for #949 to merge', tone: 'fail', title: expect.stringMatching(/Failed: e2e \(headless shell\)\./) })
+    expect(words(w, { batch: { number: 949, ci: 'running', state: { text: 'checks running' } } })).toMatchObject({ text: 'Waiting for #949 · checks running', tone: 'waiting' })
+    expect(words(w, { batch: { number: 949, ci: 'pass', state: { text: 'needs a rebase', tone: 'danger' } } })).toMatchObject({ text: 'Waiting for #949 · needs a rebase', tone: 'fail' })
   })
 
   it('release PR checks running: releasing, blue, the systems counted and named on hover', () => {
