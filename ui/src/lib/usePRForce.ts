@@ -120,6 +120,18 @@ export function usePRForce(o: PRForceOptions) {
     const where = plan.wt ? `in ${plan.wt.path.split(/[\\/]/).pop()}` : `in a new worktree at #${p.number}’s head`
     return `Start an agent ${where} to ${what}?${plan.foreign ? ' The agent on the branch was not started by Caprock, so nothing is typed into it.' : ''}`
   }
+  // The same question in a few words, for the cockpit's narrow row (owner,
+  // 2026-11-20, translated: "Ask caprock to fix #977's CI and push?" wrapped
+  // onto two lines beside Confirm and Cancel — "something like *Ask to fix
+  // #977 CI?*"). One line at 330px; the whole sentence (who does it, and
+  // that it pushes) is its hover, confirmText.
+  const confirmShort = (p: SessionPRLive, kind: ForceKind): string => {
+    const n = `#${p.number}`
+    if (kind === 'rerun') return `Re-run ${n} on GitHub?`
+    if (kind === 'update') return `Update ${n}’s branch?`
+    const what = kind === 'conflict' ? `resolve ${n}` : `fix ${n} CI`
+    return fixPlan(p, kind).mode === 'queue' ? `Ask to ${what}?` : `New agent to ${what}?`
+  }
   // Fix CI's message: Investigate's for the first failed job, with its log;
   // else the flaky-check one.
   const ciMessage = async (p: SessionPRLive, fresh: boolean): Promise<string> => {
@@ -167,5 +179,5 @@ export function usePRForce(o: PRForceOptions) {
       setForcing(undefined)
     }
   }
-  return { confirm, setConfirm, forcing, progress, standing, active, fixPlan, forceWhy, confirmText, force, agentsOf }
+  return { confirm, setConfirm, forcing, progress, standing, active, fixPlan, forceWhy, confirmText, confirmShort, force, agentsOf }
 }

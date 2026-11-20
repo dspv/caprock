@@ -5,9 +5,9 @@
  * the answers kept for the repository; unfolded, the version, then the
  * stages as dots with only the current one named (variant A, 2026-11-19).
  */
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
+import { forgetDeckAnswers, markReading, writeDeck } from '@/lib/deckCache'
 import { FoldCtx } from './Cockpit'
 import { CockpitRelease, workRepoKey } from './ReleasePlan'
 
@@ -52,6 +52,31 @@ const draw = (folded: boolean) => render(
 const line = () => document.querySelector('[data-release-fold]')
 
 describe('the cockpit’s Release section', () => {
+  // Owner, 2026-11-20, translated: "I open it, see red, click around and it
+  // fixes itself". The CI words drawn from a kept Pipeline answer being
+  // read again are faint, as of its age; full strength once it lands.
+  it('draws its CI words from a kept copy being read again faint, as of its age', () => {
+    const old = { ...stats([pr(949, 'fix: the batch', 'open')], [{ number: 949, stage: 'fix', ci: 'fail', why: 'ci', failed: ['e2e (headless shell)'], spend: SPEND }], [rel('v0.183.0', 8 * 3_600_000, 23)]),
+      fetched_at: now - 25 * 60_000, read_at: now - 25 * 60_000 }
+    writeDeck(`stats:${ROOT}`, old, now - 25 * 60_000)
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), unreleased: onBatch })
+    markReading(`stats:${ROOT}`, true)
+    const { unmount } = draw(false)
+    const strip = () => document.querySelector('[data-release-strip]')!
+    expect(strip()).toHaveAttribute('data-release-kept')
+    expect(strip()).toHaveClass('opacity-70', 'saturate-50')
+    expect(document.querySelector('[data-release-kept-age]')).toHaveTextContent(/^as of 25 min ago$/)
+    act(() => { markReading(`stats:${ROOT}`, false) })
+    expect(strip()).not.toHaveAttribute('data-release-kept')
+    expect(document.querySelector('[data-release-kept-age]')).toBeNull()
+    unmount()
+    markReading(`stats:${ROOT}`, true)
+    draw(true)
+    expect(line()).toHaveAttribute('data-release-kept')
+    expect(line()).toHaveClass('opacity-70')
+    expect(line()!.getAttribute('title')).toMatch(/as of 25 min ago, being read again$/)
+  })
+
   // Owner, 2026-11-20, translated: "I stopped understanding what this means
   // … I must know the status exactly": merged, no release PR, nothing runs.
   it('folded, says the release is ready and not started, grey, from the kept answers, without the Work read', () => {
@@ -156,20 +181,20 @@ describe('the cockpit’s Release section', () => {
     const strip = document.querySelector('[data-release-strip]')!
     expect(strip).toHaveAttribute('data-release-current', 'merged')
     expect(strip).toHaveAttribute('aria-label', 'Release stage 1 of 5: Merged, waiting')
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Waiting for #949 to merge$/)
+    // The batch's number and state once, beside the dots (owner, 2026-11-20:
+    // the via line said #949 again); the words open the Pipeline on it.
+    const words = strip.querySelector<HTMLAnchorElement>('[data-release-stage-words]')!
+    expect(words).toHaveTextContent(/^Waiting for #949 · ready to merge$/)
+    expect(words.tagName).toBe('A')
+    expect(words.getAttribute('href')).toContain('pr=949')
+    expect(words).toHaveClass('text-warn')
     expect(strip.querySelector('[data-strip-stage="merged"]')).toHaveClass('bg-warn')
-    // The batch's checks and state: one via line, the first of the bottom group, never twice.
-    const via = document.querySelectorAll('[data-release-via]')
-    expect(via).toHaveLength(1)
-    expect(via[0]).toHaveTextContent('via#949●green·ready to merge')
-    expect(via[0]!.parentElement).toHaveAttribute('data-release-group', 'later')
-    expect(via[0]!.parentElement!.firstElementChild).toBe(via[0])
-    // The words name the batch once more: it is what the release waits for.
-    expect(document.querySelector('[data-release-plan]')!.textContent!.match(/#949/g)).toHaveLength(2)
-    // Three groups apart: the head, the entries and the bottom lines, each after a hairline.
+    expect(document.querySelector('[data-release-via]')).toBeNull()
+    expect(document.querySelector('[data-release-plan]')!.textContent!.match(/#949/g)).toHaveLength(1)
+    // Two groups apart: the head and the entries, after a hairline.
     const groups = [...document.querySelector('[data-release-plan]')!.children]
-    expect(groups.map((g) => g.getAttribute('data-release-group'))).toEqual(['head', 'entries', 'later'])
-    expect(groups.map((g) => g.classList.contains('border-t'))).toEqual([false, true, true])
+    expect(groups.map((g) => g.getAttribute('data-release-group'))).toEqual(['head', 'entries'])
+    expect(groups.map((g) => g.classList.contains('border-t'))).toEqual([false, true])
   })
 
   it('folded, says the batch PR’s checks failed, red; unfolded, its via line names the failing check', () => {
@@ -177,13 +202,21 @@ describe('the cockpit’s Release section', () => {
       [{ number: 949, stage: 'fix', ci: 'fail', why: 'ci', failed: ['go (windows-latest)'], spend: SPEND }], [rel('v0.183.0', 8 * 3_600_000, 23)]))
     writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), unreleased: onBatch })
     const { unmount } = draw(true)
-    expect(line()).toHaveAttribute('aria-label', 'Waiting for #949 to merge · its checks failed · 0.183.1 · 2 changes')
+    expect(line()).toHaveAttribute('aria-label', 'Waiting for #949 to merge · CI red · 0.183.1 · 2 changes')
     expect(line()).toHaveClass('text-danger')
     unmount()
     draw(false)
     // The heading names what the number is (owner, 2026-11-20).
     expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.183\.1·patch·last release 1h ago$/)
-    expect(document.querySelector('[data-release-via]')).toHaveTextContent('via#949●CI red·fix: go (windows-latest)')
+    // One line for the batch and its CI, never twice (owner, 2026-11-20:
+    // the via line and the words both said #977 and CI red), the failing
+    // check by name on hover rather than *fix: go (windows-latest)*.
+    expect(document.querySelector('[data-release-via]')).toBeNull()
+    const words = document.querySelector('[data-release-stage-words]')!
+    expect(words).toHaveTextContent(/^Waiting for #949 · CI red$/)
+    expect(words).toHaveClass('text-danger')
+    expect(words.getAttribute('title')).toMatch(/Failed: go \(windows-latest\)\. It cannot merge until they pass\./)
+    expect(document.querySelector('[data-release-plan]')!.textContent).not.toMatch(/fix: /)
     // Nothing is merged yet: the strip waits at Merged.
     expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'merged')
   })
@@ -230,8 +263,12 @@ describe('the cockpit’s Release section', () => {
     writeDeck(workRepoKey(ROOT), repo('v0.182.4', 5))
     draw(false)
     expect(document.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.183\.0·minor·last release 1h ago$/)
-    // The age's "release" goes below 350px of panel, the version's below 290px: one line at any width.
-    expect([...document.querySelectorAll('[data-head-wide]')].map((e) => e.className)).toEqual(['hidden @[290px]/head:inline', 'hidden @[350px]/head:inline'])
+    // Words go before anything is cut (owner, 2026-11-20): the version's
+    // " release" below 340px of panel, the age's "last release " below 400px
+    // — *Next 0.183.0 · minor · 1h ago* in the 330px cockpit.
+    const wide = [...document.querySelectorAll('[data-head-wide]')]
+    expect(wide.map((e) => e.className)).toEqual(['hidden @[340px]/head:inline', 'hidden @[400px]/head:inline'])
+    expect(wide.map((e) => e.textContent)).toEqual(['release ', 'last release '])
     const strip = document.querySelector('[data-release-strip]')!
     expect(strip).toHaveAttribute('data-release-tone', 'idle')
     expect(strip).toHaveAttribute('aria-label', 'Release stage 2 of 5: Release PR, not started')

@@ -45,10 +45,13 @@
  * A PR row of the session's own carries what the session deck's rows had
  * until the deck was removed (owner, 2026-10-20): the one most relevant
  * action — Resolve conflict, Update branch, Fix CI or Re-run — asked once in
- * the row (lib/usePRForce, the Pipeline page's own), a quiet *Log in
- * Pipeline →* that opens the Pipeline on that PR (its failed job's log and
- * Investigate are there), and a grey line with its agent cost and who is on
- * it. The session's pull requests (`prs:<session>`) are asked here, folded
+ * the row (lib/usePRForce, the Pipeline page's own), asked in a few words on
+ * one line (*Ask to fix #977 CI? Confirm Cancel*, the whole sentence on
+ * hover), and a grey line with its agent cost and who is on it. Under the
+ * list one link: *#977 log in Pipeline →* while a listed PR fails (the
+ * Pipeline on that PR, its failed job's log and Investigate), else
+ * *Pipeline →*; the per-row *Log in Pipeline →* went (owner, 2026-11-20:
+ * two links, "the difference is unclear"). The session's pull requests (`prs:<session>`) are asked here, folded
  * too; the Pipeline page asks the same route under the same key.
  *
  * Folded, the block is two lines (owner, 2026-11-18): the PR it summarizes
@@ -79,12 +82,18 @@
  * lands; one older than KEPT_FOLD_MS waits for that read, so a copy of
  * hours ago never claims checks are running (the 2026-10-23 "#801 · 4
  * running · 11h").
+ *
+ * Unfolded alike (owner, 2026-11-20, translated: "I open it, see red, click
+ * around and it fixes itself"): the list, Ring and By OS drawn from a kept
+ * copy older than KEPT_FAINT_MS while it is read again are faint
+ * (KEPT_CLASS), the age beside the label *as of 25 min ago*; full strength
+ * once the read lands (useKeptCopy, lib/usePoll).
  */
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type WorkRepo } from '@/lib/api'
 import { githubApi, githubErrorText, useGitHubStatus, type AutoRerun, type PRCheck, type PullRequest } from '@/lib/github'
 import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, foreignRepo, orderPRs, osName, osRollup, prChecks, readCockpitCIView, repoShort, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
-import { freshText, onDeckAnswer, readDeck, workRepoKey } from '@/lib/deckCache'
+import { freshText, isReading, keptAt, KEPT_FAINT_MS, onDeckAnswer, readDeck, workRepoKey } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
 import { flightLead, inFlight, mergedLine, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
@@ -139,6 +148,35 @@ export function useDeckAnswer<T>(key: string): { d?: T; at?: number } {
     () => readDeck<T>(key),
   )
   return { d: snap?.d, at: snap?.at }
+}
+
+/**
+ * Whether the copy kept under key is drawn as kept — faint, as of its age —
+ * and that age's moment (owner, 2026-11-20, translated: "I open it, see red,
+ * click around and it fixes itself"): while a read of it is under way and
+ * the copy is older than KEPT_FAINT_MS (lib/usePoll marks it), and on the
+ * first draw, before that poll has had a chance to mark it, when the copy is
+ * that old. Full strength once the read lands.
+ */
+export function useKeptCopy(key: string): { kept: boolean; at?: number } {
+  const reading = useSyncExternalStore(
+    (cb) => onDeckAnswer((k) => { if (k === key) cb() }),
+    () => isReading(key),
+  )
+  useDeckAnswer<unknown>(key)
+  const [drawn, setDrawn] = useState(false)
+  useEffect(() => { setDrawn(true) }, [])
+  const at = key ? keptAt(readDeck(key)) : undefined
+  const old = at !== undefined && Date.now() - at >= KEPT_FAINT_MS
+  return { kept: reading || (!drawn && old), at }
+}
+
+/** How a kept copy is drawn while it is read again: faint, its colours dulled, never full-strength red or green. */
+export const KEPT_CLASS = 'opacity-70 saturate-50'
+
+/** "as of 25 min ago": a kept copy's age, as the CI line says it. */
+export function asOfText(ms: number): string {
+  return `as of ${freshText(ms).replace('updated ', '').replace('just now', 'now')}`
 }
 
 /**
@@ -241,6 +279,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const ciRepo = useDeckAnswer<SessionCI>(ciNo ? ciKeyOf(ciNo) : '')
   const ciOwn = useDeckAnswer<SessionCI>(ciNo && repoScope ? `ci:${sessionId}:${ciNo}` : '')
   const ci = (ciOwn.at ?? 0) > (ciRepo.at ?? 0) ? ciOwn : ciRepo
+  // Which of the copies drawn are kept ones still being read again: drawn
+  // faint, as of their age, until the read lands (useKeptCopy).
+  const statsKept = useKeptCopy(`stats:${repoScope || sessionId}`)
+  const prsKept = useKeptCopy(`prs:${sessionId}`)
+  const ciKept = useKeptCopy(ciNo ? ciKeyOf(ciNo) : '')
   // A PR's runs, when its CI was read (the Pipeline page or the lead's poll): Fix CI sends the failed job with its log.
   function ciAnswerFor(num: number) {
     const a = readDeck<SessionCI>(ciKeyOf(num)), b = readDeck<SessionCI>(`ci:${sessionId}:${num}`)
@@ -304,13 +347,24 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const at = folded ? foldAt : view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : leadAt
   const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
   const listed = flight.rows.length > 0 ? flight.rows : flight.recent
+  // What the view in front draws from a kept copy being read again: the
+  // list from the Pipeline answer (and the session's own PRs' checks), Ring
+  // and By OS from their PR's checks; folded, the line's own (foldKept).
+  const listKept = statsKept.kept || (prsKept.kept && rows.length > 0)
+  const leadKept = lead === ownL && ownL ? prsKept.kept : ciKept.kept
+  const viewKept = folded ? foldKept : view === 'dots' ? listKept : leadKept
+  // One door to the Pipeline under the list (owner, 2026-11-20, translated:
+  // two links, "Log in Pipeline →" and "Pipeline →" — "the difference is
+  // unclear, keep one"): on the failing pull request's log when one is
+  // listed, the first of them; else the Pipeline.
+  const failingNo = listed.find((r) => r.card?.stage === 'fix' || r.mine?.live?.checks.state === 'fail' || (lead?.number === r.number && lead.live.checks.state === 'fail'))?.number
 
   const faint = (text: string) => <span className="text-[11.5px] text-fg-faint">{text}</span>
   const checksOf = (draw: (p: LeadPR) => ReactNode) =>
     lead ? draw(lead) : quiet ?? (flown ? faint(ci.d?.pr?.number === flown.number ? `#${flown.number}’s checks could not be read.` : `Reading #${flown.number}’s checks…`) : faint('Reading the repository’s pull requests…'))
   const body = view === 'ring' ? checksOf((p) => <Ring p={p} ci={ci.d} now={leadNow} own={own} />) : view === 'grid' ? checksOf((p) => <ByOS p={p} ci={ci.d} now={leadNow} own={own} />) : (
     !hasStats ? faint('Reading the repository’s pull requests…') : (
-      <div className="grid gap-1">
+      <div data-cockpit-ci-body-kept={listKept ? '' : undefined} title={listKept && at ? `${asOfText(now - at)} — being read again` : undefined} className={`grid gap-1${listKept ? ` ${KEPT_CLASS}` : ''}`}>
       {quiet}
       {listed.length > 0 && <JourneyLegend className="-mr-1.5 pr-1.5" />}
       {listed.length > 0 && <ul data-cockpit-journey className={`app-scroll -mr-1.5 grid content-start gap-1.5 overflow-y-auto pr-1.5 ${tall ? 'max-h-[440px]' : 'max-h-[176px]'}`}>
@@ -326,8 +380,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
             act={acts && p ? <RowAction p={p} kit={kit} worktrees={worktrees} now={now} /> : null}
             agent={agents[0]}
             idle={sum?.counts.norunner ?? 0}
-            auto={rowLive?.state === 'open' ? rowLive.checks.auto_rerun : undefined}
-            onLog={onOpen ? () => onOpen(r.number) : undefined} />
+            auto={rowLive?.state === 'open' ? rowLive.checks.auto_rerun : undefined} />
         })}
       </ul>}
       </div>
@@ -350,7 +403,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
         ) : undefined}
         sub={leadSum && foldLead ? (
           <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} data-cockpit-ci-kept={foldKept ? '' : undefined}
-            title={foldKept ? 'As last read, while it is read again' : undefined} className={`@container flex min-w-0 flex-1 items-center gap-2${foldKept ? ' opacity-70' : ''}`}>
+            title={foldKept ? 'As last read, while it is read again' : undefined} className={`@container flex min-w-0 flex-1 items-center gap-2${foldKept ? ` ${KEPT_CLASS}` : ''}`}>
             {/* Merged or closed, its checks are history: "merged" says
               * more than "all 1" (owner, 2026-10-27: "there is zero info here").
               * Merged, a green check and what comes next (owner, 2026-11-20,
@@ -396,7 +449,7 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
         ) : undefined}
         right={(
         <span className="flex items-center gap-2">
-          <span data-cockpit-ci-age className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint" title={folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : lead === ownL && ownL ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}>{at ? freshText(now - at).replace('updated ', '').replace('just now', 'now') : ''}</span>
+          <span data-cockpit-ci-age data-cockpit-ci-age-kept={viewKept && at ? '' : undefined} className="shrink-0 whitespace-nowrap text-[10.5px] text-fg-faint" title={`${folded ? (foldIsRepo ? `When GitHub was last read for #${foldLead!.number}’s checks, the repository’s open pull request` : 'When GitHub was last read for this session’s pull requests') : view === 'dots' ? 'When GitHub was last read for the Pipeline' : lead === ownL && ownL ? 'When GitHub was last read for this session’s pull requests' : 'When GitHub was last read for this pull request’s checks'}${viewKept ? '. Drawn faint, as last read, while it is read again.' : ''}`}>{at ? (viewKept ? asOfText(now - at) : freshText(now - at).replace('updated ', '').replace('just now', 'now')) : ''}</span>
           {!folded && (
             <span role="tablist" aria-label="CI view" className="flex items-center gap-px rounded-[5px] border border-[var(--app-hairline)] p-px">
               {VIEWS.map((x) => (
@@ -414,13 +467,15 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
             {listed.length > 4 ? (
               <button type="button" data-cockpit-ci-tall aria-expanded={tall} onClick={() => setTall(!tall)} className="text-fg-faint hover:text-fg-muted">{tall ? 'Less' : 'Expand'}</button>
             ) : <span />}
-            {onOpen && <button type="button" data-cockpit-ci-open onClick={() => onOpen()} title="Open the Pipeline: its own tab, beside the Dashboard" className="text-accent hover:underline">Pipeline →</button>}
+            {onOpen && (failingNo
+              ? <button type="button" data-cockpit-ci-open={failingNo} onClick={() => onOpen(failingNo)} title={`Open the Pipeline on #${failingNo}: its failed job, its steps and the end of its log, with Investigate`} className="min-w-0 truncate whitespace-nowrap text-accent hover:underline">#{failingNo} log in Pipeline →</button>
+              : <button type="button" data-cockpit-ci-open onClick={() => onOpen()} title="Open the Pipeline: its own tab, beside the Dashboard" className="text-accent hover:underline">Pipeline →</button>)}
           </span>
         </>
       ) : (
         <button type="button" data-cockpit-ci-open onClick={() => onOpen?.()} disabled={!onOpen} title="Open the Pipeline page in a tab"
           className="-mx-1.5 rounded-[6px] px-1.5 py-1 text-left hover:bg-[var(--app-row-hover)] disabled:cursor-default disabled:hover:bg-transparent">
-          {body}
+          <span data-cockpit-ci-body-kept={leadKept && lead ? '' : undefined} className={`block${leadKept && lead ? ` ${KEPT_CLASS}` : ''}`}>{body}</span>
         </button>
       )}
     </section>
@@ -432,14 +487,13 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
  * as a bar; a merge waiting for a release says so in a word ("next release",
  * "in v0.132.0"), the whole of it on hover.
  */
-function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0, auto, sum }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; onLog?: () => void; idle?: number; auto?: AutoRerun; sum?: ChecksSummary }) {
+function JourneyRow({ r, now, ships, act, agent, idle = 0, auto, sum }: { r: PipelineRow; now: number; ships: ShipsContext; act?: ReactNode; agent?: { session: SessionSummary; word: string }; idle?: number; auto?: AutoRerun; sum?: ChecksSummary }) {
   const since = r.card?.stage_at ?? r.merged_at ?? r.created_at
   const steps = journey(r)
   const said = releaseNote(r, ships)
   // What its agents cost and who is on it, when Caprock knows: a grey line.
   const cost = r.card ? costText(r.card.spend) : ''
   const who = agent ? sessionTitle(agent.session) : r.card?.spend.agents.join(', ') ?? ''
-  const failing = r.card?.stage === 'fix' || r.mine?.live?.checks.state === 'fail'
   return (
     <li data-cockpit-ci-pr={r.number} data-stage={stageOf(r)} className="grid min-w-0 gap-1">
       <span className="flex min-w-0 items-center gap-1.5 text-[12px]">
@@ -449,7 +503,7 @@ function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0, auto, sum }: {
         {since ? <span className="num shrink-0 text-[10.5px] text-fg-faint" title={new Date(since).toLocaleString()}>{spanText(Math.max(0, now - since))}</span> : null}
       </span>
       <JourneyBar steps={steps} landing={landingOf(r.labels)?.word} />
-      {(cost || who || act || sum || auto || ((failing || act) && onLog)) && (
+      {(cost || who || act || sum || auto) && (
         <span data-cockpit-ci-pr-meta className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-fg-faint">
           {/* Its checks, counted as the folded line counts them (one function, the same read). */}
           {sum && <span data-cockpit-ci-row-checks={r.number} data-cockpit-ci-norunner={idle || undefined} className="inline-flex shrink-0"><CheckSummary s={sum} label={`#${r.number}: its checks`} beside className="shrink-0 text-[10.5px]" /></span>}
@@ -460,10 +514,6 @@ function JourneyRow({ r, now, ships, act, agent, onLog, idle = 0, auto, sum }: {
             </span>
           )}
           {act}
-          {(failing || act) && onLog && (
-            <button type="button" data-cockpit-ci-log onClick={onLog} title="The failed job, its steps and the end of its log, with Investigate: the Pipeline page, on this pull request"
-              className="ml-auto shrink-0 text-fg-faint hover:text-fg-muted hover:underline">Log in Pipeline →</button>
-          )}
         </span>
       )}
     </li>
@@ -564,8 +614,10 @@ function RowAction({ p, kit, worktrees, now }: { p: SessionPRLive; kit: Kit; wor
   const c = kit.confirm?.pr === p.number ? kit.confirm : undefined
   if (c) {
     return (
-      <span data-cockpit-ci-confirm className="flex w-full min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
-        <span className="min-w-0 flex-1 text-fg">{kit.confirmText(p, c.kind)}</span>
+      // One line at the cockpit's width (owner, 2026-11-20): the question in
+      // a few words, the whole sentence on hover.
+      <span data-cockpit-ci-confirm className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 whitespace-nowrap text-[11px]">
+        <span data-cockpit-ci-confirm-text className="min-w-0 flex-1 truncate text-fg" title={kit.confirmText(p, c.kind)}>{kit.confirmShort(p, c.kind)}</span>
         <button type="button" data-cockpit-ci-confirm-yes autoFocus onClick={() => void kit.force(p, c.kind)}
           className="shrink-0 rounded-[4px] border border-accent/60 bg-accent/10 px-1.5 font-medium text-accent hover:bg-accent/20">Confirm</button>
         <button type="button" onClick={() => kit.setConfirm(undefined)} onKeyDown={(e) => { if (e.key === 'Escape') kit.setConfirm(undefined) }} title={`Cancel (${keys('Esc')})`}
