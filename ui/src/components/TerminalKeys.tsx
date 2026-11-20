@@ -644,9 +644,13 @@ export function TerminalKeys({ send, attach, attachIn, sendPaths, initial = '', 
             'aria-controls': listId,
             'aria-activedescendant': chooser.open && chooser.rows.length > 0 ? `${listId}-${chooser.active}` : undefined,
           } : {})}
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
+          // The phone keyboard's own help stays on (owner, 2026-11-20,
+          // translated: "I can hardly type one word right"). The field was
+          // born as a terminal's keys bar, with autocorrect, capitals and
+          // spelling off, and what is typed here is a message to an agent.
+          autoCapitalize="sentences"
+          autoCorrect="on"
+          spellCheck
           data-filled={text.trim() || attached.length > 0 ? '' : undefined}
           title={`${keys(INPUT_HIGHLIGHT_KEY)} turns the highlight off or on`}
           className="input composer-field w-full min-w-0 resize-none overflow-y-auto leading-snug"
