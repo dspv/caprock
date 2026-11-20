@@ -88,13 +88,14 @@ func (m *Manager) IsShell(id string) bool {
 // process-table reads each.
 const fgTTL = 2 * time.Second
 
-// foreground names the program; tests replace it.
-var foreground = fgproc.Foreground
+// foreground names the program and its job (fgproc.Job); tests replace it.
+var foreground = fgproc.Job
 
 type fgCache struct {
 	mu   sync.Mutex
 	at   time.Time
 	name string
+	job  int
 }
 
 // ShellProgram is the program running in front of shell id's prompt —
@@ -103,21 +104,29 @@ type fgCache struct {
 // (.ai/21-app.md § Shell tabs). Read at most every fgTTL per shell, and only
 // for a shell Caprock started (rule 7: this reads, it never signals).
 func (m *Manager) ShellProgram(id string) string {
+	name, _ := m.ShellJob(id)
+	return name
+}
+
+// ShellJob is ShellProgram with the job it names (fgproc.Job), 0 when the
+// shell is idle: what the daemon matches a session's process against to
+// name a shell tab after the agent running in it.
+func (m *Manager) ShellJob(id string) (string, int) {
 	a, ok := m.Get(id)
 	if !ok || a.Kind != KindShell {
-		return ""
+		return "", 0
 	}
 	a.fg.mu.Lock()
 	defer a.fg.mu.Unlock()
 	if !a.fg.at.IsZero() && time.Since(a.fg.at) < fgTTL {
-		return a.fg.name
+		return a.fg.name, a.fg.job
 	}
-	name := ""
+	name, job := "", 0
 	if _, exited := a.Exited(); !exited {
-		name = foreground(a.sess.PID())
+		name, job = foreground(a.sess.PID())
 	}
-	a.fg.at, a.fg.name = time.Now(), name
-	return name
+	a.fg.at, a.fg.name, a.fg.job = time.Now(), name, job
+	return name, job
 }
 
 // loginShell is the shell a tab runs and its arguments: on POSIX the user's

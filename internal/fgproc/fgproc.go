@@ -30,10 +30,30 @@ const Unnamed = "program"
 // or "" when the shell is at its prompt, has exited, or the platform cannot
 // tell.
 func Foreground(shellPID int) string {
+	name, _ := Job(shellPID)
+	return name
+}
+
+// Job is Foreground with the job it names: on macOS and Linux the terminal's
+// foreground process group, on Windows the shell's child process; 0 with the
+// name "". InJob answers whether a process belongs to it — how the daemon
+// tells that the job in front of a shell's prompt is a session it observes
+// ("claude --resume …" typed into a shell tab, owner, 2026-11-20).
+func Job(shellPID int) (name string, job int) {
 	if shellPID <= 1 {
-		return ""
+		return "", 0
 	}
 	return foreground(shellPID)
+}
+
+// InJob reports whether the process pid belongs to job, as Job returned it:
+// its process group is the job's (macOS, Linux), or the job is the process
+// or one of its parents (Windows). False when either is unknown or gone.
+func InJob(pid, job int) bool {
+	if pid <= 1 || job <= 1 {
+		return false
+	}
+	return inJob(pid, job)
 }
 
 // progName is a program's display name from its argv[0], else from the
@@ -70,6 +90,12 @@ type proc struct {
 // process that held the pid, not the shell's child. Console hosts are
 // skipped: they belong to the console, not to what the user ran.
 func childName(shellPID int, shellStart int64, procs []proc) string {
+	name, _ := childJob(shellPID, shellStart, procs)
+	return name
+}
+
+// childJob is childName with the child's pid.
+func childJob(shellPID int, shellStart int64, procs []proc) (string, int) {
 	for _, p := range procs {
 		if p.ppid != shellPID || p.pid == shellPID || p.start < shellStart {
 			continue
@@ -79,7 +105,29 @@ func childName(shellPID int, shellStart int64, procs []proc) string {
 		case "conhost", "openconsole":
 			continue
 		}
-		return name
+		return name, p.pid
 	}
-	return ""
+	return "", 0
+}
+
+// parentChain reports whether job is pid or one of its first few parents in
+// procs, each parent older than its child: a stale parent pid (Windows never
+// clears one) belongs to a stranger, not a parent.
+func parentChain(pid, job int, procs []proc) bool {
+	by := make(map[int]proc, len(procs))
+	for _, p := range procs {
+		by[p.pid] = p
+	}
+	cur, ok := by[pid]
+	for hops := 0; ok && hops < 8; hops++ {
+		if cur.pid == job {
+			return true
+		}
+		parent, found := by[cur.ppid]
+		if !found || parent.pid == cur.pid || parent.start > cur.start {
+			return false
+		}
+		cur = parent
+	}
+	return false
 }

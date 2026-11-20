@@ -32,9 +32,32 @@ export async function renameSession(id: string, name: string, previous = ''): Pr
   }
 }
 
-/** Whether a tab or row names a session the user may rename: an agent's, not a shell's or a file's. */
+/**
+ * Whether a row names a session the user may rename: an agent's, not a
+ * shell's or a file's. A shell's *tab* is renamed too, through what its
+ * label says it is (lib/tablabels.ts renameOf): the agent session running
+ * in it, renamed as that session, else the tab itself (nameShell). Until
+ * 2026-11-20 a shell's tab offered no Rename at all, and the owner, who had
+ * typed `claude --resume <id>` into the shell a dead session's tab became,
+ * asked "since when can't I rename an open session?" (translated).
+ */
 export function renamable(s: SessionSummary | undefined, isShell = false): s is SessionSummary {
   return !!s && !isShell && s.kind !== 'shell'
+}
+
+type ShellListener = (shellId: string, name: string) => void
+const shellListeners = new Set<ShellListener>()
+
+/** Called when a shell's tab is named (AppShell keeps it in the workspace). */
+export function onShellNamed(fn: ShellListener): () => void {
+  shellListeners.add(fn)
+  return () => { shellListeners.delete(fn) }
+}
+
+/** Name a shell's tab; '' gives it back "Shell N". A shell has no session row: the name is the tab's. */
+export function nameShell(shellId: string, name: string): void {
+  const next = name.replace(/\s+/g, ' ').trim()
+  for (const fn of shellListeners) fn(shellId, next)
 }
 
 /** Words that open a request without saying what it is about. */

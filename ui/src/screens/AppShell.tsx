@@ -44,6 +44,7 @@ import {
   type TabTarget,
 } from '@/lib/tabs'
 import { tabLabels } from '@/lib/tablabels'
+import { onShellNamed } from '@/lib/sessionNames'
 import { idleEnded } from '@/lib/idleEnd'
 import { useReportTabs } from '@/lib/reportTabs'
 import { clearMoves, clearedParts } from '@/lib/clearChain'
@@ -348,6 +349,8 @@ export function AppShell() {
   const dashboardShown = !workspaceShown && !mailShown && !pipelineShown
   const data = useWorkspaceData()
   const [ws, dispatch] = useReducer(workspaceReducer, undefined, loadWorkspace)
+  // A shell's tab named in place (the strip, the sidebar): kept in the workspace.
+  useEffect(() => onShellNamed((sessionId, name) => dispatch({ type: 'name-shell', sessionId, name })), [])
   const [prefs, setPrefs] = useState<UiPrefs>(loadPrefs)
   const [sheet, setSheet] = useState<SheetState>(null)
   // File → Share Your Figures… in the desktop app's menu (app/src-tauri
@@ -419,9 +422,18 @@ export function AppShell() {
   // The sidebar's per-project sparkline: one small query a minute, resting
   // while the window is hidden.
   const activity = useApi(() => api.activity(), [], { live: false, intervalMs: 60_000, keepUnchanged: true })
+  // An agent session running in a shell tab (`claude --resume <id>` typed
+  // there) is open in that tab: the sidebar lists it once, as the tab
+  // (lib/tablabels.ts `inside`), not again as a session with no tab.
+  const inShells = useMemo(() => {
+    const ids = new Set<string>()
+    for (const s of data.sessions) if (s.kind === 'shell' && s.agent_session_id && openSessions.has(s.session_id)) ids.add(s.agent_session_id)
+    return ids
+  }, [data.sessions, openSessions])
+  const sidebarOpen = useMemo(() => (inShells.size === 0 ? openSessions : new Set([...openSessions, ...inShells])), [openSessions, inShells])
   const model = useMemo(
-    () => buildSidebar({ projects: data.projects, sessions: data.sessions, permissions: data.permissions, costs: data.costs, openSessions, activity: activity.data?.sessions }),
-    [data.projects, data.sessions, data.permissions, data.costs, openSessions, activity.data],
+    () => buildSidebar({ projects: data.projects, sessions: data.sessions, permissions: data.permissions, costs: data.costs, openSessions: sidebarOpen, activity: activity.data?.sessions }),
+    [data.projects, data.sessions, data.permissions, data.costs, sidebarOpen, activity.data],
   )
   const sessionsById = useMemo(() => new Map(data.sessions.map((s) => [s.session_id, s])), [data.sessions])
   // From the model, so Other folders resolves like a project.

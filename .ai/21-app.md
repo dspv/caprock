@@ -358,8 +358,10 @@ One window, three regions:
   `renameSession`, applied by `useWorkspaceData`), so the tab and the row
   change in the same frame; a refusal rolls it back. `PUT
   /v1/sessions/{id}/name` stores it (`sessions.name`, migration 0052) and
-  sends a session frame, which renames it in every other window. A shell
-  or a file tab has no rename. Unnamed, a session is called by
+  sends a session frame, which renames it in every other window. A shell's
+  tab renames too (2026-11-20, [04-ui.md § Renaming a shell's
+  tab](04-ui.md#renaming-a-shells-tab)): the agent session running in it,
+  as that session, else the tab itself. A file tab has no rename. Unnamed, a session is called by
   `sessionTitle`: the agent's title, else `promptTitle` — up to four words
   that carry meaning from its first meaningful prompt, the request's
   opening ("can you please", "I want you to") dropped, cut at the first
@@ -1959,7 +1961,10 @@ replies to a running session: Continue, Shorter and the like"). Built in
     (*Closing a quick chat ends it*, above).
 
   The same holds for a shell's pane in a split. A shell running a program
-  reads *Shell 1 · claude* in the strip and the sidebar. A shell left running
+  reads *Shell 1 · claude* in the strip and the sidebar — unless that
+  program is an agent session Caprock observes, when the tab is named after
+  the session ([04-ui.md § Renaming a shell's
+  tab](04-ui.md#renaming-a-shells-tab)). A shell left running
   with no tab — kept by *Keep running, close tab*, or from before this — is
   still the muted row with ■ to stop it.
 
