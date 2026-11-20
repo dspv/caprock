@@ -1154,7 +1154,7 @@ SELECT text, model, cost_usd, created_at FROM event_tldr WHERE event_id = ?
     SEARCH event_tldr USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.GetExit
-SELECT session_id, code, ran_ms, early, tail, at FROM session_exits WHERE session_id = ?
+SELECT session_id, code, ran_ms, early, tail, at, unexpected FROM session_exits WHERE session_id = ?
     SEARCH session_exits USING PRIMARY KEY (session_id=?)
 
 ## store.GetInboxItem
@@ -1933,7 +1933,7 @@ UPDATE brain_vaults SET notes = ?, scan_ms = ?, error = '', scanned_at = ? WHERE
     SEARCH brain_vaults USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.RecordExit
-INSERT INTO session_exits(session_id, code, ran_ms, early, tail, at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET code = excluded.code, ran_ms = excluded.ran_ms, early = excluded.early, tail = excluded.tail, at = excluded.at
+INSERT INTO session_exits(session_id, code, ran_ms, early, tail, at, unexpected) VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id) DO UPDATE SET code = excluded.code, ran_ms = excluded.ran_ms, early = excluded.early, tail = excluded.tail, at = excluded.at, unexpected = excluded.unexpected
 
 ## store.RecordPR
 INSERT INTO session_prs(session_id, url, number, title, opened_at, merged_at, closed_at, last_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id, url) DO UPDATE SET title = CASE WHEN excluded.title != '' AND session_prs.title = '' THEN excluded.title ELSE session_prs.title END, opened_at = CASE WHEN excluded.opened_at > 0 AND (session_prs.opened_at = 0 OR excluded.opened_at < session_prs.opened_at) THEN excluded.opened_at ELSE session_prs.opened_at END, merged_at = MAX(session_prs.merged_at, excluded.merged_at), closed_at = MAX(session_prs.closed_at, excluded.closed_at), last_at = MAX(session_prs.last_at, excluded.last_at)
