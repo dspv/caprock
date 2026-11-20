@@ -89,8 +89,12 @@ function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
  * not started*, cut with an ellipsis before it wraps. `version` puts a tag
  * already under way first, where no heading above names it.
  */
-export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date.now() }: {
+export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date.now(), href, kept }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
+  /** Where the words go when they name the batch pull request (*Waiting for #977 · CI red*): the Pipeline on it. */
+  href?: string
+  /** Drawn from a kept copy being read again: faint, its age on hover (owner, 2026-11-20). */
+  kept?: string
   /** The board's cards: the release pull request's checks per OS, for *checks 1 of 3 systems*. */
   cards?: readonly BoardCard[]
   /** The batch pull request, for *Waiting for #949 to merge*. */
@@ -103,9 +107,9 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date
   const at = w.index - 1
   const current = stages[at]?.state === 'current'
   return (
-    <div data-release-strip data-release-current={current ? w.key : ''} data-release-tone={w.tone} role="group"
+    <div data-release-strip data-release-current={current ? w.key : ''} data-release-tone={w.tone} data-release-kept={kept ? '' : undefined} role="group"
       aria-label={`Release stage ${w.index} of ${stages.length}: ${w.name}, ${current ? TONE_STATE[w.tone] : 'done'}`}
-      className="flex h-[16px] min-w-0 items-center text-[11.5px] leading-[16px]">
+      className={`flex h-[16px] min-w-0 items-center text-[11.5px] leading-[16px]${kept ? ' opacity-70 saturate-50' : ''}`}>
       {version && s.version && <span className="num mr-2 shrink-0 font-semibold text-fg">{s.version}</span>}
       <span aria-hidden className="flex shrink-0 items-center">
         {stages.map((x, i) => {
@@ -121,7 +125,9 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date
           )
         })}
       </span>
-      <span data-release-stage-words title={w.title ?? stages[at]?.title} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</span>
+      {href && w.key === 'merged'
+        ? <a data-release-stage-words href={href} title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums no-underline hover:underline ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</a>
+        : <span data-release-stage-words title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</span>}
     </div>
   )
 }

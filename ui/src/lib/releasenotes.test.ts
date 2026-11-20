@@ -31,7 +31,7 @@ describe('the release notes', () => {
   it('predicts the version from the batch PR’s fragments and lists them while waiting', () => {
     const s = status({ unreleased: onBatch })
     const h = notesHeading(s, { name: 'v0.183.0', at: T - 8 * H }, T)
-    expect(h).toMatchObject({ state: 'waiting', text: 'Next release 0.183.1', short: 'Next 0.183.1', why: { text: 'patch', title: expect.stringMatching(/^patch: fixes only\.\n/) }, age: 'last release 8h ago', ageShort: 'last 8h ago' })
+    expect(h).toMatchObject({ state: 'waiting', text: 'Next release 0.183.1', short: 'Next 0.183.1', why: { text: 'patch', title: expect.stringMatching(/^patch: fixes only\.\n/) }, age: 'last release 8h ago', ageShort: '8h ago' })
     expect(notesOf(repo(), h, s).map((e) => e.text)).toEqual(['b fixed', 'a changed'])
   })
 
@@ -65,7 +65,7 @@ describe('the release notes', () => {
   it('says the via line’s checks and state, and the next step', () => {
     const p = pr(949, 'fix: batch')
     expect(viaLine(p, card(949, { stage: 'ready', ci: 'pass' }))).toMatchObject({ ci: { text: 'green', tone: 'ok' }, state: { text: 'ready to merge' }, next: 'merge #949' })
-    expect(viaLine(p, card(949, { stage: 'fix', ci: 'fail', why: 'ci', failed: ['go (windows-latest)', 'lint'] }))).toMatchObject({ ci: { text: 'CI red' }, state: { text: 'fix: go (windows-latest) +1', tone: 'danger' }, next: 'fix CI on #949' })
+    expect(viaLine(p, card(949, { stage: 'fix', ci: 'fail', why: 'ci', failed: ['go (windows-latest)', 'lint'] }))).toMatchObject({ ci: { text: 'CI red' }, state: { text: 'go failed +1', tone: 'danger' }, next: 'fix CI on #949' })
     expect(viaLine(p, card(949, { ci: 'running' }))).toMatchObject({ ci: { text: 'CI running' }, next: 'wait for CI' })
     expect(viaLine(p, card(949, { stage: 'fix', ci: 'pass', why: 'conflict' }))).toMatchObject({ state: { text: 'needs a rebase' }, next: 'rebase #949' })
     expect(viaLine(p, card(949, { stage: 'ready', ci: 'pass', review: 'review_required' })).next).toBe('review #949')

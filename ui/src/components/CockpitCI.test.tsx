@@ -93,8 +93,13 @@ describe('the cockpit’s CI block', () => {
     // It scrolls inside the block; Expand only past a few rows; the page one click away.
     expect(document.querySelector('[data-cockpit-journey]')).toHaveClass('overflow-y-auto', 'max-h-[176px]')
     expect(document.querySelector('[data-cockpit-ci-tall]')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Pipeline →' }))
-    expect(onOpen).toHaveBeenCalledTimes(1)
+    // One link under the list (owner, 2026-11-20: "Log in Pipeline →" and
+    // "Pipeline →" — "the difference is unclear, keep one"): with #9 failing
+    // it opens the Pipeline on #9's log.
+    expect(document.querySelectorAll('[data-cockpit-ci-open]')).toHaveLength(1)
+    expect(document.querySelector('[data-cockpit-ci-log]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '#9 log in Pipeline →' }))
+    expect(onOpen).toHaveBeenCalledWith(9)
   })
 
   it('grows taller on Expand, remembered', async () => {
@@ -308,11 +313,20 @@ describe('the cockpit’s CI block', () => {
     // Its agent cost and who worked on it, in a grey line.
     expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-cost]')).toHaveTextContent('$1.25')
     expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-agent]')).toHaveTextContent('claude')
-    // The log is the Pipeline's, on that PR.
-    fireEvent.click(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-log]')!)
+    // The log is the Pipeline's, on that PR: the one link under the list.
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-cockpit-ci-log]')).toBeNull()
+    fireEvent.click(document.querySelector('[data-cockpit-ci-open="9"]')!)
     expect(onOpen).toHaveBeenCalledWith(9)
     fireEvent.click(act1)
-    expect(document.querySelector('[data-cockpit-ci-confirm]')).toHaveTextContent('Ask Login agent to fix #9’s CI and push?')
+    // One line at 330px (owner, 2026-11-20, translated: "Ask caprock to fix
+    // #977's CI and push?" wrapped — "something like Ask to fix #977 CI?"):
+    // a few words, never wrapping, the whole sentence on hover.
+    const confirm = document.querySelector('[data-cockpit-ci-confirm]')!
+    expect(confirm).toHaveClass('flex-nowrap', 'whitespace-nowrap')
+    expect(confirm).toHaveTextContent(/^Ask to fix #9 CI\?ConfirmCancel$/)
+    const q = confirm.querySelector('[data-cockpit-ci-confirm-text]')!
+    expect(q).toHaveClass('truncate')
+    expect(q).toHaveAttribute('title', 'Ask Login agent to fix #9’s CI and push?')
     expect(posts).toEqual([])
     await act(async () => { fireEvent.click(document.querySelector('[data-cockpit-ci-confirm-yes]')!) })
     await waitFor(() => expect(posts).toEqual(['/v1/agents/s1/queue']))
@@ -334,6 +348,8 @@ describe('the cockpit’s CI block', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
     expect(document.querySelector('[data-cockpit-ci-action]')).toBeNull()
     expect(document.querySelector('[data-cockpit-ci-log]')).toBeNull()
+    // Nothing failing: the one link is the Pipeline itself.
+    expect(document.querySelector('[data-cockpit-ci-open]')).toHaveTextContent(/^Pipeline →$/)
   })
 
   // Owner, 2026-10-23: folded, the line read "1 min ago #801 ● 4 running ✓ 8
@@ -584,6 +600,40 @@ describe('the cockpit’s CI block', () => {
       for (const v of variants) expect(v.querySelector('[data-check-bar]')).toHaveAttribute('aria-hidden')
       expect(variants[0]!.querySelector('[data-check-bar] i')).toHaveAttribute('data-tone', 'fail')
     })
+  })
+
+  // Owner, 2026-11-20, translated: "I open it, see red, click around and it
+  // fixes itself". A kept copy being read again is faint, as of its age.
+  it('unfolded, draws a kept list faint, as of its age, until the read lands', async () => {
+    const stale = { connected: true, repo: 'a/b', fetched_at: now - 25 * 60_000, read_at: now - 25 * 60_000,
+      prs: [{ number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix the login', state: 'open', created_at: now - 3_600_000 }],
+      board: { cards: [{ number: 9, stage: 'fix', ci: 'fail', why: 'ci', stage_at: now - 600_000, spend: SPEND }], releases: [], flow: FLOW, ships_by: 'release' } }
+    writeDeck('stats:/w', stale, now - 25 * 60_000)
+    let land: (r: Response) => void = () => {}
+    vi.stubGlobal('fetch', vi.fn((url: string) => url.endsWith('/ci/stats') ? new Promise<Response>((r) => { land = r }) : new Promise<Response>(() => {})))
+    render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={() => {}} />)
+    // On the first draw, before any read answers: faint, never full-strength red.
+    const body = () => document.querySelector('[data-cockpit-ci-body-kept]')
+    expect(body()).not.toBeNull()
+    expect(body()).toHaveClass('opacity-70', 'saturate-50')
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="ci"]')).toHaveClass('bg-danger')
+    expect(document.querySelector('[data-cockpit-ci-age]')).toHaveTextContent(/^as of 25 min ago$/)
+    // The fresh answer: green now, at full strength, its own age.
+    const fresh = { ...stale, fetched_at: now, read_at: now, board: { ...stale.board, cards: [{ ...stale.board.cards[0], stage: 'ready', ci: 'pass', why: undefined }] } }
+    await act(async () => { land(answer(fresh)) })
+    await waitFor(() => expect(body()).toBeNull())
+    expect(document.querySelector('[data-cockpit-ci-age]')).toHaveTextContent(/^now$/)
+    expect(document.querySelector('[data-cockpit-ci-pr="9"] [data-journey-seg="ci"]')).not.toHaveClass('bg-danger')
+  })
+
+  it('draws a kept copy younger than a few seconds at full strength', () => {
+    writeDeck('stats:/w', { connected: true, repo: 'a/b', fetched_at: now - 5_000, read_at: now - 5_000,
+      prs: [{ number: 9, url: 'https://github.com/a/b/pull/9', title: 'Fix', state: 'open', created_at: now - 3_600_000 }],
+      board: { cards: [], releases: [], flow: FLOW, ships_by: 'release' } }, now - 5_000)
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+    render(<CockpitCI sessionId="s1" repoScope="/w" onOpen={() => {}} />)
+    expect(document.querySelector('[data-cockpit-ci-pr="9"]')).not.toBeNull()
+    expect(document.querySelector('[data-cockpit-ci-body-kept]')).toBeNull()
   })
 
   it('unfolded, times a kept copy as of its read until it is read again', () => {
