@@ -246,7 +246,7 @@ describe('the plan-window stop', () => {
     expect(out[0]?.id).toBe('window-stop')
     expect(out[0]?.title).toBe('Paused 2 sessions Caprock started')
     expect(out[0]?.detail).toMatch(/5-hour limit passed 90%/)
-    expect(out[0]?.detail).toMatch(/in 1 h/)
+    expect(out[0]?.detail).toMatch(/in 1h/)
     expect(out[0]?.detail).toMatch(/acme-api, acme-web/)
   })
 })

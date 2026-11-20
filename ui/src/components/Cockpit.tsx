@@ -1654,7 +1654,7 @@ function WindowInline({ label, name, w, lenMs, now, source, forecasts }: { label
  * One window at a glance: the bar, a tick where an even pace would be by
  * the clock (fill past it = spending faster than time passes), the percentage
  * large, and one line — when it resets and whether it lasts. Green *enough*,
- * amber *out at 23:50*, red when that is under half an hour away; a click
+ * amber *runs out tomorrow 17:11*, red when that is under half an hour away; a click
  * shows the exact reset time and the forecast in words.
  */
 function WindowBar({ label, w, lenMs, now, source, forecasts }: { label: string; w: RateWindow; lenMs: number; now: number; source: string; forecasts: boolean }) {
@@ -1684,7 +1684,7 @@ function WindowBar({ label, w, lenMs, now, source, forecasts }: { label: string;
           <>
             <span className="text-fg-muted">resets in <span className="num text-fg">{countdown(p.resetMs - now)}</span></span>
             {p.verdict === 'ok' && <span data-verdict="ok" className="font-medium text-ok">✓ enough</span>}
-            {p.verdict === 'out' && <span data-verdict="out" className={`font-medium ${p.urgent ? 'text-danger' : 'text-warn'}`}>⚠ out {p.outAt ? `at ${resetClock(p.outAt, now)}` : 'now'}</span>}
+            {p.verdict === 'out' && <span data-verdict="out" className={`font-medium ${p.urgent ? 'text-danger' : 'text-warn'}`}>⚠ runs out {p.outAt ? resetClock(p.outAt, now) : 'now'}</span>}
           </>
         )}
       </button>

@@ -90,6 +90,6 @@ describe('WindowStopSetting', () => {
     render(<WindowStopSetting now={NOW} />)
     await waitFor(() => expect(document.body.textContent).toMatch(/acme-api/))
     expect(document.body.textContent).toMatch(/paused · resumes after/)
-    expect(screen.getByTestId('window-figures').textContent).toMatch(/next reset is in 30 min/)
+    expect(screen.getByTestId('window-figures').textContent).toMatch(/next reset is in 30m/)
   })
 })
