@@ -157,7 +157,8 @@ describe('the agent cockpit', () => {
     expect(ctx).not.toHaveTextContent('re-reads')
     const plan = screen.getByRole('region', { name: 'Plan limits' })
     expect(plan).toHaveAttribute('data-look', 'compact')
-    expect(plan.querySelector('[data-window="5 hours"]')).toHaveTextContent(/^5h41%\d/)
+    // The reset an hour on is "tomorrow 00:47" when this runs after 23:00.
+    expect(plan.querySelector('[data-window="5 hours"]')).toHaveTextContent(/^5h41%(\d|tomorrow \d)/)
     expect(plan).not.toHaveTextContent('resets in')
     expect(within(plan).queryByRole('meter')).toBeNull()
   })
