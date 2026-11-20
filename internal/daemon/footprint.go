@@ -399,18 +399,41 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		}
 	}
 	if f.Disk.DatabaseBytes > footprintDBWarn {
-		w("database_large", "The database is %s (over %s). Settings shows what fills it, and a retention period there deletes old events.", Bytes(uint64(f.Disk.DatabaseBytes)), Bytes(footprintDBWarn))
+		w("database_large", "%s", databaseLargeText(f.Disk.DatabaseBytes))
 	}
 	if f.Disk.WALBytes > footprintWALWarn {
 		w("wal_large", "The database's write-ahead log is %s (over %s): it has not been folded back into the database. The daemon checkpoints it on its own within %d minutes.", Bytes(uint64(f.Disk.WALBytes)), Bytes(footprintWALWarn), int(walCheckpointEvery/time.Minute))
 	}
 	if io := f.DiskIO; io != nil && io.LastHour != nil && io.LastHour.ReadBytes > footprintReadsWarn {
-		w("disk_reads_high", "The daemon read %s from disk in the last %s (over %s).", Bytes(io.LastHour.ReadBytes), minutes(io.LastHour.Seconds), Bytes(footprintReadsWarn))
+		w("disk_reads_high", "%s", diskReadsHighText(io.LastHour.ReadBytes, io.LastHour.Seconds))
 	}
 	if len(warn) == 0 {
 		warn = []FootprintVerdict{{Level: "ok", Code: "ok", Text: "Nothing here looks wrong: one daemon, no orphaned terminals, and the data directory within bounds."}}
 	}
 	return append(warn, info...)
+}
+
+// databaseLargeText is the database_large verdict, the same words the
+// dashboard's Caprock resources says (ui/src/lib/footprint.ts, the History is
+// large row; owner, 2026-11-20, translated: "it's not clear what to do with
+// this"): what the history holds and what can be done. A retention period is
+// config.json's retention_days, read at start; nothing in Settings writes it.
+func databaseLargeText(dbBytes int64) string {
+	return fmt.Sprintf("The history database is %s (over %s): every session's prompts, replies, tool calls and images. "+
+		"Caprock keeps all of it until you set a retention period: retention_days in config.json, then restart Caprock. "+
+		"Settings > Storage shows how much is older than 30 and 90 days.", Bytes(uint64(dbBytes)), Bytes(footprintDBWarn))
+}
+
+// diskReadsHighText is the disk_reads_high verdict, in the words the
+// dashboard's Disk reads row uses: what the reads are, that they are
+// harmless, and that nothing is needed. The database reads come from the
+// open window's screens refreshing; while the window is hidden its polls rest
+// (ui/src/lib/visible.ts) and the reads all but stop
+// (docs/resource-usage-audit-2026-10-18.md, F16: 193 MB open, 1.8 MB closed).
+func diskReadsHighText(readBytes uint64, seconds int64) string {
+	return fmt.Sprintf("The daemon read %s from disk in the last %s (over %s): Caprock re-reading its own history for the open window. "+
+		"Harmless to the disk; it costs a little battery and CPU. "+
+		"Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.", Bytes(readBytes), minutes(seconds), Bytes(footprintReadsWarn))
 }
 
 // SetOrphans puts an orphan scan into a report that came without one (a

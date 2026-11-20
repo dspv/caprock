@@ -430,6 +430,10 @@ export interface DoctorRow {
   count?: number
   /** One line, in words. */
   reason: string
+  /** What the person can do about it, in words: a second line under the reason. */
+  help?: string
+  /** A button beside the value that does it: `retention` opens Settings on the retention period. */
+  action?: { key: 'retention'; label: string }
   /** "66 MB", "1.6 GB / hour". */
   value?: string
   /** Amber only for a real problem: a warning verdict. */
@@ -441,6 +445,26 @@ export interface DoctorRow {
   /** The daemon's own sentence, for Details. */
   said?: string
 }
+
+/*
+ * Disk reads and History is large say what they mean for the person and what
+ * they can do (owner, 2026-11-20, translated: "it's not clear what to do with
+ * this — can anything be done or not?"). `caprock doctor` says the same in its
+ * Verdict lines (internal/daemon/footprint.go, diskReadsHighText and
+ * databaseLargeText).
+ *
+ * The reads are the open window's screens refreshing from the database; while
+ * the window is hidden its polls rest (lib/visible.ts) and the reads all but
+ * stop (docs/resource-usage-audit-2026-10-18.md, F16). A retention period is
+ * config.json's `retention_days`; Settings → Storage says how and how much is
+ * older than 30 and 90 days, so the row gives no figure of its own.
+ */
+export function readsReason(over?: string): string {
+  return `Above the usual ${over ?? '500 MB'} an hour: Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU.`
+}
+export const READS_HELP = 'Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.'
+export const HISTORY_REASON = "Every session's prompts, replies, tool calls and images. Caprock keeps all of it until you set a retention period."
+export const HISTORY_HELP = 'Settings → Storage shows how much is older than 30 and 90 days.'
 
 /** The rows, problems first, in the order a person would act on them. */
 export function doctorRows(f: Footprint): DoctorRow[] {
@@ -544,13 +568,18 @@ export function doctorRows(f: Footprint): DoctorRow[] {
     rows.push({
       key: 'reads',
       title: 'Disk reads',
-      reason: high ? `Above the usual${over ? ` ${over}/hour` : ''} limit.` : 'Normal for Caprock.',
+      reason: high ? readsReason(over) : 'Normal for Caprock.',
+      help: high ? READS_HELP : undefined,
       value: `${fmtBytes(io.read_bytes)} / ${span}`,
       warn: high, stoppable: [], procs: [], said: verdict('disk_reads_high')?.text,
     })
   }
   if (verdict('database_large')) {
-    rows.push({ key: 'database', title: 'History is large', reason: 'A retention period in Settings deletes old events.', value: fmtBytes(f.disk.database_bytes), warn: isWarn('database_large'), stoppable: [], procs: [], said: verdict('database_large')!.text })
+    rows.push({
+      key: 'database', title: 'History is large',
+      reason: HISTORY_REASON, help: HISTORY_HELP, action: { key: 'retention', label: 'Set a retention period' },
+      value: fmtBytes(f.disk.database_bytes), warn: isWarn('database_large'), stoppable: [], procs: [], said: verdict('database_large')!.text,
+    })
   }
   if (verdict('wal_large')) {
     rows.push({ key: 'wal', title: 'A database file has grown', reason: 'Caprock folds it back on its own within minutes.', value: fmtBytes(f.disk.wal_bytes), warn: isWarn('wal_large'), stoppable: [], procs: [], said: verdict('wal_large')!.text })

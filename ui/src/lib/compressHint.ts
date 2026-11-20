@@ -143,31 +143,51 @@ export const COMPRESS_HINT_TARGET = '#/settings'
  * switch is left as it is; turning it on is the user's click there.
  */
 export function openCompressSwitch(): void {
+  openStorageItem('[data-compress-tool-output]', 'compressLit')
+}
+
+/**
+ * Open Settings on the retention period (Caprock resources' *Set a retention
+ * period*, owner 2026-11-20): the Storage section unfolded, its Details
+ * opened, the retention line scrolled into the middle and lit for a moment.
+ */
+export function openRetentionSetting(): void {
+  openStorageItem('[data-retention]', 'retentionLit')
+}
+
+/** Settings → Storage, then `selector` inside it: unfolded, opened, in view, lit. */
+function openStorageItem(selector: string, lit: string): void {
   location.hash = COMPRESS_HINT_TARGET
   let tries = 0
   let unfolded = false
   const look = () => {
     if (typeof document === 'undefined') return
     const section = document.getElementById(STORAGE_SECTION)
-    // A folded section has no switch in it: unfold it, then look again.
+    // A folded section has nothing in it: unfold it, then look again.
     if (section && !unfolded) {
       unfolded = true
       window.dispatchEvent(new CustomEvent(REVEAL_EVENT, { detail: STORAGE_SECTION }))
     }
-    const el = section?.querySelector<HTMLElement>('[data-compress-tool-output]')
-    if (el) { lightSwitch(el); return }
+    const el = section?.querySelector<HTMLElement>(selector)
+    if (el) {
+      // Inside a closed <details> it is drawn but not shown.
+      const box = el.closest('details')
+      if (box && !box.open) box.open = true
+      lightSwitch(el, lit)
+      return
+    }
     // The panel draws after its own read of /v1/storage: up to five seconds.
     if (++tries < 200) setTimeout(look, 25)
   }
   setTimeout(look, 0)
 }
 
-function lightSwitch(el: HTMLElement): void {
+function lightSwitch(el: HTMLElement, lit: string): void {
   el.scrollIntoView?.({ block: 'center' })
-  el.dataset.compressLit = ''
+  el.dataset[lit] = ''
   el.style.transition = 'box-shadow 700ms ease-out'
   el.style.borderRadius = '8px'
   el.style.boxShadow = '0 0 0 2px var(--color-accent)'
   setTimeout(() => { el.style.boxShadow = '' }, 2400)
-  setTimeout(() => { delete el.dataset.compressLit; el.style.transition = '' }, 3200)
+  setTimeout(() => { delete el.dataset[lit]; el.style.transition = '' }, 3200)
 }
