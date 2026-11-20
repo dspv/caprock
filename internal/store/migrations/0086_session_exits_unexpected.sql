@@ -1,0 +1,11 @@
+-- unexpected: the session ended and nobody asked it to (owner, 2026-11-20,
+-- translated): a Claude Code session Caprock started died when he quit
+-- Chrome — a signal, code -1 — its tab silently became a shell, and the
+-- session was nowhere to be found, not in Recently closed. 1 when the
+-- program exited with a non-zero code or by a signal, was not stopped by
+-- Caprock (Stop, closing its tab, freeing memory, a restart, a shutdown) and
+-- did not end at once (early). The tab that falls back to a shell says so,
+-- with Resume (agents.ExitReport.Unexpected). Rows from before read 0.
+--
+-- See 03-contracts.md § Session exits DDL.
+ALTER TABLE session_exits ADD COLUMN unexpected INTEGER NOT NULL DEFAULT 0;

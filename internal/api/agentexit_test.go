@@ -126,3 +126,29 @@ func TestAgentExitWhileRunningIs409(t *testing.T) {
 		}
 	}
 }
+
+// A session nobody asked to end says so (owner, 2026-11-20): the tab that
+// falls back to a shell reads `unexpected` and offers Resume. A clean exit
+// leaves the field out.
+func TestAgentExitSaysUnexpected(t *testing.T) {
+	_, srv := exitServer(t, map[string]agents.ExitReport{
+		"s1": {SessionID: "s1", Agent: "claude", Code: -1, Unexpected: true, At: 1795198101896},
+		"s2": {SessionID: "s2", Agent: "claude", Code: 0},
+	})
+	for id, want := range map[string]bool{"s1": true, "s2": false} {
+		resp, err := srv.Client().Get(srv.URL + "/v1/agents/" + id + "/exit")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var raw map[string]any
+		err = json.NewDecoder(resp.Body).Decode(&raw)
+		_ = resp.Body.Close()
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: %d %v", id, resp.StatusCode, err)
+		}
+		got, present := raw["unexpected"]
+		if want && got != true || !want && present {
+			t.Fatalf("%s: unexpected = %v (present %v)", id, got, present)
+		}
+	}
+}

@@ -43,8 +43,11 @@ type ExitReport struct {
 	Early bool `json:"early"`
 	// Freed: Caprock ended it to free memory, on the user's click; its
 	// conversation is kept and can be continued.
-	Freed bool  `json:"freed,omitempty"`
-	RanMs int64 `json:"ran_ms"`
+	Freed bool `json:"freed,omitempty"`
+	// Unexpected: nobody asked it to end (Unexpected). The tab that falls
+	// back to a shell says so, with Resume, and Recently closed lists it.
+	Unexpected bool  `json:"unexpected,omitempty"`
+	RanMs      int64 `json:"ran_ms"`
 	// Tail is the end of what it printed, as plain text: the screen it left,
 	// ANSI and blank lines stripped, at most exitTailLines lines.
 	Tail string `json:"tail"`
@@ -59,6 +62,17 @@ type ExitReport struct {
 	// Binary is the program that ran, as resolved in the daemon's
 	// environment; absent when only the store remembers the exit.
 	Binary string `json:"binary,omitempty"`
+}
+
+// Unexpected is whether an owned session's end is one nobody asked for:
+// the program exited with a non-zero code or was killed by a signal (code
+// -1: the owner's "ops" session died with Chrome, 2026-11-20), Caprock did
+// not stop it (Stop, closing its tab, freeing memory, a permission-mode
+// restart, a shutdown — stopped), and it did not end at once (early, which
+// has its own panel). A clean exit 0 — /exit, Ctrl+D — is the user's own
+// and is not one.
+func Unexpected(code int, stopped, early bool) bool {
+	return code != 0 && !stopped && !early
 }
 
 // screenTail is the text an output's end leaves on a cols-wide screen: the
@@ -99,12 +113,15 @@ func screenTail(out []byte, cols int) string {
 func (m *Manager) recordExit(a *Agent, code int, at time.Time) ExitReport {
 	cols, _ := a.size()
 	ran := at.Sub(a.StartedAt)
+	stopped := a.stopped.Load() || a.freed.Load() || m.Restarting(a.SessionID)
+	early := ran < EarlyExit && !a.typedAny.Load() && !stopped
 	rep := ExitReport{
 		SessionID: a.SessionID, Agent: a.Kind, Code: code, RanMs: ran.Milliseconds(), At: at.UnixMilli(),
-		Early: ran < EarlyExit && !a.typedAny.Load() && !a.stopped.Load() && !m.Restarting(a.SessionID),
-		Freed: a.freed.Load(),
-		Tail:  screenTail(a.ring.snapshot(), cols),
-		Retry: a.retry, Binary: a.argv0,
+		Early:      early,
+		Freed:      a.freed.Load(),
+		Unexpected: a.Kind != KindShell && Unexpected(code, stopped, early),
+		Tail:       screenTail(a.ring.snapshot(), cols),
+		Retry:      a.retry, Binary: a.argv0,
 	}
 	m.mu.Lock()
 	if m.exits == nil {
@@ -124,6 +141,7 @@ func (m *Manager) recordExit(a *Agent, code int, at time.Time) ExitReport {
 		_ = m.store.WithTx(context.Background(), func(q store.Querier) error {
 			return store.RecordExit(context.Background(), q, store.SessionExit{
 				SessionID: rep.SessionID, Code: rep.Code, RanMs: rep.RanMs, Early: rep.Early, Tail: rep.Tail, At: rep.At,
+				Unexpected: rep.Unexpected,
 			})
 		})
 	}
@@ -161,11 +179,16 @@ func (m *Manager) Exit(sessionID string) (ExitReport, bool) {
 	if m.store == nil {
 		return ExitReport{}, false
 	}
+	// Running again under its own id (a resume, Resume on its shell): the
+	// stored row is the run before this one, not how this one ended.
+	if _, running := m.Get(sessionID); running {
+		return ExitReport{}, false
+	}
 	e, ok, err := store.GetExit(context.Background(), m.store.DB(), sessionID)
 	if err != nil || !ok {
 		return ExitReport{}, false
 	}
-	rep = ExitReport{SessionID: e.SessionID, Code: e.Code, Early: e.Early, RanMs: e.RanMs, Tail: e.Tail, At: e.At}
+	rep = ExitReport{SessionID: e.SessionID, Code: e.Code, Early: e.Early, Unexpected: e.Unexpected, RanMs: e.RanMs, Tail: e.Tail, At: e.At}
 	if s, err := store.GetSession(context.Background(), m.store.DB(), sessionID); err == nil {
 		rep.Agent = s.Agent
 	}

@@ -28,6 +28,8 @@ import { NewMenu, type NewMenuItem } from './NewMenu'
 import { heldClass, keyChipMode, keys, revealClass, stripKey, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { ChatEnded, ChatHint, type ChatPane } from './QuickChatPane'
+import { EndedNotice } from './EndedNotice'
+import type { EndedAgent } from '@/lib/endedAgent'
 import { LimitStrip } from './LimitStrip'
 import { atLimit } from '@/lib/continueOn'
 
@@ -635,6 +637,8 @@ export const TerminalStack = memo(function TerminalStack({
   onChatClose,
   onChatRestart,
   onChatHintDismiss,
+  onEndedResume,
+  onEndedDismiss,
 }: {
   tabs: Tab[]
   /** The tab shown, or undefined when the workspace itself is hidden. */
@@ -653,7 +657,7 @@ export const TerminalStack = memo(function TerminalStack({
   renderPage?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
-  onPaneExit?: (sessionId: string) => void
+  onPaneExit?: (sessionId: string, unexpected?: boolean) => void
   /** The daemon no longer holds the session (TerminalPane onGone). */
   onPaneGone?: (sessionId: string) => void
   /** Its program exited at once: Try again started `newId` in its place, or Close (null) (TerminalPane onEarlyExit). */
@@ -671,6 +675,10 @@ export const TerminalStack = memo(function TerminalStack({
   /** An ended chat's Start again: a new chat in its place. */
   onChatRestart?: (sessionId: string) => void
   onChatHintDismiss?: () => void
+  /** Resume on a shell's ended-agent line (components/EndedNotice.tsx): the conversation continues in its place. */
+  onEndedResume?: (shellId: string, ended: EndedAgent) => Promise<void> | void
+  /** Its ×: the line goes, the shell stays. */
+  onEndedDismiss?: (shellId: string) => void
 }) {
   // The panes' callbacks, stable for the life of the stack: the workspace
   // hands new ones whenever its session list changes (several times a second
@@ -681,7 +689,7 @@ export const TerminalStack = memo(function TerminalStack({
   const exitRef = useRef(onPaneExit)
   exitRef.current = onPaneExit
   const paneStatus = useCallback((id: string, s: PaneStatus) => statusRef.current?.(id, s), [])
-  const paneExit = useCallback((id: string) => exitRef.current?.(id), [])
+  const paneExit = useCallback((id: string, unexpected?: boolean) => exitRef.current?.(id, unexpected), [])
   const goneRef = useRef(onPaneGone)
   goneRef.current = onPaneGone
   const paneGone = useCallback((id: string) => goneRef.current?.(id), [])
@@ -693,6 +701,10 @@ export const TerminalStack = memo(function TerminalStack({
   const chatClose = useCallback((tabId: string, paneId: string) => chatRef.current.onChatClose?.(tabId, paneId), [])
   const chatRestart = useCallback((id: string) => chatRef.current.onChatRestart?.(id), [])
   const hintDismiss = useCallback(() => chatRef.current.onChatHintDismiss?.(), [])
+  const endedRef = useRef({ onEndedResume, onEndedDismiss })
+  endedRef.current = { onEndedResume, onEndedDismiss }
+  const endedResume = useCallback((id: string, e: EndedAgent) => endedRef.current.onEndedResume?.(id, e), [])
+  const endedDismiss = useCallback((id: string) => endedRef.current.onEndedDismiss?.(id), [])
   const [composer] = useComposerEnabled()
   return (
     // The terminal slab is each terminal tab's own ground; a file tab reads
@@ -723,6 +735,8 @@ export const TerminalStack = memo(function TerminalStack({
               onChatClose: (paneId: string) => chatClose(t.id, paneId),
               onChatRestart: chatRestart,
               onChatHintDismiss: hintDismiss,
+              onEndedResume: endedResume,
+              onEndedDismiss: endedDismiss,
               composer,
               renderPage,
             }}
@@ -742,7 +756,7 @@ interface PaneCtx {
   sessions?: ReadonlyMap<string, SessionSummary>
   permissions?: ReadonlySet<string>
   /** The session's program exited; the workspace replaces it with a shell. */
-  onPaneExit?: (sessionId: string) => void
+  onPaneExit?: (sessionId: string, unexpected?: boolean) => void
   onPaneGone?: (sessionId: string) => void
   onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   onFocusPane?: (paneId: string) => void
@@ -752,6 +766,8 @@ interface PaneCtx {
   onChatClose?: (paneId: string) => void
   onChatRestart?: (sessionId: string) => void
   onChatHintDismiss?: () => void
+  onEndedResume?: (shellId: string, ended: EndedAgent) => Promise<void> | void
+  onEndedDismiss?: (shellId: string) => void
   /** The composer is switched on (Settings → Terminal). */
   composer?: boolean
   /** A phone preview in the split: its browser view (lib/devservers, components/BrowserView.tsx). */
@@ -791,6 +807,11 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
       inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} shellHint={node.target.kind === 'shell'} />
     // A session stopped at its plan's limit: the one-line strip under it (ADR-090).
     const limited = node.target.kind === 'session' && own && atLimit(own) ? <LimitStrip session={own} /> : null
+    // A shell that took over an agent that ended unexpectedly: its line on top (lib/endedAgent.ts).
+    const gone = node.target.kind === 'shell' && node.target.ended && !node.target.ended.dismissed ? node.target.ended : undefined
+    const notice = gone && (
+      <EndedNotice ended={gone} onResume={() => ctx.onEndedResume?.(id, gone)} onDismiss={() => ctx.onEndedDismiss?.(id)} />
+    )
     const chat = ctx.chats?.get(id)
     const ended = chat?.ended && (
       <ChatEnded visible={visible && focused} onClose={() => ctx.onChatClose?.(node.id)} onRestart={() => ctx.onChatRestart?.(id)} />
@@ -802,6 +823,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
       return (
         <div className="flex h-full w-full flex-col">
           {chat?.hint && !chat.ended && <ChatHint text={chat.hint} onDismiss={() => ctx.onChatHintDismiss?.()} />}
+          {notice}
           <div className="relative min-h-0 flex-1">
             {term}
             {ended}
@@ -839,6 +861,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
             <CloseIcon size={11} />
           </button>
         </div>
+        {notice}
         <div className="relative min-h-0 flex-1">
           {term}
           {ended}
@@ -863,7 +886,7 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   visible: boolean
   focused: boolean
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
-  onPaneExit?: (sessionId: string) => void
+  onPaneExit?: (sessionId: string, unexpected?: boolean) => void
   onPaneGone?: (sessionId: string) => void
   onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   /** Primitives, so the memo still holds while the session list moves. */
@@ -878,7 +901,7 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   shellHint?: boolean
 }) {
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
-  const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
+  const onExit = useMemo(() => onPaneExit && ((_code: number, unexpected?: boolean) => onPaneExit(id, unexpected)), [onPaneExit, id])
   const onGone = useMemo(() => onPaneGone && (() => onPaneGone(id)), [onPaneGone, id])
   const onEarlyExit = useMemo(() => onPaneEarlyExit && ((newId: string | null) => onPaneEarlyExit(id, newId)), [onPaneEarlyExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])

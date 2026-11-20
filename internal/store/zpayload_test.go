@@ -508,6 +508,11 @@ func TestMigration0080IsTheFence(t *testing.T) {
 	if _, err := st.DB().Exec(`DELETE FROM meta WHERE k IN (?, ?)`, MetaPayloadZstdCursor, MetaPayloadZstdSaved); err != nil {
 		t.Fatal(err)
 	}
+	// What a later migration added goes too, so the file is the one a
+	// release at 79 left and every migration from 80 applies as it would.
+	if _, err := st.DB().Exec(`ALTER TABLE session_exits DROP COLUMN unexpected`); err != nil { // 0086
+		t.Fatal(err)
+	}
 	_ = st.Close()
 	setRawSchema(t, path, 79, "")
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -47,6 +48,9 @@ type fakeSession struct {
 	exit   int
 	closed bool
 	paused bool
+	// signalled: Wait reports the exit as an error with its code, as a
+	// process killed by a signal reads (code -1).
+	signalled bool
 	// ignoreTerm models a process that will not stop when asked, so the
 	// shutdown path's kill-after-grace can be tested.
 	ignoreTerm bool
@@ -93,8 +97,8 @@ func (s *fakeSession) Signal(sig ptyman.Signal) error {
 }
 func (s *fakeSession) Wait() error {
 	<-s.done
-	if s.exit == 7 {
-		return exitErr(7)
+	if s.exit == 7 || s.signalled {
+		return exitErr(s.exit)
 	}
 	return nil
 }
@@ -107,7 +111,7 @@ func (s *fakeSession) exitCode() int {
 
 type exitErr int
 
-func (e exitErr) Error() string     { return "exit status 7" }
+func (e exitErr) Error() string     { return "exit status " + strconv.Itoa(int(e)) }
 func (e exitErr) ExitCode() int     { return int(e) }
 func (s *fakeSession) PID() int     { return s.pid }
 func (s *fakeSession) Paused() bool { return s.paused }

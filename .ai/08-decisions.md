@@ -7830,3 +7830,53 @@ the first real run found, and two design changes he picked from the mockup
   there is none — never a step left, and the computer is Ready without it,
   on the laptop too (an older laptop treats `not_needed` as done). New agent on the laptop clones onto that computer
   too (*Clone a repository* there, the same day).
+
+## ADR-100 — An agent session that ends and nobody asked it to says so in its tab, with Resume, and goes on Recently closed
+
+**Date:** 2026-11-20 · **Status:** accepted (owner, 2026-11-20: "do it right
+away", translated). Contract: [03-contracts.md § Session
+exits](03-contracts.md#session-exits); screens: [04-ui.md](04-ui.md) (the
+shell fallback; Recently closed).
+
+**Context.** A Claude Code session Caprock started, "ops", died when the
+owner quit Google Chrome: service.log said `owned session exited … code=-1
+err="exit status -1"` and, the same second, `started a shell` in its
+folder. Caprock had not stopped it; a signal had. Its tab silently became a
+shell called *Shell 1*, and the session was nowhere he looked — not in
+Recently closed, which lists only tabs closed by hand. Two other owned
+sessions ended the same way that day. He was furious (translated).
+
+**Decision.**
+
+- **The rule, in the daemon** (`agents.Unexpected`,
+  `internal/agents/exitreport.go`): an owned agent session ended
+  unexpectedly when its program exited with a non-zero code or was killed
+  by a signal (code -1), Caprock did not end it — Stop, closing its tab,
+  freeing memory, a permission-mode restart, a shutdown all set the
+  session's `stopped` — and it did not end at once (an early exit has its
+  own panel). A clean exit 0 — `/exit`, Ctrl+D — is the user's own and says
+  nothing. It is kept with the exit (`ExitReport.unexpected`,
+  `session_exits.unexpected`, migration 0086), so a daemon restarted since
+  still answers it.
+- **The tab.** The shell that takes the tab over keeps the session's name
+  and shows one line at its top: *ops ended unexpectedly at 19:58 (killed by
+  a signal)* — or *(exited with code N)* — with **Resume** and a ×. Resume
+  continues the same conversation under its own id in that tab, in the
+  permission mode it last ran in, as *Continue here* and a Recently closed
+  row do (`POST /v1/agents` with `resume`), and ends the shell when it is
+  idle; one running a program is left, and the session opens in a tab of its
+  own. The × hides the line; the name stays. What the line says is stored
+  on the shell's tab target, so a reload keeps it.
+- **Recently closed** lists the session though no tab closed, with
+  *ended unexpectedly*, its project and the time; reopening it resumes it,
+  in the shell's tab while that still shows the line.
+
+**Rejected.** Reopening the agent on its own (it may have been killed for a
+reason — memory, a hung tool); a notice for every exit (a typed `/exit`
+would nag); reading Chrome's quit as the cause (the daemon cannot see why a
+process was signalled, only that it was); the exit code as the only word
+(code -1 means nothing to a person — *killed by a signal* does).
+
+**Revisit if** an agent exits non-zero on a normal quit, which would make
+the line nag after a typed `/exit`: that agent's quit code then counts as
+clean.

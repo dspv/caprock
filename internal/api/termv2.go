@@ -252,6 +252,10 @@ func (h *wsHub) serveTermV2(s *Server, src termV2Source, w http.ResponseWriter, 
 				// Ended to free memory: the tab shows the conversation with
 				// Continue, not a shell in its place.
 				exit["freed"] = 1
+			} else if ok && rep.Unexpected {
+				// Ended on its own — a signal, a crash (ADR-100): the tab
+				// says so over the shell that takes its place, with Resume.
+				exit["unexpected"] = 1
 			}
 			_ = t.text(map[string]map[string]int{"exit": exit})
 			_ = c.Close(websocket.StatusNormalClosure, "session ended")

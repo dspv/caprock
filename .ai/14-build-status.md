@@ -77,6 +77,15 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-20 — unreleased: an unexpected end says so, with Resume (ADR-100)
+
+An owned agent session killed by a signal (the owner's "ops", when he quit
+Chrome) or exiting non-zero, not stopped by Caprock, now records
+`unexpected` with its exit (`agents.Unexpected`, migration 0086). The shell
+that takes its tab keeps its name and shows *… ended unexpectedly at 19:58
+(killed by a signal)* with Resume and a × (`EndedNotice.tsx`,
+`lib/endedAgent.ts`), and the session goes on Recently closed.
+
 ### 2026-11-20 — unreleased: adding a computer is a checklist (ADR-099)
 
 After the owner's first MacBook → Windows PC test. `GET /v1/setup`

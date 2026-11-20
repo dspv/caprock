@@ -2174,6 +2174,8 @@ export interface AgentExit {
   code: number
   /** Ended within 15 s of its start with nothing typed into it: it never really started. */
   early: boolean
+  /** Nobody asked it to end: a signal or a non-zero code, not stopped by Caprock, not early (lib/endedAgent.ts). */
+  unexpected?: boolean
   ran_ms: number
   /** The last lines its screen showed, plain text. */
   tail: string

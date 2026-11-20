@@ -89,7 +89,8 @@ test.describe('the setup checklist on a fresh computer', () => {
     const field = page.getByRole('textbox', { name: /^Clone into/ })
     await expect(field).toHaveValue(/[\\/]dev[\\/]$/)
     await expect(page.getByText('Projects are cloned into this folder; change it here.')).toBeVisible()
-    const value = await field.inputValue()
-    expect(value.startsWith('~')).toBe(false)
+    // The field shows `~/dev/` until the home folder is read, then the full
+    // path: read at once, it was sometimes still the short form.
+    await expect(field).not.toHaveValue(/^~/)
   })
 })
