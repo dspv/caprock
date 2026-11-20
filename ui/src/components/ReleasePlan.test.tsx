@@ -394,8 +394,14 @@ describe('where it is drawn', () => {
     // Grouped by kind in Keep a Changelog order, each in its own words.
     const kinds = [...region.querySelectorAll('[data-release-kind]')]
     expect(kinds.map((k) => k.querySelector('h5')!.textContent)).toEqual(['Changed', 'Fixed'])
-    expect([...kinds[1]!.querySelectorAll('li')].map((e) => e.textContent)).toEqual(['merged already, on the default branch.', 'PR from another repo no longer shows as this one’s'])
-    expect(kinds[0]!.querySelector('li')).toHaveClass('line-clamp-2')
+    expect([...kinds[1]!.querySelectorAll('li')].map((e) => e.textContent)).toEqual(['•merged already, on the default branch.', '•PR from another repo no longer shows as this one’s'])
+    expect(kinds[1]!.querySelector('[data-release-kind-count]')).toHaveTextContent('2')
+    expect(kinds[0]!.querySelector('li > span:last-child')).toHaveClass('line-clamp-1')
+    // A kind folds on its heading, and opens again.
+    fireEvent.click(kinds[1]!.querySelector('button')!)
+    expect(kinds[1]!.querySelector('ul')).toBeNull()
+    fireEvent.click(kinds[1]!.querySelector('button')!)
+    expect(kinds[1]!.querySelectorAll('li')).toHaveLength(2)
     expect(kinds[0]!.querySelector('li')).toHaveAttribute('data-release-entry', 'pr')
     // The batch: one line with its checks and what it waits for; it opens as a row did.
     const via = region.querySelector<HTMLAnchorElement>('[data-release-via]')!
