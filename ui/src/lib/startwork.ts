@@ -115,6 +115,9 @@ export class CloneTracker {
     private readonly pending: PendingClone,
     private readonly onChange: (v: CloneView) => void,
     private readonly apis: CloneApi = projectsApi,
+    /** Another computer's clone (New agent on <name>): read every `pollMs`,
+     *  since its `op` frames never reach this page, and kept nowhere. */
+    private readonly opts: { pollMs?: number; keep?: boolean } = {},
   ) {}
 
   start(): void {
@@ -168,7 +171,7 @@ export class CloneTracker {
   private schedulePoll(): void {
     clearTimeout(this.poll)
     if (this.stopped || this.finished()) return
-    this.poll = setTimeout(() => void this.sync(), POLL_MS)
+    this.poll = setTimeout(() => void this.sync(), this.opts.pollMs ?? POLL_MS)
   }
 
   private apply(op: OpFrame): void {
@@ -180,7 +183,7 @@ export class CloneTracker {
   }
 
   private finish(v: CloneView): void {
-    clearPendingClone()
+    if (this.opts.keep !== false) clearPendingClone()
     this.retry.cancel()
     clearTimeout(this.poll)
     this.set(v)

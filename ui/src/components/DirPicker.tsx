@@ -27,6 +27,12 @@
  * The root is a setting rather than the whole filesystem: "where I keep my
  * code" is personal, and the narrower it is, the less the daemon's directory
  * listing can be asked for. See internal/api/browse.go.
+ *
+ * **Another computer's folders** (New agent on <name>, ADR-067): with a
+ * `source`, both lists are that computer's — its projects and recent folders
+ * read by the caller, its folders through `/v1/m/<id>/v1/browse` — and paths
+ * are shown as it writes them (backslashes on Windows). There a click opens a
+ * folder and picks it, so the field above always names the folder in view.
  */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api, type BrowseResponse, type RecentDir } from '@/lib/api'
@@ -35,12 +41,26 @@ import { fmtAgo } from '@/lib/format'
 
 export type PickerTab = 'recent' | 'browse'
 
+/** Where the lists come from when they are not this computer's. */
+export interface DirSource {
+  /** What is listed (a computer's id): a new one is read again. */
+  key: string
+  /** One folder's listing, as `GET /v1/browse?dir=` answers it. */
+  browse: (dir: string) => Promise<BrowseResponse>
+  /** The first list's rows, read by the caller; undefined while it reads. */
+  rows: RecentDir[] | undefined
+  /** The first list's name, and what it says when empty. */
+  rowsLabel: string
+  rowsEmpty: string
+}
+
 export function DirPicker({
   value,
   onPick,
   start = '',
   tab: tabProp,
   onTab,
+  source,
 }: {
   value: string
   onPick: (dir: string) => void
@@ -49,6 +69,8 @@ export function DirPicker({
   /** Which list is shown, when the caller drives it (the sheet's ⌘B). */
   tab?: PickerTab
   onTab?: (t: PickerTab) => void
+  /** Another computer's lists; a click in Browse then opens and picks. */
+  source?: DirSource
 }) {
   const [ownTab, setOwnTab] = useState<PickerTab>('recent')
   const tab = tabProp ?? ownTab
@@ -57,8 +79,10 @@ export function DirPicker({
   // the daemon returns for a missing dir.
   const [dir, setDir] = useState(start)
 
-  const recent = useApi(() => api.recentDirs(), [], { live: false })
-  const browse = useApi(() => api.browse(dir), [dir], { live: false })
+  const own = useApi(() => (source ? Promise.resolve([]) : api.recentDirs()), [], { live: false })
+  const recent = { data: source ? source.rows : own.data }
+  const browse = useApi(() => (source ? source.browse(dir) : api.browse(dir)), [dir, source?.key], { live: false })
+  const follow = !!source
 
   // Open on whichever list can actually answer. A machine with no history — a
   // fresh install, the case where a picker matters most — would otherwise open
@@ -82,7 +106,7 @@ export function DirPicker({
     <div className="rounded-[3px] border border-border-strong bg-panel-2" onClick={(e) => { if (!(e.target as Element).closest('button')) e.preventDefault() }}>
       <div className="flex items-center gap-1 border-b border-border-strong px-2 py-1.5 text-[12px]">
         <Tab on={tab === 'recent'} onClick={() => setTab('recent')}>
-          Recent
+          {source?.rowsLabel ?? 'Recent'}
         </Tab>
         <Tab on={tab === 'browse'} onClick={() => setTab('browse')}>
           Browse
@@ -94,10 +118,10 @@ export function DirPicker({
         // lengths replace each other under the cursor. overflow-x-hidden as
         // well as -y: a long path is wider than the dialog.
         <div className="h-[196px] overflow-y-auto overflow-x-hidden">
-          <RecentList rows={recent.data} value={value} onPick={onPick} />
+          <RecentList rows={recent.data} value={value} onPick={onPick} empty={source?.rowsEmpty} />
         </div>
       ) : (
-        <Browser data={browse.data} error={browse.error?.message} onOpen={setDir} onPick={onPick} />
+        <Browser data={browse.data} error={browse.error?.message} onOpen={(d) => { setDir(d); if (follow) onPick(d) }} onPick={onPick} follow={follow} />
       )}
     </div>
   )
@@ -120,14 +144,16 @@ function RecentList({
   rows,
   value,
   onPick,
+  empty = 'No sessions yet — use Browse, or type a path.',
 }: {
   rows: RecentDir[] | undefined
   value: string
   onPick: (d: string) => void
+  empty?: string
 }) {
   if (!rows) return <ul><Note>…</Note></ul>
   if (rows.length === 0) {
-    return <ul><Note>No sessions yet — use Browse, or type a path.</Note></ul>
+    return <ul><Note>{empty}</Note></ul>
   }
   return (
     <ul>
@@ -142,7 +168,7 @@ function RecentList({
             <span className="mono ml-2 min-w-0 flex-1 truncate text-[11px] text-fg-faint" title={r.dir}>
               {r.dir}
             </span>
-            <span className="shrink-0 pl-2 text-[11px] text-fg-faint">{fmtAgo(r.last_event_at)}</span>
+            {r.last_event_at ? <span className="shrink-0 pl-2 text-[11px] text-fg-faint">{fmtAgo(r.last_event_at)}</span> : null}
           </button>
         </li>
       ))}
@@ -168,11 +194,14 @@ function Browser({
   error,
   onOpen,
   onPick,
+  follow = false,
 }: {
   data: BrowseResponse | undefined
   error?: string
   onOpen: (d: string) => void
   onPick: (d: string) => void
+  /** A click opens a folder (and the caller picks it); no Choose button. */
+  follow?: boolean
 }) {
   // The selected row, by path, kept with the folder it was chosen in: a new
   // folder starts with none. Clearing it in an effect on the folder lost a
@@ -229,6 +258,7 @@ function Browser({
               <button
                 type="button"
                 onClick={() => enter(c.path)}
+                title={c.path}
                 aria-current={i === all.length - 1 ? 'location' : undefined}
                 className={`truncate rounded-sm px-0.5 hover:text-fg ${i === all.length - 1 ? 'text-fg' : ''}`}
               >
@@ -257,9 +287,9 @@ function Browser({
             role="option"
             aria-selected={e.path === sel}
             data-path={e.path}
-            onClick={() => setSel(e.path)}
-            onDoubleClick={() => enter(e.path)}
-            title="Double-click to open"
+            onClick={() => (follow ? enter(e.path) : setSel(e.path))}
+            onDoubleClick={() => { if (!follow) enter(e.path) }}
+            title={follow ? e.path : 'Double-click to open'}
             className={`flex min-w-0 cursor-default select-none items-center px-2.5 py-1 text-[12px] ${e.path === sel ? 'bg-accent/15 text-fg' : 'hover:bg-panel'}`}
           >
             <span className={`min-w-0 truncate ${e.repo ? 'text-fg' : 'text-fg-muted'}`}>{e.name}</span>
@@ -282,14 +312,16 @@ function Browser({
         <span className="mr-auto min-w-0 truncate text-[11px] text-fg-faint">
           <span className="mono">↑↓</span> select · <span className="mono">↩</span> open · <span className="mono">←</span> up
         </span>
-        <button
+        {follow ? (
+          <span className="mono min-w-0 max-w-[60%] truncate text-[11px] text-fg-muted" title={data?.dir}>{data?.dir ?? ''}</span>
+        ) : <button
           type="button"
           disabled={!data}
           onClick={choose}
           className="max-w-[60%] truncate rounded-[5px] border border-border-strong px-2 py-0.5 text-[12px] text-fg hover:bg-panel disabled:opacity-40"
         >
           {chosen ? `Choose ${chosen.name}` : 'Choose this folder'}
-        </button>
+        </button>}
       </div>
     </div>
   )

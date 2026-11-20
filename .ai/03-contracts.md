@@ -324,6 +324,13 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   through a symlink out of it is `404`, as on the machine, and an entry that
   links out of it is not listed. `GET /v1/recent-dirs` from a device lists only
   folders under home.
+- **New agent on <name> reads its folders through the proxy** (since
+  2026-11-20; no route was added or widened): `GET /v1/m/{id}/v1/projects`,
+  `/v1/recent-dirs`, `/v1/browse?dir=` (first `~/dev`, which that computer
+  expands against its own home) and `/v1/browse/stat`; a clone there is
+  `POST /v1/m/{id}/v1/projects {clone: {url, parent}, op_id}` with `parent`
+  that computer's `dev` folder, followed by `GET /v1/m/{id}/v1/projects/ops`
+  every second, since that computer's `op` frames do not reach this page.
 - **The terminal socket from a device** admits the LAN origin and takes the
   token as the `caprock.device.<token>` subprotocol, as `/v1/live` does. Before
   every frame a device sends, its role is read again (`pairing.Store.RoleOf`);

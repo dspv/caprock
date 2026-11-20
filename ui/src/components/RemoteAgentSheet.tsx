@@ -19,12 +19,27 @@
  * computer's own business and are set up there; this is the short path —
  * where, which agent, what it may do, what to say first.
  *
+ * **The folder is chosen, not typed** (owner, 2026-11-20, translated, on a
+ * fresh Windows PC: "I don't see the folders there and don't understand what
+ * I can work with"). Under the field, DirPicker with that computer as its
+ * source: *Projects* (its projects, then its recent folders) and *Browse*
+ * (`GET /v1/browse`, opening in its `dev` folder in the home, or the home
+ * without one; a click opens a folder and picks it, the breadcrumb goes
+ * back). Typing a path still works. With no projects there it says so and
+ * offers **Clone a repository** — `POST /v1/projects {clone}` on that
+ * computer into its `dev` folder, followed with an op id as the phone
+ * follows one (CloneTracker, `GET /v1/projects/ops` every second), the new
+ * folder picked when done — and **Pick a folder** (Browse).
+ *
  * Errors are said in words, from what the daemon answered: offline (and
  * why), not allowed there yet, removed there, a folder that is not there,
  * the agent's one-time consent to accept there.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, errText, type AgentCatalog, type RecentDir } from '@/lib/api'
+import { ApiError, errText, type AgentCatalog, type BrowseResponse, type RecentDir } from '@/lib/api'
+import { newOpId, type AddProjectRequest, type AddProjectResult, type OpFrame } from '@/lib/projects'
+import { CloneTracker, isPhoneCloneURL, repoName, type CloneView } from '@/lib/startwork'
+import { DirPicker, type DirSource, type PickerTab } from './DirPicker'
 import { MACHINES_EVENT, machineBase, machineLook, offlineWhy, useAllMachineSessions, type Machine, type MachineSessionsEntry } from '@/lib/machines'
 import { useApi } from '@/lib/useApi'
 import { isMacPlatform } from '@/lib/appmode'
@@ -117,25 +132,47 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
   const m = machines.find((x) => x.id === machine)
   const name = m?.name ?? 'the other computer'
   // Read from that computer: its folders, and its agents.
-  const projects = useApi(() => far<{ projects?: { root: string; name: string }[] } | { root: string; name: string }[]>(machine, '/v1/projects'), [machine], { live: false })
+  const [reread, setReread] = useState(0)
+  const projects = useApi(() => far<{ projects?: { root: string; name: string }[] } | { root: string; name: string }[]>(machine, '/v1/projects'), [machine, reread], { live: false })
   const recent = useApi(() => far<RecentDir[]>(machine, '/v1/recent-dirs'), [machine], { live: false })
   const catalog = useApi(() => far<AgentCatalog>(machine, '/v1/agents/catalog'), [machine], { live: false })
-  const folders = useMemo(() => {
-    const out: { path: string; label: string }[] = []
-    const seen = new Set<string>()
+  const projectList = useMemo(() => {
     const pj = projects.data
-    const list = Array.isArray(pj) ? pj : pj?.projects ?? []
-    for (const p of list) if (p.root && !seen.has(p.root)) { seen.add(p.root); out.push({ path: p.root, label: p.name }) }
-    for (const r of recent.data ?? []) if (r.dir && !seen.has(r.dir)) { seen.add(r.dir); out.push({ path: r.dir, label: r.name }) }
+    return (Array.isArray(pj) ? pj : pj?.projects ?? []).filter((p) => p.root)
+  }, [projects.data])
+  // A folder just cloned there, listed first until its project is read back.
+  const [cloned, setCloned] = useState('')
+  const folders = useMemo(() => {
+    const out: RecentDir[] = []
+    const seen = new Set<string>()
+    if (cloned && !projectList.some((p) => p.root === cloned)) { seen.add(cloned); out.push({ dir: cloned, name: cloned.split(/[\\/]/).pop() || cloned, sessions: 0, last_event_at: 0 }) }
+    for (const p of projectList) if (!seen.has(p.root)) { seen.add(p.root); out.push({ dir: p.root, name: p.name, sessions: 0, last_event_at: 0 }) }
+    for (const r of recent.data ?? []) if (r.dir && !seen.has(r.dir)) { seen.add(r.dir); out.push(r) }
     return out
-  }, [projects.data, recent.data])
+  }, [cloned, projectList, recent.data])
+  // Read, and nothing there: say what to do instead of an empty field.
+  const noProjects = Boolean(projects.data) && projectList.length === 0
+  const source = useMemo<DirSource>(() => ({
+    key: machine,
+    browse: (dir) => far<BrowseResponse>(machine, `/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`).catch((e: unknown) => {
+      // Its 404 is "not a folder it lets this computer see"; the rest in words.
+      throw new Error(e instanceof ApiError && e.status === 404 ? `Not a folder ${name} lets this computer see.` : remoteStartError(e, name))
+    }),
+    rows: projects.data || recent.data || projects.error ? folders : undefined,
+    rowsLabel: 'Projects',
+    rowsEmpty: `No projects on ${name} yet. Browse its folders, or type a path.`,
+  }), [machine, folders, projects.data, recent.data, projects.error, name])
+  const [tab, setTab] = useState<PickerTab>('recent')
+  // What the Folder field shows under it: the lists, the empty state, or the clone.
+  const [view, setView] = useState<'lists' | 'clone' | null>(null)
+  const shown = view ?? (noProjects ? 'empty' : 'lists')
   const agents = useMemo(() => (catalog.data?.agents ?? []).filter((a) => a.installed && !a.locked), [catalog.data])
   // Its catalog answered and nothing in it is installed: said in words, since
   // the field's "reading…" then never ends (owner, 2026-11-20, on a Windows
   // PC with Caprock and no Claude Code yet).
   const noAgent = Boolean(catalog.data) && agents.length === 0
   const [cwd, setCwd] = useState('')
-  useEffect(() => { if (!cwd && folders[0]) setCwd(folders[0].path) }, [folders, cwd])
+  useEffect(() => { if (!cwd && folders[0]) setCwd(folders[0].dir) }, [folders, cwd])
   const [agent, setAgent] = useState('claude')
   useEffect(() => { const first = agents[0]; if (first && !agents.some((a) => a.id === agent)) setAgent(first.id) }, [agents, agent])
   const entry = agents.find((a) => a.id === agent)
@@ -199,9 +236,9 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
   const readFailed = projects.error && recent.error && catalog.error
   const folderNote = stat === 'outside'
     ? <span className="text-danger">outside what {name} lets this computer reach</span>
-    : stat && !stat.exists ? <span className="text-danger">not on {name}</span>
-      : stat && !stat.is_dir ? <span className="text-danger">not a folder on {name}</span>
-        : stat ? `on ${name}` : undefined
+    : stat && !stat.exists ? <span className="text-danger">not there</span>
+      : stat && !stat.is_dir ? <span className="text-danger">not a folder</span>
+        : stat ? 'found there' : undefined
 
   return (
     <Sheet
@@ -211,9 +248,11 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
       width={600}
       footer={
         <>
+          {/* basis-0: the line takes what the buttons leave and never pushes
+            * Start onto a row of its own (owner, 2026-11-20). */}
           {error
-            ? <p role="alert" className="mr-auto min-w-0 text-[12px] leading-snug text-danger" title={error}>{error}</p>
-            : <p className="mr-auto min-w-0 truncate text-[12.5px] text-fg-muted">Runs on {name}, read and typed into from here</p>}
+            ? <p role="alert" data-sheet-note className="mr-auto min-w-0 flex-1 basis-0 text-[12px] leading-snug text-danger" title={error}>{error}</p>
+            : <p data-sheet-note className="mr-auto min-w-0 flex-1 basis-0 truncate text-[12.5px] text-fg-muted" title={`Runs on ${name}`}>Runs on {name}</p>}
           <SheetButton onClick={onClose} aria-keyshortcuts="Escape" title="Cancel (Esc)" keyHint="Esc">Cancel</SheetButton>
           <SheetButton
             primary
@@ -248,21 +287,45 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
             No agent is installed on {name}. Install Claude Code or another agent there and sign in, restart Caprock on it, then open this again.
           </p>
         )}
-        <SheetField label={`Folder on ${name}`} hint={folderNote}>
+        <div className="grid min-w-0 gap-1.5" data-remote-folder>
+          <span className="flex items-baseline gap-2 text-[13px] font-medium text-fg-muted">
+            <label htmlFor={`remote-folder-${machine}`} className="min-w-0 truncate" title={`Folder on ${name}`}>Folder on {name}</label>
+            {folderNote && <span className="shrink-0 font-normal text-fg-faint">{folderNote}</span>}
+            {shown === 'lists' && (
+              <button type="button" onClick={() => setView('clone')} className="ml-auto shrink-0 text-[12px] font-normal text-accent hover:underline">Clone a repository…</button>
+            )}
+          </span>
           <input
+            id={`remote-folder-${machine}`}
             className="input mono"
             aria-label={`Folder on ${name}`}
-            list={`remote-folders-${machine}`}
-            placeholder={folders[0]?.path ?? 'a folder on that computer'}
+            placeholder={folders[0]?.dir ?? `pick one below, or type a folder on ${name}`}
             value={cwd}
             onChange={(e) => setCwd(e.target.value)}
             spellCheck={false}
             autoFocus
           />
-          <datalist id={`remote-folders-${machine}`}>
-            {folders.map((f) => <option key={f.path} value={f.path}>{f.label}</option>)}
-          </datalist>
-        </SheetField>
+          {shown === 'empty' ? (
+            <div role="group" aria-label={`No projects on ${name}`} data-remote-empty className="grid gap-2.5 rounded-[3px] border border-border-strong bg-panel-2 px-3 py-3">
+              <p className="text-[13px] text-fg">No projects on {name} yet.</p>
+              <p className="text-[12px] leading-snug text-fg-muted">Clone a repository there, or pick one of its folders to start in.</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setView('clone')} className="rounded-[5px] bg-accent px-3 py-1 text-[12.5px] font-medium text-panel hover:brightness-110">Clone a repository</button>
+                <button type="button" onClick={() => { setTab('browse'); setView('lists') }} className="rounded-[5px] border border-border-strong px-3 py-1 text-[12.5px] text-fg hover:bg-panel">Pick a folder</button>
+              </div>
+            </div>
+          ) : shown === 'clone' ? (
+            <RemoteClone
+              machine={machine}
+              name={name}
+              home={catalog.data?.home}
+              onCancel={() => setView(null)}
+              onCloned={(dest) => { setCloned(dest); setCwd(dest); setView('lists'); setTab('recent'); setReread((n) => n + 1) }}
+            />
+          ) : (
+            <DirPicker value={cwd.trim()} onPick={setCwd} start="~/dev" tab={tab} onTab={setTab} source={source} />
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <SheetField label="Model" hint="optional">
             <input
@@ -295,9 +358,122 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
           />
         </SheetField>
         <p className="text-[12px] leading-snug text-fg-faint">
-          New copies, GitHub items and attempts are set up on {name} itself; its tab opens here when it starts.
+          New copies and attempts are made on {name} itself.
         </p>
       </div>
     </Sheet>
+  )
+}
+
+/** The separator a computer writes its paths with: a Windows home has no `/`. */
+export function sepOf(path: string): string {
+  return path.includes('\\') && !path.includes('/') ? '\\' : '/'
+}
+
+/** `dir` and `name` joined as that computer writes it. */
+export function joinOn(dir: string, name: string): string {
+  return `${dir.replace(/[\\/]+$/, '')}${sepOf(dir)}${name}`
+}
+
+/**
+ * Clone a repository on another computer, into its `dev` folder in the home
+ * (made if missing, as `git clone` makes it): `POST /v1/projects {clone}`
+ * through the proxy with an op id, followed as the phone follows one
+ * (CloneTracker), and the new folder handed back when it is done.
+ */
+export function RemoteClone({ machine, name, home, onCancel, onCloned }: {
+  machine: string
+  name: string
+  /** That computer's home, as its catalog says it; else read from its browse root. */
+  home?: string
+  onCancel: () => void
+  onCloned: (dest: string) => void
+}) {
+  const [url, setUrl] = useState('')
+  const [error, setError] = useState('')
+  const [cloning, setCloning] = useState<CloneView | null>(null)
+  // Where it lands: its dev folder as it spells it — the folder itself when
+  // there is one, else the home (or browse root) plus dev.
+  const where = useApi(async () => {
+    try {
+      return (await far<BrowseResponse>(machine, `/v1/browse?dir=${encodeURIComponent('~/dev')}`)).dir
+    } catch {
+      const base = home || (await far<BrowseResponse>(machine, '/v1/browse')).root
+      return joinOn(base, 'dev')
+    }
+  }, [machine, home], { live: false })
+  const dev = where.data ?? ''
+  const u = url.trim()
+  const dest = dev && u && isPhoneCloneURL(u) && repoName(u) ? joinOn(dev, repoName(u)) : ''
+  const tracker = useRef<CloneTracker | null>(null)
+  useEffect(() => () => tracker.current?.stop(), [])
+  const done = useRef(onCloned)
+  done.current = onCloned
+
+  const clone = () => {
+    if (!isPhoneCloneURL(u)) { setError('Paste an https:// address, or git@host:owner/repo.'); return }
+    if (!dev) { setError(`Could not read the folders on ${name}.`); return }
+    setError('')
+    tracker.current?.stop()
+    const apis = {
+      ops: async (): Promise<OpFrame[]> => (await far<{ ops?: OpFrame[] }>(machine, '/v1/projects/ops')).ops ?? [],
+      add: async (req: AddProjectRequest): Promise<AddProjectResult> => {
+        const v = await far<{ op?: OpFrame; existing?: boolean }>(machine, '/v1/projects', { method: 'POST', body: JSON.stringify(req) })
+        if (!v.op) throw new Error(`${name} answered without the clone.`)
+        return { op: v.op, existing: !!v.existing }
+      },
+    }
+    const t = new CloneTracker({ op_id: newOpId(), url: u, parent: dev, started_at: Date.now() }, (v) => {
+      setCloning(v)
+      if (v.phase === 'done') done.current(v.op.dest || dest)
+    }, apis, { pollMs: 1000, keep: false })
+    tracker.current = t
+    setCloning({ phase: 'sending' })
+    t.start()
+  }
+
+  const busy = cloning && cloning.phase !== 'failed' && cloning.phase !== 'done'
+  const op = cloning && 'op' in cloning ? cloning.op : undefined
+  const pct = Math.max(0, Math.min(100, Math.round(op?.progress ?? 0)))
+  const failed = cloning?.phase === 'failed' ? cloning.error : ''
+  const said = error || (failed ? `Clone failed: ${failed}` : '')
+  const status = cloning?.phase === 'offline'
+    ? `${name} cannot be reached right now. The clone goes on there if it started; trying again…`
+    : cloning?.phase === 'sending' ? `Starting the clone on ${name}…`
+      : cloning?.phase === 'running' ? `${op?.phase || 'Cloning'}… ${pct}%` : ''
+
+  return (
+    <div role="group" aria-label={`Clone a repository on ${name}`} data-remote-clone className="grid gap-2 rounded-[3px] border border-border-strong bg-panel-2 px-3 py-3">
+      <span className="text-[13px] text-fg">Clone a repository on {name}</span>
+      <input
+        className="input mono"
+        aria-label="Repository address"
+        placeholder="https://github.com/you/repo.git"
+        value={url}
+        onChange={(e) => { setUrl(e.target.value); setError('') }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !busy) { e.preventDefault(); clone() } }}
+        disabled={!!busy}
+        spellCheck={false}
+        autoFocus
+      />
+      <p className="min-w-0 text-[12px] leading-snug text-fg-muted">
+        Into <span className="mono break-all text-fg" data-clone-dest>{dest || (dev ? joinOn(dev, '…') : 'its dev folder')}</span>
+      </p>
+      {busy ? (
+        <div className="grid gap-1.5" aria-live="polite">
+          <span className="text-[12px] text-fg-muted">{status}</span>
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Clone progress" className="h-1.5 overflow-hidden rounded-full bg-panel">
+            <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${cloning?.phase === 'running' ? Math.max(pct, 4) : 4}%` }} />
+          </div>
+        </div>
+      ) : null}
+      {said && <p role="alert" className="text-[12px] leading-snug text-danger">{said}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={!!busy || !u} onClick={clone} className="rounded-[5px] bg-accent px-3 py-1 text-[12.5px] font-medium text-panel hover:brightness-110 disabled:opacity-50">
+          {failed ? 'Try again' : busy ? 'Cloning…' : 'Clone'}
+        </button>
+        {!busy && <button type="button" onClick={onCancel} className="rounded-[5px] px-2 py-1 text-[12.5px] text-fg-muted hover:text-fg">Back</button>}
+      </div>
+    </div>
   )
 }
