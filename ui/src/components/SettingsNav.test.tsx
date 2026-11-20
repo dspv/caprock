@@ -101,7 +101,8 @@ describe('Settings menu', () => {
     // A browser: the window scrolls, so the window is the measure.
     render(<Page frame={{ top: 56 }} />)
     await row('Telegram')
-    expect(screen.getByRole('navigation', { name: 'Settings sections' }).style.maxHeight).toBe('calc(100vh - 80px)')
+    // jsdom versions serialise the same calc() in either order.
+    expect(screen.getByRole('navigation', { name: 'Settings sections' }).style.maxHeight.replace(/\s+/g, '')).toMatch(/^calc\((100vh-80px|-80px\+100vh)\)$/)
   })
 
   it('a section scrolled to lands below the header, however many rows it wraps to', () => {
