@@ -125,9 +125,12 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date
           )
         })}
       </span>
+      {/* In progress, the heading above already says *Releasing 0.185.3*: the
+        * strip says only where it is (*building 0 of 23 files*), which fits
+        * the cockpit's width — the lead with it was cut (owner, 2026-11-21). */}
       {href && w.key === 'merged'
         ? <a data-release-stage-words href={href} title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums no-underline hover:underline ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</a>
-        : <span data-release-stage-words title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</span>}
+        : <span data-release-stage-words title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{current && w.tone === 'active' && w.detail ? w.detail : w.text}</span>}
     </div>
   )
 }

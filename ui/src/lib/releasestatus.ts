@@ -326,7 +326,7 @@ function idleStrip(s: ReleaseStatus, out: boolean): StripStage[] {
  * - `idle`, grey: nothing is happening — a person starts the next step
  *   (*Ready to release · not started*), or there is nothing to release;
  * - `active`, blue (`--color-progress`) and pulsing: in progress right now (*Releasing ·
- *   checks 1 of 3 systems*, *Releasing · building apps, 5 of 23 files*);
+ *   checks 1 of 3 systems*, *Releasing · building 5 of 23 files*);
  * - `waiting`, amber: waiting on something else that is moving (*Waiting
  *   for #949 to merge*);
  * - `fail`, red: stopped, needs action (*Release stopped · checks failed*);
@@ -461,7 +461,7 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
       const m = b && /(\d+)\/(\d+)/.exec(b.text)
       const count = m ? `${m[1]} of ${m[2]} ${/ files? on /.test(b!.title) ? 'files' : 'jobs'}` : ''
       if (x.tone === 'fail') return say('fail', 'Release stopped', stopped, count ? `build failed at ${count}` : 'build failed')
-      if (b?.tone === 'pending') return say('active', 'Releasing', releasing, count ? `building apps, ${count}` : 'building apps')
+      if (b?.tone === 'pending') return say('active', 'Releasing', releasing, count ? `building ${count}` : 'building apps')
       return say('idle', 'Not built yet', v ? `${v} not built yet` : 'Not built yet', '')
     }
     case 'published':
@@ -507,7 +507,7 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  * - *Waiting for #949 to merge · 0.183.1 · 2 changes*, amber (red with
  *   *CI red*; *· ready to merge*, *· checks running* when its state was read);
  * - *Releasing 0.183.0 · checks 1 of 3 systems*, *Releasing 0.183.0 ·
- *   building apps, 12 of 23 files*, accent;
+ *   building 12 of 23 files*, accent;
  * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
  *   draft only, not public*, red.
  */
