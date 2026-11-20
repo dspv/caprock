@@ -13,10 +13,9 @@ import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef, useState
 import type { SessionSummary } from '@/lib/api'
 import { SLIDE_MS, clampOffset, reducedMotion, shiftFor, slotFor } from '@/lib/dragSlot'
 import { ownTab, type PaneLeaf, type PaneNode, type PaneSplit, type Tab } from '@/lib/tabs'
-import { dotOf, sessionAbout, sessionTitle } from '@/lib/sidebar'
-import { renamable } from '@/lib/sessionNames'
-import { InlineRename } from './InlineRename'
-import { tabLabels, type TabLabel } from '@/lib/tablabels'
+import { dotOf, sessionTitle } from '@/lib/sidebar'
+import { RenameField } from './InlineRename'
+import { renameOf, tabLabels, type TabLabel } from '@/lib/tablabels'
 import { TerminalPane, type PaneComposer, type PaneStatus } from './TerminalPane'
 import { composerFits, useComposerEnabled } from '@/lib/composer'
 import { AgentGlyph, agentGlyphLabel } from './AgentMarks'
@@ -502,8 +501,12 @@ export function TabStrip(props: TabStripProps) {
           // fill and the bold title belong to the tab in front alone
           // (2026-10-15, translated: "I don't understand where I am").
           const named = file === undefined && !label?.chat && project !== undefined
-          const alert = file !== undefined || !s ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(s) === 'error' ? 'error' : label?.dot === 'looping' ? 'looping' : undefined
-          const agent = file === undefined ? agentGlyphLabel(s?.agent, isShell) : undefined
+          const alert = file !== undefined || !s ? undefined : label?.dot === 'waiting' ? 'waiting' : sessionHealth(label?.inside ?? s) === 'error' ? 'error' : label?.dot === 'looping' ? 'looping' : undefined
+          // A shell named after the agent running in it says so on hover:
+          // "… · Claude Code · in Shell 1" (owner, 2026-11-20).
+          const inside = label?.inside
+          const agent = file === undefined ? (inside ? `${agentGlyphLabel(inside.agent, false)} · in ${label?.shellName ?? 'a shell'}` : agentGlyphLabel(s?.agent, isShell)) : undefined
+          const rename = renameOf(label)
           const tip = [file ?? title, agent, label?.branch, project].filter(Boolean).join(' · ') + (alert ? ` — ${ALERT_WORD[alert]}` : '') + (digit ? ` — ${keys(`⌘${digit}`)}` : '')
           return (
             <div
@@ -521,7 +524,7 @@ export function TabStrip(props: TabStripProps) {
                 props.onActivate(t.id)
               }}
               onAuxClick={(e) => { if (e.button === 1) props.onDetach(t.id) }}
-              onDoubleClick={file === undefined && renamable(s, isShell) ? () => setRenaming(t.id) : undefined}
+              onDoubleClick={rename ? () => setRenaming(t.id) : undefined}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') props.onActivate(t.id) }}
               title={tip}
               data-project={t.projectId}
@@ -532,8 +535,8 @@ export function TabStrip(props: TabStripProps) {
             >
               {file !== undefined && <FileIcon size={13} className="text-fg-faint" />}
               {alert && <span data-tab-alert={alert} aria-hidden className={`mx-0.5 inline-block h-[8px] w-[8px] shrink-0 rounded-full ${ALERT_DOT[alert]}`} />}
-              {renaming === t.id && renamable(s, isShell)
-                ? <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
+              {renaming === t.id && rename
+                ? <RenameField of={rename} onDone={() => setRenaming(null)} />
                 : <span data-row-title className={`flex-1 truncate ${active ? 'min-w-[16ch]' : 'min-w-[4ch]'}`}>{title}</span>}
               {/* Its project, faint after the name: fixed, never edited
                 * (owner, 2026-10-14). Whole while the tab has room — the
@@ -809,7 +812,11 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     }
     const s = ctx.sessions?.get(id)
     const isShell = node.target.kind === 'shell' || s?.kind === 'shell'
-    const title = `${s ? sessionTitle(s) : isShell ? 'shell' : 'session'}${isShell && s?.program ? ` · ${s.program}` : ''}`
+    // A shell is named as its tab is (lib/tablabels.ts): after the agent in it, else its own name.
+    const inner = isShell && s?.agent_session_id ? ctx.sessions?.get(s.agent_session_id) : undefined
+    const title = inner && inner.status !== 'ended'
+      ? sessionTitle(inner)
+      : `${isShell && node.target.name ? node.target.name : s ? sessionTitle(s) : isShell ? 'shell' : 'session'}${isShell && s?.program ? ` · ${s.program}` : ''}`
     return (
       <div
         className="flex h-full w-full flex-col"

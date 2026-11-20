@@ -20,8 +20,8 @@ vi.mock('./TerminalPane', () => ({ TerminalPane: () => null }))
 
 import { buildSidebar } from '@/lib/sidebar'
 import { tabLabels } from '@/lib/tablabels'
-import type { Tab } from '@/lib/tabs'
-import { onSessionRenamed } from '@/lib/sessionNames'
+import { workspaceReducer, type Tab } from '@/lib/tabs'
+import { onSessionRenamed, onShellNamed } from '@/lib/sessionNames'
 import { applySessionFrames } from '@/lib/useWorkspaceData'
 import { Sidebar } from './Sidebar'
 import { TabStrip } from './TerminalTabs'
@@ -38,12 +38,17 @@ const agentTab: Tab = { id: 't1', projectId: 'alpha', root: pane('p1', 'session'
 const shellTab: Tab = { id: 't2', projectId: 'alpha', root: pane('p2', 'shell', 'sh1'), focusedPaneId: 'p2', title: 'shell' }
 
 /** The tab strip and the sidebar over one held list, patched on a rename as the workspace's is. */
-function Workspace({ initial, tabs }: { initial: SessionSummary[]; tabs: Tab[] }) {
+function Workspace({ initial, tabs: first }: { initial: SessionSummary[]; tabs: Tab[] }) {
   const [sessions, setSessions] = useState(initial)
+  const [tabs, setTabs] = useState(first)
   useEffect(() => onSessionRenamed((id, name) => setSessions((cur) => applySessionFrames(cur, [[id, { session: { name } }]]))), [])
+  // A shell's tab named in place, kept in the workspace as AppShell keeps it.
+  useEffect(() => onShellNamed((sessionId, name) => setTabs((cur) => workspaceReducer({ version: 1, tabs: cur, activeByProject: {}, activeProject: 'alpha' }, { type: 'name-shell', sessionId, name }).tabs)), [])
   const byId = new Map(sessions.map((s) => [s.session_id, s]))
   const labels = tabLabels(tabs, byId, new Set(), () => undefined)
-  const model = buildSidebar({ projects: [proj], sessions, permissions: new Set(), costs: new Map(), openSessions: new Set(tabs.map((t) => (t.root.type === 'pane' ? t.root.target.sessionId : ''))) })
+  const open = new Set(tabs.map((t) => (t.root.type === 'pane' ? t.root.target.sessionId : '')))
+  for (const s of sessions) if (s.kind === 'shell' && s.agent_session_id && open.has(s.session_id)) open.add(s.agent_session_id)
+  const model = buildSidebar({ projects: [proj], sessions, permissions: new Set(), costs: new Map(), openSessions: open })
   return (
     <>
       <TabStrip
@@ -115,10 +120,47 @@ describe('renaming a session', () => {
     expect(document.querySelector('[data-live-row="a2"] [data-row-title]')?.textContent).toBe('Docs pass')
   })
 
-  it('a shell is not renamed: it is numbered', () => {
+  it('a plain shell’s tab is named as a tab: no session is renamed, and emptied it is Shell 1 again', async () => {
     render(<Workspace initial={[sess({ session_id: 'sh1', kind: 'shell' })]} tabs={[shellTab]} />)
+    expect(rowTitle('t2')).toBe('Shell 1')
     fireEvent.doubleClick(screen.getAllByRole('tab')[0]!)
     expect(screen.queryByRole('textbox', { name: 'Session name' })).toBeNull()
+    const tabField = () => screen.getByRole('textbox', { name: 'Tab name' }) as HTMLInputElement
+    expect(tabField().value).toBe('Shell 1')
+    fireEvent.change(tabField(), { target: { value: ' Builds ' } })
+    await act(async () => { fireEvent.keyDown(tabField(), { key: 'Enter' }) })
+    expect(rename).not.toHaveBeenCalled()
+    expect(within(screen.getAllByRole('tab')[0]!).getByText('Builds')).toBeTruthy()
+    expect(rowTitle('t2')).toBe('Builds')
+    // From the sidebar row's menu, the same name; emptied, the number comes back.
+    fireEvent.contextMenu(document.querySelector('[data-tab-row="t2"]')!, { clientX: 5, clientY: 5 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+    expect(tabField().value).toBe('Builds')
+    fireEvent.change(tabField(), { target: { value: '' } })
+    await act(async () => { fireEvent.blur(tabField()) })
+    expect(rowTitle('t2')).toBe('Shell 1')
+  })
+
+  it('a shell running an observed agent session is named after it, and Rename renames that session (owner, 2026-11-20)', async () => {
+    const shell = sess({ session_id: 'sh1', kind: 'shell', program: 'claude', agent_session_id: 'c1' })
+    const inner = sess({ session_id: 'c1', title: 'Resume the import', owned: false, agent: 'claude' })
+    render(<Workspace initial={[shell, inner]} tabs={[shellTab]} />)
+    const strip = screen.getAllByRole('tab')[0]!
+    expect(within(strip).getByText('Resume the import')).toBeTruthy()
+    expect(strip.getAttribute('title')).toContain('in Shell 1')
+    expect(rowTitle('t2')).toBe('Resume the import')
+    // Listed once: as the tab, not again as a session with no tab.
+    expect(document.querySelector('[data-live-row="c1"]')).toBeNull()
+    fireEvent.contextMenu(document.querySelector('[data-tab-row="t2"]')!, { clientX: 5, clientY: 5 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename…' }))
+    expect(field().value).toBe('Resume the import')
+    fireEvent.change(field(), { target: { value: 'Import, resumed' } })
+    await act(async () => { fireEvent.keyDown(field(), { key: 'Enter' }) })
+    expect(rename).toHaveBeenCalledWith('c1', 'Import, resumed')
+    expect(within(screen.getAllByRole('tab')[0]!).getByText('Import, resumed')).toBeTruthy()
+    // A double-click on the strip's tab renames the same session.
+    fireEvent.doubleClick(screen.getAllByRole('tab')[0]!)
+    expect(field().value).toBe('Import, resumed')
   })
 
   it('a rename the daemon refuses is rolled back', async () => {

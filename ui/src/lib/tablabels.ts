@@ -7,7 +7,8 @@
  */
 import type { SessionSummary } from './api'
 import { baseName } from './files'
-import { dotOf, sessionTitle, type Dot } from './sidebar'
+import { dotOf, sessionAbout, sessionTitle, type Dot } from './sidebar'
+import { renamable } from './sessionNames'
 import { branchLabel } from './sessionLabels'
 import { leaves, namingLeaf, type Tab } from './tabs'
 import { isQuickChat, startedChat } from './quickchat'
@@ -23,21 +24,53 @@ export interface TabLabel {
   /** A browser tab (ADR-075): the address it shows, '' for a new one. A page is never an agent, a shell or a file. */
   page?: string
   isShell: boolean
-  /** A shell tab: its name alone, "Shell 2", for the question before closing it. */
+  /** A shell tab: its name alone, "Shell 2" or the one the user gave it, for the question before closing it. */
   shellName?: string
   /** A shell tab: what runs in front of its prompt, when something does. */
   program?: string
   /** A quick chat: named as one, never by its group (lib/quickchat.ts). */
   chat?: boolean
-  /** The session the tab is named after, when the list knows it. */
+  /** The session the tab is named after, when the list knows it; a shell's tab: the shell. */
   session?: SessionSummary
+  /**
+   * A shell's tab with an agent session Caprock observes in front of its
+   * prompt (`agent_session_id`, `GET /v1/shells`): that session. The tab is
+   * named after it and Rename renames it; when it exits the tab is the
+   * shell again.
+   */
+  inside?: SessionSummary
+  /** A shell's tab: the name the user gave it (TabTarget.name), '' for none. */
+  shellTitle?: string
   dot: Dot
+}
+
+/** What Rename on a tab renames: the session it is named after, or a shell's tab itself. */
+export type RenameOf =
+  | { kind: 'session'; id: string; initial: string; current: string }
+  | { kind: 'shell'; id: string; initial: string; current: string }
+
+/**
+ * What Rename on a tab renames, or undefined when it renames nothing (a
+ * file, a page, the Files tab). An agent's tab renames its session; a
+ * shell's tab renames the agent session running in it when there is one,
+ * else the tab's own name, "Shell N" when it has none (owner, 2026-11-20,
+ * translated: "since when can't I rename an open session, neither in the
+ * top tabs nor on the left?").
+ */
+export function renameOf(l: TabLabel | undefined): RenameOf | undefined {
+  if (!l || l.file !== undefined || l.page !== undefined) return undefined
+  const s = l.isShell ? l.inside : l.session
+  if (s && renamable(s)) return { kind: 'session', id: s.session_id, initial: s.name?.trim() || sessionAbout(s), current: s.name ?? '' }
+  if (l.isShell && l.session) return { kind: 'shell', id: l.session.session_id, initial: l.shellTitle || l.shellName || 'Shell', current: l.shellTitle ?? '' }
+  return undefined
 }
 
 /**
  * The label of every tab, by id. Shells are numbered within their project in
  * strip order — "Shell 1", "Shell 2" — since "shell" twice tells nothing
- * apart; one running a program says which, "Shell 1 · claude".
+ * apart; one running a program says which, "Shell 1 · claude". A shell the
+ * user named is called that instead, and one with an agent session Caprock
+ * observes in front of its prompt is named after that session.
  * `defaultBranch` is the branch a project's main checkout is on; a tab on
  * any other branch says so.
  */
@@ -76,9 +109,23 @@ export function tabLabels(
     if (isShell) {
       const n = (shells.get(t.projectId) ?? 0) + 1
       shells.set(t.projectId, n)
-      const shellName = `Shell ${n}`
+      const shellTitle = leaf.target.name?.trim() || ''
+      const shellName = shellTitle || `Shell ${n}`
       const program = s?.program || undefined
-      out.set(t.id, { title: `${shellName}${program ? ` · ${program}` : ''}${more}`, shellName, program, branch, isShell, session: s, dot })
+      // An agent session running in the shell — `claude --resume <id>` typed
+      // at its prompt — names the tab while it runs, as an agent's tab is
+      // named; the shell is said on hover (owner, 2026-11-20).
+      const inner = s?.agent_session_id ? sessions.get(s.agent_session_id) : undefined
+      const inside = inner && inner.status !== 'ended' && inner.kind !== 'shell' ? inner : undefined
+      if (inside) {
+        const ib = branchLabel(inside.git_branch ?? '')
+        out.set(t.id, {
+          title: `${sessionTitle(inside)}${more}`, shellName, shellTitle, program, branch: ib && ib !== own ? ib : undefined,
+          isShell, session: s, inside, dot: dotOf(inside, permissions.has(inside.session_id)),
+        })
+        continue
+      }
+      out.set(t.id, { title: `${shellName}${program ? ` · ${program}` : ''}${more}`, shellName, shellTitle, program, branch, isShell, session: s, dot })
       continue
     }
     const chat = isQuickChat(s) || (!s && !!startedChat(leaf.target.sessionId))

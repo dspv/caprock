@@ -14,21 +14,35 @@ import (
 // parent smss.exe exits at boot, claims to be a child of whatever process
 // later draws that pid. A child is therefore only a process created after the
 // shell; one whose start time cannot be read is not counted.
-func foreground(shellPID int) string {
+func foreground(shellPID int) (string, int) {
 	shellStart, ok := startTime(shellPID)
 	if !ok {
-		return ""
+		return "", 0
 	}
+	procs := snapshot(func(pid, ppid int) bool { return ppid == shellPID && pid != shellPID })
+	return childJob(shellPID, shellStart, procs)
+}
+
+// inJob: the job (the shell's child) is the process or one of its parents —
+// "claude.cmd" runs node under cmd.exe, so the session's process may sit a
+// level or two below the program the shell started.
+func inJob(pid, job int) bool {
+	return parentChain(pid, job, snapshot(func(int, int) bool { return true }))
+}
+
+// snapshot is the process table's entries that keep accepts, each with its
+// start time; one whose start time cannot be read is left out.
+func snapshot(keep func(pid, ppid int) bool) []proc {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer func() { _ = windows.CloseHandle(snap) }()
 	var procs []proc
 	var e windows.ProcessEntry32
 	e.Size = uint32(unsafe.Sizeof(e))
 	for err = windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
-		if int(e.ParentProcessID) != shellPID || int(e.ProcessID) == shellPID {
+		if !keep(int(e.ProcessID), int(e.ParentProcessID)) {
 			continue
 		}
 		start, ok := startTime(int(e.ProcessID))
@@ -40,7 +54,7 @@ func foreground(shellPID int) string {
 			exe: windows.UTF16ToString(e.ExeFile[:]), start: start,
 		})
 	}
-	return childName(shellPID, shellStart, procs)
+	return procs
 }
 
 // startTime is a process's creation time in 100ns ticks since 1601.

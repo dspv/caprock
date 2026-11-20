@@ -69,12 +69,12 @@ import { rowHidden, type HiddenSessions, type ProjectNode, type SessionNode } fr
 import type { Dot } from '@/lib/sidebar'
 import { branchLabel } from '@/lib/sessionLabels'
 import type { Tab } from '@/lib/tabs'
-import type { TabLabel } from '@/lib/tablabels'
+import { renameOf, type RenameOf, type TabLabel } from '@/lib/tablabels'
 import { closeTitle, closeWord } from '@/lib/closeShell'
 import { fmtUSD } from '@/lib/format'
 import { agentGlyphLabel } from './AgentMarks'
 import { CloseIcon, EyeIcon, EyeOffIcon, FileIcon, FolderIcon, GlobeIcon, MoreIcon, PencilIcon, PlusIcon, StopIcon, TerminalIcon } from './AppIcons'
-import { InlineRename } from './InlineRename'
+import { RenameField } from './InlineRename'
 import { renamable } from '@/lib/sessionNames'
 import { sessionAbout } from '@/lib/sidebar'
 import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
@@ -620,11 +620,11 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
       <StopConfirm sessionId={stopping.sessionId} what={stopping.what} onDone={() => setStopping(null)} />
     </li>
   )
-  // The session whose name is being typed in place of its row.
+  // The session (or shell tab) whose name is being typed in place of its row.
   const [renaming, setRenaming] = useState<string | null>(null)
-  const renameRow = (s: SessionSummary) => (
+  const renameRow = (of: RenameOf) => (
     <li className="flex h-[38px] items-center pl-[22px] pr-1">
-      <InlineRename sessionId={s.session_id} initial={s.name?.trim() || sessionAbout(s)} current={s.name ?? ''} onDone={() => setRenaming(null)} />
+      <RenameField of={of} onDone={() => setRenaming(null)} />
     </li>
   )
   const itemRow = (it: SidebarRow) => {
@@ -636,7 +636,9 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     if (!it.tab) {
       const x = it.node!
       const named = renamable(x.session, x.isShell)
-      if (named && renaming === x.session.session_id) return renameRow(x.session)
+      if (named && renaming === x.session.session_id) {
+        return renameRow({ kind: 'session', id: x.session.session_id, initial: x.session.name?.trim() || sessionAbout(x.session), current: x.session.name ?? '' })
+      }
       return (
         <>
           <LiveRow
@@ -658,12 +660,13 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
     }
     const t = it.tab
     const l = it.label
-    const named = l?.file === undefined && renamable(l?.session, l?.isShell) ? l!.session! : undefined
-    if (named && renaming === named.session_id) return renameRow(named)
+    // An agent's tab renames its session; a shell's, the agent in it or the tab itself (lib/tablabels.ts).
+    const named = renameOf(l)
+    if (named && renaming === named.id) return renameRow(named)
     return (
       <>
         <TabRow
-          onRename={named ? () => setRenaming(named.session_id) : undefined}
+          onRename={named ? () => setRenaming(named.id) : undefined}
           drag={drag}
           project={proj}
           flat={flat}
@@ -691,12 +694,13 @@ export function SessionList({ items, visible = items, orderId, ariaLabel, active
       const tab = it.tab
       const l = it.label
       const stop = stoppable(l)
+      const rename = renameOf(l)
       const sid = l?.session?.session_id
       const hideable = !!onHideSession && !!sid && l?.file === undefined && !l?.isShell && l?.session?.status !== 'ended'
       return (
         <MenuBox at={rowMenu} label={`${l?.title ?? tab.title}: tab actions`} width={232} onClose={closeRowMenu}>
-          {l?.file === undefined && renamable(l?.session, l?.isShell) && (
-            <MenuItem icon={<PencilIcon size={14} />} label="Rename…" onClick={() => { setRowMenu(null); setRenaming(sid!) }} />
+          {rename && (
+            <MenuItem icon={<PencilIcon size={14} />} label="Rename…" onClick={() => { setRowMenu(null); setRenaming(rename.id) }} />
           )}
           {onCloseTab && <MenuItem icon={<CloseIcon size={14} />} label={closeWord(l?.file !== undefined, !!l?.isShell)} hint={keys('⌘W')} onClick={() => { setRowMenu(null); onCloseTab(tab.id) }} />}
           {onCloseTab && hideable && (
@@ -750,6 +754,12 @@ function stoppable(l?: TabLabel): { sessionId: string; what: StopWhat } | undefi
   const s = l?.session
   if (!s || l?.file !== undefined || !s.owned || s.status === 'ended') return undefined
   return { sessionId: s.session_id, what: l!.isShell ? 'shell' : 'session' }
+}
+
+/** A tab row's agent, for its tooltip; a shell named after the agent in it says which shell: "Claude Code · in Shell 1". */
+function tabAgent(l?: TabLabel): string {
+  if (l?.inside) return `${agentGlyphLabel(l.inside.agent, false)} · in ${l.shellName ?? 'a shell'}`
+  return l?.session ? agentGlyphLabel(l.session.agent, l.isShell) : ''
 }
 
 /**
@@ -848,7 +858,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
   const isFile = label?.file !== undefined
   // A quick chat's tab: its model after the title, when the title does not say it.
   const chatModelName = label?.chat && label.session ? chatRowSuffix(label.session, title, false).model : undefined
-  const word = !isFile && !label?.isShell && label?.session ? label.dot : undefined
+  const word = !isFile && (!label?.isShell || label?.inside) && label?.session ? label.dot : undefined
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
   if (variant === 'open') {
@@ -873,7 +883,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           onDoubleClick={onRename}
           {...menuHandlers(onMenu)}
           className={`app-row flex min-h-[42px] w-full min-w-0 items-center gap-2 rounded-[7px] py-1 pl-[10px] text-left ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-          title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', repo, label?.branch, project?.name, phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ')}
+          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name, phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ')}
         >
           {phase !== undefined ? <PhaseDot phase={phase} asks={asks} />
             : kind === 'page' ? <GlobeIcon size={12} className="shrink-0 text-fg-faint" />
@@ -911,7 +921,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-        title={[label?.file ?? title, label?.session ? agentGlyphLabel(label.session.agent, label.isShell) : '', repo, label?.branch, project?.name].filter(Boolean).join(' · ')}
+        title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name].filter(Boolean).join(' · ')}
       >
         {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <RowDot dot={label?.dot ?? 'idle'} asks={asks} />}
         <TitleAndBranch title={title} branch={project ? chatModelName : [repo, label?.branch, chatModelName].filter(Boolean).join(' · ') || undefined} className={active ? 'font-semibold text-fg' : 'text-fg'} />
@@ -1141,15 +1151,17 @@ export interface SessionStop {
 /**
  * The rows under a project, in their fixed order: every agent session —
  * its tabs (not shells, not files, not an ended session's) and its live
- * sessions with no tab — leaving out what was hidden by hand.
+ * sessions with no tab — leaving out what was hidden by hand. A shell with
+ * an agent session running in it is that session's row (lib/tablabels.ts
+ * `inside`), so the session is listed once, as its tab.
  */
 function agentRows(tabs: readonly Tab[], labels: ReadonlyMap<string, TabLabel>, nodes: ReadonlyMap<string, SessionNode>, live: LiveWithoutTab, rowOrder?: readonly string[], hiddenSessions?: HiddenSessions): LeadItem[] {
   const tabRows = tabs.flatMap((t): LeadItem[] => {
     const kind = namingLeaf(t).target.kind
-    if (kind !== 'session' && kind !== 'observe') return []
     const l = labels.get(t.id)
-    if (l?.isShell || l?.file !== undefined || l?.session?.status === 'ended') return []
-    const sid = l?.session?.session_id
+    if (kind !== 'session' && kind !== 'observe' && !(kind === 'shell' && l?.inside)) return []
+    if ((l?.isShell && !l.inside) || l?.file !== undefined || l?.session?.status === 'ended') return []
+    const sid = l?.inside?.session_id ?? l?.session?.session_id
     const n = sid ? nodes.get(sid) : undefined
     if (n && rowHidden(n, hiddenSessions)) return []
     return [{ key: t.id, tab: t, label: l, node: n }]

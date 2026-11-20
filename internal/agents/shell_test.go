@@ -103,7 +103,13 @@ func TestShellProgramIsCachedAndShellOnly(t *testing.T) {
 	var calls int
 	prog := "claude"
 	old := foreground
-	foreground = func(int) string { calls++; return prog }
+	foreground = func(int) (string, int) {
+		calls++
+		if prog == "" {
+			return "", 0
+		}
+		return prog, 4321
+	}
 	t.Cleanup(func() { foreground = old })
 
 	sh, err := m.SpawnShell(context.Background(), ShellRequest{Cwd: t.TempDir()})
@@ -114,6 +120,9 @@ func TestShellProgramIsCachedAndShellOnly(t *testing.T) {
 		if got := m.ShellProgram(sh.SessionID); got != "claude" {
 			t.Fatalf("ShellProgram = %q, want claude", got)
 		}
+	}
+	if name, job := m.ShellJob(sh.SessionID); name != "claude" || job != 4321 {
+		t.Fatalf("ShellJob = %q, %d, want claude, 4321", name, job)
 	}
 	if calls != 1 {
 		t.Fatalf("read the process table %d times in one TTL, want 1", calls)

@@ -194,6 +194,8 @@ export interface ApiShell {
   project_id?: number
   /** What runs in front of the prompt ("claude", "npm"); absent while the shell is idle. */
   program?: string
+  /** The observed session that program is, when Caprock knows it (lib/tablabels.ts). */
+  agent_session_id?: string
   kind: 'shell'
 }
 
@@ -318,6 +320,7 @@ export function shellAsSession(sh: ApiShell): SessionSummary {
   return {
     session_id: sh.id, cwd: sh.cwd, project: folderName(sh.cwd), model: '', started_at: started, last_event_at: started,
     status: 'active', transcript_path: '', has_hooks: false, has_transcript: false, git_branch: '', version: '', owned: true, kind: 'shell', program: sh.program,
+    ...(sh.agent_session_id ? { agent_session_id: sh.agent_session_id } : {}),
     stats: { session_id: sh.id, turns: 0, tool_calls: 0, files_touched: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
     activity: { phrase: '', at: '', health: 'idle' },
     savings: { billed_with: 0, billed_without: 0, saved: 0, hit_rate: 0, cut_pct: 0 },

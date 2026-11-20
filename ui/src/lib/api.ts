@@ -81,6 +81,10 @@ export interface Session {
   kind?: 'agent' | 'shell'
   /** A shell's foreground program (`GET /v1/shells`): "claude", "npm"; absent while it is idle. */
   program?: string
+  /** A shell's: the session Caprock observes running in front of its prompt
+   *  (`GET /v1/shells` agent_session_id), "claude --resume <id>" typed into it;
+   *  the tab is named and renamed as that session while it runs. */
+  agent_session_id?: string
   /** One prompt, N attempts (ADR-052): the group, which attempt this is and of how many. */
   attempt_group?: string
   attempt?: number
