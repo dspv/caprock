@@ -383,7 +383,7 @@ describe('the cockpit’s CI block', () => {
     // Two lines: the PR and its age, then its checks.
     expect(head()).toHaveTextContent(/^CI#806.*now/)
     // Merged, the line says so instead of a tally of old checks.
-    expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveTextContent(/^merged$/)
+    expect(document.querySelector('[data-cockpit-ci-fold]')).toHaveTextContent(/^Merged$/)
   })
 
   // Owner, 2026-11-17, translated: "in this mode I don't see CI statuses,
@@ -443,9 +443,82 @@ describe('the cockpit’s CI block', () => {
       folded()
       await waitFor(() => expect(fold()).toHaveAttribute('data-cockpit-ci-fold', '930'))
       await waitFor(() => expect(asked).toContain('/v1/sessions/s1/ci/stats'))
-      expect(fold()).toHaveTextContent(/^merged$/)
+      expect(fold()).toHaveTextContent(/^Merged$/)
       expect(document.querySelector('[data-cockpit-ci-fold-pr]')).toHaveAttribute('data-cockpit-ci-fold-pr', '930')
       expect(asked.some((u) => u.includes('?pr='))).toBe(false)
+    })
+  })
+
+  // Owner, 2026-11-20, translated: a grey "merged" under the title was
+  // "cramped and visually unclear". Variant A: a green check, *Merged*, and
+  // what comes next in muted words — the version as the Release section
+  // writes it, without a "v".
+  describe('folded, a merged PR says what comes next', () => {
+    const SPEND = { cost_usd: 0, sessions: 0, live: 0, agents: [] }
+    const FLOW = { counts: {}, days: 14, merged: 1, ttm_count: 0, release_lag_count: 0, cost_usd: 0 }
+    const merged = { number: 970, url: 'https://github.com/a/b/pull/970', title: 'PR 970', state: 'merged', created_at: now - 7_200_000, merged_at: now - 600_000 }
+    const keep = (o: { ships?: string; card?: object; releases?: object[]; state?: string; repo?: object }) => {
+      writeDeck('stats:/w', { connected: true, fetched_at: now, read_at: now, prs: [{ ...merged, state: o.state ?? 'merged' }],
+        board: { cards: o.card ? [o.card] : [], releases: o.releases ?? [{ tag: 'v0.185.0', published_at: now - 3_600_000, prs: [], cost_usd: 0, sessions: 0 }], flow: FLOW, ships_by: o.ships } }, now)
+      writeDeck('prs:s1', { connected: true, prs: [row(970, live(970, PASSED, { state: o.state ?? 'merged', merged_at: o.state === 'closed' ? undefined : merged.merged_at }))] }, now)
+      if (o.repo) writeDeck('work:/w', o.repo, now)
+    }
+    // The Release section's kept entry: the last tag and one Fixed entry on master → a patch.
+    const REPO = { root: '/w', name: 'w', live: 1, tags: { last: { name: 'v0.185.0', at: now - 3_600_000 }, gaps: 0 },
+      unreleased: { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } } }
+    const folded = () => {
+      // Nothing answers: what is drawn is what was kept; nothing new is asked for the version.
+      const asked: string[] = []
+      vi.stubGlobal('fetch', vi.fn((url: string) => { asked.push(url); return new Promise<Response>(() => {}) }))
+      render(
+        <FoldCtx.Provider value={{ full: false, toggle: () => {} }}>
+          <CockpitCI sessionId="s1" repoScope="/w" onOpen={() => {}} />
+        </FoldCtx.Provider>,
+      )
+      return asked
+    }
+    const fold = () => document.querySelector('[data-cockpit-ci-fold]')
+    const line = () => document.querySelector('[data-cockpit-ci-merged]')
+
+    it('merged, the next version predicted: goes out in 0.185.1', () => {
+      keep({ ships: 'release', card: { number: 970, stage: 'merged', stage_at: now - 600_000, spend: SPEND }, repo: REPO })
+      const asked = folded()
+      expect(fold()).toHaveTextContent(/^Merged· goes out in 0\.185\.1$/)
+      expect(line()).toHaveAttribute('data-cockpit-ci-merged', 'waits')
+      expect(line()).toHaveAttribute('title', 'Merged. In no published release yet: it goes out in 0.185.1, the next release (predicted from the changelog entries)')
+      expect(line()!.querySelector('[data-mark="pass"]')).not.toBeNull()
+      expect(line()!.querySelector('span.text-ok')).toHaveTextContent(/^Merged$/)
+      expect(asked.some((u) => u.includes('/work'))).toBe(false)
+    })
+
+    it('merged and released: released in 0.185.1', () => {
+      keep({ ships: 'release', card: { number: 970, stage: 'released', release: 'v0.185.1', stage_at: now - 60_000, spend: SPEND }, repo: REPO })
+      folded()
+      expect(fold()).toHaveTextContent(/^Merged· released in 0\.185\.1$/)
+      expect(line()).toHaveAttribute('data-cockpit-ci-merged', 'released')
+    })
+
+    it('merged, the version unknown: goes out in the next release', () => {
+      keep({ ships: 'release', card: { number: 970, stage: 'merged', stage_at: now - 600_000, spend: SPEND } })
+      folded()
+      expect(fold()).toHaveTextContent(/^Merged· goes out in the next release$/)
+      expect(line()).toHaveAttribute('title', 'Merged. In no published release yet: it goes out in the next release')
+    })
+
+    it('where work ships on merge: Merged alone', () => {
+      keep({ ships: 'merge', releases: [], repo: REPO })
+      folded()
+      expect(fold()).toHaveTextContent(/^Merged$/)
+      expect(line()).toHaveAttribute('data-cockpit-ci-merged', 'done')
+      expect(line()).toHaveAttribute('title', 'Merged: work here ships when it merges')
+    })
+
+    it('closed without a merge: Closed, no check', () => {
+      keep({ ships: 'release', state: 'closed', repo: REPO })
+      folded()
+      expect(fold()).toHaveTextContent(/^Closed$/)
+      expect(line()).toBeNull()
+      expect(fold()!.querySelector('[data-mark]')).toBeNull()
     })
   })
 

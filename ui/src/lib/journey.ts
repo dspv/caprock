@@ -18,7 +18,7 @@
  * nothing read says. A pull request closed unmerged stays distinct: its
  * Merged step reads *Closed*, the CI step before it never filled.
  */
-import type { BoardCard, PRBoard, PRSpend, ShipsBy, Stage } from './prboard'
+import type { BoardCard, BoardRelease, PRBoard, PRSpend, ShipsBy, Stage } from './prboard'
 import type { BranchPR } from './branches'
 import type { TabPR } from './prstats'
 
@@ -170,6 +170,49 @@ export function releaseNote(p: JourneyInput, ctx: ShipsContext = {}): ReleaseNot
   if (stage !== 'merged' || ctx.ships !== 'release') return undefined
   const next = ctx.next ? ` (v${ctx.next}, predicted from the changelog entries)` : ctx.lastRelease ? `, after ${ctx.lastRelease}` : ''
   return { text: 'not released', title: `Merged, in no published release yet: it ships with the next release${next}.`, released: false }
+}
+
+/** What the cockpit's folded CI line says after *Merged*: what comes next, or the release it went out in. */
+export interface MergedLine {
+  /** The muted part after the word: "goes out in 0.185.1", "released in 0.185.1"; absent: *Merged* alone. */
+  tail?: string
+  /** The whole of it, for hover. */
+  title: string
+  released: boolean
+}
+
+/** "v0.185.1" → "0.185.1": versions written as the Release section writes them. */
+const bareVersion = (tag: string) => tag.replace(/^[A-Za-z-]*(?=\d)/, '')
+
+/**
+ * A merged pull request on the cockpit's folded CI line (owner, 2026-11-20,
+ * translated: "cramped and visually unclear"; variant A): *released in
+ * 0.185.1* once a published release holds it — its board card's release, or,
+ * with no card, the first release published after the merge; where the
+ * repository cuts releases and none holds it yet, *goes out in 0.185.1*
+ * (`ctx.next`, lib/releaseplan nextVersion) or *goes out in the next
+ * release*; nothing more where work ships on merge or nothing says how it
+ * ships. Pure.
+ */
+export function mergedLine(p: (Pick<JourneyInput, 'card'> & { merged_at?: number }) | undefined, ctx: ShipsContext = {}, releases: readonly BoardRelease[] = []): MergedLine {
+  let tag = p?.card?.stage === 'released' ? p.card.release : undefined
+  const at = p?.merged_at
+  if (!tag && !p?.card && at && ctx.ships === 'release') {
+    let first: BoardRelease | undefined
+    for (const r of releases) if (r.published_at > at && !r.prerelease && (!first || r.published_at < first.published_at)) first = r
+    tag = first?.tag
+  }
+  if (tag) {
+    const v = bareVersion(tag)
+    return { tail: `released in ${v}`, title: `Merged, and released in ${v}: the first release published after the merge`, released: true }
+  }
+  if (p?.card?.stage === 'released') return { tail: 'released', title: 'Merged, and in a published release', released: true }
+  if (ctx.ships === 'release') {
+    return ctx.next
+      ? { tail: `goes out in ${ctx.next}`, title: `Merged. In no published release yet: it goes out in ${ctx.next}, the next release (predicted from the changelog entries)`, released: false }
+      : { tail: 'goes out in the next release', title: 'Merged. In no published release yet: it goes out in the next release', released: false }
+  }
+  return { title: ctx.ships === 'merge' ? 'Merged: work here ships when it merges' : 'Merged', released: false }
 }
 
 /**
