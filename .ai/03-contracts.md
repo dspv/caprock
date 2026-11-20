@@ -685,7 +685,8 @@ GET /v1/setup → {"os": "windows"|"darwin"|"linux",
   while the item is not done, is the one command that does it: typed into a
   shell tab or printed by `caprock setup`, never run by Caprock (ADR-046).
 - **`git`**: Git found on the user's PATH as it is now (Windows: the
-  registry's system and user `Path`, read again at most every 2 s; macOS
+  registry's system and user `Path`, read again at most every 2 s and added
+  after the daemon's own PATH, which keeps its order; macOS
   and Linux: the login shell's PATH, refreshed in the background when a
   minute old), or in Git for Windows' own folders; on macOS `/usr/bin/git`
   counts only when the Command Line Tools or Xcode are installed. Never run.

@@ -42,13 +42,25 @@ func swapRegistry(t *testing.T, path string, err error) {
 	})
 }
 
+// The daemon's own PATH keeps its order: the registry only adds what it
+// lacks. Registry first put a runner's older Go ahead of setup-go's, which
+// broke the smoke test on Windows CI (2026-11-20).
+func TestCurrentPathOnWindowsKeepsTheDaemonsOrder(t *testing.T) {
+	t.Setenv("PATH", `C:\hostedtoolcache\go\1.26\bin;C:\Windows\system32`)
+	swapRegistry(t, `C:\Program Files\Go\bin;C:\Windows\system32;C:\Program Files\Git\cmd`, nil)
+	p, _ := currentPath(nil, "windows")
+	if p != `C:\hostedtoolcache\go\1.26\bin;C:\Windows\system32;C:\Program Files\Go\bin;C:\Program Files\Git\cmd` {
+		t.Fatalf("%q", p)
+	}
+}
+
 // Windows: Git installed after the daemon started is on the registry's PATH,
 // not the process's; the check reads the registry again, on every OS's CI.
 func TestCurrentPathOnWindowsReadsTheRegistryAgain(t *testing.T) {
 	t.Setenv("PATH", `C:\caprock`)
 	swapRegistry(t, `C:\Windows\system32`, nil)
 	p, fresh := currentPath(nil, "windows")
-	if !fresh || p != `C:\Windows\system32;C:\caprock` {
+	if !fresh || p != `C:\caprock;C:\Windows\system32` {
 		t.Fatalf("first: %q %v", p, fresh)
 	}
 	// The installer adds Git for Windows to the system Path.

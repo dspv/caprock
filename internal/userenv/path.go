@@ -23,8 +23,11 @@ import (
 //
 //   - Windows: the system and the user `Path` values from the registry
 //     (HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment and
-//     HKCU\Environment), expanded, system first — what Explorer hands a new
-//     process — followed by anything only the daemon's own PATH had.
+//     HKCU\Environment), expanded, added after the daemon's own PATH: what
+//     the daemon was started with keeps its order and wins, and only a
+//     directory it lacks is appended. Registry first put the machine's
+//     older Go ahead of the one CI's setup-go had prepended (2026-11-20),
+//     and would do the same to anything a launcher prepends on a user's PC.
 //   - macOS and Linux: the login shell's environment (Cached), refreshed in
 //     the background once it is older than TTL.
 
@@ -54,11 +57,11 @@ func registryPathCached() (string, error) {
 	return regPath, regErr
 }
 
-// mergePaths is fresh followed by every entry of own that fresh lacks.
+// mergePaths is first followed by every entry of then that first lacks.
 // Duplicates are dropped — compared case-insensitively when fold (Windows),
-// trailing separators ignored — so a directory the registry names comes first
-// and nothing the daemon was started with is lost.
-func mergePaths(fresh, own, sep string, fold bool) string {
+// trailing separators ignored — so first keeps its order and nothing of
+// either is lost.
+func mergePaths(first, then, sep string, fold bool) string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(list string) {
@@ -78,8 +81,8 @@ func mergePaths(fresh, own, sep string, fold bool) string {
 			out = append(out, d)
 		}
 	}
-	add(fresh)
-	add(own)
+	add(first)
+	add(then)
 	return strings.Join(out, sep)
 }
 
@@ -99,15 +102,15 @@ func withPath(env []string, path string) []string {
 	return append(out, key+"="+path)
 }
 
-// freshEnviron is env with PATH as a process started now would get it on
-// Windows: the registry's, then env's own extras. When the registry cannot be
+// freshEnviron is env with its own PATH followed by the registry's entries it
+// lacks (Windows). When the registry cannot be
 // read it is env unchanged.
 func freshEnviron(env []string) []string {
 	fresh, err := registryPathCached()
 	if err != nil || fresh == "" {
 		return env
 	}
-	return withPath(env, mergePaths(fresh, pathOf(env), ";", true))
+	return withPath(env, mergePaths(pathOf(env), fresh, ";", true))
 }
 
 // CurrentPath is the user's PATH as a program started now would get it, and
@@ -130,7 +133,7 @@ func currentPath(log *slog.Logger, goos string) (string, bool) {
 		if err != nil || fresh == "" {
 			return own, false
 		}
-		return mergePaths(fresh, own, ";", true), true
+		return mergePaths(own, fresh, ";", true), true
 	}
 	mu.Lock()
 	defer mu.Unlock()
