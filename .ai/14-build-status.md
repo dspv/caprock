@@ -517,6 +517,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-21 — 0.186.1: the daemon reads six to seven times less from disk
+
+A patch release, #985. The summary figures behind the dashboard (spend by
+turn, kinds, sparkline, tools) were re-read over every event in their range
+whenever anything new was written. They are now kept per session, and only
+the sessions that moved are read again; the status strip's event count and a
+session's calls list are kept the same way. Measured on a seeded 1.6 GB
+database with the file pushed out of memory on a timer: 24,361 MB of reads an
+hour fell to 3,489, and a cold seven-day history request from 572 MB to 5 MB.
+Every figure shown is unchanged. Migration 0087 widens one index.
+
 ### 2026-11-21 — 0.186.0: Permissions as three buttons, a cockpit CI and Release that fit, a Resources panel that says what to do
 
 A minor release, #983. The New agent sheet's Permissions dropdown is three
