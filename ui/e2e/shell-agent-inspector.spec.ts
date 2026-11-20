@@ -119,5 +119,13 @@ test('an agent typed into a shell: its cockpit in the inspector, named in the cl
   } finally {
     // This stand started the fake claude in its own shell (rule 7).
     if (fake > 1) { try { process.kill(fake, 'SIGKILL') } catch { /* gone */ } }
+    // And waits for the session it posted hooks for to end: left live, it
+    // was a row in "Running, no tab" that vanished in the middle of the
+    // next spec (sidebar-drag.spec.ts) when its pid was found dead (CI,
+    // 2026-11-21).
+    await expect.poll(async () => {
+      const r = await (await fetch(`${stand.daemonURL}/v1/sessions/${agent}`)).json() as { session?: { status?: string }; status?: string }
+      return (r.session ?? r).status ?? 'ended'
+    }, { timeout: 40_000 }).toBe('ended')
   }
 })

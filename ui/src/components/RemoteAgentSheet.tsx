@@ -45,7 +45,8 @@ import { useApi } from '@/lib/useApi'
 import { isMacPlatform } from '@/lib/appmode'
 import { useInitialMode } from '@/lib/permissionMode'
 import { stepSelect } from '@/lib/selectKeys'
-import { DEFAULT_MODE, MODE_NOTE, modeOptions } from './SpawnDialog'
+import { DEFAULT_MODE } from './SpawnDialog'
+import { PermissionPicker } from './PermissionPicker'
 import type { SpawnAgent } from './AgentPicker'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 
@@ -326,29 +327,22 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
             <DirPicker value={cwd.trim()} onPick={setCwd} start="~/dev" tab={tab} onTab={setTab} source={source} />
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <SheetField label="Model" hint="optional">
-            <input
-              className="input"
-              aria-label="Model"
-              list={`remote-models-${machine}`}
-              placeholder={entry?.default || 'its default'}
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              spellCheck={false}
-            />
-            <datalist id={`remote-models-${machine}`}>
-              {(entry?.models ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-            </datalist>
-          </SheetField>
-          {!custom ? (
-            <SheetField label="Permissions" hint="kept for the next agent">
-              <select className="input" aria-label="Permissions" value={mode} onChange={(e) => setMode(e.target.value)}>
-                {modeOptions(mode).map(([v, label]) => <option key={v} value={v}>{MODE_NOTE[agent as SpawnAgent]?.[v] ?? label}</option>)}
-              </select>
-            </SheetField>
-          ) : <div />}
-        </div>
+        <SheetField label="Model" hint="optional">
+          <input
+            className="input"
+            aria-label="Model"
+            list={`remote-models-${machine}`}
+            placeholder={entry?.default || 'its default'}
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            spellCheck={false}
+          />
+          <datalist id={`remote-models-${machine}`}>
+            {(entry?.models ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+          </datalist>
+        </SheetField>
+        {/* A row of its own: three segments do not fit half of one. */}
+        {!custom && <PermissionPicker value={mode} onChange={setMode} agent={agent as SpawnAgent} hint="kept for the next agent" />}
         <SheetField label="First message" hint="optional">
           <textarea
             className="input min-h-[84px] resize-y font-[family-name:var(--font-sans)] text-[13px] leading-relaxed"

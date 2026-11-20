@@ -6,11 +6,12 @@ import { AgentPicker, useAgentCatalog, useAgentChoice, useSpawnableAgents, type 
 import { api, errText, isPairedDevice, type CatalogEntry } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { navigate } from '@/lib/router'
-import { modeWords, useInitialMode } from '@/lib/permissionMode'
+import { useInitialMode } from '@/lib/permissionMode'
 import { stepSelect } from '@/lib/selectKeys'
 import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId } from '@/lib/subscriptions'
+import { PermissionPicker } from './PermissionPicker'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
@@ -76,88 +77,9 @@ export const MODELS: [value: string, label: string][] = [
   ['claude-haiku-5-5', 'Haiku 5.5 · cheapest'],
 ]
 
-// The values Claude Code accepts (`claude --help`): acceptEdits, auto,
-// bypassPermissions, manual, dontAsk, plan. The old list offered "default",
-// which is not one of them, and "" — so the dialog could send a mode the
-// binary rejects. Three are offered here; the rest are reachable by starting
-// claude yourself, which Caprock watches all the same.
-// Short enough to survive a narrow window. The label has to carry what the
-// session will DO without being opened — a mode cut off mid-word ("asks before
-// com…") is the one label where truncation hides the consequence.
-// The modes the daemon can express as a Gemini --approval-mode; the rest fall
-// back to Gemini's own default, which asks.
-export const GEMINI_MAPPED = new Set(['acceptEdits', 'auto', 'bypassPermissions', 'plan'])
-
-export const MODES: [value: string, label: string][] = [
-  ['acceptEdits', 'Accept edits · asks first'],
-  ['plan', 'Plan · changes nothing'],
-  ['bypassPermissions', 'Bypass · never asks'],
-]
-
-/** MODES, plus `current` when it is a mode they do not list — a session
- *  carried on in auto mode, or a preference set through the API — so a select
- *  never shows one mode while holding another. */
-export function modeOptions(current: string): [value: string, label: string][] {
-  if (!current || MODES.some(([v]) => v === current)) return MODES
-  const w = modeWords(current)
-  return [[current, w.charAt(0).toUpperCase() + w.slice(1)], ...MODES]
-}
-
-// What each mode becomes in an agent that spells it differently, read from
-// that CLI's --help (codex-cli 0.160.0, opencode 1.15.10) and said in the
-// label, so the choice names the consequence rather than Claude's word for it.
-// The daemon builds the flags (internal/agents/argv.go); a mode an agent has
-// no honest counterpart for is left to that agent's own config and marked.
-export const MODE_NOTE: Partial<Record<SpawnAgent, Record<string, string>>> = {
-  codex: {
-    acceptEdits: 'Accept edits · workspace sandbox, asks first',
-    plan: 'Plan · read-only sandbox',
-    bypassPermissions: 'Bypass · no sandbox, never asks',
-  },
-  opencode: {
-    acceptEdits: 'Accept edits · asks before commands',
-    plan: "Plan · OpenCode's plan agent",
-    bypassPermissions: "Bypass · OpenCode's own rules",
-  },
-  // Hermes (`hermes chat --help`, 0.21.6) has one switch: --yolo skips its
-  // approval prompts for dangerous commands. It has no plan or accept-edits
-  // mode, so those start Hermes as it is.
-  hermes: {
-    acceptEdits: 'Default · Hermes asks before risky commands',
-    plan: 'Default · Hermes has no plan mode',
-    bypassPermissions: 'Bypass · --yolo, never asks',
-  },
-  // cursor-agent (`--help`, 2025.09.12): -f/--force allows commands unless
-  // they are explicitly denied. Plan exists only in newer CLIs as --mode, so
-  // plan and accept-edits start Cursor as it is.
-  cursor: {
-    acceptEdits: 'Default · Cursor asks before commands',
-    plan: 'Default · plan is not a flag every Cursor CLI has',
-    bypassPermissions: 'Bypass · --force, runs what is not denied',
-  },
-}
-
-/** OpenCode 2 (2.0.26) has the flag OpenCode 1 lacked: `--auto`, "auto-approve
- *  permissions that are not explicitly denied", so bypass is real there. The
- *  other two are the same plan agent and the same ask-before-commands rule,
- *  given as config rather than flags. */
-export const OPENCODE2_MODE_NOTE: Record<string, string> = {
-  ...MODE_NOTE.opencode,
-  bypassPermissions: "Bypass · approves all it doesn't deny",
-}
-
-/** The major version in "2.0.26", 0 when unknown. */
-export function majorVersion(v?: string): number {
-  const n = Number((v ?? '').split('.')[0])
-  return Number.isFinite(n) ? n : 0
-}
-
-/** What each mode is called for this agent, given the daemon's status: the
- *  installed OpenCode's major version decides which OpenCode's words. */
-export function modeNotes(agent: SpawnAgent, opencodeVersion?: string): Record<string, string> | undefined {
-  if (agent === 'opencode' && majorVersion(opencodeVersion) >= 2) return OPENCODE2_MODE_NOTE
-  return MODE_NOTE[agent]
-}
+// The permission modes and the picker live in PermissionPicker.tsx; re-exported
+// here for the callers that have always imported them from this file.
+export { GEMINI_MAPPED, MODES, MODE_NOTE, OPENCODE2_MODE_NOTE, majorVersion, modeNotes, modeOptions } from './PermissionPicker'
 
 /** The model a session starts on, per agent. Codex and OpenCode start on
  *  whatever the user's own config names, which Caprock does not try to
@@ -218,7 +140,6 @@ export function SpawnDialog({
   const entry = entries.find((e) => e.id === agent)
   // Which OpenCode is installed decides what a mode becomes in it.
   const status = useApi(() => api.status(), [], { live: false })
-  const notes = modeNotes(agent, status.data?.opencode_version)
   const [worktree, setWorktree] = useState(initialWorktree)
   const [create, setCreate] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -299,28 +220,26 @@ export function SpawnDialog({
             <AgentPicker value={agent} agents={agents} onChange={setAgent} />
             <SubscriptionPicker list={subList} value={subId} onChange={pickSub} />
             <SubscriptionNote list={subList} value={subId} onUse={pickSub} />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
-                <ModelField
-                  agent={agent}
-                  value={model}
-                  onChange={setModel}
-                  entry={entry}
-                />
-              </Field>
-              {/* Every agent covers the same ground with its own words, and
-                * the daemon maps onto them — so the control stays live for
-                * all of them, labelled with what it becomes in this one. */}
-              <Field label="Permissions" hint={remote ? undefined : 'kept for the next agent'}>
-                <select className="input" value={mode} onChange={(e) => { setMode(e.target.value); setConfirming(false) }}>
-                  {modeOptions(mode).map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : notes?.[v] ?? label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
+            <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
+              <ModelField
+                agent={agent}
+                value={model}
+                onChange={setModel}
+                entry={entry}
+              />
+            </Field>
+            {/* Every agent covers the same ground with its own words, and
+              * the daemon maps onto them — so the control stays live for
+              * all of them, labelled with what it becomes in this one. A row
+              * of its own: three segments do not fit half of it. */}
+            <PermissionPicker
+              value={mode}
+              onChange={(m) => { setMode(m); setConfirming(false) }}
+              agent={agent}
+              opencodeVersion={status.data?.opencode_version}
+              hint={remote ? undefined : 'kept for the next agent'}
+              labelClassName="flex items-baseline gap-1.5 text-[11px] text-fg-muted"
+            />
             {/* Two settings that matter to a handful of runs and to nobody
               * else, folded away rather than deleted. Every field on screen is
               * a decision asked of someone who wanted to press one button. */}

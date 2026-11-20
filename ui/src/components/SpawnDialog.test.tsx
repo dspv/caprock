@@ -8,7 +8,7 @@
  * auto, bypassPermissions, manual, dontAsk and plan — so the dialog could send
  * the binary a value it rejects.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -62,6 +62,14 @@ vi.mock('@/lib/router', async (orig) => ({ ...(await orig<typeof import('@/lib/r
  *  must be in here, or the spawn fails at the binary. */
 const CLAUDE_MODES = ['acceptEdits', 'auto', 'bypassPermissions', 'manual', 'dontAsk', 'plan']
 
+/** The Permissions picker: three radios, the checked one the mode. */
+const radios = () => within(screen.getByRole('radiogroup', { name: 'Permissions' })).getAllByRole('radio')
+const modeIn = () => radios().find((r) => r.getAttribute('aria-checked') === 'true')?.getAttribute('data-mode')
+const offered = () => radios().map((r) => r.getAttribute('data-mode'))
+/** Each mode's whole wording for the chosen agent, as its hover says it. */
+const modeTitles = () => radios().map((r) => r.title)
+const pickMode = (mode: string) => fireEvent.click(radios().find((r) => r.getAttribute('data-mode') === mode)!)
+
 describe('SpawnDialog', () => {
   const open = () => render(<SpawnDialog available onClose={() => {}} initialCwd="/x" />)
 
@@ -69,15 +77,13 @@ describe('SpawnDialog', () => {
     open()
     expect(screen.getByLabelText<HTMLSelectElement>(/Model/).value).toBe('claude-opus-5-5')
     // ADR-043 (owner, 2026-10-08): a new install asks before running commands.
-    expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('acceptEdits')
+    expect(modeIn()).toBe('acceptEdits')
   })
 
   it('only offers permission modes the claude binary accepts', () => {
     open()
-    const select = screen.getByLabelText<HTMLSelectElement>(/Permissions/)
-    const offered = Array.from(select.options).map((o) => o.value)
-    expect(offered.length).toBeGreaterThan(0)
-    for (const mode of offered) expect(CLAUDE_MODES).toContain(mode)
+    expect(offered().length).toBeGreaterThan(0)
+    for (const mode of offered()) expect(CLAUDE_MODES).toContain(mode)
   })
 
   // Worktree and "create the directory" matter to a handful of runs and to
@@ -89,7 +95,24 @@ describe('SpawnDialog', () => {
     pref.mode = 'bypassPermissions'
     try {
       open()
-      await waitFor(() => expect(screen.getByLabelText<HTMLSelectElement>(/Permissions/).value).toBe('bypassPermissions'))
+      await waitFor(() => expect(modeIn()).toBe('bypassPermissions'))
+    } finally {
+      pref.mode = ''
+    }
+  })
+
+  // A mode the three segments do not list — auto, set as the preference
+  // through the API — is shown under them and sent exactly as it is held.
+  it('starts in a held mode the picker does not list, unchanged', async () => {
+    pref.mode = 'auto'
+    spawn.mockClear()
+    try {
+      open()
+      await screen.findByText(/Starts in/)
+      expect(modeIn()).toBeUndefined()
+      fireEvent.click(screen.getByText('Start session'))
+      await waitFor(() => expect(spawn).toHaveBeenCalled())
+      expect(spawn.mock.calls[0]).toEqual([expect.objectContaining({ cwd: '/x', permission_mode: 'auto' })])
     } finally {
       pref.mode = ''
     }
@@ -142,7 +165,7 @@ describe('choosing an agent', () => {
     // daemon maps onto them, so disabling the control threw away a real choice.
     render(<SpawnDialog available geminiAvailable onClose={() => {}} initialCwd="/x" />)
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'gemini' } })
-    expect(screen.getByLabelText(/Permissions/)).not.toBeDisabled()
+    for (const r of radios()) expect(r).not.toBeDisabled()
   })
 
   it('offers only models the CLI and the pricing table both know', () => {
@@ -249,8 +272,7 @@ describe('Codex and OpenCode', () => {
   it('labels each mode with what it becomes in that agent', () => {
     open()
     fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
-    const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.textContent)
-    expect(labels).toContain("Bypass · OpenCode's own rules")
+    expect(modeTitles()).toContain("Bypass · OpenCode's own rules")
   })
 
   it('words bypass as --auto when OpenCode 2 is installed', async () => {
@@ -259,8 +281,7 @@ describe('Codex and OpenCode', () => {
       open()
       fireEvent.change(screen.getByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'opencode' } })
       await waitFor(() => {
-        const labels = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.textContent)
-        expect(labels).toContain("Bypass · approves all it doesn't deny")
+        expect(modeTitles()).toContain("Bypass · approves all it doesn't deny")
       })
     } finally {
       statusAnswer.next = () => new Promise(() => {})
@@ -312,14 +333,13 @@ describe('on a paired phone', () => {
   it('offers the folder browser and bypass, as the machine does', async () => {
     open()
     expect(await screen.findByRole('button', { name: 'Browse' })).toBeTruthy()
-    const modes = Array.from(screen.getByLabelText<HTMLSelectElement>(/Permissions/).options).map((o) => o.value)
-    expect(modes).toContain('bypassPermissions')
+    expect(offered()).toContain('bypassPermissions')
   })
 
   it('asks once before starting in bypass, inline', async () => {
     open()
     // Picked on the phone, bypass is still confirmed there.
-    fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Permissions/), { target: { value: 'bypassPermissions' } })
+    pickMode('bypassPermissions')
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     expect(screen.getByText("The agent won't ask before running commands or editing files. Start?")).toBeTruthy()
     expect(spawn).not.toHaveBeenCalled()
@@ -329,7 +349,7 @@ describe('on a paired phone', () => {
 
   it('starts a mode that asks without a confirm', async () => {
     open()
-    fireEvent.change(screen.getByLabelText<HTMLSelectElement>(/Permissions/), { target: { value: 'acceptEdits' } })
+    pickMode('acceptEdits')
     fireEvent.click(screen.getByRole('button', { name: 'Start session' }))
     await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
     expect(screen.queryByText(/won't ask/)).toBeNull()
