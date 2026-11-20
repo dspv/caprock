@@ -63,6 +63,9 @@ export function onDeckAnswer(fn: (key: string) => void): () => void {
   return () => { listeners.delete(fn) }
 }
 
+/** The key a repository's entry of the Work answer is kept under: the Release section keeps it, the CI section reads its next version. */
+export const workRepoKey = (root: string) => `work:${root}`
+
 /** Drops the answers kept in memory (tests). */
 export function forgetDeckAnswers(): void {
   mem.clear()

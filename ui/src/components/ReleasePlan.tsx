@@ -44,7 +44,7 @@ import { useNow } from '@/lib/useNow'
 import { pipelineHref, STEPS, titleIsNumber } from '@/lib/work'
 import { SectionLabel, useFolded } from './Cockpit'
 import { useDeckAnswer } from './CockpitCI'
-import { writeDeck } from '@/lib/deckCache'
+import { workRepoKey, writeDeck } from '@/lib/deckCache'
 import { Panel, usePanelFold } from './ui'
 import { extTitle } from '@/lib/externalLinks'
 import { PipelineHostContext } from '@/lib/pipelineHost'
@@ -636,7 +636,7 @@ export function PipelineRelease({ root, stats, run, visible, now, onOpen }: { ro
 }
 
 /** The key a repository's entry of the Work answer is kept under (lib/deckCache). */
-export const workRepoKey = (root: string) => `work:${root}`
+export { workRepoKey }
 
 /**
  * Keeps a repository's entry of the Work answer (its tags and changelog

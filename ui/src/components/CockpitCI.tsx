@@ -81,14 +81,14 @@
  * running · 11h").
  */
 import { useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary } from '@/lib/api'
+import { api, isPairedDevice, type SessionCI, type SessionCIStats, type SessionPRLive, type SessionPRs, type SessionSummary, type WorkRepo } from '@/lib/api'
 import { githubApi, githubErrorText, useGitHubStatus, type AutoRerun, type PRCheck, type PullRequest } from '@/lib/github'
 import { AUTO_RERUN_HINT, NO_RUNNER_TITLE, autoRerunWords, checkCounts, ciActive, type CheckCounts, type ChecksSummary, foreignRepo, orderPRs, osName, osRollup, prChecks, readCockpitCIView, repoShort, runVsMedian, saveCockpitCIView, fmtRun, type CockpitCIView } from '@/lib/ci'
-import { freshText, onDeckAnswer, readDeck } from '@/lib/deckCache'
+import { freshText, onDeckAnswer, readDeck, workRepoKey } from '@/lib/deckCache'
 import { asBoard } from '@/lib/prboard'
 import { tabRows, spanText } from '@/lib/prstats'
-import { flightLead, inFlight, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
-import { landingOf } from '@/lib/releaseplan'
+import { flightLead, inFlight, mergedLine, openFlightLead, journey, pipelineRows, releaseNote, shipsOf, stageOf, type Flight, type PipelineRow, type ShipsContext } from '@/lib/journey'
+import { landingOf, nextVersion, onMaster } from '@/lib/releaseplan'
 import { CheckSummary, StateMark, type CheckFit } from './CheckSummary'
 import { FitSummary } from './FitSummary'
 import { SectionLabel, useFolded } from './Cockpit'
@@ -177,11 +177,18 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   // GitHub nothing more than unfolded does.
   const [stats, statsAt, statsMeta] = usePoll<SessionCIStats>(!!onOpen, `cockpit:${sessionId}`, () => api.sessionCIStats(sessionId), () => false, CI_IDLE_MS, `stats:${repoScope || sessionId}`)
   const board = useMemo(() => asBoard(stats?.board), [stats?.board])
+  const allRows = useMemo(() => pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []), [stats?.prs, board])
   const flight = useMemo(() => {
-    const f = inFlight(pipelineRows(tabRows('repo', [], stats?.prs ?? []), board, stats?.prs ?? []), board)
+    const f = inFlight(allRows, board)
     return { ...f, rows: f.rows.slice(0, LISTED) }
-  }, [stats?.prs, board])
-  const ships = useMemo(() => shipsOf(board), [board])
+  }, [allRows, board])
+  // The next version as the Release section predicts it (lib/releaseplan
+  // releasePlan): the last tag, else the newest release, and the changelog
+  // entries on the default branch — from the repository's entry of the Work
+  // answer the Release section keeps (`work:<root>`), so nothing more is asked.
+  const keptRepo = useDeckAnswer<WorkRepo>(repoScope ? workRepoKey(repoScope) : '')
+  const next = useMemo(() => board?.ships_by === 'release' ? nextVersion(keptRepo.d?.tags?.last?.name ?? board.releases?.[0]?.tag, onMaster(keptRepo.d?.unreleased))?.version : undefined, [board, keptRepo.d])
+  const ships = useMemo(() => shipsOf(board, next), [board, next])
   const hasStats = !!stats?.connected && (stats.prs?.length ?? 0) > 0
   // The session's own pull requests with what GitHub says of each (`prs:`,
   // the key the Pipeline page shares): their state, checks and merge state
@@ -288,6 +295,11 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
   const leadNow = fresh || !leadAt ? now : Math.min(now, leadAt)
   const foldAt = foldIsRepo ? (ci.at || ciAt) : foldLead ? prs.at : undefined
   const leadSum = foldLead ? prChecks(foldLead, foldKept && foldAt ? Math.min(now, foldAt) : now) : undefined
+  // Merged, what comes next: its row of the repository's list (its card says
+  // the release); one in another repository says *Merged* alone.
+  const foldMerged = foldLead?.live.state === 'merged'
+    ? (foldElse ? mergedLine(undefined) : mergedLine(allRows.find((r) => r.number === foldLead.number && !r.foreign) ?? foldLead.live, ships, board?.releases))
+    : undefined
   // The time beside the line is the time of what it shows.
   const at = folded ? foldAt : view === 'dots' ? (stats?.read_at || stats?.fetched_at || statsAt) : leadAt
   const quiet = hasStats && flight.rows.length === 0 ? <Quiet f={flight} now={now} /> : null
@@ -340,9 +352,22 @@ export function CockpitCI({ sessionId, repoScope, onOpen, s }: { sessionId: stri
           <span data-fold-only data-cockpit-ci-fold={foldLead.number} data-cockpit-ci-fold-of={foldIsRepo ? 'repo' : 'session'} data-cockpit-ci-kept={foldKept ? '' : undefined}
             title={foldKept ? 'As last read, while it is read again' : undefined} className={`@container flex min-w-0 flex-1 items-center gap-2${foldKept ? ' opacity-70' : ''}`}>
             {/* Merged or closed, its checks are history: "merged" says
-              * more than "all 1" (owner, 2026-10-27: "there is zero info here"). */}
-            {foldLead.live.state === 'merged' || foldLead.live.state === 'closed'
-              ? <span className="min-w-0 flex-1 text-[11.5px] text-fg-muted">{foldLead.live.state}</span>
+              * more than "all 1" (owner, 2026-10-27: "there is zero info here").
+              * Merged, a green check and what comes next (owner, 2026-11-20,
+              * translated: a grey "merged" was "cramped and visually unclear";
+              * variant A): *✓ Merged · goes out in 0.185.1*, *· released in
+              * 0.185.1*; one line, the muted part cut first. */}
+            {foldMerged
+              ? (
+                <span data-cockpit-ci-merged={foldMerged.released ? 'released' : foldMerged.tail ? 'waits' : 'done'} title={foldMerged.title}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap text-[11.5px]">
+                  <StateMark tone="pass" />
+                  <span className="shrink-0 text-ok">Merged</span>
+                  {foldMerged.tail && <span className="min-w-0 truncate text-fg-muted">· {foldMerged.tail}</span>}
+                </span>
+              )
+              : foldLead.live.state === 'closed'
+              ? <span className="min-w-0 flex-1 text-[11.5px] text-fg-muted" title="Closed without a merge: it will not ship">Closed</span>
               // Shortened, never cut at the panel's edge (owner, 2026-11-18):
               // the skipped count goes first, then the words, then all but
               // the worst state (CheckSummary `fit`, FitSummary).
