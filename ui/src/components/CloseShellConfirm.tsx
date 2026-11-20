@@ -213,7 +213,10 @@ function ShellProcs({ shell, label }: { shell: ClosingShell; label?: string }) {
   const r = useSessionResources(shell.sessionId)
   if (!r || r.top.length === 0) return null
   let named = false
-  const parts = r.top.map((p) => {
+  // The program the shell runs first — it is what Stop ends — then the rest
+  // by memory: on Linux the shell itself outweighed a small agent and led.
+  const top = [...r.top].sort((a, b) => Number(b.name === shell.program) - Number(a.name === shell.program))
+  const parts = top.map((p) => {
     const agent = !named && !!shell.agent && p.name === shell.program
     if (agent) named = true
     return { key: p.pid, name: agent ? `${p.name} — “${shell.agent}”` : p.name, mem: fmtMem(p.mem_bytes) }

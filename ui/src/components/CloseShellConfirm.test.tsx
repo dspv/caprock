@@ -39,6 +39,14 @@ describe('the question before closing a busy shell', () => {
     expect(document.querySelector('[data-running-here]')).toHaveTextContent(/^Running here: /)
   })
 
+  it('lists the program the shell runs first, even when the shell itself is heavier', () => {
+    setPlatform('Linux x86_64')
+    h.res.set('sh1', tree('sh1', [['bash', 4], ['claude', 2]]))
+    render(<CloseShellConfirm busy={claudeIn} onStop={() => {}} onKeep={() => {}} onCancel={() => {}} />)
+    const procs = [...document.querySelectorAll('[data-running-proc]')].map((e) => e.textContent)
+    expect(procs).toEqual(['claude — “Fix the login page” 2 MB', ' · bash 4 MB'])
+  })
+
   it('says nothing about processes before the meter has a sample', () => {
     render(<CloseShellConfirm busy={[{ sessionId: 'sh1', name: 'Shell 1', program: 'npm' }]} onStop={() => {}} onKeep={() => {}} onCancel={() => {}} />)
     expect(screen.getByText('Shell 1 is running npm. Close and stop it?')).toBeInTheDocument()
