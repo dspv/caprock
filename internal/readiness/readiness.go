@@ -331,7 +331,7 @@ func projectItem(n int, cloneDir string) Item {
 	if cloneDir != "" {
 		where = "here into " + cloneDir
 	}
-	it.Detail = "Optional. Clone a repository " + where + ", or pick any folder in New agent on your laptop."
+	it.Detail = "Optional. Clone a repository " + where + ", or from New agent on your laptop."
 	return it
 }
 

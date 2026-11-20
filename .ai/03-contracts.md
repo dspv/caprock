@@ -324,6 +324,13 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   through a symlink out of it is `404`, as on the machine, and an entry that
   links out of it is not listed. `GET /v1/recent-dirs` from a device lists only
   folders under home.
+- **New agent on <name> reads its folders through the proxy** (since
+  2026-11-20; no route was added or widened): `GET /v1/m/{id}/v1/projects`,
+  `/v1/recent-dirs`, `/v1/browse?dir=` (first `~/dev`, which that computer
+  expands against its own home) and `/v1/browse/stat`; a clone there is
+  `POST /v1/m/{id}/v1/projects {clone: {url, parent}, op_id}` with `parent`
+  that computer's `dev` folder, followed by `GET /v1/m/{id}/v1/projects/ops`
+  every second, since that computer's `op` frames do not reach this page.
 - **The terminal socket from a device** admits the LAN origin and takes the
   token as the `caprock.device.<token>` subprotocol, as `/v1/live` does. Before
   every frame a device sends, its role is read again (`pairing.Store.RoleOf`);
@@ -770,8 +777,8 @@ PUT /v1/setup/agents/{id} {"on": bool} → the same answer, as it now reads
   any folder picked in New agent, so a computer is ready without one (owner,
   2026-11-20). `ok` with `N project(s).` when there is one
   (`store.ListProjects`, archived ones left out); else `not_needed` with
-  *Optional. Clone a repository here into C:\Users\dima\dev, or pick any
-  folder in New agent on your laptop.* — the folder in full,
+  *Optional. Clone a repository here into C:\Users\dima\dev, or from New
+  agent on your laptop.* — the folder in full,
   `settings.default_folder` (`~` expanded) when set, else the `dev` folder in
   the home folder, as the Add project sheet's Clone field starts.
 - **Paths named.** The answer names no token or account; it names two

@@ -3,7 +3,7 @@
  * folders and agents read from that computer, the start through the proxy,
  * and the errors in words.
  */
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/lib/api'
 import { NewAgentSheet } from './NewAgentSheet'
@@ -62,10 +62,11 @@ describe('New agent on another computer', () => {
     render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={started} />)
     fireEvent.change(await screen.findByRole('combobox', { name: 'Machine' }), { target: { value: ID } })
     expect(await screen.findByText('New agent on Mac mini')).toBeTruthy()
-    const folder = await screen.findByRole('combobox', { name: 'Folder on Mac mini' })
+    const folder = await screen.findByRole('textbox', { name: 'Folder on Mac mini' })
     await waitFor(() => expect((folder as HTMLInputElement).value).toBe('/home/me/api'))
-    expect([...document.querySelectorAll(`#remote-folders-${CSS.escape(ID)} option`)].map((o) => o.getAttribute('value'))).toEqual(['/home/me/api', '/home/me/site'])
-    await screen.findByText('on Mac mini') // the folder is there
+    // Its projects, then its recent folders, listed under the field.
+    await waitFor(() => expect([...document.querySelectorAll('[data-remote-folder] li button span[title]')].map((s) => s.getAttribute('title'))).toEqual(['/home/me/api', '/home/me/site']))
+    await screen.findByText('found there') // the folder is there
     fireEvent.change(screen.getByRole('combobox', { name: 'Agent' }), { target: { value: 'codex' } })
     fireEvent.change(screen.getByPlaceholderText('What should it do?'), { target: { value: 'fix the tests' } })
     fireEvent.click(screen.getByRole('button', { name: /Start/ }))
@@ -91,7 +92,7 @@ describe('New agent on another computer', () => {
     stubFetch(homeRoutes({ status: 503, body: { error: 'the computer is offline: not at the relay', status: 'offline' } }))
     render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} />)
     fireEvent.change(await screen.findByRole('combobox', { name: 'Machine' }), { target: { value: ID } })
-    const folder = await screen.findByRole('combobox', { name: 'Folder on Mac mini' })
+    const folder = await screen.findByRole('textbox', { name: 'Folder on Mac mini' })
     await waitFor(() => expect((folder as HTMLInputElement).value).toBe('/home/me/api'))
     fireEvent.click(screen.getByRole('button', { name: /Start/ }))
     expect((await screen.findByRole('alert')).textContent).toMatch(/^Mac mini is offline\. It is not at its relay/)
@@ -105,5 +106,152 @@ describe('New agent on another computer', () => {
     expect(remoteStartError(e(409, { error: 'consent', code: 'bypass_consent' }), 'Mac mini')).toMatch(/one-time warning/)
     expect(machineStartable(mini, { id: ID, name: 'Mac mini', status: 'offline' })).toEqual({ ok: false, why: 'offline' })
     expect(machineStartable({ ...mini, status: 'idle' })).toEqual({ ok: true })
+  })
+})
+
+// The owner's Windows PC, 2026-11-20: a fresh computer with no projects, an
+// empty Folder field, and Start wrapped under Cancel.
+describe('New agent on a Windows PC: the folder is chosen, not typed', () => {
+  const PC = 'DESKTOP-O0QL9JF'
+  const pc: Machine = { ...mini, name: PC }
+  const HOME = 'C:\\Users\\me'
+  const DEV = `${HOME}\\dev`
+  const listing = (dir: string): Reply => {
+    if (dir === '' || dir === HOME) return { body: { dir: HOME, parent: '', root: HOME, entries: [{ name: 'dev', path: DEV, repo: false }, { name: 'Downloads', path: `${HOME}\\Downloads`, repo: false }] } }
+    if (dir === '~/dev' || dir === DEV) return { body: { dir: DEV, parent: HOME, root: HOME, entries: [{ name: 'api', path: `${DEV}\\api`, repo: true }] } }
+    if (dir === `${DEV}\\api`) return { body: { dir: `${DEV}\\api`, parent: DEV, root: HOME, entries: [] } }
+    return { status: 404, body: { error: 'not found' } }
+  }
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  /** That computer's answers; `extra` sees every request first. */
+  function stubPC(opts: { projects?: unknown[]; recent?: unknown[]; extra?: (path: string, init?: RequestInit) => Reply | undefined } = {}) {
+    const calls: { url: string; init?: RequestInit }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push({ url, init })
+      const reply = ((): Reply => {
+        if (url.startsWith('/v1/machines/sessions')) return { body: { machines: [{ id: ID, name: PC, status: 'online', sessions: [] }] } }
+        if (url.startsWith('/v1/machines')) return { body: { machines: [pc] } }
+        if (!url.startsWith(far)) return { status: 404, body: {} }
+        const path = url.slice(far.length)
+        const hit = opts.extra?.(path, init)
+        if (hit) return hit
+        const [route, query = ''] = path.split('?')
+        const q = new URLSearchParams(query)
+        if (route === '/v1/projects') return { body: { projects: opts.projects ?? [] } }
+        if (route === '/v1/recent-dirs') return { body: opts.recent ?? [] }
+        if (route === '/v1/agents/catalog') return { body: { licensed: false, home: HOME, agents: [{ id: 'claude', label: 'Claude Code', installed: true, ready: true, models: [], observed: true, prompt: true }] } }
+        if (route === '/v1/browse/stat') return { body: { path: q.get('path'), exists: true, is_dir: true } }
+        if (route === '/v1/browse') return listing(q.get('dir') ?? '')
+        return { status: 404, body: { error: 'not here' } }
+      })()
+      return new Response(JSON.stringify(reply.body), { status: reply.status ?? 200, headers: { 'Content-Type': 'application/json' } })
+    }))
+    return calls
+  }
+
+  async function open() {
+    render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={vi.fn()} machine={ID} />)
+    return (await screen.findByRole('textbox', { name: `Folder on ${PC}` })) as HTMLInputElement
+  }
+
+  it('lists the folders on that computer, as it writes them', async () => {
+    stubPC({ projects: [{ id: 1, root: `${DEV}\\api`, name: 'api' }], recent: [{ dir: `${DEV}\\site`, name: 'site', sessions: 1, last_event_at: Date.now() }] })
+    const field = await open()
+    await waitFor(() => expect(field.value).toBe(`${DEV}\\api`))
+    await waitFor(() => expect([...document.querySelectorAll('[data-remote-folder] li button span[title]')].map((s) => s.getAttribute('title'))).toEqual([`${DEV}\\api`, `${DEV}\\site`]))
+    fireEvent.click(screen.getByText('site'))
+    expect(field.value).toBe(`${DEV}\\site`)
+    expect(screen.queryByText(new RegExp(`No projects on ${PC}`))).toBeNull()
+  })
+
+  it('browses its folders from its dev folder: a click opens one and picks it, the breadcrumb goes back', async () => {
+    const calls = stubPC({ projects: [{ id: 1, root: `${DEV}\\api`, name: 'api' }] })
+    const field = await open()
+    fireEvent.click(await screen.findByRole('button', { name: 'Browse' }))
+    const list = await screen.findByRole('listbox', { name: 'Folders' })
+    // Opened in ~/dev, read through the proxy, spelled as that computer spells it.
+    expect(calls.some((c) => c.url === `${far}/v1/browse?dir=${encodeURIComponent('~/dev')}`)).toBe(true)
+    fireEvent.click(await within(list).findByText('api'))
+    await waitFor(() => expect(field.value).toBe(`${DEV}\\api`))
+    await waitFor(() => expect(calls.some((c) => c.url === `${far}/v1/browse?dir=${encodeURIComponent(`${DEV}\\api`)}`)).toBe(true))
+    fireEvent.click(await screen.findByRole('button', { name: '~' }))
+    await waitFor(() => expect(field.value).toBe(HOME))
+    expect(await within(list).findByText('Downloads')).toBeTruthy()
+  })
+
+  it('with no projects there, says so and offers Clone a repository and Pick a folder', async () => {
+    stubPC()
+    await open()
+    const empty = await screen.findByRole('group', { name: `No projects on ${PC}` })
+    expect(empty.textContent).toContain(`No projects on ${PC} yet.`)
+    expect(within(empty).getByRole('button', { name: 'Clone a repository' })).toBeTruthy()
+    fireEvent.click(within(empty).getByRole('button', { name: 'Pick a folder' }))
+    expect(await screen.findByRole('listbox', { name: 'Folders' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Browse' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('clones into its dev folder through that computer, and picks the new folder when done', async () => {
+    let sent: Record<string, unknown> | null = null
+    const calls = stubPC({
+      extra: (path, init) => {
+        if (path === '/v1/projects' && init?.method === 'POST') {
+          sent = JSON.parse(String(init.body)) as Record<string, unknown>
+          return { status: 202, body: { op: { op_id: sent.op_id, state: 'running', phase: 'Receiving objects', progress: 40 }, existing: false } }
+        }
+        if (path === '/v1/projects/ops') {
+          return { body: { ops: sent ? [{ op_id: sent.op_id, state: 'done', dest: `${DEV}\\caprock`, project_id: 7 }] : [] } }
+        }
+        return undefined
+      },
+    })
+    const field = await open()
+    fireEvent.click(within(await screen.findByRole('group', { name: `No projects on ${PC}` })).getByRole('button', { name: 'Clone a repository' }))
+    const url = await screen.findByRole('textbox', { name: 'Repository address' })
+    fireEvent.change(url, { target: { value: 'https://github.com/dspv/caprock.git' } })
+    // Where it lands, in full, before anything runs.
+    await waitFor(() => expect(document.querySelector('[data-clone-dest]')?.textContent).toBe(`${DEV}\\caprock`))
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }))
+    await waitFor(() => expect(sent).toMatchObject({ clone: { url: 'https://github.com/dspv/caprock.git', parent: DEV } }))
+    expect(typeof sent!.op_id).toBe('string')
+    await waitFor(() => expect(field.value).toBe(`${DEV}\\caprock`), { timeout: 4000 })
+    // Listed first under Projects, before its project is read back.
+    expect(screen.getByRole('button', { name: 'Projects' }).getAttribute('aria-pressed')).toBe('true')
+    expect(document.querySelector('[data-remote-folder] li button span[title]')?.getAttribute('title')).toBe(`${DEV}\\caprock`)
+    // Through the proxy, never this computer's own projects.
+    expect(calls.some((c) => c.url === '/v1/projects')).toBe(false)
+  })
+
+  it('says a refused clone in words', async () => {
+    stubPC({ extra: (path, init) => (path === '/v1/projects' && init?.method === 'POST' ? { status: 400, body: { error: 'destination already exists' } } : path === '/v1/projects/ops' ? { body: { ops: [] } } : undefined) })
+    await open()
+    fireEvent.click(within(await screen.findByRole('group', { name: `No projects on ${PC}` })).getByRole('button', { name: 'Clone a repository' }))
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Repository address' }), { target: { value: 'not a url' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Paste an https:// address, or git@host:owner/repo.')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Repository address' }), { target: { value: 'https://github.com/dspv/caprock.git' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }))
+    expect((await screen.findByText(/^Clone failed:/)).textContent).toBe('Clone failed: destination already exists')
+  })
+
+  it('keeps Cancel and Start on one row: the line beside them gives way, never the buttons', async () => {
+    stubPC({ projects: [{ id: 1, root: `${DEV}\\api`, name: 'api' }] })
+    await open()
+    const note = document.querySelector('[data-sheet-note]')!
+    expect(note.textContent).toBe(`Runs on ${PC}`)
+    // flex-basis 0 with min-width 0: the note never takes the room the
+    // buttons need, so the footer's wrap never moves Start.
+    for (const c of ['flex-1', 'basis-0', 'min-w-0', 'truncate']) expect(note.classList.contains(c)).toBe(true)
+    const cancel = screen.getByRole('button', { name: /Cancel/ })
+    const start = screen.getByRole('button', { name: /Start/ })
+    expect(cancel.parentElement).toBe(note.parentElement)
+    expect(start.parentElement).toBe(note.parentElement)
+    for (const b of [cancel, start]) for (const c of ['shrink-0', 'whitespace-nowrap']) expect(b.classList.contains(c)).toBe(true)
   })
 })

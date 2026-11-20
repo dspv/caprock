@@ -28,7 +28,7 @@ const switches: SetupReport = {
     { key: 'git', state: 'ok', label: 'Git', detail: 'Installed.' },
     { key: 'agent', state: 'missing', label: 'Agents', detail: 'Sign in to Claude Code: the browser opens, then come back here.', command: 'claude auth login' },
     { key: 'link', state: 'ok', label: 'Link to your laptop', detail: 'MacBook can start agents here.' },
-    { key: 'project', state: 'not_needed', label: 'Projects here', detail: 'Optional. Clone a repository here into C:\\Users\\me\\dev, or pick any folder in New agent on your laptop.', optional: true },
+    { key: 'project', state: 'not_needed', label: 'Projects here', detail: 'Optional. Clone a repository here into C:\\Users\\me\\dev, or from New agent on your laptop.', optional: true },
   ],
   agents: [
     { id: 'claude', label: 'Claude Code', on: true, state: 'missing', detail: 'Installed, not signed in.', step: 'signin', command: 'claude auth login' },

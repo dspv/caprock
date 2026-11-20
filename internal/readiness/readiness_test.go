@@ -358,10 +358,10 @@ func TestPathFixPerShell(t *testing.T) {
 // The project item names where a clone goes (owner, 2026-11-20).
 func TestProjectItemSaysWhereClonesGo(t *testing.T) {
 	d := item(t, Build(Inputs{GOOS: "windows", CloneDir: `C:\Users\dima\dev`}), KeyProject).Detail
-	if d != `Optional. Clone a repository here into C:\Users\dima\dev, or pick any folder in New agent on your laptop.` {
+	if d != `Optional. Clone a repository here into C:\Users\dima\dev, or from New agent on your laptop.` {
 		t.Fatalf("project %q", d)
 	}
-	if d := item(t, Build(Inputs{GOOS: "linux"}), KeyProject).Detail; d != "Optional. Clone a repository here, or pick any folder in New agent on your laptop." {
+	if d := item(t, Build(Inputs{GOOS: "linux"}), KeyProject).Detail; d != "Optional. Clone a repository here, or from New agent on your laptop." {
 		t.Fatalf("no folder known: %q", d)
 	}
 }

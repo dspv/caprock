@@ -337,9 +337,9 @@ function LocalAgentSheet({
       footer={
         <>
           {error
-            ? <p role="alert" className="mr-auto min-w-0 truncate text-[12px] text-danger" title={error}>{error}</p>
+            ? <p role="alert" data-sheet-note className="mr-auto min-w-0 flex-1 basis-0 truncate text-[12px] text-danger" title={error}>{error}</p>
             : (
-              <p className="mr-auto min-w-0 truncate text-[12.5px] text-fg-muted" aria-label="Keys: Tab moves, arrows change a choice">
+              <p data-sheet-note className="mr-auto min-w-0 flex-1 basis-0 truncate text-[12.5px] text-fg-muted" aria-label="Keys: Tab moves, arrows change a choice">
                 {/* Start and Cancel carry their own keys on the buttons. */}
                 <span className="mono">Tab</span> moves · <span className="mono">↑↓</span> change
               </p>

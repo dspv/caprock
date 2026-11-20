@@ -7825,10 +7825,8 @@ the first real run found, and two design changes he picked from the mockup
 - *A project is optional.* Agents start in any folder picked in New agent,
   so *A project to work in* read as an unfinished step that kept the list
   from turning green. It is now *Projects here*, last, a dashed circle,
-  *Optional. Clone a repository here into C:\Users\dima\dev, or pick any
-  folder in New agent on your laptop.* with **Clone**, `not_needed` while
+  *Optional. Clone a repository here into C:\Users\dima\dev, or from New
+  agent on your laptop.* with **Clone**, `not_needed` while
   there is none — never a step left, and the computer is Ready without it,
-  on the laptop too (an older laptop treats `not_needed` as done). The
-  mockup's wording, "Clone from your laptop when you start an agent", names
-  a clone from New agent that is not built; the sentence says what works
-  today instead.
+  on the laptop too (an older laptop treats `not_needed` as done). New agent on the laptop clones onto that computer
+  too (*Clone a repository* there, the same day).

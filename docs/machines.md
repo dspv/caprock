@@ -79,8 +79,12 @@ computer"*. Press **Allow** there. Its checklist ticks *Link to your laptop*.
 In Settings → Computers the computer reads *ready*, with what it has
 (*online · Claude Code · Codex · 2 projects · Windows · 32 GB*: each agent
 switched on there and ready, and its projects when it has any), and
-**Start an agent there**: New agent opens on it. Pick a folder there, the
-agent and a first message, and **Start**. A tab opens with the session's
+**Start an agent there**: New agent opens on it. Under *Folder* are that
+computer's projects and a browser of its folders, opening in its `dev`
+folder; click one, or type a path. With no projects there yet it says so
+and offers **Clone a repository** (paste the address; it clones into that
+computer's `dev` folder and picks the new folder) and **Pick a folder**.
+Then the agent and a first message, and **Start**. A tab opens with the session's
 terminal; it runs on the other computer.
 
 If something is still missing there, the laptop says which: *Home PC needs
@@ -114,7 +118,8 @@ and once `loginctl enable-linger $USER` (as root or with polkit), or Caprock
 stops when your SSH session ends. `caprock setup` reminds you when lingering
 is off. Install Git with the package manager (`sudo apt install git`,
 `sudo dnf install git`, `sudo pacman -S git`). A project over SSH:
-`git clone` it, then pick its folder in New agent on the laptop.
+**Clone a repository** in New agent on the laptop, or `git clone` it there
+and pick its folder.
 
 ## What to check
 
@@ -125,8 +130,12 @@ Tick each one, and note anything that is not true.
   without a restart once done.
 - [ ] **Ready on the laptop.** The computer reads *ready* with its chips,
   and **Start an agent there** opens New agent on it.
-- [ ] **Folders come from that computer.** The suggestions are its projects;
-  a path that is not there says *not on <name>*.
+- [ ] **Folders come from that computer.** The list shows its projects with
+  their full paths (backslashes on Windows), Browse opens its `dev` folder,
+  and a path that is not there says *not there*.
+- [ ] **A fresh computer.** With no projects it says *No projects on <name>
+  yet.*; **Clone a repository** shows where it lands, shows progress, and
+  picks the new folder when done.
 - [ ] **Typing.** Type into the terminal on the laptop; the agent answers.
   Note roughly how the delay feels (instant, noticeable, annoying).
 - [ ] **One list.** The session is in the laptop's sidebar under that
