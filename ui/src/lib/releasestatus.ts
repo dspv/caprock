@@ -373,6 +373,10 @@ export interface BatchPR {
   ci?: 'running' | 'fail' | 'no_runner' | 'pass' | 'none'
   /** The next step it waits for, in a few words (lib/releasenotes viaLine): "merge #949", "wait for CI". */
   next?: string
+  /** Where it stands besides its checks, in a few words (viaLine's state): "ready to merge", "needs a rebase", "checks running"; red when it needs someone. */
+  state?: { text: string; tone?: 'danger' | 'warn' }
+  /** The checks that failed, for the hover: "e2e (headless shell)". */
+  failed?: readonly string[]
 }
 
 export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number; batch?: BatchPR }): StageWords | undefined {
@@ -403,8 +407,20 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
       // Every entry on the batch pull request's branch: the release waits for it.
       const n = o.batch?.number ?? s.batch
       const lead = n ? `Waiting for #${n} to merge` : 'Waiting for the batch PR to merge'
-      const ci = o.batch?.ci ?? (n ? o.cards?.find((c) => c.number === n)?.ci : undefined)
-      if (ci === 'fail') return say('fail', lead, lead, 'its checks failed', `${x.title}\nIts checks failed: it cannot merge until they pass.`)
+      // Beside the dots the batch's own state follows its number, once
+      // (owner, 2026-11-20, translated: the via line and these words both
+      // said #977 and CI red): *Waiting for #977 · CI red*, *… · ready to
+      // merge*; the failed checks by name on hover. The folded line keeps
+      // *to merge* (vlead): there nothing else names the step.
+      const short = n ? `Waiting for #${n}` : lead
+      const b = o.batch && o.batch.number === n ? o.batch : undefined
+      const card = n ? o.cards?.find((c) => c.number === n) : undefined
+      const ci = o.batch?.ci ?? card?.ci
+      const failed = b?.failed ?? card?.failed ?? []
+      if (ci === 'fail') {
+        return say('fail', short, lead, 'CI red', `${x.title}\n${failed.length ? `Failed: ${failed.join(', ')}.` : 'Its checks failed.'} It cannot merge until they pass.`)
+      }
+      if (b?.state) return say(b.state.tone === 'danger' ? 'fail' : 'waiting', short, lead, b.state.text, `${x.title}\n#${n}: ${b.state.text}.`)
       return say('waiting', lead, lead, '')
     }
     case 'pr': {
@@ -489,7 +505,7 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  *   green, within OUT_RECENT_MS of its publishing;
  * - *Ready to release 0.183.1 · not started · 2 changes*, grey;
  * - *Waiting for #949 to merge · 0.183.1 · 2 changes*, amber (red with
- *   *its checks failed*);
+ *   *CI red*; *· ready to merge*, *· checks running* when its state was read);
  * - *Releasing 0.183.0 · checks 1 of 3 systems*, *Releasing 0.183.0 ·
  *   building apps, 12 of 23 files*, accent;
  * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
@@ -513,7 +529,9 @@ export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: Batc
   if (!w) return { kind: 'ready', text: [s.version ?? 'Next release', changes].filter(Boolean).join(' · '), title: why, tone: 'idle' }
   const title = [w.title ?? stage?.title, why].filter(Boolean).join('\n')
   // Waiting for the batch: the version and the changes after the batch's own words.
-  if (w.key === 'merged') return { kind: FOLD_KIND[w.tone], text: [w.vlead, w.detail, s.version, changes].filter(Boolean).join(' · '), title, tone: w.tone }
+  // Its state only when it stops the release (*CI red*, *needs a rebase*):
+  // *Waiting for #949 to merge · ready to merge* would say merge twice.
+  if (w.key === 'merged') return { kind: FOLD_KIND[w.tone], text: [w.vlead, w.tone === 'fail' ? w.detail : '', s.version, changes].filter(Boolean).join(' · '), title, tone: w.tone }
   const ready = w.key === 'pr' && !s.pr
   const parts = [w.vlead, w.detail, ready ? changes : ''].filter(Boolean).join(' · ')
   return { kind: FOLD_KIND[w.tone], text: `${parts}${ready ? batchWord(o.batch) : ''}`, title, tone: w.tone }

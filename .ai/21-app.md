@@ -701,8 +701,8 @@ One window, three regions:
   - **Per-PR actions** → the inspector's CI block, on the row of the
     session's own PR (below, *The actions*).
   - **A PR's jobs, steps, failed log and Investigate** → the Pipeline page's
-    PR detail; the cockpit row's *Log in Pipeline →* opens the page on that
-    PR (`#/pipeline?of=…&pr=N`).
+    PR detail; the cockpit's *#N log in Pipeline →*, under the list while a
+    PR fails, opens the page on that PR (`#/pipeline?of=…&pr=N`).
   - **Main** (the default branch's workflows and the Actions bill) → the
     Pipeline page's *Default branch* panel (below, *Main*).
   - **Release** → the Pipeline page's *Next release* stages and the
@@ -805,7 +805,7 @@ One window, three regions:
     Dashboard tab and before Mail, folded to its glyph and ⌘P like them
     (`Workspace.pipeline`, kept across restarts). ⌘P, the sidebar footer's
     *Pipeline*, the palette's *Open Pipeline* or the cockpit's *Pipeline →*
-    (*Log in Pipeline →* on a row, at that PR) bring it to the front for the agent in
+    (*#N log in Pipeline →* while a PR fails, at that PR) bring it to the front for the agent in
     front's repository, else where it was left (`screens/Pipeline.tsx`,
     `components/PipelineView.tsx`, words in `lib/prstats.ts`, steps in
     `lib/journey.ts`, the repository in `lib/pipeline.ts`); a picker in its

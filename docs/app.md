@@ -721,11 +721,14 @@ others. Installing it: [install-app.md](install-app.md).
   thing it needs, as a small button — *Resolve conflict* when it conflicts
   with its base, *Update branch* when it is behind, *Fix CI* when its CI
   failed (*Re-run* when no agent can be reached to fix it). A click asks
-  once in the row (*Ask … to fix #42's CI and push?* · Confirm · Cancel),
-  then the row says what it is doing until GitHub shows it done. *Log in
-  Pipeline →* beside it opens the Pipeline on that pull request, with its
-  failed job's log and *Investigate*; a grey line says what agents spent on
-  it and who worked on it. Its other views are one ring with *10/11 · 5m*
+  once in the row, in one line (*Ask to fix #42 CI?* · Confirm · Cancel,
+  the whole sentence on hover), then the row says what it is doing until
+  GitHub shows it done; a grey line says what agents spent on it and who
+  worked on it. Under the list one link: *#42 log in Pipeline →* while a
+  pull request fails, opening the Pipeline on it with its failed job's log
+  and *Investigate*, else *Pipeline →*. A list drawn from a copy kept from
+  before is faint, *as of 25 min ago*, until GitHub is read again — at
+  once when the window or the tab comes into view. Its other views are one ring with *10/11 · 5m*
   or the jobs by OS, switched in its label.
   ⌘P, *Pipeline* at the foot of the sidebar, *Open Pipeline* in the palette
   or *Pipeline →* in the cockpit

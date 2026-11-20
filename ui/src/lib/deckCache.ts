@@ -63,12 +63,50 @@ export function onDeckAnswer(fn: (key: string) => void): () => void {
   return () => { listeners.delete(fn) }
 }
 
+/**
+ * A kept copy at least this old is drawn faint while it is read again
+ * (owner, 2026-11-20, translated: "I open it, see red, click around and it
+ * fixes itself"): younger, it is as good as the answer on its way, and
+ * fading it would only flicker.
+ */
+export const KEPT_FAINT_MS = 15_000
+
+/** When a kept answer was read from GitHub: the daemon's own read time when it says one (a copy it kept while composing a newer one is as old as that), else when it was kept here. */
+export function keptAt(a: DeckAnswer<unknown> | undefined): number | undefined {
+  if (!a) return undefined
+  const d = a.d as { read_at?: number; fetched_at?: number } | null | undefined
+  const said = d && typeof d === 'object' ? (d.read_at || d.fetched_at) : undefined
+  return said ? Math.min(said, a.at) : a.at
+}
+
+/**
+ * The keys whose kept copy is on screen, old, while a read of it is under
+ * way (lib/usePoll marks them): what draws from such a copy — the CI
+ * section, the Release section's CI words — draws it faint, as of its age,
+ * until the read lands. A count per key: two polls may ask the same.
+ */
+const reading = new Map<string, number>()
+
+/** Marks (on) or unmarks a read of key's kept copy under way. */
+export function markReading(key: string, on: boolean): void {
+  const n = (reading.get(key) ?? 0) + (on ? 1 : -1)
+  if (n > 0) reading.set(key, n)
+  else reading.delete(key)
+  for (const fn of listeners) fn(key)
+}
+
+/** Whether key's kept copy is old and being read again (markReading). */
+export function isReading(key: string | undefined): boolean {
+  return !!key && reading.has(key)
+}
+
 /** The key a repository's entry of the Work answer is kept under: the Release section keeps it, the CI section reads its next version. */
 export const workRepoKey = (root: string) => `work:${root}`
 
 /** Drops the answers kept in memory (tests). */
 export function forgetDeckAnswers(): void {
   mem.clear()
+  reading.clear()
 }
 
 /** How fresh a shown answer is, in the cell's header: "updated 12 s ago". */

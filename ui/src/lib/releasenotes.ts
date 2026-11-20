@@ -76,7 +76,7 @@ export interface NotesHeading {
   why?: { text: string; title: string }
   /** "last release 8h ago", "5 min ago", "8h ago": the last release's age. */
   age?: string
-  /** The age in a narrow panel, when it differs: "last 8h ago". */
+  /** The age in a narrow panel, when it differs: "8h ago". */
   ageShort?: string
   title: string
 }
@@ -116,7 +116,9 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
   // Owner, 2026-11-20: a bare *0.185.1* did not say what the number is.
   return {
     state: 'waiting', text: s.version ? `Next release ${s.version}` : 'Next release', short: s.version ? `Next ${s.version}` : undefined, why: whyWords(s),
-    age: at ? `last release ${ago(now - at)}` : undefined, ageShort: at ? `last ${ago(now - at)}` : undefined,
+    // Narrow, *Next 0.185.3 · patch · 36m ago* (owner, 2026-11-20): words
+    // go before anything is cut; the hover keeps *last release*.
+    age: at ? `last release ${ago(now - at)}` : undefined, ageShort: at ? ago(now - at) : undefined,
     title: s.why?.title ?? 'No version is predicted: some changelog entries say no kind, or no tag was read to count from.',
   }
 }
@@ -163,7 +165,7 @@ export interface ViaLine {
   prTitle?: string
   /** "green", "CI red", "CI running", "a job not run", "no checks", "CI not read". */
   ci: { text: string; tone: 'ok' | 'fail' | 'pending' | 'warn' | 'muted' }
-  /** "ready to merge", "needs a rebase", "fix: go (windows-latest)", "draft", "landing: queued". */
+  /** "ready to merge", "needs a rebase", "go failed", "draft", "landing: queued". */
   state: { text: string; tone?: 'danger' | 'warn' }
   /** The next step it waits for, for the folded line: "merge #949", "wait for CI". */
   next: string
@@ -184,7 +186,10 @@ export function viaLine(pr: BranchPR, card: BoardCard | undefined): ViaLine {
   let state: ViaLine['state']
   let next: string
   if (ci.tone === 'fail') {
-    state = { text: failed.length ? `fix: ${failed[0]}${failed.length > 1 ? ` +${failed.length - 1}` : ''}` : 'fix CI', tone: 'danger' }
+    // Plain words (owner, 2026-11-20: "fix: e2e (headless shell)" did not
+    // read): the job's name without its matrix, *e2e failed*; all of them
+    // by their whole names on hover.
+    state = { text: failed.length ? `${failed[0]!.replace(/\s*\([^)]*\)\s*$/, '') || failed[0]} failed${failed.length > 1 ? ` +${failed.length - 1}` : ''}` : 'CI failed', tone: 'danger' }
     next = `fix CI on #${n}`
   } else if (landing && !landing.red) {
     state = { text: landing.word, tone: landing.warn ? 'warn' : undefined }
