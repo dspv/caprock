@@ -156,7 +156,7 @@ func (d *Daemon) refreshDBStatus(prev dbStatus, first chan struct{}) {
 			}
 		}
 		if !v.eventsOK || c.clock().Sub(v.eventsAt) >= eventCountTTL {
-			if n, err := store.CountEvents(ctx, d.store.DB()); err == nil {
+			if n, err := d.eventCount.Count(ctx, d.store.DB()); err == nil {
 				v.events, v.eventsAt, v.eventsOK = n, c.clock(), true
 			}
 		}

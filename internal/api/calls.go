@@ -1,8 +1,12 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/store"
@@ -32,13 +36,32 @@ type CallTool struct {
 // oldest first: the whole series the spark at the top of the cockpit only
 // shows the end of. Lean on purpose — no prose, no tool results — so a
 // session of thousands of calls is one small response.
+//
+// A session's calls are kept by its events generation (store.EventsGen, read
+// before the calls): asked again while its events are as they were — a
+// cockpit tab opened again, the several parts of one tab that ask at once —
+// it reads nothing, and identical requests in flight share one read. The read
+// walks every priced turn and every tool call of the session, the tool
+// calls' payloads included: 1.4 s and 5,172 calls for one of the owner's
+// sessions (2026-11-20), and the cockpit asks each time it opens.
 func (s *Server) handleSessionCalls(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	calls, err := store.SessionCalls(r.Context(), s.d.Store.DB(), r.PathValue("id"), limit)
+	id := r.PathValue("id")
+	db := s.d.Store.DB()
+	gen, err := store.ReadEventsGen(r.Context(), db, id)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
+	key := fmt.Sprintf("%s|%d|%d|%d", id, limit, gen.Gen, gen.MaxID)
+	v, err := s.callsCache().get(r.Context(), key, func() (any, error) {
+		return store.SessionCalls(context.WithoutCancel(r.Context()), db, id, limit)
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	calls, _ := v.([]store.SessionCall)
 	out := make([]SessionCall, 0, len(calls))
 	display := map[string]string{}
 	for _, c := range calls {
@@ -54,4 +77,26 @@ func (s *Server) handleSessionCalls(w http.ResponseWriter, r *http.Request) {
 		out = append(out, sc)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// sessionCallsKeep is how long a session's calls are kept unasked and
+// sessionCallsKeys how many answers at most: an answer is keyed by its
+// session's generation, so it is never stale, and these bound only memory.
+const (
+	sessionCallsKeep = 10 * time.Minute
+	sessionCallsKeys = 32
+)
+
+// sessionCalls holds GET /v1/sessions/{id}/calls answers (handleSessionCalls).
+type sessionCalls struct {
+	once sync.Once
+	c    *answerCache
+}
+
+func (s *Server) callsCache() *answerCache {
+	s.calls.once.Do(func() {
+		s.calls.c = newAnswerCache(sessionCallsKeep, sessionCallsKeep, time.Now)
+		s.calls.c.maxKeys = sessionCallsKeys
+	})
+	return s.calls.c
 }

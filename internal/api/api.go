@@ -648,6 +648,13 @@ type Server struct {
 	// (GET /v1/browse/repos, repos.go).
 	localRepos localRepoCache
 	summ       *answerCache
+	// parts keeps each range's summary figures per session, so a summary or
+	// history asked again reads only the sessions whose events moved
+	// (store.PartsCache).
+	parts *store.PartsCache
+	// calls keeps each session's priced calls by its events generation
+	// (calls.go).
+	calls sessionCalls
 	// week, weekLong and glance hold the Week and Share answers (short and
 	// long periods) and Now's at-a-glance, each with its own freshness
 	// (weekTTL, weekLongTTL, glanceTTL).
@@ -712,7 +719,8 @@ func New(d Deps) *Server {
 	s := &Server{d: d, replaced: map[string]string{}, mux: http.NewServeMux(), ws: newWSHub(d.Bus, d.Log, lanHost), hist: newAnswerCache(historyTTL, answerMaxStale, time.Now), histWide: newAnswerCache(historyWideTTL, answerMaxStale, time.Now), summ: newAnswerCache(summaryTTL, answerMaxStale, time.Now), usual: newAnswerCache(usualTTL, usualMaxStale, time.Now),
 		trends: newAnswerCache(trendsTTL, trendsMaxStale, time.Now), pipeAgents: newAnswerCache(pipeAgentsTTL, trendsMaxStale, time.Now), pipeAgentsPast: newAnswerCache(pipeAgentsPastTTL, trendsMaxStale, time.Now),
 		week: newAnswerCache(weekTTL, answerMaxStale, time.Now), weekLong: newAnswerCache(weekLongTTL, answerMaxStale, time.Now), glance: newAnswerCache(glanceTTL, answerMaxStale, time.Now),
-		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache()}
+		drill: newAnswerCache(drillTTL, answerMaxStale, time.Now), deck: newDeckCache(time.Now), repos: newRepoCache(),
+		parts: store.NewPartsCache()}
 	s.ws.hold = s.holdSocket
 	s.sizes = newPTYSizes(func(id string, cols, rows int) {
 		if s.d.Agents != nil {
@@ -2603,15 +2611,14 @@ func (s *Server) trendsFor(ctx context.Context, agent store.AgentFilter) (any, e
 func (s *Server) rangeSummary(ctx context.Context, from int64, label string, agent store.AgentFilter) (store.Summary, error) {
 	spark := s.sparkSpec(label, from)
 	compute := func(c context.Context) (store.Summary, error) {
-		sum, err := store.SummarizeSparkFor(c, s.d.Store.DB(), from, spark, agent)
+		// The figures and their split by sign-in (the plan figures'), both
+		// from the range's kept per-session parts: only the sessions whose
+		// events moved since the last answer are read.
+		sum, parts, err := s.parts.Summary(c, s.d.Store.DB(), from, spark, agent)
 		if err != nil {
 			return sum, err
 		}
-		// The same range and agent filter, split by sign-in for the plan
-		// figures. A failure costs those figures, never the summary.
-		if parts, err := store.SpendPartsBetween(c, s.d.Store.DB(), from, 0, agent); err == nil {
-			sum.CostParts = parts
-		}
+		sum.CostParts = parts
 		return sum, nil
 	}
 	cache := s.summ
@@ -2830,7 +2837,10 @@ func (s *Server) histFor(from int64) *answerCache {
 // an HTTP round trip.
 func (s *Server) buildHistory(ctx context.Context, from int64, label string) (HistoryResponse, error) {
 	q := s.d.Store.DB()
-	sum, err := store.Summarize(ctx, q, from)
+	// The summary and the tool counts come from the range's kept parts, as
+	// the summary endpoint's do (store.PartsCache): an all-time history asked
+	// again reads only the sessions that moved, not every event ever.
+	sum, _, err := s.parts.Summary(ctx, q, from, store.SparkSpec{}, "")
 	if err != nil {
 		return HistoryResponse{}, err
 	}
@@ -2840,7 +2850,7 @@ func (s *Server) buildHistory(ctx context.Context, from int64, label string) (Hi
 	if err != nil {
 		return HistoryResponse{}, err
 	}
-	tools, err := store.ToolDistribution(ctx, q, from, 40)
+	tools, err := s.parts.Tools(ctx, q, from, 40)
 	if err != nil {
 		return HistoryResponse{}, err
 	}

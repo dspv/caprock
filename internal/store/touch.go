@@ -1,7 +1,6 @@
 package store
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"time"
@@ -241,170 +240,12 @@ const UnattributedPath = "\x00unattributed"
 // shares and for why "another checkout" is not split out separately.
 const OutsidePath = "\x00outside"
 
-// seekSessionsWithin is the widest range turnSpendBySession reads session by
+// seekSessionsWithin is the widest range a whole-range parts read (readParts) reads session by
 // session. Past it most of the index is in range anyway, and the seeks cost
 // more than the scan they skip: on a copy of the owner's database, 7 days took 114 ms scanned
 // and 139 ms sought, 30 days 225 ms and 325 ms, while today took 79 ms
 // scanned and 52 ms sought (2026-10-14).
 const seekSessionsWithin = 48 * time.Hour
-
-// turnSpendBySession returns, per session, one entry per assistant turn in the
-// range: what it cost and which directory was carried into it.
-//
-// ONE ORDERED SCAN, NOT A JOIN. Carry-forward is inherently sequential — a
-// turn's directory is a function of everything before it in its session — so
-// the tool calls and the turns are read TOGETHER in event order and the carry
-// is threaded through them in Go. This replaces the two independent queries the
-// strict rule used (a per-turn touch lookup plus a turn scan).
-//
-// Doing the carry in SQL was considered and rejected. A window function could
-// compute `last_value(touch_dir) IGNORE NULLS OVER (PARTITION BY sid
-// ORDER BY ts, id)`, but deciding whether the carried directory is inside the
-// repository needs the same path normalization the ingest path uses — folding
-// separators so a Windows-captured session groups with the same repository read
-// anywhere else. Re-implementing that in SQL would put a second, silently
-// diverging definition in a second language, the exact trap migration 0012
-// documents for the dirname cut. The scan is O(n) in one pass either way.
-//
-// WHY msg_id NO LONGER GATES ATTRIBUTION. Under the strict rule a tool call
-// without a message id could not be billed to a turn, so its whole session was
-// forced unattributed. Carry-forward does not need the linkage: it places a
-// turn by WHEN a touch happened relative to it, not by which message the touch
-// belonged to. A hook-plane tool call carries no msg_id but does carry a
-// timestamp, which is all the carry needs — so those sessions now attribute
-// normally instead of collapsing into one bucket.
-//
-// COST IS READ, NOT RECOMPUTED. cost_usd on turn.assistant is the priced figure
-// the rest of the dashboard reports; deriving a second number here would give
-// the panel two totals for one repository.
-//
-// INDEXED BY is not a micro-optimization. Without stats — and nothing in the
-// daemon runs ANALYZE, so no user database has them — SQLite prefers
-// idx_events_kind_ts for the `kind IN (…)` predicate and sorts 90271 rows in a
-// temp B-tree: ~290 ms, against a ~250 ms budget for the whole summary. Pinning
-// idx_events_attr makes the plan a covering scan in index order with no sort,
-// measured at ~93 ms on the owner's database (2026-08-22, 30d, Go driver).
-//
-// The index leads on sid, so `ts >= ?` alone could not seek: every
-// range scanned the whole index, all of history, to keep the rows in range —
-// 41 ms for ten minutes on a 517,000-event copy of the owner's database
-// (2026-10-14), and today's summary is counted again every two seconds while
-// anything is written. The sessions with rows in range come first, off
-// idx_events_ts_cover, and each is then a seek on (sid, ts>=); the IN
-// list is walked in order, so the scan still needs no sort. Only for ranges
-// within seekSessionsWithin.
-//
-// It also returns how many tool calls in the range carried no message id and so
-// could not be attached to any turn — the honest upper bound on how much of the
-// work-kind breakdown's "no tool" row is really unlinked work (see workkind.go).
-func turnSpendBySession(ctx context.Context, q Querier, fromMs int64) (map[string][]turnSpend, int64, error) {
-	// msg_id and tool ride along for the WORK-KIND breakdown, which needs
-	// exactly the rows this scan already reads (see workkind.go). Folding it in
-	// here rather than running a second aggregate is what keeps it free: the
-	// index covers every column below, so the plan stays a covering scan in
-	// index order with no sort and no table access.
-	// inner_tool, when set, is the tool a Codex `exec` script really ran
-	// (migration 0038) and classifies the call in place of `exec`.
-	inRange, args := "sid IS NOT NULL", []any{fromMs}
-	if nowMs()-fromMs <= seekSessionsWithin.Milliseconds() {
-		inRange = `sid IN (
-		        SELECT DISTINCT sid FROM events INDEXED BY idx_events_ts_cover
-		         WHERE ts >= ? AND internal = 0 AND kind IN ('tool.pre', 'turn.assistant'))`
-		args = []any{fromMs, fromMs}
-	}
-	rows, err := q.QueryContext(ctx, `
-		SELECT sid, kind, COALESCE(touch_dir, ''), COALESCE(msg_id,''), COALESCE(inner_tool, tool, ''),
-		       COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0),
-		       COALESCE(cost_usd,0)
-		FROM events INDEXED BY idx_events_attr_work
-		WHERE `+inRange+` AND ts >= ?
-		  AND internal = 0
-		  AND kind IN ('tool.pre', 'turn.assistant')
-		ORDER BY sid, ts, id`, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	out := map[int64][]turnSpend{}
-	// Tool calls in range with no message id: they exist, they were paid for,
-	// and nothing says which turn paid. Counted so the breakdown can state its
-	// own uncertainty instead of presenting it as absence of tool use.
-	var unlinkedCalls int64
-	// The work kind of each turn, keyed by its message id. A turn is classified
-	// by its OWN tool calls, so this is a plain grouping rather than a carry —
-	// see workkind.go for why work kind must not carry forward the way a
-	// directory does.
-	//
-	// The key is the bare message id, not (session, message id): the scan is
-	// ordered by session, so the map is CLEARED on every session change and can
-	// never be consulted across one. That keeps a string concatenation out of
-	// the hot path — this loop runs once per tool call on the whole range.
-	kinds := map[string]WorkKind{}
-	// The carry, valid only within the session named by carrySess. Resetting it
-	// on every session change is what keeps attribution from crossing session
-	// boundaries — one piece of work must never be charged to another's
-	// directory, and the scan's ORDER BY groups sessions so a single variable
-	// suffices.
-	var carrySess int64
-	var carryDir string
-	var carried bool
-	for rows.Next() {
-		var sess, tokens int64
-		var kind, dir, msg, tool string
-		var cost float64
-		if err := rows.Scan(&sess, &kind, &dir, &msg, &tool, &tokens, &cost); err != nil {
-			return nil, 0, err
-		}
-		if sess != carrySess {
-			// Resolve the OUTGOING session's turns before its message ids are
-			// forgotten. A turn's row is written BEFORE the tool_use blocks of
-			// the same message (they arrive on a later transcript line), so a
-			// turn's own tool calls are still ahead of it when its row is read
-			// — the kinds cannot be applied until the session is complete.
-			// carrySess still names the outgoing session at this point.
-			resolveWork(out[carrySess], kinds)
-			clear(kinds)
-			carrySess, carryDir, carried = sess, "", false
-		}
-		if kind == "tool.pre" {
-			// The work kind of the TURN this call belongs to, keyed by the
-			// message id that links them. A call with no message id cannot be
-			// attached to any turn and is counted rather than guessed at —
-			// that count is Summary.WorkUnlinkedCalls.
-			if msg == "" {
-				unlinkedCalls++
-			} else {
-				k := workKindOf(tool)
-				if cur, seen := kinds[msg]; !seen || workKindRank(k) < workKindRank(cur) {
-					kinds[msg] = k
-				}
-			}
-			// Only a tool that named a file moves the carry. A pathless call
-			// (Bash, Grep) leaves touch_dir NULL and must NOT clear it — the
-			// commands between two edits are part of the same stretch of work,
-			// which is the whole point of the rule.
-			if dir != "" {
-				carryDir, carried = dir, true
-			}
-			continue
-		}
-		ts := turnSpend{
-			tokens:  tokens,
-			cost:    cost,
-			touched: TouchDirs{Dir: carryDir, HasDir: carried},
-			msgKey:  msg,
-			hasMsg:  msg != "",
-		}
-		out[sess] = append(out[sess], ts)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-	// The final session has no successor to trigger its resolution.
-	resolveWork(out[carrySess], kinds)
-	bySession, err := sessionIDsOf(ctx, q, out)
-	return bySession, unlinkedCalls, err
-}
 
 // resolveWork stamps each turn with the kind decided from its own tool calls.
 // It runs per session, once that session's rows are all read.

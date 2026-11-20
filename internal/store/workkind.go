@@ -250,12 +250,13 @@ func WorkKindOfTurn(tools []string) WorkKind {
 // rule that defines them (WorkKindRule) is what must not move, and it does not.
 var workKindOrder = []WorkKind{WorkEdit, WorkCommand, WorkRead, WorkWeb, WorkMCP, WorkOther, WorkNone}
 
-// workSpend aggregates spend by the kind of work each turn did, from the turns
+// orderWork is the spend by the kind of work each turn did, from the turns
 // the carry-forward scan has already read.
 //
 // NO QUERY OF ITS OWN. The rows this needs — every assistant turn in range,
 // each already carrying its cost and the kind decided from its own tool calls —
-// are exactly the rows turnSpendBySession scans for per-directory attribution.
+// are exactly the rows the carry-forward scan reads for per-directory
+// attribution (scanEventParts).
 // Running a second aggregate over the same events measured 292 ms on the
 // owner's database against a ~30 ms budget for the whole feature (2026-08-23,
 // 30d, Go driver), so the classification rides along in that scan instead and
@@ -282,24 +283,10 @@ var workKindOrder = []WorkKind{WorkEdit, WorkCommand, WorkRead, WorkWeb, WorkMCP
 // instead of its own, so the count is a direct upper bound on how wrong that
 // row can be. It is a count of calls rather than of turns because a turn is
 // exactly what an unlinked call has failed to identify.
-func workSpend(turns map[string][]turnSpend, unlinkedCalls int64) ([]WorkShare, int64) {
-	byKind := map[WorkKind]*WorkShare{}
-	for _, spends := range turns {
-		for _, t := range spends {
-			k := WorkNone
-			if t.hasWork {
-				k = t.work
-			}
-			w := byKind[k]
-			if w == nil {
-				w = &WorkShare{Kind: k}
-				byKind[k] = w
-			}
-			w.Turns++
-			w.Tokens += t.tokens
-			w.CostUSD += t.cost
-		}
-	}
+//
+// The turns arrive summed per session by directory and kind (attrPart, in
+// buildSummary); this orders the rows they add up to.
+func orderWork(byKind map[WorkKind]*WorkShare) []WorkShare {
 	out := make([]WorkShare, 0, len(byKind))
 	for _, k := range workKindOrder {
 		if w := byKind[k]; w != nil {
@@ -312,5 +299,5 @@ func workSpend(turns map[string][]turnSpend, unlinkedCalls int64) ([]WorkShare, 
 	// deterministic order instead of shuffling between polls of a live
 	// dashboard.
 	sort.SliceStable(out, func(i, j int) bool { return out[i].CostUSD > out[j].CostUSD })
-	return out, unlinkedCalls
+	return out
 }

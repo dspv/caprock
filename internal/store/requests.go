@@ -114,29 +114,6 @@ func usageByModel(u map[usageKey]usageCount) map[string]usageCount {
 	return out
 }
 
-// discountUsageRecords takes the usage records out of a summary's turn
-// counts and puts Cursor's request counts on its models.
-func discountUsageRecords(ctx context.Context, q Querier, fromMs int64, agent AgentFilter, s *Summary) error {
-	u, err := usageRows(ctx, q, fromMs, 0, "", agent)
-	if err != nil || len(u) == 0 {
-		return err
-	}
-	by := usageByModel(u)
-	for i := range s.Models {
-		c, ok := by[s.Models[i].Model]
-		if !ok {
-			continue
-		}
-		s.Models[i].Turns = max(0, s.Models[i].Turns-c.Records)
-		if c.Requests > 0 {
-			s.Models[i].Requests = c.Requests
-			s.Models[i].RequestsCostUSD = c.CostUSD
-		}
-		s.Turns = max(0, s.Turns-c.Records)
-	}
-	return nil
-}
-
 // SessionUsageCount is one Cursor or Hermes session's usage records and
 // Cursor's request count, for the session's own Turns tile: the records
 // come out of its turn count as they come out of every other count, and its
