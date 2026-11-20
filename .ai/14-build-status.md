@@ -508,6 +508,21 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-20 — 0.185.0: a setup checklist for adding a computer, Windows fixes from the first real two-computer run
+
+A minor release, #964 with #958–#963. The first real run with a MacBook driving
+a Windows PC got lost in four places; each is fixed. The computer that runs
+agents now has a checklist in Settings → Computers (Git, an agent, sign-in, a
+project, the link), each with its own button, and `caprock setup` prints the
+same list over SSH; the laptop shows whether each linked computer is ready
+and offers *Start an agent there* (ADR-099). The role cards say *Run agents
+for another computer* and *This is where I work*, and a line beside Turn on
+says the link is end-to-end encrypted and nothing gets in without Allow. On
+Windows the Settings menu and its search fit, the sidebar no longer draws
+lighter than the window, and New agent on another computer says when no agent
+is installed there. The phone's message field keeps the keyboard's
+autocorrect, capitals and spelling.
+
 ### 2026-11-19 — 0.184.2: Release stages as dots, Spend header on one line
 
 A patch release, #955 with #953 and #954. The Release section draws its five

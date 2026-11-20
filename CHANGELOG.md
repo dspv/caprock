@@ -12,6 +12,71 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.185.0] - 2026-11-20
+
+### Added
+
+- **computers:** adding a computer that runs agents is a checklist. Choose
+  **Run agents for another computer** in Settings → Computers and it lists
+  what that computer still needs — Git (on Windows, Claude Code needs it),
+  Claude Code or Codex, its sign-in, a project, and the link to your laptop —
+  each with one button. Install and Sign in open a terminal tab with the
+  command typed for you to run; nothing is installed silently. The list
+  ticks itself as each step is done, says "Ready. Start agents from your
+  laptop." at the end, and shows on Home while something is left. Beside
+  Turn on, one line says the link is end-to-end encrypted and nothing gets
+  in until you press Allow. Over SSH (a VPS, a Mac mini with no screen),
+  `caprock setup` prints the same list with the command for each step, and
+  `caprock setup --link` ends with the one-time link and asks you to allow
+  the laptop by name.
+- **computers:** on the laptop, each linked computer says whether it is
+  ready — online, its agent, signed in, how many projects, its OS and
+  memory — with **Start an agent there**, or the one step it still needs.
+  A computer can be renamed from the sidebar: right-click it, Rename. The
+  role cards now read **Run agents for another computer** and **This is
+  where I work**. Something installed after Caprock started is found
+  without restarting it (on Windows the PATH is read again from the
+  registry).
+
+### Changed
+
+- **cockpit:** the Release section's words beside the stage dots say what
+  they mean: *Release PR · not opened yet*, *CI 1/3 systems* (with the
+  systems named on hover, since the count is of operating systems, not
+  checks), and *Published · draft only, not public* for a draft release.
+
+### Fixed
+
+- **docs:** the README describes starting an agent on another of your
+  computers as it has worked since 0.164.0; it still said that "comes next".
+- **phone:** the message field no longer switches off the phone keyboard's
+  autocorrect, capitals and spelling. It did since the field was a terminal's
+  keys bar, so every slip of a thumb stayed in the message.
+- **machines:** New agent on another computer says when no agent is installed
+  there, and what to do, instead of an Agent field that read *reading…* for
+  good.
+- **app:** on Windows and Linux the sidebar no longer draws lighter than the
+  rest of the window. The page was transparent there as on macOS, where the
+  window has a material behind it, so the webview's white showed through.
+- **settings:** on Windows and Linux the search field's key, Ctrl+Shift+F,
+  was drawn over the words *Search settings* in the menu. The key is now
+  drawn only where the field has room for both; where it has none, the
+  field's tooltip names it.
+- **settings:** long section names in the Settings menu (*Live activity is a
+  few seconds late*, *Talk to your agents from Telegram*) were cut at the
+  menu's edge in the middle of a letter. They now end in an ellipsis, with
+  the whole name on hover.
+- **settings:** in the app, the last rows of the Settings menu were hidden
+  under the status bar at the bottom of the window; the menu now ends above
+  it.
+- **settings:** in a narrow window, where the bar at the top of the page
+  wraps to two or three rows, a section opened from the menu or from the
+  sidebar's *phone, Telegram* landed with its heading behind that bar. It
+  now lands below it, and the menu marks the section you clicked, not the
+  one above it.
+- **settings:** the list of missing Claude Code hooks no longer breaks a
+  name in the middle (*PostToo* / *lUse*); it wraps between names.
+
 ## [0.184.2] - 2026-11-19
 
 ### Changed
