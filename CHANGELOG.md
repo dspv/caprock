@@ -12,6 +12,65 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.185.1] - 2026-11-20
+
+### Changed
+
+- **cockpit:** the Release section's notes say how many entries each kind
+  has, fold by kind on its heading, and show each entry on one line behind a
+  dot, the whole text on hover.
+- **cockpit:** the Release section says its status in plain words and one
+  colour: *Ready to release · not started* in grey when the changes are
+  merged and nobody has started the release, *Waiting for #949 to merge* in
+  amber, *Releasing · checks 1 of 3 systems* in blue with a pulsing dot,
+  *Release stopped · checks failed* in red, *Released · 5 min ago* in green.
+  A grey "not started" was drawn amber before and read as a release under
+  way. The heading names the number (*Next release 0.185.1 · patch · last
+  release 2h ago*, *Releasing 0.185.1*, *0.185.1 released*), each dot says
+  its stage and state on hover (*Release PR: not started*), and the folded
+  line uses the same words and colours.
+
+### Fixed
+
+- **app:** the *Updated to X · What's new* line closes itself again: its
+  count no longer waits for a focus the app's window does not report, and
+  passing the pointer over it no longer starts the count again. The × sits
+  at the centre of its ring.
+- **setup:** the first **Install** or **Sign in** on a computer with no
+  project opens its terminal tab in front. It used to switch to the empty
+  projects page while the shell ran out of sight, and only a second click
+  showed one; a tab left over from that is restored under Outside projects,
+  where it can be seen and closed.
+- **projects:** a clone goes into the `dev` folder in your home folder by
+  default (`C:\Users\you\dev` on Windows), shown in full in the Clone field
+  with "Projects are cloned into this folder; change it here." A default
+  folder you set before still wins, the folder is made when missing, the
+  wizard's *Clone, or start an empty folder…* opens on Clone, and the setup
+  checklist says where clones go.
+- **setup:** an agent installed in `~/.local/bin` while that folder is off
+  your PATH — what Claude Code's Windows installer warns about — now reads
+  "Claude Code is installed, but terminals can't find it", and **Add to
+  PATH** types the command that adds that one folder to your user PATH.
+  Caprock still runs nothing for you, and the item ticks by itself once the
+  folder is on the PATH.
+- **setup:** the checklist's agents are switches: a row for each agent
+  Caprock can start, switched on (Claude Code and anything already
+  installed) or off, and each one on shows its own next step — Install, Add
+  to PATH, Sign in — until it is ready. The switches are kept on that
+  computer, so your laptop and `caprock setup --agent codex on` see the
+  same; a switch never uninstalls anything. A project there is now optional
+  ("Projects here", last): the computer is Ready without one.
+- **machines:** New agent on another computer shows that computer's folders
+  instead of an empty text field: its projects and recent folders, and a
+  browser of its folders opening in its `dev` folder, each path as that
+  computer writes it (backslashes on Windows). With no projects there yet it
+  says so and offers **Clone a repository** (into that computer's `dev`
+  folder, with progress, the new folder picked when done) and **Pick a
+  folder**. Cancel and Start stay on one row at every width; the footer reads
+  *Runs on <name>*.
+- **cockpit:** a merged pull request on the folded CI line shows a green
+  check and *Merged*, then which release it goes out in or was released in.
+
 ## [0.185.0] - 2026-11-20
 
 ### Added
