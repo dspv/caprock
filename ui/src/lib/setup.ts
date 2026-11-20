@@ -1,6 +1,7 @@
 /**
  * The setup checklist (ADR-099): `GET /v1/setup`, this computer's readiness
- * for running agents — Git, an agent, its sign-in, a project, the link — and
+ * for running agents — Git, the agents switched on (each installed and
+ * signed in), the link, and projects here (optional) — and
  * the same read of another computer through `/v1/m/<id>/v1/setup`.
  *
  * The owner's first two-computer test (2026-11-20) got lost: the PC lacked Git
@@ -23,11 +24,31 @@ export interface SetupItem {
   detail: string
   /** Fixes it in a terminal: typed into a shell tab, never run by Caprock. */
   command?: string
+  /** What the command does when it is not an install: `path` adds the agent's folder to the user's PATH. */
+  action?: 'path' | string
+  /** Never a step left (the project): `ok` or `not_needed`, drawn with a dashed circle. */
+  optional?: boolean
+}
+
+/** One agent under the Agents item, with its switch (ADR-099 amendment, 2026-11-20). */
+export interface SetupAgent {
+  id: string
+  label: string
+  /** Switched on: set up here and counted. Off: grey, `not_needed`. */
+  on: boolean
+  state: SetupState
+  detail: string
+  /** The one step left: install, put on the PATH, sign in. */
+  step?: 'install' | 'path' | 'signin' | string
+  command?: string
+  action?: 'path' | string
 }
 
 export interface SetupReport {
   os: 'windows' | 'darwin' | 'linux' | string
   items: SetupItem[]
+  /** The Agents item's rows; absent from a daemon before the switches. */
+  agents?: SetupAgent[]
 }
 
 export const done = (it: SetupItem | undefined) => it?.state === 'ok' || it?.state === 'not_needed'
@@ -37,9 +58,40 @@ export function ready(r: SetupReport | undefined): boolean {
   return !!r && r.items.length > 0 && r.items.every(done)
 }
 
-/** The first item that is not done, which is the next step. */
+/** The first item that is not done, which is the next step; an optional one never is. */
 export function nextStep(r: SetupReport | undefined): SetupItem | undefined {
-  return r?.items.find((it) => !done(it))
+  return r?.items.find((it) => !done(it) && !it.optional)
+}
+
+/** The steps left: items not done, the optional project never among them. */
+export function stepsLeft(r: SetupReport): SetupItem[] {
+  return shownItems(r).filter((it) => !done(it) && !it.optional)
+}
+
+/** The agents switched on and ready: what a laptop's chips name. */
+export function readyAgents(r: SetupReport | undefined): string[] {
+  return (r?.agents ?? []).filter((a) => a.on && a.state === 'ok').map((a) => a.label)
+}
+
+/** The word on an agent step's button. */
+export function stepWord(step: string | undefined, action?: string): string {
+  if (action === 'path' || step === 'path') return 'Add to PATH'
+  return step === 'signin' ? 'Sign in' : 'Install'
+}
+
+/** PUT /v1/setup/agents/<id>: an agent's switch, kept on this computer; the checklist as it now reads. */
+export async function setAgentSwitch(id: string, on: boolean): Promise<SetupReport> {
+  const res = await fetch(`/v1/setup/agents/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ on }),
+  })
+  if (!res.ok) {
+    let body: unknown
+    try { body = await res.json() } catch { /* not JSON */ }
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`, body)
+  }
+  return (await res.json()) as SetupReport
 }
 
 export function item(r: SetupReport | undefined, key: SetupKey): SetupItem | undefined {
@@ -72,10 +124,19 @@ export function notThere(e: unknown): boolean {
 }
 
 /** What the next step is, as a short phrase for "<name> needs one more step: …". */
-export function stepPhrase(it: SetupItem): string {
+export function stepPhrase(it: SetupItem, rep?: SetupReport): string {
   switch (it.key) {
     case 'git': return 'Git is not installed there'
-    case 'agent': return 'no agent is installed there yet'
+    case 'agent': {
+      const rows = rep?.agents
+      if (!rows) return 'no agent is installed there yet'
+      const a = rows.find((r) => r.on && r.state === 'missing') ?? rows.find((r) => r.on && r.state === 'unknown')
+      if (!a) return 'no agent is switched on there'
+      if (a.state === 'unknown') return `${a.label} may not be signed in there`
+      return a.step === 'signin' ? `${a.label} is not signed in there`
+        : a.step === 'path' ? `${a.label} there is not on the PATH`
+          : `${a.label} is not installed there yet`
+    }
     case 'signin': return it.state === 'unknown' ? `${it.label.replace(/^Sign in to /, '')} may not be signed in there` : 'the agent there is not signed in'
     case 'project': return 'it has no project yet'
     case 'link': return 'its link is not finished'
@@ -92,6 +153,8 @@ export function stepPhrase(it: SetupItem): string {
 export interface AppActions {
   newAgentOn?: (machine: string) => void
   addProject?: () => void
+  /** Add project opened on Clone: the checklist's *Projects here*. */
+  cloneProject?: () => void
 }
 
 export const AppActionsContext = createContext<AppActions>({})

@@ -16,6 +16,7 @@ const m = vi.hoisted(() => ({
   createWorktree: vi.fn(),
   spawn: vi.fn(async () => ({ session_id: 's-new', cwd: '/x' })),
   pairMe: vi.fn(async () => ({ role: 'controller' })),
+  devExists: { on: false },
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -25,7 +26,12 @@ vi.mock('@/lib/api', async (orig) => {
     api: {
       ...actual.api,
       status: async () => ({ claude_available: true }),
-      browse: async () => ({ dir: '/Users/me', parent: '', root: '/Users/me', entries: [] }),
+      // ~/dev is there only when a test says so (m.devExists).
+      browse: async (dir = '') => {
+        if (!dir || dir === '/Users/me') return { dir: '/Users/me', parent: '', root: '/Users/me', entries: [] }
+        if (dir === '/Users/me/dev' && m.devExists.on) return { dir, parent: '/Users/me', root: '/Users/me', entries: [] }
+        throw new Error('no such folder')
+      },
       recentDirs: async () => [],
       agentModels: async () => ({ agent: 'codex', models: [] }),
       spawn: m.spawn,
@@ -42,13 +48,28 @@ vi.mock('@/lib/projects', async (orig) => {
 beforeEach(() => {
   localStorage.clear()
   location.hash = '#/start'
-  for (const f of Object.values(m)) f.mockClear()
+  for (const f of [m.add, m.ops, m.list, m.createWorktree, m.spawn, m.pairMe]) f.mockClear()
+  m.devExists.on = false
 })
 afterEach(cleanup)
 
 const typeURL = (v: string) => fireEvent.change(screen.getByPlaceholderText('https://github.com/you/repo'), { target: { value: v } })
 
 describe('Start work', () => {
+  // Owner, 2026-11-20 (translated): "I don't understand where projects will
+  // be cloned; I'd choose ~/dev by default". A phone offers ~/dev when it is
+  // there (it never makes a folder on the way), and says what the field is.
+  it('clones into ~/dev when there is one, saying where projects go', async () => {
+    m.devExists.on = true
+    m.add.mockResolvedValue({ op: { op_id: 'op-test', state: 'running', progress: 0 }, existing: false })
+    render(<NewProjectScreen mode="clone" />)
+    await screen.findByDisplayValue('/Users/me/dev')
+    expect(screen.getByText('Projects are cloned into this folder; change it here.')).toBeTruthy()
+    typeURL('https://github.com/octocat/Hello-World')
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }))
+    await waitFor(() => expect(m.add).toHaveBeenCalledWith({ clone: { url: 'https://github.com/octocat/Hello-World', parent: '/Users/me/dev' }, op_id: 'op-test' }))
+  })
+
   it('clones under home with live progress, then starts an agent that opens on its chat', async () => {
     m.add.mockResolvedValue({ op: { op_id: 'op-test', state: 'running', progress: 0 }, existing: false })
     render(<NewProjectScreen mode="clone" />)

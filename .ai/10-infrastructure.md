@@ -157,7 +157,13 @@ browser laid out: the search field's Ctrl+Shift+F never over its
 placeholder, long menu titles cut with an ellipsis inside the menu and
 named in a tooltip, the menu ending above the status strip, and a section
 scrolled to landing below the wrapped header (04-ui.md, Settings sections).
-`ui/e2e/sidebar-recent.spec.ts` runs last: a
+`ui/e2e/setup-checklist.spec.ts` starts a stand of its own with no project
+and no session (`startStand({ bare: true })`), the page spelled as on
+Windows, and walks the setup checklist (ADR-099 amendment): the first Sign
+in opens its shell tab in front and keeps it there once the shell is listed,
+with one shell started; an agent's switch is kept by the daemon; Projects
+here is optional and its Clone opens Add project on Clone into `~/dev` in
+full. `ui/e2e/sidebar-recent.spec.ts` runs last: a
 closed tab is listed under the sidebar's Recently closed and comes back on a
 click and on ⇧⌘T; a helper session started in a temp folder outside every
 project folds under Background · N, opened and remembered across a reload;

@@ -8,6 +8,7 @@ import {
   leaves,
   numberedTabs,
   MAX_PANES,
+  OUTSIDE_PROJECTS,
   namingLeaf,
   parseWorkspace,
   pipelineInStore,
@@ -16,6 +17,7 @@ import {
   type Workspace,
   type WorkspaceAction,
 } from './tabs'
+import { OTHER_FOLDERS_ID } from './sidebar'
 
 const open = (sessionId: string, projectId = 'p1'): WorkspaceAction => ({ type: 'open', target: { kind: 'session', sessionId }, projectId, title: sessionId })
 const run = (...actions: WorkspaceAction[]): Workspace => actions.reduce(workspaceReducer, EMPTY_WORKSPACE)
@@ -34,6 +36,17 @@ describe('workspace tabs', () => {
     ws = workspaceReducer(ws, { type: 'move', tabId: ws.tabs[3]!.id, toIndex: 0 })
     expect(ws.tabs.map((t) => t.title)).toEqual(['e', 'a', 'c', 'd'])
     expect(parseWorkspace(JSON.stringify(ws)).tabs.map((t) => t.title)).toEqual(['e', 'a', 'c', 'd'])
+  })
+
+  // Owner, 2026-11-20: the setup checklist's first shell, on a computer with
+  // no project, was stored under no project and could never come to the front.
+  it('restores a tab stored under no project under Outside projects', () => {
+    expect(OUTSIDE_PROJECTS).toBe(OTHER_FOLDERS_ID)
+    const ws = run(open('sh-1', ''))
+    const back = parseWorkspace(JSON.stringify(ws))
+    expect(back.tabs.map((t) => t.projectId)).toEqual([OTHER_FOLDERS_ID])
+    expect(back.activeByProject[OTHER_FOLDERS_ID]).toBe(back.tabs[0]!.id)
+    expect(activeTab({ ...back, activeProject: OTHER_FOLDERS_ID })?.title).toBe('sh-1')
   })
 
   it('shows a project\'s page on a click on its row, keeping its tabs', () => {

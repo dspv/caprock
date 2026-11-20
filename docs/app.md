@@ -470,7 +470,11 @@ others. Installing it: [install-app.md](install-app.md).
   to pick); *Recent* leaves out temp and scratch folders. Paste a repository
   URL and the destination fills in as `git clone` would name it — the
   default folder plus the repository's name; folders that do not exist yet
-  are made, and `~` works. Keys: ⌘↩ adds, Esc cancels, ⌘1–3 the modes, ⌘B
+  are made, and `~` works. With no default folder set, a clone goes into
+  the `dev` folder in your home folder, shown in full (`/Users/you/dev`,
+  `C:\Users\you\dev`) with *Projects are cloned into this folder; change it
+  here.* beside the field; *Clone, or start an empty folder…* in the New
+  project wizard opens the sheet on Clone. Keys: ⌘↩ adds, Esc cancels, ⌘1–3 the modes, ⌘B
   Recent or Browse. A
   *First task* starts an agent on the new project as soon as it is added. Branch, changed files and ahead/behind follow commits
   and checkouts made anywhere, the terminal included. Removing a project from
@@ -1756,7 +1760,8 @@ feature at all. Everything else on this page works on both.
 A phone you let control sessions can:
 
 - **Start work.** *+ Start work* on the full dashboard offers **Clone** (an `https://` or
-  `git@` address, into a folder under your home), **New project** and
+  `git@` address, into a folder under your home — `~/dev` when you have
+  one), **New project** and
   **Worktree**. Then **Start an agent here** starts a session and opens its
   chat. A clone runs on the computer: lock the phone or lose the signal
   halfway and the page catches up when it is back, without cloning twice.

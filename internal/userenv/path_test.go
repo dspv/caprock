@@ -112,6 +112,30 @@ func waitFor(t *testing.T, ok func() bool) {
 	t.Fatal("timed out")
 }
 
+// A terminal's PATH has none of the daemon's own folders: a binary only the
+// daemon can see is one the setup checklist must call off the PATH.
+func TestTerminalPathLeavesOutTheDaemonsOwn(t *testing.T) {
+	t.Setenv("PATH", `C:\Users\dima\.local\bin;C:\Windows\system32`)
+	swapRegistry(t, `C:\Windows\system32;C:\Program Files\Git\cmd`, nil)
+	if p, ok := terminalPath(nil, "windows"); !ok || p != `C:\Windows\system32;C:\Program Files\Git\cmd` {
+		t.Fatalf("windows: %q %v", p, ok)
+	}
+	swapRegistry(t, "", errors.New("access denied"))
+	if p, ok := terminalPath(nil, "windows"); ok || p != "" {
+		t.Fatalf("unreadable: %q %v", p, ok)
+	}
+
+	reset()
+	t.Cleanup(reset)
+	t.Setenv("PATH", "/home/u/.local/bin:/usr/bin")
+	resolveFn = func(context.Context, string, []string) ([]string, error) { return []string{"PATH=/usr/bin:/bin"}, nil }
+	t.Cleanup(func() { resolveFn = resolve })
+	if p, ok := terminalPath(nil, "linux"); ok || p != "" {
+		t.Fatalf("before the login shell is read: %q %v", p, ok)
+	}
+	waitFor(t, func() bool { p, ok := terminalPath(nil, "linux"); return ok && p == "/usr/bin:/bin" })
+}
+
 // The real registry, read only, on Windows itself.
 func TestRegistryPathOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {

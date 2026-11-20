@@ -227,7 +227,8 @@ type SheetState =
       /** Runs once the agent has started: a handed-off prompt was delivered. */
       onStarted?: () => void
     }
-  | { kind: 'project' }
+  /** Add project; `mode: 'clone'` from the wizard's *Clone, or start an empty folder…*. */
+  | { kind: 'project'; mode?: 'clone' }
   /** New project, tap-tap-tap (components/ProjectWizard.tsx); `prompt` is a first message typed in New agent before it, handed back. */
   | { kind: 'new-project'; prompt?: string }
   /** New project from a template (components/TemplateProjectSheet.tsx, ADR-065); the job it starts lives on in `tplJob`. */
@@ -993,6 +994,12 @@ export function AppShell() {
    * or the current project, when the daemon did not say where home is — with
    * the command typed at the prompt and not run. The user reads it and
    * presses Enter.
+   *
+   * A shell in the home folder is filed under Outside projects, where the
+   * sidebar lists it. Filed under the project in front, a computer with no
+   * project put it under none (''), and as soon as the shell reached the
+   * session list Outside projects became the project in front with no tab
+   * of its own: the first Install opened nothing to see (owner, 2026-11-20).
    */
   const setupAgent = useCallback(async (command: string, home?: string) => {
     const p = projectsById.get(activeProjectId)
@@ -1000,7 +1007,7 @@ export function AppShell() {
     if (!cwd) { setToast(`Run this in a terminal: ${command}`); return }
     try {
       const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32, type: command })
-      openTab({ kind: 'shell', sessionId: shell.id }, p?.id ?? activeProjectId, 'setup')
+      openTab({ kind: 'shell', sessionId: shell.id }, home || !p ? OTHER_FOLDERS_ID : p.id, 'setup')
       refresh()
     } catch (e) {
       setToast(`Could not open a shell: ${errText(e)}. Run this in a terminal: ${command}`)
@@ -1016,6 +1023,8 @@ export function AppShell() {
   const appActions = useMemo<AppActions>(() => ({
     newAgentOn: (machine: string) => setSheet({ kind: 'agent', projectId: activeProjectId, machine }),
     addProject: onAddProject,
+    // The checklist's Projects here → Clone: the sheet on Clone, into ~/dev.
+    cloneProject: () => setSheet({ kind: 'project', mode: 'clone' }),
   }), [activeProjectId, onAddProject])
   /**
    * To the dashboard where it was left (lib/screenPlace.ts); from the
@@ -2538,7 +2547,7 @@ export function AppShell() {
           onClose={closeSheet}
           onCreated={(id) => { refresh(); dispatch({ type: 'project', projectId: id }) }}
           onStartAgent={(id) => setSheet({ kind: 'agent', projectId: id, prompt: sheet.prompt })}
-          onMoreWays={() => setSheet({ kind: 'project' })}
+          onMoreWays={() => setSheet({ kind: 'project', mode: 'clone' })}
           onFromTemplate={isPairedDevice() ? undefined : onFromTemplate}
         />
       )}
@@ -2558,6 +2567,7 @@ export function AppShell() {
         <AddProjectSheet
           source={data.source}
           projects={model.projects.map((n) => n.project)}
+          initialMode={sheet.mode}
           ops={data.ops}
           onClose={closeSheet}
           onAdded={onProjectAdded}

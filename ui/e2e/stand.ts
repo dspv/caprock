@@ -80,7 +80,11 @@ function alive(p: ChildProcess): boolean {
 }
 
 /** Starts the stand; the returned function stops it and removes the directory. */
-export async function startStand(): Promise<{ state: StandState; stop: () => Promise<void> }> {
+/**
+ * `bare`: no project and no session — a computer Caprock was just installed
+ * on, as the setup checklist meets it (setup-checklist.spec.ts).
+ */
+export async function startStand({ bare = false }: { bare?: boolean } = {}): Promise<{ state: StandState; stop: () => Promise<void> }> {
   const exe = process.platform === 'win32' ? '.exe' : ''
   const caprock = path.join(REPO, 'bin', `caprock${exe}`)
   if (!existsSync(caprock)) throw new Error(`${caprock} is missing: run \`make build-go\` (make e2e does)`)
@@ -155,7 +159,7 @@ export async function startStand(): Promise<{ state: StandState; stop: () => Pro
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
     const sessions: StandState['sessions'] = []
-    for (const name of ['alpha', 'beta']) {
+    for (const name of bare ? [] : ['alpha', 'beta']) {
       const cwd = path.join(home, 'dev', name)
       mkdirSync(cwd, { recursive: true })
       writeFileSync(path.join(cwd, 'README.md'), `# ${name}\n`)
