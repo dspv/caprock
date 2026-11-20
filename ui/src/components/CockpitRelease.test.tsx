@@ -89,7 +89,7 @@ describe('the cockpit’s Release section', () => {
     writeDeck(workRepoKey(ROOT), { ...repo('v0.183.0', 0), tags: { last: { name: 'v0.183.0', at: now - 600_000 }, gaps: 0 } })
     writeDeck(`release:${ROOT}`, { connected: true, repo: 'acme/app', release: { repo: 'acme/app', tag: 'v0.183.0', state: 'running', at: now, run: { id: 1, name: 'release', status: 'in_progress', jobs: [] } } })
     draw(true)
-    expect(line()).toHaveAttribute('aria-label', 'Releasing 0.183.0 · building apps, 12 of 23 files')
+    expect(line()).toHaveAttribute('aria-label', 'Releasing 0.183.0 · building 12 of 23 files')
     // Under way, the run is asked again (the daemon answers from its kept read).
     expect(asked).toContain('/v1/sessions/s1/ci/release')
   })
@@ -119,7 +119,7 @@ describe('the cockpit’s Release section', () => {
     expect(dots[1]).not.toHaveClass('bg-warn')
     expect([...strip.querySelectorAll('[data-strip-line]')].map((e) => e.getAttribute('data-strip-line'))).toEqual(['done', 'todo', 'todo', 'todo'])
     // Only the current stage is named, with its checks per OS.
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Releasing · checks 1 of 3 systems$/)
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^checks 1 of 3 systems$/)
     expect(strip.querySelector('[data-release-stage-words]')).toHaveClass('text-progress')
     expect(strip.textContent).not.toMatch(/Tagged|Building|Published/)
     // The version heads the section; the dots sit under it, the entries apart.
@@ -219,7 +219,7 @@ describe('the cockpit’s Release section', () => {
     draw(false)
     const strip = document.querySelector('[data-release-strip]')!
     expect(strip).toHaveAttribute('aria-label', 'Release stage 4 of 5: Building, in progress')
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Releasing · building apps, 12 of 23 files$/)
+    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^building 12 of 23 files$/)
     expect([...strip.querySelectorAll('[data-strip-stage]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'current', 'done'])
   })
 

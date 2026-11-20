@@ -196,10 +196,10 @@ describe('the right panel’s folded Release line', () => {
   it('says a tag building as releasing, with the files its release has of the last one’s; a failed build stopped', () => {
     const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 120_000, 12), rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'running') }))
     expect(s.phase).toBe('tagged')
-    expect(fold(s)).toMatchObject({ kind: 'releasing', text: 'Releasing 0.183.0 · building apps, 12 of 23 files', tone: 'active' })
+    expect(fold(s)).toMatchObject({ kind: 'releasing', text: 'Releasing 0.183.0 · building 12 of 23 files', tone: 'active' })
     // Read from the run's jobs while no release has files yet.
     const j = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'running', [job('completed'), job('in_progress'), job('queued')]) }))
-    expect(fold(j).text).toBe('Releasing 0.183.0 · building apps, 1 of 3 jobs')
+    expect(fold(j).text).toBe('Releasing 0.183.0 · building 1 of 3 jobs')
     const failed = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'fail') }))
     expect(fold(failed)).toMatchObject({ kind: 'stopped', text: 'Release 0.183.0 stopped · build failed', tone: 'fail' })
   })
@@ -309,7 +309,7 @@ describe('the words beside the stage dots', () => {
 
   it('tagged and building: releasing, blue, with its files; a failed build stopped, red', () => {
     const s = (state: ReleaseCI['state']) => releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 60_000, 12), rel('v0.182.4', T - 30 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0', 'merged')], run: run('v0.183.0', state) }))
-    expect(words(s('running'))).toMatchObject({ key: 'builds', index: 4, text: 'Releasing · building apps, 12 of 23 files', tone: 'active' })
+    expect(words(s('running'))).toMatchObject({ key: 'builds', index: 4, text: 'Releasing · building 12 of 23 files', tone: 'active' })
     expect(words(s('fail'))).toMatchObject({ text: 'Release stopped · build failed at 12 of 23 files', tone: 'fail' })
   })
 
