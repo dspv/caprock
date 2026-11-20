@@ -25,9 +25,10 @@ const (
 // scanAllowed is every caller whose statement may read every row of events,
 // and why.
 var scanAllowed = map[string]string{
-	"store.eventBreakdown":     "the storage measurement sizes every row, once, on request",
-	"store.CountEvents":        "the status figure counts every event, and its callers cache it",
-	"store.turnSpendBySession": "past seekSessionsWithin the whole index is cheaper than a seek per session",
+	"store.eventBreakdown": "the storage measurement sizes every row, once, on request",
+	"store.CountEvents":    "the status figure counts every event, and its callers cache it",
+	"store.scanEventParts": "a range's first read: past seekSessionsWithin the whole index is cheaper than a seek per session, and PartsCache then reads only the sessions that moved",
+	"store.countBySession": "the first count, then kept per session by EventCounter",
 }
 
 // Every statement the test suite runs outside test files keeps the plan in

@@ -166,6 +166,9 @@ type Daemon struct {
 	// statusDB is /v1/status's snapshot of what it reads from the database
 	// (statusdb.go).
 	statusDB statusCache
+	// eventCount keeps the stored-event count by session, so a status asked
+	// again counts only the sessions whose events moved (store.EventCounter).
+	eventCount store.EventCounter
 	// subSpend keeps the Subscriptions answer's week of spend (subspend.go).
 	subSpend subSpendCache
 	// planShareC keeps GET /v1/plan-share's rates (planshare.go).

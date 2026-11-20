@@ -2431,38 +2431,6 @@ func (a AgentFilter) sessionScope(col string) (string, []any) {
 	return " AND " + col + " IN (SELECT session_id FROM sessions WHERE COALESCE(agent,'claude') = ?)", []any{string(a)}
 }
 
-// sessionIDsOf rekeys a long scan's results from sid to session id. Naming the
-// session on every row instead took 0.28 s against 0.12 s for 355k events
-// (2026-10-19).
-func sessionIDsOf[V any](ctx context.Context, q Querier, bySid map[int64]V) (map[string]V, error) {
-	out := make(map[string]V, len(bySid))
-	if len(bySid) == 0 {
-		return out, nil
-	}
-	sids := make([]int64, 0, len(bySid))
-	for sid := range bySid {
-		sids = append(sids, sid)
-	}
-	list, err := json.Marshal(sids)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := q.QueryContext(ctx, `SELECT sid, session_id FROM sessions WHERE sid IN (SELECT value FROM json_each(?))`, string(list))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var sid int64
-		var id string
-		if err := rows.Scan(&sid, &id); err != nil {
-			return nil, err
-		}
-		out[id] = bySid[sid]
-	}
-	return out, rows.Err()
-}
-
 // eventScope is sessionScope for a column holding sessions.sid, as events'
 // does.
 func (a AgentFilter) eventScope(col string) (string, []any) {
@@ -2534,413 +2502,25 @@ func SummarizeSpark(ctx context.Context, q Querier, fromMs int64, spark SparkSpe
 
 // SummarizeSparkFor is SummarizeSpark restricted to one agent.
 func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark SparkSpec, agent AgentFilter) (Summary, error) {
-	s := Summary{FromMs: fromMs}
-	// One predicate, appended to every aggregate below. Computing it per query
-	// would be five chances to forget one, and a forgotten filter shows the
-	// other agent's money under this agent's heading.
-	ev, evArgs := agent.eventScope("sid")
-	evPrefixed, _ := agent.eventScope("e.sid")
-	// The sessions table carries the column itself, so it needs no subquery.
-	sess, sessArgs := "", []any(nil)
-	if agent != "" {
-		sess, sessArgs = " AND COALESCE(agent,'claude') = ?", []any{string(agent)}
+	// Every figure comes from the range's per-session parts (summaryparts.go),
+	// read here in full; PartsCache keeps them between requests and reads
+	// again only the sessions that moved. The hours are counted from the
+	// sparkline's grid, so each of its columns is a whole number of them.
+	base := fromMs
+	if spark.Buckets > 0 && spark.WidthMs > 0 {
+		base = spark.FromMs
 	}
-	// Grouping by kind runs off idx_events_kind_ts; summing CASE expressions
-	// instead forced a read of every row in the range — 197ms against 81ms on a
-	// 184k-event database, and this is the query behind both the Cost screen
-	// and History.
-	//
-	// The distinct session count stays a separate query on purpose: per-kind
-	// counts cannot be summed, because a session appears under several kinds
-	// (it totalled 212 against a true 56 here). That query is ~10ms.
-	//
-	// Pinned to idx_events_ts_cover (migration 0026). With no ANALYZE statistics SQLite chose
-	// idx_events_kind_id to skip the GROUP BY sort, and that walks every
-	// event in the table — 0.9s for today's 772 events on the owner's
-	// 300k-event database, the query the main screen polls every few seconds.
-	// The covering range scan is 0.02-0.2s at every range.
-	if err := sumKinds(ctx, q, fromMs, ev, evArgs, &s); err != nil {
-		return s, err
-	}
-	// This was grouped off idx_events_session_ts as a covering index, which
-	// stopped being one when `internal = 0` joined the predicate: the group
-	// then read every row in the table to test it, 0.4s at every range.
-	// COUNT(DISTINCT) over the ts range is 0.01-0.10s for today to 30d and
-	// 0.35s for all (measured 2026-09-30 on the owner's database). The
-	// history of the grouped form, kept because the numbers below are why it
-	// was right at the time:
-	//
-	// On a real 600 MB database this query alone was 1.5s of the 1.7s that
-	// Summarize took, and Summarize was 80% of `/v1/history?range=all` — the
-	// endpoint the main screen polls from three components at once. Measured
-	// best-of-three, warm: 0.14s → 0.02s at range=all, and no slower at today,
-	// 7d or 30d, so there is no range where the old form was the better plan
-	// and no reason to branch on one.
-	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT sid) FROM events INDEXED BY idx_events_ts_cover WHERE ts >= ?`+nonInternalEvent+ev, append([]any{fromMs}, evArgs...)...).Scan(&s.Sessions); err != nil {
-		return s, err
-	}
-	// "Active" means active *now*, so it is deliberately not range-scoped — but
-	// it must still be bounded in time. A session is marked active on its first
-	// event and only reaped later, so during a first-run backfill this counted
-	// every historical session at once: a new user's first impression was an
-	// active count in the dozens that then fell to one.
-	if err := q.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sessions WHERE status = 'active' AND last_event_at >= ?`+sess,
-		append([]any{nowMs() - int64(activeWindow/time.Millisecond)}, sessArgs...)...).Scan(&s.Active); err != nil {
-		return s, err
-	}
-	rows, err := q.QueryContext(ctx, `
-		SELECT COALESCE(model,''), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(SUM(cost_usd),0), COUNT(*), COALESCE(SUM(COALESCE(tokens_out,0)),0), COALESCE(SUM(COALESCE(cache_read,0)),0)
-		FROM events WHERE kind = 'turn.assistant' AND ts >= ?`+nonInternalEvent+ev+` GROUP BY model ORDER BY 3 DESC`, append([]any{fromMs}, evArgs...)...)
+	rp, err := readParts(ctx, q, fromMs, base, spark.WidthMs, partsScope{all: true})
 	if err != nil {
-		return s, err
+		return Summary{FromMs: fromMs}, err
 	}
-	for rows.Next() {
-		var m ModelShare
-		if err := rows.Scan(&m.Model, &m.Tokens, &m.CostUSD, &m.Turns, &m.Output, &m.CacheRead); err != nil {
-			_ = rows.Close()
-			return s, err
-		}
-		s.Models = append(s.Models, m)
-	}
-	// A truncated model list is a wrong number, not a short one: the model mix
-	// is rendered as a share of the total, so a missing row silently reweights
-	// every other model on the Cost screen (rule 6).
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return s, err
-	}
-	_ = rows.Close()
-	if err := discountUsageRecords(ctx, q, fromMs, agent, &s); err != nil {
-		return s, err
-	}
-	// Which of those models had no price. The model mix above shows an unpriced
-	// model with cost 0.00, which reads as "this model was free" rather than
-	// "we could not price it" — so the volume is carried out separately and the
-	// UI is able to say which model it could not price.
-	if u, err := queryUnpriced(ctx, q, fromMs, agent); err != nil {
-		return s, err
-	} else {
-		s.Unpriced = u
-	}
-	if b, err := queryBackgroundUsage(ctx, q, fromMs, agent); err != nil {
-		return s, err
-	} else {
-		s.Background = b
-	}
-	if agent == "" || agent == "hermes" {
-		h, err := HermesSpend(ctx, q, fromMs)
-		if err != nil {
-			return s, err
-		}
-		s.Hermes = h
-	}
-	if agent == "" || agent == "cursor" {
-		c, err := CursorSpend(ctx, q, fromMs)
-		if err != nil {
-			return s, err
-		}
-		s.Cursor = c
-	}
-	// Both levels of the projects roll-up come from ONE pass. Grouping by
-	// (project, first segment of repo_path) and summing the segments back up
-	// into the repository row costs a single scan; asking the database twice —
-	// once per repo, once per repo+path — scanned the same events twice for a
-	// breakdown that is arithmetic on the rows we already have.
-	//
-	// The segment is cut in SQL rather than in Go so the group-by collapses
-	// `ui/src/components` and `ui/lib` into one `ui` row inside the database,
-	// instead of shipping a row per distinct deep path across the driver.
-	// repo_path is stored slash-separated by RepoFromCwd whatever the host's
-	// separator, so this substring is not platform-dependent.
-	// Rows are keyed by repo_root, not by the label. Two checkouts can share a
-	// basename (`livegraph/repo` and `orch-live/repo` on the owner's machine),
-	// and grouping by the label would sum them into one row — the exact bug
-	// this change exists to fix, reintroduced one level up. Roots are unique by
-	// construction, so grouping on them cannot collide; the labels are made
-	// readable afterwards by DisambiguateLabels.
-	//
-	// A session outside any repository has no root, so it falls back to its
-	// project label, which unrootedInfo already derives from the full path.
-	// Events are aggregated per SESSION and grouped into repositories in Go.
-	//
-	// Grouping in SQL meant joining sessions on every one of ~90k assistant
-	// events and grouping on a wide text key; grouping on the integer sid
-	// alone runs off idx_events_turn_agent and needs no join and no
-	// COUNT(DISTINCT) — a session's row IS one distinct session. The mapping
-	// from session to (repository, segment) is then applied to tens of rows
-	// instead of tens of thousands. Measured on the owner's 190k-event
-	// database through the Go driver, best of six: the whole summary took
-	// 210ms before this change and 204ms after, so the second grouping level
-	// is free.
-	//
-	// When a sparkline is asked for, the SAME scan additionally groups by
-	// bucket index, computed in SQL so the driver ships one row per
-	// (session, bucket) that had spend rather than one row per event. On the
-	// owner's database that is tens of rows becoming hundreds — still nothing —
-	// while bucketing in Go would have meant selecting every assistant event's
-	// timestamp and carrying ~90k rows across the driver, which is the cost this
-	// query was written to avoid in the first place.
-	//
-	// The arithmetic is integer division on ts, not strftime: a date function
-	// would have to be applied per row and could not use the index, and the
-	// bucket edges are already known to the caller in unix ms.
-	totals := map[string]sessionBucket{}
-	// sparks[session][bucket] — only for sessions that actually spent.
-	sparks := map[string][]sessionBucket{}
-	sparkOn := spark.Buckets > 0 && spark.WidthMs > 0
-	if sparkOn {
-		// The CASE is not decoration. SQLite's integer division truncates
-		// TOWARD ZERO, so an event before the grid's start gives -0 — bucket 0 —
-		// and its spend would be painted onto the first column, which is spend
-		// that did not happen there. That is reachable whenever the grid starts
-		// after the range does. Negative offsets are mapped to -1 so the Go side
-		// can reject them as "in the range, but off the picture".
-		//
-		// Each bucket is further split by the hour from the grid's start, so a
-		// row is one session's clock hour and the burn rate's active hours
-		// (Spark.ActiveHours) come from the same scan. The grid starts on a
-		// local hour and its widths are whole hours, so an hour never
-		// straddles two buckets. Measured on a 2.3 GB copy of the owner's
-		// database, 30 days, warm: 0.032s before and 0.033s after, 109 rows
-		// becoming 472, off the same covering index (2026-10-13).
-		rows, err = q.QueryContext(ctx, `
-			SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid),
-			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / ? END AS bucket,
-			       CASE WHEN e.ts < ? THEN -1 ELSE (e.ts - ?) / 3600000 END AS hr,
-			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COALESCE(SUM(e.cost_usd),0),
-			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COUNT(*), COUNT(e.cost_usd)
-			FROM events e
-			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
-			GROUP BY e.sid, bucket, hr`,
-			append([]any{spark.FromMs, spark.FromMs, spark.WidthMs, spark.FromMs, spark.FromMs, fromMs}, evArgs...)...)
-	} else {
-		rows, err = q.QueryContext(ctx, `
-			SELECT (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), 0 AS bucket, 0 AS hr,
-			       COALESCE(SUM(COALESCE(e.tokens_in,0)+COALESCE(e.tokens_out,0)+COALESCE(e.cache_read,0)+COALESCE(e.cache_write,0)),0),
-			       COALESCE(SUM(e.cost_usd),0), 0, 0, 0
-			FROM events e
-			WHERE e.kind = 'turn.assistant' AND e.ts >= ?`+nonInternalEventE+evPrefixed+`
-			GROUP BY e.sid`, append([]any{fromMs}, evArgs...)...)
-	}
-	if err != nil {
-		return s, err
-	}
-	for rows.Next() {
-		var id string
-		var b, hr, priced int64
-		var t sessionBucket
-		if err := rows.Scan(&id, &b, &hr, &t.tokens, &t.cost, &t.input, &t.turns, &priced); err != nil {
-			_ = rows.Close()
-			return s, err
-		}
-		// The row totals accumulate across buckets, so a repository's headline
-		// number is the same whether or not a sparkline was requested. The
-		// sparkline must never be able to change the figure it sits beside.
-		cur := totals[id]
-		cur.tokens += t.tokens
-		cur.cost += t.cost
-		totals[id] = cur
-		if !sparkOn {
-			continue
-		}
-		// Out-of-range buckets still count toward the total above — they are
-		// spend inside `fromMs` — but have no column to be drawn in. This
-		// happens when the caller's bucket grid starts after fromMs; it is not
-		// an error, and silently dropping the money would understate the row.
-		if b < 0 || b >= int64(spark.Buckets) {
-			continue
-		}
-		series := sparks[id]
-		if series == nil {
-			series = make([]sessionBucket, spark.Buckets)
-		}
-		series[b].tokens += t.tokens
-		series[b].cost += t.cost
-		series[b].input += t.input
-		series[b].turns += t.turns
-		// A row is one session's hour, active by Usual's own rule, so a bar's
-		// burn and the usual it is drawn against measure the same thing.
-		if priced >= UsualMinCalls && t.cost > 0 {
-			series[b].activeHours++
-			series[b].activeCost += t.cost
-		}
-		sparks[id] = series
-	}
-	// A truncated projects list is a wrong number for the same reason a
-	// truncated model list is (rule 6): the panel renders each bar as a share
-	// of the largest row.
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return s, err
-	}
-	if err := rows.Close(); err != nil {
-		return s, err
-	}
-	// Per-directory attribution needs spend at TURN granularity, because a turn
-	// is the unit that can be charged to a directory: its cost is billed as one
-	// amount, and the tools it called are what say where that amount went. The
-	// two queries below are the only extra work this feature adds to the
-	// summary — measured on the owner's database, see § timings in
-	// migration 0012.
-	turns, unlinkedCalls, err := turnSpendBySession(ctx, q, fromMs)
-	if err != nil {
-		return s, err
-	}
-	// Every repository root any session reported. Needed before the rows below
-	// are walked, because a session with no root of its own is joined to a root
-	// that another session reported for the same directory — and rows arrive in
-	// no particular order, so deciding as we go would join or split the same
-	// pair depending on which the driver happened to return first. One scan of
-	// a column that has one value per session; the mapping loop below is tens
-	// of rows either way.
-	roots := map[string]bool{}
-	rr, err := q.QueryContext(ctx,
-		`SELECT DISTINCT repo_root FROM sessions WHERE repo_root IS NOT NULL AND repo_root != ''`)
-	if err != nil {
-		return s, err
-	}
-	for rr.Next() {
-		var r string
-		if err := rr.Scan(&r); err != nil {
-			rr.Close()
-			return s, err
-		}
-		roots[r] = true
-	}
-	if err := rr.Err(); err != nil {
-		rr.Close()
-		return s, err
-	}
-	rr.Close()
-	// The session → repository mapping. Only sessions that actually spent in
-	// the range are looked up, so a database full of old sessions costs nothing.
-	rows, err = q.QueryContext(ctx,
-		`SELECT session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(agent,'claude') FROM sessions`+
-			map[bool]string{true: " WHERE COALESCE(agent,'claude') = ?", false: ""}[agent != ""], sessArgs...)
-	if err != nil {
-		return s, err
-	}
-	defer rows.Close()
-	byRoot := map[string]int{}       // grouping key → index into s.Projects
-	rootLabel := map[string]string{} // grouping key → label it claims
-	// pathIdx keeps one row per (repository, segment) so repeated sessions in
-	// the same directory merge instead of stacking duplicate breakdown rows.
-	pathIdx := map[[2]string]int{}
-	for rows.Next() {
-		var id, label, root, path, cwd, agent string
-		if err := rows.Scan(&id, &label, &root, &path, &cwd, &agent); err != nil {
-			return s, err
-		}
-		t, spent := totals[id]
-		if !spent {
-			continue // no assistant turns in this range
-		}
-		delete(totals, id)
-		// Rows are keyed by repo_root, not by the label. Two checkouts can
-		// share a basename (`livegraph/repo` and `orch-live/repo` on the
-		// owner's machine), and grouping by the label would sum them into one
-		// row — the exact bug this change exists to fix, one level up. Roots
-		// are unique by construction; a session outside any repository falls
-		// back to its label, which unrootedInfo derives from the full path.
-		// A session outside any repository is identified by its own directory,
-		// not by its label: /tmp/demo/testrepo and /tmp/demo2/testrepo are both
-		// labelled `testrepo`, and keying on the label would sum them — the
-		// original bug, one level up. The label is made unique for display by
-		// DisambiguateLabels, which widens only what actually collides.
-		key := root
-		if key == "" {
-			// A session outside any repository whose directory IS a repository
-			// another session reported belongs with that one. Claude Code only
-			// records repo_root when it resolves a checkout, so running once in
-			// a repo and once where git could not answer split one project into
-			// two rows — the second labelled with its full path, because
-			// unrootedInfo derives a label from the path when there is no
-			// project name to use. Same directory, same work, one row.
-			if roots[cwd] {
-				key = cwd
-			} else {
-				key = "cwd:" + cwd
-			}
-		}
-		// With neither a repository nor a cwd there is nothing to group on but
-		// the label itself. Falling through to a shared empty key would merge
-		// every such session into one row.
-		if key == "cwd:" {
-			key = "label:" + label
-		}
-		i, ok := byRoot[key]
-		if !ok {
-			i = len(s.Projects)
-			byRoot[key] = i
-			rootLabel[key] = label
-			dir := root
-			if dir == "" {
-				dir = cwd
-			}
-			s.Projects = append(s.Projects, ProjectShare{Project: label, Agent: agent, Dir: dir})
-		}
-		p := &s.Projects[i]
-		// A repository worked on with both agents carries neither label.
-		if p.Agent != agent {
-			p.Agent = ""
-		}
-		p.Tokens += t.tokens
-		p.CostUSD += t.cost
-		// A session lives in exactly one directory, so it counts once for its
-		// repository and once for its segment: the per-segment counts partition
-		// the repository's sessions and add up without double-counting.
-		p.Sessions++
-		if sparkOn {
-			addSpark(p, spark, sparks[id])
-		}
-		// The per-directory breakdown is charged by what the session's TURNS
-		// touched, not by the directory the session was launched from. The
-		// per-turn figures were gathered above; here they are folded into the
-		// repository this session belongs to.
-		//
-		// root, not key: attribution compares a carried path against a real
-		// repository root, and a session outside any repository ("cwd:…") has
-		// none to compare with — its turns land in the outside row, which is
-		// the honest answer for work with no repository to be inside of.
-		for _, tt := range turns[id] {
-			seg, _ := AttributeDir(tt.touched, root)
-			pk := [2]string{key, seg}
-			j, ok := pathIdx[pk]
-			if !ok {
-				j = len(p.Paths)
-				pathIdx[pk] = j
-				p.Paths = append(p.Paths, PathShare{Path: seg})
-			}
-			ps := &p.Paths[j]
-			ps.Tokens += tt.tokens
-			ps.CostUSD += tt.cost
-			ps.Turns++
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return s, err
-	}
-	// Spend whose session row has since been deleted still belongs in the
-	// totals: dropping it would silently understate the bill (rule 6).
-	if len(totals) > 0 {
-		var orphan ProjectShare
-		for id, t := range totals {
-			orphan.Tokens += t.tokens
-			orphan.CostUSD += t.cost
-			orphan.Sessions++
-			// The orphan row gets a sparkline too. Without one it would be the
-			// single row whose picture disagreed with its number — a blank
-			// sparkline beside real money reads as "nothing happened".
-			if sparkOn {
-				addSpark(&orphan, spark, sparks[id])
-			}
-		}
-		s.Projects = append(s.Projects, orphan)
-	}
+	s, _, err := buildSummary(ctx, q, fromMs, spark, agent, rp)
+	return s, err
+}
+
+// finishProjects labels the repository rows, trims and orders each one's
+// per-directory breakdown, and orders the rows by cost.
+func finishProjects(s *Summary, byRoot map[string]int, rootLabel map[string]string) {
 	labels := DisambiguateLabels(rootLabel)
 	for root, i := range byRoot {
 		if l, ok := labels[root]; ok && l != "" {
@@ -3020,11 +2600,10 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 	// the database applied would have been over segments, not repositories.
 	sort.SliceStable(s.Projects, func(a, b int) bool { return s.Projects[a].CostUSD > s.Projects[b].CostUSD })
 
-	// What the money was spent ON. This is the third cut of the same question
-	// the model mix and the project list answer, and it shares their rule: a
-	// turn's cost goes whole to one row, so the rows sum exactly to the total.
-	work, unlinked := workSpend(turns, unlinkedCalls)
-	s.Work, s.WorkUnlinkedCalls = work, unlinked
+}
+
+// finishWork gives each work row its share of the range.
+func finishWork(s *Summary) {
 	// The denominators are the RANGE totals, so each column sums to 100%. They
 	// are taken from the rows themselves rather than from s.CostUSD/s.Tokens*:
 	// the summary's headline totals sum every event kind (so a future priced
@@ -3046,7 +2625,6 @@ func SummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark Spark
 			w.CostPct = 100 * w.CostUSD / workCost
 		}
 	}
-	return s, nil
 }
 
 // Offset persistence for the transcript tailer.
