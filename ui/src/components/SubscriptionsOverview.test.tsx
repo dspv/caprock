@@ -68,13 +68,13 @@ describe('the subscriptions overview', () => {
     const row = (id: string) => document.querySelector(`[data-sub-row="${id}"]`) as HTMLElement
     // The own sign-in carries the main plan and the default badge.
     expect(row('claude:default').textContent).toContain('PersonalMaxdefault')
-    expect(row('claude:default').textContent).toContain('as of 1 min ago')
+    expect(row('claude:default').textContent).toContain('as of 1m ago')
     expect(within(row('claude:default')).getByRole('img', { name: /^5-hour: 12% left, resets/ })).toBeTruthy()
     expect(row('claude:default').textContent).toContain('● 2 running')
     expect(row('claude:default').textContent).toContain('$412.30 at API price')
     expect(row('claude:default').textContent).toContain('23 sessions · 7 days')
-    expect(row('claude:a1').textContent).toContain('as of 14 min ago')
-    expect(row('claude:a1').textContent).toMatch(/62% left.*resets .+ · in 2 h 29 min/)
+    expect(row('claude:a1').textContent).toContain('as of 14m ago')
+    expect(row('claude:a1').textContent).toMatch(/62% left.*resets .+ · in 2h 29m/)
     expect(row('claude:a1').textContent).not.toMatch(/used/)
     expect(row('claude:a1').textContent).not.toContain('default')
     // The order is not shown while the setting is not automatic.
@@ -113,8 +113,8 @@ describe('the subscriptions overview', () => {
 
   it('ages figures in plain words', () => {
     expect(ageText(NOW - 20_000, NOW)).toBe('just now')
-    expect(ageText(NOW - 14 * 60_000, NOW)).toBe('14 min ago')
-    expect(ageText(NOW - 125 * 60_000, NOW)).toBe('2 h 5 min ago')
+    expect(ageText(NOW - 14 * 60_000, NOW)).toBe('14m ago')
+    expect(ageText(NOW - 125 * 60_000, NOW)).toBe('2h 5m ago')
   })
 })
 

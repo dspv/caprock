@@ -84,9 +84,9 @@ describe('buildPopover', () => {
       } as never,
     })
     expect(m.limits).toEqual([
-      { agent: 'Claude', label: '5h', pct: 42, resetIn: '1 h 39 min', stale: false },
+      { agent: 'Claude', label: '5h', pct: 42, resetIn: '1h 39m', stale: false },
       { agent: 'Claude', label: '7d', pct: 12, resetIn: null, stale: true },
-      { agent: 'Codex', label: '5h', pct: 8, resetIn: '30 min', stale: false },
+      { agent: 'Codex', label: '5h', pct: 8, resetIn: '30m', stale: false },
     ])
     expect(m.today).toBe(3.1)
   })
