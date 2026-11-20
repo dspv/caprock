@@ -762,9 +762,12 @@ html[data-page-hidden] *, html[data-page-hidden] *::before, html[data-page-hidde
   --app-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 html[data-app], html[data-app] body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-/* Inside the Tauri shell the window's own material shows through the sidebar
- * (vibrancy); the page itself is transparent there and nowhere else. */
-html[data-app][data-tauri], html[data-app][data-tauri] body { background: transparent; }
+/* Inside the macOS window its own material shows through the sidebar
+ * (vibrancy); the page itself is transparent there and nowhere else. On
+ * Windows and Linux the window is opaque, and a transparent page let the
+ * webview's white through the sidebar, which drew lighter than the rest
+ * (a Windows photo, 2026-11-20). */
+html[data-app][data-vibrancy], html[data-app][data-vibrancy] body { background: transparent; }
 [data-app] .app-sidebar {
   background: var(--app-sidebar-bg);
   -webkit-backdrop-filter: saturate(1.6) blur(24px);

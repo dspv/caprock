@@ -1496,7 +1496,10 @@ one lean terminal; they stay below Orca (420–541 MB idle) and a Chrome tab.
   answers. Both windows are transparent with no background colour of their
   own; the first paint is the page's (the pre-paint script in
   `ui/index.html`, then `tokens.css`, which paints Dark Pastel for a dark
-  `<html>` nothing has marked yet). The React code detects the app
+  `<html>` nothing has marked yet). Only the macOS window has a material
+  behind the page, so only there is the page itself transparent
+  (`data-vibrancy` on `<html>`); on Windows and Linux the page paints its own
+  ground, or the webview's white showed through the sidebar (2026-11-20). The React code detects the app
   (`window.__TAURI_INTERNALS__`) and turns on the app-only surfaces: tabs
   layout, native notifications instead of in-page ones, the badge.
 - **The shell talks to the page through Tauri commands**, allowlisted for the

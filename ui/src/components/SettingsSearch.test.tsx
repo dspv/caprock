@@ -69,6 +69,32 @@ describe('Settings search', () => {
     expect(screen.getByText('Ctrl+Shift+F')).toBeInTheDocument()
   })
 
+  // The first run on a Windows PC (2026-11-20): Ctrl+Shift+F, twelve
+  // characters where a Mac has two, was drawn over "Search settings" in the
+  // 224px menu. The key is drawn only where the field is wide enough for
+  // both (a container query on the field; e2e/settings-windows.spec.ts
+  // measures it in a browser), and the field's tooltip always names it.
+  it('draws the key only where the field has room beside the placeholder, and names it in the tooltip', () => {
+    const { unmount } = render(<Page />)
+    const field = () => screen.getByLabelText('Search settings')
+    const box = () => field().parentElement!
+    expect(box().className).toContain('@container')
+    expect(field()).toHaveAttribute('title', 'Search settings (⌘F)')
+    const macKey = screen.getByText('⌘F')
+    expect(macKey.className).toMatch(/(^| )hidden( |$)/)
+    expect(macKey.className).toContain('@[11rem]:block')
+    unmount()
+    m.mac = false
+    render(<Page />)
+    expect(field()).toHaveAttribute('title', 'Search settings (Ctrl+Shift+F)')
+    const key = screen.getByText('Ctrl+Shift+F')
+    expect(key.className).toMatch(/(^| )hidden( |$)/)
+    // 17rem: the icon (32px), the placeholder (102px), the key (100px) and
+    // their gaps come to 250px; the menu's field is 224px, so not there.
+    expect(key.className).toContain('@[17rem]:block')
+    expect(key.className).toContain('whitespace-nowrap')
+  })
+
   it('⌘F on macOS puts the cursor in the field', () => {
     render(<Page />)
     fireEvent.keyDown(window, { key: 'f', code: 'KeyF', metaKey: true })

@@ -130,6 +130,10 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
     return out
   }, [projects.data, recent.data])
   const agents = useMemo(() => (catalog.data?.agents ?? []).filter((a) => a.installed && !a.locked), [catalog.data])
+  // Its catalog answered and nothing in it is installed: said in words, since
+  // the field's "reading…" then never ends (owner, 2026-11-20, on a Windows
+  // PC with Caprock and no Claude Code yet).
+  const noAgent = Boolean(catalog.data) && agents.length === 0
   const [cwd, setCwd] = useState('')
   useEffect(() => { if (!cwd && folders[0]) setCwd(folders[0].path) }, [folders, cwd])
   const [agent, setAgent] = useState('claude')
@@ -213,7 +217,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
           <SheetButton onClick={onClose} aria-keyshortcuts="Escape" title="Cancel (Esc)" keyHint="Esc">Cancel</SheetButton>
           <SheetButton
             primary
-            disabled={busy || !cwd.trim()}
+            disabled={busy || !cwd.trim() || noAgent}
             onClick={() => void start()}
             aria-keyshortcuts={isMacPlatform() ? 'Meta+Enter' : 'Control+Enter'}
             title={`Start on ${name} (${startKey})`}
@@ -229,7 +233,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
           <MachinePicker machines={machines} value={machine} onChange={onMachine} />
           <SheetField label="Agent">
             <select className="input" aria-label="Agent" value={agent} onChange={(e) => { setAgent(e.target.value); setModel('') }} disabled={agents.length === 0}>
-              {agents.length === 0 && <option value="claude">{catalog.error ? 'Claude Code' : 'reading…'}</option>}
+              {agents.length === 0 && <option value="claude">{catalog.error ? 'Claude Code' : noAgent ? 'none installed there' : 'reading…'}</option>}
               {agents.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
             </select>
           </SheetField>
@@ -237,6 +241,11 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
         {readFailed && (
           <p role="note" className="text-[12.5px] text-danger">
             {remoteStartError(projects.error, name)}
+          </p>
+        )}
+        {noAgent && (
+          <p role="note" data-no-agent className="text-[12.5px] text-warn">
+            No agent is installed on {name}. Install Claude Code or another agent there and sign in, restart Caprock on it, then open this again.
           </p>
         )}
         <SheetField label={`Folder on ${name}`} hint={folderNote}>

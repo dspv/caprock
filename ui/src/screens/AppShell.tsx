@@ -317,9 +317,14 @@ export default function AppRoot() {
     const root = document.documentElement
     root.setAttribute('data-app', '')
     if (isTauri()) root.setAttribute('data-tauri', '')
+    // Only the macOS window is transparent with a material behind the page
+    // (app/src-tauri/src/shell.rs); elsewhere a transparent page shows the
+    // webview's own white through the translucent sidebar.
+    if (isTauri() && isMacPlatform()) root.setAttribute('data-vibrancy', '')
     return () => {
       root.removeAttribute('data-app')
       root.removeAttribute('data-tauri')
+      root.removeAttribute('data-vibrancy')
     }
   }, [])
   if (access === 'checking') return null

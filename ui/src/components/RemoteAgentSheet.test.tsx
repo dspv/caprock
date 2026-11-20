@@ -76,6 +76,17 @@ describe('New agent on another computer', () => {
     expect(calls.some((c) => c.url === '/v1/agents')).toBe(false)
   })
 
+  // A computer with Caprock and no agent yet: the field said "reading…" for
+  // good, which reads as a link that hangs.
+  it('says so when no agent is installed on that computer, and does not start', async () => {
+    stubFetch({ ...homeRoutes({ body: {} }), [`${far}/v1/agents/catalog`]: { body: { licensed: false, agents: [{ id: 'claude', label: 'Claude Code', installed: false, ready: false, models: [], observed: true, prompt: true }] } } })
+    render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} onStartedOn={vi.fn()} />)
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Machine' }), { target: { value: ID } })
+    expect(await screen.findByText(/No agent is installed on Mac mini/)).toBeTruthy()
+    expect(screen.getByRole('combobox', { name: 'Agent' }).textContent).toBe('none installed there')
+    expect((screen.getByRole('button', { name: /Start/ }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   it('says offline in words when the computer went away', async () => {
     stubFetch(homeRoutes({ status: 503, body: { error: 'the computer is offline: not at the relay', status: 'offline' } }))
     render(<NewAgentSheet projects={[]} onClose={vi.fn()} onStarted={vi.fn()} />)
