@@ -13,10 +13,12 @@ type LivePID struct {
 
 // LivePIDs lists the sessions not ended that have a process id: the ones the
 // resource meter can measure. Sessions without one (an older shim's rows, a
-// transcript with no process behind it) are left out.
+// transcript with no process behind it) are left out. Most recently heard
+// from first: a /clear's session shares its parent's process, and the one a
+// shell tab is named after is the newer (daemon shellAdapter).
 func LivePIDs(ctx context.Context, q Querier) ([]LivePID, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT session_id, pid FROM sessions WHERE status != 'ended' AND pid IS NOT NULL AND pid > 0`)
+		`SELECT session_id, pid FROM sessions WHERE status != 'ended' AND pid IS NOT NULL AND pid > 0 ORDER BY last_event_at DESC`)
 	if err != nil {
 		return nil, err
 	}

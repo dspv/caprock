@@ -41,6 +41,7 @@ import (
 	"github.com/dspv/caprock/internal/devshare"
 	"github.com/dspv/caprock/internal/editor"
 	"github.com/dspv/caprock/internal/event"
+	"github.com/dspv/caprock/internal/fgproc"
 	"github.com/dspv/caprock/internal/gemini"
 	"github.com/dspv/caprock/internal/github"
 	"github.com/dspv/caprock/internal/gitremote"
@@ -841,7 +842,7 @@ func (d *Daemon) run(ctx context.Context) error {
 			Env: func() []string { return userenv.Environ(d.log) },
 		},
 		Pairing: d.pairing, LANURL: d.lanURL, Started: d.start, LAN: d, Remote: d, Machines: d.machines, DevShare: d.devShare,
-		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr}, GitHub: d.gh,
+		Projects: d.projs, Templates: tpls, Shells: &shellAdapter{m: d.mgr, live: d.livePIDs}, GitHub: d.gh,
 		Obsidian: vaults, Mail: d.mail.Handler(), BrainAuto: &brainAdapter{d: d, eng: d.brain},
 		TLDR:              d.newTLDRRunner(),
 		BrainHandoffState: d.brainHandoffState,
@@ -2360,7 +2361,24 @@ func (d *Daemon) observeHook(p hookd.Payload) {
 func (a *agentAdapter) Survives(id string) bool { return a.m.Survives(id) }
 
 // shellAdapter bridges the manager's shell tabs to api.ShellController.
-type shellAdapter struct{ m *agents.Manager }
+// live lists the sessions not ended with their process, newest first
+// (store.LivePIDs); nil names no shell after an agent.
+type shellAdapter struct {
+	m    *agents.Manager
+	live func() []store.LivePID
+}
+
+// livePIDs is store.LivePIDs for the shell list, nothing on an error: a
+// shell then reads as a shell, never as the wrong session.
+func (d *Daemon) livePIDs() []store.LivePID {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	live, err := store.LivePIDs(ctx, d.store.DB())
+	if err != nil {
+		return nil
+	}
+	return live
+}
 
 func (a *shellAdapter) StartShell(ctx context.Context, cwd string, cols, rows int) (api.ShellInfo, error) {
 	sh, err := a.m.SpawnShell(ctx, agents.ShellRequest{Cwd: cwd, Cols: cols, Rows: rows})
@@ -2376,10 +2394,34 @@ func (a *shellAdapter) RunAtPrompt(id, text string)  { a.m.RunAtPrompt(id, text)
 
 func (a *shellAdapter) Shells() []api.ShellInfo {
 	var out []api.ShellInfo
+	var live []store.LivePID
+	read := false
 	for _, sh := range a.m.Shells() {
-		out = append(out, a.info(sh))
+		info := a.info(sh)
+		// Only a busy shell is matched, and the sessions are read once for
+		// all of them: an idle machine's poll costs no query.
+		if _, job := a.m.ShellJob(sh.SessionID); job > 0 && a.live != nil {
+			if !read {
+				live, read = a.live(), true
+			}
+			info.AgentSession = agentInJob(live, job, fgproc.InJob)
+		}
+		out = append(out, info)
 	}
 	return out
+}
+
+// agentInJob is the session, of live (newest first), whose process belongs
+// to the shell's foreground job: the agent the user started in a shell tab
+// ("claude --resume <id>" after a Caprock session died, owner, 2026-11-20).
+// It reads the process table only; rule 7 holds.
+func agentInJob(live []store.LivePID, job int, in func(pid, job int) bool) string {
+	for _, l := range live {
+		if in(l.PID, job) {
+			return l.SessionID
+		}
+	}
+	return ""
 }
 
 func (a *shellAdapter) IsShell(id string) bool { return a.m.IsShell(id) }

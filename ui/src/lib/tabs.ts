@@ -60,6 +60,12 @@ export interface TabTarget {
    * one line at its top, with Resume, until dismissed.
    */
   ended?: EndedAgent
+  /**
+   * A shell (or a session pane holding one): the name the user gave its tab; absent, it is "Shell N"
+   * (lib/tablabels.ts). Kept with the workspace, in this window's storage: a
+   * shell has no session row to carry a name (owner, 2026-11-20).
+   */
+  name?: string
 }
 
 export interface PaneLeaf {
@@ -135,6 +141,8 @@ export type WorkspaceAction =
   /** Puts the pinned Pipeline tab in the strip, or takes it out. */
   | { type: 'pipeline'; open: boolean }
   | { type: 'retitle'; sessionId: string; title: string }
+  /** A shell's tab named by the user; '' gives it back "Shell N". */
+  | { type: 'name-shell'; sessionId: string; name: string }
   /** A page moved on or named itself: its address and title, as the shell reports them. */
   | { type: 'page-nav'; sessionId: string; url?: string; title?: string }
   | { type: 'drop-session'; sessionId: string }
@@ -393,6 +401,22 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       })
       return changed ? { ...ws, tabs } : ws
     }
+    case 'name-shell': {
+      const name = a.name.replace(/\s+/g, ' ').trim()
+      let changed = false
+      const named = (n: PaneNode): PaneNode => {
+        if (n.type === 'split') return { ...n, children: n.children.map(named) }
+        // A shell's pane, or a session pane the shell took over (its id is the shell's).
+        const kind = n.target.kind
+        if ((kind !== 'shell' && kind !== 'session') || n.target.sessionId !== a.sessionId || (n.target.name ?? '') === name) return n
+        changed = true
+        const rest = { ...n.target }
+        delete rest.name
+        return { ...n, target: name ? { ...rest, name } : rest }
+      }
+      const tabs = ws.tabs.map((t) => ({ ...t, root: named(t.root) }))
+      return changed ? { ...ws, tabs } : ws
+    }
     case 'page-nav': {
       let changed = false
       const tabs = ws.tabs.map((t) => {
@@ -500,7 +524,8 @@ function isTarget(v: unknown): v is TabTarget {
   if (t.kind === 'page') return typeof t.url === 'string' && (t.url === '' || pageAddress(t.url)) && (t.of === undefined || typeof t.of === 'string') && (t.preview === undefined || typeof t.preview === 'boolean')
   // A shell's ended agent, malformed, would only cost its line: the tab is kept, the value dropped.
   if (t.kind === 'shell' && t.ended !== undefined && !validEnded(t.ended)) delete t.ended
-  return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
+  if (t.kind === 'shell' || t.kind === 'session') return t.name === undefined || typeof t.name === 'string'
+  return t.kind === 'observe'
 }
 
 /** Replaces the leaf `id` under `node` with what `f` makes of it. */

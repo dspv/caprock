@@ -76,6 +76,17 @@ func TestForegroundUnderAPty(t *testing.T) {
 		t.Fatalf("type: %v", err)
 	}
 	waitFor("sleep")
+	// The job is the group in front; the job's process is in it, the shell is not.
+	name, job := Job(pid)
+	if name != "sleep" || job <= 1 {
+		t.Fatalf("Job(shell) = %q, %d, want sleep and its group", name, job)
+	}
+	if !InJob(job, job) {
+		t.Error("the job's leader is not in its own job")
+	}
+	if InJob(pid, job) {
+		t.Error("the shell counted as part of the job in front of it")
+	}
 	if _, err := s.Write([]byte{0x03}); err != nil { // Ctrl-C ends the job
 		t.Fatalf("interrupt: %v", err)
 	}
@@ -103,6 +114,35 @@ func TestChildNameSkipsAnOrphanOfAReusedPid(t *testing.T) {
 	}
 	if got := childName(shell, start, []proc{{pid: 7, ppid: shell, exe: "same.exe", start: start}}); got != "same" {
 		t.Errorf("a child started in the shell's clock tick = %q, want same", got)
+	}
+}
+
+// On Windows a session's process belongs to the shell's job when the job is
+// it or a parent a few levels up — node under cmd.exe under claude.cmd — and a
+// "parent" younger than its child is a reused pid, not a parent.
+func TestParentChain(t *testing.T) {
+	procs := []proc{
+		{pid: 10, ppid: 1, start: 100},  // the shell's job: cmd.exe running claude.cmd
+		{pid: 11, ppid: 10, start: 110}, // node, the session's process
+		{pid: 12, ppid: 11, start: 120}, // a tool it runs
+		{pid: 20, ppid: 30, start: 50},  // claims a parent that started after it
+		{pid: 30, ppid: 10, start: 300},
+	}
+	for _, c := range []struct {
+		pid, job int
+		want     bool
+	}{
+		{11, 10, true}, {12, 10, true}, {10, 10, true},
+		{20, 10, false}, // through a reused pid
+		{11, 12, false}, // a child is not a parent
+		{99, 10, false}, // gone
+	} {
+		if got := parentChain(c.pid, c.job, procs); got != c.want {
+			t.Errorf("parentChain(%d, %d) = %v, want %v", c.pid, c.job, got, c.want)
+		}
+	}
+	if InJob(0, 10) || InJob(11, 1) {
+		t.Error("InJob answered for an unknown pid or job")
 	}
 }
 

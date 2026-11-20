@@ -6,15 +6,22 @@ import (
 	"strings"
 )
 
-func foreground(shellPID int) string {
+func foreground(shellPID int) (string, int) {
 	pgid, tpgid, ok := stat(shellPID)
 	if !ok || tpgid <= 0 || tpgid == shellPID || tpgid == pgid {
-		return ""
+		return "", 0
 	}
 	if n := nameOf(tpgid); n != "" {
-		return n
+		return n, tpgid
 	}
-	return Unnamed
+	return Unnamed, tpgid
+}
+
+// inJob: the process's group is the terminal's foreground group, so a
+// wrapper ("npx claude") and the program it runs both count.
+func inJob(pid, job int) bool {
+	pgid, _, ok := stat(pid)
+	return ok && pgid == job
 }
 
 // stat reads a process's group and its terminal's foreground group from

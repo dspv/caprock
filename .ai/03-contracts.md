@@ -4784,7 +4784,7 @@ WS     /v1/live "shells" frame             → {shells: [Shell]}: every running 
   first starts the shell and the rest get the same one while it runs. The map
   is the daemon's memory only and forgets a shell once it has ended.
 - **`Shell`** — `{id, cwd, command, started_at, survives_restart, project_id?,
-  program?, internal: true, kind: "shell"}`. **`program`** is what runs in
+  program?, agent_session_id?, internal: true, kind: "shell"}`. **`program`** is what runs in
   front of the shell's prompt — `"claude"`, `"npm"`, `"vim"`, the program's
   argv[0] base name (not the kernel's short name: Claude Code's native binary
   is a file named after its version) — and is absent while the shell sits at
@@ -4802,7 +4802,20 @@ WS     /v1/live "shells" frame             → {shells: [Shell]}: every running 
   per shell however often the list is asked (`internal/fgproc`,
   `Manager.ShellProgram`); reading signals nothing (rule 7). The app ends an
   idle shell whose tab is closed and asks first about a busy one
-  ([21-app.md § Shell tabs](21-app.md#shell-tabs)). The user's login shell — `$SHELL -l` from
+  ([21-app.md § Shell tabs](21-app.md#shell-tabs)).
+  **`agent_session_id`** (2026-11-20) is the session Caprock observes running
+  as that program — `claude --resume <id>` typed into a shell tab, the
+  owner's way back after a Caprock session died — and is absent otherwise.
+  It is the newest session not ended (`store.LivePIDs`, by `last_event_at`)
+  whose `pid`, reported by the hook shim, belongs to the shell's foreground
+  job: on macOS and Linux its process group is the terminal's foreground
+  group (so `npx claude` counts as well as `claude`), on Windows the job — the
+  shell's child — is the process or one of up to eight parents, each older
+  than its child (`fgproc.Job`, `fgproc.InJob`, daemon `agentInJob`). The
+  sessions are read only when some shell is busy, once per list. The app
+  names the tab after that session and Rename renames it
+  ([04-ui.md § Renaming a shell's tab](04-ui.md#renaming-a-shells-tab)); when
+  the agent exits the field goes and the tab is the shell again. The user's login shell — `$SHELL -l` from
   the login environment on POSIX; `pwsh.exe -NoLogo`, else `powershell.exe
   -NoLogo`, else `%ComSpec%` on Windows — under a pty-host with `meta.kind =
   "shell"`, so it outlives the daemon like an agent session. Its terminal,

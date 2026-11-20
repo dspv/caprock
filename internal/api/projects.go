@@ -37,6 +37,11 @@ type ShellInfo struct {
 	// "vim"); absent when the shell is idle or the platform cannot tell.
 	// Closing the tab of an idle shell ends it; a busy one asks first.
 	Program string `json:"program,omitempty"`
+	// AgentSession is the session Caprock observes running in front of the
+	// prompt — "claude --resume <id>" typed into the shell — when its process
+	// is the shell's foreground job; absent otherwise. The tab is named, and
+	// renamed, as that session while it runs (owner, 2026-11-20).
+	AgentSession string `json:"agent_session_id,omitempty"`
 	// Internal is always true: a shell is not a session and is in no total.
 	Internal bool   `json:"internal"`
 	Kind     string `json:"kind"` // "shell"
