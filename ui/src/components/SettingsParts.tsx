@@ -63,7 +63,7 @@ export function Section({ id, title, aside, children, explained }: { id?: string
     } catch { /* private window */ }
   }
   return (
-    <section id={sid} hidden={filteredOut || undefined} data-settings-section={title} data-explain={explain || explained ? 'on' : undefined} className="min-w-0 scroll-mt-16 rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
+    <section id={sid} hidden={filteredOut || undefined} data-settings-section={title} data-explain={explain || explained ? 'on' : undefined} className="min-w-0 scroll-mt-[var(--settings-top,4rem)] rounded-[var(--radius-panel)] border border-border bg-panel shadow-[var(--shadow-panel)]">
       {/* Wraps rather than squeezing: on a phone the status beside a long
         * title drops under it instead of pushing the page sideways. */}
       <header className={`flex min-h-[52px] flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 ${folded ? 'py-3' : 'pt-4'}`}>

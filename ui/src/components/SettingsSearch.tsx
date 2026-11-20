@@ -118,14 +118,22 @@ function SearchIcon() {
 export function SettingsSearchField({ search, className = '' }: { search: SettingsSearchState; className?: string }) {
   const { query, setQuery, matches, jump } = search
   const key = keys('⌘F')
+  // The key only where it fits beside the placeholder. Off macOS it is the
+  // twelve characters of Ctrl+Shift+F, wider than what the 224px menu has
+  // left after "Search settings", and it was drawn over those words (first
+  // run on a Windows PC, 2026-11-20). The field measures itself (a container
+  // query), so the wide one above the sections still shows it; where it is
+  // left out, the field's tooltip says it.
+  const keyFits = key.length > 3 ? '@[17rem]:block' : '@[11rem]:block'
   return (
-    <div data-settings-keep="" className={`relative flex items-center ${className}`}>
+    <div data-settings-keep="" className={`@container relative flex items-center ${className}`}>
       <SearchIcon />
       <input
         type="search"
         data-settings-search=""
         aria-label="Search settings"
         placeholder="Search settings"
+        title={`Search settings (${key})`}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
@@ -149,7 +157,7 @@ export function SettingsSearchField({ search, className = '' }: { search: Settin
           Esc
         </button>
       ) : (
-        <kbd className="pointer-events-none absolute right-2 rounded-[4px] border border-[var(--app-hairline-strong)] px-1 text-[11px] text-fg-faint">{key}</kbd>
+        <kbd data-settings-search-key="" className={`pointer-events-none absolute right-2 hidden whitespace-nowrap rounded-[4px] border border-[var(--app-hairline-strong)] px-1 text-[11px] text-fg-faint ${keyFits}`}>{key}</kbd>
       )}
     </div>
   )

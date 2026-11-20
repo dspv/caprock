@@ -17,12 +17,12 @@
  * browser), storage and the install details. Settings and pairing change on
  * the machine Caprock runs on (ADR-029), and the daemon refuses them anyway.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ThemePicker } from '@/components/ThemePicker'
 import { FaceDefaultSetting } from '@/components/SessionFace'
 import { api, isPairedDevice, type Status } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
-import { SettingsNav } from '@/components/SettingsNav'
+import { SettingsNav, sectionScrollMargin, useSettingsFrame } from '@/components/SettingsNav'
 import { NothingMatches, SettingsFilterContext, SettingsSearchField, useFindKey, useSettingsSearch, useShownIds } from '@/components/SettingsSearch'
 import { fmtDuration, fmtUSD } from '@/lib/format'
 import { Empty } from '@/components/ui'
@@ -136,6 +136,9 @@ export function StatusScreen() {
   const [explain, setExplain] = useExplain()
   const search = useSettingsSearch(page)
   const shown = useShownIds(search)
+  // The sticky header's height: the menu sits below it, and a section
+  // scrolled to lands below it (`--settings-top`, SettingsParts' Section).
+  const frame = useSettingsFrame()
   // ⌘F: the search field that is drawn — the menu's from `xl`, else the one
   // above the sections.
   useFindKey(() => {
@@ -151,8 +154,8 @@ export function StatusScreen() {
   const owner = !isPairedDevice()
   return (
     <SettingsFilterContext.Provider value={shown}>
-    <div data-settings-page="" className="flex w-full justify-center gap-6">
-    <SettingsNav root={page} search={search} />
+    <div data-settings-page="" style={{ '--settings-top': `${sectionScrollMargin(frame)}px` } as CSSProperties} className="flex w-full justify-center gap-6">
+    <SettingsNav root={page} search={search} frame={frame} />
     <div ref={page} data-settings-explain={explain ? 'on' : 'off'} data-settings-filtering={shown ? '' : undefined} className="grid w-full max-w-3xl gap-4">
       {head}
       {/* Where the menu is not drawn, its search sits above the sections. */}
@@ -451,7 +454,7 @@ function Problems({ s }: { s: Status }) {
       {missingHooks.length > 0 && (
         <Section title="Live activity is a few seconds late" explained>
           <p className="text-fg-muted">
-            Some Claude Code hooks are missing (<span className="mono break-all">{missingHooks.join(', ')}</span>). Run{' '}
+            Some Claude Code hooks are missing (<span className="mono break-words">{missingHooks.join(', ')}</span>). Run{' '}
             <span className="mono text-fg">caprock hooks install</span> to see activity as it happens.
           </p>
         </Section>
