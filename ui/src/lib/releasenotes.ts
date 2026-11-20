@@ -5,8 +5,8 @@
  * A, with B's next step in the folded line). Pure; drawn by
  * components/ReleasePlan CockpitRelease.
  *
- *   0.183.1  patch · last 8h ago
- *   ◉──○──○──○──○  Merged · waiting to merge
+ *   Next release 0.183.1 · patch · last release 8h ago
+ *   ◉──○──○──○──○  Waiting for #949 to merge
  *   ────────────────────────────────────────
  *   FIXED
  *    PR from another repo no longer shows as this one's
@@ -15,8 +15,9 @@
  *   Not in it yet: 1 branch, no PR        ▸
  *
  * - **The heading** (`notesHeading`) says the release in one line: the
- *   predicted version with its bump and why, *Shipping 0.183.1* while it is
- *   under way, *v0.183.1 out · 5 min ago* within the hour of its
+ *   predicted version named as the next release, with its bump and why,
+ *   *Releasing 0.183.1* while something runs (*Release 0.183.1* when
+ *   not), *0.183.1 released · 5 min ago* within the hour of its
  *   publishing, *Nothing new since v0.183.0 · 8h ago* otherwise.
  * - **The entries** (`notesOf`, `groupNotes`) are the changelog fragments'
  *   own words, grouped by kind in Keep a Changelog order: those on the
@@ -33,7 +34,7 @@ import type { BoardCard } from './prboard'
 import type { PlanRow } from './releaseplan'
 import { ageText, landingOf } from './releaseplan'
 import type { BranchPR } from './branches'
-import { agoText, OUT_RECENT_MS, plainVersion, releasePRVersion, type ReleaseStatus } from './releasestatus'
+import { agoText, OUT_RECENT_MS, plainVersion, releasePRVersion, stageWords, stripStages, type ReleaseStatus } from './releasestatus'
 
 /** Keep a Changelog's kinds, in its order; entries of no kind come last, as *Other*. */
 export const KIND_ORDER = ['Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security'] as const
@@ -67,12 +68,16 @@ export type NotesState = 'idle' | 'out' | 'waiting' | 'shipping'
 
 export interface NotesHeading {
   state: NotesState
-  /** "0.183.1", "Shipping 0.183.1", "v0.183.1 out", "Nothing new since v0.183.0". */
+  /** "Next release 0.183.1", "Releasing 0.183.1", "0.183.1 released", "Nothing new since v0.183.0". */
   text: string
+  /** The text in a narrow panel, when it differs: "Next 0.183.1". */
+  short?: string
   /** "patch": the bump word, its reason on hover, with a version predicted. */
   why?: { text: string; title: string }
-  /** "last 8h ago", "5 min ago", "8h ago": the last release's age. */
+  /** "last release 8h ago", "5 min ago", "8h ago": the last release's age. */
   age?: string
+  /** The age in a narrow panel, when it differs: "last 8h ago". */
+  ageShort?: string
   title: string
 }
 
@@ -90,11 +95,15 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
   const last = s.last
   if (shipping(s)) {
     const v = s.version ?? 'the next release'
-    return { state: 'shipping', text: `Shipping ${v}`, why: whyWords(s), title: s.why?.title ?? `Release ${v} is under way: the strip above says where.` }
+    // *Releasing* only while something runs (owner, 2026-11-20): over a
+    // stopped build or a release pull request waiting for a merge it would
+    // say the opposite of the words under it.
+    const moving = stageWords(s, stripStages(s), { now })?.tone === 'active'
+    return { state: 'shipping', text: `${moving ? 'Releasing' : 'Release'} ${v}`, why: whyWords(s), title: s.why?.title ?? `Release ${v}: the dots under this line say where it is.` }
   }
   if (s.phase === 'idle') {
     if (last && now - last.at < OUT_RECENT_MS) {
-      return { state: 'out', text: `${last.tag} out`, age: agoText(now - last.at), title: `${last.tag} was published on GitHub ${agoText(now - last.at)}.` }
+      return { state: 'out', text: `${plainVersion(last.tag) ?? last.tag} released`, age: agoText(now - last.at), title: `${last.tag} was published on GitHub ${agoText(now - last.at)}.` }
     }
     const tag = lastTag?.name ?? last?.tag
     const at = lastTag?.at ?? last?.at
@@ -104,9 +113,10 @@ export function notesHeading(s: ReleaseStatus, lastTag: { name: string; at: numb
     }
   }
   const at = lastTag?.at ?? last?.at
+  // Owner, 2026-11-20: a bare *0.185.1* did not say what the number is.
   return {
-    state: 'waiting', text: s.version ?? 'Next release', why: whyWords(s),
-    age: at ? `last ${ago(now - at)}` : undefined,
+    state: 'waiting', text: s.version ? `Next release ${s.version}` : 'Next release', short: s.version ? `Next ${s.version}` : undefined, why: whyWords(s),
+    age: at ? `last release ${ago(now - at)}` : undefined, ageShort: at ? `last ${ago(now - at)}` : undefined,
     title: s.why?.title ?? 'No version is predicted: some changelog entries say no kind, or no tag was read to count from.',
   }
 }

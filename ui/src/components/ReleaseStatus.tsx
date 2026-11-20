@@ -5,7 +5,7 @@
  * request rows' pills, and one line for the last release. Reads nothing
  * itself.
  */
-import { stageWords, stripStages, type ReleaseStatus, type StageWords } from '@/lib/releasestatus'
+import { STATUS_TEXT, stageWords, stripStages, TONE_STATE, type BatchPR, type ReleaseStatus, type StatusTone, type StripStage } from '@/lib/releasestatus'
 import type { BoardCard } from '@/lib/prboard'
 import { fmtAgo } from '@/lib/format'
 import { openExternal } from '@/lib/nudges'
@@ -57,13 +57,23 @@ export function ReleaseInFlight({ status: s, phone = false }: { status: ReleaseS
   )
 }
 
-const DOT_NOW: Record<StageWords['tone'], string> = { pending: 'bg-warn', fail: 'bg-danger', ok: 'bg-ok' }
-const RING_NOW: Record<StageWords['tone'], string> = {
-  pending: 'shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-warn)_22%,transparent)]',
-  fail: 'shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-danger)_22%,transparent)]',
-  ok: 'shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-ok)_22%,transparent)]',
+// The one colour language of the section (lib/releasestatus StatusTone):
+// grey nothing happening, blue (--color-progress) and pulsing in progress,
+// amber waiting on something that moves, red stopped, green done.
+const DOT_NOW: Record<StatusTone, string> = {
+  idle: 'border-[1.5px] border-fg-muted bg-transparent',
+  active: 'bg-progress shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-progress)_22%,transparent)] release-step-pulse',
+  waiting: 'bg-warn shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-warn)_22%,transparent)]',
+  fail: 'bg-danger shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-danger)_22%,transparent)]',
+  ok: 'bg-ok shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-ok)_22%,transparent)]',
 }
-const WORDS_NOW: Record<StageWords['tone'], string> = { pending: 'text-warn', fail: 'text-danger', ok: 'text-ok' }
+
+/** A dot's state on hover, in words: *Release PR: not started*, *Merged: done*. */
+function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
+  if (current) return TONE_STATE[tone]
+  if (x.state === 'done') return 'done'
+  return x.unknown ? 'not known' : 'not started'
+}
 
 /**
  * The right panel's stages (owner, 2026-11-19, variant A, translated: "dots,
@@ -71,26 +81,30 @@ const WORDS_NOW: Record<StageWords['tone'], string> = { pending: 'text-warn', fa
  * *Published* to a second line at 330px): five dots joined by short lines —
  * Merged, Release PR, Tagged, Building, Published (lib/releasestatus
  * stripStages) — done ones green with a green line after them, the one it
- * is at in its colour with a soft ring (red when that stage failed), the
- * rest the track's; each dot says its stage and what was read of it on
- * hover. Only the stage it is at is named, with its detail (stageWords),
- * cut with an ellipsis before it wraps. `version` puts a tag already under
- * way first, where no heading above names it.
+ * is at in the status's colour (owner, 2026-11-20: hollow grey when nothing
+ * is happening, blue and pulsing in progress, amber waiting, red stopped,
+ * green done), the rest the track's; each dot says its stage and its state
+ * in words on hover (*Release PR: not started*). Beside them the status,
+ * plain words first and the detail after (stageWords): *Ready to release ·
+ * not started*, cut with an ellipsis before it wraps. `version` puts a tag
+ * already under way first, where no heading above names it.
  */
-export function ReleaseStrip({ status: s, version, out, cards, now = Date.now() }: {
+export function ReleaseStrip({ status: s, version, out, cards, batch, now = Date.now() }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
-  /** The board's cards: the release pull request's checks per OS, for *CI 1/3 systems*. */
+  /** The board's cards: the release pull request's checks per OS, for *checks 1 of 3 systems*. */
   cards?: readonly BoardCard[]
+  /** The batch pull request, for *Waiting for #949 to merge*. */
+  batch?: BatchPR
   now?: number
 }) {
   const stages = stripStages(s, { out })
-  const w = stageWords(s, stages, { cards, out, now })
+  const w = stageWords(s, stages, { cards, out, now, batch })
   if (!stages.length || !w) return null
   const at = w.index - 1
   const current = stages[at]?.state === 'current'
   return (
     <div data-release-strip data-release-current={current ? w.key : ''} data-release-tone={w.tone} role="group"
-      aria-label={`Release stage ${w.index} of ${stages.length}: ${w.name}`}
+      aria-label={`Release stage ${w.index} of ${stages.length}: ${w.name}, ${current ? TONE_STATE[w.tone] : 'done'}`}
       className="flex h-[16px] min-w-0 items-center text-[11.5px] leading-[16px]">
       {version && s.version && <span className="num mr-2 shrink-0 font-semibold text-fg">{s.version}</span>}
       <span aria-hidden className="flex shrink-0 items-center">
@@ -101,13 +115,13 @@ export function ReleaseStrip({ status: s, version, out, cards, now = Date.now() 
             <span key={x.key} className="flex items-center">
               {i > 0 && <span data-strip-line={stages[i - 1]!.state === 'done' ? 'done' : 'todo'} className={`h-[2px] w-[18px] ${stages[i - 1]!.state === 'done' ? 'bg-ok' : 'bg-border-strong'}`} />}
               <span data-strip-stage={x.key} data-step-state={x.state} data-step-unknown={x.unknown ? '' : undefined}
-                title={`${x.text}${x.unknown ? ' (not known)' : ''}\n${x.title}`}
-                className={`block size-[8px] shrink-0 rounded-full ${now_ ? `${DOT_NOW[w.tone]} ${RING_NOW[w.tone]}${w.tone === 'pending' ? ' release-step-pulse' : ''}` : done ? 'bg-ok' : 'bg-border-strong'}`} />
+                title={`${x.text}: ${dotState(x, now_, w.tone)}\n${now_ && w.title ? w.title : x.title}`}
+                className={`box-border block size-[8px] shrink-0 rounded-full ${now_ ? DOT_NOW[w.tone] : done ? 'bg-ok' : 'bg-border-strong'}`} />
             </span>
           )
         })}
       </span>
-      <span data-release-stage-words title={w.title ?? stages[at]?.title} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? WORDS_NOW[w.tone] : 'text-fg-muted'}`}>{w.text}</span>
+      <span data-release-stage-words title={w.title ?? stages[at]?.title} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</span>
     </div>
   )
 }

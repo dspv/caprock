@@ -52,6 +52,8 @@ export interface ReleaseStatus {
   last?: { tag: string; url?: string; at: number; assets?: number; prerelease?: boolean }
   /** The release pull request for this version, when one is listed. */
   pr?: { number: number; merged: boolean }
+  /** The batch pull request the changelog entries not merged yet are on (`unreleased.via`). */
+  batch?: number
 }
 
 export interface ReleaseStatusInput {
@@ -168,7 +170,7 @@ export function releaseStatus(input: ReleaseStatusInput): ReleaseStatus {
   const current = stages.find((s) => s.state === 'current')?.key
   const last = lastLine(releases.find((r) => plainVersion(r.tag) !== version || phase === 'pre'))
   const pr = ownPR ? { number: ownPR.number, merged: ownPR.state === 'merged' } : undefined
-  return { phase, version, bump, why, stages, current, last, pr }
+  return { phase, version, bump, why, stages, current, last, pr, ...(u?.via ? { batch: u.via.number } : {}) }
 }
 
 interface StageFacts {
@@ -314,76 +316,53 @@ function idleStrip(s: ReleaseStatus, out: boolean): StripStage[] {
 }
 
 /**
- * The words beside the right panel's stage dots (owner, 2026-11-19, variant
- * A, translated: "dots, one word — looks more logical"): only the stage it
- * is at is named, with what was read of it — *Merged · waiting to merge*,
- * *Release PR #952 · CI 1/3 systems*, *Tagged · waiting for v0.184.1*, *Building ·
- * 12 of 23 files*, *Published · 5 min ago*. `fail` when that stage failed
- * (the dot and the words red). With no stage current (every knowable one
- * done), the last one done, alone.
+ * The release status in words, said the same everywhere in the section: the
+ * words beside the stage dots, the dots' colour and the folded line
+ * (.ai/04-ui.md § Release plan, *The right panel*). One colour language
+ * (owner, 2026-11-20, translated: "I stopped understanding what this means
+ * … it must be really clear, I must know the status exactly" — a grey
+ * *not opened yet* drawn amber read as a release under way):
+ *
+ * - `idle`, grey: nothing is happening — a person starts the next step
+ *   (*Ready to release · not started*), or there is nothing to release;
+ * - `active`, blue (`--color-progress`) and pulsing: in progress right now (*Releasing ·
+ *   checks 1 of 3 systems*, *Releasing · building apps, 5 of 23 files*);
+ * - `waiting`, amber: waiting on something else that is moving (*Waiting
+ *   for #949 to merge*);
+ * - `fail`, red: stopped, needs action (*Release stopped · checks failed*);
+ * - `ok`, green: done (*Released · 5 min ago*).
+ *
+ * The state comes first in plain words, the detail after it. Never more
+ * than was read (rule 6).
  */
+export type StatusTone = 'idle' | 'active' | 'waiting' | 'fail' | 'ok'
+
+/** The status's colour as text: the strip's words and the folded line. */
+export const STATUS_TEXT: Record<StatusTone, string> = { idle: 'text-fg-muted', active: 'text-progress', waiting: 'text-warn', fail: 'text-danger', ok: 'text-ok' }
+
+/** The current dot's state on hover, by tone: *Release PR: not started*. */
+export const TONE_STATE: Record<StatusTone, string> = { idle: 'not started', active: 'in progress', waiting: 'waiting', fail: 'stopped', ok: 'done' }
+
 export interface StageWords {
   key: StripKey
   /** Its place among the five, from 1. */
   index: number
   name: string
+  /** The state first: "Ready to release", "Releasing", "Release stopped", "Released", "Waiting for #949 to merge". */
+  lead: string
+  /** The lead with the version in it, for the folded line: "Ready to release 0.185.1", "Release 0.185.1 stopped". */
+  vlead: string
+  /** What was read of it: "not started", "checks 1 of 3 systems"; may be empty. */
+  detail: string
+  /** "lead · detail". */
   text: string
-  tone: 'fail' | 'ok' | 'pending'
-  /** Its hover when the stage's own title would not explain the words (the OS groups behind *CI 1/3 systems*). */
+  tone: StatusTone
+  /** Its hover when the stage's own title would not explain the words (the OS groups behind *checks 1 of 3 systems*). */
   title?: string
 }
 
 /** The OS groups in the order the hover names them. */
 const WORDS_OS: readonly { os: string; label: string }[] = [{ os: 'macos', label: 'macOS' }, { os: 'windows', label: 'Windows' }, { os: 'linux', label: 'Linux' }]
-
-export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number }): StageWords | undefined {
-  let i = strip.findIndex((x) => x.state === 'current')
-  if (i < 0) {
-    for (let j = strip.length - 1; j >= 0; j--) if (strip[j]!.state === 'done') { i = j; break }
-    if (i < 0) return undefined
-    const x = strip[i]!
-    return { key: x.key, index: i + 1, name: x.text, text: x.text, tone: 'ok' }
-  }
-  const x = strip[i]!
-  const tone: StageWords['tone'] = x.tone === 'fail' ? 'fail' : x.tone === 'ok' ? 'ok' : 'pending'
-  const say = (detail: string, name = x.text, title?: string): StageWords => ({ key: x.key, index: i + 1, name: x.text, text: detail ? `${name} · ${detail}` : name, tone, ...(title ? { title } : {}) })
-  const v = s.version ? `v${s.version}` : 'the next version'
-  const at = (k: ReleaseStageKey) => s.stages.find((y) => y.key === k)
-  switch (x.key) {
-    case 'merged':
-      // The batch pull request's number and checks are the via line's, said once.
-      return say('waiting to merge')
-    case 'pr': {
-      if (!s.pr) return say('not opened yet')
-      const name = `Release PR #${s.pr.number}`
-      if (at('pr')?.state === 'current') return say('draft', name)
-      const ci = at('ci')
-      if (ci?.tone === 'fail') return say('CI red', name)
-      if (ci?.tone === 'pending') {
-        const os = o.cards?.find((c) => c.number === s.pr!.number)?.os ?? []
-        if (!os.length) return say('CI running', name)
-        // Owner, 2026-11-19: a bare *CI 1/3* read like a count of checks; it counts operating systems.
-        const passed = os.filter((y) => y.state === 'pass').length
-        const names = WORDS_OS.filter((w) => os.some((y) => y.os === w.os)).map((w) => w.label).join(', ')
-        const title = `${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'} (${names}) passed${passed < os.length ? '; the rest are running' : ''}.`
-        return say(`CI ${passed}/${os.length} systems`, name, title)
-      }
-      return say(ci?.state === 'done' ? 'CI green' : 'CI not read', name)
-    }
-    case 'tag':
-      return say(s.pr && !s.pr.merged ? `waiting: merge #${s.pr.number}` : `waiting for ${v}`)
-    case 'builds': {
-      const b = at('builds')
-      const m = b && /(\d+)\/(\d+)/.exec(b.text)
-      const count = m ? `${m[1]} of ${m[2]} ${/ files? on /.test(b!.title) ? 'files' : 'jobs'}` : ''
-      if (tone === 'fail') return say(count ? `failed at ${count}` : 'failed')
-      return say(count)
-    }
-    case 'published':
-      if (o.out && s.phase === 'idle' && s.last) return say(agoText(o.now - s.last.at))
-      return say(/a draft\./.test(x.title) ? 'draft only, not public' : 'not yet')
-  }
-}
 
 /** How long after a release is published the folded line says it is out, rather than "nothing new". */
 export const OUT_RECENT_MS = 3_600_000
@@ -396,12 +375,92 @@ export interface BatchPR {
   next?: string
 }
 
+export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number; batch?: BatchPR }): StageWords | undefined {
+  const v = s.version
+  const vv = v ? `v${v}` : 'the next version'
+  let i = strip.findIndex((x) => x.state === 'current')
+  const say = (tone: StatusTone, lead: string, vlead: string, detail: string, title?: string): StageWords => {
+    const x = strip[i]!
+    return { key: x.key, index: i + 1, name: x.text, lead, vlead, detail, text: detail ? `${lead} · ${detail}` : lead, tone, ...(title ? { title } : {}) }
+  }
+  const lastV = plainVersion(s.last?.tag) ?? s.last?.tag
+  if (i < 0) {
+    for (let j = strip.length - 1; j >= 0; j--) if (strip[j]!.state === 'done') { i = j; break }
+    if (i < 0) return undefined
+    return say('ok', 'Released', v ? `${v} released` : 'Released', '')
+  }
+  const x = strip[i]!
+  const at = (k: ReleaseStageKey) => s.stages.find((y) => y.key === k)
+  if (s.phase === 'idle') {
+    if (x.key === 'published' && o.out && s.last) return say('ok', 'Released', `${lastV} released`, agoText(o.now - s.last.at))
+    return say('idle', 'Nothing new', 'Nothing new', '')
+  }
+  const ready = v ? `Ready to release ${v}` : 'Ready to release'
+  const releasing = v ? `Releasing ${v}` : 'Releasing'
+  const stopped = v ? `Release ${v} stopped` : 'Release stopped'
+  switch (x.key) {
+    case 'merged': {
+      // Every entry on the batch pull request's branch: the release waits for it.
+      const n = o.batch?.number ?? s.batch
+      const lead = n ? `Waiting for #${n} to merge` : 'Waiting for the batch PR to merge'
+      const ci = o.batch?.ci ?? (n ? o.cards?.find((c) => c.number === n)?.ci : undefined)
+      if (ci === 'fail') return say('fail', lead, lead, 'its checks failed', `${x.title}\nIts checks failed: it cannot merge until they pass.`)
+      return say('waiting', lead, lead, '')
+    }
+    case 'pr': {
+      if (!s.pr) {
+        return say('idle', 'Ready to release', ready, 'not started',
+          `Nothing is running. The changes are merged; ${vv} starts when someone opens its release pull request (a title like “chore(release): ${v ?? 'x.y.z'}”).`)
+      }
+      const n = s.pr.number
+      if (at('pr')?.state === 'current') return say('idle', 'Ready to release', ready, `#${n} is a draft`, `Release pull request #${n} is a draft: nothing runs until someone marks it ready.`)
+      const ci = at('ci')
+      const os = o.cards?.find((c) => c.number === n)?.os ?? []
+      if (ci?.tone === 'fail') {
+        const failed = WORDS_OS.filter((w) => os.some((y) => y.os === w.os && y.state === 'fail')).map((w) => w.label)
+        return say('fail', 'Release stopped', stopped, `checks failed${failed.length ? ` on ${failed.join(', ')}` : ''}`, `Release pull request ${ci.title}`)
+      }
+      if (ci?.tone === 'pending') {
+        if (!os.length) return say('active', 'Releasing', releasing, 'checks running', `Release pull request ${ci.title}`)
+        // Owner, 2026-11-19: a bare *CI 1/3* read like a count of checks; it counts operating systems.
+        const passed = os.filter((y) => y.state === 'pass').length
+        const names = WORDS_OS.filter((w) => os.some((y) => y.os === w.os)).map((w) => w.label).join(', ')
+        const title = `Release pull request #${n}: ${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'} (${names}) passed${passed < os.length ? '; the rest are running' : ''}.`
+        return say('active', 'Releasing', releasing, `checks ${passed} of ${os.length} ${os.length === 1 ? 'system' : 'systems'}`, title)
+      }
+      return say('idle', 'Ready to release', ready, `#${n} open`)
+    }
+    case 'tag': {
+      if (s.pr && !s.pr.merged) {
+        const ci = at('ci')
+        if (ci?.state === 'done') return say('idle', 'Ready to merge', v ? `${v} ready to merge` : 'Ready to merge', `#${s.pr.number} ${/no checks/.test(ci.title) ? 'has no checks' : 'checks passed'}`,
+          `Nothing is running: release pull request #${s.pr.number} waits for someone to merge it, then ${vv} to be tagged.`)
+        return say('idle', 'Release PR open', v ? `${v} release PR open` : 'Release PR open', `#${s.pr.number}, checks not read`)
+      }
+      return say('idle', 'Not tagged yet', v ? `${v} not tagged yet` : 'Not tagged yet', s.pr ? `#${s.pr.number} merged` : '',
+        `Nothing is running: ${vv} is not tagged yet${s.pr ? `, though release pull request #${s.pr.number} merged` : ''}. Its release builds once the tag is pushed.`)
+    }
+    case 'builds': {
+      const b = at('builds')
+      const m = b && /(\d+)\/(\d+)/.exec(b.text)
+      const count = m ? `${m[1]} of ${m[2]} ${/ files? on /.test(b!.title) ? 'files' : 'jobs'}` : ''
+      if (x.tone === 'fail') return say('fail', 'Release stopped', stopped, count ? `build failed at ${count}` : 'build failed')
+      if (b?.tone === 'pending') return say('active', 'Releasing', releasing, count ? `building apps, ${count}` : 'building apps')
+      return say('idle', 'Not built yet', v ? `${v} not built yet` : 'Not built yet', '')
+    }
+    case 'published':
+      if (/a draft\./.test(x.title)) return say('fail', 'Release stopped', stopped, 'draft only, not public', `${x.title} Nobody can download it until it is published.`)
+      if (at('builds')?.state === 'done') return say('active', 'Releasing', releasing, 'publishing')
+      return say('idle', 'Not released yet', v ? `${v} not released yet` : 'Not released yet', 'no build read')
+  }
+}
+
 export interface ReleaseFold {
-  /** Which of the approved lines it is (owner, 2026-11-18). */
-  kind: 'idle' | 'out' | 'waiting' | 'release-pr' | 'building' | 'failed' | 'publishing'
+  /** Which line it is: from the status words' tone, or nothing new / just out. */
+  kind: 'idle' | 'out' | 'ready' | 'waiting' | 'releasing' | 'stopped'
   text: string
   title: string
-  tone: 'muted' | 'pending' | 'fail' | 'ok'
+  tone: StatusTone
 }
 
 /** "5 min ago", one unit, as the CI line says its age. */
@@ -418,67 +477,46 @@ function batchWord(b: BatchPR | undefined): string {
   return ` · PR #${b.number} ${w}`
 }
 
+const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', active: 'releasing', waiting: 'waiting', fail: 'stopped', ok: 'out' }
+
 /**
- * The folded Release section's one line: where the release is, from the
- * release status and nothing more (.ai/04-ui.md § Release plan, *The right
- * panel*). Never a guess: a count, a check state or a time only where read.
+ * The folded Release section's one line: the same words and colour as the
+ * words beside the stage dots (stageWords), with the version in the lead
+ * (.ai/04-ui.md § Release plan, *The right panel*). Never a guess: a count,
+ * a check state or a time only where read.
  *
- * - idle: *Nothing new since v0.182.4*, or *v0.183.0 out · 5 min ago* within
- *   OUT_RECENT_MS of its publishing;
- * - waiting: *0.183.1 · 2 changes · next: merge #949* — the changelog
- *   entries waiting (else the pull requests merged since the last tag), and
- *   the next step: the batch pull request's (*merge #949*, *wait for CI*,
- *   *rebase #949*), *batch CI red*, or *release PR* with no batch open
- *   (owner, 2026-11-19);
- * - a release pull request: *0.183.0 · release PR #942 · CI running*;
- * - tagged: *0.183.0 · building · 12 of 23 files*, *build failed*,
- *   *publishing*.
+ * - *Nothing new since v0.182.4*, grey; *0.183.0 released · 5 min ago*,
+ *   green, within OUT_RECENT_MS of its publishing;
+ * - *Ready to release 0.183.1 · not started · 2 changes*, grey;
+ * - *Waiting for #949 to merge · 0.183.1 · 2 changes*, amber (red with
+ *   *its checks failed*);
+ * - *Releasing 0.183.0 · checks 1 of 3 systems*, *Releasing 0.183.0 ·
+ *   building apps, 12 of 23 files*, accent;
+ * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
+ *   draft only, not public*, red.
  */
-export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number }): ReleaseFold {
-  const v = s.version
-  const head = v ? `${v} · ` : ''
+export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[] }): ReleaseFold {
   if (s.phase === 'idle') {
     const last = s.last
     if (last && o.now - last.at < OUT_RECENT_MS) {
-      return { kind: 'out', text: `${last.tag} out · ${agoText(o.now - last.at)}${batchWord(o.batch)}`, title: `${last.tag} was published on GitHub ${agoText(o.now - last.at)}.`, tone: 'ok' }
+      return { kind: 'out', text: `${plainVersion(last.tag) ?? last.tag} released · ${agoText(o.now - last.at)}${batchWord(o.batch)}`, title: `${last.tag} was published on GitHub ${agoText(o.now - last.at)}.`, tone: 'ok' }
     }
     const tag = o.lastTag ?? last?.tag
-    return { kind: 'idle', text: `${tag ? `Nothing new since ${tag}` : 'Nothing new'}${batchWord(o.batch)}`, title: tag ? `Nothing merged and no changelog entry waiting since ${tag}.` : 'Nothing merged and no changelog entry waiting.', tone: 'muted' }
+    return { kind: 'idle', text: `${tag ? `Nothing new since ${tag}` : 'Nothing new'}${batchWord(o.batch)}`, title: tag ? `Nothing merged and no changelog entry waiting since ${tag}.` : 'Nothing merged and no changelog entry waiting.', tone: 'idle' }
   }
-  const stage = (k: ReleaseStageKey) => s.stages.find((x) => x.key === k)
-  if (s.phase === 'tagged') {
-    const b = stage('builds')
-    if (b?.state === 'current' && b.tone === 'fail') return { kind: 'failed', text: `${head}build failed`, title: b.title, tone: 'fail' }
-    if (b && b.state !== 'done') {
-      const m = /(\d+)\/(\d+)/.exec(b.text)
-      const count = m ? ` · ${m[1]} of ${m[2]} ${/ files? on /.test(b.title) ? 'files' : 'jobs'}` : ''
-      return { kind: 'building', text: `${head}building${count}`, title: b.title, tone: 'pending' }
-    }
-    const pub = stage('published')
-    return { kind: 'publishing', text: `${head}publishing`, title: pub?.title ?? '', tone: 'pending' }
-  }
-  if (s.pr) {
-    if (s.pr.merged) {
-      return { kind: 'release-pr', text: `${head}release PR #${s.pr.number} merged · not tagged yet`, title: stage('tag')?.title ?? '', tone: 'pending' }
-    }
-    const ci = stage('ci'), pr = stage('pr')
-    const word = pr?.state === 'current' ? 'draft'
-      : ci?.state === 'current' && ci.tone === 'fail' ? 'CI red'
-        : ci?.state === 'current' && ci.tone === 'pending' ? 'CI running'
-          : ci?.state === 'done' ? 'CI green' : 'CI not read'
-    return { kind: 'release-pr', text: `${head}release PR #${s.pr.number} · ${word}`, title: [pr?.title, ci?.title].filter(Boolean).join('\n'), tone: word === 'CI red' ? 'fail' : word === 'CI green' ? 'ok' : 'pending' }
-  }
-  // What waits, then the next step (owner, 2026-11-19: variant B's next
-  // step): the batch's red CI, its own next step, else a release PR to cut.
+  const strip = stripStages(s)
+  const w = stageWords(s, strip, { cards: o.cards, now: o.now, batch: o.batch })
   const n = o.waiting
-  const waiting = n > 0 ? `${n} ${n === 1 ? 'change' : 'changes'}` : 'changes waiting'
-  const b = o.batch
-  const next = b ? (b.ci === 'fail' ? 'batch CI red' : `next: ${b.next ?? `merge #${b.number}`}`) : 'next: release PR'
-  return {
-    kind: 'waiting', text: `${head}${waiting} · ${next}`,
-    title: `${s.why?.title ?? 'No version is predicted: no changelog entry of a known kind was read.'}${b ? `\nPR #${b.number} is open: the batch the entries ship in.` : '\nNo batch pull request open: the next step is a release pull request.'}`,
-    tone: b?.ci === 'fail' ? 'fail' : 'muted',
-  }
+  const changes = n > 0 ? `${n} ${n === 1 ? 'change' : 'changes'}` : ''
+  const stage = w ? strip[w.index - 1] : undefined
+  const why = s.why?.title ?? 'No version is predicted: no changelog entry of a known kind was read.'
+  if (!w) return { kind: 'ready', text: [s.version ?? 'Next release', changes].filter(Boolean).join(' · '), title: why, tone: 'idle' }
+  const title = [w.title ?? stage?.title, why].filter(Boolean).join('\n')
+  // Waiting for the batch: the version and the changes after the batch's own words.
+  if (w.key === 'merged') return { kind: FOLD_KIND[w.tone], text: [w.vlead, w.detail, s.version, changes].filter(Boolean).join(' · '), title, tone: w.tone }
+  const ready = w.key === 'pr' && !s.pr
+  const parts = [w.vlead, w.detail, ready ? changes : ''].filter(Boolean).join(' · ')
+  return { kind: FOLD_KIND[w.tone], text: `${parts}${ready ? batchWord(o.batch) : ''}`, title, tone: w.tone }
 }
 
 /**

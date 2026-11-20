@@ -32,7 +32,7 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { OUT_RECENT_MS, releaseFold, releaseStatus, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
+import { OUT_RECENT_MS, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
 import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
@@ -666,11 +666,12 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * and again only on GitHub news (changesRelease) — never on every turn of
  * the agent beside it.
  *
- * Folded, its one line says where the release is (owner, 2026-11-18;
- * lib/releasestatus releaseFold): *Nothing new since v0.182.4*, *0.183.1 ·
- * 2 changes · next: merge #949*, *0.183.1 · 2 changes · batch CI red*,
- * *0.183.0 · release PR #942 · CI running*, *0.183.0 · building · 12 of 23
- * files*, *v0.183.0 out · 5 min ago*. It needs the repository's tags and
+ * Folded, its one line says where the release is, in the words and colour
+ * of the stage dots (owner, 2026-11-18 and 2026-11-20; lib/releasestatus
+ * releaseFold): *Nothing new since v0.182.4*, *Ready to release 0.183.1 ·
+ * not started · 2 changes*, *Waiting for #949 to merge · 0.183.1 · 2
+ * changes*, *Releasing 0.183.0 · checks 1 of 3 systems*, *Release 0.183.0
+ * stopped · checks failed*, *0.183.0 released · 5 min ago*. It needs the repository's tags and
  * changelog entries: the entry of the Work answer kept whenever a page read
  * it (`work:<root>`), the Work answer read folded only when none is kept or
  * the kept one is older than REPO_KEPT_MS. The release run is the copy the
@@ -679,10 +680,10 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * yet, a run running — and the daemon answers it from the run it keeps.
  *
  * Unfolded, three groups split by hairlines (owner, 2026-11-19, variant A):
- * the heading (the version, its bump and why, the last release's age — or
- * *Shipping 0.183.1*, *v0.183.1 out · 5 min ago*, *Nothing new since
- * v0.183.0 · 8h ago*) over the stage dots with the current stage named
- * (none while nothing is new); the entries grouped by kind in their own
+ * the heading (*Next release 0.183.1*, its bump and why, the last release's
+ * age — or *Releasing 0.183.1*, *0.183.1 released · 5 min ago*, *Nothing
+ * new since v0.183.0 · 8h ago*) over the stage dots with the status in
+ * words beside them (none while nothing is new); the entries grouped by kind in their own
  * words; then the batch pull request as one *via* line and *Not in it yet*,
  * folded: pushed branches with no pull request and other open pull
  * requests. The pull request and agent rows of
@@ -729,14 +730,15 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   if (!plan) return null
   const n = plan.rows.length
   const merge = plan.ships === 'merge'
-  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now })
+  const fold = merge ? undefined : releaseFold(status, { waiting: repo?.unreleased?.count || merged, batch, lastTag: repo?.tags?.last?.name, now, cards: board?.cards })
   const label = (
     <SectionLabel right={folded && (fold ? (
       // One line in a narrow panel: the parts that do not fit wrap under it
       // and are clipped, the last first — never one cut mid-word
       // (*PR #941 gr…*). The whole line is the hover and the accessible name.
       <span data-fold-only data-release-fold={fold.kind} title={`${fold.text}\n${fold.title}`} aria-label={fold.text}
-        className={`flex h-[16px] min-w-0 flex-wrap justify-end gap-x-1 overflow-hidden leading-[16px] tabular-nums ${fold.tone === 'fail' ? 'text-danger' : fold.tone === 'ok' ? 'text-ok' : 'text-fg-muted'}`}>
+        className={`flex h-[16px] min-w-0 flex-wrap items-center justify-end gap-x-1 overflow-hidden leading-[16px] tabular-nums ${STATUS_TEXT[fold.tone]}`}>
+        {fold.tone === 'active' && <span aria-hidden data-release-fold-pulse className="release-step-pulse block size-[6px] shrink-0 rounded-full bg-progress" />}
         {fold.text.split(' · ').map((part, i) => (
           <span key={i} data-release-fold-part className={i === 0 ? 'min-w-0 truncate' : 'whitespace-nowrap'}>{i > 0 && <span aria-hidden className="mr-1 text-fg-faint">·</span>}{part}</span>
         ))}
@@ -767,7 +769,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
       <div data-release-plan={plan.name} className="grid min-w-0 gap-[10px]">
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
-          {head.state !== 'idle' && <ReleaseStrip status={status} out={head.state === 'out'} cards={board?.cards} now={now} />}
+          {head.state !== 'idle' && <ReleaseStrip status={status} out={head.state === 'out'} cards={board?.cards} batch={batch} now={now} />}
         </div>
         {entries.length > 0 && (
           <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
@@ -783,15 +785,32 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   )
 }
 
-/** The section's heading: *0.183.1  patch · last 8h ago*, *Shipping 0.183.1*, *v0.183.1 out · 5 min ago*, *Nothing new since v0.183.0 · 8h ago*. */
+/**
+ * The section's heading: *Next release 0.183.1 · patch · last release 8h
+ * ago*, *Releasing 0.183.1 · patch*, *0.183.1 released · 5 min ago*,
+ * *Nothing new since v0.183.0 · 8h ago*. It is one line at any width: the
+ * age's *release* goes below 350px of panel (*Next release 0.183.1 · patch
+ * · last 8h ago*, the 330px cockpit), the version's below 290px (*Next
+ * 0.183.1 · …*), and narrower still the age is cut with an ellipsis.
+ */
 function NotesHead({ head: h }: { head: NotesHeading }) {
-  const dot = <span aria-hidden className="text-fg-faint">·</span>
+  const dot = <span aria-hidden className="shrink-0 text-fg-faint">·</span>
   const big = h.state === 'waiting' || h.state === 'shipping'
+  // The short form is the full one without " release": that word alone is
+  // hidden in a narrow panel, so the words read are the same at any width.
+  const narrow = (full: string, short: string | undefined, wide: string) => {
+    const k = full.indexOf(' release')
+    if (!short || k < 0 || full.slice(0, k) + full.slice(k + 8) !== short) return full
+    return <>{full.slice(0, k)}<span data-head-wide className={wide}> release</span>{full.slice(k + 8)}</>
+  }
   return (
-    <header data-release-head={h.state} className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[11.5px] text-fg-muted">
-      <h3 data-release-version title={h.title} className={`num cursor-help ${big ? 'text-[13px] font-semibold text-fg' : 'text-[12px] text-fg-muted'}`}>{h.text}</h3>
-      {h.why && <><span data-release-why title={h.why.title} className="cursor-help whitespace-nowrap">{h.why.text}</span></>}
-      {h.age && <>{(h.why || h.state !== 'waiting') && dot}<span data-release-since className="num whitespace-nowrap">{h.age}</span></>}
+    <header data-release-head={h.state} className="@container/head min-w-0">
+      <div className="flex min-w-0 items-baseline gap-x-1.5 whitespace-nowrap text-[11.5px] text-fg-muted">
+        <h3 data-release-version title={h.title} aria-label={h.text}
+          className={`num cursor-help ${big ? 'shrink-0 text-[13px] font-semibold text-fg' : 'min-w-0 truncate text-[12px] text-fg-muted'}`}>{narrow(h.text, h.short, 'hidden @[290px]/head:inline')}</h3>
+        {h.why && <>{dot}<span data-release-why title={h.why.title} className="shrink-0 cursor-help">{h.why.text}</span></>}
+        {h.age && <>{dot}<span data-release-since className={`num min-w-0 ${big ? 'truncate' : 'shrink-0'}`}>{narrow(h.age, h.ageShort, 'hidden @[350px]/head:inline')}</span></>}
+      </div>
     </header>
   )
 }
