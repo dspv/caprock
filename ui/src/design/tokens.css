@@ -30,6 +30,12 @@
   --color-ok: #4fbf6b;      /* working / verified */
   --color-warn: #e0a33c;    /* idle / waiting-on-you */
   --color-danger: #ff8080;  /* loop / error / over budget */
+  /* The label on a filled danger button (SheetButton danger). Every dark
+   * palette's red is light, so its label is the dark ground: white on
+   * #e3a0a0 (Dark Pastel) was 2.1:1 and on #ff8080 2.4:1 (owner,
+   * 2026-11-20: "the text on the red button is hard to see"). The light
+   * palettes set white. 5:1 or more in every palette (.ai/04-ui.md § Themes). */
+  --color-on-danger: var(--color-bg);
   --color-info: #feb157;    /* links — the brand amber, not a stray blue */
   --color-merged: #a371f7;  /* a merged pull request, as GitHub draws it */
   /* the release in progress right now (the Release section's colour
@@ -103,7 +109,9 @@
   --color-ok: #2e9e4f;
   --color-warn: #9a6700;
   --color-progress: #1a62d1;
-  --color-danger: #d64545;
+  /* #d64545 until 2026-11-20: a white label on it was 4.38:1, under AA. */
+  --color-danger: #c93c3c;
+  --color-on-danger: #ffffff;
   --color-info: #99600a;
   --color-merged: #8250df;
 
@@ -247,6 +255,12 @@
   background: transparent;
   color: var(--color-danger);
   box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+/* Its key chip is drawn in the outline's red too, not the filled label's dark ink. */
+[data-theme="dark"][data-dark="side"] button.bg-danger [data-key-chip] {
+  background: transparent;
+  color: var(--color-danger);
+  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
 }
 
 /*

@@ -422,7 +422,7 @@ function DiscardConfirm({ d, busy, onKeep, onDiscard }: { d: { preview: DiscardP
       </p>
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onKeep} className="h-[28px] rounded-[7px] border border-[var(--app-hairline-strong)] px-3 text-[12.5px] text-fg hover:bg-[var(--app-row-hover)]">Keep</button>
-        <button type="button" autoFocus disabled={busy} onClick={onDiscard} className="h-[28px] rounded-[7px] bg-danger px-3 text-[12.5px] font-medium text-white hover:brightness-110 disabled:opacity-50">
+        <button type="button" autoFocus disabled={busy} onClick={onDiscard} className="h-[28px] rounded-[7px] bg-danger px-3 text-[12.5px] font-medium text-on-danger hover:brightness-110 disabled:opacity-50">
           {busy ? 'Discarding…' : 'Discard'}
         </button>
       </div>

@@ -52,6 +52,26 @@ describe('closing a shell', () => {
     expect(all.busy.map((s) => s.sessionId)).toEqual(['sh1'])
   })
 
+  // Owner, 2026-11-20: `claude --resume <id>` typed into Shell 1; the
+  // question said only "Shell 1 is running claude".
+  it('names the agent session running in the shell, while it runs', () => {
+    const inner = { session_id: 'a1', title: 'Fix the login page', status: 'active' } as unknown as SessionSummary
+    const sessions = new Map<string, SessionSummary>([
+      ['sh1', { session_id: 'sh1', kind: 'shell', agent_session_id: 'a1' } as SessionSummary],
+      ['a1', inner],
+    ])
+    const live = liveShells([{ id: 'sh1', program: 'claude' }])
+    const plan = planClose(tab(pane('a', 'shell', 'sh1')), undefined, sessions, live, 'Shell 1')
+    expect(plan.busy).toEqual([{ sessionId: 'sh1', name: 'Shell 1', program: 'claude', agent: 'Fix the login page' }])
+    expect(closeQuestion(plan.busy)).toBe('“Fix the login page” is running in Shell 1. Close and stop it?')
+    expect(closeQuestion([{ ...plan.busy[0]!, name: 'The shell' }])).toBe('“Fix the login page” is running in the shell. Close and stop it?')
+    const project = planProjectClose(['sh1'], live, new Map([['sh1', 'Shell 1']]), sessions)
+    expect(projectCloseQuestion('alpha', project.busy)).toBe('alpha: Shell 1 is running claude (“Fix the login page”). Stop it and close?')
+    // Once it exits the shell is asked about by its program alone.
+    sessions.set('a1', { ...inner, status: 'ended' })
+    expect(planClose(tab(pane('a', 'shell', 'sh1')), undefined, sessions, live, 'Shell 1').busy[0]!.agent).toBeUndefined()
+  })
+
   it('asks about several busy shells at once', () => {
     expect(closeQuestion([{ sessionId: 'a', name: 'The shell', program: 'npm' }, { sessionId: 'b', name: 'The shell', program: 'vim' }]))
       .toBe('2 shells are running npm, vim. Close and stop them?')

@@ -4,7 +4,12 @@
  * state, what the session has cost and what each call costs now, its
  * context, what it is doing this second, its recent tool calls, the plan
  * windows and a loop warning when there is one. Beside a shell it is the
- * plain inspector: the folder and what has changed. Open by default, closed
+ * plain inspector: the folder and what has changed — unless an agent session
+ * runs in front of the shell's prompt (`claude --resume <id>` typed there,
+ * lib/tablabels.ts agentInShell): then it is that session's cockpit, as on
+ * an agent's tab, with a line naming the shell and the shell's own actions
+ * at the bottom (owner, 2026-11-20, translated: "data went somewhere").
+ * When the agent exits it is the shell's again. Open by default, closed
  * and opened with ⌘I.
  *
  * The figures come from the sessions list the sidebar already holds and the
@@ -54,6 +59,8 @@ export function Inspector({
   project,
   onCompare,
   onOpenPRs,
+  inside,
+  shellName,
 }: {
   session?: SessionSummary
   /** The sidebar's project the session belongs to: its name heads the place line. */
@@ -77,8 +84,17 @@ export function Inspector({
   onCompare?: () => void
   /** Opens the session's Pipeline page — on a pull request's detail when given one: the cockpit's CI block is its door. */
   onOpenPRs?: (pr?: number) => void
+  /**
+   * The shell in front runs this agent session (lib/tablabels.ts
+   * agentInShell): the inspector shows its cockpit. `hasPermission` is then
+   * that session's.
+   */
+  inside?: SessionSummary
+  /** The shell's name in its tab, "Shell 1", for the line saying where the agent runs. */
+  shellName?: string
 }) {
-  const isAgent = !!sessionId && !!session && session.kind !== 'shell'
+  const inner = sessionId && inside && inside.kind !== 'shell' ? inside : undefined
+  const isAgent = !!sessionId && !!session && (session.kind !== 'shell' || !!inner)
   return (
     <aside aria-label="Inspector" className="app-scroll flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden border-l border-[var(--app-hairline)] bg-[var(--app-chrome-bg)]">
       <div className="flex h-[40px] shrink-0 items-center gap-2 border-b border-[var(--app-hairline)] pl-4 pr-2">
@@ -90,7 +106,8 @@ export function Inspector({
       {!sessionId ? (
         <p className="px-4 py-5 text-[12.5px] leading-relaxed text-fg-muted">Open a session to see what it costs, how full its context is, and what it changed.</p>
       ) : (
-        <Body key={sessionId} session={session} project={project} sessionId={sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} onCompare={onCompare} onOpenPRs={onOpenPRs} />
+        <Body key={inner ? `${sessionId}:${inner.session_id}` : sessionId} session={inner ?? session} project={project} sessionId={inner?.session_id ?? sessionId} hasPermission={hasPermission} showPrompt={showPrompt} onDetach={onDetach} editor={editors && onOpenInEditor ? { name: preferredName(editors), open: onOpenInEditor } : undefined} onReviewChanges={onReviewChanges} onOpenFile={onOpenFile} summary={summary} onCompare={onCompare} onOpenPRs={onOpenPRs}
+          shell={inner ? { s: session, id: sessionId, name: shellName || 'the shell' } : undefined} />
       )}
     </aside>
   )
@@ -99,7 +116,10 @@ export function Inspector({
 type OpenInEditor = (path: string, label: string, editor?: string, line?: number) => void
 interface EditorAction { name: string; open: OpenInEditor }
 
-function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare, onOpenPRs }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void; onOpenPRs?: (pr?: number) => void }) {
+/** The shell an agent session runs in, when the inspector shows that session for it. */
+interface HostShell { s?: SessionSummary; id: string; name: string }
+
+function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDetach, editor, onReviewChanges, onOpenFile, summary, onCompare, onOpenPRs, shell }: { session?: SessionSummary; project?: Pick<Project, 'name' | 'default_branch'>; sessionId: string; hasPermission: boolean; showPrompt: boolean; onDetach: () => void; editor?: EditorAction; onReviewChanges?: () => void; onOpenFile?: (path: string) => void; summary?: Summary; onCompare?: () => void; onOpenPRs?: (pr?: number) => void; shell?: HostShell }) {
   const isShell = s?.kind === 'shell'
   const ended = s?.status === 'ended'
   const chat = !!s && (!!s.chat || isQuickChat(s))
@@ -115,6 +135,11 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           title={sessionTitle(s)}
           place={s.cwd ? sessionPlace(s, project) : undefined}
           headExtra={<>
+            {shell && (
+              <p data-runs-in-shell className="text-[12px] text-fg-muted">
+                Runs in {shell.name} <span className="text-fg-faint">· started at its prompt</span>
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 empty:hidden">
               {/* A running session never changes account; with more than one,
                 * a new session on another picks the work up (ADR-048). */}
@@ -137,7 +162,15 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
           release={chat ? undefined : <CockpitRelease sessionId={sessionId} repoRoot={s?.repo_root || undefined} />}
           processes={<Processes sessionId={sessionId} session={s} />}
         />
-        <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
+        {shell ? (
+          // The shell's own actions: closing or stopping it ends the agent too.
+          <section aria-label={`The shell: ${shell.name}`} data-host-shell className="grid gap-1.5">
+            <SectionLabel>{shell.name}</SectionLabel>
+            <Actions s={shell.s} sessionId={shell.id} isShell ended={shell.s?.status === 'ended'} editor={editor} onDetach={onDetach} dashboard={sessionId} />
+          </section>
+        ) : (
+          <Actions s={s} sessionId={sessionId} isShell={false} ended={ended} editor={editor} onDetach={onDetach} />
+        )}
       </div>
     )
   }
@@ -178,13 +211,15 @@ function Body({ session: s, project, sessionId, hasPermission, showPrompt, onDet
  * words; the full name stays the button's name, on hover and for a screen
  * reader. Stop's confirmation takes the whole width.
  */
-function Actions({ s, sessionId, isShell, ended, editor, onDetach }: { s?: SessionSummary; sessionId: string; isShell: boolean; ended: boolean; editor?: EditorAction; onDetach: () => void }) {
+function Actions({ s, sessionId, isShell, ended, editor, onDetach, dashboard }: { s?: SessionSummary; sessionId: string; isShell: boolean; ended: boolean; editor?: EditorAction; onDetach: () => void; dashboard?: string }) {
   const cell = 'app-row flex h-[28px] min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-left text-[12px] text-fg-muted hover:text-fg'
   const close = isShell ? 'Close the shell' : 'Close the tab'
+  // An agent's own page in the dashboard; a shell's, the agent running in it.
+  const page = isShell ? dashboard : sessionId
   return (
       <div data-inspector-actions className="grid grid-cols-2 gap-x-1.5 gap-y-0.5 border-t border-[var(--app-hairline)] pt-3">
-        {!isShell && (
-          <a href={href({ name: 'session', id: sessionId })} aria-label="Open in the dashboard" title="Open in the dashboard" className={`${cell} no-underline`}>
+        {page && (
+          <a href={href({ name: 'session', id: page })} aria-label="Open in the dashboard" title="Open in the dashboard" className={`${cell} no-underline`}>
             <ExternalIcon size={14} className="shrink-0" /><span className="truncate">Dashboard</span>
           </a>
         )}
