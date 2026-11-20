@@ -796,22 +796,42 @@ function NotesHead({ head: h }: { head: NotesHeading }) {
   )
 }
 
-/** The entries under their kinds, in capitals, each in its own words, two lines at most. */
+/**
+ * The entries under their kinds, in capitals with how many, each kind folding
+ * on its heading (remembered per viewer), each entry one line behind a dot,
+ * whole on hover. Owner, 2026-11-20 (translated): "a lot of text … I'd like
+ * to see how many fixes there are, and bullets beside them".
+ */
 function ReleaseNotes({ entries }: { entries: readonly WorkEntry[] }) {
-  const head = 'text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-faint'
   return (
     <div data-release-entries className="grid min-w-0 gap-1.5">
-      {groupNotes(entries).map((g) => (
-        <div key={g.kind} data-release-kind={g.kind} className="grid min-w-0 gap-0.5">
-          <h5 className={head}>{g.kind}</h5>
-          <ul className="grid min-w-0 gap-1">
-            {g.entries.map((e, i) => (
-              <li key={i} data-release-entry={e.source ?? ''} title={`${e.scope ? `${e.scope}: ` : ''}${e.text}${e.source === 'pr' ? '\nOn the batch pull request’s branch, not merged yet.' : ''}`}
-                className="line-clamp-2 min-w-0 pl-2 text-[12px] leading-[1.35] text-fg [overflow-wrap:anywhere]">{e.text}</li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {groupNotes(entries).map((g) => <NotesKind key={g.kind} kind={g.kind} entries={g.entries} />)}
+    </div>
+  )
+}
+
+function NotesKind({ kind, entries }: { kind: string; entries: readonly WorkEntry[] }) {
+  // usePanelFold's key present means folded, so a kind is open until folded.
+  const [open, toggle] = usePanelFold(`release-notes-${kind}`)
+  return (
+    <div data-release-kind={kind} className="grid min-w-0 gap-0.5">
+      <button type="button" aria-expanded={open} onClick={toggle} title={open ? `Fold ${kind}` : `Show ${kind}`}
+        className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left text-fg-faint hover:text-fg-muted">
+        <h5 className="text-[10px] font-semibold uppercase tracking-[0.08em]">{kind}</h5>
+        <span data-release-kind-count className="num rounded-full border border-[var(--app-hairline,var(--color-border))] px-1.5 text-[10px] leading-[14px]">{entries.length}</span>
+        <span aria-hidden className={`text-[9px] leading-none transition-transform ${open ? 'rotate-90' : ''}`}>▸</span>
+      </button>
+      {open && (
+        <ul className="grid min-w-0 gap-0.5">
+          {entries.map((e, i) => (
+            <li key={i} data-release-entry={e.source ?? ''} title={`${e.scope ? `${e.scope}: ` : ''}${e.text}${e.source === 'pr' ? '\nOn the batch pull request’s branch, not merged yet.' : ''}`}
+              className="flex min-w-0 items-baseline gap-1.5 text-[12px] leading-[1.35] text-fg">
+              <span aria-hidden className="shrink-0 text-fg-faint">•</span>
+              <span className="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">{e.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

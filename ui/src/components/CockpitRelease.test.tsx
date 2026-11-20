@@ -190,7 +190,7 @@ describe('the cockpit’s Release section', () => {
       released: { version: '0.183.1', count: 1, entries: [{ text: 'PR from another repo no longer shows as this one’s', scope: 'ui', kind: 'Fixed' }] } })
     draw(false)
     expect(document.querySelector('[data-release-head]')).toHaveTextContent('v0.183.1 out·5 min ago')
-    expect(document.querySelector('[data-release-entries]')).toHaveTextContent('FixedPR from another repo no longer shows as this one’s')
+    expect(document.querySelector('[data-release-entries]')).toHaveTextContent('Fixed1▸•PR from another repo no longer shows as this one’s')
     expect(document.querySelector('[data-release-strip]')).toHaveAttribute('data-release-current', 'published')
     expect(document.querySelector('[data-release-stage-words]')).toHaveTextContent(/^Published · 5 min ago$/)
     expect([...document.querySelectorAll('[data-strip-stage]')].map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'done', 'done', 'done', 'current'])
