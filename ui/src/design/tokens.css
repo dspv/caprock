@@ -32,6 +32,10 @@
   --color-danger: #ff8080;  /* loop / error / over budget */
   --color-info: #feb157;    /* links — the brand amber, not a stray blue */
   --color-merged: #a371f7;  /* a merged pull request, as GitHub draws it */
+  /* the release in progress right now (the Release section's colour
+   * language, owner 2026-11-20): blue, because the accent is amber in this
+   * theme and amber there means "waiting on something else" */
+  --color-progress: #6ea8fe;
   /* a CI job GitHub never gave a machine: amber, muted toward the text so it
    * reads as "not tested" beside red "failed" and bright amber "running";
    * worked from each theme's own warn and muted ink */
@@ -98,6 +102,7 @@
 
   --color-ok: #2e9e4f;
   --color-warn: #9a6700;
+  --color-progress: #1a62d1;
   --color-danger: #d64545;
   --color-info: #99600a;
   --color-merged: #8250df;

@@ -349,7 +349,7 @@ describe('where it is drawn', () => {
     writeDeck('stats:/w/caprock', statsFixture())
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    expect(await within(region).findByRole('heading', { name: '0.118.0' })).toBeInTheDocument()
+    expect(await within(region).findByRole('heading', { name: 'Next release 0.118.0' })).toBeInTheDocument()
     expect(region.querySelectorAll('[data-release-entry]').length).toBeGreaterThan(0)
     expect(h.work).toBe(1)
     vi.useFakeTimers()
@@ -385,12 +385,12 @@ describe('where it is drawn', () => {
     render(<SessionSubagents.Provider value={subs}><CockpitRelease sessionId="s1" repoRoot="/w/caprock" /></SessionSubagents.Provider>)
     const region = await screen.findByRole('region', { name: 'Release' })
     // A patch: no Added entry, predicted from the batch PR's fragments too.
-    await within(region).findByRole('heading', { name: '0.117.5' })
+    await within(region).findByRole('heading', { name: 'Next release 0.117.5' })
     // The version first, the stage dots under it.
     const plan = region.querySelector('[data-release-plan]')!
     expect(plan.firstElementChild).toHaveAttribute('data-release-group', 'head')
     expect(plan.firstElementChild!.lastElementChild).toHaveAttribute('data-release-strip')
-    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^0\.117\.5patch·last (\d+[mhd] ago|just now)$/)
+    expect(region.querySelector('[data-release-head]')).toHaveTextContent(/^Next release 0\.117\.5·patch·last release (\d+[mhd] ago|just now)$/)
     // Grouped by kind in Keep a Changelog order, each in its own words.
     const kinds = [...region.querySelectorAll('[data-release-kind]')]
     expect(kinds.map((k) => k.querySelector('h5')!.textContent)).toEqual(['Changed', 'Fixed'])
@@ -428,7 +428,7 @@ describe('where it is drawn', () => {
     writeDeck('stats:/w/caprock', stats)
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    await within(region).findByRole('heading', { name: '0.118.0' })
+    await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
     const via = region.querySelector('[data-release-via]')!
     expect(via.querySelector('[data-via-ci]')).toHaveAttribute('data-via-ci', 'fail')
     expect(via.querySelector('[data-via-state]')).toHaveTextContent('fix: go (windows-latest)')
@@ -444,7 +444,7 @@ describe('where it is drawn', () => {
       branches: [{ name: 'feat/batch-1', local: false, remote: true, ahead: 2, behind: 0, committed_ms: Date.now() - 30 * 60_000, cost_usd: 0, sessions: 0, agents: [], activity_at: 0, subject: 'fix(deck): the ring' }] })
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    await within(region).findByRole('heading', { name: '0.118.0' })
+    await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
     const later = region.querySelector('[data-release-section="branch"]')!
     await within(region).findByText(/1 branch, no PR/)
     expect(later).toHaveTextContent('Not in it yet: 1 branch, no PR · 1 other PR▸')
@@ -473,7 +473,7 @@ describe('where it is drawn', () => {
     resetPanelFolds()
     render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
     const region = await screen.findByRole('region', { name: 'Release' })
-    await within(region).findByRole('heading', { name: '0.118.0' })
+    await within(region).findByRole('heading', { name: 'Next release 0.118.0' })
     const rows = () => [...region.querySelectorAll('[data-stage="branch"]')].map((e) => e.getAttribute('data-release-row'))
     await within(region).findByText(/7 branches, no PR/)
     expect(region.querySelector('[data-release-section="branch"]')!.textContent).toBe('Not in it yet: 7 branches, no PR · 1 other PR▸')

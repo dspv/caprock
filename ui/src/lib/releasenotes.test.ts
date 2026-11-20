@@ -31,7 +31,7 @@ describe('the release notes', () => {
   it('predicts the version from the batch PR’s fragments and lists them while waiting', () => {
     const s = status({ unreleased: onBatch })
     const h = notesHeading(s, { name: 'v0.183.0', at: T - 8 * H }, T)
-    expect(h).toMatchObject({ state: 'waiting', text: '0.183.1', why: { text: 'patch', title: expect.stringMatching(/^patch: fixes only\.\n/) }, age: 'last 8h ago' })
+    expect(h).toMatchObject({ state: 'waiting', text: 'Next release 0.183.1', short: 'Next 0.183.1', why: { text: 'patch', title: expect.stringMatching(/^patch: fixes only\.\n/) }, age: 'last release 8h ago', ageShort: 'last 8h ago' })
     expect(notesOf(repo(), h, s).map((e) => e.text)).toEqual(['b fixed', 'a changed'])
   })
 
@@ -40,13 +40,16 @@ describe('the release notes', () => {
     expect(notesHeading(idle, { name: 'v0.183.0', at: T - 8 * H }, T)).toMatchObject({ state: 'idle', text: 'Nothing new since v0.183.0', age: '8h ago' })
     const ship = status({ unreleased: onBatch, prs: [pr(950, 'chore(release): 0.183.1')] })
     const sh = notesHeading(ship, undefined, T)
-    expect(sh.text).toBe('Shipping 0.183.1')
+    // Nothing read runs (its checks not read): *Release*, not *Releasing*.
+    expect(sh.text).toBe('Release 0.183.1')
+    expect(notesHeading(status({ unreleased: onBatch, prs: [pr(950, 'chore(release): 0.183.1')], cards: [card(950, { ci: 'running' })] }), undefined, T).text).toBe('Releasing 0.183.1')
+    expect(notesHeading(status({ unreleased: onBatch, prs: [pr(950, 'chore(release): 0.183.1')], cards: [card(950, { ci: 'fail' })] }), undefined, T).text).toBe('Release 0.183.1')
     const released = { version: '0.183.1', count: 1, entries: [{ text: 'shipped', kind: 'Fixed' }] }
     expect(notesOf(repo({ released }), sh, ship).map((e) => e.text)).toEqual(['shipped'])
     const out = status({ lastTag: { name: 'v0.183.1', at: T - 10 * 60_000 }, unreleased: { ref: 'origin/master', items: [], count: 0 },
       releases: [{ tag: 'v0.183.1', published_at: T - 5 * 60_000, prs: [], cost_usd: 0, sessions: 0 }] })
     const oh = notesHeading(out, { name: 'v0.183.1', at: T - 10 * 60_000 }, T)
-    expect(oh).toMatchObject({ state: 'out', text: 'v0.183.1 out', age: '5 min ago' })
+    expect(oh).toMatchObject({ state: 'out', text: '0.183.1 released', age: '5 min ago' })
     expect(notesOf(repo({ released, unreleased: undefined }), oh, out).map((e) => e.text)).toEqual(['shipped'])
     // A released section of another version is not this release's.
     expect(notesOf(repo({ released: { ...released, version: '0.183.0' }, unreleased: undefined }), oh, out)).toEqual([])

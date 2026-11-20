@@ -160,45 +160,48 @@ describe('the release status’s stages', () => {
 describe('the right panel’s folded Release line', () => {
   const fold = (s: ReleaseStatus, o: Partial<Parameters<typeof releaseFold>[1]> = {}) => releaseFold(s, { waiting: 0, now: T, ...o })
 
-  it('says nothing is new since the last tag', () => {
+  it('says nothing is new since the last tag, grey', () => {
     const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), releases: [rel('v0.182.4', T - 30 * H, 23)], lastTag: { name: 'v0.182.4', at: T - 30 * H } }))
     expect(s.phase).toBe('idle')
-    expect(fold(s, { lastTag: 'v0.182.4' })).toMatchObject({ kind: 'idle', text: 'Nothing new since v0.182.4' })
+    expect(fold(s, { lastTag: 'v0.182.4' })).toMatchObject({ kind: 'idle', text: 'Nothing new since v0.182.4', tone: 'idle' })
   })
 
-  it('says a release just published is out, and how long ago', () => {
+  it('says a release just published is released, and how long ago, green', () => {
     const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - H }, releases: [rel('v0.183.0', T - 5 * 60_000, 23), rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'pass') }))
-    expect(fold(s, { lastTag: 'v0.183.0' })).toMatchObject({ kind: 'out', text: 'v0.183.0 out · 5 min ago', tone: 'ok' })
+    expect(fold(s, { lastTag: 'v0.183.0' })).toMatchObject({ kind: 'out', text: '0.183.0 released · 5 min ago', tone: 'ok' })
     // An hour on, it is "nothing new" again.
     expect(fold(s, { lastTag: 'v0.183.0', now: T + 2 * H })).toMatchObject({ kind: 'idle', text: 'Nothing new since v0.183.0' })
   })
 
-  // Owner, 2026-11-19: variant B's next step in the folded line.
-  it('counts the changes waiting and says the next step: the batch PR’s, its red CI, or a release PR', () => {
+  // Owner, 2026-11-20, translated: "I stopped understanding what this means
+  // … I must know the status exactly". Merged and no release PR: nothing runs.
+  it('says a release ready and not started in grey, with the changes and the batch still open', () => {
     const s = releaseStatus(base({ lastTag: { name: 'v0.182.4', at: T - 5 * H }, unreleased: pending({ Added: 2, Fixed: 3 }, 5), releases: [rel('v0.182.4', T - 5 * H, 23)] }))
-    expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'pass', next: 'merge #940' } })).toMatchObject({ kind: 'waiting', text: '0.183.0 · 5 changes · next: merge #940' })
-    expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'running', next: 'wait for CI' } }).text).toBe('0.183.0 · 5 changes · next: wait for CI')
-    expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'fail', next: 'fix CI on #940' } })).toMatchObject({ text: '0.183.0 · 5 changes · batch CI red', tone: 'fail' })
-    expect(fold(s, { waiting: 5, batch: { number: 940 } }).text).toBe('0.183.0 · 5 changes · next: merge #940')
-    expect(fold(s, { waiting: 1 }).text).toBe('0.183.0 · 1 change · next: release PR')
+    expect(fold(s, { waiting: 5 })).toMatchObject({ kind: 'ready', text: 'Ready to release 0.183.0 · not started · 5 changes', tone: 'idle' })
+    expect(fold(s, { waiting: 1 }).text).toBe('Ready to release 0.183.0 · not started · 1 change')
+    expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'pass', next: 'merge #940' } }).text).toBe('Ready to release 0.183.0 · not started · 5 changes · PR #940 green')
+    expect(fold(s, { waiting: 5 }).title).toMatch(/^Nothing is running\. The changes are merged; v0\.183\.0 starts when someone opens its release pull request/)
   })
 
-  it('names the release PR and its CI', () => {
+  it('says a release PR whose checks run as releasing, and red checks as stopped', () => {
     const input = { lastTag: { name: 'v0.182.4', at: T - 5 * H }, unreleased: pending({ Added: 1 }, 1), releases: [rel('v0.182.4', T - 5 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0')] }
-    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'running')] }))).text).toBe('0.183.0 · release PR #942 · CI running')
-    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'fail')] })))).toMatchObject({ text: '0.183.0 · release PR #942 · CI red', tone: 'fail' })
-    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'pass')] }))).text).toBe('0.183.0 · release PR #942 · CI green')
+    const os: BoardCard['os'] = [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'macos', state: 'running', checks: 3 }, { os: 'windows', state: 'running', checks: 3 }]
+    const running = [card(942, 'running', { os })]
+    expect(fold(releaseStatus(base({ ...input, cards: running })), { cards: running })).toMatchObject({ kind: 'releasing', text: 'Releasing 0.183.0 · checks 1 of 3 systems', tone: 'active' })
+    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'running')] }))).text).toBe('Releasing 0.183.0 · checks running')
+    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'fail')] })))).toMatchObject({ kind: 'stopped', text: 'Release 0.183.0 stopped · checks failed', tone: 'fail' })
+    expect(fold(releaseStatus(base({ ...input, cards: [card(942, 'pass')] })))).toMatchObject({ kind: 'ready', text: '0.183.0 ready to merge · #942 checks passed', tone: 'idle' })
   })
 
-  it('says a tag is building, with the files its release has of the last one’s', () => {
+  it('says a tag building as releasing, with the files its release has of the last one’s; a failed build stopped', () => {
     const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 120_000, 12), rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'running') }))
     expect(s.phase).toBe('tagged')
-    expect(fold(s)).toMatchObject({ kind: 'building', text: '0.183.0 · building · 12 of 23 files' })
+    expect(fold(s)).toMatchObject({ kind: 'releasing', text: 'Releasing 0.183.0 · building apps, 12 of 23 files', tone: 'active' })
     // Read from the run's jobs while no release has files yet.
     const j = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'running', [job('completed'), job('in_progress'), job('queued')]) }))
-    expect(fold(j).text).toBe('0.183.0 · building · 1 of 3 jobs')
+    expect(fold(j).text).toBe('Releasing 0.183.0 · building apps, 1 of 3 jobs')
     const failed = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.182.4', T - 30 * H, 23)], run: run('v0.183.0', 'fail') }))
-    expect(fold(failed)).toMatchObject({ kind: 'failed', text: '0.183.0 · build failed', tone: 'fail' })
+    expect(fold(failed)).toMatchObject({ kind: 'stopped', text: 'Release 0.183.0 stopped · build failed', tone: 'fail' })
   })
 
   it('says a tag no release published yet', () => {
@@ -248,7 +251,8 @@ describe('the right panel’s stages strip', () => {
     const allPR = { ...mixed, entries: mixed.entries!.map((e) => ({ ...e, source: 'pr' as const })) }
     const w = releaseStatus(base({ merged: 0, unreleased: allPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
     expect(stripStages(w).find((x) => x.state === 'current')?.key).toBe('merged')
-    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'pass', next: 'merge #949' } }).text).toBe('0.183.1 · 2 changes · next: merge #949')
+    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'pass', next: 'merge #949' } })).toMatchObject({ kind: 'waiting', text: 'Waiting for #949 to merge · 0.183.1 · 2 changes', tone: 'waiting' })
+    expect(releaseFold(w, { waiting: 2, now: T, batch: { number: 949, ci: 'fail' } })).toMatchObject({ kind: 'stopped', text: 'Waiting for #949 to merge · its checks failed · 0.183.1 · 2 changes', tone: 'fail' })
   })
 
   it('keeps Merged to come while the entries are only on the batch PR’s branch', () => {
@@ -261,48 +265,62 @@ describe('the right panel’s stages strip', () => {
   })
 })
 
-// Owner, 2026-11-19, variant A: only the stage it is at is named, with its detail.
+// Owner, 2026-11-19, variant A: only the stage it is at is named, with its
+// detail; 2026-11-20 (translated: "it must be really clear, I must know the
+// status exactly"): the state first in plain words, in one colour language —
+// grey nothing happening, blue in progress, amber waiting, red stopped, green done.
 describe('the words beside the stage dots', () => {
-  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; out?: boolean } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
-  it('names the release PR with its draft, its CI per OS, or its red CI', () => {
+  const words = (s: ReleaseStatus, o: { cards?: BoardCard[]; out?: boolean; batch?: { number: number; ci?: BoardCard['ci'] } } = {}) => stageWords(s, stripStages(s, { out: o.out }), { ...o, now: T })
+
+  it('merged, no release PR: ready to release, not started, grey', () => {
+    expect(words(releaseStatus(base()))).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Ready to release · not started', tone: 'idle' })
+  })
+
+  it('every entry on the batch PR: waiting for it to merge, amber; red when its checks failed', () => {
+    const onPR: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 }, via: { number: 949, head: 'feat/batch', sha: 'abc' }, entries: [{ text: 'a', kind: 'Fixed', source: 'pr' }] }
+    const w = releaseStatus(base({ merged: 0, unreleased: onPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
+    expect(words(w)).toMatchObject({ key: 'merged', index: 1, text: 'Waiting for #949 to merge', tone: 'waiting' })
+    expect(words(w, { batch: { number: 949, ci: 'fail' } })).toMatchObject({ text: 'Waiting for #949 to merge · its checks failed', tone: 'fail' })
+  })
+
+  it('release PR checks running: releasing, blue, the systems counted and named on hover', () => {
     const input = { prs: [pr(952, 'chore(release): 0.127.0')] }
     const os: BoardCard['os'] = [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'macos', state: 'running', checks: 3 }, { os: 'windows', state: 'running', checks: 3 }]
     const running = [card(952, 'running', { os })]
     // Owner, 2026-11-19: the count is of operating systems, said so, and named on hover.
-    expect(words(releaseStatus(base({ ...input, cards: running })), { cards: running })).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Release PR #952 · CI 1/3 systems', tone: 'pending',
-      title: '1 of 3 systems (macOS, Windows, Linux) passed; the rest are running.' })
-    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'running')] })))?.title).toBeUndefined()
-    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'running')] })))?.text).toBe('Release PR #952 · CI running')
-    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'fail')] })))).toMatchObject({ text: 'Release PR #952 · CI red', tone: 'fail' })
-    expect(words(releaseStatus(base({ prs: [{ ...pr(952, 'chore(release): 0.127.0'), draft: true }] })))?.text).toBe('Release PR #952 · draft')
+    expect(words(releaseStatus(base({ ...input, cards: running })), { cards: running })).toMatchObject({ key: 'pr', index: 2, name: 'Release PR', text: 'Releasing · checks 1 of 3 systems', tone: 'active',
+      title: 'Release pull request #952: 1 of 3 systems (macOS, Windows, Linux) passed; the rest are running.' })
+    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'running')] })))?.text).toBe('Releasing · checks running')
   })
 
-  it('says a release PR not opened yet', () => {
-    expect(words(releaseStatus(base()))).toMatchObject({ key: 'pr', text: 'Release PR · not opened yet' })
+  it('release PR checks red: release stopped, red, naming the system when known', () => {
+    const input = { prs: [pr(952, 'chore(release): 0.127.0')] }
+    expect(words(releaseStatus(base({ ...input, cards: [card(952, 'fail')] })))).toMatchObject({ text: 'Release stopped · checks failed', tone: 'fail' })
+    const os: BoardCard['os'] = [{ os: 'linux', state: 'pass', checks: 3 }, { os: 'windows', state: 'fail', checks: 3 }]
+    const red = [card(952, 'fail', { os })]
+    expect(words(releaseStatus(base({ ...input, cards: red })), { cards: red })?.text).toBe('Release stopped · checks failed on Windows')
   })
 
-  it('names a draft GitHub release as not public', () => {
+  it('a draft release PR, a green one waiting to merge, a merged one not tagged: grey, nothing runs', () => {
+    expect(words(releaseStatus(base({ prs: [{ ...pr(952, 'chore(release): 0.127.0'), draft: true }] })))).toMatchObject({ text: 'Ready to release · #952 is a draft', tone: 'idle' })
+    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0')], cards: [card(952, 'pass')] })))).toMatchObject({ key: 'tag', text: 'Ready to merge · #952 checks passed', tone: 'idle' })
+    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0', 'merged')] })))).toMatchObject({ key: 'tag', text: 'Not tagged yet · #952 merged', tone: 'idle' })
+  })
+
+  it('tagged and building: releasing, blue, with its files; a failed build stopped, red', () => {
+    const s = (state: ReleaseCI['state']) => releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 60_000, 12), rel('v0.182.4', T - 30 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0', 'merged')], run: run('v0.183.0', state) }))
+    expect(words(s('running'))).toMatchObject({ key: 'builds', index: 4, text: 'Releasing · building apps, 12 of 23 files', tone: 'active' })
+    expect(words(s('fail'))).toMatchObject({ text: 'Release stopped · build failed at 12 of 23 files', tone: 'fail' })
+  })
+
+  it('published only as a draft: release stopped, draft only, not public, red', () => {
     const s = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.127.0', at: T - 600_000 }, releases: [rel('v0.126.0', T - 5 * H, 14)], prs: [pr(952, 'chore(release): 0.127.0', 'merged')],
       run: run('v0.127.0', 'pass', [], { url: 'u', draft: true }) }))
-    expect(words(s)).toMatchObject({ key: 'published', text: 'Published · draft only, not public' })
+    expect(words(s)).toMatchObject({ key: 'published', text: 'Release stopped · draft only, not public', tone: 'fail' })
   })
 
-  it('names Tagged while a green release PR waits to merge, and once merged the tag it waits for', () => {
-    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0')], cards: [card(952, 'pass')] })))?.text).toBe('Tagged · waiting: merge #952')
-    expect(words(releaseStatus(base({ prs: [pr(952, 'chore(release): 0.127.0', 'merged')] })))?.text).toBe('Tagged · waiting for v0.127.0')
-  })
-
-  it('names Building with its files, red when the build failed', () => {
-    const s = (state: ReleaseCI['state']) => releaseStatus(base({ merged: 0, unreleased: pending({}, 0), lastTag: { name: 'v0.183.0', at: T - 600_000 }, releases: [rel('v0.183.0', T - 60_000, 12), rel('v0.182.4', T - 30 * H, 23)], prs: [pr(942, 'chore(release): 0.183.0', 'merged')], run: run('v0.183.0', state) }))
-    expect(words(s('running'))).toMatchObject({ key: 'builds', index: 4, text: 'Building · 12 of 23 files', tone: 'pending' })
-    expect(words(s('fail'))).toMatchObject({ text: 'Building · failed at 12 of 23 files', tone: 'fail' })
-  })
-
-  it('names Merged without the batch’s number (its via line says it), and Published with its age within the hour', () => {
-    const onPR: WorkRepo['unreleased'] = { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 }, via: { number: 949, head: 'feat/batch', sha: 'abc' }, entries: [{ text: 'a', kind: 'Fixed', source: 'pr' }] }
-    const w = releaseStatus(base({ merged: 0, unreleased: onPR, lastTag: { name: 'v0.183.0', at: T - 8 * H }, releases: [rel('v0.183.0', T - 8 * H, 23)] }))
-    expect(words(w)).toMatchObject({ key: 'merged', index: 1, text: 'Merged · waiting to merge' })
+  it('published within the hour: released, with its age, green', () => {
     const idle = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), releases: [rel('v0.183.0', T - 5 * 60_000, 23)] }))
-    expect(words(idle, { out: true })).toMatchObject({ key: 'published', index: 5, text: 'Published · 5 min ago', tone: 'ok' })
+    expect(words(idle, { out: true })).toMatchObject({ key: 'published', index: 5, text: 'Released · 5 min ago', tone: 'ok' })
   })
 })
