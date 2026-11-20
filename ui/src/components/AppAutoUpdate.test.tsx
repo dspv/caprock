@@ -156,27 +156,36 @@ describe('Update automatically', () => {
     expect(screen.queryByRole('status', { name: 'Caprock updated' })).toBeNull()
   })
 
-  it('closes the updated line after a count that holds under the pointer and in the background', async () => {
-    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true)
+  it('closes the updated line after a count that holds under the pointer, whatever focus says', async () => {
+    // The app's webview does not report focus reliably; the count must not wait on it.
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
     localStorage.setItem(UPDATED_KEY, 'v0.80.0')
     app = { ...app, version: '0.80.0' }
     h.st = { ...base, current: 'v0.80.0', update_available: false }
     render(<AppAutoUpdate />)
     await flush()
     const line = screen.getByRole('status', { name: 'Caprock updated' })
+    await flush(NOTE_MS / 2)
     fireEvent.pointerEnter(line)
     await flush(NOTE_MS * 2)
     expect(screen.getByRole('status', { name: 'Caprock updated' })).toBeTruthy()
+    // Leaving goes on from where it was, not from the start.
     fireEvent.pointerLeave(line)
-    focus.mockReturnValue(false)
-    await flush(NOTE_MS * 2)
+    await flush(NOTE_MS / 2 - 500)
     expect(screen.getByRole('status', { name: 'Caprock updated' })).toBeTruthy()
-    focus.mockReturnValue(true)
-    await flush(NOTE_MS - 500)
-    expect(screen.getByRole('status', { name: 'Caprock updated' })).toBeTruthy()
-    await flush(600)
+    await flush(700)
     expect(screen.queryByRole('status', { name: 'Caprock updated' })).toBeNull()
     focus.mockRestore()
+  })
+
+  it('closes the updated line on its ×', async () => {
+    localStorage.setItem(UPDATED_KEY, 'v0.80.0')
+    app = { ...app, version: '0.80.0' }
+    h.st = { ...base, current: 'v0.80.0', update_available: false }
+    render(<AppAutoUpdate />)
+    await flush()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('status', { name: 'Caprock updated' })).toBeNull()
   })
 
   it('is quiet where the app cannot replace itself', async () => {

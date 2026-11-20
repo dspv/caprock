@@ -9,7 +9,11 @@
  * **Restart now**; touching a key or clicking also calls it off until the
  * next quiet moment. After the restart one line says **Updated to vX ·
  * What's new**; it closes itself after NOTE_MS, a ring round its × showing
- * the time left (owner, 2026-11-18: it stayed forever).
+ * the time left (owner, 2026-11-18: it stayed forever). Until 2026-11-20 the
+ * × was a text glyph sitting off the ring's centre, the count waited for
+ * `document.hasFocus()`, which the app's webview does not report reliably,
+ * and passing the pointer over it started the count again: the owner saw it
+ * neither close nor look right ("doesn't close and it's crooked").
  *
  * Sessions and tabs come back as on any update: each session's terminal
  * lives in its pty-host, which outlives the app and the daemon (ADR-033);
@@ -177,8 +181,8 @@ export const NOTE_MS = 10_000
 const NOTE_STEP_MS = 100
 
 /**
- * The Updated to line. Counts down only while it can be seen and is not
- * being pointed at: the window in front and visible, the pointer off it.
+ * The Updated to line. Counts down while the page is visible and the pointer
+ * is off it; pointing at it holds the count where it is.
  */
 function UpdatedNote({ version, className, onWhatsNew, onClose }: {
   version: string; className: string; onWhatsNew: () => void; onClose: () => void
@@ -187,7 +191,7 @@ function UpdatedNote({ version, className, onWhatsNew, onClose }: {
   const hover = useRef(false)
   useEffect(() => {
     const t = window.setInterval(() => {
-      if (hover.current || document.hidden || !document.hasFocus()) return
+      if (hover.current || document.hidden) return
       setLeft((n) => Math.max(0, n - NOTE_STEP_MS))
     }, NOTE_STEP_MS)
     return () => window.clearInterval(t)
@@ -196,20 +200,22 @@ function UpdatedNote({ version, className, onWhatsNew, onClose }: {
   const r = 9
   const len = 2 * Math.PI * r
   return (
-    <div role="status" aria-label="Caprock updated" data-auto-updated className={`${className} flex items-center gap-2 py-2 pl-3.5 pr-2`}
+    <div role="status" aria-label="Caprock updated" data-auto-updated className={`${className} flex items-center gap-2 py-1.5 pl-3.5 pr-1.5`}
       onPointerEnter={() => { hover.current = true }}
-      onPointerLeave={() => { hover.current = false; setLeft(NOTE_MS) }}>
-      <span>Updated to <span className="mono">{version.replace(/^v/, '')}</span></span>
+      onPointerLeave={() => { hover.current = false }}>
+      <span className="whitespace-nowrap">Updated to <span className="mono">{version.replace(/^v/, '')}</span></span>
       <span aria-hidden className="text-fg-faint">·</span>
-      <button type="button" className="link" onClick={onWhatsNew}>What’s new</button>
-      <button type="button" aria-label="Close" onClick={onClose} className="relative ml-auto grid size-6 place-items-center rounded-full text-fg-faint hover:text-fg">
-        <svg aria-hidden data-note-ring viewBox="0 0 24 24" className="absolute inset-0 size-6 -rotate-90">
+      <button type="button" className="link whitespace-nowrap" onClick={onWhatsNew}>What’s new</button>
+      <button type="button" aria-label="Close" title="Close" onClick={onClose}
+        className="ml-auto grid size-7 shrink-0 place-items-center rounded-full text-fg-faint hover:text-fg">
+        {/* One drawing, so the cross sits at the ring's centre on every OS and font. */}
+        <svg aria-hidden data-note-ring viewBox="0 0 24 24" className="size-6">
           <circle cx="12" cy="12" r={r} fill="none" stroke="var(--app-hairline-strong)" strokeWidth="1.5" />
           <circle cx="12" cy="12" r={r} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
-            strokeDasharray={len} strokeDashoffset={len * (1 - left / NOTE_MS)}
+            transform="rotate(-90 12 12)" strokeDasharray={len} strokeDashoffset={len * (1 - left / NOTE_MS)}
             style={{ transition: `stroke-dashoffset ${NOTE_STEP_MS}ms linear` }} />
+          <path d="M9.25 9.25l5.5 5.5M14.75 9.25l-5.5 5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
-        <span className="relative leading-none">×</span>
       </button>
     </div>
   )
