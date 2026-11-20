@@ -32,6 +32,7 @@ import {
   focusedLeaf,
   isPageTab,
   leaves,
+  namingLeaf,
   loadWorkspace,
   numberedTabs,
   pipelineInStore,
@@ -43,7 +44,7 @@ import {
   type Tab,
   type TabTarget,
 } from '@/lib/tabs'
-import { tabLabels } from '@/lib/tablabels'
+import { agentInShell, tabLabels } from '@/lib/tablabels'
 import { onShellNamed } from '@/lib/sessionNames'
 import { idleEnded } from '@/lib/idleEnd'
 import { useReportTabs } from '@/lib/reportTabs'
@@ -457,6 +458,10 @@ export function AppShell() {
   const focusedSession = focused ? sessionsById.get(focused.sessionId) : undefined
   const inspectedId = focused?.sessionId
   const inspectedSession = focusedSession
+  // An agent session typed into the shell in front (`claude --resume <id>`):
+  // the inspector shows its cockpit, as on an agent's tab (owner, 2026-11-20).
+  const inspectedInside = agentInShell(focusedSession, sessionsById)
+  const inspectedAgent = inspectedInside ?? (inspectedSession?.kind !== 'shell' ? inspectedSession : undefined)
   // An agent's session is in front: what the chat applies to.
   const frontIsAgent = !!focused && focused.kind === 'session' && focusedSession?.kind !== 'shell'
   const activeProject = projectsById.get(activeProjectId)
@@ -1385,7 +1390,7 @@ export function AppShell() {
     const node = model.projects.find((n) => n.project.id === projectId)
     const ids = (node?.worktrees ?? []).flatMap((w) => w.sessions).filter((x) => x.isShell && x.session.status !== 'ended').map((x) => x.session.session_id)
     if (!node || ids.length === 0) return { cancelled: false, stopped: 0 }
-    const plan = planProjectClose(ids, await liveNow(), shellNames(tabs, labels))
+    const plan = planProjectClose(ids, await liveNow(), shellNames(tabs, labels), closeCtx.current.sessionsById)
     if (plan.busy.length === 0) {
       stopShells(plan.stop)
       return { cancelled: false, stopped: plan.stop.length }
@@ -2542,8 +2547,10 @@ export function AppShell() {
                   session={inspectedSession}
                   project={focusedProject}
                   sessionId={focusedFile ? undefined : inspectedId}
-                  hasPermission={!!inspectedId && data.permissions.has(inspectedId)}
-                  showPrompt={promptCard && !showChat}
+                  hasPermission={inspectedInside ? data.permissions.has(inspectedInside.session_id) : !!inspectedId && data.permissions.has(inspectedId)}
+                  showPrompt={inspectedInside ? true : promptCard && !showChat}
+                  inside={focusedFile ? undefined : inspectedInside}
+                  shellName={current && focused && namingLeaf(current).target.sessionId === focused.sessionId ? labels.get(current.id)?.shellName : undefined}
                   onClose={() => setPrefs((p) => ({ ...p, inspector: false }))}
                   onDetach={detach}
                   editors={editors}
@@ -2551,8 +2558,8 @@ export function AppShell() {
                   onReviewChanges={focusedWorktree?.repo ? () => onOpenChanges(focusedWorktree.projectId, focusedWorktree.w) : undefined}
                   onOpenFile={focusedWorktree?.repo ? (p) => openFile(focusedWorktree.projectId, focusedWorktree.w.isMain ? '' : focusedWorktree.w.key, p) : undefined}
                   summary={data.summary}
-                  onCompare={inspectedSession?.attempt_group ? () => onCompare(inspectedSession) : undefined}
-                  onOpenPRs={inspectedSession && inspectedSession.kind !== 'shell' ? (pr?: number) => openPipeline(inspectedSession, pr) : undefined}
+                  onCompare={inspectedAgent?.attempt_group ? () => onCompare(inspectedAgent) : undefined}
+                  onOpenPRs={inspectedAgent ? (pr?: number) => openPipeline(inspectedAgent, pr) : undefined}
                 />
                 </PipelineHostContext.Provider>
               </div>

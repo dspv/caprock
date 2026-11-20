@@ -1955,7 +1955,10 @@ replies to a running session: Continue, Shorter and the like"). Built in
   - ends an idle shell with the tab, through the same kill as *Stop the
     shell…*, without asking;
   - asks about a busy one — *Shell 1 is running claude. Close and stop it?* —
-    with **Stop and close**, **Keep running, close tab** and **Cancel**;
+    with **Cancel** (Esc), **Stop and close** (⌘↩, Ctrl+Enter off macOS)
+    and **Keep running, close tab** (↩, the default), listing the shell's
+    processes with their memory and naming an agent session running in it
+    ([04-ui.md § An agent in a shell](04-ui.md#an-agent-in-a-shell-the-inspector-and-the-close-question));
   - leaves agent tabs as they were: closing the tab of Claude Code, Codex or
     any agent never stops it — except a quick chat, which ends with its tab
     (*Closing a quick chat ends it*, above).

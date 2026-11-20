@@ -387,7 +387,7 @@ function StopButton({ sessionId, onStopped }: { sessionId: string; onStopped: ()
   return (
     <button type="button" data-jarvis-stop disabled={busy} onClick={() => void press()}
       title={error || (armed ? 'Press again to stop: the process ends, the conversation is kept' : 'Stop the session (asks once more)')}
-      className={`${smallBtn} ${armed ? 'border-danger bg-danger text-white hover:brightness-110' : 'hover:border-danger hover:text-danger'}`}>
+      className={`${smallBtn} ${armed ? 'border-danger bg-danger text-on-danger hover:brightness-110' : 'hover:border-danger hover:text-danger'}`}>
       {busy ? 'Stopping…' : armed ? 'Stop?' : 'Stop'}
     </button>
   )

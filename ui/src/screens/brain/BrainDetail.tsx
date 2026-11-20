@@ -202,7 +202,7 @@ function Body({ data, editable, onSelect, onChanged, onDeleted }: {
             {node.kind === 'note' ? <span className="text-[11.5px] text-fg-faint">Delete the source note in Obsidian, or remove the vault import.</span> : confirm ? (
               <>
                 <button type="button" onClick={() => void act(async () => { await api.removeBrain(node.id); onDeleted() })}
-                  className="rounded-[6px] bg-danger px-2.5 py-1 text-[12px] font-medium text-white">Delete it</button>
+                  className="rounded-[6px] bg-danger px-2.5 py-1 text-[12px] font-medium text-on-danger">Delete it</button>
                 <button type="button" onClick={() => setConfirm(false)} className="text-[12px] text-fg-muted hover:text-fg">Keep</button>
               </>
             ) : (

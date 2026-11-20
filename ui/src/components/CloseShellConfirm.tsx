@@ -5,7 +5,11 @@
  * closes and the shell ends with it. *Close project* asks the same way about
  * all its busy shells at once (`project`).
  */
+import { useEffect, useRef } from 'react'
 import { Sheet, SheetButton, SHEET_CLOSE_ROOM } from './Sheet'
+import { keys } from '@/lib/appkeys'
+import { isMacPlatform } from '@/lib/appmode'
+import { fmtMem, useSessionResources } from '@/lib/resources'
 import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentCloseChoices, chatsCloseQuestion, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
 
 /**
@@ -120,6 +124,16 @@ export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
   )
 }
 
+/**
+ * The question before closing a busy shell. Its buttons follow the agent
+ * tab's question (CloseAgentChoice): keeping it running is the default —
+ * drawn filled, in focus, Enter — and stopping takes a chord of its own,
+ * ⌘Enter (Ctrl+Enter off macOS), so ⌘W then Enter never ends a program
+ * (owner, 2026-11-20, translated: "keyboard shortcuts are missing", and the
+ * red button's label was white on a pastel red, 2.1:1 in Dark Pastel). It
+ * lists what runs in each shell, as the inspector's Processes does, and
+ * names an agent session running there, so you see what a stop ends.
+ */
 export function CloseShellConfirm({ busy, project, onStop, onKeep, onCancel }: {
   busy: readonly ClosingShell[]
   /** Closing a whole project: its name, for the question and the buttons. */
@@ -131,25 +145,91 @@ export function CloseShellConfirm({ busy, project, onStop, onKeep, onCancel }: {
   onCancel: () => void
 }) {
   const many = busy.length > 1
+  const agent = busy.some((b) => b.agent)
+  const mac = isMacPlatform()
+  const stop = useRef(onStop)
+  stop.current = onStop
+  // ⌘Enter stops, from wherever the focus is in the sheet. In the capture
+  // phase, so the focused button (Keep) is not pressed by the same Enter.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.isComposing || !(mac ? e.metaKey : e.ctrlKey)) return
+      e.preventDefault()
+      e.stopPropagation()
+      stop.current()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [mac])
+  const stopKey = keys(STOP_KEY, mac)
+  const keepKey = keys(KEEP_KEY, mac)
   return (
     <Sheet
       label="Close a running shell"
-      width={560}
+      width={600}
       onClose={onCancel}
       footer={
         <>
-          <SheetButton onClick={onCancel}>Cancel</SheetButton>
-          <SheetButton onClick={onKeep}>{project ? `Keep ${many ? 'them' : 'it'} running, close tabs` : 'Keep running, close tab'}</SheetButton>
-          <SheetButton danger autoFocus onClick={onStop}>Stop and close</SheetButton>
+          <SheetButton onClick={onCancel} aria-keyshortcuts="Escape" title="Cancel (Esc)" keyHint="Esc">Cancel</SheetButton>
+          <SheetButton danger data-close-shell="stop" onClick={onStop} aria-keyshortcuts={mac ? 'Meta+Enter' : 'Control+Enter'} title={`Stop and close (${stopKey})`} keyHint={stopKey}>Stop and close</SheetButton>
+          <SheetButton primary autoFocus data-close-shell="keep" onClick={onKeep} aria-keyshortcuts="Enter" title={`Keep running (${keepKey})`} keyHint={keepKey}>
+            {project ? `Keep ${many ? 'them' : 'it'} running, close tabs` : 'Keep running, close tab'}
+          </SheetButton>
         </>
       }
     >
-      <div className={`grid gap-1.5 py-4 pl-5 ${SHEET_CLOSE_ROOM}`}>
+      <div className={`grid gap-2.5 py-4 pl-5 ${SHEET_CLOSE_ROOM}`}>
         <p className="text-[13.5px] font-medium text-fg">{project ? projectCloseQuestion(project, busy) : closeQuestion(busy)}</p>
+        <RunningHere busy={busy} />
         <p className="text-[12.5px] text-fg-muted">
-          Stopping ends {many ? 'the shells and what they run' : 'the shell and what it runs'}. Kept running, {many ? 'they stay' : 'it stays'} in the sidebar as a muted row, to open again or stop with ■.
+          Stopping ends {many ? 'the shells and what they run' : 'the shell and what it runs'}
+          {agent ? '; the agent’s conversation stays in History, to continue later' : ''}. Kept running, {many ? 'they stay' : 'it stays'} in the sidebar as a muted row, to open again or stop with ■.
         </p>
       </div>
     </Sheet>
+  )
+}
+
+/** Stop and close's chord in the shell question; `keys()` spells it per OS (Ctrl+Enter off macOS). */
+export const STOP_KEY = '⌘↩'
+/** Keep running's key: Enter, the focused button. */
+export const KEEP_KEY = '↩'
+
+/**
+ * What runs in each closing shell — name and memory, from the same resource
+ * report as the inspector's Processes (lib/resources.ts) — with an agent
+ * session running there named beside its program: "claude — “Fix the
+ * login page” 260 MB · zsh 3 MB". Nothing while the report has no sample.
+ */
+function RunningHere({ busy }: { busy: readonly ClosingShell[] }) {
+  return (
+    <ul data-running-here className="grid gap-1 empty:hidden">
+      {busy.map((b) => <ShellProcs key={b.sessionId} shell={b} label={busy.length > 1 ? b.name : undefined} />)}
+    </ul>
+  )
+}
+
+function ShellProcs({ shell, label }: { shell: ClosingShell; label?: string }) {
+  const r = useSessionResources(shell.sessionId)
+  if (!r || r.top.length === 0) return null
+  let named = false
+  // The program the shell runs first — it is what Stop ends — then the rest
+  // by memory: on Linux the shell itself outweighed a small agent and led.
+  const top = [...r.top].sort((a, b) => Number(b.name === shell.program) - Number(a.name === shell.program))
+  const parts = top.map((p) => {
+    const agent = !named && !!shell.agent && p.name === shell.program
+    if (agent) named = true
+    return { key: p.pid, name: agent ? `${p.name} — “${shell.agent}”` : p.name, mem: fmtMem(p.mem_bytes) }
+  })
+  return (
+    <li className="text-[12.5px] leading-[1.5] text-fg-muted">
+      <span className="text-fg-faint">{label ? `${label}: ` : 'Running here: '}</span>
+      {parts.map((p, i) => (
+        <span key={p.key} data-running-proc>
+          {i > 0 && <span aria-hidden className="text-fg-faint"> · </span>}
+          <span className="mono text-fg">{p.name}</span> <span className="num">{p.mem}</span>
+        </span>
+      ))}
+    </li>
   )
 }

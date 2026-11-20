@@ -8,6 +8,8 @@
 import type { SessionSummary } from './api'
 import { leaves, namingLeaf, type PaneLeaf, type Tab } from './tabs'
 import { keys } from './appkeys'
+import { sessionTitle } from './sidebar'
+import { agentInShell } from './tablabels'
 
 /** A shell the close would end, or ask about. */
 export interface ClosingShell {
@@ -16,6 +18,18 @@ export interface ClosingShell {
   name: string
   /** What runs in front of its prompt; absent when it is idle. */
   program?: string
+  /**
+   * The agent session running there (`claude --resume <id>` typed at the
+   * prompt, lib/tablabels.ts agentInShell): its title, so the question says
+   * what the stop would end (owner, 2026-11-20).
+   */
+  agent?: string
+}
+
+/** The busy shell's fields for the agent session running in it, when there is one. */
+function agentField(id: string, program: string | undefined, sessions: ReadonlyMap<string, SessionSummary> | undefined): { agent?: string } {
+  const inner = program && sessions ? agentInShell(sessions.get(id), sessions) : undefined
+  return inner ? { agent: sessionTitle(inner) } : {}
 }
 
 /** What closing does: end `stop` with no question; ask about `busy` first. */
@@ -55,15 +69,34 @@ export function planClose(
     seen.add(id)
     const program = live.get(id) || undefined
     const name = leaf.id === naming.id && shellName ? shellName : 'The shell'
-    ;(program ? plan.busy : plan.stop).push({ sessionId: id, name, program })
+    ;(program ? plan.busy : plan.stop).push({ sessionId: id, name, program, ...agentField(id, program, sessions) })
   }
   return plan
 }
 
-/** The question for busy shells: "Shell 1 is running claude. Close and stop it?" */
+/**
+ * The question for busy shells: "Shell 1 is running claude. Close and stop
+ * it?" With an agent session in it, the session is named first — "“Fix the
+ * login page” is running in Shell 1. Close and stop it?" — since that is what
+ * a stop ends (owner, 2026-11-20).
+ */
 export function closeQuestion(busy: readonly ClosingShell[]): string {
-  if (busy.length === 1) return `${busy[0]!.name} is running ${busy[0]!.program}. Close and stop it?`
-  return `${busy.length} shells are running ${busy.map((b) => b.program).join(', ')}. Close and stop them?`
+  if (busy.length === 1) {
+    const b = busy[0]!
+    if (b.agent) return `“${b.agent}” is running in ${inShell(b.name)}. Close and stop it?`
+    return `${b.name} is running ${b.program}. Close and stop it?`
+  }
+  return `${busy.length} shells are running ${busy.map(runs).join(', ')}. Close and stop them?`
+}
+
+/** "Shell 1", or "the shell" mid-sentence. */
+function inShell(name: string): string {
+  return name === 'The shell' ? 'the shell' : name
+}
+
+/** What a busy shell runs, for a list: "npm", or "claude (“Fix the login page”)". */
+function runs(b: ClosingShell): string {
+  return b.agent ? `${b.program} (“${b.agent}”)` : `${b.program}`
 }
 
 /**
@@ -76,12 +109,13 @@ export function planProjectClose(
   shellIds: readonly string[],
   live: ReadonlyMap<string, string | undefined>,
   names: ReadonlyMap<string, string>,
+  sessions?: ReadonlyMap<string, SessionSummary>,
 ): ClosePlan {
   const plan: ClosePlan = { stop: [], busy: [] }
   for (const id of new Set(shellIds)) {
     if (!live.has(id)) continue
     const program = live.get(id) || undefined
-    ;(program ? plan.busy : plan.stop).push({ sessionId: id, name: names.get(id) ?? 'Shell', program })
+    ;(program ? plan.busy : plan.stop).push({ sessionId: id, name: names.get(id) ?? 'Shell', program, ...agentField(id, program, sessions) })
   }
   return plan
 }
@@ -94,7 +128,7 @@ export interface ProjectShellsOutcome {
 
 /** "alpha: Shell 1 is running claude, Shell 2 is running npm. Stop them and close?" */
 export function projectCloseQuestion(project: string, busy: readonly ClosingShell[]): string {
-  const list = busy.map((b) => `${b.name} is running ${b.program}`).join(', ')
+  const list = busy.map((b) => `${b.name} is running ${runs(b)}`).join(', ')
   return `${project}: ${list}. Stop ${busy.length === 1 ? 'it' : 'them'} and close?`
 }
 

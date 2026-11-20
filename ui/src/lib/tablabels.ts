@@ -44,6 +44,19 @@ export interface TabLabel {
   dot: Dot
 }
 
+/**
+ * The agent session running in front of a shell's prompt — `claude --resume
+ * <id>` typed there (`agent_session_id`, `GET /v1/shells`) — while it runs;
+ * undefined for anything else. The tab is named after it, the inspector
+ * shows its panel (components/Inspector.tsx) and the close question names it
+ * (lib/closeShell.ts).
+ */
+export function agentInShell(shell: SessionSummary | undefined, sessions: ReadonlyMap<string, SessionSummary>): SessionSummary | undefined {
+  if (!shell?.agent_session_id) return undefined
+  const inner = sessions.get(shell.agent_session_id)
+  return inner && inner.status !== 'ended' && inner.kind !== 'shell' ? inner : undefined
+}
+
 /** What Rename on a tab renames: the session it is named after, or a shell's tab itself. */
 export type RenameOf =
   | { kind: 'session'; id: string; initial: string; current: string }
@@ -115,8 +128,7 @@ export function tabLabels(
       // An agent session running in the shell — `claude --resume <id>` typed
       // at its prompt — names the tab while it runs, as an agent's tab is
       // named; the shell is said on hover (owner, 2026-11-20).
-      const inner = s?.agent_session_id ? sessions.get(s.agent_session_id) : undefined
-      const inside = inner && inner.status !== 'ended' && inner.kind !== 'shell' ? inner : undefined
+      const inside = agentInShell(s, sessions)
       if (inside) {
         const ib = branchLabel(inside.git_branch ?? '')
         out.set(t.id, {

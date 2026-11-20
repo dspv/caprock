@@ -95,24 +95,25 @@ export function SheetButton({ primary, danger, keyHint, children, ...rest }: { p
       type="button"
       {...rest}
       className={`inline-flex h-[34px] shrink-0 items-center gap-2 whitespace-nowrap rounded-[7px] px-4 text-[14px] font-medium disabled:opacity-50 ${
-        danger ? 'bg-danger text-white hover:brightness-110'
+        danger ? 'bg-danger text-on-danger hover:brightness-110'
           : primary ? 'bg-accent text-panel hover:brightness-110' : 'border border-[var(--app-hairline-strong)] text-fg hover:bg-[var(--app-row-hover)]'
       }`}
     >
       {children}
-      {keyHint && <KeyChip primary={primary}>{keyHint}</KeyChip>}
+      {keyHint && <KeyChip primary={primary} danger={danger}>{keyHint}</KeyChip>}
     </button>
   )
 }
 
 /** A key on a button: bordered, full contrast, the label's own colour. */
-export function KeyChip({ primary, children }: { primary?: boolean; children: ReactNode }) {
+export function KeyChip({ primary, danger, children }: { primary?: boolean; danger?: boolean; children: ReactNode }) {
   return (
     <kbd
       aria-hidden="true"
       data-key-chip
       className={`rounded-[5px] border px-2 py-px font-sans text-[15px] font-semibold leading-[20px] tracking-[0.04em] ${
-        primary ? 'border-transparent bg-panel text-accent' : 'border-fg/35 bg-fg/10 text-fg'
+        danger ? 'border-on-danger/45 bg-on-danger/10 text-on-danger'
+          : primary ? 'border-transparent bg-panel text-accent' : 'border-fg/35 bg-fg/10 text-fg'
       }`}
     >
       {children}
