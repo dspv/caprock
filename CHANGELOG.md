@@ -12,6 +12,50 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.186.0] - 2026-11-21
+
+### Changed
+
+- **new agent:** Permissions is three buttons side by side instead of a
+  drop-down list, so all three are visible at once: Plan ●○○ *changes
+  nothing*, Accept edits ●●○ *asks before commands*, Bypass ●●● *never asks*,
+  left to right from safest to most on its own. The line under each name
+  says what that mode does in the agent you picked (Codex *no sandbox, never
+  asks*), with the full wording on hover. A mode outside the three, such as
+  auto mode, is named under the buttons and still used. On the keyboard Tab
+  reaches the picker and the arrow keys move between modes. The same picker
+  is in the New session dialog and New agent on another computer.
+
+### Fixed
+
+- **resources:** Caprock resources says what *Disk reads* and *History is
+  large* mean and what you can do. Disk reads: Caprock re-reading its own
+  history for the open window, harmless to the disk, and nothing to do — it
+  nearly stops while the window is minimized. History is large: what it
+  holds, and **Set a retention period**, which opens Settings → Storage at
+  the retention line. `caprock doctor`'s Verdict lines say the same. The
+  panel is about 10% wider, and each idle agent in Free up memory stays on
+  one line: a long name ends in an ellipsis (whole on hover) while *idle 22
+  min* and the size stay beside it.
+- **cockpit:** the CI and Release sections read cleanly in the narrow
+  right panel. Asking to fix a pull request's CI fits on one line (*Ask to
+  fix #977 CI? Confirm Cancel*, the whole sentence on hover), and so do
+  Re-run, Update branch and Resolve conflict. One link under the CI list
+  instead of two: *#977 log in Pipeline →* while a pull request fails,
+  else *Pipeline →*. The Release section says *Next 0.185.3 · patch · 36m
+  ago* rather than cutting it, names the pull request it waits for once,
+  with its state (*Waiting for #977 · CI red*, the failed check on hover),
+  says a failed check in plain words (*e2e failed*), and gives each entry
+  two lines.
+- **cockpit:** CI no longer shows an old red at full strength when the
+  window opens. A status kept from before is drawn faint, *as of 25 min
+  ago*, while GitHub is read again, and the read goes out at once when the
+  window, a tab or the app comes into view or the window is brought to the
+  front, not at the next minute's poll.
+- **cockpit:** while a release runs, the words beside its stage dots say only
+  where it is (*building 12 of 23 files*, *checks 1 of 3 systems*): the
+  heading above already says *Releasing*, and the two together were cut.
+
 ## [0.185.3] - 2026-11-20
 
 ### Fixed

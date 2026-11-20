@@ -517,6 +517,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-21 — 0.186.0: Permissions as three buttons, a cockpit CI and Release that fit, a Resources panel that says what to do
+
+A minor release, #983. The New agent sheet's Permissions dropdown is three
+buttons, all visible: Plan ●○○ *changes nothing*, Accept edits ●●○ *asks
+before commands*, Bypass ●●● *never asks*, safer to the left, more on its own
+to the right. The cockpit's confirms fit one line, there is one Pipeline link,
+the Release section says only where a running release is, and a CI copy kept
+from earlier is drawn faint until a fresh read lands, which now happens on
+focus too. Resources is wider, its idle agents are one line each, and *Disk
+reads* and *History is large* say what they mean and what to do.
+
 ### 2026-11-20 — 0.185.3: an agent in a shell gets its own inspector, a readable red button, a close question that says what it stops
 
 A patch release, #977. While an agent session the owner started at a shell's
