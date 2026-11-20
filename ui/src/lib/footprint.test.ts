@@ -63,10 +63,31 @@ describe('the doctor in plain words', () => {
       ['helpers', 'Leftover helpers', 1, true],
       ['reads', 'Disk reads', undefined, true],
     ])
-    expect(rows.find((r) => r.key === 'reads')!.reason).toBe('Above the usual 500 MB/hour limit.')
-    expect(rows.find((r) => r.key === 'reads')!.value).toBe('1.6 GB / hour')
+    const reads = rows.find((r) => r.key === 'reads')!
+    expect(reads.reason).toBe('Above the usual 500 MB an hour: Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU.')
+    expect(reads.help).toBe('Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.')
+    expect(reads.action).toBeUndefined()
+    expect(reads.value).toBe('1.6 GB / hour')
     // The daemon's own sentence goes to Details, not up front.
     expect(rows[0]!.said).toContain('beside this one')
+  })
+
+  it('says what the disk reads and a large history mean, and what can be done (owner, 2026-11-20)', () => {
+    const base = f()
+    const calm = doctorRows({ ...base, verdicts: (base.verdicts ?? []).filter((v) => v.code !== 'disk_reads_high') }).find((r) => r.key === 'reads')!
+    expect([calm.reason, calm.help, calm.warn]).toEqual(['Normal for Caprock.', undefined, false])
+    const big = doctorRows({
+      ...base,
+      disk: { ...base.disk, database_bytes: 2.1 * 2 ** 30 },
+      verdicts: [...(base.verdicts ?? []), { level: 'warn', code: 'database_large', text: 'The history database is 2.1 GB (over 2.0 GB): …' }],
+    }).find((r) => r.key === 'database')!
+    expect(big.title).toBe('History is large')
+    expect(big.reason).toBe("Every session's prompts, replies, tool calls and images. Caprock keeps all of it until you set a retention period.")
+    expect(big.help).toBe('Settings → Storage shows how much is older than 30 and 90 days.')
+    expect(big.action).toEqual({ key: 'retention', label: 'Set a retention period' })
+    expect([big.value, big.warn]).toEqual(['2.1 GB', true])
+    // The CLI's Verdict line, which the report prints, says the same.
+    expect(footprintText(base)).toContain('Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU. Nothing to do: it nearly stops while the window is minimized')
   })
 
   it('names agent work: worktrees, scratchpads, temporary folders', () => {

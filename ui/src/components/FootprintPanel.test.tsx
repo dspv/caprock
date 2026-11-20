@@ -188,6 +188,52 @@ describe('the panel', () => {
     expect(container.querySelector('[data-doctor-row="reads"]')!.textContent).toContain('1.6 GB / hour')
   })
 
+  it('says what the disk reads and a large history mean, with Set a retention period opening Settings at it (owner, 2026-11-20)', async () => {
+    const f = warned()
+    const big: Footprint = {
+      ...f,
+      disk: { ...f.disk, database_bytes: 2.1 * 2 ** 30 },
+      verdicts: [...(f.verdicts ?? []), { level: 'warn', code: 'database_large', text: 'The history database is 2.1 GB (over 2.0 GB).' }],
+    }
+    // Settings' Storage section as it draws: the retention line inside its closed Details.
+    const settings = document.createElement('div')
+    settings.innerHTML = '<section id="settings-storage"><details><summary>Details</summary><p data-retention="forever">Events are kept forever.</p></details></section>'
+    document.body.appendChild(settings)
+    try {
+      const { button, container } = await strip(big)
+      fireEvent.click(button)
+      await waitFor(() => expect(container.querySelector('[data-doctor-row="database"]')).not.toBeNull())
+      const reads = container.querySelector('[data-doctor-row="reads"]')!
+      expect(reads.querySelector('[data-row-reason]')!.textContent).toBe('Above the usual 500 MB an hour: Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU.')
+      expect(reads.querySelector('[data-row-help]')!.textContent).toBe('Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.')
+      expect(reads.querySelector('[data-row-action]')).toBeNull()
+      const db = container.querySelector('[data-doctor-row="database"]')!
+      expect(db.querySelector('[data-row-reason]')!.textContent).toBe("Every session's prompts, replies, tool calls and images. Caprock keeps all of it until you set a retention period.")
+      expect(db.querySelector('[data-row-help]')!.textContent).toBe('Settings → Storage shows how much is older than 30 and 90 days.')
+      const set = db.querySelector<HTMLButtonElement>('[data-row-action="retention"]')!
+      expect(set.textContent).toBe('Set a retention period')
+      location.hash = ''
+      fireEvent.click(set)
+      // The panel closes; Settings opens with the retention line unfolded and lit.
+      expect(container.querySelector('[data-footprint-panel]')).toBeNull()
+      expect(location.hash).toBe('#/settings')
+      const line = settings.querySelector<HTMLElement>('[data-retention]')!
+      await waitFor(() => expect(line.dataset.retentionLit).toBe(''))
+      expect(settings.querySelector('details')!.open).toBe(true)
+    } finally {
+      settings.remove()
+      location.hash = ''
+    }
+  })
+
+  it('is 10% wider than before and still fits a narrow window with the usual gutter', async () => {
+    const { button, container } = await strip(warned())
+    fireEvent.click(button)
+    const panel = container.querySelector('[data-footprint-panel]')!
+    expect(panel.className).toContain('w-[462px]')
+    expect(panel.className).toContain('max-w-[calc(100vw-24px)]')
+  })
+
   it('says All good with the memory when nothing warns', async () => {
     const { button, container } = await strip(healthy())
     fireEvent.click(button)

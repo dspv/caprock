@@ -71,6 +71,25 @@ func TestFootprintVerdicts(t *testing.T) {
 		}
 	}
 
+	// The history and the reads say what they are and what to do (owner,
+	// 2026-11-20): the same words as the dashboard's rows.
+	for _, v := range f.Verdicts {
+		switch v.Code {
+		case "database_large":
+			for _, want := range []string{"The history database is 3.1 GB (over 2.0 GB)", "prompts, replies, tool calls and images", "retention_days in config.json, then restart Caprock", "Settings > Storage shows how much is older than 30 and 90 days"} {
+				if !strings.Contains(v.Text, want) {
+					t.Errorf("database_large text lacks %q: %s", want, v.Text)
+				}
+			}
+		case "disk_reads_high":
+			for _, want := range []string{"The daemon read 1.7 GB from disk in the last 60 minutes (over 500 MB)", "re-reading its own history for the open window", "Harmless to the disk", "Nothing to do: it nearly stops while the window is minimized"} {
+				if !strings.Contains(v.Text, want) {
+					t.Errorf("disk_reads_high text lacks %q: %s", want, v.Text)
+				}
+			}
+		}
+	}
+
 	// Holders of another install that are all still in use are said, not warned.
 	f = cleanFootprint()
 	f.Duplicates.OtherInstallHolders = OtherInstallHolders{Count: 2, Exes: []ExeCount{{Exe: "/old/caprock", Count: 2}}}

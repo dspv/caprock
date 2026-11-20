@@ -185,14 +185,15 @@ function Group({ id, title, items, picked, busy, line, foot, onToggle, children 
         <ul className="flex flex-col gap-1">
           {items.map((x) => (
             <li key={x.key}>
-              <label className="flex cursor-pointer items-start gap-2">
+              {/* One line each (owner, 2026-11-20: a long name pushed "idle 22 min"
+                * onto a second line): the name gives way with an ellipsis, the
+                * full name on hover; the state and the size stay right-aligned. */}
+              <label data-free-up-line className="flex min-w-0 cursor-pointer items-center gap-2" title={`${x.name} · ${x.detail}`}>
                 <input type="checkbox" data-free-up-pick={x.key} checked={picked.has(x.key)} onChange={() => onToggle(x.key)} disabled={busy}
-                  className="mt-[0.2em] h-3.5 w-3.5 shrink-0 accent-accent" />
-                <span className="min-w-0 flex-1">
-                  <span className="text-fg">{x.name}</span>
-                  <span className="text-fg-faint"> · {x.detail}</span>
-                </span>
-                <span className="num shrink-0 text-fg-muted">{fmtMem(x.mem_bytes)}</span>
+                  className="h-3.5 w-3.5 shrink-0 accent-accent" />
+                <span data-free-up-name className="min-w-0 flex-1 truncate text-fg">{x.name}</span>
+                <span data-free-up-detail className="max-w-[45%] shrink-0 truncate text-right text-fg-faint">{x.detail}</span>
+                <span data-free-up-size className="num min-w-[4.5em] shrink-0 text-right text-fg-muted">{fmtMem(x.mem_bytes)}</span>
               </label>
             </li>
           ))}

@@ -18,6 +18,7 @@ import { fmtAgo } from '@/lib/format'
 import { fmtCPU, fmtMem, useResources } from '@/lib/resources'
 import { age, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, orphanFigure, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
 import { useNow } from '@/lib/useNow'
+import { openRetentionSetting } from '@/lib/compressHint'
 import { useMenuDismiss } from './Cockpit'
 import { FreeUpMemory } from './FreeUpMemory'
 
@@ -218,7 +219,7 @@ export function FootprintPanel({ f: strip, owner, front, sessions, onCheck: onSt
   return (
     <ClosePanel.Provider value={onClose}>
       <div role="dialog" aria-label="Caprock on this computer" data-footprint-panel
-        className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[420px] max-w-[calc(100vw-24px)] gap-4 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[15px] leading-[1.45] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
+        className={`app-fade-in flex flex-col max-h-[calc(100vh-48px)] w-[462px] max-w-[calc(100vw-24px)] gap-4 overflow-y-auto rounded-[12px] border border-[var(--app-hairline-strong)] bg-panel p-4 text-[15px] leading-[1.45] text-fg shadow-[0_16px_40px_-16px_rgba(0,0,0,0.5)] ${className}`}>
         <div className="flex flex-col gap-0.5">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-[16px] font-semibold">Caprock resources</span>
@@ -293,6 +294,11 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
   children?: ReactNode
 }) {
   const hasDetails = r.procs.length > 0 || Boolean(r.said)
+  const close = useContext(ClosePanel)
+  const act = r.action && (() => {
+    close?.()
+    if (r.action!.key === 'retention') openRetentionSetting()
+  })
   return (
     <li data-doctor-row={r.key} data-warn={r.warn || undefined} className="flex flex-col gap-2 py-3">
       <div className="flex items-start gap-2">
@@ -301,12 +307,14 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
           <p className="text-[15px] font-medium leading-[21px] text-fg">
             {r.title}{r.count !== undefined && <span className="num font-normal text-fg-muted"> ({r.count})</span>}
           </p>
-          {r.reason && <p className="mt-1 text-[14px] leading-[20px] text-fg-muted">{r.reason}</p>}
+          {r.reason && <p data-row-reason className="mt-1 text-[14px] leading-[20px] text-fg-muted">{r.reason}</p>}
+          {r.help && <p data-row-help className="mt-1 text-[14px] leading-[20px] text-fg">{r.help}</p>}
         </div>
       </div>
-      {(r.value || canStop) && (
+      {(r.value || canStop || act) && (
         <div className="flex flex-wrap items-center justify-between gap-2 pl-[15px]">
           {r.value && <span className={`num text-[18px] font-medium ${r.key === 'reads' && r.warn ? 'text-warn' : 'text-fg'}`}>{r.value}</span>}
+          {act && <button type="button" data-row-action={r.action!.key} onClick={act} className={`${SMALL} ml-auto`}>{r.action!.label}</button>}
           {canStop && <button type="button" data-row-stop disabled={busy} onClick={onStop} aria-label={`Stop: ${r.title}`} className={`${SMALL} ml-auto`}>Stop…</button>}
         </div>
       )}

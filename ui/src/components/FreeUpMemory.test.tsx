@@ -125,6 +125,30 @@ describe('the confirmation', () => {
     expect(container.querySelector<HTMLButtonElement>('[data-free-up-yes]')!.disabled).toBe(true)
   })
 
+  it('keeps each line on one line: a long name truncates, the state and the size stay right-aligned', async () => {
+    // Owner, 2026-11-20: "Ops job telegram: … · idle 22 min" wrapped, "idle 22 min" on a line of its own.
+    const long = 'Ops job telegram: Bad Gateway 502 from the relay, retried every minute since the morning'
+    const named = sessions.map((s) => (s.session_id === 's2' ? { ...s, name: long } : s))
+    const f = doctor()
+    vi.spyOn(api, 'footprint').mockResolvedValue(f)
+    const r = render(<FreeUpMemory memory={memReport(f)} sessions={named} />)
+    fireEvent.click(await waitFor(() => r.container.querySelector<HTMLButtonElement>('[data-free-up]') ?? Promise.reject(new Error('not yet'))))
+    const line = r.container.querySelector('[data-free-up-pick="a:s2"]')!.closest('[data-free-up-line]')!
+    expect(line.className).toContain('flex')
+    expect(line.className).not.toContain('flex-wrap')
+    expect(line.getAttribute('title')).toBe(`${long} · idle 40 min`)
+    const name = line.querySelector('[data-free-up-name]')!
+    expect(name.textContent).toBe(long)
+    expect(name.className.split(' ')).toEqual(expect.arrayContaining(['truncate', 'min-w-0', 'flex-1']))
+    // The state and the size are siblings of the name on the same flex line, never squeezed.
+    const detail = line.querySelector('[data-free-up-detail]')!
+    const size = line.querySelector('[data-free-up-size]')!
+    expect(detail.textContent).toBe('idle 40 min')
+    expect([...line.children].map((c) => c.getAttribute('data-free-up-name') !== null ? 'name' : c.getAttribute('data-free-up-detail') !== null ? 'detail' : c.getAttribute('data-free-up-size') !== null ? 'size' : 'pick'))
+      .toEqual(['pick', 'name', 'detail', 'size'])
+    for (const el of [detail, size]) expect(el.className.split(' ')).toEqual(expect.arrayContaining(['shrink-0', 'text-right']))
+  })
+
   it('sends the ticked leftovers with skip_held and the ticked agents with the tab in front', async () => {
     const f = doctor()
     vi.spyOn(api, 'footprint').mockResolvedValue(f)

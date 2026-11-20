@@ -48,6 +48,23 @@ why it is listed. Then:
 
 The command palette's *Caprock doctor* opens the same panel.
 
+### Disk reads and History is large
+
+Two rows say what they mean for you and what you can do; `caprock doctor`'s
+Verdict lines say the same:
+
+- **Disk reads** above the usual 500 MB an hour is Caprock re-reading its own
+  history to keep the open window's screens current. It does not wear the
+  disk; it costs a little battery and CPU. Nothing is needed from you: while
+  the window is minimized or hidden its screens stop asking, and the reads
+  all but stop. A change that reads less is in progress.
+- **History is large** (a database over 2 GB) is every session's prompts,
+  replies, tool calls and images, which Caprock keeps until you set a
+  retention period. **Set a retention period** opens Settings → Storage at
+  the retention line, which says how much is older than 30 and 90 days. The
+  period is `retention_days` in `config.json` in the data directory; Caprock
+  reads it when it starts, so restart it after the change.
+
 ## What it reports
 
 It reports:
@@ -167,8 +184,8 @@ What it does not fix on its own: another daemon, a second app, or any other
 process it did not start (it lists them under Orphans; stopping one is your
 click — see above), and a database that
 is large because of how much history it holds (deleting history is your call
-— set a retention period in Settings; the space it frees goes back to the
-disk on its own).
+— set `retention_days` in `config.json` and restart Caprock; the space it
+frees goes back to the disk on its own).
 
 ## With no daemon running
 
