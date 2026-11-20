@@ -18,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/termbuf"
 )
 
@@ -640,5 +641,41 @@ func TestTermV2ReattachWhileTheOldSocketIsHalfOpen(t *testing.T) {
 	}
 	if typed := ft.typedNow(); strings.Join(typed, ",") != "ls\r,pwd\r" {
 		t.Fatalf("typed %q; the resend must be dropped and the new input typed once", typed)
+	}
+}
+
+// unexpectedAgents is v2Agents whose session ended on its own (ADR-100).
+type unexpectedAgents struct{ *v2Agents }
+
+func (unexpectedAgents) Exit(id string) (agents.ExitReport, bool) {
+	return agents.ExitReport{SessionID: id, Code: -1, Unexpected: true}, true
+}
+
+// A session that ended on its own says so in its exit frame, so the app asks
+// for the report only then: asked on every exit, a session with none
+// recorded was a 404 in the browser's console.
+func TestTermV2ExitSaysAnUnexpectedEnd(t *testing.T) {
+	ft := newFakeTerm(1 << 10)
+	e := newEnv(t)
+	ag := &v2Agents{fakeAgents: &fakeAgents{avail: true, snapshot: []byte("V1SNAP"), termCh: make(chan []byte, 4)}, term: ft}
+	e.srv.Config.Handler = New(Deps{Store: e.st, Version: "t", Token: "tok", Now: func() time.Time { return e.now }, Agents: unexpectedAgents{ag}})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c := dialV2(ctx, t, e.srv, "")
+	mustHello(ctx, t, c)
+	mustFrame(ctx, t, c)
+	ft.code = -1
+	close(ft.done)
+	for {
+		f, err := readFrame(ctx, c)
+		if err != nil {
+			t.Fatalf("closed without an exit frame: %v", err)
+		}
+		if raw, ok := f.text["exit"]; ok {
+			if string(raw) != `{"code":-1,"unexpected":1}` {
+				t.Fatalf("exit = %s", raw)
+			}
+			return
+		}
 	}
 }

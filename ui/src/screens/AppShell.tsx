@@ -925,7 +925,7 @@ export function AppShell() {
    * window showing the tab asks (the app, a browser, a phone); `replaces`
    * makes the daemon start one shell for them all.
    */
-  const onPaneExit = useCallback(async (sessionId: string) => {
+  const onPaneExit = useCallback(async (sessionId: string, unexpected?: boolean) => {
     const s = sessionsById.get(sessionId)
     // Stopped at its limit and continued elsewhere (ADR-090): the original's
     // process is ended once the new one has started, and the move may land
@@ -946,7 +946,10 @@ export function AppShell() {
     // became a shell, and the session was nowhere, not in Recently closed).
     // The shell keeps its name and says so at its top, with Resume, and the
     // session goes on Recently closed. A clean /exit says nothing.
-    const rep = await api.agentExit(sessionId).catch(() => null)
+    // The exit frame says whether it was (`unexpected`): only then is the
+    // report asked for. Asked on every exit, a session with none recorded —
+    // one stopped after a /clear — was a 404 in the console.
+    const rep = unexpected ? await api.agentExit(sessionId).catch(() => null) : null
     const tab = findTabBySession(wsRef.current, sessionId)
     let ended: EndedAgent | undefined
     if (endedUnexpectedly(rep) && rep) {

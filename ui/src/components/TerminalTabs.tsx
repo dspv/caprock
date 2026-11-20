@@ -657,7 +657,7 @@ export const TerminalStack = memo(function TerminalStack({
   renderPage?: (tab: Tab, leaf: PaneLeaf, visible: boolean) => ReactNode
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
   /** The session's program exited; the workspace replaces it with a shell. */
-  onPaneExit?: (sessionId: string) => void
+  onPaneExit?: (sessionId: string, unexpected?: boolean) => void
   /** The daemon no longer holds the session (TerminalPane onGone). */
   onPaneGone?: (sessionId: string) => void
   /** Its program exited at once: Try again started `newId` in its place, or Close (null) (TerminalPane onEarlyExit). */
@@ -689,7 +689,7 @@ export const TerminalStack = memo(function TerminalStack({
   const exitRef = useRef(onPaneExit)
   exitRef.current = onPaneExit
   const paneStatus = useCallback((id: string, s: PaneStatus) => statusRef.current?.(id, s), [])
-  const paneExit = useCallback((id: string) => exitRef.current?.(id), [])
+  const paneExit = useCallback((id: string, unexpected?: boolean) => exitRef.current?.(id, unexpected), [])
   const goneRef = useRef(onPaneGone)
   goneRef.current = onPaneGone
   const paneGone = useCallback((id: string) => goneRef.current?.(id), [])
@@ -756,7 +756,7 @@ interface PaneCtx {
   sessions?: ReadonlyMap<string, SessionSummary>
   permissions?: ReadonlySet<string>
   /** The session's program exited; the workspace replaces it with a shell. */
-  onPaneExit?: (sessionId: string) => void
+  onPaneExit?: (sessionId: string, unexpected?: boolean) => void
   onPaneGone?: (sessionId: string) => void
   onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   onFocusPane?: (paneId: string) => void
@@ -886,7 +886,7 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   visible: boolean
   focused: boolean
   onPaneStatus?: (sessionId: string, s: PaneStatus) => void
-  onPaneExit?: (sessionId: string) => void
+  onPaneExit?: (sessionId: string, unexpected?: boolean) => void
   onPaneGone?: (sessionId: string) => void
   onPaneEarlyExit?: (sessionId: string, newId: string | null) => void
   /** Primitives, so the memo still holds while the session list moves. */
@@ -901,7 +901,7 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   shellHint?: boolean
 }) {
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
-  const onExit = useMemo(() => onPaneExit && (() => onPaneExit(id)), [onPaneExit, id])
+  const onExit = useMemo(() => onPaneExit && ((_code: number, unexpected?: boolean) => onPaneExit(id, unexpected)), [onPaneExit, id])
   const onGone = useMemo(() => onPaneGone && (() => onPaneGone(id)), [onPaneGone, id])
   const onEarlyExit = useMemo(() => onPaneEarlyExit && ((newId: string | null) => onPaneEarlyExit(id, newId)), [onPaneEarlyExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])

@@ -54,7 +54,8 @@ export interface TermCallbacks {
    * after it started, with nothing typed (the daemon's ExitReport) — it never
    * really started, and GET /v1/agents/{id}/exit says what it printed.
    */
-  exit?(code: number, early?: boolean): void
+  /** `unexpected`: it ended on its own, not by a request (ADR-100). */
+  exit?(code: number, early?: boolean, unexpected?: boolean): void
   /** The socket opened (v1 or v2): the place to tell the daemon the size. */
   open?(): void
   /**
@@ -622,7 +623,7 @@ export class TermClient {
     if (m.ping !== undefined) { ws.send(JSON.stringify({ pong: m.ping })); return }
     const reset = m.reset as { offset: number } | undefined
     if (reset) { this.snapshotAt = reset.offset; return }
-    const exit = m.exit as { code: number; restart?: number; early?: number; freed?: number } | undefined
+    const exit = m.exit as { code: number; restart?: number; early?: number; freed?: number; unexpected?: number } | undefined
     if (exit?.restart) {
       // A new process, a new ring: the next connect asks for all of it.
       this.restarting = true
@@ -636,7 +637,7 @@ export class TermClient {
     }
     if (exit) {
       this.ended = true
-      this.opts.callbacks.exit?.(exit.code, !!exit.early)
+      this.opts.callbacks.exit?.(exit.code, !!exit.early, !!exit.unexpected)
     }
   }
 

@@ -267,7 +267,7 @@ export function TerminalPane({
    * tab is the user's place to work, not a record of a dead process, so the
    * workspace puts a shell in the same folder here.
    */
-  onExit?: (code: number) => void
+  onExit?: (code: number, unexpected?: boolean) => void
   /**
    * The daemon no longer holds the session — its process is gone, say with
    * a restart of the background service — and the terminal has stopped
@@ -615,9 +615,9 @@ export function TerminalPane({
         },
         // An exit at once is said in the pane, not turned into a shell: the
         // program never really started, and what it printed is the reason.
-        exit: (code, isEarly) => {
+        exit: (code, isEarly, unexpected) => {
           if (shownRef.current !== sessionId) return
-          if (isEarly) setEarly(code); else onExitRef.current?.(code)
+          if (isEarly) setEarly(code); else onExitRef.current?.(code, unexpected)
         },
         gone: () => { if (shownRef.current === sessionId) onGoneRef.current?.() },
       },

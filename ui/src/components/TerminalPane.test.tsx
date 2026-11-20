@@ -1010,7 +1010,7 @@ describe('a program that exited at once', () => {
     const onExit = vi.fn()
     render(<TerminalPane sessionId="s" active onExit={onExit} onEarlyExit={() => {}} />)
     exitWith(0, false)
-    expect(onExit).toHaveBeenCalledWith(0)
+    expect(onExit).toHaveBeenCalledWith(0, undefined)
     expect(document.querySelector('[data-early-exit]')).toBeNull()
   })
 

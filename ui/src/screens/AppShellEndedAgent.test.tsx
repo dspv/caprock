@@ -14,10 +14,11 @@ import { AppShell } from './AppShell'
 import { loadRecentlyClosed } from '@/lib/recentlyClosed'
 import '@/App'
 
-// The pane is a button that "exits" its session, as the terminal's exit frame does.
+// The pane is a button that "exits" its session, as the terminal's exit
+// frame does: its code, and `unexpected` as the daemon marks the frame.
 vi.mock('@/components/TerminalPane', () => ({
-  TerminalPane: ({ sessionId, onExit }: { sessionId: string; onExit?: (code: number) => void }) => (
-    <button type="button" data-testid={`pane-${sessionId}`} onClick={() => onExit?.(-1)}>exit {sessionId}</button>
+  TerminalPane: ({ sessionId, onExit }: { sessionId: string; onExit?: (code: number, unexpected?: boolean) => void }) => (
+    <button type="button" data-testid={`pane-${sessionId}`} onClick={() => onExit?.(h.exit?.code ?? 0, !!h.exit?.unexpected)}>exit {sessionId}</button>
   ),
 }))
 vi.mock('@/components/PermissionPrompt', async (orig) => ({
@@ -41,6 +42,7 @@ const h = vi.hoisted(() => ({
   spawned: [] as SpawnRequest[],
   shells: [] as { cwd?: string; replaces?: string }[],
   signals: [] as [string, string][],
+  asked: 0,
 }))
 
 vi.mock('@/lib/api', async (orig) => {
@@ -58,7 +60,7 @@ vi.mock('@/lib/api', async (orig) => {
       recentEvents: async () => [],
       subagents: async () => ({ working: [], finished: 0 }),
       recentMainEvents: async () => [],
-      agentExit: async () => { if (!h.exit) throw new Error('404'); return h.exit },
+      agentExit: async () => { h.asked++; if (!h.exit) throw new Error('404'); return h.exit },
       session: async (id: string) => ({ ...sess({ session_id: id, title: 'Ops scripts', status: 'ended' }), resume: { ok: true, permission_mode: 'auto' } }),
       spawn: async (req: SpawnRequest) => { h.spawned.push(req); return { session_id: req.resume ?? 'new' } },
       signal: async (id: string, action: string) => { h.signals.push([id, action]) },
@@ -146,6 +148,14 @@ describe('an agent session that ended unexpectedly', () => {
     expect(screen.getByTestId('pane-shell-1')).toBeTruthy()
     expect(screen.getByRole('tab', { name: /Ops scripts/ })).toBeTruthy()
     expect(h.spawned).toEqual([])
+  })
+
+  it('asks for no report when the frame says the end was not unexpected', async () => {
+    h.exit = null
+    h.asked = 0
+    await openAndExit()
+    expect(notice()).toBeNull()
+    expect(h.asked).toBe(0)
   })
 
   it('says nothing after a clean exit', async () => {
