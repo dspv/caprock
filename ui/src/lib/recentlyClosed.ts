@@ -14,6 +14,12 @@
  * Caprock did not start it, rule 7); an ended one is continued with
  * `--resume` under its own id, in the permission mode it last ran in, as
  * *Continue here* does (components/ContinueSession.tsx).
+ *
+ * A session that ended unexpectedly — a signal, a crash, nobody asked
+ * (lib/endedAgent.ts) — is put on the list too, though no tab closed: its
+ * tab became a shell, and the owner could not find the session anywhere
+ * (2026-11-20, translated). Its row says *ended unexpectedly*, its project
+ * and the time; reopening it resumes it the same way.
  */
 import type { SessionSummary } from './api'
 import { leaves, type Tab } from './tabs'
@@ -33,8 +39,12 @@ export interface ClosedTab {
   projectId: string
   /** Its folder, so an ended session can be continued even once the list no longer carries it. */
   cwd?: string
-  /** When the tab closed (unix ms). */
+  /** When the tab closed (unix ms); for one that ended unexpectedly, when it ended. */
   closedAt: number
+  /** It ended and nobody asked it to (lib/endedAgent.ts): no tab closed, its tab became a shell. */
+  unexpected?: boolean
+  /** The project's name when it was put on the list, for the row. */
+  project?: string
 }
 
 function valid(x: unknown): x is ClosedTab {

@@ -1013,4 +1013,17 @@ describe('a program that exited at once', () => {
     expect(onExit).toHaveBeenCalledWith(0)
     expect(document.querySelector('[data-early-exit]')).toBeNull()
   })
+
+  // Resume on an ended agent's shell swaps the pane's session in place
+  // (lib/endedAgent.ts) and stops the shell: the shell's exit, heard by the
+  // old connection, is not the resumed session's (it put a shell over it).
+  it('an exit the old connection hears after the session was swapped goes nowhere', () => {
+    const before = vi.fn()
+    const after = vi.fn()
+    const { rerender } = render(<TerminalPane sessionId="shell" active onExit={before} />)
+    rerender(<TerminalPane sessionId="agent" active onExit={after} />)
+    exitWith(-1, false)
+    expect(before).not.toHaveBeenCalled()
+    expect(after).not.toHaveBeenCalled()
+  })
 })

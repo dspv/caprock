@@ -13,6 +13,7 @@
  */
 import { useState } from 'react'
 import { closedAgo, type ClosedTab } from '@/lib/recentlyClosed'
+import { endedClock } from '@/lib/endedAgent'
 import { keys, REOPEN_TAB_KEY } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 
@@ -62,19 +63,33 @@ export function RecentlyClosed({ items, now, flat, onReopen, onShowAll }: {
         {items.map((e, i) => {
           const ago = closedAgo(e.closedAt, now)
           const hint = i === 0 ? ` (${keys(REOPEN_TAB_KEY)})` : ''
+          const when = ago === 'now' ? 'just now' : `${ago} ago`
+          // Ended unexpectedly (lib/endedAgent.ts): a second line says so, with its project and the time.
+          const what = e.unexpected
+            ? `${e.title}${e.project ? ` (${e.project})` : ''}: ended unexpectedly at ${endedClock(e.closedAt, now)}. Resume it in a tab${hint}`
+            : `${e.title}: closed ${when}. Reopen it in a tab${hint}`
           return (
             <li key={e.sessionId}>
               <button
                 type="button"
                 data-nav-row
                 data-closed-row={e.sessionId}
+                data-closed-unexpected={e.unexpected || undefined}
                 aria-keyshortcuts={i === 0 ? (isMacPlatform() ? 'Shift+Meta+T' : 'Control+Alt+Shift+T') : undefined}
-                title={`${e.title}: closed ${ago === 'now' ? 'just now' : `${ago} ago`}. Reopen it in a tab${hint}`}
+                title={what}
                 onClick={() => onReopen(e)}
-                className={`app-row flex h-[28px] w-full min-w-0 items-center gap-2 rounded-[7px] ${pad} pr-2 text-left`}
+                className={`app-row flex w-full min-w-0 flex-col justify-center rounded-[7px] ${e.unexpected ? 'min-h-[40px] py-1' : 'h-[28px]'} ${pad} pr-2 text-left`}
               >
-                <span data-closed-title className="min-w-0 flex-1 truncate text-[13px] text-fg-muted">{e.title}</span>
-                <span data-closed-ago className="mono shrink-0 text-[11px] text-fg-faint">{ago}</span>
+                <span className="flex w-full min-w-0 items-center gap-2">
+                  <span data-closed-title className="min-w-0 flex-1 truncate text-[13px] text-fg-muted">{e.title}</span>
+                  <span data-closed-ago className="mono shrink-0 text-[11px] text-fg-faint">{ago}</span>
+                </span>
+                {e.unexpected && (
+                  <span data-closed-why className="w-full min-w-0 truncate text-[11.5px] text-fg-faint">
+                    <span className="text-warn">ended unexpectedly</span>
+                    {e.project ? ` · ${e.project}` : ''} · {endedClock(e.closedAt, now)}
+                  </span>
+                )}
               </button>
             </li>
           )

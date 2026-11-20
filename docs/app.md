@@ -88,7 +88,16 @@ others. Installing it: [install-app.md](install-app.md).
   runs, or continued where it stopped once it ended. **⇧⌘T** reopens the
   newest, as in a browser (Ctrl+Alt+Shift+T on Windows and Linux).
   *Show all in History* opens every session. Shells are not listed: closing
-  a shell's tab ends it. The list is kept across restarts.
+  a shell's tab ends it. The list is kept across restarts. A session that
+  **ended unexpectedly** is listed too, with *ended unexpectedly*, its
+  project and the time; clicking it resumes the conversation.
+- **When an agent ends.** Type `/exit` and the agent's tab becomes a shell
+  in the same folder. If the agent ended without you asking — killed by a
+  signal, say when another app quit, or crashed with an error code — the
+  shell keeps the session's name and says so on one line at its top: *ops
+  ended unexpectedly at 19:58 (killed by a signal)*. **Resume** continues
+  the same conversation in that tab; **×** hides the line and leaves the
+  shell.
 - **Closing things: ×.** Hover a tab under the project — or look at the
   one in front, where it always shows — for its **×**: it closes the tab
   exactly as ⌘W and the tab strip's × do. An agent Caprock started that is

@@ -157,3 +157,96 @@ func TestRedactArgs(t *testing.T) {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
 }
+
+// The rule for an end nobody asked for (owner, 2026-11-20: "ops" died with
+// Chrome, code -1, and its tab silently became a shell).
+func TestUnexpectedRule(t *testing.T) {
+	for _, c := range []struct {
+		code           int
+		stopped, early bool
+		want           bool
+	}{
+		{-1, false, false, true}, // killed by a signal
+		{1, false, false, true},  // exited with code 1
+		{137, false, false, true},
+		{0, false, false, false}, // /exit, Ctrl+D: the user's own
+		{-1, true, false, false}, // Stop, close, free, restart, shutdown
+		{1, false, true, false},  // exited at once: its own panel
+	} {
+		if got := Unexpected(c.code, c.stopped, c.early); got != c.want {
+			t.Errorf("Unexpected(%d, stopped=%v, early=%v) = %v, want %v", c.code, c.stopped, c.early, got, c.want)
+		}
+	}
+}
+
+// A session that ran a while and was killed by a signal ended unexpectedly:
+// kept in memory and in the store, read back by a daemon that forgot it.
+// One Caprock ended, and one that exited 0, did not.
+func TestASignalledSessionEndedUnexpectedly(t *testing.T) {
+	m, st, f := newMgr(t)
+	defer m.Shutdown()
+	a := spawnAndPrint(t, m, f, SpawnRequest{Cwd: t.TempDir()}, "> working")
+	a.StartedAt = time.Now().Add(-time.Minute)
+	f.session.signalled = true
+	f.session.finish(-1)
+	waitExit(t, a)
+	rep, ok := m.Exit(a.SessionID)
+	if !ok || !rep.Unexpected || rep.Early || rep.Code != -1 {
+		t.Fatalf("report %+v %v", rep, ok)
+	}
+	if stored, ok, err := store.GetExit(context.Background(), st.DB(), a.SessionID); err != nil || !ok || !stored.Unexpected {
+		t.Fatalf("stored %+v %v %v", stored, ok, err)
+	}
+	m.mu.Lock()
+	m.exits = nil
+	m.mu.Unlock()
+	if back, ok := m.Exit(a.SessionID); !ok || !back.Unexpected || back.Code != -1 {
+		t.Fatalf("from the store: %+v %v", back, ok)
+	}
+
+	m2, _, f2 := newMgr(t)
+	defer m2.Shutdown()
+	b := spawnAndPrint(t, m2, f2, SpawnRequest{Cwd: t.TempDir()}, "")
+	b.StartedAt = time.Now().Add(-time.Minute)
+	if err := m2.End(b.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	waitExit(t, b)
+	if rep, ok := m2.Exit(b.SessionID); !ok || rep.Unexpected {
+		t.Fatalf("ended by Caprock: %+v %v", rep, ok)
+	}
+
+	m3, _, f3 := newMgr(t)
+	defer m3.Shutdown()
+	c := spawnAndPrint(t, m3, f3, SpawnRequest{Cwd: t.TempDir()}, "")
+	c.StartedAt = time.Now().Add(-time.Minute)
+	f3.session.finish(0)
+	waitExit(t, c)
+	if rep, ok := m3.Exit(c.SessionID); !ok || rep.Unexpected {
+		t.Fatalf("exit 0: %+v %v", rep, ok)
+	}
+}
+
+// Running again under its own id, a session has no exit: the stored row is
+// the run before. A tab resumed in place read that row, said "ended
+// unexpectedly" over the running session and put a shell in its place.
+func TestARunningSessionHasNoStoredExit(t *testing.T) {
+	m, _, f := newMgr(t)
+	defer m.Shutdown()
+	a := spawnAndPrint(t, m, f, SpawnRequest{Cwd: t.TempDir()}, "")
+	a.StartedAt = time.Now().Add(-time.Minute)
+	f.session.signalled = true
+	f.session.finish(-1)
+	waitExit(t, a)
+	if rep, ok := m.Exit(a.SessionID); !ok || !rep.Unexpected {
+		t.Fatalf("after the kill: %+v %v", rep, ok)
+	}
+	// The same id again (NewSessionID is fixed here), as --resume under its own id.
+	b := spawnAndPrint(t, m, f, SpawnRequest{Cwd: t.TempDir()}, "")
+	if b.SessionID != a.SessionID {
+		t.Fatalf("ids %s %s", a.SessionID, b.SessionID)
+	}
+	if rep, ok := m.Exit(b.SessionID); ok {
+		t.Fatalf("a running session reports an exit: %+v", rep)
+	}
+}

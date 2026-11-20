@@ -78,7 +78,11 @@ export function tabLabels(
       shells.set(t.projectId, n)
       const shellName = `Shell ${n}`
       const program = s?.program || undefined
-      out.set(t.id, { title: `${shellName}${program ? ` · ${program}` : ''}${more}`, shellName, program, branch, isShell, session: s, dot })
+      // A shell that took over an agent that ended unexpectedly keeps that
+      // agent's name (lib/endedAgent.ts): "shell" alone hid which session it
+      // was (owner, 2026-11-20).
+      const name = leaf.target.ended?.title || shellName
+      out.set(t.id, { title: `${name}${program ? ` · ${program}` : ''}${more}`, shellName, program, branch, isShell, session: s, dot })
       continue
     }
     const chat = isQuickChat(s) || (!s && !!startedChat(leaf.target.sessionId))

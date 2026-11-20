@@ -319,6 +319,12 @@ export function TerminalPane({
   onExitRef.current = onExit
   const onGoneRef = useRef(onGone)
   onGoneRef.current = onGone
+  // The session this pane shows now. A pane whose session is swapped in
+  // place (Resume on an ended agent's shell, lib/endedAgent.ts) gets the new
+  // id's callbacks at render, before the old connection is disposed: an
+  // exit the old one hears in between is not the new session's.
+  const shownRef = useRef(sessionId)
+  shownRef.current = sessionId
   // The program exited at once: its code, for EarlyExit (which reads the rest).
   const [early, setEarly] = useState<number | null>(null)
   // Bumped when Try again starts the same id again: the terminal reconnects to the new process.
@@ -609,8 +615,11 @@ export function TerminalPane({
         },
         // An exit at once is said in the pane, not turned into a shell: the
         // program never really started, and what it printed is the reason.
-        exit: (code, isEarly) => { if (isEarly) setEarly(code); else onExitRef.current?.(code) },
-        gone: () => onGoneRef.current?.(),
+        exit: (code, isEarly) => {
+          if (shownRef.current !== sessionId) return
+          if (isEarly) setEarly(code); else onExitRef.current?.(code)
+        },
+        gone: () => { if (shownRef.current === sessionId) onGoneRef.current?.() },
       },
     })
 

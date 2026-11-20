@@ -1042,9 +1042,18 @@ Code: `internal/agents/exitreport.go`, `internal/api/agentexit.go`,
   code, `ran_ms`, the command (flags as run; a first message or project
   instructions passed on it cut to their length, anything key- or
   token-shaped dropped) and the output tail.
-- **`GET /v1/agents/{id}/exit`** → `{session_id, agent?, binary?, code, early, ran_ms,
-  tail, at, retry?}`; **409** while the session runs, **404** when no exit is
-  recorded. `retry` is the request that started it, as `POST /v1/agents` takes
+- **Unexpected** ([ADR-100](08-decisions.md); `agents.Unexpected`). The
+  program exited with a non-zero code or was killed by a signal (code
+  **-1**), Caprock did not end it (End, a stop or kill signal, freeing
+  memory, a permission-mode restart, a shutdown: the session's `stopped`),
+  and it was not early. A clean exit 0 is not. Kept in memory and in
+  `session_exits.unexpected` (migration 0086). The tab that falls back to a
+  shell reads it before starting the shell and says so, with Resume
+  (04-ui.md).
+- **`GET /v1/agents/{id}/exit`** → `{session_id, agent?, binary?, code, early, unexpected?, ran_ms,
+  tail, at, retry?}` (`unexpected` only when true); **409** while the session runs — also when
+  the store holds the exit of an earlier run under the same id (a resume), which
+  is not how this run ended — **404** when no exit is recorded. `retry` is the request that started it, as `POST /v1/agents` takes
   it — the folder it ran in, a worktree already made not made again, nothing
   the daemon fills in (keys, configuration directories) — present only while
   this daemon remembers the exit. A controller may read it (it may start the
@@ -8965,6 +8974,14 @@ under the same id replaces it) and removed with the session
 (`store.RemoveSession`). The migration only creates the table. Read by
 `GET /v1/agents/{id}/exit` (§ Session exits) once the daemon no longer
 remembers the exit itself.
+
+Migration **0086** adds one column, every row before it reading 0 (2026-11-20,
+ADR-100):
+
+```sql
+-- 1: nobody asked it to end (agents.Unexpected, § Session exits)
+ALTER TABLE session_exits ADD COLUMN unexpected INTEGER NOT NULL DEFAULT 0;
+```
 
 ### Shared cards DDL (migration 0074)
 

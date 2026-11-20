@@ -15,6 +15,7 @@
  * what it restores is only which sessions were open — the terminals reconnect
  * and the daemon repaints them.
  */
+import { validEnded, type EndedAgent } from './endedAgent'
 
 /**
  * What a pane shows: an agent session, a shell (a session of kind `shell`),
@@ -53,6 +54,12 @@ export interface TabTarget {
    * setting off — the click that asked for it is the consent.
    */
   preview?: boolean
+  /**
+   * A shell: the agent session whose tab it took over when that session
+   * ended unexpectedly (lib/endedAgent.ts). The tab keeps its name and shows
+   * one line at its top, with Resume, until dismissed.
+   */
+  ended?: EndedAgent
 }
 
 export interface PaneLeaf {
@@ -138,6 +145,8 @@ export type WorkspaceAction =
    * that has exited.
    */
   | { type: 'replace-session'; sessionId: string; target: TabTarget; title: string }
+  /** The × on an ended agent's line in the shell `sessionId` (lib/endedAgent.ts): the line goes, the name stays. */
+  | { type: 'dismiss-ended'; sessionId: string }
   /** Show a session beside the focused pane of the tab in front. */
   | { type: 'split'; target: TabTarget; direction: 'row' | 'column'; projectId: string; title: string }
   | { type: 'focus-pane'; tabId: string; paneId: string }
@@ -408,6 +417,18 @@ export function workspaceReducer(ws: Workspace, a: WorkspaceAction): Workspace {
       const leaf = tab && leaves(tab.root).find((l) => l.target.sessionId === a.sessionId)
       return tab && leaf ? workspaceReducer(ws, { type: 'close-pane', tabId: tab.id, paneId: leaf.id }) : ws
     }
+    case 'dismiss-ended': {
+      const tab = findTabBySession(ws, a.sessionId)
+      if (!tab) return ws
+      const swap = (n: PaneNode): PaneNode =>
+        n.type === 'pane'
+          ? (n.target.sessionId === a.sessionId && n.target.ended && !n.target.ended.dismissed
+            ? { ...n, target: { ...n.target, ended: { ...n.target.ended, dismissed: true } } }
+            : n)
+          : { ...n, children: n.children.map(swap) }
+      const root = swap(tab.root)
+      return root === tab.root ? ws : replaceTab(ws, { ...tab, root })
+    }
     case 'replace-session': {
       const tab = findTabBySession(ws, a.sessionId)
       if (!tab) return ws
@@ -477,6 +498,8 @@ function isTarget(v: unknown): v is TabTarget {
   if (t.kind === 'file') return typeof t.path === 'string' && t.path !== '' && (t.worktree === undefined || typeof t.worktree === 'string')
   if (t.kind === 'files') return t.worktree === undefined || typeof t.worktree === 'string'
   if (t.kind === 'page') return typeof t.url === 'string' && (t.url === '' || pageAddress(t.url)) && (t.of === undefined || typeof t.of === 'string') && (t.preview === undefined || typeof t.preview === 'boolean')
+  // A shell's ended agent, malformed, would only cost its line: the tab is kept, the value dropped.
+  if (t.kind === 'shell' && t.ended !== undefined && !validEnded(t.ended)) delete t.ended
   return t.kind === 'session' || t.kind === 'shell' || t.kind === 'observe'
 }
 

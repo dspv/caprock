@@ -47,6 +47,7 @@ import { tabLabels } from '@/lib/tablabels'
 import { idleEnded } from '@/lib/idleEnd'
 import { useReportTabs } from '@/lib/reportTabs'
 import { clearMoves, clearedParts } from '@/lib/clearChain'
+import { endedUnexpectedly, type EndedAgent } from '@/lib/endedAgent'
 import { closedEntries, forgetClosed, loadRecentlyClosed, recordClosed, reopenPlan, shownClosed, type ClosedTab } from '@/lib/recentlyClosed'
 import { AGENT_SAVED_TOAST, isShellLeaf, liveShells, planAgentClose, planChatClose, planClose, planProjectClose, planTabsChatClose, shellNames, type AgentClosePlan, type ChatClosePlan, type ClosePlan, type ClosingShell, type ProjectShellsOutcome } from '@/lib/closeShell'
 import { baseName, fileKey } from '@/lib/files'
@@ -927,17 +928,68 @@ export function AppShell() {
       return
     }
     const cwd = s?.cwd
-    if (!cwd || s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
+    if (s?.kind === 'shell') { dispatch({ type: 'drop-session', sessionId }); return }
+    // Ended and nobody asked it to — a signal, a crash (lib/endedAgent.ts;
+    // owner, 2026-11-20: "ops" died when he quit Chrome, its tab silently
+    // became a shell, and the session was nowhere, not in Recently closed).
+    // The shell keeps its name and says so at its top, with Resume, and the
+    // session goes on Recently closed. A clean /exit says nothing.
+    const rep = await api.agentExit(sessionId).catch(() => null)
+    const tab = findTabBySession(wsRef.current, sessionId)
+    let ended: EndedAgent | undefined
+    if (endedUnexpectedly(rep) && rep) {
+      const title = (s && sessionTitle(s)) || tab?.title || 'session'
+      ended = { sessionId, title, code: rep.code, at: rep.at || Date.now(), ...(cwd ? { cwd } : {}) }
+      const projectId = tab?.projectId ?? activeProjectId
+      const project = projectsById.get(projectId)?.name
+      recordClosed([{ sessionId, title, projectId, ...(cwd ? { cwd } : {}), closedAt: ended.at, unexpected: true, ...(project ? { project } : {}) }])
+    }
+    if (!cwd) { dispatch({ type: 'drop-session', sessionId }); return }
     try {
       const shell = await projectsApi.startShell({ cwd, cols: 120, rows: 32, replaces: sessionId })
-      dispatch({ type: 'replace-session', sessionId, target: { kind: 'shell', sessionId: shell.id }, title: 'shell' })
+      dispatch({ type: 'replace-session', sessionId, target: { kind: 'shell', sessionId: shell.id, ...(ended ? { ended } : {}) }, title: ended ? ended.title : 'shell' })
       refresh()
     } catch {
       // Nothing to put in its place; closing beats a tab that cannot talk to
       // anything, and the session's record is on the dashboard either way.
       dispatch({ type: 'drop-session', sessionId })
     }
-  }, [sessionsById, refresh])
+  }, [sessionsById, refresh, activeProjectId, projectsById])
+
+  /**
+   * Resume on a shell's ended-agent line (components/EndedNotice.tsx): the
+   * conversation continued with --resume under its own id, in the
+   * permission mode it last ran in, as *Continue here* and a Recently closed
+   * row do — and in this tab: the session takes the shell's place, and the
+   * shell, idle, is ended with it. A shell running a program is left as it
+   * is, and the session opens in a tab of its own.
+   */
+  const resumeEnded = useCallback(async (shellId: string, e: EndedAgent) => {
+    const d = await api.session(e.sessionId).catch(() => null)
+    if (d?.resume && !d.resume.ok) { setToast(`Could not resume “${e.title}”: ${d.resume.reason ?? 'its conversation cannot be continued here'}`); return }
+    const cwd = d?.cwd || e.cwd
+    if (!cwd) { setToast(`Could not resume “${e.title}”: its folder is not known`); return }
+    const mode = d?.resume?.permission_mode
+    let id: string
+    try {
+      id = (await api.spawn({ cwd, resume: e.sessionId, fork: false, ...(mode ? { permission_mode: mode } : {}) })).session_id
+    } catch (err) {
+      setToast(`Could not resume “${e.title}”: ${errText(err)}`)
+      return
+    }
+    forgetClosed(e.sessionId)
+    const tab = findTabBySession(wsRef.current, shellId)
+    const busy = !!closeCtx.current.sessionsById.get(shellId)?.program
+    if (busy || !tab) {
+      dispatch({ type: 'dismiss-ended', sessionId: shellId })
+      openTab({ kind: 'session', sessionId: id }, tab?.projectId ?? activeProjectId, e.title)
+    } else {
+      dispatch({ type: 'replace-session', sessionId: shellId, target: { kind: 'session', sessionId: id }, title: e.title })
+      void api.signal(shellId, 'kill').catch(() => { /* already gone */ })
+    }
+    refresh()
+  }, [openTab, refresh, activeProjectId])
+  const onEndedDismiss = useCallback((shellId: string) => dispatch({ type: 'dismiss-ended', sessionId: shellId }), [])
 
   // A session continued on another provider or sign-in (ADR-090), by the
   // limit strip or by Caprock: its tab shows the new session in its place.
@@ -1339,6 +1391,9 @@ export function AppShell() {
     const { tabs, sessionsById } = closeCtx.current
     const s = sessionsById.get(entry.sessionId)
     const open = tabs.find((t) => leaves(t.root).some((l) => l.target.sessionId === entry.sessionId))
+    // Ended unexpectedly, and its shell still says so: resumed in that tab.
+    const shell = tabs.flatMap((t) => leaves(t.root)).find((l) => l.target.kind === 'shell' && l.target.ended?.sessionId === entry.sessionId)
+    if (shell?.target.ended && !open) { void resumeEnded(shell.target.sessionId, shell.target.ended); return }
     forgetClosed(entry.sessionId)
     const go = (plan: ReturnType<typeof reopenPlan>) => {
       if (plan.do === 'tab') { onActivateTab(open!.id); return }
@@ -1360,7 +1415,7 @@ export function AppShell() {
       return
     }
     go(plan)
-  }, [onActivateTab, openSession, goHash, openTab, refresh])
+  }, [onActivateTab, openSession, goHash, openTab, refresh, resumeEnded])
   /**
    * A row with no tab: opened as a tab (openSession) — unless Caprock ended it
    * for sitting idle (lib/idleEnd.ts), when the click continues it the way a
@@ -2279,6 +2334,8 @@ export function AppShell() {
                     onChatClose={onClosePane}
                     onChatRestart={onChatRestart}
                     onChatHintDismiss={onChatHintDismiss}
+                    onEndedResume={resumeEnded}
+                    onEndedDismiss={onEndedDismiss}
                   />
                   {showChat && focused && (chatPanes.has(focused.sessionId) && current ? (
                     // A chat on its conversation (ADR-071): the way out above
