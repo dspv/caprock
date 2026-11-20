@@ -12,10 +12,44 @@ export function defaultFolder(setting?: string): string {
   return setting?.trim() || '~'
 }
 
-/** A folder written so a name can be typed straight after it: `~/`, `~/dev/`. */
+/** A folder written so a name can be typed straight after it: `~/`, `~/dev/`, `C:\Users\dima\dev\`. */
 export function withSlash(dir: string): string {
-  return /[\\/]$/.test(dir) ? dir : `${dir}/`
+  return /[\\/]$/.test(dir) ? dir : `${dir}${sepOf(dir)}`
 }
+
+/** The separator a path is written with: `\` for a Windows path, `/` everywhere else. */
+export function sepOf(path: string): string {
+  return path.includes('\\') && !path.includes('/') ? '\\' : '/'
+}
+
+/**
+ * Where a clone goes when nothing was chosen (owner, 2026-11-20, translated:
+ * "I don't understand where projects will be cloned; I'd choose ~/dev by
+ * default"): the `dev` folder in the home folder, in full — `/Users/dima/dev`,
+ * `C:\Users\dima\dev` — so the field says plainly where. The clone makes the
+ * folder when it is missing (internal/projects Clone). Without the home
+ * folder from the daemon yet, `~/dev`.
+ */
+export function devFolder(home?: string): string {
+  const h = home?.replace(/[\\/]+$/, '')
+  return h ? `${h}${sepOf(h)}dev` : '~/dev'
+}
+
+/**
+ * The folder a clone starts in: the one the user set as default (*Set as
+ * default*, `settings.default_folder`) wins, written in full; else `devFolder`.
+ */
+export function cloneFolder(setting: string | undefined, home?: string): string {
+  const s = setting?.trim()
+  if (!s) return devFolder(home)
+  const h = home?.replace(/[\\/]+$/, '')
+  if (!h) return s
+  if (s === '~') return h
+  return s.startsWith('~/') || s.startsWith('~\\') ? `${h}${s.slice(1)}` : s
+}
+
+/** What the clone field says under its label: where projects go, and that it is the place to change it. */
+export const CLONE_HINT = 'Projects are cloned into this folder; change it here.'
 
 export type NoteTone = 'bad' | 'ok' | 'muted'
 export interface TargetNote { text: string; tone: NoteTone }

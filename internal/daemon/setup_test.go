@@ -45,3 +45,32 @@ func TestSignInState(t *testing.T) {
 		t.Fatalf("claude, signed in: %s", got)
 	}
 }
+
+// An agent's switch is kept in config.json, a choice per agent, and nothing
+// else is written: a restart reads the same switches.
+func TestAgentSwitchIsKept(t *testing.T) {
+	data := t.TempDir()
+	d := &Daemon{}
+	d.opt.DataDir = data
+	a := &setupAdapter{d: d}
+	before := d.config()
+	if err := a.SetAgentSwitch("codex", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetAgentSwitch("claude", false); err != nil {
+		t.Fatal(err)
+	}
+	if before.SetupAgents != nil {
+		t.Fatal("a copy handed out earlier was written to")
+	}
+	got, err := config.Load(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.SetupAgents["codex"] || got.SetupAgents["claude"] || len(got.SetupAgents) != 2 {
+		t.Fatalf("kept %v", got.SetupAgents)
+	}
+	if readiness.AgentOn("claude", true, got.SetupAgents) || !readiness.AgentOn("codex", false, got.SetupAgents) {
+		t.Fatal("the kept choice does not win over the default")
+	}
+}

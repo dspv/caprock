@@ -539,6 +539,15 @@ function isPane(v: unknown): v is PaneNode {
 }
 
 /**
+ * Outside projects' id (OTHER_FOLDERS_ID in lib/sidebar.ts; a test holds the
+ * two equal): where a tab stored under no project goes. The setup
+ * checklist's first shell was filed under '' on a computer with no project
+ * (owner, 2026-11-20), a tab that could never come to the front; restored
+ * here, it shows under Outside projects and closes like any other.
+ */
+export const OUTSIDE_PROJECTS = 'other-folders'
+
+/**
  * A stored workspace, checked field by field. Anything malformed — an older
  * shape, a hand edit, a half-written value — is dropped rather than trusted,
  * so a bad entry costs the open tabs, never the app.
@@ -550,7 +559,7 @@ export function parseWorkspace(raw: string | null): Workspace {
     if (v.version !== 1 || !Array.isArray(v.tabs)) return EMPTY_WORKSPACE
     const tabs = v.tabs.filter((t): t is Tab =>
       !!t && typeof t.id === 'string' && typeof t.projectId === 'string' && isPane(t.root) && typeof t.focusedPaneId === 'string',
-    ).map((t) => ({ ...t, title: typeof t.title === 'string' ? t.title : '' }))
+    ).map((t) => ({ ...t, projectId: t.projectId || OUTSIDE_PROJECTS, title: typeof t.title === 'string' ? t.title : '' }))
       // A page is a tab of its own: one stored inside a split is not kept,
       // unless it is a phone preview beside its terminal.
       .filter((t) => t.root.type === 'pane' || leaves(t.root).every((l) => l.target.kind !== 'page' || l.target.preview === true))
@@ -561,7 +570,7 @@ export function parseWorkspace(raw: string | null): Workspace {
     const ids = new Set(tabs.map((t) => t.id))
     const activeByProject: Record<string, string> = {}
     for (const [p, id] of Object.entries(v.activeByProject ?? {})) {
-      if (typeof id === 'string' && ids.has(id)) activeByProject[p] = id
+      if (typeof id === 'string' && ids.has(id)) activeByProject[p || OUTSIDE_PROJECTS] = id
     }
     // A workspace from before the one strip (per-project strips) has the
     // same fields and reads as it is: its tabs are already one list, in the

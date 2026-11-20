@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultFolder, keyLabel, sheetKey, statWorthy, targetNote, withSlash } from './addproject'
+import { cloneFolder, defaultFolder, devFolder, keyLabel, sheetKey, statWorthy, targetNote, withSlash } from './addproject'
 import type { BrowseStat } from './api'
 
 const st = (o: Partial<BrowseStat>): BrowseStat => ({ path: '/x', exists: false, is_dir: false, empty: false, parent_exists: true, ...o })
@@ -11,6 +11,23 @@ describe('where the sheet starts', () => {
     expect(defaultFolder('~/dev')).toBe('~/dev')
     expect(withSlash('~')).toBe('~/')
     expect(withSlash('~/dev/')).toBe('~/dev/')
+    expect(withSlash('C:\\Users\\dima\\dev')).toBe('C:\\Users\\dima\\dev\\')
+  })
+
+  // Owner, 2026-11-20 (translated): "I don't understand where projects will
+  // be cloned; I'd choose ~/dev by default".
+  it('clones into the dev folder in the home folder, in full, on every OS, unless a default was set', () => {
+    expect(devFolder('/Users/dima')).toBe('/Users/dima/dev')
+    expect(devFolder('/home/dima/')).toBe('/home/dima/dev')
+    expect(devFolder('C:\\Users\\dima')).toBe('C:\\Users\\dima\\dev')
+    expect(devFolder(undefined)).toBe('~/dev')
+    expect(cloneFolder(undefined, 'C:\\Users\\dima')).toBe('C:\\Users\\dima\\dev')
+    expect(cloneFolder('  ', '/Users/dima')).toBe('/Users/dima/dev')
+    // A folder picked before wins, written in full.
+    expect(cloneFolder('~/code', '/Users/dima')).toBe('/Users/dima/code')
+    expect(cloneFolder('~', '/Users/dima')).toBe('/Users/dima')
+    expect(cloneFolder('D:\\src', 'C:\\Users\\dima')).toBe('D:\\src')
+    expect(cloneFolder('~/code', undefined)).toBe('~/code')
   })
 })
 

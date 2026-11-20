@@ -135,7 +135,45 @@ describe('keys', () => {
   })
 })
 
+// Owner, 2026-11-20, on a fresh Windows PC (translated): "I don't understand
+// where projects will be cloned; I'd choose ~/dev by default".
+describe('where a clone goes', () => {
+  const cloneField = () => screen.getByRole('textbox', { name: /^Clone into/ })
+
+  it('is the dev folder in the home folder, in full, with a line saying so', async () => {
+    m.repos.mockResolvedValue({ root: 'C:\\Users\\dima', home: 'C:\\Users\\dima', scanned_at: 0, repos: [] })
+    const onAdded = vi.fn()
+    render(<AddProjectSheet source="api" initialMode="clone" onClose={() => {}} onAdded={onAdded} onAddLocal={() => {}} />)
+    expect(screen.getByRole('tab', { name: /Clone/ })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(cloneField()).toHaveValue('C:\\Users\\dima\\dev\\'))
+    expect(screen.getByText('Projects are cloned into this folder; change it here.')).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText(/github.com\/you\/repo/), { target: { value: 'https://github.com/octocat/Hello-World' } })
+    expect(cloneField()).toHaveValue('C:\\Users\\dima\\dev\\Hello-World')
+    m.add.mockResolvedValue({ op: { op_id: 'o', kind: 'clone', state: 'running' } })
+    fireEvent.click(screen.getByRole('button', { name: /^Clone/ }))
+    await waitFor(() => expect(m.add).toHaveBeenCalled())
+    expect(m.add.mock.calls[0]![0]).toMatchObject({ clone: { url: 'https://github.com/octocat/Hello-World', parent: 'C:\\Users\\dima\\dev', name: 'Hello-World' } })
+  })
+
+  it('is the folder set as default when there is one', async () => {
+    m.settings.mockResolvedValue({ default_folder: '~/code' })
+    render(<AddProjectSheet source="api" initialMode="clone" onClose={() => {}} onAdded={() => {}} onAddLocal={() => {}} />)
+    await waitFor(() => expect(cloneField()).toHaveValue('/Users/me/code/'))
+  })
+
+  it('leaves the other modes where they started', async () => {
+    render(<AddProjectSheet source="api" onClose={() => {}} onAdded={() => {}} onAddLocal={() => {}} />)
+    await waitFor(() => expect(m.repos).toHaveBeenCalled())
+    expect(folderField()).toHaveValue('~/')
+    fireEvent.click(screen.getByRole('tab', { name: /Clone/ }))
+    await waitFor(() => expect(cloneField()).toHaveValue('/Users/me/dev/'))
+  })
+})
+
 describe('clone destination', () => {
+  it('writes a Windows destination with backslashes', () => {
+    expect(cloneDest('https://github.com/a/b.git', 'C:\\Users\\dima\\dev')).toBe('C:\\Users\\dima\\dev\\b')
+  })
   it('is the repository name without .git, under the default folder', () => {
     expect(repoName('git@github.com:donmiro/rateguard.git')).toBe('rateguard')
     expect(repoName('https://github.com/a/b/')).toBe('b')

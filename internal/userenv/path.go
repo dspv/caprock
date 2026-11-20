@@ -153,6 +153,37 @@ func currentPath(log *slog.Logger, goos string) (string, bool) {
 	return mergePaths(p, own, ":", false), true
 }
 
+// TerminalPath is the PATH a terminal the user opens now gets — the
+// registry's system and user Path on Windows, the login shell's PATH on macOS
+// and Linux — without the daemon's own, and whether it could be read. The
+// setup checklist asks it whether an agent Caprock found is one a terminal
+// finds too (readiness.OffPath): a folder only the daemon has is exactly what
+// it must not count.
+func TerminalPath(log *slog.Logger) (string, bool) {
+	return terminalPath(log, runtime.GOOS)
+}
+
+func terminalPath(log *slog.Logger, goos string) (string, bool) {
+	if goos == "windows" {
+		p, err := registryPathCached()
+		if err != nil || p == "" {
+			return "", false
+		}
+		return p, true
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if cached == nil {
+		startLocked(log)
+		return "", false
+	}
+	if now().Sub(cachedAt) >= TTL {
+		startLocked(log)
+	}
+	p := pathOf(cached)
+	return p, p != ""
+}
+
 // pathOf is PATH's value in env, the last one winning, whatever its case.
 func pathOf(env []string) string {
 	for i := len(env) - 1; i >= 0; i-- {

@@ -34,20 +34,37 @@ item by itself a few seconds after it is done:
    opens a terminal tab with `winget install --id Git.Git -e --source
    winget` typed; press Enter, and Windows asks once for an administrator.
    On macOS it opens Apple's installer for the Command Line Tools.
-2. **Claude Code or Codex**, at least one. **Install** types its installer
-   into a terminal tab.
-3. **Sign in** to your subscription: **Sign in** types `claude auth login`
-   (or `codex login`); the browser opens. Caprock cannot tell whether Codex
-   is signed in when it keeps the sign-in in the system keyring, so that
-   item shows **?** and stays offered.
-4. **A project to work in:** **Add** clones a repository or picks a folder.
-5. **Link to your laptop:** **Turn on** access from anywhere, then **Show
+2. **Agents.** A row for each agent Caprock can start — Claude Code, Codex,
+   OpenCode, Gemini CLI, Cursor and the others it can install — each with a
+   switch. Switch on the ones you want on this computer: Claude Code starts
+   on, and so does any agent already installed. A switched-on agent shows
+   its one next step:
+   - **Install** types its installer into a terminal tab.
+   - **Add to PATH**, when the installer left its folder (`~/.local/bin`,
+     `C:\Users\<you>\.local\bin` on Windows) off your PATH: it types the
+     command that adds that one folder to your user PATH; press Enter, and
+     terminals you open afterwards find `claude`.
+   - **Sign in** types `claude auth login` (or `codex login`, or the agent's
+     own); the browser opens. Caprock cannot tell whether Codex is signed in
+     when it keeps the sign-in in the system keyring: it shows **?**, stays
+     offered, and does not hold the list up beside a ready agent.
+
+   Then it reads *Signed in. Ready.* A switched-off agent is grey and not
+   counted; switching changes only that setting and never uninstalls
+   anything. Over SSH: `caprock setup --agent codex on`.
+3. **Link to your laptop:** **Turn on** access from anywhere, then **Show
    the link**. The link is valid five minutes, for one use.
+4. **Projects here** (optional). Agents can start in any folder you pick in
+   New agent on your laptop, so this never counts as a step left. **Clone**
+   clones a repository here; the sentence names where: the `dev` folder in
+   your home folder (`C:\Users\<you>\dev` on Windows), made when missing,
+   unless you set another default folder. The Clone field shows it in
+   full; change it there.
 
 Caprock never installs anything by itself: every button types the command
 and you press Enter. Something you install shows as done without
-restarting Caprock. When all five are ticked it says *Ready. Start agents
-from your laptop.* Until then, Home shows what is left.
+restarting Caprock. When Git, the agents and the link are done it says
+*Ready. Start agents from your laptop.* Until then, Home shows what is left.
 
 ## 3. On your laptop: add the computer
 
@@ -60,13 +77,14 @@ computer"*. Press **Allow** there. Its checklist ticks *Link to your laptop*.
 ## 4. On your laptop: start an agent there
 
 In Settings → Computers the computer reads *ready*, with what it has
-(*online · Claude Code · signed in · 2 projects · Windows · 32 GB*), and
+(*online · Claude Code · Codex · 2 projects · Windows · 32 GB*: each agent
+switched on there and ready, and its projects when it has any), and
 **Start an agent there**: New agent opens on it. Pick a folder there, the
 agent and a first message, and **Start**. A tab opens with the session's
 terminal; it runs on the other computer.
 
 If something is still missing there, the laptop says which: *Home PC needs
-one more step: no agent is installed there yet. Open Caprock on it and
+one more step: Claude Code is not signed in there. Open Caprock on it and
 finish its checklist, or run `caprock setup` there over SSH.*
 
 To rename a computer on the laptop, right-click it in the sidebar →
@@ -80,6 +98,7 @@ Everything above has a terminal form. On the computer that runs agents:
 caprock up                 # or: caprock service install, to keep it running after you log out
 caprock setup              # the same checklist: [ok] or [  ], and the command for each missing step
 caprock setup --link       # then: access from anywhere on, a one-time link, and Allow by name
+caprock setup --agent codex on   # switch an agent on (or off) in the checklist
 ```
 
 `caprock setup` prints each item with what to do and `run: <command>` for

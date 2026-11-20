@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"maps"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -29,18 +31,42 @@ func (a *setupAdapter) SetupFacts(r *http.Request) (readiness.Inputs, error) {
 	cfg := a.d.config()
 	env := agentcat.DefaultEnv(userenv.Cached())
 	home := env.Home
-	entries := agentcat.Builtins(env, a.d.mgr.AgentAvailable)
-	for _, e := range entries {
-		if e.ID != agents.AgentClaude && e.ID != agents.AgentCodex {
+	if sh := envVar(env.Vars, "SHELL"); sh != "" {
+		in.Shell = filepath.Base(sh)
+	}
+	// An agent found where a terminal does not look (readiness.OffPath).
+	// Only asked when the terminal's PATH could be read: a guess would tell
+	// someone to fix a PATH that is fine.
+	tpath, tok := userenv.TerminalPath(a.d.log)
+	off := readiness.OffPath{GOOS: runtime.GOOS, Home: home, Dirs: userenv.Dirs(tpath)}
+	// Every built-in Caprock can start that is installed here or can be
+	// installed with one command, each with its switch (ADR-099 amendment).
+	for _, e := range agentcat.Builtins(env, a.d.mgr.AgentAvailable) {
+		install := ""
+		if e.Setup != nil && e.Setup.Reason == "not_installed" {
+			install = e.Setup.Command
+		}
+		if !e.Installed && install == "" {
 			continue
 		}
-		ag := readiness.Agent{ID: e.ID, Label: e.Label, Installed: e.Installed}
-		if e.Setup != nil && e.Setup.Reason == "not_installed" {
-			ag.Install = e.Setup.Command
-		}
+		ag := readiness.Agent{ID: e.ID, Label: e.Label, Installed: e.Installed, Install: install,
+			On: readiness.AgentOn(e.ID, e.Installed, cfg.SetupAgents)}
 		if e.Installed {
-			ag.SignIn = signInState(e.ID, home, env.Vars, a.d.opt.DataDir, cfg)
-			ag.SignInCommand = subs.LoginCommandHere(e.ID, "")
+			switch e.ID {
+			case agents.AgentClaude, agents.AgentCodex:
+				ag.SignIn = signInState(e.ID, home, env.Vars, a.d.opt.DataDir, cfg)
+				ag.SignInCommand = subs.LoginCommandHere(e.ID, "")
+			default:
+				// The others say themselves what they lack (a provider, a
+				// sign-in): the catalog's Setup, else nothing is missing.
+				ag.SignIn = readiness.OK
+				if e.Setup != nil {
+					ag.SignIn, ag.SignInText, ag.SignInCommand = readiness.Missing, e.Setup.Text, e.Setup.Command
+				}
+			}
+			if tok {
+				ag.OffPath = off.Dir(binaryOf(e.ID))
+			}
 		}
 		in.Agents = append(in.Agents, ag)
 	}
@@ -50,6 +76,44 @@ func (a *setupAdapter) SetupFacts(r *http.Request) (readiness.Inputs, error) {
 	}
 	in.Projects = len(ps)
 	return in, nil
+}
+
+// binaryOf is the program an agent runs as, for the PATH check: Cursor's
+// CLI is cursor-agent, the rest their id.
+func binaryOf(id string) string {
+	if id == "cursor" {
+		return "cursor-agent"
+	}
+	return id
+}
+
+// SetAgentSwitch keeps an agent's switch in the settings (PUT
+// /v1/setup/agents/{id}). Nothing else changes: nothing is installed or
+// removed.
+func (a *setupAdapter) SetAgentSwitch(id string, on bool) error {
+	a.d.cfgMu.Lock()
+	// A new map, never the old one written: a copy of the config handed out
+	// earlier (config()) may still be reading it.
+	next := maps.Clone(a.d.opt.Config.SetupAgents)
+	if next == nil {
+		next = map[string]bool{}
+	}
+	next[id] = on
+	a.d.opt.Config.SetupAgents = next
+	cfg := a.d.opt.Config
+	a.d.cfgMu.Unlock()
+	return config.Save(a.d.opt.DataDir, cfg)
+}
+
+// envVar is k in vars (the login environment), the last one winning, else
+// the daemon's own.
+func envVar(vars []string, k string) string {
+	for i := len(vars) - 1; i >= 0; i-- {
+		if kk, v, ok := strings.Cut(vars[i], "="); ok && kk == k {
+			return v
+		}
+	}
+	return os.Getenv(k)
 }
 
 // signInState says whether an installed agent is signed in, from what it
@@ -63,14 +127,7 @@ func (a *setupAdapter) SetupFacts(r *http.Request) (readiness.Inputs, error) {
 //   - Codex may keep its sign-in in the OS keyring and write no auth.json, so
 //     no file proves nothing: unknown, never missing.
 func signInState(agent, home string, vars []string, dataDir string, cfg config.Config) string {
-	getenv := func(k string) string {
-		for i := len(vars) - 1; i >= 0; i-- {
-			if kk, v, ok := strings.Cut(vars[i], "="); ok && kk == k {
-				return v
-			}
-		}
-		return os.Getenv(k)
-	}
+	getenv := func(k string) string { return envVar(vars, k) }
 	if subs.Status(subs.DefaultPaths(agent, home, getenv)).SignedIn {
 		return readiness.OK
 	}

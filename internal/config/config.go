@@ -238,6 +238,12 @@ type Config struct {
 	// a new project's parent, a clone's destination and the folder browser.
 	// Empty means the home folder. A leading ~ is the home folder.
 	DefaultFolder string `json:"default_folder,omitempty"`
+	// SetupAgents are the setup checklist's switches, by agent id (ADR-099
+	// amendment, 2026-11-20): which agents this computer is set up for. An
+	// agent with no entry follows the default (readiness.AgentOn: on when
+	// installed, Claude Code on). Kept here, not in a browser, so the laptop
+	// reading this computer's readiness and `caprock setup` see the same.
+	SetupAgents map[string]bool `json:"setup_agents,omitempty"`
 	// Terminal is the terminal application "Open in my terminal" uses
 	// ("ghostty", "iterm2", ...; internal/nativeterm). Empty means the first
 	// one installed.

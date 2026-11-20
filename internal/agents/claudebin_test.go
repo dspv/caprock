@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/dspv/caprock/internal/userenv"
 )
 
 // Claude Code installed after the daemon started — from the setup checklist
@@ -16,6 +18,9 @@ func TestClaudeInstalledAfterStartIsFound(t *testing.T) {
 	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("NVM_DIR", t.TempDir()) // not the developer's own nvm
+	// Nor the login environment an earlier test in this package resolved:
+	// on a machine with claude in ~/.local/bin its PATH found the real one.
+	t.Cleanup(userenv.SetCachedForTest([]string{"PATH=" + os.Getenv("PATH")}))
 	m := &Manager{claude: "claude", claudeLookAgain: true}
 	if m.ClaudeAvailable() {
 		t.Fatalf("found before it was installed: %q", m.binary(""))

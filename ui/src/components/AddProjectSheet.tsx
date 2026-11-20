@@ -13,6 +13,11 @@
  * a folder browser; and the keys are on the buttons: ⌘↩ adds, Esc cancels,
  * ⌘1/⌘2/⌘3 the modes, ⌘B Browse ⇄ Recent (Ctrl off macOS).
  *
+ * Clone starts in the folder set as default, else in `~/dev` written in full
+ * (`C:\Users\dima\dev` on Windows), made by the clone when it is missing,
+ * with "Projects are cloned into this folder; change it here." under it
+ * (owner, 2026-11-20).
+ *
  * A folder that holds several git repositories (ADR-055) is asked about once,
  * on Add: one project of N repositories (the default) or N separate
  * projects, with the repositories found as checkboxes (RepoChoice).
@@ -26,7 +31,7 @@ import { INSTRUCTIONS_HINT } from './ProjectInstructions'
 import { api, errText, type BrowseStat, type Settings } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { isMacPlatform } from '@/lib/appmode'
-import { defaultFolder, keyLabel, sheetKey, statWorthy, targetNote, withSlash, type SheetKey } from '@/lib/addproject'
+import { CLONE_HINT, cloneFolder, defaultFolder, keyLabel, sepOf, sheetKey, statWorthy, targetNote, withSlash, type SheetKey } from '@/lib/addproject'
 import { DirPicker, type PickerTab } from './DirPicker'
 import { RepoPicker } from './RepoPicker'
 import { folderName, instructionsPatch, newOpId, NotSupportedError, projectsApi, type AddProjectRequest, type LocalProject, type OpFrame, type ProjectSource } from '@/lib/projects'
@@ -64,10 +69,11 @@ export function repoName(url: string): string {
   return tail.replace(/\.git$/, '')
 }
 
-/** Where a clone of `url` lands by default: the default folder plus the repo's name. */
+/** Where a clone of `url` lands by default: the default folder plus the repo's name, in the folder's own separator. */
 export function cloneDest(url: string, defaultParent: string): string {
   const name = repoName(url)
-  return defaultParent && name ? `${defaultParent.replace(/[\\/]+$/, '')}/${name}` : ''
+  const parent = defaultParent.replace(/[\\/]+$/, '')
+  return parent && name ? `${parent}${sepOf(parent)}${name}` : ''
 }
 
 /**
@@ -101,6 +107,7 @@ export function AddProjectSheet({
   source,
   projects = [],
   defaultParent,
+  initialMode = 'folder',
   ops = [],
   onClose,
   onAdded,
@@ -111,6 +118,8 @@ export function AddProjectSheet({
   projects?: readonly Project[]
   /** Where the sheet starts, in place of the default folder setting. */
   defaultParent?: string
+  /** The mode it opens on: the wizard's *Clone, or start an empty folder…* opens Clone. */
+  initialMode?: Mode
   /** Clone progress from the `op` live frames. */
   ops?: readonly OpFrame[]
   onClose: () => void
@@ -121,9 +130,18 @@ export function AddProjectSheet({
   const settings = useApi(() => api.settings(), [], { live: false })
   const [savedDefault, setSavedDefault] = useState<string | undefined>(undefined)
   const base = defaultParent || defaultFolder(savedDefault ?? settings.data?.default_folder)
+  // The search under the Folder field (below) reads the home folder too.
+  const { candidates, home } = useProjectCandidates(projects)
+  // A clone goes to the folder set as default, else ~/dev, written in full
+  // (lib/addproject.ts cloneFolder; owner, 2026-11-20).
+  const cloneBase = defaultParent || cloneFolder(savedDefault ?? settings.data?.default_folder, home)
   const isMac = isMacPlatform()
-  const [mode, setMode] = useState<Mode>('folder')
-  const [path, setPath] = useState(() => withSlash(base))
+  const [mode, setMode] = useState<Mode>(initialMode)
+  // The mode as last picked, for the effect below: the home folder can
+  // arrive in a render begun before a mode was picked, and that render's
+  // `mode` put the Folder default into the Clone field.
+  const modeNow = useRef<Mode>(initialMode)
+  const [path, setPath] = useState(() => withSlash(initialMode === 'clone' ? cloneBase : base))
   const [url, setUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -151,7 +169,7 @@ export function AddProjectSheet({
   // The destination follows the URL until it is edited by hand, the way
   // `git clone` names the folder after the repository.
   const [pathTouched, setPathTouched] = useState(false)
-  const startPath = (m: Mode, u: string) => (m === 'clone' ? cloneDest(u, base) || withSlash(base) : withSlash(base))
+  const startPath = (m: Mode, u: string) => (m === 'clone' ? cloneDest(u, cloneBase) || withSlash(cloneBase) : withSlash(base))
   const editPath = (v: string) => { setPath(v); setPathTouched(true); setScan(null) }
   const editUrl = (v: string) => {
     setUrl(v)
@@ -160,9 +178,9 @@ export function AddProjectSheet({
   }
   // The setting arrives after the first render: an untouched field follows it.
   useEffect(() => {
-    if (!pathTouched) setPath(startPath(mode, url))
+    if (!pathTouched) setPath(startPath(modeNow.current, url))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base])
+  }, [base, cloneBase])
   const first = (root: string | undefined) => (task.trim() && root ? { root, task: task.trim() } : undefined)
   const op = cloning ? ops.find((o) => o.op_id === cloning.op_id) ?? cloning : null
 
@@ -181,7 +199,6 @@ export function AddProjectSheet({
   // typed filters projects, recent folders and the repositories under the
   // default folder. "no such folder" is said only when nothing matches, and
   // then with the nearest names.
-  const { candidates, home } = useProjectCandidates(projects)
   const query = mode === 'folder' ? queryOf(path) : ''
   const typedAbs = path.trim().replace(/[\\/]+$/, '')
   const matches = useMemo(() => {
@@ -225,12 +242,13 @@ export function AddProjectSheet({
   const pickMode = (m: Mode) => {
     setMode(m); setError(''); setOpId(newOpId())
     // Each mode starts in the default folder, with only a name left to type.
+    modeNow.current = m
     if (!pathTouched) setPath(startPath(m, url))
     field.current?.focus()
   }
 
   const candidate = defaultCandidate(mode, path)
-  const showSetDefault = !!candidate && candidate !== base.replace(/[\\/]+$/, '') && source !== 'derived' && !(mode === 'folder' && stat && !stat.exists)
+  const showSetDefault = !!candidate && candidate !== (mode === 'clone' ? cloneBase : base).replace(/[\\/]+$/, '') && source !== 'derived' && !(mode === 'folder' && stat && !stat.exists)
   const setAsDefault = async () => {
     try {
       await api.saveSettings({ default_folder: candidate } as Settings)
@@ -245,7 +263,7 @@ export function AddProjectSheet({
     const p = path.trim()
     if (mode !== 'clone' && !p) { setError('Choose a folder.'); return }
     if (mode === 'clone' && !isCloneURL(url.trim())) { setError('A clone URL is https://… or git@host:path.'); return }
-    if (mode === 'clone' && /[\\/]$/.test(p) && !cloneDest(url, base)) { setError('Choose a folder to clone into.'); return }
+    if (mode === 'clone' && /[\\/]$/.test(p) && !cloneDest(url, cloneBase)) { setError('Choose a folder to clone into.'); return }
     if (mode === 'new' && (!splitPath(p).parent || /[\\/]$/.test(p))) { setError('Name the new folder.'); return }
     setBusy(true)
     let keepBusy = false
@@ -281,7 +299,7 @@ export function AddProjectSheet({
           return
         }
       }
-      const added = await projectsApi.add(requestFor(mode, p, url.trim(), base, opId))
+      const added = await projectsApi.add(requestFor(mode, p, url.trim(), mode === 'clone' ? cloneBase : base, opId))
       if ('op' in added) {
         // The clone runs in the daemon; its frames say when it is listed.
         keepBusy = true
@@ -375,14 +393,14 @@ export function AddProjectSheet({
         <div className="grid min-w-0 gap-1.5">
           <SheetField
             label={mode === 'folder' ? 'Folder' : mode === 'new' ? 'New folder' : 'Clone into'}
-            hint={mode === 'new' ? 'created, then git init' : mode === 'clone' ? 'created by the clone, or an empty folder · ~ works' : '~ works'}
+            hint={mode === 'new' ? 'created, then git init' : mode === 'clone' ? CLONE_HINT : '~ works'}
           >
             <input
               ref={field}
               className="input"
               autoFocus
               spellCheck={false}
-              placeholder={mode === 'clone' ? cloneDest('project', base) : `${withSlash(base)}${mode === 'new' ? 'new-project' : 'project'}`}
+              placeholder={mode === 'clone' ? cloneDest('project', cloneBase) : `${withSlash(base)}${mode === 'new' ? 'new-project' : 'project'}`}
               value={path}
               onChange={(e) => editPath(e.target.value)}
               aria-controls="add-project-matches"
@@ -445,7 +463,7 @@ export function AddProjectSheet({
               start={base}
               tab={list}
               onTab={setList}
-              onPick={(d) => editPath(mode === 'clone' && repoName(url) ? `${d.replace(/[\\/]+$/, '')}/${repoName(url)}` : mode === 'new' ? withSlash(d) : d)}
+              onPick={(d) => editPath(mode === 'clone' && repoName(url) ? cloneDest(url, d) : mode === 'new' ? withSlash(d) : d)}
             />
             <p className="mt-1 text-[12px] text-fg-muted"><kbd className="mono">{keyLabel('toggle-list', isMac)}</kbd> switches Recent and Browse</p>
           </div>

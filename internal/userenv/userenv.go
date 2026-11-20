@@ -343,6 +343,23 @@ func hasKey(env []string, key string) bool {
 	return false
 }
 
+// SetCachedForTest makes Cached answer env (nil: nothing resolved yet) until
+// the returned function puts back what was there. For tests in other
+// packages: a login environment an earlier test resolved is the developer's
+// real one, and a binary that test is meant not to find (claude in
+// ~/.local/bin) is then found on that PATH.
+func SetCachedForTest(env []string) (restore func()) {
+	mu.Lock()
+	old, oldAt := cached, cachedAt
+	cached, cachedAt = env, time.Now()
+	mu.Unlock()
+	return func() {
+		mu.Lock()
+		cached, cachedAt = old, oldAt
+		mu.Unlock()
+	}
+}
+
 // reset clears the cache; tests only.
 func reset() {
 	mu.Lock()

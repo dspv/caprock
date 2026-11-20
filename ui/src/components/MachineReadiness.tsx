@@ -1,8 +1,9 @@
 /**
  * Whether a linked computer is ready to run agents, read from it (ADR-099):
  * its `GET /v1/setup` and `GET /v1/resources` through `/v1/m/<id>/…`. Chips
- * for what it has — online, Claude Code / Codex, signed in, N projects, its
- * OS and memory — and **Start an agent there**; or, when something is left,
+ * for what it has — online, each agent switched on there and ready, N
+ * projects (optional: never a step left), its OS and memory — and **Start an
+ * agent there**; or, when something is left,
  * the one next step and where to finish it (its own screen, or `caprock
  * setup` over SSH).
  *
@@ -13,7 +14,7 @@
  */
 import { machineBase, type Machine } from '@/lib/machines'
 import { useApi } from '@/lib/useApi'
-import { done, fetchSetup, item, nextStep, ready, stepPhrase, useAppActions } from '@/lib/setup'
+import { done, fetchSetup, item, nextStep, ready, readyAgents, stepPhrase, useAppActions } from '@/lib/setup'
 import { href } from '@/lib/router'
 import type { ResourceReport } from '@/lib/resources'
 
@@ -49,9 +50,15 @@ export function MachineReadiness({ m, intervalMs = 30_000 }: { m: Pick<Machine, 
   const mem = res.data?.machine?.mem_total
   const chips: string[] = []
   if (m.status === 'online') chips.push('online')
-  if (done(agent)) chips.push(agent!.label)
-  if (done(signin)) chips.push('signed in')
-  if (done(projects)) {
+  if (rep.agents) {
+    // The agents switched on there and ready, by name (ADR-099 amendment).
+    chips.push(...readyAgents(rep))
+  } else {
+    // A Caprock there from before the switches.
+    if (done(agent)) chips.push(agent!.label)
+    if (done(signin)) chips.push('signed in')
+  }
+  if (projects?.state === 'ok') {
     const n = projectCount(projects!.detail)
     chips.push(n === 1 ? '1 project' : `${n} projects`)
   }
@@ -72,7 +79,7 @@ export function MachineReadiness({ m, intervalMs = 30_000 }: { m: Pick<Machine, 
         </span>
       ) : next && (
         <span className="text-[12.5px] text-fg-muted" data-machine-next>
-          <b className="font-medium text-fg">{m.name}</b> needs one more step: {stepPhrase(next)}. Open Caprock on it and finish its checklist, or run <span className="mono">caprock setup</span> there over SSH.
+          <b className="font-medium text-fg">{m.name}</b> needs one more step: {stepPhrase(next, rep)}. Open Caprock on it and finish its checklist, or run <span className="mono">caprock setup</span> there over SSH.
         </span>
       )}
     </span>
