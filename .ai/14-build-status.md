@@ -508,6 +508,20 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-20 — 0.185.1: starting an agent on another computer shows its folders, the checklist finished on Windows, a release status in plain words
+
+A patch release, #966–#971, from the second pass of the two-computer run on
+the owner's Windows PC. New agent on another computer now shows that
+computer's projects and a browser of its folders, and with none there offers
+**Clone a repository** into its `dev` folder from the laptop; Cancel and Start
+stay on one row. The setup checklist opens the shell tab on the first Install
+click, lists agents as switches (each with its next step), adds **Add to
+PATH** when an agent is installed but terminals cannot find it, clones into
+`~/dev` by default, and makes the project optional. The cockpit's Release
+section says its state in words with one colour per meaning (*Ready to release
+· not started*), its notes count each kind and fold, the folded CI line says
+*✓ Merged · goes out in 0.185.1*, and the *Updated to* line closes itself.
+
 ### 2026-11-20 — 0.185.0: a setup checklist for adding a computer, Windows fixes from the first real two-computer run
 
 A minor release, #964 with #958–#963. The first real run with a MacBook driving
