@@ -12,6 +12,7 @@
  * there, refused. A terminal that drops with the channel reopens by itself
  * and resumes where it was (terminal protocol v2).
  */
+import { MachineReadiness } from '@/components/MachineReadiness'
 import { useState } from 'react'
 import { ApiError, type SessionSummary } from '@/lib/api'
 import { machineLook, machinePageURL, offlineWhy, machinesApi, useMachines, type Machine } from '@/lib/machines'
@@ -74,6 +75,8 @@ function MachineSessions({ m }: { m: Machine }) {
         </p>
       )}
       {sessions.error && !failure?.status && <p role="alert" className="text-[13px] text-danger">{sessions.error.message}</p>}
+      {/* Whether it can run agents yet, read from it (ADR-099); nothing from an older Caprock there. */}
+      {look.reachable && !failure?.status && <MachineReadiness m={m} intervalMs={15_000} />}
       {look.reachable && !sessions.data && !sessions.error && <Skeleton rows={4} />}
       {sessions.data && (
         <>

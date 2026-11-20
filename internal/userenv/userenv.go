@@ -137,8 +137,10 @@ func oneLine(err error) string {
 func Environ(log *slog.Logger) []string {
 	if runtime.GOOS == "windows" {
 		// Windows has no login profile to replay: a process's environment is
-		// built from the registry, which the daemon already inherited.
-		return os.Environ()
+		// built from the registry. The daemon inherited it when it started;
+		// PATH is read again (path.go), so a program installed since is
+		// found by the session too.
+		return freshEnviron(os.Environ())
 	}
 	mu.Lock()
 	if cached != nil {
@@ -176,7 +178,7 @@ func Environ(log *slog.Logger) []string {
 // never hold a request for the user's shell profile. The caller owns the slice.
 func Cached() []string {
 	if runtime.GOOS == "windows" {
-		return os.Environ()
+		return freshEnviron(os.Environ())
 	}
 	mu.Lock()
 	defer mu.Unlock()

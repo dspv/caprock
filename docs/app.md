@@ -1567,6 +1567,30 @@ appeared:
 - **Homebrew without the app.** The formula's `caprock` is not signed with
   the hardened runtime, so nothing stops the prompt; it names "caprock".
 
+## Your other computers
+
+Agents can run on another computer — a Windows PC, a Mac mini, a server —
+while you start and watch them from this one. **Settings → Computers**
+asks what each computer is:
+
+- **Run agents for another computer**, on the computer the agents run on.
+  It shows a checklist of what that computer still needs — Git, Claude Code
+  or Codex, its sign-in, a project, the link to your laptop — each with one
+  button. **Install** and **Sign in** open a terminal tab with the command
+  typed; you press Enter, nothing installs by itself. The list ticks itself,
+  says *Ready. Start agents from your laptop.* when done, and Home shows what
+  is left until then. Beside **Turn on**: the link is end-to-end encrypted,
+  and nothing reaches the computer until you press **Allow** there.
+- **This is where I work**, on your laptop. Paste the other computer's link
+  and press **Add**. Each linked computer then says whether it is ready —
+  online, its agent, signed in, its projects, OS and memory — with **Start
+  an agent there**, or the one step it still needs.
+
+Right-click a computer in the sidebar to **Rename** it. Over SSH, `caprock
+setup` prints the same checklist and `caprock setup --link` the link. The
+whole walk-through, what to check and how the relay works:
+[Run agents on another computer](machines.md).
+
 ## Use Caprock on your phone
 
 Your phone opens the same Caprock in its browser and keeps it on the home

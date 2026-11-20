@@ -213,6 +213,8 @@ type Manager struct {
 	log     *slog.Logger
 	dataDir string
 	claude  string // resolved claude binary (or "claude")
+	// claudeLookAgain: none was found at start, so claudeBin looks again.
+	claudeLookAgain bool
 	// vers overrides an agent's version, by agent name; tests set it.
 	// ocVersions caches what `opencode --version` answered (opencode.go).
 	vers       map[string]string
@@ -315,10 +317,12 @@ func NewManager(st *store.Store, dataDir, claudePath string, log *slog.Logger) *
 	if log == nil {
 		log = slog.Default()
 	}
+	lookAgain := false
 	if claudePath == "" {
 		claudePath = resolveClaude()
+		lookAgain = !filepath.IsAbs(claudePath)
 	}
-	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now}
+	return &Manager{pty: ptyman.New(), store: st, log: log, dataDir: dataDir, claude: claudePath, agents: map[string]*Agent{}, NewSessionID: config.NewSessionID, Now: time.Now, claudeLookAgain: lookAgain}
 }
 
 // binary is the executable to start for an agent: an absolute path when one
@@ -326,7 +330,7 @@ func NewManager(st *store.Store, dataDir, claudePath string, log *slog.Logger) *
 // "not found", which is what an unavailable agent should do).
 func (m *Manager) binary(agent string) string {
 	if agent == "" || agent == AgentClaude {
-		return m.claude
+		return m.claudeBin()
 	}
 	if p, ok := m.bins[agent]; ok {
 		return p
@@ -402,13 +406,29 @@ func (m *Manager) telemetryPath(sessionID string) string {
 // GeminiAvailable reports whether the Gemini CLI can be launched.
 func (m *Manager) GeminiAvailable() bool { return m.AgentAvailable(AgentGemini) }
 
+// claudeBin is the claude executable to start. When none was found as the
+// daemon started (resolveClaude's bare "claude"), it is looked for again — on
+// the user's PATH as it is now and in the installers' directories — so Claude
+// Code installed from the setup checklist afterwards is found without
+// restarting Caprock. A path given to NewManager is kept as given.
+func (m *Manager) claudeBin() string {
+	if !m.claudeLookAgain {
+		return m.claude
+	}
+	if p := findAgentBinary(AgentClaude); p != "" {
+		return p
+	}
+	return m.claude
+}
+
 // ClaudeAvailable reports whether the resolved claude binary can be launched.
 func (m *Manager) ClaudeAvailable() bool {
-	if filepath.IsAbs(m.claude) {
-		fi, err := os.Stat(m.claude)
+	bin := m.claudeBin()
+	if filepath.IsAbs(bin) {
+		fi, err := os.Stat(bin)
 		return err == nil && !fi.IsDir()
 	}
-	_, err := exec.LookPath(m.claude)
+	_, err := exec.LookPath(bin)
 	return err == nil
 }
 
@@ -418,7 +438,7 @@ func (m *Manager) ClaudeBinary() string {
 	if !m.ClaudeAvailable() {
 		return ""
 	}
-	return m.claude
+	return m.claudeBin()
 }
 
 // resolveClaude finds the claude binary: PATH first, then the well-known install

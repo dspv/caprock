@@ -298,8 +298,8 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   /v1/shells` (and a shell's terminal, input and signal through the agent
   routes), `GET /v1/hive/starter`, `POST /v1/hive`, `POST /v1/tasks`, `POST
   /v1/tasks/{id}/verify`, `POST /v1/orchestrator/start` and `/stop`, `GET
-  /v1/agents/custom`, `GET /v1/activity`, `GET /v1/overlap`, `GET
-  /v1/update/busy`, `GET /v1/github/actions-usage` and `/statuspage`, a
+  /v1/agents/custom`, `GET /v1/setup` (§ Setup checklist), `GET
+  /v1/activity`, `GET /v1/overlap`, `GET /v1/update/busy`, `GET /v1/github/actions-usage` and `/statuspage`, a
   session's `prs`, `ci`, `branches`, `ci/jobs/{job}/log`, `ci/release`,
   `ci/main` and `ci/stats`, `POST /v1/sessions/{id}/prs/{number}/rerun` and
   `/update-branch`, `GET /v1/projects/{id}/branches`, `copies`, `cleanup`,
@@ -507,8 +507,9 @@ the target runs its ordinary Host and gate, and pairs it as a computer
   /v1/pair/devices/{id}/allow`), `deny <name|id>` (a waiting one) and
   `revoke <name|id>` (`DELETE /v1/pair/devices/{id}`). A name matches case
   insensitively; two of one name are refused and named by id. `caprock pair
-  --computer` issues a code for a computer, prints `caprock machines add
-  '<link>'` for the other computer, and — when stdin is a terminal and
+  --computer` issues a code for a computer, prints the link to paste in the
+  laptop's Settings → Computers and `caprock machines add '<link>'` for its
+  terminal, and — when stdin is a terminal and
   without `--no-wait` — waits until the code expires (plus 30 s) for a new
   waiting computer and asks `"<name>" wants to control this computer.
   Allow? [y/N]`, allowing on `y`/`yes` and removing it otherwise. On Linux,
@@ -664,6 +665,65 @@ wrong guesses (`internal/pairing`, unchanged since it was written). Device
 tokens are full length and do not expire; revocation takes effect on the next
 request. The guest list lives in `devices.json` at mode 0600, beside the
 licence key and the report bot token, and never in `config.json`.
+
+### Setup checklist
+
+This computer's readiness for running agents for another computer
+([ADR-099](08-decisions.md); `internal/readiness`, gathered by
+`internal/daemon/setup.go`, served by `internal/api/setup.go`).
+
+```
+GET /v1/setup → {"os": "windows"|"darwin"|"linux",
+                 "items": [{"key", "state", "label", "detail", "command"?}]}
+```
+
+- **Items**, always all five, in this order: `git`, `agent`, `signin`,
+  `project`, `link`. `state` is `ok`, `missing`, `unknown` (Caprock cannot
+  tell; offered, never ticked) or `not_needed` (does not apply here; a client
+  treats it as done — no item uses it yet). `label` and `detail` are the
+  words shown; `detail` always says what to do next. `command`, present only
+  while the item is not done, is the one command that does it: typed into a
+  shell tab or printed by `caprock setup`, never run by Caprock (ADR-046).
+- **`git`**: Git found on the user's PATH as it is now (Windows: the
+  registry's system and user `Path`, read again at most every 2 s and added
+  after the daemon's own PATH, which keeps its order; macOS
+  and Linux: the login shell's PATH, refreshed in the background when a
+  minute old), or in Git for Windows' own folders; on macOS `/usr/bin/git`
+  counts only when the Command Line Tools or Xcode are installed. Never run.
+  Missing: `winget install --id Git.Git -e --source winget` on Windows (the
+  detail says Claude Code needs it there), `xcode-select --install` on macOS,
+  no command on Linux (the detail names apt, dnf and pacman). When the PATH
+  could not be read fresh the detail ends *Restart Caprock to see it*.
+- **`agent`**: Claude Code or Codex installed, as `GET /v1/agents/catalog`
+  decides it; `label` names the installed ones. Missing: the catalog's
+  install command for Claude Code.
+- **`signin`**: an installed agent's sign-in, by the presence of what it
+  wrote (ADR-048): the user's own sign-in, any of Caprock's subscriptions, or
+  a credential variable the login shell exports. Claude Code without one is
+  `missing` with `claude auth login`; Codex without `auth.json` is `unknown`
+  with `codex login` (it may use the system keyring). No agent installed:
+  `missing`, no command. No token is read for its content; the Keychain is
+  never touched.
+- **`project`**: at least one project (`store.ListProjects`, archived ones
+  left out); `detail` is `N project(s).` when done.
+- **`link`**: `ok` when access from anywhere is on and a computer (a paired
+  device of kind `machine`) is allowed here — `detail` names them. Else
+  `missing` with a `caprock` command for a terminal: `caprock machines allow
+  "<name>"` while one waits for Allow, `caprock remote on` when one is
+  allowed and access from anywhere is off, else `caprock setup --link`.
+  Settings shows its own buttons instead of that command.
+- **Who may ask.** This machine's own clients and an allowed computer
+  (`computerRoutes`), which is how a laptop reads it through
+  `/v1/m/{id}/v1/setup`; a phone and a computer still waiting get `403`.
+  `501` in a build without it. A daemon from before it answers `404`, and
+  the laptop then shows nothing new.
+- **`caprock setup`** prints the same items, `[ok]`, `[  ]` or `[ ?]` with
+  each `detail` and `run: <command>`, then the next step (or *Ready. Start
+  agents from your laptop*), and, when autostart is not installed, how to
+  keep Caprock running (`caprock service install`); on Linux with lingering
+  off, the `loginctl enable-linger` note. `--link` then does what `caprock
+  pair --computer` does (`--no-wait` as there). Without a running daemon it
+  says to start one.
 
 ### A dev server on a phone (/v1/devshare)
 

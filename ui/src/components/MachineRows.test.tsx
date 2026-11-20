@@ -65,4 +65,28 @@ describe('MachineRows — the sidebar’s other computers (ADR-067)', () => {
     expect(row.getAttribute('title')).toContain('needs you: permission')
     expect(screen.getByText('1 needs you')).toBeTruthy()
   })
+
+  // The owner could not rename a computer from the sidebar (2026-11-20).
+  it('renames a computer from its row menu: right-click, Rename, type, Enter', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status: 'online', at: 1, sessions: [] }])
+    const rename = vi.spyOn(machinesApi, 'rename').mockResolvedValue({ ...mini, name: 'Home PC' })
+    render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
+    const row = await screen.findByRole('button', { name: /^Mac mini/ })
+    fireEvent.contextMenu(row)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    const input = screen.getByRole('textbox', { name: 'Computer name' })
+    fireEvent.change(input, { target: { value: 'Home PC' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await vi.waitFor(() => expect(rename).toHaveBeenCalledWith(ID, 'Home PC'))
+  })
+
+  it('opens the same menu from the keyboard, Shift+F10 as on Windows and Linux', async () => {
+    vi.spyOn(machinesApi, 'list').mockResolvedValue([mini])
+    vi.spyOn(machinesApi, 'allSessions').mockResolvedValue([{ id: ID, name: 'Mac mini', status: 'online', at: 1, sessions: [] }])
+    render(<MachineRows onOpen={vi.fn()} dashboardActive={false} />)
+    fireEvent.keyDown(await screen.findByRole('button', { name: /^Mac mini/ }), { key: 'F10', shiftKey: true })
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Open' })).toBeTruthy()
+  })
 })

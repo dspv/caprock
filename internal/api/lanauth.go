@@ -646,6 +646,7 @@ var computerRoutes = map[string]bool{
 	"POST /v1/orchestrator/start":  true,
 	"POST /v1/orchestrator/stop":   true,
 	"GET /v1/agents/custom":        true, // the start form lists them; setting them is the machine's
+	"GET /v1/setup":                true, // the readiness a linked laptop shows (ADR-099); read only
 	"GET /v1/activity":             true,
 	"GET /v1/overlap":              true,
 	"GET /v1/update/busy":          true,

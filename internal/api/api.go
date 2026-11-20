@@ -235,6 +235,9 @@ type Deps struct {
 	// Catalog answers the agent pickers and keeps the custom agents
 	// (ADR-046). nil ⇒ /v1/agents/catalog and /v1/agents/custom return 501.
 	Catalog AgentCatalog
+	// Setup gathers the setup checklist's facts (ADR-099). nil ⇒ GET /v1/setup
+	// returns 501.
+	Setup SetupFacts
 	// MCP reads and changes whether `caprock mcp` is registered with Claude
 	// Code and Codex (ADR-078). nil ⇒ /v1/mcp/agents returns 501.
 	MCP MCPRegistrar
@@ -907,6 +910,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/attempts/{group}", s.handleAttempts)
 	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("GET /v1/agents/catalog", s.handleAgentCatalog)
+	m.HandleFunc("GET /v1/setup", s.handleSetup)
 	m.HandleFunc("GET /v1/agents/custom", s.handleCustomAgents)
 	m.HandleFunc("PUT /v1/agents/custom", s.handlePutCustomAgents)
 	m.HandleFunc("GET /v1/subscriptions", s.handleSubscriptions)

@@ -110,6 +110,7 @@ import { OPEN_SHELL_BESIDE_EVENT } from '@/lib/termupdate'
 import type { SendTarget } from '@/components/FileTools'
 import { CloseSettingsContext } from '@/lib/settingsClose'
 import { SetupShellContext } from '@/lib/setupShell'
+import { AppActionsContext, type AppActions } from '@/lib/setup'
 import { QuickChatSheet, quickChatRequest, quickChoiceLabel, rememberQuickChoice, rememberedQuickChoice, type QuickChoice } from '@/components/QuickChat'
 import { dismissHint, hintDismissed, isQuickChat, quickChatHint, rememberStartedChat, startedChat } from '@/lib/quickchat'
 import { isChat } from '@/lib/chats'
@@ -217,6 +218,8 @@ export function changesTargetOf(node: ProjectNode, w?: WorktreeNode): ChangesTar
 type SheetState =
   | {
       kind: 'agent'; projectId?: string; cwd?: string; prompt?: string; worktree?: string
+      /** Open on another computer (ADR-099: *Start an agent there*). */
+      machine?: string
       /** Start in `cwd` itself (This folder for the main checkout), not the remembered choice. */
       here?: boolean
       /** Open on the From GitHub picker: an open issue or pull request to start from. */
@@ -1010,6 +1013,10 @@ export function AppShell() {
   // The wizard needs the projects API (scan); without it, the plain sheet.
   const onAddProject = useCallback(() => setSheet(source === 'api' ? { kind: 'new-project' } : { kind: 'project' }), [source])
   const onPalette = useCallback(() => setSheet({ kind: 'palette' }), [])
+  const appActions = useMemo<AppActions>(() => ({
+    newAgentOn: (machine: string) => setSheet({ kind: 'agent', projectId: activeProjectId, machine }),
+    addProject: onAddProject,
+  }), [activeProjectId, onAddProject])
   /**
    * To the dashboard where it was left (lib/screenPlace.ts); from the
    * dashboard itself, Home at its top — the quick way home (owner,
@@ -2433,11 +2440,14 @@ export function AppShell() {
                   <CloseSettingsContext.Provider value={closeDashboard}>
                     {/* Settings → Subscriptions types a sign-in into a shell tab (ADR-048). */}
                     <SetupShellContext.Provider value={onSetupAgent}>
-                      <Suspense fallback={null}>
-                        <PipelineHostContext.Provider value={pipelineHost}>
-                          <Dashboard route={dashboardRoute} inApp shown={dashboardShown} scroller={getDashScroll} />
-                        </PipelineHostContext.Provider>
-                      </Suspense>
+                      {/* The setup checklist's Add and Start an agent there (ADR-099). */}
+                      <AppActionsContext.Provider value={appActions}>
+                        <Suspense fallback={null}>
+                          <PipelineHostContext.Provider value={pipelineHost}>
+                            <Dashboard route={dashboardRoute} inApp shown={dashboardShown} scroller={getDashScroll} />
+                          </PipelineHostContext.Provider>
+                        </Suspense>
+                      </AppActionsContext.Provider>
                     </SetupShellContext.Provider>
                   </CloseSettingsContext.Provider>
                 </div>
@@ -2505,6 +2515,7 @@ export function AppShell() {
           worktree={sheet.worktree}
           here={sheet.here}
           fromGitHub={sheet.fromGitHub}
+          machine={sheet.machine}
           onClose={() => setSheet(null)}
           onSetup={onSetupAgent}
           onProjectAdded={() => refresh()}

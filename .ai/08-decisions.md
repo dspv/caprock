@@ -4747,8 +4747,10 @@ and travels in its pairing link, so two machines may use different relays.
    on the machine (ADR-058, amended 2026-10-14) — and shows the link, valid
    five minutes, once. Since 2026-10-20 the screen calls the target
    *Connects to another* and the button *Show the link*; the controller is
-   *The main one* ([04-ui.md § Other computers](04-ui.md)). A label on the
-   screen only: the daemon has no such mode.
+   *The main one* ([04-ui.md § Other computers](04-ui.md)); since
+   2026-11-20 *Run agents for another computer* and *This is where I work*,
+   with the target's steps a setup checklist ([ADR-099](#adr-099--adding-a-computer-is-a-checklist-on-the-computer-that-runs-agents-and-the-laptop-reads-its-readiness)).
+   A label on the screen only: the daemon has no such mode.
 2. On the controller: Settings → Computers → *Add a computer*, paste.
    Its daemon parses the link, dials the target's relay, runs Noise NK
    against the pinned key, and redeems the code through the channel with
@@ -7660,3 +7662,101 @@ V2 created stay, unused, because an applied migration cannot be taken back.
 
 **Consequences.** Anything new on Jarvis comes back one piece at a time,
 shown to the owner on a live screen before it ships.
+
+## ADR-099 — Adding a computer is a checklist on the computer that runs agents, and the laptop reads its readiness
+
+**Date:** 2026-11-20 · **Status:** accepted (owner, 2026-11-20, variant A of
+the mockup, with the scope widened the same day to computers reached over
+SSH). Builds on [ADR-067](#adr-067--your-computers-reach-each-other-through-the-same-relay-the-local-daemon-speaks-for-the-others)
+(other computers) and [ADR-046](#adr-046--the-agent-pickers-list-every-agent-with-what-it-lacks-grok-build-is-a-sixth-agent-custom-agents-are-premium)
+(the fix is typed, never run). Contract: [03-contracts.md § Setup
+checklist](03-contracts.md#setup-checklist); screens:
+[04-ui.md § Other computers](04-ui.md#other-computers).
+
+**Context.** The owner's first real two-computer test — a MacBook driving a
+Windows PC — got lost in five places: the role cards (*The main one* /
+*Connects to another*) did not say which to pick for the computer that runs
+agents; *Turn on access from anywhere* read as opening the computer to the
+internet; nothing said the PC lacked Git and Claude Code, and Claude Code on
+Windows needs Git for Windows; after linking, the laptop showed the PC and
+nothing said whether it was ready or what came next; and a computer could
+not be renamed from the sidebar. He asked the same day (translated) for "a
+very convenient, simple and clear process for connecting machines, both
+local and remote" — remote meaning a VPS or VM with no screen, set up over
+SSH.
+
+**The decision.**
+
+- **One readiness route.** `GET /v1/setup` answers this computer's readiness
+  for running agents as five items in order — `git`, `agent`, `signin`,
+  `project`, `link` — each `ok`, `missing`, `unknown` or `not_needed`, with
+  a label, a sentence that says what to do, and, where one command does it,
+  that command (`internal/readiness`, gathered by the daemon). It is read
+  only and names no path, token or account. A linked computer may read it
+  (`computerRoutes`), so the laptop asks `/v1/m/{id}/v1/setup`.
+- **Three faces of the same list.** Settings → Computers on the computer
+  that runs agents (the cards now read **Run agents for another computer**
+  and **This is where I work**; the stored values are unchanged), a compact
+  version on Home while that role is chosen and something is missing (no
+  first-run modal: most people have one computer), and `caprock setup` in a
+  terminal, with `--link` ending on `caprock pair --computer`'s link and
+  Allow prompt. Every item says the next thing to do; one that no button can
+  fix (Git on Linux, a project over SSH) says exactly what to run.
+- **Install and Sign in stay typed commands** (ADR-046): a shell tab opens
+  with the command at the prompt and the person presses Enter. The owner
+  accepted it for this (translated: "if it is really needed, ok"). Running
+  an installer from a daemon would hide what runs, would need the
+  administrator prompt Windows shows for Git anyway, and would make Caprock
+  the author of changes to the person's machine. The commands: Git for
+  Windows through `winget install --id Git.Git -e --source winget`, the
+  Command Line Tools through `xcode-select --install` on macOS, nothing on
+  Linux (the package manager is the distribution's; the sentence names
+  apt, dnf and pacman); the agents' own install and sign-in from the
+  catalog.
+- **Found without restarting Caprock.** A program installed after the daemon
+  started is not on the daemon's PATH. Git and the agents are looked for on
+  the user's PATH as it is now: on Windows the system and user `Path` from
+  the registry (`HKLM\…\Session Manager\Environment`, `HKCU\Environment`),
+  expanded, read again at most every two seconds, which sessions and shell
+  tabs started afterwards get too; on macOS and Linux the login shell's
+  environment, refreshed in the background once a minute old. Claude Code
+  not found at start is looked for again on each check. Where the PATH
+  cannot be read fresh, Git's sentence ends *Restart Caprock to see it*.
+- **Git is looked for, never run.** On a Mac `/usr/bin/git` is Apple's stub
+  that opens the Command Line Tools installer when run; it counts only when
+  the tools or Xcode are installed. Git for Windows' own folders count even
+  when its installer left them off the PATH.
+- **Sign-in is read by presence, never content**, as ADR-048 reads a
+  subscription: Claude Code's `oauthAccount` in `.claude.json` or its
+  `.credentials.json`, Codex's `auth.json`, any of Caprock's subscriptions,
+  or a credential variable the login shell exports. Claude Code writes
+  `oauthAccount` whenever it signs in, so its absence is `missing`. Codex may
+  keep its sign-in in the system keyring and write no file, so its absence
+  is `unknown`: offered with Sign in, never ticked. The Keychain is never
+  touched and nothing is run.
+- **The link** is `ok` when access from anywhere is on and a computer is
+  allowed here; else it names the computer waiting for Allow, or says that
+  access from anywhere is off. Beside Turn on, one line: *End-to-end
+  encrypted. The relay sees that your computers talk, never what. Nothing
+  reaches this computer until you press Allow here.*
+- **The laptop reads readiness**, never asks the other computer to change:
+  chips for online, the agent, signed in, the number of projects, the OS and
+  memory (from `/v1/resources`), and **Start an agent there**, which opens
+  New agent on that computer; or *<name> needs one more step: … Open
+  Caprock on it and finish its checklist, or run `caprock setup` there over
+  SSH.* A computer running a Caprock from before this answers 404 and shows
+  nothing new.
+- **Rename from the sidebar**: the computer's row has the row menu
+  (right-click, Shift+F10, the context-menu key) with Open and Rename, on
+  the existing `PATCH /v1/machines/{id}`.
+
+**Rejected.** Installing from the laptop (variant B of the mockup): Git's
+administrator prompt and the sign-in's browser open on the other computer's
+screen, so from the laptop it reads as "pressed and nothing happened".
+Installing without a terminal: slower to build and opaque. Only fixing the
+words (variant C): the PC would still not say it lacks Git.
+
+**Not detected.** Whether Codex is signed in when it uses the keyring
+(`unknown`); whether a Claude Code sign-in has since expired (the file stays
+after a token lapses); Git installed somewhere neither the PATH nor its
+installers' folders name.

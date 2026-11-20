@@ -1,33 +1,37 @@
 /**
  * Settings → Computers (ADR-067): the computers linked with this one, what
- * this computer is in that, and the three steps to add one.
+ * this computer is in that, and how to add one.
  *
- * The owner, 2026-10-19 (translated), of the screen this replaced: "here it's
- * unclear what to do". It was a list, a paste field, a folded terminal recipe
- * and a second button for the other direction, with the relay explained under
- * each. Rebuilt on the mockup he approved, top to bottom:
+ * Rebuilt 2026-10-20 on a mockup the owner approved, and again 2026-11-20
+ * (ADR-099) after his first two-computer test, where he got lost: the role
+ * cards did not say which to pick for the computer that runs agents, *access
+ * from anywhere* sounded like opening the computer to the internet, nothing
+ * said the PC lacked Git and Claude Code, and the laptop did not say whether
+ * the PC was ready. Top to bottom:
  *
- * - **Connected computers**: this one first (*this one · main* or *this one ·
- *   connects to another*), then each computer this one reaches (from
- *   `GET /v1/machines`: its state, version, when it last answered, **Open**,
- *   **Rename** here, **Disconnect** = the old Forget), then each computer that
- *   reaches this one (the `kind: "machine"` devices of `GET /v1/pair/state`:
- *   **Allow** while it waits, **Disconnect** = remove the device here).
- * - **What is this computer?** Two cards. *The main one* is the side that
- *   pastes a link and reaches the others (the controller in ADR-067); *Connects
- *   to another* is the side that shows a link and is reached (the target).
+ * - **Connected computers**: this one first, then each computer this one
+ *   reaches (from `GET /v1/machines`: its state, version, when it last
+ *   answered, its readiness read from it — `MachineReadiness` — **Open**,
+ *   **Rename** here, **Disconnect** = the old Forget), then each computer
+ *   that reaches this one (the `kind: "machine"` devices of `GET
+ *   /v1/pair/state`: **Allow** while it waits, **Disconnect** = remove the
+ *   device here).
+ * - **What is this computer?** Two cards. *Run agents for another computer*
+ *   is the side that shows a link and is reached (the target in ADR-067);
+ *   *This is where I work* is the side that pastes a link and reaches the
+ *   others (the controller). The stored values stay `secondary` and `main`.
  *   There is no such mode in the daemon: pairing is per link, one way, and a
- *   computer can be both. The cards only pick which three steps are shown; the
+ *   computer can be both. The cards only pick what is shown below; the
  *   choice is kept in this browser, and until one is made it follows what is
  *   linked (`defaultRole`).
- * - **Add a computer**, three numbered steps whose number turns into a tick
- *   when it is done (`mainSteps`, `secondarySteps`). On the main one: install
- *   Caprock there and choose *Connects to another*; paste the link it shows;
- *   allow this one there. On the other: turn on access from anywhere; choose
- *   *The main one* on the main computer; enter this link there and Allow it.
- * - **(i)** beside *Add a computer* opens what the relay is, where access from
- *   anywhere is switched on and off, and what it sends (rule 4, ADR-047) —
- *   the text that used to sit under the field, kept whole, folded.
+ * - **Set up this computer** (the target): the checklist of `GET /v1/setup`
+ *   (`SetupChecklist`) — Git, an agent, its sign-in, a project, and the link,
+ *   whose item holds Turn on and Show the link. A daemon without the route
+ *   gets the three steps it had (`SecondarySteps`).
+ * - **Add a computer** (the controller): three numbered steps whose number
+ *   turns into a tick when it is done (`mainSteps`).
+ * - **(i)** opens what the relay is, where access from anywhere is switched
+ *   on and off, and what it sends (rule 4, ADR-047).
  *
  * Nothing about the protocol changed: the same `POST /v1/machines` with the
  * link, `POST /v1/pair/code {kind: "machine"}` (which turns access from
@@ -43,6 +47,8 @@ import { href } from '@/lib/router'
 import { extTitle } from '@/lib/externalLinks'
 import { live } from '@/lib/live'
 import { COMPUTERS_SECTION } from './Pairing'
+import { SetupChecklist } from './SetupChecklist'
+import { MachineReadiness } from './MachineReadiness'
 import { Section } from './SettingsParts'
 import { Copyable } from './ui'
 
@@ -60,12 +66,12 @@ export function addError(e: unknown): string {
   return msg
 }
 
-/** *The main one* reaches the others (it pastes their links); *Connects to another* is reached (it shows a link). */
+/** `main` (*This is where I work*) reaches the others (it pastes their links); `secondary` (*Run agents for another computer*) is reached (it shows a link). */
 export type ComputerRole = 'main' | 'secondary'
 
 export const ROLE_KEY = 'caprock.computers.role'
 
-export const ROLE_LABEL: Record<ComputerRole, string> = { main: 'main', secondary: 'connects to another' }
+export const ROLE_LABEL: Record<ComputerRole, string> = { main: 'where I work', secondary: 'runs agents for another computer' }
 
 /** The card picked in this browser, if one was. */
 export function readRole(): ComputerRole | null {
@@ -174,20 +180,20 @@ export function Computers() {
             {machines.map((m) => <ComputerRow key={m.id} m={m} now={now} onChanged={list.refresh} />)}
             {here.map((d) => <ReachesHereRow key={d.id} d={d} now={now} onChanged={refreshPair} />)}
           </ul>
-          {total === 0 && list.data && <div className="text-[12.5px] text-fg-faint">No other computer yet. {role === 'main' ? 'Add one below.' : 'Connect this one to the main one below.'}</div>}
+          {total === 0 && list.data && <div className="text-[12.5px] text-fg-faint">No other computer yet. {role === 'main' ? 'Add one below.' : 'Finish the checklist below, then start agents here from your laptop.'}</div>}
         </div>
 
         <div className="grid min-w-0 gap-2" data-computer-role>
           <span className="text-[13.5px] font-medium text-fg" id="computer-role-label">What is this computer?</span>
           <div role="radiogroup" aria-labelledby="computer-role-label" className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-            <RoleCard role="main" on={role === 'main'} onPick={choose} title="The main one">Other computers and the phone connect to it</RoleCard>
-            <RoleCard role="secondary" on={role === 'secondary'} onPick={choose} title="Connects to another">Its sessions show on the main one</RoleCard>
+            <RoleCard role="secondary" on={role === 'secondary'} onPick={choose} title="Run agents for another computer">Agents work here. You start and watch them from another computer or your phone.</RoleCard>
+            <RoleCard role="main" on={role === 'main'} onPick={choose} title="This is where I work">Other computers and your phone connect to this one.</RoleCard>
           </div>
         </div>
 
         <div className="grid min-w-0 gap-2" data-add-computer>
           <div className="flex items-center gap-1.5">
-            <span className="text-[13.5px] font-medium text-fg">Add a computer</span>
+            <span className="text-[13.5px] font-medium text-fg">{role === 'main' ? 'Add a computer' : 'Set up this computer'}</span>
             <button
               type="button"
               data-relay-info-toggle
@@ -204,7 +210,13 @@ export function Computers() {
           {info && <RelayInfo remote={pair.data?.remote} />}
           {role === 'main'
             ? <MainSteps machines={machines} onAdded={list.refresh} />
-            : <SecondarySteps remote={pair.data?.remote} devices={pair.data?.devices} loaded={Boolean(pair.data)} onChanged={refreshPair} onLink={setLinkUp} />}
+            : (
+              <SetupChecklist
+                link={<LinkStep remote={pair.data?.remote} loaded={Boolean(pair.data)} onChanged={refreshPair} onLink={setLinkUp} />}
+                pairKey={pairKey(pair.data?.remote, pair.data?.devices)}
+                fallback={<SecondarySteps remote={pair.data?.remote} devices={pair.data?.devices} loaded={Boolean(pair.data)} onChanged={refreshPair} onLink={setLinkUp} />}
+              />
+            )}
         </div>
       </div>
     </Section>
@@ -271,7 +283,7 @@ function MainSteps({ machines, onAdded }: { machines: Machine[]; onAdded: () => 
   return (
     <ol className="grid min-w-0 gap-3" data-steps="main">
       <Step n={1} done={done[0]}>
-        <span>On the other computer, install Caprock and choose <b>Connects to another</b> in Settings → Computers.</span>
+        <span>On the other computer, install Caprock and choose <b>Run agents for another computer</b> in Settings → Computers. It lists what that computer still needs, each with its button.</span>
         <OtherComputerSteps />
       </Step>
       <Step n={2} done={done[1]}>
@@ -308,9 +320,33 @@ function MainSteps({ machines, onAdded }: { machines: Machine[]; onAdded: () => 
   )
 }
 
-/** On the computer that connects to another: access from anywhere, the main one's card, this link. */
+/** On the computer that runs agents, for a daemon without the checklist: access from anywhere, the other card, this link. */
 function SecondarySteps({ remote, devices, loaded, onChanged, onLink }: { remote?: RemoteState; devices?: PairedDevice[]; loaded: boolean; onChanged: () => void; onLink: (up: boolean) => void }) {
   const done = secondarySteps(remote, devices)
+  const { busy, err, shown, copied, left, up, turn, show, copy } = useComputerLink(onChanged, onLink)
+  const status = remoteStatus(remote)
+
+  return (
+    <ol className="grid min-w-0 gap-3" data-steps="secondary">
+      <Step n={1} done={done[0]}>
+        <AnywhereLine remote={remote} loaded={loaded} busy={busy} turn={turn} status={status} />
+      </Step>
+      <Step n={2} done={done[1]}>
+        <span>On the main computer, open Settings → Computers and choose <b>This is where I work</b>.</span>
+      </Step>
+      <Step n={3} done={done[2]}>
+        <LinkShown remote={remote} busy={busy} shown={up ? shown : null} left={left} copied={copied} copy={copy} show={show} />
+      </Step>
+      {err && <li role="alert" className="text-[12.5px] text-danger">{err}</li>}
+    </ol>
+  )
+}
+
+/**
+ * Access from anywhere and the one-time link, as a hook both the three steps
+ * and the checklist's last item use.
+ */
+function useComputerLink(onChanged: () => void, onLink: (up: boolean) => void) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [shown, setShown] = useState<{ link: string; until: number } | null>(null)
@@ -347,54 +383,81 @@ function SecondarySteps({ remote, devices, loaded, onChanged, onLink }: { remote
       window.setTimeout(() => setCopied(false), 1500)
     })
   }
-  const status = remote?.status === 'online' ? '' : remote?.status === 'connecting' ? ' · connecting…' : remote?.enabled ? ` · offline${remote.error ? `: ${remote.error}` : ', retrying'}` : ''
+  return { busy, err, shown, copied, left, up, turn, show, copy }
+}
 
+function remoteStatus(remote?: RemoteState): string {
+  return remote?.status === 'online' ? '' : remote?.status === 'connecting' ? ' · connecting…' : remote?.enabled ? ` · offline${remote.error ? `: ${remote.error}` : ', retrying'}` : ''
+}
+
+/** The rule-4 line beside Turn on (ADR-047, ADR-058): what turning it on lets in, and what not. */
+export const ANYWHERE_SAFE = 'End-to-end encrypted. The relay sees that your computers talk, never what. Nothing reaches this computer until you press Allow here.'
+
+function AnywhereLine({ remote, loaded, busy, turn, status }: { remote?: RemoteState; loaded: boolean; busy: boolean; turn: (on: boolean) => Promise<void>; status: string }) {
+  if (!loaded) return <span>Turn on access from anywhere</span>
+  if (!remote) return <span>Access from anywhere is not in this build of Caprock, so this computer cannot be reached from another. Update Caprock here.</span>
   return (
-    <ol className="grid min-w-0 gap-3" data-steps="secondary">
-      <Step n={1} done={done[0]}>
-        {!loaded ? <span>Turn on access from anywhere</span> : !remote ? (
-          <span>Access from anywhere is not in this build of Caprock, so this computer cannot be reached from another.</span>
-        ) : remote.enabled ? (
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-anywhere="on">
-            <span>Turn on access from anywhere <span className="text-ok">— on</span><span className="text-fg-muted">{status}</span></span>
-            <button type="button" onClick={() => void turn(false)} disabled={busy} className="text-[12px] text-fg-faint underline hover:text-danger disabled:opacity-50">Turn off</button>
-          </span>
-        ) : (
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-anywhere="off">
-            <span>Turn on access from anywhere</span>
-            <button type="button" onClick={() => void turn(true)} disabled={busy} className={ACCENT_BTN}>Turn on</button>
-          </span>
-        )}
-      </Step>
-      <Step n={2} done={done[1]}>
-        <span>On the main computer, open Settings → Computers and choose <b>The main one</b>.</span>
-      </Step>
-      <Step n={3} done={done[2]}>
-        {up && shown ? (
-          <>
-            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span>Enter this link there:</span>
-              <span className="text-[12px] text-fg-muted" data-link-valid>valid {Math.ceil(left / 60)} more min, once ·</span>
-              <button type="button" onClick={copy} className="text-[12px] text-accent hover:underline">{copied ? 'Copied ✓' : 'Copy'}</button>
-            </span>
-            <code data-computer-link className="mono block min-w-0 select-all break-all rounded-sm border border-border bg-panel-2 px-2 py-1.5 text-[11.5px] text-fg">{shown.link}</code>
-            <span className="text-[12px] text-fg-muted">When it arrives, this screen asks you to <b>Allow</b> it by name. Until then it reaches nothing.</span>
-          </>
-        ) : (
-          <>
-            <span>Enter this computer&apos;s link there, then allow it here.</span>
-            <span className="flex min-w-0 flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void show()} disabled={busy} className="rounded-sm border border-border px-2.5 py-1 text-[12.5px] text-fg hover:border-accent hover:text-accent disabled:opacity-50">
-                {busy ? 'Making a link…' : 'Show the link'}
-              </button>
-              {remote && !remote.enabled && <span className="text-[12px] text-fg-faint">Turns on access from anywhere for this computer, if it is off.</span>}
-            </span>
-          </>
-        )}
-      </Step>
-      {err && <li role="alert" className="text-[12.5px] text-danger">{err}</li>}
-    </ol>
+    <span className="grid min-w-0 gap-1">
+      {remote.enabled ? (
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-anywhere="on">
+          <span>Turn on access from anywhere <span className="text-ok">— on</span><span className="text-fg-muted">{status}</span></span>
+          <button type="button" onClick={() => void turn(false)} disabled={busy} className="text-[12px] text-fg-faint underline hover:text-danger disabled:opacity-50">Turn off</button>
+        </span>
+      ) : (
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" data-anywhere="off">
+          <span>Turn on access from anywhere</span>
+          <button type="button" onClick={() => void turn(true)} disabled={busy} className={ACCENT_BTN}>Turn on</button>
+        </span>
+      )}
+      <span className="text-[12px] text-fg-muted" data-anywhere-safe>{ANYWHERE_SAFE}</span>
+    </span>
   )
+}
+
+function LinkShown({ remote, busy, shown, left, copied, copy, show, quiet }: { remote?: RemoteState; busy: boolean; shown: { link: string } | null; left: number; copied: boolean; copy: () => void; show: () => Promise<void>; quiet?: boolean }) {
+  if (shown) {
+    return (
+      <>
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span>Enter this link on your laptop, in Settings → Computers → <b>This is where I work</b>:</span>
+          <span className="text-[12px] text-fg-muted" data-link-valid>valid {Math.ceil(left / 60)} more min, once ·</span>
+          <button type="button" onClick={copy} className="text-[12px] text-accent hover:underline">{copied ? 'Copied ✓' : 'Copy'}</button>
+        </span>
+        <code data-computer-link className="mono block min-w-0 select-all break-all rounded-sm border border-border bg-panel-2 px-2 py-1.5 text-[11.5px] text-fg">{shown.link}</code>
+        <span className="text-[12px] text-fg-muted">When it arrives, this screen asks you to <b>Allow</b> it by name. Until then it reaches nothing.</span>
+      </>
+    )
+  }
+  return (
+    <>
+      {!quiet && <span>Show this computer&apos;s link, enter it on your laptop, then allow the laptop here.</span>}
+      <span className="flex min-w-0 flex-wrap items-center gap-2">
+        <button type="button" onClick={() => void show()} disabled={busy} className="rounded-sm border border-border px-2.5 py-1 text-[12.5px] text-fg hover:border-accent hover:text-accent disabled:opacity-50">
+          {busy ? 'Making a link…' : 'Show the link'}
+        </button>
+        {remote && !remote.enabled && <span className="text-[12px] text-fg-faint">Turns on access from anywhere for this computer, if it is off.</span>}
+      </span>
+    </>
+  )
+}
+
+/** The checklist's last item: access from anywhere, the link, Allow (in the list above, or the card). */
+function LinkStep({ remote, loaded, onChanged, onLink }: { remote?: RemoteState; loaded: boolean; onChanged: () => void; onLink: (up: boolean) => void }) {
+  const { busy, err, shown, copied, left, up, turn, show, copy } = useComputerLink(onChanged, onLink)
+  return (
+    <div className="grid min-w-0 gap-2" data-link-step>
+      <AnywhereLine remote={remote} loaded={loaded} busy={busy} turn={turn} status={remoteStatus(remote)} />
+      <div className="grid min-w-0 gap-1.5">
+        <LinkShown quiet remote={remote} busy={busy} shown={up ? shown : null} left={left} copied={copied} copy={copy} show={show} />
+      </div>
+      {err && <span role="alert" className="text-[12.5px] text-danger">{err}</span>}
+    </div>
+  )
+}
+
+/** Changes when access from anywhere or the computers that reach this one change: the checklist reads again at once. */
+function pairKey(remote?: RemoteState, devices?: PairedDevice[]): string {
+  return `${remote?.enabled ? 1 : 0}:${reachedBy(devices).map((d) => `${d.id}${d.pending ? 'p' : ''}`).join(',')}`
 }
 
 /**
@@ -408,11 +471,11 @@ function RelayInfo({ remote }: { remote?: RemoteState }) {
   return (
     <div id="computers-relay-info" data-relay-info className="grid min-w-0 gap-2 rounded-md border border-border bg-panel-2 px-3 py-2.5 text-[12.5px] leading-snug text-fg-muted">
       <div>
-        Work on another computer&apos;s sessions from the main one — a Mac mini, a Linux box, a Windows PC. Each link is one way: the main one
-        reaches the computer that showed it, which does not reach back. A computer can be both.
+        Start and watch agents on another computer — a Mac mini, a Linux box, a Windows PC, a server — from the one you work on. Each link is
+        one way: the computer you work on reaches the one that showed the link, which does not reach back. A computer can be both.
       </div>
       <div>
-        The two talk through a relay. The computer that connects to another waits there with access from anywhere on — switched on in step 1
+        The two talk through a relay. The computer that runs agents waits there with access from anywhere on — switched on in its checklist
         here, by <b>Show the link</b>, by <b>Connect a phone</b> in Settings → Use on your phone, or by <span className="mono">caprock remote on</span>;
         off the same way, or <span className="mono">caprock remote off</span>.{relayHost && <> This computer&apos;s relay is <span className="mono">{relayHost}</span>.</>}
       </div>
@@ -478,6 +541,7 @@ function ComputerRow({ m, now, onChanged }: { m: Machine; now: number; onChanged
           {` · through ${relayHost}`}
         </span>
         {look.detail && <span className={`mt-0.5 block text-[12px] ${look.tone === 'muted' ? 'text-fg-faint' : 'text-fg-muted'}`} data-computer-detail>{look.detail}</span>}
+        {look.reachable && m.status !== 'offline' && <MachineReadiness m={m} />}
         {err && <span role="alert" className="mt-0.5 block text-[12px] text-danger">{err}</span>}
       </span>
       {confirm ? (
@@ -555,7 +619,8 @@ function OtherComputerSteps() {
         <li>Turn on access from anywhere: <Copyable command="caprock remote on" /></li>
         <li>
           Show the link: <Copyable command="caprock pair --computer" /> — it prints a link, valid five minutes, once (or, on its screen,
-          Settings → Computers → <b>Connects to another</b> → <b>Show the link</b>). Paste it here.
+          Settings → Computers → <b>Run agents for another computer</b> → <b>Show the link</b>). Paste it here. Or do it all at once there:{' '}
+          <Copyable command="caprock setup --link" /> lists what that computer still needs and ends with the link.
         </li>
         <li>Allow this computer there by name: answer the question in that terminal, press <b>Allow</b> on its screen, or run <span className="mono">caprock machines allow &lt;name&gt;</span>.</li>
       </ol>

@@ -87,15 +87,17 @@ function baseName(path: string): string {
 type NewAgentProps = Parameters<typeof LocalAgentSheet>[0] & {
   /** A session started on another computer (ADR-067, Phase 2); by default its route opens. */
   onStartedOn?: (machine: string, sessionId: string, title: string) => void
+  /** Opens on that computer (Settings → Computers' *Start an agent there*, ADR-099). */
+  machine?: string
 }
 
 /**
  * New agent, on this computer or — with another one linked — on one of
  * them (Machine, ADR-067 Phase 2). A single machine's sheet is unchanged.
  */
-export function NewAgentSheet({ onStartedOn, ...props }: NewAgentProps) {
+export function NewAgentSheet({ onStartedOn, machine: initialMachine = '', ...props }: NewAgentProps) {
   const machines = useMachines().data ?? []
-  const [machine, setMachine] = useState('')
+  const [machine, setMachine] = useState(initialMachine)
   if (machine && machines.some((m) => m.id === machine)) {
     return (
       <RemoteAgentSheet

@@ -60,7 +60,7 @@ export function ComputerAsks() {
       </p>
       <p className="text-fg-muted">
         It could start, type into and stop sessions here, open shells and run tasks. It could not change
-        settings or pairing. Remove it any time in Settings → Use on your phone.
+        settings or pairing. Remove it any time in Settings → Computers.
       </p>
       {waiting.length > 1 && <p className="text-[12.5px] text-fg-faint">{waiting.length - 1} more waiting after this one.</p>}
       {err && <p role="alert" className="text-[12.5px] text-danger">{err}</p>}
