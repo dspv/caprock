@@ -37,6 +37,16 @@ describe('TerminalKeys — typing from a phone', () => {
     expect((field as HTMLTextAreaElement).value).toBe('')
   })
 
+  // A message to an agent is prose: iOS corrects, capitalises and checks
+  // spelling only where the field does not switch them off.
+  it('leaves the phone keyboard\'s autocorrect, capitals and spelling on', () => {
+    render(<TerminalKeys send={vi.fn()} />)
+    const field = screen.getByLabelText('Type to the session')
+    expect(field.getAttribute('autocorrect')).toBe('on')
+    expect(field.getAttribute('autocapitalize')).toBe('sentences')
+    expect(field.getAttribute('spellcheck')).toBe('true')
+  })
+
   it('Send on an empty field is Enter', () => {
     const send = vi.fn()
     render(<TerminalKeys send={send} />)

@@ -1757,6 +1757,8 @@ A phone you let control sessions can:
   locking the phone loses nothing. Tap **Edit** to change one, **Cancel** to
   drop it, or **Send now** to send it without waiting. While a permission
   prompt is on the screen nothing is typed in; answer the prompt first.
+- **Typing.** The field uses your phone keyboard as any message field does:
+  autocorrect, capitals at the start of a sentence and spelling.
 - **Dictate.** The microphone beside **Send** turns speech into text in the
   field; nothing is sent until you press **Send**. The chip beside it says
   the language it listens for (**EN**, **RU**…): your browser cannot guess
