@@ -12,6 +12,28 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.185.2] - 2026-11-20
+
+### Fixed
+
+- **app:** a shell tab can be renamed again. When you start an agent in a
+  shell yourself — `claude --resume <id>` typed into the shell a dead
+  session's tab became — the tab and its sidebar row take that session's
+  name instead of *Shell 1 · claude*, say *in Shell 1* on hover, and Rename
+  renames the session, from the tab, the row or the row's menu. When the
+  agent exits the tab is *Shell 1* again. A plain shell's tab is renamed
+  too: its name is kept with your tabs, and an empty one gives back *Shell N*.
+- **limits:** a run-out time names its day (*runs out tomorrow 17:11*, not
+  *out at 17:11* read as a time already past), and countdowns close up as
+  *2d 16h*, *1h 39m*, *9m*.
+- **tabs:** an agent session Caprock started that ends without you asking —
+  killed by a signal, or exiting with an error code — no longer turns into a
+  nameless shell. The shell keeps the session's name and says so on one line
+  at its top, *ops ended unexpectedly at 19:58 (killed by a signal)*, with
+  **Resume**, which continues the same conversation in that tab, and a ×.
+  The session is also listed in Recently closed, *ended unexpectedly*, and
+  reopening it resumes it. A typed `/exit` still just leaves a shell.
+
 ## [0.185.1] - 2026-11-20
 
 ### Changed

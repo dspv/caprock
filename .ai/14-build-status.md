@@ -517,6 +517,18 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-20 — 0.185.2: a session that dies on its own says so, shell tabs take a name, limits name their day
+
+A patch release, #972, #974 and #975. The owner's Caprock-started session died
+when he quit Chrome (killed by a signal); its tab silently became a shell and
+the session was nowhere. Now such a tab keeps the session's name and says
+*ops ended unexpectedly at 19:58 (killed by a signal)* with **Resume**, and the
+session is listed in Recently closed (ADR-100). A shell running an agent he
+started himself (`claude --resume …`) carries that session's name and renames
+it, and a plain shell can be renamed. Plan limits say *runs out tomorrow
+17:11* instead of a bare time read as already past, and countdowns read
+*2d 16h*.
+
 ### 2026-11-20 — 0.185.1: starting an agent on another computer shows its folders, the checklist finished on Windows, a release status in plain words
 
 A patch release, #966–#971, from the second pass of the two-computer run on
