@@ -517,6 +517,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-20 — 0.185.3: an agent in a shell gets its own inspector, a readable red button, a close question that says what it stops
+
+A patch release, #977. While an agent session the owner started at a shell's
+prompt runs there, the inspector shows that session's full panel, with *Runs
+in Shell 1* and the shell's own actions below. The close question names the
+session, lists what runs in the shell with its memory, and has keys: Enter
+keeps it running, ⌘Enter (Ctrl+Enter on Windows and Linux) stops it, Esc
+cancels. Every filled red button gets a label colour that reads on it
+(`--color-on-danger`): white on Dark Pastel's light red was 2.1:1.
+
 ### 2026-11-20 — 0.185.2: a session that dies on its own says so, shell tabs take a name, limits name their day
 
 A patch release, #972, #974 and #975. The owner's Caprock-started session died
