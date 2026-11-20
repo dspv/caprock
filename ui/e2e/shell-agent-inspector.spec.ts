@@ -38,14 +38,16 @@ test('an agent typed into a shell: its cockpit in the inspector, named in the cl
   let fake = 0
 
   await app.open()
-  await app.openSession('alpha')
+  // Its ready line is gone from alpha's screen once redraw.spec.ts has run
+  // (CI, 2026-11-20): opened by its row then, as the other specs after it do.
+  await app.openSession('alpha').catch(async () => { await app.row(stand.sessions[0]!.name).first().click() })
   const before = new Set((await shells()).map((s) => s.id))
   await app.chord('t')
   await expect.poll(async () => (await shells()).filter((s) => !before.has(s.id)).length).toBe(1)
   const shellId = (await shells()).find((s) => !before.has(s.id))!.id
   await expect(app.tabs.getByRole('tab', { name: /^Shell 1/, selected: true })).toBeVisible()
-  await page.waitForTimeout(800)
-  await page.keyboard.type('claude\r')
+  // Typed through the daemon: the shell's prompt may not have focus yet.
+  await expect.poll(async () => (await post(`/v1/agents/${shellId}/input`, { data: 'claude\r' })).status).toBe(204)
   await app.waitTerm(shellId, 'fake-claude ready')
   await expect.poll(async () => (await shells()).find((s) => s.id === shellId)?.program).toBe('claude')
 
