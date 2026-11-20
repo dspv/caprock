@@ -911,6 +911,7 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /v1/agents/models", s.handleAgentModels)
 	m.HandleFunc("GET /v1/agents/catalog", s.handleAgentCatalog)
 	m.HandleFunc("GET /v1/setup", s.handleSetup)
+	m.HandleFunc("PUT /v1/setup/agents/{id}", s.handleSetupAgent)
 	m.HandleFunc("GET /v1/agents/custom", s.handleCustomAgents)
 	m.HandleFunc("PUT /v1/agents/custom", s.handlePutCustomAgents)
 	m.HandleFunc("GET /v1/subscriptions", s.handleSubscriptions)

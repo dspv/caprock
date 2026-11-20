@@ -36,10 +36,19 @@ vi.mock('@/components/TerminalPane', () => ({
 // calls what the app shell provides.
 vi.mock('@/screens/Status', async () => {
   const { useCloseSettings } = await import('@/lib/settingsClose')
+  const { useSetupShell } = await import('@/lib/setupShell')
   return {
     StatusScreen: () => {
       const close = useCloseSettings()
-      return <button type="button" aria-label="Close settings" onClick={close}>×</button>
+      // The setup checklist's Install and Subscriptions' Sign in (ADR-099,
+      // ADR-048) both call what the app shell provides here.
+      const shell = useSetupShell()
+      return (
+        <>
+          <button type="button" aria-label="Close settings" onClick={close}>×</button>
+          <button type="button" aria-label="Install Git" onClick={() => shell?.('winget install --id Git.Git -e --source winget', '/home/dima')}>Install</button>
+        </>
+      )
     },
   }
 })
@@ -1243,4 +1252,40 @@ describe('workspace helpers', () => {
     await waitFor(() => expect(editorCalls).toHaveLength(2))
     expect(editorCalls[1]).toMatchObject({ path: '/w/app' })
   })
+
+  // Owner, 2026-11-20, on a fresh Windows PC (translated): "Clicked Install
+  // Git — it went to Projects and nothing happens"; the second click worked.
+  // With no project the tab was filed under no project, and once the shell
+  // reached the session list Outside projects became the project in front,
+  // with no tab of its own: the first shell ran with its tab out of sight.
+  it('opens the first setup shell in front on a computer with no project at all', async () => {
+    sessions.splice(0)
+    const shellPosts: Record<string, unknown>[] = []
+    fetchMock.mockImplementation(async (url: unknown, init?: RequestInit) => {
+      const u = String(url)
+      const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (u.endsWith('/v1/projects')) return json({ projects: [] })
+      if (u.includes('/v1/shells') && (init?.method ?? 'GET').toUpperCase() === 'POST') {
+        const req = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+        shellPosts.push(req)
+        const id = `sh-${shellPosts.length}`
+        sessions.push(sess({ session_id: id, kind: 'shell', cwd: '/home/dima', repo_root: '', project: 'dima', title: undefined }))
+        return json({ shell: { id, cwd: req.cwd } })
+      }
+      return new Response('', { status: 404 })
+    })
+    location.hash = '#/settings/computers'
+    render(<AppShell />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Install Git' }, { timeout: 8000 }))
+    await waitFor(() => expect(shellPosts).toHaveLength(1))
+    expect(shellPosts[0]).toMatchObject({ cwd: '/home/dima', type: 'winget install --id Git.Git -e --source winget' })
+    await waitFor(() => expect(location.hash).toBe('#/app'))
+    // In front, and still in front once the session list knows the shell.
+    await waitFor(() => expect(screen.getByTestId('pane-sh-1')).toHaveAttribute('data-active', 'true'))
+    await waitFor(() => expect(document.querySelector('[data-project-row]')).toBeTruthy())
+    expect(screen.getByTestId('pane-sh-1')).toHaveAttribute('data-active', 'true')
+    expect(screen.getByRole('tab', { name: /Shell 1/ })).toHaveAttribute('aria-selected', 'true')
+    // One shell: nothing was started that has no tab.
+    expect(shellPosts).toHaveLength(1)
+  }, 20_000)
 })

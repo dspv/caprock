@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -18,23 +20,41 @@ import (
 // --computer` as it is.
 func setupCmd() *cobra.Command {
 	var link, noWait bool
+	var agent string
 	c := &cobra.Command{
-		Use:   "setup",
+		Use:   "setup [--agent <id> on|off]",
 		Short: "Check this computer is ready to run agents for another one, and link it",
 		Long: "Lists what this computer needs before agents can run here and be started from\n" +
-			"your laptop: Git, Claude Code or Codex, its sign-in, a project, and the link.\n" +
+			"your laptop: Git, the agents you switched on (each installed and signed in),\n" +
+			"and the link; projects here are optional.\n" +
 			"Each missing item prints the command that fixes it; nothing is installed for you.\n\n" +
+			"--agent <id> on|off switches an agent on or off in this list (claude, codex,\n" +
+			"opencode, gemini, cursor, …). It changes only the setting: nothing is installed\n" +
+			"or removed.\n\n" +
 			"With --link it then turns on access from anywhere, prints a one-time link for\n" +
 			"your laptop, and waits here to ask whether to allow the laptop by name\n" +
 			"(the same as `caprock pair --computer`).",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		Args: func(cmd *cobra.Command, args []string) error {
+			if agent == "" {
+				return cobra.NoArgs(cmd, args)
+			}
+			if len(args) != 1 || (args[0] != "on" && args[0] != "off") {
+				return fmt.Errorf("say on or off: caprock setup --agent %s on", agent)
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
 			rt, err := runningDaemon()
 			if err != nil {
 				return fmt.Errorf("%w here. Start it with `caprock up` (over SSH, `caprock service install` keeps it running after you log out), then run `caprock setup` again", err)
 			}
 			var rep readiness.Report
-			if err := daemonJSON(rt, http.MethodGet, "/v1/setup", nil, &rep); err != nil {
+			if agent != "" {
+				err = daemonJSON(rt, http.MethodPut, "/v1/setup/agents/"+url.PathEscape(agent), map[string]bool{"on": args[0] == "on"}, &rep)
+			} else {
+				err = daemonJSON(rt, http.MethodGet, "/v1/setup", nil, &rep)
+			}
+			if err != nil {
 				return fmt.Errorf("%w (is Caprock here older than this command? update it, then try again)", err)
 			}
 			out := cmd.OutOrStdout()
@@ -49,6 +69,7 @@ func setupCmd() *cobra.Command {
 		},
 	}
 	c.Flags().BoolVar(&link, "link", false, "then show a one-time link for your laptop and allow it here by name")
+	c.Flags().StringVar(&agent, "agent", "", "switch an agent on or off in the checklist: --agent codex on")
 	c.Flags().BoolVar(&noWait, "no-wait", false, "with --link: print the link and return; allow later with `caprock machines allow <name>`")
 	return c
 }
@@ -69,8 +90,14 @@ func printSetup(out io.Writer, rep readiness.Report, linking bool) {
 		case readiness.NotNeeded:
 			mark = "[--]"
 		}
+		if it.Optional && it.State == readiness.NotNeeded {
+			mark = "[ ·]"
+		}
 		fmt.Fprintf(out, "  %s %s — %s\n", mark, it.Label, it.Detail)
-		if it.Command != "" && it.State != readiness.OK && it.State != readiness.NotNeeded {
+		switch {
+		case it.Key == readiness.KeyAgent && len(rep.Agents) > 0:
+			printAgents(out, rep.Agents)
+		case it.Command != "" && it.State != readiness.OK && it.State != readiness.NotNeeded:
 			fmt.Fprintf(out, "         run: %s\n", it.Command)
 		}
 		if next == nil && (it.State == readiness.Missing || it.State == readiness.Unknown) {
@@ -88,6 +115,34 @@ func printSetup(out io.Writer, rep readiness.Report, linking bool) {
 	default:
 		fmt.Fprintf(out, "Next: %s — see above, then `caprock setup` again.\n", next.Label)
 	}
+}
+
+// printAgents prints the agent item's rows: each switched-on agent with its
+// state and, while a step is left, the command; the ones switched off on one
+// line; then how to switch one.
+func printAgents(out io.Writer, rows []readiness.AgentRow) {
+	var off []string
+	for _, a := range rows {
+		if !a.On {
+			off = append(off, a.ID)
+			continue
+		}
+		mark := "ok"
+		switch a.State {
+		case readiness.Missing:
+			mark = "  "
+		case readiness.Unknown:
+			mark = " ?"
+		}
+		fmt.Fprintf(out, "         [%s] %s — %s\n", mark, a.Label, a.Detail)
+		if a.Command != "" && a.State != readiness.OK {
+			fmt.Fprintf(out, "              run: %s\n", a.Command)
+		}
+	}
+	if len(off) > 0 {
+		fmt.Fprintf(out, "         off: %s\n", strings.Join(off, ", "))
+	}
+	fmt.Fprintln(out, "         switch one: caprock setup --agent <id> on|off")
 }
 
 func osName(goos string) string {

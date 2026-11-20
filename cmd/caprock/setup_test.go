@@ -15,7 +15,7 @@ func TestPrintSetup(t *testing.T) {
 		GOOS: "linux",
 		Git:  readiness.Git{Found: true, Fresh: true},
 		Agents: []readiness.Agent{
-			{ID: "claude", Label: "Claude Code", Install: "curl -fsSL https://claude.ai/install.sh | bash"},
+			{ID: "claude", Label: "Claude Code", On: true, Install: "curl -fsSL https://claude.ai/install.sh | bash"},
 			{ID: "codex", Label: "Codex", Install: "npm install -g @openai/codex"},
 		},
 		Link: readiness.Link{Supported: true},
@@ -26,10 +26,14 @@ func TestPrintSetup(t *testing.T) {
 	for _, want := range []string{
 		"Running agents on this computer (Linux):",
 		"[ok] Git",
-		"[  ] Claude Code or Codex",
+		"[  ] Agents — Install Claude Code, then sign in.",
+		"[  ] Claude Code — Install it, then sign in.",
 		"run: curl -fsSL https://claude.ai/install.sh | bash",
+		"off: codex",
+		"switch one: caprock setup --agent <id> on|off",
 		"[  ] Link to your laptop",
-		"Next: Claude Code or Codex",
+		"[ ·] Projects here — Optional.",
+		"Next: Agents",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
@@ -37,11 +41,11 @@ func TestPrintSetup(t *testing.T) {
 	}
 
 	ready := readiness.Build(readiness.Inputs{
-		GOOS:     "linux",
-		Git:      readiness.Git{Found: true, Fresh: true},
-		Agents:   []readiness.Agent{{ID: "claude", Label: "Claude Code", Installed: true, SignIn: readiness.OK}},
-		Projects: 1,
-		Link:     readiness.Link{Supported: true, On: true, Allowed: []string{"MacBook"}},
+		GOOS: "linux",
+		Git:  readiness.Git{Found: true, Fresh: true},
+		// No project: optional, and ready without one (owner, 2026-11-20).
+		Agents: []readiness.Agent{{ID: "claude", Label: "Claude Code", On: true, Installed: true, SignIn: readiness.OK}},
+		Link:   readiness.Link{Supported: true, On: true, Allowed: []string{"MacBook"}},
 	})
 	b.Reset()
 	printSetup(&b, ready, false)
@@ -51,7 +55,7 @@ func TestPrintSetup(t *testing.T) {
 
 	onlyLink := ready
 	onlyLink.Items = append([]readiness.Item(nil), ready.Items...)
-	onlyLink.Items[4] = readiness.Item{Key: readiness.KeyLink, State: readiness.Missing, Label: "Link to your laptop", Detail: "x", Command: "caprock setup --link"}
+	onlyLink.Items[2] = readiness.Item{Key: readiness.KeyLink, State: readiness.Missing, Label: "Link to your laptop", Detail: "x", Command: "caprock setup --link"}
 	b.Reset()
 	printSetup(&b, onlyLink, false)
 	if !strings.Contains(b.String(), "caprock setup --link") {

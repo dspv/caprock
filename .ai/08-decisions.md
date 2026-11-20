@@ -7692,7 +7692,8 @@ SSH.
   `project`, `link` — each `ok`, `missing`, `unknown` or `not_needed`, with
   a label, a sentence that says what to do, and, where one command does it,
   that command (`internal/readiness`, gathered by the daemon). It is read
-  only and names no path, token or account. A linked computer may read it
+  only and names no token or account, and no path but the two the steps
+  need (amendment below). A linked computer may read it
   (`computerRoutes`), so the laptop asks `/v1/m/{id}/v1/setup`.
 - **Three faces of the same list.** Settings → Computers on the computer
   that runs agents (the cards now read **Run agents for another computer**
@@ -7760,3 +7761,74 @@ words (variant C): the PC would still not say it lacks Git.
 (`unknown`); whether a Claude Code sign-in has since expired (the file stays
 after a token lapses); Git installed somewhere neither the PATH nor its
 installers' folders name.
+
+**Amendment, 2026-11-20 (owner's Windows PC, the same day).** Three things
+the first real run found, and two design changes he picked from the mockup
+(*Agents in the checklist*, variant A2 and the one marked "To be"):
+
+- *The first Install opened no tab.* On a computer with no project the
+  shell tab was filed under no project (`''`); as soon as the shell reached
+  the session list, Outside projects became the project in front, with no
+  tab of its own, and the workspace showed its empty page while the shell
+  ran unseen. The second click worked because Outside projects existed by
+  then. A shell in the home folder is now filed under Outside projects,
+  where the sidebar lists it, and a workspace stored with a tab under `''`
+  is restored under Outside projects, so that shell shows and closes. The
+  same opener serves Install, Sign in (Settings → Subscriptions) and the
+  agent picker's setup note.
+- *Where a clone goes.* The owner (translated): "I don't understand where
+  projects will be cloned; I'd choose ~/dev by default". The Add project
+  sheet's Clone field starts on the folder set as default, else on the `dev`
+  folder in the home folder, written in full (`C:\Users\dima\dev`), with
+  *Projects are cloned into this folder; change it here.* under it; the
+  clone makes the folder. The wizard's *Clone, or start an empty folder…*
+  opens on Clone, and the checklist's project item names that folder (below).
+  A phone offers `~/dev` only
+  when it exists: its clone never makes a folder on the way, which keeps a
+  link out of home from being walked into.
+- *Installed, but terminals can't find it.* Claude Code's own Windows
+  installer ended with "Native installation exists but
+  C:\Users\dima\.local\bin is not in your PATH. Add it by opening: System
+  Properties → Environment Variables → …", which he did not understand.
+  Caprock found `claude` there, so the item ticked while his terminals and
+  Caprock's shell tabs — where the sign-in is typed — could not run it. The
+  `agent` item is now `missing` when an installed agent is in `~/.local/bin`
+  and that folder is not on the PATH a terminal gets (never counting the
+  daemon's own), with *Add to PATH*: a typed command that adds that one
+  folder to the user's PATH, idempotent, run by the person's Enter as
+  everything here. It ticks on the next read. The response therefore names
+  two folders (where a clone goes; the agent's folder); a linked laptop
+  reading them is the owner's own computer, trusted with full scope there
+  already (ADR-067). On Windows the command goes through .NET's
+  `SetEnvironmentVariable`, which reads and writes the user `Path` as text,
+  so a `%VAR%` entry in it may be written back as its value: the price of
+  the one call that also tells Windows the environment changed. Not yet
+  run on a real Windows profile; a test runs its logic in PowerShell on the
+  Windows CI job with the two registry calls swapped out.
+- *Agents are switches.* One *Sign in to Claude Code* line left no way to set
+  up Codex or another agent. The `agent` and `signin` items became one
+  *Agents* item with a row per agent Caprock can start that is installed or
+  has an install command, each with an on/off switch: on, the row walks its
+  own steps (Install → Add to PATH when it applies → Sign in → ready); off,
+  it is grey and not counted. Defaults: installed is on, Claude Code is on
+  on a fresh computer, the rest off. The item is ok when one is switched on,
+  none switched on is left with a step, and one is ready (a sign-in Caprock
+  cannot read holds nothing up beside a ready agent). The switches are kept
+  by the daemon (`setup_agents` in `config.json`), so the laptop's readiness
+  and `caprock setup` (`--agent codex on`) see the same; a switch writes
+  that setting and nothing else, never an uninstall. The `signin` item is no
+  longer sent; the `agent` item keeps its key and carries the first step
+  left, so an older laptop still says what to do. *Rejected:* a line per
+  agent (the list grows with every agent), chips in one line (a Codex
+  sign-in hides in a chip), and a folded row (A1: less to see, the same
+  work).
+- *A project is optional.* Agents start in any folder picked in New agent,
+  so *A project to work in* read as an unfinished step that kept the list
+  from turning green. It is now *Projects here*, last, a dashed circle,
+  *Optional. Clone a repository here into C:\Users\dima\dev, or pick any
+  folder in New agent on your laptop.* with **Clone**, `not_needed` while
+  there is none — never a step left, and the computer is Ready without it,
+  on the laptop too (an older laptop treats `not_needed` as done). The
+  mockup's wording, "Clone from your laptop when you start an agent", names
+  a clone from New agent that is not built; the sentence says what works
+  today instead.

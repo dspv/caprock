@@ -21,6 +21,7 @@ import { useCanControl } from '@/lib/useCanControl'
 import { live, useLiveLink } from '@/lib/live'
 import { navigate, type StartMode } from '@/lib/router'
 import { newOpId, projectsApi, type OpFrame, type Project } from '@/lib/projects'
+import { CLONE_HINT, devFolder } from '@/lib/addproject'
 import {
   CloneTracker, clearPendingClone, isPhoneCloneURL, loadPendingClone, repoName, savePendingClone,
   type CloneView, type PendingClone,
@@ -60,6 +61,16 @@ export function NewProjectScreen({ mode: asked }: { mode?: StartMode }) {
   // Where a phone may put things: the daemon's browse root, inside home.
   const root = useApi(() => api.browse(''), [], { live: false })
   const home = root.data?.root ?? ''
+  // A clone goes to ~/dev, as on the computer (lib/addproject.ts devFolder),
+  // when that folder is there; else to the root. A phone never makes a
+  // folder on the way (the daemon refuses a parent that does not exist, so
+  // a link out of home can never be walked into), so it is only offered.
+  const dev = useApi(async () => {
+    if (!home) return ''
+    const d = devFolder(home)
+    try { return (await api.browse(d)).dir || d } catch { return '' }
+  }, [home], { live: false })
+  const cloneInto = dev.data || home
 
   const pick = (m: StartMode) => {
     setReady(null)
@@ -103,7 +114,7 @@ export function NewProjectScreen({ mode: asked }: { mode?: StartMode }) {
         />
       ) : mode === 'clone' ? (
         <CloneForm
-          home={home}
+          home={cloneInto}
           pending={pending}
           onPending={setPending}
           onDone={(op) => setReady({ path: op.dest ?? '', projectId: op.project_id ? String(op.project_id) : undefined, what: 'Cloned' })}
@@ -150,7 +161,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 /** A folder field with the picker folded under it: the default is usually right. */
-function FolderField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function FolderField({ label, hint, value, onChange }: { label: string; hint?: string; value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="grid min-w-0 gap-1.5">
@@ -161,6 +172,7 @@ function FolderField({ label, value, onChange }: { label: string; value: string;
           {open ? 'Done' : 'Change'}
         </button>
       </div>
+      {hint && <p className="text-[13px] leading-snug text-fg-faint">{hint}</p>}
       {open && <div className="min-w-0"><DirPicker value={value} onPick={onChange} /></div>}
     </div>
   )
@@ -233,7 +245,7 @@ function CloneForm({
           onChange={(e) => setUrl(e.target.value)}
         />
       </Field>
-      <FolderField label="Clone into" value={into} onChange={setParent} />
+      <FolderField label="Clone into" hint={CLONE_HINT} value={into} onChange={setParent} />
       {u && isPhoneCloneURL(u) && into && (
         <p className="mono text-[12px] text-fg-faint break-all">→ {into.replace(/\/+$/, '')}/{repoName(u)}</p>
       )}

@@ -19,6 +19,29 @@ const fresh: SetupReport = {
     { key: 'link', state: 'missing', label: 'Link to your laptop', detail: 'Show this computer’s link.', command: 'caprock setup --link' },
   ],
 }
+// The same PC as GET /v1/setup answers since the agents became switches
+// (owner, 2026-11-20): Agents with a row per agent, the link, and Projects
+// here last and optional.
+const switches: SetupReport = {
+  os: 'windows',
+  items: [
+    { key: 'git', state: 'ok', label: 'Git', detail: 'Installed.' },
+    { key: 'agent', state: 'missing', label: 'Agents', detail: 'Sign in to Claude Code: the browser opens, then come back here.', command: 'claude auth login' },
+    { key: 'link', state: 'ok', label: 'Link to your laptop', detail: 'MacBook can start agents here.' },
+    { key: 'project', state: 'not_needed', label: 'Projects here', detail: 'Optional. Clone a repository here into C:\\Users\\me\\dev, or pick any folder in New agent on your laptop.', optional: true },
+  ],
+  agents: [
+    { id: 'claude', label: 'Claude Code', on: true, state: 'missing', detail: 'Installed, not signed in.', step: 'signin', command: 'claude auth login' },
+    { id: 'codex', label: 'Codex', on: false, state: 'not_needed', detail: 'Off. Switch it on to set it up here.' },
+    { id: 'gemini', label: 'Gemini CLI', on: false, state: 'not_needed', detail: 'Off. Switch it on to set it up here.' },
+  ],
+}
+const switchesReady: SetupReport = {
+  ...switches,
+  items: switches.items.map((i) => (i.key === 'agent' ? { ...i, state: 'ok', detail: 'Claude Code ready.', command: undefined } : i)),
+  agents: [{ ...switches.agents![0]!, state: 'ok', detail: 'Signed in. Ready.', step: undefined, command: undefined }, ...switches.agents!.slice(1)],
+}
+
 const ok = (it: SetupItem, label = it.label, detail = 'Installed.'): SetupItem => ({ ...it, state: 'ok', label, detail, command: undefined })
 const readyPC: SetupReport = {
   os: 'windows',
@@ -67,11 +90,84 @@ describe('the setup checklist (ADR-099)', () => {
     expect(installs).toHaveLength(2)
     fireEvent.click(installs[0]!)
     await vi.waitFor(() => expect(shell).toHaveBeenCalledWith('winget install --id Git.Git -e --source winget', 'C:\\Users\\me'))
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    // An older daemon's project item: its button opens Add project too.
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }))
     expect(addProject).toHaveBeenCalled()
     // The link item holds Turn on and Show the link.
     expect(document.querySelector('[data-setup-item="link"] [data-link-controls]')).toBeTruthy()
     expect(document.querySelector('[data-setup-ready]')).toBeNull()
+  })
+
+  // Owner, 2026-11-20: Claude Code's installer left ~/.local/bin off his PATH.
+  it('an agent terminals cannot find: Add to PATH types the fix into a shell tab', async () => {
+    const fix = '$d="$env:USERPROFILE\\.local\\bin"; …'
+    const offPath: SetupReport = {
+      ...fresh,
+      items: [ok(fresh.items[0]!), { key: 'agent', state: 'missing', label: 'Claude Code is installed, but terminals can\'t find it', detail: 'Add C:\\Users\\me\\.local\\bin to your PATH so `claude` works in a terminal.', command: fix, action: 'path' }, ...fresh.items.slice(2)],
+    }
+    answer((u) => (u === '/v1/setup' ? offPath : undefined))
+    const shell = vi.fn()
+    render(
+      <SetupShellContext.Provider value={shell}>
+        <SetupChecklist link={null} fallback={null} />
+      </SetupShellContext.Provider>,
+    )
+    await screen.findByText('Claude Code is installed, but terminals can\'t find it')
+    fireEvent.click(screen.getByRole('button', { name: 'Add to PATH' }))
+    await vi.waitFor(() => expect(shell).toHaveBeenCalledWith(fix, 'C:\\Users\\me'))
+  })
+
+  it('agents as switches: each on one says its step; a switch is kept by the daemon', async () => {
+    const calls: [string, RequestInit | undefined][] = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      calls.push([String(input), init])
+      if (String(input) === '/v1/setup/agents/codex') {
+        const on: SetupReport = { ...switches, agents: switches.agents!.map((a) => (a.id === 'codex' ? { ...a, on: true, state: 'missing', step: 'install', detail: 'Install it, then sign in.', command: 'npm install -g @openai/codex' } : a)) }
+        return new Response(JSON.stringify(on), { status: 200 })
+      }
+      return String(input) === '/v1/setup' ? new Response(JSON.stringify(switches), { status: 200 }) : new Response('{}', { status: 404 })
+    })
+    const shell = vi.fn()
+    render(<SetupShellContext.Provider value={shell}><SetupChecklist link={null} fallback={null} /></SetupShellContext.Provider>)
+    const codex = await screen.findByRole('switch', { name: 'Codex: off' })
+    expect(screen.getByRole('switch', { name: 'Claude Code: on' })).toHaveAttribute('aria-checked', 'true')
+    // Off: grey and silent — no step, no button.
+    expect(document.querySelector('[data-setup-agent="codex"]')!.textContent).toBe('Codex')
+    // The item has no button of its own: each row has its step.
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await vi.waitFor(() => expect(shell).toHaveBeenCalledWith('claude auth login', 'C:\\Users\\me'))
+    fireEvent.click(codex)
+    await screen.findByRole('switch', { name: 'Codex: on' })
+    const put = calls.find(([u]) => u === '/v1/setup/agents/codex')!
+    expect(put[1]?.method).toBe('PUT')
+    expect(put[1]?.body).toBe('{"on":true}')
+    expect(document.querySelector('[data-setup-agent="codex"]')!.textContent).toContain('Install it, then sign in.')
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    await vi.waitFor(() => expect(shell).toHaveBeenCalledWith('npm install -g @openai/codex', 'C:\\Users\\me'))
+  })
+
+  it('Projects here: last, optional, a dashed circle; Ready without one; Clone opens Add project on Clone', async () => {
+    answer((u) => (u === '/v1/setup' ? switchesReady : undefined))
+    const cloneProject = vi.fn()
+    render(<AppActionsContext.Provider value={{ addProject: vi.fn(), cloneProject }}><SetupChecklist link={null} fallback={null} /></AppActionsContext.Provider>)
+    expect((await screen.findByRole('status')).textContent).toBe('Ready. Start agents from your laptop.')
+    const rows = [...document.querySelectorAll('[data-setup-item]')]
+    expect(rows.map((e) => e.getAttribute('data-setup-item'))).toEqual(['git', 'agent', 'link', 'project'])
+    const project = rows[3]!
+    expect(project.getAttribute('data-optional')).toBe('yes')
+    expect(project.querySelector('[data-setup-mark="dashed"]')).toBeTruthy()
+    expect(project.textContent).toContain('Optional. Clone a repository here into C:\\Users\\me\\dev')
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }))
+    expect(cloneProject).toHaveBeenCalled()
+    expect(ready(switchesReady)).toBe(true)
+  })
+
+  it('Home: the project is never a step left', async () => {
+    answer((u) => (u === '/v1/setup' ? switches : undefined))
+    render(<SetupShellContext.Provider value={vi.fn()}><SetupChecklistCompact /></SetupShellContext.Provider>)
+    expect(await screen.findByText('1 step left')).toBeTruthy()
+    expect(document.querySelector('[data-setup-compact] [data-setup-item="project"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
   })
 
   it('in a browser, with no tabs, shows the command to copy and where to run it', async () => {
@@ -125,6 +221,20 @@ describe('a linked computer’s readiness, on the laptop (ADR-099)', () => {
     expect(newAgentOn).toHaveBeenCalledWith(ID)
     for (const chip of ['ready', 'online', 'Claude Code', 'signed in', '2 projects']) expect(screen.getByText(chip)).toBeTruthy()
     await screen.findByText('Windows · 32 GB')
+  })
+
+  it('chips name the agents switched on there and ready; a project is not a step', async () => {
+    answer((u) => (u === `/v1/m/${ID}/v1/setup` ? { ...switchesReady, agents: [...switchesReady.agents!, { id: 'opencode', label: 'OpenCode', on: true, state: 'ok', detail: 'Signed in. Ready.' }] } : undefined))
+    render(<MachineReadiness m={{ id: ID, name: 'Home PC', status: 'online' }} />)
+    await screen.findByText('ready')
+    for (const chip of ['Claude Code', 'OpenCode']) expect(screen.getByText(chip)).toBeTruthy()
+    expect(screen.queryByText('Codex')).toBeNull()
+    expect(screen.queryByText(/projects?$/)).toBeNull()
+    cleanup()
+    answer((u) => (u === `/v1/m/${ID}/v1/setup` ? switches : undefined))
+    render(<MachineReadiness m={{ id: ID, name: 'Home PC', status: 'online' }} />)
+    const next = await screen.findByText(/needs one more step/)
+    expect(next.textContent).toContain('needs one more step: Claude Code is not signed in there.')
   })
 
   it('one with a step left says which, and where to finish it', async () => {

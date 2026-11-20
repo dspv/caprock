@@ -674,16 +674,22 @@ This computer's readiness for running agents for another computer
 
 ```
 GET /v1/setup → {"os": "windows"|"darwin"|"linux",
-                 "items": [{"key", "state", "label", "detail", "command"?}]}
+                 "items": [{"key", "state", "label", "detail", "command"?, "action"?, "optional"?}],
+                 "agents": [{"id", "label", "on", "state", "detail", "step"?, "command"?, "action"?}]}
+PUT /v1/setup/agents/{id} {"on": bool} → the same answer, as it now reads
 ```
 
-- **Items**, always all five, in this order: `git`, `agent`, `signin`,
-  `project`, `link`. `state` is `ok`, `missing`, `unknown` (Caprock cannot
+- **Items**, always these four, in this order: `git`, `agent`, `link`,
+  `project` (since 2026-11-20; before, five: `git`, `agent`, `signin`,
+  `project`, `link`). `state` is `ok`, `missing`, `unknown` (Caprock cannot
   tell; offered, never ticked) or `not_needed` (does not apply here; a client
-  treats it as done — no item uses it yet). `label` and `detail` are the
-  words shown; `detail` always says what to do next. `command`, present only
-  while the item is not done, is the one command that does it: typed into a
-  shell tab or printed by `caprock setup`, never run by Caprock (ADR-046).
+  treats it as done). `label` and `detail` are the words shown; `detail`
+  always says what to do next. `command`, present only while the item is not
+  done, is the one command that does it: typed into a shell tab or printed by
+  `caprock setup`, never run by Caprock (ADR-046). `action` names what
+  `command` does when it is neither an install nor a sign-in: `path` (below);
+  the button reads *Add to PATH*. `optional: true` marks an item that is never
+  a step left (`project`).
 - **`git`**: Git found on the user's PATH as it is now (Windows: the
   registry's system and user `Path`, read again at most every 2 s and added
   after the daemon's own PATH, which keeps its order; macOS
@@ -694,36 +700,101 @@ GET /v1/setup → {"os": "windows"|"darwin"|"linux",
   detail says Claude Code needs it there), `xcode-select --install` on macOS,
   no command on Linux (the detail names apt, dnf and pacman). When the PATH
   could not be read fresh the detail ends *Restart Caprock to see it*.
-- **`agent`**: Claude Code or Codex installed, as `GET /v1/agents/catalog`
-  decides it; `label` names the installed ones. Missing: the catalog's
-  install command for Claude Code.
-- **`signin`**: an installed agent's sign-in, by the presence of what it
-  wrote (ADR-048): the user's own sign-in, any of Caprock's subscriptions, or
-  a credential variable the login shell exports. Claude Code without one is
-  `missing` with `claude auth login`; Codex without `auth.json` is `unknown`
-  with `codex login` (it may use the system keyring). No agent installed:
-  `missing`, no command. No token is read for its content; the Keychain is
-  never touched.
-- **`project`**: at least one project (`store.ListProjects`, archived ones
-  left out); `detail` is `N project(s).` when done.
+- **`agents`: one row per agent, each with a switch** (owner, 2026-11-20).
+  Every built-in agent of `GET /v1/agents/catalog` that is installed here or
+  has an install command (Claude Code, Codex, OpenCode, Gemini CLI, Grok,
+  Hermes, Cursor — what the catalog offers), in the catalog's order. `on`
+  is the switch: the user's choice, kept in `config.json` as
+  `setup_agents: {"<id>": bool}`, else on when installed, and Claude Code on
+  on a fresh computer, the rest off (`readiness.AgentOn`). A row switched off
+  is `not_needed` with no step. A row switched on walks one step at a time,
+  `step` and `command` naming it:
+  - `install` — not installed: `missing`, the catalog's install command;
+  - `path` — **installed but off the PATH**: the binary is in
+    `~/.local/bin` (Cursor's `cursor-agent`, the others their id) while that
+    folder is not on the PATH a terminal opened now gets — the registry's
+    system and user `Path` on Windows, the login shell's PATH elsewhere,
+    never the daemon's own (`userenv.TerminalPath`) — and no folder on that
+    PATH holds it: `missing`, `action: "path"`, `detail` *Installed, but
+    terminals can't find it. Add C:\Users\<name>\.local\bin to your PATH so
+    `claude` works in a terminal.* (the real folder), and a command that
+    adds that one folder to the user's PATH only, and does nothing when it is
+    there: on Windows `$d="$env:USERPROFILE\.local\bin";
+    $p=[Environment]::GetEnvironmentVariable('Path','User'); if (("$p" -split
+    ';') -notcontains $d) { [Environment]::SetEnvironmentVariable('Path',
+    ((@("$p" -split ';' | Where-Object { $_ }) + $d) -join ';'), 'User') }`
+    (PowerShell, the shell tab's shell; .NET announces the change, so
+    terminals started afterwards see it); on macOS and Linux `grep -qsxF
+    'export PATH="$HOME/.local/bin:$PATH"' <rc> || echo '…' >> <rc>`, `<rc>`
+    being `~/.zshrc` for zsh, `~/.bash_profile` for bash on macOS,
+    `~/.bashrc` for bash elsewhere, `~/.profile` otherwise, and
+    `fish_add_path -U $HOME/.local/bin` for fish (`readiness.PathFix`). Not
+    asked when that PATH could not be read. Once run, the next read ticks it
+    (the registry is read again every 2 s; the login shell within a minute);
+  - `signin` — the sign-in, by the presence of what the agent wrote
+    (ADR-048): the user's own sign-in, any of Caprock's subscriptions, or a
+    credential variable the login shell exports. Claude Code without one is
+    `missing` with `claude auth login`; Codex without `auth.json` is
+    `unknown` with `codex login` (it may use the system keyring). The others
+    say themselves what they lack (the catalog's `setup`: OpenCode with no
+    provider, a sign-in Caprock found none of), `missing` with its words and
+    command; else nothing is missing. No token is read for its content; the
+    Keychain is never touched;
+  - then `ok`, *Signed in. Ready.*
+- **`agent`** sums the rows up, label *Agents*: `ok` when at least one agent
+  is switched on, none switched on is `missing`, and at least one is `ok` —
+  one whose sign-in cannot be read (`unknown`) holds nothing up beside a
+  ready one; `unknown` when every one switched on is; `missing` with *Switch
+  on at least one agent you want to run here.* when none is. While a row
+  switched on is `missing`, the item carries that row's step as its own
+  `detail`, `command` and `action` (*Install Claude Code, then sign in.*,
+  *Claude Code is installed, but terminals can't find it. Add … to your PATH
+  so `claude` works in a terminal.*, *Sign in to Codex: …*), so a reader from
+  before the rows still says what to do. **Older readers:** the `signin` item
+  is no longer sent; a laptop from before reads the agent item and its
+  chips, and treats the project's `not_needed` as done.
+- **`PUT /v1/setup/agents/{id}`** sets one switch, `{"on": true|false}`, and
+  answers the checklist as it now reads. `404` for an agent the checklist
+  does not list, `400` without `on`, `501` in a build without it. It writes
+  the setting and nothing else: nothing is installed, uninstalled or signed
+  out. This computer's own clients only: it is on no device's allowlist,
+  so a linked laptop or a phone gets `403` — a laptop reads readiness and
+  changes nothing there.
 - **`link`**: `ok` when access from anywhere is on and a computer (a paired
   device of kind `machine`) is allowed here — `detail` names them. Else
   `missing` with a `caprock` command for a terminal: `caprock machines allow
   "<name>"` while one waits for Allow, `caprock remote on` when one is
   allowed and access from anywhere is off, else `caprock setup --link`.
   Settings shows its own buttons instead of that command.
-- **Who may ask.** This machine's own clients and an allowed computer
+- **`project`**, label *Projects here*, last and `optional`: agents start in
+  any folder picked in New agent, so a computer is ready without one (owner,
+  2026-11-20). `ok` with `N project(s).` when there is one
+  (`store.ListProjects`, archived ones left out); else `not_needed` with
+  *Optional. Clone a repository here into C:\Users\dima\dev, or pick any
+  folder in New agent on your laptop.* — the folder in full,
+  `settings.default_folder` (`~` expanded) when set, else the `dev` folder in
+  the home folder, as the Add project sheet's Clone field starts.
+- **Paths named.** The answer names no token or account; it names two
+  folders, because those steps cannot be done without them: where a clone
+  goes, and the folder an agent is in that a terminal's PATH lacks. A linked
+  laptop reading them is the owner's own computer, trusted with full scope
+  there already (ADR-067).
+- **Who may ask.** `GET`: this machine's own clients and an allowed computer
   (`computerRoutes`), which is how a laptop reads it through
   `/v1/m/{id}/v1/setup`; a phone and a computer still waiting get `403`.
   `501` in a build without it. A daemon from before it answers `404`, and
   the laptop then shows nothing new.
-- **`caprock setup`** prints the same items, `[ok]`, `[  ]` or `[ ?]` with
-  each `detail` and `run: <command>`, then the next step (or *Ready. Start
-  agents from your laptop*), and, when autostart is not installed, how to
-  keep Caprock running (`caprock service install`); on Linux with lingering
-  off, the `loginctl enable-linger` note. `--link` then does what `caprock
-  pair --computer` does (`--no-wait` as there). Without a running daemon it
-  says to start one.
+- **`caprock setup`** prints the same items, `[ok]`, `[  ]`, `[ ?]`, or `[ ·]`
+  for the optional project with none, with each `detail` and `run:
+  <command>`; under *Agents* each agent switched on with its state and
+  command, the ones off on one line, and *switch one: caprock setup --agent
+  <id> on|off*; then the next step (or *Ready. Start agents from your
+  laptop*), and, when autostart is not installed, how to keep Caprock
+  running (`caprock service install`); on Linux with lingering off, the
+  `loginctl enable-linger` note. `caprock setup --agent codex on` (or `off`)
+  sets that switch through the `PUT` and prints the checklist. `--link` then
+  does what `caprock pair --computer` does (`--no-wait` as there). Without a
+  running daemon it says to start one.
 
 ### A dev server on a phone (/v1/devshare)
 
@@ -2402,7 +2473,7 @@ GitHub token is (§ GitHub, "Where the token lives"):
   in memory for sends. Neither is logged. Clearing either (`""`, or the
   Telegram bridge's Disconnect) deletes it from the store.
 
-`PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder; otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
+`PUT /v1/settings` accepts `default_folder` (2026-10-09): where the app's Add project sheet starts — its folder field, a new project's parent, a clone's destination and the folder browser. Empty is the home folder, except for a clone, which then goes to the `dev` folder in the home folder (2026-11-20; made by the clone when missing); otherwise an absolute path or one led by `~`, one line, at most 1024 bytes (`400` otherwise). Stored as `default_folder` in `config.json` and returned by `GET`. It changes no boundary: `/v1/browse` and `/v1/browse/stat` stay rooted at `browse_root`.
 
 `GET`/`PUT /v1/settings` carry `quick_replies` (2026-10-15): `[{label, text}]`, the one-click replies under a session Caprock started ([21-app.md § Quick replies](21-app.md#quick-replies)). `GET` returns the list in use — `config.DefaultQuickReplies` until changed. `PUT` replaces the whole list; absent or `null` leaves it. Each label and text is trimmed; at most 10 replies, a label of 1–24 characters on one line, a text of 1–300 bytes with no control character but a newline; anything else is a `400` and nothing changes. Stored in `config.json` only once it differs from the list in use, so writing back what was read never freezes the defaults; an empty list is kept as empty. A paired device does not write it. The `PUT` body may be up to 16 KiB (4 KiB before).
 
