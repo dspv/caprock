@@ -51,7 +51,9 @@ describe('the file tab’s toolbar', () => {
     await waitFor(() => expect(copied[1]).toBe(`@${ABS}`))
     fireEvent.click(screen.getByRole('button', { name: 'Copy Markdown' }))
     await waitFor(() => expect(copied[2]).toBe(DOC))
-    expect(screen.getByText('Markdown copied.')).toBeInTheDocument()
+    // The notice comes a step after the clipboard write resolves; read at
+    // once it was missed under a loaded full run.
+    expect(await screen.findByText('Markdown copied.')).toBeInTheDocument()
   })
 
   it('downloads the file under its own name', async () => {

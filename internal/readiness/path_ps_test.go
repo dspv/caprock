@@ -1,6 +1,7 @@
 package readiness
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"os/exec"
@@ -43,6 +44,11 @@ func TestWindowsPathFixRunsInPowerShell(t *testing.T) {
 	dry := strings.Replace(cmd, get, "$env:FAKE_USER_PATH", 1)
 	dry = strings.Replace(dry, set, "Write-Output (", 1)
 	dry = strings.TrimSuffix(dry, ", 'User') }") + ") }"
+	// A fresh runner's first PowerShell reports "Preparing modules for first
+	// use" on the progress stream, which -EncodedCommand writes to stderr as
+	// CLIXML; it was read as part of the answer and failed the run now and
+	// then. Progress off, and only stdout is the answer.
+	dry = "$ProgressPreference = 'SilentlyContinue'; " + dry
 	const profile = `C:\Users\test`
 	dir := profile + `\.local\bin`
 	for _, c := range []struct{ name, path, want string }{
@@ -56,9 +62,11 @@ func TestWindowsPathFixRunsInPowerShell(t *testing.T) {
 		// what a person types at the prompt.
 		run := exec.Command(ps, "-NoProfile", "-NonInteractive", "-EncodedCommand", encodePS(dry))
 		run.Env = append(os.Environ(), "USERPROFILE="+profile, "FAKE_USER_PATH="+c.path)
-		out, err := run.CombinedOutput()
+		var stderr bytes.Buffer
+		run.Stderr = &stderr
+		out, err := run.Output()
 		if err != nil {
-			t.Fatalf("%s: %v\n%s", c.name, err, out)
+			t.Fatalf("%s: %v\n%s\n%s", c.name, err, out, stderr.String())
 		}
 		if got := strings.TrimSpace(string(out)); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)
