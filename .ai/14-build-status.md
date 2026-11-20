@@ -77,6 +77,23 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-20 — unreleased: adding a computer is a checklist (ADR-099)
+
+After the owner's first MacBook → Windows PC test. `GET /v1/setup`
+(`internal/readiness`, `internal/daemon/setup.go`): Git, an agent, its
+sign-in, a project, the link, each with what to do and the command;
+readable by a linked computer. Settings → Computers' target side is the
+checklist (`SetupChecklist.tsx`), Install / Sign in typed into a shell tab;
+Home shows what is left; `caprock setup [--link]` in a terminal. The laptop
+reads each computer's readiness (`MachineReadiness.tsx`) with **Start an
+agent there**; the sidebar's computer rows have Open and Rename. The user's
+PATH is read again (Windows: the registry), and Claude Code not found at
+start is looked for again, so an install shows without a restart. Seen in a
+browser against two linked preview daemons as a Windows browser at 1100
+px. **Not detected:** Codex's sign-in in the system keyring (`unknown`), an
+expired Claude Code sign-in; the real Windows registry read is covered by a
+Windows-only test, not seen on the owner's PC yet.
+
 ### 2026-11-18 — unreleased: faster on a large database
 
 Branch `perf/large-db`. Every GET the main screens call on load and on poll

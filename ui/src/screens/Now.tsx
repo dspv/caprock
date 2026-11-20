@@ -28,6 +28,9 @@ import { CICDPanel } from '@/components/CICDPanel'
 import { HooksBanner } from '@/components/HooksBanner'
 import { Attention } from '@/components/Attention'
 import { MachineSessionsPanel } from '@/components/MachineSessionsPanel'
+import { SetupChecklistCompact } from '@/components/SetupChecklist'
+import { readRole } from '@/components/Computers'
+import { machinePageId } from '@/lib/machinepage'
 import { findAttention } from '@/lib/attention'
 import { UpdateBanner } from '@/components/UpdateBanner'
 import { UnpricedNote } from '@/components/Unpriced'
@@ -255,6 +258,9 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
       {/* The sessions on the other computers this one reaches (ADR-067,
         * Phase 2), needing you first; nothing with none linked. */}
       <MachineSessionsPanel now={now} />
+      {/* On a computer set to run agents for another, what it still needs
+        * (ADR-099); nothing once it is ready, and nothing on any other. */}
+      {!isPairedDevice() && !machinePageId() && readRole() === 'secondary' && <SetupChecklistCompact />}
 
       {/* Above Today because it is the wider frame Today sits inside: what all
         * of this has come to, before what happened in the last few hours. */}

@@ -9,15 +9,23 @@
  *   there, each tagged by that computer: a row opens the session through
  *   `/v1/m/{id}/…` (#/m/<id>/session/<sid>, screens/Machine).
  *
+ * A computer's row has the sidebar's row menu (right-click, Shift+F10 or the
+ * context-menu key): **Open** and **Rename**, renamed in place with `PATCH
+ * /v1/machines/{id}` — the owner could not rename one from here in his first
+ * two-computer test (2026-11-20).
+ *
  * Their sessions are the one list (lib/machines.ts useMachineSessions, GET
  * /v1/machines/sessions), read while the window is in view and again when
  * the daemon says one of them changed; a session there that needs its owner
  * sorts first with the warn dot and the reason, as one here does.
  */
-import { machineLook, useMachineSessions, useMachines, type Machine, type MachineSessions } from '@/lib/machines'
+import { useState } from 'react'
+import { errText } from '@/lib/api'
+import { machineLook, machinesApi, useMachineSessions, useMachines, type Machine, type MachineSessions } from '@/lib/machines'
 import { useRoute, type SettingsSection } from '@/lib/router'
 import { needLabel, needsYou, oldestFirst } from '@/lib/needs'
-import { PlusIcon } from './AppIcons'
+import { ExternalIcon, PencilIcon, PlusIcon } from './AppIcons'
+import { MenuBox, MenuItem, type MenuAt } from './RowMenu'
 
 /** How many of a computer's running sessions the sidebar lists; the rest are a click away. */
 export const MACHINE_ROWS_MAX = 6
@@ -72,12 +80,50 @@ function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Mach
   // Needing you first, oldest first, as this machine's own rows (lib/needs).
   const waiting = oldestFirst(live.filter((s) => needsYou(s)))
   const running = [...waiting, ...live.filter((s) => !needsYou(s))]
+  const [menu, setMenu] = useState<MenuAt | null>(null)
+  const [renaming, setRenaming] = useState(false)
+  const [name, setName] = useState(m.name)
+  const [err, setErr] = useState('')
+  const rename = async () => {
+    const n = name.trim()
+    setRenaming(false)
+    if (!n || n === m.name) { setName(m.name); return }
+    try { await machinesApi.rename(m.id, n); setErr('') } catch (e) { setErr(errText(e)); setName(m.name) }
+  }
   return (
     <li data-machine-row={m.id}>
+      {renaming ? (
+        <div className="flex h-[32px] items-center gap-2 pl-2.5 pr-2">
+          <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${dot}`} />
+          <input
+            autoFocus
+            aria-label="Computer name"
+            data-machine-rename
+            value={name}
+            maxLength={40}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => void rename()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); void rename() }
+              if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setName(m.name); setRenaming(false) }
+            }}
+            className="min-w-0 flex-1 rounded-sm border border-accent bg-bg px-1.5 py-0.5 text-[13px] text-fg focus:outline-none"
+          />
+        </div>
+      ) : (
       <button
         type="button"
         data-nav-row
         aria-current={activeMachine ? 'true' : undefined}
+        aria-haspopup="menu"
+        onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }) }}
+        onKeyDown={(e) => {
+          if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+            e.preventDefault()
+            const r = e.currentTarget.getBoundingClientRect()
+            setMenu({ x: r.left + 12, y: r.bottom })
+          }
+        }}
         onClick={() => onOpen(`#/m/${m.id}`)}
         title={look.detail ? `${m.name}: ${look.label}. ${look.detail}` : `${m.name}: its sessions`}
         className={`app-row flex h-[32px] w-full min-w-0 items-center gap-2 rounded-[7px] pl-2.5 pr-2 text-left text-[13px] ${activeMachine ? 'app-row-selected' : ''}`}
@@ -88,6 +134,14 @@ function MachineRow({ m, read, onOpen, activeMachine, activeSession }: { m: Mach
           : waiting.length > 0 ? <span className="shrink-0 text-[11px] text-warn" data-machine-row-waiting>{waiting.length} need{waiting.length === 1 ? 's' : ''} you</span>
             : running.length > 0 && <span className="num shrink-0 text-[11.5px] text-fg-faint">{running.length}</span>}
       </button>
+      )}
+      {err && <div role="alert" className="pl-[22px] pr-2 text-[11px] text-danger">{err}</div>}
+      {menu && (
+        <MenuBox at={menu} label={`${m.name} menu`} onClose={() => setMenu(null)}>
+          <MenuItem icon={<ExternalIcon size={13} />} label="Open" onClick={() => { setMenu(null); onOpen(`#/m/${m.id}`) }} />
+          <MenuItem icon={<PencilIcon size={13} />} label="Rename" onClick={() => { setMenu(null); setName(m.name); setRenaming(true) }} />
+        </MenuBox>
+      )}
       {running.length > 0 && (
         <ul className="grid grid-cols-1 gap-px" aria-label={`Sessions on ${m.name}`}>
           {running.slice(0, MACHINE_ROWS_MAX).map((s) => {

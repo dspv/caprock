@@ -20,6 +20,8 @@ const step = (n: number) => document.querySelector(`[data-step="${n}"]`)!
 describe('Settings → Computers (ADR-067)', () => {
   beforeEach(() => {
     localStorage.removeItem(ROLE_KEY)
+    // A daemon from before the checklist (404): the three steps it had.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 404 }))
     vi.spyOn(api, 'pairState').mockResolvedValue(pairState(relayOff))
   })
   afterEach(() => {
@@ -39,25 +41,25 @@ describe('Settings → Computers (ADR-067)', () => {
     it('a pick switches the steps, names this computer in the list, and is kept in this browser', async () => {
       vi.spyOn(machinesApi, 'list').mockResolvedValue([])
       render(<Computers />)
-      const main = await screen.findByRole('radio', { name: /The main one/ })
+      const main = await screen.findByRole('radio', { name: /This is where I work/ })
       expect(main.getAttribute('aria-checked')).toBe('true')
       expect(document.querySelector('[data-steps="main"]')).toBeTruthy()
-      expect(document.querySelector('[data-this-role]')!.textContent).toContain('this one · main')
+      expect(document.querySelector('[data-this-role]')!.textContent).toContain('this one · where I work')
 
-      fireEvent.click(screen.getByRole('radio', { name: /Connects to another/ }))
-      expect(screen.getByRole('radio', { name: /Connects to another/ }).getAttribute('aria-checked')).toBe('true')
-      expect(document.querySelector('[data-steps="secondary"]')).toBeTruthy()
+      fireEvent.click(screen.getByRole('radio', { name: /Run agents for another computer/ }))
+      expect(screen.getByRole('radio', { name: /Run agents for another computer/ }).getAttribute('aria-checked')).toBe('true')
+      await vi.waitFor(() => expect(document.querySelector('[data-steps="secondary"]')).toBeTruthy())
       expect(document.querySelector('[data-steps="main"]')).toBeNull()
-      expect(document.querySelector('[data-this-role]')!.textContent).toContain('this one · connects to another')
+      expect(document.querySelector('[data-this-role]')!.textContent).toContain('this one · runs agents for another computer')
       expect(readRole()).toBe('secondary')
     })
 
-    it('opens on Connects to another for a computer that others reach and that reaches none', async () => {
+    it('opens on Run agents for another computer for a computer that others reach and that reaches none', async () => {
       vi.spyOn(machinesApi, 'list').mockResolvedValue([])
       vi.spyOn(api, 'pairState').mockResolvedValue(pairState(relayOn, [office, phone]))
       render(<Computers />)
       await screen.findByText('Office PC')
-      expect(screen.getByRole('radio', { name: /Connects to another/ }).getAttribute('aria-checked')).toBe('true')
+      expect(screen.getByRole('radio', { name: /Run agents for another computer/ }).getAttribute('aria-checked')).toBe('true')
     })
   })
 
@@ -126,7 +128,7 @@ describe('Settings → Computers (ADR-067)', () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([])
     vi.spyOn(api, 'pairState').mockResolvedValue(pairState(relayOn))
     render(<Computers />)
-    await screen.findByRole('radio', { name: /The main one/ })
+    await screen.findByRole('radio', { name: /This is where I work/ })
     expect(document.querySelector('[data-relay-info]')).toBeNull()
     const toggle = screen.getByRole('button', { name: /what goes through the relay/ })
     expect(toggle.getAttribute('aria-expanded')).toBe('false')
@@ -135,7 +137,7 @@ describe('Settings → Computers (ADR-067)', () => {
     const info = document.querySelector('[data-relay-info]')!
     expect(info.textContent).toContain('caprock remote on')
     expect(info.textContent).toContain('caprock remote off')
-    expect(info.textContent).toContain('step 1')
+    expect(info.textContent).toContain('its checklist')
     expect(info.textContent).toContain('relay.example')
     expect(info.querySelector('[data-relay-sends]')!.textContent).toContain('end-to-end encrypted: the relay sees that two machines talk, when and how much, never what')
   })
@@ -222,7 +224,7 @@ describe('Settings → Computers (ADR-067)', () => {
   it('lists the steps for the other computer, its terminal included', async () => {
     vi.spyOn(machinesApi, 'list').mockResolvedValue([])
     render(<Computers />)
-    await screen.findByRole('radio', { name: /The main one/ })
+    await screen.findByRole('radio', { name: /This is where I work/ })
     const steps = document.querySelector('[data-computer-steps]')!
     expect(steps.textContent).toContain('caprock remote on')
     expect(steps.textContent).toContain('caprock pair --computer')

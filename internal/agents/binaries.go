@@ -211,8 +211,10 @@ func isBatch(p string) bool {
 
 func envValue(env []string, key string) string {
 	for i := len(env) - 1; i >= 0; i-- {
-		if strings.HasPrefix(env[i], key+"=") {
-			return env[i][len(key)+1:]
+		k, v, ok := strings.Cut(env[i], "=")
+		// Windows spells it Path, and its variables are one whatever the case.
+		if ok && (k == key || (runtime.GOOS == "windows" && strings.EqualFold(k, key))) {
+			return v
 		}
 	}
 	return ""

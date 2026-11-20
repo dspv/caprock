@@ -302,7 +302,7 @@ func pairComputer(cmd *cobra.Command, rt config.Runtime, wait bool) error {
 		return errors.New("access from anywhere could not be turned on here: see `caprock remote`")
 	}
 	lingerNote(out)
-	fmt.Fprintf(out, "On the other computer, run:\n\n  caprock machines add %s\n\n", shellQuote(got.Remote.Link))
+	fmt.Fprintf(out, "On your laptop, paste this link in Settings → Computers (This is where I work):\n\n  %s\n\nor, in a terminal there, run:\n\n  caprock machines add %s\n\n", got.Remote.Link, shellQuote(got.Remote.Link))
 	fmt.Fprintf(out, "The link is valid five minutes, once, and reaches this computer through %s.\n", got.Remote.Relay)
 	if !wait || !stdinIsTerminal(cmd) {
 		fmt.Fprintln(out, "Then allow it here: caprock machines allow <its name>   (caprock machines pending lists who waits)")
