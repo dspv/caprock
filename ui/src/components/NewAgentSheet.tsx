@@ -50,7 +50,8 @@ import { api, errText } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { AgentPicker, isCustomAgent, startable, useAgentCatalog, useAgentChoice } from './AgentPicker'
 import { AgentObservedNote, AgentSetupNote } from './AgentSetup'
-import { DEFAULT_MODE, DEFAULT_MODELS, GEMINI_MAPPED, ModelField, modeNotes, modeOptions } from './SpawnDialog'
+import { DEFAULT_MODE, DEFAULT_MODELS, ModelField } from './SpawnDialog'
+import { PermissionPicker } from './PermissionPicker'
 import { useInitialMode } from '@/lib/permissionMode'
 import type { SpawnAgent } from './AgentPicker'
 import { projectsApi, type BranchInfo, type Project } from '@/lib/projects'
@@ -479,15 +480,9 @@ function LocalAgentSheet({
             <p role="note" className="text-[12.5px] text-fg-muted">Custom agents are a Premium feature; add a licence key in Settings → Plan &amp; licence to start {entry.label}.</p>
           )}
           {canStart && <AgentObservedNote entry={entry} />}
-          {canStart && !custom && <SheetField label="Permissions" hint="kept for the next agent">
-            <select className="input" value={mode} onChange={(e) => setMode(e.target.value)}>
-              {modeOptions(mode).map(([v, label]) => (
-                <option key={v} value={v}>
-                  {agent === 'gemini' && !GEMINI_MAPPED.has(v) ? `${label} · Gemini asks instead` : modeNotes(agent, status.data?.opencode_version)?.[v] ?? label}
-                </option>
-              ))}
-            </select>
-          </SheetField>}
+          {canStart && !custom && (
+            <PermissionPicker value={mode} onChange={setMode} agent={agent} opencodeVersion={status.data?.opencode_version} hint="kept for the next agent" />
+          )}
           {canStart && agent === 'claude' && (
             <SheetField label="Subagents run on" hint="kept for this project">
               <select className="input" aria-label="Subagents run on" value={subModel} onChange={(e) => chooseSubModel(e.target.value)}>

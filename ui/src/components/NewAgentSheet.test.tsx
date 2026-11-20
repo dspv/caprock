@@ -3,7 +3,7 @@
  * change a select in place, ⌘↩ starts from anywhere in the sheet, Esc
  * cancels, and the keys are named in the sheet itself.
  */
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
 
@@ -66,9 +66,17 @@ function open(onClose = vi.fn()) {
 
 beforeEach(() => { spawn.mockReset().mockResolvedValue({ session_id: 'new-1', cwd: '/w/app' }); acceptBypass.mockClear(); status.accepted = undefined; status.opencode = undefined; saved.length = 0; localStorage.clear() })
 
-/** Picks a permission mode the way a reader does, in the select. */
+/** The Permissions picker's three radios. */
+async function modeRadios() {
+  return within(await screen.findByRole('radiogroup', { name: 'Permissions' })).getAllByRole('radio')
+}
+/** The mode the picker holds: the checked radio's. */
+async function modeIn() {
+  return (await modeRadios()).find((r) => r.getAttribute('aria-checked') === 'true')?.getAttribute('data-mode')
+}
+/** Picks a permission mode the way a reader does, with a click on its segment. */
 async function pick(mode: string) {
-  fireEvent.change(await screen.findByLabelText<HTMLSelectElement>(/^Permissions/), { target: { value: mode } })
+  fireEvent.click((await modeRadios()).find((r) => r.getAttribute('data-mode') === mode)!)
 }
 
 describe('the New agent sheet, Subagents run on', () => {
@@ -150,7 +158,9 @@ describe('the New agent sheet on the keyboard', () => {
     await screen.findByLabelText('Model')
     expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Project' }))
     const order = Array.from(document.querySelectorAll<HTMLElement>('select, textarea, input, button'))
-      .filter((el) => !el.hasAttribute('disabled'))
+      .filter((el) => !el.hasAttribute('disabled') && el.tabIndex >= 0)
+      // A radiogroup is one Tab stop, named by its group.
+      .map((el) => (el.getAttribute('role') === 'radio' ? el.closest<HTMLElement>('[role=radiogroup]')! : el))
       // A button's name without its key badge, which is aria-hidden.
       .map((el) => el.getAttribute('aria-label') || (el.closest('label')?.querySelector('span')?.firstChild?.textContent ?? el.firstChild?.textContent ?? '').trim())
     // The sheet's × comes first, in its header; the project search has the caret.
@@ -207,7 +217,7 @@ describe('the one-time bypass consent', () => {
 describe('the permission mode a new agent starts in', () => {
   it('asks first on a fresh install, and keeps nothing it was not told', async () => {
     open()
-    expect((await screen.findByLabelText<HTMLSelectElement>(/^Permissions/)).value).toBe('acceptEdits')
+    expect(await modeIn()).toBe('acceptEdits')
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
     expect(saved).toEqual([])
@@ -220,6 +230,17 @@ describe('the permission mode a new agent starts in', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start' }))
     await waitFor(() => expect(saved).toEqual([{ spawn_permission_mode: 'bypassPermissions' }]))
     expect(spawn.mock.calls[0]![0]).toMatchObject({ permission_mode: 'bypassPermissions' })
+  })
+
+  it("sends the mode picked with the arrow keys, in Claude's words", async () => {
+    open()
+    const at = (await modeRadios()).find((r) => r.tabIndex === 0)!
+    at.focus()
+    fireEvent.keyDown(at, { key: 'ArrowLeft' })
+    expect(await modeIn()).toBe('plan')
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+    expect(spawn.mock.calls[0]![0]).toMatchObject({ permission_mode: 'plan' })
   })
 
   it('keeps nothing when the start fails', async () => {
@@ -317,7 +338,11 @@ describe('the start key on the Start button', () => {
     for (const field of ['Project', 'Where', 'Model', 'Permissions', 'First message']) {
       spawn.mockClear()
       const { unmount } = render(<NewAgentSheet projects={projects} projectId="1" onClose={vi.fn()} onStarted={vi.fn()} />)
-      const el = field === 'First message' ? await screen.findByPlaceholderText('What should it do?') : await screen.findByLabelText(field === 'Permissions' ? /^Permissions/ : field)
+      const el = field === 'First message'
+        ? await screen.findByPlaceholderText('What should it do?')
+        : field === 'Permissions'
+          ? (await modeRadios()).find((r) => r.tabIndex === 0)!
+          : await screen.findByLabelText(field)
       el.focus()
       fireEvent.keyDown(el, { key: 'Enter', metaKey: true })
       await waitFor(() => expect(spawn, field).toHaveBeenCalledOnce())
@@ -368,7 +393,8 @@ describe('focus stays where the person put it', () => {
 })
 
 describe('the New agent sheet with OpenCode', () => {
-  const labels = async () => Array.from((await screen.findByLabelText<HTMLSelectElement>(/^Permissions/)).options).map((o) => o.textContent)
+  // Each mode's whole wording for the agent, as its hover says it.
+  const labels = async () => (await modeRadios()).map((r) => r.title)
   const pickOpenCode = async () => {
     fireEvent.change(await screen.findByLabelText<HTMLSelectElement>(/^Agent/), { target: { value: 'opencode' } })
   }
