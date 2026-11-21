@@ -3,8 +3,9 @@ package ingest
 import (
 	"bufio"
 	"encoding/json"
-	"os"
 	"strings"
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // ProjectDirName is Claude Code's name for a cwd's folder under
@@ -23,7 +24,7 @@ func ProjectDirName(cwd string) string {
 // the folder its session was started in. "" when none of the first lines
 // says one.
 func TranscriptCwd(path string) string {
-	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
+	f, err := diskio.Open("transcripts claude: project dir", path)
 	if err != nil {
 		return ""
 	}

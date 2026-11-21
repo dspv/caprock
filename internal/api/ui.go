@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // distFS is the built dashboard (ui/ → internal/api/dist), committed for `go
@@ -65,6 +67,9 @@ func (s *Server) uiHandler() http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		// The page and its assets are embedded in the binary, so serving
+		// them reads the executable's pages (internal/diskio).
+		defer diskio.Begin("dashboard files")()
 		p := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if p == "" {
 			p = "index.html"

@@ -2208,7 +2208,10 @@ and once a minute as the fallback for a daemon before them; it asked every
  "disk_io": {"interval_s": 60, "samples": 61,
              "last_minute": {"read_bytes": 1200000, "write_bytes": 300000, "seconds": 60},
              "last_hour": {"read_bytes": 90000000, "write_bytes": 20000000, "seconds": 3600},
-             "since_start": {"read_bytes": 400000000, "write_bytes": 90000000, "seconds": 7200}},
+             "since_start": {"read_bytes": 400000000, "write_bytes": 90000000, "seconds": 7200},
+             "by_source": [{"source": "sql store.(*Store).ListSessionsQuery", "read_bytes": 52000000, "ops": 240},
+                           {"source": "transcripts claude", "read_bytes": 21000000, "logical_bytes": 64000000, "ops": 1800},
+                           {"source": "unattributed", "read_bytes": 4000000, "ops": 0}]},
  "duplicates": {"daemons": [{"pid": 9, "exe": "/opt/homebrew/bin/caprock", "data_dir": "/tmp/stand", "mem_bytes": 33000000, "started_at": 1791877083828}],
                 "apps": [{"pid": 2, "exe": "/Applications/Caprock.app/Contents/MacOS/caprock-app", "mem_bytes": 45000000, "started_at": 1791877274439}],
                 "other_install_holders": {"count": 11, "orphans": 11, "exes": [{"exe": "/opt/homebrew/bin/caprock", "count": 9}]}},
@@ -2246,6 +2249,32 @@ and once a minute as the fallback for a daemon before them; it asked every
   `last_minute` is between the two newest readings, `last_hour` between the
   oldest kept and the newest (`seconds` says how long while the daemon is
   younger than an hour); both are absent until there are two readings.
+- **`disk_io.by_source`** (2026-11-21) is `last_hour`'s reads split by what
+  was running when they were made, largest first: the top ten and one
+  `other sources` row for the rest; absent with `last_hour`. Code:
+  `internal/diskio`. Every statement on the daemon's database is an
+  operation named `sql <the function that asked>` (`sql
+  store.scanEventParts`; a commit is `sql commit`), every read of a
+  transcript one of `transcripts claude` (the tailer), `transcripts claude:
+  titles`, `transcripts codex`, `transcripts gemini` and so on, the other
+  programs' databases one each (`cursor database`, `opencode database`,
+  `hermes database`, `codex database`), and the dashboard's embedded files
+  `dashboard files`. At each operation's start and end the process's read
+  counter (the one `disk_io` reads: macOS `ri_diskio_bytesread`, Linux
+  `getrusage` `ru_inblock` × 512, which is `/proc/self/io`'s `read_bytes`,
+  Windows `ReadTransferCount`) is read once, and what it moved since the
+  last reading goes to the operations then in flight in equal shares, or to
+  `unattributed` when none was. The shares add up to the counter, so a
+  source is exact while it runs alone and an even split of an overlap
+  otherwise; reads by code with no operation around it land on whatever
+  operation is running, or on `unattributed` — a large `unattributed` means
+  a reader that is not counted. `read_bytes` is the source's share; `ops` how
+  many operations it ran; `logical_bytes`, for file readers only, the bytes
+  they asked for, page-cache hits included — high logical bytes with low
+  disk bytes is a re-read the OS still answers from memory. Counting costs
+  one system call and a mutex per operation boundary (about 1.7 µs a pair on
+  an M1 Pro, 2026-11-21); nothing is written anywhere. The `disk_reads_high`
+  verdict names the top source.
 - **`duplicates.daemons`** is every other `caprock up --foreground` of this
   user, the data directory it was started with (`--data-dir`, else
   `CAPROCK_DATA_DIR`; absent for the default) and its memory. `apps` is
@@ -9030,6 +9059,27 @@ CREATE INDEX idx_events_attr_work ON events(
 ```
 
 The summaries are kept per session and only the sessions whose events moved are read again (`store.PartsCache`; the answer-cache notes under § Pricing table say how and why). That read seeks each moved session on this index, so it has to cover every column a summary sums: the model mix needs `model` and the tool distribution `tool_bytes`, which the index did not carry, and without them every row of a live session would be fetched from the table, payload and all. The two columns go on the end, so every query that pins the index by name keeps its plan. SQLite cannot add a column to an index in place, so it is dropped and created again under the same name; on a synthetic 680k-event database the index was 59 MB as inserts had grown it and is 57 MB rebuilt with the two columns (2026-11-21), the rebuild's packing outweighing them.
+
+### Permission mode DDL (migration 0088)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_mode ON events(sid, ts, id)
+  WHERE source IN ('hook','cursor') AND kind <> 'tool.post';
+```
+
+`store.LastPermissionMode` (`GET /v1/sessions/{id}/permission-mode`, the resume and continue-elsewhere paths) reads a session's newest hook events for the `permission_mode` they state. It walked `idx_events_session_ts`, which holds every event of the session, and fetched each row from the table — payload and all — to test its source and kind; its `LIMIT` counts rows that pass, so a session with no hook events (Codex, a transcript-only session, any agent without hooks) was read whole on every ask, and an open session tab asks every few seconds. This partial index holds only the rows the query can use, in the order it reads them (its `WHERE` is the query's own, so SQLite may use it), so such a session costs one empty seek and any other at most the query's 50-row window. The answer is the same row as before.
+
+Measured with migration 0089 below on the stand the answer-cache notes describe (§ Pricing table: the synthetic 1.6 GB, 680k-event database, the Now screen and two session tabs open in a headless browser, two sessions appending to 40 MB transcripts; here the database, the transcripts and the binary evicted from the OS cache every 30 s; `ri_diskio_bytesread` over 10 minutes, 2026-11-21). `disk_io.by_source` put `sql store.LastPermissionMode` first (7.4 GB/hour), then `sql store.SessionCostSeries` (3.7) and `sql store.SessionUnpricedTurns` (2.4), out of 21,283 MB/hour in all. With this index alone the daemon read 19,587 MB/hour, and the cost line took most of what had been the permission mode's share — the two run at the same moment for an open session tab, and an overlap is split evenly (§ Footprint, `by_source`). With both indexes, 11,745 MB/hour: 45% less, and neither query among the top ten. The stand evicts far harder than a Mac under memory pressure, so the ratio carries over, not the hourly figure.
+
+### Session turns DDL (migration 0089)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_session_turns ON events(
+  sid, ts, id, cost_usd, tokens_in, tokens_out, cache_read, cache_write, key
+) WHERE kind = 'turn.assistant' AND internal = 0;
+```
+
+`store.SessionCostSeries` (the session page's *Cost, cumulative* line and its priced-turn count) and `store.SessionUnpricedTurns` (the "unknown" beside the Cost tile) are read again whenever the session's events move (§ Session calls' generation), which for a working session is every few seconds while its page is open. Both walked `idx_events_attr_work`: every event of the session in sixteen columns, and the cost line also fetched each priced turn's row from the table — payload and all — for the usage-record test on its `key` (`cu-usage:` / `hm-usage:`, ADR-095). This partial index holds only the turns they count, with every column they read, `key` included, so both are one covering read of the session's turns. An indexed expression for the key test would be smaller but does not make the read covering: SQLite still fetches the row for the column the expression names (checked with `EXPLAIN QUERY PLAN`, 2026-11-21). The figures are the same rows summed the same way.
 
 ### Touch attribution DDL (migration 0012)
 

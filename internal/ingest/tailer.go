@@ -18,6 +18,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -381,7 +382,7 @@ func (t *Tailer) readFile(ctx context.Context, f *fileState, fi os.FileInfo) {
 		f.offset = 0
 		f.skipTo = 0
 	}
-	fh, err := os.Open(f.path)
+	fh, err := diskio.Open("transcripts claude", f.path)
 	if err != nil {
 		return
 	}
@@ -707,7 +708,7 @@ func retryable(ctx context.Context, err error) bool {
 // error is reported as "not a boundary": re-reading a file from the start
 // costs a sweep and is absorbed by keyed dedupe, while trusting a stale offset
 // costs data.
-func endsLineAt(fh *os.File, off int64) bool {
+func endsLineAt(fh io.ReaderAt, off int64) bool {
 	var b [1]byte
 	if _, err := fh.ReadAt(b[:], off-1); err != nil {
 		return false

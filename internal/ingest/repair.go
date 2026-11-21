@@ -17,6 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -223,7 +224,7 @@ func siblingTranscripts(path string) []string {
 // textsByMessageID scans a transcript once and returns the full assistant text
 // for each message id of interest, re-derived with the current (rune-safe) cap.
 func textsByMessageID(path string, wanted map[string]int64) (map[string]string, error) {
-	f, err := os.Open(path) //nolint:gosec // path comes from our own sessions table
+	f, err := diskio.Open("transcripts claude: repair", path)
 	if err != nil {
 		return nil, err
 	}
@@ -585,7 +586,7 @@ func BackfillToolMessageIDs(ctx context.Context, db *sql.DB, log *slog.Logger, a
 // messageIDsByToolUse scans one transcript for the assistant messages that
 // issued the given tool_use ids, returning tool_use_id → message_id.
 func messageIDsByToolUse(path string, wanted map[string]int64) (map[string]string, error) {
-	f, err := os.Open(path) //nolint:gosec // a transcript path we recorded ourselves
+	f, err := diskio.Open("transcripts claude: repair", path)
 	if err != nil {
 		return nil, err
 	}

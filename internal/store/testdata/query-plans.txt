@@ -1382,9 +1382,9 @@ SELECT id, ts, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), sou
         SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
 
 ## store.LastPermissionMode
-SELECT mode FROM ( SELECT ts, id, CASE WHEN json_valid((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END)) THEN json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.permission_mode') END AS mode FROM events INDEXED BY idx_events_session_ts WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source IN ('hook','cursor') AND kind <> 'tool.post' ORDER BY ts DESC, id DESC LIMIT ?) WHERE typeof(mode) = 'text' AND mode <> '' ORDER BY ts DESC, id DESC LIMIT 1
+SELECT mode FROM ( SELECT ts, id, CASE WHEN json_valid((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END)) THEN json_extract((CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END), '$.permission_mode') END AS mode FROM events INDEXED BY idx_events_mode WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source IN ('hook','cursor') AND kind <> 'tool.post' ORDER BY ts DESC, id DESC LIMIT ?) WHERE typeof(mode) = 'text' AND mode <> '' ORDER BY ts DESC, id DESC LIMIT 1
     CO-ROUTINE (subquery-2)
-        SEARCH events USING INDEX idx_events_session_ts (sid=?)
+        SEARCH events USING INDEX idx_events_mode (sid=?)
         SCALAR SUBQUERY 1
             SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
     SCAN (subquery-2)
@@ -2205,8 +2205,8 @@ SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE WHEN typeof(e
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.SessionCostSeries
-SELECT ts, cost_usd, COALESCE(substr(key,1,9) IN ('cu-usage:','hm-usage:'),0), (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 FROM events INDEXED BY idx_events_attr_work WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NOT NULL AND internal = 0 ORDER BY ts, id
-    SEARCH events USING INDEX idx_events_attr_work (sid=?)
+SELECT ts, cost_usd, COALESCE(substr(key,1,9) IN ('cu-usage:','hm-usage:'),0), (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 FROM events INDEXED BY idx_events_session_turns WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NOT NULL AND internal = 0 ORDER BY ts, id
+    SEARCH events USING COVERING INDEX idx_events_session_turns (sid=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -2253,8 +2253,8 @@ SELECT ts, tool, COALESCE(agent_id, ''), (CASE WHEN typeof(payload) = 'blob' THE
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.SessionUnpricedTurns
-SELECT COUNT(*) FROM events INDEXED BY idx_events_attr_work WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NULL AND internal = 0 AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
-    SEARCH events USING COVERING INDEX idx_events_attr_work (sid=?)
+SELECT COUNT(*) FROM events INDEXED BY idx_events_session_turns WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NULL AND internal = 0 AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
+    SEARCH events USING COVERING INDEX idx_events_session_turns (sid=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
@@ -3605,7 +3605,7 @@ SELECT s.session_id, COALESCE(s.agent,'claude'), COALESCE(SUM(e.cost_usd),0), CO
 
 ## store.weekBiggest
 SELECT ts FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND ts >= ? AND ts < ? AND internal = 0
-    SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>? AND ts<?)
+    SEARCH events USING COVERING INDEX idx_events_session_turns (sid=? AND ts>? AND ts<?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 

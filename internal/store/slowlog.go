@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // SlowQuery is how long one statement may take before it is logged.
@@ -153,6 +155,13 @@ type timedConn struct {
 
 func (c *timedConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	recordPlan(query, args)
+	// BEGIN IMMEDIATE is not counted: it reads next to nothing and can wait
+	// seconds for the write lock, and a waiting operation would take an even
+	// share of what everything else read meanwhile (internal/diskio).
+	if !isBegin(query) {
+		end := diskio.Begin(sqlSource())
+		defer end()
+	}
 	start := slowClock()
 	r, err := c.fullConn.ExecContext(ctx, query, args)
 	var n int64
@@ -165,13 +174,33 @@ func (c *timedConn) ExecContext(ctx context.Context, query string, args []driver
 
 func (c *timedConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	recordPlan(query, args)
+	end := diskio.Begin(sqlSource())
 	start := slowClock()
 	r, err := c.fullConn.QueryContext(ctx, query, args)
 	if err != nil {
+		end()
 		reportSlow(c.log, query, start, 0, err)
 		return nil, err
 	}
-	return &timedRows{Rows: r, query: query, start: start, log: c.log}, nil
+	return &timedRows{Rows: r, query: query, start: start, log: c.log, end: end}, nil
+}
+
+// BeginTx's transaction counts its commit as a source of its own: a commit
+// can run the WAL's automatic checkpoint, which reads the log back.
+func (c *timedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	tx, err := c.fullConn.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return countedTx{tx}, nil
+}
+
+type countedTx struct{ driver.Tx }
+
+func (t countedTx) Commit() error {
+	end := diskio.Begin("sql commit")
+	defer end()
+	return t.Tx.Commit()
 }
 
 // timedRows counts rows and reports when the result set is closed.
@@ -182,6 +211,8 @@ type timedRows struct {
 	log    *slog.Logger
 	n      int64
 	closed bool
+	// end ends the statement's diskio operation (internal/diskio).
+	end func()
 }
 
 func (r *timedRows) Next(dest []driver.Value) error {
@@ -205,6 +236,9 @@ func (r *timedRows) report(err error) {
 		return
 	}
 	r.closed = true
+	if r.end != nil {
+		r.end()
+	}
 	reportSlow(r.log, r.query, r.start, r.n, err)
 }
 

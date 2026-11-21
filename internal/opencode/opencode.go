@@ -28,6 +28,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/ingest"
 	_ "modernc.org/sqlite"
 )
@@ -164,7 +165,7 @@ func Open(path string) (*sql.DB, error) {
 	// mode=ro is the guarantee that matters: this process must never take a
 	// write lock on another program's live database.
 	dsn := "file:" + filepath.ToSlash(path) + "?mode=ro&_pragma=busy_timeout(5000)"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := diskio.OpenSQL("opencode database", "sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opencode: open: %w", err)
 	}

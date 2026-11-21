@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/procstat"
 	"github.com/dspv/caprock/internal/ptyhost"
 )
@@ -328,4 +330,46 @@ func TestDataDirLock(t *testing.T) {
 		t.Fatalf("the lock is free again after release: %v", err)
 	}
 	again()
+}
+
+func TestIORingBySource(t *testing.T) {
+	t0 := time.Unix(1_800_000_000, 0)
+	r := newIORing(t0)
+	src := func(n uint64) map[string]diskio.Source {
+		m := map[string]diskio.Source{}
+		for i := range 14 {
+			name := fmt.Sprintf("s%02d", i)
+			m[name] = diskio.Source{Name: name, ReadBytes: n * uint64(i+1)}
+		}
+		return m
+	}
+	r.add(ioSample{at: t0, read: 0, src: src(0)})
+	r.add(ioSample{at: t0.Add(time.Minute), read: 1 << 20, src: src(10)})
+	by := r.report().BySource
+	if len(by) != bySourceTop+1 {
+		t.Fatalf("%d rows, want the top %d and the rest: %+v", len(by), bySourceTop, by)
+	}
+	if by[0].Name != "s13" || by[0].ReadBytes != 140 {
+		t.Errorf("largest first: %+v", by[0])
+	}
+	if rest := by[bySourceTop]; rest.Name != "other sources" || rest.ReadBytes != 10+20+30+40 {
+		t.Errorf("the rest: %+v", rest)
+	}
+
+	f := cleanFootprint()
+	f.DiskIO.LastHour.ReadBytes = 1700 << 20
+	f.DiskIO.BySource = []diskio.Source{{Name: "sql store.scanEventParts", ReadBytes: 1200 << 20}}
+	f.finish()
+	found := false
+	for _, v := range f.Verdicts {
+		if v.Code == "disk_reads_high" {
+			found = true
+			if !strings.Contains(v.Text, "The most was read while sql store.scanEventParts ran (1.2 GB).") {
+				t.Errorf("the verdict names the top reader: %s", v.Text)
+			}
+		}
+	}
+	if !found {
+		t.Error("no disk_reads_high verdict")
+	}
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/procstat"
 	"github.com/dspv/caprock/internal/ptyhost"
 	"github.com/dspv/caprock/internal/store"
@@ -405,7 +406,7 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		w("wal_large", "The database's write-ahead log is %s (over %s): it has not been folded back into the database. The daemon checkpoints it on its own within %d minutes.", Bytes(uint64(f.Disk.WALBytes)), Bytes(footprintWALWarn), int(walCheckpointEvery/time.Minute))
 	}
 	if io := f.DiskIO; io != nil && io.LastHour != nil && io.LastHour.ReadBytes > footprintReadsWarn {
-		w("disk_reads_high", "%s", diskReadsHighText(io.LastHour.ReadBytes, io.LastHour.Seconds))
+		w("disk_reads_high", "%s", diskReadsHighText(io.LastHour.ReadBytes, io.LastHour.Seconds)+topReaderText(io.BySource))
 	}
 	if len(warn) == 0 {
 		warn = []FootprintVerdict{{Level: "ok", Code: "ok", Text: "Nothing here looks wrong: one daemon, no orphaned terminals, and the data directory within bounds."}}
@@ -434,6 +435,20 @@ func diskReadsHighText(readBytes uint64, seconds int64) string {
 	return fmt.Sprintf("The daemon read %s from disk in the last %s (over %s): Caprock re-reading its own history for the open window. "+
 		"Harmless to the disk; it costs a little battery and CPU. "+
 		"Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.", Bytes(readBytes), minutes(seconds), Bytes(footprintReadsWarn))
+}
+
+// topReaderText names the source that read the most in the hour, so the
+// verdict says what to look at (internal/diskio): " The most was read while
+// sql store.scanEventParts ran (1.2 GB)." Empty when nothing was counted.
+func topReaderText(by []diskio.Source) string {
+	if len(by) == 0 || by[0].ReadBytes == 0 {
+		return ""
+	}
+	top := by[0]
+	if top.Name == diskio.Unattributed {
+		return fmt.Sprintf(" The most (%s) was read while nothing Caprock counts was running.", Bytes(top.ReadBytes))
+	}
+	return fmt.Sprintf(" The most was read while %s ran (%s).", top.Name, Bytes(top.ReadBytes))
 }
 
 // SetOrphans puts an orphan scan into a report that came without one (a

@@ -267,6 +267,18 @@ func printDoctor(w io.Writer, f *daemon.FootprintReport) {
 		win("last hour", dio.LastHour)
 		win("since start", dio.SinceStart)
 		_ = tw.Flush()
+		if len(dio.BySource) > 0 {
+			fmt.Fprintln(w, "  read in the last hour, by what was running")
+			tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+			for _, src := range dio.BySource {
+				line := fmt.Sprintf("    %s\t%s", src.Name, mem(src.ReadBytes))
+				if src.LogicalBytes > 0 {
+					line += fmt.Sprintf("\tasked for %s", mem(src.LogicalBytes))
+				}
+				fmt.Fprintln(tw, line)
+			}
+			_ = tw.Flush()
+		}
 		if dio.LastMinute == nil {
 			fmt.Fprintln(w, "  (read once a minute; the first interval is not over yet)")
 		}

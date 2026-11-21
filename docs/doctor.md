@@ -78,7 +78,17 @@ It reports:
 - **Disk:** the data directory's size, split into the database (with its
   write-ahead log), pastes, logs, binaries and the rest.
 - **The daemon's disk I/O:** what it read and wrote in the last minute and
-  the last hour. It is read once a minute and kept in memory only.
+  the last hour. It is read once a minute and kept in memory only. Under it,
+  the last hour's reads by what was running when they were made: a database
+  query by the code that asked for it (`sql store.scanEventParts`), the
+  transcript readers (`transcripts claude`, `transcripts codex`, …), another
+  program's database (`cursor database`), the dashboard's own files, and
+  `unattributed` for reads made while none of them ran. Two that run at the
+  same moment share what was read then evenly, so the split is a pointer to
+  the reader, not an exact bill. A file reader also says how much it asked
+  for: far more than it read from disk means it re-reads files the computer
+  still holds in memory. When the reads are high, the Verdict line names the
+  largest.
 - **Duplicates:** another daemon, more than one desktop app, and terminal
   holders started by another install or an older version (a Homebrew copy, a
   previous app bundle).

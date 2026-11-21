@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/procstat"
 )
 
@@ -20,7 +21,13 @@ const (
 type ioSample struct {
 	at            time.Time
 	read, written uint64
+	// src is internal/diskio's totals by source at the same moment.
+	src map[string]diskio.Source
 }
+
+// bySourceTop is how many sources by_source lists; the rest are summed into
+// one "other sources" row.
+const bySourceTop = 10
 
 // ioRing is the last hour of readings, oldest first.
 type ioRing struct {
@@ -68,7 +75,11 @@ type FootprintDiskIO struct {
 	// SinceStart is the counters at the newest reading: everything the
 	// daemon has read and written since it started.
 	SinceStart *IOWindow `json:"since_start,omitempty"`
-	Error      string    `json:"error,omitempty"`
+	// BySource is LastHour's reads split by what was running when they
+	// were made (internal/diskio), largest first: the top ten, the rest in
+	// one "other sources" row. Absent with LastHour.
+	BySource []diskio.Source `json:"by_source,omitempty"`
+	Error    string          `json:"error,omitempty"`
 }
 
 func delta(a, b ioSample) *IOWindow {
@@ -79,6 +90,21 @@ func delta(a, b ioSample) *IOWindow {
 		return y - x
 	}
 	return &IOWindow{ReadBytes: sub(a.read, b.read), WriteBytes: sub(a.written, b.written), Seconds: int64(b.at.Sub(a.at).Round(time.Second) / time.Second)}
+}
+
+// topSources is the first bySourceTop of a sorted list and one row for the
+// rest.
+func topSources(all []diskio.Source) []diskio.Source {
+	if len(all) <= bySourceTop {
+		return all
+	}
+	rest := diskio.Source{Name: "other sources"}
+	for _, s := range all[bySourceTop:] {
+		rest.ReadBytes += s.ReadBytes
+		rest.LogicalBytes += s.LogicalBytes
+		rest.Ops += s.Ops
+	}
+	return append(all[:bySourceTop:bySourceTop], rest)
 }
 
 func (r *ioRing) report() *FootprintDiskIO {
@@ -94,6 +120,7 @@ func (r *ioRing) report() *FootprintDiskIO {
 	if n >= 2 {
 		out.LastMinute = delta(r.buf[n-2], newest)
 		out.LastHour = delta(r.buf[0], newest)
+		out.BySource = topSources(diskio.Delta(r.buf[0].src, newest.src))
 	}
 	return out
 }
@@ -108,7 +135,7 @@ func (d *Daemon) ioLoop(ctx context.Context) {
 			d.io.fail(err)
 			return
 		}
-		d.io.add(ioSample{at: time.Now(), read: rd, written: wr})
+		d.io.add(ioSample{at: time.Now(), read: rd, written: wr, src: diskio.Snapshot()})
 	}
 	read()
 	t := time.NewTicker(ioEvery)
