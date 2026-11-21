@@ -18,7 +18,6 @@ import { fmtAgo } from '@/lib/format'
 import { fmtCPU, fmtMem, useResources } from '@/lib/resources'
 import { age, doctorHeadline, doctorRows, fmtBytes, footprintText, footprintTitle, orphanFigure, plainName, safeToStop, startedFrom, useFootprint, useFootprintWithOrphans, warnings, windowUsage, type DoctorRow, type DoctorRowKey, type Footprint, type Orphan, type OrphanStopResult } from '@/lib/footprint'
 import { useNow } from '@/lib/useNow'
-import { openRetentionSetting } from '@/lib/compressHint'
 import { useMenuDismiss } from './Cockpit'
 import { FreeUpMemory } from './FreeUpMemory'
 
@@ -242,6 +241,10 @@ export function FootprintPanel({ f: strip, owner, front, sessions, onCheck: onSt
             <span>Memory <span className="num font-medium text-fg">{fmtMem(f.memory.total_mem_bytes)}</span></span>
             <span>On disk <span className="num font-medium text-fg">{fmtBytes(f.disk.total_bytes)}</span></span>
           </p>
+          {/* Said, never warned: keeping every session is the product (owner, 2026-11-22). */}
+          <p data-history-size className="text-[14px] text-fg-muted" title="Every session's prompts, replies, tool calls and images, kept for spend, search and Second Brain">
+            History · <span className="num">{fmtBytes(f.disk.database_bytes)}</span>
+          </p>
           {/* Free up memory: leftovers and idle agents, the same component the memory popover shows. */}
           {owner && <FreeUpMemory footprint={f} front={front} sessions={sessions} onDone={() => onCheck()} />}
           {looking && <p className="text-[14px] text-fg-muted">Looking for what can be stopped…</p>}
@@ -297,7 +300,7 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
   const close = useContext(ClosePanel)
   const act = r.action && (() => {
     close?.()
-    if (r.action!.key === 'retention') openRetentionSetting()
+    if (r.action!.key === 'storage') openStorageSettings()
   })
   return (
     <li data-doctor-row={r.key} data-warn={r.warn || undefined} className="flex flex-col gap-2 py-3">
@@ -313,7 +316,7 @@ function DoctorRowView({ r, at, canStop, busy, onStop, children }: {
       </div>
       {(r.value || canStop || act) && (
         <div className="flex flex-wrap items-center justify-between gap-2 pl-[15px]">
-          {r.value && <span className={`num text-[18px] font-medium ${r.key === 'reads' && r.warn ? 'text-warn' : 'text-fg'}`}>{r.value}</span>}
+          {r.value && <span className={`num text-[18px] font-medium ${(r.key === 'reads' || r.key === 'disk') && r.warn ? 'text-warn' : 'text-fg'}`}>{r.value}</span>}
           {act && <button type="button" data-row-action={r.action!.key} onClick={act} className={`${SMALL} ml-auto`}>{r.action!.label}</button>}
           {canStop && <button type="button" data-row-stop disabled={busy} onClick={onStop} aria-label={`Stop: ${r.title}`} className={`${SMALL} ml-auto`}>Stop…</button>}
         </div>

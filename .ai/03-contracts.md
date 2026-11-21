@@ -2204,7 +2204,8 @@ and once a minute as the fallback for a daemon before them; it asked every
             "hosts": {"count": 26, "mem_bytes": 260000000, "cpu_pct": 0, "orphans": 11, "reapable": 11},
             "other_daemons_mem_bytes": 0, "total_mem_bytes": 1091000000, "total_cpu_pct": 3.7},
  "disk": {"total_bytes": 2300000000, "database_bytes": 2219000000, "wal_bytes": 6000000, "pastes_bytes": 25000000,
-          "logs_bytes": 15000000, "binaries_bytes": 51000000, "other_bytes": 5000},
+          "logs_bytes": 15000000, "binaries_bytes": 51000000, "other_bytes": 5000,
+          "volume_free_bytes": 128000000000, "volume_total_bytes": 494000000000},
  "disk_io": {"interval_s": 60, "samples": 61,
              "last_minute": {"read_bytes": 1200000, "write_bytes": 300000, "seconds": 60},
              "last_hour": {"read_bytes": 90000000, "write_bytes": 20000000, "seconds": 3600},
@@ -2239,7 +2240,10 @@ and once a minute as the fallback for a daemon before them; it asked every
   into groups: `database_bytes` is `caprock.db` with `-wal` and `-shm`
   (`wal_bytes` the WAL alone), `pastes_bytes` the `paste/` directory,
   `logs_bytes` every `*.log`, `binaries_bytes` the app's `bin/` and the hook
-  shim, `other_bytes` the rest.
+  shim, `other_bytes` the rest. `volume_free_bytes` and `volume_total_bytes`
+  (2026-11-22) are the volume that holds the data directory (gopsutil
+  `disk.Usage`: free as the user may write it, not the root reserve, and its
+  size); both absent when it cannot be read.
 - **`disk_io`** is the daemon's own reads and writes: its cumulative
   counters read at start and once a minute (macOS `proc_pid_rusage`
   `ri_diskio_bytesread/written`; Linux `/proc/self/io`
@@ -2344,7 +2348,10 @@ and once a minute as the fallback for a daemon before them; it asked every
   `stray_processes` (a `claude`, a `codex`, an MCP server or a Caprock
   command in `orphans`; only `claude_child` ones are said at level `ok`, and
   `caprock_old_holder` ones are left to `other_install_holders`),
-  `database_large` (over 2 GiB), `wal_large` (over 256 MiB),
+  `disk_low` (under 5 GiB free on the data directory's volume: it names
+  the history and its size, says it is kept on purpose and points to
+  Settings → Storage, and never advises deleting it), `wal_large` (over
+  256 MiB),
   `disk_reads_high` (the daemon read over 500 MiB in the last hour) and,
   only in `caprock doctor`'s own report, `daemon_not_running` — or, in its
   place, `database_newer` when the database was migrated by a newer Caprock
@@ -2354,7 +2361,12 @@ and once a minute as the fallback for a daemon before them; it asked every
   `orphans` warning's, and the rest are sessions that outlived an upgrade.
   One `{level: "ok", code: "ok"}` stands in when nothing warns. The
   thresholds are round numbers chosen to say "worth a look", not measured
-  limits.
+  limits. `disk_low`'s is bytes, not a share of the volume, because what
+  runs out is room to write: 5% would warn on a 4 TB disk with 150 GB left
+  and stay quiet on a 64 GB one with 3 GB. The history's size is not a
+  verdict: `database_large` (over 2 GiB) was removed on 2026-11-22 (owner,
+  translated: "isn't it our strength that we keep everything?"), and the
+  dashboard ignores one an older daemon still sends.
 - **`actions`** is what the daemon did about its footprint on its own,
   oldest first, the last 50 since it started, in memory only: every reap
   (§ Resources: on its own every 10 minutes, or from the button), every

@@ -14,7 +14,8 @@
     "total_cpu_pct": 9.4
   },
   "disk": {"total_bytes": 2315255808, "database_bytes": 2094006272, "wal_bytes": 6291456, "pastes_bytes": 125829120,
-           "logs_bytes": 41943040, "binaries_bytes": 53477376, "other_bytes": 5000},
+           "logs_bytes": 41943040, "binaries_bytes": 53477376, "other_bytes": 5000,
+           "volume_free_bytes": 128849018880, "volume_total_bytes": 494384795648},
   "disk_io": {"interval_s": 60, "samples": 61,
               "last_minute": {"read_bytes": 28311552, "write_bytes": 419840, "seconds": 60},
               "last_hour": {"read_bytes": 1717986918, "write_bytes": 23068672, "seconds": 3600},

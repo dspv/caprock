@@ -9,7 +9,7 @@ Memory and CPU
   other daemons     33 MB         1
   total             1.1 GB  9.4%  
 
-Disk (2.2 GB in the data directory)
+Disk (2.2 GB in the data directory; 120.0 GB free of 460.4 GB on its disk)
   database  2.0 GB  write-ahead log 6 MB
   pastes    120 MB  
   logs      40 MB   

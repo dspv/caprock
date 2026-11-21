@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, goBytes, isTestCopy, orphanFigure, plainName, safeToStop, startedFrom, type Footprint, type Orphan } from './footprint'
+import { cleanupList, doctorHeadline, doctorRows, fmtBytes, footprintText, goBytes, isTestCopy, orphanFigure, plainName, safeToStop, startedFrom, warnings, type Footprint, type Orphan } from './footprint'
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const fixture = (name: string) => readFileSync(join(repo, 'testdata', 'footprint', name), 'utf8')
@@ -72,22 +72,46 @@ describe('the doctor in plain words', () => {
     expect(rows[0]!.said).toContain('beside this one')
   })
 
-  it('says what the disk reads and a large history mean, and what can be done (owner, 2026-11-20)', () => {
+  it('says what the disk reads mean, and what can be done (owner, 2026-11-20)', () => {
     const base = f()
     const calm = doctorRows({ ...base, verdicts: (base.verdicts ?? []).filter((v) => v.code !== 'disk_reads_high') }).find((r) => r.key === 'reads')!
     expect([calm.reason, calm.help, calm.warn]).toEqual(['Normal for Caprock.', undefined, false])
-    const big = doctorRows({
-      ...base,
-      disk: { ...base.disk, database_bytes: 2.1 * 2 ** 30 },
-      verdicts: [...(base.verdicts ?? []), { level: 'warn', code: 'database_large', text: 'The history database is 2.1 GB (over 2.0 GB): …' }],
-    }).find((r) => r.key === 'database')!
-    expect(big.title).toBe('History is large')
-    expect(big.reason).toBe("Every session's prompts, replies, tool calls and images. Caprock keeps all of it until you set a retention period.")
-    expect(big.help).toBe('Settings → Storage shows how much is older than 30 and 90 days.')
-    expect(big.action).toEqual({ key: 'retention', label: 'Set a retention period' })
-    expect([big.value, big.warn]).toEqual(['2.1 GB', true])
     // The CLI's Verdict line, which the report prints, says the same.
     expect(footprintText(base)).toContain('Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU. Nothing to do: it nearly stops while the window is minimized')
+  })
+
+  it('never makes a row of the history, at any size (owner, 2026-11-22)', () => {
+    const base = f()
+    for (const db of [0, 2.1 * 2 ** 30, 300 * 2 ** 30]) {
+      const big = { ...base, disk: { ...base.disk, database_bytes: db } }
+      expect(doctorRows(big).map((r) => r.key)).not.toContain('database')
+      expect(doctorRows(big).map((r) => r.key)).not.toContain('disk')
+    }
+    // An older daemon's database_large is not a warning here.
+    const old = { ...base, verdicts: [{ level: 'warn' as const, code: 'database_large', text: 'The history database is 2.1 GB (over 2.0 GB).' }] }
+    expect(warnings(old)).toEqual([])
+    expect(doctorHeadline(old)).toEqual({ ok: true, text: 'All good' })
+    expect(doctorRows(old).map((r) => r.key)).not.toContain('database_large')
+  })
+
+  it('a nearly full disk names the history, kept on purpose, and points to Storage', () => {
+    const base = f()
+    const low = {
+      ...base,
+      disk: { ...base.disk, volume_free_bytes: 3 * 2 ** 30, volume_total_bytes: 460 * 2 ** 30 },
+      verdicts: [{ level: 'warn' as const, code: 'disk_low', text: "The disk that holds Caprock's data has 3.0 GB free …" }],
+    }
+    const row = doctorRows(low).find((r) => r.key === 'disk')!
+    expect([row.title, row.value, row.warn]).toEqual(['Disk is nearly full', '3.0 GB free', true])
+    expect(row.reason).toBe("3.0 GB free of 460 GB on the disk that holds Caprock's data.")
+    expect(row.help).toBe("Caprock's largest item there is its history, 2.0 GB: every session, kept on purpose for spend, search and Second Brain. Settings → Storage shows what it holds.")
+    expect(row.action).toEqual({ key: 'storage', label: 'Storage settings' })
+    expect(`${row.reason} ${row.help}`).not.toMatch(/delete|retention/i)
+    // Pastes bigger than the history: not "largest".
+    const pastes = { ...low, disk: { ...low.disk, pastes_bytes: 10 * 2 ** 30 } }
+    expect(doctorRows(pastes).find((r) => r.key === 'disk')!.help).toMatch(/^Caprock's history there is 2.0 GB:/)
+    // The report says the volume on the Disk heading.
+    expect(footprintText(base)).toContain('Disk (2.2 GB in the data directory; 120.0 GB free of 460.4 GB on its disk)')
   })
 
   it('names agent work: worktrees, scratchpads, temporary folders', () => {
