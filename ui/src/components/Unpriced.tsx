@@ -22,7 +22,7 @@ const CURSOR_OWN = /^(composer-1(\.5)?|code-supernova)(-|$)/
  * not guess Cursor's bill from list prices (ADR-095) — so none of them is a
  * model Caprock failed to learn. */
 export function cursorUnpricedReason(model: string): { label: string; title: string } {
-  const why = 'Cursor recorded no cost for these chats, and Caprock does not estimate Cursor’s bill from list prices'
+  const why = 'Cursor recorded no cost for these chats, most often because your Cursor plan covers them, and Caprock does not estimate Cursor’s bill from list prices'
   const m = model.trim().toLowerCase()
   if (CURSOR_AUTO.has(m)) {
     return { label: 'Cursor’s Auto', title: `Cursor’s Auto (stored as “${model}”): Cursor does not say which model ran. ${why}.` }
@@ -62,7 +62,16 @@ function unpricedWhy(m: ModelShare, u?: Unpriced): string {
 /** The cost cell's text for a copied table: "$153.13 + unpriced". */
 export function modelCostText(m: ModelShare, u?: Unpriced): string {
   const st = modelCostState(m, u)
-  return st === 'unpriced' ? 'unpriced' : st === 'partly' ? `${fmtUSD(m.cost_usd)} + unpriced` : fmtUSD(m.cost_usd)
+  const word = unpricedWord(m, u)
+  return st === 'unpriced' ? word : st === 'partly' ? `${fmtUSD(m.cost_usd)} + ${word}` : fmtUSD(m.cost_usd)
+}
+
+/** What the unpriced part is called. A Cursor chat with no cost is most often
+ * one the user's Cursor plan covers (Cursor's usage export marks such rows
+ * "Included"), so it reads "in Cursor plan" rather than "unpriced", which
+ * looked like a price Caprock failed to learn (owner, 2026-11-21). */
+function unpricedWord(m: ModelShare, u?: Unpriced): string {
+  return (u?.cursor ?? []).includes(m.model) ? 'in Cursor plan' : 'unpriced'
 }
 
 /** The model-mix cost cell (Cost, History): the priced figure, and a quiet
@@ -73,11 +82,12 @@ export function ModelCost({ m, u }: { m: ModelShare; u?: Unpriced }) {
   const st = modelCostState(m, u)
   if (st === 'priced') return <>{fmtUSD(m.cost_usd)}</>
   const why = unpricedWhy(m, u)
-  if (st === 'unpriced') return <span className="text-warn" title={why}>unpriced</span>
+  const word = unpricedWord(m, u)
+  if (st === 'unpriced') return <span className="text-warn" title={why}>{word}</span>
   const title = `${fmtUSD(m.cost_usd)} is the priced part. ${fmtTokens(m.unpriced_tokens ?? 0)} more tokens have no cost. ${why.replace(/\.$/, '')}. The share, the order and the total count the priced part alone.`
   return (
-    <span title={title} aria-label={`${fmtUSD(m.cost_usd)} plus an unpriced part`}>
-      {fmtUSD(m.cost_usd)}<span className="ml-1 text-[11px] text-warn">+ unpriced</span>
+    <span title={title} aria-label={`${fmtUSD(m.cost_usd)} plus a part ${word === 'unpriced' ? 'with no price' : 'in the Cursor plan'}`}>
+      {fmtUSD(m.cost_usd)}<span className="ml-1 text-[11px] text-warn">+ {word}</span>
     </span>
   )
 }
@@ -169,7 +179,7 @@ export function UnpricedNote({
           </div>
           {cursorModels.length > 0 && (
             <div className="mt-1 text-[11px] text-fg-muted leading-[1.4]">
-              <span>Cursor recorded no cost: </span>
+              <span>In your Cursor plan, no cost recorded: </span>
               {cursorModels.map((m, i) => {
                 const r = cursorUnpricedReason(m)
                 return (
@@ -184,7 +194,7 @@ export function UnpricedNote({
           {detailsOpen && (
             <div className="mt-1.5 border-t border-warn/20 pt-1.5 text-[11px] text-fg-muted leading-[1.4] grid gap-1">
               {showModels && <span>Caprock has no public price for this model, so the total above is a lower bound. There is no manual price to enter; update Caprock when its pricing table learns the model. Reporting sends only the model id when you submit the issue.</span>}
-              {cursorModels.length > 0 && <span>Cursor keeps a cost for some chats and not others. For a chat with none, Caprock counts its tokens and leaves them out of the total rather than guess: list prices over Cursor’s token counts were off by half to double against the chats Cursor did price. Auto (“default”) does not say which model ran, and Cursor publishes no per-token price for its older models such as composer-1 or code-supernova. This is not a missing price in Caprock, and nothing needs reporting.</span>}
+              {cursorModels.length > 0 && <span>Cursor keeps a cost for some chats and not others. A chat with none is most often one your Cursor plan covers. Caprock counts its tokens and leaves them out of the total rather than guess: list prices over Cursor’s token counts were off by half to double against the chats Cursor did price. Auto (“default”) does not say which model ran, and Cursor publishes no per-token price for its older models such as composer-1 or code-supernova. This is not a missing price in Caprock, and nothing needs reporting.</span>}
             </div>
           )}
         </div>
