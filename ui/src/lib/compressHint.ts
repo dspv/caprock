@@ -146,15 +146,6 @@ export function openCompressSwitch(): void {
   openStorageItem('[data-compress-tool-output]', 'compressLit')
 }
 
-/**
- * Open Settings on the retention period (Caprock resources' *Set a retention
- * period*, owner 2026-11-20): the Storage section unfolded, its Details
- * opened, the retention line scrolled into the middle and lit for a moment.
- */
-export function openRetentionSetting(): void {
-  openStorageItem('[data-retention]', 'retentionLit')
-}
-
 /** Settings → Storage, then `selector` inside it: unfolded, opened, in view, lit. */
 function openStorageItem(selector: string, lit: string): void {
   location.hash = COMPRESS_HINT_TARGET

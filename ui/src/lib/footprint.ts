@@ -104,6 +104,12 @@ export interface Footprint {
     logs_bytes: number
     binaries_bytes: number
     other_bytes: number
+    /**
+     * The volume that holds the data directory: free as the user may write it, and its size.
+     * Absent when it could not be read, and from a daemon before 2026-11-22.
+     */
+    volume_free_bytes?: number
+    volume_total_bytes?: number
   }
   /** The daemon's own reads and writes; absent in an offline report. */
   disk_io?: {
@@ -196,8 +202,16 @@ export function fmtBytes(bytes: number | undefined): string {
 }
 
 export function warnings(f: Footprint | undefined): FootprintVerdict[] {
-  return (f?.verdicts ?? []).filter((v) => v.level === 'warn')
+  return (f?.verdicts ?? []).filter((v) => v.level === 'warn' && !RETIRED.has(v.code))
 }
+
+/**
+ * Warnings an older daemon still sends that are no longer problems. A large
+ * history (`database_large`, over 2 GiB until 2026-11-22) is what keeping
+ * every session looks like, and keeping it is the product (owner,
+ * 2026-11-22, translated: "isn't it our strength that we keep everything?").
+ */
+const RETIRED = new Set(['database_large'])
 
 /** The window: the app's own process and the web view helpers that draw it. */
 export function windowUsage(f: Footprint): { mem_bytes: number; cpu_pct: number; procs: number } | undefined {
@@ -276,7 +290,8 @@ export function footprintText(f: Footprint): string {
   if (!f.daemon_running) out.push('  (CPU needs two samples; with no daemon it is not measured)')
 
   const d = f.disk
-  out.push('', `Disk (${B(d.total_bytes)} in the data directory)`)
+  const vol = d.volume_total_bytes ? `; ${B(Math.max(d.volume_free_bytes ?? 0, 0))} free of ${B(d.volume_total_bytes)} on its disk` : ''
+  out.push('', `Disk (${B(d.total_bytes)} in the data directory${vol})`)
   out.push(...tabwrite([
     ['  database', B(d.database_bytes), `write-ahead log ${B(d.wal_bytes)}`],
     ['  pastes', B(d.pastes_bytes), ''],
@@ -421,7 +436,7 @@ export function safeToStop(o: Orphan): boolean {
   }
 }
 
-export type DoctorRowKey = 'copies' | 'apps' | 'terminals' | 'old-terminals' | 'commands' | 'claude' | 'codex' | 'helpers' | 'reads' | 'database' | 'wal' | 'daemon' | string
+export type DoctorRowKey = 'copies' | 'apps' | 'terminals' | 'old-terminals' | 'commands' | 'claude' | 'codex' | 'helpers' | 'reads' | 'disk' | 'wal' | 'daemon' | string
 
 /** One row of the doctor: what, why in a line, how big, and what can be stopped. */
 export interface DoctorRow {
@@ -432,8 +447,8 @@ export interface DoctorRow {
   reason: string
   /** What the person can do about it, in words: a second line under the reason. */
   help?: string
-  /** A button beside the value that does it: `retention` opens Settings on the retention period. */
-  action?: { key: 'retention'; label: string }
+  /** A button beside the value that does it: `storage` opens Settings → Storage. */
+  action?: { key: 'storage'; label: string }
   /** "66 MB", "1.6 GB / hour". */
   value?: string
   /** Amber only for a real problem: a warning verdict. */
@@ -447,24 +462,38 @@ export interface DoctorRow {
 }
 
 /*
- * Disk reads and History is large say what they mean for the person and what
- * they can do (owner, 2026-11-20, translated: "it's not clear what to do with
- * this — can anything be done or not?"). `caprock doctor` says the same in its
- * Verdict lines (internal/daemon/footprint.go, diskReadsHighText and
- * databaseLargeText).
+ * Disk reads and Disk is nearly full say what they mean for the person and
+ * what they can do (owner, 2026-11-20, translated: "it's not clear what to do
+ * with this — can anything be done or not?"). `caprock doctor` says the same
+ * in its Verdict lines (internal/daemon/footprint.go, diskReadsHighText and
+ * diskLowText).
  *
  * The reads are the open window's screens refreshing from the database; while
  * the window is hidden its polls rest (lib/visible.ts) and the reads all but
- * stop (docs/resource-usage-audit-2026-10-18.md, F16). A retention period is
- * config.json's `retention_days`; Settings → Storage says how and how much is
- * older than 30 and 90 days, so the row gives no figure of its own.
+ * stop (docs/resource-usage-audit-2026-10-18.md, F16).
+ *
+ * The history's size is never a warning (owner, 2026-11-22: keeping every
+ * session is the product); the panel says it as a plain muted line.
+ * A low disk under it is: the daemon warns under 5 GiB free on the data
+ * directory's volume, and the row names the history as Caprock's share of it
+ * without advising to delete it.
  */
 export function readsReason(over?: string): string {
   return `Above the usual ${over ?? '500 MB'} an hour: Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU.`
 }
 export const READS_HELP = 'Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.'
-export const HISTORY_REASON = "Every session's prompts, replies, tool calls and images. Caprock keeps all of it until you set a retention period."
-export const HISTORY_HELP = 'Settings → Storage shows how much is older than 30 and 90 days.'
+
+/** Disk is nearly full: how much is free, then Caprock's history on it, kept on purpose. */
+export function diskLowReason(f: Footprint): string {
+  const d = f.disk
+  const free = fmtBytes(Math.max(d.volume_free_bytes ?? 0, 0))
+  return d.volume_total_bytes ? `${free} free of ${fmtBytes(d.volume_total_bytes)} on the disk that holds Caprock's data.` : `${free} free on the disk that holds Caprock's data.`
+}
+export function diskLowHelp(f: Footprint): string {
+  const d = f.disk
+  const largest = d.database_bytes >= Math.max(d.pastes_bytes, d.logs_bytes, d.binaries_bytes, d.other_bytes)
+  return `${largest ? "Caprock's largest item there is its history," : "Caprock's history there is"} ${fmtBytes(d.database_bytes)}: every session, kept on purpose for spend, search and Second Brain. Settings → Storage shows what it holds.`
+}
 
 /** The rows, problems first, in the order a person would act on them. */
 export function doctorRows(f: Footprint): DoctorRow[] {
@@ -574,18 +603,18 @@ export function doctorRows(f: Footprint): DoctorRow[] {
       warn: high, stoppable: [], procs: [], said: verdict('disk_reads_high')?.text,
     })
   }
-  if (verdict('database_large')) {
+  if (verdict('disk_low')) {
     rows.push({
-      key: 'database', title: 'History is large',
-      reason: HISTORY_REASON, help: HISTORY_HELP, action: { key: 'retention', label: 'Set a retention period' },
-      value: fmtBytes(f.disk.database_bytes), warn: isWarn('database_large'), stoppable: [], procs: [], said: verdict('database_large')!.text,
+      key: 'disk', title: 'Disk is nearly full',
+      reason: diskLowReason(f), help: diskLowHelp(f), action: { key: 'storage', label: 'Storage settings' },
+      value: `${fmtBytes(Math.max(f.disk.volume_free_bytes ?? 0, 0))} free`, warn: isWarn('disk_low'), stoppable: [], procs: [], said: verdict('disk_low')!.text,
     })
   }
   if (verdict('wal_large')) {
     rows.push({ key: 'wal', title: 'A database file has grown', reason: 'Caprock folds it back on its own within minutes.', value: fmtBytes(f.disk.wal_bytes), warn: isWarn('wal_large'), stoppable: [], procs: [], said: verdict('wal_large')!.text })
   }
-  // A warning this build does not know: the daemon's sentence as it is.
-  const known = new Set(['ok', 'daemon_not_running', 'duplicate_daemon', 'duplicate_app', 'orphans', 'stray_processes', 'disk_reads_high', 'database_large', 'wal_large', 'other_install_holders'])
+  // A warning this build does not know: the daemon's sentence as it is. A retired one is not shown.
+  const known = new Set(['ok', 'daemon_not_running', 'duplicate_daemon', 'duplicate_app', 'orphans', 'stray_processes', 'disk_reads_high', 'disk_low', 'wal_large', 'other_install_holders'])
   for (const v of warnings(f)) {
     if (!known.has(v.code)) rows.push({ key: v.code, title: v.text, reason: '', warn: true, stoppable: [], procs: [] })
   }

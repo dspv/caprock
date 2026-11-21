@@ -16,6 +16,7 @@ import (
 	"github.com/dspv/caprock/internal/procstat"
 	"github.com/dspv/caprock/internal/ptyhost"
 	"github.com/dspv/caprock/internal/store"
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 // The footprint: what Caprock costs this machine — memory and CPU of every
@@ -27,10 +28,23 @@ import (
 
 // The verdict thresholds. Round numbers chosen to say "worth a look", not
 // measured limits.
+//
+// The history's size is not one of them (owner, 2026-11-22, translated:
+// "isn't it our strength that we keep everything?"): keeping every session is
+// what spend over all time, search over old sessions and Second Brain stand
+// on, so a large history is said (the disk split, the panel's History line),
+// never warned. What is a problem is the disk running out under it.
 const (
-	footprintDBWarn    = 2 << 30   // the database with its WAL and shared memory
 	footprintWALWarn   = 256 << 20 // a WAL that has not been checkpointed back
 	footprintReadsWarn = 500 << 20 // the daemon's disk reads in the last hour
+	// footprintFreeWarn is the free space on the data directory's volume
+	// below which disk_low warns: 5 GiB, a chosen threshold, not a measured
+	// limit. Bytes, not a share of the volume: what runs out is room to
+	// write, and 5% would warn on a 4 TB disk with 150 GB left yet stay
+	// quiet on a 64 GB one with 3 GB. Caprock's own one-time compaction
+	// wants about 2.2 times the database's used size free (vacuumRoom,
+	// measured), which 5 GiB still covers for a history of about 2 GB.
+	footprintFreeWarn = 5 << 30
 )
 
 // FootprintReport is GET /v1/footprint.
@@ -86,6 +100,32 @@ type FootprintDisk struct {
 	// BinariesBytes is the app's daemon copy (bin/) and the hook shim.
 	BinariesBytes int64 `json:"binaries_bytes"`
 	OtherBytes    int64 `json:"other_bytes"`
+	// VolumeFreeBytes and VolumeTotalBytes are the volume that holds the
+	// data directory: free as the user may write it (not the root reserve)
+	// and its size. Absent when the volume cannot be read, and from a daemon
+	// before 2026-11-22.
+	VolumeFreeBytes  int64 `json:"volume_free_bytes,omitempty"`
+	VolumeTotalBytes int64 `json:"volume_total_bytes,omitempty"`
+}
+
+// volumeSpace is the free and total bytes of the volume that holds path,
+// free as the user sees it (not the root reserve). A variable for tests.
+var volumeSpace = func(path string) (free, total int64, err error) {
+	u, err := disk.Usage(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	return int64(min(u.Free, uint64(1)<<62)), int64(min(u.Total, uint64(1)<<62)), nil
+}
+
+// footprintDisk is the data directory split by what it holds, with the free
+// space on its volume.
+func footprintDisk(dataDir string) FootprintDisk {
+	d := diskSplit(dataDirSizes(dataDir))
+	if free, total, err := volumeSpace(dataDir); err == nil && total > 0 {
+		d.VolumeFreeBytes, d.VolumeTotalBytes = free, total
+	}
+	return d
 }
 
 // FootprintDuplicates is what runs that should not.
@@ -140,7 +180,7 @@ func (d *Daemon) footprintFrom(ctx context.Context, rep *ResourceReport, withOrp
 	f.Duplicates.Daemons = rep.others
 	f.Duplicates.Apps = rep.apps
 	f.Duplicates.OtherInstallHolders = otherInstallHolders(rep.scan, rep.Caprock.Hosts.List, installDirs(exe, d.opt.HolderExe, d.opt.DataDir))
-	f.Disk = diskSplit(dataDirSizes(d.opt.DataDir))
+	f.Disk = footprintDisk(d.opt.DataDir)
 	f.DiskIO = d.io.report()
 	f.Actions = d.actions.all()
 	var o OrphanReport
@@ -163,7 +203,7 @@ func (d *Daemon) footprintFrom(ctx context.Context, rep *ResourceReport, withOrp
 func OfflineFootprint(ctx context.Context, dataDir string, running int32) *FootprintReport {
 	exe, _ := os.Executable()
 	f := &FootprintReport{At: time.Now().UnixMilli(), DataDir: dataDir, Exe: exe, DaemonRunning: running > 0, Actions: []FootprintAction{}}
-	f.Disk = diskSplit(dataDirSizes(dataDir))
+	f.Disk = footprintDisk(dataDir)
 	if running == 0 {
 		// The most likely reason no daemon answers after a downgrade. Read
 		// only; the check never writes the database.
@@ -399,8 +439,8 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 					processes(children), map[bool]string{true: "it", false: "them"}[children == 1], how)})
 		}
 	}
-	if f.Disk.DatabaseBytes > footprintDBWarn {
-		w("database_large", "%s", databaseLargeText(f.Disk.DatabaseBytes))
+	if d := f.Disk; d.VolumeTotalBytes > 0 && d.VolumeFreeBytes < footprintFreeWarn {
+		w("disk_low", "%s", diskLowText(d))
 	}
 	if f.Disk.WALBytes > footprintWALWarn {
 		w("wal_large", "The database's write-ahead log is %s (over %s): it has not been folded back into the database. The daemon checkpoints it on its own within %d minutes.", Bytes(uint64(f.Disk.WALBytes)), Bytes(footprintWALWarn), int(walCheckpointEvery/time.Minute))
@@ -409,20 +449,31 @@ func footprintVerdicts(f *FootprintReport) []FootprintVerdict {
 		w("disk_reads_high", "%s", diskReadsHighText(io.LastHour.ReadBytes, io.LastHour.Seconds)+topReaderText(io.BySource))
 	}
 	if len(warn) == 0 {
-		warn = []FootprintVerdict{{Level: "ok", Code: "ok", Text: "Nothing here looks wrong: one daemon, no orphaned terminals, and the data directory within bounds."}}
+		warn = []FootprintVerdict{{Level: "ok", Code: "ok", Text: "Nothing here looks wrong: one daemon, no orphaned terminals, and room on the disk."}}
 	}
 	return append(warn, info...)
 }
 
-// databaseLargeText is the database_large verdict, the same words the
-// dashboard's Caprock resources says (ui/src/lib/footprint.ts, the History is
-// large row; owner, 2026-11-20, translated: "it's not clear what to do with
-// this"): what the history holds and what can be done. A retention period is
-// config.json's retention_days, read at start; nothing in Settings writes it.
-func databaseLargeText(dbBytes int64) string {
-	return fmt.Sprintf("The history database is %s (over %s): every session's prompts, replies, tool calls and images. "+
-		"Caprock keeps all of it until you set a retention period: retention_days in config.json, then restart Caprock. "+
-		"Settings > Storage shows how much is older than 30 and 90 days.", Bytes(uint64(dbBytes)), Bytes(footprintDBWarn))
+// diskLowText is the disk_low verdict, the same words the dashboard's
+// Caprock resources says (ui/src/lib/footprint.ts, the Disk is nearly full
+// row): how much is free, Caprock's largest item on the disk — its history,
+// kept on purpose — and where to look. It never advises deleting the history
+// (owner, 2026-11-22): the history is kept on purpose, and the rest of the
+// disk is not Caprock's to judge.
+func diskLowText(d FootprintDisk) string {
+	return fmt.Sprintf("The disk that holds Caprock's data has %s free of %s (under %s). "+
+		"%s: every session, kept on purpose for spend, search and Second Brain. "+
+		"Settings > Storage shows what it holds.",
+		Bytes(uint64(max(d.VolumeFreeBytes, 0))), Bytes(uint64(d.VolumeTotalBytes)), Bytes(footprintFreeWarn), historyLead(d))
+}
+
+// historyLead names the history "Caprock's largest item" only when it is:
+// no other group of the data directory is bigger.
+func historyLead(d FootprintDisk) string {
+	if d.DatabaseBytes >= max(d.PastesBytes, d.LogsBytes, d.BinariesBytes, d.OtherBytes) {
+		return "Caprock's largest item on it is its history, " + Bytes(uint64(d.DatabaseBytes))
+	}
+	return "Caprock's history on it is " + Bytes(uint64(d.DatabaseBytes))
 }
 
 // diskReadsHighText is the disk_reads_high verdict, in the words the

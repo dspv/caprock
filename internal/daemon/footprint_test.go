@@ -29,7 +29,7 @@ func cleanFootprint() *FootprintReport {
 	return &FootprintReport{
 		DaemonRunning: true, DataDir: "/d",
 		Memory: FootprintMemory{Daemon: &ProcUsage{PID: 1, MemBytes: 300 << 20}},
-		Disk:   FootprintDisk{TotalBytes: 1 << 30, DatabaseBytes: 1 << 30, WALBytes: 8 << 20},
+		Disk:   FootprintDisk{TotalBytes: 1 << 30, DatabaseBytes: 1 << 30, WALBytes: 8 << 20, VolumeFreeBytes: 200 << 30, VolumeTotalBytes: 460 << 30},
 		DiskIO: &FootprintDiskIO{LastHour: &IOWindow{ReadBytes: 10 << 20, Seconds: 3600}},
 		Duplicates: FootprintDuplicates{Daemons: []CaprockProc{}, Apps: []CaprockProc{{PID: 2}},
 			OtherInstallHolders: OtherInstallHolders{Exes: []ExeCount{}}},
@@ -49,10 +49,11 @@ func TestFootprintVerdicts(t *testing.T) {
 	f.Memory.Hosts = HostSummary{Count: 43, MemBytes: 350 << 20, Orphans: 12, Reapable: 11}
 	f.Duplicates.OtherInstallHolders = OtherInstallHolders{Count: 11, Orphans: 11, Exes: []ExeCount{{Exe: "/opt/homebrew/bin/caprock", Count: 11}}}
 	f.Disk.DatabaseBytes, f.Disk.WALBytes = 2200<<20+1<<30, 300<<20
+	f.Disk.VolumeFreeBytes = 3 << 30
 	f.DiskIO.LastHour.ReadBytes = 1700 << 20
 	f.finish()
 	got := codes(f.Verdicts)
-	for _, c := range []string{"duplicate_daemon", "duplicate_app", "orphans", "database_large", "wal_large", "disk_reads_high"} {
+	for _, c := range []string{"duplicate_daemon", "duplicate_app", "orphans", "disk_low", "wal_large", "disk_reads_high"} {
 		if got[c] != "warn" {
 			t.Errorf("%s: %q, want warn (all: %+v)", c, got[c], f.Verdicts)
 		}
@@ -73,14 +74,20 @@ func TestFootprintVerdicts(t *testing.T) {
 		}
 	}
 
-	// The history and the reads say what they are and what to do (owner,
-	// 2026-11-20): the same words as the dashboard's rows.
+	// A low disk and the reads say what they are and what to do (owner,
+	// 2026-11-20, 2026-11-22): the same words as the dashboard's rows. The
+	// low disk names the history and where to look, and never says delete.
 	for _, v := range f.Verdicts {
 		switch v.Code {
-		case "database_large":
-			for _, want := range []string{"The history database is 3.1 GB (over 2.0 GB)", "prompts, replies, tool calls and images", "retention_days in config.json, then restart Caprock", "Settings > Storage shows how much is older than 30 and 90 days"} {
+		case "disk_low":
+			for _, want := range []string{"has 3.0 GB free of 460.0 GB (under 5.0 GB)", "Caprock's largest item on it is its history, 3.1 GB", "kept on purpose", "Settings > Storage shows what it holds"} {
 				if !strings.Contains(v.Text, want) {
-					t.Errorf("database_large text lacks %q: %s", want, v.Text)
+					t.Errorf("disk_low text lacks %q: %s", want, v.Text)
+				}
+			}
+			for _, never := range []string{"delete", "retention"} {
+				if strings.Contains(strings.ToLower(v.Text), never) {
+					t.Errorf("disk_low text advises %q: %s", never, v.Text)
 				}
 			}
 		case "disk_reads_high":
@@ -90,6 +97,52 @@ func TestFootprintVerdicts(t *testing.T) {
 				}
 			}
 		}
+	}
+
+	// A history of any size is never a warning while the disk has room
+	// (owner, 2026-11-22: keeping everything is the product).
+	for _, db := range []int64{0, 2 << 30, 3 << 30, 50 << 30, 500 << 30} {
+		f = cleanFootprint()
+		f.Disk.DatabaseBytes, f.Disk.TotalBytes = db, db
+		f.finish()
+		if f.Warns() || codes(f.Verdicts)["ok"] != "ok" {
+			t.Errorf("a %s history with 200 GB free warned: %+v", Bytes(uint64(db)), f.Verdicts)
+		}
+	}
+	// A volume that could not be read is not a low disk.
+	f = cleanFootprint()
+	f.Disk.VolumeFreeBytes, f.Disk.VolumeTotalBytes = 0, 0
+	f.finish()
+	if f.Warns() {
+		t.Errorf("an unread volume warned: %+v", f.Verdicts)
+	}
+	// Just under the threshold warns; at it does not.
+	for free, want := range map[int64]bool{footprintFreeWarn - 1: true, footprintFreeWarn: false} {
+		f = cleanFootprint()
+		f.Disk.VolumeFreeBytes = free
+		f.finish()
+		if got := codes(f.Verdicts)["disk_low"] == "warn"; got != want {
+			t.Errorf("%d bytes free: disk_low %v, want %v", free, got, want)
+		}
+	}
+	// The history is named the largest only when it is.
+	f = cleanFootprint()
+	f.Disk.VolumeFreeBytes, f.Disk.PastesBytes = 1<<30, 4<<30
+	f.finish()
+	for _, v := range f.Verdicts {
+		if v.Code == "disk_low" && (strings.Contains(v.Text, "largest") || !strings.Contains(v.Text, "Caprock's history on it is 1.0 GB")) {
+			t.Errorf("pastes bigger than the history: %s", v.Text)
+		}
+	}
+	// The report reads the volume that holds the data directory.
+	defer func(f func(string) (int64, int64, error)) { volumeSpace = f }(volumeSpace)
+	volumeSpace = func(path string) (int64, int64, error) { return 2 << 30, 100 << 30, nil }
+	if d := footprintDisk(t.TempDir()); d.VolumeFreeBytes != 2<<30 || d.VolumeTotalBytes != 100<<30 {
+		t.Errorf("footprintDisk: %+v", d)
+	}
+	volumeSpace = func(path string) (int64, int64, error) { return 0, 0, errors.New("no volume") }
+	if d := footprintDisk(t.TempDir()); d.VolumeFreeBytes != 0 || d.VolumeTotalBytes != 0 {
+		t.Errorf("footprintDisk with no volume: %+v", d)
 	}
 
 	// Holders of another install that are all still in use are said, not warned.

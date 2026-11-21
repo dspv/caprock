@@ -188,38 +188,64 @@ describe('the panel', () => {
     expect(container.querySelector('[data-doctor-row="reads"]')!.textContent).toContain('1.6 GB / hour')
   })
 
-  it('says what the disk reads and a large history mean, with Set a retention period opening Settings at it (owner, 2026-11-20)', async () => {
-    const f = warned()
-    const big: Footprint = {
-      ...f,
-      disk: { ...f.disk, database_bytes: 2.1 * 2 ** 30 },
-      verdicts: [...(f.verdicts ?? []), { level: 'warn', code: 'database_large', text: 'The history database is 2.1 GB (over 2.0 GB).' }],
+  it('says the history size as a plain line and never warns of it, at any size (owner, 2026-11-22)', async () => {
+    for (const gb of [0.5, 2.1, 40]) {
+      const f = healthy()
+      const big: Footprint = { ...f, disk: { ...f.disk, database_bytes: gb * 2 ** 30 } }
+      const { button, container, unmount } = await strip(big)
+      expect(button.hasAttribute('data-warn')).toBe(false)
+      expect(container.querySelector('[data-warn-dot]')).toBeNull()
+      fireEvent.click(button)
+      const line = await waitFor(() => container.querySelector<HTMLElement>('[data-history-size]')!)
+      expect(line.textContent).toBe(`History · ${gb === 0.5 ? '512 MB' : gb === 2.1 ? '2.1 GB' : '40 GB'}`)
+      // Muted, no colour, no advice, no button.
+      expect(line.className).toContain('text-fg-muted')
+      expect(line.className).not.toMatch(/text-warn|text-err/)
+      expect(container.querySelector('[data-verdict-summary]')!.textContent).toContain('All good')
+      expect(container.querySelector('[data-doctor-row="database"]')).toBeNull()
+      expect(container.querySelector('[data-doctor-row="disk"]')).toBeNull()
+      expect(container.textContent).not.toMatch(/retention|History is large/i)
+      unmount()
     }
-    // Settings' Storage section as it draws: the retention line inside its closed Details.
+  })
+
+  it('ignores the large-history warning an older daemon still sends', async () => {
+    const f = healthy()
+    const old: Footprint = { ...f, verdicts: [{ level: 'warn', code: 'database_large', text: 'The history database is 2.1 GB (over 2.0 GB).' }] }
+    const { button, container } = await strip(old)
+    expect(button.hasAttribute('data-warn')).toBe(false)
+    fireEvent.click(button)
+    await waitFor(() => expect(container.querySelector('[data-history-size]')).not.toBeNull())
+    expect(container.querySelector('[data-verdict-summary]')!.textContent).toContain('All good')
+    expect(container.querySelector('[data-doctor-rows]')?.textContent ?? '').not.toContain('history database')
+  })
+
+  it('warns of a nearly full disk, names the history and opens Settings → Storage', async () => {
+    const f = healthy()
+    const low: Footprint = {
+      ...f,
+      disk: { ...f.disk, database_bytes: 2.1 * 2 ** 30, volume_free_bytes: 3 * 2 ** 30, volume_total_bytes: 460 * 2 ** 30 },
+      verdicts: [{ level: 'warn', code: 'disk_low', text: "The disk that holds Caprock's data has 3.0 GB free of 460.0 GB (under 5.0 GB)." }],
+    }
     const settings = document.createElement('div')
-    settings.innerHTML = '<section id="settings-storage"><details><summary>Details</summary><p data-retention="forever">Events are kept forever.</p></details></section>'
+    settings.innerHTML = '<section id="settings-storage"></section>'
     document.body.appendChild(settings)
     try {
-      const { button, container } = await strip(big)
+      const { button, container } = await strip(low)
+      expect(button.hasAttribute('data-warn')).toBe(true)
       fireEvent.click(button)
-      await waitFor(() => expect(container.querySelector('[data-doctor-row="database"]')).not.toBeNull())
-      const reads = container.querySelector('[data-doctor-row="reads"]')!
-      expect(reads.querySelector('[data-row-reason]')!.textContent).toBe('Above the usual 500 MB an hour: Caprock re-reading its own history for the open window. Harmless to the disk; it costs a little battery and CPU.')
-      expect(reads.querySelector('[data-row-help]')!.textContent).toBe('Nothing to do: it nearly stops while the window is minimized, and a fix that reads less is in progress.')
-      expect(reads.querySelector('[data-row-action]')).toBeNull()
-      const db = container.querySelector('[data-doctor-row="database"]')!
-      expect(db.querySelector('[data-row-reason]')!.textContent).toBe("Every session's prompts, replies, tool calls and images. Caprock keeps all of it until you set a retention period.")
-      expect(db.querySelector('[data-row-help]')!.textContent).toBe('Settings → Storage shows how much is older than 30 and 90 days.')
-      const set = db.querySelector<HTMLButtonElement>('[data-row-action="retention"]')!
-      expect(set.textContent).toBe('Set a retention period')
+      const row = await waitFor(() => container.querySelector('[data-doctor-row="disk"]')!)
+      expect(row.hasAttribute('data-warn')).toBe(true)
+      expect(row.textContent).toContain('Disk is nearly full')
+      expect(row.querySelector('[data-row-reason]')!.textContent).toBe("3.0 GB free of 460 GB on the disk that holds Caprock's data.")
+      expect(row.querySelector('[data-row-help]')!.textContent).toBe("Caprock's largest item there is its history, 2.1 GB: every session, kept on purpose for spend, search and Second Brain. Settings → Storage shows what it holds.")
+      expect(row.textContent).not.toMatch(/delete|retention/i)
+      const open = row.querySelector<HTMLButtonElement>('[data-row-action="storage"]')!
+      expect(open.textContent).toBe('Storage settings')
       location.hash = ''
-      fireEvent.click(set)
-      // The panel closes; Settings opens with the retention line unfolded and lit.
+      fireEvent.click(open)
       expect(container.querySelector('[data-footprint-panel]')).toBeNull()
       expect(location.hash).toBe('#/settings')
-      const line = settings.querySelector<HTMLElement>('[data-retention]')!
-      await waitFor(() => expect(line.dataset.retentionLit).toBe(''))
-      expect(settings.querySelector('details')!.open).toBe(true)
     } finally {
       settings.remove()
       location.hash = ''

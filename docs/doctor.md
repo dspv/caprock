@@ -48,7 +48,12 @@ why it is listed. Then:
 
 The command palette's *Caprock doctor* opens the same panel.
 
-### Disk reads and History is large
+### Disk reads, your history, and a nearly full disk
+
+Under the totals the panel says how big your history is, *History · 2.1 GB*,
+as a plain line. It is never a warning: Caprock keeps every session on
+purpose, because spend over all time, search across old sessions and Second
+Brain all read it.
 
 Two rows say what they mean for you and what you can do; `caprock doctor`'s
 Verdict lines say the same:
@@ -58,12 +63,15 @@ Verdict lines say the same:
   disk; it costs a little battery and CPU. Nothing is needed from you: while
   the window is minimized or hidden its screens stop asking, and the reads
   all but stop. A change that reads less is in progress.
-- **History is large** (a database over 2 GB) is every session's prompts,
-  replies, tool calls and images, which Caprock keeps until you set a
-  retention period. **Set a retention period** opens Settings → Storage at
-  the retention line, which says how much is older than 30 and 90 days. The
-  period is `retention_days` in `config.json` in the data directory; Caprock
-  reads it when it starts, so restart it after the change.
+- **Disk is nearly full** appears when the disk that holds Caprock's data
+  directory has less than 5 GB free. That is a threshold we chose, not a
+  measured limit: it is in bytes rather than a share of the disk because what
+  runs out is room to write, and Caprock's own one-time compaction already
+  wants about twice the database's size free. The row says how much is free,
+  names Caprock's history as its largest item there with its size, and
+  **Storage settings** opens Settings → Storage, which shows what the
+  history holds. It does not tell you to delete the history; what to free is
+  your call.
 
 ## What it reports
 
@@ -192,10 +200,9 @@ unattended is fixed unattended, and `caprock doctor` says when it was done:
 
 What it does not fix on its own: another daemon, a second app, or any other
 process it did not start (it lists them under Orphans; stopping one is your
-click — see above), and a database that
-is large because of how much history it holds (deleting history is your call
-— set `retention_days` in `config.json` and restart Caprock; the space it
-frees goes back to the disk on its own).
+click — see above), and a disk that is filling up. A large history is not a
+problem to fix: Caprock keeps every session on purpose, and says only when
+the disk under it runs low.
 
 ## With no daemon running
 

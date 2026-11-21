@@ -240,14 +240,14 @@ export function StorageView({
 
       <div className="grid gap-1.5 border-t border-border pt-2.5 text-[12px] text-fg-muted">
         {s.retention_days > 0 ? (
-          <p data-retention="set">
+          <p>
             <span className="text-fg">Events older than {s.retention_days} days are deleted</span>, every six hours.
             {s.returns_free_space
               ? ' The space they leave goes back to the disk in the background.'
               : ' New events reuse the space they leave until Caprock has compacted the database once.'}
           </p>
         ) : (
-          <p data-retention="forever">
+          <p>
             <span className="text-fg">Events are kept forever.</span> Set <span className="mono text-fg">retention_days</span> in{' '}
             <span className="mono">config.json</span> and restart Caprock to delete older ones
             {older && older30 && older30.events > 0 ? (

@@ -39,8 +39,8 @@ func doctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "What Caprock costs this machine, and duplicate or orphaned Caprock processes",
 		Long: "Prints the memory, CPU and disk Caprock uses on this machine — the daemon, the desktop app and its window, the terminal holders, " +
-			"the data directory, the daemon's own disk reads and writes — and flags another daemon, a second app, orphaned terminals and an " +
-			"oversized database. Exits 1 when something is flagged. Works with no daemon running, from the process table and the data directory.",
+			"the data directory, the daemon's own disk reads and writes — and flags another daemon, a second app, orphaned terminals and a " +
+			"nearly full disk under the data directory. Exits 1 when something is flagged. Works with no daemon running, from the process table and the data directory.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if dataDirF != "" {
 				_ = os.Setenv(config.EnvDataDir, dataDirF)
@@ -245,7 +245,12 @@ func printDoctor(w io.Writer, f *daemon.FootprintReport) {
 	}
 
 	d := f.Disk
-	fmt.Fprintf(w, "\nDisk (%s in the data directory)\n", mem(uint64(d.TotalBytes)))
+	fmt.Fprintf(w, "\nDisk (%s in the data directory", mem(uint64(d.TotalBytes)))
+	if d.VolumeTotalBytes > 0 {
+		// The volume it is on: what the disk_low verdict reads.
+		fmt.Fprintf(w, "; %s free of %s on its disk", mem(uint64(max(d.VolumeFreeBytes, 0))), mem(uint64(d.VolumeTotalBytes)))
+	}
+	fmt.Fprintln(w, ")")
 	tw = tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	fmt.Fprintf(tw, "  database\t%s\twrite-ahead log %s\n", mem(uint64(d.DatabaseBytes)), mem(uint64(d.WALBytes)))
 	fmt.Fprintf(tw, "  pastes\t%s\t\n", mem(uint64(d.PastesBytes)))
