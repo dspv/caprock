@@ -10,7 +10,7 @@
 import { existsSync, mkdirSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import { devices, type Browser, type Page } from '@playwright/test'
-import { expect, test } from './fixtures'
+import { expect, stopAgent, test } from './fixtures'
 
 // A 1x1 PNG.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
@@ -94,6 +94,8 @@ test('on a phone, Attach offers Photos and Files, and both reach the daemon', as
     expect(saved.filter((f) => f.endsWith('meeting-notes.md')).length, saved.join(', ')).toBeGreaterThanOrEqual(2)
   } finally {
     await close()
+    // The chat is this test's (rule 7): left live, it was in every later spec's lists.
+    await stopAgent(stand.daemonURL, chat.session_id)
   }
 })
 
@@ -115,5 +117,6 @@ test('with a mouse, Attach opens the one picker that takes everything', async ({
     await expect(page.getByText('Image 1').filter({ visible: true }).first()).toBeVisible()
   } finally {
     await ctx.close()
+    await stopAgent(stand.daemonURL, chat.session_id)
   }
 })

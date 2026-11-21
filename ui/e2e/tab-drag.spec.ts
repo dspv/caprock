@@ -7,79 +7,84 @@
  * TAB_DRAG_SHOTS names a directory to keep mid-drag screenshots in.
  */
 import path from 'node:path'
-import { expect, test } from './fixtures'
+import { expect, shellIds, stopAgent, test } from './fixtures'
 
 const shots = process.env.TAB_DRAG_SHOTS
 
 test('a dragged tab follows the pointer and lands in the slot its neighbours open', async ({ app, page }) => {
   await app.open()
-  // Three shells of its own: sidebar-recent.spec.ts ends beta, and the
-  // specs after it cannot count on the fake agents still being open.
-  for (let i = 0; i < 3; i++) {
-    await app.tabs.getByRole('button', { name: 'New', exact: true }).click()
-    await page.getByRole('menuitem', { name: /New shell/ }).click()
+  const shellsBefore = new Set(await shellIds(app.stand.daemonURL))
+  try {
+    // Three shells of its own, so the strip holds only what this test opened.
+    for (let i = 0; i < 3; i++) {
+      await app.tabs.getByRole('button', { name: 'New', exact: true }).click()
+      await page.getByRole('menuitem', { name: /New shell/ }).click()
+    }
+    const tabs = app.tabs.locator('[data-tab-index]')
+    await expect(tabs).toHaveCount(3)
+    // Read the order by each tab's own element, never its name: shells are
+    // numbered by their place in the strip (lib/tablabels.ts), so after a move
+    // the first shell is "Shell 1" again whichever shell it is. React keeps a
+    // keyed tab's element through a reorder, so a mark set on it here moves
+    // with the tab.
+    await tabs.evaluateAll((els) => els.forEach((e, i) => e.setAttribute('data-e2e-tab', String(i))))
+    const order = () => tabs.evaluateAll((els) => els.map((e) => e.getAttribute('data-e2e-tab')))
+    const before = await order()
+    expect(before).toEqual(['0', '1', '2'])
+    const selected = () => app.tabs.locator('[data-tab-index][aria-selected="true"]').evaluate((e) => e.getAttribute('data-tab-index'))
+    // The shell just opened is in front, at the end: a drag of the first tab
+    // must not bring that one forward.
+    const front = await selected()
+    expect(front).toBe('2')
+
+    // Press the first tab and drag it right until its middle is 20px past the second's.
+    const first = tabs.nth(0)
+    const a = (await first.boundingBox())!
+    const b = (await tabs.nth(1).boundingBox())!
+    const y = a.y + a.height / 2
+    await page.mouse.move(a.x + 30, y)
+    await page.mouse.down()
+    await page.mouse.move(a.x + 40, y, { steps: 2 })
+    await page.mouse.move(a.x + 30 + (b.x + b.width / 2 + 20) - (a.x + a.width / 2), y, { steps: 8 })
+    await expect(first).toHaveAttribute('data-dragging', 'true')
+    const moved = (await first.boundingBox())!
+    expect(moved.x).toBeGreaterThan(a.x + 40)
+    expect(await first.evaluate((e) => e.style.transform)).toMatch(/^translateX\(\d+(\.\d+)?px\)$/)
+    await page.waitForTimeout(250)
+    // The second tab slid left into the first one's place.
+    expect((await tabs.nth(1).boundingBox())!.x).toBeLessThan(b.x - 20)
+    if (shots) await page.screenshot({ path: path.join(shots, 'mid-drag.png'), clip: { x: 0, y: 0, width: 1440, height: 80 } })
+    await page.mouse.up()
+    await page.waitForTimeout(250)
+    const after = await order()
+    expect(after).toEqual([before[1], before[0], before[2]])
+    if (shots) await page.screenshot({ path: path.join(shots, 'landed.png'), clip: { x: 0, y: 0, width: 1440, height: 80 } })
+    // The click that ended the drag brought no other tab to the front.
+    expect(await selected()).toBe(front)
+    expect(await tabs.nth(1).evaluate((e) => e.style.transform)).toBe('')
+
+    // Escape mid-drag: back where it was, nothing moves.
+    const c = (await tabs.nth(0).boundingBox())!
+    await page.mouse.move(c.x + 30, y)
+    await page.mouse.down()
+    await page.mouse.move(c.x + 300, y, { steps: 10 })
+    await expect(tabs.nth(0)).toHaveAttribute('data-dragging', 'true')
+    await page.keyboard.press('Escape')
+    await page.mouse.up()
+    await page.waitForTimeout(250)
+    expect(await order()).toEqual(after)
+    expect((await tabs.nth(0).boundingBox())!.x).toBeCloseTo(c.x, 0)
+
+    // Released well below the strip: nothing moves either.
+    await page.mouse.move(c.x + 30, y)
+    await page.mouse.down()
+    await page.mouse.move(c.x + 300, y, { steps: 10 })
+    await page.mouse.move(c.x + 300, y + 300, { steps: 5 })
+    await page.mouse.up()
+    await page.waitForTimeout(250)
+    expect(await order()).toEqual(after)
+  } finally {
+    // The three shells are this test's: stopped, so the next spec's strip is its own.
+    for (const id of await shellIds(app.stand.daemonURL)) if (!shellsBefore.has(id)) await stopAgent(app.stand.daemonURL, id)
   }
-  const tabs = app.tabs.locator('[data-tab-index]')
-  await expect(tabs).toHaveCount(3)
-  // Read the order by each tab's own element, never its name: shells are
-  // numbered by their place in the strip (lib/tablabels.ts), so after a move
-  // the first shell is "Shell 1" again whichever shell it is. React keeps a
-  // keyed tab's element through a reorder, so a mark set on it here moves
-  // with the tab.
-  await tabs.evaluateAll((els) => els.forEach((e, i) => e.setAttribute('data-e2e-tab', String(i))))
-  const order = () => tabs.evaluateAll((els) => els.map((e) => e.getAttribute('data-e2e-tab')))
-  const before = await order()
-  expect(before).toEqual(['0', '1', '2'])
-  const selected = () => app.tabs.locator('[data-tab-index][aria-selected="true"]').evaluate((e) => e.getAttribute('data-tab-index'))
-  // The shell just opened is in front, at the end: a drag of the first tab
-  // must not bring that one forward.
-  const front = await selected()
-  expect(front).toBe('2')
-
-  // Press the first tab and drag it right until its middle is 20px past the second's.
-  const first = tabs.nth(0)
-  const a = (await first.boundingBox())!
-  const b = (await tabs.nth(1).boundingBox())!
-  const y = a.y + a.height / 2
-  await page.mouse.move(a.x + 30, y)
-  await page.mouse.down()
-  await page.mouse.move(a.x + 40, y, { steps: 2 })
-  await page.mouse.move(a.x + 30 + (b.x + b.width / 2 + 20) - (a.x + a.width / 2), y, { steps: 8 })
-  await expect(first).toHaveAttribute('data-dragging', 'true')
-  const moved = (await first.boundingBox())!
-  expect(moved.x).toBeGreaterThan(a.x + 40)
-  expect(await first.evaluate((e) => e.style.transform)).toMatch(/^translateX\(\d+(\.\d+)?px\)$/)
-  await page.waitForTimeout(250)
-  // The second tab slid left into the first one's place.
-  expect((await tabs.nth(1).boundingBox())!.x).toBeLessThan(b.x - 20)
-  if (shots) await page.screenshot({ path: path.join(shots, 'mid-drag.png'), clip: { x: 0, y: 0, width: 1440, height: 80 } })
-  await page.mouse.up()
-  await page.waitForTimeout(250)
-  const after = await order()
-  expect(after).toEqual([before[1], before[0], before[2]])
-  if (shots) await page.screenshot({ path: path.join(shots, 'landed.png'), clip: { x: 0, y: 0, width: 1440, height: 80 } })
-  // The click that ended the drag brought no other tab to the front.
-  expect(await selected()).toBe(front)
-  expect(await tabs.nth(1).evaluate((e) => e.style.transform)).toBe('')
-
-  // Escape mid-drag: back where it was, nothing moves.
-  const c = (await tabs.nth(0).boundingBox())!
-  await page.mouse.move(c.x + 30, y)
-  await page.mouse.down()
-  await page.mouse.move(c.x + 300, y, { steps: 10 })
-  await expect(tabs.nth(0)).toHaveAttribute('data-dragging', 'true')
-  await page.keyboard.press('Escape')
-  await page.mouse.up()
-  await page.waitForTimeout(250)
-  expect(await order()).toEqual(after)
-  expect((await tabs.nth(0).boundingBox())!.x).toBeCloseTo(c.x, 0)
-
-  // Released well below the strip: nothing moves either.
-  await page.mouse.move(c.x + 30, y)
-  await page.mouse.down()
-  await page.mouse.move(c.x + 300, y, { steps: 10 })
-  await page.mouse.move(c.x + 300, y + 300, { steps: 5 })
-  await page.mouse.up()
-  await page.waitForTimeout(250)
-  expect(await order()).toEqual(after)
 })
