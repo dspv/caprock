@@ -517,6 +517,18 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-21 — 0.186.4: Caprock says what reads the disk, and an open session tab reads far less
+
+A patch release, #993. 0.186.1 did not bring the owner's daemon reads down, so
+this one measures before it cuts: `caprock doctor` and `GET /v1/footprint`
+(`disk_io.by_source`) now name the top readers of the last hour, and the
+*Disk reads* warning names the largest. The readers it found were an open
+session tab's per-session queries, re-run every few seconds:
+`LastPermissionMode` read every event of the session, payload included, and
+the session's cost line re-scanned its whole range. Two partial indexes
+(migrations 0088, 0089) give the same rows; on the seeded stand with the cache
+evicted every 30 s, reads fell from 21,283 to 11,745 MB an hour.
+
 ### 2026-11-21 — 0.186.3: Cost shows what Cursor did record, and calls the rest in Cursor plan
 
 A patch release, #990 and #991. A model priced in some chats and not others
