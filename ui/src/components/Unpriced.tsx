@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { BackgroundUsage, Unpriced } from '@/lib/api'
-import { fmtTokens } from '@/lib/format'
+import type { BackgroundUsage, ModelShare, Unpriced } from '@/lib/api'
+import { fmtTokens, fmtUSD } from '@/lib/format'
 import { extTitle } from '@/lib/externalLinks'
 
 const INTERNAL_NAMES: Record<string, string> = {
@@ -34,6 +34,52 @@ export function cursorUnpricedReason(model: string): { label: string; title: str
     return { label: model, title: `${model}: Cursor’s own model, with no per-token price Cursor publishes. ${why}.` }
   }
   return { label: model, title: `${model}: ${why}.` }
+}
+
+/** How a model-mix row's cost reads: priced throughout, unpriced throughout,
+ * or partly priced — Cursor records a cost for some chats and not others
+ * (ADR-095), so one model can be both. A partly priced row used to read
+ * "unpriced" alone and hid the money Cursor did record ($153.13 of
+ * claude-4-sonnet on the owner's machine, 2026-11-21). The unpriced part is
+ * never estimated; it is named, with its tokens, beside the priced figure.
+ * A daemon from before `unpriced_tokens` names the model in `unpriced` only,
+ * which reads as unpriced throughout, as it did then. */
+export type ModelCostState = 'priced' | 'partly' | 'unpriced'
+
+export function modelCostState(m: ModelShare, u?: Unpriced): ModelCostState {
+  const some = (m.unpriced_tokens ?? 0) > 0 || (u?.models ?? []).includes(m.model)
+  if (!some) return 'priced'
+  return m.cost_usd > 0 && (m.unpriced_tokens ?? 0) > 0 ? 'partly' : 'unpriced'
+}
+
+/** Why a model's tokens are unpriced, in one sentence. */
+function unpricedWhy(m: ModelShare, u?: Unpriced): string {
+  return (u?.cursor ?? []).includes(m.model)
+    ? cursorUnpricedReason(m.model).title
+    : 'This model is not in the pricing table for these turns, so their cost is unknown.'
+}
+
+/** The cost cell's text for a copied table: "$153.13 + unpriced". */
+export function modelCostText(m: ModelShare, u?: Unpriced): string {
+  const st = modelCostState(m, u)
+  return st === 'unpriced' ? 'unpriced' : st === 'partly' ? `${fmtUSD(m.cost_usd)} + unpriced` : fmtUSD(m.cost_usd)
+}
+
+/** The model-mix cost cell (Cost, History): the priced figure, and a quiet
+ * "+ unpriced" when part of the model's volume has no cost, its hover naming
+ * the tokens and why. The share bar, the order and the totals use the priced
+ * part alone, and the hover says so. */
+export function ModelCost({ m, u }: { m: ModelShare; u?: Unpriced }) {
+  const st = modelCostState(m, u)
+  if (st === 'priced') return <>{fmtUSD(m.cost_usd)}</>
+  const why = unpricedWhy(m, u)
+  if (st === 'unpriced') return <span className="text-warn" title={why}>unpriced</span>
+  const title = `${fmtUSD(m.cost_usd)} is the priced part. ${fmtTokens(m.unpriced_tokens ?? 0)} more tokens have no cost. ${why.replace(/\.$/, '')}. The share, the order and the total count the priced part alone.`
+  return (
+    <span title={title} aria-label={`${fmtUSD(m.cost_usd)} plus an unpriced part`}>
+      {fmtUSD(m.cost_usd)}<span className="ml-1 text-[11px] text-warn">+ unpriced</span>
+    </span>
+  )
 }
 
 /** A prefilled issue is the one useful action for a genuinely unknown model.

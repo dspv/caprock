@@ -2062,6 +2062,12 @@ type ModelShare struct {
 	// RequestsCostUSD is the part of CostUSD those requests cost, so a price
 	// per request is never read off another agent's turns of the same model.
 	RequestsCostUSD float64 `json:"requests_cost_usd,omitempty"`
+	// UnpricedTokens are the model's tokens in range with no cost — its
+	// model has no pricing row, or Cursor recorded no cost for the chat
+	// (ADR-095) — and so are not in CostUSD. CostUSD is the priced part
+	// alone; the two are shown side by side and never summed or estimated.
+	// Omitted when every turn of the model was priced.
+	UnpricedTokens int64 `json:"unpriced_tokens,omitempty"`
 	// Output is what the model generated, which is the part of a token total
 	// that is entirely this model's work and entirely at the top rate. The
 	// combined figure is ~99% cache read on this workload — a number that is

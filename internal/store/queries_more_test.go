@@ -556,6 +556,66 @@ func TestSummarizeAndHistoryCarryUnpricedVolume(t *testing.T) {
 	}
 }
 
+// A model priced in one chat and unpriced in another — Cursor records a cost
+// for some chats and not others (ADR-095) — showed only "unpriced" on the
+// Cost screen, hiding $153.13 the owner's Cursor had recorded. The model's
+// row carries both: the priced part in cost_usd, the rest as unpriced_tokens,
+// never summed and never estimated. A row priced throughout carries none.
+func TestModelShareCarriesPricedAndUnpricedParts(t *testing.T) {
+	ctx := context.Background()
+	s := openTest(t)
+	now := time.Now().UnixMilli()
+	mustSession(t, s, "s1", now)
+	priced, other := 1.5, 0.25
+	mustInsert(t, s, event.Event{
+		SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now),
+		Model: "claude-4-sonnet", Tokens: &event.TokenDelta{In: 100, Out: 200}, CostUSD: &priced,
+	})
+	mustInsert(t, s, event.Event{
+		SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now + 1),
+		Model: "claude-4-sonnet", Tokens: &event.TokenDelta{In: 4_000, Out: 500},
+	})
+	mustInsert(t, s, event.Event{
+		SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now + 2),
+		Model: "claude-sonnet-5", Tokens: &event.TokenDelta{In: 10, Out: 20}, CostUSD: &other,
+	})
+	mustInsert(t, s, event.Event{
+		SessionID: "s1", Kind: event.KindTurnAssistant, Ts: time.UnixMilli(now + 3),
+		Model: "composer-1", Tokens: &event.TokenDelta{In: 700, Out: 70},
+	})
+	sum, err := Summarize(ctx, s.db, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]ModelShare{}
+	for _, m := range sum.Models {
+		by[m.Model] = m
+	}
+	if m := by["claude-4-sonnet"]; m.CostUSD != priced || m.UnpricedTokens != 4_500 || m.Tokens != 4_800 {
+		t.Errorf("partly priced row = %+v, want cost %v and 4500 of 4800 tokens unpriced", m, priced)
+	}
+	if m := by["claude-sonnet-5"]; m.CostUSD != other || m.UnpricedTokens != 0 {
+		t.Errorf("priced row = %+v, want cost %v and nothing unpriced", m, other)
+	}
+	if m := by["composer-1"]; m.CostUSD != 0 || m.UnpricedTokens != 770 {
+		t.Errorf("unpriced row = %+v, want no cost and 770 tokens unpriced", m)
+	}
+	// The total is the priced parts alone, and the sort is by them.
+	if sum.CostUSD != priced+other {
+		t.Errorf("cost = %v, want %v", sum.CostUSD, priced+other)
+	}
+	if sum.Models[0].Model != "claude-4-sonnet" {
+		t.Errorf("first row = %q, want the priced part to sort claude-4-sonnet first", sum.Models[0].Model)
+	}
+	b, err := json.Marshal(by["claude-sonnet-5"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "unpriced_tokens") {
+		t.Errorf("a fully priced row sent unpriced_tokens: %s", b)
+	}
+}
+
 // The common case: everything priced. The field must be absent, not a zero
 // object, so no screen renders an "unpriced" warning on healthy data.
 func TestUnpricedIsAbsentWhenEverythingIsPriced(t *testing.T) {
