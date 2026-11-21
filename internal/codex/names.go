@@ -2,7 +2,6 @@ package codex
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // Codex keeps its own index of threads beside the transcripts, in
@@ -68,7 +69,7 @@ func ReadThreadNames(ctx context.Context, path string) (map[string]ThreadName, e
 		return nil, errors.New("codex: no state database")
 	}
 	// Read-only: this must never take a write lock on Codex's live database.
-	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro&_pragma=busy_timeout(5000)")
+	db, err := diskio.OpenSQL("codex database", "sqlite", "file:"+filepath.ToSlash(path)+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("codex: open state: %w", err)
 	}

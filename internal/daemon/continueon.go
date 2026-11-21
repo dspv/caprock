@@ -16,6 +16,7 @@ import (
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/api"
 	"github.com/dspv/caprock/internal/bus"
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/ingest"
 	"github.com/dspv/caprock/internal/relay"
 	"github.com/dspv/caprock/internal/store"
@@ -351,7 +352,7 @@ func copyTranscript(src, out, from, to string) error {
 	if err := os.MkdirAll(filepath.Dir(out), 0o700); err != nil {
 		return err
 	}
-	in, err := os.Open(src) //nolint:gosec // the session's own transcript, recorded by the daemon
+	in, err := diskio.Open("transcripts claude: continue elsewhere", src)
 	if err != nil {
 		return err
 	}

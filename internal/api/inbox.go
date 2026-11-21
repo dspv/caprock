@@ -14,6 +14,7 @@ import (
 
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/config"
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -183,7 +184,7 @@ func (s *Server) handleInboxFile(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no preview for this file"})
 		return
 	}
-	f, err := os.Open(path)
+	f, err := diskio.Open("inbox files", path)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "the file is gone"})
 		return

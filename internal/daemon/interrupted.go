@@ -6,11 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -69,7 +69,7 @@ func transcriptEntrypoint(path string) string {
 	if path == "" {
 		return ""
 	}
-	f, err := os.Open(path)
+	f, err := diskio.Open("transcripts claude: interrupted", path)
 	if err != nil {
 		return ""
 	}

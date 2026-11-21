@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // Agent is the value written to sessions.agent for DeepSeek Harness sessions.
@@ -208,7 +210,7 @@ func isTranscript(name string) bool {
 
 // ParseFile decodes one transcript into a Session.
 func ParseFile(path string) (*Session, error) {
-	f, err := os.Open(path)
+	f, err := diskio.Open("transcripts deepseek", path)
 	if err != nil {
 		return nil, err
 	}

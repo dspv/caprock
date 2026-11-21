@@ -8,6 +8,8 @@ import (
 	"hash/fnv"
 	"io"
 	"os"
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // A live Codex session appends to its rollout for as long as it runs, and the
@@ -92,7 +94,7 @@ type readCounts struct {
 // shorter than what was read, or different in what was read — is read again
 // from the start, and the tail is fresh.
 func (t *tail) advance() (rc readCounts, err error) {
-	f, err := os.Open(t.path)
+	f, err := diskio.Open("transcripts codex", t.path)
 	if err != nil {
 		return rc, err
 	}
@@ -175,7 +177,7 @@ func (t *tail) advance() (rc readCounts, err error) {
 }
 
 // same reports whether f is still the file read so far.
-func (t *tail) same(f *os.File, fi os.FileInfo, rc *readCounts) bool {
+func (t *tail) same(f io.ReaderAt, fi os.FileInfo, rc *readCounts) bool {
 	if t.id == nil || !os.SameFile(t.id, fi) || fi.Size() < t.off {
 		return false
 	}
@@ -184,11 +186,11 @@ func (t *tail) same(f *os.File, fi os.FileInfo, rc *readCounts) bool {
 }
 
 // fingerprint hashes the first and the last tailWindow bytes before off.
-func (t *tail) fingerprint(f *os.File, rc *readCounts) (uint64, uint64) {
+func (t *tail) fingerprint(f io.ReaderAt, rc *readCounts) (uint64, uint64) {
 	return hashAt(f, 0, min(t.off, tailWindow), rc), hashAt(f, max(0, t.off-tailWindow), t.off, rc)
 }
 
-func hashAt(f *os.File, from, to int64, rc *readCounts) uint64 {
+func hashAt(f io.ReaderAt, from, to int64, rc *readCounts) uint64 {
 	h := fnv.New64a()
 	if to > from {
 		n, _ := io.Copy(h, io.NewSectionReader(f, from, to-from))

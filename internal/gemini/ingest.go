@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/event"
 	"github.com/dspv/caprock/internal/rollup"
 )
@@ -144,7 +145,7 @@ func (g *Ingester) readFile(ctx context.Context, path string) (int, error) {
 	from := g.at[path]
 	g.mu.Unlock()
 
-	f, err := os.Open(path)
+	f, err := diskio.Open("transcripts gemini", path)
 	if err != nil {
 		return 0, err
 	}

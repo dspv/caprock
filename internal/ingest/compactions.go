@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -71,7 +71,7 @@ var compactMarker = []byte(`"` + SubtypeCompactBoundary + `"`)
 // backfillCompactionsFrom stores the boundaries in one transcript that
 // belong to sessionID. A file that is gone adds nothing.
 func backfillCompactionsFrom(ctx context.Context, db *sql.DB, path, sessionID string) (int, error) {
-	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
+	f, err := diskio.Open("transcripts claude: compactions", path)
 	if err != nil {
 		return 0, nil
 	}
@@ -133,7 +133,7 @@ func BackfillCompactionSummaries(ctx context.Context, db *sql.DB) (set int, err 
 }
 
 func summariesFrom(ctx context.Context, db *sql.DB, path, sessionID string) (int, error) {
-	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
+	f, err := diskio.Open("transcripts claude: compactions", path)
 	if err != nil {
 		return 0, nil
 	}

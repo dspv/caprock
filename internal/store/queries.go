@@ -1776,11 +1776,11 @@ func GetStats(ctx context.Context, q Querier, sessionID string) (Stats, error) {
 // but no cost — the rollup's "model not in pricing table; cost left unknown"
 // path, as queryUnpriced counts them for a range. Internal model calls are left
 // out, as session_stats leaves them out. One covering read of the session's
-// rows of idx_events_attr_work, which carries every column tested.
+// turns on idx_events_session_turns (migration 0089), which holds only them.
 func SessionUnpricedTurns(ctx context.Context, q Querier, sessionID string) (int64, error) {
 	var n int64
 	err := q.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM events INDEXED BY idx_events_attr_work
+		SELECT COUNT(*) FROM events INDEXED BY idx_events_session_turns
 		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)
 		  AND kind = 'turn.assistant' AND cost_usd IS NULL AND internal = 0
 		  AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
@@ -1818,8 +1818,11 @@ const CostSeriesPoints = 120
 // and Hermes put a chat's whole cost on one reconciled row (ADR-095), and a
 // line drawn from the last 60 events read $0.00 flat whenever that row was
 // older than them. Internal model calls are left out, as session_stats
-// leaves them out. The rows come off idx_events_attr_work in (sid, ts)
-// order; only the priced ones are looked up for their key.
+// leaves them out. The rows come off idx_events_session_turns (migration
+// 0089) in (sid, ts) order, with the key the usage-record test reads: it
+// holds only the session's turns, so no row is fetched from the table. On
+// idx_events_attr_work every priced turn's row was, payload and all, again
+// each time the session moved (03-contracts.md § Session turns DDL).
 func SessionCostSeries(ctx context.Context, q Querier, sessionID string) (CostSeries, error) {
 	out := CostSeries{Points: []CostPoint{}}
 	rows, err := q.QueryContext(ctx, `
@@ -1827,7 +1830,7 @@ func SessionCostSeries(ctx context.Context, q Querier, sessionID string) (CostSe
 		       COALESCE(substr(key,1,9) IN ('cu-usage:','hm-usage:'),0),
 		       (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
 		        + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0
-		FROM events INDEXED BY idx_events_attr_work
+		FROM events INDEXED BY idx_events_session_turns
 		WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?)
 		  AND kind = 'turn.assistant' AND cost_usd IS NOT NULL AND internal = 0
 		ORDER BY ts, id`, sessionID)

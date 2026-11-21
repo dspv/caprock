@@ -19,6 +19,7 @@ import (
 	"github.com/dspv/caprock/internal/agents"
 	"github.com/dspv/caprock/internal/bus"
 	"github.com/dspv/caprock/internal/chatimport"
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/rollup"
 	"github.com/dspv/caprock/internal/store"
 )
@@ -407,7 +408,7 @@ func (s *Server) handleChatFile(w http.ResponseWriter, r *http.Request) {
 		s.failCode(w, http.StatusRequestEntityTooLarge, errors.New("the file is larger than 50 MB; open it on the computer"))
 		return
 	}
-	f, err := os.Open(real) //nolint:gosec // resolved inside the chat's folder above
+	f, err := diskio.Open("chat files", real)
 	if err != nil {
 		s.fail(w, err)
 		return

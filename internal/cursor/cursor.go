@@ -38,6 +38,8 @@ import (
 	"unicode/utf8"
 
 	_ "modernc.org/sqlite" // the driver every other reader uses
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // Agent is the value Cursor's sessions carry in sessions.agent.
@@ -155,7 +157,7 @@ func open(path string, busyMs int) (*sql.DB, error) {
 		return nil, errors.New("cursor: no database found")
 	}
 	dsn := "file:" + filepath.ToSlash(path) + "?mode=ro&_pragma=busy_timeout(" + strconv.Itoa(busyMs) + ")"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := diskio.OpenSQL("cursor database", "sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("cursor: open: %w", err)
 	}
@@ -789,7 +791,7 @@ func workspaceFolder(path string) string {
 		Folder    string `json:"folder"`
 		Workspace string `json:"workspace"`
 	}
-	b, err := os.ReadFile(path)
+	b, err := diskio.ReadFile("cursor database", path)
 	if err != nil || json.Unmarshal(b, &w) != nil {
 		return ""
 	}
@@ -800,7 +802,7 @@ func workspaceFolder(path string) string {
 	if ws == "" {
 		return ""
 	}
-	wb, err := os.ReadFile(ws)
+	wb, err := diskio.ReadFile("cursor database", ws)
 	if err != nil {
 		return ""
 	}

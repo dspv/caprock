@@ -34,6 +34,8 @@ import (
 	"time"
 
 	_ "modernc.org/sqlite" // the driver every other reader uses
+
+	"github.com/dspv/caprock/internal/diskio"
 )
 
 // Agent is the value sessions read from Hermes carry in sessions.agent.
@@ -95,7 +97,7 @@ func open(path string, busyMs int) (*sql.DB, error) {
 		return nil, errors.New("hermes: no database found")
 	}
 	dsn := "file:" + filepath.ToSlash(path) + "?mode=ro&_pragma=busy_timeout(" + strconv.Itoa(busyMs) + ")"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := diskio.OpenSQL("hermes database", "sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("hermes: open: %w", err)
 	}

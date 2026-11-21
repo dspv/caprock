@@ -24,13 +24,20 @@ const modeWindow = 50
 // tool's whole output, and it states the same mode as the PreToolUse before it.
 // The value is Claude Code's word for the mode, unvalidated; the caller decides
 // which words it passes on.
+//
+// The rows come off idx_events_mode (migration 0088), which holds only the
+// events this can use. On idx_events_session_ts it fetched every row of the
+// session from the table to test its source, so a session with no hook
+// events was read whole on every ask, and an open session tab asks every few
+// seconds: on the measuring stand it was the daemon's largest reader
+// (internal/diskio; 03-contracts.md § Permission mode DDL).
 func LastPermissionMode(ctx context.Context, q Querier, sessionID string) (string, error) {
 	var mode string
 	err := q.QueryRowContext(ctx, `
 		SELECT mode FROM (
 		  SELECT ts, id,
 		         CASE WHEN json_valid(`+ZPayload+`) THEN json_extract(`+ZPayload+`, '$.permission_mode') END AS mode
-		  FROM events INDEXED BY idx_events_session_ts
+		  FROM events INDEXED BY idx_events_mode
 		  WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND source IN ('hook','cursor') AND kind <> 'tool.post'
 		  ORDER BY ts DESC, id DESC
 		  LIMIT ?)

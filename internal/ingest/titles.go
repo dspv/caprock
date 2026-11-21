@@ -7,10 +7,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/store"
 )
 
@@ -82,7 +82,7 @@ func MainTranscript(recorded, sessionID string) string {
 
 // lastTitle returns the last ai-title in a transcript, or "".
 func lastTitle(path string) string {
-	f, err := os.Open(path) //nolint:gosec // a transcript path the daemon recorded itself
+	f, err := diskio.Open("transcripts claude: titles", path)
 	if err != nil {
 		return ""
 	}

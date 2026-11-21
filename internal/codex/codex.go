@@ -40,6 +40,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/dspv/caprock/internal/diskio"
 	"github.com/dspv/caprock/internal/ingest"
 )
 
@@ -404,7 +405,7 @@ func ParseFile(path string) (*Session, error) {
 // parseFile is ParseFile, also saying how much it read.
 func parseFile(path string) (*Session, readCounts, error) {
 	var rc readCounts
-	f, err := os.Open(path)
+	f, err := diskio.Open("transcripts codex", path)
 	if err != nil {
 		return nil, rc, err
 	}
