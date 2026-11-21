@@ -70,7 +70,7 @@ describe('UnpricedNote', () => {
       />,
     )
 
-    expect(screen.getByText(/Cursor recorded no cost:/)).toBeInTheDocument()
+    expect(screen.getByText(/In your Cursor plan, no cost recorded:/)).toBeInTheDocument()
     expect(screen.getByText('Cursor’s Auto')).toHaveAttribute('title', expect.stringContaining('Cursor does not say which model ran'))
     expect(screen.getByText('composer-1')).toHaveAttribute('title', expect.stringContaining('no per-token price Cursor publishes'))
     expect(screen.getByText('claude-4-sonnet')).toHaveAttribute('title', expect.stringContaining('Cursor recorded no cost'))
@@ -97,7 +97,7 @@ describe('UnpricedNote', () => {
     expect(cursorUnpricedReason('auto').title).toMatch(/does not say which model ran/)
     expect(cursorUnpricedReason('code-supernova-1-million').title).toMatch(/Cursor’s own model/)
     expect(cursorUnpricedReason('').label).toBe('no model named')
-    expect(cursorUnpricedReason('gpt-5').title).toBe('gpt-5: Cursor recorded no cost for these chats, and Caprock does not estimate Cursor’s bill from list prices.')
+    expect(cursorUnpricedReason('gpt-5').title).toBe('gpt-5: Cursor recorded no cost for these chats, most often because your Cursor plan covers them, and Caprock does not estimate Cursor’s bill from list prices.')
   })
 
   it('renders nothing when neither category contains turns', () => {
@@ -117,24 +117,25 @@ describe('ModelCost', () => {
   const row = (model: string, cost_usd: number, unpriced_tokens?: number) =>
     ({ model, tokens: 20_000_000, cost_usd, turns: 4, output: 0, cache_read: 0, ...(unpriced_tokens ? { unpriced_tokens } : {}) })
 
-  it('shows the priced part of a partly priced model, then a quiet unpriced mark', () => {
+  it('shows the priced part of a partly priced Cursor model, then a quiet in-plan mark', () => {
     // The owner's claude-4-sonnet: $153.13 recorded by Cursor in some chats,
     // none in others. "unpriced" alone hid the $153.13.
     const m = row('claude-4-sonnet', 153.13, 11_500_000)
     const { container } = render(<ModelCost m={m} u={u} />)
-    expect(container).toHaveTextContent('$153.13+ unpriced')
-    const cell = screen.getByLabelText('$153.13 plus an unpriced part')
+    expect(container).toHaveTextContent('$153.13+ in Cursor plan')
+    const cell = screen.getByLabelText('$153.13 plus a part in the Cursor plan')
     expect(cell.title).toMatch(/^\$153\.13 is the priced part\. 11\.50M more tokens have no cost\. claude-4-sonnet: Cursor recorded no cost/)
     expect(cell.title).toMatch(/share, the order and the total count the priced part alone\.$/)
     expect(modelCostState(m, u)).toBe('partly')
-    expect(modelCostText(m, u)).toBe('$153.13 + unpriced')
+    expect(modelCostText(m, u)).toBe('$153.13 + in Cursor plan')
   })
 
-  it('keeps a fully unpriced model as "unpriced", with its reason', () => {
+  it('calls a fully unpriced Cursor model "in Cursor plan", any other "unpriced", with its reason', () => {
     const m = row('composer-1', 0, 770)
     render(<ModelCost m={m} u={u} />)
-    expect(screen.getByText('unpriced').title).toMatch(/Cursor’s own model/)
-    expect(modelCostText(m, u)).toBe('unpriced')
+    expect(screen.getByText('in Cursor plan').title).toMatch(/Cursor’s own model/)
+    expect(modelCostText(m, u)).toBe('in Cursor plan')
+    expect(modelCostText(row('future-model', 0), u)).toBe('unpriced')
     // An older daemon sends no unpriced_tokens: named in unpriced, the row
     // reads unpriced throughout, as it did.
     expect(modelCostState(row('future-model', 0), u)).toBe('unpriced')
