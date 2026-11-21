@@ -7,6 +7,35 @@ const INTERNAL_NAMES: Record<string, string> = {
   'codex-auto-review': 'Codex Auto Review',
 }
 
+/** Cursor's names for work it did not attribute to one model. "default" is
+ * what Cursor stores for Auto. */
+const CURSOR_AUTO = new Set(['default', 'auto'])
+/** Cursor's own models with no per-token price on cursor.com/docs/models
+ * (read 2026-11-21): composer-1, composer-1.5, code-supernova-*. Composer 2.5
+ * has one, so it gets the general reason: a Cursor chat is never priced from
+ * the table either way. */
+const CURSOR_OWN = /^(composer-1(\.5)?|code-supernova)(-|$)/
+
+/** What one unpriced Cursor name is, in plain words: the short label the
+ * note shows and the sentence its hover says. Every one shares the reason the
+ * tokens are unpriced — Cursor recorded no cost for the chat, and Caprock does
+ * not guess Cursor's bill from list prices (ADR-095) — so none of them is a
+ * model Caprock failed to learn. */
+export function cursorUnpricedReason(model: string): { label: string; title: string } {
+  const why = 'Cursor recorded no cost for these chats, and Caprock does not estimate Cursor’s bill from list prices'
+  const m = model.trim().toLowerCase()
+  if (CURSOR_AUTO.has(m)) {
+    return { label: 'Cursor’s Auto', title: `Cursor’s Auto (stored as “${model}”): Cursor does not say which model ran. ${why}.` }
+  }
+  if (m === '') {
+    return { label: 'no model named', title: 'Cursor recorded neither the model nor a cost for these turns.' }
+  }
+  if (CURSOR_OWN.test(m)) {
+    return { label: model, title: `${model}: Cursor’s own model, with no per-token price Cursor publishes. ${why}.` }
+  }
+  return { label: model, title: `${model}: ${why}.` }
+}
+
 /** A prefilled issue is the one useful action for a genuinely unknown model.
  * Opening it transmits nothing; the user reviews and submits it themselves. */
 export function unpricedIssueURL(models: string[]): string {
@@ -36,8 +65,14 @@ export function UnpricedNote({
   const showUnknown = !!u && u.turns > 0
   const showBackground = !!background && background.turns > 0
   if (!showUnknown && !showBackground) return null
-  const models = u?.models.filter(Boolean) ?? []
+  // Cursor's names are not missing from the table (ADR-095): they are said
+  // apart, with why, and are neither copied nor reported as unknown models.
+  const cursorSet = new Set(u?.cursor ?? [])
+  const cursorModels = (u?.models ?? []).filter((m) => cursorSet.has(m))
+  const unknown = (u?.models ?? []).filter((m) => !cursorSet.has(m))
+  const models = unknown.filter(Boolean)
   const modelLabel = models.join(', ') || 'unknown model'
+  const showModels = unknown.length > 0
 
   async function copyModels() {
     try {
@@ -57,8 +92,9 @@ export function UnpricedNote({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="text-warn font-medium">Partial cost</span>
             <span className="text-fg-muted">{fmtTokens(u.tokens)} tokens not priced</span>
-            <span className="mono text-fg truncate max-w-full" title={modelLabel}>{modelLabel}</span>
+            {showModels && <span className="mono text-fg truncate max-w-full" title={modelLabel}>{modelLabel}</span>}
             <div className="ml-auto flex items-center gap-1">
+              {showModels && <>
               <button
                 className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm"
                 onClick={() => void copyModels()}
@@ -68,12 +104,13 @@ export function UnpricedNote({
               </button>
               <a
                 className="text-[11px] text-fg-muted hover:text-fg border border-border px-1.5 py-0.5 rounded-sm no-underline"
-                href={unpricedIssueURL(u.models)}
+                href={unpricedIssueURL(unknown)}
                 target="_blank" title={extTitle()}
                 rel="noreferrer"
               >
                 report
               </a>
+              </>}
               <button
                 className="text-[11px] text-fg-muted hover:text-fg px-1.5 py-0.5"
                 onClick={() => setDetailsOpen((open) => !open)}
@@ -84,9 +121,24 @@ export function UnpricedNote({
               </button>
             </div>
           </div>
+          {cursorModels.length > 0 && (
+            <div className="mt-1 text-[11px] text-fg-muted leading-[1.4]">
+              <span>Cursor recorded no cost: </span>
+              {cursorModels.map((m, i) => {
+                const r = cursorUnpricedReason(m)
+                return (
+                  <span key={m || '(none)'}>
+                    {i > 0 && ', '}
+                    <span className="mono text-fg" title={r.title}>{r.label}</span>
+                  </span>
+                )
+              })}
+            </div>
+          )}
           {detailsOpen && (
-            <div className="mt-1.5 border-t border-warn/20 pt-1.5 text-[11px] text-fg-muted leading-[1.4]">
-              Caprock has no public price for this model, so the total above is a lower bound. There is no manual price to enter; update Caprock when its pricing table learns the model. Reporting sends only the model id when you submit the issue.
+            <div className="mt-1.5 border-t border-warn/20 pt-1.5 text-[11px] text-fg-muted leading-[1.4] grid gap-1">
+              {showModels && <span>Caprock has no public price for this model, so the total above is a lower bound. There is no manual price to enter; update Caprock when its pricing table learns the model. Reporting sends only the model id when you submit the issue.</span>}
+              {cursorModels.length > 0 && <span>Cursor keeps a cost for some chats and not others. For a chat with none, Caprock counts its tokens and leaves them out of the total rather than guess: list prices over Cursor’s token counts were off by half to double against the chats Cursor did price. Auto (“default”) does not say which model ran, and Cursor publishes no per-token price for its older models such as composer-1 or code-supernova. This is not a missing price in Caprock, and nothing needs reporting.</span>}
             </div>
           )}
         </div>

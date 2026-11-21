@@ -519,7 +519,16 @@ export interface ModelShare {
  *  cost_usd. Absent when everything in range was priced. The models are named
  *  because "some tokens are unpriced" is not something a user can act on,
  *  whereas an unknown model id is. */
-export interface Unpriced { turns: number; tokens: number; models: string[] }
+export interface Unpriced {
+  turns: number
+  tokens: number
+  models: string[]
+  /** The models whose unpriced volume includes a Cursor chat's: Cursor
+   *  recorded no cost for it and Caprock never prices a Cursor chat from the
+   *  table (ADR-095), so these are not missing from the table. An older
+   *  daemon sends none. */
+  cursor?: string[]
+}
 /** Measured usage from known internal product machinery. It is kept outside
  *  user session/turn/cost totals and carries no dollar guess when the vendor
  *  publishes no price. */

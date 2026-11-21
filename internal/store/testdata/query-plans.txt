@@ -3161,18 +3161,24 @@ SELECT e.id, se.session_id, COALESCE(se.project,''), e.ts, COALESCE(e.model,''),
     SEARCH se USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
 
 ## store.queryUnpriced
-SELECT COALESCE(model,''), COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0) FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = ?) GROUP BY model ORDER BY 3 DESC
+SELECT COALESCE(model,''), COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(MAX(sid IN (SELECT sid FROM sessions WHERE agent = 'cursor')),0) FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = ?) GROUP BY model ORDER BY 3 DESC
     SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
-    LIST SUBQUERY 1
+    LIST SUBQUERY 2
         SCAN sessions USING COVERING INDEX idx_sessions_agent
         CREATE BLOOM FILTER
     USE TEMP B-TREE FOR GROUP BY
+    LIST SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX idx_sessions_agent (agent=?)
+        CREATE BLOOM FILTER
     USE TEMP B-TREE FOR ORDER BY
 
 ## store.queryUnpriced
-SELECT COALESCE(model,''), COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0) FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 AND internal = 0 GROUP BY model ORDER BY 3 DESC
+SELECT COALESCE(model,''), COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0), COALESCE(MAX(sid IN (SELECT sid FROM sessions WHERE agent = 'cursor')),0) FROM events WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 AND internal = 0 GROUP BY model ORDER BY 3 DESC
     SEARCH events USING COVERING INDEX idx_events_turn_agent (kind=? AND ts>?)
     USE TEMP B-TREE FOR GROUP BY
+    LIST SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX idx_sessions_agent (agent=?)
+        CREATE BLOOM FILTER
     USE TEMP B-TREE FOR ORDER BY
 
 ## store.rateHours
