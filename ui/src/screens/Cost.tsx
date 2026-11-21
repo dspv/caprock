@@ -21,7 +21,7 @@ import { CapNudge, PlanLimitNudge } from '@/components/Nudges'
 import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
 import { GeminiPanel } from '@/components/Gemini'
-import { UnpricedNote } from '@/components/Unpriced'
+import { UnpricedNote, cursorUnpricedReason } from '@/components/Unpriced'
 import { CutDonut, ShareBar, SliceDot, cutSegments, sliceColors } from '@/components/Donut'
 import { WorkMix } from '@/components/WorkMix'
 import { HermesSpendPanel } from '@/components/HermesSpend'
@@ -230,7 +230,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{fmtTokens(m.tokens)}</td>
                     {/* An unpriced model summed to 0 and rendered "$0.00",
                         which reads as free. It has no price, so it shows none. */}
-                    <td className="px-3 py-1 num text-right whitespace-nowrap">{(s?.unpriced?.models ?? []).includes(m.model) ? <span className="text-warn" title="this model is not in the pricing table, so its cost is unknown">unpriced</span> : fmtUSD(m.cost_usd)}</td>
+                    <td className="px-3 py-1 num text-right whitespace-nowrap">{(s?.unpriced?.models ?? []).includes(m.model) ? <span className="text-warn" title={(s?.unpriced?.cursor ?? []).includes(m.model) ? cursorUnpricedReason(m.model).title : 'this model is not in the pricing table, so its cost is unknown'}>unpriced</span> : fmtUSD(m.cost_usd)}</td>
                     <td className="px-3 py-1 text-right text-fg-faint w-[5.5rem] whitespace-nowrap">{s && s.cost_usd > 0 && !(s.unpriced?.models ?? []).includes(m.model) ? <ShareBar value={m.cost_usd} total={s.cost_usd} color={modelColors.get(m.model)} /> : '—'}</td>
                   </tr>
                 ))}

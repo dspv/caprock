@@ -248,6 +248,14 @@ Cursor's own figure, never the table's.
   recorded no cost", and stay outside every total. Pricing those tokens from
   the table was tried against the chats Cursor did price and was off by half
   to double: `tokenCount` is one request per turn and has no cache split.
+  The summary names those models in `unpriced.cursor`, and the Partial cost
+  note says them apart with why — Auto (`default`) does not say which model
+  ran; `composer-1` and `code-supernova-*` have no per-token price on
+  cursor.com/docs/models (read 2026-11-21) — so they do not read as models
+  the table is missing. Every vendor name on the owner's unpriced chats
+  (`claude-4-sonnet`, `claude-4.5-sonnet-thinking`, `claude-4-opus-thinking`,
+  `gpt-5`, `o3`, `gpt-4.1`) already resolves to a table row through
+  `modelclass.Family`; none was a missing price.
 - The CLI's hooks carry no tokens and no cost, so a CLI chat shows turns and
   tools and no spend. The UI says so on the session.
 - `pricing.json` has `cursor-composer-2.5` and `cursor-composer-2.5-fast`

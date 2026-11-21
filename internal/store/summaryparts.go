@@ -613,6 +613,9 @@ func buildSummary(ctx context.Context, q Querier, from int64, spark SparkSpec, a
 	var modelOrder []string
 	unpriced := map[string]*countPart{}
 	var unpricedOrder []string
+	// unpricedCursor marks the unpriced models a Cursor chat contributed to
+	// (Unpriced.Cursor): Cursor recorded no cost, the table is not missing.
+	unpricedCursor := map[string]bool{}
 	var cost SpendParts
 	for _, x := range parts {
 		var paid float64
@@ -662,6 +665,9 @@ func buildSummary(ctx context.Context, q Querier, from int64, spark SparkSpec, a
 			}
 			c.turns += u.turns
 			c.tokens += u.tokens
+			if a == "cursor" {
+				unpricedCursor[u.model] = true
+			}
 		}
 	}
 	for _, m := range modelOrder {
@@ -701,6 +707,9 @@ func buildSummary(ctx context.Context, q Querier, from int64, spark SparkSpec, a
 			un.Turns += unpriced[m].turns
 			un.Tokens += unpriced[m].tokens
 			un.Models = append(un.Models, m)
+			if unpricedCursor[m] {
+				un.Cursor = append(un.Cursor, m)
+			}
 		}
 		if un.Turns > 0 {
 			s.Unpriced = &un

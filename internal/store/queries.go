@@ -2030,6 +2030,12 @@ type Unpriced struct {
 	// An empty model id (a turn recorded before its model was known) is
 	// reported as "" and rendered by the UI as "unknown".
 	Models []string `json:"models"`
+	// Cursor are the Models whose unpriced volume includes a Cursor chat's,
+	// in the same order. They are not missing from the pricing table: Cursor
+	// recorded no cost for the chat, and its turns are never priced from the
+	// table (ADR-095), so the UI says that instead of "no price". Omitted
+	// when no Cursor chat is among them.
+	Cursor []string `json:"cursor,omitempty"`
 }
 
 // BackgroundUsage is known internal work observed in real transcripts. The
@@ -2333,7 +2339,10 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilt
 	rows, err := q.QueryContext(ctx, `
 		SELECT COALESCE(model,''),
 		       COUNT(*),
-		       COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0)
+		       COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0),
+		       -- sid, not the event's origin column: sid is in the covering
+		       -- index, so naming Cursor's models costs no table read.
+		       COALESCE(MAX(sid IN (SELECT sid FROM sessions WHERE agent = 'cursor')),0)
 		FROM events
 		WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL
 		  -- Tokens greater than zero, not merely present. A turn recorded with
@@ -2351,12 +2360,16 @@ func queryUnpriced(ctx context.Context, q Querier, fromMs int64, agent AgentFilt
 	for rows.Next() {
 		var model string
 		var turns, tokens int64
-		if err := rows.Scan(&model, &turns, &tokens); err != nil {
+		var cursor bool
+		if err := rows.Scan(&model, &turns, &tokens, &cursor); err != nil {
 			return nil, err
 		}
 		u.Turns += turns
 		u.Tokens += tokens
 		u.Models = append(u.Models, model)
+		if cursor {
+			u.Cursor = append(u.Cursor, model)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

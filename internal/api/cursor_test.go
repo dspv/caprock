@@ -35,6 +35,16 @@ func TestCursorNamesMapToPricedRows(t *testing.T) {
 		"composer-2.5-fast":  "cursor-composer-2.5",
 		"claude-4.5-sonnet":  "claude-sonnet-4-5",
 		"gpt-5.6-sol":        "gpt-5.6-sol",
+		// The names on the owner's unpriced Cursor chats (2026-11-21): the
+		// table knows every one, so their tokens are unpriced only because
+		// Cursor recorded no cost for those chats (ADR-095).
+		"claude-4-sonnet":            "claude-sonnet-4",
+		"claude-4.5-sonnet-thinking": "claude-sonnet-4-5",
+		"claude-4-opus-thinking":     "claude-opus-4",
+		"claude-4.1-opus-thinking":   "claude-opus-4-1",
+		"gpt-5":                      "gpt-5",
+		"gpt-4.1":                    "gpt-4.1",
+		"o3":                         "o3",
 	} {
 		m, ok := tb.LookupAt(cursorFamilyID(modelclass.Family(name)), time.Now())
 		if !ok {
