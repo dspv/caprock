@@ -517,6 +517,16 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-21 — 0.186.2: the unpriced note says which tokens are Cursor's and why
+
+A patch release, #987 and #988. *Partial cost* hovers now put Cursor's names on
+their own line, *Cursor recorded no cost: …*, each with a reason in plain
+words (Cursor's Auto does not say which model ran; Cursor publishes no
+per-token price for its own models), and no longer offer to report them as
+unknown models: none is missing from Caprock's table (ADR-095 keeps Cursor
+chats off it). The e2e suite fails a test that leaves a session or shell
+running, on that test instead of the next one; it caught seven.
+
 ### 2026-11-21 — 0.186.1: the daemon reads six to seven times less from disk
 
 A patch release, #985. The summary figures behind the dashboard (spend by
