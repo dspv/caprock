@@ -103,6 +103,40 @@ func legacySummarizeSparkFor(ctx context.Context, q Querier, fromMs int64, spark
 	} else {
 		s.Unpriced = u
 	}
+	// Each model's own unpriced tokens, so a model priced in one chat and
+	// unpriced in another carries both (ModelShare.UnpricedTokens): the
+	// same turns queryUnpriced counts, by model.
+	if s.Unpriced != nil {
+		scope, scopeArgs := agent.eventScope("sid")
+		rows, err := q.QueryContext(ctx, `
+			SELECT COALESCE(model,''),
+			       COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)+COALESCE(cache_read,0)+COALESCE(cache_write,0)),0)
+			FROM events
+			WHERE kind = 'turn.assistant' AND ts >= ? AND cost_usd IS NULL
+			  AND (COALESCE(tokens_in,0) + COALESCE(tokens_out,0)
+			       + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0`+nonInternalEvent+scope+`
+			GROUP BY model`, append([]any{fromMs}, scopeArgs...)...)
+		if err != nil {
+			return s, err
+		}
+		by := map[string]int64{}
+		for rows.Next() {
+			var m string
+			var n int64
+			if err := rows.Scan(&m, &n); err != nil {
+				_ = rows.Close()
+				return s, err
+			}
+			by[m] = n
+		}
+		_ = rows.Close()
+		if err := rows.Err(); err != nil {
+			return s, err
+		}
+		for i := range s.Models {
+			s.Models[i].UnpricedTokens = by[s.Models[i].Model]
+		}
+	}
 	if b, err := queryBackgroundUsage(ctx, q, fromMs, agent); err != nil {
 		return s, err
 	} else {

@@ -23,7 +23,7 @@ import { PremiumBanner } from '@/components/PremiumBanner'
 import { TeamsBanner } from '@/components/TeamsBanner'
 import { Locked } from '@/components/Locked'
 import { WeeklyReport } from '@/components/WeeklyReport'
-import { UnpricedNote } from '@/components/Unpriced'
+import { ModelCost, UnpricedNote } from '@/components/Unpriced'
 import { Donut, ShareBar, sharePct, sliceColors, topN, type Segment } from '@/components/Donut'
 import { cacheLevel } from '@/lib/cachelevel'
 import { ToolDrill } from '@/components/ToolDrill'
@@ -359,7 +359,7 @@ export function HistoryScreen() {
                       <tr key={m.model} className="border-b border-border/60 last:border-0">
                         <td className="px-3 py-1 mono">{m.model || 'unknown'}</td>
                         <td className="px-3 py-1 num text-right text-fg-muted">{fmtTokens(m.tokens)}</td>
-                        <td className="px-3 py-1 num text-right">{fmtUSD(m.cost_usd)}</td>
+                        <td className="px-3 py-1 num text-right whitespace-nowrap"><ModelCost m={m} u={d.summary.unpriced ?? d.totals.unpriced} /></td>
                         <td className="px-3 py-1 text-right text-fg-muted w-28"><ShareBar value={m.cost_usd} total={f.modelTotal} color={modelColors.get(m.model || 'unknown')} /></td>
                       </tr>
                     ))}

@@ -21,7 +21,7 @@ import { CapNudge, PlanLimitNudge } from '@/components/Nudges'
 import { Locked } from '@/components/Locked'
 import { SpendCap } from '@/components/SpendCap'
 import { GeminiPanel } from '@/components/Gemini'
-import { UnpricedNote, cursorUnpricedReason } from '@/components/Unpriced'
+import { ModelCost, UnpricedNote, modelCostState, modelCostText } from '@/components/Unpriced'
 import { CutDonut, ShareBar, SliceDot, cutSegments, sliceColors } from '@/components/Donut'
 import { WorkMix } from '@/components/WorkMix'
 import { HermesSpendPanel } from '@/components/HermesSpend'
@@ -201,8 +201,8 @@ export function CostScreen({ section }: { section?: string } = {}) {
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Panel fold="cost.models" title="Model mix" right={<span>by cost</span>} share="Model mix">
           {s && <ShareWith toText={() => `By cost, ${range}.\n\n${mdTable(['Model', 'Turns', 'Tokens', 'Cost', 'Share'], s.models.map((m) => {
-            const unpriced = (s.unpriced?.models ?? []).includes(m.model)
-            return [m.model ? fmtModel(m.model) : 'unknown', volumeCount(m), fmtTokens(m.tokens), unpriced ? 'unpriced' : fmtUSD(m.cost_usd), !unpriced && s.cost_usd > 0 ? fmtPct((m.cost_usd / s.cost_usd) * 100) : '—']
+            const unpriced = modelCostState(m, s.unpriced) === 'unpriced'
+            return [m.model ? fmtModel(m.model) : 'unknown', volumeCount(m), fmtTokens(m.tokens), modelCostText(m, s.unpriced), !unpriced && s.cost_usd > 0 ? fmtPct((m.cost_usd / s.cost_usd) * 100) : '—']
           }))}`} />}
           {!s ? <Skeleton rows={4} /> : s.models.length === 0 && <Empty title="No priced turns in range" />}
           <CutDonut segments={modelSegs} what="model" />
@@ -229,9 +229,10 @@ export function CostScreen({ section }: { section?: string } = {}) {
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{m.requests ? <span title={volumeLine(m)}>{volumeCount(m)}</span> : m.turns.toLocaleString('en-US')}</td>
                     <td className="hidden px-3 py-1 num text-right text-fg-muted whitespace-nowrap min-[2200px]:table-cell">{fmtTokens(m.tokens)}</td>
                     {/* An unpriced model summed to 0 and rendered "$0.00",
-                        which reads as free. It has no price, so it shows none. */}
-                    <td className="px-3 py-1 num text-right whitespace-nowrap">{(s?.unpriced?.models ?? []).includes(m.model) ? <span className="text-warn" title={(s?.unpriced?.cursor ?? []).includes(m.model) ? cursorUnpricedReason(m.model).title : 'this model is not in the pricing table, so its cost is unknown'}>unpriced</span> : fmtUSD(m.cost_usd)}</td>
-                    <td className="px-3 py-1 text-right text-fg-faint w-[5.5rem] whitespace-nowrap">{s && s.cost_usd > 0 && !(s.unpriced?.models ?? []).includes(m.model) ? <ShareBar value={m.cost_usd} total={s.cost_usd} color={modelColors.get(m.model)} /> : '—'}</td>
+                        which reads as free. It has no price, so it shows none;
+                        a partly priced one shows its priced part + unpriced. */}
+                    <td className="px-3 py-1 num text-right whitespace-nowrap"><ModelCost m={m} u={s?.unpriced} /></td>
+                    <td className="px-3 py-1 text-right text-fg-faint w-[5.5rem] whitespace-nowrap">{s && s.cost_usd > 0 && modelCostState(m, s.unpriced) !== 'unpriced' ? <ShareBar value={m.cost_usd} total={s.cost_usd} color={modelColors.get(m.model)} /> : '—'}</td>
                   </tr>
                 ))}
               </tbody>

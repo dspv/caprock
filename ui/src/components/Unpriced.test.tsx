@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { UnpricedNote, cursorUnpricedReason, unpricedIssueURL } from './Unpriced'
+import { ModelCost, UnpricedNote, cursorUnpricedReason, modelCostState, modelCostText, unpricedIssueURL } from './Unpriced'
 
 describe('UnpricedNote', () => {
   afterEach(() => {
@@ -109,5 +109,42 @@ describe('UnpricedNote', () => {
     )
 
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('ModelCost', () => {
+  const u = { turns: 3, tokens: 12_000_000, models: ['claude-4-sonnet', 'composer-1', 'future-model'], cursor: ['claude-4-sonnet', 'composer-1'] }
+  const row = (model: string, cost_usd: number, unpriced_tokens?: number) =>
+    ({ model, tokens: 20_000_000, cost_usd, turns: 4, output: 0, cache_read: 0, ...(unpriced_tokens ? { unpriced_tokens } : {}) })
+
+  it('shows the priced part of a partly priced model, then a quiet unpriced mark', () => {
+    // The owner's claude-4-sonnet: $153.13 recorded by Cursor in some chats,
+    // none in others. "unpriced" alone hid the $153.13.
+    const m = row('claude-4-sonnet', 153.13, 11_500_000)
+    const { container } = render(<ModelCost m={m} u={u} />)
+    expect(container).toHaveTextContent('$153.13+ unpriced')
+    const cell = screen.getByLabelText('$153.13 plus an unpriced part')
+    expect(cell.title).toMatch(/^\$153\.13 is the priced part\. 11\.50M more tokens have no cost\. claude-4-sonnet: Cursor recorded no cost/)
+    expect(cell.title).toMatch(/share, the order and the total count the priced part alone\.$/)
+    expect(modelCostState(m, u)).toBe('partly')
+    expect(modelCostText(m, u)).toBe('$153.13 + unpriced')
+  })
+
+  it('keeps a fully unpriced model as "unpriced", with its reason', () => {
+    const m = row('composer-1', 0, 770)
+    render(<ModelCost m={m} u={u} />)
+    expect(screen.getByText('unpriced').title).toMatch(/Cursor’s own model/)
+    expect(modelCostText(m, u)).toBe('unpriced')
+    // An older daemon sends no unpriced_tokens: named in unpriced, the row
+    // reads unpriced throughout, as it did.
+    expect(modelCostState(row('future-model', 0), u)).toBe('unpriced')
+  })
+
+  it('leaves a priced model as its figure alone', () => {
+    const m = row('claude-sonnet-5', 2.5)
+    const { container } = render(<ModelCost m={m} u={u} />)
+    expect(container).toHaveTextContent(/^\$2\.50$/)
+    expect(modelCostState(m, u)).toBe('priced')
+    expect(modelCostText(m, undefined)).toBe('$2.50')
   })
 })

@@ -671,6 +671,12 @@ func buildSummary(ctx context.Context, q Querier, from int64, spark SparkSpec, a
 		}
 	}
 	for _, m := range modelOrder {
+		// A model can be priced in one chat and unpriced in another (Cursor
+		// records a cost for some chats and not others): the row carries
+		// both, so the priced part is not hidden behind "unpriced".
+		if u := unpriced[m]; u != nil {
+			models[m].UnpricedTokens = u.tokens
+		}
 		s.Models = append(s.Models, *models[m])
 	}
 	sort.SliceStable(s.Models, func(i, j int) bool { return s.Models[i].CostUSD > s.Models[j].CostUSD })

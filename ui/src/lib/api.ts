@@ -509,6 +509,11 @@ export interface ModelShare {
   requests?: number
   /** The part of cost_usd those requests cost. */
   requests_cost_usd?: number
+  /** The model's tokens with no cost — no pricing row, or a Cursor chat
+   *  Cursor recorded no cost for (ADR-095) — so not in cost_usd, which is the
+   *  priced part alone. Absent when every turn was priced, and from an older
+   *  daemon. Never estimated. */
+  unpriced_tokens?: number
   /** What the model generated — the part of a token total that is entirely its
    *  own work and entirely at the top rate. The combined figure is ~99% cache
    *  read on a normal workload, which swamps everything it is added to. */
