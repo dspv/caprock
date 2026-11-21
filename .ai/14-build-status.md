@@ -517,6 +517,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-21 — 0.186.3: Cost shows what Cursor did record, and calls the rest in Cursor plan
+
+A patch release, #990 and #991. A model priced in some chats and not others
+read *unpriced* in Cost's model mix, hiding the money Cursor did record
+($153.13 of `claude-4-sonnet` on the owner's machine); History's Numbers table
+showed it as $0.00. Both now read *$153.13 + in Cursor plan*, with the
+unpriced tokens and why on hover; the share, the order and the total count the
+priced part alone, and nothing is estimated (ADR-095). A Cursor model with no
+recorded cost reads *in Cursor plan* rather than *unpriced*: such a chat is
+most often one the Cursor plan covers.
+
 ### 2026-11-21 — 0.186.2: the unpriced note says which tokens are Cursor's and why
 
 A patch release, #987 and #988. *Partial cost* hovers now put Cursor's names on

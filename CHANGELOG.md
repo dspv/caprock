@@ -12,6 +12,26 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.186.3] - 2026-11-21
+
+### Changed
+
+- **cost:** a Cursor model with no recorded cost reads *in Cursor plan*
+  instead of *unpriced* (*$153.13 + in Cursor plan* when partly priced): such
+  a chat is most often one the Cursor plan covers, and *unpriced* looked like
+  a price Caprock failed to learn. A model outside Cursor still reads
+  *unpriced*.
+
+### Fixed
+
+- **cost:** a model priced in some chats and unpriced in others now shows its
+  priced cost in the Cost and History model mix, followed by a quiet
+  *+ unpriced* (for example *$153.13 + unpriced*), instead of *unpriced*
+  alone, which hid money Cursor had recorded. The hover says how many tokens
+  have no cost and why; they are never estimated, and the share, the order
+  and the total count the priced part alone. The summary's `models` entries
+  carry `unpriced_tokens`.
+
 ## [0.186.2] - 2026-11-21
 
 ### Fixed
