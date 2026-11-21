@@ -126,7 +126,23 @@ stand per run, started by `ui/e2e/stand.ts`, and torn down after it:
   the pty-hosts that daemon recorded in its own data directory.
 
 Every test gets a fresh page and fails on any console error, uncaught
-exception or request that leaves the stand. The scenarios
+exception or request that leaves the stand. It also fails when it leaves the
+shared stand changed for the specs after it (`leftovers` in
+`ui/e2e/fixtures.ts`): before each test the fixture lists what runs there
+(`GET /v1/sessions?active=true`, `GET /v1/shells`), and after it waits up to
+30 s until nothing that was not running before still runs, then fails naming
+each session or shell left (id, name, folder) — "this test started it and
+left it running — stop it in a finally" — and stops it, so the next test
+starts clean; and it fails naming any of the stand's own sessions (alpha,
+beta) the test ended. The specs run one after another on one stand, so
+without it a leak failed whichever later spec met it (a hook-observed session
+left live by `shell-agent-inspector.spec.ts` vanished in the middle of
+`sidebar-drag.spec.ts`'s drag, 2026-11-21). A spec that starts something
+stops it in a `finally`; one that needs to end a session starts its own.
+`test.use({ mayEnd: ['e2e beta'] })` and `test.use({ mayLeaveRunning: true })`
+are the opt-outs; no spec uses either. Before pushing a UI change, run the
+whole suite (`make e2e`), not only the specs it touches: CI runs all of it,
+and a failure that shows up there costs a 40-minute round. The scenarios
 (`ui/e2e/golden.spec.ts`): the dashboard and the app workspace load; a session
 appears in the sidebar and its tab opens on its terminal; every open tab has a
 row in the sidebar's Open, with its phase, in Tree and in Flat; typing reaches the pty (the fake claude
@@ -163,13 +179,13 @@ Windows, and walks the setup checklist (ADR-099 amendment): the first Sign
 in opens its shell tab in front and keeps it there once the shell is listed,
 with one shell started; an agent's switch is kept by the daemon; Projects
 here is optional and its Clone opens Add project on Clone into `~/dev` in
-full. `ui/e2e/sidebar-recent.spec.ts` runs last: a
+full. `ui/e2e/sidebar-recent.spec.ts`: a
 closed tab is listed under the sidebar's Recently closed and comes back on a
 click and on ⇧⌘T; a helper session started in a temp folder outside every
 project folds under Background · N, opened and remembered across a reload;
 and an agent ended with its tab comes back from its row — read-only with its
-reason, since the fake claude writes no transcript to `--resume` (it ends
-beta, so it is last). `ui/e2e/phone.spec.ts` walks the phone: a
+reason, since the fake claude writes no transcript to `--resume` (a session
+it starts for that, so beta stays for the specs after it). `ui/e2e/phone.spec.ts` walks the phone: a
 phone profile (Pixel 7's, `isMobile` and `hasTouch`, so the layout viewport
 widens to fit the widest element as Android Chrome's does) at 360, 390 and
 430 px, over Home and its menus, the full dashboard, Chats, a chat with its

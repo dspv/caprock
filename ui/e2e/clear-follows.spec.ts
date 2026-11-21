@@ -9,7 +9,7 @@
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { expect, test } from './fixtures'
+import { expect, shellIds, stopAgent, test } from './fixtures'
 
 test('after /clear the tab follows the new session: terminal, chat with the earlier part, and input', async ({ app, page, stand }) => {
   const cwd = stand.sessions[0]!.cwd
@@ -25,6 +25,7 @@ test('after /clear the tab follows the new session: terminal, chat with the earl
   const pid = row.session?.pid ?? row.pid
   expect(pid, 'the spawned session has a pid').toBeGreaterThan(1)
   const next = `${spawn.slice(0, 8)}-0000-4000-8000-c1ea7ed00001`
+  const shellsBefore = new Set(await shellIds(stand.daemonURL))
   try {
     const { token } = JSON.parse(readFileSync(path.join(stand.dir, 'data', 'runtime.json'), 'utf8')) as { token: string }
     const hook = async (body: Record<string, unknown>) => {
@@ -72,9 +73,15 @@ test('after /clear the tab follows the new session: terminal, chat with the earl
       const s = await (await fetch(`${stand.daemonURL}/v1/sessions/${next}`)).json() as { session?: { status?: string }; status?: string }
       return (s.session ?? s).status
     }).toBe('ended')
+    // Its tab, still open, becomes a shell in the folder (AppShell's exit
+    // handling): waited for here, so the finally below finds it to stop.
+    await expect.poll(async () => (await shellIds(stand.daemonURL)).filter((id) => !shellsBefore.has(id)).length).toBe(1)
   } finally {
-    // This stand started it, so this stand stops it (rule 7), leaving the
-    // stand's two sessions the only ones running for the specs after this.
-    await post(`/v1/agents/${spawn}/signal`, { action: 'kill' })
+    // This stand started them, so this stand stops them (rule 7), leaving the
+    // stand's two sessions the only ones running for the specs after this:
+    // the page closed first, so no tab turns into another shell.
+    await page.close()
+    await stopAgent(stand.daemonURL, spawn)
+    for (const id of await shellIds(stand.daemonURL)) if (!shellsBefore.has(id)) await stopAgent(stand.daemonURL, id)
   }
 })

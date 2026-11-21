@@ -77,34 +77,45 @@ test('a helper started in a temp folder folds under Background, opened on a clic
   }
 })
 
-// Last in the file: it ends the beta session for good.
 test('an agent ended with its tab comes back from its Recently closed row, read-only when it cannot be continued', async ({ app, page }) => {
-  await app.open()
-  // Close ends the agent (Settings → Closing a tab: End the agent), SIGTERM first.
-  await page.evaluate(() => localStorage.setItem('caprock.app.agent-close', 'end'))
-  const s = app.session('beta')
-  await app.row(s.name).first().click()
-  const tab = app.tabs.getByRole('tab', { name: new RegExp(`^${s.name}`) })
-  await expect(tab).toHaveAttribute('aria-selected', 'true')
-  await app.chord('w')
-  await expect(tab).toHaveCount(0)
-  // Recently closed is one folded line until a click (2026-11-05).
-  await app.sidebar.locator('[data-closed-toggle][aria-expanded="false"]').click()
-  const row = app.sidebar.locator(`[data-closed-row="${s.id}"]`)
-  await expect(row).toBeVisible()
-  // Once the daemon says it ended, the row continues it rather than reopening a live tab.
-  await expect.poll(async () => {
-    const r = await fetch(`${app.stand.daemonURL}/v1/sessions/${s.id}`)
-    return r.ok ? ((await r.json()) as { status?: string }).status : 'missing'
-  }, { timeout: 15_000 }).toBe('ended')
-  await page.waitForTimeout(2500) // the page's next poll of the session list
-  await row.click()
-  await expect(app.tabs.getByRole('tab', { selected: true })).toHaveAccessibleName(new RegExp(`^${s.name}`), { timeout: 15_000 })
-  await expect(row).toHaveCount(0)
-  // The fake claude writes no transcript, so the daemon says it cannot be
-  // continued: the conversation opens read-only with that reason, as
-  // reopenPlan does for one with resume.ok false. (A real one is continued
-  // with --resume; that path is lib/recentlyClosed.test.ts's.)
-  await expect(page.locator(`[data-observe-pane="${s.id}"]`)).toBeVisible()
-  await expect(page.getByText(/Can’t continue here/)).toBeVisible()
+  // A session of its own to end: ending the stand's beta left every spec
+  // after this file without it (fixtures.ts checks that none is ended).
+  const cwd = app.session('beta').cwd
+  const r = await fetch(`${app.stand.daemonURL}/v1/agents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd }) })
+  const { session_id: id } = await r.json() as { session_id: string }
+  expect(r.ok && id, `spawn in ${cwd}`).toBeTruthy()
+  const s = { id, name: 'e2e delta' }
+  try {
+    await fetch(`${app.stand.daemonURL}/v1/sessions/${id}/name`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: s.name }) })
+    await app.open()
+    // Close ends the agent (Settings → Closing a tab: End the agent), SIGTERM first.
+    await page.evaluate(() => localStorage.setItem('caprock.app.agent-close', 'end'))
+    await app.row(s.name).first().click()
+    const tab = app.tabs.getByRole('tab', { name: new RegExp(`^${s.name}`) })
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await app.chord('w')
+    await expect(tab).toHaveCount(0)
+    // Recently closed is one folded line until a click (2026-11-05).
+    await app.sidebar.locator('[data-closed-toggle][aria-expanded="false"]').click()
+    const row = app.sidebar.locator(`[data-closed-row="${s.id}"]`)
+    await expect(row).toBeVisible()
+    // Once the daemon says it ended, the row continues it rather than reopening a live tab.
+    await expect.poll(async () => {
+      const r = await fetch(`${app.stand.daemonURL}/v1/sessions/${s.id}`)
+      return r.ok ? ((await r.json()) as { status?: string }).status : 'missing'
+    }, { timeout: 15_000 }).toBe('ended')
+    await page.waitForTimeout(2500) // the page's next poll of the session list
+    await row.click()
+    await expect(app.tabs.getByRole('tab', { selected: true })).toHaveAccessibleName(new RegExp(`^${s.name}`), { timeout: 15_000 })
+    await expect(row).toHaveCount(0)
+    // The fake claude writes no transcript, so the daemon says it cannot be
+    // continued: the conversation opens read-only with that reason, as
+    // reopenPlan does for one with resume.ok false. (A real one is continued
+    // with --resume; that path is lib/recentlyClosed.test.ts's.)
+    await expect(page.locator(`[data-observe-pane="${s.id}"]`)).toBeVisible()
+    await expect(page.getByText(/Can’t continue here/)).toBeVisible()
+  } finally {
+    // Ended by its tab's close above; stopped here when the test failed first.
+    await fetch(`${app.stand.daemonURL}/v1/agents/${id}/signal`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'kill' }) })
+  }
 })

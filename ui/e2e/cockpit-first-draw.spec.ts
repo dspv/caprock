@@ -16,7 +16,7 @@
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import type { Page, Route } from '@playwright/test'
-import { expect, test } from './fixtures'
+import { expect, stopAgent, test } from './fixtures'
 
 const now = Date.now()
 const json = (b: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(b) })
@@ -104,8 +104,10 @@ test('a tab switch draws the folded CI line from the kept answer at once', async
     expect(first).toBeLessThan(1_500)
     expect(back).toBeLessThan(1_500)
   } finally {
-    // This stand started it, so this stand stops it (rule 7).
-    await fetch(`${app.stand.daemonURL}/v1/agents/${id}/signal`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'kill' }) })
+    // This stand started it, so this stand stops it (rule 7) — with the page
+    // closed first: a tab still open on it would become a shell in its place.
+    await page.close()
+    await stopAgent(app.stand.daemonURL, id)
   }
 })
 

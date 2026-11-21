@@ -10,7 +10,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { devices, type Browser, type Page } from '@playwright/test'
-import { expect, test } from './fixtures'
+import { expect, stopAgent, test } from './fixtures'
 import type { StandState } from './stand'
 
 const WIDTHS = [360, 390, 430]
@@ -198,87 +198,92 @@ test('the phone never scrolls sideways or cuts anything off, at 360, 390 and 430
   })
   const chat = await r.json() as { session_id: string; cwd?: string }
   expect(r.ok, JSON.stringify(chat)).toBe(true)
-  const cdetail = await (await fetch(`${stand.daemonURL}/v1/sessions/${chat.session_id}`)).json() as { cwd: string }
-  await seed(stand, s.id, s.cwd)
-  await seed(stand, chat.session_id, cdetail.cwd)
-  await expect.poll(async () => {
-    const ev = await (await fetch(`${stand.daemonURL}/v1/sessions/${s.id}/events?newest=1&limit=50`)).json() as unknown
-    return Array.isArray(ev) ? ev.length : 0
-  }, { timeout: 20_000, message: 'the transcript was ingested' }).toBeGreaterThan(5)
-  // Long names, files the chat wrote with long names and wide contents, and
-  // an Inbox note that is one long link, as a phone's Share leaves one.
-  const put = (p: string, body: unknown, method = 'POST') => fetch(`${stand.daemonURL}${p}`, {
-    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  })
-  expect((await put(`/v1/sessions/${s.id}/name`, { name: `e2e alpha ${LONG_WORD}` }, 'PUT')).ok).toBe(true)
-  const fname = `report-${'quarterly-numbers-'.repeat(6)}final.md`
-  writeFileSync(path.join(cdetail.cwd, fname), `# Report\n\n${REPLY}\n`)
-  writeFileSync(path.join(cdetail.cwd, 'wide.csv'), Array.from({ length: 4 }, (_, r) => Array.from({ length: 14 }, (_, i) => `value-${r}-${i}-${LONG_WORD.slice(0, 20)}`).join(',')).join('\n'))
-  expect((await put('/v1/inbox', { text: `Read later: ${LONG_URL}` })).ok).toBe(true)
-  const tap = (name: string | RegExp, role: 'button' | 'link' | 'tab' | 'menuitem' = 'button') => async (p: Page) => {
-    await p.getByRole(role, { name }).first().click()
-    await p.waitForTimeout(400)
-  }
-  const typeLong = async (p: Page) => {
-    const f = p.getByRole('textbox', { name: 'Type to the session' }).first()
-    await f.click()
-    await f.fill(`Please look at ${LONG_URL} and ${LONG_PATH} ${LONG_WORD}`)
-  }
-
-  const screens: { name: string; hash: string; ready?: (p: Page) => Promise<void> }[] = [
-    // The install hint shows once, over the top of Home.
-    { name: 'home', hash: '#/', ready: async (p) => { await p.evaluate(() => localStorage.setItem('caprock.phone.installHint', '1')) } },
-    { name: 'home, no hint', hash: '#/' },
-    { name: 'home, chats open', hash: '#/', ready: async (p) => { await p.getByRole('button', { name: /^Chats/ }).click() } },
-    { name: 'home, more menu', hash: '#/', ready: tap('More') },
-    { name: 'home, row menu', hash: '#/', ready: async (p) => { await p.getByRole('region', { name: 'Continue' }).getByRole('button', { name: /more|⋯|actions/i }).first().click(); await p.waitForTimeout(400) } },
-    { name: 'full dashboard', hash: '#/home' },
-    { name: 'chats', hash: '#/chats' },
-    { name: 'chat', hash: `#/chats/${chat.session_id}` },
-    { name: 'chat, more sheet', hash: `#/chats/${chat.session_id}`, ready: tap('More') },
-    { name: 'chat, files sheet', hash: `#/chats/${chat.session_id}`, ready: tap(/^Files/) },
-    { name: 'chat, markdown file', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await tap(/^Files/)(p); await tap(/report-quarterly/)(p) } },
-    { name: 'chat, csv file', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await tap(/^Files/)(p); await tap(/wide\.csv/)(p) } },
-    { name: 'chat, keys open', hash: `#/chats/${chat.session_id}`, ready: tap(/^Keys$/) },
-    { name: 'chat, typing a long line', hash: `#/chats/${chat.session_id}`, ready: typeLong },
-    { name: 'chat, long message queued', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await typeLong(p); await p.keyboard.press('Enter'); await p.waitForTimeout(800) } },
-    { name: 'session chat', hash: `#/session/${s.id}?tab=chat` },
-    { name: 'session, other views', hash: `#/session/${s.id}?tab=chat`, ready: tap(/other views|Other views/, 'tab') },
-    { name: 'session, details', hash: `#/session/${s.id}?tab=chat`, ready: tap(/session details/) },
-    { name: 'session, end sheet', hash: `#/session/${s.id}?tab=chat`, ready: tap(/^End /) },
-    { name: 'session, typing', hash: `#/session/${s.id}?tab=chat`, ready: typeLong },
-    { name: 'session terminal', hash: `#/session/${s.id}?tab=terminal` },
-    { name: 'session timeline', hash: `#/session/${s.id}?tab=timeline` },
-    { name: 'settings', hash: '#/settings' },
-    { name: 'settings phone', hash: '#/settings/phone' },
-    { name: 'cost', hash: '#/cost' },
-    { name: 'history', hash: '#/history' },
-  ]
-  const problems: string[] = []
-  for (const width of WIDTHS) {
-    const { page, close } = await phone(browser, width)
-    page.setDefaultTimeout(5000)
-    try {
-      for (const sc of screens) {
-        await page.goto('about:blank')
-        await page.goto(`${stand.pageURL}/${sc.hash}`)
-        await page.waitForLoadState('networkidle').catch(() => {})
-        await page.waitForTimeout(600)
-        if (sc.ready) {
-          try { await sc.ready(page) } catch (e) { problems.push(`${width} ${sc.name}: could not get ready: ${String(e).split('\n')[0]}`); continue }
-        }
-        await page.waitForTimeout(300)
-        const m = await measure(page, width)
-        await page.screenshot({ path: test.info().outputPath(`${sc.name.replace(/\W+/g, '-')}-${width}.png`) })
-        const bad = m.scroll > width || m.inner > width || m.client > width || m.cut.length > 0 || m.sideways.length > 0 || m.zoom.length > 0
-        console.log(`${width} ${sc.name}: inner=${m.inner} client=${m.client} scroll=${m.scroll}${m.cut.length ? '\n  cut ' + m.cut.join('\n  cut ') : ''}${m.sideways.length ? '\n  scrolls ' + m.sideways.join('\n  scrolls ') : ''}${m.zoom.length ? '\n  zoom ' + m.zoom.join('\n  zoom ') : ''}`)
-        if (bad) problems.push(`${width} ${sc.name}: scroll=${m.scroll} inner=${m.inner} ${[...m.cut, ...m.sideways, ...m.zoom].join(' | ')}`)
-      }
-    } finally {
-      await close()
+  try {
+    const cdetail = await (await fetch(`${stand.daemonURL}/v1/sessions/${chat.session_id}`)).json() as { cwd: string }
+    await seed(stand, s.id, s.cwd)
+    await seed(stand, chat.session_id, cdetail.cwd)
+    await expect.poll(async () => {
+      const ev = await (await fetch(`${stand.daemonURL}/v1/sessions/${s.id}/events?newest=1&limit=50`)).json() as unknown
+      return Array.isArray(ev) ? ev.length : 0
+    }, { timeout: 20_000, message: 'the transcript was ingested' }).toBeGreaterThan(5)
+    // Long names, files the chat wrote with long names and wide contents, and
+    // an Inbox note that is one long link, as a phone's Share leaves one.
+    const put = (p: string, body: unknown, method = 'POST') => fetch(`${stand.daemonURL}${p}`, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    expect((await put(`/v1/sessions/${s.id}/name`, { name: `e2e alpha ${LONG_WORD}` }, 'PUT')).ok).toBe(true)
+    const fname = `report-${'quarterly-numbers-'.repeat(6)}final.md`
+    writeFileSync(path.join(cdetail.cwd, fname), `# Report\n\n${REPLY}\n`)
+    writeFileSync(path.join(cdetail.cwd, 'wide.csv'), Array.from({ length: 4 }, (_, r) => Array.from({ length: 14 }, (_, i) => `value-${r}-${i}-${LONG_WORD.slice(0, 20)}`).join(',')).join('\n'))
+    expect((await put('/v1/inbox', { text: `Read later: ${LONG_URL}` })).ok).toBe(true)
+    const tap = (name: string | RegExp, role: 'button' | 'link' | 'tab' | 'menuitem' = 'button') => async (p: Page) => {
+      await p.getByRole(role, { name }).first().click()
+      await p.waitForTimeout(400)
     }
+    const typeLong = async (p: Page) => {
+      const f = p.getByRole('textbox', { name: 'Type to the session' }).first()
+      await f.click()
+      await f.fill(`Please look at ${LONG_URL} and ${LONG_PATH} ${LONG_WORD}`)
+    }
+
+    const screens: { name: string; hash: string; ready?: (p: Page) => Promise<void> }[] = [
+      // The install hint shows once, over the top of Home.
+      { name: 'home', hash: '#/', ready: async (p) => { await p.evaluate(() => localStorage.setItem('caprock.phone.installHint', '1')) } },
+      { name: 'home, no hint', hash: '#/' },
+      { name: 'home, chats open', hash: '#/', ready: async (p) => { await p.getByRole('button', { name: /^Chats/ }).click() } },
+      { name: 'home, more menu', hash: '#/', ready: tap('More') },
+      { name: 'home, row menu', hash: '#/', ready: async (p) => { await p.getByRole('region', { name: 'Continue' }).getByRole('button', { name: /more|⋯|actions/i }).first().click(); await p.waitForTimeout(400) } },
+      { name: 'full dashboard', hash: '#/home' },
+      { name: 'chats', hash: '#/chats' },
+      { name: 'chat', hash: `#/chats/${chat.session_id}` },
+      { name: 'chat, more sheet', hash: `#/chats/${chat.session_id}`, ready: tap('More') },
+      { name: 'chat, files sheet', hash: `#/chats/${chat.session_id}`, ready: tap(/^Files/) },
+      { name: 'chat, markdown file', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await tap(/^Files/)(p); await tap(/report-quarterly/)(p) } },
+      { name: 'chat, csv file', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await tap(/^Files/)(p); await tap(/wide\.csv/)(p) } },
+      { name: 'chat, keys open', hash: `#/chats/${chat.session_id}`, ready: tap(/^Keys$/) },
+      { name: 'chat, typing a long line', hash: `#/chats/${chat.session_id}`, ready: typeLong },
+      { name: 'chat, long message queued', hash: `#/chats/${chat.session_id}`, ready: async (p) => { await typeLong(p); await p.keyboard.press('Enter'); await p.waitForTimeout(800) } },
+      { name: 'session chat', hash: `#/session/${s.id}?tab=chat` },
+      { name: 'session, other views', hash: `#/session/${s.id}?tab=chat`, ready: tap(/other views|Other views/, 'tab') },
+      { name: 'session, details', hash: `#/session/${s.id}?tab=chat`, ready: tap(/session details/) },
+      { name: 'session, end sheet', hash: `#/session/${s.id}?tab=chat`, ready: tap(/^End /) },
+      { name: 'session, typing', hash: `#/session/${s.id}?tab=chat`, ready: typeLong },
+      { name: 'session terminal', hash: `#/session/${s.id}?tab=terminal` },
+      { name: 'session timeline', hash: `#/session/${s.id}?tab=timeline` },
+      { name: 'settings', hash: '#/settings' },
+      { name: 'settings phone', hash: '#/settings/phone' },
+      { name: 'cost', hash: '#/cost' },
+      { name: 'history', hash: '#/history' },
+    ]
+    const problems: string[] = []
+    for (const width of WIDTHS) {
+      const { page, close } = await phone(browser, width)
+      page.setDefaultTimeout(5000)
+      try {
+        for (const sc of screens) {
+          await page.goto('about:blank')
+          await page.goto(`${stand.pageURL}/${sc.hash}`)
+          await page.waitForLoadState('networkidle').catch(() => {})
+          await page.waitForTimeout(600)
+          if (sc.ready) {
+            try { await sc.ready(page) } catch (e) { problems.push(`${width} ${sc.name}: could not get ready: ${String(e).split('\n')[0]}`); continue }
+          }
+          await page.waitForTimeout(300)
+          const m = await measure(page, width)
+          await page.screenshot({ path: test.info().outputPath(`${sc.name.replace(/\W+/g, '-')}-${width}.png`) })
+          const bad = m.scroll > width || m.inner > width || m.client > width || m.cut.length > 0 || m.sideways.length > 0 || m.zoom.length > 0
+          console.log(`${width} ${sc.name}: inner=${m.inner} client=${m.client} scroll=${m.scroll}${m.cut.length ? '\n  cut ' + m.cut.join('\n  cut ') : ''}${m.sideways.length ? '\n  scrolls ' + m.sideways.join('\n  scrolls ') : ''}${m.zoom.length ? '\n  zoom ' + m.zoom.join('\n  zoom ') : ''}`)
+          if (bad) problems.push(`${width} ${sc.name}: scroll=${m.scroll} inner=${m.inner} ${[...m.cut, ...m.sideways, ...m.zoom].join(' | ')}`)
+        }
+      } finally {
+        await close()
+      }
+    }
+    expect(problems).toEqual([])
+  } finally {
+    // The chat is this test's (rule 7): left live, it was in every later spec's lists.
+    await stopAgent(stand.daemonURL, chat.session_id)
   }
-  expect(problems).toEqual([])
 })
 
 test('a link in a chat reply can be tapped on a phone, and a long one wraps, at 360, 390 and 412 px', async ({ browser, stand }) => {
@@ -288,45 +293,50 @@ test('a link in a chat reply can be tapped on a phone, and a long one wraps, at 
   })
   const chat = await r.json() as { session_id: string }
   expect(r.ok, JSON.stringify(chat)).toBe(true)
-  const { cwd } = await (await fetch(`${stand.daemonURL}/v1/sessions/${chat.session_id}`)).json() as { cwd: string }
-  const ARTIFACT = 'https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY'
-  const COMMENT = 'https://github.com/dspv/caprock/pull/768#issuecomment-6322183824'
-  const reply = `Published: ${ARTIFACT}. The PR comment is ${COMMENT}, and the long one (${LONG_URL}).`
-  const dir = path.join(stand.dir, 'home', '.claude', 'projects', cwd.replace(/[^A-Za-z0-9]/g, '-'))
-  mkdirSync(dir, { recursive: true })
-  await new Promise((res) => setTimeout(res, 1000))
-  const line = (type: string, n: number, extra: Record<string, unknown>) => JSON.stringify({
-    isSidechain: false, userType: 'external', entrypoint: 'cli', cwd, sessionId: chat.session_id, version: '2.1.296', gitBranch: 'master',
-    parentUuid: n > 1 ? `l-${n - 1}` : null, type, uuid: `l-${n}`, timestamp: new Date(Date.now() - 30_000 + n * 1000).toISOString(), ...extra,
-  })
-  const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, service_tier: 'standard' }
-  writeFileSync(path.join(dir, `${chat.session_id}.jsonl`), [
-    line('user', 1, { promptId: 'p-1', message: { role: 'user', content: [{ type: 'text', text: 'where is it?' }] } }),
-    line('assistant', 2, { requestId: 'req-l', message: { model: 'claude-sonnet-4-6', id: 'msg-l', type: 'message', role: 'assistant', content: [{ type: 'text', text: reply }], usage } }),
-  ].join('\n') + '\n')
+  try {
+    const { cwd } = await (await fetch(`${stand.daemonURL}/v1/sessions/${chat.session_id}`)).json() as { cwd: string }
+    const ARTIFACT = 'https://claude.ai/artifact/XUWK6T8BAtS4msXnSYrbyY'
+    const COMMENT = 'https://github.com/dspv/caprock/pull/768#issuecomment-6322183824'
+    const reply = `Published: ${ARTIFACT}. The PR comment is ${COMMENT}, and the long one (${LONG_URL}).`
+    const dir = path.join(stand.dir, 'home', '.claude', 'projects', cwd.replace(/[^A-Za-z0-9]/g, '-'))
+    mkdirSync(dir, { recursive: true })
+    await new Promise((res) => setTimeout(res, 1000))
+    const line = (type: string, n: number, extra: Record<string, unknown>) => JSON.stringify({
+      isSidechain: false, userType: 'external', entrypoint: 'cli', cwd, sessionId: chat.session_id, version: '2.1.296', gitBranch: 'master',
+      parentUuid: n > 1 ? `l-${n - 1}` : null, type, uuid: `l-${n}`, timestamp: new Date(Date.now() - 30_000 + n * 1000).toISOString(), ...extra,
+    })
+    const usage = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, service_tier: 'standard' }
+    writeFileSync(path.join(dir, `${chat.session_id}.jsonl`), [
+      line('user', 1, { promptId: 'p-1', message: { role: 'user', content: [{ type: 'text', text: 'where is it?' }] } }),
+      line('assistant', 2, { requestId: 'req-l', message: { model: 'claude-sonnet-4-6', id: 'msg-l', type: 'message', role: 'assistant', content: [{ type: 'text', text: reply }], usage } }),
+    ].join('\n') + '\n')
 
-  for (const width of [360, 390, 412]) {
-    const { page, close } = await phone(browser, width)
-    // Nothing leaves the machine: the tapped address is answered here.
-    await page.context().route(/^https:\/\/(claude\.ai|github\.com)\//, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>opened</title>' }))
-    try {
-      await page.goto(`${stand.pageURL}/#/chats/${chat.session_id}`)
-      // By its href: the ↗ mark (design/tokens.css) is part of the link's name.
-      const link = page.locator(`a[href="${ARTIFACT}"]`)
-      await expect(link).toBeVisible({ timeout: 20_000 })
-      await expect(link).toHaveAttribute('href', ARTIFACT)
-      await expect(link).toHaveAttribute('target', '_blank')
-      await expect(page.getByRole('link', { name: new RegExp(`^${COMMENT.replace(/[.?#/]/g, '\\$&')}`) })).toHaveAttribute('href', COMMENT)
-      await expect(page.locator(`a[href="${LONG_URL}"]`)).toHaveText(LONG_URL)
-      const m = await measure(page, width)
-      expect(m.scroll, `${width}: ${m.cut.join(' | ')}`).toBeLessThanOrEqual(width)
-      expect(m.cut, `${width}`).toEqual([])
-      const [opened] = await Promise.all([page.context().waitForEvent('page'), link.tap()])
-      await opened.waitForLoadState()
-      expect(opened.url()).toBe(ARTIFACT)
-      await opened.close()
-    } finally {
-      await close()
+    for (const width of [360, 390, 412]) {
+      const { page, close } = await phone(browser, width)
+      // Nothing leaves the machine: the tapped address is answered here.
+      await page.context().route(/^https:\/\/(claude\.ai|github\.com)\//, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>opened</title>' }))
+      try {
+        await page.goto(`${stand.pageURL}/#/chats/${chat.session_id}`)
+        // By its href: the ↗ mark (design/tokens.css) is part of the link's name.
+        const link = page.locator(`a[href="${ARTIFACT}"]`)
+        await expect(link).toBeVisible({ timeout: 20_000 })
+        await expect(link).toHaveAttribute('href', ARTIFACT)
+        await expect(link).toHaveAttribute('target', '_blank')
+        await expect(page.getByRole('link', { name: new RegExp(`^${COMMENT.replace(/[.?#/]/g, '\\$&')}`) })).toHaveAttribute('href', COMMENT)
+        await expect(page.locator(`a[href="${LONG_URL}"]`)).toHaveText(LONG_URL)
+        const m = await measure(page, width)
+        expect(m.scroll, `${width}: ${m.cut.join(' | ')}`).toBeLessThanOrEqual(width)
+        expect(m.cut, `${width}`).toEqual([])
+        const [opened] = await Promise.all([page.context().waitForEvent('page'), link.tap()])
+        await opened.waitForLoadState()
+        expect(opened.url()).toBe(ARTIFACT)
+        await opened.close()
+      } finally {
+        await close()
+      }
     }
+  } finally {
+    // The chat is this test's (rule 7): left live, it was in every later spec's lists.
+    await stopAgent(stand.daemonURL, chat.session_id)
   }
 })

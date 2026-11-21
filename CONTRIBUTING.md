@@ -63,6 +63,13 @@ browser. Install the shell once with
 `make pr-check` skips the step and prints that command. Details:
 [.ai/10-infrastructure.md § E2E](.ai/10-infrastructure.md#e2e-make-e2e).
 
+Before pushing a UI change, run the whole e2e suite (`make e2e`), not only the
+specs your change touches. The specs share one stand and run in file order, so
+a spec that leaves a session running or ends one of the stand's own breaks a
+spec after it, and CI runs all of them on every pull request: a skipped spec
+costs a 40-minute round. Each test fails when it leaves something behind,
+naming it; a spec that starts a session or shell stops it in a `finally`.
+
 On a pull request the desktop app's three CI builds run only when it touches
 `app/`, the `Makefile`, `scripts/check-app-mic.sh` or `.github/workflows/ci.yml`;
 otherwise they show as skipped. Every push to `master` builds them.
