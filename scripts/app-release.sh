@@ -138,6 +138,13 @@ if [[ "${APPLE_SIGNING_IDENTITY:-}" == "Developer ID Application: "* ]]; then
   fi
 fi
 
+# Caprock Terminal.app (ADR-101): the universal holder in its own bundle,
+# which tauri.conf.json's bundle.macOS.files puts in Contents/Helpers. The
+# bundler does not sign a nested bundle, so it is signed here with the
+# identity the app gets, before the app is.
+echo "→ Caprock Terminal.app"
+bash scripts/terminal-helper.sh app/src-tauri/binaries/caprock-pty-host-universal-apple-darwin app/src-tauri/binaries "$VERSION"
+
 # The one cargo build a release makes, shared with --warm-cache so the cache
 # that writes is the one a release needs (same targets, profile and flags).
 # The .app only: Tauri's own .dmg lays its window out through Finder and
@@ -211,9 +218,10 @@ if [[ "$NOTARIZE" == 1 ]]; then
 else
   bash scripts/check-app-signature.sh "$APP"
 fi
-for bin in caprock-app caprock caprock-pty-host; do
-  archs="$(lipo -archs "$APP/Contents/MacOS/$bin")"
-  [[ "$archs" == *x86_64* && "$archs" == *arm64* ]] || die "$bin is $archs, not universal"
+HELPER_EXE="Contents/Helpers/Caprock Terminal.app/Contents/MacOS/caprock-pty-host"
+for exe in MacOS/caprock-app MacOS/caprock MacOS/caprock-pty-host "${HELPER_EXE#Contents/}"; do
+  archs="$(lipo -archs "$APP/Contents/$exe")"
+  [[ "$archs" == *x86_64* && "$archs" == *arm64* ]] || die "$exe is $archs, not universal"
 done
 bash scripts/check-app-mic.sh "$APP" # ADR-045
 daemon="$("$APP/Contents/MacOS/caprock" version)"
@@ -235,6 +243,8 @@ if [[ ${#UPDATER[@]} -gt 0 ]]; then
     die "$UPD_NAME.sig does not name $VERSION"
   tar -tzf "$UPD" | grep -q '^Caprock.app/Contents/MacOS/caprock$' ||
     die "$UPD_NAME does not carry the daemon"
+  tar -tzf "$UPD" | grep -qxF "Caprock.app/$HELPER_EXE" ||
+    die "$UPD_NAME does not carry Caprock Terminal.app"
   # The update is the same notarized .app: its ticket must travel with it.
   if [[ "$NOTARIZE" == 1 ]]; then
     UNPACK="$(mktemp -d)"

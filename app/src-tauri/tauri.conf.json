@@ -64,6 +64,9 @@
       "minimumSystemVersion": "13.0",
       "signingIdentity": "-",
       "entitlements": "Entitlements.plist",
+      "files": {
+        "Helpers/Caprock Terminal.app": "binaries/Caprock Terminal.app"
+      },
       "dmg": {
         "background": "dmg/background.png",
         "windowSize": {

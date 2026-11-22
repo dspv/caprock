@@ -807,14 +807,140 @@ fn launch_agent_registered() -> bool {
 /// best-effort: without it the daemon holds terminals in `caprock pty-host`,
 /// as it did before the holder shipped on its own, so a failure to copy it is
 /// no reason to fail the daemon's install.
+///
+/// On macOS the Caprock Terminal helper (`Contents/Helpers/`, ADR-101) goes
+/// beside them too, as a whole bundle, the same best-effort way: without it
+/// the daemon starts the plain holder, as before.
 pub fn install_bin(src: &Path, dst: &Path) -> Result<(), String> {
     if let (Some(from), Some(to)) = (src.parent(), dst.parent()) {
         let holder = from.join(HOLDER_EXE);
         if holder.is_file() {
             let _ = copy_bin(&holder, &to.join(HOLDER_EXE));
         }
+        if cfg!(target_os = "macos") {
+            if let Some(contents) = from.parent() {
+                let helper = contents.join("Helpers").join(HELPER_APP);
+                if helper.is_dir() {
+                    let _ = install_helper(&helper, to);
+                }
+            }
+        }
     }
     copy_bin(src, dst)
+}
+
+/// The macOS helper app the terminal holder runs in (ADR-101): its own
+/// bundle id, microphone usage string and signature, so what runs in a
+/// Caprock terminal asks macOS in its name. The daemon starts it from
+/// `<data_dir>/bin/Caprock Terminal.app` when it is there.
+const HELPER_APP: &str = "Caprock Terminal.app";
+
+/// Puts the helper bundle `src` into `dir` when it differs from the one there.
+///
+/// A running terminal never notices: the new bundle is assembled beside the
+/// old one, the old one is renamed aside, the new one renamed in, and only
+/// then is the old one deleted. A holder running from the old bundle keeps
+/// its file (macOS frees it when the last process using it exits), and the
+/// next terminal starts from the new one at the same path.
+fn install_helper(src: &Path, dir: &Path) -> Result<(), String> {
+    let dst = dir.join(HELPER_APP);
+    if same_tree(src, &dst) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let tmp = dir.join(format!(".{HELPER_APP}.new"));
+    let _ = std::fs::remove_dir_all(&tmp);
+    if let Err(e) = copy_tree(src, &tmp) {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(e);
+    }
+    // Earlier installs' leftovers, from a run that stopped halfway.
+    let aside_prefix = format!(".{HELPER_APP}.old");
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            if e.file_name().to_string_lossy().starts_with(&aside_prefix) {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let aside = dir.join(format!("{aside_prefix}.{nanos}"));
+    let had = dst.exists();
+    if had {
+        std::fs::rename(&dst, &aside).map_err(|e| format!("move {} aside: {e}", dst.display()))?;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &dst) {
+        if had {
+            let _ = std::fs::rename(&aside, &dst);
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(format!("install {}: {e}", dst.display()));
+    }
+    if had {
+        let _ = std::fs::remove_dir_all(&aside);
+    }
+    Ok(())
+}
+
+/// Whether two directory trees hold the same files with the same bytes.
+fn same_tree(a: &Path, b: &Path) -> bool {
+    fn files(root: &Path, rel: &Path, out: &mut Vec<PathBuf>) -> bool {
+        let Ok(entries) = std::fs::read_dir(root.join(rel)) else {
+            return false;
+        };
+        for e in entries.flatten() {
+            let Ok(ft) = e.file_type() else {
+                return false;
+            };
+            let r = rel.join(e.file_name());
+            if ft.is_dir() {
+                if !files(root, &r, out) {
+                    return false;
+                }
+            } else {
+                out.push(r);
+            }
+        }
+        true
+    }
+    let (mut fa, mut fb) = (Vec::new(), Vec::new());
+    if !files(a, Path::new(""), &mut fa) || !files(b, Path::new(""), &mut fb) {
+        return false;
+    }
+    fa.sort();
+    fb.sort();
+    fa == fb && fa.iter().all(|r| same_file(&a.join(r), &b.join(r)))
+}
+
+/// Copies the tree `src` to `dst`, which must not exist: directories, files
+/// with their permissions (std::fs::copy keeps them), and symbolic links as
+/// links, so a signed bundle's seal still matches.
+fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir(dst).map_err(|e| format!("create {}: {e}", dst.display()))?;
+    let entries = std::fs::read_dir(src).map_err(|e| format!("read {}: {e}", src.display()))?;
+    for e in entries {
+        let e = e.map_err(|e| format!("read {}: {e}", src.display()))?;
+        let (from, to) = (e.path(), dst.join(e.file_name()));
+        let ft = e
+            .file_type()
+            .map_err(|e| format!("read {}: {e}", from.display()))?;
+        if ft.is_dir() {
+            copy_tree(&from, &to)?;
+        } else if ft.is_symlink() {
+            #[cfg(unix)]
+            {
+                let target = std::fs::read_link(&from)
+                    .map_err(|e| format!("read {}: {e}", from.display()))?;
+                std::os::unix::fs::symlink(target, &to)
+                    .map_err(|e| format!("write {}: {e}", to.display()))?;
+            }
+        } else {
+            std::fs::copy(&from, &to).map_err(|e| format!("write {}: {e}", to.display()))?;
+        }
+    }
+    Ok(())
 }
 
 /// Copies `src` to `dst` when it differs, atomically (write a sibling, then
@@ -1089,6 +1215,90 @@ mod tests {
             assert_eq!(mode & 0o111, 0o111, "the holder must be executable");
         }
         assert_eq!(std::fs::read(s.bin()).unwrap(), b"daemon");
+    }
+
+    /// A helper bundle laid out as the app ships it, its executable saying `v`.
+    #[cfg(target_os = "macos")]
+    fn helper_bundle(at: &Path, v: &[u8]) {
+        let macos = at.join("Contents/MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::write(at.join("Contents/Info.plist"), b"<plist/>").unwrap();
+        std::fs::write(macos.join(HOLDER_EXE), v).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let exe = macos.join(HOLDER_EXE);
+            std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
+    // The helper is a macOS bundle, installed only there; Windows also
+    // refuses to rename a folder a test still holds open.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn install_helper_replaces_the_bundle_only_when_it_changed() {
+        let s = sup("helper");
+        let (src, bin) = (
+            s.data_dir.join("src").join(HELPER_APP),
+            s.data_dir.join("bin"),
+        );
+        let exe = bin.join(HELPER_APP).join("Contents/MacOS").join(HOLDER_EXE);
+        helper_bundle(&src, b"helper v1");
+        install_helper(&src, &bin).unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"helper v1");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&exe).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111, 0o111, "the helper must stay executable");
+        }
+        // Unchanged: left exactly as it is (the same file, not a new copy).
+        let before = std::fs::metadata(&exe).unwrap().modified().unwrap();
+        install_helper(&src, &bin).unwrap();
+        assert_eq!(std::fs::metadata(&exe).unwrap().modified().unwrap(), before);
+
+        // A terminal still running from the old bundle keeps reading its
+        // own file after the next release's bundle goes in.
+        use std::io::Read;
+        let mut running = std::fs::File::open(&exe).unwrap();
+        std::fs::write(src.join("Contents/Info.plist"), b"<plist v2/>").unwrap();
+        helper_bundle(&src, b"helper v2");
+        install_helper(&src, &bin).unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"helper v2");
+        let mut old = Vec::new();
+        running.read_to_end(&mut old).unwrap();
+        assert_eq!(old, b"helper v1");
+        // Nothing is left beside it but the bundle.
+        let names: Vec<_> = std::fs::read_dir(&bin)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec![HELPER_APP.to_string()]);
+        // A file the new bundle no longer has is gone with the old one.
+        std::fs::write(src.join("Contents/extra"), b"x").unwrap();
+        install_helper(&src, &bin).unwrap();
+        std::fs::remove_file(src.join("Contents/extra")).unwrap();
+        install_helper(&src, &bin).unwrap();
+        assert!(!bin.join(HELPER_APP).join("Contents/extra").exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn install_bin_brings_the_terminal_helper_along_on_macos() {
+        let s = sup("helper-bin");
+        let contents = s.data_dir.join("Caprock.app/Contents");
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        std::fs::write(contents.join("MacOS").join(EXE), b"daemon").unwrap();
+        // An app from before the helper: the daemon and the holder alone.
+        install_bin(&contents.join("MacOS").join(EXE), &s.bin()).unwrap();
+        let helper = s.bin().parent().unwrap().join(HELPER_APP);
+        assert!(!helper.exists());
+        helper_bundle(&contents.join("Helpers").join(HELPER_APP), b"helper");
+        install_bin(&contents.join("MacOS").join(EXE), &s.bin()).unwrap();
+        assert_eq!(
+            std::fs::read(helper.join("Contents/MacOS").join(HOLDER_EXE)).unwrap(),
+            b"helper"
+        );
     }
 
     #[cfg(unix)]

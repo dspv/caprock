@@ -11,3 +11,5 @@ const supported = false
 func execDisclaimed(string, []string, []string) error {
 	return errors.New("only macOS has a responsible process to disclaim")
 }
+
+func responsibleFor(int) int { return 0 }

@@ -1524,11 +1524,15 @@ waiting for a permission answer, and never covers a terminal.
 
 macOS asks before a program reads your Desktop, Documents or Downloads
 folder, your Music or Photos library, or a network or removable volume
-(System Settings → Privacy & Security). A session Caprock runs — Claude
-Code, Codex, a shell — asks in its own name: Caprock starts each one
-responsible for itself, the way iTerm2 does, so the prompt says "claude" or
-"codex", not "caprock", and Claude Code keeps your answer across its
-updates. Caprock itself asks only for a folder you open in it, and for
+(System Settings → Privacy & Security). With the app, a program in a
+Caprock terminal — Claude Code, Codex, a shell — asks as **Caprock
+Terminal**, the helper app Caprock's terminals run in, the way a program in
+Terminal asks as Terminal. It is signed with Caprock's Apple Developer ID,
+so one answer covers every terminal and lasts across updates of Caprock and
+of the agents. (Claude Code installs each version at its own path, and
+macOS forgot an answer given to `claude` at every update.) With Homebrew
+alone each program asks in its own name, such as "claude". Caprock itself
+asks only for a folder you open in it, and for
 Desktop, Documents or Downloads when a session runs there (it reads up that
 folder to group the session under its repository). It never reads your Music
 or Photos library, cloud storage or a volume in the background.
@@ -1536,8 +1540,8 @@ or Photos library, cloud storage or a volume in the background.
 - **What to allow.** Allow the folders your projects live in, or the ones
   you ask an agent to read. Saying no does not break Caprock; that session
   just cannot read that folder.
-- **Sessions started before this change** still ask as "caprock" until they
-  end.
+- **Sessions started before this change** keep asking the way they did
+  (as `claude`, the shell, or "caprock" for the oldest) until they end.
 - **Asking again after an update.** The app is signed with Caprock's Apple
   Developer ID, which stays the same from release to release, so updates
   keep your microphone and folder answers. macOS stores each answer with the
@@ -1562,10 +1566,14 @@ or Photos library, cloud storage or a volume in the background.
 ### Voice mode and the microphone
 
 An agent's voice input (Claude Code's `/voice`) records from the
-microphone, and macOS asks once before it can. The prompt names the program
-macOS holds responsible: `claude` for a session started by a current
-Caprock, or "caprock" / Caprock for an older session or one the daemon runs
-directly. Choose **Allow** and recording works from then on.
+microphone, and macOS asks once before it can. With the app, the prompt
+names **Caprock Terminal**, the small helper every Caprock terminal runs in:
+choose **Allow** once and every program in a Caprock terminal — Claude
+Code, Codex, a recorder you run in a shell tab — can record, and the answer
+stays across updates of Caprock and of Claude Code. Terminals that were
+already open when you updated keep asking in the old way until you close
+them; open a new one for voice. With Homebrew alone (no app), the prompt
+names the program itself, such as `claude`.
 
 If an agent says "No audio detected from microphone" and no prompt
 appeared:
@@ -1575,9 +1583,10 @@ appeared:
   After updating, open the app once so it moves its daemon onto the new
   build.
 - **Start a new session** for voice. A session that was already running
-  keeps the program that started it; a new one asks for itself.
-- **Check System Settings → Privacy & Security → Microphone.** If `claude`,
-  `caprock` or Caprock is listed and switched off, switch it on. The first
+  keeps the program that started it; a new one runs in Caprock Terminal.
+- **Check System Settings → Privacy & Security → Microphone.** If Caprock
+  Terminal, `claude`, `caprock` or Caprock is listed and switched off,
+  switch it on. The first
   update to a release signed with Caprock's certificate asks once more;
   after that your answer stays across updates
   ([why](#macos-privacy-prompts)).

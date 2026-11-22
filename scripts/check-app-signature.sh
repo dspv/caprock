@@ -23,6 +23,11 @@
 # - Unset: ad-hoc, as before, whose requirement is the cdhash and changes
 #   with every build.
 #
+# The same rules hold for Caprock Terminal.app in Contents/Helpers (ADR-101),
+# whose requirement is what keeps a microphone or folder answer given to it
+# across updates; its identifier must be dev.caprock.terminal, and under a
+# Developer ID it must carry the app's team.
+#
 # Reads the bundle only; raises no dialog (spctl --assess and stapler
 # validate only read).
 #
@@ -48,9 +53,16 @@ fi
 
 codesign --verify --deep --strict "$APP" || die "the signature does not verify"
 
-for bin in caprock-app caprock caprock-pty-host; do
+HELPER="$APP/Contents/Helpers/Caprock Terminal.app"
+for bin in caprock-app caprock caprock-pty-host "Caprock Terminal.app"; do
   exe="$APP/Contents/MacOS/$bin"
+  [[ "$bin" == *.app ]] && exe="$HELPER/Contents/MacOS/caprock-pty-host"
   [[ -f "$exe" ]] || die "no $bin in $APP"
+  if [[ "$bin" == *.app ]]; then
+    codesign --verify --strict "$HELPER" || die "Caprock Terminal.app's signature does not verify"
+    ident="$(codesign -dv "$HELPER" 2>&1 | sed -n 's/^Identifier=//p')"
+    [[ "$ident" == dev.caprock.terminal ]] || die "Caprock Terminal.app is signed as '$ident', not dev.caprock.terminal"
+  fi
   info="$(codesign -dv --verbose=2 "$exe" 2>&1)"
   dr="$(codesign -d -r- "$exe" 2>&1 | sed -n 's/^.*designated => //p')"
   echo "  $bin: $dr"
@@ -89,9 +101,9 @@ fi
 if [[ "$MODE" == devid ]]; then
   stapled=", not notarized"
   [[ "$NOTARIZED" == 1 ]] && stapled=", notarized and stapled"
-  echo "  ok: app and daemon signed with the Developer ID of team ${TEAM:-?}$stapled"
+  echo "  ok: app, daemon and Caprock Terminal.app signed with the Developer ID of team ${TEAM:-?}$stapled"
 elif [[ "$MODE" == selfsigned ]]; then
-  echo "  ok: app and daemon signed with the stable identity $IDENTITY (the requirement survives updates)"
+  echo "  ok: app, daemon and Caprock Terminal.app signed with the stable identity $IDENTITY (the requirement survives updates)"
 else
   echo "  ok: ad-hoc signed (the requirement is the cdhash; macOS asks again after each update)"
 fi

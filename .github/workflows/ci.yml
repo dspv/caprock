@@ -54,7 +54,7 @@ jobs:
             echo "could not list the PR's files: running everything"; printf 'app=true\ncode=true\n' >> "$GITHUB_OUTPUT"; exit 0
           fi
           app=false
-          if grep -qE '^(app/|Makefile$|scripts/check-app-mic\.sh$|scripts/check-app-signature\.sh$|scripts/macos-selfsign-keychain\.sh$|\.github/workflows/ci\.yml$)' <<<"$files"; then app=true; fi
+          if grep -qE '^(app/|Makefile$|scripts/check-app-mic\.sh$|scripts/check-app-signature\.sh$|scripts/terminal-helper\.sh$|scripts/macos-selfsign-keychain\.sh$|\.github/workflows/ci\.yml$)' <<<"$files"; then app=true; fi
           code=true
           if [ -n "$files" ] \
             && ! grep -qvE '^(CHANGELOG\.md|changes/.+|\.ai/.+\.md)$' <<<"$files" \
