@@ -91,6 +91,7 @@ import { FLAT_ORDER, flatRows, keepsProject, leadKey, ProjectRow, SessionList, t
 import { ProjectMenu, type ProjectMenuAt } from './ProjectMenu'
 import { MenuBox, MenuItem, MenuSeparator, type MenuAt } from './RowMenu'
 import { TodayLine } from './TodayLine'
+import { usePlan } from './PlanPicker'
 import { useTodayCard } from '@/lib/todayCard'
 import { ShareDialog, ShareGlyph } from './Share'
 import { createPortal } from 'react-dom'
@@ -273,6 +274,7 @@ export function Sidebar(props: SidebarProps) {
   const [hidden, setHidden] = useState<HiddenProjects>(() => loadHiddenProjects())
   const [folds, setFolds] = useState<Set<string>>(() => loadIds(FOLDS_KEY))
   const [todayCard, setTodayCard] = useTodayCard()
+  const [plan] = usePlan()
   const [hiddenSessions, setHiddenSessions] = useState<HiddenSessions>(() => loadHiddenSessions())
   // Hiding a row unlists it here and nowhere else: nothing is signalled, so
   // it is safe on a session another terminal started (rule 7).
@@ -779,6 +781,7 @@ export function Sidebar(props: SidebarProps) {
           onRunning={() => props.onRoute!('#/home')}
           onWaiting={firstWaiting ? () => props.onOpenInbox(firstWaiting) : undefined}
           onHide={() => setTodayCard({ hidden: true })}
+          plan={plan}
         />
       )}
 

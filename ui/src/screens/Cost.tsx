@@ -13,6 +13,8 @@ import { DayGrid } from '@/components/DayGrid'
 import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
+import { CostHeroSub } from '@/components/PlanAsk'
+import { PlanMonth } from '@/components/PlanMonth'
 import { PlanShare } from '@/components/PlanShare'
 import { asSpendParts } from '@/lib/planShare'
 import { PlanLimitsPanel } from '@/components/PlanLimits'
@@ -51,7 +53,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
   // Whether this machine has Cursor at all, so its panel (and the switch for
   // its hooks) shows before the range has a Cursor turn.
   const status = useApi(() => api.status(), [], { live: false, intervalMs: 60000 })
-  const [plan] = usePlan()
+  const [plan, savePlan] = usePlan()
   const [activeDay, setActiveDay] = useState<string | null>(null)
   const [dayView, setDayView] = useState<'calendar' | 'bars'>('calendar')
   const s = summary.data
@@ -148,6 +150,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
         </div>
       )}
 
+      <PlanMonth plan={plan} machines={across ? 'all' : undefined} />
       <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
       <Panel fold="cost.totals" title={`Totals · ${range}${across ? ` · ${thisComputer()}` : ''}`} share={`Totals · ${range}`}>
         {measured && <ShareWith toText={() => `${costBasis(plan)}.\n\n${mdTable(['Figure', 'Value'], [
@@ -164,7 +167,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
               the line past the column and truncated the part that matters. */}
           {/* What the same work was of the plan, under the figure it explains
               (components/PlanShare); nothing on a metered or unstated plan. */}
-          <Stat label={costLabel(plan)} value={measured ? <span title={fmtUSD(s!.cost_usd)}>{fmtUSDWhole(s!.cost_usd)}</span> : '—'} trend={measured ? <PlanShare parts={asSpendParts(s!.cost_parts)} className="mt-0.5" /> : undefined} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} tone="info" size="hero" />
+          <Stat label={costLabel(plan)} value={measured ? <span title={fmtUSD(s!.cost_usd)}>{fmtUSDWhole(s!.cost_usd)}</span> : '—'} trend={measured ? <PlanShare parts={asSpendParts(s!.cost_parts)} className="mt-0.5" /> : undefined} sub={<CostHeroSub plan={plan} onSave={savePlan} limits={s?.rate_limits} measured={measured} basis={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : 'nothing measured in this range'}</span>} />} tone="info" size="hero" />
           <Stat label="Burn now" value={measured ? `${fmtUSD(s!.burn.usd_per_hour)}/h` : '—'} sub={measured ? `${fmtTokens(Math.round(s!.burn.tokens_per_min))} tok/min · ${s!.sessions.toLocaleString('en-US')} sessions` : undefined}  />
           <Stat label="Input" value={measured ? <span title={s!.tokens_in.toLocaleString('en-US')}>{fmtTokensShort(s!.tokens_in)}</span> : '—'} sub="fresh, full price" />
           <Stat label="Output" value={measured ? <span title={s!.tokens_out.toLocaleString('en-US')}>{fmtTokensShort(s!.tokens_out)}</span> : '—'} sub={measured ? `${s!.turns.toLocaleString('en-US')} turns` : undefined} />

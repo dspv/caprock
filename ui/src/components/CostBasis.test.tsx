@@ -71,7 +71,7 @@ describe('costLabel', () => {
   it('does not call the figure a cost for someone who pays a flat fee', () => {
     const label = costLabel(plan({ plan_kind: 'flat', plan_label: 'Max 20×', plan_usd_per_month: 200 }))
     expect(label.toLowerCase()).not.toContain('cost')
-    expect(label.toLowerCase()).toContain('worth')
+    expect(label).toBe('Work at API prices')
   })
 
   it('still calls it a cost for someone billed per token', () => {

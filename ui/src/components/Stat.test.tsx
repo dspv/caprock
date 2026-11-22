@@ -16,7 +16,7 @@ describe('a Stat figure', () => {
   })
 
   it('is a size container, keeps the figure on one line and lets the caption wrap', () => {
-    const { container } = render(<Stat label="Worth at API list" value="$12,793.46" sub="at API list price · not a bill" size="hero" />)
+    const { container } = render(<Stat label="Work at API prices" value="$12,793.46" sub="at API list price · not a bill" size="hero" />)
     const tile = container.firstElementChild as HTMLElement
     expect(tile.className).toContain('@container')
     const [, figure, caption] = Array.from(tile.children) as HTMLElement[]
