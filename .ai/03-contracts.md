@@ -9093,6 +9093,17 @@ CREATE INDEX IF NOT EXISTS idx_events_session_turns ON events(
 
 `store.SessionCostSeries` (the session page's *Cost, cumulative* line and its priced-turn count) and `store.SessionUnpricedTurns` (the "unknown" beside the Cost tile) are read again whenever the session's events move (§ Session calls' generation), which for a working session is every few seconds while its page is open. Both walked `idx_events_attr_work`: every event of the session in sixteen columns, and the cost line also fetched each priced turn's row from the table — payload and all — for the usage-record test on its `key` (`cu-usage:` / `hm-usage:`, ADR-095). This partial index holds only the turns they count, with every column they read, `key` included, so both are one covering read of the session's turns. An indexed expression for the key test would be smaller but does not make the read covering: SQLite still fetches the row for the column the expression names (checked with `EXPLAIN QUERY PLAN`, 2026-11-21). The figures are the same rows summed the same way.
 
+### Handoff passages DDL (migration 0090)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_events_handoff ON events(sid, ts)
+  WHERE kind = 'turn.assistant' AND internal = 0 AND COALESCE(agent_id, '') = ''
+    AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.sidechain') END) IS NOT 1
+    AND LENGTH(CASE WHEN json_valid(payload) THEN json_extract(payload, '$.text') END) >= 400;
+```
+
+`store.HandoffCoverage` (the status screen's memory line: how many repositories hold a passage a new session could be handed, and since when) is read once a minute while the dashboard polls status. It asks for a main-thread assistant passage of at least `store.HandoffMinRunes` (400) characters in the last fortnight, per project, and the oldest such passage. Stopping at the first passage per project still walked `idx_events_attr_work` and opened the payload of every assistant turn it passed, for its sidechain flag and its length. This partial index holds only the passages that qualify, by session and time; the query names its five conditions character for character (`store.handoffWhere`, built from `store.proseText` and `store.proseSidechain`), so SQLite takes them as implied by the index and the statement reads no column of the table (`TestHandoffCoverageReadsNoPayload` reads the program's `EXPLAIN` for it). Each figure is a seek per session: `EXISTS` for the count, `MIN(ts)` for the date. The floor is a literal in the index, so `HandoffCoverage` refuses a shorter one, a longer one adds its own length test over the passages already long enough, and changing the floor is a new migration. `json_valid` guards each extraction as in `idx_events_prose` (§ Prose search DDL): a malformed payload is NULL in the index's `WHERE`, never a failed `INSERT`. `TestHandoffCoverageMatchesThePayloadWalk` holds the answers equal to the earlier payload walk over randomised turns on both sides of every condition. A copy of the owner's database (2026-11-22): 48 MB read cold a call before, about 2.4 MB after, the same 8 repositories and the same oldest date.
+
 ### Touch attribution DDL (migration 0012)
 
 ```sql

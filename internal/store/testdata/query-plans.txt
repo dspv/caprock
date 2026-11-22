@@ -1225,7 +1225,7 @@ SELECT number, created_at, merged_at FROM github_prs WHERE repo = ? AND ((merged
     SEARCH github_prs USING PRIMARY KEY (repo=?)
 
 ## store.HandoffCoverage
-SELECT (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE project != '') p WHERE EXISTS ( SELECT 1 FROM sessions se CROSS JOIN events e INDEXED BY idx_events_attr_work ON e.sid = se.sid WHERE se.project = p.project AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != '' AND e.ts >= ?1 AND LENGTH(json_extract(e.payload, '$.text')) >= ?2)), COALESCE(( SELECT e.ts FROM events e JOIN sessions se ON se.sid = e.sid WHERE se.project != '' AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 AND COALESCE(json_extract(e.payload, '$.text'), '') != '' AND e.ts >= ?1 AND LENGTH(json_extract(e.payload, '$.text')) >= ?2 ORDER BY e.ts LIMIT 1), 0)
+SELECT (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE project != '') p WHERE EXISTS ( SELECT 1 FROM sessions se CROSS JOIN events e INDEXED BY idx_events_handoff ON e.sid = se.sid WHERE se.project = p.project AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND LENGTH((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)) >= 400 AND e.ts >= ?1 AND LENGTH((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)) >= ?2)), COALESCE(( SELECT MIN(e.ts) FROM sessions se CROSS JOIN events e INDEXED BY idx_events_handoff ON e.sid = se.sid WHERE se.project != '' AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND LENGTH((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)) >= 400 AND e.ts >= ?1 AND LENGTH((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)) >= ?2), 0)
     SCAN CONSTANT ROW
     SCALAR SUBQUERY 3
         CO-ROUTINE p
@@ -1234,10 +1234,25 @@ SELECT (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE projec
         SCAN p
         CORRELATED SCALAR SUBQUERY 2
             SCAN se USING COVERING INDEX idx_sessions_repo
-            SEARCH e USING INDEX idx_events_attr_work (sid=? AND ts>?)
+            SEARCH e USING INDEX idx_events_handoff (sid=? AND ts>?)
     SCALAR SUBQUERY 4
-        SEARCH e USING INDEX idx_events_kind_ts (kind=? AND ts>?)
-        SEARCH se USING INTEGER PRIMARY KEY (rowid=?)
+        SEARCH se USING COVERING INDEX idx_sessions_repo
+        SEARCH e USING INDEX idx_events_handoff (sid=? AND ts>?)
+
+## store.HandoffCoverage
+SELECT (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE project != '') p WHERE EXISTS ( SELECT 1 FROM sessions se CROSS JOIN events e INDEXED BY idx_events_handoff ON e.sid = se.sid WHERE se.project = p.project AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND LENGTH((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)) >= 400 AND e.ts >= ?1)), COALESCE(( SELECT MIN(e.ts) FROM sessions se CROSS JOIN events e INDEXED BY idx_events_handoff ON e.sid = se.sid WHERE se.project != '' AND e.kind = 'turn.assistant' AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND (CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.sidechain') END) IS NOT 1 AND LENGTH((CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.text') END)) >= 400 AND e.ts >= ?1), 0)
+    SCAN CONSTANT ROW
+    SCALAR SUBQUERY 3
+        CO-ROUTINE p
+            SCAN sessions USING COVERING INDEX idx_sessions_repo
+            USE TEMP B-TREE FOR DISTINCT
+        SCAN p
+        CORRELATED SCALAR SUBQUERY 2
+            SCAN se USING COVERING INDEX idx_sessions_repo
+            SEARCH e USING INDEX idx_events_handoff (sid=? AND ts>?)
+    SCALAR SUBQUERY 4
+        SEARCH se USING COVERING INDEX idx_sessions_repo
+        SEARCH e USING INDEX idx_events_handoff (sid=? AND ts>?)
 
 ## store.HandoffEffect
 SELECT COUNT(*) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'tool.pre' AND ts < ?

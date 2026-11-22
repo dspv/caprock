@@ -3226,6 +3226,22 @@ func ProseSince(ctx context.Context, q Querier) (int64, error) {
 	return ts, err
 }
 
+// HandoffMinRunes is the shortest passage a handoff will carry, and the floor
+// idx_events_handoff (migration 0090) is built at. The index's WHERE holds
+// the number as a literal, so it cannot follow a change here: a different
+// floor is a new migration.
+const HandoffMinRunes = 400
+
+// handoffWhere is a handoff passage in idx_events_handoff's terms: the partial
+// index's five conditions character for character, so SQLite takes them as
+// implied by the index and never opens the payload to test them.
+const handoffWhere = `
+	e.kind = 'turn.assistant'
+	AND e.internal = 0
+	AND COALESCE(e.agent_id, '') = ''
+	AND ` + proseSidechain + ` IS NOT 1
+	AND LENGTH(` + proseText + `) >= 400`
+
 // HandoffCoverage counts the repositories that hold a passage recent and long
 // enough to hand a new session, and dates the oldest of them.
 //
@@ -3233,33 +3249,52 @@ func ProseSince(ctx context.Context, q Querier) (int64, error) {
 // can see working — this is how a person checks that it can, without opening a
 // session to find out.
 //
-// Both figures stop at the first passage that answers them. Counted as one
-// COUNT(DISTINCT) over every passage of the fortnight, the statement parsed
-// the payload of every assistant turn in it — 16,187 page reads (66 MB) of
-// the owner's 1.85 GB database, once a minute while the dashboard polled
-// status, and past its 2 s budget on a swapping machine, which left the
-// figure empty (F17, docs/resource-usage-audit-2026-10-18.md). Now a project
-// counts once one of its sessions holds one passage long enough, found
-// session by session on idx_events_attr_work, and the oldest is the first such
-// passage in time order: 416 page reads, the same two numbers.
+// Counted as one COUNT(DISTINCT) over every passage of the fortnight, the
+// statement parsed the payload of every assistant turn in it — 16,187 page
+// reads (66 MB) of the owner's 1.85 GB database, once a minute while the
+// dashboard polled status (F17, docs/resource-usage-audit-2026-10-18.md).
+// Stopping at the first passage per project cut the walk but still opened
+// each assistant turn's payload it passed for its sidechain flag and length:
+// 48 MB a call cold. Both figures now read idx_events_handoff, which holds
+// only the passages that qualify, by session and time: a seek per session,
+// the table never touched, the same two numbers.
+//
+// minLen below HandoffMinRunes is refused: the index does not hold the
+// shorter passages, so the answer would be wrong rather than slow. Above it,
+// the extra length test reads only the payloads of passages already long
+// enough.
 func HandoffCoverage(ctx context.Context, q Querier, since int64, minLen int) (repos int, oldest int64, err error) {
-	const passage = assistantTextWhere + `
-		  AND e.ts >= ?1
-		  AND LENGTH(json_extract(e.payload, '$.text')) >= ?2`
-	row := q.QueryRowContext(ctx, `
+	if minLen < HandoffMinRunes {
+		return 0, 0, fmt.Errorf("handoff coverage: %d runes is below the index floor of %d", minLen, HandoffMinRunes)
+	}
+	args := []any{since}
+	if minLen > HandoffMinRunes {
+		args = append(args, minLen)
+	}
+	err = q.QueryRowContext(ctx, handoffCoverageSQL(minLen), args...).Scan(&repos, &oldest)
+	return repos, oldest, err
+}
+
+// handoffCoverageSQL is HandoffCoverage's statement for a floor of minLen
+// runes, since bound as ?1 and, above the index's floor, minLen as ?2.
+func handoffCoverageSQL(minLen int) string {
+	passage := handoffWhere + `
+		  AND e.ts >= ?1`
+	if minLen > HandoffMinRunes {
+		passage += `
+		  AND LENGTH(` + proseText + `) >= ?2`
+	}
+	return `
 		SELECT
 		  (SELECT COUNT(*) FROM (SELECT DISTINCT project FROM sessions WHERE project != '') p
 		    WHERE EXISTS (
-		      -- CROSS JOIN keeps the project's sessions outside: with sid
-		      -- their rowid, SQLite walked all of idx_events_attr_work instead.
-		      SELECT 1 FROM sessions se CROSS JOIN events e INDEXED BY idx_events_attr_work ON e.sid = se.sid
-		       WHERE se.project = p.project AND `+passage+`)),
+		      -- CROSS JOIN keeps the project's sessions outside, so each is
+		      -- one seek into the index on its sid.
+		      SELECT 1 FROM sessions se CROSS JOIN events e INDEXED BY idx_events_handoff ON e.sid = se.sid
+		       WHERE se.project = p.project AND ` + passage + `)),
 		  COALESCE((
-		    SELECT e.ts FROM events e JOIN sessions se ON se.sid = e.sid
-		     WHERE se.project != '' AND `+passage+`
-		     ORDER BY e.ts LIMIT 1), 0)`, since, minLen)
-	err = row.Scan(&repos, &oldest)
-	return repos, oldest, err
+		    SELECT MIN(e.ts) FROM sessions se CROSS JOIN events e INDEXED BY idx_events_handoff ON e.sid = se.sid
+		     WHERE se.project != '' AND ` + passage + `), 0)`
 }
 
 // RunningAt lists the sessions that look as if they were running at stoppedAt,
