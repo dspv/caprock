@@ -1218,6 +1218,7 @@ mod tests {
     }
 
     /// A helper bundle laid out as the app ships it, its executable saying `v`.
+    #[cfg(target_os = "macos")]
     fn helper_bundle(at: &Path, v: &[u8]) {
         let macos = at.join("Contents/MacOS");
         std::fs::create_dir_all(&macos).unwrap();
