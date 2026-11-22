@@ -67,7 +67,7 @@ export function TodayLine({ today, loaded, now, onSpend, onWindows, onRunning, o
   const tone = (t: TodayWindow) => (t.tone === 'danger' ? 'text-danger' : t.tone === 'warn' ? 'text-warn' : 'text-fg-muted')
   const seg = 'shrink-0 rounded-[5px] px-1 hover:bg-[var(--app-row-hover)] hover:text-fg'
   const spendTitle = plan?.plan_kind === 'flat'
-    ? spend === undefined ? 'Work at API prices today, every agent — not known yet' : `Work at API prices today, every agent: ${fmtUSD(spend)}. Covered by your ${plan.plan_label || 'flat'} plan. Opens Cost.`
+    ? spend === undefined ? 'Work at API prices today, every agent — not known yet' : `Work at API prices today, every agent: ${fmtUSD(spend)}. Claude Code work is covered by your ${plan.plan_label || 'flat'} plan. Opens Cost.`
     : spend === undefined ? 'Spent today, every agent — not known yet' : `Spent today, every agent: ${fmtUSD(spend)}. Opens Cost.`
   const runningTitle = loaded ? `${agents} ${agents === 1 ? 'agent' : 'agents'} running${working > 0 ? `, ${working} working` : ''}. Opens Home.` : 'Running: not known yet'
   const waitingTitle = `${waiting} waiting on you. Opens the one that has waited longest.`

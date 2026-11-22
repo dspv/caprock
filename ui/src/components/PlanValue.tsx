@@ -12,22 +12,35 @@
  *  - on metered billing (API key, Bedrock, Vertex, Enterprise at API rates)
  *    that figure is approximately the actual bill, so no multiple is shown and
  *    the total is labelled as spend;
- *  - with no plan stated, nothing is claimed at all.
+ *  - with no plan stated, nothing is claimed at all — and while the hero cost
+ *    asks for the plan (components/PlanAsk), this panel does not ask too.
+ *
+ * On a flat plan the panel is the one place Cost compares spend with the
+ * plan (owner, 2026-11-22): this calendar month's Claude Code work at API
+ * prices beside the monthly fee, a bar, and "About K times what you pay."
+ * (components/PlanMonth). It replaced three range-scaled tiles (you pay · Nd,
+ * same usage at API list, which is N×) — a second multiple over another window
+ * beside the month's would have read as two answers to one question. The
+ * range's own figure is the Totals hero below.
  */
 import type { Settings, Summary } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
-import { Panel, Stat } from '@/components/ui'
+import { Panel } from '@/components/ui'
 import { ShareWith } from '@/components/PanelShare'
-import { mdTable } from '@/lib/panelShare'
+import { usePlanAskShowing } from '@/components/PlanAsk'
+import { MonthCompare, monthText, useMonthSpend } from '@/components/PlanMonth'
 
 const dayWord = (n: number) => (n === 1 ? 'day' : 'days')
 
-export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: Settings; days: number }) {
+export function PlanValue({ summary, plan, days, machines }: { summary?: Summary; plan?: Settings; days: number; machines?: 'all' }) {
+  const [asked] = usePlanAskShowing(plan)
   if (!summary) return null
   const usage = summary.cost_usd
 
-  // Nothing stated: invite the user to say, and claim nothing.
+  // Nothing stated: invite the user to say, and claim nothing — unless the
+  // hero figure is already asking.
   if (!plan?.plan_kind) {
+    if (asked) return null
     return (
       <Panel fold="cost.plan-value" title="Plan value">
         <div className="px-3 py-3 text-[12px] text-fg-muted">
@@ -57,52 +70,21 @@ export function PlanValue({ summary, plan, days }: { summary?: Summary; plan?: S
     )
   }
 
-  // Flat plan: compare against what the seat costs for the same window.
-  const fee = (plan.plan_usd_per_month * days) / 30
-  const multiple = fee > 0 ? usage / fee : 0
+  return <FlatPlanValue plan={plan} machines={machines} />
+}
+
+/** A flat plan: the month against the fee, then the caveat. */
+function FlatPlanValue({ plan, machines }: { plan: Settings; machines?: 'all' }) {
+  const spend = useMonthSpend(machines)
   return (
     <Panel
       title="Plan value"
       share="Plan value"
       right={<span className="num text-[12px] text-fg-muted">{plan.plan_label} · {fmtUSD(plan.plan_usd_per_month)}/mo</span>}
     >
-      {/* The same row of tiles every other panel on this screen uses.
-        *
-        * It was a two-column grid whose right column held one 46-character
-        * sentence, so on a full-width panel two thirds of the row was empty —
-        * and the multiple, the figure the whole panel exists to deliver, was
-        * set as a word inside that sentence. Three equal tiles fix both: the
-        * comparison reads left to right as a sentence of its own — you pay
-        * this, the same work costs that, which is this many times over — and
-        * the width is spent on the numbers rather than on air. */}
-      <ShareWith toText={() => `${mdTable(['Figure', 'Value'], [
-        [`You pay · ${days}d (${plan.plan_label})`, fmtUSD(fee)], [`Same usage at API list prices ${summary.pricing_version}`, fmtUSD(usage)],
-        ['Which is', multiple > 0 ? `${multiple.toFixed(1)}×` : '—'],
-      ])}\n\nNot a discount you received, and not money back — without the plan you would not have run this much.`} />
-      <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
-        <Stat
-          label={`you pay · ${days}d`}
-          value={fmtUSD(fee)}
-          sub={plan.plan_label}
-        />
-        <Stat
-          label="same usage at API list"
-          value={fmtUSD(usage)}
-          sub={`at list prices ${summary.pricing_version}`}
-          tone="ok"
-        />
-        {/* Hero, and last: it is what the two figures beside it add up to, and
-          * the reason anyone reads the panel. */}
-        <Stat
-          label="which is"
-          value={multiple > 0 ? `${multiple.toFixed(1)}×` : '—'}
-          sub={multiple > 0 ? `what ${days} ${dayWord(days)} would cost through the API` : 'not enough measured usage yet'}
-          tone={multiple > 0 ? 'ok' : undefined}
-          size="hero"
-        />
-      </div>
-      {/* Its own rule: the caveat qualifies all three tiles, and sitting flush
-        * under the first one it read as that tile's footnote. */}
+      <ShareWith toText={() => `${monthText(spend, plan)}\n\nNot a discount you received, and not money back — without the plan you would not have run this much.`} />
+      <MonthCompare plan={plan} spend={spend} />
+      {/* Its own rule: the caveat qualifies the whole comparison. */}
       <p className="border-t border-border px-3 py-2 text-[11px] text-fg-faint leading-relaxed">
         Not a discount you received, and not money back — without the plan you
         would not have run this much.

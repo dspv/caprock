@@ -110,7 +110,7 @@ describe('the plan question', () => {
 describe('the hero line once the plan is stated', () => {
   it('says a flat plan covered the work, with the extra-usage caveat', () => {
     sub(plan({ plan_kind: 'flat', plan_label: 'Pro', plan_usd_per_month: 20 }))
-    expect(screen.getByText('Covered by your Pro plan.')).toHaveClass('text-ok')
+    expect(screen.getByText('Claude Code work is covered by your Pro plan.')).toHaveClass('text-ok')
     expect(screen.getByText('Nothing extra was charged unless you turned on extra usage.')).toBeInTheDocument()
     expect(screen.queryByText('How do you pay for Claude?')).toBeNull()
   })
@@ -118,13 +118,13 @@ describe('the hero line once the plan is stated', () => {
   it('keeps the basis for a metered plan, and asks nothing', () => {
     sub(plan({ plan_kind: 'metered', plan_label: 'API / Bedrock' }))
     expect(screen.getByText('at API list price')).toBeInTheDocument()
-    expect(screen.queryByText(/Covered by/)).toBeNull()
+    expect(screen.queryByText(/covered by/)).toBeNull()
     expect(screen.queryByText('How do you pay for Claude?')).toBeNull()
   })
 
   it('says nothing is measured rather than "covered" when nothing is', () => {
     sub(plan({ plan_kind: 'flat', plan_label: 'Pro', plan_usd_per_month: 20 }), vi.fn(), undefined, false)
-    expect(screen.queryByText(/Covered by/)).toBeNull()
+    expect(screen.queryByText(/covered by/)).toBeNull()
   })
 })
 
@@ -151,7 +151,7 @@ describe('the sidebar Today line', () => {
 
   it('names a flat plan’s spend as covered work, not money spent', () => {
     line(plan({ plan_kind: 'flat', plan_label: 'Pro', plan_usd_per_month: 20 }))
-    expect(screen.getByRole('button', { name: /^Work at API prices today, every agent: \$29\.14\. Covered by your Pro plan\./ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Work at API prices today, every agent: \$29\.14\. Claude Code work is covered by your Pro plan\./ })).toBeInTheDocument()
   })
 
   it('keeps "Spent today" for a metered or unstated plan', () => {

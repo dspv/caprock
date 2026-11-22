@@ -21,7 +21,7 @@
  *    Claude Code reports plan windows, "Not now" kept per browser).
  *
  * The hero label follows the same split: "Work at API prices" on a flat plan,
- * with "Covered by your <plan> plan." under it instead of the basis line, and
+ * with "Claude Code work is covered by your <plan> plan." under it instead of the basis line, and
  * "Cost" otherwise — metered users are billed per token, and an unstated plan
  * is asked rather than assumed either way.
  *

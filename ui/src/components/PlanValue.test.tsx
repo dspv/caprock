@@ -2,59 +2,82 @@
  * The plan-value panel makes a claim about money, so its honesty rules are
  * pinned here: no claim without a stated plan, no "saving" language ever, and
  * no multiple at all on metered billing — where the API-list figure is roughly
- * the real bill rather than an equivalent.
+ * the real bill rather than an equivalent. On a flat plan it compares this
+ * month's Claude Code work with the monthly fee (owner, 2026-11-22).
  */
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PlanValue } from './PlanValue'
+import { PLAN_ASK_KEY } from './PlanAsk'
 import type { Settings, Summary } from '@/lib/api'
+
+const month = vi.hoisted(() => ({ cost: 87.4, asked: [] as unknown[][] }))
+vi.mock('@/lib/api', async (orig) => {
+  const actual = await orig<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      summary: async (...args: unknown[]) => { month.asked.push(args); return { cost_usd: month.cost } as Summary },
+    },
+  }
+})
 
 const summary = { cost_usd: 7119, pricing_version: '2026-08-18.1' } as Summary
 
-function plan(kind: Settings['plan_kind'], usd = 0, label = 'Max 20×'): Settings {
+function plan(kind: Settings['plan_kind'], usd = 0, label = 'Ultra'): Settings {
   return { update_checks: false, plan_kind: kind, plan_label: label, plan_usd_per_month: usd }
 }
 
+afterEach(() => { localStorage.clear(); month.cost = 87.4; month.asked = [] })
+
 describe('PlanValue', () => {
-  it('claims nothing until the user states a plan', () => {
+  it('stays out of the way while the hero cost asks for the plan', () => {
+    const { container } = render(<PlanValue summary={summary} plan={plan('')} days={30} />)
+    expect(container.textContent).toBe('')
+  })
+
+  it('claims nothing until the user states a plan, and invites once the hero question is dismissed', () => {
+    localStorage.setItem(PLAN_ASK_KEY, 'off')
     render(<PlanValue summary={summary} plan={plan('')} days={30} />)
     expect(screen.getByText(/won't guess|won’t guess/)).toBeTruthy()
-    expect(screen.queryByText(/×/)).toBeNull()
+    expect(screen.queryByText(/times what you pay/)).toBeNull()
   })
 
-  it('shows the multiple against a flat plan for the same window', () => {
+  it('compares this month of Claude Code with the monthly fee on a flat plan', async () => {
+    render(<PlanValue summary={summary} plan={plan('flat', 20, 'Pro')} days={30} />)
+    await waitFor(() => expect(screen.getByText('$87.40')).toBeTruthy())
+    expect(screen.getByText('$20.00 / month')).toBeTruthy()
+    expect(screen.getByText('About 4.4 times what you pay.')).toBeTruthy()
+    // From the 1st, Claude Code only: the plan stated is the Claude plan.
+    expect(month.asked[0]).toEqual([`${new Date().getDate()}d`, 'claude', undefined])
+  })
+
+  it('shows one comparison, not a second multiple over the range beside it', async () => {
     render(<PlanValue summary={summary} plan={plan('flat', 200)} days={30} />)
-    // 7119 / 200 = 35.6
-    expect(screen.getByText('35.6×')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('$87.40')).toBeTruthy())
+    // 7119 / 200 over the range was 35.6× — the month's figure replaces it.
+    expect(screen.queryByText(/×$/)).toBeNull()
+    expect(screen.queryByText('which is')).toBeNull()
   })
 
-  it('scales the fee to a shorter window rather than comparing to a full month', () => {
-    render(<PlanValue summary={{ ...summary, cost_usd: 100 } as Summary} plan={plan('flat', 300)} days={7} />)
-    // fee for 7 days = 300 * 7/30 = 70; 100/70 = 1.4
-    expect(screen.getByText('1.4×')).toBeTruthy()
+  it('says no multiple until the month has spend', async () => {
+    month.cost = 0
+    render(<PlanValue summary={summary} plan={plan('flat', 20, 'Pro')} days={30} />)
+    await waitFor(() => expect(screen.getByText('$0.00')).toBeTruthy())
+    expect(screen.queryByText(/what you pay\./)).toBeNull()
   })
 
-  it('gives the multiple the weight of a figure, not a word in a sentence', () => {
-    render(<PlanValue summary={summary} plan={plan('flat', 200)} days={30} />)
-    // The panel exists to deliver this number. Set inside a paragraph it was
-    // the same size as the prose around it, on a row two thirds of which was
-    // empty — so it is pinned as its own tile, sized like the screen's other
-    // headline figures rather than like body text.
-    const el = screen.getByText('35.6×')
-    expect(el.className).toMatch(/text-\[34px\]/)
-    expect(el.className).toMatch(/font-semibold/)
-    // And it is labelled, so the figure is not left to explain itself.
-    expect(screen.getByText('which is')).toBeTruthy()
-  })
-
-  it('never describes the figure as money saved', () => {
+  it('never describes the figure as money saved', async () => {
     const { container } = render(<PlanValue summary={summary} plan={plan('flat', 200)} days={30} />)
+    await waitFor(() => expect(screen.getByText('$87.40')).toBeTruthy())
     expect(container.textContent).not.toMatch(/\bsaved\b|\bsavings\b/i)
   })
 
   it('shows no multiple on metered billing, where the figure is the bill', () => {
     render(<PlanValue summary={summary} plan={plan('metered', 0, 'API / Bedrock')} days={30} />)
     expect(screen.queryByText(/\d×/)).toBeNull()
+    expect(screen.queryByText(/times what you pay/)).toBeNull()
     expect(screen.getByText(/approximately your actual cost/)).toBeTruthy()
   })
 

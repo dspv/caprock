@@ -14,7 +14,6 @@ import { PlanValue } from '@/components/PlanValue'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
 import { CostHeroSub } from '@/components/PlanAsk'
-import { PlanMonth } from '@/components/PlanMonth'
 import { PlanShare } from '@/components/PlanShare'
 import { asSpendParts } from '@/lib/planShare'
 import { PlanLimitsPanel } from '@/components/PlanLimits'
@@ -150,8 +149,7 @@ export function CostScreen({ section }: { section?: string } = {}) {
         </div>
       )}
 
-      <PlanMonth plan={plan} machines={across ? 'all' : undefined} />
-      <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} />
+      <PlanValue summary={s} plan={plan} days={rangeDays(range, s?.from_ms)} machines={across ? 'all' : undefined} />
       <Panel fold="cost.totals" title={`Totals · ${range}${across ? ` · ${thisComputer()}` : ''}`} share={`Totals · ${range}`}>
         {measured && <ShareWith toText={() => `${costBasis(plan)}.\n\n${mdTable(['Figure', 'Value'], [
           [costLabel(plan), fmtUSD(s!.cost_usd)], ['Burn now', `${fmtUSD(s!.burn.usd_per_hour)}/h`], ['Sessions', s!.sessions], ['Turns', s!.turns],

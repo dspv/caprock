@@ -49,6 +49,10 @@ test.describe('the plan question on Cost', () => {
     await expect(ask).toContainText('How do you pay for Claude?')
     await expect(ask.getByRole('button')).toHaveText(['Pro $20', 'Max $100', 'Ultra $200', 'API key', 'Not now'])
     await expect(ask.locator('[data-plan-ask-hint]')).toHaveText('Claude shows you plan limits, so it looks like a subscription.')
+    // One prompt only: the Plan limits card and Plan value do not ask too.
+    await expect(page.getByText('5 hours', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Which plan are you on?')).toHaveCount(0)
+    await expect(page.getByText('Plan value', { exact: true })).toHaveCount(0)
     const totals = ask.locator('xpath=ancestor::section[1]')
     await totals.screenshot({ path: test.info().outputPath('plan-ask-unstated.png') })
 
@@ -56,14 +60,18 @@ test.describe('the plan question on Cost', () => {
     await expect.poll(() => puts).toEqual([{ plan_kind: 'flat', plan_label: 'Pro', plan_usd_per_month: 20 }])
     await expect(page.locator('[data-plan-ask]')).toHaveCount(0)
     await expect(page.getByText('Work at API prices', { exact: true })).toBeVisible()
-    await expect(page.getByText('Covered by your Pro plan.')).toBeVisible()
+    await expect(page.getByText('Claude Code work is covered by your Pro plan.')).toBeVisible()
     await expect(page.getByText('Nothing extra was charged unless you turned on extra usage.')).toBeVisible()
     const month = page.locator('[data-plan-month]')
     await expect(month).toContainText('This month, at API prices')
     await expect(month.locator('[data-plan-month-spend]')).toHaveText('$87.40')
     await expect(month.locator('[data-plan-month-fee]')).toHaveText('$20.00 / month')
     await expect(month.locator('[data-plan-month-times]')).toHaveText('About 4.4 times what you pay.')
+    // One comparison with the plan: the month sits in Plan value, no second panel.
+    await expect(page.getByText('This month', { exact: true })).toHaveCount(0)
+    await expect(month.locator('xpath=ancestor::section[1]')).toContainText('Plan value')
     await month.locator('xpath=ancestor::section[1]').screenshot({ path: test.info().outputPath('plan-ask-month.png') })
+    await page.screenshot({ path: test.info().outputPath('plan-ask-cost-flat-page.png'), fullPage: true })
     await page.locator('[data-cost-covered]').locator('xpath=ancestor::section[1]').screenshot({ path: test.info().outputPath('plan-ask-flat.png') })
   })
 
@@ -83,6 +91,8 @@ test.describe('the plan question on Cost', () => {
     await page.evaluate(() => { location.hash = '#/cost' })
     await page.locator('[data-plan-ask]').getByRole('button', { name: 'Not now' }).click()
     await expect(page.locator('[data-plan-ask]')).toHaveCount(0)
+    // Dismissed, the older asks come back: the plan stays one click away.
+    await expect(page.locator('#plan-limits').getByText('Which plan are you on?')).toBeVisible()
     await page.reload()
     await page.evaluate(() => { location.hash = '#/cost' })
     await expect(page.getByText('Totals · 30d')).toBeVisible()

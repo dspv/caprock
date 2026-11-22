@@ -50,6 +50,18 @@ export function usePlanAskDismissed(): [boolean, () => void] {
   return [off, dismiss]
 }
 
+/**
+ * Whether the hero cost figures are asking right now: the plan has loaded and
+ * is unstated, "Not now" was not pressed, and this is not a paired device.
+ * While they ask, the other plan prompts on Home and Cost (Plan limits'
+ * "Which plan are you on?" card, Plan value's invitation) stay out of sight,
+ * so a new user is asked once (owner, 2026-11-22).
+ */
+export function usePlanAskShowing(plan?: Settings): [boolean, () => void] {
+  const [dismissed, dismiss] = usePlanAskDismissed()
+  return [!!plan && !plan.plan_kind && !dismissed && !isPairedDevice(), dismiss]
+}
+
 export interface PlanAskChoice {
   chip: string
   patch: Pick<Settings, 'plan_kind' | 'plan_label' | 'plan_usd_per_month'>
@@ -111,11 +123,11 @@ export function PlanAsk({ onSave, limits, onDismiss }: {
   )
 }
 
-/** "Covered by your Pro plan." and its caveat, for a flat plan's hero. */
+/** "Claude Code work is covered by your Pro plan." and its caveat, for a flat plan's hero. */
 export function CostCovered({ plan }: { plan: Settings }) {
   return (
     <span data-cost-covered className="block whitespace-normal">
-      <span className="block text-ok">Covered by your {plan.plan_label || 'flat'} plan.</span>
+      <span className="block text-ok">Claude Code work is covered by your {plan.plan_label || 'flat'} plan.</span>
       <span className="block text-[10.5px] text-fg-faint">Nothing extra was charged unless you turned on extra usage.</span>
     </span>
   )
@@ -136,9 +148,8 @@ export function CostHeroSub({ plan, onSave, limits, basis, measured }: {
   basis: ReactNode
   measured: boolean
 }) {
-  const [dismissed, dismiss] = usePlanAskDismissed()
+  const [ask, dismiss] = usePlanAskShowing(plan)
   if (plan?.plan_kind === 'flat' && measured) return <CostCovered plan={plan} />
-  const ask = !!plan && !plan.plan_kind && !dismissed && !isPairedDevice()
   return (
     <>
       {basis}
