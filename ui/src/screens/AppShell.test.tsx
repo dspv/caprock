@@ -4,7 +4,7 @@
  * list, a session opens as a tab, the keyboard map acts, and tabs come back
  * after a reload.
  */
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionSummary } from '@/lib/api'
 import { WORKSPACE_KEY } from '@/lib/tabs'
@@ -1177,6 +1177,116 @@ describe('the app workspace', () => {
     const sheet = await screen.findByRole('dialog', { name: 'New agent' })
     expect(await within(sheet).findByDisplayValue('add-dark-mode-toggle')).toBeInTheDocument()
     expect(within(sheet).getByDisplayValue('Add dark mode toggle')).toBeInTheDocument()
+  })
+
+  // Owner, 2026-11-22 (translated): "closing tabs with ⌘W gives no question,
+  // unlike closing with the ×… there must be one single way of ending." Every
+  // way to close an agent's tab — its ×, ⌘W, Ctrl+Shift+W as Windows and
+  // Linux spell it, and the desktop app's Close Tab (CLOSE_TAB_EVENT) — goes
+  // through requestClose and must take one decision: the same question, the
+  // same toast, the same Setting.
+  describe('⌘W and the tab’s × close an agent’s tab alike', () => {
+    type Way = 'x' | 'mac-key' | 'off-mac-key' | 'menu'
+    const WAYS: Way[] = ['x', 'mac-key', 'off-mac-key', 'menu']
+    const offMacW = () => act(() => { fireEvent.keyDown(window, { key: 'W', code: 'KeyW', ctrlKey: true, shiftKey: true }) })
+
+    /** A fresh app on `platform`, as a viewer with `setting` under Settings → Closing a tab has it. */
+    async function fresh(platform: string, setting: 'ask' | 'keep' | 'end') {
+      cleanup()
+      spawned.signals = []
+      localStorage.clear()
+      sessionStorage.clear()
+      // As beforeEach leaves them: the Tree sidebar, its projects unfolded, the workspace in front.
+      localStorage.setItem('caprock.app.sidebar-grouped', 'on')
+      localStorage.setItem('caprock.app.project-open', JSON.stringify(['dir:/w/app', 'dir:/w/other', '1', 'other-folders']))
+      location.hash = '#/app'
+      if (setting !== 'ask') localStorage.setItem('caprock.app.agent-close', setting)
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
+      await renderApp()
+    }
+
+    /** ⌘K, or Ctrl+Shift+K off macOS, then the session's name and Enter. */
+    async function open(text: string, offMac: boolean) {
+      if (offMac) await act(() => { fireEvent.keyDown(window, { key: 'K', code: 'KeyK', ctrlKey: true, shiftKey: true }) })
+      else await cmd('k')
+      const input = screen.getByRole('combobox', { name: 'Search' })
+      fireEvent.change(input, { target: { value: text } })
+      return input
+    }
+
+    async function closeBy(way: Way) {
+      const input = await open('Fix the login bug', way === 'off-mac-key')
+      fireEvent.keyDown(input, { key: 'Enter' })
+      const tab = await screen.findByRole('tab', { name: /Fix the login bug/ })
+      if (way === 'x') fireEvent.click(within(tab).getByRole('button', { name: /^Close/ }))
+      if (way === 'mac-key') await cmd('w')
+      if (way === 'off-mac-key') await offMacW()
+      if (way === 'menu') act(() => { window.dispatchEvent(new Event(CLOSE_TAB_EVENT)) })
+      await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
+      const sheet = screen.queryByRole('dialog')
+      return {
+        question: sheet ? `${sheet.getAttribute('aria-label') ?? ''}: ${sheet.textContent}` : null,
+        tabs: screen.queryAllByRole('tab').length,
+        signals: JSON.stringify(spawned.signals),
+        toast: !!screen.queryByText('Closed. The conversation is saved — reopen it from History or the sidebar.'),
+      }
+    }
+
+    const cases: { name: string; health: 'working' | 'waiting-on-you' | 'done' | 'idle'; setting: 'ask' | 'keep' | 'end'; asks: boolean }[] = [
+      { name: 'answering, Settings Ask', health: 'working', setting: 'ask', asks: true },
+      { name: 'waiting on you, Settings Ask', health: 'waiting-on-you', setting: 'ask', asks: true },
+      { name: 'done, Settings Ask', health: 'done', setting: 'ask', asks: true },
+      { name: 'idle, Settings Ask', health: 'idle', setting: 'ask', asks: false },
+      { name: 'answering, Settings Keep', health: 'working', setting: 'keep', asks: false },
+      { name: 'answering, Settings End', health: 'working', setting: 'end', asks: true },
+      { name: 'idle, Settings End', health: 'idle', setting: 'end', asks: false },
+    ]
+    for (const c of cases) {
+      it(`${c.name}: the same question, toast and outcome every way`, async () => {
+        const was = sessions[0]!
+        const results: Record<Way, Awaited<ReturnType<typeof closeBy>>> = {} as never
+        try {
+          sessions[0] = { ...was, activity: { phrase: '', at: '', health: c.health } }
+          for (const way of WAYS) {
+            await fresh(way === 'off-mac-key' ? 'Linux x86_64' : 'MacIntel', c.setting)
+            results[way] = await closeBy(way)
+          }
+        } finally {
+          sessions[0] = was
+        }
+        expect(results.x.question !== null, 'the × asks').toBe(c.asks)
+        // The × is the reference: every other way says and does what it does.
+        for (const way of WAYS) expect(results[way], way).toEqual(results.x)
+        // Four apps rendered one after another: room for a loaded machine.
+      }, 30_000)
+    }
+
+    it('in a split, ⌘W on the focused agent pane asks as that pane’s × does', async () => {
+      const outcome = async (way: 'pane-x' | 'mac-key' | 'off-mac-key') => {
+        await fresh(way === 'off-mac-key' ? 'Linux x86_64' : 'MacIntel', 'ask')
+        fireEvent.keyDown(await open('Fix the login bug', way === 'off-mac-key'), { key: 'Enter' })
+        await screen.findByRole('tab')
+        const input = await open('waiting one', way === 'off-mac-key')
+        fireEvent.keyDown(input, { key: 'ArrowDown' })
+        fireEvent.keyDown(input, { key: 'Enter', shiftKey: true })
+        await waitFor(() => expect(screen.getByTestId('pane-agent-2')).toBeInTheDocument())
+        if (way === 'pane-x') fireEvent.click(screen.getByRole('button', { name: /^Close pane Waiting one/ }))
+        if (way === 'mac-key') await cmd('w')
+        if (way === 'off-mac-key') await offMacW()
+        const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
+        const text = sheet.textContent
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Keep it running' }))
+        // Only that pane goes; the agent beside it and the tab stay.
+        await waitFor(() => expect(screen.queryByTestId('pane-agent-2')).not.toBeInTheDocument())
+        expect(screen.getByTestId('pane-agent-1')).toBeInTheDocument()
+        expect(screen.getAllByRole('tab')).toHaveLength(1)
+        return text
+      }
+      const x = await outcome('pane-x')
+      expect(await outcome('mac-key')).toBe(x)
+      expect(await outcome('off-mac-key')).toBe(x)
+      expect(spawned.signals).toEqual([])
+    }, 30_000)
   })
 })
 
