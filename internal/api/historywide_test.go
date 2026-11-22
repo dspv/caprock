@@ -25,6 +25,9 @@ func TestWideHistoryIsKeptForAMinuteWhileTodayMoves(t *testing.T) {
 	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
 	advance := func(d time.Duration) { mu.Lock(); clock = clock.Add(d); mu.Unlock() }
 	e.api.hist.now, e.api.histWide.now = now, now
+	// The answer caches are what this is about; the kept parts' own window
+	// is TestTodayCatchesUpPastThePartsWindow.
+	e.api.parts.SetThrottle(0)
 
 	turns := func(rng string) int {
 		t.Helper()

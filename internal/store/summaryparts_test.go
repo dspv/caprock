@@ -291,6 +291,8 @@ func TestPartsCacheReadsOnlyWhatMoved(t *testing.T) {
 	ctx := context.Background()
 	db := f.s.DB()
 	cache := NewPartsCache()
+	// Every move read on the next ask; TestPartsCacheThrottle is the window.
+	cache.SetThrottle(0)
 	day := int64(24 * time.Hour / time.Millisecond)
 	week := time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC).UnixMilli()
 	spark := SparkSpec{Buckets: 7, WidthMs: day, FromMs: week}

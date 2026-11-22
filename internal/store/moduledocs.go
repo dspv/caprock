@@ -2,9 +2,13 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"strconv"
+	"sync"
 )
 
 // ModuleDoc is one document a private module keeps (migration 0061, ADR-076).
@@ -18,6 +22,59 @@ type ModuleDoc struct {
 
 // ErrModuleDocNotFound is returned for a document no row holds.
 var ErrModuleDocNotFound = errors.New("no such document")
+
+// moduleGens is a generation per (module, collection), moved by every write
+// this process makes to it (SetModuleDoc, UpdateModuleDoc through it,
+// DeleteModuleDoc, and TouchModuleDocs once a transaction commits). A list
+// read at one generation is the same list while the generation holds, so the
+// list endpoint answers a client that already has it with a 304 and no read
+// (§ Private modules in 03-contracts.md). The Ops module pages through its
+// collections every few seconds, and one collection was ~18 MB read again
+// each time (2026-11-22).
+//
+// Only this process writes module_docs, so a counter in memory sees every
+// write. boot is drawn at random when the process starts: a counter that
+// starts again at zero after a restart is never mistaken for one an older
+// process handed out.
+var moduleGens = struct {
+	sync.Mutex
+	boot uint64
+	m    map[[2]string]uint64
+}{boot: randomBoot(), m: map[[2]string]uint64{}}
+
+func randomBoot() uint64 {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return binary.LittleEndian.Uint64(b[:])
+}
+
+// reseedModuleGens is a restart, for tests: a new boot value and every
+// generation back at zero.
+func reseedModuleGens() {
+	moduleGens.Lock()
+	moduleGens.boot, moduleGens.m = randomBoot(), map[[2]string]uint64{}
+	moduleGens.Unlock()
+}
+
+// TouchModuleDocs moves a collection's generation. The writes here do it
+// themselves; a caller that writes inside a transaction calls it again once
+// the transaction commits, so a list read between the write and the commit
+// (the old rows, at the new generation) is not taken for the current one.
+func TouchModuleDocs(module, collection string) {
+	moduleGens.Lock()
+	moduleGens.m[[2]string{module, collection}]++
+	moduleGens.Unlock()
+}
+
+// ModuleDocsVersion names a collection's contents as this process last
+// wrote them: an equal version, an equal collection. Read it before reading
+// the collection, so a write landing during the read moves it past what was
+// read rather than under it.
+func ModuleDocsVersion(module, collection string) string {
+	moduleGens.Lock()
+	defer moduleGens.Unlock()
+	return strconv.FormatUint(moduleGens.boot, 36) + "." + strconv.FormatUint(moduleGens.m[[2]string{module, collection}], 36)
+}
 
 func scanModuleDoc(sc interface{ Scan(...any) error }) (ModuleDoc, error) {
 	var d ModuleDoc
@@ -65,6 +122,7 @@ func SetModuleDoc(ctx context.Context, q Querier, module, collection, id string,
 		module, collection, id, string(data), now, now); err != nil {
 		return ModuleDoc{}, err
 	}
+	TouchModuleDocs(module, collection)
 	return GetModuleDoc(ctx, q, module, collection, id)
 }
 
@@ -100,6 +158,7 @@ func DeleteModuleDoc(ctx context.Context, q Querier, module, collection, id stri
 	if err != nil {
 		return false, err
 	}
+	TouchModuleDocs(module, collection)
 	n, err := res.RowsAffected()
 	return n > 0, err
 }

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dspv/caprock/internal/event"
@@ -1089,6 +1090,11 @@ type PartsCache struct {
 	ranges map[int64]*keptParts
 	// now is time.Now, swapped in tests.
 	now func() time.Time
+	// throttle is partsThrottle, 0 in tests that want every move at once.
+	throttle time.Duration
+	// hurry counts Hurry calls; a range that has not seen the newest reads
+	// what moved on its next ask whatever the throttle says. Guarded by mu.
+	hurry uint64
 }
 
 // partsMaxChanged is how many moved sessions are read one by one before a
@@ -1105,6 +1111,32 @@ const partsIdle = 15 * time.Minute
 // by then.
 const partsRebuild = 6 * time.Hour
 
+// partsThrottle is how soon after a range's events were read they are read
+// again for what moved: within it, an ask is answered from the parts as they
+// are and every move in the window is read together on the first ask past
+// it (the moved sessions since the kept mark, so nothing is skipped). With
+// agents working every commit moves a session, and today's summary and
+// history, asked every two or three seconds by the Now screen, read each
+// moved session's whole range again on every ask, once per kept range: 966
+// reads an hour on a stand with two writing sessions, 288 with the window
+// (2026-11-22, § Pricing table's cache notes in 03-contracts.md). The cost is that a figure built from the parts — today's
+// cost and tokens included — may be up to this far behind; an answer built
+// on parts that are behind says so (NoteLag), so the answer caches above do
+// not keep it as current.
+const partsThrottle = 15 * time.Second
+
+// partsLagKey carries the flag NoteLag hands out.
+type partsLagKey struct{}
+
+// NoteLag returns ctx carrying a flag that a PartsCache read through it sets
+// when the parts it answered from are behind the events: something moved and
+// the throttle held the read back. A caller that keeps the answer keyed by
+// the data's version must not record that version for it.
+func NoteLag(ctx context.Context) (context.Context, *atomic.Bool) {
+	f := &atomic.Bool{}
+	return context.WithValue(ctx, partsLagKey{}, f), f
+}
+
 // keptParts is one range's parts and the state of the events they were read
 // at.
 type keptParts struct {
@@ -1114,13 +1146,45 @@ type keptParts struct {
 	mark  EventsMark
 	built time.Time
 	used  time.Time
+	// read is when events were last read for these parts (whole or what
+	// moved), which the throttle counts from; hurry is the cache's Hurry
+	// count they were read at.
+	read  time.Time
+	hurry uint64
 	// reads counts the reads made (for tests): full scans and partial ones.
 	full, partial int
 }
 
 // NewPartsCache returns an empty cache.
 func NewPartsCache() *PartsCache {
-	return &PartsCache{ranges: map[int64]*keptParts{}, now: time.Now}
+	return &PartsCache{ranges: map[int64]*keptParts{}, now: time.Now, throttle: partsThrottle}
+}
+
+// Hurry makes every kept range read what moved on its next ask, throttle or
+// not: a removal the owner just made shows at once.
+func (c *PartsCache) Hurry() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.hurry++
+	c.mu.Unlock()
+}
+
+// SetThrottle replaces partsThrottle; 0 reads every move on the next ask.
+// For tests.
+func (c *PartsCache) SetThrottle(d time.Duration) {
+	c.mu.Lock()
+	c.throttle = d
+	c.mu.Unlock()
+}
+
+// SetClock replaces time.Now, for tests that move the clock the answer
+// caches read.
+func (c *PartsCache) SetClock(now func() time.Time) {
+	c.mu.Lock()
+	c.now = now
+	c.mu.Unlock()
 }
 
 // Summary is SummarizeSparkFor and SpendPartsBetween(from, 0, agent) for one
@@ -1162,8 +1226,8 @@ func (c *PartsCache) Tools(ctx context.Context, q Querier, from int64, limit int
 // with brings the range's parts up to date and hands them to fn while they
 // are held.
 func (c *PartsCache) with(ctx context.Context, q Querier, from int64, fn func(rangeParts) error) error {
-	now := c.now()
 	c.mu.Lock()
+	now := c.now()
 	for k, kp := range c.ranges {
 		if k != from && now.Sub(kp.used) > partsIdle && kp.mu.TryLock() {
 			delete(c.ranges, k)
@@ -1176,12 +1240,17 @@ func (c *PartsCache) with(ctx context.Context, q Querier, from int64, fn func(ra
 		c.ranges[from] = kp
 	}
 	kp.used = now
+	throttle, hurry := c.throttle, c.hurry
 	c.mu.Unlock()
 
 	kp.mu.Lock()
 	defer kp.mu.Unlock()
-	if err := kp.refresh(ctx, q, from, now); err != nil {
+	behind, err := kp.refresh(ctx, q, from, now, throttle, hurry)
+	if err != nil {
 		return err
+	}
+	if f, ok := ctx.Value(partsLagKey{}).(*atomic.Bool); ok && behind {
+		f.Store(true)
 	}
 	return fn(kp.parts)
 }
@@ -1193,37 +1262,46 @@ func (c *PartsCache) with(ctx context.Context, q Querier, from int64, fn func(ra
 // The mark is read before the events, so what is read is never older than
 // it: a write landing in between is read now and again next time, never
 // missed.
-func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now time.Time) error {
+//
+// Within throttle of the last read (partsThrottle) what moved waits: the
+// parts are handed back as they are and behind is true. The kept mark stays
+// where it was, so the first read past the window reads every session that
+// moved in it, once. hurry is the cache's Hurry count: one this range has
+// not seen lifts the throttle for this ask.
+func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now time.Time, throttle time.Duration, hurry uint64) (behind bool, err error) {
 	mark, err := ReadEventsMark(ctx, q)
 	if err != nil {
-		return err
+		return false, err
 	}
 	stale := now.Sub(kp.built) >= partsRebuild
 	if kp.ok && !stale && mark.Same(kp.mark) {
-		return nil
+		return false, nil
+	}
+	if kp.ok && !stale && hurry == kp.hurry && throttle > 0 && now.Sub(kp.read) < throttle {
+		return true, nil
 	}
 	full := !kp.ok || stale
 	var changed []int64
 	if !full {
 		changed, full, err = mark.MovedSince(ctx, q, kp.mark)
 		if err != nil {
-			return err
+			return false, err
 		}
 		full = full || len(changed) > partsMaxChanged
 	}
 	if full {
 		rp, err := readParts(ctx, q, from, from, 0, partsScope{all: true})
 		if err != nil {
-			return err
+			return false, err
 		}
-		kp.parts, kp.mark, kp.ok, kp.built = rp, mark, true, now
+		kp.parts, kp.mark, kp.ok, kp.built, kp.read, kp.hurry = rp, mark, true, now, now, hurry
 		kp.full++
-		return nil
+		return false, nil
 	}
 	if len(changed) > 0 {
 		rp, err := readParts(ctx, q, from, from, 0, partsScope{sids: changed})
 		if err != nil {
-			return err
+			return false, err
 		}
 		for _, sid := range changed {
 			if p, ok := rp.sids[sid]; ok {
@@ -1232,8 +1310,9 @@ func (kp *keptParts) refresh(ctx context.Context, q Querier, from int64, now tim
 				delete(kp.parts.sids, sid)
 			}
 		}
+		kp.read = now
 	}
-	kp.mark = mark
+	kp.mark, kp.hurry = mark, hurry
 	kp.partial++
-	return nil
+	return false, nil
 }

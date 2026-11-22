@@ -111,6 +111,29 @@ const (
 	pipeAgentsPastTTL = 30 * time.Minute
 )
 
+// behindAnswer is an answer fn knows is behind the data it was asked at: built
+// from kept per-session parts whose refresh the throttle held back
+// (store.NoteLag). It is served like any other, but recorded at no version,
+// so an unchanged version never renews it: past its TTL it is counted again,
+// and once the parts catch up the answer does too.
+type behindAnswer struct{ v any }
+
+// lagged is v, marked behind when lag was set while it was computed.
+func lagged(v any, lag interface{ Load() bool }) any {
+	if lag.Load() {
+		return behindAnswer{v}
+	}
+	return v
+}
+
+// unwrapBehind is val as stored and the version to record it at.
+func unwrapBehind(val any, ver int64) (any, int64) {
+	if b, ok := val.(behindAnswer); ok {
+		return b.v, -1
+	}
+	return val, ver
+}
+
 // answerEntry is one key's cached answer, or the in-flight computation of it.
 // Waiters block on `done`; once it is closed `val`, `err` and `at` are settled
 // and never change again (a refresh installs a new entry instead).
@@ -272,6 +295,7 @@ func (c *answerCache) getAt(ctx context.Context, key string, fn func() (any, err
 	e.ver = c.readVersion(ctx)
 	start := c.now()
 	e.val, e.err = fn()
+	e.val, e.ver = unwrapBehind(e.val, e.ver)
 	e.at = c.now()
 	e.cost = e.at.Sub(start)
 	close(e.done)
@@ -399,6 +423,7 @@ func (c *answerCache) refresh(key string, old *answerEntry, fn func() (any, erro
 	ver := c.readVersion(context.Background())
 	start := c.now()
 	val, err := fn()
+	val, ver = unwrapBehind(val, ver)
 	cost := c.now().Sub(start)
 	c.mu.Lock()
 	defer c.mu.Unlock()
