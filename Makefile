@@ -197,6 +197,8 @@ app-sidecar: ## Build the daemon the app bundles (app/src-tauri/binaries/caprock
 	@mkdir -p $(APP_SRC)/binaries
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(APP_SRC)/binaries/caprock-$(APP_TRIPLE)$(EXE) ./cmd/caprock
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(APP_SRC)/binaries/caprock-pty-host-$(APP_TRIPLE)$(EXE) ./cmd/caprock-pty-host
+	@# macOS: the holder in its own signed bundle, Caprock Terminal.app (ADR-101).
+	@if [ "$$(uname -s)" = Darwin ]; then bash scripts/terminal-helper.sh $(APP_SRC)/binaries/caprock-pty-host-$(APP_TRIPLE) $(APP_SRC)/binaries $(or $(APP_VERSION),$(VERSION)); fi
 
 .PHONY: app
 app: app-sidecar ## Run the desktop app in development (debug build; finds or starts a daemon)

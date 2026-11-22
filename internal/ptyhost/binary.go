@@ -29,12 +29,20 @@ func BinaryName() string {
 // daemon's package initialisation in every process it starts (ADR-033).
 // Without it — `go build ./cmd/caprock`, `go install` — sessions run in
 // `caprock pty-host` as they always have.
+//
+// On macOS the Caprock Terminal helper beside self comes first (ADR-101):
+// the same holder-only binary inside a signed bundle of its own.
 func Binary(self string) string {
 	dirs := []string{filepath.Dir(self)}
 	if r, err := filepath.EvalSymlinks(self); err == nil && filepath.Dir(r) != dirs[0] {
 		dirs = append(dirs, filepath.Dir(r))
 	}
 	for _, d := range dirs {
+		if runtime.GOOS == "darwin" {
+			if p := HelperExe(d); executable(p) {
+				return p
+			}
+		}
 		p := filepath.Join(d, BinaryName())
 		if executable(p) {
 			return p

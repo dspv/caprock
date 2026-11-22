@@ -265,6 +265,24 @@ func TestScanCaprockFindsDuplicates(t *testing.T) {
 	}
 }
 
+// A holder running in the Caprock Terminal helper beside the daemon belongs
+// to this install, from the daemon's own answer and from another's (ADR-101).
+func TestTheTerminalHelperIsThisInstall(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "bin")
+	helper := ptyhost.HelperExe(bin)
+	for _, dirs := range [][]string{
+		installDirs(filepath.Join(bin, "caprock"), helper, ""),
+		installDirs(filepath.Join(bin, "caprock"), "", ""),
+	} {
+		if !inInstall(helper, dirs) {
+			t.Errorf("the helper %s is not in %v", helper, dirs)
+		}
+	}
+	if inInstall(ptyhost.HelperExe(t.TempDir()), installDirs(filepath.Join(bin, "caprock"), "", "")) {
+		t.Error("another install's helper counted as this one's")
+	}
+}
+
 func TestDaemonArgvAndDataDir(t *testing.T) {
 	for _, c := range []struct {
 		argv []string

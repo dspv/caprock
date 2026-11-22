@@ -104,6 +104,9 @@ func (m *Manager) spawnHosted(ctx context.Context, spec ptyman.Spec) (ptyman.Ses
 	if args == nil {
 		args = []string{Arg}
 	}
+	// The Caprock Terminal helper starts disclaimed, so it answers for the
+	// terminal's programs to macOS (ADR-101); any other holder as before.
+	exe, args := holderCommand(m.Exe, args)
 	// The holder's stderr goes to a log beside the registry, so a holder that
 	// dies on its own leaves a reason behind. Holders write nothing there in
 	// the normal course.
@@ -126,7 +129,7 @@ func (m *Manager) spawnHosted(ctx context.Context, spec ptyman.Spec) (ptyman.Ses
 	)
 	for _, attr := range detachAttempts() {
 		// Not CommandContext: the holder must outlive the request, and the daemon.
-		cmd = exec.Command(m.Exe, args...) //nolint:gosec // our own binary, fixed arguments
+		cmd = exec.Command(exe, args...) //nolint:gosec // our own binary, fixed arguments
 		cmd.Env = hostEnv
 		// The system temp directory, not the data directory or wherever the
 		// daemon was started: on Windows a process's working directory cannot

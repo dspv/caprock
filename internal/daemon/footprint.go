@@ -280,17 +280,23 @@ func (m *FootprintMemory) total() {
 }
 
 // installDirs is where this install's executables live: the daemon's
-// directory, the holder's, and on Windows the holder copies under the data
-// directory (03-contracts.md § Terminal holders).
+// directory, the holder's, the Caprock Terminal helper's beside either on
+// macOS, and on Windows the holder copies under the data directory
+// (03-contracts.md § Terminal holders).
 func installDirs(exe, holderExe, dataDir string) []string {
 	var out []string
 	for _, p := range []string{exe, holderExe} {
 		if p == "" {
 			continue
 		}
-		out = append(out, filepath.Dir(p))
+		dirs := []string{filepath.Dir(p)}
 		if r, err := filepath.EvalSymlinks(p); err == nil {
-			out = append(out, filepath.Dir(r))
+			dirs = append(dirs, filepath.Dir(r))
+		}
+		for _, d := range dirs {
+			// The Caprock Terminal helper beside the daemon is this install's
+			// too (ADR-101), as its daemon would start holders from it.
+			out = append(out, d, filepath.Dir(ptyhost.HelperExe(d)))
 		}
 	}
 	if dataDir != "" {

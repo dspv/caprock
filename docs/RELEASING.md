@@ -248,8 +248,15 @@ nothing) and attaches the files after goreleaser has published the release
   ID`), or the self-signed certificate's leaf, or ad-hoc; `lipo` on the app and
   the bundled daemon, bundle id `dev.caprock.app`, `caprock version` of the
   bundled daemon, and `scripts/check-app-mic.sh`: both binaries carry the
-  microphone entitlement and the Info.plist its usage string, ADR-045). It
-  renders the cask from `app/packaging/caprock-app.rb.tmpl`; `app-macos`
+  microphone entitlement and the Info.plist its usage string, ADR-045). The
+  same checks cover **Caprock Terminal.app** in `Contents/Helpers/`
+  (ADR-101): universal, identifier `dev.caprock.terminal`, the same
+  signature and team, the audio-input entitlement and its own usage string,
+  and the updater tarball must carry it. `scripts/terminal-helper.sh` signs
+  it before `tauri build`, since the bundler does not sign a nested bundle;
+  with `APPLE_CERTIFICATE` set it imports the certificate into a temporary
+  keychain under `RUNNER_TEMP` for that one signature and deletes it again,
+  so the bundler's own import meets no second copy. It renders the cask from `app/packaging/caprock-app.rb.tmpl`; `app-macos`
   attaches the files and, on a stable tag with `HOMEBREW_TAP_TOKEN` set, pushes
   the cask to `Casks/caprock-app.rb` in `dspv/homebrew-tap`.
 - **`app-other`** builds `Caprock_<version>_x64-setup.exe` (NSIS) on Windows

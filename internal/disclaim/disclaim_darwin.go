@@ -52,6 +52,24 @@ func setdisclaim() uintptr {
 // Available reports whether this macOS offers the disclaim attribute.
 func Available() bool { return setdisclaim() != 0 }
 
+// responsibleFor is responsibility_get_pid_responsible_for_pid, private as
+// setdisclaim is and looked up the same way. It only reads: the kernel's
+// record of which process answers for pid to the privacy prompts.
+func responsibleFor(pid int) int {
+	name := []byte("responsibility_get_pid_responsible_for_pid\x00")
+	fn, _, _ := syscall_syscall6(libc_dlsym_trampoline_addr, rtldDefault, uintptr(unsafe.Pointer(&name[0])), 0, 0, 0, 0)
+	if fn == 0 {
+		return 0
+	}
+	// pid_t in and out: a 32-bit int.
+	r, _, _ := syscall_syscall6(fn, uintptr(uint32(int32(pid))), 0, 0, 0, 0, 0) //nolint:gosec // a pid_t
+	got := int(int32(r))                                                        //nolint:gosec // a pid_t
+	if got > 0 {
+		return got
+	}
+	return 0
+}
+
 // execDisclaimed replaces this process with path, like execve, but with the
 // responsibility for it disclaimed. Signals start at their defaults and
 // unblocked, as after os/exec. It returns only when the program could not be

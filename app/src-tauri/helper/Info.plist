@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Caprock Terminal (ADR-101): the helper app the terminal holder runs
+	     in on macOS. The daemon starts it disclaimed, so it answers for
+	     everything a Caprock terminal runs, and macOS's privacy prompts and
+	     System Settings name it. scripts/terminal-helper.sh assembles the
+	     bundle and fills @VERSION@. -->
+	<key>CFBundleIdentifier</key>
+	<string>dev.caprock.terminal</string>
+	<key>CFBundleName</key>
+	<string>Caprock Terminal</string>
+	<key>CFBundleDisplayName</key>
+	<string>Caprock Terminal</string>
+	<key>CFBundleExecutable</key>
+	<string>caprock-pty-host</string>
+	<key>CFBundleIconFile</key>
+	<string>icon</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<!-- No Dock icon, no menu bar: it holds terminals and draws nothing. -->
+	<key>LSBackgroundOnly</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Apache-2.0</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>A program in a Caprock terminal wants the microphone, for example an agent's voice input.</string>
+</dict>
+</plist>

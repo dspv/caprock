@@ -25,8 +25,19 @@ make app-release TAG=vX.Y.Z       # macOS: the universal .dmg for a release (doc
 Each target first builds the daemon from this checkout into
 `src-tauri/binaries/caprock-<rust host triple>`, and the terminal holder into
 `src-tauri/binaries/caprock-pty-host-<rust host triple>`, which Tauri bundles
-as sidecars; the app installs both into its data directory's `bin/`. Bundle id `dev.caprock.app`, minimum macOS 13. Builds are unsigned
-(ad-hoc on macOS) until the owner's signing decisions say otherwise.
+as sidecars; the app installs both into its data directory's `bin/`. Bundle id `dev.caprock.app`, minimum macOS 13. Local builds are
+ad-hoc signed on macOS; releases carry the Developer ID (docs/RELEASING.md).
+
+On macOS the targets also wrap the holder in **Caprock Terminal.app**
+(`scripts/terminal-helper.sh`, sources in `src-tauri/helper/`): bundle id
+`dev.caprock.terminal`, its own microphone usage string and audio-input
+entitlement, signed before the bundler signs the app, which does not sign a
+nested bundle. `bundle.macOS.files` puts it in `Contents/Helpers/`, and the
+app copies it beside its daemon as `<data_dir>/bin/Caprock Terminal.app`
+(the old bundle renamed aside, so a terminal running from it is not
+disturbed). The daemon starts terminals in it, disclaimed, so whatever runs
+in a Caprock terminal asks macOS for the microphone or a folder as Caprock
+Terminal ([ADR-101](../.ai/08-decisions.md#adr-101--caprock-terminals-answer-to-macos-as-caprock-terminal-a-signed-helper-app)).
 
 ## The app icon
 

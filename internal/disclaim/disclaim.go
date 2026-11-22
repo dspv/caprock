@@ -94,6 +94,13 @@ func Wrap(name string, args []string) (string, []string) {
 	return exe, out
 }
 
+// ResponsibleFor returns the pid of the process macOS holds responsible for
+// pid in its privacy prompts: pid itself for a process started disclaimed or
+// by launchd, otherwise the app or job up its tree. It raises no dialog and
+// changes nothing. 0 off macOS, for a pid that is gone, or when this macOS
+// does not have the call.
+func ResponsibleFor(pid int) int { return responsibleFor(pid) }
+
 // Main runs the trampoline when the process was started as one, and returns
 // at once otherwise. Call it first in main, before anything else starts.
 func Main() {

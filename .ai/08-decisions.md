@@ -2440,6 +2440,14 @@ plain exec, so the symptom would be prompts in Caprock's name again), or
 Caprock ships as a Developer ID app whose own grants should cover its
 sessions.
 
+*Amended 2026-11-22 by [ADR-101](#adr-101--caprock-terminals-answer-to-macos-as-caprock-terminal-a-signed-helper-app):*
+the consequence above did not hold for `claude` — TCC keyed its grant on the
+per-version binary's path, so each Claude Code update lost the microphone,
+and a shell could not prompt at all. With the app installed, a terminal's
+programs now answer as Caprock Terminal, a Developer ID signed helper the
+daemon starts disclaimed; the disclaim stays for everything else here, and
+for terminals wherever the helper is absent.
+
 ## ADR-045 — The app and its daemon may ask for the microphone
 
 **Date:** 2026-10-10 · **Status:** accepted (decided without the owner; he
@@ -7880,3 +7888,122 @@ process was signalled, only that it was); the exit code as the only word
 **Revisit if** an agent exits non-zero on a normal quit, which would make
 the line nag after a typed `/exit`: that agent's quit code then counts as
 clean.
+
+## ADR-101 — Caprock terminals answer to macOS as Caprock Terminal, a signed helper app
+
+**Date:** 2026-11-22 · **Status:** accepted (owner, 2026-11-22). Amends
+[ADR-044](#adr-044--sessions-answer-for-themselves-to-macos-privacy-prompts-background-reads-skip-every-guarded-place)
+for the terminals' programs; [ADR-045](#adr-045--the-app-and-its-daemon-may-ask-for-the-microphone)
+and [ADR-040](#adr-040--on-macos-the-apps-own-daemon-runs-from-one-path-and-nothing-isolated-touches-the-guarded-folders)
+stand. Contract: [03-contracts.md § Terminal holders](03-contracts.md#terminal-holders-caprock-pty-host).
+
+**Context.** Claude Code's voice mode in a Caprock terminal kept saying "No
+audio detected from microphone". The `tccd` log on the owner's Mac
+(2026-11-22) shows why ADR-044's promise did not hold for it. Every program
+a Caprock terminal starts is disclaimed (the pty-host's
+`disclaim.Enable`, `internal/ptyman`), so macOS asks the program itself.
+For `claude` that is the per-version binary
+`~/.local/share/claude/versions/<version>`, and TCC keyed the grant on that
+path with the attributed bundle null — not on `com.anthropic.claude-code`
+as ADR-044's consequences assumed. Every Claude Code auto-update is a new
+path, so it loses the microphone; a session started before the grant keeps
+recording silence. In a shell tab the responsible process is `/bin/zsh`,
+which has no usage string and cannot prompt at all, so `rec` or anything
+else that records from a shell is refused silently.
+
+**The decision.**
+
+- **A helper app holds the terminals on macOS.** `Caprock Terminal.app`
+  (bundle id `dev.caprock.terminal`, `LSBackgroundOnly`, the app's icon,
+  `NSMicrophoneUsageDescription`), whose executable is the holder-only
+  binary `caprock-pty-host`, signed with the hardened runtime and
+  `com.apple.security.device.audio-input`
+  (`app/src-tauri/helper/`, assembled and signed by
+  `scripts/terminal-helper.sh`). The app carries it in
+  `Contents/Helpers/` (`bundle.macOS.files`) and installs it beside its
+  daemon at `<data_dir>/bin/Caprock Terminal.app`.
+- **The daemon starts the helper disclaimed**, through its own disclaim
+  trampoline (`ptyhost.holderCommand`), so the helper is its own
+  responsible process. `ptyhost.Binary` prefers the helper beside the
+  daemon over the plain `caprock-pty-host`.
+- **The helper does not disclaim its children** (`ptyhost.EnableDisclaim`):
+  when its executable is the helper's and the kernel says it answers for
+  itself (`responsibility_get_pid_responsible_for_pid`, read-only, looked up
+  with `dlsym` like the disclaim attribute), the shell, `claude`, `codex`,
+  `rec` and everything under them are attributed to Caprock Terminal. A
+  helper that was started plainly (a macOS without the attribute) disclaims
+  its child as every other holder does.
+- **One answer for all of them.** The release signs the helper with the
+  Developer ID, so its designated requirement names the team; one Allow
+  survives Caprock's updates and the agents' (a new `claude` path changes
+  nothing, it is not the one asked).
+- **Signing.** The bundler signs the app and its sidecars but not a nested
+  bundle, and signing the app fails on unsigned code inside it, so
+  `scripts/terminal-helper.sh` signs the helper first with the identity the
+  app gets: in release.yml it imports `APPLE_CERTIFICATE` into a temporary
+  keychain of its own for that one signature and deletes it before `tauri
+  build` imports the certificate again; the self-signed SHA-1 and ad-hoc
+  as before. `make app-sidecar`, `scripts/app-local.sh` and
+  `scripts/app-release.sh` build it; `scripts/check-app-mic.sh` and
+  `scripts/check-app-signature.sh` check its Info.plist, entitlement,
+  identifier and requirement with the rest.
+- **Without the helper nothing changes.** A Homebrew or `go install`
+  daemon has no helper beside it, so it starts `caprock-pty-host` plainly
+  and the holder disclaims its child, as ADR-044 says. Windows and Linux
+  never look for it.
+- **No session is lost to an update.** Holders already running keep
+  running as they are: a daemon from this release reattaches them through
+  the unchanged registry and protocol, and only terminals opened after it
+  start in the helper. The app replaces the helper bundle without touching
+  a running one: the new bundle is assembled beside it, the old renamed
+  aside, the new renamed in, the old deleted (a running executable keeps
+  its file on macOS). A holder in the helper counts as this install's in
+  the doctor and the footprint (`installDirs`).
+
+**Why the prompts may name Caprock now.** ADR-044 moved every prompt away
+from Caprock because Caprock was ad-hoc signed: a new program to TCC at
+every release, so an answer to "caprock" lasted until the next update and
+named nothing the user recognised. Since 2026-10-20 releases carry the
+Developer ID ([21-app.md § Privacy prompts on
+macOS](21-app.md#privacy-prompts-on-macos)), whose requirement is the same
+for every build, and Caprock Terminal is a bundle with a name and an icon.
+The reason against is gone; the reason for — one stable answer instead of
+one per agent version, and shells that can ask at all — is measured. The
+cost ADR-040 named returns for the terminals: a folder or the microphone
+allowed to Caprock Terminal is allowed to every program in a Caprock
+terminal, as with Terminal.app or iTerm2. Folder prompts from a terminal
+now name Caprock Terminal rather than `claude`; answers given to `claude`
+before stay in System Settings but cover no new session, which asks once
+as Caprock Terminal.
+
+**Rejected.**
+
+- *Keep disclaiming and wait for Claude Code to install at one path.* Not
+  ours to fix, and it leaves shells unable to prompt.
+- *Disclaim only the agents, keep shells with the helper.* Two names for
+  one terminal, and `claude` started inside a shell tab would be the
+  helper's anyway.
+- *The app (`Caprock.app`) as the responsible program.* The daemon runs
+  from `<data_dir>/bin`, outside the bundle, so it would have to start its
+  holders through LaunchServices or live in the bundle (ADR-045 rejected
+  the latter); a helper beside it needs neither.
+- *A versioned helper path per release.* TCC keys a signed bundle by its
+  identifier and requirement, not its path; one path keeps one entry in
+  System Settings.
+
+**Unverified.** That macOS shows the prompt naming Caprock Terminal and
+recording then works needs a person at the microphone, on a Developer ID
+build; no test may raise a privacy dialog. Also to see on the first signed
+release: that notarization accepts the nested helper, that the helper shows
+no Dock icon (`LSBackgroundOnly`), and that a holder whose bundle was
+replaced under it is judged by the new bundle (same team, so it should
+pass). Measured without a dialog (`internal/ptyhost/helper_darwin_test.go`,
+2026-11-22): a shell started in the helper is answered for by the helper,
+and the helper by itself; a shell in the plain holder answers for itself; a
+holder from before the helper and one in the helper both survive the
+helper's reinstall and are reattached and typed into, and a terminal opened
+after is the helper's.
+
+**Revisit if** Apple changes how a disclaimed process's children are
+attributed, or Caprock's daemon moves into the app bundle as an
+`SMAppService` helper (ADR-040), which might let the app answer instead.

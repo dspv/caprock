@@ -2672,6 +2672,22 @@ the fallback since the Developer ID; see *With a Developer ID*):
   which re-executes it with its responsibility disclaimed; the prompt names
   `claude` (Developer ID signed, so the answer survives its updates and
   Caprock's), `codex` or the shell.
+- **A terminal asks as Caprock Terminal** (ADR-101, 2026-11-22). The
+  disclaim did not keep `claude`'s answer: TCC keyed it on the per-version
+  binary's path, so every Claude Code update lost the microphone, and a
+  shell tab (`/bin/zsh` responsible) could not prompt at all. The app now
+  carries `Caprock Terminal.app` (`dev.caprock.terminal`, the holder binary
+  in a bundle with its own icon, microphone usage string and audio-input
+  entitlement, `app/src-tauri/helper/`, built and signed by
+  `scripts/terminal-helper.sh` before the bundler signs the app) in
+  `Contents/Helpers/` and installs it beside the daemon in
+  `<data_dir>/bin/`. The daemon starts it disclaimed and it does not
+  disclaim its children, so a shell, `claude` or `rec` in a Caprock
+  terminal asks as Caprock Terminal, and the Developer ID answer survives
+  every update of either. Without the app (Homebrew, a development build)
+  the disclaim above stays. Terminals already running when the app updates
+  keep running in their old holders and keep their old attribution until
+  they end.
 - **The daemon's own background reads skip guarded places**
   (`tcc.Guarded`): Desktop, Documents, Downloads, iCloud Drive, cloud
   storage, Music, Movies, Pictures, `/Volumes`, and links into them. What
@@ -2734,8 +2750,9 @@ the fallback since the Developer ID; see *With a Developer ID*):
   responsible program. The bundler now signs both with that entitlement
   (`app/src-tauri/Entitlements.plist`), the app's Info.plist carries
   `NSMicrophoneUsageDescription` (`app/src-tauri/Info.plist`), and
-  `scripts/check-app-mic.sh` checks both in CI and in `app-release.sh`. The formula's binary has no runtime
-  flag and needs neither.
+  `scripts/check-app-mic.sh` checks both, and Caprock Terminal.app's
+  entitlement and usage string, in CI and in `app-release.sh`. The
+  formula's binary has no runtime flag and needs neither.
 - **With a Developer ID** (the Apple account since 2026-10-20): the
   Developer ID certificate replaces the self-signed one in release builds
   (`APPLE_CERTIFICATE` and notarization, `scripts/macos-developer-id.sh`,

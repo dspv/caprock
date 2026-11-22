@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dspv/caprock/internal/disclaim"
 	"github.com/dspv/caprock/internal/ptyman"
 )
 
@@ -35,6 +36,9 @@ const (
 )
 
 func TestMain(m *testing.M) {
+	// The daemon's disclaim trampoline, for the tests that start the Caprock
+	// Terminal helper as the daemon does (helper_darwin_test.go).
+	disclaim.Main()
 	switch {
 	case os.Getenv(envHolder) == "1":
 		preV2 = os.Getenv(envPreV2) == "1"

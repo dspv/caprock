@@ -23,7 +23,9 @@ func main() {
 	// First, as in caprock: the holder starts its child through this binary
 	// as the disclaim trampoline, which becomes the child and never returns.
 	disclaim.Main()
-	disclaim.Enable()
+	// The child answers for itself, unless this is the Caprock Terminal
+	// helper answering for its terminal (ADR-101).
+	ptyhost.EnableDisclaim()
 	// The argument keeps the process looking like `caprock pty-host` to the
 	// daemon's sweep for holders (internal/daemon/resources.go), which goes
 	// by argv[1].

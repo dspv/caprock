@@ -77,6 +77,21 @@ Percentages are deliberately coarse — they answer "is this track started, half
 
 ## Log
 
+### 2026-11-22 — unreleased: terminals answer to macOS as Caprock Terminal (ADR-101)
+
+The `tccd` log showed `claude`'s microphone grant keyed on its per-version
+path, so each Claude Code update lost it, and a shell tab could not prompt.
+The app now carries `Caprock Terminal.app` (`dev.caprock.terminal`,
+`app/src-tauri/helper/`, `scripts/terminal-helper.sh`) in
+`Contents/Helpers/`, installs it in `<data_dir>/bin/` (`install_helper`),
+and the daemon starts holders in it disclaimed; the helper does not
+disclaim its child (`ptyhost.EnableDisclaim`,
+`disclaim.ResponsibleFor`). Release signing, `check-app-mic.sh` and
+`check-app-signature.sh` cover it. Without the helper nothing changes.
+`helper_darwin_test.go` checks the attribution and that running sessions
+survive the helper's reinstall. To verify by the owner on the first signed
+release: the prompt names Caprock Terminal and voice records.
+
 ### 2026-11-20 — unreleased: an unexpected end says so, with Resume (ADR-100)
 
 An owned agent session killed by a signal (the owner's "ops", when he quit

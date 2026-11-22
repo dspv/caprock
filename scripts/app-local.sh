@@ -203,6 +203,8 @@ CGO_ENABLED=0 go build -trimpath \
 CGO_ENABLED=0 go build -trimpath \
   -ldflags "-s -w -X github.com/dspv/caprock/internal/version.Version=$VERSION" \
   -o "app/src-tauri/binaries/caprock-pty-host-$TRIPLE" ./cmd/caprock-pty-host
+# The holder in its own bundle, Caprock Terminal.app (ADR-101), signed as the app is.
+bash scripts/terminal-helper.sh "app/src-tauri/binaries/caprock-pty-host-$TRIPLE" app/src-tauri/binaries "$VERSION"
 took "daemon"
 
 # --- app ----------------------------------------------------------------------
@@ -228,6 +230,8 @@ plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$BUILT/Contents/Info.plist"; }
 SIDECAR="$("$BUILT/Contents/MacOS/caprock" version)"
 [[ "$SIDECAR" == "caprock $VERSION "* ]] || die "the bundled daemon says: $SIDECAR"
 codesign --verify --deep --strict "$BUILT" || die "the signature does not verify"
+[[ -x "$BUILT/Contents/Helpers/Caprock Terminal.app/Contents/MacOS/caprock-pty-host" ]] ||
+  die "no Caprock Terminal.app in Contents/Helpers"
 # Built here, never downloaded: nothing for Gatekeeper to hold back.
 if xattr -r "$BUILT" 2>/dev/null | grep -q com.apple.quarantine; then
   die "the built bundle carries a quarantine flag"
