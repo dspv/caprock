@@ -51,11 +51,18 @@ export function FreeUpMemory({ footprint, memory, front, sessions, onDone }: {
   useEffect(() => { void load() }, [load])
   const f = scanned ?? ownFp
   const m = memory ?? ownMem
-  const plan = useMemo(() => freeUpPlan(f, m, sessions), [f, m, sessions])
+  // What a free-up just stopped or ended leaves the offer at once: a process
+  // takes a moment to exit, and a list read in that moment offered the same
+  // agent again (owner, 2026-11-22: "I want to understand what happens").
+  const [gone, setGone] = useState<ReadonlySet<string>>(() => new Set())
+  const plan = useMemo(() => withoutGone(freeUpPlan(f, m, sessions), gone), [f, m, sessions, gone])
   // What the person reviews is what was offered when they opened it.
   const [open, setOpen] = useState<FreeUpPlan>()
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string>()
+  // After a free-up the figures are read again at once and once more when the
+  // stopped processes have had time to go; meanwhile the note says so.
+  const [settling, setSettling] = useState(false)
   const ready = (!needFp || fpAsked) && (!needMem || memAsked)
   if (!ready || !(f || m)) return null
   const total = plan.leftovers.length + plan.agents.length
@@ -72,13 +79,19 @@ export function FreeUpMemory({ footprint, memory, front, sessions, onDone }: {
         agents.length ? api.endIdleAgents(agents, front) : undefined,
       ])
       setNote(resultNote(picked, stop, end))
+      setGone((g) => new Set([...g, ...freedKeys(stop, end)]))
       setOpen(undefined)
+      setSettling(true)
+      await load()
+      onDone?.()
+      await new Promise((r) => setTimeout(r, SETTLE_MS))
       await load()
       onDone?.()
     } catch (e) {
       setNote(errText(e))
     } finally {
       setBusy(false)
+      setSettling(false)
     }
   }
 
@@ -101,8 +114,25 @@ export function FreeUpMemory({ footprint, memory, front, sessions, onDone }: {
       )}
       {open && <FreeUpConfirm plan={open} busy={busy} onRun={(xs) => void run(xs)} onCancel={() => setOpen(undefined)} />}
       {note && <p role="status" data-free-up-note className="text-[0.92em] text-fg-muted">{note}</p>}
+      {note && settling && <p data-free-up-settling className="text-[0.92em] text-fg-faint">Updating the figures…</p>}
     </div>
   )
+}
+
+/** How long after a free-up the figures are read the second time: processes ended politely exit within it. */
+export const SETTLE_MS = 2500
+
+/** The offer's keys a free-up stopped or ended (FreeUpItem.key: `o:<pid>`, `a:<session>`). */
+function freedKeys(stop: { stopped?: { pid: number }[] | null } | undefined, end: { ended?: string[] | null } | undefined): string[] {
+  return [...(stop?.stopped ?? []).map((o) => `o:${o.pid}`), ...(end?.ended ?? []).map((id) => `a:${id}`)]
+}
+
+/** The plan with what was just freed taken out, its total following. */
+function withoutGone(plan: FreeUpPlan, gone: ReadonlySet<string>): FreeUpPlan {
+  if (!gone.size) return plan
+  const leftovers = plan.leftovers.filter((x) => !gone.has(x.key))
+  const agents = plan.agents.filter((x) => !gone.has(x.key))
+  return { ...plan, leftovers, agents, mem_bytes: [...leftovers, ...agents].reduce((s, x) => s + x.mem_bytes, 0) }
 }
 
 /** The inline confirmation: two groups, a checkbox and a size per line, the total following the ticks. */
