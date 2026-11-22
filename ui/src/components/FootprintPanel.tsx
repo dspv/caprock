@@ -56,6 +56,9 @@ export function openStorageSettings() {
   location.hash = '#/settings'
   let tries = 0
   const look = () => {
+    // The retries outlive the click by up to two seconds; a page (or a test's
+    // DOM) gone by then has nothing left to scroll.
+    if (typeof document === 'undefined') return
     const el = document.getElementById('settings-storage')
     if (el) { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); return }
     if (++tries < 40) window.setTimeout(look, 50)
