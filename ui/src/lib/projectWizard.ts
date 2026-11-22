@@ -15,6 +15,7 @@
  */
 import type { AddProjectRequest, FoundRepo, Project, ScanResult } from './projects'
 import { tildePath } from './projectSearch'
+import type { BrowseStat } from './api'
 
 /** A path without its trailing separators, `/` kept. */
 export function trimSlash(p: string): string {
@@ -29,6 +30,22 @@ export function parentOf(p: string): string {
   if (at < 0) return ''
   if (at === 0) return t.slice(0, 1)
   return t.slice(0, at)
+}
+
+/**
+ * What the Folder step says about a typed path that is not there yet, from
+ * the daemon's stat of it (owner, 2026-11-22): its parent is a folder — one
+ * level Caprock makes on *Create folder & continue*; or its parent is missing
+ * too — said by name, and nothing is made. `null` for a path that exists, a
+ * guarded place nobody read, or no answer: the step behaves as before.
+ */
+export type MissingFolder = { create: true; text: string } | { create: false; text: string }
+
+export function missingFolder(stat: BrowseStat | null | undefined, typed: string, home?: string): MissingFolder | null {
+  if (!stat || stat.guarded || stat.exists) return null
+  const shown = tildePath(trimSlash(typed.trim()), home)
+  if (stat.parent_exists) return { create: true, text: `New folder — Caprock will create ${shown}` }
+  return { create: false, text: `${parentOf(shown) || tildePath(parentOf(stat.path), home)} does not exist` }
 }
 
 /** The last segment of a path. */

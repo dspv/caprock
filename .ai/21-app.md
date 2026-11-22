@@ -407,8 +407,8 @@ One window, three regions:
   ⌘O, *Add project*, the empty page's *Add a project* and New agent's *New
   project…* (beside the Project label and as the search list's last row,
   carrying the first message typed so far) open it when the projects API is
-  there; the Add project sheet below stays for clone and a new empty folder,
-  linked from the wizard's footer. Three steps, each one click or Enter:
+  there; the Add project sheet below stays for clone and a new empty folder
+  with `git init`, linked from the wizard's footer. Three steps, each one click or Enter:
   - **Folder.** A 46px path field, chips for the places projects live (the
     parents of listed projects, recent folders and repositories under the
     default folder, most first; then the default folder; home last), and the
@@ -447,6 +447,21 @@ One window, three regions:
     inside it with nothing highlighted, so Enter looks at that folder, as
     before. `~`, `~\`, drive letters (`C:`, `C:\Us`) and backslashes work
     the same way: the daemon expands `~` and resolves the path.
+    **A folder not there yet** (owner, 2026-11-22). The field's path is
+    stated on the same 250 ms (`GET /v1/browse/stat`, `missingFolder`).
+    When it does not exist but its parent does, a neutral line under the
+    field reads *New folder — Caprock will create ~/dev/newhop5* (the path
+    as typed, with `~`) and the button reads *Create folder & continue*
+    instead of the red *… is not a folder* the scan used to answer. Only
+    that press, or Enter, makes it: one folder, no parents, no `git init`,
+    no GitHub (`POST /v1/browse/mkdir`), and the wizard goes on exactly as
+    if that folder had been picked. A press before the field was stated
+    asks first and makes nothing, so a folder is never made by a button
+    that still said *Continue*. When the parent is missing too, the line is
+    a red *~/foo/bar does not exist*, Continue repeats it, and nothing is
+    made. An existing folder, a guarded place and a path outside the browse
+    root behave as before. *Several repositories* is unchanged: there the
+    field only walks folders, and nothing is made.
   - **What is there** (`GET /v1/projects/scan`), in 26px type: *One
     repository* (the folder is one, or is inside one — then it is that
     repository, no question), *N repositories* as big checkable cards, all

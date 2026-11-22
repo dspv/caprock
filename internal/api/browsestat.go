@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -145,4 +147,64 @@ func recentJunk(dir, dataDir string) bool {
 	}
 	slash := "/" + strings.Trim(filepath.ToSlash(dir), "/") + "/"
 	return strings.Contains(slash, "/.claude/worktrees/")
+}
+
+// handleBrowseMkdir answers POST /v1/browse/mkdir {path}: the New project
+// wizard's *Create folder & continue* for a typed path that does not exist
+// yet. One folder, one level: its parent must already be a folder inside the
+// browse root (symlinks resolved first), and nothing else happens — no git
+// init, no project, no parents made (os.Mkdir, never MkdirAll, as
+// agents.makeProjectDir). Outside the root, a guarded place or a missing
+// parent is the browse 404, so it says nothing the stat would not; a name
+// already taken is 409. Owner only: in neither controllerRoutes nor
+// computerRoutes (lanauth.go), so a paired device is refused before this.
+func (s *Server) handleBrowseMkdir(w http.ResponseWriter, r *http.Request) {
+	root := s.browseRoot()
+	if phoneLimited(r) {
+		root = s.deviceBrowseRoot()
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<14)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is {path}"})
+		return
+	}
+	p := expandTilde(req.Path)
+	if p == "" || !filepath.IsAbs(p) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	p = filepath.Clean(p)
+	parent := filepath.Dir(p)
+	if parent == p || tcc.Guarded(p) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if err := projects.CheckFolderName(filepath.Base(p)); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	realParent, err := filepath.EvalSymlinks(parent)
+	if err != nil || !textuallyWithin(root, realParent) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if fi, err := os.Stat(realParent); err != nil || !fi.IsDir() {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if _, err := os.Lstat(p); err == nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": p + " already exists"})
+		return
+	}
+	if err := os.Mkdir(filepath.Join(realParent, filepath.Base(p)), 0o755); err != nil {
+		if os.IsExist(err) {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": p + " already exists"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create " + p + ": " + err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"path": p})
 }
