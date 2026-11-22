@@ -4,7 +4,9 @@
 // It is a line REPL: it prints a ready line, answers every line it reads with
 // `you-said:<line>`, draws a permission dialog on `ask[tag]` (its footer ends
 // `asked<tag>`), animates Claude Code's subagent list on `agents [frames] [tag]` and
-// draws its input box on `box` (agents.go), exits with code 3 on `quit`, and
+// draws its input box on `box` (agents.go), prints Claude Code's voice
+// failure lines on `voice-silent` and `voice-denied`, prints the arguments
+// it was started with on `argv`, exits with code 3 on `quit`, and
 // exits cleanly on `/exit` or
 // Ctrl+D, as Claude Code does. Shell scripts do this
 // differently under a POSIX PTY and under ConPTY; a Go binary does not. It
@@ -60,6 +62,20 @@ func answer(line string) {
 	if line == "/exit" {
 		fmt.Print("goodbye\r\n")
 		os.Exit(0)
+	}
+	if line == "argv" {
+		fmt.Printf("argv:%s\r\n", strings.Join(os.Args[1:], " "))
+		return
+	}
+	// /voice failing: lines carrying Claude Code's failure words, for the
+	// restart strip (ui/src/lib/termvoice.ts).
+	if line == "voice-silent" {
+		fmt.Print("No audio detected from microphone.\r\n")
+		return
+	}
+	if line == "voice-denied" {
+		fmt.Print("Microphone access is denied.\r\n")
+		return
 	}
 	if line == "box" {
 		inputBox()

@@ -83,6 +83,10 @@
  *   "update available" notice gets a small bar near the bottom — Copy
  *   command, Open a terminal (a plain shell tab, nothing typed), × — and the
  *   printed command is never run.
+ * - **Voice after the helper** (lib/termvoice): on macOS, a Claude Code
+ *   session Caprock started whose terminal shows Claude Code's voice failing
+ *   gets a strip under it — *Voice works after restarting this session.*,
+ *   *Restart here* (the same conversation resumed in this tab), ×.
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
@@ -120,6 +124,8 @@ import { blinkWhileVisible, pageHidden, suspendWhileHidden } from '@/lib/visible
 import { attachInputBoxBand, type InputBoxBand } from '@/lib/terminputbox'
 import { attachUpdateWatch, dismissNotice, requestShellBeside, type UpdateNotice } from '@/lib/termupdate'
 import { UpdateNoticeBar } from './UpdateNoticeBar'
+import { attachVoiceWatch, daemonPlatform, hideVoice, isVoiceHidden, macDaemon } from '@/lib/termvoice'
+import { VoiceRestartStrip } from './VoiceRestartStrip'
 import { EarlyExit } from './EarlyExit'
 import { newShellCloseKey, newShellHintText, onlyPrompt } from '@/lib/newshellhint'
 
@@ -255,6 +261,7 @@ export function TerminalPane({
   quickReplies = false,
   inputBox = false,
   shellHint = false,
+  voiceRestart = false,
 }: {
   sessionId: string
   /** The tab is in front and the workspace is showing. */
@@ -293,6 +300,12 @@ export function TerminalPane({
    * An overlay; nothing is written into the PTY.
    */
   shellHint?: boolean
+  /**
+   * An agent tab on a Claude Code session Caprock started (lib/termvoice
+   * voiceTab): Claude Code's voice failure line gets the restart strip,
+   * when the daemon is on macOS.
+   */
+  voiceRestart?: boolean
 }) {
   const host = useRef<HTMLDivElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -340,6 +353,11 @@ export function TerminalPane({
   const [boxHint, setBoxHint] = useState<{ top: number; height: number } | null>(null)
   // An agent's "update available" notice, found in the output (lib/termupdate).
   const [update, setUpdate] = useState<UpdateNotice | null>(null)
+  // Claude Code's voice failed here, on macOS (lib/termvoice): the restart strip.
+  const [voice, setVoice] = useState(false)
+  const voiceRef = useRef(voiceRestart)
+  voiceRef.current = voiceRestart
+  useEffect(() => { setVoice(false) }, [sessionId])
   // The new shell's hint, where it sits (lib/newshellhint); null when not shown.
   const [shellLine, setShellLine] = useState<{ top: number; left: number } | null>(null)
   const shellHintRef = useRef(shellHint)
@@ -386,6 +404,9 @@ export function TerminalPane({
     band.setLook({ shown: prefs.highlightInput, strength: prefs.highlightStrength })
     band.setEnabled(inputBoxRef.current)
     const updates = attachUpdateWatch(term, setUpdate)
+    const voices = attachVoiceWatch(term, () => voiceRef.current && !isVoiceHidden(sessionId), () => {
+      void daemonPlatform().then((p) => { if (macDaemon(p) && voiceRef.current && !isVoiceHidden(sessionId)) setVoice(true) })
+    })
     // A local dev server's address gets *Preview on phone* beside it, where a
     // page can show (the desktop app); seen anywhere, ⌘K lists it (lib/devservers).
     const devServers = attachDevServerWatch(term, {
@@ -1054,6 +1075,7 @@ export function TerminalPane({
       band.dispose()
       bandRef.current = null
       updates.dispose()
+      voices.dispose()
       devServers.dispose()
       term.dispose()
     }
@@ -1158,6 +1180,13 @@ export function TerminalPane({
         <NewPill count={newLines} unit={newLines === 1 ? 'new line' : 'new lines'} onJump={() => api.current?.scrollToBottom()} />
       </div>
     </div>
+    {voice && voiceRestart && (
+      <VoiceRestartStrip
+        sessionId={sessionId}
+        onRestarted={() => { hideVoice(sessionId); setVoice(false) }}
+        onDismiss={() => { hideVoice(sessionId); setVoice(false); api.current?.focus() }}
+      />
+    )}
     {quickReplies && <QuickReplies sessionId={sessionId} className={composer ? 'pb-0' : ''} />}
     {composer && (
       <Composer

@@ -173,6 +173,11 @@ browser laid out: the search field's Ctrl+Shift+F never over its
 placeholder, long menu titles cut with an ellipsis inside the menu and
 named in a tooltip, the menu ending above the status strip, and a section
 scrolled to landing below the wrapped header (04-ui.md, Settings sections).
+`ui/e2e/voice-restart.spec.ts` starts a session of its own, tells the page
+the daemon is on macOS (`/v1/status` platform), has the fake claude print
+Claude Code's voice failure words (`voice-silent`, `voice-denied`), presses
+*Restart here*, and reads the new process's arguments (`argv`): `--resume
+<id>`, in the same folder, the tab in the same place under the same title.
 `ui/e2e/setup-checklist.spec.ts` starts a stand of its own with no project
 and no session (`startStand({ bare: true })`), the page spelled as on
 Windows, and walks the setup checklist (ADR-099 amendment): the first Sign

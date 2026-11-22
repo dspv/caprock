@@ -32,6 +32,7 @@ import { EndedNotice } from './EndedNotice'
 import type { EndedAgent } from '@/lib/endedAgent'
 import { LimitStrip } from './LimitStrip'
 import { atLimit } from '@/lib/continueOn'
+import { voiceTab } from '@/lib/termvoice'
 
 /** The pinned Dashboard tab: the dashboard's screens, in the strip with the terminals. */
 export interface DashboardTab {
@@ -804,7 +805,8 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
     const quick = !!own && node.target.kind !== 'shell' && composerFits(own)
     const term = <PaneTerminal id={id} visible={visible} focused={focused} onPaneStatus={ctx.onPaneStatus} onPaneExit={ctx.onPaneExit} onPaneGone={ctx.onPaneGone} onPaneEarlyExit={ctx.onPaneEarlyExit}
       composer={withComposer} quick={quick} agent={cs?.agent} asking={withComposer && !!ctx.permissions?.has(id)}
-      inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} shellHint={node.target.kind === 'shell'} />
+      inputBox={node.target.kind !== 'shell' && isClaude(ctx.sessions?.get(id)?.agent)} shellHint={node.target.kind === 'shell'}
+      voiceRestart={node.target.kind === 'session' && voiceTab({ shell: false, agent: own?.agent, owned: quick })} />
     // A session stopped at its plan's limit: the one-line strip under it (ADR-090).
     const limited = node.target.kind === 'session' && own && atLimit(own) ? <LimitStrip session={own} /> : null
     // A shell that took over an agent that ended unexpectedly: its line on top (lib/endedAgent.ts).
@@ -881,7 +883,7 @@ function PaneView({ node, visible, ctx }: { node: PaneNode; visible: boolean; ct
  * callbacks are stable (TerminalStack), so a new session list — the sidebar's
  * dots moving — does not reach a terminal.
  */
-const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, onPaneGone, onPaneEarlyExit, composer = false, quick = false, agent, asking = false, inputBox = false, shellHint = false }: {
+const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneStatus, onPaneExit, onPaneGone, onPaneEarlyExit, composer = false, quick = false, agent, asking = false, inputBox = false, shellHint = false, voiceRestart = false }: {
   id: string
   visible: boolean
   focused: boolean
@@ -899,13 +901,15 @@ const PaneTerminal = memo(function PaneTerminal({ id, visible, focused, onPaneSt
   inputBox?: boolean
   /** A shell: the hint under its prompt while it is empty (lib/newshellhint). */
   shellHint?: boolean
+  /** An agent tab on a Claude Code session Caprock started: the voice restart strip (lib/termvoice). */
+  voiceRestart?: boolean
 }) {
   const onStatus = useMemo(() => onPaneStatus && ((s: PaneStatus) => onPaneStatus(id, s)), [onPaneStatus, id])
   const onExit = useMemo(() => onPaneExit && ((_code: number, unexpected?: boolean) => onPaneExit(id, unexpected)), [onPaneExit, id])
   const onGone = useMemo(() => onPaneGone && (() => onPaneGone(id)), [onPaneGone, id])
   const onEarlyExit = useMemo(() => onPaneEarlyExit && ((newId: string | null) => onPaneEarlyExit(id, newId)), [onPaneEarlyExit, id])
   const box = useMemo<PaneComposer | undefined>(() => (composer ? { agent, asking } : undefined), [composer, agent, asking])
-  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} onGone={onGone} onEarlyExit={onEarlyExit} composer={box} quickReplies={quick} inputBox={inputBox} shellHint={shellHint} />
+  return <TerminalPane sessionId={id} active={visible} focused={focused} onStatus={onStatus} onExit={onExit} onGone={onGone} onEarlyExit={onEarlyExit} composer={box} quickReplies={quick} inputBox={inputBox} shellHint={shellHint} voiceRestart={voiceRestart} />
 })
 
 /** A split's children with a divider between each pair, dragged or moved with the arrow keys. */
