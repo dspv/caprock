@@ -250,8 +250,9 @@ export interface SessionSummary extends Session {
   model_display?: string
   /** Subagents working in the session now (heard from in the last 30 minutes, not stopped). */
   live_subagents?: number
-  /** A live Claude Code session with hooks whose main thread is in a turn: a
-   *  prompt or a call is its newest turn event, with no Stop after it. With
+  /** A live Claude Code session with hooks whose main thread is in a turn
+   *  and waits on the model: a prompt with no Stop after it, and no call
+   *  running (a long build is work, not a stall). With
    *  `last_event_at` older than STALL_MS its row says *no reply 2d*
    *  (lib/stalled.ts). Absent otherwise. */
   turn_open?: boolean

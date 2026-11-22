@@ -1,7 +1,7 @@
 /**
  * A session row's *no reply 2d* (.ai/04-ui.md § Sidebar, *Stalled*): a live
  * Claude Code session whose turn is open — the daemon's `turn_open`, a prompt
- * or a call with no Stop after it — and whose newest event, in any thread, is
+ * with no Stop after it and no call running — and whose newest event, in any thread, is
  * older than STALL_MS. The chat says the same in its card (ChatStalled); the
  * list says it without loading the session's events, so a silently stuck
  * agent is seen without opening it (owner, 2026-11-22).

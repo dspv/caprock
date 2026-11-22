@@ -783,7 +783,9 @@ function ToolLine({ m, plain = false }: { m: ChatMessage; plain?: boolean }) {
  * long, and the call it runs — or that it waits on your permission. Its own
  * one-second clock, so the conversation does not redraw with it. A turn with
  * no event for STALL_MS is not called work: it says when the agent last
- * answered, with *Send again* and *Open terminal* (*Stalled*).
+ * answered, with *Send again* and *Open terminal* (*Stalled*) — unless a
+ * call is running: a build or a test suite can run for half an hour with
+ * nothing logged, and *Running make e2e 23:10* is the honest line for it.
  */
 function ChatWorking({ turn, agent, waiting, onSendAgain, onOpenTerminal }: {
   turn: TurnState | null
@@ -794,7 +796,7 @@ function ChatWorking({ turn, agent, waiting, onSendAgain, onOpenTerminal }: {
 }) {
   const now = useNow(1000)
   const since = turn ? Date.parse(turn.since) : NaN
-  if (!waiting && turn && turn.last > 0 && now - turn.last >= STALL_MS) {
+  if (!waiting && turn && !turn.step && turn.last > 0 && now - turn.last >= STALL_MS) {
     return <ChatStalled turn={turn} agent={agent} now={now} onSendAgain={onSendAgain} onOpenTerminal={onOpenTerminal} />
   }
   const clock = Number.isFinite(since) ? fmtElapsed(now - since) : ''

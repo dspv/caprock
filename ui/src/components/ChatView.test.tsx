@@ -665,6 +665,17 @@ describe('ChatView: a turn at work', () => {
     expect(store.inputs).toEqual(['write it short', '\r'])
   })
 
+  // A build or a test suite runs for half an hour with nothing logged: that is work, not a stall.
+  it('a call still running after 15 minutes keeps its Working line and clock, not the stalled card', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(BASE + 25 * 60_000)
+    onTestFinished(() => clock.mockRestore())
+    store.events = [msg(1, 'run the e2e'), { ...msg(2), kind: 'tool.pre', tool: 'Bash', payload: { tool_name: 'Bash', tool_use_id: 't1', tool_input: { command: 'make e2e' } } }]
+    render(<ChatView sessionId="s" canType={false} agent="claude" />)
+    await waitFor(() => expect(document.querySelector('[data-chat-working="working"]')).not.toBeNull())
+    expect(screen.getByRole('status')).toHaveTextContent('Running make e2e')
+    expect(document.querySelector('[data-chat-working="stalled"]')).toBeNull()
+  })
+
   it('a session that cannot be typed into offers only the terminal when it stalls', async () => {
     const clock = vi.spyOn(Date, 'now').mockReturnValue(BASE + 20 * 60_000)
     onTestFinished(() => clock.mockRestore())

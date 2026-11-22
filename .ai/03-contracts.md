@@ -1409,11 +1409,17 @@ after 30 silent minutes. Both are omitted when empty or zero.
 
 `SessionSummary.turn_open` (2026-11-22) is true for a session that has not
 ended, is Claude Code's (`agent` empty or `claude`) and `has_hooks`, whose
-main thread is in a turn by its hooks (`narrate.TurnOpen`): of the events the
-summary's `activity` is already read from (the newest 60, the per-session
-cache), the newest main-thread `hook` event of a turn kind is a `turn.user`,
-a `tool.pre`, a `tool.post` or a `context.compact` with `trigger` other than
-`manual`. An `agent.stop`, `permission.prompt` (the user's to answer),
+main thread is in a turn by its hooks and waits on the model
+(`narrate.TurnOpen`): of the events the summary's `activity` is already read
+from (the newest 60, the per-session cache), the main-thread `hook` events
+since the newest turn boundary are a `turn.user`, `tool.post`s or a
+`context.compact` with `trigger` other than `manual`, and **no call is
+running** — every main-thread `tool.pre` among them has a `tool.post` with
+its `tool_use_id` (one with no id counts as running). A call still running is
+work, not a stall: a build or a test suite can log nothing for half an hour,
+and the chat says *Running make e2e 23:10* for it. A window that starts
+inside the turn (its prompt older than the 60) with every call in it done
+reads true. An `agent.stop`, `permission.prompt` (the user's to answer),
 `throttle`, `session.end`, `context.clear`, `session.continue` or a
 `SessionStart` not after a compaction closes it; a prompt Claude Code wrote
 itself (`<task-notification>`, a slash command's echo or output) and every

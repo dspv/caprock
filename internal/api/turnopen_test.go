@@ -13,8 +13,8 @@ import (
 
 // The sessions list says which Claude Code sessions are in a turn by their
 // hooks, so a row can say *no reply 2d* without reading the session's events
-// (.ai/04-ui.md § Sidebar, *Stalled*). Ended sessions and agents without
-// hooks never say it.
+// (.ai/04-ui.md § Sidebar, *Stalled*). A call still running, an ended
+// session and an agent without hooks never say it.
 func TestSessionsListTurnOpen(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
@@ -41,6 +41,10 @@ func TestSessionsListTurnOpen(t *testing.T) {
 	session("stalled", store.SessionPatch{FromHook: true, LastEventAt: old.UnixMilli()})
 	add("stalled", event.Event{Kind: event.KindAgentStop, Ts: old.Add(-time.Minute)})
 	add("stalled", event.Event{Kind: event.KindTurnUser, Ts: old, Payload: json.RawMessage(`{"prompt":"fix it"}`)})
+	// A call still running two days later: work, not a stall.
+	session("running", store.SessionPatch{FromHook: true, LastEventAt: old.UnixMilli()})
+	add("running", event.Event{Kind: event.KindTurnUser, Ts: old.Add(-time.Minute)})
+	add("running", event.Event{Kind: event.KindToolPre, Tool: "Bash", Ts: old, Payload: json.RawMessage(`{"tool_use_id":"t1","tool_input":{"command":"make e2e"}}`)})
 	// Answered.
 	session("answered", store.SessionPatch{FromHook: true, LastEventAt: old.UnixMilli()})
 	add("answered", event.Event{Kind: event.KindTurnUser, Ts: old.Add(-time.Minute)})
@@ -62,7 +66,7 @@ func TestSessionsListTurnOpen(t *testing.T) {
 	for _, s := range list {
 		got[s.SessionID] = s.TurnOpen
 	}
-	want := map[string]bool{"stalled": true, "answered": false, "ended": false, "codex": false}
+	want := map[string]bool{"stalled": true, "running": false, "answered": false, "ended": false, "codex": false}
 	for id, w := range want {
 		if g, ok := got[id]; !ok {
 			t.Errorf("%s: not listed", id)

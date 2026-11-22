@@ -1177,8 +1177,9 @@ type SessionSummary struct {
 	// ended session. The main thread is not counted.
 	LiveSubagents int `json:"live_subagents,omitempty"`
 	// TurnOpen marks a live Claude Code session with hooks whose main thread
-	// is in a turn: a prompt, a call or Claude Code's own compaction is its
-	// newest turn event, with no Stop after it (narrate.TurnOpen). Read from
+	// is in a turn and waits on the model: a prompt or Claude Code's own
+	// compaction with no Stop after it, and no call running (every tool.pre
+	// since has its tool.post; narrate.TurnOpen). Read from
 	// the events the activity is already read from, so it costs no read of
 	// its own. A row whose turn is open and whose last_event_at is older than
 	// the UI's STALL_MS says *no reply 2d* (.ai/04-ui.md § Sidebar, *Stalled*).

@@ -8,20 +8,25 @@ import (
 )
 
 // TurnOpen reports whether a Claude Code session's main thread is in a turn
-// by its hooks: the newest main-thread hook event that opens or closes a turn
-// is a prompt, a call, or a compaction Claude Code started, with no Stop
-// after it. Events are oldest first, as Summarize takes them; only the ones
-// given are read, so a window that holds no such event says false.
+// and waits on the model: by its hooks, a prompt or a compaction Claude Code
+// started with no Stop after it, and no call running — every main-thread
+// tool.pre since has its tool.post (by tool_use_id). A call still running is
+// work, not a turn gone quiet: a build or a test suite can run half an hour
+// with nothing logged. Events are oldest first, as Summarize takes them; only
+// the ones given are read, so a window that holds no turn event says false.
 //
 // It is what a session row reads to say *no reply 2d* when a turn has had no
 // event for a long time (.ai/04-ui.md § Sidebar, *Stalled*); the chat's
-// openTurn (ui/src/lib/chatActivity.ts) is its twin over the session's
-// events. The kinds it reads are the queue's turnKinds and its reading is
-// turnWaiting's (internal/daemon/queue.go), with two differences: a
-// permission prompt is the user's to answer, never a turn gone quiet, and a
-// prompt Claude Code wrote for itself (a background task's notification) is
-// passed over, as the chat passes over it.
+// openTurn (ui/src/lib/chatActivity.ts), with no step running, is its twin
+// over the session's events. The kinds it reads are the queue's turnKinds
+// and its reading is turnWaiting's (internal/daemon/queue.go), with three
+// differences: a running call is not open here, a permission prompt is the
+// user's to answer, never a turn gone quiet, and a prompt Claude Code wrote
+// for itself (a background task's notification) is passed over, as the chat
+// passes over it.
 func TurnOpen(events []event.Event) bool {
+	done := map[string]bool{}
+	inTurn := false
 	for i := len(events) - 1; i >= 0; i-- {
 		e := events[i]
 		if e.Source != event.SourceHook || e.Subagent() {
@@ -33,13 +38,22 @@ func TurnOpen(events []event.Event) bool {
 				continue
 			}
 			return true
-		case event.KindToolPre, event.KindToolPost:
-			return true
+		case event.KindToolPost:
+			if id := payloadKey(e.Payload, "tool_use_id"); id != "" {
+				done[id] = true
+			}
+			inTurn = true
+		case event.KindToolPre:
+			id := payloadKey(e.Payload, "tool_use_id")
+			if id == "" || !done[id] {
+				return false // a call is running
+			}
+			inTurn = true
 		case event.KindContextCompact:
 			if payloadKey(e.Payload, "trigger") == "manual" {
 				continue
 			}
-			return true
+			inTurn = true
 		case event.KindAgentSpawn:
 			if payloadKey(e.Payload, "source") == "compact" {
 				continue
@@ -50,7 +64,8 @@ func TurnOpen(events []event.Event) bool {
 			return false
 		}
 	}
-	return false
+	// The window began inside the turn: its prompt is older than the events read.
+	return inTurn
 }
 
 // harnessPrompt is a prompt Claude Code wrote itself: a background task's
