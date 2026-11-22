@@ -1231,6 +1231,9 @@ mod tests {
         }
     }
 
+    // The helper is a macOS bundle, installed only there; Windows also
+    // refuses to rename a folder a test still holds open.
+    #[cfg(target_os = "macos")]
     #[test]
     fn install_helper_replaces_the_bundle_only_when_it_changed() {
         let s = sup("helper");
