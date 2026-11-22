@@ -12,6 +12,49 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.189.0] - 2026-11-23
+
+### Added
+
+- **sidebar:** a Claude Code session whose last message got no reply is
+  marked in the session lists, so a silently stuck agent is seen without
+  opening its chat. After 15 minutes with no event in an open turn, and no
+  call running, its row (Open, under its project, *Running, no tab*, and the
+  phone's Continue) has
+  an amber dot and says *no reply 2d* — *25m*, *2h*, *12h*, *2d* — with
+  *Your last message got no reply. Open it to send again.* in its tooltip.
+  Such a row no longer folds into Background. The sessions list carries a new
+  `turn_open` field, read from the events it already reads.
+- **cost:** with no plan stated, Home's *Cost today* and the Cost screen's
+  total ask *How do you pay for Claude?* right under the figure, with one-tap
+  Pro $20, Max $100, Ultra $200 and API key — the same choice the header's
+  plan chip saves — and the other plan prompts on those screens wait. When
+  Claude Code reports plan limits a hint says it looks like a subscription;
+  nothing is chosen for you, and *Not now* hides the question in that
+  browser. On a flat plan the figure is headed *Work at API prices* and says
+  *Claude Code work is covered by your Pro plan. Nothing extra was charged
+  unless you turned on extra usage.* An API-key plan keeps *Cost · ≈ your
+  bill*.
+
+### Changed
+
+- **cost:** Plan value compares this month's Claude Code work at API prices
+  with what your plan costs a month, with a thin bar and *About K times what
+  you pay.*, instead of three tiles scaled to the selected range.
+
+### Fixed
+
+- **resources:** after **Free up memory** the button no longer offers the
+  agent it just ended. What was freed leaves the offer at once, the figures
+  are read again right away and once more 2.5 seconds later, when the ended
+  processes have gone, and a line under the result says *Updating the
+  figures…* until then.
+- **chat:** a call that runs longer than 15 minutes (a build, `make e2e`)
+  is no longer called stalled. The chat keeps *Running make e2e* with its
+  clock instead of *No reply from Claude since …*; only a turn with no call
+  running and no event for 15 minutes is stalled, in the chat and in the
+  session lists alike.
+
 ## [0.188.1] - 2026-11-22
 
 ### Fixed

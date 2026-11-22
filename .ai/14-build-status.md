@@ -532,6 +532,17 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-23 — 0.189.0: what the plan covers, and who got no reply
+
+A minor release, #1010. Where no plan is stated, the cost figure asks once how
+you pay for Claude (Pro, Max, Ultra or an API key); on a flat plan it then
+reads *Work at API prices* and says the Claude Code work is covered by the
+plan, and Plan value compares this month's work with the plan's price. A
+session whose last message got no reply for 15 minutes, with no call
+running, is marked *no reply 2h* in the sidebar and the phone's Continue
+rows; a long command no longer reads as stalled in the chat. Free up memory
+drops what it freed at once and reads the figures again when it has gone.
+
 ### 2026-11-22 — 0.188.1: a stalled chat says so
 
 A patch release, #1006. A message whose request never came back left the chat
