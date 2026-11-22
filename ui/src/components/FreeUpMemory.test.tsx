@@ -13,7 +13,7 @@ import type { Footprint, Orphan } from '@/lib/footprint'
 import type { MachineMemory, MemoryAgent, MemoryReport } from '@/lib/memory'
 import { confirmLabel, freeUpLabel, freeUpPlan, heldLine, resultNote } from '@/lib/freeup'
 import { resetResourcesForTest } from '@/lib/resources'
-import { FreeUpMemory } from './FreeUpMemory'
+import { FreeUpMemory, SETTLE_MS } from './FreeUpMemory'
 import { MemoryPopover } from './MemoryBar'
 import { FootprintPanel } from './FootprintPanel'
 
@@ -160,6 +160,33 @@ describe('the confirmation', () => {
     await act(async () => { fireEvent.click(r.container.querySelector('[data-free-up-yes]')!) })
     expect(stop).toHaveBeenCalledWith([{ pid: 48120, started_at: expect.any(Number) }, { pid: 48133, started_at: expect.any(Number) }], false, true)
     expect(end).toHaveBeenCalledWith(['s1', 's2'], 's9')
+  })
+
+  it('takes what it freed out of the offer at once, and reads the figures again when the processes have gone', async () => {
+    // Owner, 2026-11-22: the button still offered the agent it had just ended,
+    // because the list read right after still had its process.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const f = doctor()
+      f.orphans = { ...f.orphans!, list: [] }
+      vi.spyOn(api, 'footprint').mockResolvedValue(f)
+      vi.spyOn(api, 'endIdleAgents').mockResolvedValue({ ended: ['s1'] })
+      const done = vi.fn()
+      const r = render(<FreeUpMemory memory={memReport(f)} sessions={sessions} onDone={done} />)
+      fireEvent.click(await waitFor(() => r.container.querySelector<HTMLButtonElement>('[data-free-up]') ?? Promise.reject(new Error('not yet'))))
+      fireEvent.click(r.container.querySelector('[data-free-up-pick="a:s2"]')!)
+      await act(async () => { fireEvent.click(r.container.querySelector('[data-free-up-yes]')!) })
+      // The screen's list still names s1; the offer no longer does.
+      expect(r.container.querySelector('[data-free-up]')!.textContent).toBe('Free up memory · ~512 MB')
+      expect(r.container.querySelector('[data-free-up-settling]')!.textContent).toBe('Updating the figures…')
+      expect(done).toHaveBeenCalledTimes(1)
+      await act(async () => { await vi.advanceTimersByTimeAsync(SETTLE_MS) })
+      expect(done).toHaveBeenCalledTimes(2)
+      expect(r.container.querySelector('[data-free-up-settling]')).toBeNull()
+      expect(r.container.querySelector('[data-free-up-note]')!.textContent).toBe('Freed about 1.0 GB: ended 1 idle agent.')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
