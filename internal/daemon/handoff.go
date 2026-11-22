@@ -41,8 +41,10 @@ const (
 	// couple of hundred tokens rather than a page of its context window.
 	handoffMaxRunes = 1200
 	// handoffMinRunes is the floor for a passage worth handing back. "Done." is
-	// true and says nothing about where the work stood.
-	handoffMinRunes = 400
+	// true and says nothing about where the work stood. The store owns the
+	// number: idx_events_handoff, which the status screen's coverage reads,
+	// is built at it.
+	handoffMinRunes = store.HandoffMinRunes
 	// handoffMaxAge is how stale a handoff may be. Beyond a fortnight the last
 	// thing said is usually not what you are returning to, and presenting it as
 	// context is worse than silence.

@@ -10,7 +10,7 @@ import { Sheet, SheetButton, SHEET_CLOSE_ROOM } from './Sheet'
 import { keys } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { fmtMem, useSessionResources } from '@/lib/resources'
-import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentCloseChoices, chatsCloseQuestion, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
+import { AGENT_END_QUESTION, CHAT_CLOSE_QUESTION, agentCloseChoices, chatsCloseQuestion, agentIdle, agentStillWorking, closeQuestion, projectCloseQuestion, type ClosingShell } from '@/lib/closeShell'
 
 /**
  * The one question before closing a quick chat that is still answering
@@ -86,14 +86,18 @@ export function CloseChatConfirm({ onStop, onKeep, onCancel, agent = false, clos
  * From 2026-10-15 it was *Close tab* and a quiet *Stop it instead* link,
  * and stopping was easy to miss. *Keep it running* is in focus, so ⌘W then
  * Enter still closes the tab and lets the agent work on; Escape cancels.
- * An idle agent never gets here: it ends with its tab and a toast says the
+ * An idle agent gets here only when Settings → Closing a tab has *Always ask
+ * before closing an agent's tab* on (`idle`): the same buttons, its line
+ * saying it is idle; otherwise it ends with its tab and a toast says the
  * conversation is saved.
  */
-export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
+export function CloseAgentChoice({ title, many, idle = false, onKeep, onEnd, onCancel }: {
   /** The tab's name, for the sentence. */
   title: string
   /** More than one agent in the closing tab still working (a split). */
   many: boolean
+  /** Its agents are idle, asked about because Settings says always ask. */
+  idle?: boolean
   onKeep: () => void
   onEnd: () => void
   onCancel: () => void
@@ -107,7 +111,7 @@ export function CloseAgentChoice({ title, many, onKeep, onEnd, onCancel }: {
   return (
     <Sheet label="Close an agent's tab" width={520} onClose={onCancel}>
       <div className="grid gap-4 px-5 py-4">
-        <p className={`text-[13.5px] leading-[1.5] text-fg ${SHEET_CLOSE_ROOM}`}>{agentStillWorking(title, many)}</p>
+        <p className={`text-[13.5px] leading-[1.5] text-fg ${SHEET_CLOSE_ROOM}`}>{idle ? agentIdle(title, many) : agentStillWorking(title, many)}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {rows.map(({ key, c, act, focus }) => (
             <div key={key} className="grid content-start gap-1.5">

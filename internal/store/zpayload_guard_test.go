@@ -58,7 +58,6 @@ var plainPayloadReads = map[string]string{
 	"internal/store/queries.go:SessionNotes":                         "turn.assistant",
 	"internal/store/queries.go:SearchNotes":                          "turn.assistant and turn.user",
 	"internal/store/queries.go:WhereWeLeftOff":                       "turn.assistant",
-	"internal/store/queries.go:HandoffCoverage":                      "turn.assistant",
 	"internal/store/remove.go:sessionDayTurns":                       "turn.assistant",
 	"internal/store/turns.go:PromptTexts":                            "turn.user rows by id",
 	// Only while tool_fields is filling, which compression waits for; the
