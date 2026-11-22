@@ -517,6 +517,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-22 — 0.187.0: New project makes the folder you typed
+
+A minor release, #999. The New project wizard used to stop at "is not a
+folder" when the typed path did not exist yet. Now, when the folder above it
+exists, it says "New folder — Caprock will create <path>" and the button reads
+*Create folder & continue*: one empty folder, no git, no parents, made only on
+that press. A missing parent is named and nothing is created.
+
 ### 2026-11-22 — 0.186.5: a large history is no longer a warning
 
 A patch release, #997. The Resources screen stopped calling a large Caprock
