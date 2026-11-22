@@ -1,6 +1,9 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -123,5 +126,88 @@ func TestBrowseStatExpandsTheHomeFolder(t *testing.T) {
 	}
 	if !validDefaultFolder(home) {
 		t.Errorf("an absolute path was refused")
+	}
+}
+
+// POST /v1/browse/mkdir makes one folder whose parent already exists inside
+// the browse root, and nothing else: no parents, no git, no project.
+func TestBrowseMkdir(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := newEnv(t)
+	e.setBrowseRoot(t, root)
+	mkdir := func(p string) (int, map[string]string) {
+		t.Helper()
+		b, _ := json.Marshal(map[string]string{"path": p})
+		req, err := http.NewRequest(http.MethodPost, e.srv.URL+"/v1/browse/mkdir", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]string
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+
+	made := filepath.Join(root, "newhop5")
+	if code, out := mkdir(made + string(filepath.Separator)); code != http.StatusCreated || out["path"] != made {
+		t.Fatalf("mkdir: %d %v", code, out)
+	}
+	if fi, err := os.Stat(made); err != nil || !fi.IsDir() {
+		t.Fatalf("the folder was not made: %v", err)
+	}
+	if entries, _ := os.ReadDir(made); len(entries) != 0 {
+		t.Errorf("the new folder holds %d entries; nothing but the folder is made", len(entries))
+	}
+	if code, _ := mkdir(made); code != http.StatusConflict {
+		t.Errorf("again: %d, want 409", code)
+	}
+	if code, _ := mkdir(filepath.Join(root, "file.txt")); code != http.StatusConflict {
+		t.Errorf("over a file: %d, want 409", code)
+	}
+
+	// A missing parent is never made.
+	if code, _ := mkdir(filepath.Join(root, "a", "b")); code != http.StatusNotFound {
+		t.Errorf("missing parent: %d, want 404", code)
+	}
+	if _, err := os.Stat(filepath.Join(root, "a")); !os.IsNotExist(err) {
+		t.Errorf("a missing parent was made: %v", err)
+	}
+	// Under a file, outside the root, relative, empty, the filesystem root.
+	outside := t.TempDir()
+	for _, p := range []string{
+		filepath.Join(root, "file.txt", "x"),
+		filepath.Join(outside, "x"),
+		root + string(filepath.Separator) + ".." + string(filepath.Separator) + "escape-x",
+		"relative/x",
+		"",
+		filepath.VolumeName(root) + string(filepath.Separator),
+	} {
+		if code, _ := mkdir(p); code != http.StatusNotFound {
+			t.Errorf("%q: %d, want 404", p, code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(outside, "x")); !os.IsNotExist(err) {
+		t.Errorf("a folder outside the root was made: %v", err)
+	}
+
+	// A link inside the root that points out of it does not carry a mkdir out.
+	if err := os.Symlink(outside, filepath.Join(root, "out")); err == nil {
+		if code, _ := mkdir(filepath.Join(root, "out", "y")); code != http.StatusNotFound {
+			t.Errorf("through a link out of the root: %d, want 404", code)
+		}
+		if _, err := os.Stat(filepath.Join(outside, "y")); !os.IsNotExist(err) {
+			t.Errorf("a folder was made through a link: %v", err)
+		}
 	}
 }

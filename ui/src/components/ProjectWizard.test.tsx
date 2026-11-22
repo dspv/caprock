@@ -6,7 +6,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Project } from '@/lib/projects'
 
-const m = vi.hoisted(() => ({ add: vi.fn(), patch: vi.fn(), scan: vi.fn(), browse: vi.fn(), pick: vi.fn(), tauri: { on: false } }))
+const m = vi.hoisted(() => ({ add: vi.fn(), patch: vi.fn(), scan: vi.fn(), browse: vi.fn(), pick: vi.fn(), stat: vi.fn(), mkdir: vi.fn(), tauri: { on: false } }))
 vi.mock('@/lib/projects', async (orig) => {
   const actual = await orig<typeof import('@/lib/projects')>()
   return { ...actual, projectsApi: { ...actual.projectsApi, add: m.add, patch: m.patch, scan: m.scan } }
@@ -21,6 +21,8 @@ vi.mock('@/lib/api', async (orig) => {
       recentDirs: async () => [],
       localRepos: async () => ({ root: '/Users/me/dev', home: '/Users/me', scanned_at: 0, repos: [] }),
       browse: (dir: string) => m.browse(dir),
+      browseStat: (path: string) => m.stat(path),
+      browseMkdir: (path: string) => m.mkdir(path),
     },
   }
 })
@@ -57,6 +59,9 @@ beforeEach(() => {
   m.scan.mockReset().mockImplementation(async (path: string) => (path.includes('work') ? THREE : ONE))
   m.browse.mockReset().mockResolvedValue({ dir: '/Users/me/dev', parent: '/Users/me', root: '/Users/me', entries: [{ name: 'site', path: '/Users/me/dev/site', repo: true }, { name: 'notes', path: '/Users/me/dev/notes', repo: false }] })
   m.pick.mockReset()
+  // Every typed path is an existing folder unless a test says otherwise.
+  m.stat.mockReset().mockImplementation(async (path: string) => ({ path, exists: true, is_dir: true, empty: false, parent_exists: true }))
+  m.mkdir.mockReset().mockImplementation(async (path: string) => ({ path: path.replace(/^~/, '/Users/me') }))
 })
 
 function open(projects: Project[] = []) {
@@ -172,6 +177,72 @@ describe('new project, tap-tap-tap', () => {
     fireEvent.keyDown(folder(), { key: 'Enter' })
     expect(await screen.findByRole('alert')).toHaveTextContent('/nope is not a folder')
     expect(folder()).toBeInTheDocument()
+  })
+
+  it('a folder not there yet whose parent is: said under the field, made only on Create folder & continue, then on as if picked', async () => {
+    m.stat.mockImplementation(async () => ({ path: '/Users/me/dev/newhop5', exists: false, is_dir: false, empty: false, parent_exists: true }))
+    m.scan.mockResolvedValue({ root: '/Users/me/dev/newhop5', repos: [], instruction_files: [] })
+    const cb = open()
+    fireEvent.change(folder(), { target: { value: '~/dev/newhop5' } })
+    expect(await screen.findByText('New folder — Caprock will create ~/dev/newhop5')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+    const button = screen.getByRole('button', { name: /Create folder & continue/ })
+    expect(m.mkdir).not.toHaveBeenCalled()
+    fireEvent.click(button)
+    await waitFor(() => expect(m.mkdir).toHaveBeenCalledWith('~/dev/newhop5'))
+    expect(m.mkdir).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('heading', { name: 'What is there' })).toBeInTheDocument()
+    expect(m.scan).toHaveBeenCalledWith('~/dev/newhop5')
+    expect(m.add).not.toHaveBeenCalled()
+    fireEvent.keyDown(window, { key: 'Enter' })
+    await waitFor(() => expect(m.add).toHaveBeenCalledWith({ path: '/Users/me/dev/newhop5' }))
+    expect(cb.onCreated).toHaveBeenCalled()
+  })
+
+  it('Enter on a folder not there yet makes it too', async () => {
+    m.stat.mockImplementation(async () => ({ path: '/Users/me/dev/newhop5', exists: false, is_dir: false, empty: false, parent_exists: true }))
+    m.scan.mockResolvedValue({ root: '/Users/me/dev/newhop5', repos: [], instruction_files: [] })
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev/newhop5' } })
+    await screen.findByRole('button', { name: /Create folder & continue/ })
+    fireEvent.keyDown(folder(), { key: 'Enter' })
+    await waitFor(() => expect(m.mkdir).toHaveBeenCalledWith('~/dev/newhop5'))
+    expect(await screen.findByRole('heading', { name: 'What is there' })).toBeInTheDocument()
+  })
+
+  it('a folder whose parent is missing too: the parent named, nothing made', async () => {
+    m.stat.mockImplementation(async () => ({ path: '/Users/me/foo/bar/baz', exists: false, is_dir: false, empty: false, parent_exists: false }))
+    open()
+    fireEvent.change(folder(), { target: { value: '~/foo/bar/baz' } })
+    expect(await screen.findByRole('alert')).toHaveTextContent('~/foo/bar does not exist')
+    expect(screen.queryByText(/is not a folder/)).toBeNull()
+    const button = screen.getByRole('button', { name: 'Continue' })
+    fireEvent.click(button)
+    fireEvent.keyDown(folder(), { key: 'Enter' })
+    await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(1))
+    expect(m.mkdir).not.toHaveBeenCalled()
+    expect(m.scan).not.toHaveBeenCalled()
+    expect(folder()).toBeInTheDocument()
+  })
+
+  it('an existing folder: no new-folder line, Continue as before, nothing made', async () => {
+    open()
+    fireEvent.change(folder(), { target: { value: '~/work' } })
+    await waitFor(() => expect(m.stat).toHaveBeenCalledWith('~/work'))
+    expect(screen.queryByText(/New folder/)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByRole('heading', { name: 'What is there' })).toHaveTextContent('3 repositories')
+    expect(m.mkdir).not.toHaveBeenCalled()
+  })
+
+  it('a press before the field was looked at asks first, and makes nothing on that press', async () => {
+    m.stat.mockImplementation(async () => ({ path: '/Users/me/dev/newhop5', exists: false, is_dir: false, empty: false, parent_exists: true }))
+    open()
+    fireEvent.change(folder(), { target: { value: '~/dev/newhop5' } })
+    fireEvent.keyDown(folder(), { key: 'Enter' })
+    expect(await screen.findByRole('button', { name: /Create folder & continue/ })).toBeInTheDocument()
+    expect(m.mkdir).not.toHaveBeenCalled()
+    expect(m.scan).not.toHaveBeenCalled()
   })
 
   it('hands clone and a new folder to the Add project sheet', async () => {

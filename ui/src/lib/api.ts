@@ -2812,6 +2812,8 @@ export const api = {
   browse: (dir = '') => get<BrowseResponse>(`/v1/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   /** Whether a path exists, is a folder, is empty, is already a project. */
   browseStat: (path: string) => get<BrowseStat>(`/v1/browse/stat?path=${encodeURIComponent(path)}`),
+  /** Makes one new folder whose parent exists inside the browse root: no parents, no git, no project. */
+  browseMkdir: (path: string) => post<{ path: string }>('/v1/browse/mkdir', { path }),
   recentDirs: () => get<RecentDir[]>('/v1/recent-dirs'),
   /** Every labelled folder (ADR-091). */
   folderLabels: () => get<{ labels: FolderLabel[] }>('/v1/folder-labels'),

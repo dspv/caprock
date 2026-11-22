@@ -13,6 +13,11 @@
  *     the picks kept while moving between folders, then *2 selected ·
  *     Continue*. That project has no folder of its own: the first ticked is
  *     its home repository, where agents start (ADR-077).
+ *     A typed folder that is not there yet but whose parent is (owner,
+ *     2026-11-22) reads *New folder — Caprock will create ~/dev/x* under the
+ *     field and *Create folder & continue* on the button: that press makes
+ *     the one folder (`POST /v1/browse/mkdir`, no git, no parents) and goes
+ *     on as if it had been picked. A missing parent is named; nothing is made.
  *  2. **What is there.** The folder is scanned (`GET /v1/projects/scan`,
  *     ADR-055) and said in one line: one repository (a single repository or
  *     a monorepo: one project, nothing to choose — a folder inside a
@@ -28,7 +33,7 @@
  * from a template is the link beside it (TemplateProjectSheet.tsx).
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { api, errText } from '@/lib/api'
+import { api, errText, type BrowseStat } from '@/lib/api'
 import { useApi } from '@/lib/useApi'
 import { isMacPlatform, isTauri } from '@/lib/appmode'
 import { shell } from '@/lib/shell'
@@ -36,7 +41,7 @@ import { instructionsPatch, projectsApi, type FoundRepo, type InstructionFile, t
 import { tildePath } from '@/lib/projectSearch'
 import { foundNote } from '@/lib/multirepo'
 import {
-  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, homeOf, instructionsState, lastSegment, lineCount, listedAt,
+  createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, homeOf, instructionsState, lastSegment, lineCount, listedAt, missingFolder,
   pickedLabel, placeChips, splitTyped, suggestedName, togglePick, trimSlash, wholeFolder,
   type Found, type Shape,
 } from '@/lib/projectWizard'
@@ -138,6 +143,18 @@ export function ProjectWizard({
     [browse.data, browse.error, filtering, partial],
   )
   const shownDir = browse.data ? tildePath(trimSlash(browse.data.listing.dir), home) : ''
+  // What the typed path is, on the same 250 ms: a folder not there yet is
+  // offered to be made (its parent there) or its missing parent named. Kept
+  // with the path it answers, so a stat of an older path is never read as
+  // this one's. Not in *Several repositories*, where the field only walks.
+  const [statAt, setStatAt] = useState<{ asked: string; stat: BrowseStat | null } | null>(null)
+  useEffect(() => {
+    if (!listDir || several) return
+    let live = true
+    api.browseStat(listDir).then((stat) => stat, () => null).then((stat) => { if (live) setStatAt({ asked: listDir, stat }) })
+    return () => { live = false }
+  }, [listDir, several])
+  const missing = !several && statAt && statAt.asked === path.trim() ? missingFolder(statAt.stat, path, home) : null
   // The highlighted row: the first match while a name is typed, so Enter and
   // Tab take it; none in a plain listing, where Enter looks at the folder in
   // the field, as before. Up and Down move it.
@@ -196,6 +213,39 @@ export function ProjectWizard({
     } finally {
       setBusy(false)
     }
+  }
+
+  /**
+   * Continue on the Folder step. A path not there yet is never made on a
+   * press that did not say so: a stat older than the field is asked again
+   * first, and a folder it offers to make waits for *Create folder &
+   * continue*.
+   */
+  const proceed = async () => {
+    const p = path.trim()
+    if (!p) { setError('Choose a folder.'); return }
+    let note = missing
+    if (!statAt || statAt.asked !== p) {
+      const stat = await api.browseStat(p).catch(() => null)
+      setStatAt({ asked: p, stat })
+      note = missingFolder(stat, p, home)
+      if (note?.create) return
+    }
+    if (note && !note.create) { setError(note.text); return }
+    if (note?.create) {
+      setError('')
+      setBusy(true)
+      try {
+        const made = await api.browseMkdir(p)
+        setStatAt((s) => (s && s.asked === p && s.stat ? { asked: p, stat: { ...s.stat, path: made.path, exists: true, is_dir: true, empty: true } } : s))
+      } catch (e) {
+        setError(`Could not create ${tildePath(trimSlash(p), home)}: ${errText(e)}`)
+        setBusy(false)
+        return
+      }
+      setBusy(false)
+    }
+    await look(p)
   }
 
   /** *Several repositories* → Continue: the picks, as the second step's cards. */
@@ -279,7 +329,7 @@ export function ProjectWizard({
         else lookPicked()
       }
       else if (hit) pickFolder(hit.entry.path)
-      else void look(path)
+      else void proceed()
     }
     else if (step === 'found') void create()
     else if (made) { onStartAgent(made.project.id) }
@@ -306,7 +356,9 @@ export function ProjectWizard({
   const primary = step === 'folder'
     ? several
       ? { label: pickedLabel(picks.size), run: lookPicked, disabled: picks.size < 2 }
-      : { label: busy ? 'Looking…' : 'Continue', run: () => void look(path) }
+      : missing?.create
+        ? { label: busy ? 'Creating…' : 'Create folder & continue', run: () => void proceed() }
+        : { label: busy ? 'Looking…' : 'Continue', run: () => void proceed() }
     : step === 'found' && found
       ? { label: busy ? 'Creating…' : createLabel(found, pickedCount, shape, !!listed), run: () => void create() }
       : null
@@ -386,6 +438,16 @@ export function ProjectWizard({
               </button>
             )}
           </div>
+          {missing && (
+            <p
+              role={missing.create ? 'status' : 'alert'}
+              data-missing-folder={missing.create ? 'create' : 'parent'}
+              className={`-mt-3 min-w-0 truncate text-[13.5px] ${missing.create ? 'text-fg-muted' : 'text-danger'}`}
+              title={missing.text}
+            >
+              {missing.text}
+            </p>
+          )}
           {chips.length > 0 && (
             <div role="group" aria-label="Places" className="flex min-w-0 flex-wrap gap-2">
               {chips.map((c) => (
@@ -477,7 +539,7 @@ export function ProjectWizard({
               ))}
             </div>
           )}
-          {filtering && partial && matches.length === 0 && (
+          {filtering && partial && matches.length === 0 && !missing && (
             <p role="status" className="text-[13px] text-fg-muted">
               No folder starting with ‘<span className="mono text-fg">{partial}</span>’ in <span className="mono">{shownDir}</span>
             </p>

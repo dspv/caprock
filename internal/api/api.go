@@ -865,6 +865,7 @@ func New(d Deps) *Server {
 	// this being a filesystem-read API.
 	m.HandleFunc("GET /v1/browse", s.handleBrowse)
 	m.HandleFunc("GET /v1/browse/stat", s.handleBrowseStat)
+	m.HandleFunc("POST /v1/browse/mkdir", s.handleBrowseMkdir)
 	m.HandleFunc("GET /v1/browse/repos", s.handleLocalRepos)
 	m.HandleFunc("GET /v1/recent-dirs", s.handleRecentDirs)
 	m.HandleFunc("GET /v1/status", s.handleStatus)

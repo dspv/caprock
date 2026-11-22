@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   createLabel, createRequests, drillPath, expandTilde, filterFolders, foundHeadline, foundOf, homeOf, instructionsState, instructionsSummary, lineCount, listedAt,
-  membersLine, parentOf, pickedLabel, placeChips, repoFilesLabel, splitMemberFile, splitTyped, suggestedName, togglePick, wholeFolder, type Found,
+  membersLine, missingFolder, parentOf, pickedLabel, placeChips, repoFilesLabel, splitMemberFile, splitTyped, suggestedName, togglePick, wholeFolder, type Found,
 } from './projectWizard'
 import type { Project } from './projects'
 
@@ -27,6 +27,17 @@ describe('paths', () => {
     expect(expandTilde('~/dev', home)).toBe('/Users/ada/dev')
     expect(expandTilde('~', home)).toBe('/Users/ada')
     expect(expandTilde('/x', home)).toBe('/x')
+  })
+
+  it('a missing folder: made when its parent is there, the parent named when it is not', () => {
+    const stat = (o: Partial<{ exists: boolean; is_dir: boolean; parent_exists: boolean; guarded: boolean }>) =>
+      ({ path: '/Users/ada/dev/newhop5', exists: false, is_dir: false, empty: false, parent_exists: false, ...o })
+    expect(missingFolder(stat({ parent_exists: true }), '~/dev/newhop5', home)).toEqual({ create: true, text: 'New folder — Caprock will create ~/dev/newhop5' })
+    expect(missingFolder(stat({ parent_exists: true }), '/Users/ada/dev/newhop5/', home)).toEqual({ create: true, text: 'New folder — Caprock will create ~/dev/newhop5' })
+    expect(missingFolder({ ...stat({}), path: '/Users/ada/foo/bar/baz' }, '~/foo/bar/baz', home)).toEqual({ create: false, text: '~/foo/bar does not exist' })
+    expect(missingFolder(stat({ exists: true, is_dir: true, parent_exists: true }), '~/dev/newhop5', home)).toBeNull()
+    expect(missingFolder(stat({ guarded: true }), '~/dev/newhop5', home)).toBeNull()
+    expect(missingFolder(null, '~/dev/newhop5', home)).toBeNull()
   })
 })
 
