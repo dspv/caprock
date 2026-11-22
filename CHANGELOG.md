@@ -12,6 +12,54 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.188.0] - 2026-11-22
+
+### Added
+
+- **tabs:** Settings → Closing a tab → **Always ask before closing an agent's
+  tab** (off by default). With it on, closing an idle agent's tab — its ×,
+  ⌘W (Ctrl+Shift+W on Windows and Linux) or the app's Close Tab — asks the
+  same question as a busy one, *Keep it running* or *Stop it*, instead of
+  ending the agent with its tab. Shell tabs are unchanged.
+- **app:** on macOS, an agent tab whose terminal shows Claude Code's voice
+  failing (*No audio detected from microphone*, *Microphone access is
+  denied*) gets a strip: *Voice works after restarting this session.* with
+  *Restart here*. It ends that Claude Code process and resumes the same
+  conversation with `--resume` in the same tab, folder and mode, so a
+  terminal opened before the Caprock Terminal helper records again. While the
+  agent works it reads *Restart when idle* and restarts once the turn ends;
+  × hides it for that session. Never on Windows or Linux, never in a shell
+  tab.
+
+### Changed
+
+- **resources:** the status screen's memory line (how many repositories hold
+  a passage a new session can be handed, and since when) reads a small index
+  of the long main-thread passages instead of opening every assistant turn
+  of the fortnight: on a copy of the owner's database, 48 MB read cold a
+  call before, about 2.4 MB after, the same figures (migration 0090).
+
+### Fixed
+
+- **macos:** voice input in a Caprock terminal no longer loses the
+  microphone when Claude Code updates itself, and works from a shell tab.
+  Every program in a Caprock terminal now asks macOS as **Caprock
+  Terminal**, a small helper app signed with Caprock's Developer ID, so you
+  allow the microphone (or a folder) once and the answer stays across
+  updates of Caprock and of your agents. Before, macOS asked each program
+  itself: Claude Code installs every version at its own path, so each
+  update was a new program to macOS, and a shell could not ask at all.
+  Terminals that were open before you update keep running as they are;
+  open a new one for voice. Homebrew without the app, Windows and Linux are
+  unchanged (ADR-101).
+- **resources:** Caprock does much less database work while a private module
+  or the Now screen is open. When nothing was written since the module last
+  asked, its document list now answers "unchanged" without reading anything,
+  instead of reading the whole collection again several times a second. And
+  while agents work, the kept per-session figures behind the Now screen
+  catch up on what moved at most once every 15 seconds instead of on every
+  ask, so today's cost and tokens can be up to 15 seconds behind.
+
 ## [0.187.0] - 2026-11-22
 
 ### Added

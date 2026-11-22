@@ -532,6 +532,20 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-22 — 0.188.0: one microphone answer for every Caprock terminal
+
+A minor release, #1004. On macOS, voice in a Caprock terminal recorded silence:
+each program a terminal started answered to macOS for itself, so the
+microphone answer belonged to one Claude Code version and was lost on its next
+update, and a shell tab could not ask at all. Terminals now run inside a small
+signed helper, *Caprock Terminal*: macOS asks once, and the answer survives
+Caprock and Claude Code updates (ADR-101). Sessions open before the update keep
+running; if one records silence, its tab offers *Restart here*, which resumes
+the same conversation in the same tab once the agent is idle. Also: an
+optional *Always ask* before closing an idle agent's tab, and fewer disk reads
+(an index for the handoff check, unchanged module lists answered without a
+read, kept cost figures refreshed at most every 15 s).
+
 ### 2026-11-22 — 0.187.0: New project makes the folder you typed
 
 A minor release, #999. The New project wizard used to stop at "is not a
