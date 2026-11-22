@@ -517,6 +517,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-22 — 0.186.5: a large history is no longer a warning
+
+A patch release, #997. The Resources screen stopped calling a large Caprock
+history a problem: keeping everything is the point, so it warns only when the
+disk under the database is nearly full. ⌘W, Ctrl+Shift+W, the Close Tab menu
+item and the tab's × are now tested to close an agent's tab the same way, and
+the Storage link's scroll retries no longer throw once the page is gone.
+
 ### 2026-11-21 — 0.186.4: Caprock says what reads the disk, and an open session tab reads far less
 
 A patch release, #993. 0.186.1 did not bring the owner's daemon reads down, so
