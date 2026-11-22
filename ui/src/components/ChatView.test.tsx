@@ -8,7 +8,7 @@
  * measurements in a real browser are in the PR.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { Event } from '@/lib/api'
 import { live } from '@/lib/live'
 import { shell } from '@/lib/shell'
@@ -630,6 +630,8 @@ describe('ChatView: a turn at work', () => {
   })
 
   it('says it is thinking from the prompt, names the call it runs, and goes at the Stop', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(BASE + 60_000)
+    onTestFinished(() => clock.mockRestore())
     store.events = [msg(1, 'run the tests')]
     render(<ChatView sessionId="s" canType={false} agent="claude" />)
     expect(await screen.findByText('Claude is thinking…')).toBeInTheDocument()
@@ -640,6 +642,37 @@ describe('ChatView: a turn at work', () => {
     expect(screen.getByText('Claude is thinking…')).toBeInTheDocument()
     await deliver([reply(4, 'All green.'), stop(5)])
     expect(document.querySelector('[data-chat-working]')).toBeNull()
+  })
+
+  it('a turn with no event for 15 minutes says the agent stopped answering, and Send again types it in now', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(BASE + 2 * 86_400_000)
+    onTestFinished(() => clock.mockRestore())
+    store.busy = true
+    store.events = [msg(1, 'write it short')]
+    render(<ChatView sessionId="s" canType agent="claude" />)
+    const card = await waitFor(() => {
+      const el = document.querySelector('[data-chat-working="stalled"]')
+      expect(el).not.toBeNull()
+      return el as HTMLElement
+    })
+    expect(card).toHaveTextContent('No reply from Claude since')
+    expect(card).toHaveTextContent('Nothing has happened in this session for 47 hours.')
+    expect(screen.queryByText('Claude is thinking…')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open terminal' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send again' }))
+    // The daemon holds it for the turn that never ends; Send again types it in anyway.
+    await waitFor(() => expect(store.calls.some((c) => c.startsWith('now '))).toBe(true))
+    expect(store.inputs).toEqual(['write it short', '\r'])
+  })
+
+  it('a session that cannot be typed into offers only the terminal when it stalls', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(BASE + 20 * 60_000)
+    onTestFinished(() => clock.mockRestore())
+    store.events = [msg(1, 'hello')]
+    render(<ChatView sessionId="s" canType={false} agent="claude" />)
+    await waitFor(() => expect(document.querySelector('[data-chat-working="stalled"]')).not.toBeNull())
+    expect(screen.getByText(/Nothing has happened in this session for 19 minutes/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull()
   })
 
   it('a permission prompt that blocks the turn says so, with its card in the chat', async () => {

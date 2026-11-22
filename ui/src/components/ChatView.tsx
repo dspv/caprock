@@ -39,9 +39,9 @@ import { TerminalKeys, type AttachIn } from './TerminalKeys'
 import { ChevronIcon } from './AppIcons'
 import { touchScreen } from '@/lib/phone'
 import { QuickReplies } from './QuickReplies'
-import { agentDisplayName, donePhrase, fmtElapsed, openTurn, promptParts, type TurnState } from '@/lib/chatActivity'
+import { agentDisplayName, donePhrase, fmtElapsed, openTurn, promptParts, STALL_MS, type TurnState } from '@/lib/chatActivity'
 import { useNow } from '@/lib/useNow'
-import { PermissionPrompt, usePermission } from './PermissionPrompt'
+import { openTerminal, PermissionPrompt, usePermission } from './PermissionPrompt'
 
 /** Events fetched when the view opens, and per page back. */
 export const CHAT_PAGE_EVENTS = 300
@@ -377,13 +377,16 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   // message the daemon held is the queue's bubble instead (QueuedList).
   const [outgoing, setOutgoing] = useState<Outgoing[]>([])
   const outSeq = useRef(0)
-  const submitText = useCallback(async (text: string, retry?: number): Promise<boolean> => {
+  // `now`: type it in even mid-turn (Send now), for a turn that stalled —
+  // the daemon would hold it until a Stop that never comes.
+  const submitText = useCallback(async (text: string, retry?: number, now = false): Promise<boolean> => {
     const key = retry ?? ++outSeq.current
     const after = eventsRef.current.reduce((m, e) => Math.max(m, e.id), 0)
     setOutgoing((list) => [...list.filter((o) => o.key !== key), { key, text, phase: 'sending', at: Date.now(), after }])
     nextFrame(jumpToEnd)
     try {
-      const r = await api.queueSend(sessionId, text)
+      let r = await api.queueSend(sessionId, text)
+      if (now && r.sent === false && r.queued) r = { sent: true, queue: await api.queueSendNow(sessionId, r.queued.id) }
       applyQueue(r.queue)
       setOutgoing((list) => (r.sent === false
         ? list.filter((o) => o.key !== key)
@@ -604,7 +607,13 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
             <OutgoingBubble key={`out-${o.key}`} o={o} onRetry={() => void submitText(o.text, o.key)} onDismiss={() => setOutgoing((list) => list.filter((x) => x.key !== o.key))} />
           ))}
           {!ended && (turn || permission) && (
-            <ChatWorking turn={turn} agent={agentDisplayName(agent)} waiting={!!permission} />
+            <ChatWorking
+              turn={turn}
+              agent={agentDisplayName(agent)}
+              waiting={!!permission}
+              onSendAgain={canType ? (text) => void submitText(text, undefined, true) : undefined}
+              onOpenTerminal={onOpenTerminal ?? (() => openTerminal(sessionId))}
+            />
           )}
           {!ended && question && <QuestionLine m={question} onOpenTerminal={onOpenTerminal} />}
           {prompt && !ended && <div className="py-1.5 empty:hidden" data-chat-permission><PermissionPrompt sessionId={sessionId} keys={false} onOpenTerminal={onOpenTerminal} /></div>}
@@ -772,11 +781,22 @@ function ToolLine({ m, plain = false }: { m: ChatMessage; plain?: boolean }) {
  * The agent at work (.ai/04-ui.md § Chat, *Working*): from the prompt until
  * its Stop, one line under the conversation says it is working, for how
  * long, and the call it runs — or that it waits on your permission. Its own
- * one-second clock, so the conversation does not redraw with it.
+ * one-second clock, so the conversation does not redraw with it. A turn with
+ * no event for STALL_MS is not called work: it says when the agent last
+ * answered, with *Send again* and *Open terminal* (*Stalled*).
  */
-function ChatWorking({ turn, agent, waiting }: { turn: TurnState | null; agent: string; waiting: boolean }) {
+function ChatWorking({ turn, agent, waiting, onSendAgain, onOpenTerminal }: {
+  turn: TurnState | null
+  agent: string
+  waiting: boolean
+  onSendAgain?: (text: string) => void
+  onOpenTerminal: () => void
+}) {
   const now = useNow(1000)
   const since = turn ? Date.parse(turn.since) : NaN
+  if (!waiting && turn && turn.last > 0 && now - turn.last >= STALL_MS) {
+    return <ChatStalled turn={turn} agent={agent} now={now} onSendAgain={onSendAgain} onOpenTerminal={onOpenTerminal} />
+  }
   const clock = Number.isFinite(since) ? fmtElapsed(now - since) : ''
   const text = waiting ? 'Waiting for your permission' : turn?.step ? turn.step : `${agent} is thinking…`
   return (
@@ -788,6 +808,50 @@ function ChatWorking({ turn, agent, waiting }: { turn: TurnState | null; agent: 
       )}
       <span className={`min-w-0 truncate ${waiting ? 'font-medium text-warn' : ''}`}>{text}</span>
       {clock && <span className="num shrink-0 text-fg-faint">{clock}</span>}
+    </div>
+  )
+}
+
+/** "22:20" today, else "20 Nov 22:20". */
+function clockOrDate(ms: number, now: number): string {
+  const d = new Date(ms)
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return d.toDateString() === new Date(now).toDateString() ? time : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${time}`
+}
+
+/** How long it has been quiet, in the largest whole unit: "20 minutes", "3 hours", "2 days". */
+function quietFor(ms: number): string {
+  const m = Math.floor(ms / 60_000)
+  const [n, unit] = m < 60 ? [m, 'minute'] : m < 48 * 60 ? [Math.floor(m / 60), 'hour'] : [Math.floor(m / 1440), 'day']
+  return `${n} ${unit}${n === 1 ? '' : 's'}`
+}
+
+/** An open turn with no sign of life: what happened and the two ways on. */
+function ChatStalled({ turn, agent, now, onSendAgain, onOpenTerminal }: {
+  turn: TurnState
+  agent: string
+  now: number
+  onSendAgain?: (text: string) => void
+  onOpenTerminal: () => void
+}) {
+  const [sent, setSent] = useState(false)
+  return (
+    <div role="status" data-chat-working="stalled" className="my-1.5 grid gap-1.5 rounded-[10px] border border-warn/40 bg-warn/10 px-3 py-2.5 text-[13px]">
+      <p className="font-medium text-warn">No reply from {agent} since {clockOrDate(turn.last, now)}</p>
+      <p className="text-[12.5px] text-fg-muted">Nothing has happened in this session for {quietFor(now - turn.last)}. The request may have stalled.</p>
+      <div className="mt-0.5 flex flex-wrap gap-2">
+        {onSendAgain && turn.text.trim() && (
+          <button
+            type="button"
+            className="min-h-[32px] rounded-[7px] bg-accent px-3 text-[13px] font-medium text-bg hover:brightness-110 disabled:opacity-50 max-sm:min-h-11"
+            disabled={sent}
+            onClick={() => { setSent(true); onSendAgain(turn.text) }}
+          >
+            {sent ? 'Sent' : 'Send again'}
+          </button>
+        )}
+        <button type="button" className="min-h-[32px] rounded-[7px] border border-border px-3 text-[13px] text-fg hover:bg-panel-2 max-sm:min-h-11" onClick={onOpenTerminal}>Open terminal</button>
+      </div>
     </div>
   )
 }

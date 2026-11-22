@@ -10,11 +10,13 @@ const ev = (id: number, kind: string, payload: unknown = {}, extra: Partial<Even
 describe('openTurn', () => {
   it('is open from the prompt to the Stop, naming the call that has no result', () => {
     const prompt = ev(1, 'turn.user', { prompt: 'go' })
-    expect(openTurn([prompt])).toEqual({ since: prompt.ts, step: '' })
+    expect(openTurn([prompt])).toEqual({ since: prompt.ts, step: '', text: 'go', last: Date.parse(prompt.ts) })
     const pre = ev(2, 'tool.pre', { tool_name: 'Read', tool_use_id: 'a', tool_input: { file_path: '/repo/src/main.go' } }, { tool: 'Read' })
     expect(openTurn([prompt, pre])?.step).toBe('Reading main.go')
     const post = ev(3, 'tool.post', { tool_use_id: 'a' })
     expect(openTurn([prompt, pre, post])?.step).toBe('')
+    // The last sign of life is the newest event, whatever its order.
+    expect(openTurn([prompt, post, pre])?.last).toBe(Date.parse(post.ts))
     expect(openTurn([prompt, pre, post, ev(4, 'agent.stop')])).toBeNull()
     expect(openTurn([prompt], true)).toBeNull()
   })
