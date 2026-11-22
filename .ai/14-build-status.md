@@ -532,6 +532,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-22 — 0.188.1: a stalled chat says so
+
+A patch release, #1006. A message whose request never came back left the chat
+saying *Claude is thinking…* indefinitely; one session showed a 48-hour
+clock. After 15 minutes with no event from the agent the chat now says when
+it last answered and how long it has been quiet, with **Send again**, which
+types the message in at once, and **Open terminal**.
+
 ### 2026-11-22 — 0.188.0: one microphone answer for every Caprock terminal
 
 A minor release, #1004. On macOS, voice in a Caprock terminal recorded silence:
