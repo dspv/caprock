@@ -40,6 +40,7 @@ import { spawnableAgents } from '@/components/AgentPicker'
 import { LastWord } from '@/components/LastWord'
 import { usePlan } from '@/components/PlanPicker'
 import { costBasis, costBasisLong, costLabel } from '@/components/CostBasis'
+import { CostHeroSub } from '@/components/PlanAsk'
 import { href } from '@/lib/router'
 import { useContext, useEffect, useState } from 'react'
 import { WorkHomeCard } from '@/components/WorkHomeCard'
@@ -363,7 +364,8 @@ export function NowScreen({ inApp = false }: { inApp?: boolean } = {}) {
           {/* Each cell carries its last 14 days and one word against the
             * viewer's own median (lib/trend.ts): a number alone did not say
             * whether it was a normal day (owner, 2026-10-14). */}
-          <Stat label={`${costLabel(plan)} today`} value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} tone="info" size="hero"
+          <Stat label={`${costLabel(plan)} today`} value={measured ? fmtUSD(summary.data?.cost_usd) : '—'} sub={<CostHeroSub plan={plan} onSave={savePlan} limits={summary.data?.rate_limits} measured={measured}
+            basis={<span title={costBasisLong(plan)}>{measured ? costBasis(plan) : loading ? 'reading your figures…' : 'nothing measured yet'}</span>} />} tone="info" size="hero"
             trend={<TodayTrend metric="cost" trends={trendData} live={measured ? summary.data!.cost_usd : undefined} fmt={fmtUSD} label="Cost by this time of day" />} />
           {/* While the daemon has been up for less than the window, the rate
             * is arithmetic on a handful of seconds — correct, and alarming:

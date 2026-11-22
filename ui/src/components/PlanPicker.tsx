@@ -23,7 +23,7 @@ import { fmtUSD } from '@/lib/format'
  *  until the end of October 2026; a plan stored under an old name is read
  *  back under the new one (config.CurrentPlanLabel). The user can type any
  *  price. */
-const PRESETS: { label: string; kind: 'flat' | 'metered'; usd: number; note: string }[] = [
+export const PLAN_PRESETS: readonly { label: string; kind: 'flat' | 'metered'; usd: number; note: string }[] = [
   { label: 'Pro', kind: 'flat', usd: 20, note: '$20/mo' },
   { label: 'Max', kind: 'flat', usd: 100, note: '$100/mo' },
   { label: 'Ultra', kind: 'flat', usd: 200, note: '$200/mo' },
@@ -175,7 +175,7 @@ export function PlanOptions({ plan, onSave, useMain }: {
           <span className="mono text-[11px] text-fg-faint ml-auto">own sign-in&apos;s</span>
         </button>
       )}
-      {PRESETS.map((p) => {
+      {PLAN_PRESETS.map((p) => {
         const active = !!plan?.plan_kind && plan?.plan_label === p.label
         return (
           <button

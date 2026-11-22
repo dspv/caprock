@@ -67,7 +67,7 @@ describe('plan limits panel', () => {
     render(<CostScreen />)
     await waitFor(() => expect(screen.getByText('Codex')).toBeInTheDocument())
     // The Claude heading names the plan the user picked, or says Claude Code.
-    expect(screen.getByText(/^Claude (Code|Pro|Max)/)).toBeTruthy()
+    expect(screen.getByText(/^Claude (Code|Pro|Max)(?! work)/)).toBeTruthy()
     expect(screen.getByText('5%')).toBeTruthy()
     expect(screen.getByText('24%')).toBeTruthy()
     expect(document.body.textContent).toMatch(/as of /)

@@ -16,7 +16,14 @@
  *  - flat plan → an equivalent, explicitly not money out of pocket;
  *  - metered (API key, Bedrock, Vertex) → it IS approximately the bill, and
  *    calling it an equivalent would be the same lie in the other direction;
- *  - plan unstated → say the basis without claiming which case applies.
+ *  - plan unstated → say the basis without claiming which case applies, and
+ *    ask under the hero figures (components/PlanAsk: four chips, a hint when
+ *    Claude Code reports plan windows, "Not now" kept per browser).
+ *
+ * The hero label follows the same split: "Work at API prices" on a flat plan,
+ * with "Claude Code work is covered by your <plan> plan." under it instead of the basis line, and
+ * "Cost" otherwise — metered users are billed per token, and an unstated plan
+ * is asked rather than assumed either way.
  *
  * It lives next to the number instead of in a corner footnote because that is
  * where the misreading happens. "API-equivalent" as a bare subtitle does not
@@ -33,11 +40,13 @@ import type { Settings } from '@/lib/api'
  * largest figure on the screen names itself as money spent and then denies it
  * in grey underneath, and a subscriber reads the whole screen as an accusation
  * of waste (FB-026: "all about if you were a fool and paid for tokens instead
- * of a subscription"). Metered users *are* billed per token, so for them the
- * word is right and stays.
+ * of a subscription"). "Worth at API list" (until 2026-11-22) said value, not
+ * work; "Work at API prices" says what was done and how it is priced.
+ * Metered users *are* billed per token, so for them the word is right and
+ * stays.
  */
 export function costLabel(plan?: Settings): string {
-  return plan?.plan_kind === 'flat' ? 'Worth at API list' : 'Cost'
+  return plan?.plan_kind === 'flat' ? 'Work at API prices' : 'Cost'
 }
 
 /** The subtitle for a hero cost figure, in plain words. */

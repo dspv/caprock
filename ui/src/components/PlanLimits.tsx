@@ -19,6 +19,7 @@ import { ShareWith } from '@/components/PanelShare'
 import { mdTable } from '@/lib/panelShare'
 import { Ring } from '@/components/Donut'
 import { PlanOptions, usePlan } from '@/components/PlanPicker'
+import { usePlanAskShowing } from '@/components/PlanAsk'
 import { AgentCharacter, type Character } from '@/components/Characters'
 import { countdown, resetClock } from '@/lib/limitclock'
 import { Banner, BannerButton } from '@/components/Banner'
@@ -276,6 +277,9 @@ function LimitCard({ who, name, note, l, now, source, weekOnly = false }: { who:
  * Asks for the plan until it is set, and says why: Caprock cannot detect it,
  * and the plan is what makes spend at API prices mean something (owner,
  * 2026-10-11: "always ask with a banner to set your plan and explain why").
+ * Not while the hero cost figure above asks the same with its chips
+ * (components/PlanAsk; owner, 2026-11-22: one prompt only) — after its
+ * "Not now", or on a paired device, this card is the ask again.
  */
 function SetPlanBanner({ onSave }: { onSave: (patch: Partial<Settings>) => void }) {
   const [open, setOpen] = useState(false)
@@ -416,6 +420,8 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
   className?: string
 }) {
   const [plan, savePlan] = usePlan()
+  // While the hero cost asks (components/PlanAsk), this card does not ask too.
+  const [asked] = usePlanAskShowing(plan)
   const [more, setMore] = useState(false)
   const open = usePanelOpen('plan-limits')
   // Every sign-in (ADR-048). With more than one for an agent the panel lists
@@ -468,7 +474,7 @@ export function PlanLimitsPanel({ limits, codex, now, id, empty, className = '' 
           )}
         </div>
         )}
-        {plan && !plan.plan_kind && <SetPlanBanner onSave={savePlan} />}
+        {plan && !plan.plan_kind && !asked && <SetPlanBanner onSave={savePlan} />}
         {advice && (
           <div className="mx-3 mb-3 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[12.5px] text-fg" role="note">{advice}</div>
         )}

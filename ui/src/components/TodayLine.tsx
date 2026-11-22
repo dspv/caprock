@@ -20,6 +20,7 @@
  * sight without it: each Open row's amber *needs you* chip and each folded
  * project's "● N needs you".
  */
+import type { Settings } from '@/lib/api'
 import { fmtUSD } from '@/lib/format'
 import { countdown, resetClock } from '@/lib/limitclock'
 import type { TodayModel, TodayWindow } from '@/lib/today'
@@ -38,6 +39,10 @@ export interface TodayLineProps {
   onWaiting?: () => void
   /** Hides the line; absent, no ×. */
   onHide?: () => void
+  /** The stated plan: on a flat one the spend is named as work at API
+   *  prices its plan covered, not money spent (components/PlanAsk). The line
+   *  has no room to ask for an unstated plan; Home and Cost do. */
+  plan?: Settings
 }
 
 function fmtSpend(v: number): string {
@@ -56,12 +61,14 @@ function windowTitle(w: TodayWindow, now: number): string {
   return `Claude ${w.name} window: ${w.pct}% used${when ? ` · ${when}` : ''}${w.forecast ? ` · ${w.forecast}` : ''}`
 }
 
-export function TodayLine({ today, loaded, now, onSpend, onWindows, onRunning, onWaiting, onHide }: TodayLineProps) {
+export function TodayLine({ today, loaded, now, onSpend, onWindows, onRunning, onWaiting, onHide, plan }: TodayLineProps) {
   const { spend, agents, working, waiting, windows } = today
   const w = lineWindow(windows)
   const tone = (t: TodayWindow) => (t.tone === 'danger' ? 'text-danger' : t.tone === 'warn' ? 'text-warn' : 'text-fg-muted')
   const seg = 'shrink-0 rounded-[5px] px-1 hover:bg-[var(--app-row-hover)] hover:text-fg'
-  const spendTitle = spend === undefined ? 'Spent today, every agent — not known yet' : `Spent today, every agent: ${fmtUSD(spend)}. Opens Cost.`
+  const spendTitle = plan?.plan_kind === 'flat'
+    ? spend === undefined ? 'Work at API prices today, every agent — not known yet' : `Work at API prices today, every agent: ${fmtUSD(spend)}. Claude Code work is covered by your ${plan.plan_label || 'flat'} plan. Opens Cost.`
+    : spend === undefined ? 'Spent today, every agent — not known yet' : `Spent today, every agent: ${fmtUSD(spend)}. Opens Cost.`
   const runningTitle = loaded ? `${agents} ${agents === 1 ? 'agent' : 'agents'} running${working > 0 ? `, ${working} working` : ''}. Opens Home.` : 'Running: not known yet'
   const waitingTitle = `${waiting} waiting on you. Opens the one that has waited longest.`
   return (
