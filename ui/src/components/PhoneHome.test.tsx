@@ -402,6 +402,22 @@ describe('PhoneHome folds, limits and rows', () => {
     expect(metas[0]!.querySelector('.text-warn')).toBeTruthy()
     expect(metas[1]!.querySelector('.text-warn')).toBeNull()
   })
+
+  // The owner, 2026-11-22: a stuck agent is seen without opening it (lib/stalled.ts).
+  it('says "no reply 2d" in amber on a row whose turn got no reply', async () => {
+    stubs()
+    vi.mocked(api.sessionsWithTotal).mockResolvedValue({ items: [
+      session('s1', 'alpha', 'idle', { turn_open: true, last_event_at: NOW - 2 * 86_400_000, worked_at: NOW - 2 * 86_400_000 }),
+      session('s2', 'beta', 'idle', { last_event_at: NOW - 2 * 86_400_000 }),
+    ], total: 2 })
+    render(<PhoneHome />)
+    await screen.findByText('work in alpha')
+    const stalled = [...document.querySelectorAll('[data-stalled]')]
+    expect(stalled.map((s) => s.textContent)).toEqual(['no reply 2d'])
+    expect(stalled[0]).toHaveAttribute('title', 'Your last message got no reply. Open it to send again.')
+    expect(document.querySelector('[data-continue-row="s1"] [data-stalled-dot]')!.className).toContain('bg-warn')
+    expect(document.querySelector('[data-continue-row="s2"] [data-stalled-dot]')).toBeNull()
+  })
 })
 
 // Owner, 2026-10-22 (translated): the phone shows the sessions open as tabs

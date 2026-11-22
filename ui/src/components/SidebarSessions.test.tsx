@@ -493,3 +493,65 @@ describe('a session ended for sitting idle', () => {
   })
 })
 
+// The owner, 2026-11-22: a chat said *Claude is thinking…* for two days, and
+// nothing in the lists showed it. A turn with no reply for STALL_MS is marked
+// on its row, tab or no tab, in either layout (lib/stalled.ts).
+describe('a stalled session', () => {
+  const quiet = { phrase: 'was reading your prompt', at: '', health: 'idle' } as const
+  const stalled = () => [
+    live({ session_id: 'st', title: 'Stuck tab', started_at: 1, turn_open: true, last_event_at: Date.now() - 2 * 86_400_000, activity: quiet }),
+    live({ session_id: 'sl', title: 'Stuck, no tab', started_at: 2, turn_open: true, last_event_at: Date.now() - 3 * 3_600_000, activity: quiet }),
+    live({ session_id: 'fr', title: 'Just asked', started_at: 3, turn_open: true, last_event_at: Date.now() - 60_000 }),
+    live({ session_id: 'ok', title: 'Answered', started_at: 4, last_event_at: Date.now() - 2 * 86_400_000, activity: quiet }),
+  ]
+  const tabs: Tab[] = [{ id: 'tst', projectId: 'alpha', root: pane('pst', 'session', 'st'), focusedPaneId: 'pst', title: 'Stuck tab' }]
+
+  it('wears an amber dot and says "no reply 2d", with what to do in its tooltip', () => {
+    for (const grouped of [true, false]) {
+      setup(stalled(), tabs, { grouped })
+      const tab = document.querySelector('[data-tab-row="tst"]')!
+      expect(tab.querySelector('[data-row-dot="stalled"]')!.className).toContain('bg-warn')
+      expect(tab.querySelector('[data-stalled]')!.textContent).toBe('no reply 2d')
+      expect(tab.querySelector('[data-stalled]')).toHaveAttribute('title', 'Your last message got no reply. Open it to send again.')
+      expect(tab.getAttribute('title')).toContain('Open it to send again.')
+      const row = document.querySelector('[data-live-row="sl"]')!
+      expect(row.querySelector('[data-stalled]')!.textContent).toBe('no reply 3h')
+      expect(row.querySelector('[data-row-dot="stalled"]')).toBeTruthy()
+      cleanup()
+    }
+  })
+
+  it('is not stalled under 15 minutes, nor once its turn has ended', () => {
+    setup(stalled(), tabs, { grouped: false })
+    const fresh = document.querySelector('[data-live-row="fr"]')!
+    expect(fresh.querySelector('[data-stalled]')).toBeNull()
+    expect(fresh.querySelector('[data-row-dot="working"]')).toBeTruthy()
+    // Answered two days ago: in the background fold, as before, and never stalled.
+    expect(document.querySelector('[data-live-row="ok"]')).toBeNull()
+    expect(document.querySelectorAll('[data-stalled]')).toHaveLength(2)
+  })
+
+  it('never folds into the background, however long ago it went quiet', () => {
+    const old = live({ session_id: 'old', title: 'Stuck for days', started_at: 1, turn_open: true, last_event_at: Date.now() - 5 * 86_400_000, activity: quiet })
+    setup([old], [], { grouped: false })
+    expect(document.querySelector('[data-live-row="old"] [data-stalled]')!.textContent).toBe('no reply 5d')
+  })
+
+  it('is not stalled while it asks permission', () => {
+    const sessions = stalled()
+    const open = new Set(['st'])
+    const permissions = new Set(['sl'])
+    const model = buildSidebar({ projects: [proj('alpha')], sessions, permissions, costs: new Map(), openSessions: open })
+    setup(sessions, tabs, { grouped: false, model })
+    const row = document.querySelector('[data-live-row="sl"]')!
+    expect(row.querySelector('[data-stalled]')).toBeNull()
+    expect(row.querySelector('[data-row-dot="waiting"]')).toBeTruthy()
+  })
+
+  it('opens as any row does', () => {
+    const { props } = setup(stalled(), tabs, { grouped: false })
+    fireEvent.click(document.querySelector('[data-live-row="sl"]')!)
+    expect(props.onOpenLive).toHaveBeenCalled()
+  })
+})
+

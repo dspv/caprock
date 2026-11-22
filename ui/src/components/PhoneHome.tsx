@@ -45,6 +45,7 @@ import { AgentGlyph } from './AgentMarks'
 import { NeedChip } from './NeedChip'
 import { sessionTitle } from '@/lib/sidebar'
 import { needsYou, reasonsSentence } from '@/lib/needs'
+import { STALLED_TIP, stalledAge, stalledWord } from '@/lib/stalled'
 import { agentLabel, isCustomAgent, startable, useAgentCatalog, type SpawnAgent } from './AgentPicker'
 import { CaprockMark, ChatIcon, ChatPlusIcon, ChevronIcon, CloseIcon, FileIcon, InboxIcon, PaperclipIcon } from './AppIcons'
 import { PermissionPrompt } from './PermissionPrompt'
@@ -491,6 +492,8 @@ function Continue({ rows, source, now, loading, canControl, ended, folded, onTog
             // What it is doing, unless that only repeats the word at the right ("idle").
             const phrase = s.activity?.phrase && s.activity.phrase !== healthWord(s) ? s.activity.phrase : ''
             const about = phrase || (s.description && s.description !== title ? s.description : '')
+            // A turn with no reply for STALL_MS: an amber dot and *no reply 2d* (lib/stalled.ts).
+            const stall = stalledAge(s, now)
             return (
               <EndableRow key={s.session_id} s={s} title={title} canControl={canControl} onEnded={() => ended.mark(s.session_id)}>
                 <a
@@ -498,14 +501,18 @@ function Continue({ rows, source, now, loading, canControl, ended, folded, onTog
                   data-continue-row={s.session_id}
                   className={`flex min-h-[60px] items-center gap-3 px-3 py-2 text-fg no-underline active:bg-panel-2 ${s.status === 'ended' ? 'opacity-75' : ''}`}
                 >
-                  <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${healthDot(s)}`} />
+                  <span data-stalled-dot={stall !== null || undefined} className={`h-2.5 w-2.5 shrink-0 rounded-full ${stall !== null ? 'bg-warn' : healthDot(s)}`} />
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-[15px] font-medium">{title}</span>
                       {s.agent && s.agent !== 'claude' && <AgentGlyph agent={s.agent} size={12} />}
-                      <span className={`ml-auto shrink-0 text-[12px] ${waiting ? 'text-warn' : 'text-fg-faint'}`}>
-                        {waiting && s.activity?.need ? '' : healthWord(s)}{when ? `${waiting && s.activity?.need ? '' : ' · '}${fmtAgo(when, now)}` : ''}
-                      </span>
+                      {stall !== null ? (
+                        <span data-stalled className="ml-auto shrink-0 text-[12px] text-warn" title={STALLED_TIP}>{stalledWord(stall)}</span>
+                      ) : (
+                        <span className={`ml-auto shrink-0 text-[12px] ${waiting ? 'text-warn' : 'text-fg-faint'}`}>
+                          {waiting && s.activity?.need ? '' : healthWord(s)}{when ? `${waiting && s.activity?.need ? '' : ' · '}${fmtAgo(when, now)}` : ''}
+                        </span>
+                      )}
                     </span>
                     {waiting && s.activity?.need && <span className="mt-0.5 flex min-w-0"><NeedChip need={s.activity.need} small /></span>}
                     <span className="block truncate text-[13px] text-fg-muted">{project}{about ? ` · ${about}` : ''}</span>

@@ -82,6 +82,7 @@ import { StopConfirm, stopLabel, type StopWhat } from './StopConfirm'
 import { heldClass, keys, tabKey } from '@/lib/appkeys'
 import { isMacPlatform } from '@/lib/appmode'
 import { moveKey, orderRows, tabRowKey } from '@/lib/rowOrder'
+import { STALLED_TIP, stalledWord, useStalledAge } from '@/lib/stalled'
 import { SLIDE_MS, clampOffset, reducedMotion, shiftFor, slotFor, type Span } from '@/lib/dragSlot'
 import { namingLeaf } from '@/lib/tabs'
 import { HotMark } from './ResourceMeter'
@@ -153,6 +154,19 @@ function PhaseChip({ phase, asks }: { phase: Phase; asks?: boolean }) {
       {PHASE_WORD[phase]}
     </span>
   )
+}
+
+/**
+ * A stalled row's dot (lib/stalled.ts): amber like waiting, but flat — no
+ * halo, nothing breathing — since nothing is happening and nothing asks.
+ */
+function StalledDot() {
+  return <span role="img" data-row-dot="stalled" aria-label="no reply" className="inline-block h-[8px] w-[8px] shrink-0 rounded-full bg-warn" />
+}
+
+/** A stalled row's words in place of its state: *no reply 2d*, amber; never dropped on a narrow row. */
+function StalledWord({ age }: { age: number }) {
+  return <span data-stalled className="shrink-0 whitespace-nowrap text-[12px] text-warn" title={STALLED_TIP}>{stalledWord(age)}</span>
 }
 
 /** The one word a row says about its state. */
@@ -859,6 +873,8 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
   // A quick chat's tab: its model after the title, when the title does not say it.
   const chatModelName = label?.chat && label.session ? chatRowSuffix(label.session, title, false).model : undefined
   const word = !isFile && (!label?.isShell || label?.inside) && label?.session ? label.dot : undefined
+  // An agent's turn with no reply for STALL_MS says so (lib/stalled.ts); a shell's only with an agent inside it.
+  const stall = useStalledAge(isFile ? undefined : label?.inside ?? (label?.isShell ? undefined : label?.session), asks || label?.dot === 'waiting')
   const closeTip = closeTitle(isFile, !!label?.isShell, !!label?.chat, !!label?.session?.owned && label.session.status !== 'ended')
   const n = onClose ? 1 : 0
   if (variant === 'open') {
@@ -883,9 +899,10 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
           onDoubleClick={onRename}
           {...menuHandlers(onMenu)}
           className={`app-row flex min-h-[42px] w-full min-w-0 items-center gap-2 rounded-[7px] py-1 pl-[10px] text-left ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name, phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ')}
+          title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name, stall !== null ? stalledWord(stall) : phase ? PHASE_WORD[phase] : ''].filter(Boolean).join(' · ') + (stall !== null ? `\n${STALLED_TIP}` : '')}
         >
-          {phase !== undefined ? <PhaseDot phase={phase} asks={asks} />
+          {stall !== null ? <StalledDot />
+            : phase !== undefined ? <PhaseDot phase={phase} asks={asks} />
             : kind === 'page' ? <GlobeIcon size={12} className="shrink-0 text-fg-faint" />
             : kind === 'files' ? <FolderIcon size={12} className="shrink-0 text-fg-faint" />
             : <FileIcon size={12} className="shrink-0 text-fg-faint" />}
@@ -894,7 +911,7 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
             {under && <span data-row-project-name className="truncate text-[11.5px] leading-[15px] text-fg-faint">{under}</span>}
           </span>
           {!isFile && <HotMark sessionId={label?.session?.session_id} />}
-          {phase && <PhaseChip phase={phase} asks={asks} />}
+          {stall !== null ? <StalledWord age={stall} /> : phase && <PhaseChip phase={phase} asks={asks} />}
           {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-key shrink-0${heldClass()} ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
         </button>
         {onClose && (
@@ -921,13 +938,13 @@ function TabRow({ tab, label, repo, active, waiting, asks, onOpen, onClose, onMe
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${active ? `app-row-selected ${PAD_ALWAYS[n]}` : PAD_ON_HOVER[n]}`}
-        title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name].filter(Boolean).join(' · ')}
+        title={[label?.file ?? title, tabAgent(label), repo, label?.branch, project?.name].filter(Boolean).join(' · ') + (stall !== null ? `\n${STALLED_TIP}` : '')}
       >
-        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : <RowDot dot={label?.dot ?? 'idle'} asks={asks} />}
+        {isFile ? <FileIcon size={12} className="text-fg-faint" /> : stall !== null ? <StalledDot /> : <RowDot dot={label?.dot ?? 'idle'} asks={asks} />}
         <TitleAndBranch title={title} branch={project ? chatModelName : [repo, label?.branch, chatModelName].filter(Boolean).join(' · ') || undefined} className={active ? 'font-semibold text-fg' : 'text-fg'} />
         {project && <ProjectName project={project} />}
         {!isFile && <HotMark sessionId={label?.session?.session_id} />}
-        {word && <StateWord dot={word} asks={asks} front={active} />}
+        {stall !== null ? <StalledWord age={stall} /> : word && <StateWord dot={word} asks={asks} front={active} />}
         {/* Every tab's key, the one in front included (owner, 2026-10-14), as the footer's readable chip. */}
         {digit && <kbd data-row-key-digit aria-hidden className={`app-kbd-key shrink-0${heldClass()} ${onClose && !active ? 'group-hover/row:hidden group-focus-within/row:hidden' : ''}`}>{tabKey(digit)}</kbd>}
       </button>
@@ -1010,6 +1027,7 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
   const n = (onHide || onShow ? 1 : 0) + (canStop ? 1 : 0)
   // Ended by Caprock for sitting idle (lib/idleEnd.ts): one line says so, and a click continues it.
   const idle = idleEndedText(s)
+  const stall = useStalledAge(item.isShell ? undefined : s, !!item.asks || item.dot === 'waiting')
   return (
     <li className="@container/srow group/row relative" {...dragProps(drag)}>
       <button
@@ -1024,16 +1042,16 @@ function LiveRow({ item, ownBranch, repo, hidden = false, onOpen, onStop, onHide
         onDoubleClick={onRename}
         {...menuHandlers(onMenu)}
         className={`app-row flex h-[38px] w-full min-w-0 items-center gap-2 rounded-[7px] text-left ${rowPad(flat)} ${hidden ? 'opacity-55' : ''} ${PAD_ON_HOVER[n]}`}
-        title={`${[title, agentGlyphLabel(s.agent, item.isShell), chat?.model, chat?.when ? `started ${chat.when}` : '', branch, project?.name].filter(Boolean).join(' · ')}: ${idle ? `${idle} — click to continue it.` : s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}`}
+        title={`${[title, agentGlyphLabel(s.agent, item.isShell), chat?.model, chat?.when ? `started ${chat.when}` : '', branch, project?.name].filter(Boolean).join(' · ')}: ${idle ? `${idle} — click to continue it.` : s.owned ? 'running, no tab. Open it as a tab.' : 'started in another terminal. Open it in a tab, read-only, with Continue here.'}${stall !== null ? `\n${STALLED_TIP}` : ''}`}
       >
-        <RowDot dot={item.dot} asks={item.asks} />
+        {stall !== null ? <StalledDot /> : <RowDot dot={item.dot} asks={item.asks} />}
         {/* No tab: muted, so it reads as not open; while it waits, as plain as a tab's. */}
         <TitleAndBranch title={title} branch={chat ? chat.model : project ? undefined : branch} when={chat?.when} className={item.waiting ? 'text-fg' : 'text-fg-muted'} />
         {project && <ProjectName project={project} />}
         <HotMark sessionId={s.session_id} />
         {idle ? (
           <span data-idle-ended className="min-w-0 max-w-[55%] shrink truncate text-[12px] text-fg-faint">{idleEndedWord(s)}</span>
-        ) : !item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
+        ) : stall !== null ? <StalledWord age={stall} /> : !item.isShell && <StateWord dot={item.dot} asks={item.asks} />}
       </button>
       {n > 0 && (
         <span data-row-actions className={`absolute right-1 top-1/2 -translate-y-1/2 items-center gap-0.5 ${ACTIONS_ON_HOVER}`}>
