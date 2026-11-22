@@ -130,4 +130,7 @@ func (s *Server) forgetAnswers() {
 	for _, c := range []*answerCache{s.hist, s.histWide, s.summ, s.week, s.weekLong, s.glance, s.drill} {
 		c.forget()
 	}
+	// And the kept parts read what moved on the next ask, not up to a
+	// throttle window later (store.PartsCache).
+	s.parts.Hurry()
 }

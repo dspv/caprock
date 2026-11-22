@@ -2541,7 +2541,7 @@ func (s *Server) Warm(ctx context.Context) {
 	}
 	from, label := s.rangeFrom("all")
 	_, _ = s.histFor(from).get(ctx, label+"|"+strconv.FormatInt(from, 10), func() (any, error) {
-		return s.buildHistory(ctx, from, label)
+		return s.historyAnswer(ctx, from, label)
 	})
 	for _, rng := range []string{"7d", "30d", "all"} {
 		if ctx.Err() != nil {
@@ -2604,7 +2604,9 @@ func (s *Server) trendsFor(ctx context.Context, agent store.AgentFilter) (any, e
 //
 // Today's is the figure people watch move, so it is never served stale: it is
 // counted again once it is two seconds old and something was written since
-// (~40ms, but fifteen asks a minute with the dashboard open). Every wider range goes through the answer cache, because
+// (~40ms, but fifteen asks a minute with the dashboard open) — from kept parts
+// that may themselves be up to 15 s behind (store.partsThrottle), an answer
+// then marked behind and counted again past its TTL. Every wider range goes through the answer cache, because
 // a 7d, 30d or all-time summary scans that much more of the events table —
 // ~1s for all time on the owner's 1 GB database — for figures that a few
 // seconds cannot visibly change. The returned Summary is a copy; its slices
@@ -2628,7 +2630,9 @@ func (s *Server) rangeSummary(ctx context.Context, from int64, label string, age
 	}
 	key := "summary|" + label + "|" + strconv.FormatInt(from, 10) + "|" + string(agent)
 	v, err := cache.get(ctx, key, func() (any, error) {
-		return compute(context.WithoutCancel(ctx))
+		c, lag := store.NoteLag(context.WithoutCancel(ctx))
+		sum, err := compute(c)
+		return lagged(sum, lag), err
 	})
 	if err != nil {
 		return store.Summary{}, err
@@ -2815,7 +2819,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	// share one answer; and by its start, so "today" is a new key at midnight.
 	key := label + "|" + strconv.FormatInt(from, 10)
 	v, err := s.histFor(from).get(r.Context(), key, func() (any, error) {
-		return s.buildHistory(context.WithoutCancel(r.Context()), from, label)
+		return s.historyAnswer(context.WithoutCancel(r.Context()), from, label)
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -2831,6 +2835,15 @@ func (s *Server) histFor(from int64) *answerCache {
 		return s.histWide
 	}
 	return s.hist
+}
+
+// historyAnswer is buildHistory for the history caches: marked behind when
+// the range's kept parts were (store.NoteLag), so it is not renewed as
+// current on an unchanged version.
+func (s *Server) historyAnswer(ctx context.Context, from int64, label string) (any, error) {
+	c, lag := store.NoteLag(ctx)
+	h, err := s.buildHistory(c, from, label)
+	return lagged(h, lag), err
 }
 
 // buildHistory computes one history response. Split out of the handler so the

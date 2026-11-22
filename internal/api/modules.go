@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"io/fs"
 	"net/http"
@@ -276,8 +277,19 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-	docs, err := store.ListModuleDocs(r.Context(), s.d.Store.DB(), id, coll, r.URL.Query().Get("after"), limit)
+	after := r.URL.Query().Get("after")
+	// The collection's version is read before its rows, so a write during
+	// the read leaves a tag behind what was read, never ahead of it.
+	tag := moduleListTag(id, coll, after, limit)
+	w.Header().Set("ETag", tag)
+	w.Header().Set("Cache-Control", "no-cache")
+	if etagMatches(r.Header.Get("If-None-Match"), tag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	docs, err := listModuleDocs(r.Context(), s.d.Store.DB(), id, coll, after, limit)
 	if err != nil {
+		w.Header().Del("ETag")
 		s.fail(w, err)
 		return
 	}
@@ -286,6 +298,32 @@ func (s *Server) handleModuleDocList(w http.ResponseWriter, r *http.Request) {
 		out["next"] = docs[len(docs)-1].ID
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// listModuleDocs is store.ListModuleDocs, swapped in tests to count reads.
+var listModuleDocs = store.ListModuleDocs
+
+// moduleListTag is the ETag of one page of a collection's list: the
+// collection's version in this process (store.ModuleDocsVersion, which moves
+// on every write and starts from a random value at every start) and the page
+// asked for. A module paging through a collection it already holds gets a
+// 304 per page and nothing is read.
+func moduleListTag(module, coll, after string, limit int) string {
+	h := fnv.New64a()
+	_, _ = io.WriteString(h, module+"\x00"+coll+"\x00"+after+"\x00"+strconv.Itoa(limit))
+	return `"` + store.ModuleDocsVersion(module, coll) + "." + strconv.FormatUint(h.Sum64(), 36) + `"`
+}
+
+// etagMatches reports whether an If-None-Match header names tag: a list of
+// tags, weak ones compared weakly (RFC 9110 § 13.1.2), or "*".
+func etagMatches(header, tag string) bool {
+	for _, t := range strings.Split(header, ",") {
+		t = strings.TrimPrefix(strings.TrimSpace(t), "W/")
+		if t == tag || t == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleModuleDocGet(w http.ResponseWriter, r *http.Request) {
@@ -357,6 +395,9 @@ func (s *Server) handleModuleDocUpdate(w http.ResponseWriter, r *http.Request) {
 		d, err = store.UpdateModuleDoc(r.Context(), q, id, coll, doc, patch, s.d.Now().UnixMilli())
 		return err
 	})
+	// The write moved the collection's version before the commit; moved
+	// again after it, a list read in between is not kept as the current one.
+	store.TouchModuleDocs(id, coll)
 	if errors.Is(err, store.ErrModuleDocNotFound) {
 		s.failCode(w, http.StatusNotFound, err)
 		return
