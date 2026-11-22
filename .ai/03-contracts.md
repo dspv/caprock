@@ -1407,6 +1407,21 @@ not their `agent.stop`. Claude Code reports no subagent start, only events from
 inside it and a stop, so a subagent whose stop never arrived stops counting
 after 30 silent minutes. Both are omitted when empty or zero.
 
+`SessionSummary.turn_open` (2026-11-22) is true for a session that has not
+ended, is Claude Code's (`agent` empty or `claude`) and `has_hooks`, whose
+main thread is in a turn by its hooks (`narrate.TurnOpen`): of the events the
+summary's `activity` is already read from (the newest 60, the per-session
+cache), the newest main-thread `hook` event of a turn kind is a `turn.user`,
+a `tool.pre`, a `tool.post` or a `context.compact` with `trigger` other than
+`manual`. An `agent.stop`, `permission.prompt` (the user's to answer),
+`throttle`, `session.end`, `context.clear`, `session.continue` or a
+`SessionStart` not after a compaction closes it; a prompt Claude Code wrote
+itself (`<task-notification>`, a slash command's echo or output) and every
+other kind are passed over, and a window with none of these reads false. It
+costs no read of its own. Omitted when false. The app's rows and the phone's
+Continue read it with `last_event_at`: open and quiet for the UI's
+`STALL_MS` is *no reply 2d* (04-ui.md § Sidebar, *Stalled*).
+
 **A turn that ended with subagents still working is not waiting on anyone.**
 When the main thread's newest event is a top-level `agent.stop` and
 `live_subagents` is above zero, `activity` reads `health: "working"`, `phrase:

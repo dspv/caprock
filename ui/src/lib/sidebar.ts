@@ -12,6 +12,7 @@ import { folderName, matchLength, sessionRoot, worktreeKeyOf, type Project } fro
 import { uniqueSuffixes } from './sessionLabels'
 import { promptTitle } from './sessionNames'
 import { idleEndedRecently } from './idleEnd'
+import { stalledAge } from './stalled'
 
 /**
  * The group for sessions in folders no listed project holds. The daemon lists
@@ -522,7 +523,9 @@ function scriptedPrompt(text: string | undefined): boolean {
  * - one with no title at all — no name, no agent's title, no prompt words —
  *   once UNTITLED_GRACE_MS have passed since it started (a session just
  *   started has no title for its first turn);
- * - one not working that nothing happened in for BACKGROUND_IDLE_MS.
+ * - one not working that nothing happened in for BACKGROUND_IDLE_MS, unless
+ *   its turn is stalled (lib/stalled.ts): the agent that never answered is
+ *   the one row that must not fold away (owner, 2026-11-22).
  *
  * Pure: the screen reads it, nothing is sent to any session (rule 7).
  */
@@ -535,6 +538,7 @@ export function isBackgroundSession(s: SessionSummary, { now = Date.now(), hasPe
   if (!named && !s.owned && s.description_source === 'prompt' && scriptedPrompt(s.description)) return true
   if (!named && !sessionAbout(s) && now - ms(s.started_at) > UNTITLED_GRACE_MS) return true
   if (s.activity?.health === 'working') return false
+  if (stalledAge(s, now) !== null) return false
   const last = Math.max(ms(s.worked_at), ms(s.last_event_at), ms(s.activity?.at), ms(s.started_at))
   return now - last > BACKGROUND_IDLE_MS
 }

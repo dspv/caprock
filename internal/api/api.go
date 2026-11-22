@@ -1176,6 +1176,13 @@ type SessionSummary struct {
 	// heard from within the last 30 minutes and not yet stopped. Zero for an
 	// ended session. The main thread is not counted.
 	LiveSubagents int `json:"live_subagents,omitempty"`
+	// TurnOpen marks a live Claude Code session with hooks whose main thread
+	// is in a turn: a prompt, a call or Claude Code's own compaction is its
+	// newest turn event, with no Stop after it (narrate.TurnOpen). Read from
+	// the events the activity is already read from, so it costs no read of
+	// its own. A row whose turn is open and whose last_event_at is older than
+	// the UI's STALL_MS says *no reply 2d* (.ai/04-ui.md § Sidebar, *Stalled*).
+	TurnOpen bool `json:"turn_open,omitempty"`
 	// SurvivesRestart marks a live session Caprock started whose terminal is
 	// held by a pty-host (ADR-033), so restarting or upgrading Caprock leaves
 	// it running. A live owned session without it is in the daemon's own PTY
@@ -1324,6 +1331,7 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 		st.Turns, st.Requests = max(0, st.Turns-u[0]), u[1]
 	}
 	sum := SessionSummary{Session: sess, Stats: st, Activity: act, Savings: cost.ComputeSavings(st.TokensIn, st.CacheRead, st.CacheWrite), Loop: la}
+	sum.TurnOpen = sess.Status != store.StatusEnded && sess.HasHooks && (sess.Agent == "" || sess.Agent == "claude") && narrate.TurnOpen(last)
 	sum.Description, sum.DescriptionSource = describeWith(sess, func() ([]string, error) {
 		return readOnce(&rec.mu, &rec.prompts, func() ([]string, error) {
 			return store.FirstPrompts(ctx, q, sess.SessionID, promptsScanned)
