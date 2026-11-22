@@ -16,6 +16,29 @@ export interface TurnState {
   since: string
   /** The call it runs now, as a phrase ("Running npm test"); '' while it thinks. */
   step: string
+  /** The prompt's words, for *Send again* when the turn stalls. */
+  text: string
+  /** The newest event in the session, any thread (ms): the agent's last sign of life. */
+  last: number
+}
+
+/**
+ * How long an open turn may go without a single event before the chat stops
+ * saying the agent thinks (.ai/04-ui.md § Chat, *Stalled*). A working agent
+ * logs a call or a reply every few seconds; a request that never came back
+ * logs nothing, and the chat said *Claude is thinking…* for two days (the
+ * owner's report, 2026-11-22).
+ */
+export const STALL_MS = 15 * 60_000
+
+/** The newest event time in `events` (ms), 0 when none parses. Order is not time order: a reply lands after its calls. */
+function lastEventAt(events: readonly Event[]): number {
+  let last = 0
+  for (const e of events) {
+    const t = Date.parse(e.ts)
+    if (t > last) last = t
+  }
+  return last
 }
 
 function mainThread(e: Event): boolean {
@@ -115,9 +138,10 @@ export function openTurn(events: readonly Event[], ended = false): TurnState | n
     if (e.kind === 'turn.user') {
       const text = promptText(e)
       if (!text.trim() || noticeLine(text) !== null) continue
-      if (!running) return { since: e.ts, step: '' }
+      const last = lastEventAt(events)
+      if (!running) return { since: e.ts, step: '', text, last }
       const p = (running.payload ?? {}) as Record<string, unknown>
-      return { since: e.ts, step: stepPhrase(running.tool || String(p.tool_name ?? 'tool'), p.tool_input) }
+      return { since: e.ts, step: stepPhrase(running.tool || String(p.tool_name ?? 'tool'), p.tool_input), text, last }
     }
   }
   return null
