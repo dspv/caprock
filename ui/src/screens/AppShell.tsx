@@ -138,7 +138,7 @@ import { isMultiRepo } from '@/lib/multirepo'
 import { CloseAgentChoice, CloseChatConfirm, CloseShellConfirm } from '@/components/CloseShellConfirm'
 import { ShortcutsSheet } from '@/components/ShortcutsSheet'
 import { KeysHint } from '@/components/KeysHint'
-import { loadAgentClose } from '@/lib/agentClose'
+import { loadAgentClose, loadAlwaysAsk } from '@/lib/agentClose'
 import { useSidebarMode } from '@/lib/sidebarMode'
 import { CopiesSheet } from '@/components/CopiesSheet'
 import { AddRepoSheet } from '@/components/AddRepoSheet'
@@ -371,7 +371,7 @@ export function AppShell() {
   const [closing, setClosing] = useState<
     | { kind: 'tab'; tabId: string; paneId?: string; plan: ClosePlan; chats: readonly string[] }
     | { kind: 'chat'; tabId: string; paneId?: string; chat: ChatClosePlan }
-    | { kind: 'agent'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan; title: string }
+    | { kind: 'agent'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan; title: string; idle?: boolean }
     | { kind: 'agent-busy'; tabId: string; paneId?: string; chats: readonly string[]; agents: AgentClosePlan }
     | { kind: 'project'; name: string; plan: ClosePlan; resolve: (o: ProjectShellsOutcome) => void }
     | { kind: 'chats'; busy: readonly string[] }
@@ -1340,8 +1340,10 @@ export function AppShell() {
    * its tab, no question, and a toast says the conversation is saved; one
    * working or waiting on you gets one sentence and two equal buttons,
    * *Keep it running* (focused) and *Stop it* (owner, 2026-10-17).
-   * Settings → Closing a tab can make it always keep or always end. An agent another terminal started only
-   * loses its tab (rule 7).
+   * Settings → Closing a tab can make it always keep or always end, or,
+   * with *Always ask before closing an agent's tab*, put the same question
+   * to an idle agent too (Keep then keeps all of them). An agent another
+   * terminal started only loses its tab (rule 7).
    */
   const closeAgents = useCallback(async (tabId: string, paneId: string | undefined, chats: readonly string[]) => {
     const { tabs, sessionsById, endedChats, labels, permissions } = closeCtx.current
@@ -1351,8 +1353,14 @@ export function AppShell() {
     const how = agents.all.length > 0 ? loadAgentClose() : 'keep'
     if (how === 'keep') { await closeShells(tabId, paneId, chats); return }
     if (how === 'end') { endAgents(tabId, paneId, chats, agents); return }
-    if (agents.active.length === 0) { await closeEnding(tabId, paneId, chats, agents.all); return }
-    setClosing({ kind: 'agent', tabId, paneId, chats, agents, title: labels.get(tabId)?.title ?? tab.title })
+    const title = labels.get(tabId)?.title ?? tab.title
+    if (agents.active.length === 0) {
+      if (!loadAlwaysAsk()) { await closeEnding(tabId, paneId, chats, agents.all); return }
+      // All idle and Settings says always ask: the same question, about every one.
+      setClosing({ kind: 'agent', tabId, paneId, chats, agents: { ...agents, active: agents.all }, title, idle: true })
+      return
+    }
+    setClosing({ kind: 'agent', tabId, paneId, chats, agents, title })
   }, [closeShells, closeEnding, endAgents])
   /**
    * Close a tab, or one pane of it (.ai/21-app.md § Shell tabs, § Quick
@@ -2687,6 +2695,7 @@ export function AppShell() {
         <CloseAgentChoice
           title={closing.title}
           many={closing.agents.active.length > 1}
+          idle={closing.idle}
           onKeep={() => {
             // The ones working or waiting keep on; an idle one beside them in a split ends.
             setClosing(null); void closeEnding(closing.tabId, closing.paneId, closing.chats, closing.agents.all.filter((id) => !closing.agents.active.includes(id)))

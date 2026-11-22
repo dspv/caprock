@@ -160,3 +160,50 @@ test('an idle agent’s tab ends with no question and the same toast on ⌘W as 
     for (const id of ids) await stopAgent(app.stand.daemonURL, id)
   }
 })
+
+test('with Always ask before closing an agent’s tab on, an idle agent’s tab asks the same question on ⌘W, Close Tab and its ×', async ({ app, page }) => {
+  const name = 'e2e close always ask'
+  const id = await startAgent(app, name)
+  try {
+    // Settings → Closing a tab → Always ask before closing an agent's tab.
+    await page.addInitScript(() => { try { localStorage.setItem('caprock.app.agent-close-always-ask', 'on') } catch { /* no storage */ } })
+    await app.open()
+    await app.row(name).first().click()
+    const tab = app.tabs.getByRole('tab', { name: new RegExp(`^${name}`) })
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await app.waitTerm(id, 'fake-claude ready')
+    const sheet = page.getByRole('dialog', { name: QUESTION })
+    const ways: [string, () => Promise<void>][] = [
+      ['the tab’s ×', () => tab.getByRole('button', { name: /^Close/ }).click()],
+      ['⌘W in the terminal', async () => { await page.locator('.xterm-helper-textarea').first().focus(); await app.chord('w') }],
+      ['⌘W in the sidebar', async () => { await app.row(name).first().focus(); await app.chord('w') }],
+      ['Close Tab in the app menu', () => page.evaluate(() => { window.dispatchEvent(new Event('caprock:close-tab')) })],
+    ]
+    let first: string | null = null
+    for (const [way, close] of ways) {
+      await tab.click()
+      await close()
+      await expect(sheet, way).toBeVisible()
+      const text = await sheet.textContent()
+      expect(text, way).toContain(`“${name}” is idle.`)
+      first ??= text
+      expect(text, way).toBe(first)
+      await page.keyboard.press('Escape')
+      await expect(sheet).toHaveCount(0)
+      await expect(tab).toHaveCount(1)
+    }
+    // ⌘W then Enter keeps it running, as for a busy one: no toast, not ended.
+    await tab.click()
+    await page.locator('.xterm-helper-textarea').first().focus()
+    await app.chord('w')
+    await expect(sheet).toBeVisible()
+    await page.keyboard.press('Enter')
+    await expect(tab).toHaveCount(0)
+    await expect(page.getByText(SAVED)).toHaveCount(0)
+    const s = await (await fetch(`${app.stand.daemonURL}/v1/sessions/${id}`)).json() as { status?: string }
+    expect(s.status).not.toBe('ended')
+  } finally {
+    await page.close()
+    await stopAgent(app.stand.daemonURL, id)
+  }
+})

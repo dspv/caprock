@@ -286,6 +286,14 @@ export function agentStillWorking(title: string, many: boolean): string {
 }
 
 /**
+ * The same line for an idle agent, asked about only when Settings → Closing
+ * a tab has *Always ask before closing an agent's tab* on (lib/agentClose.ts).
+ */
+export function agentIdle(title: string, many: boolean): string {
+  return many ? `“${title}”: its agents are idle.` : `“${title}” is idle.`
+}
+
+/**
  * The two choices under that line, each with a few words saying what it does
  * (owner, 2026-10-17, translated: "a lot of text, and it's unclear which
  * button is recommended"). Keeping it running is the recommended one.

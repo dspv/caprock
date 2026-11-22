@@ -110,7 +110,8 @@ others. Installing it: [install-app.md](install-app.md).
   no tab* in the Tabs list — and **Stop it** ends it and closes the tab;
   Escape cancels. Either way the conversation is saved and can be
   continued. Settings → *Closing a tab* can make it always keep the agent
-  running or always end it. An agent you started in your own terminal is never ended from
+  running or always end it, or, with **Always ask before closing an
+  agent's tab**, ask the same question about an idle agent too. An agent you started in your own terminal is never ended from
   Caprock: its tab just closes. A shell closes for real, as in any
   terminal app: an idle one ends with its tab; one running a program asks
   first — *Shell 1 is running claude. Close and stop it?* — with **Stop and

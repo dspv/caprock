@@ -1,6 +1,6 @@
 import { act, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { AGENT_CLOSE_KEY, loadAgentClose, saveAgentClose, useAgentClose } from '@/lib/agentClose'
+import { AGENT_CLOSE_ALWAYS_ASK_KEY, AGENT_CLOSE_KEY, loadAgentClose, loadAlwaysAsk, saveAgentClose, useAgentClose, useAlwaysAsk } from '@/lib/agentClose'
 import { AgentCloseSetting } from './AgentCloseSetting'
 
 beforeEach(() => localStorage.clear())
@@ -23,5 +23,27 @@ describe('closing an agent\'s tab, the setting', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Ask while it works' }))
     expect(localStorage.getItem(AGENT_CLOSE_KEY)).toBe('ask')
     expect(hook.result.current[0]).toBe('ask')
+  })
+
+  it('always asking is off by default, saved as one word, and shown only beside asking while it works', () => {
+    expect(loadAlwaysAsk()).toBe(false)
+    localStorage.setItem(AGENT_CLOSE_ALWAYS_ASK_KEY, 'yes')
+    expect(loadAlwaysAsk()).toBe(false)
+    localStorage.clear()
+    const hook = renderHook(() => useAlwaysAsk())
+    render(<AgentCloseSetting />)
+    const box = screen.getByRole('checkbox', { name: /Always ask before closing an agent's tab/ })
+    expect(box).not.toBeChecked()
+    fireEvent.click(box)
+    expect(localStorage.getItem(AGENT_CLOSE_ALWAYS_ASK_KEY)).toBe('on')
+    expect(loadAlwaysAsk()).toBe(true)
+    expect(hook.result.current[0]).toBe(true)
+    // Keep and End never ask: the switch has nothing to say there.
+    fireEvent.click(screen.getByRole('radio', { name: 'End the agent' }))
+    expect(screen.queryByRole('checkbox', { name: /Always ask/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Ask while it works' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Always ask/ }))
+    expect(localStorage.getItem(AGENT_CLOSE_ALWAYS_ASK_KEY)).toBeNull()
+    expect(hook.result.current[0]).toBe(false)
   })
 })

@@ -1190,8 +1190,8 @@ describe('the app workspace', () => {
     const WAYS: Way[] = ['x', 'mac-key', 'off-mac-key', 'menu']
     const offMacW = () => act(() => { fireEvent.keyDown(window, { key: 'W', code: 'KeyW', ctrlKey: true, shiftKey: true }) })
 
-    /** A fresh app on `platform`, as a viewer with `setting` under Settings → Closing a tab has it. */
-    async function fresh(platform: string, setting: 'ask' | 'keep' | 'end') {
+    /** A fresh app on `platform`, as a viewer with `setting` (and *Always ask*) under Settings → Closing a tab has it. */
+    async function fresh(platform: string, setting: 'ask' | 'keep' | 'end', alwaysAsk = false) {
       cleanup()
       spawned.signals = []
       localStorage.clear()
@@ -1201,6 +1201,7 @@ describe('the app workspace', () => {
       localStorage.setItem('caprock.app.project-open', JSON.stringify(['dir:/w/app', 'dir:/w/other', '1', 'other-folders']))
       location.hash = '#/app'
       if (setting !== 'ask') localStorage.setItem('caprock.app.agent-close', setting)
+      if (alwaysAsk) localStorage.setItem('caprock.app.agent-close-always-ask', 'on')
       vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
       await renderApp()
     }
@@ -1232,7 +1233,7 @@ describe('the app workspace', () => {
       }
     }
 
-    const cases: { name: string; health: 'working' | 'waiting-on-you' | 'done' | 'idle'; setting: 'ask' | 'keep' | 'end'; asks: boolean }[] = [
+    const cases: { name: string; health: 'working' | 'waiting-on-you' | 'done' | 'idle'; setting: 'ask' | 'keep' | 'end'; alwaysAsk?: boolean; asks: boolean }[] = [
       { name: 'answering, Settings Ask', health: 'working', setting: 'ask', asks: true },
       { name: 'waiting on you, Settings Ask', health: 'waiting-on-you', setting: 'ask', asks: true },
       { name: 'done, Settings Ask', health: 'done', setting: 'ask', asks: true },
@@ -1240,6 +1241,13 @@ describe('the app workspace', () => {
       { name: 'answering, Settings Keep', health: 'working', setting: 'keep', asks: false },
       { name: 'answering, Settings End', health: 'working', setting: 'end', asks: true },
       { name: 'idle, Settings End', health: 'idle', setting: 'end', asks: false },
+      // Settings → Closing a tab → Always ask before closing an agent's tab:
+      // an idle agent is asked about as a busy one is, under Ask only.
+      { name: 'idle, Settings Ask, always ask', health: 'idle', setting: 'ask', alwaysAsk: true, asks: true },
+      { name: 'answering, Settings Ask, always ask', health: 'working', setting: 'ask', alwaysAsk: true, asks: true },
+      { name: 'done, Settings Ask, always ask', health: 'done', setting: 'ask', alwaysAsk: true, asks: true },
+      { name: 'idle, Settings Keep, always ask', health: 'idle', setting: 'keep', alwaysAsk: true, asks: false },
+      { name: 'idle, Settings End, always ask', health: 'idle', setting: 'end', alwaysAsk: true, asks: false },
     ]
     for (const c of cases) {
       it(`${c.name}: the same question, toast and outcome every way`, async () => {
@@ -1248,13 +1256,15 @@ describe('the app workspace', () => {
         try {
           sessions[0] = { ...was, activity: { phrase: '', at: '', health: c.health } }
           for (const way of WAYS) {
-            await fresh(way === 'off-mac-key' ? 'Linux x86_64' : 'MacIntel', c.setting)
+            await fresh(way === 'off-mac-key' ? 'Linux x86_64' : 'MacIntel', c.setting, c.alwaysAsk)
             results[way] = await closeBy(way)
           }
         } finally {
           sessions[0] = was
         }
         expect(results.x.question !== null, 'the × asks').toBe(c.asks)
+        if (c.asks && c.health === 'idle') expect(results.x.question).toContain('“Fix the login bug” is idle.')
+        if (c.asks && c.health !== 'idle') expect(results.x.question).not.toContain('is idle')
         // The × is the reference: every other way says and does what it does.
         for (const way of WAYS) expect(results[way], way).toEqual(results.x)
         // Four apps rendered one after another: room for a loaded machine.
@@ -1286,6 +1296,30 @@ describe('the app workspace', () => {
       expect(await outcome('mac-key')).toBe(x)
       expect(await outcome('off-mac-key')).toBe(x)
       expect(spawned.signals).toEqual([])
+    }, 30_000)
+
+    it('with always ask on, an idle agent’s Keep leaves it running and Stop ends it with the saved toast', async () => {
+      const was = sessions[0]!
+      const choose = async (button: 'Keep it running' | 'Stop it') => {
+        await fresh('MacIntel', 'ask', true)
+        fireEvent.keyDown(await open('Fix the login bug', false), { key: 'Enter' })
+        await screen.findByRole('tab', { name: /Fix the login bug/ })
+        await cmd('w')
+        const sheet = await screen.findByRole('dialog', { name: "Close an agent's tab" })
+        fireEvent.click(within(sheet).getByRole('button', { name: button }))
+        await waitFor(() => expect(screen.queryAllByRole('tab')).toHaveLength(0))
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)) })
+        return { signals: spawned.signals.length, toast: !!screen.queryByText('Closed. The conversation is saved — reopen it from History or the sidebar.') }
+      }
+      try {
+        sessions[0] = { ...was, activity: { phrase: '', at: '', health: 'idle' } }
+        expect(await choose('Keep it running')).toEqual({ signals: 0, toast: false })
+        const stopped = await choose('Stop it')
+        expect(stopped.signals).toBeGreaterThan(0)
+        expect(stopped.toast).toBe(true)
+      } finally {
+        sessions[0] = was
+      }
     }, 30_000)
   })
 })

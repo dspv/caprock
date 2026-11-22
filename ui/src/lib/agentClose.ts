@@ -7,15 +7,20 @@
  * waiting on you gets one sentence and two equal buttons, each with a line
  * saying what it does: *Keep it running* (focused: ⌘W then Enter; it works
  * on) and *Stop it* (2026-10-17). **keep** and **end**, set in
- * Settings → Closing a tab, never ask. Kept per viewer, in this browser's storage. An
- * agent another terminal started is never asked about and never signalled
- * (rule 7; lib/closeShell planAgentClose).
+ * Settings → Closing a tab, never ask. *Always ask* (off by default), under
+ * **ask**, puts the same question to an idle agent too, for a viewer who
+ * would rather choose every time than have a tab end its agent unasked.
+ * Kept per viewer, in this browser's storage. An agent another terminal
+ * started is never asked about and never signalled (rule 7; lib/closeShell
+ * planAgentClose).
  */
 import { useEffect, useState } from 'react'
 
 export type AgentClose = 'ask' | 'keep' | 'end'
 
 export const AGENT_CLOSE_KEY = 'caprock.app.agent-close'
+/** "on" when an idle agent's tab is asked about too; anything else is off. */
+export const AGENT_CLOSE_ALWAYS_ASK_KEY = 'caprock.app.agent-close-always-ask'
 const EVENT = 'caprock:agent-close'
 
 export function loadAgentClose(): AgentClose {
@@ -32,17 +37,43 @@ export function saveAgentClose(v: AgentClose) {
   window.dispatchEvent(new CustomEvent(EVENT, { detail: v }))
 }
 
-export function useAgentClose(): [AgentClose, (v: AgentClose) => void] {
-  const [v, setV] = useState<AgentClose>(loadAgentClose)
+/** Whether an idle agent's tab asks before closing, under **ask**. Off by default. */
+export function loadAlwaysAsk(): boolean {
+  try {
+    return localStorage.getItem(AGENT_CLOSE_ALWAYS_ASK_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+export function saveAlwaysAsk(on: boolean) {
+  try {
+    if (on) localStorage.setItem(AGENT_CLOSE_ALWAYS_ASK_KEY, 'on')
+    else localStorage.removeItem(AGENT_CLOSE_ALWAYS_ASK_KEY)
+  } catch { /* for this page only */ }
+  window.dispatchEvent(new CustomEvent(EVENT))
+}
+
+/** A stored preference kept current across Settings, the close and other windows. */
+function useStored<T>(load: () => T, save: (v: T) => void, key: string): [T, (v: T) => void] {
+  const [v, setV] = useState<T>(load)
   useEffect(() => {
-    const on = () => setV(loadAgentClose())
-    const onStorage = (e: StorageEvent) => { if (e.key === AGENT_CLOSE_KEY) on() }
+    const on = () => setV(load())
+    const onStorage = (e: StorageEvent) => { if (e.key === key) on() }
     window.addEventListener(EVENT, on)
     window.addEventListener('storage', onStorage)
     return () => {
       window.removeEventListener(EVENT, on)
       window.removeEventListener('storage', onStorage)
     }
-  }, [])
-  return [v, (next: AgentClose) => { setV(next); saveAgentClose(next) }]
+  }, [load, key])
+  return [v, (next: T) => { setV(next); save(next) }]
+}
+
+export function useAgentClose(): [AgentClose, (v: AgentClose) => void] {
+  return useStored(loadAgentClose, saveAgentClose, AGENT_CLOSE_KEY)
+}
+
+export function useAlwaysAsk(): [boolean, (on: boolean) => void] {
+  return useStored(loadAlwaysAsk, saveAlwaysAsk, AGENT_CLOSE_ALWAYS_ASK_KEY)
 }
