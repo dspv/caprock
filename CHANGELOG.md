@@ -12,6 +12,26 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.186.5] - 2026-11-22
+
+### Changed
+
+- **resources:** A large history is no longer a warning. Keeping every
+  session is what spend over all time, search across old sessions and Second
+  Brain stand on, so Caprock resources now says the size as a plain line,
+  *History · 2.1 GB*, with no amber dot and no *Set a retention period*
+  button, and `caprock doctor` no longer prints a Verdict line for it. What
+  does warn is a nearly full disk: under 5 GB free on the disk that holds
+  Caprock's data (a threshold we chose, not a measured limit). *Disk is nearly
+  full* says how much is free, names Caprock's history as its largest item
+  there with its size, and opens Settings → Storage; it never tells you to
+  delete the history. `caprock doctor` says the same, and its Disk heading
+  now shows the free space on that disk.
+
+### Fixed
+
+- **resources:** the Storage link's scroll retries stop quietly when the page is gone, instead of throwing after it.
+
 ## [0.186.4] - 2026-11-21
 
 ### Fixed
