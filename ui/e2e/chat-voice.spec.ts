@@ -42,7 +42,12 @@ async function stubShell(page: Page): Promise<void> {
           const lang = String(args?.lang ?? '')
           langs.set(id, lang)
           if (lang.startsWith('uk')) emit({ kind: 'end', id, error: 'on-device-unavailable' }, 30)
-          else {
+          else if (lang.startsWith('fr')) {
+            // First use: macOS asks, the user answers later.
+            emit({ kind: 'asking', id }, 20)
+            emit({ kind: 'listening', id }, 900)
+            emit({ kind: 'partial', id, text: 'bonjour' }, 1000)
+          } else {
             emit({ kind: 'partial', id, text: 'run the' }, 60)
             emit({ kind: 'partial', id, text: 'run the tests' }, 120)
           }
@@ -51,7 +56,7 @@ async function stubShell(page: Page): Promise<void> {
         if (cmd === 'dictation_stop') {
           const id = Number(args?.id)
           if (!args?.cancel && !langs.get(id)?.startsWith('uk')) {
-            emit({ kind: 'final', id, text: 'run the tests.' }, 20)
+            emit({ kind: 'final', id, text: langs.get(id)?.startsWith('fr') ? 'bonjour.' : 'run the tests.' }, 20)
             emit({ kind: 'end', id }, 30)
           }
           return null
@@ -127,8 +132,23 @@ test('the composer mic: hold to talk puts the words in the box, unsent; errors s
     await expect(box).toHaveValue('')
     await shot('4-unavailable-language.png')
 
+    // First use: released while macOS asks, it listens once allowed, until a click.
+    await box.fill('')
+    await page.evaluate(() => localStorage.setItem('caprock.speech.lang', 'fr-FR'))
+    const b2 = (await mic.boundingBox())!
+    await page.mouse.move(b2.x + b2.width / 2, b2.y + b2.height / 2)
+    await page.mouse.down()
+    await expect(composer.getByRole('status')).toContainText('Waiting for macOS to allow the microphone')
+    await page.waitForTimeout(400)
+    await page.mouse.up()
+    await expect(composer.getByRole('status')).toContainText('Listening in French — click the mic to stop')
+    await expect(box).toHaveValue('bonjour')
+    await mic.click()
+    await expect(box).toHaveValue('bonjour.')
+    await expect(composer.getByText(/Heard nothing/)).toHaveCount(0)
+
     const calls = await page.evaluate(() => (window as unknown as { __dict: { calls: [string, Record<string, unknown>][] } }).__dict.calls)
-    expect(calls.filter(([c]) => c === 'dictation_start').map(([, a]) => a.lang)).toEqual(['en-US', 'en-US', 'uk-UA'])
+    expect(calls.filter(([c]) => c === 'dictation_start').map(([, a]) => a.lang)).toEqual(['en-US', 'en-US', 'uk-UA', 'fr-FR'])
   } finally {
     await page.close()
     await stopAgent(stand.daemonURL, id)

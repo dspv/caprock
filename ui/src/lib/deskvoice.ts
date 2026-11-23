@@ -17,6 +17,8 @@ export const DICTATION_EVENT = 'caprock:dictation'
 
 /** One event from the shell: words so far, the final words, or the end. */
 export type DictationEvent =
+  | { kind: 'asking'; id: number }
+  | { kind: 'listening'; id: number }
   | { kind: 'partial'; id: number; text: string }
   | { kind: 'final'; id: number; text: string }
   | { kind: 'end'; id: number; error?: string }
@@ -50,7 +52,7 @@ export function useDeskVoiceAvailable(on = true): boolean {
 function isEvent(d: unknown): d is DictationEvent {
   if (!d || typeof d !== 'object') return false
   const e = d as Record<string, unknown>
-  return typeof e.id === 'number' && (e.kind === 'partial' || e.kind === 'final' || e.kind === 'end')
+  return typeof e.id === 'number' && (e.kind === 'asking' || e.kind === 'listening' || e.kind === 'partial' || e.kind === 'final' || e.kind === 'end')
 }
 
 /** Calls `fn` with each dictation event; returns the unsubscribe. */

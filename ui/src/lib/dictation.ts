@@ -11,6 +11,13 @@
  * why: a refused microphone or speech recognition, a language this Mac
  * cannot recognise on its own (nothing is sent to Apple instead), or
  * nothing heard. Words already heard are never taken back.
+ *
+ * The first time, macOS asks for the microphone and speech recognition
+ * (`asking`). A release while it asks does not end the dictation: once
+ * allowed, it listens as if clicked on, until the next click. A request
+ * Apple ends by itself mid-dictation is replaced by the shell, which keeps
+ * what was heard in front (app/src-tauri/src/dictate.rs `should_restart`):
+ * here that is only more partial words.
  */
 import { joinDictation } from './speech'
 
@@ -36,12 +43,18 @@ export interface VoiceState {
   heard: string
   /** The language it listens for (BCP-47). */
   lang: string
+  /** macOS is asking for permission: a release keeps it on. */
+  asking?: boolean
   error?: VoiceError
 }
 
 export type VoiceAction =
   | { type: 'start'; before: string; lang: string }
   | { type: 'started'; id: number }
+  /** macOS shows its permission prompt for this dictation. */
+  | { type: 'asking'; id: number }
+  /** The microphone is on. */
+  | { type: 'live'; id: number }
   | { type: 'partial'; id: number; text: string }
   | { type: 'final'; id: number; text: string }
   | { type: 'stop' }
@@ -96,6 +109,14 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
       if (s.phase === 'starting') return { ...s, id: a.id, phase: 'listening' }
       if (s.phase === 'stopping' && s.id === null) return { ...s, id: a.id }
       return s
+    case 'asking':
+      if (a.id !== s.id || !voiceActive(s) || s.phase === 'final') return s
+      return { ...s, asking: true }
+    case 'live': {
+      if (a.id !== s.id || !voiceActive(s)) return s
+      const { asking: _was, ...rest } = s
+      return rest
+    }
     case 'partial': {
       if (a.id !== s.id || !voiceActive(s) || s.phase === 'final') return s
       // An empty guess never wipes words already shown.
@@ -117,6 +138,8 @@ export function voiceReducer(s: VoiceState, a: VoiceAction): VoiceState {
         return err && err !== 'no-audio' ? { ...rest, phase: 'inserted', error: err } : { ...rest, phase: 'inserted' }
       }
       if (a.error === 'superseded') return { ...VOICE_IDLE, lang: s.lang }
+      // Stopped by the user while macOS still asked: nothing to say.
+      if (s.asking && !err) return { ...VOICE_IDLE, lang: s.lang }
       return { ...s, phase: 'error', error: err ?? 'no-audio' }
     }
     case 'refused':
@@ -147,9 +170,12 @@ export const HOLD_MS = 350
  * Whether a release stops listening. A press that started it and lasted
  * HOLD_MS or more is hold-to-talk: the release ends it. A shorter one was a
  * click, which leaves it listening until the next click. A press while it
- * already listened is that next click: its release ends it.
+ * already listened is that next click: its release ends it. A release of
+ * the press that started it while macOS asks for permission never ends it:
+ * once allowed, it listens until the next click.
  */
-export function releaseStops(downAt: number, upAt: number, startedByThisPress: boolean): boolean {
+export function releaseStops(downAt: number, upAt: number, startedByThisPress: boolean, asking = false): boolean {
+  if (startedByThisPress && asking) return false
   return !startedByThisPress || upAt - downAt >= HOLD_MS
 }
 

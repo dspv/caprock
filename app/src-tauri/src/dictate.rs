@@ -33,6 +33,11 @@ pub struct Status {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Event {
+    /// macOS is asking for the microphone or speech recognition: the page
+    /// keeps the dictation on through a release meanwhile.
+    Asking { id: u64 },
+    /// The microphone is on and the recogniser listens.
+    Listening { id: u64 },
     /// Everything heard so far, still being guessed.
     Partial { id: u64, text: String },
     /// The recogniser's last word on what was said.
@@ -81,6 +86,44 @@ pub fn apple_error(domain: &str, code: isize) -> Option<&'static str> {
         ("kAFAssistantErrorDomain", 1700) => Some("speech-denied"),
         ("SFSpeechErrorDomain", 2) => Some("no-microphone"),
         _ => Some("failed"),
+    }
+}
+
+/// How many times one dictation starts a new request after Apple ended one.
+pub const MAX_RESTARTS: u32 = 40;
+/// Requests in a row that heard nothing before it gives up.
+pub const MAX_EMPTY_RESTARTS: u32 = 3;
+
+/// Whether a request Apple ended (`code`: why, `None` when it simply
+/// finished) is replaced by a new one: only while the user has not asked to
+/// stop, never after a refusal or a missing microphone, and not forever;
+/// `empty_in_row` counts this request when it heard nothing.
+pub fn should_restart(
+    stopping: bool,
+    code: Option<&'static str>,
+    restarts: u32,
+    empty_in_row: u32,
+) -> bool {
+    if stopping || restarts >= MAX_RESTARTS || empty_in_row >= MAX_EMPTY_RESTARTS {
+        return false;
+    }
+    matches!(code, None | Some("no-speech") | Some("failed"))
+}
+
+/// What earlier requests heard, then what the current one heard, a space
+/// between: the text the page shows for a dictation that was restarted.
+pub fn join_heard(committed: &str, current: &str) -> String {
+    let c = current.trim_start();
+    if c.trim().is_empty() {
+        return committed.to_string();
+    }
+    if committed.is_empty() {
+        return c.to_string();
+    }
+    if committed.ends_with(char::is_whitespace) {
+        format!("{committed}{c}")
+    } else {
+        format!("{committed} {c}")
     }
 }
 
@@ -200,6 +243,40 @@ mod tests {
         assert_eq!(apple_error("kAFAssistantErrorDomain", 203), None);
         assert_eq!(apple_error("SFSpeechErrorDomain", 2), Some("no-microphone"));
         assert_eq!(apple_error("NSOSStatusErrorDomain", -1), Some("failed"));
+    }
+
+    #[test]
+    fn a_request_apple_ended_is_replaced_until_the_user_stops() {
+        // Ended by itself, or after a pause, while the user still listens.
+        assert!(should_restart(false, None, 0, 0));
+        assert!(should_restart(false, Some("no-speech"), 3, 1));
+        assert!(should_restart(false, Some("failed"), 0, 0));
+        // The user's release, click, Enter or Esc: the end.
+        assert!(!should_restart(true, None, 0, 0));
+        // A refusal or a missing microphone cannot be listened past.
+        for code in ["mic-denied", "speech-denied", "no-microphone"] {
+            assert!(!should_restart(false, Some(code), 0, 0), "{code}");
+        }
+        // Not forever.
+        assert!(!should_restart(false, None, MAX_RESTARTS, 0));
+        assert!(!should_restart(false, None, 0, MAX_EMPTY_RESTARTS));
+    }
+
+    #[test]
+    fn what_earlier_requests_heard_stays_in_front() {
+        assert_eq!(join_heard("", "hello"), "hello");
+        assert_eq!(join_heard("first part.", "second"), "first part. second");
+        assert_eq!(join_heard("first ", " second"), "first second");
+        assert_eq!(join_heard("kept", ""), "kept");
+        assert_eq!(join_heard("kept", "   "), "kept");
+    }
+
+    #[test]
+    fn the_page_is_told_when_macos_asks_and_when_it_listens() {
+        assert!(event_script(&Event::Asking { id: 3 }).contains(r#"{"kind":"asking","id":3}"#));
+        assert!(
+            event_script(&Event::Listening { id: 3 }).contains(r#"{"kind":"listening","id":3}"#)
+        );
     }
 
     #[test]

@@ -67,7 +67,9 @@ export function useDeskVoice({ enabled, getText, setText }: {
   useEffect(() => {
     if (!available) return
     return onDictation((e) => {
-      if (e.kind === 'partial') dispatch({ type: 'partial', id: e.id, text: e.text })
+      if (e.kind === 'asking') dispatch({ type: 'asking', id: e.id })
+      else if (e.kind === 'listening') dispatch({ type: 'live', id: e.id })
+      else if (e.kind === 'partial') dispatch({ type: 'partial', id: e.id, text: e.text })
       else if (e.kind === 'final') dispatch({ type: 'final', id: e.id, text: e.text })
       else dispatch({ type: 'end', id: e.id, ...(e.error ? { error: e.error } : {}) })
     })
@@ -142,8 +144,9 @@ export function useDeskVoice({ enabled, getText, setText }: {
       const p = pressed.current
       pressed.current = null
       if (!p) return
-      if (releaseStops(p.at, Date.now(), p.started)) stop()
-      else setHolding(false) // a click: it listens until the next click
+      if (releaseStops(p.at, Date.now(), p.started, now.current.asking)) stop()
+      // A click, or a release while macOS asked: it listens until the next click.
+      else setHolding(false)
     },
     toggle: () => {
       if (voiceActive(now.current)) stop()
@@ -175,6 +178,7 @@ export function deskVoiceLine(v: DeskVoice): { tone: 'live' | 'muted' | 'danger'
       return { tone: 'muted', text: 'Starting the microphone…' }
     case 'listening':
     case 'partial':
+      if (s.asking) return { tone: 'muted', text: 'Waiting for macOS to allow the microphone and speech recognition for Caprock…' }
       return {
         tone: 'live',
         text: `Listening in ${name} — ${v.holding ? 'release to stop' : 'click the mic to stop'}. Recognised on this Mac; nothing is sent.`,

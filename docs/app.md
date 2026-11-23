@@ -1579,8 +1579,13 @@ language your Mac cannot recognise by itself is refused with a line that
 says so, rather than sent to Apple; adding it under System Settings →
 Keyboard → Dictation may make it available.
 
+You can talk for as long as you like: it keeps listening through pauses
+until you let go or click.
+
 The first time, macOS asks whether Caprock may use the microphone and
-speech recognition. If you said no, allow Caprock in System Settings →
+speech recognition. If you let go of the button while it asks, Caprock
+starts listening once you allow it and keeps going until you click the
+microphone. If you said no, allow Caprock in System Settings →
 Privacy & Security → Microphone and → Speech Recognition. Windows, Linux
 and a browser tab do not have this microphone yet.
 

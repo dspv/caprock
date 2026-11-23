@@ -132,7 +132,54 @@ describe('voice input state', () => {
   })
 })
 
+describe('first use: macOS asks', () => {
+  it('a dictation macOS asks about stays on, and listens once allowed', () => {
+    let s = run([{ type: 'start', before: '', lang: 'en-US' }, { type: 'started', id: 1 }, { type: 'asking', id: 1 }])
+    expect(s.asking).toBe(true)
+    expect(voiceActive(s)).toBe(true)
+    s = voiceReducer(s, { type: 'live', id: 1 })
+    expect(s.asking).toBeUndefined()
+    expect(s.phase).toBe('listening')
+    s = voiceReducer(s, { type: 'partial', id: 1, text: 'hello' })
+    expect(voiceFieldText(s)).toBe('hello')
+  })
+
+  it('stopped by the user while macOS asked, it ends quietly', () => {
+    const s = run([{ type: 'start', before: 'x', lang: 'en-US' }, { type: 'started', id: 1 }, { type: 'asking', id: 1 }, { type: 'stop' }, { type: 'end', id: 1 }])
+    expect(s.phase).toBe('idle')
+    expect(s.error).toBeUndefined()
+  })
+
+  it('a refusal after asking still says so', () => {
+    const s = run([{ type: 'start', before: '', lang: 'en-US' }, { type: 'started', id: 1 }, { type: 'asking', id: 1 }, { type: 'end', id: 1, error: 'mic-denied' }])
+    expect(s.phase).toBe('error')
+    expect(s.error).toBe('denied-mic')
+  })
+})
+
+describe('long dictation', () => {
+  it('words from a request the shell restarted come as more partial words; only the user ends it', () => {
+    // The shell keeps what an ended request heard in front of the next one's.
+    const s = run([
+      { type: 'start', before: '', lang: 'en-US' },
+      { type: 'started', id: 1 },
+      { type: 'partial', id: 1, text: 'First part.' },
+      { type: 'partial', id: 1, text: 'First part. Second' },
+      { type: 'partial', id: 1, text: 'First part. Second part.' },
+    ])
+    expect(s.phase).toBe('partial')
+    expect(voiceActive(s)).toBe(true)
+    expect(voiceFieldText(s)).toBe('First part. Second part.')
+  })
+})
+
 describe('hold to talk', () => {
+  it('a release while macOS asks never stops it, however long the hold', () => {
+    expect(releaseStops(1000, 9000, true, true)).toBe(false)
+    // The next click still does.
+    expect(releaseStops(1000, 1010, false, false)).toBe(true)
+  })
+
   it('a long press that started it stops on release', () => {
     expect(releaseStops(1000, 1000 + HOLD_MS, true)).toBe(true)
   })

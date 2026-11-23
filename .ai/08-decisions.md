@@ -8049,6 +8049,14 @@ audio to Apple or Google (rule 4).
   Enter or Space on the focused button toggles. The words show in the
   field as they are heard; the field is read-only while it listens, and
   Enter sends what it shows and drops what comes after.
+- **First use and long dictation** (coordinator, 2026-11-23). A hold
+  released while macOS shows its permission prompts does not end the
+  dictation: once allowed it listens in click mode and says *click the mic
+  to stop*. A request Apple ends by itself (a pause, its time limit) while
+  the user still holds or toggled on is replaced by a new one on the same
+  microphone, the words heard kept in front; only the user's release,
+  click, Enter or Esc ends it (at most 40 restarts, three empty in a row
+  end it, as the phone's dictation does).
 - **The language is the phone's choice** (`lib/speechlang.ts`): a chip
   beside the mic cycles through the viewer's languages and opens the long
   list, remembered per viewer.
