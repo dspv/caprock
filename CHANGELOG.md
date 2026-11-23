@@ -12,6 +12,28 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.189.1] - 2026-11-23
+
+### Fixed
+
+- **perf:** the machine's typical compaction figure, read once a minute
+  while an Agent panel is open, no longer walks every Cursor chat with a
+  compaction that has no after measured, from the boundary to its end, to
+  find a turn it never counts: on the owner's database that walk was about
+  20 MB of disk reads each time (0.5 to 0.9 GB an hour). The figures are
+  the same.
+- **doctor:** `GET /v1/footprint`'s `disk_io.by_source` lists the top thirty
+  readers instead of ten. The rest, summed into *other sources*, had been
+  reading more than any reader listed.
+- **perf:** opening a working session's tab no longer reads the whole
+  session again for its spend chart. Compressing old tool payloads no longer
+  counts as a change to a session, and the chart's calls are extended by
+  what was added since the last read, so a linked tool call, a merged reply
+  or a compressed payload no longer forces a full read. On a synthetic
+  6,000-call session a tab open read 154 MB before and 0.1 MB after, with
+  the file evicted from the OS cache; this was the largest reader of disk on
+  the owner's daemon (3.1 GB an hour).
+
 ## [0.189.0] - 2026-11-23
 
 ### Added

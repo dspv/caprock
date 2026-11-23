@@ -532,6 +532,15 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-23 — 0.189.1: a session tab reads only what changed
+
+A patch release, #1019. Opening a session's tab no longer reads the whole
+session again whenever anything in it was rewritten: compressing old payloads
+moves nothing, and the calls a tab shows are rebuilt from the rows that
+changed (on a synthetic 6,000-call session, 154 MB to 0.1 MB per open). The
+compaction figure stops walking Cursor chats for a turn it always excluded,
+and Caprock resources names thirty disk readers instead of ten.
+
 ### 2026-11-23 — 0.189.0: what the plan covers, and who got no reply
 
 A minor release, #1010. Where no plan is stated, the cost figure asks once how
