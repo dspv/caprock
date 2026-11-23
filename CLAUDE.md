@@ -57,7 +57,10 @@ whole corpus. Contributing? See [`CONTRIBUTING.md`](CONTRIBUTING.md).
    — to Caprock support, never GitHub ([ADR-073](.ai/08-decisions.md)); and
    the share card the user chose, the picture alone, when they press X,
    Threads or LinkedIn, so the post's link shows it — removable from
-   Settings ([ADR-086](.ai/08-decisions.md)).
+   Settings ([ADR-086](.ai/08-decisions.md)). And one download, on the
+   user's click in Settings → Voice input on Windows and Linux: the voice
+   model from huggingface.co, its SHA-256 checked against hashes built into
+   the app, nothing sent with it ([ADR-104](.ai/08-decisions.md)).
 
 5. **English only, in every file.** Code, comments, docs, data, commits, PR
    titles and descriptions: no Russian and no other language. A quote from a

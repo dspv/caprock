@@ -34,6 +34,13 @@ until you enable it, and each contacts exactly one host:
   the post's link shows it ([ADR-086](.ai/08-decisions.md)). A shared
   picture can be removed from caprock.dev under Settings → Privacy; the
   social site may keep the preview it already fetched.
+- **The voice model** (the desktop app on Windows and Linux) is downloaded
+  from `huggingface.co` only when you press **Download voice model** in
+  Settings → Voice input: one public file, from the whisper.cpp project's
+  repositories pinned to a commit, its SHA-256 checked against hashes built
+  into the app before it is used. The request carries nothing about you,
+  and your voice is recognised on the computer and never sent
+  ([ADR-104](.ai/08-decisions.md)).
 - **LAN access** (`caprock up --lan`, or the switch in the dashboard) opens a
   second listener on one private address of this machine, never `0.0.0.0`.
   See [Other devices](#other-devices).

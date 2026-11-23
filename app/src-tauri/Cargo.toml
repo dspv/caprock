@@ -30,14 +30,14 @@ serde_json = "1"
 dirs = "6"
 tauri-plugin-updater = "2"
 # The voice model's download on Windows and Linux (src/voicemodel.rs,
-# ADR-103): one file from huggingface.co on the user's click, its SHA-256
+# ADR-104): one file from huggingface.co on the user's click, its SHA-256
 # checked against the hashes compiled in. All three are already in the tree
 # through the updater, with the same TLS choice (rustls on ring).
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "system-proxy"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 sha2 = "0.10"
 
-# Voice input on Windows and Linux (src/dictate_whisper.rs, ADR-103):
+# Voice input on Windows and Linux (src/dictate_whisper.rs, ADR-104):
 # whisper.cpp in this process, CPU only, fed from the microphone through
 # cpal (WASAPI; ALSA, which PulseAudio and PipeWire serve). Pinned exactly:
 # whisper-rs 0.16.0 (codeberg.org/tazz4843/whisper-rs) bundles whisper.cpp

@@ -63,8 +63,8 @@ describe('the start-work route', () => {
 })
 
 describe('the settings route', () => {
-  it('deep-links to the phone, Telegram and the computers, and drops an unknown section', () => {
-    for (const section of ['phone', 'telegram', 'computers'] as const) {
+  it('deep-links to the phone, Telegram, the computers and Voice input, and drops an unknown section', () => {
+    for (const section of ['phone', 'telegram', 'computers', 'voice'] as const) {
       expect(href({ name: 'settings', section })).toBe(`#/settings/${section}`)
       expect(parseHash(href({ name: 'settings', section }))).toEqual({ name: 'settings', section })
     }

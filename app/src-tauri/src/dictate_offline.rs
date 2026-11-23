@@ -1,4 +1,4 @@
-//! The parts of offline dictation (ADR-103) that need neither a microphone
+//! The parts of offline dictation (ADR-104) that need neither a microphone
 //! nor a model, so they are tested on every OS: turning the microphone's
 //! audio into 16 kHz mono, deciding where to cut it into pieces at pauses,
 //! how much of whisper's 30-second window a piece needs, the language code,
@@ -162,7 +162,7 @@ const CTX_PER_SECOND: usize = 50;
 /// The full window.
 pub const MAX_AUDIO_CTX: i32 = 1500;
 /// The least window a piece gets, about 10 s. The research saw the decoder
-/// retry and slow down on short pieces cut to their own length (ADR-103),
+/// retry and slow down on short pieces cut to their own length (ADR-104),
 /// so a short phrase gets this much rather than exactly its length.
 pub const MIN_AUDIO_CTX: i32 = 512;
 /// Room past the piece's own length, so its last word is never cut off.
@@ -188,7 +188,7 @@ pub fn pad_short(mut piece: Vec<f32>) -> Vec<f32> {
 }
 
 /// The language whisper is told, from the chip's BCP-47 tag: `ru-RU` is
-/// `ru`, `zh-Hant-TW` is `zh`. Never auto-detected (ADR-103).
+/// `ru`, `zh-Hant-TW` is `zh`. Never auto-detected (ADR-104).
 pub fn whisper_lang(tag: &str) -> Option<String> {
     let base = tag
         .trim()

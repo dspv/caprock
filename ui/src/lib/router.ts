@@ -1,5 +1,5 @@
 // Hash router — zero dependencies, good enough for five screens.
-// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m/:machine[/session/:id]
+// Routes: #/ (Home; #/home and the older #/now are the same screen) · #/session/:id · #/cost · #/history · #/week · #/tasks · #/queue · #/start · #/settings[/phone|/telegram|/computers|/voice] · #/mail · #/brain[?node=] · #/pipeline[?repo=&of=&pr=] · #/work · #/jarvis · #/chats[?archived=1] · #/chats/:id · #/x/:id[?to=] · #/m/:machine[/session/:id]
 import { useEffect, useState } from 'react'
 
 export type Route =
@@ -53,8 +53,8 @@ export type Route =
 
 export type StartMode = 'clone' | 'new' | 'worktree'
 
-/** The parts of Settings a link can open on: the phone, Telegram beside it, and the other computers. */
-export type SettingsSection = 'phone' | 'telegram' | 'computers'
+/** The parts of Settings a link can open on: the phone, Telegram beside it, the other computers, and Voice input (the voice model, Windows and Linux). */
+export type SettingsSection = 'phone' | 'telegram' | 'computers' | 'voice'
 
 /** A route inside a module's own page: '#' and then up to 511 characters, no spaces (as PUT /v1/x/<id>/attention takes it). */
 export function isModuleHref(h: string): boolean {
@@ -97,7 +97,7 @@ export function parseHash(hash: string): Route {
     case 'notes':
       return { name: 'notes' }
     case 'settings':
-      return parts[1] === 'phone' || parts[1] === 'telegram' || parts[1] === 'computers' ? { name: 'settings', section: parts[1] } : { name: 'settings' }
+      return parts[1] === 'phone' || parts[1] === 'telegram' || parts[1] === 'computers' || parts[1] === 'voice' ? { name: 'settings', section: parts[1] } : { name: 'settings' }
     case 'mail':
       return { name: 'mail' }
     case 'brain': {

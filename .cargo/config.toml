@@ -1,4 +1,4 @@
-# How whisper.cpp is compiled into the desktop app (app/src-tauri, ADR-103).
+# How whisper.cpp is compiled into the desktop app (app/src-tauri, ADR-104).
 # whisper-rs-sys hands every GGML_* variable to CMake. Here, not in
 # app/src-tauri/.cargo, because cargo reads this file from the directory it
 # runs in and upwards: `make app-test` runs from the repository root.

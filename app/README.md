@@ -15,7 +15,7 @@ Linux you also need WebKitGTK 4.1:
 `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev`.
 
 On Windows and Linux the app compiles whisper.cpp for voice input
-([ADR-103](../.ai/08-decisions.md)), through `whisper-rs` (pinned in
+([ADR-104](../.ai/08-decisions.md)), through `whisper-rs` (pinned in
 `Cargo.toml`): that takes **CMake** and **libclang** (bindgen reads
 whisper.cpp's header). Linux also needs the ALSA headers for the microphone.
 
@@ -276,7 +276,7 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
 The `dictation_*` commands are voice input in the chat (ADR-102 on macOS,
-ADR-103 on Windows and Linux, `src-tauri/src/dictate.rs`); the
+ADR-104 on Windows and Linux, `src-tauri/src/dictate.rs`); the
 `voice_model_*` ones are Settings → Voice input on Windows and Linux
 (`src-tauri/src/voicemodel.rs`): the model's state, its download from
 huggingface.co on a click (SHA-256 checked against hashes compiled in),

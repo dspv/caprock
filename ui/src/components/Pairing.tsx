@@ -65,7 +65,10 @@ export const TELEGRAM_SECTION = 'telegram'
 /** Settings → Computers (components/Computers.tsx, ADR-067). */
 export const COMPUTERS_SECTION = 'settings-computers'
 
-const SECTION_IDS: Record<SettingsSection, string> = { phone: PHONE_SECTION, telegram: TELEGRAM_SECTION, computers: COMPUTERS_SECTION }
+/** Settings → Voice input (components/VoiceInputSetting.tsx, ADR-104): the voice model on Windows and Linux. */
+export const VOICE_SECTION = 'settings-voice-input'
+
+const SECTION_IDS: Record<SettingsSection, string> = { phone: PHONE_SECTION, telegram: TELEGRAM_SECTION, computers: COMPUTERS_SECTION, voice: VOICE_SECTION }
 
 // Set by a click that means "show me the code" (the sidebar's *phone*, the
 // palette); read once by the phone section, mounted or not yet. Never set by

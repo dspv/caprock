@@ -33,6 +33,32 @@ export interface TrayView {
   shown?: string
 }
 
+/** `dictation_status` (app/src-tauri/src/dictate.rs). */
+export interface DictationStatus {
+  supported: boolean
+  /** Without support: `unsupported`, `unbundled` (macOS), `no-model`, `downloading`, `cpu-unsupported` (Windows, Linux). */
+  reason?: string
+  /** Who listens; a shell that predates it is Apple's. */
+  engine?: 'apple' | 'whisper'
+}
+
+export type VoiceModelId = 'small' | 'base'
+
+/** `voice_model_status` (app/src-tauri/src/voicemodel.rs). */
+export interface VoiceModelStatus {
+  /** Windows and Linux; false on a Mac. */
+  offered: boolean
+  /** This processor can run the model (AVX2, FMA and F16C on x86-64). */
+  cpu_ok: boolean
+  dir?: string
+  installed?: VoiceModelId
+  path?: string
+  /** Each model with the speech detector's bytes added: what a download costs. */
+  models: { id: VoiceModelId; file: string; bytes: number }[]
+  download?: { model: VoiceModelId; done: number; total: number }
+  error?: { model: VoiceModelId; error: 'checksum' | 'network' | 'disk' }
+}
+
 /** The global hotkey as the shell holds it (app/src-tauri/src/hotkey.rs). */
 export interface HotkeyStatus {
   accelerator: string | null
@@ -122,12 +148,21 @@ export const shell = {
   browserTab: (id: string, act: BrowserAct) => shellInvoke<void>('browser_tab', { id, act }),
   /** One line in the app's own log on this machine (`app.log` in the data directory), never sent anywhere: why the window had to recover. */
   appLog: (message: string) => shellInvoke<void>('app_log', { message }),
-  /** Whether the chat's voice input works here: macOS, from the app bundle (ADR-102, app/src-tauri/src/dictate.rs). */
-  dictationStatus: () => shellInvoke<{ supported: boolean; reason?: string }>('dictation_status'),
-  /** Listen for `lang` (BCP-47), on this Mac only; its words come as `caprock:dictation` events with the id returned. */
+  /** Whether the chat's voice input works here, and who listens: Apple on a Mac from the app bundle (ADR-102), whisper.cpp on Windows and Linux once the voice model is in (ADR-104); app/src-tauri/src/dictate.rs. */
+  dictationStatus: () => shellInvoke<DictationStatus>('dictation_status'),
+  /** Listen for `lang` (BCP-47), on this computer only; its words come as `caprock:dictation` events with the id returned. */
   dictationStart: (lang: string) => shellInvoke<number>('dictation_start', { lang }),
   /** Stop listening: the final words follow; with `cancel`, only the end. */
   dictationStop: (id: number, cancel = false) => shellInvoke<void>('dictation_stop', { id, cancel }),
+  /** Settings → Voice input on Windows and Linux (ADR-104, app/src-tauri/src/voicemodel.rs): the voice model's state. */
+  voiceModelStatus: () => shellInvoke<VoiceModelStatus>('voice_model_status'),
+  /** Downloads `model` from huggingface.co, SHA-256 checked; returns at once and the status follows it. Only on the user's click (rule 4). */
+  voiceModelDownload: (model: VoiceModelId) => shellInvoke<void>('voice_model_download', { model }),
+  voiceModelCancel: () => shellInvoke<void>('voice_model_cancel'),
+  /** Deletes the model and the speech detector; the mic then offers the download again. */
+  voiceModelRemove: () => shellInvoke<void>('voice_model_remove'),
+  /** The installed model in the file manager. */
+  voiceModelReveal: () => shellInvoke<void>('voice_model_reveal'),
 }
 
 /**

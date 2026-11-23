@@ -1,11 +1,11 @@
-//! Voice input in the chat (ADR-102, ADR-103): the dashboard's microphone
+//! Voice input in the chat (ADR-102, ADR-104): the dashboard's microphone
 //! button asks the shell to listen, and the words come back to the page as
 //! they are heard. No audio and no text leave the machine on any OS:
 //!
 //! - **macOS** (`dictate_macos.rs`, ADR-102): Apple's speech recognition on
 //!   this Mac (`requiresOnDeviceRecognition`); a language this Mac cannot
 //!   recognise on its own is refused rather than sent to Apple's servers.
-//! - **Windows and Linux** (`dictate_whisper.rs`, ADR-103): whisper.cpp in
+//! - **Windows and Linux** (`dictate_whisper.rs`, ADR-104): whisper.cpp in
 //!   this process, from a model the user downloaded in Settings → Voice
 //!   input (`voicemodel.rs`). Without one the status says `no-model` and the
 //!   page's microphone offers the download instead.

@@ -1,5 +1,5 @@
 fn main() {
-    // `whisper`: the offline voice engine (src/dictate_whisper.rs, ADR-103)
+    // `whisper`: the offline voice engine (src/dictate_whisper.rs, ADR-104)
     // is built — on Windows and Linux, and on a Mac with the offline-voice
     // feature, for checking only.
     println!("cargo::rustc-check-cfg=cfg(whisper)");

@@ -1,4 +1,4 @@
-//! The voice model for dictation on Windows and Linux (ADR-103): which files
+//! The voice model for dictation on Windows and Linux (ADR-104): which files
 //! exist, where they live, and their download — only on the user's click in
 //! Settings → Voice input, from huggingface.co, each file's SHA-256 checked
 //! against the hashes compiled in below before it counts as installed.
@@ -64,7 +64,7 @@ pub struct Model {
 
 // Read from the official repositories' LFS pointers on 2026-11-23
 // (huggingface.co/api/models/<repo>/tree/main, `lfs.oid` and `size`); the
-// same hashes the research runs measured (ADR-103).
+// same hashes the research runs measured (ADR-104).
 const WHISPER_REPO: &str = "ggerganov/whisper.cpp";
 const WHISPER_REV: &str = "5359861c739e955e79d9a303bcbc70fb988958b1";
 

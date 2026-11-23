@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { HOLD_MS, releaseStops, VOICE_IDLE, voiceActive, voiceError, voiceFieldText, voiceMessage, voiceReducer, type VoiceAction, type VoiceState } from './dictation'
+import { HOLD_MS, releaseStops, VOICE_IDLE, voiceActive, voiceError, voiceErrorOpensSettings, voiceFieldText, voiceMessage, voiceReducer, type VoiceAction, type VoiceState } from './dictation'
 
 const run = (actions: VoiceAction[], from: VoiceState = VOICE_IDLE) => actions.reduce(voiceReducer, from)
 
@@ -188,5 +188,30 @@ describe('hold to talk', () => {
   })
   it('a press while it listens stops it, however short', () => {
     expect(releaseStops(1000, 1010, false)).toBe(true)
+  })
+})
+
+describe('whisper on Windows and Linux (ADR-104)', () => {
+  it('the shell’s codes for a missing, coming or unloadable model and an old processor are their own errors', () => {
+    expect(voiceError('no-model')).toBe('no-model')
+    expect(voiceError('downloading')).toBe('downloading')
+    expect(voiceError('cpu-unsupported')).toBe('cpu')
+    expect(voiceError('model-failed')).toBe('model-failed')
+    for (const e of ['no-model', 'downloading', 'model-failed'] as const) expect(voiceErrorOpensSettings(e)).toBe(true)
+    expect(voiceErrorOpensSettings('denied-mic')).toBe(false)
+  })
+
+  it('names the model, this OS’s settings and never macOS', () => {
+    expect(voiceMessage('no-model', 'English', 'whisper')).toContain('Settings → Voice input')
+    expect(voiceMessage('denied-mic', 'English', 'whisper', 'windows')).toBe(
+      'Caprock may not use the microphone. Allow it in Settings → Privacy & security → Microphone, then try again.',
+    )
+    expect(voiceMessage('denied-mic', 'English', 'whisper', 'linux')).not.toContain('System Settings')
+    expect(voiceMessage('unavailable-language', 'Klingon', 'whisper')).toContain("Klingon isn't a language the voice model knows")
+    // The lines that are the same everywhere keep Apple's wording.
+    expect(voiceMessage('no-audio', 'English', 'whisper')).toBe('Heard nothing — hold the mic and speak.')
+    expect(voiceMessage('no-microphone', 'English', 'whisper')).toBe('No microphone found — connect one and try again.')
+    // A Mac is untouched.
+    expect(voiceMessage('denied-mic', 'English')).toContain('System Settings → Privacy & Security → Microphone')
   })
 })

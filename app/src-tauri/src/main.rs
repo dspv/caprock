@@ -12,7 +12,7 @@ mod commands;
 mod dictate;
 #[cfg(target_os = "macos")]
 mod dictate_macos;
-// Offline dictation on Windows and Linux (ADR-103): the pure parts are
+// Offline dictation on Windows and Linux (ADR-104): the pure parts are
 // tested on every OS; the engine is built where `whisper` is set (build.rs),
 // and on a Mac only with the offline-voice feature, unused.
 mod dictate_offline;

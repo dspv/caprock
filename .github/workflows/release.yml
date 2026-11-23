@@ -373,7 +373,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
       # libasound2-dev and libclang-dev: voice input's microphone and
-      # whisper.cpp (ADR-103), as in ci.yml's app job.
+      # whisper.cpp (ADR-104), as in ci.yml's app job.
       - name: linux webview deps
         if: runner.os == 'Linux'
         run: |

@@ -1,4 +1,4 @@
-//! Dictation on Windows and Linux (ADR-103; `dictate.rs` says what the page
+//! Dictation on Windows and Linux (ADR-104; `dictate.rs` says what the page
 //! sees): the microphone through cpal, recognised by whisper.cpp in this
 //! process on the CPU. Nothing is recorded to disk and nothing is sent: the
 //! audio lives in memory for as long as a piece takes to transcribe.
