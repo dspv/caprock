@@ -245,7 +245,7 @@ export function FootprintPanel({ f: strip, owner, front, sessions, onCheck: onSt
             <span>On disk <span className="num font-medium text-fg">{fmtBytes(f.disk.total_bytes)}</span></span>
           </p>
           {/* Said, never warned: keeping every session is the product (owner, 2026-11-22). */}
-          <p data-history-size className="text-[14px] text-fg-muted" title="Every session's prompts, replies, tool calls and images, kept for spend, search and Second Brain">
+          <p data-history-size className="text-[14px] text-fg-muted" title="Every session's prompts, replies, tool calls and images, kept for spend, search and 2nd Brain">
             History · <span className="num">{fmtBytes(f.disk.database_bytes)}</span>
           </p>
           {/* Free up memory: leftovers and idle agents, the same component the memory popover shows. */}

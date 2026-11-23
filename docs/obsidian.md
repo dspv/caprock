@@ -1,6 +1,6 @@
-# Bring an Obsidian vault into Second Brain
+# Bring an Obsidian vault into 2nd Brain
 
-Open Second Brain → **Import from Obsidian…**. Choose the vault's folder in
+Open 2nd Brain → **Import from Obsidian…**. Choose the vault's folder in
 the desktop app, or paste its full path on this computer, then **Import vault**.
 The importer reads Markdown notes locally, without calling a model or writing
 anything into the vault. It works with a Markdown folder without `.obsidian` too.
@@ -48,7 +48,7 @@ note, including an edit that kept its size and timestamp, and resolves links
 again. Edit and delete source notes in Obsidian; Caprock never writes them.
 
 **Remove… → Remove import** removes the imported sources and their exclusive
-nodes and links from Second Brain. Original memories and sources still used by
+nodes and links from 2nd Brain. Original memories and sources still used by
 another vault stay. Your vault files stay on disk. Importing the folder again
 is a fresh import.
 

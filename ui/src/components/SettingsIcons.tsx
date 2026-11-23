@@ -66,7 +66,7 @@ const BY_TITLE: [RegExp, string][] = [
   [/plan|licen/i, 'card'],
   [/^updates/i, 'refresh'],
   [/privacy/i, 'shield'],
-  [/second brain/i, 'graph'],
+  [/2nd brain/i, 'graph'],
   [/memory/i, 'brain'],
   [/storage|disk|database/i, 'disk'],
   [/stop|window/i, 'pause'],

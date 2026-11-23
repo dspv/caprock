@@ -351,7 +351,7 @@ func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
 	ctx := context.Background()
 	said(t, d, "caprock", strings.Repeat("We settled on process liveness rather than a timeout. ", 12), now.Add(-2*time.Hour))
 	start := hookd.Payload{HookEventName: "SessionStart", Source: "startup", Cwd: "/home/u/caprock"}
-	if got := contextOf(t, d.handoff(ctx, start)); strings.Contains(got, "Second Brain") {
+	if got := contextOf(t, d.handoff(ctx, start)); strings.Contains(got, "2nd Brain") {
 		t.Fatalf("an empty brain adds nothing: %q", got)
 	}
 	keep := func(kind, title, project string, pinned bool, at int64) {
@@ -367,10 +367,10 @@ func TestAHandoffCarriesTheRepositorysSecondBrain(t *testing.T) {
 	}
 	keep("idea", "Somebody else's idea", "other", false, 100)
 	got := contextOf(t, d.handoff(ctx, start))
-	if !strings.Contains(got, "process liveness") || !strings.Contains(got, "Second Brain") {
+	if !strings.Contains(got, "process liveness") || !strings.Contains(got, "2nd Brain") {
 		t.Fatalf("handoff: %q", got)
 	}
-	_, tail, _ := strings.Cut(got, "Second Brain")
+	_, tail, _ := strings.Cut(got, "2nd Brain")
 	if !regexp.MustCompile(`\n- #\d+ Keep SQLite in WAL mode`).MatchString(tail) || strings.Index(tail, "Keep SQLite") > strings.Index(tail, "Finding 7") {
 		t.Errorf("the current decision comes first: %q", tail)
 	}

@@ -173,7 +173,7 @@ export function screenName(r: Route): string {
     case 'settings': return 'Settings'
     case 'start': return 'Start work'
     case 'mail': return 'Mail'
-    case 'brain': return 'Second Brain'
+    case 'brain': return '2nd Brain'
     case 'pipeline': return 'Pipeline'
     case 'work': return 'Work'
     case 'jarvis': return 'Jarvis'

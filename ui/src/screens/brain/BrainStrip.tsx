@@ -128,7 +128,7 @@ export function BrainStrip({ auto, memories, onChanged, owner = true }: { auto: 
     : [s.detail, ...(pct !== null ? [`${pct}%`] : []), plural(b?.memories ?? memories, 'memory', 'memories')]
   const recent = auto.recent.slice(0, 3)
   return (
-    <section className="grid gap-2" aria-label="Second Brain status" data-brain-strip={active ? 'building' : 'idle'} data-brain-stage={s.stage}>
+    <section className="grid gap-2" aria-label="2nd Brain status" data-brain-strip={active ? 'building' : 'idle'} data-brain-stage={s.stage}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13.5px]">
         <span className={`h-[8px] w-[8px] shrink-0 rounded-full ${active ? 'brain-live-dot bg-accent' : s.tone === 'calm' ? 'bg-accent/60' : s.tone === 'warn' ? 'bg-warn' : 'bg-fg-faint'}`} aria-hidden />
         {/* One flow of text, so a narrow screen wraps it between figures, not after the word. */}

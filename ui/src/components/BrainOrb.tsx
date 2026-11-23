@@ -384,7 +384,7 @@ export function BrainOrb({ kinds, count, agents, activity, landed, working = 0, 
 
   return (
     <div ref={wrap} className={`${/\babsolute\b/.test(className) ? '' : 'relative '}${className}`} data-brain-orb>
-      <canvas ref={canvas} role="img" aria-label={ariaLabel ?? 'Second Brain, turning'} className="absolute inset-0 block" />
+      <canvas ref={canvas} role="img" aria-label={ariaLabel ?? '2nd Brain, turning'} className="absolute inset-0 block" />
       {shown.map((a, i) => {
         const [x, y] = rim[i]!
         return (

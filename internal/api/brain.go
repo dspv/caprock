@@ -163,7 +163,7 @@ func (s *Server) handleBrainBackfill(w http.ResponseWriter, r *http.Request) {
 
 // ErrBrainAutoOff is a backfill asked for while the automatic extraction is
 // off: it reads nothing until the user has said yes to it.
-var ErrBrainAutoOff = errors.New("turn on building Second Brain automatically first")
+var ErrBrainAutoOff = errors.New("turn on building 2nd Brain automatically first")
 
 func (s *Server) handleBrainGraph(w http.ResponseWriter, r *http.Request) {
 	qv := r.URL.Query()

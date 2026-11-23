@@ -12,7 +12,7 @@ import { SecondBrainModal } from './SecondBrainModal'
 describe('SecondBrainModal', () => {
   it('is short: the agents and the brain, Free, a headline, the agents line, three one-line steps, Jarvis and Free-and-local in a line each', () => {
     render(<SecondBrainModal onClose={() => {}} onOpen={() => {}} />)
-    const dialog = screen.getByRole('dialog', { name: 'Second Brain' })
+    const dialog = screen.getByRole('dialog', { name: '2nd Brain' })
     expect(dialog.querySelector('[data-brain-hero] [data-brain-mark]')).not.toBeNull()
     expect(dialog.querySelector('[data-brain-free]')!.textContent).toBe('Free')
     expect(screen.getByRole('heading', { name: 'One memory for all your agents' })).toBeTruthy()
@@ -61,11 +61,11 @@ describe('SecondBrainModal', () => {
     expect(where.textContent).not.toMatch(/Show in/)
   })
 
-  it('opens the Second Brain screen and closes', () => {
+  it('opens the 2nd Brain screen and closes', () => {
     const onOpen = vi.fn()
     const onClose = vi.fn()
     render(<SecondBrainModal onClose={onClose} onOpen={onOpen} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Open Second Brain' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open 2nd Brain' }))
     expect(onOpen).toHaveBeenCalledTimes(1)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -81,7 +81,7 @@ describe('SecondBrainModal', () => {
   it('has no open button without somewhere to go, only Got it', () => {
     const onClose = vi.fn()
     render(<SecondBrainModal onClose={onClose} />)
-    expect(screen.queryByRole('button', { name: 'Open Second Brain' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Open 2nd Brain' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Got it' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })

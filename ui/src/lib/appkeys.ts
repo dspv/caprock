@@ -645,7 +645,7 @@ export const SHORTCUTS: [keys: string, does: string][] = [
   ['⌘K', 'Command palette'],
   ['⌘J', 'Next session waiting on you'],
   [JARVIS_KEY, 'Jarvis: every agent, what needs you, one command line; there, back'],
-  ['⇧⌘H', 'Add to Second Brain: keep a line of your own'],
+  ['⇧⌘H', 'Add to 2nd Brain: keep a line of your own'],
   ['⌘1–8, ⌘9', 'The Nth tab, in the order opened, as its badge says; ⌘9 the last'],
   ['⌥⌘↓, ⌥⌘↑', 'Next and previous session of the project in front'],
   ['⌥⌘→, ⌥⌘←', 'Next and previous project'],

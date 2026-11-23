@@ -13,7 +13,7 @@ import (
 
 // mcpInstructions is what a client may show its model about the server.
 const mcpInstructions = "Caprock records every coding-agent session on this computer. " +
-	"Use these read-only tools to recall earlier work: search_memories, current_decisions and next_session_handoff for decisions and findings kept in Second Brain " +
+	"Use these read-only tools to recall earlier work: search_memories, current_decisions and next_session_handoff for decisions and findings kept in 2nd Brain " +
 	"(search returns ranked candidates to judge by meaning; rephrase and retry when none fits), " +
 	"recent_sessions, session_summary and session_prose for what sessions in this repository did and wrote, search_prose to find a past explanation, " +
 	"cost for spend and tokens, ci_status for GitHub Actions, loop_alerts for sessions stuck repeating a tool call. " +
@@ -28,7 +28,7 @@ func mcpCmd() *cobra.Command {
 		Use:   "mcp",
 		Short: "Serve Caprock to your coding agents over MCP (stdio, read-only)",
 		Long: "Runs a Model Context Protocol server on stdin/stdout, so Claude Code, Codex or any MCP\n" +
-			"client can read what Caprock knows: Second Brain, recent sessions and their prose, cost per\n" +
+			"client can read what Caprock knows: 2nd Brain, recent sessions and their prose, cost per\n" +
 			"repository, CI and loop alerts. Read-only: no tool types into a session, starts or stops one,\n" +
 			"or changes a setting. It reads the running daemon over loopback and opens no port.\n\n" +
 			"Add it to Claude Code:  claude mcp add caprock -- caprock mcp\n" +

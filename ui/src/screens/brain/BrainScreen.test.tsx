@@ -49,7 +49,7 @@ const building = (over: Partial<BrainAutoStatus> = {}) => auto({
   ...over,
 })
 
-describe('the Second Brain screen', () => {
+describe('the 2nd Brain screen', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
@@ -87,7 +87,7 @@ describe('the Second Brain screen', () => {
     // No search, filters, view switch or empty-list instructions yet; adding a note is a quiet link.
     expect(screen.queryByRole('textbox', { name: 'Search memories' })).toBeNull()
     expect(screen.queryByRole('radiogroup', { name: 'View' })).toBeNull()
-    expect(screen.queryByText(/Drop into Second Brain/)).toBeNull()
+    expect(screen.queryByText(/Drop into 2nd Brain/)).toBeNull()
     expect(screen.queryByText(/memories$/)).toBeNull()
     expect(document.querySelector('[data-brain-add-note]')!.textContent).toMatch(/^Add a note/)
     expect(m.settings).not.toHaveBeenCalled()
@@ -217,7 +217,7 @@ describe('the Second Brain screen', () => {
     expect(document.querySelector('[data-brain-start]')).toBeNull()
     expect(screen.queryByRole('radiogroup', { name: 'View' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: /Settings/ }))
-    const pop = screen.getByRole('dialog', { name: 'Second Brain settings' })
+    const pop = screen.getByRole('dialog', { name: '2nd Brain settings' })
     expect(pop.textContent).toMatch(/Build automatically/)
     // Where it's kept: the path the daemon resolved, as it gave it.
     expect(pop.querySelector('[data-brain-db-path]')!.textContent).toBe('C:\\Users\\me\\AppData\\Roaming\\caprock\\caprock.db')
@@ -231,7 +231,7 @@ describe('the Second Brain screen', () => {
     fireEvent.click(screen.getByRole('switch'))
     await waitFor(() => expect(m.settings).toHaveBeenCalledWith({ auto: false }))
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
-    expect(screen.queryByRole('dialog', { name: 'Second Brain settings' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: '2nd Brain settings' })).toBeNull()
   })
 
   it('opens a memory from what the next session gets, and the graph card opens the graph full-screen; Escape closes it', async () => {
@@ -256,7 +256,7 @@ describe('the Second Brain screen', () => {
     expect(card.querySelector('[data-brain-graph="mini"]')).not.toBeNull()
     expect(document.querySelector('[data-brain-graph="full"]')).toBeNull()
     fireEvent.click(card)
-    const dialog = screen.getByRole('dialog', { name: 'Second Brain graph' })
+    const dialog = screen.getByRole('dialog', { name: '2nd Brain graph' })
     expect(dialog.querySelector('[data-brain-graph="full"]')).not.toBeNull()
     // The memory opened on the screen is opened beside the graph too.
     expect(dialog.querySelector('[data-brain-detail]')).not.toBeNull()
@@ -276,9 +276,9 @@ describe('the Second Brain screen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset display' }))
     expect(size).toHaveValue('1')
     act(() => { fireEvent.keyDown(document, { key: 'Escape' }) })
-    expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: '2nd Brain graph' })).toBeNull()
     fireEvent.click(card)
     fireEvent.click(screen.getByRole('button', { name: 'Close the graph' }))
-    expect(screen.queryByRole('dialog', { name: 'Second Brain graph' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: '2nd Brain graph' })).toBeNull()
   })
 })

@@ -82,7 +82,7 @@ const NAV: { route: Route; label: string; phase?: string; icon?: ReactNode }[] =
   { route: { name: 'notes' }, label: 'Memory' },
   // Second Brain (ADR-063): what Memory holds, kept as a graph. Beside it,
   // because it is built from the same words.
-  { route: { name: 'brain' }, label: 'Second Brain', phase: 'new', icon: <BrainGlyph size={12} className="-mt-px" /> },
+  { route: { name: 'brain' }, label: '2nd Brain', phase: 'new', icon: <BrainGlyph size={14} className="-mt-px" /> },
   { route: { name: 'tasks' }, label: 'Tasks' },
   // Caprock Mail: a separate kind of work, so it sits last. Marked new until
   // people have found it; the offer on Now points here once (lib/nudges.ts).

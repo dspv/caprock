@@ -144,7 +144,7 @@ export function BrainScreen({ node }: { node?: number }) {
       <header className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
         <div className="grid min-w-0 flex-1 gap-0.5">
           <h1 className="flex items-center gap-2 text-[22px] font-semibold tracking-[-0.01em] text-fg">
-            <BrainGlyph size={20} className="shrink-0 text-accent" /> Second Brain
+            <BrainGlyph size={20} className="shrink-0 text-accent" /> 2nd Brain
           </h1>
           <p className="text-[13px] text-fg-muted" data-brain-tagline>{BRAIN_TAGLINE}</p>
         </div>
@@ -175,7 +175,7 @@ export function BrainScreen({ node }: { node?: number }) {
             : <BrainStrip auto={auto} memories={status?.memories ?? 0} onChanged={reloadStatus} owner={owner} />)}
 
           <div className="grid min-w-0 grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]" data-brain-body>
-            <main className="grid min-w-0 grid-cols-1 gap-4" aria-label="Second Brain">
+            <main className="grid min-w-0 grid-cols-1 gap-4" aria-label="2nd Brain">
               {kept === 0 ? (
                 <div className="grid h-[160px] place-items-center rounded-[var(--radius-panel)] border border-dashed border-border px-4 text-center text-[14px] text-fg-muted" data-brain-list-waiting>
                   Memories land here as they are found.
@@ -219,7 +219,7 @@ export function BrainScreen({ node }: { node?: number }) {
                       </div>
                     </div>
 
-                    {error && !graph && <Empty title="Cannot read Second Brain">{error}</Empty>}
+                    {error && !graph && <Empty title="Cannot read 2nd Brain">{error}</Empty>}
                     {!graph && !error && <Skeleton rows={5} className="rounded-[var(--radius-panel)] border border-border bg-panel" />}
                     {graph && memories.length === 0 && (
                       <Empty title="Nothing matches">Try a shorter phrase, another project or a longer span.</Empty>

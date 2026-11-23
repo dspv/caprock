@@ -1,46 +1,53 @@
 /**
- * The sidebar's Second Brain card (ADR-063), below the projects: the owner's
+ * The sidebar's 2nd Brain card (ADR-063), below the projects: the owner's
  * "collapsible block on the left where my second brain is constantly being
- * built" (translated).
+ * built" (translated). Named *2nd Brain* everywhere a user reads it (owner,
+ * 2026-11-23); identifiers and routes keep `brain`.
  *
- * Unfolded, it is the living brain (BrainOrb): the memories as a slowly
- * turning cloud, the agents this user runs at its rim, sparks travelling
- * from them into it while the extraction works and a point lighting up as
- * each memory lands — and one quiet line of what it is doing, from the
- * daemon: "Reading acme-api… · 12 of 48", "3 sessions to read", "Up to
- * date · last built 14:02", "Paused", with a thin bar while it builds.
- * Folded, it is one row: the glyph and that same mode in words, with the
- * count — what it does now first (owner, 2026-10-15: "what it is doing right
- * now matters more than the numbers"). The chevron folds and unfolds it,
- * remembered in this browser; unfolding it folds a private module's row
- * below it, and the other way round (lib/sidebarAccordion).
+ * Unfolded, it is a small copy of the `#/brain` screen's graph
+ * (BrainGraphCanvas `mini`, coloured by project as there), so opening the
+ * screen shows the same picture, larger (owner, 2026-11-23: the turning orb
+ * and the screen's graph were two pictures of one thing). It draws what the
+ * card already fetches — the newest NEWEST memories, pinned first, and the
+ * topics and projects they link to — and nothing more: no endpoint of its
+ * own, no polling; it re-reads on the brain's live frames as before, and a
+ * read that changed nothing drawn keeps the picture as it is. A memory that
+ * lands flashes at its place in the accent (with *Show memories moving* on,
+ * never under reduced motion). The canvas settles off screen, fades in and
+ * then draws nothing until something changes: zero frames at rest, none
+ * while the window is hidden. Under it, one quiet line of what it is doing,
+ * from the daemon: "Reading acme-api… · 12 of 48", "3 sessions to read",
+ * "Up to date · last built 14:02", "Paused", with a thin bar while it
+ * builds. Before anything is kept it is the living brain (BrainOrb, `calm`)
+ * instead, as the screen's card is.
+ *
+ * Folded, it is one row: the glyph (a small brain of dots and links,
+ * BrainGlyph) and that same mode in words, with the count — what it does
+ * now first (owner, 2026-10-15: "what it is doing right now matters more
+ * than the numbers"). The chevron folds and unfolds it, remembered in this
+ * browser; unfolding it folds a private module's row below it, and the
+ * other way round (lib/sidebarAccordion).
  *
  * It sits under the list, above the sidebar's footer, never inside the
  * list's scroll (owner, 2026-10-15: with a long list of sessions the status
- * line under the orb was cut off by the footer). When the list and the card
- * do not both fit, the card gives way first — it shrinks twenty times as
- * readily as the list (`shrink-[20]`), and inside it only the orb does, from
- * 120px down to 64px — and the list scrolls above it; the status line never
- * shrinks and is always whole. In a window under 640px tall the orb is not
- * drawn at all (`[@media(max-height:640px)]`), so the heading and the line are all the card takes
- * and the list keeps its room. The off-and-empty banner, taller, scrolls
- * inside its own share instead.
- *
- * The orb's sparks follow the extraction and, beside it, the sessions
- * working now (`working`, from the sidebar's own model; nothing more is
- * fetched): a few slow sparks per working session, the slow turn when none.
+ * line under the picture was cut off by the footer). When the list and the
+ * card do not both fit, the card gives way first — it shrinks twenty times
+ * as readily as the list (`shrink-[20]`), and inside it only the picture
+ * does, from 120px down to 64px — and the list scrolls above it; the status
+ * line never shrinks and is always whole. In a window under 640px tall the
+ * picture is not drawn at all (`[@media(max-height:640px)]`), so the heading
+ * and the line are all the card takes and the list keeps its room. The
+ * off-and-empty banner, taller, scrolls inside its own share instead.
  *
  * Folded by default (owner, 2026-10-15, translated: "compact but
  * interactive, not grabbing attention"): one quiet row in muted colours — a
- * small static glyph and the mode in words, *Second Brain · Up to date ·
- * 140 memories*, or while it builds *Building · 12 of 48* (the session
+ * small static glyph and the mode in words, *2nd Brain · Up to date ·
+ * 140*, the figure bare so the row fits whole, or while it builds *Building · 12 of 48* (the session
  * being read of all in reach) over a 2px bar. The glyph is the only thing that
  * moves, a slow pulse, and only while a read actually runs. The row lights up a
  * little on hover, in place; a click opens the screen; the chevron unfolds
- * the orb upward, so it points up while folded and down while open.
- * A fold the viewer saved is kept: only the default changed. Unfolded, the
- * orb is the calm one (`calm`): smaller, turning slower, fainter, with fewer
- * sparks than the screen's.
+ * the picture upward, so it points up while folded and down while open.
+ * A fold the viewer saved is kept: only the default changed.
  *
  * The whole card is one way into `#/brain` (owner, 2026-10-15: "the whole
  * block as an interactive element"): a click anywhere, or Enter or Space,
@@ -54,7 +61,7 @@
  * line and Details (rule 4) — the consent in this narrow column was
  * unreadable (owner, 2026-10-15).
  *
- * Memories moving (BrainArrivals; Settings → Second Brain, *Show memories
+ * Memories moving (BrainArrivals; Settings → 2nd Brain, *Show memories
  * moving*): a read's memories leave its session as one silver wisp and
  * settle on the card's glyph with a ripple and *+N*; memories handed to a
  * new session leave the glyph for its tab.
@@ -63,7 +70,7 @@
  * the last 24 hours (readFaces); the one being read now glows softly, and
  * each says so in plain words on hover.
  */
-import { useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { BrainAutoStatus } from '@/lib/api'
 import { brainActivity, brainMode, brainState, buildFigures, clockOrDay, isBuilding, isEntity, useBrainGraph, useBrainLanded, useBrainStatus } from '@/lib/brain'
 import { fmtAgo } from '@/lib/format'
@@ -71,7 +78,9 @@ import { useNow } from '@/lib/useNow'
 import { agentsLine, BRAIN_HEADLINE, BrainHero, faceWords, FreePill, readFaces, useAgentsUsed, type ReadFace } from './BrainAgents'
 import { Body, characterFor } from './Characters'
 import { useSessionFace } from '@/lib/faces'
+import { indexGraph } from '@/lib/brainview'
 import { BrainOrb } from './BrainOrb'
+import { BrainGraphCanvas } from './BrainGraphCanvas'
 import { ChevronIcon } from './AppIcons'
 import { BrainGlyph } from './BrainDrop'
 import { SecondBrainModal } from './SecondBrainModal'
@@ -79,7 +88,10 @@ import { BrainArrivals } from './BrainArrivals'
 import { setBrainFold, useBrainFold } from '@/lib/sidebarAccordion'
 import './BrainLive.css'
 
+/** The memories the card fetches and draws: the newest (pinned first), with what they link to. */
 const NEWEST = 30
+/** The picture's box: 120px, giving way down to 64px, and not drawn in a window under 640px tall. */
+const PICTURE = 'h-[120px] min-h-[64px] shrink [@media(max-height:640px)]:hidden'
 
 /** A click on something inside the card that has a job of its own: do it, and go no further. */
 function own(fn: () => void) {
@@ -99,6 +111,12 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   const { graph } = useBrainGraph({ limit: NEWEST }, 600)
   const landed = useBrainLanded()
   const now = useNow(60_000)
+  // A read that changed nothing drawn (most brain frames are progress) keeps
+  // the same graph object, so the picture is not laid out again.
+  const sig = graph ? `${graph.nodes.map((n) => n.id).join(',')}|${graph.edges.length}` : ''
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const picture = useMemo(() => graph, [sig])
+  const tint = useMemo(() => (picture ? indexGraph(picture).colorOf : undefined), [picture])
   const toggle = () => setBrainFold(!open)
   if (!status) return null
   const auto = status.auto
@@ -112,14 +130,17 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
   const reading = active && !!(auto?.reading || auto?.running)
   // The folded row's words: while it builds, *Building · 12 of 48* (the
   // session being read of all in reach) over a thin bar; else the name, the
-  // mode and the count.
-  const count = [status.memories > 0 ? `${status.memories} ${status.memories === 1 ? 'memory' : 'memories'}` : '',
-    status.notes ? `${status.notes} ${status.notes === 1 ? 'note' : 'notes'}` : ''].filter(Boolean).join(' · ')
+  // mode and the count — the memories as a bare figure, so the row fits a
+  // narrow sidebar whole (owner-approved mockup, 2026-11-23); the words are
+  // in its tooltip.
+  const notes = status.notes ? `${status.notes} ${status.notes === 1 ? 'note' : 'notes'}` : ''
+  const count = [status.memories > 0 ? String(status.memories) : '', notes].filter(Boolean).join(' · ')
+  const countWords = [status.memories > 0 ? `${status.memories} ${status.memories === 1 ? 'memory' : 'memories'}` : '', notes].filter(Boolean).join(' · ')
   const state = brainState(auto, now)
   const rowText = active
     ? (state.m > 0 ? `Building · ${state.n} of ${state.m}` : `${mode}…`)
-    : ['Second Brain', mode, count].filter(Boolean).join(' · ')
-  const rowTitle = active ? `${state.word} · ${state.detail}${auto?.reading?.title ? ` — ${auto.reading.title}` : ''}` : rowText
+    : ['2nd Brain', mode, count].filter(Boolean).join(' · ')
+  const rowTitle = active ? `${state.word} · ${state.detail}${auto?.reading?.title ? ` — ${auto.reading.title}` : ''}` : ['2nd Brain', mode, countWords].filter(Boolean).join(' · ')
   const banner = status.memories === 0 && !status.notes && !auto?.on
   const go = () => onOpen('#/brain')
   const onKey = (e: KeyboardEvent) => {
@@ -134,7 +155,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
       type="button"
       onClick={own(toggle)}
       aria-expanded={open}
-      aria-label={open ? 'Fold Second Brain' : 'Unfold Second Brain'}
+      aria-label={open ? 'Fold 2nd Brain' : 'Unfold 2nd Brain'}
       className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
     >
       <span className={`flex transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : '-rotate-90'}`} aria-hidden>
@@ -156,7 +177,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
     // folded it is one row and does not shrink at all.
     <section
       className={`flex shrink-[20] flex-col border-t border-[var(--app-hairline)] px-2 pb-1 pt-1 ${open ? (banner ? 'min-h-[140px]' : 'min-h-[136px] [@media(max-height:640px)]:min-h-[64px]') : ''}`}
-      aria-label="Second Brain"
+      aria-label="2nd Brain"
       data-brain-sidebar
       data-brain-fold={open ? 'open' : 'closed'}
     >
@@ -164,7 +185,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
         ref={block}
         role="link"
         tabIndex={0}
-        aria-label={`Open Second Brain — ${mode}${metric ? `, ${metric}` : ''}`}
+        aria-label={`Open 2nd Brain — ${mode}${metric ? `, ${metric}` : ''}`}
         onClick={go}
         onKeyDown={onKey}
         className="mx-0.5 flex min-h-0 cursor-pointer flex-col rounded-[10px] outline-none transition-colors duration-150 hover:bg-[var(--app-row-hover)] focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
@@ -173,8 +194,8 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
         {open ? (
           <div className="flex h-[28px] shrink-0 items-center gap-1.5 px-1.5 pt-1.5">
             <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-muted">
-              <span className="flex shrink-0" data-brain-glyph="still"><BrainGlyph size={12} /></span>
-              <span className="truncate">Second Brain</span>
+              <span className="flex shrink-0" data-brain-glyph="still"><BrainGlyph size={14} /></span>
+              <span className="truncate">2nd Brain</span>
             </h2>
             {chevron}
           </div>
@@ -182,8 +203,8 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
           // Folded: one quiet row — the glyph (pulsing slowly only while a
           // read runs) and the mode in words, muted.
           <div className="relative flex h-[30px] min-w-0 shrink-0 items-center gap-1.5 px-1.5" data-brain-row>
-            <h2 className="sr-only">Second Brain</h2>
-            <span className={`flex shrink-0 text-fg-faint ${reading ? 'brain-glyph-reading' : ''}`} data-brain-glyph={reading ? 'reading' : 'still'}><BrainGlyph size={12} /></span>
+            <h2 className="sr-only">2nd Brain</h2>
+            <span className={`flex shrink-0 text-fg-faint ${reading ? 'brain-glyph-reading' : ''}`} data-brain-glyph={reading ? 'reading' : 'still'}><BrainGlyph size={14} /></span>
             <span className="min-w-0 flex-1 truncate text-[12px] text-fg-muted" data-brain-mode title={rowTitle}>{rowText}</span>
             {faces.length > 0 && <ReadFaces faces={faces} />}
             {chevron}
@@ -203,18 +224,34 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
             </div>
           ) : (
             <div className="flex min-h-0 min-w-0 flex-col gap-1 px-1 pb-2" data-brain-card>
-              <BrainOrb
-                kinds={memories.map((n) => n.kind)}
-                count={status.memories}
-                agents={faces.map((f) => f.agent)}
-                lit={faces.find((f) => f.now)?.agent}
-                activity={brainActivity(auto)}
-                landed={landed}
-                working={working}
-                calm
-                className="h-[120px] min-h-[64px] shrink [@media(max-height:640px)]:hidden"
-                ariaLabel={`Second Brain: ${mode}`}
-              />
+              {picture && memories.length > 0 ? (
+                // The screen's graph, small: the newest NEWEST memories and
+                // what they link to, coloured by project as on #/brain.
+                <BrainGraphCanvas
+                  graph={picture}
+                  mini
+                  tint={tint}
+                  className={`w-full ${PICTURE}`}
+                  ariaLabel={`2nd Brain graph: the newest ${memories.length} ${memories.length === 1 ? 'memory' : 'memories'} — ${mode}`}
+                />
+              ) : !graph && status.memories > 0 ? (
+                // The graph is on its way: its room, held, so nothing jumps.
+                <div className={PICTURE} aria-hidden data-brain-picture-wait />
+              ) : (
+                // Nothing kept yet: the living brain, as on the screen's card.
+                <BrainOrb
+                  kinds={memories.map((n) => n.kind)}
+                  count={status.memories}
+                  agents={faces.map((f) => f.agent)}
+                  lit={faces.find((f) => f.now)?.agent}
+                  activity={brainActivity(auto)}
+                  landed={landed}
+                  working={working}
+                  calm
+                  className={PICTURE}
+                  ariaLabel={`2nd Brain: ${mode}`}
+                />
+              )}
               <StatusLine auto={auto} mode={mode} metric={metric} active={active} building={building} count={status.memories} newest={memories[0]?.created_at} now={now} dot={dot} />
             </div>
           )

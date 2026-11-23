@@ -49,8 +49,8 @@ export function BrainCapture({ initial = '', onClose }: { initial?: string; onCl
   return (
     <>
       <Sheet
-        label="Add to Second Brain"
-        title="Add to Second Brain"
+        label="Add to 2nd Brain"
+        title="Add to 2nd Brain"
         onClose={onClose}
         width={560}
         footer={

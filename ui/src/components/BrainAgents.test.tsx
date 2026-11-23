@@ -27,7 +27,7 @@ function Probe() {
 }
 const drawn = () => [...document.querySelectorAll('[data-brain-agent]')].map((g) => g.getAttribute('data-brain-agent'))
 
-describe('Second Brain agents', () => {
+describe('2nd Brain agents', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
@@ -94,7 +94,7 @@ describe('Second Brain agents', () => {
   it('says Free in the How it works dialog, by the title, and names the agents used', async () => {
     m.glance.mockResolvedValue({ agents: [row('claude', 8), row('codex', 5)], display: {} })
     render(<SecondBrainModal onClose={() => {}} onOpen={() => {}} />)
-    const dialog = screen.getByRole('dialog', { name: 'Second Brain' })
+    const dialog = screen.getByRole('dialog', { name: '2nd Brain' })
     expect(dialog.querySelector('[data-brain-free]')!.textContent).toBe('Free')
     expect(dialog.querySelector('[data-brain-free] + h2')!.textContent).toBe('One memory for all your agents')
     expect(dialog.querySelector('[data-brain-privacy]')!.textContent).toBe('Free — runs on your own Claude, on this computer.')

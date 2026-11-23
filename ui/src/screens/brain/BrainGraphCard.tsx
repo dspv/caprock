@@ -72,11 +72,11 @@ export function BrainGraphCard({ graph, auto, kept, onOpen, open = false }: {
   if (drawable) {
     body = (
       <span className="pointer-events-none absolute inset-0 block" data-brain-card-picture>
-        <BrainGraphCanvas graph={graph} mini tint={idx?.colorOf} className="h-full w-full" ariaLabel={`Second Brain graph: ${graphCaption(graph)}`} />
+        <BrainGraphCanvas graph={graph} mini tint={idx?.colorOf} className="h-full w-full" ariaLabel={`2nd Brain graph: ${graphCaption(graph)}`} />
       </span>
     )
   } else {
-    body = <BrainOrb kinds={(graph?.nodes ?? []).map((n) => n.kind)} count={kept} agents={faces.map((f) => f.agent)} lit={faces.find((f) => f.now)?.agent} activity={brainActivity(auto)} landed={landed} className="absolute inset-0" ariaLabel="Second Brain being built" />
+    body = <BrainOrb kinds={(graph?.nodes ?? []).map((n) => n.kind)} count={kept} agents={faces.map((f) => f.agent)} lit={faces.find((f) => f.now)?.agent} activity={brainActivity(auto)} landed={landed} className="absolute inset-0" ariaLabel="2nd Brain being built" />
   }
   const caption = graph && drawable ? graphCaption(graph) : 'Memories land here as they are found'
   if (!drawable) {
@@ -225,10 +225,10 @@ export function BrainGraphDialog({ graph, selected, onSelect, onClose, editable,
   const filtered = !!picked
   return (
     <DialogBackdrop onClose={escape} className="fixed inset-0 z-50 grid place-items-stretch bg-black/45 sm:p-5" data-brain-graph-backdrop>
-      <div ref={panel} role="dialog" aria-modal="true" aria-label="Second Brain graph" data-brain-graph-dialog
+      <div ref={panel} role="dialog" aria-modal="true" aria-label="2nd Brain graph" data-brain-graph-dialog
         className="relative flex min-h-0 min-w-0 flex-col overflow-hidden border-border bg-panel shadow-[0_20px_60px_rgba(0,0,0,0.3)] max-sm:h-[100dvh] sm:rounded-[14px] sm:border">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border px-3.5 py-2" data-unfold-fade>
-          <h2 className="text-[14px] font-semibold text-fg">Second Brain graph</h2>
+          <h2 className="text-[14px] font-semibold text-fg">2nd Brain graph</h2>
           <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg-muted" data-brain-graph-dialog-caption>
             {filtered ? `${plural(pickedMemories, 'memory', 'memories')} picked out of ${idx.memories}` : graphCaption(graph)}
           </span>

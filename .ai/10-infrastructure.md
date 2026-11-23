@@ -150,7 +150,7 @@ answers `you-said:<line>`); pasted text reaches it line by line; a native drop
 (`caprock:drop-paths`, as the app's shell sends it) types the quoted path into
 the terminal under the point, and a drop on the sidebar into the terminal
 used last; the command palette
-opens and runs a command; Settings opens and closes; Second Brain and Pipeline
+opens and runs a command; Settings opens and closes; 2nd Brain and Pipeline
 render; the share dialog draws its card and closes. `ui/e2e/redraw.spec.ts`
 runs after them: the fake claude's `agents [frames] [tag]` redraws a subagent
 list in place as Claude Code's renderer does (relative moves in synchronized

@@ -102,10 +102,10 @@ export function McpConnectRow() {
   const installed = data.agents.filter((a) => a.state !== 'not_installed')
   if (!installed.length) return null
   return (
-    <section aria-label="Let your agents ask Second Brain" data-mcp-connect-row
+    <section aria-label="Let your agents ask 2nd Brain" data-mcp-connect-row
       className="grid min-w-0 gap-1 rounded-[var(--radius-panel)] border border-border bg-panel px-3 py-2">
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-        <span className="text-[13px] font-medium text-fg">Let your agents ask Second Brain</span>
+        <span className="text-[13px] font-medium text-fg">Let your agents ask 2nd Brain</span>
         {installed.map((a) => (
           <McpAgentAction key={a.agent} agent={a} compact onChange={(x) => { setClicked(true); setAgent(x) }} />
         ))}

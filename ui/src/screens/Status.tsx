@@ -226,7 +226,7 @@ export function StatusScreen() {
       {owner && <PrivacySection />}
       {owner && <MemorySection />}
       {owner && <BrainSection />}
-      {/* Second Brain's readers: the user's own agents, over MCP (ADR-078). */}
+      {/* 2nd Brain's readers: the user's own agents, over MCP (ADR-078). */}
       {owner && <McpSetting executable={s.executable} />}
       <StoragePanel owner={owner} />
       <AboutSection s={s} />

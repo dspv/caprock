@@ -312,7 +312,7 @@ machine must carry a device token** ([ADR-029](08-decisions.md)).
   projects, worktrees and changes may be outside home; a project's setup
   command may be set. It stays `403` on everything the machine keeps, whatever
   the role: `/v1/pair/*` but `me`, settings writes (`PUT /v1/settings`,
-  Telegram, GitHub connect, custom agents, subscriptions, Second Brain's
+  Telegram, GitHub connect, custom agents, subscriptions, 2nd Brain's
   settings), `POST /v1/footprint/orphans/stop`, `POST /v1/resources/reap`,
   `POST /v1/system/memory/end-idle`, `POST /v1/system/memory/restart`,
   `POST /v1/shutdown`, `POST /v1/update/check`, `POST /v1/hooks/install`,
@@ -872,7 +872,7 @@ nothing. [ADR-030](08-decisions.md). A session opening in the filesystem root,
 the home directory or the temp directory (`store.NotAProject`) gets nothing and
 runs no lookup.
 
-A served handoff also carries the repository's Second Brain (§ Second
+A served handoff also carries the repository's 2nd Brain (§ 2nd
 Brain), after the passage, in two parts each with a budget of its own
 (`store.BrainHandoff`): first its **current decisions** — the decisions no
 newer memory supersedes — newest first, at most 15, one line each `- #id
@@ -884,22 +884,22 @@ in 700 runes. With **no passage** recent enough (none of 400 runes or more
 within 14 days), the decisions and memories go alone; nothing goes only
 when there is neither. A session started with `automation: true` is handed
 nothing at all and recorded in neither group; one in a folder excluded from
-Second Brain is handed the passage only (§ Second Brain, *What is never
+2nd Brain is handed the passage only (§ 2nd Brain, *What is never
 read*). The whole reply is then at most 1,200 + 1,500 + 700
 runes and two headings, about 3,500. How many memories went is recorded on
 the session (migration 0058: `ALTER TABLE sessions ADD
 COLUMN handoff_brain INTEGER NOT NULL DEFAULT 0` and `CREATE INDEX
 idx_sessions_handoff_brain ON sessions(started_at) WHERE handoff_brain >
-0`), so the Second Brain status can say how often agents start with its
-memories (§ Second Brain, `handoff`), and said on the live socket as a
-`brain` frame `{op: "handoff", session, project, memories}` (§ Second
+0`), so the 2nd Brain status can say how often agents start with its
+memories (§ 2nd Brain, `handoff`), and said on the live socket as a
+`brain` frame `{op: "handoff", session, project, memories}` (§ 2nd
 Brain, Live) so the sidebar can show them going into the session's tab.
 The length of the reply's `additionalContext`, in runes, is recorded too
 (migration 0069: `ALTER TABLE sessions ADD COLUMN handoff_runes INTEGER NOT
 NULL DEFAULT 0`; 0 when nothing was handed), so delivery can be measured.
 
 **Measuring it.** Whenever there is anything to hand over — a passage, or,
-since 2026-10-22, Second Brain's decisions and memories alone — the session
+since 2026-10-22, 2nd Brain's decisions and memories alone — the session
 records whether it got it: `sessions.handoff` is `1` (served) or `2` (held back);
 `0` means nothing was there, and those sessions are in neither group
 (migration 0028: `ALTER TABLE sessions ADD COLUMN handoff INTEGER NOT NULL
@@ -1245,7 +1245,7 @@ asks nothing of GitHub for it.
 
 **Hand-run sessions only** (owner, 2026-10-25: 480 of a week's 1,036 sessions
 were scheduled scripts). A session whose cwd is a filesystem root or the home
-directory itself (`store.RootOrHome`, the rule Second Brain skips by) is left
+directory itself (`store.RootOrHome`, the rule 2nd Brain skips by) is left
 out of every figure — sessions, turns, `tokens`, cost, the per-day cost, the
 models, the agents, the biggest session, the loop, the tool counts and the
 subagent saving — and counted in `scheduled_sessions` instead. The clause is
@@ -1599,7 +1599,7 @@ POST /v1/shutdown                      → 200 (bearer-token gated; `caprock dow
 POST /v1/statusline                    → 204 (bearer-token gated) {session_id, five_hour?, seven_day?} — records rate-limit windows, then runs the plan-window stop's check
 GET  /v1/statusline/{id}               → 200 (bearer-token gated) session counters for the status line; zeros for an unknown session
 GET  /healthz                          → {status:"ok", version}
-WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after Second Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ Second Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "machines" frame carries {id, why, session_id?} when something changed on another computer this one reaches, local only (§ Other computers); `?types=a,b` sends only those types and the housekeeping ones (§ Live socket, replay); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "continued" frame carries a ContinueOnResult when a session was continued on another provider or sign-in, by a button or by Caprock (auto true) — the toast and its Undo (§ Continue on another provider); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
+WS   /v1/live[?since=<seq>]            → every frame is {type, seq, data} (§ Live socket, replay); first frame is {type:"hello", seq, data:{server_time, reset}}; a "session" frame carries {session, stats}; an "event_update" frame carries an Event already sent as "event", rewritten in place (same id, new payload) — today a reply's words merged into its first transcript line (store.MergeAssistantText), which with thinking on has none: a screen holding that id replaces it, anything counting events ignores the frame; a "permission" frame carries {session_id, permission | null}; a "queue" frame carries an owned session's QueueView after any change (§ Queued messages); an "inbox" frame carries {id, deleted} after an item is saved or deleted (§ Inbox); a "brain" frame carries {id, op: added|changed|deleted, kind?, title?, auto?, session?, project?, run?, agent?} after 2nd Brain changes, {op: progress, phase: start|done, session?, project?, agent?, run?, added?} when an automatic read begins or ends, or {op: handoff, session, project, memories} when a new session was handed memories (§ 2nd Brain); a "project" frame carries a Project and an "op" frame an Op (§ Projects and shells); a "notify" frame an alert for the app (§ Notify frame); a "status" frame carries {session_id, kind, at} when input moved an owned session's status before any event (§ Nudges); a "devices" frame carries {} when the paired devices changed (§ Who may connect); a "machines" frame carries {id, why, session_id?} when something changed on another computer this one reaches, local only (§ Other computers); `?types=a,b` sends only those types and the housekeeping ones (§ Live socket, replay); an "admin" frame carries {} when a private module's attention was set or cleared, so a dashboard showing modules reads GET /v1/admin again (§ Private modules); a "continued" frame carries a ContinueOnResult when a session was continued on another provider or sign-in, by a button or by Caprock (auto true) — the toast and its Undo (§ Continue on another provider); a "footprint" frame carries GET /v1/footprint's answer without the orphan list when it changed, checked every 10 s while a live client is connected (§ Footprint); a "shells" frame carries {shells: [Shell]}, every running shell as GET /v1/shells answers, after a start and when the list changed, checked every 10 s while a live client is connected (§ Projects and shells)
 ```
 
 **Permission prompts** ([ADR-035](08-decisions.md)). `permission` is the
@@ -2990,10 +2990,10 @@ GET    /v1/inbox                     → {items, max}; what was saved for later 
 POST   /v1/inbox                     {text?, project_id?, files?} → {item}; save a note, a link or a photo (§ Inbox)
 DELETE /v1/inbox/{id}                → 204; with its files (§ Inbox)
 GET    /v1/inbox/{id}/files/{n}      → an item's image, for its thumbnail (§ Inbox)
-GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph; without project=, excluded folders' projects are left out (§ Second Brain)
-GET    /v1/brain/status              → BrainStatus: counts, projects (§ Second Brain)
-GET    /v1/brain/handoff             ?project= → {project, memories, max, budget, served?, excluded?}; what a new session there is handed (§ Second Brain)
-GET    /v1/brain/spend               ?days= → BrainSpend; what the automatic reads spent, per day and project (§ Second Brain)
+GET    /v1/brain                     ?q=&project=&since=&until=&limit=&summaries=1 → BrainGraph; without project=, excluded folders' projects are left out (§ 2nd Brain)
+GET    /v1/brain/status              → BrainStatus: counts, projects (§ 2nd Brain)
+GET    /v1/brain/handoff             ?project= → {project, memories, max, budget, served?, excluded?}; what a new session there is handed (§ 2nd Brain)
+GET    /v1/brain/spend               ?days= → BrainSpend; what the automatic reads spent, per day and project (§ 2nd Brain)
 POST   /v1/brain/nodes               {text | title, summary?, kind?, event_id?, session_id?, project?, topics?, pinned?} → {node, created}; no cap
 GET    /v1/brain/nodes/{id}          → {node, links}
 PATCH  /v1/brain/nodes/{id}          {kind?, title?, summary?, pinned?} → {node}
@@ -3202,10 +3202,10 @@ nothing waits on anyone.
 
 **`automation` on `POST /v1/agents`** — a scheduled job's session, not a
 person's (2026-10-24). The owner's ops jobs start a Codex scout every 15
-minutes, about 140 sessions a week; Second Brain read every one and kept 188
+minutes, about 140 sessions a week; 2nd Brain read every one and kept 188
 "memories" of run chatter in a week ("Chrome connection dropped mid-scout
-run"). `automation: true` says so at the start, and Second Brain never reads
-the session and hands it nothing (§ Second Brain, *What is never read*).
+run"). `automation: true` says so at the start, and 2nd Brain never reads
+the session and hands it nothing (§ 2nd Brain, *What is never read*).
 Nothing else changes for it: it is owned, shown, priced and ended like any
 other. A value that is not a boolean is `400`; `false` or absent is an
 ordinary start; with `attempts` every attempt carries it. Recorded in the
@@ -5151,11 +5151,11 @@ GET    /v1/inbox/{id}/files/{n}     → the n-th file's bytes, images only (thum
 - **Live.** Each save and delete publishes an `inbox` frame, `{id,
   deleted}`, on `/v1/live`.
 
-### Second Brain
+### 2nd Brain
 
 What the sessions decided, found and left open, kept as a graph
 ([ADR-063](08-decisions.md)). Code: `internal/api/brain.go`,
-`internal/store/brain.go`, `internal/store/brainsearch.go`; DDL in § Second
+`internal/store/brain.go`, `internal/store/brainsearch.go`; DDL in § 2nd
 Brain DDL (migrations 0055, 0056).
 
 ```
@@ -5175,7 +5175,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 ```
 
 - **`/v1/brain/handoff`** — what a new session in `project` (required,
-  exact; else `400`) is handed from Second Brain with its handoff
+  exact; else `400`) is handed from 2nd Brain with its handoff
   (§ SessionStart handoff), picked by the code the handoff itself runs
   (`store.BrainHandoff`): `decisions`, the current decisions, newest
   first, at most `decisions_max` (15), each line `- #id title` counted
@@ -5360,7 +5360,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   their count (0 when it kept nothing or failed; `run` absent when no run
   was recorded) — so a screen showing the build reads the status again and
   the sidebar shows one arrival per read; a screen showing memories ignores
-  both. When a new session's handoff carries Second Brain memories
+  both. When a new session's handoff carries 2nd Brain memories
   (`sessions.handoff_brain` set above 0, § SessionStart handoff), the
   daemon publishes `{op: "handoff", session, project, memories}`; a session
   held back by the holdout, or handed none, gets no frame.
@@ -5390,7 +5390,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
   precedence. `handoff` is how memories reach agents: `{on, sessions_24h,
   memories_24h, sessions, memories}` — `on` whether Memory between sessions
   is on (without it no session is handed anything), then the sessions
-  started in the last 24 hours, and in all, that were handed Second Brain
+  started in the last 24 hours, and in all, that were handed 2nd Brain
   memories with their handoff and how many (`sessions.handoff_brain`,
   § SessionStart handoff). `agents_24h` is `[{agent, sessions, last_at}]`:
   the agents whose sessions a read with status `ok` went through in the
@@ -5666,7 +5666,7 @@ POST   /v1/brain/backfill       {days?: 1–90 (30), dry_run?} → BrainEstimate
 
 ### Obsidian vaults
 
-Local Markdown imports in Second Brain ([ADR-079](08-decisions.md),
+Local Markdown imports in 2nd Brain ([ADR-079](08-decisions.md),
 [docs/obsidian.md](../docs/obsidian.md)). These management routes are
 machine-only; paired devices get `403`, including controllers:
 
@@ -5783,7 +5783,7 @@ listener. Stdout carries the protocol and nothing else. Code:
   `get_memory`), prose to 1,500. The whole text is capped at 48 KiB on a rune
   boundary, with `[cut at N bytes: ask for fewer items]` appended when cut.
   Credentials and payment details are replaced with `[redacted: <kind>]`
-  by Second Brain's privacy filter (§ Second Brain, *Privacy filter*:
+  by 2nd Brain's privacy filter (§ 2nd Brain, *Privacy filter*:
   `sk-…`, `ghp_…`/`github_pat_…`, `xox?-…`, `AKIA…`/`ASIA…`, `AIza…`,
   Telegram bot tokens, Stripe `sk_/rk_/pk_live|test_…`, JWTs, `Bearer …`,
   PEM private keys, card numbers, IBANs, labelled passwords, secrets and
@@ -5793,7 +5793,7 @@ listener. Stdout carries the protocol and nothing else. Code:
 - **Repository.** `repo` is a directory inside it; absent, the directory
   the server was started in. It resolves as sessions group
   (`store.RepoFromCwd`): the root keys `/v1/sessions?dir=`, the name keys
-  Second Brain's `project` and the daily totals. Outside a repository the
+  2nd Brain's `project` and the daily totals. Outside a repository the
   directory stands for itself.
 
 Every tool is annotated `readOnlyHint: true, destructiveHint: false,
@@ -5928,7 +5928,7 @@ POST /v1/events/{id}/tldr   (body {}) → 200 {tldr: string, cached: bool} | 404
 - **Kept.** A squeeze is kept in `event_tldr`; a later tap returns it with
   `cached: true` and makes no call. A failed call keeps nothing, so the next
   tap tries again.
-- **The call.** Second Brain's runner (`brain.ClaudeRunner`, flags in
+- **The call.** 2nd Brain's runner (`brain.ClaudeRunner`, flags in
   ADR-063: `claude -p --output-format json --tools "" --no-session-persistence
   --setting-sources local --settings <hooks off>`), with `--model haiku`,
   `--system-prompt` the AI;DR instructions (`brain.TLDRSystem`: the answer's
@@ -8254,7 +8254,7 @@ daemon answered; VACUUM then made the 1 GB file 128 MiB smaller
   start; the transcript repairs and Open's `touch_dir` and `inner_tool`
   backfills; the rollup repairs and pricing corrections; `fillToolFields`,
   `backfillToolLinks` and `backfillPRs`; the retention prune; payload
-  compaction and the idle vacuum; and Second Brain's reads. Claude Code's
+  compaction and the idle vacuum; and 2nd Brain's reads. Claude Code's
   hooks and transcripts are recorded throughout. Removing a session or a
   chat answers 503 until then, and `caprock export --table events` refuses.
 - **What it looks like.** `GET /v1/status` carries `events_move:
@@ -8391,11 +8391,11 @@ What was saved for later (§ Inbox). `files` is a JSON array of paths the
 daemon wrote under `<data_dir>/inbox`. No foreign key: unlisting a project
 keeps its items, as it keeps its saved prompts.
 
-### Second Brain DDL (migrations 0055, 0056)
+### 2nd Brain DDL (migrations 0055, 0056)
 
-Second Brain's graph and the automatic extraction's reads (§ Second Brain,
+2nd Brain's graph and the automatic extraction's reads (§ 2nd Brain,
 [ADR-063](08-decisions.md)). This is the initial DDL; migrations 0062 and
-0069 extend it below (§ Obsidian vaults DDL, § Second Brain find and
+0069 extend it below (§ Obsidian vaults DDL, § 2nd Brain find and
 decisions DDL). Writes go through `internal/store`.
 
 ```sql
@@ -8461,7 +8461,7 @@ SQL cannot fold Unicode, so the rows that exist when the migration runs are
 filled by `Store.Open` after it; `meta.brain_search_fold` names the folding
 they were written with, and a new one re-folds every row once. A search reads
 the column for the memories that pass its other filters and matches in Go
-(§ Second Brain, *Search*): no index serves a substring, and SQLite's
+(§ 2nd Brain, *Search*): no index serves a substring, and SQLite's
 `LIKE` and `instr` measured slower than Go's byte search on the same rows.
 
 `norm` is the title folded for comparison (`store.NormTitle`); the partial
@@ -8472,7 +8472,7 @@ or pinned. A session's newest `brain_runs` row says how far the extraction has
 read it (`through_event_id`, never past a passage it did not send); `tokens_in` is input, cache read and cache write
 as `claude` reported them, `cost_usd` its own `total_cost_usd`. A row with
 `session_id` `caprock:retag` is a re-tag batch, not a read: its
-`from_event_id` and `through_event_id` are memory ids (§ Second Brain,
+`from_event_id` and `through_event_id` are memory ids (§ 2nd Brain,
 *Re-tag*).
 
 ### Brain catch-up DDL (migration 0068)
@@ -8503,7 +8503,7 @@ A gap is the span of one past read that the read never sent: the
 session's events after `from_event_id` up to and including `to_event_id`,
 read up to `cursor`. Every successful read existing when the migration runs
 is listed, unmeasured (`to_event_id` NULL); the daemon measures them
-(§ Second Brain, *Catch-up*), deleting the rows that skipped nothing, so a
+(§ 2nd Brain, *Catch-up*), deleting the rows that skipped nothing, so a
 measured row is a real gap. `reads_total` is the reads it was measured to
 take, set to `reads_done` when it is done or given up; `attempts` the
 failed reads in a row, reset by one that succeeds. A read with `gap_id`
@@ -8581,10 +8581,10 @@ CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_edge ON brain_vault_edges(src, 
 CREATE INDEX IF NOT EXISTS idx_brain_vault_edges_dst ON brain_vault_edges(dst);
 ```
 
-### Second Brain find and decisions DDL (migration 0069)
+### 2nd Brain find and decisions DDL (migration 0069)
 
 [0069_brain_find_decisions.sql](../internal/store/migrations/0069_brain_find_decisions.sql)
-(§ Second Brain, *Search*, *Current decisions*; § SessionStart handoff):
+(§ 2nd Brain, *Search*, *Current decisions*; § SessionStart handoff):
 
 ```sql
 ALTER TABLE brain_nodes ADD COLUMN keywords TEXT NOT NULL DEFAULT '';
@@ -8598,7 +8598,7 @@ ALTER TABLE sessions ADD COLUMN handoff_runes INTEGER NOT NULL DEFAULT 0;
 - **`keywords`** — a memory's English search keywords joined with `, `;
   `brain_nodes.search` carries them, folded, on a fourth line, and search
   weighs them like the title. `''` for memories made before 0069 and by
-  hand, until the extraction's re-tag gives them some (§ Second Brain,
+  hand, until the extraction's re-tag gives them some (§ 2nd Brain,
   *Re-tag*; no migration of its own).
 - **`supersedes`** — an edge from a newer decision to the older one it
   replaces. Nothing references `brain_edges`, so the rebuild is a copy

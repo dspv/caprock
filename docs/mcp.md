@@ -5,7 +5,7 @@ lets the agent you are working with ask it — through the
 [Model Context Protocol](https://modelcontextprotocol.io), which Claude Code,
 Codex and most other agents speak:
 
-- "Did we decide this before?" — Second Brain's memories, searched.
+- "Did we decide this before?" — 2nd Brain's memories, searched.
 - "Which session explained the SSO change?" — the prose agents wrote, searched
   across every session.
 - "What did the last sessions in this repository do?" — titles, branches,
@@ -70,7 +70,7 @@ there it starts nothing and says on stderr to install Caprock from
 <https://caprock.dev/install>. Claude Desktop starts the server outside any
 project, so ask about a repository by name: the tools take it as `repo`.
 
-**One click.** Open Second Brain: the row on top, *Let your agents ask Second
+**One click.** Open 2nd Brain: the row on top, *Let your agents ask 2nd
 Brain*, has a **Connect** button for each agent installed on this computer
 (Claude Code, Codex). Settings → *Use Caprock from your agents (MCP)* has the
 same buttons. Connect runs the agent's own command for you —
@@ -129,20 +129,20 @@ A tool about "this repository" uses the directory your agent started the
 server in — normally the project it is working in — unless it is given
 another (`repo`). A linked git worktree counts as its repository.
 
-| Tool                   | What it answers                                                           |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `search_memories`      | Up to 30 ranked Second Brain memories for some words, to judge by meaning |
-| `current_decisions`    | The decisions in force for this repository, newest first                  |
-| `get_memory`           | One memory in full, with what it links to                                 |
-| `memory_topics`        | The topics Second Brain knows, and the memories per project               |
-| `next_session_handoff` | What a new session here is handed: current decisions, then memories       |
-| `recent_sessions`      | Recent sessions here (or everywhere): status, branch, cost, loop alert    |
-| `session_summary`      | One session: description, files touched, pull requests, cost              |
-| `session_prose`        | What one session's agent wrote, newest first                              |
-| `search_prose`         | What agents wrote, searched across every session                          |
-| `cost`                 | Spend and tokens per day and model, for this repository or all            |
-| `ci_status`            | GitHub Actions on the default branch and the open pull request            |
-| `loop_alerts`          | Running sessions repeating the same tool call                             |
+| Tool                   | What it answers                                                        |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `search_memories`      | Up to 30 ranked 2nd Brain memories for some words, to judge by meaning |
+| `current_decisions`    | The decisions in force for this repository, newest first               |
+| `get_memory`           | One memory in full, with what it links to                              |
+| `memory_topics`        | The topics 2nd Brain knows, and the memories per project               |
+| `next_session_handoff` | What a new session here is handed: current decisions, then memories    |
+| `recent_sessions`      | Recent sessions here (or everywhere): status, branch, cost, loop alert |
+| `session_summary`      | One session: description, files touched, pull requests, cost           |
+| `session_prose`        | What one session's agent wrote, newest first                           |
+| `search_prose`         | What agents wrote, searched across every session                       |
+| `cost`                 | Spend and tokens per day and model, for this repository or all         |
+| `ci_status`            | GitHub Actions on the default branch and the open pull request         |
+| `loop_alerts`          | Running sessions repeating the same tool call                          |
 
 Costs are Caprock's own figures at API list prices; on a Pro or Max plan they
 are what the same usage would cost on the API, not what you were billed.
@@ -170,7 +170,7 @@ code.
   private keys — and payment details — card numbers that pass the Luhn
   check, IBANs that pass theirs, and passwords, secrets and bank account
   numbers written after a label — are replaced with a placeholder naming
-  the kind, such as `[redacted: api key]`. It is the same filter Second
+  the kind, such as `[redacted: api key]`. It is the same filter 2nd
   Brain runs before it saves a memory. That catches keys that look like
   keys, not every secret.
 

@@ -46,8 +46,9 @@
  * wand and laid in the Pensieve"): a memory that arrives while the graph is
  * on screen flies out of its project's hub to its place as a spark, or drops
  * in from above when it has no project, and a faint ring spreads where it
- * lands (Settings → Second Brain, *Show memories moving*; never under
- * prefers-reduced-motion).
+ * lands (Settings → 2nd Brain, *Show memories moving*; never under
+ * prefers-reduced-motion). A `mini` one (the sidebar card, the screen's
+ * card) flashes it at its own place in the accent instead, with the ring.
  *
  * The opened graph (04-ui.md § Second Brain, *The graph opened*) adds three
  * things the card does not use: `tint`, a colour per node (its project's);
@@ -682,7 +683,22 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
         const t0 = tintRef.current?.get(id)
         const dot = t0 ? resolve(t0) : colors.dot
         const hub = hubOf[i] ?? -1
-        if (hub >= 0 && nodes[hub]) {
+        if (mini) {
+          // Small, the memory flashes at its own place in the accent — a
+          // halo opening and fading, the dot easing to its colour — rather
+          // than flying in: a flight across 120 pixels reads as a flicker.
+          const q = Math.min(1, t / DROP_MS)
+          ctx.fillStyle = colors.ring
+          ctx.globalAlpha = 0.4 * (1 - q)
+          ctx.beginPath()
+          ctx.arc(x, y, px[i]! * g * (2 + 2.5 * q), 0, Math.PI * 2)
+          ctx.fill()
+          ctx.globalAlpha = q < 1 ? 1 : DOT_ALPHA
+          ctx.fillStyle = q < 1 ? colors.ring : dot
+          ctx.beginPath()
+          ctx.arc(x, y, px[i]! * g * (1 + (1 - q) * 0.9), 0, Math.PI * 2)
+          ctx.fill()
+        } else if (hub >= 0 && nodes[hub]) {
           // Out of its project's hub to its place, a spark with a short
           // tail along a slight curve.
           const hx = sx(nodes[hub]!.x, v)
@@ -999,8 +1015,8 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       tabIndex={mini ? undefined : 0}
       role={mini ? undefined : 'group'}
       aria-label={mini ? undefined : active
-        ? 'Second Brain graph, in hand: arrows pan, plus and minus zoom, 0 fits, Escape lets go'
-        : 'Second Brain graph: press Enter to zoom and move it'}
+        ? '2nd Brain graph, in hand: arrows pan, plus and minus zoom, 0 fits, Escape lets go'
+        : '2nd Brain graph: press Enter to zoom and move it'}
       onKeyDown={onKey}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) activate(false)
@@ -1012,7 +1028,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
       <canvas
         ref={canvas}
         role="img"
-        aria-label={ariaLabel ?? `Second Brain graph: ${graph.nodes.length} nodes`}
+        aria-label={ariaLabel ?? `2nd Brain graph: ${graph.nodes.length} nodes`}
         className={`absolute left-0 top-0 block ${onSelect ? 'cursor-pointer' : ''} ${mini || !active ? '' : 'touch-none'}`}
         onPointerDown={(e) => {
           if (mini) return
@@ -1035,6 +1051,8 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
             : { kind: 'pan', x: p.x, y: p.y, tx: view.current.tx, ty: view.current.ty, moved: false }
         }}
         onPointerMove={(e) => {
+          // A small one has no hover: a pointer passing over it costs nothing.
+          if (mini) return
           const p = local(e)
           if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, p)
           const g = gesture.current
@@ -1117,7 +1135,7 @@ export function BrainGraphCanvas({ graph, selected, onSelect, mini = false, clas
           const i = pick(p.x, p.y)
           if (i >= 0) onSelect?.(sim.s.nodes[i]!.id)
         }}
-        onDoubleClick={() => fitNow.current()}
+        onDoubleClick={() => { if (!mini) fitNow.current() }}
       />
       {!mini && !active && (
         <span

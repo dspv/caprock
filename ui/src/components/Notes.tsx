@@ -103,7 +103,7 @@ export function NoteCard({ note, now, showSession = false }: {
         <span className="mono">{note.model || 'assistant'}</span>
         {note.fragment && <span className="text-fg-faint">· mid-thought</span>}
         <span className="num ml-auto">{fmtAgo(note.ts, now)}</span>
-        {/* Keep it: the answer goes into Second Brain (ADR-063). */}
+        {/* Keep it: the answer goes into 2nd Brain (ADR-063). */}
         <BrainDropButton eventId={note.event_id} />
       </div>
       {/* Rendered, not preserved. The comment here used to say the structure

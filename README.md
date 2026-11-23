@@ -120,11 +120,11 @@ you hit the limit.
   Caprock links it to the one before, so the conversation stays one card with
   its earlier parts a click away. Claude itself starts that part with an empty
   context ([details](docs/app.md#the-window)).
-- **Bring your Obsidian notes.** Import a vault into Second Brain without
+- **Bring your Obsidian notes.** Import a vault into 2nd Brain without
   changing its files. Links and tags join the graph; letting agents use the
   notes is a separate choice, off by default ([guide](docs/obsidian.md)).
 - **Your agents can ask it.** `caprock mcp` lets Claude Code, Codex or any MCP
-  client read Second Brain, past sessions and what they wrote, cost and CI —
+  client read 2nd Brain, past sessions and what they wrote, cost and CI —
   read-only; for Claude Code it is also a plugin
   ([details](#ask-caprock-from-your-agents)).
 - **On your phone, from anywhere.** Pair once with a QR code; an encrypted
@@ -538,7 +538,7 @@ claude.ai sign-in is not used and its plan limits do not apply.
 - **Find what Claude said** — the reasoning and the "here's what changed, here's
   what I still need from you" that otherwise lives only in terminal scrollback,
   searchable across every session.
-- **Keep what matters** — Second Brain: drop an answer, or a line of your own,
+- **Keep what matters** — 2nd Brain: drop an answer, or a line of your own,
   into a graph of ideas, decisions and findings, each linked to its project,
   its topics and the moment in the session it came from — or let your own
   `claude` build it from finished sessions, once you say yes. Free.

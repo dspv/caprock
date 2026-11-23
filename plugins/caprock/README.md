@@ -2,7 +2,7 @@
 
 Lets Claude Code ask [Caprock](https://caprock.dev) — the app that records
 every coding-agent session on your computer — instead of you pasting things
-in: Second Brain's memories and the decisions in force for this repository,
+in: 2nd Brain's memories and the decisions in force for this repository,
 what past sessions did and wrote, spend and tokens per repository, CI status
 on GitHub, and running sessions stuck repeating a tool call.
 

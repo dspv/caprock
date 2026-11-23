@@ -492,7 +492,7 @@ export function diskLowReason(f: Footprint): string {
 export function diskLowHelp(f: Footprint): string {
   const d = f.disk
   const largest = d.database_bytes >= Math.max(d.pastes_bytes, d.logs_bytes, d.binaries_bytes, d.other_bytes)
-  return `${largest ? "Caprock's largest item there is its history," : "Caprock's history there is"} ${fmtBytes(d.database_bytes)}: every session, kept on purpose for spend, search and Second Brain. Settings → Storage shows what it holds.`
+  return `${largest ? "Caprock's largest item there is its history," : "Caprock's history there is"} ${fmtBytes(d.database_bytes)}: every session, kept on purpose for spend, search and 2nd Brain. Settings → Storage shows what it holds.`
 }
 
 /** The rows, problems first, in the order a person would act on them. */

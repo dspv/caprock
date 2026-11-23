@@ -54,7 +54,7 @@ export function BrainSettings({ auto, dbPath, onChanged }: { auto: BrainAutoStat
         <SettingsIcon size={13} /> Settings
       </button>
       {open && (
-        <div role="dialog" aria-label="Second Brain settings"
+        <div role="dialog" aria-label="2nd Brain settings"
           className="absolute right-0 top-[36px] z-20 grid w-[300px] gap-3 rounded-[10px] border border-border-strong bg-panel p-3 shadow-[var(--shadow-panel)]">
           <label className="flex items-center justify-between gap-2 text-[13.5px] text-fg">
             Build automatically

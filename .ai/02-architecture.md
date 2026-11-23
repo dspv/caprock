@@ -156,7 +156,7 @@ left alone; Windows gets nothing, ConPTY being UTF-8 already.
 ### Imported Obsidian vaults
 
 `internal/obsidian` parses and refreshes user-chosen Markdown folders into
-Second Brain's nodes, source rows and edge claims, through `internal/store`.
+2nd Brain's nodes, source rows and edge claims, through `internal/store`.
 It creates no session or event rows and makes no network/model calls. The
 daemon runs one periodic scanner; file reads happen before its write
 transaction. Rooted reads prevent a replaced file escaping the selected
@@ -173,7 +173,7 @@ process started by the user's MCP client, not a listener in the daemon. It
 finds the running daemon through `runtime.json` on every tool call and reads
 its existing loopback HTTP API using GET only. The tools rebuild responses
 from selected fields, bound lists and text, and redact credentials and
-payment details (`internal/redact`, Second Brain's privacy filter) before
+payment details (`internal/redact`, 2nd Brain's privacy filter) before
 writing JSON-RPC to stdout. A missing daemon is a tool error
 with startup instructions; it does not end the protocol session.
 
@@ -491,7 +491,7 @@ internal/wtsetup/     # a new worktree made ready: .worktreeinclude copies, the 
 internal/relay/       # the brief that carries a session on in a new one, any agent (ADR-032) — Control
 internal/slashcmd/    # the slash commands an agent offers in a folder, for the chat field's / picker (ADR-053)
 internal/alerts/      # when the phone hears about a session, and the message it reads (ADR-036)
-internal/brain/       # Second Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063); AI;DR's squeeze of one answer through the same runner (ADR-072)
+internal/brain/       # 2nd Brain's automatic extraction: finished sessions read by the user's own `claude -p`, memories kept with provenance (ADR-063); AI;DR's squeeze of one answer through the same runner (ADR-072)
 internal/templates/   # new project from a template: the user's own list, their gh or a local copy, the brief committed (ADR-065)
 internal/remote/      # access from anywhere (ADR-058): Noise NK, the frame protocol, the Host phones and computers reach, the Client this daemon reaches other computers with and the proof of its key a token is bound to (ADR-067); relaysrv/ is `caprock remote relay`
 internal/peers/       # the computers this machine reaches (ADR-067): machines.json (0600), pairing by link, requests and sockets carried as the paired device, Leave
