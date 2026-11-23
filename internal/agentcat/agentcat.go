@@ -30,6 +30,9 @@ import (
 type Model struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// Refused: Codex refused it on this sign-in in a session Caprock started
+	// (codex.Model.Refused); listed last, its label says so.
+	Refused bool `json:"refused,omitempty"`
 }
 
 // Setup is what stands between an agent and a working session.
@@ -144,9 +147,9 @@ func codexEntry(ok bool) Entry {
 		return e
 	}
 	for _, m := range codex.ListedModels() {
-		e.Models = append(e.Models, Model{ID: m.ID, Label: m.Label})
+		e.Models = append(e.Models, Model{ID: m.ID, Label: m.Label, Refused: m.Refused})
 	}
-	e.Default = codex.ConfiguredModel()
+	e.Default = codex.DefaultModel()
 	// Not checked for a sign-in: Codex can keep its credentials in the OS
 	// keyring instead of auth.json, so a missing file proves nothing, and it
 	// asks on its first start anyway.

@@ -3984,7 +3984,10 @@ pause.
 `priority` order, less those the sign-in cannot run (`supported_in_api: false`
 on an API-key or Bedrock sign-in; `available_in_plans` without the ChatGPT
 plan; the rule in [19-codex.md](19-codex.md)), and `default` from the
-top-level `model` in `config.toml`.
+top-level `model` in `config.toml`. A model Codex refused in a session
+Caprock started (`<data dir>/codex-refused-models.json`, per sign-in, 30
+days) comes last with `refused: true` and " · didn't run on your account"
+on its label, and is never the `default`.
 `claude`, `gemini`, `opencode`, `grok`, `hermes` and `cursor` answer an empty list; an unknown
 agent is a 400. No network I/O. Kept for older pages; the pickers read the
 catalog below.
@@ -4000,7 +4003,7 @@ and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
 `~/.hermes`) names no `model.default`, its `setup` is `no_provider` with the
 command `hermes model` — only whether the key is set is read, never its
 value ([ADR-069](08-decisions.md)). A `CatalogEntry` is `{id, label,
-installed, ready, default?, models: [{id, label}], typed_model?, observed,
+installed, ready, default?, models: [{id, label, refused?}], typed_model?, observed,
 custom?, locked?, prompt, setup?: {reason, text, command?, docs?}}`:
 `installed` is the binary found (the rule under `/v1/status` below); `ready`
 is installed with nothing Caprock can see missing; `models` are what the

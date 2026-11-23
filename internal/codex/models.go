@@ -14,6 +14,10 @@ import (
 type Model struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
+	// Refused: a session Caprock started on this model was refused by
+	// Codex on the current sign-in (refused.go). Listed last, its label
+	// carries RefusedNote, and it is never the default.
+	Refused bool `json:"refused,omitempty"`
 }
 
 // ListedModels is the models Codex itself lists, read from the catalog it
@@ -34,7 +38,8 @@ type Model struct {
 // dropped too — the server refuses it ("The 'gpt-6.2-sol' model is not
 // supported when using Codex with a ChatGPT account", 2026-11-23). Current
 // Codex does not keep that field when it writes its cache, so for most caches
-// nothing tells, and the model stays listed.
+// nothing tells, and the model stays listed — until a session Caprock started
+// on it is refused: then it is listed last, labelled RefusedNote (refused.go).
 func ListedModels() []Model {
 	home := Home()
 	if home == "" {
@@ -60,7 +65,8 @@ func ListedModels() []Model {
 	}
 	in := readSignIn(home)
 	sort.SliceStable(cache.Models, func(i, j int) bool { return cache.Models[i].Priority < cache.Models[j].Priority })
-	var out []Model
+	refused := refusedModels(in)
+	var out, last []Model
 	for _, m := range cache.Models {
 		if m.Visibility != "list" || m.Slug == "" || !in.canRun(m.SupportedInAPI, m.Plans) {
 			continue
@@ -69,9 +75,13 @@ func ListedModels() []Model {
 		if label == "" {
 			label = m.Slug
 		}
+		if refused[m.Slug] {
+			last = append(last, Model{ID: m.Slug, Label: label + " · " + RefusedNote, Refused: true})
+			continue
+		}
 		out = append(out, Model{ID: m.Slug, Label: label})
 	}
-	return out
+	return append(out, last...)
 }
 
 // signIn is how Codex is signed in, as far as ListedModels needs it.

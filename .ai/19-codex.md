@@ -589,6 +589,22 @@ starting the TUI with it:
   the default, which is only ever `config.toml`'s. Current Codex drops
   `available_in_plans` when it writes its cache, so for a ChatGPT account the
   list is usually the cache as is, as in Codex's own picker.
+  So Caprock also learns from failure. Codex keeps no error in its rollout
+  (`EventMsg::Error` is transient, codex-rs/rollout `src/policy.rs`), so the
+  daemon watches the first 4 MB of a Codex session's terminal output it
+  started for the refusal — "The '<model>' model is not supported when using
+  Codex with a ChatGPT account", or `model_not_found` with the `-m` it passed
+  — escape codes and whitespace taken out, since the screen wraps it
+  (`internal/agents/codexrefusal.go`). The model is written to
+  `<data dir>/codex-refused-models.json` (Caprock's file; nothing under
+  `$CODEX_HOME` is written) with the sign-in it was learnt on (mode and plan
+  only). From then the dialog lists it last, labelled *· didn't run on your
+  account*, still pickable, and never as the default — when `config.toml`
+  names it, `default` is left empty. The file starts over when the sign-in's
+  mode or plan changes, and an entry is forgotten after 30 days
+  (`codex.RefusedFor`), since a plan's models change. A session that exits at
+  once on it shows *Your Codex sign-in can't use this model. Pick another
+  one.* (04-ui.md, early exit).
 - **Permissions**, mapped from Claude's words onto Codex's two axes:
   `acceptEdits` → `--sandbox workspace-write --ask-for-approval on-request`;
   `plan` → `--sandbox read-only --ask-for-approval on-request`;

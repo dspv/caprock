@@ -584,6 +584,8 @@ func (d *Daemon) run(ctx context.Context) error {
 
 	// Owned-session manager (Phase 1).
 	d.mgr = agents.NewManager(d.store, d.opt.DataDir, "", d.log)
+	// Codex models a session was refused on are remembered here.
+	codex.SetStateDir(d.opt.DataDir)
 	d.link = sessionlink.New(d.store, d.log)
 	// Resolve the login-shell environment sessions are started with now, so
 	// the first one the user starts does not wait on their shell profile.

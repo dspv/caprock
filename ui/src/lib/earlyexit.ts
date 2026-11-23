@@ -29,6 +29,14 @@ export function earlyExitWhen(ranMs: number | undefined): string {
  */
 export function earlyExitHint(tail: string): string | undefined {
   const t = tail.toLowerCase()
+  // Codex on a ChatGPT account, a model its plan does not include
+  // (2026-11-23): "The 'gpt-6.2-sol' model is not supported when using Codex
+  // with a ChatGPT account", code model_not_found. The screen wraps it
+  // anywhere, so it is read with the whitespace taken out.
+  const flat = t.replace(/\s+/g, '')
+  if (flat.includes('model_not_found') || flat.includes('isnotsupportedwhenusingcodex')) {
+    return 'Your Codex sign-in can’t use this model. Pick another one.'
+  }
   if (t.includes('no conversation found')) {
     return 'Claude Code looks for a conversation only under the folder it was started in, and did not find this one there. Continue it from the folder the conversation began in, or from its own terminal.'
   }
