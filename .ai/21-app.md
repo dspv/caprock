@@ -2856,6 +2856,44 @@ the user guide [docs/app.md § Updates](../docs/app.md#updates).
   check's answer at once, so a release shows within minutes of the user
   looking. Each is one conditional request to the same endpoint, only
   while the release check is on.
+- **Between a release and its app update** (owner 2026-11-23: the version
+  panel read *Caprock 0.189.0 · v0.190.0 is out · Checked 5m ago* over
+  **Update to v0.189.1**, and did not look again). The daemon's check reads
+  GitHub's latest release, which exists as soon as it is published; the
+  release workflow uploads `latest.json`, which the app's updater reads,
+  a few minutes later. Measured with `gh release view` (published →
+  `latest.json` uploaded) for the eight releases of 2026-11-21 to
+  2026-11-23: v0.186.4 2m43s, v0.186.5 2m16s, v0.187.0 0m56s, v0.188.0
+  2m51s, v0.188.1 2m31s, v0.189.0 3m58s, v0.189.1 4m24s, v0.190.0 1m59s
+  (from the tag's commit, 10m57s to 13m55s). Hence the copy's *usually
+  within 5 minutes of the release*; re-measure if the release workflow
+  changes. What happens in that window:
+  - *A gap* (`updaterGap`, `ui/src/lib/appupdate.ts`) is the daemon knowing
+    a release newer than the app while the updater, having answered, offers
+    nothing newer than the app or an older version (available, or
+    downloaded and held). Before the updater has asked (idle) it is not
+    claimed.
+  - *The offer is `preparing`*: the version panel keeps *vX is out* and says
+    *vX is being prepared — the app update is usually ready within 5
+    minutes of the release. Checking again every 2 minutes.*; the strip says
+    *vX is being prepared*; the update card does not appear. The older
+    bundle is not offered at all, not even as a secondary action: one
+    button that installs an older version than the heading names was the
+    bug, and the wait is minutes.
+  - *Re-checks* (`useGapRecheck`): `latest.json` again every 2 minutes,
+    at most 8 times per release (about 16 minutes), quietly (no *Checking…*
+    flash), and when the version panel opens (`recheckOnOpen`, at most once
+    in 20 s; an updater that never asked gets an ordinary check, shown as
+    *Looking for the app update…*). Once the re-checks run out the panel
+    says *vX's app update isn't ready yet. Check now to look again.* with
+    **Check now**.
+  - *One jump.* When the updater offers the release the gap closes and the
+    button reads **Update to vX**; an older bundle held from before is
+    dropped by the next check. Install and download carry the daemon's
+    version (`known`): the shell (`updater::behind`) never downloads or
+    installs a bundle older than it, but leaves that offer standing and
+    returns. Update automatically waits the same way and downloads the
+    release once it is offered.
 - **Checking by hand.** **Check for Updates…** in the macOS app menu and the
   tray menu, and *Check for updates* in the palette, fetch `latest.json`
   once, with or without the release check on: *Checking for updates…*, then

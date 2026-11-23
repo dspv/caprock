@@ -24,7 +24,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '@/lib/api'
-import { appUpdate, newerVersion, useAppUpdate, v } from '@/lib/appupdate'
+import { appUpdate, knownLatest, newerVersion, useAppUpdate, v } from '@/lib/appupdate'
 import {
   COUNTDOWN_S, POSTPONE_MS, RECHECK_MS, RETRY_FAILED_MS,
   hasDraft, idleFor, rememberAutoInstall, restartBlocker, takeUpdatedNote, trackActivity,
@@ -52,7 +52,7 @@ export function AppAutoUpdate() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [notes, setNotes] = useState(false)
-  const tried = useRef<{ version: string; at: number }>({ version: '', at: 0 })
+  const tried = useRef<{ version: string; at: number; offered: string }>({ version: '', at: 0, offered: '' })
   const [tick, setTick] = useState(0)
   const box = useRef<HTMLDivElement>(null)
 
@@ -75,17 +75,25 @@ export function AppAutoUpdate() {
   const supported = !!info?.supported
   const phase = info?.phase
   const latest = st?.enabled && st.latest && version && newerVersion(st.latest, version) ? st.latest : ''
+  //    The shell does not fetch a bundle older than `latest` (its
+  //    latest.json lags the release by minutes): the offer stays older and
+  //    the gap re-check (lib/appupdate) looks again; once it offers `latest`
+  //    — a new `offered` — this downloads it, one jump.
+  const offered = info?.phase === 'available' ? v(info.next) : ''
   useEffect(() => {
     if (!auto || !supported || !latest) return
     if (phase !== 'idle' && phase !== 'up_to_date' && phase !== 'available' && phase !== 'failed') return
+    if (offered && newerVersion(latest, offered)) return
     const t = tried.current
-    if (t.version === latest && (phase !== 'failed' || Date.now() - t.at < RETRY_FAILED_MS)) return
-    tried.current = { version: latest, at: Date.now() }
-    void appUpdate.download()
-  }, [auto, supported, latest, phase, tick])
+    if (t.version === latest && t.offered === offered && (phase !== 'failed' || Date.now() - t.at < RETRY_FAILED_MS)) return
+    tried.current = { version: latest, at: Date.now(), offered }
+    void appUpdate.download(v(latest))
+  }, [auto, supported, latest, offered, phase, tick])
 
-  // 2. Downloaded: look for a safe moment, every RECHECK_MS.
-  const ready = auto && info?.phase === 'ready' ? v(info.next) : ''
+  // 2. Downloaded: look for a safe moment, every RECHECK_MS. Never a bundle
+  //    older than the release the daemon knows.
+  const held = auto && info?.phase === 'ready' ? v(info.next) : ''
+  const ready = held && !(latest && newerVersion(latest, held)) ? held : ''
   useEffect(() => {
     if (!ready || countdown !== null) return
     let alive = true
@@ -132,7 +140,7 @@ export function AppAutoUpdate() {
       setCountdown(null)
       if (b) return
       rememberAutoInstall(ready)
-      void appUpdate.install()
+      void appUpdate.install(knownLatest(st))
     })()
     return () => { alive = false }
   }, [countdown, ready])
@@ -144,7 +152,7 @@ export function AppAutoUpdate() {
   const restartNow = () => {
     setCountdown(null)
     if (ready) rememberAutoInstall(ready)
-    void appUpdate.install()
+    void appUpdate.install(knownLatest(st))
   }
   const whatsNew = () => {
     if (st?.notes && st.notes_for && v(st.notes_for) === note) setNotes(true)

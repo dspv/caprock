@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UpdateStatus } from '@/lib/api'
-import type { AppUpdateInfo } from '@/lib/appupdate'
+import { appUpdate, resetAppUpdate, type AppUpdateInfo } from '@/lib/appupdate'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -105,5 +105,52 @@ describe('the version panel', () => {
     expect(screen.getByRole('dialog', { name: 'Caprock version' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(screen.queryByRole('dialog', { name: 'Caprock version' })).toBeNull()
+  })
+})
+
+// Owner, 2026-11-23: "Caprock 0.189.0 · v0.190.0 is out" over "Update to
+// v0.189.1", and it never looked again. The daemon had seen the release;
+// latest.json, the app's updater's source, came minutes later.
+describe('the version panel between a release and its app update', () => {
+  const out: UpdateStatus = { ...base, current: 'v0.189.0', latest: 'v0.190.0', update_available: true, checked_at: Date.now() - 5 * 60_000 }
+  const on = (over: Partial<AppUpdateInfo>) => ({ version: '0.189.0', supported: true, asked: true, phase: 'idle', ...over } as AppUpdateInfo)
+  afterEach(() => { resetAppUpdate(); vi.restoreAllMocks() })
+
+  it('never offers the older update under the newer heading, says it is being prepared, and asks again on opening', () => {
+    const recheck = vi.spyOn(appUpdate, 'recheck').mockResolvedValue(undefined)
+    app.info = on({ phase: 'available', next: '0.189.1' })
+    render(<VersionPanel shown="0.189.0" title="" onStatus={() => {}} status={out} />)
+    fireEvent.click(screen.getByText('0.189.0'))
+    const dlg = screen.getByRole('dialog', { name: 'Caprock version' })
+    expect(dlg.textContent).toMatch(/v0\.190\.0 is out/)
+    expect(dlg.textContent).not.toMatch(/0\.189\.1/)
+    expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
+    expect(dlg.querySelector('[data-preparing]')?.textContent).toMatch(/v0\.190\.0 is being prepared — the app update is usually ready within 5 minutes/)
+    expect(recheck).toHaveBeenCalledWith('v0.190.0')
+  })
+
+  it('offers the newest in one jump once the updater has it', () => {
+    vi.spyOn(appUpdate, 'recheck').mockResolvedValue(undefined)
+    app.info = on({ phase: 'available', next: '0.190.0' })
+    render(<VersionPanel shown="0.189.0" title="" onStatus={() => {}} status={out} />)
+    fireEvent.click(screen.getByText('0.189.0'))
+    expect(screen.getByRole('button', { name: 'Update to v0.190.0' })).toBeTruthy()
+    expect(document.querySelector('[data-preparing]')).toBeNull()
+  })
+
+  it('looks for the app update on opening when the updater never asked', () => {
+    const check = vi.spyOn(appUpdate, 'check').mockResolvedValue(undefined)
+    app.info = on({ phase: 'idle' })
+    render(<VersionPanel shown="0.189.0" title="" onStatus={() => {}} status={out} />)
+    fireEvent.click(screen.getByText('0.189.0'))
+    expect(check).toHaveBeenCalledTimes(1)
+  })
+
+  it('says so while that check runs, with nothing to install', () => {
+    app.info = on({ phase: 'checking' })
+    render(<VersionPanel shown="0.189.0" title="" onStatus={() => {}} status={out} />)
+    fireEvent.click(screen.getByText('0.189.0'))
+    expect(document.querySelector('[data-app-checking]')?.textContent).toMatch(/Looking for the app update/)
+    expect(screen.queryByRole('button', { name: /Update to/ })).toBeNull()
   })
 })

@@ -116,7 +116,7 @@ describe('in the desktop app, one click (F20)', () => {
     h.st = base
     render(<AppUpdateNotice />)
     fireEvent.click(await screen.findByRole('button', { name: 'Update to v0.78.0 — Restart' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
     emit({ phase: 'downloading', next: '0.78.0', downloaded: 0, total: 1000 })
     expect(screen.getByRole('status')).toHaveTextContent('Downloading v0.78.0')
     emit({ phase: 'downloading', next: '0.78.0', downloaded: 420, total: 1000 })
@@ -135,7 +135,7 @@ describe('in the desktop app, one click (F20)', () => {
     expect(dialog).toHaveTextContent('Caprock v0.77.0 keeps running')
     expect(screen.getByRole('link', { name: 'release page' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('a failure waved away with Not now goes quiet', async () => {

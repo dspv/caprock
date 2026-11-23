@@ -202,17 +202,25 @@ pub async fn app_update_check<R: Runtime>(app: AppHandle<R>) -> Result<crate::up
 
 /// Download and verify, and hold it for a later install: Update
 /// automatically, once the daemon's release check found a newer version.
+/// `known` is that version: a bundle older than it is not fetched
+/// ([`crate::updater::behind`]).
 #[tauri::command]
 pub async fn app_update_download<R: Runtime>(
     app: AppHandle<R>,
+    known: Option<String>,
 ) -> Result<crate::updater::Info, ()> {
-    Ok(crate::updater::download(app).await)
+    Ok(crate::updater::download(app, known).await)
 }
 
 /// Download, verify, install and restart. Returns only when it did not.
+/// `known` is the newest release the daemon's check found: an update older
+/// than it is never installed in its name ([`crate::updater::behind`]).
 #[tauri::command]
-pub async fn app_update_install<R: Runtime>(app: AppHandle<R>) -> Result<crate::updater::Info, ()> {
-    Ok(crate::updater::install(app).await)
+pub async fn app_update_install<R: Runtime>(
+    app: AppHandle<R>,
+    known: Option<String>,
+) -> Result<crate::updater::Info, ()> {
+    Ok(crate::updater::install(app, known).await)
 }
 
 /// The first-launch question was answered (either way).

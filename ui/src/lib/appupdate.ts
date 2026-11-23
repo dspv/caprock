@@ -10,8 +10,20 @@
  * `latest.json` only when asked to: a click on Update or on Check for
  * Updates, or — with Update automatically chosen — once the daemon reports
  * a newer version (components/AppAutoUpdate).
+ *
+ * The two can disagree for a few minutes after a release: the daemon sees it
+ * as soon as GitHub publishes it, `latest.json` is uploaded minutes later
+ * (owner, 2026-11-23: the panel said *v0.190.0 is out* over a button that
+ * installed 0.189.1, and never looked again). While the updater offers
+ * nothing newer than this app, or something older than the release the
+ * daemon knows, that is a gap (`updaterGap`): the offer is `preparing`, the
+ * older bundle is not offered, and `useGapRecheck` asks for `latest.json`
+ * again every GAP_RECHECK_MS, at most GAP_RECHECK_MAX times per release, and
+ * when the version panel opens, until the two agree. Install and download
+ * carry the daemon's version (`known`) so the shell never installs an older
+ * bundle in its name (app/src-tauri/src/updater.rs `behind`).
  */
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { isTauri } from './appmode'
 import { shell } from './shell'
 import type { UpdateStatus } from './api'
@@ -42,6 +54,19 @@ export const APP_UPDATE_EVENT = 'caprock:app-update'
 
 let current: AppUpdateInfo | undefined
 let background = 0
+/** The release a background re-check (`appUpdate.recheck`) is looking for. */
+let recheckingFor = ''
+/** When the last gap re-check started, and how many ran for `gapFor`. */
+let lastGapCheck = 0
+let gapFor = ''
+let gapTries = 0
+
+/** How often `latest.json` is asked again while the app update lags the release. */
+export const GAP_RECHECK_MS = 2 * 60_000
+/** At most this many re-checks per release (about 16 minutes); then *Check now*. */
+export const GAP_RECHECK_MAX = 8
+/** Opening the version panel re-checks at most this often. */
+export const GAP_OPEN_MIN_MS = 20_000
 
 /** The updater's last known state, outside React. */
 export function appUpdateNow(): AppUpdateInfo | undefined { return current }
@@ -73,13 +98,22 @@ export const appUpdate = {
   /** Fetch latest.json once (Check for Updates). */
   check: () => shell.updateCheck().then((i) => { set(i); return i }, () => undefined),
   /** Download and verify in the background, install later (Update automatically).
-   *  While it runs, `inBackground()` is true: its "checking" is nobody's question. */
-  download: () => {
+   *  While it runs, `inBackground()` is true: its "checking" is nobody's question.
+   *  `known` is the daemon's newest release: an older bundle is not fetched. */
+  download: (known?: string) => {
     background++
-    return shell.updateDownload().then((i) => { set(i); background-- }, () => { background-- })
+    return shell.updateDownload(known).then((i) => { set(i); background-- }, () => { background-- })
   },
-  /** Download, verify, install and restart; resolves only if it did not. */
-  install: () => shell.updateInstall().then(set, () => {}),
+  /** Download, verify, install and restart; resolves only if it did not.
+   *  `known` is the daemon's newest release: an older bundle is not installed in its name. */
+  install: (known?: string) => shell.updateInstall(known).then(set, () => {}),
+  /** Fetch latest.json again while a gap lasts; nobody's question, so the
+   *  strip does not flash *Checking…* and the offer stays `preparing`. */
+  recheck: (known: string) => {
+    background++
+    recheckingFor = known
+    return shell.updateCheck().then((i) => { set(i); background--; recheckingFor = '' }, () => { background--; recheckingFor = '' })
+  },
   /** The first-launch question was answered. */
   asked: () => shell.updateAsked().then(() => appUpdate.refresh(), () => {}),
 }
@@ -93,12 +127,66 @@ export function useAppUpdate(): AppUpdateInfo | undefined {
   )
 }
 
+/**
+ * While the app update lags the release (`updaterGap`), ask for
+ * `latest.json` again every GAP_RECHECK_MS, at most GAP_RECHECK_MAX times
+ * per release; the gap closing (or a newer release) stops or restarts it.
+ * The same URL a click on Check for Updates fetches (rule 4), and only after
+ * the updater has answered once: an app that never asked makes no request.
+ */
+export function useGapRecheck(info: AppUpdateInfo | undefined, st: UpdateStatus | undefined) {
+  const gap = updaterGap(info, st)
+  useEffect(() => {
+    if (!gap) return
+    if (gapFor !== gap) { gapFor = gap; gapTries = 0 }
+    const t = window.setInterval(() => {
+      if (gapTries >= GAP_RECHECK_MAX) { window.clearInterval(t); return }
+      if (recheckingFor || inBackground()) return
+      gapTries++
+      lastGapCheck = Date.now()
+      void appUpdate.recheck(gap)
+    }, GAP_RECHECK_MS)
+    return () => window.clearInterval(t)
+  }, [gap])
+}
+
+/** The gap re-checks for `latest` have not run out (GAP_RECHECK_MAX). */
+export function gapRechecking(latest: string): boolean {
+  return gapFor !== latest || gapTries < GAP_RECHECK_MAX
+}
+
+/**
+ * The version panel opened: when the daemon knows a newer release than the
+ * updater offers (or the updater has not asked yet), ask now. At most once
+ * every GAP_OPEN_MIN_MS, and never over a check, download or install.
+ */
+export function recheckOnOpen(info: AppUpdateInfo | undefined, st: UpdateStatus | undefined): boolean {
+  const latest = knownLatest(st)
+  if (!info?.supported || !latest || !newerVersion(latest, info.version)) return false
+  const lags = info.phase === 'idle' || info.phase === 'up_to_date'
+    || ((info.phase === 'available' || info.phase === 'ready') && newerVersion(latest, info.next))
+  if (!lags || recheckingFor || inBackground() || Date.now() - lastGapCheck < GAP_OPEN_MIN_MS) return false
+  // Never asked: an ordinary check, whose *checking* the panel shows. A known
+  // gap: the quiet re-check, so the panel keeps saying it is being prepared.
+  lastGapCheck = Date.now()
+  if (info.phase === 'idle') {
+    void appUpdate.check()
+  } else {
+    void appUpdate.recheck(latest)
+  }
+  return true
+}
+
 /** Tests only: forget the state and listen afresh. */
 export function resetAppUpdate() {
   if (typeof window !== 'undefined') window.removeEventListener(APP_UPDATE_EVENT, onEvent)
   started = false
   current = undefined
   background = 0
+  recheckingFor = ''
+  lastGapCheck = 0
+  gapFor = ''
+  gapTries = 0
 }
 
 /** `a` is a newer version than `b`; either may carry a leading v. Pre-release tags rank below the release. */
@@ -131,9 +219,36 @@ export type Offer =
   | { kind: 'up_to_date'; version: string }
   /** The command or the release page: a browser, or an install that cannot update itself. */
   | { kind: 'commands'; latest: string }
+  /** The daemon knows `latest`, the app's updater does not offer it yet
+   *  (`latest.json` is uploaded minutes after the release): nothing to
+   *  install, checking again. The older bundle is deliberately not offered. */
+  | { kind: 'preparing'; latest: string }
 
 /** A version as the daemon writes it, with the v. */
 export const v = (s: string) => (s.startsWith('v') ? s : `v${s}`)
+
+/** The newest release the daemon's check knows, with the v; '' with checks off. */
+export function knownLatest(st: UpdateStatus | undefined): string {
+  return st?.enabled && st.latest ? v(st.latest) : ''
+}
+
+/**
+ * The release the daemon knows and the app's updater does not offer yet, or
+ * ''. A gap is only claimed once the updater has answered: up to date, or
+ * an offer (available, or downloaded and held) older than that release.
+ * Idle has not asked, and checking, a download or an install is under way.
+ */
+export function updaterGap(info: AppUpdateInfo | undefined, st: UpdateStatus | undefined): string {
+  const latest = knownLatest(st)
+  if (!info?.supported || !latest || !newerVersion(latest, info.version)) return ''
+  switch (info.phase) {
+    case 'up_to_date': return latest
+    case 'available':
+    case 'ready': return newerVersion(latest, info.next) ? latest : ''
+    case 'checking': return recheckingFor && v(recheckingFor) === latest ? latest : ''
+    default: return ''
+  }
+}
 
 /**
  * The offer from the app's updater and the daemon's release check. A newer
@@ -144,6 +259,10 @@ export const v = (s: string) => (s.startsWith('v') ? s : `v${s}`)
  */
 export function offerFor(info: AppUpdateInfo | undefined, st: UpdateStatus | undefined, dismissed: string): Offer {
   if (info?.supported) {
+    // The release is out, its app update is not: never the older bundle
+    // under the newer version's name.
+    const gap = updaterGap(info, st)
+    if (gap) return dismissed === gap ? { kind: 'none' } : { kind: 'preparing', latest: gap }
     switch (info.phase) {
       case 'checking': return { kind: 'checking' }
       case 'downloading': return { kind: 'progress', next: v(info.next), pct: info.total ? Math.min(100, Math.floor((info.downloaded / info.total) * 100)) : null }

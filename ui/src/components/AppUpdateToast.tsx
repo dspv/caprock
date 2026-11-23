@@ -22,7 +22,7 @@
  */
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { appUpdate, offerFor, useAppUpdate, v } from '@/lib/appupdate'
+import { appUpdate, knownLatest, offerFor, useAppUpdate, v } from '@/lib/appupdate'
 import { openExternal } from '@/lib/nudges'
 import { NotesDialog } from './Shell'
 import { useUpdateStatus } from './AppUpdateNotice'
@@ -114,7 +114,7 @@ export function AppUpdateToast() {
             <button type="button" onClick={later} className="ml-auto rounded-[7px] px-2.5 py-1.5 text-[13px] text-fg-muted hover:text-fg">Later</button>
             <button
               type="button"
-              onClick={() => void appUpdate.install()}
+              onClick={() => void appUpdate.install(knownLatest(st))}
               className="rounded-[7px] bg-accent px-3 py-1.5 text-[13px] font-semibold text-panel hover:brightness-110"
             >
               Update and restart
@@ -152,7 +152,7 @@ export function AppUpdateToast() {
             <button type="button" onClick={() => updateCard.closeError()} className="ml-auto rounded-[7px] px-2.5 py-1.5 text-[13px] text-fg-muted hover:text-fg">Close</button>
             <button
               type="button"
-              onClick={() => void appUpdate.install()}
+              onClick={() => void appUpdate.install(knownLatest(st))}
               className="rounded-[7px] bg-accent px-3 py-1.5 text-[13px] font-semibold text-panel hover:brightness-110"
             >
               Try again

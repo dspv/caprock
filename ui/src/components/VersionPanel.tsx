@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { UpdateStatus } from '@/lib/api'
-import { appUpdate, newerVersion, offerFor, useAppUpdate, v } from '@/lib/appupdate'
+import { appUpdate, gapRechecking, knownLatest, newerVersion, offerFor, recheckOnOpen, useAppUpdate, useGapRecheck, v } from '@/lib/appupdate'
 import { openExternal } from '@/lib/nudges'
 import { checkByHand } from '@/lib/checkbanner'
 import { fmtAgo } from '@/lib/format'
@@ -55,9 +55,19 @@ export function VersionPanel({ shown, title, status, onStatus }: {
   }, [open])
 
   const st = status
+  // The release is out and its app update is not yet (latest.json comes
+  // minutes after it): ask again on opening, and every few minutes while
+  // that lasts (lib/appupdate, owner 2026-11-23).
+  useGapRecheck(info, st)
+  const opened = useRef({ info, st })
+  opened.current = { info, st }
+  useEffect(() => {
+    if (open) recheckOnOpen(opened.current.info, opened.current.st)
+  }, [open])
   const latest = st?.latest ? v(st.latest) : undefined
   const available = Boolean(latest && newerVersion(latest, shown))
   const offer = offerFor(info, st, '')
+  const preparing = available && offer.kind === 'preparing'
   const commands = st ? upgradeCommands(st) : []
   // The app and the daemon behind it should run one version: the app replaces
   // its own daemon on launch (ADR-040). When they still differ, say so.
@@ -133,16 +143,30 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               The app is <span className="mono">{v(info!.version)}</span>, its daemon <span className="mono">{daemon}</span>. Quit and reopen Caprock to update the daemon — sessions keep running.
             </p>
           )}
+          {/* Between the release and its app update (latest.json is uploaded
+            * minutes later): say so, and offer nothing older under the newer
+            * version's name (owner, 2026-11-23). "Within 5 minutes" is
+            * measured: .ai/21-app.md § Updates. */}
+          {preparing && (
+            <p data-preparing role="status" className="rounded-[7px] border border-[var(--app-hairline-strong)] bg-panel-2 px-2.5 py-2 text-[13px] text-fg">
+              {gapRechecking(offer.latest)
+                ? <><span className="mono">{offer.latest}</span> is being prepared — the app update is usually ready within 5 minutes of the release. Checking again every 2 minutes.</>
+                : <><span className="mono">{offer.latest}</span>’s app update isn’t ready yet. Check now to look again.</>}
+            </p>
+          )}
+          {available && offer.kind === 'checking' && (
+            <p data-app-checking role="status" className="text-fg-muted">Looking for the app update…</p>
+          )}
           {available && offer.kind === 'install' && (
             <div className="grid gap-1">
-              <button type="button" onClick={() => { setOpen(false); void appUpdate.install() }}
+              <button type="button" onClick={() => { setOpen(false); void appUpdate.install(knownLatest(st)) }}
                 className="rounded-[7px] bg-accent px-3 py-1.5 text-center text-[14px] font-semibold text-panel hover:opacity-90">
                 Update to {offer.next}
               </button>
               <p className="text-center text-[12px] text-fg-muted">Restarts the app · sessions keep running</p>
             </div>
           )}
-          {available && offer.kind !== 'install' && commands.length > 0 && (
+          {available && offer.kind !== 'install' && offer.kind !== 'preparing' && offer.kind !== 'checking' && commands.length > 0 && (
             <div className="grid gap-1.5">
               <p className="text-fg-muted">Run in a terminal:</p>
               {commands.map((c) => <Copyable key={c.command} command={c.command} className="break-all" />)}
@@ -156,7 +180,7 @@ export function VersionPanel({ shown, title, status, onStatus }: {
               Release notes
             </button>
           )}
-          {!available && (
+          {(!available || (preparing && !gapRechecking(offer.latest))) && (
             <div className="flex items-center gap-3">
               <button type="button" data-check-again onClick={() => void check()} disabled={checking || st?.enabled === false}
                 className="rounded-[7px] border border-[var(--app-hairline-strong)] px-3 py-1.5 text-fg hover:border-accent disabled:opacity-50">

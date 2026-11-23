@@ -49,7 +49,7 @@ describe('the update card', () => {
     // From what to what, at a glance (owner, 2026-10-11).
     expect((await screen.findByText('0.80.0')).closest('[data-update-from-to]')?.textContent).toMatch(/^Update.*→0\.80\.0$/)
     fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
     emit({ phase: 'downloading', next: '0.80.0', downloaded: 250, total: 1000 })
     expect(screen.getByRole('status', { name: 'Caprock update' })).toHaveTextContent('25%')
     emit({ phase: 'installing', next: '0.80.0' })
@@ -86,7 +86,7 @@ describe('the update card', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Always update automatically' }))
     expect(h.saved).toContainEqual({ app_update: 'auto', update_checks: true })
     // No restart now: the automatic path waits for a quiet moment.
-    expect(invoke).not.toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', expect.anything())
     expect(screen.queryByText('0.80.0')).toBeNull()
   })
 })

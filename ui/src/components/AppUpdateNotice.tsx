@@ -23,7 +23,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
-import { appUpdate, inBackground, offerFor, useAppUpdate, v, type Offer } from '@/lib/appupdate'
+import { appUpdate, inBackground, knownLatest, offerFor, useAppUpdate, v, type Offer } from '@/lib/appupdate'
 import { Copyable } from './ui'
 import { everyWhileVisible } from '@/lib/visible'
 import { askSoon, onWindowFront } from '@/lib/updatesoon'
@@ -190,6 +190,15 @@ export function AppUpdateNotice() {
       )
     case 'installing':
       return <span role="status" className="whitespace-nowrap text-fg-muted">Installing {offer.next} — restarting…</span>
+    case 'preparing':
+      // Released, its app update not uploaded yet: nothing to click, and
+      // never the older bundle under this version's name (lib/appupdate).
+      return (
+        <span role="status" data-update-preparing className="whitespace-nowrap text-fg-muted"
+          title={`Caprock ${offer.latest} is out; its app update is not ready yet. Caprock checks again by itself.`}>
+          {offer.latest} is being prepared
+        </span>
+      )
     default:
       break
   }
@@ -204,7 +213,7 @@ export function AppUpdateNotice() {
         <>
           <button
             type="button"
-            onClick={() => { setOpen(false); void appUpdate.install() }}
+            onClick={() => { setOpen(false); void appUpdate.install(knownLatest(st)) }}
             data-update-offer
             className="shrink-0 whitespace-nowrap rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
             title={`Download Caprock ${offer.next}, check its signature, install it and restart. Sessions keep running.`}
@@ -275,7 +284,7 @@ export function AppUpdateNotice() {
               {offer.kind === 'failed' ? 'release page' : 'what’s new'}
             </a>
             {offer.kind === 'failed' && (
-              <button type="button" onClick={() => { setOpen(false); void appUpdate.install() }} className="ml-auto rounded-[6px] border border-accent/50 bg-accent/10 px-2 py-0.5 text-[11.5px] text-accent hover:bg-accent/20">
+              <button type="button" onClick={() => { setOpen(false); void appUpdate.install(knownLatest(st)) }} className="ml-auto rounded-[6px] border border-accent/50 bg-accent/10 px-2 py-0.5 text-[11.5px] text-accent hover:bg-accent/20">
                 Try again
               </button>
             )}
