@@ -2275,8 +2275,11 @@ and once a minute as the fallback for a daemon before them; it asked every
   oldest kept and the newest (`seconds` says how long while the daemon is
   younger than an hour); both are absent until there are two readings.
 - **`disk_io.by_source`** (2026-11-21) is `last_hour`'s reads split by what
-  was running when they were made, largest first: the top ten and one
-  `other sources` row for the rest; absent with `last_hour`. Code:
+  was running when they were made, largest first: the top thirty and one
+  `other sources` row for the rest (thirty since 2026-11-23: with ten, the
+  rest read more on the owner's daemon than any source listed — 3.4 GB an
+  hour over 240,000 statements — and could not be told apart); absent with
+  `last_hour`. Code:
   `internal/diskio`. Every statement on the daemon's database is an
   operation named `sql <the function that asked>` (`sql
   store.scanEventParts`; a commit is `sql commit`), every read of a
@@ -6096,6 +6099,13 @@ GET  /v1/stats/compactions?range=… | ?from=…&to=…  → CompactionPeriod
     a minute. `median_duration_ms` is the median `duration_ms` over those
     500 scanned whose boundary carried one above zero, measured or not;
     absent with fewer than 5 such (rule 6) — the panel's *usually ~1 min*.
+    A Cursor boundary is measured only by the `post_tokens` its reader
+    wrote: its chat holds only Cursor's turns, which never give an after,
+    so it is not walked for one (2026-11-23: 166 of the owner's 399
+    boundaries were such, and walking each chat from the boundary on was
+    most of this figure's reads — about 20 MB a read, 0.5 to 0.9 GB an
+    hour; on a synthetic database with twelve such chats, 134 MB to 8 MB a
+    read with the file evicted from the OS cache).
   - `estimate` — what `last` cost and has saved since, **estimates** (§
     Compaction stats DDL): `{at, model?, warm, summary_tokens_est?,
     est_cost_usd?, est_saved_usd, turns_after, series: [{at, saved_usd}],

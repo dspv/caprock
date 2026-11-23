@@ -129,3 +129,38 @@ func TestCompactionPrefersTheBoundarysPostTokens(t *testing.T) {
 		t.Fatalf("stats %+v %v", st, err)
 	}
 }
+
+// A Cursor boundary is measured by the post_tokens its reader wrote, or not
+// at all: its chat's turns are Cursor's, which never measure one, so the
+// chat is not walked for one.
+func TestCursorCompactionIsMeasuredOnlyByItsOwnFigure(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+	put := func(ev *event.Event) {
+		t.Helper()
+		if _, err := InsertEvent(ctx, s.DB(), ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(&event.Event{SessionID: "chat", Source: event.SourceCursor, Kind: event.KindContextCompacted, Ts: t0, Key: "cu-compact:1",
+		Payload: json.RawMessage(`{"trigger":"auto","pre_tokens":90000}`)})
+	put(&event.Event{SessionID: "chat", Source: event.SourceCursor, Kind: event.KindTurnAssistant, Ts: t0.Add(time.Second), Key: "cu:1",
+		Tokens: &event.TokenDelta{In: 30_000}})
+	// Not walked for: even a turn of another source, which no Cursor chat
+	// holds, is not reached.
+	put(&event.Event{SessionID: "chat", Source: event.SourceTranscript, Kind: event.KindTurnAssistant, Ts: t0.Add(2 * time.Second), Key: "msg:x",
+		Tokens: &event.TokenDelta{In: 25_000}})
+	c, ok, err := LastCompaction(ctx, s.DB(), "chat")
+	if err != nil || !ok || c.PreTokens != 90_000 || c.PostTokens != 0 {
+		t.Fatalf("unmeasured Cursor boundary: %+v %v %v", c, ok, err)
+	}
+	put(&event.Event{SessionID: "chat", Source: event.SourceCursor, Kind: event.KindContextCompacted, Ts: t0.Add(time.Minute), Key: "cu-compact:2",
+		Payload: json.RawMessage(`{"trigger":"auto","pre_tokens":80000,"post_tokens":20000}`)})
+	if c, _, _ = LastCompaction(ctx, s.DB(), "chat"); c.PostTokens != 20_000 {
+		t.Fatalf("a Cursor boundary's own figure: %+v", c)
+	}
+	if st, err := RecentCompactionStats(ctx, s.DB()); err != nil || st.Count != 1 || st.MedianKept != 0.25 {
+		t.Fatalf("stats %+v %v", st, err)
+	}
+}

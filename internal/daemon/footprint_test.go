@@ -408,7 +408,7 @@ func TestIORingBySource(t *testing.T) {
 	r := newIORing(t0)
 	src := func(n uint64) map[string]diskio.Source {
 		m := map[string]diskio.Source{}
-		for i := range 14 {
+		for i := range bySourceTop + 4 {
 			name := fmt.Sprintf("s%02d", i)
 			m[name] = diskio.Source{Name: name, ReadBytes: n * uint64(i+1)}
 		}
@@ -420,7 +420,7 @@ func TestIORingBySource(t *testing.T) {
 	if len(by) != bySourceTop+1 {
 		t.Fatalf("%d rows, want the top %d and the rest: %+v", len(by), bySourceTop, by)
 	}
-	if by[0].Name != "s13" || by[0].ReadBytes != 140 {
+	if want := fmt.Sprintf("s%02d", bySourceTop+3); by[0].Name != want || by[0].ReadBytes != uint64(bySourceTop+4)*10 {
 		t.Errorf("largest first: %+v", by[0])
 	}
 	if rest := by[bySourceTop]; rest.Name != "other sources" || rest.ReadBytes != 10+20+30+40 {
