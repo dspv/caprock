@@ -532,6 +532,14 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-23 — 0.190.1: a Cursor CLI chat says it has no cost, not $0.00
+
+A patch release, #1031. Cursor's command-line agent records no tokens and no
+cost, so its sessions showed "0 tok · $0.00" and read as free. The inspector,
+the session screen, the Now card and the Live rows now show "—" there, with
+"Cursor doesn't record a cost for this chat" on hover. Editor chats Cursor
+priced are unchanged.
+
 ### 2026-11-23 — 0.190.0: dictate into the chat, and one tree for your agents
 
 A minor release, #1028. On a Mac, hold the new microphone in the chat or the
