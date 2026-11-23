@@ -532,6 +532,19 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-23 — 0.190.0: dictate into the chat, and one tree for your agents
+
+A minor release, #1028. On a Mac, hold the new microphone in the chat or the
+composer and speak: the words appear as you talk, recognised on the Mac
+itself, and stay in the field until you send them. The inspector's Now block
+holds the session's subagents as one tree, each opening to its latest steps,
+with a Rows · Cards switch. The menu bar panel can show itself when an agent
+Caprock started needs you (off by default). The release panel says which
+version the open pull requests would make and shows each one's checks per
+system. Second Brain is now 2nd Brain, with a mark of dots and links and the
+screen's own graph in the sidebar card. The phone marks sessions that stopped
+replying, and the voice restart strip finds a failure already on screen.
+
 ### 2026-11-23 — 0.189.1: a session tab reads only what changed
 
 A patch release, #1019. Opening a session's tab no longer reads the whole

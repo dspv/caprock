@@ -12,6 +12,64 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.190.0] - 2026-11-23
+
+### Added
+
+- **app:** the menu bar panel can show itself when an agent needs you
+  (macOS, off by default: Settings → Desktop notifications → *Show the menu
+  bar panel when an agent needs you*). When a session Caprock started
+  begins waiting on a permission, a question or a plan, the panel opens
+  under the menu bar icon with the same Needs-you card, Approve only for a
+  request it shows whole. It never takes the keyboard from the app you are
+  in, and it goes on an answer, a click elsewhere, Escape or 15 seconds
+  untouched. Once per session each time it waits; never for the session
+  in front of you; after you dismiss one, none for a minute.
+- **app:** voice input in the chat and the composer on the Mac app, for
+  every agent. Hold the mic and speak, release, and the words are in the
+  message field, not sent; or click to start and click again to stop. The
+  words show as they are heard, a long dictation keeps listening through
+  pauses until you let go, the language chip is the phone's, and
+  recognition runs on the Mac with Apple's on-device speech recognition:
+  a language without an on-device model is refused rather than sent to
+  Apple. macOS asks once for the microphone and speech recognition, for
+  Caprock. Not on Windows, Linux or in a browser tab yet.
+
+### Changed
+
+- **phone:** a session whose last message got no reply is counted as such on
+  the phone. Continue's folded line says *1 no reply* (amber, with what to do
+  in its tooltip) instead of counting it as idle, and the Sessions list on
+  Home's full screen marks its row as the sidebar does: an amber dot and *no
+  reply 2h* where the badge was.
+- **inspector:** the subagents are one tree inside *Now* instead of a
+  separate Subagents section: a *Background agents · N* header with their
+  total cost and time, open while any works, an entry per subagent that
+  opens in place to its latest steps, and the finished folded into one *N
+  done* entry. A *Rows · Cards* toggle in Now's header switches between the
+  cards it always had and dense one-line rows, remembered per browser.
+- **release:** the right panel's Release section says why the next version is that number (*patch · fixes only*, *minor · a feature*) and, when open pull requests would change it, the version they would make: *0.190.0 once the 4 open PRs land*, with what waits under it. The pull requests not in the release are one line each — a small kind label, the title in the UI's font, and three squares for the checks on macOS, Windows and Linux, each naming its state and the failing or running job on hover. A check that names no system, such as lint, now counts toward every system on the board's per-OS checks.
+- **brain:** Second Brain is now *2nd Brain* everywhere you read it — the
+  sidebar, the nav, the screen, Settings, ⌘K, the MCP tools' descriptions —
+  so the sidebar's folded row keeps its status whole. Its mark is a small
+  brain of dots and links in the memory kinds' colours, where an outline
+  read as an *i*. Unfolded, the sidebar card shows a small copy of the
+  screen's graph (your newest 30 memories) instead of the turning orb, so
+  opening the screen shows the same picture, larger; a memory that lands
+  flashes at its place. It draws nothing at rest and fetches nothing new.
+
+### Fixed
+
+- **app:** the *Restart here* strip now comes when Claude Code's voice
+  failure was already on screen as the page loaded, as it is after the app
+  updates with the tab open. Claude Code shows the failure in its footer
+  and writes nothing after it; the terminal replayed that screen before the
+  page knew the session was one Caprock started, and the strip waited for
+  a next write that never came. The pane now looks at the screen as it
+  stands once it knows, and asks the daemon's platform again if the first
+  ask failed.
+- **brain:** the sidebar's 2nd Brain card no longer jumps a pixel on hover, and its chevron points up while folded, the way the card opens.
+
 ## [0.189.1] - 2026-11-23
 
 ### Fixed
