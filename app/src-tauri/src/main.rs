@@ -12,6 +12,13 @@ mod commands;
 mod dictate;
 #[cfg(target_os = "macos")]
 mod dictate_macos;
+// Offline dictation on Windows and Linux (ADR-103): the pure parts are
+// tested on every OS; the engine is built where `whisper` is set (build.rs),
+// and on a Mac only with the offline-voice feature, unused.
+mod dictate_offline;
+#[cfg(whisper)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+mod dictate_whisper;
 mod discovery;
 // The Dock icon is macOS's; the decision is tested on every OS.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -43,6 +50,7 @@ mod snapshot;
 mod supervisor;
 mod tray;
 mod updater;
+mod voicemodel;
 
 use std::path::PathBuf;
 use supervisor::{State, Supervisor};
@@ -85,7 +93,12 @@ macro_rules! handler {
             commands::app_log,
             dictate::dictation_status,
             dictate::dictation_start,
-            dictate::dictation_stop
+            dictate::dictation_stop,
+            voicemodel::voice_model_status,
+            voicemodel::voice_model_download,
+            voicemodel::voice_model_cancel,
+            voicemodel::voice_model_remove,
+            voicemodel::voice_model_reveal
         ]
     };
 }
@@ -109,6 +122,7 @@ fn configure<R: tauri::Runtime>(b: tauri::Builder<R>, sup: commands::Sup) -> tau
         .manage(tray::Tray::default())
         .manage(popover::Popover::default())
         .manage(badge::Badge::default())
+        .manage(voicemodel::VoiceModels::default())
         .invoke_handler(handler!())
 }
 
@@ -540,7 +554,14 @@ mod tests {
         // The status is safe to read anywhere it is granted; it never asks
         // for anything (no OS dialog in a test).
         let status = invoke(DAEMON, "dictation_status", serde_json::json!({})).expect("allowed");
-        assert_eq!(status["supported"], false, "a test binary is not a bundle");
+        // Not a bundle (macOS), or no voice model downloaded (Windows, Linux).
+        assert_eq!(status["supported"], false, "{status}");
+        let engine = if cfg!(target_os = "macos") {
+            "apple"
+        } else {
+            "whisper"
+        };
+        assert_eq!(status["engine"], engine);
         let stop = serde_json::json!({"id": 1, "cancel": true});
         invoke(DAEMON, "dictation_stop", stop.clone()).expect("allowed");
         let start = serde_json::json!({"lang": "en-US"});
@@ -570,6 +591,50 @@ mod tests {
         )
         .expect_err("not a language");
         assert!(err.to_string().contains("not a language"), "{err}");
+    }
+
+    #[test]
+    fn only_the_dashboard_may_manage_the_voice_model() {
+        // Reading the status touches nothing; on a Mac every other command
+        // refuses, and no test downloads or deletes anything.
+        let status = invoke(DAEMON, "voice_model_status", serde_json::json!({})).expect("allowed");
+        assert_eq!(status["offered"], !cfg!(target_os = "macos"));
+        assert_eq!(status["models"][0]["id"], "small");
+        invoke(DAEMON, "voice_model_cancel", serde_json::json!({})).expect("allowed");
+        let err = invoke(
+            DAEMON,
+            "voice_model_download",
+            serde_json::json!({"model": "huge"}),
+        )
+        .expect_err("refused");
+        let want = if cfg!(target_os = "macos") {
+            "Windows and Linux"
+        } else {
+            "no such model"
+        };
+        assert!(err.to_string().contains(want), "{err}");
+        let dl = serde_json::json!({"model": "small"});
+        for (cmd, body) in [
+            ("voice_model_status", serde_json::json!({})),
+            ("voice_model_download", dl.clone()),
+            ("voice_model_cancel", serde_json::json!({})),
+            ("voice_model_remove", serde_json::json!({})),
+            ("voice_model_reveal", serde_json::json!({})),
+        ] {
+            let err = invoke_in("tray", POPOVER, cmd, body.clone()).expect_err("popover");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+            let err = invoke_in("mail", DAEMON, cmd, body.clone()).expect_err("mail");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+            let err = invoke_in("browser-t1", DAEMON, cmd, body.clone()).expect_err("browser");
+            assert!(err.to_string().contains("not allowed"), "{cmd}: {err}");
+            for url in ["https://example.com/", "http://localhost:4391/"] {
+                let err = invoke(url, cmd, body.clone()).expect_err(url);
+                assert!(
+                    err.to_string().contains("not allowed"),
+                    "{url} {cmd}: {err}"
+                );
+            }
+        }
     }
 
     #[test]

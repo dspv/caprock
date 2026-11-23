@@ -1,26 +1,29 @@
-//! Voice input in the chat (ADR-102): the dashboard's microphone button asks
-//! the shell to listen, and the words come back to the page as they are
-//! heard. macOS only, through Apple's speech recognition on this Mac
-//! (`dictate_macos.rs`, `requiresOnDeviceRecognition`): no audio and no
-//! text leave the machine, and a language this Mac cannot recognise on its
-//! own is refused rather than sent to Apple's servers. Elsewhere the status
-//! says unsupported and the page hides the button.
+//! Voice input in the chat (ADR-102, ADR-103): the dashboard's microphone
+//! button asks the shell to listen, and the words come back to the page as
+//! they are heard. No audio and no text leave the machine on any OS:
+//!
+//! - **macOS** (`dictate_macos.rs`, ADR-102): Apple's speech recognition on
+//!   this Mac (`requiresOnDeviceRecognition`); a language this Mac cannot
+//!   recognise on its own is refused rather than sent to Apple's servers.
+//! - **Windows and Linux** (`dictate_whisper.rs`, ADR-103): whisper.cpp in
+//!   this process, from a model the user downloaded in Settings → Voice
+//!   input (`voicemodel.rs`). Without one the status says `no-model` and the
+//!   page's microphone offers the download instead.
 //!
 //! The page calls `dictation_start` with a language and gets an id back at
 //! once; everything after that — partial words, the final words, the end and
 //! why — arrives as `caprock:dictation` events on the same page, each with
 //! that id (`event_script`). `dictation_stop` ends it: the words heard so far
 //! are finished and sent as the final ones; with `cancel`, dropped.
-// The recogniser is macOS-only (dictate_macos.rs); elsewhere the events,
-// error codes and restart rules are built for the tests alone.
+// Apple's error codes and restart rules are macOS's; elsewhere they are
+// built for the tests alone.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-#[cfg(target_os = "macos")]
 use tauri::Manager;
-use tauri::{Runtime, Webview};
+use tauri::{AppHandle, Runtime, Webview};
 
 /// The DOM event the page listens for (ui/src/lib/deskvoice.ts).
 pub const EVENT: &str = "caprock:dictation";
@@ -29,9 +32,36 @@ pub const EVENT: &str = "caprock:dictation";
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Status {
     pub supported: bool,
-    /// Without support: why, as a code the page explains.
+    /// Without support: why, as a code the page explains — `unsupported`,
+    /// `unbundled` (macOS outside the app), `no-model` and `downloading`
+    /// (Windows and Linux before the voice model is in), `cpu-unsupported`
+    /// (a processor the engine cannot run on).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<&'static str>,
+    /// Who listens: `apple` (macOS) or `whisper` (Windows, Linux). The page
+    /// words its lines and waits for the last words by it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<&'static str>,
+}
+
+/// Windows' and Linux's status: what is installed and whether a download
+/// is under way decide it; `cpu_ok` is `voicemodel::cpu_ok`.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub fn offline_status(installed: bool, downloading: bool, cpu_ok: bool) -> Status {
+    let reason = if !cpu_ok {
+        Some("cpu-unsupported")
+    } else if downloading {
+        Some("downloading")
+    } else if !installed {
+        Some("no-model")
+    } else {
+        None
+    };
+    Status {
+        supported: reason.is_none(),
+        reason,
+        engine: Some("whisper"),
+    }
 }
 
 /// One thing a dictation says to the page.
@@ -147,42 +177,67 @@ pub fn sink_for<R: Runtime>(webview: Webview<R>) -> Sink {
 }
 
 /// Whether this build can dictate: macOS from an app bundle (outside one
-/// there is no Info.plist and asking for permission would end the process).
+/// there is no Info.plist and asking for permission would end the process);
+/// Windows and Linux once the voice model is installed.
 #[tauri::command]
-pub fn dictation_status() -> Status {
+pub fn dictation_status<R: Runtime>(
+    app: AppHandle<R>,
+    models: tauri::State<'_, crate::voicemodel::VoiceModels>,
+) -> Status {
     #[cfg(target_os = "macos")]
     {
+        let _ = (app, models);
         crate::dictate_macos::status()
     }
     #[cfg(not(target_os = "macos"))]
     {
-        Status {
-            supported: false,
-            reason: Some("unsupported"),
-        }
+        let dir = crate::voicemodel::dir(&app);
+        offline_status(
+            dir.as_deref()
+                .and_then(crate::voicemodel::installed_in)
+                .is_some(),
+            models.downloading(),
+            crate::voicemodel::cpu_ok(),
+        )
     }
 }
 
 /// Starts listening for `lang` (a BCP-47 tag); the id names its events.
-/// Asks for the microphone and speech recognition the first time. A
-/// dictation already running is cancelled: one at a time.
+/// On macOS asks for the microphone and speech recognition the first time.
+/// A dictation already running is cancelled: one at a time. Without the
+/// voice model (Windows, Linux) it ends at once with the status's reason.
 #[tauri::command]
-pub fn dictation_start<R: Runtime>(webview: Webview<R>, lang: String) -> Result<u64, String> {
+pub fn dictation_start<R: Runtime>(
+    webview: Webview<R>,
+    models: tauri::State<'_, crate::voicemodel::VoiceModels>,
+    lang: String,
+) -> Result<u64, String> {
     let locale = locale_id(&lang).ok_or_else(|| format!("not a language: {lang}"))?;
     let id = next_id();
     let sink = sink_for(webview.clone());
     #[cfg(target_os = "macos")]
     {
+        let _ = models;
         let app = webview.app_handle().clone();
         crate::dictate_macos::start(app, id, locale, sink);
     }
     #[cfg(not(target_os = "macos"))]
     {
         let _ = locale;
-        sink(Event::End {
-            id,
-            error: Some("unsupported"),
-        });
+        let dir = crate::voicemodel::dir(webview.app_handle());
+        let files = dir.as_deref().and_then(crate::voicemodel::files_in);
+        let st = offline_status(
+            files.is_some(),
+            models.downloading(),
+            crate::voicemodel::cpu_ok(),
+        );
+        match files.filter(|_| st.supported) {
+            Some(files) => crate::dictate_whisper::start(id, lang, sink, files),
+            None => sink(Event::End {
+                id,
+                error: st.reason.or(Some("unsupported")),
+            }),
+        }
     }
     Ok(id)
 }
@@ -194,7 +249,10 @@ pub fn dictation_stop<R: Runtime>(webview: Webview<R>, id: u64, cancel: Option<b
     #[cfg(target_os = "macos")]
     crate::dictate_macos::stop(webview.app_handle(), id, cancel.unwrap_or(false));
     #[cfg(not(target_os = "macos"))]
-    let _ = (webview, id, cancel);
+    {
+        let _ = webview;
+        crate::dictate_whisper::stop(id, cancel.unwrap_or(false));
+    }
 }
 
 #[cfg(test)]
@@ -292,20 +350,26 @@ mod tests {
     }
 
     #[test]
-    fn the_status_says_unsupported_off_macos() {
-        let s = dictation_status();
-        if cfg!(target_os = "macos") {
-            // A test binary is not an app bundle: no Info.plist to ask with.
-            assert!(!s.supported);
-            assert_eq!(s.reason, Some("unbundled"));
-        } else {
-            assert_eq!(
-                s,
-                Status {
-                    supported: false,
-                    reason: Some("unsupported")
-                }
-            );
-        }
+    fn windows_and_linux_say_what_is_missing() {
+        let ok = offline_status(true, false, true);
+        assert!(ok.supported);
+        assert_eq!(ok.reason, None);
+        assert_eq!(ok.engine, Some("whisper"));
+        assert_eq!(offline_status(false, false, true).reason, Some("no-model"));
+        // A download under way wins over a model already in: the mic waits.
+        assert_eq!(offline_status(true, true, true).reason, Some("downloading"));
+        assert_eq!(
+            offline_status(false, true, true).reason,
+            Some("downloading")
+        );
+        assert_eq!(
+            offline_status(true, false, false).reason,
+            Some("cpu-unsupported")
+        );
+        let json = serde_json::to_string(&offline_status(false, false, true)).unwrap();
+        assert_eq!(
+            json,
+            r#"{"supported":false,"reason":"no-model","engine":"whisper"}"#
+        );
     }
 }

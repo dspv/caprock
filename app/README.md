@@ -14,6 +14,24 @@ You need Go, Node 22 and Rust (stable, via [rustup](https://rustup.rs)). On
 Linux you also need WebKitGTK 4.1:
 `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev`.
 
+On Windows and Linux the app compiles whisper.cpp for voice input
+([ADR-103](../.ai/08-decisions.md)), through `whisper-rs` (pinned in
+`Cargo.toml`): that takes **CMake** and **libclang** (bindgen reads
+whisper.cpp's header). Linux also needs the ALSA headers for the microphone.
+
+- **Linux:** `cmake libclang-dev libasound2-dev` besides the above.
+- **Windows:** CMake and LLVM (`winget install Kitware.CMake LLVM.LLVM`),
+  then `LIBCLANG_PATH` set to LLVM's `bin` folder (`C:\Program Files\LLVM\bin`)
+  if bindgen does not find it; the MSVC build tools Rust already needs do
+  the rest.
+- **macOS** builds none of it (Apple's recogniser answers there, ADR-102);
+  `cargo clippy --features offline-voice` compiles the engine on a Mac
+  for checking, and then needs CMake too.
+
+The ggml CPU flags (`GGML_NATIVE=OFF`, AVX2, FMA, F16C) are set in the
+repository's `.cargo/config.toml`, so a build runs on more processors than
+the one it was built on.
+
 ```bash
 make app          # debug build, run it: finds or starts a daemon
 make app-test     # cargo fmt --check, clippy -D warnings, cargo test
@@ -247,8 +265,23 @@ Commands are granted per origin (`src-tauri/capabilities/`):
 | `open_mail_window`       | yes         | no           | no      | no          |
 | `browser_tab`            | yes         | no           | no      | no          |
 | `app_log`                | yes         | no           | no      | no          |
+| `dictation_status`       | yes         | no           | no      | no          |
+| `dictation_start`        | yes         | no           | no      | no          |
+| `dictation_stop`         | yes         | no           | no      | no          |
+| `voice_model_status`     | yes         | no           | no      | no          |
+| `voice_model_download`   | yes         | no           | no      | no          |
+| `voice_model_cancel`     | yes         | no           | no      | no          |
+| `voice_model_remove`     | yes         | no           | no      | no          |
+| `voice_model_reveal`     | yes         | no           | no      | no          |
 
 A page on any other origin gets nothing; `cargo test` checks each refusal.
+The `dictation_*` commands are voice input in the chat (ADR-102 on macOS,
+ADR-103 on Windows and Linux, `src-tauri/src/dictate.rs`); the
+`voice_model_*` ones are Settings → Voice input on Windows and Linux
+(`src-tauri/src/voicemodel.rs`): the model's state, its download from
+huggingface.co on a click (SHA-256 checked against hashes compiled in),
+cancel, delete, and show in the file manager. On a Mac every
+`voice_model_*` command but the status refuses.
 A browser tab's page (`browser-<id>`, the in-app browser, ADR-075) is a
 window no capability names, so it gets nothing either, even on
 `127.0.0.1`. `browser_tab` (`{id, act}`, `src-tauri/src/browser.rs`) is how

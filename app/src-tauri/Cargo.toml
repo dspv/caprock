@@ -29,6 +29,24 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "6"
 tauri-plugin-updater = "2"
+# The voice model's download on Windows and Linux (src/voicemodel.rs,
+# ADR-103): one file from huggingface.co on the user's click, its SHA-256
+# checked against the hashes compiled in. All three are already in the tree
+# through the updater, with the same TLS choice (rustls on ring).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "system-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+sha2 = "0.10"
+
+# Voice input on Windows and Linux (src/dictate_whisper.rs, ADR-103):
+# whisper.cpp in this process, CPU only, fed from the microphone through
+# cpal (WASAPI; ALSA, which PulseAudio and PipeWire serve). Pinned exactly:
+# whisper-rs 0.16.0 (codeberg.org/tazz4843/whisper-rs) bundles whisper.cpp
+# 1.8.3 through whisper-rs-sys 0.15.0. Building it needs CMake and libclang
+# (app/README.md); the ggml CPU flags are .cargo/config.toml's.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = "=0.16.0"
+cpal = "=0.18.2"
+num_cpus = "1.17"
 
 # Linux notifications with a click and Approve/Deny over D-Bus
 # (src/notify_linux.rs); the notification plugin already pulls it in.
@@ -56,6 +74,11 @@ libc = "0.2"
 # on a machine where the terminal has no screen-recording permission.
 [features]
 snapshot = ["dep:objc2-core-graphics", "dep:objc2-core-foundation"]
+# Development aid, off in every shipped build: compiles the Windows/Linux
+# voice engine (whisper.cpp and cpal, src/dictate_whisper.rs) on a Mac too,
+# so `cargo clippy --features offline-voice` checks it there. The Mac app
+# never uses it: Apple's recogniser answers there (ADR-102).
+offline-voice = ["dep:whisper-rs", "dep:cpal", "dep:num_cpus"]
 
 # objc2, objc2-foundation, objc2-user-notifications and block2: notifications
 # with Approve and Deny through UNUserNotificationCenter (src/notify_macos.rs),
@@ -76,6 +99,11 @@ block2 = "0.6"
 objc2-speech = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-avf-audio", "SFErrors", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFSpeechRecognizer", "SFTranscription"] }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["std", "block2", "AVAudioEngine", "AVAudioNode", "AVAudioIONode", "AVAudioBuffer", "AVAudioFormat", "AVAudioTime", "AVAudioTypes"] }
 objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "AVCaptureDevice", "AVMediaFormat"] }
+# The offline-voice feature above: the Windows/Linux engine, compiled on a
+# Mac for checking only.
+whisper-rs = { version = "=0.16.0", optional = true }
+cpal = { version = "=0.18.2", optional = true }
+num_cpus = { version = "1.17", optional = true }
 
 [dev-dependencies]
 tauri = { version = "2.12", features = ["macos-private-api", "tray-icon", "image-png", "test"] }

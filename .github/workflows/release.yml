@@ -372,11 +372,22 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+      # libasound2-dev and libclang-dev: voice input's microphone and
+      # whisper.cpp (ADR-103), as in ci.yml's app job.
       - name: linux webview deps
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev libayatana-appindicator3-dev patchelf file
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libxdo-dev libssl-dev libayatana-appindicator3-dev patchelf file libasound2-dev libclang-dev
+      # As in ci.yml's app job: the runner image's LLVM for whisper.cpp's bindgen.
+      - name: windows whisper.cpp toolchain
+        if: runner.os == 'Windows'
+        run: |
+          llvm="C:/Program Files/LLVM/bin"
+          test -f "$llvm/libclang.dll" || { echo "no libclang.dll in $llvm"; exit 1; }
+          echo "LIBCLANG_PATH=$llvm" >> "$GITHUB_ENV"
+          "$llvm/clang.exe" --version | head -1
+          cmake --version | head -1
       # The dependencies ci.yml's app job compiled on master, same profile and
       # runner image (its Linux leg is ubuntu-22.04 for this; build scripts
       # compiled against 24.04's glibc would not run here): the build then

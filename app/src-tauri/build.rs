@@ -1,4 +1,12 @@
 fn main() {
+    // `whisper`: the offline voice engine (src/dictate_whisper.rs, ADR-103)
+    // is built — on Windows and Linux, and on a Mac with the offline-voice
+    // feature, for checking only.
+    println!("cargo::rustc-check-cfg=cfg(whisper)");
+    let mac = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos");
+    if !mac || std::env::var_os("CARGO_FEATURE_OFFLINE_VOICE").is_some() {
+        println!("cargo:rustc-cfg=whisper");
+    }
     // App commands are declared so the capabilities can grant them per origin
     // (`allow-<command>`); a command not granted is refused by the ACL.
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
@@ -36,6 +44,11 @@ fn main() {
             "dictation_status",
             "dictation_start",
             "dictation_stop",
+            "voice_model_status",
+            "voice_model_download",
+            "voice_model_cancel",
+            "voice_model_remove",
+            "voice_model_reveal",
         ]),
     ))
     .expect("tauri build");
