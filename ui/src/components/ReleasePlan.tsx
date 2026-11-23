@@ -32,11 +32,11 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { OUT_RECENT_MS, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type ReleaseStatus } from '@/lib/releasestatus'
+import { nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { stageWords, stripStages } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
-import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
+import { ageText, BLOCKS, onMaster, planForRepo, planSections, shownRows, type OSDot, type OSSquare, type LinePart, type PlanRow, type ReleasePlanData, type Wait } from '@/lib/releaseplan'
 import { api } from '@/lib/api'
 import type { SessionBranches } from '@/lib/branches'
 import { CI_IDLE_MS, CI_RUNNING_MS, usePoll } from '@/lib/usePoll'
@@ -771,6 +771,8 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const head = notesHeading(status, repo?.tags?.last ?? plan.last, now)
   const entries = notesOf(repo, head, status)
   const others = notInIt(plan.rows, batchPR?.number)
+  // What the open pull requests would make the version (owner, 2026-11-23, variant 1A).
+  const hint = head.state === 'waiting' ? nextHint(status, others.prs) : undefined
   // The words beside the dots name the batch and its state while the
   // release waits for it (*Waiting for #977 · CI red*): the via line would
   // say the same again (owner, 2026-11-20), so it goes, and the words open
@@ -790,6 +792,7 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
           {head.state !== 'idle' && <ReleaseStrip status={status} out={out} cards={board?.cards} batch={batch} now={now}
             href={viaInWords && via ? pipelineHref(plan.root, via.number) : undefined} kept={keptText ? `${keptText}, being read again` : undefined} />}
+          {hint && <NextHintLine hint={hint} />}
         </div>
         {entries.length > 0 && (
           <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
@@ -809,11 +812,11 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
  * The section's heading: *Next release 0.183.1 · patch · last release 8h
  * ago*, *Releasing 0.183.1 · patch*, *0.183.1 released · 5 min ago*,
  * *Nothing new since v0.183.0 · 8h ago*. It is one line at any width,
- * words going before anything is cut (owner, 2026-11-20): the age's *last
- * release* goes below 400px of panel (*Next release 0.183.1 · patch · 8h
- * ago*), the version's *release* below 340px (*Next 0.183.1 · patch · 8h
- * ago*, the 330px cockpit), and narrower still the age is cut with an
- * ellipsis.
+ * words going before anything is cut (owner, 2026-11-20): below 400px of
+ * panel a waiting release's age goes whole (owner, 2026-11-23: a bare *27m
+ * ago* read as the version's age; it stays on the version's hover), the
+ * version's *release* below 340px (*Next 0.183.1 · patch · fixes only*, the
+ * 330px cockpit).
  */
 function NotesHead({ head: h }: { head: NotesHeading }) {
   const dot = <span aria-hidden className="shrink-0 text-fg-faint">·</span>
@@ -836,7 +839,10 @@ function NotesHead({ head: h }: { head: NotesHeading }) {
         <h3 data-release-version title={h.title} aria-label={h.text}
           className={`num cursor-help ${big ? 'shrink-0 text-[13px] font-semibold text-fg' : 'min-w-0 truncate text-[12px] text-fg-muted'}`}>{narrow(h.text, h.short, 'hidden @[340px]/head:inline')}</h3>
         {h.why && <>{dot}<span data-release-why title={h.why.title} className="shrink-0 cursor-help">{h.why.text}</span></>}
-        {h.age && <>{dot}<span data-release-since title={h.age} className={`num min-w-0 ${big ? 'truncate' : 'shrink-0'}`}>{narrow(h.age, h.ageShort, 'hidden @[400px]/head:inline')}</span></>}
+        {h.age && (h.ageWide
+          // Only where it has room (owner, 2026-11-23): narrow, a bare *27m ago* read as the version's age.
+          ? <span data-release-since data-release-since-wide title={h.age} className="hidden min-w-0 items-baseline gap-x-1.5 @[400px]/head:flex">{dot}<span className="num min-w-0 truncate">{h.age}</span></span>
+          : <>{dot}<span data-release-since title={h.age} className={`num min-w-0 ${big ? 'truncate' : 'shrink-0'}`}>{h.age}</span></>)}
       </div>
     </header>
   )
@@ -920,8 +926,8 @@ function NotInItRows({ others, root }: { others: NotInIt; root: string }) {
       {!folded && (
         <>
           {others.prs.length > 0 && (
-            <ul className="grid min-w-0 gap-1.5">
-              {byUrgency(others.prs).map((r) => <CompactRow key={r.key} row={r} root={root} mark />)}
+            <ul data-release-pr-lines className="@container/prs grid min-w-0 font-sans">
+              {byUrgency(others.prs).map((r) => <PRLine key={r.key} row={r} root={root} />)}
             </ul>
           )}
           {others.branches.length > 0 && (
@@ -935,5 +941,75 @@ function NotInItRows({ others, root }: { others: NotInIt; root: string }) {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * The line under the version when the open pull requests would change it
+ * (owner, 2026-11-23, variant 1A): *0.190.0 once the 4 open PRs land*, and
+ * faint under it what they are, *3 features and 1 fix waiting: #1022 …*.
+ * The version above stays what the default branch holds.
+ */
+function NextHintLine({ hint }: { hint: NextHint }) {
+  return (
+    <div data-release-hint={hint.version} title={hint.title}
+      className="grid min-w-0 cursor-help gap-px rounded-[6px] border border-dashed border-[var(--app-hairline,var(--color-border))] px-2 py-1 text-[11.5px] leading-[1.35]">
+      <span data-release-hint-text className="min-w-0 truncate text-fg-muted"><span className="num text-fg">{hint.version}</span>{hint.text.slice(hint.version.length)}</span>
+      <span data-release-hint-sub className="line-clamp-2 min-w-0 text-[11px] text-fg-faint">{hint.sub}</span>
+    </div>
+  )
+}
+
+const KIND_TONE: Record<string, string> = {
+  feat: 'bg-[color-mix(in_srgb,var(--color-progress)_16%,transparent)] text-progress',
+  fix: 'bg-[color-mix(in_srgb,var(--color-warn)_16%,transparent)] text-warn',
+}
+const SQUARE_TONE: Record<OSSquare['tone'], string> = {
+  pass: 'bg-[color-mix(in_srgb,var(--color-ok)_18%,transparent)] text-ok',
+  running: 'bg-[color-mix(in_srgb,var(--color-warn)_20%,transparent)] text-warn',
+  fail: 'bg-[color-mix(in_srgb,var(--color-danger)_28%,transparent)] text-danger',
+  no_runner: 'bg-[color-mix(in_srgb,var(--color-norunner)_20%,transparent)] text-norunner',
+  wait: 'bg-panel-2 text-fg-faint',
+}
+
+/**
+ * One open pull request that is not in the release, on one line (owner,
+ * 2026-11-23, variant 2A): its number small and faint, its kind as a small
+ * label in place of *feat(app):*, the rest of its title in the UI's font with
+ * its first letter capitalised, cut with an ellipsis; at the right its age
+ * where the panel has room, and three squares M W L, its checks on macOS,
+ * Windows and Linux, each named on hover. A blocked one (a conflict,
+ * changes requested) says so in a word before the squares; with no check
+ * naming an OS, its state word stands in for them.
+ */
+function PRLine({ row: r, root }: { row: PlanRow; root: string }) {
+  const k = prKind(r.title)
+  const st = r.state
+  const age = st.age ?? r.age
+  const sq = r.squares
+  // The squares say a CI failure; any other block is said in a word.
+  const word = !sq || (st.rank === 0 && st.text !== 'CI failed') ? st : undefined
+  const ci = sq?.map((s) => s.title).join('; ')
+  const name = `${r.number ? `#${r.number} ` : ''}${r.title}`
+  const title = `${name}\n${st.text}${age ? ` · opened ${age.text} ago` : ''}${sq ? `\n${sq.map((s) => s.title).join('\n')}` : ''}`
+  return (
+    <li data-release-row={r.number ?? r.key} data-stage={r.stage} data-release-rank={st.rank} className="flex min-w-0 items-center gap-2 py-[3px] text-[12px] leading-[18px]">
+      <a href={r.number ? pipelineHref(root, r.number) : r.url} title={title} aria-label={`${name}: ${st.text}${ci ? `. ${ci}` : ''}`}
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[3px] text-fg no-underline hover:[&>[data-release-title]]:text-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent">
+        {r.number ? <span data-release-number className="num shrink-0 text-[10.5px] text-fg-faint">#{r.number}</span> : null}
+        {k.label && <span data-release-kind={k.label} className={`shrink-0 rounded-[4px] px-[5px] text-[10px] leading-[15px] ${KIND_TONE[k.label] ?? 'bg-panel-2 text-fg-muted'}`}>{k.label}</span>}
+        <span data-release-title className="min-w-0 truncate">{k.text}</span>
+      </a>
+      {word && <span data-release-state title={word.title} className={`shrink-0 whitespace-nowrap text-[10.5px] ${word.tone === 'danger' ? 'font-medium text-danger' : word.tone === 'warn' ? 'font-medium text-warn' : 'text-fg-faint'}`}>{word.text}</span>}
+      {age && <span data-release-age title={age.title} className="num hidden shrink-0 text-[10.5px] text-fg-faint @[340px]/prs:inline">{age.text}</span>}
+      {sq && (
+        <span data-release-os role="img" aria-label={`CI: ${ci}`} className="flex shrink-0 items-center gap-[3px]">
+          {sq.map((s) => (
+            <span key={s.os} data-os={s.os} data-os-state={s.tone} title={s.title}
+              className={`inline-flex size-[15px] items-center justify-center rounded-[3px] text-[9.5px] font-semibold leading-none ${SQUARE_TONE[s.tone]}`}>{s.letter}</span>
+          ))}
+        </span>
+      )}
+    </li>
   )
 }

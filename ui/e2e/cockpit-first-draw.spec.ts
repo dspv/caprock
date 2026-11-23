@@ -382,7 +382,7 @@ test('at 330 px: the Fix CI confirm is one line, one Pipeline link, and the Rele
   const rel = inspector.locator('section[aria-label="Release"]')
   const head = rel.locator('[data-release-head]')
   await expect(head).toBeVisible()
-  expect(await head.evaluate((e) => (e as HTMLElement).innerText.replace(/\s+/g, ' ').trim())).toMatch(/^Next 0\.185\.3 ?· ?patch ?· ?36m ago$/)
+  expect(await head.evaluate((e) => (e as HTMLElement).innerText.replace(/\s+/g, ' ').trim())).toMatch(/^Next 0\.185\.3 ?· ?patch · fixes only$/)
   expect(await cut(page, 'section[aria-label="Release"] [data-release-head] *'), 'the heading is not cut').toEqual([])
   const words = rel.locator('[data-release-stage-words]')
   await expect(words).toHaveText('Waiting for #977 · CI red')

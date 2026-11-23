@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, plainVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type BatchPR, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, nextHint, plainVersion, prKind, raiseVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type BatchPR, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -326,5 +326,64 @@ describe('the words beside the stage dots', () => {
   it('published within the hour: released, with its age, green', () => {
     const idle = releaseStatus(base({ merged: 0, unreleased: pending({}, 0), releases: [rel('v0.183.0', T - 5 * 60_000, 23)] }))
     expect(words(idle, { out: true })).toMatchObject({ key: 'published', index: 5, text: 'Released · 5 min ago', tone: 'ok' })
+  })
+})
+
+// Owner, 2026-11-23, variant 2A: a kind label in place of *feat(app):*.
+describe('a pull request title’s kind', () => {
+  it('reads the Conventional Commits kind, its bump and the rest capitalised', () => {
+    expect(prKind('feat(app): the menu bar panel shows itself')).toEqual({ label: 'feat', text: 'The menu bar panel shows itself', bump: 'minor' })
+    expect(prKind('fix: the voice strip')).toEqual({ label: 'fix', text: 'The voice strip', bump: 'patch' })
+    expect(prKind('chore(deps): bump github.com/klauspost/compress')).toEqual({ label: 'deps', text: 'Bump github.com/klauspost/compress', bump: 'patch' })
+    expect(prKind('build(deps-dev): bump vite')).toMatchObject({ label: 'deps', bump: 'patch' })
+    expect(prKind('perf(store): extend a session’s calls')).toMatchObject({ label: 'perf', bump: 'patch' })
+    expect(prKind('feat(api)!: drop the old route')).toMatchObject({ label: 'feat', text: 'Drop the old route', bump: 'major' })
+    expect(prKind('refactor: BREAKING the config file moves')).toMatchObject({ label: 'refactor', bump: 'major' })
+  })
+
+  it('says no kind for a title that opens with none, keeping its words', () => {
+    expect(prKind('brain: agents → shared brain')).toEqual({ text: 'brain: agents → shared brain' })
+    expect(prKind('input highlight')).toEqual({ text: 'input highlight' })
+  })
+})
+
+// Owner, 2026-11-23, variant 1A: *0.189.2* while a feature waits in a PR.
+describe('the version the open pull requests would make', () => {
+  const pre = { phase: 'pre' as const, version: '0.189.2', bump: 'patch' as const }
+  it('raises a version by a bigger bump only', () => {
+    expect(raiseVersion('0.189.2', 'patch', 'minor')).toBe('0.190.0')
+    expect(raiseVersion('0.190.0', 'minor', 'major')).toBe('1.0.0')
+    expect(raiseVersion('0.189.2', 'patch', 'major')).toBe('1.0.0')
+    expect(raiseVersion('0.190.0', 'minor', 'minor')).toBeUndefined()
+    expect(raiseVersion('0.190.0', 'minor', 'patch')).toBeUndefined()
+  })
+
+  it('names the version and what waits when a feature PR would make it a minor', () => {
+    const h = nextHint(pre, [
+      { number: 1022, title: 'feat(app): menu bar panel' },
+      { number: 1023, title: 'fix(app): voice strip' },
+      { number: 1024, title: 'feat: subagents as one tree' },
+      { number: 1017, title: 'chore(deps): bump compress' },
+      { number: 1030, title: 'input highlight' },
+    ])
+    expect(h).toMatchObject({ version: '0.190.0', bump: 'minor', text: '0.190.0 once the 4 open PRs land', sub: '2 features, 1 fix and 1 other waiting: #1022 #1023 #1024 #1017', numbers: [1022, 1023, 1024, 1017] })
+    expect(h!.title).toMatch(/^0\.189\.2 is what the default branch holds now \(patch\)\./)
+  })
+
+  it('says one PR by its number, and lists five numbers before +N', () => {
+    expect(nextHint(pre, [{ number: 7, title: 'feat: x' }])).toMatchObject({ text: '0.190.0 once #7 lands', sub: '1 feature waiting: #7' })
+    const many = Array.from({ length: 7 }, (_, i) => ({ number: i + 1, title: 'feat: x' }))
+    expect(nextHint(pre, many)!.sub).toBe('7 features waiting: #1 #2 #3 #4 #5 +2')
+    expect(nextHint({ ...pre, version: '0.190.0', bump: 'minor' }, [{ number: 8, title: 'fix!: y' }])).toMatchObject({ version: '1.0.0', bump: 'major', sub: '1 breaking change waiting: #8' })
+  })
+
+  it('says nothing when the open PRs would not change the version, or nothing is predicted', () => {
+    expect(nextHint(pre, [{ number: 1, title: 'fix: a' }, { number: 2, title: 'chore(deps): b' }])).toBeUndefined()
+    expect(nextHint({ ...pre, version: '0.190.0', bump: 'minor' }, [{ number: 1, title: 'feat: a' }])).toBeUndefined()
+    expect(nextHint(pre, [{ number: 1, title: 'a feature, no kind said' }])).toBeUndefined()
+    expect(nextHint(pre, [])).toBeUndefined()
+    expect(nextHint({ phase: 'pre' }, [{ number: 1, title: 'feat: a' }])).toBeUndefined()
+    expect(nextHint({ ...pre, phase: 'tagged' }, [{ number: 1, title: 'feat: a' }])).toBeUndefined()
+    expect(nextHint({ ...pre, pr: { number: 9, merged: false } }, [{ number: 1, title: 'feat: a' }])).toBeUndefined()
   })
 })

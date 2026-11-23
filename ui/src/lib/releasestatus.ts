@@ -100,6 +100,103 @@ export function bumpBetween(from: string | undefined, to: string): ReleaseStatus
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
+/** A pull request title's Conventional Commits kind, as the release panel lists it. */
+export interface PRKind {
+  /** "feat", "fix", "deps" (a `deps` scope), "perf", "chore", …; absent when the title says no known kind. */
+  label?: string
+  /** The rest of the title, its first letter capitalised; the whole title when no kind is said. */
+  text: string
+  /** The bump it calls for: major with `!` or BREAKING, minor for feat, patch for any other kind said. */
+  bump?: Bump | 'major'
+}
+
+/** The kinds a title may open with; any other word before a colon ("brain: …") is not a kind. */
+export const PR_KINDS = ['feat', 'fix', 'perf', 'chore', 'deps', 'docs', 'refactor', 'test', 'ci', 'build', 'style', 'revert', 'security'] as const
+
+const KIND_TITLE = /^([a-z]+)(?:\(([^)]*)\))?(!)?:\s*(.*)$/i
+
+/**
+ * "feat(app): the menu bar panel…" → feat, "The menu bar panel…", minor;
+ * "chore(deps): bump x" → deps, "Bump x", patch; "fix!: …" → major. A title
+ * opening with no known kind keeps its words and says no bump.
+ */
+export function prKind(title: string): PRKind {
+  const t = title.trim()
+  const m = KIND_TITLE.exec(t)
+  const type = m?.[1]?.toLowerCase()
+  if (!m || !type || !(PR_KINDS as readonly string[]).includes(type)) return { text: t }
+  const scope = m[2]?.trim().toLowerCase()
+  const rest = (m[4] ?? '').trim()
+  const breaking = !!m[3] || /\bBREAKING\b/.test(t)
+  const label = scope === 'deps' || scope === 'deps-dev' ? 'deps' : type
+  const bump: PRKind['bump'] = breaking ? 'major' : type === 'feat' ? 'minor' : 'patch'
+  return { label, text: rest ? rest[0]!.toUpperCase() + rest.slice(1) : t, bump }
+}
+
+const BUMP_RANK: Record<Bump | 'major', number> = { patch: 1, minor: 2, major: 3 }
+
+/** A predicted version raised from one bump to a bigger one: 0.189.2 (patch) → 0.190.0 (minor), → 1.0.0 (major). */
+export function raiseVersion(version: string, from: Bump | 'major', to: Bump | 'major'): string | undefined {
+  const v = parseVersion(version)?.v
+  if (!v || BUMP_RANK[to] <= BUMP_RANK[from]) return undefined
+  if (to === 'major') return `${v[0] + 1}.0.0`
+  return `${v[0]}.${v[1] + 1}.0`
+}
+
+/** The line under the version when the open pull requests would change it. */
+export interface NextHint {
+  version: string
+  bump: Bump | 'major'
+  /** "0.190.0 once the 4 open PRs land". */
+  text: string
+  /** "3 features and 1 fix waiting: #1022 #1023 #1024 #1025". */
+  sub: string
+  title: string
+  numbers: number[]
+}
+
+/** How many pull request numbers the hint lists before "+N". */
+export const HINT_NUMBERS = 5
+
+/**
+ * What the version would be once the open pull requests land (owner,
+ * 2026-11-23, variant 1A): the predicted version is what the default branch
+ * holds; a feature still in an open pull request does not count yet. When
+ * the pull requests' titles call for a bigger bump than the one predicted,
+ * the version they would make; nothing when they would not change it, when
+ * no version is predicted, or while a release is under way. A title with no
+ * kind is not counted: the rule cannot say what it is.
+ */
+export function nextHint(s: Pick<ReleaseStatus, 'phase' | 'version' | 'bump' | 'pr'>, prs: readonly { number?: number; title: string }[]): NextHint | undefined {
+  if (s.phase !== 'pre' || s.pr || !s.version || !s.bump) return undefined
+  const known = prs.map((p) => ({ number: p.number, kind: prKind(p.title) })).filter((p) => p.kind.bump)
+  if (!known.length) return undefined
+  const top = known.reduce<Bump | 'major'>((b, p) => (BUMP_RANK[p.kind.bump!] > BUMP_RANK[b] ? p.kind.bump! : b), s.bump)
+  const version = raiseVersion(s.version, s.bump, top)
+  if (!version) return undefined
+  const n = known.length
+  const count = (f: (k: PRKind) => boolean) => known.filter((p) => f(p.kind)).length
+  const breaking = count((k) => k.bump === 'major')
+  const feats = count((k) => k.bump === 'minor')
+  const fixes = count((k) => k.bump === 'patch' && k.label === 'fix')
+  const other = n - breaking - feats - fixes
+  const parts = [
+    breaking ? plural(breaking, 'breaking change') : '',
+    feats ? plural(feats, 'feature') : '',
+    fixes ? plural(fixes, 'fix', 'fixes') : '',
+    other ? `${other} other${other === 1 ? '' : 's'}` : '',
+  ].filter(Boolean)
+  const said = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]!
+  const numbers = known.map((p) => p.number).filter((x): x is number => x !== undefined)
+  const listed = numbers.slice(0, HINT_NUMBERS).map((x) => `#${x}`).join(' ')
+  const more = numbers.length > HINT_NUMBERS ? ` +${numbers.length - HINT_NUMBERS}` : ''
+  const text = n === 1 && numbers.length === 1 ? `${version} once #${numbers[0]} lands` : `${version} once the ${n} open PRs land`
+  const reason = top === 'major' ? 'a breaking change' : 'a feature'
+  const title = `${s.version} is what the default branch holds now (${s.bump}). The open pull requests listed below, by their titles, hold ${reason}: once they land the next release would be ${version}. `
+    + 'feat makes a minor release; fix, perf, chore and deps a patch; ! or BREAKING a major. A title that says no kind is not counted.'
+  return { version, bump: top, text, sub: `${said} waiting${listed ? `: ${listed}${more}` : ''}`, title, numbers }
+}
+
 /** Why the version is that number, from the changelog entries' kinds when read. */
 function whyOf(version: string | undefined, bump: ReleaseStatus['bump'], since: string | undefined, u: WorkRepo['unreleased'], ruleTitle?: string): ReleaseStatus['why'] {
   if (!version || !bump) return undefined

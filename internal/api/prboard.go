@@ -138,9 +138,18 @@ type BoardOS struct {
 	// Since is, while running, the earliest start of its unfinished checks
 	// (unix ms); absent when none has started.
 	Since int64 `json:"since,omitempty"`
-	// Checks is how many of its checks there are (skipped ones left out).
+	// Checks is how many of its checks there are (skipped ones left out),
+	// the ones that name no OS among them.
 	Checks int `json:"checks"`
+	// Names are the checks that hold it in its state, at most osNames: the
+	// failed ones when fail, the unfinished ones (started first) when
+	// running; absent otherwise. The release panel's squares name them on
+	// hover (2026-11-23).
+	Names []string `json:"names,omitempty"`
 }
+
+// osNames is how many check names a BoardOS carries.
+const osNames = 3
 
 // BoardRelease is one published release and the merges it shipped.
 type BoardRelease struct {
@@ -446,14 +455,34 @@ func osOfCheck(name string) string {
 	return ""
 }
 
-// checksByOS groups a pull request's checks by the OS their names say.
+// checksByOS groups a pull request's checks by the OS their names say. A
+// check that names no OS (lint, docs, an e2e job) runs for the change as a
+// whole, so it counts toward every OS the other checks name: a red lint makes
+// every square red rather than leaving three green ones over a red pull
+// request (2026-11-23). With no check naming an OS there is nothing to
+// group, and nothing is returned.
 func checksByOS(items []github.Check) []BoardOS {
+	named := map[string]bool{}
+	for _, k := range items {
+		if k.State != "skipped" {
+			if o := osOfCheck(k.Name); o != "" {
+				named[o] = true
+			}
+		}
+	}
 	var out []BoardOS
 	for _, o := range checkOS {
+		if !named[o.os] {
+			continue
+		}
 		b := BoardOS{OS: o.os}
 		fail, running, blocked := false, false, false
+		var failed, pending []github.Check
 		for _, k := range items {
-			if k.State == "skipped" || osOfCheck(k.Name) != o.os {
+			if k.State == "skipped" {
+				continue
+			}
+			if on := osOfCheck(k.Name); on != "" && on != o.os {
 				continue
 			}
 			b.Checks++
@@ -463,22 +492,25 @@ func checksByOS(items []github.Check) []BoardOS {
 					blocked = true
 				} else {
 					fail = true
+					failed = append(failed, k)
 				}
 			case "pending":
 				running = true
+				pending = append(pending, k)
 				if k.StartedAt > 0 && (b.Since == 0 || k.StartedAt < b.Since) {
 					b.Since = k.StartedAt
 				}
 			}
 		}
-		if b.Checks == 0 {
-			continue
-		}
 		switch {
 		case fail:
-			b.State, b.Since = "fail", 0
+			b.State, b.Since, b.Names = "fail", 0, checkNames(failed)
 		case running:
-			b.State = "running"
+			// Started ones first: they are what it is doing now.
+			slices.SortStableFunc(pending, func(x, y github.Check) int {
+				return cmpBool(x.StartedAt == 0, y.StartedAt == 0)
+			})
+			b.State, b.Names = "running", checkNames(pending)
 		case blocked:
 			b.State, b.Since = "no_runner", 0
 		default:
@@ -487,6 +519,31 @@ func checksByOS(items []github.Check) []BoardOS {
 		out = append(out, b)
 	}
 	return out
+}
+
+// checkNames are the first osNames distinct names of checks.
+func checkNames(ks []github.Check) []string {
+	var out []string
+	for _, k := range ks {
+		if len(out) == osNames {
+			break
+		}
+		if k.Name != "" && !slices.Contains(out, k.Name) {
+			out = append(out, k.Name)
+		}
+	}
+	return out
+}
+
+// cmpBool orders false before true.
+func cmpBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
 }
 
 // failedNames is how many failed checks a card names.
