@@ -811,7 +811,7 @@ function HeroSecondaries({ figures, end }: { figures: SpendFigures; end?: boolea
 }
 
 /**
- * The spend details under Now, unfolded by default, foldable to one strip
+ * The spend details under Now, unfolded by default, foldable to two lines
  * (FoldSpark). Two choices, per tab and in memory only (owner, 2026-10-22):
  * over when — *start · today · 7d · 30d* in the header, *start* (since the
  * session started, to now) for this session only and the default — and
@@ -880,11 +880,13 @@ function Spend({ s, sessionId, events, now, figures, summary }: { s: SessionSumm
           aria-label={folded ? `Spend ${foldedFigures(chartBy, pf).map((f) => (foldWord(f.id) ? `${f.value} ${foldWord(f.id)}` : f.value)).join(' · ')}` : undefined}
           title={folded ? `Show the spend details · ${label}` : 'Fold the spend details'}
           className={`-ml-1 flex min-w-[56px] flex-1 items-center gap-1.5 rounded-[6px] px-1 text-left outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${folded ? 'min-w-0 py-1' : 'py-0.5'}`}>
-          <Chevron open={!folded} />
           {folded ? (
             <FoldSpark bars={pf.series?.bars} metric={chartBy} figures={pf} pick={pick} usual={usual} />
           ) : (
-            <h4 className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spend</h4>
+            <>
+              <Chevron open={!folded} />
+              <h4 className="min-w-0 truncate text-[10.5px] font-semibold uppercase tracking-[0.08em] text-fg-faint">Spend</h4>
+            </>
           )}
         </button>
         {!folded && (
@@ -988,27 +990,39 @@ function foldWord(m: Metric): string {
 }
 
 /**
- * The folded Spend: the chart's bars, 20px tall, with its pace line and
- * tones, and three figures beside them — the chart's metric first in 13px
- * semibold, two quieter after it;
- * the third gives way in a cockpit under 340px (a container query on the
- * section). It replaced a faint one-line sentence that a 330px cockpit cut
- * off (owner, 2026-10-13: "folded, a more noticeable line with metrics").
+ * The folded Spend, on two lines (owner, 2026-11-23, variant A: one line
+ * held the chip, a 20px strip and three figures, which spilled past the
+ * edge of a narrow cockpit and left the chart too thin to read). The first
+ * line: the chevron, whose figures they are (FoldPeriod), and at the right
+ * the figures — the chart's metric first in 15px semibold, two quieter
+ * after it in 13px with their unit word. The figures never pass the edge:
+ * the last gives way first, the third in a section under 340px and the
+ * second under 290px (container queries on the section), and their row
+ * wraps a figure that still does not fit onto a clipped second line. The
+ * second line: the chart's bars, 32px tall and as wide as the cockpit, with
+ * the pace line, the tones and a hairline under them. It replaced a faint
+ * one-line sentence that a 330px cockpit cut off (owner, 2026-10-13:
+ * "folded, a more noticeable line with metrics").
  */
 function FoldSpark({ bars, metric, figures, pick, usual }: { bars?: readonly SpendBar[]; metric: ChartMetric; figures: PeriodFigures; pick: SpendPick; usual?: Usual }) {
   const figs = foldedFigures(metric, figures)
   const pace = bars ? paceOf(metric, bars, usual) : undefined
   return (
-    <span data-spend-folded className="flex min-w-0 flex-1 items-center gap-2.5">
-      <FoldPeriod pick={pick} />
-      <span className="h-[20px] min-w-[40px] flex-1 border-b border-[var(--app-hairline)]">
-        {bars && bars.length > 0 && <SpendBars bars={bars} metric={metric} height={20} pace={pace} />}
-      </span>
-      {figs.map((f, i) => (
-        <span key={f.id} data-fold-fig={f.id} className={`num shrink-0 whitespace-nowrap text-[13px] leading-[18px] ${i === 0 ? 'font-semibold text-fg' : 'font-medium text-fg-muted'} ${i === 2 ? '@max-[340px]:hidden' : ''}`}>
-          {f.value}{foldWord(f.id) && <span className="ml-0.5 text-[11.5px] font-normal text-fg-faint">{foldWord(f.id)}</span>}
+    <span data-spend-folded className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <span data-fold-top className="flex h-[20px] min-w-0 items-center gap-1.5">
+        <Chevron open={false} />
+        <FoldPeriod pick={pick} />
+        <span data-fold-figs className="flex h-[20px] min-w-0 flex-1 flex-wrap items-baseline justify-end gap-x-2.5 overflow-hidden">
+          {figs.map((f, i) => (
+            <span key={f.id} data-fold-fig={f.id} className={`num shrink-0 whitespace-nowrap leading-[20px] ${i === 0 ? 'text-[15px] font-semibold text-fg' : 'text-[13px] font-medium text-fg-muted'} ${i === 1 ? '@max-[290px]:hidden' : ''} ${i === 2 ? '@max-[340px]:hidden' : ''}`}>
+              {f.value}{foldWord(f.id) && <span className="ml-0.5 text-[11.5px] font-normal text-fg-faint">{foldWord(f.id)}</span>}
+            </span>
+          ))}
         </span>
-      ))}
+      </span>
+      <span data-fold-bars className="block h-[32px] min-w-0 border-b border-[var(--app-hairline)]">
+        {bars && bars.length > 0 && <SpendBars bars={bars} metric={metric} height={32} pace={pace} />}
+      </span>
     </span>
   )
 }
