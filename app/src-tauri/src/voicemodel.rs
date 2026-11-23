@@ -254,8 +254,11 @@ fn hex_of(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Whether a file on disk is exactly `spec`: size, then SHA-256.
-pub fn verify_file(path: &Path, spec: &Spec) -> Result<(), Fail> {
+/// Whether a file on disk is exactly `spec`: size, then SHA-256. The
+/// download checks as it goes (`Incoming`); this is the same check on a
+/// file at rest, for the tests.
+#[cfg(test)]
+fn verify_file(path: &Path, spec: &Spec) -> Result<(), Fail> {
     let meta = fs::metadata(path).map_err(|_| Fail::Disk)?;
     if meta.len() != spec.size {
         return Err(Fail::Checksum);
