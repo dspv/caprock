@@ -20,13 +20,13 @@ func write(t *testing.T, path, body string) {
 	}
 }
 
-func testEnv(t *testing.T, vars ...string) Env {
+func testEnv(t *testing.T) Env {
 	home := t.TempDir()
 	// The daemon's own XDG variables must not leak into a test's home.
 	for _, k := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
 		t.Setenv(k, "")
 	}
-	return Env{Home: home, Vars: vars, GOOS: "darwin"}
+	return Env{Home: home, GOOS: "darwin"}
 }
 
 const catalog = `{
