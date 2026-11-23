@@ -5,7 +5,7 @@
  * request rows' pills, and one line for the last release. Reads nothing
  * itself.
  */
-import { STATUS_TEXT, stageWords, stripStages, TONE_STATE, type BatchPR, type MainChecks, type ReleaseStatus, type StatusTone, type StripStage } from '@/lib/releasestatus'
+import { STATUS_TEXT, stageWords, stripStages, TONE_STATE, type BatchPR, type MainChecks, type ReleaseStatus, type StatusTone, type StripKey, type StripStage } from '@/lib/releasestatus'
 import type { BoardCard } from '@/lib/prboard'
 import { fmtAgo } from '@/lib/format'
 import { openExternal } from '@/lib/nudges'
@@ -68,7 +68,15 @@ const DOT_NOW: Record<StatusTone, string> = {
   ok: 'bg-ok shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-ok)_22%,transparent)]',
 }
 
-/** A dot's state on hover, in words: *Release PR: not started*, *Merged: done*. */
+/**
+ * Each stage's one word under its circle (owner, 2026-11-23, variant A): at
+ * most six letters, so five fit side by side in the 280px inspector. The
+ * full name (*Release PR*, *Published*) stays on hover and for a screen
+ * reader.
+ */
+const STEP_WORD: Record<StripKey, string> = { merged: 'Merged', pr: 'PR', tag: 'Tagged', builds: 'Build', published: 'Out' }
+
+/** A step's state in words, on hover and for a screen reader: *Release PR: not started*, *Merged: done*. */
 function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
   if (current) return TONE_STATE[tone]
   if (x.state === 'done') return 'done'
@@ -76,18 +84,21 @@ function dotState(x: StripStage, current: boolean, tone: StatusTone): string {
 }
 
 /**
- * The right panel's stages (owner, 2026-11-19, variant A, translated: "dots,
- * one word — looks more logical"; the word strip of 2026-11-18 wrapped
- * *Published* to a second line at 330px): five dots joined by short lines —
- * Merged, Release PR, Tagged, Building, Published (lib/releasestatus
- * stripStages) — done ones green with a green line after them, the one it
- * is at in the status's colour (owner, 2026-11-20: hollow grey when nothing
- * is happening, blue and pulsing in progress, amber waiting, red stopped,
- * green done), the rest the track's; each dot says its stage and its state
- * in words on hover (*Release PR: not started*). Beside them the status,
- * plain words first and the detail after (stageWords): *Ready to release ·
- * not started*, cut with an ellipsis before it wraps. `version` puts a tag
- * already under way first, where no heading above names it.
+ * The right panel's stages (owner, 2026-11-23, variant A, translated: the
+ * dots and the words shared one line and the words were cut — *Waiting for
+ * #1035 · checks run…*): a stepper across the panel's width, five circles
+ * joined by a line — Merged, PR, Tagged, Build, Out (lib/releasestatus
+ * stripStages) — each with its one word under it. Done ones green with the
+ * line after them green, the one it is at in the status's colour (owner,
+ * 2026-11-20: hollow grey when nothing is happening, blue and pulsing in
+ * progress, amber waiting, red stopped, green done), the rest hollow; each
+ * step says its stage and its state on hover (*Release PR: not started*).
+ * An ordered list, the current step `aria-current="step"`, each step's name
+ * and state in text for a screen reader. Under it, on its own line and
+ * whole (two lines rather than an ellipsis), the status, plain words first
+ * and the detail after (stageWords): *Ready to release · not started*.
+ * `version` puts a tag already under way first, where no heading above
+ * names it.
  */
 export function ReleaseStrip({ status: s, version, out, cards, batch, main, now = Date.now(), href, kept }: {
   status: ReleaseStatus; version?: boolean; out?: boolean
@@ -108,31 +119,43 @@ export function ReleaseStrip({ status: s, version, out, cards, batch, main, now 
   if (!stages.length || !w) return null
   const at = w.index - 1
   const current = stages[at]?.state === 'current'
+  const wordsTitle = [w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')
+  const wordsTone = current ? STATUS_TEXT[w.tone] : 'text-ok'
   return (
     <div data-release-strip data-release-current={current ? w.key : ''} data-release-tone={w.tone} data-release-kept={kept ? '' : undefined} role="group"
       aria-label={`Release stage ${w.index} of ${stages.length}: ${w.name}, ${current ? TONE_STATE[w.tone] : 'done'}`}
-      className={`flex h-[16px] min-w-0 items-center text-[11.5px] leading-[16px]${kept ? ' opacity-70 saturate-50' : ''}`}>
-      {version && s.version && <span className="num mr-2 shrink-0 font-semibold text-fg">{s.version}</span>}
-      <span aria-hidden className="flex shrink-0 items-center">
+      className={`grid min-w-0 gap-1.5 text-[11.5px] leading-[16px]${kept ? ' opacity-70 saturate-50' : ''}`}>
+      <ol data-release-steps aria-label="Release stages" className="m-0 grid min-w-0 list-none p-0" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
         {stages.map((x, i) => {
           const done = x.state === 'done'
           const now_ = i === at && current
+          const state = dotState(x, now_, w.tone)
+          const lineDone = i > 0 && stages[i - 1]!.state === 'done'
           return (
-            <span key={x.key} className="flex items-center">
-              {i > 0 && <span data-strip-line={stages[i - 1]!.state === 'done' ? 'done' : 'todo'} className={`h-[2px] w-[18px] ${stages[i - 1]!.state === 'done' ? 'bg-ok' : 'bg-border-strong'}`} />}
-              <span data-strip-stage={x.key} data-step-state={x.state} data-step-unknown={x.unknown ? '' : undefined}
-                title={`${x.text}: ${dotState(x, now_, w.tone)}\n${now_ && w.title ? w.title : x.title}`}
-                className={`box-border block size-[8px] shrink-0 rounded-full ${now_ ? DOT_NOW[w.tone] : done ? 'bg-ok' : 'bg-border-strong'}`} />
-            </span>
+            <li key={x.key} data-strip-step={x.key} aria-current={now_ ? 'step' : undefined}
+              title={`${x.text}: ${state}\n${now_ && w.title ? w.title : x.title}`}
+              className="relative flex min-w-0 flex-col items-center gap-[5px]">
+              {/* The line from the step before, stopping short of both circles. */}
+              {i > 0 && <span aria-hidden data-strip-line={lineDone ? 'done' : 'todo'}
+                className={`absolute top-[5px] right-[calc(50%+9px)] left-[calc(-50%+9px)] h-[2px] rounded-full ${lineDone ? 'bg-ok' : 'bg-border-strong'}`} />}
+              <span aria-hidden data-strip-stage={x.key} data-step-state={x.state} data-step-unknown={x.unknown ? '' : undefined}
+                className={`box-border block size-[12px] shrink-0 rounded-full ${now_ ? DOT_NOW[w.tone] : done ? 'bg-ok' : `border-[1.5px] border-border-strong${x.unknown ? ' border-dashed' : ''}`}`} />
+              <span aria-hidden data-strip-word className={`max-w-full truncate text-[10.5px] leading-[13px] ${now_ ? (w.tone === 'idle' ? 'text-fg' : STATUS_TEXT[w.tone]) : done ? 'text-fg-muted' : 'text-fg-faint'}`}>{STEP_WORD[x.key]}</span>
+              <span className="sr-only">{`${x.text}: ${state}`}</span>
+            </li>
           )
         })}
-      </span>
+      </ol>
       {/* In progress, the heading above already says *Releasing 0.185.3*: the
-        * strip says only where it is (*building 0 of 23 files*), which fits
-        * the cockpit's width — the lead with it was cut (owner, 2026-11-21). */}
-      {href && w.key === 'merged'
-        ? <a data-release-stage-words href={href} title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums no-underline hover:underline ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{w.text}</a>
-        : <span data-release-stage-words title={[w.title ?? stages[at]?.title, kept].filter(Boolean).join('\n')} className={`ml-2.5 min-w-0 truncate tabular-nums ${current ? STATUS_TEXT[w.tone] : 'text-ok'}`}>{current && (w.tone === 'active' || w.detailOnly) && w.detail ? w.detail : w.text}</span>}
+        * words say only where it is (*building 0 of 23 files*) — the lead
+        * with them was cut (owner, 2026-11-21). On their own line they wrap,
+        * never cut (owner, 2026-11-23). */}
+      <p className="m-0 min-w-0 [overflow-wrap:anywhere]">
+        {version && s.version && <span className="num mr-2 font-semibold text-fg">{s.version}</span>}
+        {href && w.key === 'merged'
+          ? <a data-release-stage-words href={href} title={wordsTitle} className={`tabular-nums no-underline hover:underline ${wordsTone}`}>{w.text}</a>
+          : <span data-release-stage-words title={wordsTitle} className={`tabular-nums ${wordsTone}`}>{current && (w.tone === 'active' || w.detailOnly) && w.detail ? w.detail : w.text}</span>}
+      </p>
     </div>
   )
 }
