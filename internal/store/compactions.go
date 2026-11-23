@@ -40,10 +40,18 @@ type Compaction struct {
 // SQLite evaluated it for every candidate turn and walked
 // idx_events_attr_work — 1.6 to 2.7 s for 77 boundaries on a copy of the
 // owner's 2.3 GB database while the daemon ran, 2 ms this way (2026-10-27).
+//
+// A Cursor boundary without post_tokens is not looked for a turn after: the
+// reader writes post_tokens whenever Cursor measured the prompt after it, and
+// its chat holds only Cursor's own turns, which the turn lookup leaves out,
+// so the walk found nothing — after reading every event of the chat from the
+// boundary to the next one, or to its end, on every read. On the owner's
+// database 166 of 399 boundaries were such (2026-11-23), and those walks
+// were most of what the machine figure read, about 20 MB each time.
 func compactionQuery(where string) string {
 	return `
 	SELECT b.ts, b.trigger, b.pre, b.dur,
-		COALESCE(b.post, (
+		COALESCE(b.post, CASE WHEN b.src = 'cursor' THEN NULL ELSE (
 			SELECT COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0)
 			FROM events t INDEXED BY idx_events_session_ts
 			WHERE t.sid = b.sid AND t.ts >= b.ts AND t.ts < b.next
@@ -51,9 +59,9 @@ func compactionQuery(where string) string {
 			  AND COALESCE(t.tokens_in, 0) + COALESCE(t.cache_read, 0) + COALESCE(t.cache_write, 0) > 0
 			  AND COALESCE(t.agent_id, '') = '' AND json_extract(t.payload, '$.sidechain') IS NOT 1
 			ORDER BY t.ts, t.id LIMIT 1
-		), 0)
+		) END, 0)
 	FROM (
-		SELECT e.sid, e.ts,
+		SELECT e.sid, e.ts, e.source AS src,
 			COALESCE(json_extract(e.payload, '$.trigger'), '') AS trigger,
 			COALESCE(json_extract(e.payload, '$.pre_tokens'), 0) AS pre,
 			COALESCE(json_extract(e.payload, '$.duration_ms'), 0) AS dur,

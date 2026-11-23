@@ -26,8 +26,10 @@ type ioSample struct {
 }
 
 // bySourceTop is how many sources by_source lists; the rest are summed into
-// one "other sources" row.
-const bySourceTop = 10
+// one "other sources" row. Thirty, not ten: on the owner's daemon the rest
+// read more than any one source listed (3.4 GB an hour over 240,000
+// statements, 2026-11-23), and could not be told apart.
+const bySourceTop = 30
 
 // ioRing is the last hour of readings, oldest first.
 type ioRing struct {
@@ -76,8 +78,8 @@ type FootprintDiskIO struct {
 	// daemon has read and written since it started.
 	SinceStart *IOWindow `json:"since_start,omitempty"`
 	// BySource is LastHour's reads split by what was running when they
-	// were made (internal/diskio), largest first: the top ten, the rest in
-	// one "other sources" row. Absent with LastHour.
+	// were made (internal/diskio), largest first: the top thirty
+	// (bySourceTop), the rest in one "other sources" row. Absent with LastHour.
 	BySource []diskio.Source `json:"by_source,omitempty"`
 	Error    string          `json:"error,omitempty"`
 }
