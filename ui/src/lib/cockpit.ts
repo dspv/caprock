@@ -522,7 +522,7 @@ export function subagentDoing(a: Pick<Subagent, 'doing' | 'doing_from' | 'descri
  * working come first in the count: up to `max` of them, the earliest
  * started; the recently finished fill the places left, muted, in the same
  * start order. `more` counts the working left out — finished ones past the
- * strip are the Subagents section's business, not a count to chase.
+ * strip are Now's subagent tree's business, not a count to chase.
  */
 export function subagentChips(subs: SubagentsNow | undefined, permission?: Permission | null, max = MAX_SUBAGENT_CHIPS): { chips: SubagentChip[]; more: number } {
   if (!subs) return { chips: [], more: 0 }

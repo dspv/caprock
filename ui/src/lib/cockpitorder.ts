@@ -11,10 +11,10 @@
  */
 import { useSyncExternalStore } from 'react'
 
-export type CockpitSection = 'now' | 'context' | 'limits' | 'spend' | 'subagents' | 'tasks' | 'tools' | 'changes' | 'ci' | 'release' | 'processes'
+export type CockpitSection = 'now' | 'context' | 'limits' | 'spend' | 'tasks' | 'tools' | 'changes' | 'ci' | 'release' | 'processes'
 
 /** The order the cockpit opens in, and what *Reset to default order* restores. */
-export const DEFAULT_ORDER: readonly CockpitSection[] = ['now', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools', 'changes', 'ci', 'release', 'processes']
+export const DEFAULT_ORDER: readonly CockpitSection[] = ['now', 'context', 'limits', 'spend', 'tasks', 'tools', 'changes', 'ci', 'release', 'processes']
 
 /** Each section's name, as its heading and the Arrange list say it. */
 export const SECTION_NAMES: Record<CockpitSection, string> = {
@@ -22,7 +22,6 @@ export const SECTION_NAMES: Record<CockpitSection, string> = {
   context: 'Context',
   limits: 'Plan limits',
   spend: 'Spend',
-  subagents: 'Subagents',
   tasks: 'Tasks',
   tools: 'Recent tools',
   changes: 'Changes',

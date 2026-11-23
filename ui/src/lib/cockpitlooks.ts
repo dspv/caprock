@@ -19,7 +19,6 @@ export type Look = 'compact' | 'full'
 export interface CockpitLooks {
   context: Look
   limits: Look
-  subagents: Look
   tools: Look
   now: Look
   tasks: Look
@@ -30,7 +29,7 @@ export interface CockpitLooks {
 }
 
 export const DEFAULT_LOOKS: CockpitLooks = {
-  context: 'compact', limits: 'compact', subagents: 'full', tools: 'full',
+  context: 'compact', limits: 'compact', tools: 'full',
   now: 'full', tasks: 'full', changes: 'full', ci: 'full', release: 'full', processes: 'full',
 }
 

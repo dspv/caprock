@@ -4,7 +4,8 @@ import type { Event, SessionSummary, Subagent, SubagentDetail, SubagentsNow } fr
 import type { Frame } from '@/lib/live'
 
 // "Can we expand the subagents to look inside?" (owner, 2026-10-12,
-// translated): each row of the cockpit's Subagents section opens in place.
+// translated): each entry of Now's subagent tree opens in place (owner,
+// 2026-11-23: the Subagents section merged into Now as one tree).
 
 const now = Date.now()
 
@@ -102,40 +103,49 @@ function rowButton(section: HTMLElement, text: string) {
   return within(section).getAllByRole('button').find((b) => b.getAttribute('aria-expanded') !== null && b.textContent?.includes(text))!
 }
 
-describe('opening a subagent', () => {
-  it('opens one row at a time, by click or keyboard, with its task, calls, result and numbers', async () => {
+/** The Now section, once its subagent tree is drawn. */
+async function nowTree() {
+  const section = await screen.findByRole('region', { name: 'Now' })
+  await within(section).findByRole('list', { name: 'Subagents' })
+  return section
+}
+
+describe('opening a subagent in Now’s tree', () => {
+  it('opens an entry in place to its latest steps, newest last, and the whole detail behind "Task, result and numbers"', async () => {
     h.subagents = { working: [working('a1'), working('b2', { agent_type: 'Explore', description: 'Task b2' })], finished: 0 }
     h.details = { a1: detail('a1'), b2: detail('b2', { agent_type: 'Explore', state: 'finished', stopped_at: now - 2_000, result: 'Done: the clip is fixed.' }) }
     show()
-    const section = await screen.findByRole('region', { name: 'Subagents' })
+    const section = await nowTree()
     const a = rowButton(section, 'Task a1')
     expect(a).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(a)
     expect(a).toHaveAttribute('aria-expanded', 'true')
-    const feed = await screen.findByRole('list', { name: 'Subagent activity' })
+    const steps = await within(section).findByRole('list', { name: 'Latest steps' })
     const panel = document.getElementById(a.getAttribute('aria-controls')!)!
-    expect(panel).toContainElement(feed)
-    // Newest at the bottom: the open call, then nothing after it.
-    const calls = within(feed).getAllByRole('listitem')
+    expect(panel).toContainElement(steps)
+    // A few, read with a small limit; newest at the bottom.
+    expect(h.asked.at(-1)).toEqual({ agent: 'a1', limit: 4 })
+    const calls = within(steps).getAllByRole('listitem')
     expect(calls.map((c) => c.textContent)).toEqual([expect.stringContaining('ReadCockpit.tsx'), expect.stringContaining('go vet'), expect.stringContaining('go test')])
     expect(within(calls[1]!).getByLabelText('failed')).toBeInTheDocument()
     expect(calls[2]).toHaveAttribute('data-live', 'true')
+
+    // The whole detail, one press further.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Task, result and numbers' }))
+    const feed = await within(panel).findByRole('list', { name: 'Subagent activity' })
+    expect(within(feed).getAllByRole('listitem')).toHaveLength(3)
     expect(panel).toHaveTextContent('Still working…')
     expect(panel).toHaveTextContent('Opus 5.5 · 2m 4')
     expect(panel).toHaveTextContent('3 calls · $1.05')
     expect(within(panel).getByRole('list', { name: 'Costliest tools' })).toHaveTextContent('Bash · 2 calls$0.80')
-    expect(within(panel).getByRole('list', { name: 'Costliest tools' })).toHaveTextContent('Writing')
 
-    // Opening another closes the first; Enter on a focused row is a click on its button.
+    // Another opens beside it; a second press folds it.
     const b = rowButton(section, 'Task b2')
-    b.focus()
     fireEvent.click(b)
-    expect(a).toHaveAttribute('aria-expanded', 'false')
+    expect(a).toHaveAttribute('aria-expanded', 'true')
     expect(b).toHaveAttribute('aria-expanded', 'true')
-    expect(await screen.findByText('Done: the clip is fixed.')).toBeInTheDocument()
-    expect(document.getElementById(b.getAttribute('aria-controls')!)).toHaveTextContent('Done: the clip is fixed.')
-    fireEvent.click(b)
-    expect(b).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(a)
+    expect(a).toHaveAttribute('aria-expanded', 'false')
     expect(document.querySelector('[data-subagent-detail]')).toBeNull()
   })
 
@@ -143,100 +153,99 @@ describe('opening a subagent', () => {
     h.subagents = { working: [working('a1')], finished: 0 }
     h.details = { a1: detail('a1', { earlier: 1, result: undefined }) }
     show()
-    const section = await screen.findByRole('region', { name: 'Subagents' })
+    const section = await nowTree()
     fireEvent.click(rowButton(section, 'Task a1'))
+    fireEvent.click(await within(section).findByRole('button', { name: 'Task, result and numbers' }))
     const task = await screen.findByText(/Step 1: read the file/)
     expect(task).toHaveAttribute('data-clamped', 'true')
     expect(task.className).toContain('line-clamp-6')
-    const more = screen.getByRole('button', { name: 'Show all of the task' })
-    fireEvent.click(more)
+    fireEvent.click(screen.getByRole('button', { name: 'Show all of the task' }))
     expect(task).not.toHaveAttribute('data-clamped')
-    expect(screen.getByRole('button', { name: 'Show less of the task' })).toHaveAttribute('aria-expanded', 'true')
 
     fireEvent.click(screen.getByRole('button', { name: 'Show earlier · 1' }))
     const feed = screen.getByRole('list', { name: 'Subagent activity' })
     await waitFor(() => expect(within(feed).getAllByRole('listitem')).toHaveLength(4))
     expect(within(feed).getAllByRole('listitem')[0]).toHaveTextContent('Glob')
     expect(h.asked.at(-1)).toEqual({ agent: 'a1', before: 10, limit: 30 })
-    expect(screen.queryByRole('button', { name: /Show earlier/ })).toBeNull()
   })
 
-  it('follows the live socket: a new call appends at the bottom, its result closes it, a stop reads the answer', async () => {
+  it('follows the live socket: a new step appends at the bottom and the oldest drops off, its result closes it', async () => {
     h.subagents = { working: [working('a1')], finished: 0 }
     h.details = { a1: detail('a1') }
     show()
-    const section = await screen.findByRole('region', { name: 'Subagents' })
+    const section = await nowTree()
     fireEvent.click(rowButton(section, 'Task a1'))
-    const feed = await screen.findByRole('list', { name: 'Subagent activity' })
+    const steps = await within(section).findByRole('list', { name: 'Latest steps' })
     const ev = (p: Partial<Event> & { kind: string }): Event => ({ id: 99, ts: new Date().toISOString(), session_id: 's1', agent_id: 'a1', source: 'hook', payload: {}, ...p }) as Event
     emit({ type: 'event', data: ev({ id: 20, kind: 'tool.pre', tool: 'Edit', payload: { tool_use_id: 'u9', tool_input: { file_path: '/w/ui/Cockpit.tsx' } } }) })
     emit({ type: 'event', data: ev({ id: 21, kind: 'tool.pre', tool: 'Read', agent_id: 'other', payload: { tool_use_id: 'x' } }) })
-    let rows = within(feed).getAllByRole('listitem')
+    emit({ type: 'event', data: ev({ id: 22, kind: 'tool.pre', tool: 'Grep', payload: { tool_use_id: 'u10', tool_input: { pattern: 'clip' } } }) })
+    const rows = within(steps).getAllByRole('listitem')
     expect(rows).toHaveLength(4)
-    expect(rows[3]).toHaveTextContent('EditCockpit.tsx')
+    expect(rows[0]).toHaveTextContent('go vet')
+    expect(rows[2]).toHaveTextContent('EditCockpit.tsx')
+    expect(rows[3]).toHaveTextContent('Grep')
     expect(rows[3]).toHaveAttribute('data-live', 'true')
-    expect(screen.getByText(/Activity · 4 calls/)).toBeInTheDocument()
-    emit({ type: 'event', data: ev({ id: 22, kind: 'tool.post', tool: 'Edit', payload: { tool_use_id: 'u9' } }) })
-    rows = within(feed).getAllByRole('listitem')
-    expect(rows[3]).not.toHaveAttribute('data-live')
-
-    h.details = { a1: detail('a1', { state: 'finished', stopped_at: now, result: 'All green.' }) }
-    const before = h.asked.length
-    emit({ type: 'event', data: ev({ id: 23, kind: 'agent.stop' }) })
-    expect(await screen.findByText('All green.')).toBeInTheDocument()
-    expect(h.asked.length).toBe(before + 1)
+    emit({ type: 'event', data: ev({ id: 23, kind: 'tool.post', tool: 'Grep', payload: { tool_use_id: 'u10' } }) })
+    expect(within(steps).getAllByRole('listitem')[3]).not.toHaveAttribute('data-live')
+    // Read once; the socket did the rest.
+    expect(h.asked.filter((x) => x.agent === 'a1')).toHaveLength(1)
   })
 
-  it('opens finished rows too, and "+N finished" lists the rest as rows', async () => {
+  it('folds the finished into one "N done" entry that opens to them, and Show all lists the rest', async () => {
     h.subagents = {
       working: [working('a1')], finished: 5,
       recent: [
-        { agent_id: 'd1', agent_type: 'Explore', description: 'Done one', tool_calls: 4, started_at: now - 300_000, stopped_at: now - 200_000 },
-        { agent_id: 'd2', agent_type: 'Plan', description: 'Done two', tool_calls: 2, started_at: now - 300_000, stopped_at: now - 250_000 },
+        { agent_id: 'd1', agent_type: 'Explore', description: 'Done one', tool_calls: 4, started_at: now - 300_000, stopped_at: now - 200_000, cost_usd: 0.5 },
+        { agent_id: 'd2', agent_type: 'Plan', description: 'Done two', tool_calls: 2, started_at: now - 300_000, stopped_at: now - 250_000, cost_usd: 0.25 },
       ],
     }
     h.details = { d1: detail('d1', { state: 'finished', stopped_at: now - 200_000, result: 'Found it in Cockpit.tsx.' }) }
     show()
-    const section = await screen.findByRole('region', { name: 'Subagents' })
-    const doneRows = () => within(section).getByRole('list', { name: 'Subagent rows' }).querySelectorAll('[data-done="true"]')
-    expect(doneRows()).toHaveLength(2)
-    fireEvent.click(rowButton(section, 'Done one'))
+    const section = await nowTree()
+    const tree = within(section).getByRole('list', { name: 'Subagents' })
+    expect(tree.querySelectorAll(':scope > [data-subagent]')).toHaveLength(1)
+    const done = rowButton(section, '5 done')
+    expect(done).toHaveAttribute('aria-expanded', 'false')
+    // Three of the five are not listed: no sum that reads as all of theirs.
+    expect(done).not.toHaveTextContent('$')
+    expect(within(section).queryByRole('list', { name: 'Finished subagents' })).toBeNull()
+    fireEvent.click(done)
+    const finished = within(section).getByRole('list', { name: 'Finished subagents' })
+    expect(finished.querySelectorAll('[data-done="true"]')).toHaveLength(2)
+    fireEvent.click(rowButton(finished, 'Done one'))
+    fireEvent.click(await within(finished).findByRole('button', { name: 'Task, result and numbers' }))
     expect(await screen.findByText('Found it in Cockpit.tsx.')).toBeInTheDocument()
 
-    const more = within(section).getByRole('button', { name: '+3 finished' })
-    expect(more).toHaveAttribute('aria-expanded', 'false')
     h.subagents = {
       ...h.subagents,
       recent: [...h.subagents.recent!, ...[3, 4, 5].map((i) => ({ agent_id: `d${i}`, agent_type: 'Explore', description: `Done ${i}`, tool_calls: 1, started_at: now - 400_000, stopped_at: now - 390_000 }))],
     }
-    fireEvent.click(more)
-    await waitFor(() => expect(doneRows()).toHaveLength(5))
+    fireEvent.click(within(section).getByRole('button', { name: 'Show all' }))
+    await waitFor(() => expect(finished.querySelectorAll('[data-done="true"]')).toHaveLength(5))
     expect(h.recentAsked.at(-1)).toBe(30)
-    expect(within(section).getByRole('button', { name: 'fewer finished' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(section).getByRole('button', { name: 'Show fewer' })).toBeInTheDocument()
   })
 
   // "They jump — their order jumps too, bad, I want fixed positions" (owner,
   // 2026-10-14, translated).
-  it('keeps every row in its place while states change, appends a new one, and dims a finished one where it stood', async () => {
+  it('keeps every working entry in its place while states change, appends a new one, and folds a finished one into done', async () => {
     const at = (id: string, started: number, extra: Partial<Subagent> = {}) => working(id, { started_at: now - started, ...extra })
     // The daemon lists the newest activity first: the reverse of their starts.
     h.subagents = { working: [at('c', 10_000), at('b', 20_000), at('a', 30_000)], finished: 0 }
     show()
-    const section = await screen.findByRole('region', { name: 'Subagents' })
-    const order = () => within(section).getAllByRole('listitem').map((li) => li.getAttribute('data-subagent'))
+    const section = await nowTree()
+    const tree = () => within(section).getByRole('list', { name: 'Subagents' })
+    const order = () => [...tree().querySelectorAll(':scope > [data-subagent]')].map((li) => li.getAttribute('data-subagent'))
     expect(order()).toEqual(['a', 'b', 'c'])
-    // a turns busiest and costliest, b finishes, c's window start slides past
-    // the newcomer d's: nothing moves, d lands last, b stays dimmed with ✓.
     h.subagents = {
       working: [at('d', 5_000), at('a', 30_000, { tool_calls: 90, cost_usd: 4 }), at('c', 1_000, { asking: true })],
       finished: 1,
       recent: [{ agent_id: 'b', agent_type: 'Explore', description: 'Task b', tool_calls: 3, started_at: now - 20_000, stopped_at: now - 500 }],
     }
     emit({ type: 'event', data: { id: 50, ts: new Date().toISOString(), session_id: 's1', agent_id: 'a', source: 'hook', kind: 'tool.pre', tool: 'Read', payload: {} } as Event })
-    await waitFor(() => expect(order()).toEqual(['a', 'b', 'c', 'd']), { timeout: 4_000 })
-    const b = within(section).getAllByRole('listitem')[1]!
-    expect(b).toHaveAttribute('data-done', 'true')
-    expect(within(b).getByLabelText('finished')).toHaveTextContent('✓')
+    await waitFor(() => expect(order()).toEqual(['a', 'c', 'd']), { timeout: 4_000 })
+    expect(rowButton(section, '1 done')).toHaveTextContent('1 done · Task b')
   })
 })
 
@@ -264,13 +273,13 @@ describe('the hero’s subagent chips', () => {
     expect([...chips.children].map((g) => g.children.length)).toEqual([5, 5, 4])
     expect(chips).not.toHaveAttribute('data-compact')
 
-    const section = screen.getByRole('region', { name: 'Subagents' })
-    // w9 is past the first five rows; its chip shows every row and opens it.
+    const section = screen.getByRole('region', { name: 'Now' })
+    // w9 is past the first five entries; its chip shows every one and opens it.
     expect(rowButton(section, 'Task w9')).toBeUndefined()
     fireEvent.click(within(chips).getAllByRole('button')[9]!)
     const row = rowButton(section, 'Task w9')
     expect(row).toHaveAttribute('aria-expanded', 'true')
-    expect(await within(section).findByRole('list', { name: 'Subagent activity' })).toBeInTheDocument()
+    expect(await within(section).findByRole('list', { name: 'Latest steps' })).toBeInTheDocument()
     vi.restoreAllMocks()
   })
 

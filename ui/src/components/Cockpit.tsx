@@ -16,7 +16,7 @@ import { api, type Event, type Permission, type RateWindow, type SessionSummary,
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
-import { fmtAgo, fmtPct, fmtTokens, fmtUSD, fmtUSDShort } from '@/lib/format'
+import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { contextSize } from '@/lib/gaps'
 import { isUnpricedTurn } from '@/lib/sessionCost'
 import { useNow } from '@/lib/useNow'
@@ -48,10 +48,10 @@ import { LoopAlertCard } from './LoopAlertCard'
 import { useLoopHidden } from '@/lib/loopalert'
 import { overlapChip, useOverlap } from '@/lib/overlap'
 import { sessionTitle } from '@/lib/sidebar'
-import { orderSubagents, presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
-import { SubagentDetail } from './SubagentDetail'
+import { presetOf, setSubagentFields, useSubagentFields, SUBAGENT_FIELDS, SUBAGENT_PRESETS, type SubagentFields } from '@/lib/subagentview'
+import { buildSubagentTree, nodeTool, setNowView, useNowView, type NowView, type TreeNode } from '@/lib/subagentTree'
+import { SubagentDetail, SubagentSteps } from './SubagentDetail'
 import { SectionFrames } from './SectionFrames'
-import { FitSummary } from './FitSummary'
 import { CompactAction, CompactIcon, CompactingLine, ContextBar, useCompact } from './CompactContext'
 import { shownContext, tokShort } from '@/lib/compact'
 import {
@@ -155,15 +155,15 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   // redrawing the cockpit every second for those kept an idle window busy.
   const now = useNow(state === 'working' || state === 'looping' || permission ? 1000 : 30_000)
   const runs = useMemo(() => toolRuns(main), [main])
-  // The subagent row opened in place (one at a time), and whether "+N
-  // finished" is open — which asks the daemon for more than three of them.
+  // The subagent a hero chip asked Now's tree to open, and whether *Show
+  // all* is on — which asks the daemon for more than three finished.
   const [openSub, setOpenSub] = useState<string | null>(null)
   const [allFinished, setAllFinished] = useState(false)
   const [reveal, setReveal] = useState(0)
   // Claude Code is the agent with subagents Caprock hears from.
   const subs = useSubagents(sessionId, state !== 'ended' && (s.agent ?? 'claude') === 'claude', allFinished ? FINISHED_OPEN : 0, true)
-  // A chip opens its subagent's row, unfolding the section if it was folded.
-  const openFromChip = (id: string) => { setLook('subagents', 'full'); setOpenSub(id); setReveal((n) => n + 1) }
+  // A chip opens its subagent's entry in Now, unfolding Now if it was folded.
+  const openFromChip = (id: string) => { setLook('now', 'full'); setOpenSub(id); setReveal((n) => n + 1) }
   const running = state === 'working' || state === 'looping' ? runningTool(runs, now) : undefined
   // A session on one of the user's subscriptions shows that account's
   // windows and plan; the day's summary carries the own sign-in's.
@@ -189,7 +189,15 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   const sections: Record<CockpitSection, ReactNode> = {
     now: (
       <>
-        <Foldable id="now"><NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now} /></Foldable>
+        <Foldable id="now">
+          <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now}
+            agents={subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) ? (
+              <NowAgents key={sessionId} subs={subs} permission={permission} now={now} sessionId={sessionId}
+                background={backgroundAgents(s) > 0 && state === 'working'} focus={openSub} reveal={reveal}
+                allFinished={allFinished} onAllFinished={setAllFinished} />
+            ) : null}
+            agentsWorking={(subs?.working.length ?? 0) > 0} />
+        </Foldable>
         {s.loop && state !== 'ended' && <LoopWarning s={s} now={now} />}
         <CheckoutShared s={s} live={state !== 'ended'} />
       </>
@@ -197,10 +205,6 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
     context: <ContextMeter s={s} />,
     limits: plan ? <PlanWindows limits={plan} agent={s.agent} now={now} acct={acct} /> : null,
     spend: <Spend s={s} sessionId={sessionId} events={main} now={now} figures={figures} summary={summary} />,
-    subagents: subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) ? (
-      <Subagents subs={subs} permission={permission} now={now} sessionId={sessionId} open={openSub} onOpen={setOpenSub}
-        allFinished={allFinished} onAllFinished={setAllFinished} reveal={reveal} />
-    ) : null,
     tasks: <Foldable id="tasks"><TodoBlock sessionId={sessionId} /></Foldable>,
     tools: <Timeline runs={runs} total={s.stats?.tool_calls} now={now} cwd={s.cwd} />,
     changes: changes ? <Foldable id="changes">{changes}</Foldable> : null,
@@ -607,7 +611,7 @@ function ContextChip({ pct }: { pct: number }) {
  * the count reads by fives (owner, 2026-10-14). Compact, when there are
  * more than two full lines' worth: a smaller square with no face, its tint
  * and state kept. Then "+N" for the working left out. A chip opens its
- * subagent's row in the Subagents section below.
+ * subagent's entry in Now's tree below.
  */
 function SubagentStrip({ chips, more, compact, onChip }: { chips: SubagentChip[]; more: number; compact: boolean; onChip: (id: string) => void }) {
   const groups = chipGroups(chips)
@@ -1071,7 +1075,7 @@ function SpendNumbers({ pick, hero, slots, figures, label }: { pick: SpendPick; 
 /** A disclosure's mark: pointing right when closed, down when open. */
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={`shrink-0 text-fg-muted transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>
+    <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={`shrink-0 text-fg-muted transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}>
       <path d="M4.5 2.5L8 6l-3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
@@ -1199,7 +1203,7 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   )
 }
 
-function NowDoing({ s, state, running, last, permission, background, now }: {
+function NowDoing({ s, state, running, last, permission, background, now, agents, agentsWorking }: {
   s: SessionSummary
   state: CockpitState
   running?: ToolRun
@@ -1208,6 +1212,10 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
   /** Subagents working after the turn ended (backgroundAgents). */
   background: number
   now: number
+  /** The subagents' tree (NowAgents), drawn under the card while any works or finished lately. */
+  agents?: ReactNode
+  /** The tree lists working subagents: its header then says what the background card said. */
+  agentsWorking?: boolean
 }) {
   let icon: ReactNode
   let verb: string
@@ -1266,6 +1274,10 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
   }
   const plan = s.activity?.plan
   const folded = useFolded()
+  const view = useNowView()
+  const fields = useSubagentFields()
+  // Background agents at work: the tree's header is the card (owner, 2026-11-23).
+  const cardIsTree = !permission && background > 0 && state === 'working' && !!agents && !!agentsWorking
   return (
     <section aria-label="Now" className="grid gap-2">
       <SectionLabel right={(
@@ -1273,9 +1285,14 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
           {/* Folded, the section's one line: what it is doing. */}
           {folded && <span data-fold-only className="min-w-0 truncate text-fg-muted" title={detail || verb}>{verb}</span>}
           {plan && plan.total > 0 ? <span className="num shrink-0 text-fg-muted" title={plan.next ? `Next: ${plan.next}` : undefined}>plan {plan.done}/{plan.total}</span> : null}
+          {!folded && agents && view === 'cards' && <SubagentShow fields={fields} />}
+          {!folded && agents && (
+            <Segmented label="How Now draws its subagents" value={view} onPick={setNowView}
+              options={[['rows', 'Rows', 'One dense line per subagent'], ['cards', 'Cards', 'A card per subagent']] as const} />
+          )}
         </>
       )}>Now</SectionLabel>
-      <div className="cockpit-now flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" data-state={state} data-running={running ? 'true' : undefined}>
+      {!cardIsTree && <div className="cockpit-now flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" data-state={state} data-running={running ? 'true' : undefined}>
         <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] bg-[var(--app-row-active)]">{icon}</span>
         <span className="grid min-w-0 flex-1 leading-tight">
           <span className={`${permission ? 'line-clamp-2' : 'truncate'} text-[12.5px] font-medium text-fg`}>{verb}</span>
@@ -1284,127 +1301,228 @@ function NowDoing({ s, state, running, last, permission, background, now }: {
           )}
         </span>
         {right}
-      </div>
+      </div>}
+      {agents}
     </section>
   )
 }
 
 /**
- * The subagents, one row each (SubagentRow), in a fixed order: by when each
- * started, first on top, a new one appended, a finished one dimmed with ✓ in
- * the place it held (`orderSubagents`; owner, 2026-10-14: "their order jumps
- * too, bad, I want fixed positions", translated). A row leads with its
- * type's letter, pulsing while it works, then what it is doing now across
- * the row's whole width, up to two lines, the full text on hover; under it,
- * dimmer, its current tool and the figures this viewer picked in *Show*
- * (calls, cost, model, time; cost and time until one picks); a badge while
- * it waits on a permission prompt. "+N finished" lists the rest of the
- * finished, "+N more working" the working past five. A cost is shown only
- * when the daemon knows it — never a $0 standing in for unknown.
+ * The subagents as one tree inside *Now* (owner, 2026-11-23, picked from a
+ * clickable mockup; it replaced a separate Subagents section under Spend).
+ * A header row, *Background agents · N* while the turn has ended and they
+ * work (*Subagents · N* while the main thread waits on them), with what
+ * every subagent of the session has cost and how long the oldest working
+ * one has run; a button that folds the tree, open by default while any
+ * works and closed when only finished ones are left. Under it one entry per
+ * working subagent, in a fixed order (`orderSubagents`), and the finished
+ * folded into one *N done* entry that opens to them. An entry opens in
+ * place to its newest few calls, newest last (SubagentSteps), its own
+ * subagents nested under it behind a thin guide line (`buildSubagentTree`;
+ * `/subagents` names no parent today, so the tree is one level deep), and
+ * *Task, result and numbers*, which opens the whole SubagentDetail.
  *
- * Every row opens in place, one at a time (owner, 2026-10-12: "can we expand
- * the subagents to look inside?"): its task, its calls, its answer and its
- * numbers (SubagentDetail).
+ * Two looks, *Rows · Cards* in Now's header, kept per viewer
+ * (`lib/subagentTree.ts`): **Cards**, the default, are the rows the
+ * Subagents section always drew (SubagentRow: the type's letter, what it is
+ * doing, its tool and the figures picked in *Show ▾*); **Rows** are one
+ * dense line each — a dot, its phrase, its tool, cost · time. Nothing opens
+ * on its own but the header; a hero chip opens its entry (and the header,
+ * and *N done* for a finished one) and brings it into view. *Show all*,
+ * under the tree when it holds some back, lists every working subagent and
+ * up to 30 finished (what *+N more working* and *+N finished* did).
  */
-function Subagents({ subs, permission, now, sessionId, open, onOpen, allFinished, onAllFinished, reveal }: {
+function NowAgents({ subs, permission, now, sessionId, background, focus, reveal, allFinished, onAllFinished }: {
   subs: SubagentsNow
   permission?: Permission | null
   now: number
   sessionId: string
-  /** The row open, by agent id. */
-  open: string | null
-  onOpen: (id: string | null) => void
+  /** The turn has ended and they still work (backgroundAgents). */
+  background: boolean
+  /** The entry a hero chip asked for, and a counter bumped on each ask. */
+  focus: string | null
+  reveal: number
   allFinished: boolean
   onAllFinished: (v: boolean) => void
-  /** Bumped by a hero chip: bring the open row into view. */
-  reveal: number
 }) {
-  const [allWorking, setAllWorking] = useState(false)
+  const view = useNowView()
   const fields = useSubagentFields()
-  const box = useRef<HTMLElement>(null)
-  // Each subagent's start as first seen, for this session: its row's place.
+  const box = useRef<HTMLDivElement>(null)
   const seen = useRef({ session: sessionId, starts: new Map<string, number>() })
   if (seen.current.session !== sessionId) seen.current = { session: sessionId, starts: new Map() }
-  const working = orderSubagents(subs.working, seen.current.starts)
-  const openIdx = open ? working.findIndex((a) => a.agent_id === open) : -1
-  const showAllWorking = allWorking || openIdx >= SUBAGENT_ROWS
-  const shown = showAllWorking ? working : working.slice(0, SUBAGENT_ROWS)
-  const hidden = working.length - shown.length
-  const recentAll = subs.recent ?? []
-  const openDone = open ? recentAll.findIndex((d) => d.agent_id === open) : -1
-  const room = Math.max(0, SUBAGENT_ROWS - shown.length)
-  const recent = allFinished ? recentAll : recentAll.slice(0, Math.max(room, openDone + 1))
-  const moreDone = subs.finished - recent.length
-  const rows = orderSubagents<SubagentRowItem>([
-    ...shown.map((a) => ({ agent_id: a.agent_id, started_at: a.started_at, a })),
-    ...recent.map((d) => ({ agent_id: d.agent_id, started_at: d.started_at, d })),
-  ], seen.current.starts)
+  const tree = buildSubagentTree(subs, seen.current.starts)
+  // null: the default, open while any works; a click sets it for the session.
+  const [head, setHead] = useState<boolean | null>(null)
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set())
+  const [doneOpen, setDoneOpen] = useState(false)
+  const [allWorking, setAllWorking] = useState(false)
+  const open = head ?? tree.count > 0
+  const id = `now-agents-${sessionId}`
+  const toggle = (agent: string) => setOpened((s) => {
+    const next = new Set(s)
+    if (next.has(agent)) next.delete(agent)
+    else next.add(agent)
+    return next
+  })
+  // A hero chip: open the header, the entry and whatever hides it, then show it.
   useEffect(() => {
-    if (!reveal || !open) return
-    const row = box.current?.querySelector(`[data-subagent="${CSS.escape(open)}"]`)
-    row?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
-  }, [reveal, open])
-  const toggle = (id: string) => onOpen(open === id ? null : id)
-  const { subagents: look } = useLooks()
-  // The cost is every subagent's over the session's whole life, the count
-  // beside it only those that finished in the last half hour: "1 finished
-  // $2,549.54" read as one subagent's (owner, 2026-10-22), so it says *total*.
-  const costOf = (usd: string) => typeof subs.cost_usd === 'number' && (
-    <span data-subagents-cost className="num text-fg-muted" title={`What every subagent of this session has cost over its whole life: ${fmtUSD(subs.cost_usd)}`}>{usd} total</span>
+    if (!reveal || !focus) return
+    setHead(true)
+    setOpened((s) => (s.has(focus) ? s : new Set(s).add(focus)))
+    if (tree.done.some((n) => n.agent_id === focus)) setDoneOpen(true)
+    if (tree.working.findIndex((n) => n.agent_id === focus) >= SUBAGENT_ROWS) setAllWorking(true)
+    const t = setTimeout(() => {
+      box.current?.querySelector(`[data-subagent="${CSS.escape(focus)}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+    }, 0)
+    return () => clearTimeout(t)
+    // The tree is read when the chip asks, not again as it changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, focus])
+
+  const working = allWorking ? tree.working : tree.working.slice(0, SUBAGENT_ROWS)
+  const held = tree.working.length - working.length + (allFinished ? 0 : tree.doneCount - tree.done.length)
+  const whole = allWorking || allFinished
+  const label = tree.count > 0
+    ? `${background ? 'Background agents' : 'Subagents'} · ${tree.count}`
+    : `Subagents · ${tree.doneCount} done`
+  const figures = [
+    tree.cost !== undefined ? fmtUSD(tree.cost) : '',
+    tree.since !== undefined ? fmtRun(Math.max(0, now - tree.since)) : '',
+  ].filter(Boolean).join(' · ')
+  const entry = (n: TreeNode, depth: number) => (
+    <AgentEntry key={n.agent_id} n={n} depth={depth} view={view} fields={fields} permission={permission} now={now} sessionId={sessionId}
+      opened={opened} onToggle={toggle} />
   )
-  const cost = typeof subs.cost_usd === 'number' ? costOf(fmtUSD(subs.cost_usd)) : null
-  const finishedNote = subs.finished > 0 && <span title="Subagents that finished in the last 30 minutes">{subs.finished} finished</span>
-  if (look === 'compact') {
-    // Folded: the heading and one line of what is in it, shortened rather than cut.
-    const short = typeof subs.cost_usd === 'number' ? costOf(fmtUSDShort(subs.cost_usd)) : null
-    return (
-      <section aria-label="Subagents" data-look="compact" className="flex min-w-0 items-center gap-2">
-        <LookLabel name="Subagents" full={false} onToggle={() => setLook('subagents', 'full')}>Subagents · {subs.working.length}</LookLabel>
-        <span data-fold-summary className="num flex min-w-0 flex-1 text-[11.5px] text-fg-faint">
-          <FitSummary variants={[<>{finishedNote}{cost}</>, <>{finishedNote}{short}</>, short, finishedNote]} />
-        </span>
-      </section>
-    )
-  }
+  const doneTitle = tree.doneCount === 1 && tree.done[0] ? ` · ${tree.done[0].d?.description || tree.done[0].d?.agent_type || 'subagent'}` : ''
+  const doneFig = tree.doneCost !== undefined ? fmtUSD(tree.doneCost) : ''
+  const showDone = tree.doneCount > 0
   return (
-    <section ref={box} aria-label="Subagents" data-look="full" className="grid gap-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <LookLabel name="Subagents" full onToggle={() => setLook('subagents', 'compact')}>Subagents · {subs.working.length}</LookLabel>
-        <div className="ml-auto flex items-baseline gap-2 text-[11.5px]">
-          {cost}
-          {(moreDone > 0 || allFinished) && subs.finished > 0 && (
-            <button type="button" onClick={() => onAllFinished(!allFinished)} aria-expanded={allFinished}
-              className="rounded-[4px] text-fg-faint outline-none hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-              {allFinished ? 'fewer finished' : `+${moreDone} finished`}
-            </button>
+    <div ref={box} data-now-agents data-view={view} className="grid min-w-0 gap-1">
+      <button type="button" data-agents-head aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setHead(!open)}
+        title={[label, background ? 'Claude Code picks the session up when they finish' : '', subs.cost_usd !== undefined ? `What every subagent of this session has cost over its whole life: ${fmtUSD(subs.cost_usd)}` : ''].filter(Boolean).join(' — ')}
+        className="cockpit-now flex min-w-0 items-center gap-2 rounded-[10px] border px-2.5 py-2 text-left outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+        data-state={tree.count > 0 ? 'working' : 'idle'}>
+        <Chevron open={open} />
+        <span className="grid min-w-0 flex-1 leading-tight">
+          <span className="truncate text-[12.5px] font-medium text-fg">{label}</span>
+          {background && tree.count > 0 && <span className="truncate text-[11.5px] text-fg-muted">resumes when they finish</span>}
+        </span>
+        {figures && <span data-agents-figures className="num shrink-0 text-[11.5px] text-fg-muted">{figures}</span>}
+      </button>
+      {open && (
+        <ul id={id} aria-label="Subagents" className={`grid min-w-0 ${view === 'cards' ? 'gap-1' : 'gap-px'}`}>
+          {working.map((n) => entry(n, 0))}
+          {showDone && (
+            <li data-agents-done data-open={doneOpen ? 'true' : undefined}
+              className={view === 'cards' ? 'grid min-w-0 rounded-[8px] border border-dashed border-[var(--app-hairline)]' : 'grid min-w-0'}>
+              <button type="button" aria-expanded={doneOpen} onClick={() => setDoneOpen((v) => !v)}
+                title={`Subagents that finished in the last 30 minutes: ${tree.doneCount}`}
+                className={`${view === 'cards' ? 'gap-1.5 rounded-[8px] px-2 py-1.5' : 'gap-1.5 rounded-[6px] px-1.5 py-[3px]'} grid min-w-0 grid-cols-[12px_minmax(0,1fr)_auto] items-center text-left text-[12px] leading-[16px] opacity-70 outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]`}>
+                <Chevron open={doneOpen} />
+                <span className="min-w-0 truncate text-fg-muted"><span aria-hidden className="mr-1 text-ok">✓</span>{tree.doneCount} done{doneTitle}</span>
+                {doneFig && <span className="num shrink-0 text-[11px] text-fg-faint">{doneFig}</span>}
+              </button>
+              {doneOpen && (
+                <ul aria-label="Finished subagents" className={`${GUIDE} ${view === 'cards' ? 'mb-1.5 mr-1.5 gap-1' : 'gap-px'}`}>
+                  {tree.done.map((n) => entry(n, 1))}
+                  {tree.done.length === 0 && <li className="px-1 text-[11px] text-fg-faint">Reading…</li>}
+                </ul>
+              )}
+            </li>
           )}
-          <SubagentShow fields={fields} />
-        </div>
-      </div>
-      {rows.length > 0 && (
-        <ul aria-label="Subagent rows" className="grid gap-1">
-          {rows.map((r) => {
-            const isOpen = open === r.agent_id
-            const panel = `subagent-${r.agent_id}`
-            const waiting = r.a ? subagentWaiting(r.a, permission) : false
-            return (
-              <li key={r.agent_id} data-subagent={r.agent_id} data-done={r.d ? 'true' : undefined}
-                className={`grid rounded-[8px] border ${r.d && !isOpen ? 'border-transparent' : 'border-[var(--app-hairline)]'}`}
-                data-waiting={waiting ? 'true' : undefined} data-open={isOpen ? 'true' : undefined}>
-                <SubagentRow item={r} waiting={waiting} now={now} fields={fields} open={isOpen} panel={panel} onToggle={() => toggle(r.agent_id)} />
-                {isOpen && <SubagentDetail id={panel} sessionId={sessionId} agentId={r.agent_id} now={now} />}
-              </li>
-            )
-          })}
         </ul>
       )}
-      {hidden > 0 && (
-        <button type="button" onClick={() => setAllWorking(true)}
+      {open && (held > 0 || whole) && (
+        <button type="button" data-agents-all onClick={() => {
+          const next = !whole
+          setAllWorking(next)
+          onAllFinished(next)
+          if (next) setDoneOpen(true)
+        }}
           className="w-fit rounded-[4px] text-[11px] text-fg-faint outline-none hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
-          +{hidden} more working
+          {whole ? 'Show fewer' : 'Show all'}
         </button>
       )}
-    </section>
+    </div>
+  )
+}
+
+/** Where an entry's steps and its own subagents hang: indented behind a thin guide line. */
+const GUIDE = 'ml-[11px] grid min-w-0 border-l border-[var(--app-hairline)] pl-2'
+
+/**
+ * One subagent in Now's tree, as a card (the Subagents section's row) or a
+ * dense row; opened, its newest calls and its own subagents under a guide
+ * line, recursively.
+ */
+function AgentEntry({ n, depth, view, fields, permission, now, sessionId, opened, onToggle }: {
+  n: TreeNode
+  depth: number
+  view: NowView
+  fields: SubagentFields
+  permission?: Permission | null
+  now: number
+  sessionId: string
+  opened: ReadonlySet<string>
+  onToggle: (id: string) => void
+}) {
+  const [detail, setDetail] = useState(false)
+  const isOpen = opened.has(n.agent_id)
+  const panel = `subagent-${n.agent_id}`
+  const waiting = n.a ? subagentWaiting(n.a, permission) : false
+  const inside = isOpen && (
+    <div id={panel} data-agent-inside className={`${GUIDE} gap-0.5 ${view === 'cards' && depth === 0 ? 'mb-1.5 mr-1.5' : 'mb-0.5'}`}>
+      {detail
+        ? <SubagentDetail sessionId={sessionId} agentId={n.agent_id} now={now} />
+        : <SubagentSteps sessionId={sessionId} agentId={n.agent_id} now={now} working={!!n.a} />}
+      <button type="button" aria-expanded={detail} onClick={() => setDetail((v) => !v)}
+        className="w-fit rounded-[4px] px-1 text-[11px] text-fg-faint outline-none hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]">
+        {detail ? 'Latest steps' : 'Task, result and numbers'}
+      </button>
+      {n.children.length > 0 && (
+        <ul aria-label="Its subagents" className={`grid min-w-0 ${view === 'cards' ? 'gap-1' : 'gap-px'}`}>
+          {n.children.map((c) => (
+            <AgentEntry key={c.agent_id} n={c} depth={depth + 1} view={view} fields={fields} permission={permission} now={now} sessionId={sessionId}
+              opened={opened} onToggle={onToggle} />
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+  if (view === 'cards') {
+    return (
+      <li data-subagent={n.agent_id} data-done={n.d ? 'true' : undefined} data-waiting={waiting ? 'true' : undefined} data-open={isOpen ? 'true' : undefined}
+        className={`grid min-w-0 rounded-[8px] border ${n.d && !isOpen ? 'border-transparent' : 'border-[var(--app-hairline)]'}`}>
+        <SubagentRow item={n} waiting={waiting} now={now} fields={fields} open={isOpen} panel={panel} onToggle={() => onToggle(n.agent_id)} />
+        {inside}
+      </li>
+    )
+  }
+  const { a, d } = n
+  const doing = a ? subagentDoing(a) : { text: d?.description ?? '' }
+  const phrase = doing.text || (a ? 'starting' : d?.agent_type ?? 'subagent')
+  const tool = nodeTool(n)
+  const cost = (a ?? d)?.cost_usd
+  const ran = a ? (a.started_at ? Math.max(0, now - a.started_at) : 0) : d ? d.stopped_at - d.started_at : 0
+  const fig = [typeof cost === 'number' ? fmtUSD(cost) : '', ran > 0 ? fmtRun(ran) : ''].filter(Boolean).join(' · ')
+  const type = a?.agent_type ?? d?.agent_type
+  return (
+    <li data-subagent={n.agent_id} data-done={d ? 'true' : undefined} data-waiting={waiting ? 'true' : undefined} data-open={isOpen ? 'true' : undefined} className="grid min-w-0">
+      <button type="button" onClick={() => onToggle(n.agent_id)} aria-expanded={isOpen} aria-controls={isOpen ? panel : undefined}
+        title={[type, phrase, a?.tool && `${a.tool}${a.detail ? ` ${a.detail}` : ''}`, d && 'finished', waiting && 'waiting on you'].filter(Boolean).join(' — ')}
+        className={`grid min-w-0 grid-cols-[12px_7px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-[6px] px-1.5 py-[3px] text-left text-[12px] leading-[16px] outline-none hover:bg-[var(--app-row-hover)] focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] ${d ? 'opacity-70' : ''}`}>
+        <Chevron open={isOpen} />
+        <span aria-hidden data-dot className={`h-[7px] w-[7px] rounded-full ${d ? 'bg-fg-faint' : waiting ? 'bg-accent' : 'bg-ok'}`} />
+        <span className="min-w-0 truncate">
+          <span className={d ? 'text-fg-muted' : 'text-fg'}>{phrase}</span>
+          {waiting
+            ? <span className="ml-1.5 text-[10.5px] font-medium text-accent">waiting on you</span>
+            : tool && <span className="mono ml-1.5 text-[10.5px] text-fg-faint">{tool}</span>}
+        </span>
+        <span className="num shrink-0 text-[11px] text-fg-muted">{d ? <span aria-label="finished" className="mr-1 text-ok">✓</span> : null}{fig}</span>
+      </button>
+      {inside}
+    </li>
   )
 }
 

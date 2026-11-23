@@ -1,5 +1,5 @@
 /**
- * One subagent opened in the cockpit's Subagents section (.ai/21-app.md §
+ * One subagent opened in Now's subagent tree (.ai/21-app.md §
  * Agent cockpit): the task its parent gave it, its own calls in order, what
  * it answered, and its numbers. Read from the daemon once when the row opens
  * (`/v1/sessions/{id}/subagents/{agent}`), then followed on the live socket
@@ -174,5 +174,72 @@ function Clamp({ text, label }: { text: string; label: string }) {
         </button>
       )}
     </div>
+  )
+}
+
+/** How many of its newest calls an entry of Now's subagent tree shows opened. */
+export const STEP_ROWS = 4
+
+/**
+ * An entry of Now's subagent tree opened (Cockpit.tsx NowAgents): its newest
+ * few calls, newest last, read once (`/subagents/{agent}?limit=4`) and then
+ * followed on the live socket the page already holds — no polling.
+ */
+export function SubagentSteps({ sessionId, agentId, now, working }: { sessionId: string; agentId: string; now: number; working: boolean }) {
+  const [calls, setCalls] = useState<readonly SubagentCall[] | undefined>(undefined)
+  const [failed, setFailed] = useState(false)
+  // Frames that arrive before the first read are applied once it lands.
+  const early = useRef<Event[]>([])
+  const loaded = useRef(false)
+  useEffect(() => {
+    let alive = true
+    api.subagent(sessionId, agentId, { limit: STEP_ROWS })
+      .then((r) => {
+        if (!alive || !r || !Array.isArray(r.calls)) return
+        loaded.current = true
+        let next: readonly SubagentCall[] = r.calls
+        for (const e of early.current) next = followSubagent(next, e, sessionId, agentId)
+        early.current = []
+        setCalls(next.slice(-STEP_ROWS))
+      })
+      .catch(() => { if (alive) setFailed(true) })
+    return () => { alive = false }
+  }, [sessionId, agentId])
+  useEffect(() => live.onFrame((f) => {
+    if (f.type !== 'event' || f.data.session_id !== sessionId || f.data.agent_id !== agentId) return
+    if (!loaded.current) { early.current.push(f.data); return }
+    const e = f.data
+    setCalls((c) => {
+      if (!c) return c
+      const next = followSubagent(c, e, sessionId, agentId)
+      return next === c ? c : next.slice(-STEP_ROWS)
+    })
+  }), [sessionId, agentId])
+
+  if (failed) return <p className="px-1 py-0.5 text-[11px] text-fg-faint">Could not read its steps.</p>
+  if (!calls) return <p className="px-1 py-0.5 text-[11px] text-fg-faint">Reading…</p>
+  if (calls.length === 0) return <p className="px-1 py-0.5 text-[11px] text-fg-faint">No tool calls yet.</p>
+  return (
+    <ol aria-label="Latest steps" data-steps className="grid">
+      {calls.map((c) => {
+        const open = c.ended_at === undefined
+        const running = open && working
+        const name = c.tool.startsWith('mcp__') ? c.tool.replace(/^mcp__(.+?)__/, '$1·') : c.tool
+        return (
+          <li key={c.id} data-live={running ? 'true' : undefined}
+            className="grid grid-cols-[12px_minmax(0,1fr)_auto] items-center gap-1.5 px-1 py-[2px] text-[11px]"
+            title={`${c.tool}${c.detail ? ` — ${c.detail}` : ''}`}>
+            <span className={c.error ? 'text-danger' : running ? 'text-ok' : 'text-fg-faint'}><KindIcon kind={toolKind(c.tool)} size={11} /></span>
+            <span className="min-w-0 truncate">
+              <span className={c.error ? 'text-danger' : 'text-fg-muted'}>{name}</span>
+              {c.detail && <span className="mono ml-1 text-[10.5px] text-fg-faint">{c.detail}</span>}
+            </span>
+            <span className={`num text-[10.5px] ${running ? 'text-ok' : 'text-fg-faint'}`}>
+              {c.error ? <span aria-label="failed">✕</span> : open ? (working ? fmtRun(Math.max(0, now - c.started_at)) : '') : fmtRun(c.ended_at! - c.started_at)}
+            </span>
+          </li>
+        )
+      })}
+    </ol>
   )
 }
