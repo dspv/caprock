@@ -240,6 +240,13 @@ test('the unfolded Release section keeps its stepper on one row and inside the e
       stats: statsOf([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', 1_800_000)], [{ ...card(942, 'open', 'running'), os }, card(940, 'merged')], [rel('v0.182.4', 86_400_000, 23)]) },
     { name: 'waiting', words: /^Waiting for #941 · ready to merge$/,
       stats: statsOf([pr(941, 'feat: the next batch with a title long enough to fill the line', 'open')], [card(941, 'ready', 'pass')], [rel('v0.182.4', 86_400_000, 23)]), onPR: true },
+    // Owner, 2026-11-23: the hint's open PRs as rows, five then +N more;
+    // the batch it waits for, #999, is in none of them, so the words link it.
+    { name: 'hint-rows', words: /^Waiting for #999 to merge$/, via: 999, onPR: true,
+      stats: statsOf(
+        Array.from({ length: 7 }, (_, i) => pr(1017 + i, `${i % 3 ? 'fix' : 'feat'}(ui): an open pull request whose title is far too long for the panel ${i}`, 'open')),
+        Array.from({ length: 7 }, (_, i) => ({ ...card(1017 + i, 'open', 'running'), os })),
+        [rel('v0.182.4', 86_400_000, 23)]) },
   ]
   let c = cases[0]!
   await page.route(/\/v1\/sessions\/[^/]+\/ci\/stats$/, (r) => r.fulfill(json(c.stats)))
@@ -253,7 +260,7 @@ test('the unfolded Release section keeps its stepper on one row and inside the e
       x.remote = 'acme/app'
       x.tags = { last: { name: 'v0.182.4', at: now - 86_400_000 }, gaps: 0 }
       const source = (i: number) => ('onPR' in c ? 'pr' : i % 2 ? 'pr' : 'master')
-      x.unreleased = { ref: 'origin/master', items: ['a', 'b', 'c'], count: 3, kinds: { Changed: 1, Fixed: 2 }, ...('onPR' in c ? { via: { number: 941, head: 'feat/batch', sha: 'abc' } } : {}),
+      x.unreleased = { ref: 'origin/master', items: ['a', 'b', 'c'], count: 3, kinds: { Changed: 1, Fixed: 2 }, ...('onPR' in c ? { via: { number: 'via' in c ? c.via : 941, head: 'feat/batch', sha: 'abc' } } : {}),
         entries: [0, 1, 2].map((i) => ({ text: `Entry ${i}: what changed, written for a person reading the release notes, long enough to wrap onto a second line`, scope: 'ui', kind: i ? 'Fixed' : 'Changed', source: source(i) })) }
     }
     await r.fulfill({ response: res, json: w })
@@ -296,9 +303,21 @@ test('the unfolded Release section keeps its stepper on one row and inside the e
         for (const line of sec.querySelectorAll<HTMLElement>('[data-release-via], [data-release-section="branch"]')) {
           if (line.getBoundingClientRect().height > 20) out.push(`wraps: ${line.textContent}`)
         }
+        // The hint's rows: one line each, the title cut rather than wrapped.
+        for (const row of sec.querySelectorAll<HTMLElement>('[data-release-hint-rows] > li')) {
+          if (row.getBoundingClientRect().height > 26) out.push(`a hint row wraps: ${row.textContent}`)
+          const t = row.querySelector('[data-release-title]') as HTMLElement
+          if (t.offsetWidth === 0) out.push(`a hint row lost its title: ${row.textContent}`)
+        }
         return out
       })
       expect(over, `${k.name} at ${w}px`).toEqual([])
+      if (k.name === 'hint-rows') {
+        const hint = inspector.locator('section[aria-label="Release"] [data-release-hint]')
+        await expect(hint.locator('[data-release-hint-rows] > li')).toHaveCount(5)
+        await expect(hint.locator('[data-release-hint-more]')).toHaveText('+2 more')
+        await expect(words).toHaveAttribute('href', /pr=999/)
+      }
       if (shotsDir) await inspector.locator('[data-section-frame="release"]').screenshot({ path: path.join(shotsDir, `release-dots-${k.name}-${w}.png`) })
     }
   }

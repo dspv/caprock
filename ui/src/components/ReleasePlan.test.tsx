@@ -11,7 +11,7 @@ vi.mock('@/lib/api', async (orig) => {
   } }
 })
 
-import { CockpitRelease, ReleasePlan } from './ReleasePlan'
+import { CockpitRelease, hintRowsOf, ReleasePlan } from './ReleasePlan'
 import { SessionSubagents } from './Cockpit'
 import { WorkView } from '@/screens/Work'
 import { forgetDeckAnswers, writeDeck } from '@/lib/deckCache'
@@ -441,9 +441,15 @@ describe('where it is drawn', () => {
     const hint = region.querySelector('[data-release-hint]')!
     expect(hint).toHaveAttribute('data-release-hint', '0.118.0')
     expect(hint.querySelector('[data-release-hint-text]')).toHaveTextContent('0.118.0 once #633 lands')
-    expect(hint.querySelector('[data-release-hint-sub]')).toHaveTextContent('1 feature waiting: #633')
+    // No bare number list: what they are is on the line's hover, the PR itself a row.
+    expect(hint.querySelector('[data-release-hint-sub]')).toBeNull()
+    expect(hint.querySelector('[data-release-hint-text]')!.getAttribute('title')).toMatch(/\n1 feature waiting\.$/)
+    expect(hint.querySelectorAll('[data-release-hint-rows] > li')).toHaveLength(1)
+    expect(hint.querySelector('[data-release-row="633"] [data-release-kind]')).toHaveTextContent(/^feat$/)
+    expect(hint.querySelector('[data-release-row="633"] a')!.getAttribute('href')).toContain('pr=633')
+    expect(hint.querySelector('[data-release-hint-more]')).toBeNull()
     fireEvent.click(region.querySelector('[data-release-section="branch"]')!)
-    const row = region.querySelector('[data-release-row="633"]')!
+    const row = region.querySelector('[data-release-later] [data-release-row="633"]')!
     expect(row.closest('ul')).toHaveClass('font-sans')
     expect(row.querySelector('[data-release-kind]')).toHaveTextContent(/^feat$/)
     expect(row.querySelector('[data-release-title]')).toHaveTextContent(/^Input highlight$/)
@@ -456,6 +462,58 @@ describe('where it is drawn', () => {
     // The squares say the CI state: no state word beside them.
     expect(row.querySelector('[data-release-state]')).toBeNull()
     expect(row.querySelector('a')!.getAttribute('href')).toContain('pr=633')
+  })
+
+  // Owner, 2026-11-23: the hint's *#1017 #1030 …* said nothing; the open
+  // PRs as rows, five then *+N more*, and the PR the release waits for
+  // always on view.
+  it('draws the hint’s PRs as rows, five then +N more, and links the waited-for PR when no row names it', async () => {
+    const w = workFixture()
+    w.repos[0]!.unreleased = {
+      ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 }, via: { number: 999, head: 'batch/next', sha: 'abc' },
+      entries: [{ text: 'a fix on the batch branch', scope: 'ui', kind: 'Fixed', source: 'pr' }],
+    }
+    h.data = w
+    const stats = statsFixture()
+    stats.prs!.find((p) => p.number === 633)!.title = 'feat(ui): input highlight'
+    // Nothing merged since the tag: the release waits for the batch.
+    stats.prs = stats.prs!.filter((p) => p.state !== 'merged')
+    stats.board!.cards = stats.board!.cards.filter((c) => c.stage !== 'merged' && c.stage !== 'released')
+    for (let i = 0; i < 6; i++) {
+      stats.prs!.push({ number: 700 + i, url: `https://github.com/dspv/caprock/pull/${700 + i}`, title: `${i % 2 ? 'fix' : 'feat'}(ui): change ${i} with a long title that will not fit`, state: 'open', head: `feat/c${i}`, created_at: NOW - (i + 1) * 60_000 })
+    }
+    writeDeck('stats:/w/caprock', stats)
+    render(<CockpitRelease sessionId="s1" repoRoot="/w/caprock" />)
+    const region = await screen.findByRole('region', { name: 'Release' })
+    await within(region).findByRole('heading', { name: 'Next release 0.117.5' })
+    const hint = region.querySelector('[data-release-hint]')!
+    expect(hint.querySelector('[data-release-hint-text]')).toHaveTextContent('0.118.0 once the 7 open PRs land')
+    const rows = () => [...hint.querySelectorAll('[data-release-hint-rows] > li')]
+    expect(rows()).toHaveLength(5)
+    expect(rows().every((r) => r.querySelector('[data-release-title]')!.classList.contains('truncate'))).toBe(true)
+    const more = hint.querySelector('[data-release-hint-more]')!
+    expect(more).toHaveTextContent(/^\+2 more$/)
+    fireEvent.click(more)
+    expect(rows()).toHaveLength(7)
+    expect(hint.querySelector('[data-release-hint-more]')).toBeNull()
+    // #999 is in no row: the words under the steps open it on the Pipeline.
+    const words = region.querySelector('[data-release-stage-words]')!
+    expect(words).toHaveTextContent(/^Waiting for #999 to merge/)
+    expect(words.tagName).toBe('A')
+    expect(words.getAttribute('href')).toContain('pr=999')
+    expect(hint.querySelector('[data-release-waited]')).toBeNull()
+  })
+
+  it('puts the waited-for PR first among the hint’s rows, so +N more never hides it', () => {
+    const plan = planForRepo(workFixture(), '/w/caprock', statsFixture(), NOW)
+    const prs = plan.rows.filter((r) => r.section === 'pr')
+    const nums = prs.map((r) => r.number!)
+    expect(nums.length).toBeGreaterThan(1)
+    const last = hintRowsOf(prs, nums).at(-1)!.number!
+    expect(hintRowsOf(prs, nums, last)[0]!.number).toBe(last)
+    expect(hintRowsOf(prs, nums, last)).toHaveLength(nums.length)
+    // Only the PRs the hint counted.
+    expect(hintRowsOf(prs, [nums[0]!]).map((r) => r.number)).toEqual([nums[0]])
   })
 
   it('says a batch PR’s red CI on its via line, the failing check in plain words', async () => {
