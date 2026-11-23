@@ -5,7 +5,7 @@
  * follow rule can be tested without a DOM.
  */
 import type { Event, SubagentCall } from './api'
-import { toolDetail } from './cockpit'
+import { callCommand, toolDetail } from './cockpit'
 
 /** Calls the feed shows at first and adds per "Show earlier". */
 export const FEED_PAGE = 30
@@ -40,7 +40,8 @@ export function followSubagent(calls: readonly SubagentCall[], e: Event, session
     if (use && calls.some((c) => c.tool_use_id === use)) return calls
     if (!use && calls.some((c) => c.id === e.id)) return calls
     const detail = toolDetail(tool, p.tool_input)
-    return [...calls, { id: e.id, tool_use_id: use || undefined, tool, detail: detail || undefined, started_at: at }]
+    const command = callCommand(tool, p.tool_input, detail)
+    return [...calls, { id: e.id, tool_use_id: use || undefined, tool, detail: detail || undefined, ...(command ? { command } : {}), started_at: at }]
   }
   if (e.kind === 'tool.post') {
     const tool = e.tool || str(p.tool_name)
