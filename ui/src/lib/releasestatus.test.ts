@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CIJob, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { BoardCard, BoardRelease } from './prboard'
-import { bumpBetween, nextHint, plainVersion, prKind, raiseVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type BatchPR, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
+import { bumpBetween, mainChecks, nextHint, plainVersion, prKind, raiseVersion, releaseFold, releasePRVersion, releaseStatus, stageWords, stripStages, tagUnpublished, type BatchPR, type MainChecks, type ReleaseStatus, type ReleaseStatusInput } from './releasestatus'
 
 const H = 3_600_000
 const T = Date.UTC(2026, 9, 16, 12)
@@ -181,6 +181,29 @@ describe('the right panel’s folded Release line', () => {
     expect(fold(s, { waiting: 1 }).text).toBe('Ready to release 0.183.0 · not started · 1 change')
     expect(fold(s, { waiting: 5, batch: { number: 940, ci: 'pass', next: 'merge #940' } }).text).toBe('Ready to release 0.183.0 · not started · 5 changes · PR #940 green')
     expect(fold(s, { waiting: 5 }).title).toMatch(/^Nothing is running\. The changes are merged; v0\.183\.0 starts when someone opens its release pull request/)
+  })
+
+  // Owner, 2026-11-23: after a merge the line said *not started* while
+  // master's checks ran; a release waits for them.
+  it('says the default branch’s checks running or failed in place of not started', () => {
+    const s = releaseStatus(base({ lastTag: { name: 'v0.190.0', at: T - 5 * H }, unreleased: pending({ Fixed: 1 }, 1), releases: [rel('v0.190.0', T - 5 * H, 23)] }))
+    const running: MainChecks = { branch: 'master', state: 'running', done: 12, total: 17, failed: [], sha: 'a1f2189' }
+    expect(fold(s, { waiting: 1, main: running })).toMatchObject({ kind: 'waiting', text: '0.190.1 · master checks running · 12 of 17 · 1 change', tone: 'waiting' })
+    expect(fold(s, { waiting: 1, main: running }).title).toMatch(/master’s checks on a1f2189 are running \(12 of 17 jobs finished\)\. Nothing read says whether a release is queued\./)
+    const failed: MainChecks = { branch: 'master', state: 'fail', done: 17, total: 17, failed: ['go (windows-latest)'] }
+    expect(fold(s, { waiting: 1, main: failed })).toMatchObject({ kind: 'stopped', text: '0.190.1 · master checks failed · 1 change', tone: 'fail' })
+    expect(fold(s, { waiting: 1, main: failed }).title).toMatch(/failed \(go \(windows-latest\)\)/)
+  })
+
+  it('reads the default branch’s checks only while they run or failed, and only of a commit after the newest merge', () => {
+    const job = (name: string, status: string, conclusion?: string) => ({ id: 1, run_id: 1, name, status, conclusion, labels: [], steps: [] })
+    const ci = (state: 'running' | 'fail' | 'pass', created: number, jobs: ReturnType<typeof job>[]) => ({ repo: 'o/r', head_sha: 'a1f2189d0000', branch: 'master', state, runs: [{ id: 1, name: 'ci', status: state === 'running' ? 'in_progress' : 'completed', created_at: created, jobs }], runner_ms: 0, by_os: [], at: T })
+    expect(mainChecks(ci('running', T, [job('lint', 'completed', 'success'), job('go', 'in_progress')]), { since: T - H })).toEqual({ branch: 'master', state: 'running', done: 1, total: 2, failed: [], sha: 'a1f2189' })
+    expect(mainChecks(ci('fail', T, [job('e2e', 'completed', 'failure')]))).toMatchObject({ state: 'fail', failed: ['e2e'] })
+    expect(mainChecks(ci('pass', T, [job('lint', 'completed', 'success')]))).toBeUndefined()
+    // Runs listed from before the newest merge are an older commit's.
+    expect(mainChecks(ci('running', T - 2 * H, [job('go', 'in_progress')]), { since: T - H })).toBeUndefined()
+    expect(mainChecks(undefined)).toBeUndefined()
   })
 
   it('says a release PR whose checks run as releasing, and red checks as stopped', () => {

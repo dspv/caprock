@@ -6322,15 +6322,22 @@ GET /v1/work → Work
   without front matter, counts in `count` only; absent when no entry has a
   kind. The release plan predicts the next version from it (04-ui.md §
   Release plan). Since 2026-11-19 it also counts the fragments the
-  repository's open batch pull request carries before it merges: the newest
-  open pull request that is not a release one (a title like
-  `chore(release): x.y.z`) and names a head branch, in the GitHub lists the
-  daemon already read and kept (`github_prs`, seen within 3 days), whose
-  `origin/<head>` the clone knows locally (never fetched). Its fragments
+  repository's open release vehicle carries before it merges, from the
+  GitHub lists the daemon already read and kept (`github_prs`, seen within
+  3 days), with a head branch whose `origin/<head>` the clone knows locally
+  (never fetched). Since 2026-11-23 the vehicle is only one marked as such
+  (`store.BatchPR`): the newest open release pull request (head
+  `chore/release-x.y.z`, or a title like `chore(release): x.y.z`), else the
+  newest open batch pull request (head `batch/…`, or a title like
+  `feat: 0.175.0 batch — …`). An ordinary feature pull request never is:
+  before, the newest open pull request that was not a release one was
+  taken, and a feature pull request's fragment made the predicted version
+  a minor one while the default branch held fixes only. Its fragments
   that are neither at the default branch nor at the merge base (a fragment
   the branch only kept from before a release is not its own), by file name,
-  are added after the default branch's; `via` `{number, head, sha}` names
-  that pull request, absent when none was read. `entries` (since
+  are added after the default branch's (a release pull request removes
+  the fragments it ships, so it adds none of its own); `via` `{number,
+  head, sha}` names that pull request, absent when none was read. `entries` (since
   2026-11-19) are the same entries whole, at most 30, in `items`' order:
   `{text, scope?, kind?, source}` — `text` the bullet with its continuation
   lines, the leading `**scope:**` taken off into `scope`, bold, italics,
@@ -6347,7 +6354,7 @@ GET /v1/work → Work
   last tag.
 - **Local only.** Git is read, never fetched: `git show <ref>:CHANGELOG.md`,
   `git ls-tree <ref> changes/unreleased/` and one `git cat-file --batch`
-  for the fragments, for a batch pull request `git rev-parse
+  for the fragments, for a release or batch pull request `git rev-parse
   refs/remotes/origin/<head>`, `git merge-base` and the same two reads at
   its head and the base,
   `git for-each-ref refs/tags --sort=-creatordate --count=11`, `git

@@ -23,7 +23,7 @@
  *   next version** (lib/releaseplan nextVersion);
  * - else none (`phase` `idle`): only the last release line is said.
  */
-import type { ReleaseCI, WorkRepo } from './api'
+import type { CIState, ReleaseCI, WorkRepo } from './api'
 import type { BranchPR } from './branches'
 import type { JourneyPillStep } from './journey'
 import type { BoardCard, BoardRelease } from './prboard'
@@ -456,6 +456,8 @@ export interface StageWords {
   tone: StatusTone
   /** Its hover when the stage's own title would not explain the words (the OS groups behind *checks 1 of 3 systems*). */
   title?: string
+  /** The strip beside the dots says the detail alone, the heading above naming the version (*master checks running · 12 of 17*): the lead with it was cut at the cockpit's width. */
+  detailOnly?: boolean
 }
 
 /** The OS groups in the order the hover names them. */
@@ -476,7 +478,61 @@ export interface BatchPR {
   failed?: readonly string[]
 }
 
-export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number; batch?: BatchPR }): StageWords | undefined {
+/**
+ * The default branch's checks while they run or after they failed, on the
+ * commit the next release would ship (owner, 2026-11-23: after a merge the
+ * panel said *Ready to release · not started* while master's CI ran, which
+ * a release waits for). Read from the default branch's CI the Pipeline
+ * keeps (`…/ci/main`); nothing says a release is queued, so nothing here
+ * claims one.
+ */
+export interface MainChecks {
+  /** The default branch's name: "master". */
+  branch: string
+  state: 'running' | 'fail'
+  /** Jobs finished and listed, over every workflow's newest run; 0 of 0 while none is listed. */
+  done: number
+  total: number
+  /** The failed jobs' names, at most three. */
+  failed: string[]
+  /** The commit, short. */
+  sha?: string
+}
+
+/**
+ * The default branch's checks worth saying beside *Ready to release*:
+ * running or failed, and of a commit at or after the newest merge
+ * (`since`, unix ms) — runs listed from before it are of an older commit,
+ * the merge's own not listed yet, and say nothing of it.
+ */
+export function mainChecks(ci: CIState | undefined, o: { branch?: string; since?: number } = {}): MainChecks | undefined {
+  if (!ci || (ci.state !== 'running' && ci.state !== 'fail') || !ci.runs.length) return undefined
+  const newest = Math.max(...ci.runs.map((r) => r.created_at ?? r.started_at ?? 0))
+  if (o.since && newest && newest < o.since) return undefined
+  const jobs = ci.runs.flatMap((r) => r.jobs)
+  const failed = jobs.filter((j) => j.status === 'completed' && (j.conclusion === 'failure' || j.conclusion === 'timed_out')).map((j) => j.name)
+  if (ci.state === 'fail' && !failed.length) {
+    for (const r of ci.runs) if (r.conclusion === 'failure' || r.conclusion === 'timed_out') failed.push(r.name)
+  }
+  return {
+    branch: o.branch || ci.branch || 'the default branch', state: ci.state,
+    done: jobs.filter((j) => j.status === 'completed').length, total: jobs.length,
+    failed: failed.slice(0, 3), sha: ci.head_sha ? ci.head_sha.slice(0, 7) : undefined,
+  }
+}
+
+/** *master checks running · 12 of 17*, *master checks failed*, and its hover. */
+function mainWords(m: MainChecks, vv: string): { detail: string; title: string } {
+  const on = m.sha ? ` on ${m.sha}` : ''
+  if (m.state === 'fail') {
+    return { detail: `${m.branch} checks failed`,
+      title: `Nothing has started ${vv}: the changes are merged, and ${m.branch}’s checks${on} failed${m.failed.length ? ` (${m.failed.join(', ')})` : ''}.` }
+  }
+  return { detail: `${m.branch} checks running${m.total ? ` · ${m.done} of ${m.total}` : ''}`,
+    title: `Nothing has started ${vv} yet: the changes are merged, and ${m.branch}’s checks${on} are running${m.total ? ` (${m.done} of ${m.total} jobs finished)` : ''}. Nothing read says whether a release is queued.` }
+}
+
+export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { cards?: readonly BoardCard[]; out?: boolean; now: number; batch?: BatchPR; main?: MainChecks }): StageWords | undefined {
   const v = s.version
   const vv = v ? `v${v}` : 'the next version'
   let i = strip.findIndex((x) => x.state === 'current')
@@ -522,6 +578,12 @@ export function stageWords(s: ReleaseStatus, strip: readonly StripStage[], o: { 
     }
     case 'pr': {
       if (!s.pr) {
+        if (o.main) {
+          // The version alone leads the folded line: *Ready to release
+          // 0.190.1* left no room for the checks at the cockpit's width.
+          const m = mainWords(o.main, vv)
+          return { ...say(o.main.state === 'fail' ? 'fail' : 'waiting', 'Ready to release', v ?? 'Next release', m.detail, m.title), detailOnly: true }
+        }
         return say('idle', 'Ready to release', ready, 'not started',
           `Nothing is running. The changes are merged; ${vv} starts when someone opens its release pull request (a title like “chore(release): ${v ?? 'x.y.z'}”).`)
       }
@@ -608,7 +670,7 @@ const FOLD_KIND: Record<StatusTone, ReleaseFold['kind']> = { idle: 'ready', acti
  * - *Release 0.183.0 stopped · checks failed*, *… · build failed*, *… ·
  *   draft only, not public*, red.
  */
-export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[] }): ReleaseFold {
+export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: BatchPR; lastTag?: string; now: number; cards?: readonly BoardCard[]; main?: MainChecks }): ReleaseFold {
   if (s.phase === 'idle') {
     const last = s.last
     if (last && o.now - last.at < OUT_RECENT_MS) {
@@ -618,7 +680,7 @@ export function releaseFold(s: ReleaseStatus, o: { waiting: number; batch?: Batc
     return { kind: 'idle', text: `${tag ? `Nothing new since ${tag}` : 'Nothing new'}${batchWord(o.batch)}`, title: tag ? `Nothing merged and no changelog entry waiting since ${tag}.` : 'Nothing merged and no changelog entry waiting.', tone: 'idle' }
   }
   const strip = stripStages(s)
-  const w = stageWords(s, strip, { cards: o.cards, now: o.now, batch: o.batch })
+  const w = stageWords(s, strip, { cards: o.cards, now: o.now, batch: o.batch, main: o.main })
   const n = o.waiting
   const changes = n > 0 ? `${n} ${n === 1 ? 'change' : 'changes'}` : ''
   const stage = w ? strip[w.index - 1] : undefined

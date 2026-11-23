@@ -95,13 +95,15 @@ func newWorkBoard(d *Daemon, q *msgQueue) *workBoard {
 	return w
 }
 
-// workBatchSeen is how recently a pull request list must have said a batch
-// pull request is open for its branch to be read: a list not read for days
+// workBatchSeen is how recently a pull request list must have said a release
+// or batch pull request is open for its branch to be read: a list not read for days
 // (GitHub disconnected) no longer says what is open.
 const workBatchSeen = 3 * 24 * time.Hour
 
-// batchPR is the repository's open batch pull request, from the lists the
-// daemon already read (github_prs); nothing is sent to GitHub.
+// batchPR is the repository's open release vehicle — its release pull
+// request, else a pull request marked as a batch (store.BatchPR); never an
+// ordinary feature pull request — from the lists the daemon already read
+// (github_prs); nothing is sent to GitHub.
 func (w *workBoard) batchPR(ctx context.Context, remote string) (store.GitHubPR, bool) {
 	if w.d == nil || w.d.store == nil {
 		return store.GitHubPR{}, false
@@ -113,7 +115,7 @@ func (w *workBoard) batchPR(ctx context.Context, remote string) (store.GitHubPR,
 	return p, ok
 }
 
-// batchFunc finds a repository's open batch pull request by its remote
+// batchFunc finds a repository's open release vehicle by its remote
 // ("owner/name").
 type batchFunc func(ctx context.Context, remote string) (store.GitHubPR, bool)
 
@@ -585,8 +587,8 @@ func prevOf(e repoGitEntry, ok bool) *repoGit {
 // readRepoGit reads one repository from local git alone: origin's address,
 // the remote default branch as the clone knows it, what waits on that branch
 // for a release — the CHANGELOG's [Unreleased] section plus any
-// changes/unreleased/ fragments, and the fragments the open batch pull
-// request's branch adds (origin/<head> as the clone knows it; batch says
+// changes/unreleased/ fragments, and the fragments the open release or batch
+// pull request's branch adds (origin/<head> as the clone knows it; batch says
 // which, from the lists already read) — the newest released section, the
 // newest tags and how far the branch is past the last one. The notes are
 // reused while neither branch has moved. Anything git cannot say is left

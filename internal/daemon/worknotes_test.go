@@ -128,19 +128,37 @@ func TestReadRepoGitAddsTheBatchBranch(t *testing.T) {
 	}
 }
 
-// The batch pull request comes from the lists already read: the newest
-// open one that is not a release pull request.
+// The release vehicle comes from the lists already read: an ordinary
+// feature pull request is never it (owner, 2026-11-23: #1030 was read as
+// the batch while master held fixes only); a batch pull request is, and the
+// release pull request over it.
 func TestWorkBoardBatchPR(t *testing.T) {
 	w, _, d, now := newTestWork(t)
-	if err := d.store.UpsertGitHubPRs(context.Background(), "o/r", []store.GitHubPR{
-		{Number: 949, URL: "https://github.com/o/r/pull/949", Title: "fix: the batch", Head: "feat/batch", State: "open", UpdatedAt: 1},
-		{Number: 950, URL: "https://github.com/o/r/pull/950", Title: "chore(release): 0.183.1", Head: "release", State: "open", UpdatedAt: 1},
+	ctx := context.Background()
+	if err := d.store.UpsertGitHubPRs(ctx, "o/r", []store.GitHubPR{
+		{Number: 1030, URL: "https://github.com/o/r/pull/1030", Title: "feat(app): offline dictation on Windows and Linux", Head: "feat/offline-voice-win-linux", State: "open", UpdatedAt: 1},
 	}, now.UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
-	p, ok := w.batchPR(context.Background(), "o/r")
-	if !ok || p.Number != 949 {
+	if p, ok := w.batchPR(ctx, "o/r"); ok {
+		t.Fatalf("a feature PR was taken for the batch: %+v", p)
+	}
+	if err := d.store.UpsertGitHubPRs(ctx, "o/r", []store.GitHubPR{
+		{Number: 949, URL: "https://github.com/o/r/pull/949", Title: "fix: the batch", Head: "batch/0.183.1", State: "open", UpdatedAt: 1},
+	}, now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := w.batchPR(ctx, "o/r"); !ok || p.Number != 949 {
 		t.Fatalf("batch %+v ok %v", p, ok)
+	}
+	if err := d.store.UpsertGitHubPRs(ctx, "o/r", []store.GitHubPR{
+		{Number: 1032, URL: "https://github.com/o/r/pull/1032", Title: "chore(release): 0.190.1", Head: "chore/release-0.190.1", State: "open", UpdatedAt: 1},
+	}, now.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	p, ok := w.batchPR(ctx, "o/r")
+	if !ok || p.Number != 1032 {
+		t.Fatalf("release PR %+v ok %v", p, ok)
 	}
 	w.now = func() time.Time { return now.Add(workBatchSeen + time.Hour) }
 	if _, ok := w.batchPR(context.Background(), "o/r"); ok {

@@ -80,7 +80,7 @@ describe('the cockpit’s Release section', () => {
   // Owner, 2026-11-20, translated: "I stopped understanding what this means
   // … I must know the status exactly": merged, no release PR, nothing runs.
   it('folded, says the release is ready and not started, grey, from the kept answers, without the Work read', () => {
-    writeDeck(`stats:${ROOT}`, stats([pr(941, 'feat: the batch', 'open'), pr(940, 'feat: a batch', 'merged', now - 1_800_000)],
+    writeDeck(`stats:${ROOT}`, stats([pr(941, 'feat: 0.183.0 batch — two things', 'open'), pr(940, 'feat: a batch', 'merged', now - 1_800_000)],
       [{ number: 941, stage: 'ready', ci: 'pass', spend: SPEND }, { number: 940, stage: 'merged', spend: SPEND }], [rel('v0.182.4', 86_400_000, 23)]))
     writeDeck(workRepoKey(ROOT), repo('v0.182.4', 5))
     draw(true)
@@ -90,6 +90,58 @@ describe('the cockpit’s Release section', () => {
     expect(line()!.querySelector('[data-release-fold-pulse]')).toBeNull()
     // The kept entry is fresh: the Work answer is not read folded.
     expect(asked.some((u) => u.startsWith('/v1/work'))).toBe(false)
+  })
+
+  // Owner, 2026-11-23: an ordinary open feature PR (#1030) was drawn as the
+  // release's *via #1030 · green · ready to merge* while master held fixes
+  // only. It is not the batch: no via line, no *PR #* in the folded line,
+  // and it stays under Not in it yet.
+  it('never takes an ordinary open feature PR for the batch', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(1030, 'feat(app): offline dictation on Windows and Linux', 'open'), pr(1031, 'fix(cursor): no zero cost', 'merged', now - 1_800_000)],
+      [{ number: 1030, stage: 'ready', ci: 'pass', spend: SPEND }, { number: 1031, stage: 'merged', spend: SPEND }], [rel('v0.190.0', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.190.0', 1), unreleased: { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } } })
+    const { unmount } = draw(true)
+    expect(line()).toHaveAttribute('aria-label', 'Ready to release 0.190.1 · not started · 1 change')
+    unmount()
+    draw(false)
+    expect(document.querySelector('[data-release-via]')).toBeNull()
+    expect(document.querySelector('[data-release-section="branch"]')).toHaveTextContent('Not in it yet: 1 other PR')
+    // What it would make the version, from its title (variant 1A).
+    expect(document.querySelector('[data-release-hint]')).toHaveAttribute('data-release-hint', '0.191.0')
+  })
+
+  // Owner, 2026-11-23: after #1031 merged the panel said *Ready to release ·
+  // not started* while master's checks ran. From the default branch's CI
+  // the Pipeline keeps, it says them; it never claims a release is queued.
+  it('says master’s checks running in place of not started', () => {
+    writeDeck(`stats:${ROOT}`, { ...stats([pr(1031, 'fix(cursor): no zero cost', 'merged', now - 600_000)],
+      [{ number: 1031, stage: 'merged', spend: SPEND }], [rel('v0.190.0', 86_400_000, 23)]), board: { cards: [{ number: 1031, stage: 'merged', spend: SPEND }], releases: [rel('v0.190.0', 86_400_000, 23)], flow: FLOW, ships_by: 'release', default_branch: 'master' } })
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.190.0', 1), unreleased: { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } } })
+    const job = (id: number, status: string, conclusion?: string) => ({ id, run_id: 1, name: `job ${id}`, status, conclusion, labels: [], steps: [] })
+    const jobs = [...Array.from({ length: 12 }, (_, i) => job(i, 'completed', 'success')), ...Array.from({ length: 5 }, (_, i) => job(20 + i, 'in_progress'))]
+    const main = (state: string, js: object[]) => ({ connected: true, repo: 'acme/app', branch: 'master', ci: { repo: 'acme/app', head_sha: 'a1f2189d', branch: 'master', state, runs: [{ id: 1, name: 'ci', status: 'in_progress', created_at: now - 590_000, jobs: js }], runner_ms: 0, by_os: [], at: now } })
+    writeDeck(`main:${ROOT}`, main('running', jobs))
+    const { unmount } = draw(true)
+    expect(line()).toHaveAttribute('aria-label', '0.190.1 · master checks running · 12 of 17 · 1 change')
+    expect(line()).toHaveClass('text-warn')
+    // Within the hour of the merge, the default branch's checks are asked (the daemon keeps them).
+    expect(asked).toContain('/v1/sessions/s1/ci/main')
+    unmount()
+    draw(false)
+    const words = document.querySelector('[data-release-stage-words]')!
+    expect(words).toHaveTextContent(/^master checks running · 12 of 17$/)
+    expect(words.getAttribute('title')).toMatch(/Nothing read says whether a release is queued\.$/)
+    forgetDeckAnswers()
+  })
+
+  it('says master’s checks failed, red', () => {
+    writeDeck(`stats:${ROOT}`, stats([pr(1031, 'fix(cursor): no zero cost', 'merged', now - 600_000)], [{ number: 1031, stage: 'merged', spend: SPEND }], [rel('v0.190.0', 86_400_000, 23)]))
+    writeDeck(workRepoKey(ROOT), { ...repo('v0.190.0', 1), unreleased: { ref: 'origin/master', items: ['a'], count: 1, kinds: { Fixed: 1 } } })
+    writeDeck(`main:${ROOT}`, { connected: true, repo: 'acme/app', branch: 'master', ci: { repo: 'acme/app', head_sha: 'a1f2189d', branch: 'master', state: 'fail', runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'failure', created_at: now - 590_000, jobs: [{ id: 1, run_id: 1, name: 'go (windows-latest)', status: 'completed', conclusion: 'failure', labels: [], steps: [] }] }], runner_ms: 0, by_os: [], at: now } })
+    draw(true)
+    expect(line()).toHaveAttribute('aria-label', '0.190.1 · master checks failed · 1 change')
+    expect(line()).toHaveClass('text-danger')
+    expect(line()!.getAttribute('title')).toMatch(/go \(windows-latest\)/)
   })
 
   it('folded, reads the Work answer itself only when no entry is kept', () => {
