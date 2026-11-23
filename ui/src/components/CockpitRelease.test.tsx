@@ -171,9 +171,9 @@ describe('the cockpit’s Release section', () => {
     expect(asked).toContain('/v1/sessions/s1/ci/release')
   })
 
-  // Owner, 2026-11-19, variant A (translated: "dots, one word — looks more
-  // logical"): the word strip wrapped at 330px.
-  it('unfolded, the version first, then five dots with only the current stage named', () => {
+  // Owner, 2026-11-23, variant A: a stepper across the panel, one word under
+  // each circle, the state whole on its own line below.
+  it('unfolded, the version first, then a five-step list with the state under it', () => {
     writeDeck(`stats:${ROOT}`, stats([pr(942, 'chore(release): 0.183.0', 'open'), pr(940, 'feat: a batch', 'merged', now - 1_800_000)],
       [{ number: 942, stage: 'open', ci: 'running', spend: SPEND, os: [{ os: 'linux', state: 'pass', checks: 4 }, { os: 'macos', state: 'running', checks: 4 }, { os: 'windows', state: 'running', checks: 4 }] },
         { number: 940, stage: 'merged', spend: SPEND }], [rel('v0.182.4', 86_400_000, 23)]))
@@ -188,17 +188,30 @@ describe('the cockpit’s Release section', () => {
     expect(dots.map((e) => e.getAttribute('data-strip-stage'))).toEqual(['merged', 'pr', 'tag', 'builds', 'published'])
     expect(dots.map((e) => e.getAttribute('data-step-state'))).toEqual(['done', 'current', 'todo', 'todo', 'todo'])
     expect(dots.map((e) => e.textContent)).toEqual(['', '', '', '', ''])
-    // Each dot says its stage and its state in words on hover.
-    expect(dots.map((e) => e.getAttribute('title')!.split('\n')[0])).toEqual(['Merged: done', 'Release PR: in progress', 'Tagged: not started', 'Building: not started', 'Published: not started'])
+    // An ordered list: one word under each circle, each step's stage and
+    // state in words on hover and for a screen reader, the current one
+    // aria-current.
+    const list = strip.querySelector('ol[data-release-steps]')!
+    const steps = [...list.querySelectorAll(':scope > li')]
+    expect(steps.map((e) => e.querySelector('[data-strip-word]')!.textContent)).toEqual(['Merged', 'PR', 'Tagged', 'Build', 'Out'])
+    expect(steps.map((e) => e.querySelector('[data-strip-word]')!.textContent!.length <= 7)).toEqual([true, true, true, true, true])
+    const said = ['Merged: done', 'Release PR: in progress', 'Tagged: not started', 'Building: not started', 'Published: not started']
+    expect(steps.map((e) => e.getAttribute('title')!.split('\n')[0])).toEqual(said)
+    expect(steps.map((e) => e.querySelector('.sr-only')!.textContent)).toEqual(said)
+    expect(steps.map((e) => e.getAttribute('aria-current'))).toEqual([null, 'step', null, null, null])
     expect(dots[0]).toHaveClass('bg-ok')
     // In progress right now: blue and pulsing, never the amber of waiting.
     expect(dots[1]).toHaveClass('bg-progress', 'release-step-pulse')
     expect(dots[1]).not.toHaveClass('bg-warn')
     expect([...strip.querySelectorAll('[data-strip-line]')].map((e) => e.getAttribute('data-strip-line'))).toEqual(['done', 'todo', 'todo', 'todo'])
-    // Only the current stage is named, with its checks per OS.
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveTextContent(/^checks 1 of 3 systems$/)
-    expect(strip.querySelector('[data-release-stage-words]')).toHaveClass('text-progress')
-    expect(strip.textContent).not.toMatch(/Tagged|Building|Published/)
+    // The state on its own line under the steps, with its checks per OS,
+    // never cut with an ellipsis.
+    const words = strip.querySelector('[data-release-stage-words]')!
+    expect(words).toHaveTextContent(/^checks 1 of 3 systems$/)
+    expect(words).toHaveClass('text-progress')
+    expect(words).not.toHaveClass('truncate')
+    expect(list.nextElementSibling).toBe(words.parentElement)
+    expect(steps[1]!.querySelector('[data-strip-word]')).toHaveClass('text-progress')
     // The version heads the section; the dots sit under it, the entries apart.
     const plan = document.querySelector('[data-release-plan]')!
     const head = plan.querySelector('[data-release-group="head"]')!
@@ -331,7 +344,7 @@ describe('the cockpit’s Release section', () => {
     expect(dot).toHaveClass('bg-transparent', 'border-fg-muted')
     expect(dot).not.toHaveClass('release-step-pulse')
     expect(dot).not.toHaveClass('bg-warn')
-    expect(dot.getAttribute('title')).toMatch(/^Release PR: not started\nNothing is running\./)
+    expect(dot.closest('li')!.getAttribute('title')).toMatch(/^Release PR: not started\nNothing is running\./)
     const words = strip.querySelector('[data-release-stage-words]')!
     expect(words).toHaveTextContent(/^Ready to release · not started$/)
     expect(words).toHaveClass('text-fg-muted')

@@ -229,9 +229,11 @@ test('the folded CI line shortens at narrow widths and never passes the edge', a
 })
 
 // Owner, 2026-11-19: the word strip wrapped "Published" to a second line at
-// 330px. Variant A's dots and one named stage stay one line, and nothing in
-// the unfolded section passes the panel's edge, at every width.
-test('the unfolded Release section keeps its stage dots on one line and inside the edge', async ({ app, page }) => {
+// 330px; 2026-11-23, variant A: the steps across the panel with one word
+// each stay one row, the state under them is whole (two lines at most,
+// never an ellipsis), and nothing in the unfolded section passes the
+// panel's edge, at every width.
+test('the unfolded Release section keeps its stepper on one row and inside the edge', async ({ app, page }) => {
   const os = [{ os: 'linux', state: 'pass', checks: 4 }, { os: 'macos', state: 'running', checks: 4 }, { os: 'windows', state: 'running', checks: 4 }]
   const cases = [
     { name: 'release-pr', words: /^checks 1 of 3 systems$/,
@@ -283,9 +285,14 @@ test('the unfolded Release section keeps its stage dots on one line and inside t
           if (r.right > edge) out.push(`"${(el.textContent ?? '').slice(0, 40)}" ends at ${Math.round(r.right)} > ${Math.round(edge)}`)
         }
         const strip = sec.querySelector('[data-release-strip]') as HTMLElement
-        if (strip.getBoundingClientRect().height > 18) out.push(`the stage row wraps: ${strip.getBoundingClientRect().height}px`)
+        const steps = strip.querySelector('[data-release-steps]') as HTMLElement
+        if (steps.getBoundingClientRect().height > 34) out.push(`the stepper wraps: ${steps.getBoundingClientRect().height}px`)
+        for (const word of steps.querySelectorAll<HTMLElement>('[data-strip-word]')) {
+          if (word.scrollWidth > word.clientWidth) out.push(`a step's word is cut: ${word.textContent}`)
+        }
         const words = strip.querySelector('[data-release-stage-words]') as HTMLElement
-        if (words.getBoundingClientRect().height > 18) out.push(`the stage words wrap: ${words.textContent}`)
+        if (words.getBoundingClientRect().height > 34) out.push(`the stage words run past two lines: ${words.textContent}`)
+        if (words.parentElement!.scrollWidth > words.parentElement!.clientWidth + 0.5) out.push(`the stage words are cut: ${words.textContent}`)
         for (const line of sec.querySelectorAll<HTMLElement>('[data-release-via], [data-release-section="branch"]')) {
           if (line.getBoundingClientRect().height > 20) out.push(`wraps: ${line.textContent}`)
         }
