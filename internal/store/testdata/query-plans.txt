@@ -1636,15 +1636,6 @@ SELECT id, COALESCE(title,''), status, COALESCE(assignee,''), COALESCE(budget_us
     SCAN tasks
     USE TEMP B-TREE FOR ORDER BY
 
-## store.LiveSubagents
-SELECT COUNT(*) FROM ( SELECT agent_id, MAX(ts) AS last, MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id ) WHERE stopped < last
-    CO-ROUTINE (subquery-2)
-        SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
-        SCALAR SUBQUERY 1
-            SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-        USE TEMP B-TREE FOR GROUP BY
-    SCAN (subquery-2)
-
 ## store.LoopTaxCalls
 SELECT COALESCE(msg_id,''), COALESCE(kind,''), COALESCE(tool,''), ts, COALESCE(tokens_in,0), COALESCE(cache_read,0), COALESCE(cache_write,0), COALESCE(tokens_out,0), COALESCE(model,'') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND ts <= ? AND kind IN ('tool.pre','turn.assistant') ORDER BY ts, id
     SEARCH events USING COVERING INDEX idx_events_attr_work (sid=? AND ts>? AND ts<?)
@@ -2579,12 +2570,21 @@ SELECT COALESCE(NULLIF(s.agent,''),'claude'), COALESCE(s.subscription,''), COALE
 SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ? AND internal = 0
     SEARCH events USING COVERING INDEX idx_events_ts_cover (ts>?)
 
-## store.SubagentSpans
-SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END), SUM(kind = 'tool.pre') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id
-    SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
+## store.SubagentBoundsOf
+SELECT COALESCE(MAX(e.ts), 0) FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' AND COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.source'), '') <> 'compact'
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-    USE TEMP B-TREE FOR GROUP BY
+
+## store.SubagentBoundsOf
+SELECT e.kind FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind IN ('turn.user', 'tool.pre', 'agent.stop') AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' ORDER BY e.ts DESC, e.id DESC LIMIT 1
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.SubagentBoundsOf
+SELECT status FROM sessions WHERE session_id = ?
+    SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.SubagentTokensByModelSkip
 SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND COALESCE(agent_id,'') <> '' AND cost_usd > 0 AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude') AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY 1
@@ -2610,22 +2610,6 @@ SELECT id, ts, kind, COALESCE(tool, ''), COALESCE(json_extract((CASE WHEN typeof
     SEARCH events USING INDEX idx_events_agent (sid=? AND agent_id=?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
-## store.SubagentsDone
-SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END) AS stopped, SUM(kind = 'tool.pre') AS calls FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id HAVING stopped >= MAX(ts) AND calls > 0 ORDER BY stopped DESC LIMIT ?
-    SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
-    SCALAR SUBQUERY 1
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-    USE TEMP B-TREE FOR GROUP BY
-    USE TEMP B-TREE FOR ORDER BY
-
-## store.SubagentsNow
-SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END), SUM(kind = 'tool.pre') FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id ORDER BY MAX(ts) DESC
-    SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
-    SCALAR SUBQUERY 1
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-    USE TEMP B-TREE FOR GROUP BY
-    USE TEMP B-TREE FOR ORDER BY
 
 ## store.SubagentsSpend
 SELECT agent_id, MAX(ts), COALESCE(model, ''), COUNT(*), SUM(cost_usd IS NULL AND tokens_in IS NOT NULL), COALESCE(SUM(cost_usd), 0) FROM events INDEXED BY idx_events_subagent_turn WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND agent_id IS NOT NULL AND agent_id <> '' AND internal = 0 GROUP BY agent_id
@@ -3322,6 +3306,21 @@ SELECT e.id, e.ts, e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE W
 ## store.readSessionInfos
 SELECT sid, session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(model,''), COALESCE(agent,''), COALESCE(agent,'claude'), COALESCE(subscription,''), COALESCE(last_event_at,0) FROM sessions ORDER BY sid
     SCAN sessions
+
+## store.readSubagentGroups
+SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END), SUM(kind = 'tool.pre'), MAX(CASE WHEN kind = 'tool.pre' THEN ts ELSE 0 END) >= MAX(ts) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id
+    SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    USE TEMP B-TREE FOR GROUP BY
+
+## store.readSubagentGroups
+SELECT agent_id, MIN(ts), MAX(ts), MAX(CASE WHEN kind = 'agent.stop' THEN ts ELSE 0 END), SUM(kind = 'tool.pre'), MAX(CASE WHEN kind = 'tool.pre' THEN ts ELSE 0 END) >= MAX(ts) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND ts >= ? AND agent_id IS NOT NULL AND agent_id <> '' GROUP BY agent_id ORDER BY MAX(ts) DESC
+    SEARCH events USING COVERING INDEX idx_events_agent_ts (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    USE TEMP B-TREE FOR GROUP BY
+    USE TEMP B-TREE FOR ORDER BY
 
 ## store.readTurnBounds
 SELECT e.id, (SELECT session_id FROM sessions WHERE sessions.sid = e.sid), e.ts, e.kind FROM events e INDEXED BY idx_events_turn_bounds WHERE e.source = 'hook' AND e.kind IN ('turn.user', 'agent.stop', 'throttle') AND COALESCE(e.agent_id, '') = '' AND e.ts >= ? AND e.sid IN (SELECT sid FROM sessions WHERE session_id IN (?)) ORDER BY e.sid, e.ts
