@@ -116,13 +116,43 @@ describe('in the desktop app, one click (F20)', () => {
     h.st = base
     render(<AppUpdateNotice />)
     fireEvent.click(await screen.findByRole('button', { name: 'Update to v0.78.0 — Restart' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
     emit({ phase: 'downloading', next: '0.78.0', downloaded: 0, total: 1000 })
     expect(screen.getByRole('status')).toHaveTextContent('Downloading v0.78.0')
     emit({ phase: 'downloading', next: '0.78.0', downloaded: 420, total: 1000 })
     expect(screen.getByRole('status')).toHaveTextContent('42%')
     emit({ phase: 'installing', next: '0.78.0' })
     expect(screen.getByRole('status')).toHaveTextContent('Installing v0.78.0 — restarting…')
+  })
+
+  // Owner, 2026-11-23: the terminal commands showed while the app was
+  // downloading the update itself. Only a failure offers them, as the other way.
+  it('never shows the terminal commands while the app checks, downloads, installs or waits for it', async () => {
+    h.st = { ...base, app_command: 'brew update && brew upgrade --cask caprock-app' }
+    render(<AppUpdateNotice />)
+    const btn = await screen.findByRole('button', { name: 'Update to v0.78.0 — Restart' })
+    fireEvent.click(screen.getByRole('button', { name: 'More about this update' }))
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('brew')
+    fireEvent.click(btn)
+    for (const p of [
+      { phase: 'checking' },
+      { phase: 'downloading', next: '0.78.0', downloaded: 420, total: 1000 },
+      { phase: 'installing', next: '0.78.0' },
+      { phase: 'available', next: '0.77.1' },
+    ]) {
+      emit(p)
+      expect(document.body).not.toHaveTextContent('brew')
+      expect(document.querySelector('[data-update-commands]')).toBeNull()
+    }
+  })
+
+  it('offers the terminal under a failed update, labelled as the other way', async () => {
+    h.st = { ...base, app_command: 'brew update && brew upgrade --cask caprock-app' }
+    render(<AppUpdateNotice />)
+    await screen.findByRole('button', { name: 'Update to v0.78.0 — Restart' })
+    emit({ phase: 'failed', error: 'The update’s signature did not verify, so nothing was installed.' })
+    const cmds = screen.getByRole('dialog', { name: 'The update did not install' }).querySelector('[data-update-commands="fallback"]')!
+    expect(cmds.textContent).toMatch(/^Or update from a terminal:.*brew upgrade --cask caprock-app/)
   })
 
   it('opens a failure with the reason, Try again and the release page', async () => {
@@ -135,7 +165,7 @@ describe('in the desktop app, one click (F20)', () => {
     expect(dialog).toHaveTextContent('Caprock v0.77.0 keeps running')
     expect(screen.getByRole('link', { name: 'release page' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('a failure waved away with Not now goes quiet', async () => {

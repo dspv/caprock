@@ -11,6 +11,15 @@
 //!   daemon reports a newer version, to download and verify it in the
 //!   background ([`download`]); the page installs it when no agent is busy
 //!   and the user is away (rule 4; ADR-042 as amended 2026-10-15).
+//! - **The two sources disagree for a few minutes after a release.** The
+//!   daemon sees a release as soon as GitHub publishes it; the release
+//!   workflow uploads `latest.json` minutes later. Until then the updater
+//!   offers the previous version. An install or download asked for in the
+//!   name of the newer one ([`behind`]) neither downloads nor installs the
+//!   older bundle: the older offer stays standing, the page says the app
+//!   update is not ready yet and checks `latest.json` again every few
+//!   minutes, a bounded number of times, until the two agree
+//!   (`ui/src/lib/appupdate.ts`, `.ai/21-app.md` § Updates).
 //! - **Nothing installs without a valid signature.** The bundle is verified
 //!   against the public key in `tauri.conf.json` (minisign) and the version
 //!   it was signed for, before a byte of it is written.
@@ -244,6 +253,56 @@ fn announce<R: Runtime>(app: &AppHandle<R>) {
     ));
 }
 
+/// A version as three numbers and a pre-release tag; `None` when it is not one.
+fn parse_version(s: &str) -> Option<([u64; 3], String)> {
+    let s = s.trim();
+    let s = s.strip_prefix('v').unwrap_or(s);
+    let s = s.split('+').next().unwrap_or(s);
+    let (core, pre) = match s.split_once('-') {
+        Some((c, p)) => (c, p.to_string()),
+        None => (s, String::new()),
+    };
+    let mut n = [0u64; 3];
+    let mut parts = core.split('.');
+    for slot in &mut n {
+        *slot = parts.next()?.parse().ok()?;
+    }
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((n, pre))
+}
+
+/// `a` is a newer version than `b` (either may carry a leading v; a
+/// pre-release ranks below its release). Not a version: never newer.
+pub fn newer(a: &str, b: &str) -> bool {
+    let (Some((an, ap)), Some((bn, bp))) = (parse_version(a), parse_version(b)) else {
+        return false;
+    };
+    if an != bn {
+        return an > bn;
+    }
+    if ap == bp {
+        return false;
+    }
+    if ap.is_empty() {
+        return true;
+    }
+    if bp.is_empty() {
+        return false;
+    }
+    ap > bp
+}
+
+/// The update on offer (`offered`) is older than the release the daemon's
+/// check already knows (`known`): the gap between a release appearing and
+/// its `latest.json` being uploaded. An install or a download asked for in
+/// the name of `known` must not deliver `offered`; the page waits and checks
+/// again instead.
+pub fn behind(offered: &str, known: Option<&str>) -> bool {
+    known.is_some_and(|k| newer(k, offered))
+}
+
 /// An updater error in words a user can act on.
 pub fn explain(e: &tauri_plugin_updater::Error) -> String {
     use tauri_plugin_updater::Error as E;
@@ -315,9 +374,19 @@ async fn check_once<R: Runtime>(app: &AppHandle<R>) -> Result<Option<Update>, St
 /// it with progress. The plugin verifies the signature, and the version it
 /// was signed for, before it returns the bytes. On no update or a failure
 /// the phase says so and `None` comes back; the caller releases the claim.
-async fn fetch<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
+///
+/// `known` is the newest release the daemon's check found. A pending update
+/// older than it is checked afresh, and one still older after that is not
+/// downloaded: it stays on offer (`Available`) and `None` comes back, so
+/// nothing older is installed under a newer version's name.
+async fn fetch<R: Runtime>(app: &AppHandle<R>, known: Option<&str>) -> Option<(Update, Vec<u8>)> {
     let st = app.state::<Updates>();
-    let pending = st.pending.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let pending = st
+        .pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        .filter(|u| !behind(&u.version, known));
     let update = match pending {
         Some(u) => Ok(Some(u)),
         None => {
@@ -337,6 +406,12 @@ async fn fetch<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
             return None;
         }
     };
+    if behind(&update.version, known) {
+        let next = update.version.clone();
+        *st.pending.lock().unwrap_or_else(|e| e.into_inner()) = Some(update);
+        st.set_phase(Phase::Available { next });
+        return None;
+    }
     let version = update.version.clone();
     st.set_phase(Phase::Downloading {
         next: version.clone(),
@@ -382,21 +457,26 @@ async fn fetch<R: Runtime>(app: &AppHandle<R>) -> Option<(Update, Vec<u8>)> {
 /// later, when no agent is busy and the user is away. Only the user's
 /// choice in Settings → Updates leads here; the request is the same
 /// `latest.json` and bundle a click on Update fetches.
-pub async fn download<R: Runtime>(app: AppHandle<R>) -> Info {
+pub async fn download<R: Runtime>(app: AppHandle<R>, known: Option<String>) -> Info {
     let st = app.state::<Updates>();
     if this_blocked().is_some() || !st.claim() {
         return info(&app);
     }
-    let held = st
-        .ready
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .as_ref()
-        .map(|(u, _)| u.version.clone());
+    let held = {
+        let mut ready = st.ready.lock().unwrap_or_else(|e| e.into_inner());
+        // A bundle held for an older release than the one now known is dropped.
+        if ready
+            .as_ref()
+            .is_some_and(|(u, _)| behind(&u.version, known.as_deref()))
+        {
+            *ready = None;
+        }
+        ready.as_ref().map(|(u, _)| u.version.clone())
+    };
     match held {
         Some(next) => st.set_phase(Phase::Ready { next }),
         None => {
-            if let Some((update, bytes)) = fetch(&app).await {
+            if let Some((update, bytes)) = fetch(&app, known.as_deref()).await {
                 let next = update.version.clone();
                 *st.ready.lock().unwrap_or_else(|e| e.into_inner()) = Some((update, bytes));
                 st.set_phase(Phase::Ready { next });
@@ -412,15 +492,20 @@ pub async fn download<R: Runtime>(app: AppHandle<R>) -> Info {
 /// verified now — then restarts the app. On Windows the installer takes
 /// over and the app exits from inside the plugin. Returns only when
 /// something failed.
-pub async fn install<R: Runtime>(app: AppHandle<R>) -> Info {
+pub async fn install<R: Runtime>(app: AppHandle<R>, known: Option<String>) -> Info {
     let st = app.state::<Updates>();
     if this_blocked().is_some() || !st.claim() {
         return info(&app);
     }
-    let held = st.ready.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let held = st
+        .ready
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        .filter(|(u, _)| !behind(&u.version, known.as_deref()));
     let (update, bytes) = match held {
         Some(r) => r,
-        None => match fetch(&app).await {
+        None => match fetch(&app, known.as_deref()).await {
             Some(r) => r,
             None => {
                 st.release();
@@ -667,6 +752,37 @@ mod tests {
         assert!(!u.claim());
         u.release();
         assert!(u.claim());
+    }
+
+    #[test]
+    fn versions_compare_as_numbers_with_or_without_a_v() {
+        assert!(newer("0.190.0", "0.189.1"));
+        assert!(newer("v0.190.0", "0.189.1"));
+        assert!(newer("0.10.0", "0.9.9"), "numbers, not text");
+        assert!(newer("1.0.0", "0.999.0"));
+        assert!(!newer("0.189.1", "0.190.0"));
+        assert!(!newer("v0.190.0", "0.190.0"), "the same version");
+        // A pre-release ranks below its release.
+        assert!(newer("0.190.0", "0.190.0-rc.1"));
+        assert!(!newer("0.190.0-rc.1", "0.190.0"));
+        assert!(newer("0.190.0-rc.2", "0.190.0-rc.1"));
+        // Not a version: never newer, either way round.
+        assert!(!newer("latest", "0.1.0"));
+        assert!(!newer("0.1.0", ""));
+        assert!(!newer("0.1", "0.0.1"));
+    }
+
+    #[test]
+    fn an_offer_older_than_the_known_release_is_behind() {
+        // 2026-11-23: the daemon saw v0.190.0, latest.json still said 0.189.1.
+        assert!(behind("0.189.1", Some("v0.190.0")));
+        // Once latest.json catches up there is no gap: one jump to it.
+        assert!(!behind("0.190.0", Some("v0.190.0")));
+        // The updater ahead of the daemon's last check is no gap either.
+        assert!(!behind("0.190.1", Some("v0.190.0")));
+        // Nothing known (checks off, an older page): no gap, as before.
+        assert!(!behind("0.189.1", None));
+        assert!(!behind("0.189.1", Some("")));
     }
 
     #[test]

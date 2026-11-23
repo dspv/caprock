@@ -62,7 +62,33 @@ describe('Update automatically', () => {
     await flush()
     await flush(RECHECK_MS)
     expect(invoke.mock.calls.filter(([c]) => c === 'app_update_download')).toHaveLength(1)
-    expect(invoke).not.toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', expect.anything())
+  })
+
+  // 2026-11-23: the release is out, its latest.json minutes behind. The
+  // shell declines the older bundle; once the updater offers the release,
+  // that one is downloaded, in one jump.
+  it('asks for the release by name, waits out the gap, then downloads the release itself', async () => {
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'app_update_status') return app
+      if (cmd === 'app_update_download') return { ...app, phase: 'available', next: '0.79.1' }
+      throw new Error(cmd)
+    })
+    render(<AppAutoUpdate />)
+    await flush()
+    expect(invoke).toHaveBeenCalledWith('app_update_download', { known: 'v0.80.0' })
+    emit({ phase: 'available', next: '0.79.1' })
+    await flush(RECHECK_MS)
+    expect(invoke.mock.calls.filter(([c]) => c === 'app_update_download')).toHaveLength(1)
+    emit({ phase: 'available', next: '0.80.0' })
+    await flush()
+    expect(invoke.mock.calls.filter(([c]) => c === 'app_update_download')).toHaveLength(2)
+    // A bundle older than the release, held from before, is never installed.
+    emit({ phase: 'ready', next: '0.79.1' })
+    setLastActivity(Date.now() - IDLE_MS - 1000)
+    await flush(RECHECK_MS)
+    await flush(15_000)
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('waits while an agent works, then while the user is around, then gives ten seconds and installs', async () => {
@@ -87,7 +113,7 @@ describe('Update automatically', () => {
     expect(card).toHaveTextContent('Sessions and tabs stay as they are.')
     for (let i = 0; i < 10; i++) await flush(1000)
     await flush()
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
     expect(localStorage.getItem(UPDATED_KEY)).toBe('v0.80.0')
   })
 
@@ -98,7 +124,7 @@ describe('Update automatically', () => {
     render(<AppAutoUpdate />)
     await flush(RECHECK_MS * 3)
     expect(screen.queryByRole('status', { name: 'Caprock is updating' })).toBeNull()
-    expect(invoke).not.toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('waits while something typed is not sent', async () => {
@@ -129,7 +155,7 @@ describe('Update automatically', () => {
     setLastActivity(Date.now() - IDLE_MS - 1)
     await flush(RECHECK_MS * 4)
     expect(screen.queryByRole('status', { name: 'Caprock is updating' })).toBeNull()
-    expect(invoke).not.toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('Restart now restarts at once', async () => {
@@ -139,7 +165,7 @@ describe('Update automatically', () => {
     await flush()
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Restart now' }))
     fireEvent.click(screen.getByRole('button', { name: 'Restart now' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('says what it updated to after the restart, once', async () => {
@@ -192,7 +218,7 @@ describe('Update automatically', () => {
     app = { ...app, supported: false }
     render(<AppAutoUpdate />)
     await flush(RECHECK_MS)
-    expect(invoke).not.toHaveBeenCalledWith('app_update_download', {})
+    expect(invoke).not.toHaveBeenCalledWith('app_update_download', expect.anything())
     emit({ phase: 'idle' })
   })
 })

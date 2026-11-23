@@ -25,7 +25,7 @@ import { everyWhileVisible } from '@/lib/visible'
 import { isTauri } from '@/lib/appmode'
 import { Banner, BannerButton, BannerDismiss } from './Banner'
 import { extTitle } from '@/lib/externalLinks'
-import { appUpdate, offerFor, useAppUpdate } from '@/lib/appupdate'
+import { appUpdate, knownLatest, offerFor, useAppUpdate } from '@/lib/appupdate'
 
 const DISMISS_KEY = 'caprock.update.dismissed'
 
@@ -106,7 +106,9 @@ export function UpdateBanner({ plan, onSave, now, owned = 0 }: {
       </>}
       actions={<>
         {app?.kind === 'install' || app?.kind === 'failed' ? (
-          <BannerButton onClick={() => { void appUpdate.install() }}>{app.kind === 'failed' ? 'Try again' : <>Update to {next} — Restart</>}</BannerButton>
+          <BannerButton onClick={() => { void appUpdate.install(knownLatest(st)) }}>{app.kind === 'failed' ? 'Try again' : <>Update to {next} — Restart</>}</BannerButton>
+        ) : app?.kind === 'preparing' ? (
+          <span role="status" data-update-banner-preparing className="whitespace-nowrap text-fg-muted">The app update isn’t ready yet — checking again</span>
         ) : app?.kind === 'progress' ? (
           <span role="status" data-update-banner-progress className="inline-flex items-center gap-2 whitespace-nowrap text-fg-muted" title="Downloading in the background; sessions keep running">
             <span className="relative h-[6px] w-[140px] overflow-hidden rounded-full bg-[var(--app-hairline-strong)]">

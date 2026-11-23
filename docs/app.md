@@ -1450,6 +1450,12 @@ hides it and the download goes on in the status strip as a short item —
 failure in the warning colour. Click the item to bring the card back; it does not come
 back by itself, and a newer version starts with the card open again.
 
+For a few minutes after a release, Caprock can know a new version is out
+before the app's own update for it is published. Then the version panel says
+*vX is being prepared* rather than offering an older update, looks again by
+itself every couple of minutes, and offers **Update to vX** once it is
+ready.
+
 - **Checking.** On its first launch the app asks once: *Check for updates
   automatically?* With **Yes**, Caprock asks GitHub for the newest version
   number every 15 minutes, soon after the computer wakes, and when you

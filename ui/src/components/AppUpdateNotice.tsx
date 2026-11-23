@@ -23,8 +23,8 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { api, isPairedDevice, type UpdateStatus } from '@/lib/api'
-import { appUpdate, inBackground, offerFor, useAppUpdate, v, type Offer } from '@/lib/appupdate'
-import { Copyable } from './ui'
+import { appUpdate, inBackground, knownLatest, offerFor, useAppUpdate, v, type Offer } from '@/lib/appupdate'
+import { UpdateCommands } from './AppUpdateState'
 import { everyWhileVisible } from '@/lib/visible'
 import { askSoon, onWindowFront } from '@/lib/updatesoon'
 import { checkByHand, checkingByHand, reportCheck, useCheckResult } from '@/lib/checkbanner'
@@ -190,6 +190,15 @@ export function AppUpdateNotice() {
       )
     case 'installing':
       return <span role="status" className="whitespace-nowrap text-fg-muted">Installing {offer.next} — restarting…</span>
+    case 'preparing':
+      // Released, its app update not uploaded yet: nothing to click, and
+      // never the older bundle under this version's name (lib/appupdate).
+      return (
+        <span role="status" data-update-preparing className="whitespace-nowrap text-fg-muted"
+          title={`Caprock ${offer.latest} is out; its app update is not ready yet. Caprock checks again by itself.`}>
+          {offer.latest} is being prepared
+        </span>
+      )
     default:
       break
   }
@@ -204,7 +213,7 @@ export function AppUpdateNotice() {
         <>
           <button
             type="button"
-            onClick={() => { setOpen(false); void appUpdate.install() }}
+            onClick={() => { setOpen(false); void appUpdate.install(knownLatest(st)) }}
             data-update-offer
             className="shrink-0 whitespace-nowrap rounded-full border border-accent/60 bg-accent/15 px-2 leading-[18px] font-medium text-accent hover:bg-accent/25"
             title={`Download Caprock ${offer.next}, check its signature, install it and restart. Sessions keep running.`}
@@ -257,25 +266,19 @@ export function AppUpdateNotice() {
             </p>
           )}
           {offer.kind === 'commands' && info?.blocked && <p className="text-fg-muted">{info.blocked}</p>}
-          {offer.kind !== 'install' && (commands.length > 0 ? (
-            <div className="grid gap-1.5">
-              <p className="text-fg-muted">Run in a terminal:</p>
-              {commands.map((c) => (
-                <div key={c.command} className="grid gap-0.5">
-                  {commands.length > 1 && <span className="text-[11px] text-fg-faint">{c.label}</span>}
-                  <Copyable command={c.command} className="break-all" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            !info?.blocked && offer.kind === 'commands' && <p className="text-fg-muted">Download it from the release page.</p>
-          ))}
+          {/* The commands where this install cannot replace itself, and as
+            * the other way under a failed update; never over the app's own
+            * check, download or install (lib/AppUpdateState, owner 2026-11-23). */}
+          {offer.kind === 'commands' && (commands.length > 0
+            ? <UpdateCommands commands={commands} />
+            : !info?.blocked && <p className="text-fg-muted">Download it from the release page.</p>)}
+          {offer.kind === 'failed' && <UpdateCommands commands={commands} fallback />}
           <div className="flex items-center gap-2">
             <a className="link text-[12px]" href={st?.url ?? 'https://github.com/dspv/caprock/releases/latest'} target="_blank" title={extTitle()} rel="noreferrer">
               {offer.kind === 'failed' ? 'release page' : 'what’s new'}
             </a>
             {offer.kind === 'failed' && (
-              <button type="button" onClick={() => { setOpen(false); void appUpdate.install() }} className="ml-auto rounded-[6px] border border-accent/50 bg-accent/10 px-2 py-0.5 text-[11.5px] text-accent hover:bg-accent/20">
+              <button type="button" onClick={() => { setOpen(false); void appUpdate.install(knownLatest(st)) }} className="ml-auto rounded-[6px] border border-accent/50 bg-accent/10 px-2 py-0.5 text-[11.5px] text-accent hover:bg-accent/20">
                 Try again
               </button>
             )}

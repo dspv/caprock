@@ -94,9 +94,10 @@ export const shell = {
   /** Fetch latest.json once. */
   updateCheck: () => shellInvoke<AppUpdateInfo>('app_update_check'),
   /** Download and verify, and hold it for a later install (Update automatically). */
-  updateDownload: () => shellInvoke<AppUpdateInfo>('app_update_download'),
-  /** Download, verify, install and restart; resolves only when it did not. */
-  updateInstall: () => shellInvoke<AppUpdateInfo>('app_update_install'),
+  updateDownload: (known?: string) => shellInvoke<AppUpdateInfo>('app_update_download', known ? { known } : {}),
+  /** Download, verify, install and restart; resolves only when it did not.
+   *  `known`: the daemon's newest release; an older bundle is not installed in its name. */
+  updateInstall: (known?: string) => shellInvoke<AppUpdateInfo>('app_update_install', known ? { known } : {}),
   /** The first-launch question about update checks was answered. */
   updateAsked: () => shellInvoke<void>('app_update_asked'),
   /** Open an http, https or mailto link in the default browser or mail app; rejects on any other scheme. */

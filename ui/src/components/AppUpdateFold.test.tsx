@@ -101,7 +101,7 @@ describe('the update card folds into the strip', () => {
     expect(card()).toBeNull()
     // Never an install from the strip's item: it only brings the card back.
     fireEvent.click(folded()!)
-    expect(invoke).not.toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).not.toHaveBeenCalledWith('app_update_install', expect.anything())
     expect(card()).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Update and restart' })).toBeTruthy()
     expect(folded()).toBeNull()
@@ -131,7 +131,7 @@ describe('the update card folds into the strip', () => {
     expect(card()?.querySelector('[data-update-error]')).toHaveTextContent('The signature did not match.')
     expect(folded()).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
-    expect(invoke).toHaveBeenCalledWith('app_update_install', {})
+    expect(invoke).toHaveBeenCalledWith('app_update_install', expect.anything())
   })
 
   it('remembers the fold for that version only; a newer one starts unfolded', async () => {

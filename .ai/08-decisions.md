@@ -2349,6 +2349,20 @@ and nothing new is sent. The answer to any check is said in the status
 strip beside the version, where the owner looks for it, not in a banner at
 the top (04-ui.md § Update notice).
 
+**Amended 2026-11-23: the app re-checks `latest.json` while it lags the
+release.** The owner's version panel said *v0.190.0 is out* over **Update
+to v0.189.1**, and never looked again: the daemon sees a release as soon as
+GitHub publishes it, the release workflow uploads `latest.json` minutes
+later, and the app had fetched it in between. While the daemon knows a
+newer release than the updater offers (after the updater has answered at
+least once), the page fetches `latest.json` again every two minutes, at
+most eight times per release, and when the version panel opens (at most
+once in 20 seconds), stopping as soon as the two agree; the older bundle is
+not offered meanwhile, and install and download carry the daemon's version
+so the shell never installs an older one in its name. Same URL, same
+headers, only while the release check is on: no new destination (rule 4).
+Details and the measured delays: 21-app.md § Updates.
+
 ## ADR-044 — Sessions answer for themselves to macOS privacy prompts; background reads skip every guarded place
 
 **Date:** 2026-10-09 · **Status:** accepted (decided without the owner; he
