@@ -149,14 +149,14 @@ export interface NextHint {
   bump: Bump | 'major'
   /** "0.190.0 once the 4 open PRs land". */
   text: string
-  /** "3 features and 1 fix waiting: #1022 #1023 #1024 #1025". */
+  /** "3 features and 1 fix waiting": on hover; the pull requests themselves are rows under the line. */
   sub: string
   title: string
   numbers: number[]
 }
 
-/** How many pull request numbers the hint lists before "+N". */
-export const HINT_NUMBERS = 5
+/** How many pull requests the hint draws as rows before "+N more". */
+export const HINT_ROWS = 5
 
 /**
  * What the version would be once the open pull requests land (owner,
@@ -188,13 +188,11 @@ export function nextHint(s: Pick<ReleaseStatus, 'phase' | 'version' | 'bump' | '
   ].filter(Boolean)
   const said = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]!
   const numbers = known.map((p) => p.number).filter((x): x is number => x !== undefined)
-  const listed = numbers.slice(0, HINT_NUMBERS).map((x) => `#${x}`).join(' ')
-  const more = numbers.length > HINT_NUMBERS ? ` +${numbers.length - HINT_NUMBERS}` : ''
   const text = n === 1 && numbers.length === 1 ? `${version} once #${numbers[0]} lands` : `${version} once the ${n} open PRs land`
   const reason = top === 'major' ? 'a breaking change' : 'a feature'
   const title = `${s.version} is what the default branch holds now (${s.bump}). The open pull requests listed below, by their titles, hold ${reason}: once they land the next release would be ${version}. `
     + 'feat makes a minor release; fix, perf, chore and deps a patch; ! or BREAKING a major. A title that says no kind is not counted.'
-  return { version, bump: top, text, sub: `${said} waiting${listed ? `: ${listed}${more}` : ''}`, title, numbers }
+  return { version, bump: top, text, sub: `${said} waiting`, title, numbers }
 }
 
 /** Why the version is that number, from the changelog entries' kinds when read. */

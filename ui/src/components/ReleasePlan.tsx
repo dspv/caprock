@@ -32,7 +32,7 @@
 import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ReleaseCI, SessionCIStats, SessionRepoCI, Work, WorkEntry, WorkRepo } from '@/lib/api'
 import { asBoard, type ShipsBy } from '@/lib/prboard'
-import { mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseStatus } from '@/lib/releasestatus'
+import { HINT_ROWS, mainChecks, nextHint, OUT_RECENT_MS, prKind, releaseFold, releaseStatus, STATUS_TEXT, tagUnpublished, type BatchPR, type NextHint, type ReleaseStatus } from '@/lib/releasestatus'
 import { batchOf, groupNotes, notesHeading, notesOf, notInIt, viaLine, type NotesHeading, type NotInIt, type ViaLine } from '@/lib/releasenotes'
 import { stageWords, stripStages } from '@/lib/releasestatus'
 import { LastRelease, ReleaseInFlight, ReleaseStages, ReleaseStrip, ReleaseWhy } from './ReleaseStatus'
@@ -801,6 +801,14 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
   const out = head.state === 'out'
   const words = head.state !== 'idle' ? stageWords(status, stripStages(status, { out }), { cards: board?.cards, out, now, batch, main }) : undefined
   const viaInWords = !!via && words?.key === 'merged'
+  // The pull request the words wait for is always on view (owner,
+  // 2026-11-23): marked among the hint's rows when it is one of them, else
+  // the words open it on the Pipeline.
+  const waited = words?.key === 'merged' ? (batch?.number ?? status.batch) : undefined
+  const hintRows = hint ? hintRowsOf(others.prs, hint.numbers, waited) : []
+  const waitedInRows = waited !== undefined && hintRows.some((r) => r.number === waited)
+  const wordsHref = viaInWords && via ? pipelineHref(plan.root, via.number)
+    : waited !== undefined && !waitedInRows ? pipelineHref(plan.root, waited) : undefined
   const showVia = !!via && head.state !== 'shipping' && !viaInWords
   // Nothing new since the last tag: the section stays and says so. Hiding
   // it made it vanish after every release (owner, 2026-11-16).
@@ -812,8 +820,8 @@ export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; rep
         <div data-release-group="head" className="grid min-w-0 gap-1.5">
           {!repo && !work.data ? <p className="text-[12px] text-fg-muted">Reading…</p> : <NotesHead head={head} />}
           {head.state !== 'idle' && <ReleaseStrip status={status} out={out} cards={board?.cards} batch={batch} main={main} now={now}
-            href={viaInWords && via ? pipelineHref(plan.root, via.number) : undefined} kept={keptText ? `${keptText}, being read again` : undefined} />}
-          {hint && <NextHintLine hint={hint} />}
+            href={wordsHref} kept={keptText ? `${keptText}, being read again` : undefined} />}
+          {hint && <NextHintLine hint={hint} rows={hintRows} root={plan.root} waited={waitedInRows ? waited : undefined} />}
         </div>
         {entries.length > 0 && (
           <div data-release-group="entries" className="min-w-0 border-t border-[var(--app-hairline)] pt-2"><ReleaseNotes entries={entries} /></div>
@@ -966,17 +974,42 @@ function NotInItRows({ others, root }: { others: NotInIt; root: string }) {
 }
 
 /**
+ * The hint's pull requests as rows: the ones it counted, blocked first, the
+ * one the release waits for leading so it is never behind *+N more*.
+ */
+export function hintRowsOf(prs: readonly PlanRow[], numbers: readonly number[], waited?: number): PlanRow[] {
+  const counted = new Set(numbers)
+  const rows = byUrgency(prs.filter((r) => r.number !== undefined && counted.has(r.number)))
+  const at = rows.findIndex((r) => r.number === waited)
+  return at > 0 ? [rows[at]!, ...rows.slice(0, at), ...rows.slice(at + 1)] : rows
+}
+
+/**
  * The line under the version when the open pull requests would change it
  * (owner, 2026-11-23, variant 1A): *0.190.0 once the 4 open PRs land*, and
- * faint under it what they are, *3 features and 1 fix waiting: #1022 …*.
- * The version above stays what the default branch holds.
+ * under it those pull requests one line each, as *Not in it yet* draws them
+ * (PRLine; owner, 2026-11-23: a bare *#1017 #1030 …* said nothing) — five,
+ * then *+N more*. What they are, *3 features and 1 fix waiting*, is on the
+ * line's hover. The version above stays what the default branch holds.
  */
-function NextHintLine({ hint }: { hint: NextHint }) {
+function NextHintLine({ hint, rows, root, waited }: { hint: NextHint; rows: readonly PlanRow[]; root: string; waited?: number }) {
+  const [all, setAll] = useState(false)
+  const shown = all ? rows : rows.slice(0, HINT_ROWS)
+  const more = rows.length - shown.length
   return (
-    <div data-release-hint={hint.version} title={hint.title}
-      className="grid min-w-0 cursor-help gap-px rounded-[6px] border border-dashed border-[var(--app-hairline,var(--color-border))] px-2 py-1 text-[11.5px] leading-[1.35]">
-      <span data-release-hint-text className="min-w-0 truncate text-fg-muted"><span className="num text-fg">{hint.version}</span>{hint.text.slice(hint.version.length)}</span>
-      <span data-release-hint-sub className="line-clamp-2 min-w-0 text-[11px] text-fg-faint">{hint.sub}</span>
+    <div data-release-hint={hint.version}
+      className="grid min-w-0 gap-px rounded-[6px] border border-dashed border-[var(--app-hairline,var(--color-border))] px-2 py-1 text-[11.5px] leading-[1.35]">
+      <span data-release-hint-text title={`${hint.title}\n${hint.sub}.`} className="min-w-0 cursor-help truncate text-fg-muted"><span className="num text-fg">{hint.version}</span>{hint.text.slice(hint.version.length)}</span>
+      {shown.length > 0 && (
+        <ul data-release-hint-rows className="@container/prs grid min-w-0 font-sans">
+          {shown.map((r) => <PRLine key={r.key} row={r} root={root} waited={r.number === waited} />)}
+        </ul>
+      )}
+      {more > 0 && (
+        <button type="button" data-release-hint-more onClick={() => setAll(true)}
+          title={rows.slice(shown.length).map((r) => `#${r.number} ${r.title}`).join('\n')}
+          className="justify-self-start text-[10.5px] text-fg-faint hover:text-fg-muted">+{more} more</button>
+      )}
     </div>
   )
 }
@@ -1003,7 +1036,7 @@ const SQUARE_TONE: Record<OSSquare['tone'], string> = {
  * changes requested) says so in a word before the squares; with no check
  * naming an OS, its state word stands in for them.
  */
-function PRLine({ row: r, root }: { row: PlanRow; root: string }) {
+function PRLine({ row: r, root, waited = false }: { row: PlanRow; root: string; waited?: boolean }) {
   const k = prKind(r.title)
   const st = r.state
   const age = st.age ?? r.age
@@ -1012,10 +1045,11 @@ function PRLine({ row: r, root }: { row: PlanRow; root: string }) {
   const word = !sq || (st.rank === 0 && st.text !== 'CI failed') ? st : undefined
   const ci = sq?.map((s) => s.title).join('; ')
   const name = `${r.number ? `#${r.number} ` : ''}${r.title}`
-  const title = `${name}\n${st.text}${age ? ` · opened ${age.text} ago` : ''}${sq ? `\n${sq.map((s) => s.title).join('\n')}` : ''}`
+  const title = `${waited ? 'The release waits for this one to merge.\n' : ''}${name}\n${st.text}${age ? ` · opened ${age.text} ago` : ''}${sq ? `\n${sq.map((s) => s.title).join('\n')}` : ''}`
   return (
-    <li data-release-row={r.number ?? r.key} data-stage={r.stage} data-release-rank={st.rank} className="flex min-w-0 items-center gap-2 py-[3px] text-[12px] leading-[18px]">
-      <a href={r.number ? pipelineHref(root, r.number) : r.url} title={title} aria-label={`${name}: ${st.text}${ci ? `. ${ci}` : ''}`}
+    <li data-release-row={r.number ?? r.key} data-stage={r.stage} data-release-rank={st.rank} data-release-waited={waited ? '' : undefined}
+      className={`flex min-w-0 items-center gap-2 py-[3px] text-[12px] leading-[18px]${waited ? ' -ml-[6px] border-l-2 border-warn pl-1' : ''}`}>
+      <a href={r.number ? pipelineHref(root, r.number) : r.url} title={title} aria-label={`${name}: ${st.text}${ci ? `. ${ci}` : ''}${waited ? '. The release waits for it' : ''}`}
         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[3px] text-fg no-underline hover:[&>[data-release-title]]:text-accent focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-accent">
         {r.number ? <span data-release-number className="num shrink-0 text-[10.5px] text-fg-faint">#{r.number}</span> : null}
         {k.label && <span data-release-kind={k.label} className={`shrink-0 rounded-[4px] px-[5px] text-[10px] leading-[15px] ${KIND_TONE[k.label] ?? 'bg-panel-2 text-fg-muted'}`}>{k.label}</span>}
