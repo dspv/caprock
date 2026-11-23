@@ -75,6 +75,15 @@ type BrainSettings struct {
 	// Exclude replaces the list of folders never read; [] clears it. It is
 	// cleaned (brain.CleanExclude) before it is kept.
 	Exclude *[]string `json:"exclude,omitempty"`
+	// Reader is the agent the reads go through: "auto", "claude", "codex",
+	// "cursor" or "gemini" (ADR-103).
+	Reader *string `json:"reader,omitempty"`
+	// Models sets the model per reader other than claude (whose is Model);
+	// a key set to "" goes back to that CLI's default. Merged into what is
+	// kept: a reader not named is left as it is.
+	Models *map[string]string `json:"models,omitempty"`
+	// DailyReads caps the calls a rolling day whose agent reports no tokens.
+	DailyReads *int `json:"daily_reads,omitempty"`
 }
 
 // Limits on the settings: the daily cap a user may choose, the models the
@@ -83,7 +92,14 @@ const (
 	brainDailyMin    = 20_000
 	brainDailyMax    = 5_000_000
 	brainBackfillMax = 90
+	brainReadsMin    = 4
+	brainReadsMax    = 400
 )
+
+// brainReaderModel is what a model for a reader other than claude may be:
+// one word of letters, digits and . _ : / - (it goes on the CLI's command
+// line, through a Windows .cmd shim too), at most 80 bytes.
+var brainReaderModel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$`)
 
 var brainModels = map[string]bool{"": true, "haiku": true, "sonnet": true}
 
@@ -105,6 +121,26 @@ func (s *Server) handleBrainSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if b.Model != nil && !brainModels[*b.Model] {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "model must be haiku or sonnet"})
+		return
+	}
+	if b.Reader != nil && *b.Reader != brain.ReaderAuto && !brain.IsReader(*b.Reader) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reader must be auto, claude, codex, cursor or gemini"})
+		return
+	}
+	if b.Models != nil {
+		for k, v := range *b.Models {
+			if !brain.IsReader(k) || k == brain.ReaderClaude {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "models takes codex, cursor or gemini; claude's model is model"})
+				return
+			}
+			if v != "" && !brainReaderModel.MatchString(v) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a model is one word of letters, digits and . _ : / -, at most 80 characters"})
+				return
+			}
+		}
+	}
+	if b.DailyReads != nil && (*b.DailyReads < brainReadsMin || *b.DailyReads > brainReadsMax) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("daily_reads must be between %d and %d", brainReadsMin, brainReadsMax)})
 		return
 	}
 	if b.Exclude != nil {

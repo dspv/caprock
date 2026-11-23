@@ -576,6 +576,10 @@ INSERT INTO session_stats(session_id, turns, tool_calls, files_touched, tokens_i
 UPDATE brain_gaps SET cursor = ?, reads_done = reads_done + 1, attempts = 0, error = '', status = CASE WHEN ? >= to_event_id THEN 'done' ELSE status END, reads_total = CASE WHEN ? >= to_event_id THEN reads_done + 1 ELSE reads_total END, updated_at = ? WHERE id = ?
     SEARCH brain_gaps USING INTEGER PRIMARY KEY (rowid=?)
 
+## store.AgentSessionsSince
+SELECT COUNT(*) FROM sessions WHERE agent = ? AND last_event_at >= ?
+    SEARCH sessions USING COVERING INDEX idx_sessions_agent (agent=? AND last_event_at>?)
+
 ## store.ArchiveProject
 UPDATE projects SET archived_at = ? WHERE id = ?
     SEARCH projects USING INTEGER PRIMARY KEY (rowid=?)
@@ -723,6 +727,10 @@ SELECT n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), 
             SEARCH n USING INTEGER PRIMARY KEY (rowid=?)
             USE TEMP B-TREE FOR ORDER BY
 
+## store.BrainNoUsageReadsSince
+SELECT COUNT(*) FROM brain_runs WHERE finished_at >= ? AND no_usage = 1 AND status != 'skipped'
+    SEARCH brain_runs USING INDEX idx_brain_runs_finished (finished_at>?)
+
 ## store.BrainNodeByEvent
 SELECT n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), n.source_ts, n.project, n.manual, n.pinned, COALESCE(n.run_id, 0), n.created_at, n.updated_at, n.keywords FROM brain_nodes n WHERE n.event_id = ? AND n.manual = 1 AND n.kind NOT IN ('topic','person','project') ORDER BY n.id LIMIT 1
     SEARCH n USING INDEX idx_brain_nodes_event (event_id=?)
@@ -802,6 +810,21 @@ SELECT s.session_id, COALESCE(s.project, ''), COALESCE(SUM(r.nodes), 0), COALESC
         SEARCH a USING INDEX idx_brain_runs_session (session_id=?)
     USE TEMP B-TREE FOR GROUP BY
 
+## store.BrainReaderStreak
+SELECT status, finished_at, error FROM ( SELECT * FROM (SELECT id, status, finished_at, error FROM brain_runs WHERE reader = ? AND status != 'skipped' ORDER BY id DESC LIMIT ?) UNION ALL SELECT * FROM (SELECT id, status, finished_at, error FROM brain_runs WHERE reader = '' AND ? = 'claude' AND status != 'skipped' ORDER BY id DESC LIMIT ?) ) ORDER BY id DESC LIMIT ?
+    CO-ROUTINE (subquery-4)
+        COMPOUND QUERY
+            LEFT-MOST SUBQUERY
+                CO-ROUTINE (subquery-1)
+                    SEARCH brain_runs USING INDEX idx_brain_runs_reader (reader=?)
+                SCAN (subquery-1)
+            UNION ALL
+                CO-ROUTINE (subquery-3)
+                    SEARCH brain_runs USING INDEX idx_brain_runs_reader (reader=?)
+                SCAN (subquery-3)
+    SCAN (subquery-4)
+    USE TEMP B-TREE FOR ORDER BY
+
 ## store.BrainRecentMemories
 SELECT n.id, n.kind, n.title, n.summary, n.session_id, COALESCE(n.event_id, 0), n.source_ts, n.project, n.manual, n.pinned, COALESCE(n.run_id, 0), n.created_at, n.updated_at, n.keywords FROM brain_nodes n WHERE n.project = ? AND n.kind IN ('idea','decision','finding','question') ORDER BY n.created_at DESC, n.id DESC LIMIT ?
     SEARCH n USING INDEX idx_brain_nodes_project (project=?)
@@ -815,7 +838,7 @@ SELECT COALESCE(SUM(nodes), 0) FROM brain_runs WHERE session_id = ? AND status =
     SEARCH brain_runs USING INDEX idx_brain_runs_session (session_id=?)
 
 ## store.BrainRunsOf
-SELECT id, session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, COALESCE(gap_id, 0), held FROM brain_runs WHERE session_id = ? ORDER BY id
+SELECT id, session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, COALESCE(gap_id, 0), held, reader, no_usage FROM brain_runs WHERE session_id = ? ORDER BY id
     SEARCH brain_runs USING INDEX idx_brain_runs_session (session_id=?)
 
 ## store.BrainSessionCandidate
@@ -1334,7 +1357,7 @@ INSERT INTO brain_nodes (kind, title, norm, summary, search, session_id, event_i
 INSERT INTO brain_nodes (kind, title, norm, summary, search, source_ts, project, manual, pinned, created_at, updated_at, vault_id) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)
 
 ## store.InsertBrainRun
-INSERT INTO brain_runs (session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, gap_id, held) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO brain_runs (session_id, from_event_id, through_event_id, status, model, tokens_in, tokens_out, cost_usd, nodes, error, started_at, finished_at, gap_id, held, reader, no_usage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
 ## store.InsertBrainVault
 INSERT INTO brain_vaults (name, path, agents, created_at) VALUES (?, ?, ?, ?)
@@ -1381,7 +1404,7 @@ SELECT url, MAX(number), MAX(title), MAX(merged_at), MAX(closed_at), MAX(last_at
     USE TEMP B-TREE FOR GROUP BY
 
 ## store.LastBrainRuns
-SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.model, r.tokens_in, r.tokens_out, r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, ''), COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, ''), COALESCE(r.gap_id, 0) FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id WHERE r.status != 'skipped' AND r.session_id != 'caprock:retag' ORDER BY r.id DESC LIMIT ?
+SELECT r.id, r.session_id, r.from_event_id, r.through_event_id, r.status, r.model, r.tokens_in, r.tokens_out, r.cost_usd, r.nodes, r.error, r.started_at, r.finished_at, COALESCE(s.project, ''), COALESCE(NULLIF(s.title, ''), s.prompt, ''), COALESCE(s.agent, ''), COALESCE(r.gap_id, 0), r.reader, r.no_usage FROM brain_runs r LEFT JOIN sessions s ON s.session_id = r.session_id WHERE r.status != 'skipped' AND r.session_id != 'caprock:retag' ORDER BY r.id DESC LIMIT ?
     SCAN r
     SEARCH s USING INDEX sqlite_autoindex_sessions_1 (session_id=?) LEFT-JOIN
 

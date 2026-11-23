@@ -368,6 +368,18 @@ func (m *Manager) AgentAvailable(agent string) bool {
 	return isExecutable(p)
 }
 
+// AgentBinary is an agent's executable as an absolute path, "" when this
+// machine does not have it. 2nd Brain reads through it (ADR-103).
+func (m *Manager) AgentBinary(agent string) string {
+	if agent == "" || agent == AgentClaude {
+		return m.ClaudeBinary()
+	}
+	if !m.AgentAvailable(agent) {
+		return ""
+	}
+	return m.binary(agent)
+}
+
 // geminiApprovalMode maps a Claude permission mode onto Gemini's --approval-mode,
 // which covers the same ground with four values instead of six: default (ask),
 // auto_edit (edits without asking), yolo (everything without asking), plan

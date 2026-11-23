@@ -1,17 +1,18 @@
 /**
- * Second Brain, built automatically (ADR-063): the switch, its limit, what
- * it has done, and the backfill. Free for everyone (owner decision,
- * 2026-10-14): it runs on the user's own claude.
+ * Second Brain, built automatically (ADR-063): the switch, the agent it
+ * reads with (ADR-103), its limit, what it has done, and the backfill. Free
+ * for everyone (owner decision, 2026-10-14): it runs on the user's own
+ * coding agent — Claude Code, Codex, Cursor or Gemini CLI.
  *
  * Off until the user says yes. Rule 4 lets an outbound call exist only when
  * the user turned it on and the place it is switched on says what it sends,
- * so the switch carries that line: a finished session's prompts and answers
- * go to the user's own `claude`, which sends them to Anthropic under the
- * user's login — the place the session itself went — and nothing to Caprock.
+ * so the switch carries that line, for the agent that reads: a finished
+ * session's prompts and answers go to the user's own agent, which sends
+ * them to its vendor under the user's login, and nothing to Caprock.
  */
 import { useState } from 'react'
 import { api, type BrainAutoStatus, type BrainEstimate, type BrainSettings } from '@/lib/api'
-import { brainArrivalsSetting, brainFailureReason, brainRunOutcome, setBrainArrivals, useBrainStatus } from '@/lib/brain'
+import { brainArrivalsSetting, brainDisclosure, brainFailureReason, brainRunOutcome, READER_LABELS, readerName, readerProblem, setBrainArrivals, useBrainStatus } from '@/lib/brain'
 import { fmtAgo, fmtTokens } from '@/lib/format'
 import { Choice, Details, Section, Toggle } from '@/components/SettingsParts'
 
@@ -23,9 +24,8 @@ export function limitLabel(v: number): string {
   return v >= 1_000_000 && v % 1_000_000 === 0 ? `${v / 1_000_000}M` : v % 1000 === 0 ? `${v / 1000}k` : fmtTokens(v)
 }
 
-/** The line that says what turning it on sends, and where. */
-export const BRAIN_DISCLOSURE =
-  'A finished session’s prompts and answers go to your own claude, which sends them to Anthropic under your login — where the session already went. Nothing is sent to Caprock.'
+/** The line that says what turning it on sends, and where, when Claude Code reads. */
+export const BRAIN_DISCLOSURE = brainDisclosure('claude')
 
 export function BrainAutoSetting() {
   const { status, reload } = useBrainStatus()
@@ -50,16 +50,15 @@ export function BrainAutoSetting() {
         checked={auto.on}
         onChange={(v) => save({ auto: v })}
         label="Build it from finished sessions"
-        hint={<>When a session has been quiet for ten minutes, a small model ({auto.model}) reads what it decided and found and keeps it as memories.</>}
+        hint={<>When a session has been quiet for ten minutes, {readerName(auto) || 'your coding agent'} ({auto.model || 'its default model'}) reads what it decided and found and keeps it as memories.</>}
       />
       {/* What it sends and where, on screen whatever the explanations
         * setting says (rule 4): it is the condition of the switch, not help. */}
-      <p className="text-[12.5px] leading-relaxed text-fg-muted" data-brain-disclosure data-keep>{BRAIN_DISCLOSURE}</p>
-      {auto.on && !auto.claude_found && (
-        <p className="text-[12.5px] text-warn">
-          Claude Code was not found, so nothing is read. Install it, or put <span className="mono">claude</span> on the PATH Caprock started with.
-        </p>
+      <p className="text-[12.5px] leading-relaxed text-fg-muted" data-brain-disclosure data-keep>{brainDisclosure(auto.reader || 'claude')}</p>
+      {auto.on && readerProblem(auto) && (
+        <p className="text-[12.5px] text-warn" data-brain-reader-problem>{readerProblem(auto)}</p>
       )}
+      {auto.readers && <ReadWith auto={auto} save={save} />}
       <Choice
         label="Daily limit"
         value={String(limit)}
@@ -146,9 +145,75 @@ function ArrivalsToggle() {
   )
 }
 
+/**
+ * *Read with*: the agent the reads go through (ADR-103) — Auto, the
+ * installed agent the user works in most, or one chosen; only installed
+ * agents are offered. Beside it, the model for an agent other than Claude
+ * Code (whose stays haiku or sonnet), empty for that CLI's own default.
+ */
+function ReadWith({ auto, save }: { auto: BrainAutoStatus; save: (b: BrainSettings) => Promise<void> }) {
+  const readers = auto.readers ?? []
+  const installed = readers.filter((r) => r.installed)
+  const setting = auto.reader_setting ?? 'auto'
+  const current = readers.find((r) => r.id === auto.reader)
+  const options = [
+    { value: 'auto', label: setting === 'auto' && current ? `Auto (${current.label})` : 'Auto' },
+    ...installed.map((r) => ({ value: r.id, label: r.label })),
+  ]
+  const missing = readers.filter((r) => !r.installed).map((r) => r.label)
+  return (
+    <div className="grid gap-1.5" data-brain-read-with>
+      <Choice
+        label="Read with"
+        value={setting}
+        options={options}
+        onChange={(v) => save({ reader: v as BrainSettings['reader'] })}
+      />
+      <span className="text-[12.5px] leading-relaxed text-fg-muted">
+        Auto reads with the agent you used most in the last 30 days, Claude Code on a tie.
+        {missing.length > 0 ? ` Not installed here: ${missing.join(', ')}.` : ''}
+        {current && !current.reports_tokens ? ` ${current.label} reports no token usage, so its reads are counted instead: up to ${auto.daily_reads ?? 0} a day.` : ''}
+        {current && current.reports_tokens && !current.reports_cost ? ` ${current.label} reports tokens but no cost, so cost shows only for Claude Code’s reads.` : ''}
+      </span>
+      {current && current.id !== 'claude' && <ReaderModel key={current.id} id={current.id} model={current.model} save={save} />}
+    </div>
+  )
+}
+
+function ReaderModel({ id, model, save }: { id: Exclude<NonNullable<BrainAutoStatus['reader']>, '' | 'claude'>; model: string; save: (b: BrainSettings) => Promise<void> }) {
+  const [draft, setDraft] = useState(model)
+  const put = () => {
+    const v = draft.trim()
+    if (v !== model) void save({ models: { [id]: v } })
+  }
+  return (
+    <label className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+      <span className="w-40 shrink-0 text-fg">Model for {READER_LABELS[id]}</span>
+      <input
+        type="text"
+        size={1}
+        value={draft}
+        placeholder="its own default"
+        aria-label={`Model for ${READER_LABELS[id]}`}
+        className="mono min-w-0 flex-1 rounded-[6px] border border-border bg-panel px-2 py-1 text-[12.5px] text-fg placeholder:text-fg-faint"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={put}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); put() } }}
+      />
+    </label>
+  )
+}
+
 function Figures({ auto }: { auto: BrainAutoStatus }) {
   return (
     <div className="grid gap-0.5 text-[12.5px] text-fg-muted" data-brain-figures>
+      {(auto.no_usage_reads ?? 0) > 0 && (
+        <span data-brain-reads>
+          Reads with no reported tokens in the last 24 hours: <span className="mono text-fg">{auto.no_usage_reads}</span> of{' '}
+          <span className="mono">{auto.daily_reads}</span>
+          {(auto.no_usage_reads ?? 0) >= (auto.daily_reads ?? 0) ? ' — reading resumes as the day rolls over' : ''}.
+        </span>
+      )}
       <span>
         Used in the last 24 hours: <span className="mono text-fg">{fmtTokens(auto.spent)}</span> of{' '}
         <span className="mono">{limitLabel(auto.daily_tokens)}</span> tokens
@@ -227,7 +292,8 @@ function Recent({ auto }: { auto: BrainAutoStatus }) {
             <span className="text-fg">{r.project || r.session_id.slice(0, 8)}</span>
             <span>{fmtAgo(r.finished_at)}</span>
             <span>
-              {r.status === 'ok' ? `${r.nodes} kept · ${fmtTokens(r.tokens_in + r.tokens_out)} tokens`
+              {r.reader && r.reader !== 'claude' ? `${READER_LABELS[r.reader] ?? r.reader} · ` : ''}
+              {r.status === 'ok' ? `${r.nodes} kept · ${r.no_usage ? 'tokens not reported' : `${fmtTokens(r.tokens_in + r.tokens_out)} tokens`}`
                 : r.status === 'skipped' ? `skipped: ${brainRunOutcome(r)}`
                 : `failed: ${r.error ?? ''}`}
             </span>

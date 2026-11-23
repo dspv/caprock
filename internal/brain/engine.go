@@ -59,8 +59,15 @@ type Engine struct {
 	Now   func() time.Time
 	// Config is the extraction's settings, read on every wake.
 	Config func() config.BrainConfig
-	// ClaudeFound reports whether a claude binary is installed.
+	// ClaudeFound reports whether a claude binary is installed; with
+	// Readers nil, Runner is claude's and the only reader.
 	ClaudeFound func() bool
+	// Readers is a runner per agent the reads can go through (ADR-103),
+	// keyed by ReaderClaude, ReaderCodex, ReaderCursor, ReaderGemini; nil
+	// leaves Runner as the one reader, claude's. Installed reports whether
+	// an agent's CLI is on this computer (nil: every runner given is).
+	Readers   map[string]Runner
+	Installed func(agent string) bool
 	// HandoffOn reports whether new sessions are handed what the last one
 	// left (Settings → Memory between sessions), which is how memories reach
 	// agents. Nil reads as off.
@@ -79,6 +86,8 @@ type Engine struct {
 	nextWake time.Time
 	// stopped is closed when Start's loop has returned (Wait).
 	stopped chan struct{}
+	// cur is the reader the running wake reads with; picked as it starts.
+	cur *Pick
 }
 
 // Wait blocks until the loop Start began has returned, after its context
@@ -206,6 +215,22 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 		e.running = false
 		e.mu.Unlock()
 	}()
+	p := e.pick(ctx)
+	if p.Runner == nil {
+		// Nothing to read with: nothing is tried, so no session's read is
+		// recorded as failed and given up for want of an agent. The status
+		// says what is needed (Pick.Problem).
+		e.setError(p.Problem)
+		return 0, nil
+	}
+	e.mu.Lock()
+	e.cur = &p
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		e.cur = nil
+		e.mu.Unlock()
+	}()
 	if err := e.FindGaps(ctx); err != nil && ctx.Err() == nil {
 		e.log().Warn("second brain: finding the skipped spans failed", "component", "brain", "err", err)
 	}
@@ -219,10 +244,10 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 		// (retag.go); a session that comes to wait overtakes both at the
 		// next wake.
 		read, err := e.readGaps(ctx, 0)
-		if err != nil || read >= Batch {
+		if err != nil || read >= e.batch() {
 			return read, err
 		}
-		tagged, err := e.retag(ctx, Batch-read)
+		tagged, err := e.retag(ctx, e.batch()-read)
 		return read + tagged, err
 	}
 	read := 0
@@ -231,11 +256,11 @@ func (e *Engine) Wake(ctx context.Context) (int, error) {
 		// or the wake's Batch calls are spent. Each chunk moves the cursor,
 		// so the loop always ends.
 		for {
-			if read >= Batch || ctx.Err() != nil || !e.Enabled() {
+			if read >= e.batch() || ctx.Err() != nil || !e.Enabled() {
 				return read, nil
 			}
-			if e.spent(ctx) >= e.dailyCap() {
-				e.setError("today's token limit is reached; reading resumes as the day rolls over")
+			if msg := e.capReached(ctx); msg != "" {
+				e.setError(msg)
 				return read, nil
 			}
 			did, through, err := e.readSession(ctx, c)
@@ -330,19 +355,96 @@ func (e *Engine) dailyCap() int64 {
 	return DefaultDailyTokens
 }
 
-func (e *Engine) spent(ctx context.Context) int64 {
-	n, err := store.BrainTokensSince(ctx, e.Store.DB(), e.now().Add(-24*time.Hour).UnixMilli())
+// batch is the most calls this wake makes: Batch, or one while the reader
+// is failing, so a signed-out agent is tried once a wake rather than
+// failing four sessions at a time.
+func (e *Engine) batch() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.cur != nil && e.cur.Failing {
+		return 1
+	}
+	return Batch
+}
+
+// using is the reader the reads go through now, and its runner: the
+// running wake's, else picked now.
+func (e *Engine) using(ctx context.Context) (string, Runner) {
+	e.mu.Lock()
+	cur := e.cur
+	e.mu.Unlock()
+	if cur == nil {
+		p := e.pick(ctx)
+		cur = &p
+	}
+	return cur.Reader, cur.Runner
+}
+
+// newRun is a run record of the reader in use, with the model it is asked for.
+func (e *Engine) newRun(ctx context.Context, r store.BrainRun) store.BrainRun {
+	reader, _ := e.using(ctx)
+	r.Reader, r.Model = reader, e.modelFor(reader)
+	return r
+}
+
+// call asks the reader in use and fills the run with what it reported:
+// the model, the tokens and the cost, or — from an agent that reports no
+// tokens — none, marked NoUsage, never an estimate (ADR-103).
+func (e *Engine) call(ctx context.Context, req Request, run *store.BrainRun) (Result, error) {
+	reader, r := e.using(ctx)
+	if r == nil {
+		return Result{}, ErrNoReader
+	}
+	req.Model = e.modelFor(reader)
+	res, err := r.Run(ctx, req)
+	run.Reader = reader
+	run.TokensIn, run.TokensOut, run.CostUSD = res.TokensIn, res.TokensOut, res.CostUSD
+	if res.Model != "" {
+		run.Model = res.Model
+	}
+	if err == nil {
+		run.NoUsage = !res.UsageReported && res.TokensIn+res.TokensOut == 0
+	} else {
+		run.NoUsage = !ReportsTokens(reader)
+	}
+	return res, err
+}
+
+// dailyReads is the most calls in a rolling day whose agent reports no tokens.
+func (e *Engine) dailyReads() int {
+	if n := e.Config().DailyReads; n > 0 {
+		return n
+	}
+	return DefaultDailyReads
+}
+
+func (e *Engine) noUsageReads(ctx context.Context) int {
+	n, err := store.BrainNoUsageReadsSince(ctx, e.Store.DB(), e.now().Add(-24*time.Hour).UnixMilli())
 	if err != nil {
 		return 0
 	}
 	return n
 }
 
-func (e *Engine) model() string {
-	if m := strings.TrimSpace(e.Config().Model); m != "" {
-		return m
+// capReached says why no more calls may be made today, "" when they may:
+// the reads' reported tokens reached the daily limit, or the reads that
+// reported none reached the daily reads limit (ADR-103).
+func (e *Engine) capReached(ctx context.Context) string {
+	if e.spent(ctx) >= e.dailyCap() {
+		return "today's token limit is reached; reading resumes as the day rolls over"
 	}
-	return DefaultModel
+	if e.noUsageReads(ctx) >= e.dailyReads() {
+		return "today's reads limit is reached (the agent reports no tokens, so reads are counted); reading resumes as the day rolls over"
+	}
+	return ""
+}
+
+func (e *Engine) spent(ctx context.Context) int64 {
+	n, err := store.BrainTokensSince(ctx, e.Store.DB(), e.now().Add(-24*time.Hour).UnixMilli())
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // passagesPerRead is the most passages one read fetches. A read sends what
@@ -380,7 +482,7 @@ func chunk(ctx context.Context, q store.Querier, c store.BrainCandidate, topics 
 func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did bool, through int64, err error) {
 	db := e.Store.DB()
 	started := e.now().UnixMilli()
-	run := store.BrainRun{SessionID: c.SessionID, FromEventID: c.Cursor, ThroughEventID: c.MaxEventID, StartedAt: started, Model: e.model()}
+	run := e.newRun(ctx, store.BrainRun{SessionID: c.SessionID, FromEventID: c.Cursor, ThroughEventID: c.MaxEventID, StartedAt: started})
 	n, _, err := store.BrainFailures(ctx, db, c.SessionID)
 	if err != nil {
 		return false, 0, err
@@ -439,15 +541,11 @@ func (e *Engine) readSession(ctx context.Context, c store.BrainCandidate) (did b
 func (e *Engine) ask(ctx context.Context, c store.BrainCandidate, in Input, run store.BrainRun, also func(q store.Querier) error) error {
 	db := e.Store.DB()
 	e.startReading(ctx, c, in.Passages, run.StartedAt)
-	res, callErr := e.Runner.Run(ctx, Request{System: System, Prompt: in.Prompt, Model: e.model()})
+	res, callErr := e.call(ctx, Request{System: System, Prompt: in.Prompt}, &run)
 	if callErr == nil {
 		e.setPhase(PhaseLinking)
 	}
 	run.FinishedAt = e.now().UnixMilli()
-	run.TokensIn, run.TokensOut, run.CostUSD = res.TokensIn, res.TokensOut, res.CostUSD
-	if res.Model != "" {
-		run.Model = res.Model
-	}
 	if callErr != nil {
 		// The read ends once it is recorded, so the frame that says so
 		// finds it in the status.
@@ -838,12 +936,30 @@ func (e *Engine) publish(n store.BrainNode, agent string) {
 type Status struct {
 	// Chosen is whether the user has answered the offer to turn it on;
 	// Enabled whether it is on (a yes).
-	Chosen      bool   `json:"chosen"`
-	On          bool   `json:"on"`
-	Enabled     bool   `json:"enabled"`
-	ClaudeFound bool   `json:"claude_found"`
+	Chosen      bool `json:"chosen"`
+	On          bool `json:"on"`
+	Enabled     bool `json:"enabled"`
+	ClaudeFound bool `json:"claude_found"`
+	// Reader is the agent the reads go through (ADR-103), "" when none can;
+	// ReaderSetting the user's choice, "auto" or an agent; ReaderFound
+	// whether there is one to read with. Readers lists every agent the
+	// settings offer. ReaderProblem says in one sentence what reads need
+	// while they cannot work — none installed, the chosen one missing, or
+	// its last reads all failing — "" otherwise.
+	Reader        string         `json:"reader"`
+	ReaderSetting string         `json:"reader_setting"`
+	ReaderFound   bool           `json:"reader_found"`
+	ReaderProblem string         `json:"reader_problem,omitempty"`
+	Readers       []ReaderOption `json:"readers"`
+	// Model is what the reader is asked for; "" is its CLI's default.
 	Model       string `json:"model"`
 	DailyTokens int64  `json:"daily_tokens"`
+	// DailyReads is the most calls a rolling day whose agent reports no
+	// tokens; NoUsageReads those made in the last 24 hours. UsageReported
+	// is whether the reader in use reports its tokens.
+	DailyReads    int  `json:"daily_reads"`
+	NoUsageReads  int  `json:"no_usage_reads"`
+	UsageReported bool `json:"usage_reported"`
 	// Spent is what the reads used in the last 24 hours; SpentUSD what
 	// claude reported they cost (at API list price), summed.
 	Spent    int64   `json:"spent"`
@@ -899,7 +1015,8 @@ type Status struct {
 // The build's stages, as Status.Stage names them.
 const (
 	StageOff        = "off"        // not turned on, or paused
-	StageNoClaude   = "no_claude"  // on, but no claude to read with
+	StageNoReader   = "no_reader"  // on, but no agent to read with (none installed, or the chosen one missing)
+	StageFailing    = "failing"    // on, but the reader's last calls all failed
 	StageLimit      = "limit"      // sessions wait, today's tokens are used
 	StageExtracting = "extracting" // claude is reading a session
 	StageLinking    = "linking"    // a read's memories are being stored
@@ -1066,15 +1183,18 @@ func (e *Engine) Status(ctx context.Context) Status {
 	c := e.Config()
 	st := Status{
 		Chosen: c.Auto != nil, On: c.Auto != nil && *c.Auto, Enabled: e.Enabled(),
-		Model: e.model(), DailyTokens: e.dailyCap(), Spent: e.spent(ctx),
+		DailyTokens: e.dailyCap(), Spent: e.spent(ctx), DailyReads: e.dailyReads(), NoUsageReads: e.noUsageReads(ctx),
 		Since: c.Since, BackfillSince: c.BackfillSince, Recent: []store.BrainRun{}, Exclude: []string{},
 	}
 	if len(c.Exclude) > 0 {
 		st.Exclude = append(st.Exclude, c.Exclude...)
 	}
-	if e.ClaudeFound != nil {
-		st.ClaudeFound = e.ClaudeFound()
-	}
+	st.ClaudeFound = e.installed(ReaderClaude)
+	p := e.pick(ctx)
+	st.Reader, st.ReaderSetting, st.ReaderFound, st.ReaderProblem, st.Readers = p.Reader, p.Setting, p.Runner != nil, p.Problem, p.Options
+	st.Model = e.modelFor(p.Reader)
+	st.UsageReported = p.Reader != "" && ReportsTokens(p.Reader)
+	readerFailing := p.Failing
 	e.mu.Lock()
 	st.Running, st.LastError = e.running, e.lastError
 	if e.reading != nil {
@@ -1107,7 +1227,7 @@ func (e *Engine) Status(ctx context.Context) Status {
 		st.Recent = runs
 	}
 	e.measure(ctx, &st)
-	st.Stage = stage(st, e.Config().Auto != nil && *e.Config().Auto)
+	st.Stage = stage(st, e.Config().Auto != nil && *e.Config().Auto, readerFailing)
 	return st
 }
 
@@ -1135,7 +1255,7 @@ func (e *Engine) measure(ctx context.Context, st *Status) {
 }
 
 // stage names where the build is, from the status it is part of.
-func stage(st Status, on bool) string {
+func stage(st Status, on, failing bool) string {
 	switch {
 	case !on:
 		return StageOff
@@ -1143,9 +1263,11 @@ func stage(st Status, on bool) string {
 		return StageLinking
 	case st.Reading != nil:
 		return StageExtracting
-	case !st.ClaudeFound:
-		return StageNoClaude
-	case st.Pending > 0 && st.Spent >= st.DailyTokens:
+	case !st.ReaderFound:
+		return StageNoReader
+	case failing:
+		return StageFailing
+	case st.Pending > 0 && (st.Spent >= st.DailyTokens || st.NoUsageReads >= st.DailyReads):
 		return StageLimit
 	case st.Pending > 0:
 		return StageWaiting

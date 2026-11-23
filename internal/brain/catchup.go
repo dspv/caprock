@@ -154,15 +154,15 @@ func (e *Engine) nextGap(ctx context.Context) (store.BrainGap, bool, error) {
 // readGaps spends what is left of a wake's Batch calls on the catch-up,
 // within the daily limit, and returns the wake's reads in all.
 func (e *Engine) readGaps(ctx context.Context, read int) (int, error) {
-	for read < Batch {
+	for read < e.batch() {
 		if err := ctx.Err(); err != nil {
 			return read, err
 		}
 		if !e.Enabled() {
 			return read, nil
 		}
-		if e.spent(ctx) >= e.dailyCap() {
-			e.setError("today's token limit is reached; reading resumes as the day rolls over")
+		if msg := e.capReached(ctx); msg != "" {
+			e.setError(msg)
 			return read, nil
 		}
 		g, ok, err := e.nextGap(ctx)
@@ -225,7 +225,7 @@ func (e *Engine) readGap(ctx context.Context, g store.BrainGap) (did bool, err e
 		}
 		return false, store.AdvanceBrainGap(ctx, db, g.ID, upTo, now)
 	}
-	run := store.BrainRun{SessionID: g.SessionID, FromEventID: g.Cursor, ThroughEventID: upTo, StartedAt: now, Model: e.model(), GapID: g.ID}
+	run := e.newRun(ctx, store.BrainRun{SessionID: g.SessionID, FromEventID: g.Cursor, ThroughEventID: upTo, StartedAt: now, GapID: g.ID})
 	if !in.WorthReading() {
 		run.Status, run.FinishedAt = store.BrainRunSkipped, now
 		return false, e.Store.WithTx(ctx, func(q store.Querier) error {

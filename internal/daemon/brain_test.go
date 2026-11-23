@@ -68,3 +68,36 @@ func TestBrainTurnedOnWakesOnceAtOnce(t *testing.T) {
 		t.Error("on, but no next_wake")
 	}
 }
+
+// Read with and the models per agent are kept in config.json: "auto" is
+// kept as "" (the default), a model set to "" goes back to the CLI's own,
+// and a model for one agent leaves the others' as they were (ADR-103).
+func TestBrainReaderSettingsAreKept(t *testing.T) {
+	d := &Daemon{log: quietLog(), store: memStore(t), bus: bus.New(), opt: Options{DataDir: t.TempDir()}}
+	eng := &brain.Engine{Store: d.store, Bus: d.bus, Log: d.log, Config: func() config.BrainConfig { return d.config().Brain }}
+	b := &brainAdapter{d: d, eng: eng}
+	ctx := context.Background()
+	cursor, auto, reads := "cursor", "auto", 60
+	if err := b.Configure(ctx, api.BrainSettings{Reader: &cursor, Models: &map[string]string{"cursor": "sonnet-4", "codex": "gpt-5-mini"}, DailyReads: &reads}); err != nil {
+		t.Fatal(err)
+	}
+	c := d.config().Brain
+	if c.Reader != "cursor" || c.Models["cursor"] != "sonnet-4" || c.Models["codex"] != "gpt-5-mini" || c.DailyReads != 60 {
+		t.Fatalf("kept: %+v", c)
+	}
+	held := c.Models
+	if err := b.Configure(ctx, api.BrainSettings{Reader: &auto, Models: &map[string]string{"cursor": ""}}); err != nil {
+		t.Fatal(err)
+	}
+	c = d.config().Brain
+	if c.Reader != "" || c.Models["cursor"] != "" || c.Models["codex"] != "gpt-5-mini" {
+		t.Errorf("after auto and a cleared model: %+v", c)
+	}
+	if held["cursor"] != "sonnet-4" {
+		t.Error("a config handed out before was written under its reader")
+	}
+	loaded, err := config.Load(d.opt.DataDir)
+	if err != nil || loaded.Brain.Models["codex"] != "gpt-5-mini" || loaded.Brain.DailyReads != 60 {
+		t.Errorf("saved: %+v %v", loaded.Brain, err)
+	}
+}

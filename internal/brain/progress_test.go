@@ -211,8 +211,8 @@ func TestTheStatusSaysTheStageAndWhatTheBrainGives(t *testing.T) {
 		t.Errorf("over the limit: %q", st.Stage)
 	}
 	e.eng.ClaudeFound = func() bool { return false }
-	if st := e.eng.Status(ctx); st.Stage != StageNoClaude {
-		t.Errorf("no claude: %q", st.Stage)
+	if st := e.eng.Status(ctx); st.Stage != StageNoReader || st.ReaderFound || !strings.Contains(st.ReaderProblem, "No coding agent was found") {
+		t.Errorf("no claude: %q %q", st.Stage, st.ReaderProblem)
 	}
 	off := false
 	e.cfg.Auto = &off
