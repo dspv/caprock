@@ -374,6 +374,25 @@ SELECT e.id, e.ts, s.session_id, e.model, e.cost_usd, COALESCE(e.tokens_in,0), C
 UPDATE events SET cost_usd = ? WHERE id = ? AND cost_usd = ?
     SEARCH events USING INTEGER PRIMARY KEY (rowid=?)
 
+## store.(*CallsSeries).extend
+SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '') FROM events e INDEXED BY idx_events_session_id WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.id > ? AND e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.id
+    SEARCH e USING INDEX idx_events_session_id (sid=? AND id>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.(*CallsSeries).extend
+SELECT e.id, e.ts, e.msg_id, COALESCE(e.tool, ''), CASE WHEN COALESCE(e.msg_id, '') <> '' AND COALESCE(e.agent_id, '') = '' AND json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.sidechain') IS NOT 1 THEN COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_input'), '') END FROM events e NOT INDEXED WHERE e.id IN ( SELECT id FROM events INDEXED BY idx_events_session_id WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND id > ? UNION ALL SELECT value FROM json_each(?)) AND e.kind = 'tool.pre' ORDER BY e.ts ASC, e.id ASC
+    SEARCH e USING INTEGER PRIMARY KEY (rowid=?)
+    LIST SUBQUERY 3
+        COMPOUND QUERY
+            LEFT-MOST SUBQUERY
+                SEARCH events USING COVERING INDEX idx_events_session_id (sid=? AND id>?)
+                SCALAR SUBQUERY 1
+                    SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+            UNION ALL
+                SCAN json_each VIRTUAL TABLE INDEX 1:
+    USE TEMP B-TREE FOR ORDER BY
+
 ## store.(*Store).CompactPayloadsStep
 SELECT id, payload FROM events WHERE id > ? AND id <= ? AND typeof(payload) = 'text' AND (instr(payload, 'base64') > 0 OR instr(payload, '"image"') > 0 OR instr(payload, '"data:') > 0)
     SEARCH events USING INTEGER PRIMARY KEY (rowid>? AND rowid<?)
@@ -408,7 +427,7 @@ INSERT INTO events(id, ts, sid, source, kind, tool, payload, tokens_in, tokens_o
     USE TEMP B-TREE FOR ORDER BY
 
 ## store.(*Store).MoveEventsStep.func1
-INSERT INTO session_gen(session_id, gen) SELECT DISTINCT session_id, 1 FROM temp.events_moving WHERE true ON CONFLICT(session_id) DO UPDATE SET gen = gen + 1
+INSERT INTO session_gen(session_id, gen, calls_gen) SELECT DISTINCT session_id, 1, 1 FROM temp.events_moving WHERE true ON CONFLICT(session_id) DO UPDATE SET gen = gen + 1, calls_gen = calls_gen + 1
     SCAN temp.events_moving
     USE TEMP B-TREE FOR DISTINCT
 
@@ -2204,21 +2223,6 @@ SELECT session_id, branch, pushed_at FROM session_branches WHERE session_id = ? 
     SEARCH session_branches USING INDEX sqlite_autoindex_session_branches_1 (session_id=?)
     USE TEMP B-TREE FOR ORDER BY
 
-## store.SessionCalls
-SELECT * FROM ( SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ?) ORDER BY 2 ASC, 1 ASC
-    CO-ROUTINE (subquery-2)
-        SEARCH e USING INDEX idx_events_attr_work (sid=?)
-        SCALAR SUBQUERY 1
-            SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-    SCAN (subquery-2)
-    USE TEMP B-TREE FOR ORDER BY
-
-## store.SessionCalls
-SELECT e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_input'), '') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND COALESCE(e.agent_id, '') = '' AND json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.sidechain') IS NOT 1 ORDER BY e.ts ASC, e.id ASC
-    SEARCH e USING INDEX idx_events_attr_work (sid=?)
-    SCALAR SUBQUERY 1
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
 ## store.SessionCostSeries
 SELECT ts, cost_usd, COALESCE(substr(key,1,9) IN ('cu-usage:','hm-usage:'),0), (COALESCE(tokens_in,0) + COALESCE(tokens_out,0) + COALESCE(cache_read,0) + COALESCE(cache_write,0)) > 0 FROM events INDEXED BY idx_events_session_turns WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND kind = 'turn.assistant' AND cost_usd IS NOT NULL AND internal = 0 ORDER BY ts, id
     SEARCH events USING COVERING INDEX idx_events_session_turns (sid=?)
@@ -3260,6 +3264,37 @@ SELECT s.sid, COALESCE(json_extract(e.payload,'$.cost_basis'),''), COALESCE(json
     SEARCH s USING COVERING INDEX idx_sessions_agent (agent=?)
     SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
     USE TEMP B-TREE FOR GROUP BY
+
+## store.readCallsMark
+SELECT COALESCE((SELECT calls_gen FROM session_gen WHERE session_id = ?1), 0), COALESCE((SELECT MAX(id) FROM events INDEXED BY idx_events_session_id WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?1)), 0)
+    SCAN CONSTANT ROW
+    SCALAR SUBQUERY 1
+        SEARCH session_gen USING PRIMARY KEY (session_id=?)
+    SCALAR SUBQUERY 3
+        SEARCH events USING COVERING INDEX idx_events_session_id (sid=?)
+        SCALAR SUBQUERY 2
+            SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.readSessionCalls
+SELECT * FROM ( SELECT e.id, e.ts, COALESCE(e.model, ''), e.cost_usd, e.tokens_in, e.tokens_out, e.cache_read, e.cache_write, e.cache_write_1h, COALESCE(e.msg_id, '') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'turn.assistant' AND e.cost_usd IS NOT NULL AND e.internal = 0 AND COALESCE(e.agent_id, '') = '' AND json_extract(e.payload, '$.sidechain') IS NOT 1 ORDER BY e.ts DESC, e.id DESC LIMIT ?) ORDER BY 2 ASC, 1 ASC
+    CO-ROUTINE (subquery-2)
+        SEARCH e USING INDEX idx_events_attr_work (sid=?)
+        SCALAR SUBQUERY 1
+            SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+    SCAN (subquery-2)
+    USE TEMP B-TREE FOR ORDER BY
+
+## store.readSessionCalls
+SELECT e.id FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.pre' AND e.msg_id IS NULL
+    SEARCH e USING COVERING INDEX idx_events_attr_work (sid=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.readSessionCalls
+SELECT e.id, e.ts, e.msg_id, COALESCE(e.tool, ''), COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_input'), '') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.kind = 'tool.pre' AND COALESCE(e.msg_id, '') <> '' AND COALESCE(e.agent_id, '') = '' AND json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.sidechain') IS NOT 1 ORDER BY e.ts ASC, e.id ASC
+    SEARCH e USING INDEX idx_events_attr_work (sid=?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.readSessionInfos
 SELECT sid, session_id, COALESCE(project,''), COALESCE(repo_root,''), COALESCE(repo_path,''), COALESCE(cwd,''), COALESCE(model,''), COALESCE(agent,''), COALESCE(agent,'claude'), COALESCE(subscription,''), COALESCE(last_event_at,0) FROM sessions ORDER BY sid

@@ -40,10 +40,13 @@ type CallTool struct {
 // A session's calls are kept by its events generation (store.EventsGen, read
 // before the calls): asked again while its events are as they were — a
 // cockpit tab opened again, the several parts of one tab that ask at once —
-// it reads nothing, and identical requests in flight share one read. The read
-// walks every priced turn and every tool call of the session, the tool
+// it reads nothing, and identical requests in flight share one read. A whole
+// read walks every priced turn and every tool call of the session, the tool
 // calls' payloads included: 1.4 s and 5,172 calls for one of the owner's
-// sessions (2026-11-20), and the cockpit asks each time it opens.
+// sessions (2026-11-20), and the cockpit asks each time it opens. So while
+// the session's calls generation stands (new rows, links, text merges and
+// compression do not move it), the series kept from the last read is
+// extended by what changed instead (store.ReadSessionCalls).
 func (s *Server) handleSessionCalls(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	id := r.PathValue("id")
@@ -55,7 +58,13 @@ func (s *Server) handleSessionCalls(w http.ResponseWriter, r *http.Request) {
 	}
 	key := fmt.Sprintf("%s|%d|%d|%d", id, limit, gen.Gen, gen.MaxID)
 	v, err := s.callsCache().get(r.Context(), key, func() (any, error) {
-		return store.SessionCalls(context.WithoutCancel(r.Context()), db, id, limit)
+		base := fmt.Sprintf("%s|%d", id, limit)
+		ser, err := store.ReadSessionCalls(context.WithoutCancel(r.Context()), db, id, limit, s.calls.last(base))
+		if err != nil {
+			return nil, err
+		}
+		s.calls.keep(base, ser)
+		return ser.Calls, nil
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -87,10 +96,54 @@ const (
 	sessionCallsKeys = 32
 )
 
-// sessionCalls holds GET /v1/sessions/{id}/calls answers (handleSessionCalls).
+// sessionCalls holds GET /v1/sessions/{id}/calls answers (handleSessionCalls),
+// and the series each session was last read as, which the next read extends
+// by the rows added since (store.ReadSessionCalls).
 type sessionCalls struct {
 	once sync.Once
 	c    *answerCache
+
+	mu     sync.Mutex
+	series map[string]keptSeries
+}
+
+type keptSeries struct {
+	s  *store.CallsSeries
+	at time.Time
+}
+
+// last is the series key was last read as, nil when none is kept.
+func (c *sessionCalls) last(key string) *store.CallsSeries {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	k, ok := c.series[key]
+	if !ok || time.Since(k.at) > sessionCallsKeep {
+		return nil
+	}
+	return k.s
+}
+
+// keep records s as key's newest series, keeping sessionCallsKeys at most:
+// past it the one read longest ago goes.
+func (c *sessionCalls) keep(key string, s *store.CallsSeries) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.series == nil {
+		c.series = map[string]keptSeries{}
+	}
+	if k, ok := c.series[key]; ok && s.Mark.Older(k.s.Mark) {
+		return // a slower read of an older state: the newer one stays
+	}
+	c.series[key] = keptSeries{s: s, at: time.Now()}
+	for len(c.series) > sessionCallsKeys {
+		oldest := ""
+		for k, v := range c.series {
+			if oldest == "" || v.at.Before(c.series[oldest].at) {
+				oldest = k
+			}
+		}
+		delete(c.series, oldest)
+	}
 }
 
 func (s *Server) callsCache() *answerCache {

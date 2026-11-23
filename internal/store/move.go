@@ -77,9 +77,9 @@ func (s *Store) MoveEventsStep(ctx context.Context, window int) (moved int, done
 			    WHERE true ORDER BY m.id
 			   ON CONFLICT(sid, key) WHERE key IS NOT NULL DO NOTHING`,
 			// The per-session caches (EventsGen) read a session's rows again.
-			`INSERT INTO session_gen(session_id, gen)
-			   SELECT DISTINCT session_id, 1 FROM temp.events_moving WHERE true
-			   ON CONFLICT(session_id) DO UPDATE SET gen = gen + 1`,
+			`INSERT INTO session_gen(session_id, gen, calls_gen)
+			   SELECT DISTINCT session_id, 1, 1 FROM temp.events_moving WHERE true
+			   ON CONFLICT(session_id) DO UPDATE SET gen = gen + 1, calls_gen = calls_gen + 1`,
 			`UPDATE meta SET v = CAST(v AS INTEGER) + (SELECT COUNT(*) FROM temp.events_moving) WHERE k = '` + metaMoved + `'`,
 			`DROP TABLE temp.events_moving`,
 		} {
