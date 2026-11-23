@@ -3,7 +3,8 @@
 // These pin what the sidebar, ⌘J, the cockpit and the header make of it.
 import { describe, expect, it } from 'vitest'
 import type { SessionSummary } from './api'
-import { backgroundAgents, backgroundLabel, cockpitState } from './cockpit'
+import { backgroundAgents, backgroundCounts, backgroundLabel, backgroundTasks, cockpitState } from './cockpit'
+import { atPrompt } from './sessionJump'
 import { sessionPlace } from './projects'
 import { buildSidebar, dotOf } from './sidebar'
 
@@ -18,7 +19,7 @@ function sess(p: Partial<SessionSummary>): SessionSummary {
   } as SessionSummary
 }
 
-const background = sess({ session_id: 'bg', live_subagents: 1, activity: { phrase: 'background agents working · 1', at: new Date().toISOString(), health: 'working', background: 1 } })
+const background = sess({ session_id: 'bg', live_subagents: 1, activity: { phrase: 'waiting on background work · 1 agent', at: new Date().toISOString(), health: 'working', background: 1 } })
 const waiting = sess({ session_id: 'w', activity: { phrase: 'waiting for you', at: new Date(Date.now() - 60_000).toISOString(), health: 'waiting-on-you' } })
 
 describe('a session working in the background', () => {
@@ -40,7 +41,29 @@ describe('a session working in the background', () => {
     expect(backgroundAgents(background)).toBe(1)
     expect(backgroundAgents({ ...background, status: 'ended' })).toBe(0)
     expect(backgroundAgents(waiting)).toBe(0)
-    expect(backgroundLabel(2)).toBe('Background agents working · 2')
+    expect(backgroundLabel({ agents: 2, shells: 0, monitors: 0 })).toBe('Waiting on background work · 2 agents')
+    expect(backgroundLabel({ agents: 1, shells: 1, monitors: 0 })).toBe('Waiting on background work · 1 agent, 1 shell')
+    expect(backgroundLabel({ agents: 0, shells: 2, monitors: 1 })).toBe('Waiting on background work · 2 shells, 1 monitor')
+  })
+})
+
+// Owner, 2026-11-24: Now said Done while a background release script ran.
+describe('a session waiting on background commands', () => {
+  const shell = sess({
+    session_id: 'sh', activity: { phrase: 'waiting on background work · 1 shell, 1 monitor', at: new Date().toISOString(), health: 'working', background_tasks: 2 },
+    background_work: [
+      { kind: 'shell', id: 'b1', description: 'Release', started_at: 1 },
+      { kind: 'monitor', id: 'm1', command: 'tail -F log', started_at: 2 },
+    ],
+  })
+  it('counts them by kind while the session lives, and is not at its prompt', () => {
+    expect(backgroundTasks(shell)).toBe(2)
+    expect(backgroundTasks({ ...shell, status: 'ended' })).toBe(0)
+    expect(backgroundCounts(shell)).toEqual({ agents: 0, shells: 1, monitors: 1 })
+    expect(backgroundCounts({ ...shell, background_work: undefined })).toEqual({ agents: 0, shells: 2, monitors: 0 })
+    expect(backgroundLabel(backgroundCounts(shell))).toBe('Waiting on background work · 1 shell, 1 monitor')
+    expect(atPrompt(shell)).toBe(false)
+    expect(cockpitState(shell, false)).toBe('working')
   })
 })
 

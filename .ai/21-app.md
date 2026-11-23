@@ -629,8 +629,9 @@ One window, three regions:
   agent's terminal, headed by a dense informer (owner, 2026-10-29): the
   agent's own mark, the session's name, the project only when it is not
   the name and the branch when not the default (the path on hover), and
-  its state (working, *background agents working · N* once its turn ended
-  with subagents still at work, waiting on you, looping, idle, ended) with
+  its state (working, *waiting on background work · 1 agent, 1 shell* once
+  its turn ended with subagents, commands or watches it started still at
+  work, waiting on you, looping, idle, ended) with
   the permission mode, on one row; three figures the viewer picks from one
   list (cost, burn rate, tokens, cache hit rate, turns, time working, last
   call, tool calls) — a big headline and two short ones on a line under it

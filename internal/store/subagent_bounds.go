@@ -88,11 +88,7 @@ func SubagentBoundsOf(ctx context.Context, q Querier, sessionID string, since, n
 	if status.String == "ended" {
 		return SubagentBounds{RestartAt: math.MaxInt64, Ended: true}, nil
 	}
-	if err := q.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(e.ts), 0) FROM events e
-		 WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ?
-		   AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = ''
-		   AND COALESCE(json_extract(`+ZPayloadE+`, '$.source'), '') <> 'compact'`, sessionID, since).Scan(&b.RestartAt); err != nil {
+	if b.RestartAt, err = newestRestart(ctx, q, sessionID, since); err != nil {
 		return b, err
 	}
 	// Claude Code's SessionStart at a fresh start comes before anything the

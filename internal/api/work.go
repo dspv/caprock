@@ -21,7 +21,8 @@ const (
 	WorkPermission = "permission"
 	WorkQuestion   = "question"
 	WorkAtPrompt   = "at_prompt"
-	// WorkBackground: the turn ended and subagents it started still work;
+	// WorkBackground: the turn ended and subagents, commands or watches it
+	// started in the background still work (store.BackgroundWork);
 	// the session wants nothing from anyone.
 	WorkBackground = "background"
 )

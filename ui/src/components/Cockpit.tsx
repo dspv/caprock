@@ -12,7 +12,7 @@
  * figure an agent does not report is left out rather than drawn as a zero.
  */
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
-import { api, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
+import { api, type BackgroundTask, type Event, type Permission, type RateWindow, type SessionSummary, type Subagent, type SubagentDone, type SubagentsNow, type Summary } from '@/lib/api'
 import { usePermission } from './PermissionPrompt'
 import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
@@ -56,7 +56,7 @@ import { SectionFrames } from './SectionFrames'
 import { CompactAction, CompactIcon, CompactingLine, ContextBar, useCompact } from './CompactContext'
 import { shownContext, tokShort } from '@/lib/compact'
 import {
-  askLine, backgroundAgents, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
+  askLine, backgroundAgents, backgroundCounts, backgroundTasks, chipGroups, chipLayout, subagentChips, subagentDoing, subagentInitial, subagentTone, backgroundLabel, cockpitState, commandGist, fmtAge, fmtRun, planWindowsFor, requester, runningTool, runVerb, subagentWaiting, toolGroups, toolKind, toolRuns, RUNNING_STALE_MS, SLOW_MS,
   type CockpitState, type SubagentChip, type ToolGroup, type ToolRun,
 } from '@/lib/cockpit'
 
@@ -191,10 +191,11 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
     now: (
       <>
         <Foldable id="now">
-          <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s)} now={now}
+          <NowDoing s={s} state={state} running={running} last={runs[runs.length - 1]} permission={permission} background={backgroundAgents(s) + backgroundTasks(s)} now={now}
+            listed={subs?.working.map((a) => a.agent_id)}
             agents={subs && (subs.working.length > 0 || (subs.recent?.length ?? 0) > 0) ? (
               <NowAgents key={sessionId} subs={subs} permission={permission} now={now} sessionId={sessionId}
-                background={backgroundAgents(s) > 0 && state === 'working'} focus={openSub} reveal={reveal}
+                background={backgroundAgents(s) > 0 && state === 'working'} cardSays={backgroundTasks(s) > 0} focus={openSub} reveal={reveal}
                 allFinished={allFinished} onAllFinished={setAllFinished} />
             ) : null}
             agentsWorking={(subs?.working.length ?? 0) > 0} />
@@ -216,7 +217,7 @@ export function Cockpit({ s, sessionId, hasPermission, summary, changes, ci, rel
   }
   return (
     <>
-      <Hero s={s} sessionId={sessionId} state={state} asking={hasPermission || !!permission} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} title={title} place={place} extra={headExtra} />
+      <Hero s={s} sessionId={sessionId} state={state} asking={hasPermission || !!permission} now={now} background={hasPermission || permission ? 0 : backgroundAgents(s) + backgroundTasks(s)} subs={subs} permission={permission} figures={figures} usual={summary?.usual} onChip={openFromChip} title={title} place={place} extra={headExtra} />
       {arranging
         ? <ArrangeSections order={order} onDone={() => setArranging(false)} />
         : <SectionFrames order={order} sections={sections} />}
@@ -450,7 +451,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
   const look = useSubagentLook()
   const matrix = look === 'matrix'
   const strip = subagentChips(subs, permission, matrix ? matrixRoom(working) : layout.room)
-  const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? background : 0)
+  const count = working || (strip.chips.length === 0 ? s.live_subagents ?? 0 : 0) || (saysBackground ? backgroundAgents(s) : 0)
   const shown = state === 'ended' ? 0 : count
   const any = anySubagents(subs, shown)
   const [hourOpen, setHourOpen] = useState(false)
@@ -511,7 +512,7 @@ function Hero({ s, sessionId, state, asking, now, background, subs, permission, 
           )}
           <span ref={lead} data-hero-lead data-wrapped={wrapped || undefined} className="ml-auto flex shrink-0 items-center gap-1.5 data-[wrapped]:ml-0">
             <p data-hero-state className={`whitespace-nowrap text-[11.5px] font-medium leading-[20px] ${STATE_TEXT[state]}`} role="status"
-              title={saysBackground ? backgroundLabel(background) : undefined} aria-label={saysBackground ? backgroundLabel(background) : undefined}>
+              title={saysBackground ? backgroundLabel(backgroundCounts(s)) : undefined} aria-label={saysBackground ? backgroundLabel(backgroundCounts(s)) : undefined}>
               <span className="cockpit-dot mr-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]" data-state={state} />
               {label}{ago ? <span className="font-normal text-fg-faint"> {ago}</span> : null}
             </p>
@@ -1231,14 +1232,16 @@ function ContextMeter({ s }: { s: SessionSummary }) {
   )
 }
 
-function NowDoing({ s, state, running, last, permission, background, now, agents, agentsWorking }: {
+function NowDoing({ s, state, running, last, permission, background, now, agents, agentsWorking, listed }: {
   s: SessionSummary
   state: CockpitState
   running?: ToolRun
   last?: ToolRun
   permission?: Permission | null
-  /** Subagents working after the turn ended (backgroundAgents). */
+  /** Subagents, commands and watches working after the turn ended (backgroundAgents + backgroundTasks). */
   background: number
+  /** The agents the subagents' tree lists as working: the card does not list them again. */
+  listed?: readonly string[]
   now: number
   /** The subagents' tree (NowAgents), drawn under the card while any works or finished lately. */
   agents?: ReactNode
@@ -1270,7 +1273,7 @@ function NowDoing({ s, state, running, last, permission, background, now, agents
     // the user: Claude Code picks the session up when they finish. Before
     // the main thread's last call, which "Thinking after …" would name.
     icon = <KindIcon kind="agent" />
-    verb = backgroundLabel(background)
+    verb = backgroundLabel(backgroundCounts(s))
     detail = 'resumes when they finish'
   } else if (running) {
     icon = <KindIcon kind={running.kind} />
@@ -1304,8 +1307,14 @@ function NowDoing({ s, state, running, last, permission, background, now, agents
   const folded = useFolded()
   const view = useNowView()
   const fields = useSubagentFields()
-  // Background agents at work: the tree's header is the card (owner, 2026-11-23).
-  const cardIsTree = !permission && background > 0 && state === 'working' && !!agents && !!agentsWorking
+  // What the session waits on, each with how long it has run, under the
+  // card: the commands and watches, and the agents the tree does not list
+  // (owner, 2026-11-24: "Done" while a background agent and a release
+  // script ran).
+  const waitingOn = !permission && background > 0 && state === 'working'
+  const items = waitingOn ? (s.background_work ?? []).filter((t) => t.kind !== 'agent' || !listed?.includes(t.id)) : []
+  // Background agents alone at work: the tree's header is the card (owner, 2026-11-23).
+  const cardIsTree = waitingOn && backgroundTasks(s) === 0 && !!agents && !!agentsWorking
   return (
     <section aria-label="Now" className="grid gap-2">
       <SectionLabel right={(
@@ -1323,15 +1332,46 @@ function NowDoing({ s, state, running, last, permission, background, now, agents
       {!cardIsTree && <div className="cockpit-now flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2" data-state={state} data-running={running ? 'true' : undefined}>
         <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-[7px] bg-[var(--app-row-active)]">{icon}</span>
         <span className="grid min-w-0 flex-1 leading-tight">
-          <span className={`${permission ? 'line-clamp-2' : 'truncate'} text-[12.5px] font-medium text-fg`}>{verb}</span>
+          <span className={`${permission || waitingOn ? 'line-clamp-2' : 'truncate'} text-[12.5px] font-medium text-fg`}>{verb}</span>
           {detail && (
             <span className={`mono text-[11.5px] text-fg-muted ${permission ? 'line-clamp-2 break-all' : 'truncate'}`} title={full || detail}>{detail}</span>
           )}
         </span>
         {right}
       </div>}
+      {items.length > 0 && <BackgroundList items={items} now={now} />}
       {agents}
     </section>
+  )
+}
+
+/** What a background item is called when its call said nothing. */
+const BACKGROUND_NOUN: Record<BackgroundTask['kind'], string> = { agent: 'Background agent', shell: 'Background command', monitor: 'Monitor' }
+
+/**
+ * The background work a session whose turn ended waits on, under Now's card:
+ * one line each — what it is (an agent, a command, a watch), what its call
+ * said it was for (else its command), and how long it has run. Gone when
+ * Claude Code reports it ended (`background_work`).
+ */
+function BackgroundList({ items, now }: { items: readonly BackgroundTask[]; now: number }) {
+  return (
+    <ul aria-label="Background work" data-background-work className="grid min-w-0 gap-px">
+      {items.map((t) => {
+        const what = t.description || t.command || BACKGROUND_NOUN[t.kind]
+        return (
+          <li key={`${t.kind}:${t.id}`} data-kind={t.kind}
+            className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-[6px] px-1.5 py-[3px] text-[12px] leading-[16px]"
+            title={[BACKGROUND_NOUN[t.kind], t.description, t.command].filter(Boolean).join('\n')}>
+            <span className="grid place-items-center text-fg-muted"><KindIcon kind={t.kind === 'agent' ? 'agent' : 'run'} size={13} /></span>
+            <span className="min-w-0 truncate text-fg">
+              <span className="sr-only">{BACKGROUND_NOUN[t.kind]}: </span>{what}
+            </span>
+            <span className="num shrink-0 text-[11px] text-fg-muted" title="How long it has run">{fmtRun(Math.max(0, now - t.started_at))}</span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -1360,13 +1400,15 @@ function NowDoing({ s, state, running, last, permission, background, now, agents
  * under the tree when it holds some back, lists every working subagent and
  * up to 30 finished (what *+N more working* and *+N finished* did).
  */
-function NowAgents({ subs, permission, now, sessionId, background, focus, reveal, allFinished, onAllFinished }: {
+function NowAgents({ subs, permission, now, sessionId, background, cardSays, focus, reveal, allFinished, onAllFinished }: {
   subs: SubagentsNow
   permission?: Permission | null
   now: number
   sessionId: string
   /** The turn has ended and they still work (backgroundAgents). */
   background: boolean
+  /** Now's card above already says what the turn waits on (background commands too): the header does not repeat *resumes when they finish*. */
+  cardSays?: boolean
   /** The entry a hero chip asked for, and a counter bumped on each ask. */
   focus: string | null
   reveal: number
@@ -1433,7 +1475,7 @@ function NowAgents({ subs, permission, now, sessionId, background, focus, reveal
         <Chevron open={open} />
         <span className="grid min-w-0 flex-1 leading-tight">
           <span className="truncate text-[12.5px] font-medium text-fg">{label}</span>
-          {background && tree.count > 0 && <span className="truncate text-[11.5px] text-fg-muted">resumes when they finish</span>}
+          {background && !cardSays && tree.count > 0 && <span className="truncate text-[11.5px] text-fg-muted">resumes when they finish</span>}
         </span>
         {figures && <span data-agents-figures className="num shrink-0 text-[11.5px] text-fg-muted">{figures}</span>}
       </button>

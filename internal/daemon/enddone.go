@@ -187,6 +187,13 @@ func (e *endWhenDone) waitingOn(ctx context.Context, a *agents.Agent) (string, e
 	if n > 0 {
 		return "subagents", nil
 	}
+	// A background command, watch or agent it started that has not ended:
+	// Claude Code picks the session up when it reports.
+	if bg, err := store.BackgroundWork(ctx, db, a.Current(), e.now().UnixMilli()); err != nil {
+		return "", err
+	} else if len(bg) > 0 {
+		return "background", nil
+	}
 	return "", nil
 }
 

@@ -314,6 +314,10 @@ func (w *workBoard) session(ctx context.Context, s store.Session, evc *workEvent
 		}
 		if n > 0 {
 			ws.State = api.WorkBackground
+		} else if bg, err := store.BackgroundWork(ctx, db, s.SessionID, now.UnixMilli()); err != nil {
+			return ws, nil, err
+		} else if len(bg) > 0 {
+			ws.State = api.WorkBackground
 		}
 	}
 	if ws.State != api.WorkWorking {

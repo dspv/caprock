@@ -47,7 +47,7 @@ async function stub(page: Page, sessionId: string) {
     const rows = await res.json() as { session_id: string; activity?: object; live_subagents?: number }[]
     for (const s of Array.isArray(rows) ? rows : []) {
       if (s.session_id !== sessionId) continue
-      s.activity = { phrase: 'background agents working · 3', at: new Date().toISOString(), health: 'working', background: 3 }
+      s.activity = { phrase: 'waiting on background work · 3 agents', at: new Date().toISOString(), health: 'working', background: 3 }
       s.live_subagents = 3
     }
     await r.fulfill({ response: res, json: rows })
