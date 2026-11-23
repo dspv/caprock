@@ -47,7 +47,12 @@ type SpawnRequest struct {
 	WorktreePR     int    `json:"worktree_pr,omitempty"`
 	Model          string `json:"model,omitempty"`           // --model
 	PermissionMode string `json:"permission_mode,omitempty"` // --permission-mode
-	Command        string `json:"command,omitempty"`         // default "claude"
+	// Effort is the reasoning effort the session starts at, "" for the
+	// agent's own default: Claude Code's --effort, Codex's
+	// model_reasoning_effort (effort.go). Dropped for an agent that takes
+	// none at launch.
+	Effort  string `json:"effort,omitempty"`
+	Command string `json:"command,omitempty"` // default "claude"
 	// Agent picks which coding agent to launch: "claude" (default), "codex",
 	// "opencode" or "gemini". They take different flags, so the argv is built
 	// per agent (argv.go) rather than pretending one shape fits all four.
@@ -661,6 +666,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 		}
 		in := launchInput{
 			SessionID: sessionID, Cwd: cwd, Model: req.Model, Mode: req.PermissionMode,
+			Effort: effortFor(agent, req.Effort),
 			Resume: req.Resume, NativeResume: req.NativeResume, Fork: req.Fork, Extra: req.Args,
 			Prompt: req.Prompt, AddDirs: m.ownDirs(),
 		}
@@ -734,6 +740,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (*Agent, error) {
 	env := childEnv(userenv.Environ(m.log))
 	env = withEnv(env, extraEnv)
 	env = withSubagentModel(env, agent, req.SubagentModel)
+	env = withEffort(env, agent, req.Effort)
 	if req.ConfigDir != "" {
 		env = onSubscription(env, agent, req.ConfigDir)
 	}

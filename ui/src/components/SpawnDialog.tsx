@@ -12,6 +12,8 @@ import { BypassConsentNote, useBypassConsent } from './BypassConsent'
 import { SubscriptionNote, SubscriptionPicker, subscriptionsFor, useSubscriptionList } from './SubscriptionPicker'
 import { chosenId } from '@/lib/subscriptions'
 import { PermissionPicker } from './PermissionPicker'
+import { EffortPicker } from './EffortPicker'
+import { useEffortChoice } from '@/lib/effort'
 
 // What the two selects start on, rather than an empty "default" that says
 // nothing about what you are about to run. Opus is what the machine's own
@@ -138,6 +140,9 @@ export function SpawnDialog({
   // itself offers this account, not one written here.
   const { entries } = useAgentCatalog()
   const entry = entries.find((e) => e.id === agent)
+  // Only for an agent that takes an effort at launch; its own default is
+  // marked and, kept, passes nothing.
+  const effort = useEffortChoice(agent, entry, model)
   // Which OpenCode is installed decides what a mode becomes in it.
   const status = useApi(() => api.status(), [], { live: false })
   const [worktree, setWorktree] = useState(initialWorktree)
@@ -171,10 +176,12 @@ export function SpawnDialog({
       // Every agent takes the mode in Claude's vocabulary; the daemon
       // translates it, or leaves it off where the agent has no counterpart.
       if (mode) req.permission_mode = mode
+      if (effort.send) req.effort = effort.send
       if (worktree.trim()) req.worktree = worktree.trim()
       if (create) req.create = true
       const { session_id } = await api.spawn(req)
       rememberMode()
+      effort.remember()
       onClose()
       navigate({ name: 'session', id: session_id, tab: landOn })
     } catch (e) {
@@ -220,14 +227,25 @@ export function SpawnDialog({
             <AgentPicker value={agent} agents={agents} onChange={setAgent} />
             <SubscriptionPicker list={subList} value={subId} onChange={pickSub} />
             <SubscriptionNote list={subList} value={subId} onUse={pickSub} />
-            <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
-              <ModelField
-                agent={agent}
-                value={model}
-                onChange={setModel}
-                entry={entry}
-              />
-            </Field>
+            {/* Model and Effort on one row; Effort wraps under Model where
+              * the two do not fit side by side. */}
+            <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-3" data-model-row>
+              <div className="grid min-w-[12rem] flex-1">
+                <Field label="Model" hint={agent === 'opencode' ? 'provider/model' : undefined}>
+                  <ModelField
+                    agent={agent}
+                    value={model}
+                    onChange={setModel}
+                    entry={entry}
+                  />
+                </Field>
+              </div>
+              {effort.levels.length > 0 && (
+                <div className="min-w-0 max-w-full">
+                  <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} labelClassName="text-[11px] text-fg-muted" />
+                </div>
+              )}
+            </div>
             {/* Every agent covers the same ground with its own words, and
               * the daemon maps onto them — so the control stays live for
               * all of them, labelled with what it becomes in this one. A row

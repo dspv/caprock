@@ -20,6 +20,9 @@ type launchInput struct {
 	Cwd       string
 	Model     string
 	Mode      string
+	// Effort is the reasoning effort to start at, already checked against
+	// the agent's own levels (effortFor); "" leaves the agent's default.
+	Effort string
 	// Resume is the stored session being continued; NativeResume is the
 	// agent's own id for it, which differs only for a Codex or OpenCode
 	// session Caprock started (sessions.native_id).
@@ -120,6 +123,11 @@ func claudeLaunch(in launchInput) (launch, error) {
 	}
 	if in.Model != "" {
 		l.args = append(l.args, "--model", in.Model)
+	}
+	// `--effort <level>`: this session only, over the effortLevel setting,
+	// and not persisted (code.claude.com/docs/en/cli-reference, 2026-11-23).
+	if in.Effort != "" {
+		l.args = append(l.args, "--effort", in.Effort)
 	}
 	// "Bypass · never asks" is spawned as `--dangerously-skip-permissions`,
 	// the flag the orchestrator has always used for its own unattended
@@ -230,6 +238,11 @@ func codexLaunch(in launchInput) (launch, error) {
 	}
 	if in.Model != "" {
 		l.args = append(l.args, "-m", in.Model)
+	}
+	// The config key for this run only, as the trust override above: nothing
+	// is written to config.toml.
+	if in.Effort != "" {
+		l.args = append(l.args, "-c", "model_reasoning_effort="+tomlString(in.Effort))
 	}
 	l.args = append(l.args, codexPermissions(in.Mode)...)
 	// `--add-dir <DIR>`: "Additional directories that should be writable

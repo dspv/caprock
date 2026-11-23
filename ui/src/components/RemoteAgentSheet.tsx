@@ -45,8 +45,10 @@ import { useApi } from '@/lib/useApi'
 import { isMacPlatform } from '@/lib/appmode'
 import { useInitialMode } from '@/lib/permissionMode'
 import { stepSelect } from '@/lib/selectKeys'
-import { DEFAULT_MODE } from './SpawnDialog'
+import { DEFAULT_MODE, DEFAULT_MODELS, ModelField } from './SpawnDialog'
 import { PermissionPicker } from './PermissionPicker'
+import { EffortPicker } from './EffortPicker'
+import { useEffortChoice } from '@/lib/effort'
 import type { SpawnAgent } from './AgentPicker'
 import { Sheet, SheetButton, SheetField } from './Sheet'
 
@@ -177,7 +179,13 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
   const [agent, setAgent] = useState('claude')
   useEffect(() => { const first = agents[0]; if (first && !agents.some((a) => a.id === agent)) setAgent(first.id) }, [agents, agent])
   const entry = agents.find((a) => a.id === agent)
-  const [model, setModel] = useState('')
+  // The model starts where the local sheet's does for the same agent (Opus
+  // for Claude Code, the first Gemini, else the agent's own default ''), and
+  // the list is the same one: Claude Code's and Gemini CLI's are the page's
+  // own, never in a catalog, which is why the field here was a bare "its
+  // default" input on every computer (owner, 2026-11-23, on a Windows PC).
+  const [model, setModel] = useState(() => DEFAULT_MODELS[agent as SpawnAgent] ?? '')
+  const effort = useEffortChoice(agent, entry, model)
   const [mode, setMode, rememberMode] = useInitialMode(DEFAULT_MODE)
   const [prompt, setPrompt] = useState(initialPrompt)
   const [busy, setBusy] = useState(false)
@@ -208,9 +216,11 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
       if (agent !== 'claude') req.agent = agent
       if (model.trim()) req.model = model.trim()
       if (mode && !custom) req.permission_mode = mode
+      if (effort.send) req.effort = effort.send
       if (prompt.trim()) req.prompt = prompt.trim()
       const res = await far<{ session_id: string }>(machine, '/v1/agents', { method: 'POST', body: JSON.stringify(req) })
       rememberMode()
+      effort.remember()
       // Every list on the page reads the one list again: it is there now.
       window.dispatchEvent(new Event(MACHINES_EVENT))
       onStarted(machine, res.session_id, prompt.trim().slice(0, 60) || `new session on ${name}`)
@@ -272,7 +282,7 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
         <div className="grid grid-cols-2 gap-3">
           <MachinePicker machines={machines} value={machine} onChange={onMachine} />
           <SheetField label="Agent">
-            <select className="input" aria-label="Agent" value={agent} onChange={(e) => { setAgent(e.target.value); setModel('') }} disabled={agents.length === 0}>
+            <select className="input" aria-label="Agent" value={agent} onChange={(e) => { setAgent(e.target.value); setModel(DEFAULT_MODELS[e.target.value as SpawnAgent] ?? '') }} disabled={agents.length === 0}>
               {agents.length === 0 && <option value="claude">{catalog.error ? 'Claude Code' : noAgent ? 'none installed there' : 'reading…'}</option>}
               {agents.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
             </select>
@@ -327,20 +337,20 @@ export function RemoteAgentSheet({ machines, machine, onMachine, prompt: initial
             <DirPicker value={cwd.trim()} onPick={setCwd} start="~/dev" tab={tab} onTab={setTab} source={source} />
           )}
         </div>
-        <SheetField label="Model" hint="optional">
-          <input
-            className="input"
-            aria-label="Model"
-            list={`remote-models-${machine}`}
-            placeholder={entry?.default || 'its default'}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            spellCheck={false}
-          />
-          <datalist id={`remote-models-${machine}`}>
-            {(entry?.models ?? []).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
-          </datalist>
-        </SheetField>
+        {/* Model and Effort on one row, Effort wrapping under Model where
+          * the two do not fit side by side. */}
+        <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-4" data-model-row>
+          <div className="grid min-w-[12rem] flex-1">
+            <SheetField label="Model">
+              <ModelField agent={agent as SpawnAgent} value={model} onChange={setModel} entry={entry} />
+            </SheetField>
+          </div>
+          {effort.levels.length > 0 && (
+            <div className="min-w-0 max-w-full">
+              <EffortPicker levels={effort.levels} value={effort.shown} def={effort.def} onChange={effort.choose} />
+            </div>
+          )}
+        </div>
         {/* A row of its own: three segments do not fit half of one. */}
         {!custom && <PermissionPicker value={mode} onChange={setMode} agent={agent as SpawnAgent} hint="kept for the next agent" />}
         <SheetField label="First message" hint="optional">

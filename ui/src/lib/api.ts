@@ -1764,6 +1764,15 @@ export interface CatalogEntry {
   /** `refused`: Codex refused it on this sign-in in a session Caprock
    *  started; listed last, its label already says so. */
   models: { id: string; label: string; refused?: boolean }[]
+  /** The reasoning efforts it takes at launch, lowest first (Claude Code's
+   *  --effort, Codex's model_reasoning_effort); absent for an agent that
+   *  takes none, or a computer on an older Caprock. */
+  efforts?: string[]
+  /** The effort every session of it starts at with none passed, from its own
+   *  settings on that computer; absent when it depends on the model. */
+  effort_default?: string
+  /** That default per model id, where it depends on the model. */
+  model_efforts?: Record<string, string>
   /** A model may be typed (OpenCode's provider/model). */
   typed_model?: boolean
   /** Caprock reads its sessions' turns and cost. */
@@ -2235,6 +2244,9 @@ export interface SpawnRequest {
   /** Start the new worktree at GitHub pull request N's head (refs/pull/N/head, fetched from the remote) instead of a branch. */
   worktree_pr?: number
   model?: string; permission_mode?: string; args?: string[]
+  /** The reasoning effort to start at, one of the catalog entry's `efforts`;
+   *  absent for the agent's own default. Claude Code and Codex only. */
+  effort?: string
   /** The model Claude Code's subagents run on (CLAUDE_CODE_SUBAGENT_MODEL):
    *  `haiku`, `sonnet` or `opus`; absent to follow the session. Claude Code only. */
   subagent_model?: string

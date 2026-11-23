@@ -693,3 +693,35 @@ describe('where it starts and what it is told', () => {
     expect(onNewProject).toHaveBeenCalledWith('Read it')
   })
 })
+
+describe('the New agent sheet, Effort', () => {
+  const codex = { id: 'codex', label: 'Codex', installed: true, ready: true, observed: true, prompt: true, default: 'gpt-6-astra', models: [{ id: 'gpt-6-astra', label: 'GPT-6-Astra' }, { id: 'gpt-6-sol', label: 'GPT-6-Sol' }], efforts: ['low', 'medium', 'high', 'xhigh'], model_efforts: { 'gpt-6-astra': 'medium', 'gpt-6-sol': 'high' } }
+  const group = () => screen.queryByRole('radiogroup', { name: 'Effort' })
+  const checked = () => within(group()!).getAllByRole('radio').find((r) => r.getAttribute('aria-checked') === 'true')?.getAttribute('data-effort')
+  it('is absent for an agent with no launch effort, marks the model default, and sends only a different pick', async () => {
+    catalogExtra.agents = [codex]
+    try {
+      open()
+      const agent = await screen.findByLabelText<HTMLSelectElement>('Agent')
+      expect(group()).toBeNull() // this test catalog's Claude Code names no efforts
+      fireEvent.change(agent, { target: { value: 'codex' } })
+      await waitFor(() => expect(checked()).toBe('medium'))
+      fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'gpt-6-sol' } })
+      expect(checked()).toBe('high')
+      fireEvent.keyDown(screen.getByLabelText('Model'), { key: 'Enter', metaKey: true })
+      await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+      expect(spawn.mock.calls[0]![0]).not.toHaveProperty('effort')
+      cleanup()
+      spawn.mockClear()
+      open()
+      fireEvent.change(await screen.findByLabelText<HTMLSelectElement>('Agent'), { target: { value: 'codex' } })
+      await waitFor(() => expect(checked()).toBe('medium'))
+      fireEvent.click(within(group()!).getByRole('radio', { name: 'low' }))
+      fireEvent.keyDown(screen.getByLabelText('Model'), { key: 'Enter', metaKey: true })
+      await waitFor(() => expect(spawn).toHaveBeenCalledOnce())
+      expect(spawn.mock.calls[0]![0]).toMatchObject({ agent: 'codex', effort: 'low' })
+    } finally {
+      catalogExtra.agents = []
+    }
+  })
+})

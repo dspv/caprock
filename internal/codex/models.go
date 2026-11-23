@@ -18,6 +18,8 @@ type Model struct {
 	// Codex on the current sign-in (refused.go). Listed last, its label
 	// carries RefusedNote, and it is never the default.
 	Refused bool `json:"refused,omitempty"`
+	// DefaultEffort is the reasoning effort Codex runs it at by default.
+	DefaultEffort string `json:"-"`
 }
 
 // ListedModels is the models Codex itself lists, read from the catalog it
@@ -50,15 +52,7 @@ func ListedModels() []Model {
 		return nil
 	}
 	var cache struct {
-		Models []struct {
-			Slug        string `json:"slug"`
-			DisplayName string `json:"display_name"`
-			Visibility  string `json:"visibility"`
-			Priority    int    `json:"priority"`
-			// Absent in a cache is "can't tell", not false.
-			SupportedInAPI *bool    `json:"supported_in_api"`
-			Plans          []string `json:"available_in_plans"`
-		} `json:"models"`
+		Models []cachedModel `json:"models"`
 	}
 	if err := json.Unmarshal(b, &cache); err != nil {
 		return nil
@@ -76,10 +70,10 @@ func ListedModels() []Model {
 			label = m.Slug
 		}
 		if refused[m.Slug] {
-			last = append(last, Model{ID: m.Slug, Label: label + " · " + RefusedNote, Refused: true})
+			last = append(last, Model{ID: m.Slug, Label: label + " · " + RefusedNote, Refused: true, DefaultEffort: m.DefaultReasoningLevel})
 			continue
 		}
-		out = append(out, Model{ID: m.Slug, Label: label})
+		out = append(out, Model{ID: m.Slug, Label: label, DefaultEffort: m.DefaultReasoningLevel})
 	}
 	return append(out, last...)
 }
@@ -189,11 +183,37 @@ func planClaim(jwt string) string {
 	return strings.TrimSpace(claims.Auth.Plan)
 }
 
+// cachedModel is one model in models_cache.json, Codex's own ModelInfo
+// (codex-rs/protocol/src/openai_models.rs: `slug`, `default_reasoning_level`
+// and the rest, read 2026-11-23).
+type cachedModel struct {
+	Slug        string `json:"slug"`
+	DisplayName string `json:"display_name"`
+	Visibility  string `json:"visibility"`
+	Priority    int    `json:"priority"`
+	// DefaultReasoningLevel is the effort Codex runs the model at when
+	// config.toml names none: codex-rs/core/src/client.rs takes the
+	// configured effort `.or_else(|| model_info.default_reasoning_level)`.
+	DefaultReasoningLevel string `json:"default_reasoning_level"`
+	// Absent in a cache is "can't tell", not false.
+	SupportedInAPI *bool    `json:"supported_in_api"`
+	Plans          []string `json:"available_in_plans"`
+}
+
 // ConfiguredModel is the `model = "…"` set at the top of
 // `$CODEX_HOME/config.toml` — what a session started without -m runs on — or
 // "" when none is set. Only the top-level key is read: a `model` inside a
 // [profile] table applies to that profile, not to a plain start.
-func ConfiguredModel() string {
+func ConfiguredModel() string { return topLevelString("model") }
+
+// ConfiguredEffort is the top-level `model_reasoning_effort = "…"` in
+// `$CODEX_HOME/config.toml`, the effort every session started without one
+// runs at, or "" when none is set.
+func ConfiguredEffort() string { return topLevelString("model_reasoning_effort") }
+
+// topLevelString is the string value of key at the top level of
+// `$CODEX_HOME/config.toml`, "" when it is not set there.
+func topLevelString(name string) string {
 	home := Home()
 	if home == "" {
 		return ""
@@ -210,7 +230,7 @@ func ConfiguredModel() string {
 			return "" // a table began; the top level had no model
 		}
 		key, val, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(key) != "model" {
+		if !ok || strings.TrimSpace(key) != name {
 			continue
 		}
 		val = strings.TrimSpace(val)

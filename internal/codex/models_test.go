@@ -114,3 +114,32 @@ func TestConfiguredModelReadsOnlyTheTopLevel(t *testing.T) {
 		})
 	}
 }
+
+// Each listed model carries the effort Codex runs it at by default
+// (ModelInfo.default_reasoning_level), and the top-level
+// model_reasoning_effort is read like the model, never a table's.
+func TestModelEffortsFromTheCacheAndTheConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv(EnvHome, home)
+	cache := `{"models":[
+	  {"slug":"gpt-6-astra","display_name":"GPT-6-Astra","visibility":"list","priority":1,"default_reasoning_level":"medium","supported_reasoning_levels":[{"effort":"low","description":"l"},{"effort":"medium","description":"m"}]},
+	  {"slug":"gpt-6-sol","display_name":"GPT-6-Sol","visibility":"list","priority":2}
+	]}`
+	if err := os.WriteFile(filepath.Join(home, "models_cache.json"), []byte(cache), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := ListedModels()
+	if len(got) != 2 || got[0].DefaultEffort != "medium" || got[1].DefaultEffort != "" {
+		t.Fatalf("defaults: %+v", got)
+	}
+	if ConfiguredEffort() != "" {
+		t.Fatal("no config, an effort")
+	}
+	toml := "model = \"gpt-6-astra\"\nmodel_reasoning_effort = \"high\"\n[profiles.deep]\nmodel_reasoning_effort = \"xhigh\"\n"
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(toml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if e, m := ConfiguredEffort(), ConfiguredModel(); e != "high" || m != "gpt-6-astra" {
+		t.Fatalf("configured effort %q, model %q", e, m)
+	}
+}

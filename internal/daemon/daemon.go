@@ -2180,7 +2180,7 @@ func (a *agentAdapter) customLaunch(sr *agents.SpawnRequest) error {
 	sr.Command = bin
 	sr.Args = agentcat.Argv(ca.Args, prompt, sr.Model)
 	// Caprock does not know this CLI's flags, so nothing else is guessed at.
-	sr.Model, sr.PermissionMode, sr.Prompt, sr.Fork = "", "", "", false
+	sr.Model, sr.PermissionMode, sr.Effort, sr.Prompt, sr.Fork = "", "", "", "", false
 	return nil
 }
 

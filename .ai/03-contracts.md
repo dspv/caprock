@@ -2964,7 +2964,7 @@ machine, never from a forge's API (rule 4):
   guarded recent folder without checking that it still exists.
 
 ```
-POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?, automation?} → {session_id, cwd, session_ids?, attempt_group?, error?}
+POST   /v1/agents                    {cwd?, chat?, create?, worktree?, worktree_base?, worktree_pull?, worktree_pr?, agent?, subscription?, model?, permission_mode?, effort?, subagent_model?, resume?, fork?, command?, args?, attempts?, prompt?, relay_from?, end_when_done?, automation?} → {session_id, cwd, session_ids?, attempt_group?, error?}
 GET    /v1/attempts/{group}          → {group, base?, attempts: [AttemptView]}; 404 for an unknown group
 GET    /v1/agents/models?agent=      {agent, default?, models:[{id,label}]}
 GET    /v1/agents/catalog            → {agents: [CatalogEntry], licensed, home?}
@@ -4003,8 +4003,10 @@ and `typed_model: true`; when its `config.yaml` (under `$HERMES_HOME`, else
 `~/.hermes`) names no `model.default`, its `setup` is `no_provider` with the
 command `hermes model` — only whether the key is set is read, never its
 value ([ADR-069](08-decisions.md)). A `CatalogEntry` is `{id, label,
-installed, ready, default?, models: [{id, label, refused?}], typed_model?, observed,
-custom?, locked?, prompt, setup?: {reason, text, command?, docs?}}`:
+installed, ready, default?, models: [{id, label, refused?}], efforts?,
+effort_default?, model_efforts?, typed_model?, observed, custom?, locked?,
+prompt, setup?: {reason, text, command?, docs?}}` (the three effort fields:
+§ Effort at start):
 `installed` is the binary found (the rule under `/v1/status` below); `ready`
 is installed with nothing Caprock can see missing; `models` are what the
 agent's own files list — Codex's `models_cache.json` (as above), the models
@@ -7912,6 +7914,52 @@ else from the request reaches the environment, no value is passed through, and
 other agents ignore the field. Absent, the user's own environment is left as it
 is. The choice is recorded once on the session row (`subagent_model`, in the
 `Session` JSON as `subagent_model`, omitted when empty) for the session card.
+
+### Effort at start
+
+`POST /v1/agents` takes `effort`, the reasoning effort the session starts at:
+absent or empty for the agent's own default, else one of that agent's launch
+levels (`agents.EffortLevels`). A level the agent does not take, or a
+non-string, is a 400 with nothing started; for an agent that takes no effort
+at launch (Gemini CLI, OpenCode, Grok, Hermes, Cursor, a custom agent) the
+field is dropped, like a permission mode it has no word for.
+
+- **Claude Code:** `low`, `medium`, `high`, `xhigh`, `max`, passed as
+  `--effort <level>` — "overrides the modelSettings and effortLevel settings
+  for this session and doesn't persist" (code.claude.com/docs/en/cli-reference,
+  read 2026-11-23). `ultracode` is not offered: it needs v2.1.203 or later and
+  turns on a workflow besides the effort. `CLAUDE_CODE_EFFORT_LEVEL` outranks
+  `--effort`, so a start with an effort runs without the login shell's value
+  of it; a start without one leaves the environment alone.
+- **Codex:** `low`, `medium`, `high`, `xhigh`, passed as `-c
+  model_reasoning_effort="<level>"`, a one-run override written nowhere (its
+  config reference names the key and says the levels depend on the model,
+  learn.chatgpt.com/docs/config-file/config-reference, read 2026-11-23).
+
+The catalog says which agents take one and what they would use with none
+passed, read on the computer the agent runs on, so New agent on another
+computer reads that computer's:
+
+- **`efforts`** — the launch levels, lowest first; absent for an agent that
+  takes none (and from a Caprock older than this field, so no control is
+  drawn for a field it would drop).
+- **`effort_default`** — the level every session of the agent starts at,
+  whatever the model: Claude Code's `CLAUDE_CODE_EFFORT_LEVEL` in the login
+  shell when it is one of the levels (`auto` or `unset` mean "send none": no
+  default), Codex's top-level `model_reasoning_effort` in
+  `$CODEX_HOME/config.toml`.
+- **`model_efforts`** — otherwise, the default per model id. Claude Code: the
+  documented default of each model the dialog offers (Fable 5.2, Opus 5.5,
+  Sonnet 5.5 and Haiku 5.5 default to `medium`, code.claude.com/docs/en/model-config,
+  read 2026-11-23), over which a level saved under `modelSettings.<model>.effortLevel`
+  in the user settings (`$CLAUDE_CONFIG_DIR/settings.json`, else
+  `~/.claude/settings.json`) wins. A top-level user `effortLevel` is not read:
+  it applies only to Opus 5, Fable 5.1 and older. Project and managed settings
+  are not read, so a level set there is not marked. Codex: each listed model's
+  `default_reasoning_level` from `models_cache.json`, what Codex falls back to
+  when config names none (`codex-rs/core/src/client.rs`).
+
+Files are read, never written; nothing is run.
 
 ### Session effort DDL (migration 0076)
 
