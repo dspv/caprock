@@ -5,7 +5,8 @@
 // `you-said:<line>`, draws a permission dialog on `ask[tag]` (its footer ends
 // `asked<tag>`), animates Claude Code's subagent list on `agents [frames] [tag]` and
 // draws its input box on `box` (agents.go), prints Claude Code's voice
-// failure lines on `voice-silent` and `voice-denied`, prints the arguments
+// failure lines on `voice-silent` and `voice-denied` and draws the first in
+// its footer under the input box on `voice-footer [tag]` (voice.go), prints the arguments
 // it was started with on `argv`, exits with code 3 on `quit`, and
 // exits cleanly on `/exit` or
 // Ctrl+D, as Claude Code does. Shell scripts do this
@@ -75,6 +76,15 @@ func answer(line string) {
 	}
 	if line == "voice-denied" {
 		fmt.Print("Microphone access is denied.\r\n")
+		return
+	}
+	// The same failure where Claude Code shows it: in its footer, under the
+	// input box, written as its renderer writes (voice.go).
+	if tag, ok := strings.CutPrefix(line, "voice-footer"); ok {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			tag = " " + tag
+		}
+		voiceFooter(tag)
 		return
 	}
 	if line == "box" {

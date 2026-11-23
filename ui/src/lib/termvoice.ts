@@ -16,9 +16,17 @@
  *   process is stopped), in an agent tab, on a daemon running on macOS —
  *   never a shell tab, never Windows or Linux, where no helper exists.
  * - **Cheap.** Off panes never scan: the check is made before a scan is
- *   even scheduled. On, a scan runs at most once per VOICE_SCAN_MS over the
+ *   even scheduled, and a pane is on only once the daemon has said it runs
+ *   on macOS. On, a scan runs at most once per VOICE_SCAN_MS over the
  *   last VOICE_SCAN_ROWS rows that have anything on them (the screen's blank
  *   bottom rows skipped), and stops once it has found the line.
+ * - **The screen as it stands, when the pane turns on.** Claude Code shows
+ *   the failure in its footer under the input box and keeps it there until
+ *   the next recording, writing nothing after it. A pane that learns late
+ *   that it is on — the page loaded with the tab open (an app update) and
+ *   the terminal replayed the screen before the sessions list answered —
+ *   scans once then (`rescan`): waiting for the next write waited forever
+ *   (owner, 2026-11-23).
  * - **× is per session** (this browser's localStorage), and a session once
  *   restarted from the strip is not offered it again: if voice still fails
  *   after a restart, a second restart is not the cure.
@@ -39,6 +47,9 @@ export const VOICE_SCAN_ROWS = 30
 
 /** At most one scan this often while output flows. */
 export const VOICE_SCAN_MS = 500
+
+/** How long after a failed ask for the daemon's platform it is asked again. */
+export const PLATFORM_RETRY_MS = 5000
 
 /** Claude Code's own words when its recording failed. */
 export const VOICE_FAILURES = ['No audio detected from microphone', 'Microphone access is denied'] as const
@@ -112,9 +123,12 @@ export function hideVoice(sessionId: string, now = Date.now()): void {
 
 /**
  * Watches `term` for a voice failure line and calls `onFound` once. Nothing
- * is scanned while `enabled()` says no. Returns what to call on teardown.
+ * is scanned while `enabled()` says no. Returns what to call on teardown, and
+ * `rescan`: look at the screen as it stands, for when `enabled()` has turned
+ * yes with the line already drawn — Claude Code writes nothing more after
+ * it, so no write would bring the scan.
  */
-export function attachVoiceWatch(term: Terminal, enabled: () => boolean, onFound: () => void): { dispose: () => void } {
+export function attachVoiceWatch(term: Terminal, enabled: () => boolean, onFound: () => void): { dispose: () => void; rescan: () => void } {
   let done = false
   let timer = 0
   let last = 0
@@ -139,11 +153,13 @@ export function attachVoiceWatch(term: Terminal, enabled: () => boolean, onFound
     sub.dispose()
     onFound()
   }
-  const sub = term.onWriteParsed(() => {
+  const schedule = () => {
     if (done || timer || !enabled()) return
     timer = window.setTimeout(scan, Math.max(0, VOICE_SCAN_MS - (Date.now() - last)))
-  })
+  }
+  const sub = term.onWriteParsed(schedule)
   return {
+    rescan: schedule,
     dispose: () => {
       done = true
       if (timer) window.clearTimeout(timer)

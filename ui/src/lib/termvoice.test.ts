@@ -123,6 +123,31 @@ describe('attachVoiceWatch on a real xterm', () => {
     w.dispose()
   })
 
+  it('finds the line already drawn once the pane turns on, with nothing written after', async () => {
+    term = new Xterm({ cols: 100, rows: 20, allowProposedApi: true })
+    let seen = 0
+    let on = false
+    const w = attachVoiceWatch(term, () => on, () => seen++)
+    // Claude Code's footer under its input box, the spaces cursor jumps, the
+    // cursor back in the box: the screen a reloaded page replays.
+    const footer = 'No audio detected from microphone. Check that the correct input device is selected and… · ✔ Update installed · /restart t…'
+    let drawn = `${'─'.repeat(100)}\r\n❯ \r\n${'─'.repeat(100)}\r\n`
+    for (let i = 0; i < footer.length; i++) if (footer[i] !== ' ') drawn += `\x1b[${i + 1}G\x1b[2;31m${footer[i]}\x1b[22;39m`
+    await write(term, `\x1b[?2026h${drawn}\r\x1b[2A\x1b[3G\x1b[?2026l`)
+    await settle()
+    expect(seen).toBe(0)
+    on = true
+    await settle()
+    expect(seen).toBe(0) // no write, no scan
+    w.rescan()
+    await settle()
+    expect(seen).toBe(1)
+    w.rescan()
+    await settle()
+    expect(seen).toBe(1)
+    w.dispose()
+  })
+
   it('never scans a pane it is off for', async () => {
     term = new Xterm({ cols: 60, rows: 12, allowProposedApi: true })
     let seen = 0
