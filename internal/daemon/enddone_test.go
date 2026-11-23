@@ -182,6 +182,26 @@ func TestEndWhenDoneWaitsWhileSomethingWaits(t *testing.T) {
 		endHook(t, e, q, d, "s1", "", event.KindAgentStop, nil, false)
 		stillRunning(t, ef, "a subagent still working")
 	})
+	t.Run("background command", func(t *testing.T) {
+		e, q, ef, d := newTestEndDone(t)
+		set(ef.fakeSessions, ef.owned, "s1", agents.AgentClaude)
+		ef.flagged["s1"] = true
+		aTurn(t, e, q, d, "s1")
+		// The release script runs in the background (Claude Code's own
+		// PostToolUse for run_in_background: true).
+		evSeq++
+		launch := &event.Event{SessionID: "s1", Source: event.SourceHook, Kind: event.KindToolPost, Tool: "Bash", Ts: time.Now().Add(time.Duration(evSeq) * time.Millisecond),
+			Payload: json.RawMessage(`{"tool_input":{"command":"./rel.sh","description":"Release","run_in_background":true},"tool_response":{"stdout":"","backgroundTaskId":"b1"}}`)}
+		if _, err := store.InsertEvent(context.Background(), d.store.DB(), launch); err != nil {
+			t.Fatal(err)
+		}
+		endHook(t, e, q, d, "s1", "", event.KindAgentStop, nil, false)
+		stillRunning(t, ef, "a background command still running")
+		// It reports, the lead answers and stops: now it is done.
+		endHook(t, e, q, d, "s1", "", event.KindTurnUser, map[string]any{"prompt": "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n<summary>Background command \"Release\" completed (exit code 0)</summary>\n</task-notification>"}, false)
+		endHook(t, e, q, d, "s1", "", event.KindAgentStop, nil, false)
+		waitQueue(t, "the session to be ended", func() bool { return len(ef.endedOnes()) == 1 })
+	})
 }
 
 func TestEndWhenDoneEndsAFlaggedCodexSessionOnTaskComplete(t *testing.T) {

@@ -82,7 +82,7 @@ function agent(p: Partial<SessionSummary> = {}): SessionSummary {
     session_id: 's1', cwd: '/w', project: 'w', model: 'claude-opus-5-5', model_display: 'Opus 5.5', started_at: now - 3_600_000, last_event_at: now, status: 'active',
     transcript_path: '', has_hooks: true, has_transcript: true, git_branch: 'main', version: '', owned: true, agent: 'claude', title: 'x',
     stats: { session_id: 's1', turns: 12, tool_calls: 40, files_touched: 3, tokens_in: 100, tokens_out: 9_000, cache_read: 900_000, cache_write: 50_000, cost_usd: 1.84 },
-    activity: { phrase: 'background agents working · 2', at: new Date(now - 1_000).toISOString(), health: 'working', background: 2 },
+    activity: { phrase: 'waiting on background work · 2 agents', at: new Date(now - 1_000).toISOString(), health: 'working', background: 2 },
     live_subagents: 2,
     ...p,
   } as SessionSummary
@@ -261,12 +261,12 @@ describe('the hero’s subagent chips', () => {
     h.subagents = { working: Array.from({ length: 14 }, (_, i) => working(`w${i}`, { agent_type: i % 2 ? 'Explore' : 'general-purpose' })), finished: 0 }
     h.details = { w9: detail('w9') }
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(600)
-    show(agent({ live_subagents: 14, activity: { phrase: 'background agents working · 14', at: new Date().toISOString(), health: 'working', background: 14 } }))
+    show(agent({ live_subagents: 14, activity: { phrase: 'waiting on background work · 14 agents', at: new Date().toISOString(), health: 'working', background: 14 } }))
     const chips = await screen.findByRole('group', { name: 'Subagents' })
     const status = screen.getByRole('status')
     expect(status).toHaveTextContent(/^Background$/)
-    expect(status).toHaveAttribute('title', 'Background agents working · 14')
-    expect(status).toHaveAccessibleName('Background agents working · 14')
+    expect(status).toHaveAttribute('title', 'Waiting on background work · 14 agents')
+    expect(status).toHaveAccessibleName('Waiting on background work · 14 agents')
     // The state line comes before the chips in reading order.
     expect(status.compareDocumentPosition(chips) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(chips).getAllByRole('button')).toHaveLength(14)

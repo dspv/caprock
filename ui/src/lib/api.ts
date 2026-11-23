@@ -205,8 +205,24 @@ export interface Activity {
    *  working, nothing is wanted from the user, and Claude Code resumes the
    *  parent when they finish. Absent otherwise. */
   background?: number
+  /** The same way, background commands and Monitor watches the main thread
+   *  started that still run (`background_work`). Absent otherwise. */
+  background_tasks?: number
   /** Why it waits: with health waiting-on-you or done, absent otherwise. */
   need?: Need
+}
+
+/** One piece of a session's background work (store.BackgroundTask). */
+export interface BackgroundTask {
+  kind: 'agent' | 'shell' | 'monitor'
+  /** Claude Code's own id: the agent's, or the task id of a command or watch. */
+  id: string
+  /** What the call said it was for; absent when it said nothing. */
+  description?: string
+  /** A command's or a watch's first line; absent for an agent. */
+  command?: string
+  /** Its launch, or the message that resumed it (unix ms). */
+  started_at: number
 }
 
 export interface Savings { billed_with: number; billed_without: number; saved: number; hit_rate: number; cut_pct: number }
@@ -250,6 +266,10 @@ export interface SessionSummary extends Session {
   model_display?: string
   /** Subagents working in the session now (heard from in the last 30 minutes, not stopped). */
   live_subagents?: number
+  /** What the main thread started in the background and has not heard the
+   *  end of — subagents, commands, Monitor watches — oldest launch first.
+   *  Absent when none. */
+  background_work?: BackgroundTask[]
   /** A live Claude Code session with hooks whose main thread is in a turn
    *  and waits on the model: a prompt with no Stop after it, and no call
    *  running (a long build is work, not a stall). With

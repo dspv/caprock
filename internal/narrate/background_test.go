@@ -28,12 +28,15 @@ func TestBackgroundSubagentsAreNotWaitingOnYou(t *testing.T) {
 		bg     int
 	}{
 		{"stop, no subagent: done", []event.Event{stop}, Options{}, HealthDone, "done", 0},
-		{"stop last, one subagent working", []event.Event{subPre, stop}, Options{LiveSubagents: 1}, HealthWorking, "background agents working · 1", 1},
-		{"subagent event after the stop", []event.Event{stop, subLater}, Options{LiveSubagents: 2}, HealthWorking, "background agents working · 2", 2},
-		{"quiet past idle: still background", []event.Event{subPre, stop}, Options{LiveSubagents: 1, Now: now.Add(time.Hour)}, HealthWorking, "background agents working · 1", 1},
+		{"stop last, one subagent working", []event.Event{subPre, stop}, Options{LiveSubagents: 1}, HealthWorking, "waiting on background work · 1 agent", 1},
+		{"subagent event after the stop", []event.Event{stop, subLater}, Options{LiveSubagents: 2}, HealthWorking, "waiting on background work · 2 agents", 2},
+		{"quiet past idle: still background", []event.Event{subPre, stop}, Options{LiveSubagents: 1, Now: now.Add(time.Hour)}, HealthWorking, "waiting on background work · 1 agent", 1},
 		{"main thread mid-turn with a subagent: its own phrase", []event.Event{subPre, {Kind: event.KindToolPre, Tool: "Read", Ts: at(30), Payload: json.RawMessage(`{"tool_input":{"file_path":"/r/b.go"}}`)}}, Options{LiveSubagents: 1}, HealthWorking, "reading b.go", 0},
 		{"subagent's permission dialog waits", []event.Event{stop, {Kind: event.KindPermissionPrompt, Tool: "Bash", AgentID: "a1", Ts: at(30)}}, Options{LiveSubagents: 1}, HealthWaiting, "", 0},
-		{"main last given by the caller", []event.Event{subPre, subLater}, Options{LiveSubagents: 1, MainLast: &stop}, HealthWorking, "background agents working · 1", 1},
+		{"main last given by the caller", []event.Event{subPre, subLater}, Options{LiveSubagents: 1, MainLast: &stop}, HealthWorking, "waiting on background work · 1 agent", 1},
+		{"stop last, a background command and a watch: waiting on them", []event.Event{stop}, Options{BackgroundShells: 2, BackgroundMonitors: 1}, HealthWorking, "waiting on background work · 2 shells, 1 monitor", 0},
+		{"an agent and a command", []event.Event{subPre, stop}, Options{LiveSubagents: 1, BackgroundShells: 1}, HealthWorking, "waiting on background work · 1 agent, 1 shell", 1},
+		{"main thread mid-turn with a background command: its own phrase", []event.Event{{Kind: event.KindToolPre, Tool: "Read", Ts: at(30), Payload: json.RawMessage(`{"tool_input":{"file_path":"/r/b.go"}}`)}}, Options{BackgroundShells: 1}, HealthWorking, "reading b.go", 0},
 		{"window holds only subagents, caller found no stop", []event.Event{subPre, subLater}, Options{LiveSubagents: 1, MainLast: &event.Event{Kind: event.KindToolPre, Tool: "Agent", Ts: at(1)}}, HealthWorking, "reading a.go", 0},
 	}
 	for _, c := range cases {

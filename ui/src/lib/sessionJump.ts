@@ -69,7 +69,7 @@ const AT_PROMPT = 'waiting for you'
  */
 export function atPrompt(s: Pick<SessionSummary, 'status' | 'activity' | 'live_subagents'>): boolean {
   if (s.status === 'ended') return false
-  if ((s.live_subagents ?? 0) > 0 || (s.activity?.background ?? 0) > 0) return false
+  if ((s.live_subagents ?? 0) > 0 || (s.activity?.background ?? 0) > 0 || (s.activity?.background_tasks ?? 0) > 0) return false
   const h = s.activity?.health ?? 'idle'
   // Done, or a turn that ended asking something or on an error: the prompt
   // is up, no dialog is (lib/needs.ts).

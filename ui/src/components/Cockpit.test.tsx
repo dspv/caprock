@@ -445,20 +445,20 @@ describe('the agent cockpit', () => {
   it('says background agents are working, not waiting on you, after the turn ended', async () => {
     // The count beside the chips (the matrix draws faces only).
     localStorage.setItem(SUBAGENT_LOOK_KEY, 'chips')
-    show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
+    show(agent({ live_subagents: 1, activity: { phrase: 'waiting on background work · 1 agent', at: iso(1_000), health: 'working', background: 1 } }))
     await screen.findByRole('region', { name: 'Recent tool calls' })
     // The state line is one word on one line (owner, 2026-10-22: "Background /
     // agents" wrapped under the portrait); the full phrase is the tooltip and
     // the accessible name; the count sits under it.
     expect(screen.getByRole('status')).toHaveTextContent(/^Background$/)
     expect(screen.getByRole('status')).toHaveClass('whitespace-nowrap')
-    expect(screen.getByRole('status')).toHaveAttribute('title', 'Background agents working · 1')
-    expect(screen.getByRole('status')).toHaveAccessibleName('Background agents working · 1')
+    expect(screen.getByRole('status')).toHaveAttribute('title', 'Waiting on background work · 1 agent')
+    expect(screen.getByRole('status')).toHaveAccessibleName('Waiting on background work · 1 agent')
     expect(screen.getByRole('status')).not.toHaveTextContent('Waiting')
     expect(document.querySelector('[data-hero-count]')).toHaveTextContent(/^1 working$/)
     const nowCard = screen.getByRole('region', { name: 'Now' })
-    expect(within(nowCard).getByText('Background agents working · 1')).toBeInTheDocument()
-    expect(within(nowCard).queryByText(/Waiting|Thinking/)).toBeNull()
+    expect(within(nowCard).getByText('Waiting on background work · 1 agent')).toBeInTheDocument()
+    expect(within(nowCard).queryByText(/Waiting (on|for) you|Thinking/)).toBeNull()
   })
 
   // The state and the mode on the name row (owner, 2026-10-29: the panel's
@@ -790,7 +790,7 @@ describe('the agent cockpit', () => {
   it('still waits on a permission prompt while background agents work', async () => {
     h.permission = { id: 'p1', tool: 'Bash', detail: 'rm -rf out', since: iso(2_000), agent_id: 'a1', agent_type: 'general-purpose' }
     try {
-      show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
+      show(agent({ live_subagents: 1, activity: { phrase: 'waiting on background work · 1 agent', at: iso(1_000), health: 'working', background: 1 } }))
       const nowCard = screen.getByRole('region', { name: 'Now' })
       expect(await within(nowCard).findByText('Subagent (general-purpose) wants to run Bash')).toBeInTheDocument()
       expect(screen.getByRole('status')).toHaveTextContent('Waiting on you')
@@ -1427,13 +1427,58 @@ describe('Now’s subagent tree', () => {
 
   it('makes the header the Now card while background agents work after the turn', async () => {
     h.subagents = one()
-    show(agent({ live_subagents: 1, activity: { phrase: 'background agents working · 1', at: iso(1_000), health: 'working', background: 1 } }))
+    show(agent({ live_subagents: 1, activity: { phrase: 'waiting on background work · 1 agent', at: iso(1_000), health: 'working', background: 1 } }))
     const section = await nowTree()
     const head = section.querySelector('[data-agents-head]')!
     expect(head).toHaveTextContent('Background agents · 1')
     expect(head).toHaveTextContent('resumes when they finish')
     // The card that said the same is not drawn twice.
-    expect(within(section).queryByText('Background agents working · 1')).toBeNull()
+    expect(within(section).queryByText('Waiting on background work · 1 agent')).toBeNull()
+  })
+
+  // Owner, 2026-11-24 (translated): "it looks like work stopped and I don't
+  // understand what's happening" — Now said Done while the lead waited on a
+  // background agent and a release script.
+  it('says what the turn waits on in the background, each with how long it has run', async () => {
+    h.subagents = one()
+    show(agent({
+      live_subagents: 1,
+      activity: { phrase: 'waiting on background work · 1 agent, 1 shell', at: iso(60_000), health: 'working', background: 1, background_tasks: 1 },
+      background_work: [
+        { kind: 'agent', id: 'a1', description: 'Map the store', started_at: now - 125_000 },
+        { kind: 'shell', id: 'bja8lc5fk', description: 'Restart chain: merge #1045, release 0.192.0', command: '/tmp/rel0192b.sh', started_at: now - 2_820_000 },
+      ],
+    }))
+    const section = await nowTree()
+    expect(within(section).getByText('Waiting on background work · 1 agent, 1 shell')).toBeInTheDocument()
+    expect(within(section).getByText('resumes when they finish')).toBeInTheDocument()
+    expect(within(section).queryByText(/^Done$|Nothing running|Waiting for you/)).toBeNull()
+    expect(screen.getByRole('status')).toHaveAccessibleName('Waiting on background work · 1 agent, 1 shell')
+    // The command with how long it has run; the agent is in the tree under
+    // it (Background agents · 1), not listed twice.
+    const list = within(section).getByRole('list', { name: 'Background work' })
+    const rows = within(list).getAllByRole('listitem')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveAttribute('data-kind', 'shell')
+    expect(rows[0]).toHaveTextContent(/Background command: Restart chain: merge #1045, release 0\.192\.047m 00s/)
+    expect(section.querySelector('[data-agents-head]')).toHaveTextContent('Background agents · 1')
+  })
+
+  it('lists a background agent the tree does not show, and a watch with no description by its command', async () => {
+    h.subagents = { working: [], finished: 0 }
+    show(agent({
+      activity: { phrase: 'waiting on background work · 1 agent, 1 monitor', at: iso(60_000), health: 'working', background: 1, background_tasks: 1 },
+      background_work: [
+        { kind: 'agent', id: 'ad2f', description: 'Checks popover clipped at bottom', started_at: now - 600_000 },
+        { kind: 'monitor', id: 'bvi3', command: 'tail -F rel.log', started_at: now - 30_000 },
+      ],
+    }))
+    const section = await screen.findByRole('region', { name: 'Now' })
+    expect(within(section).getByText('Waiting on background work · 1 agent, 1 monitor')).toBeInTheDocument()
+    const rows = within(within(section).getByRole('list', { name: 'Background work' })).getAllByRole('listitem')
+    expect(rows.map((r) => r.getAttribute('data-kind'))).toEqual(['agent', 'monitor'])
+    expect(rows[0]).toHaveTextContent(/Checks popover clipped at bottom10m 00s/)
+    expect(rows[1]).toHaveTextContent(/tail -F rel\.log30s/)
   })
 })
 

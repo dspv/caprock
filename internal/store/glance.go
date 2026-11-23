@@ -225,21 +225,29 @@ const LiveSubagentWindow = 30 * time.Minute
 // session ended, or that went quiet behind an idle parent is not counted
 // (SubagentBounds): its SubagentStop will never come.
 func LiveSubagents(ctx context.Context, q Querier, sessionID string, since int64) (int, error) {
+	ids, err := LiveSubagentIDs(ctx, q, sessionID, since, nil)
+	return len(ids), err
+}
+
+// LiveSubagentIDs is the agents LiveSubagents counts, plus those of them in
+// open that its rule reads as stopped: a background agent Claude Code has not
+// said the end of (BackgroundWork) works, whatever its SubagentStop said.
+func LiveSubagentIDs(ctx context.Context, q Querier, sessionID string, since int64, open map[string]bool) ([]string, error) {
 	groups, err := readSubagentGroups(ctx, q, sessionID, since, ``)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	b, err := boundsIfOpen(ctx, q, sessionID, groups, since, liveNow(since))
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	n := 0
+	var ids []string
 	for _, g := range groups {
-		if g.stopped < g.last && b.Lost(g.last, g.pending) == "" {
-			n++
+		if g.working(b, open) {
+			ids = append(ids, g.id)
 		}
 	}
-	return n, nil
+	return ids, nil
 }
 
 // FirstEventTs is when the first event was recorded (unix ms), or 0 with

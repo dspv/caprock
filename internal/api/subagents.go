@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -135,17 +138,25 @@ func (s *Server) subagentHour(r *http.Request, id string) (*SubagentHour, error)
 // a parent whose subagents logged thousands of events is not paged through.
 func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) {
 	since := s.d.Now().Add(-liveSubagentWindow).UnixMilli()
-	list, finished, err := store.SubagentsNow(r.Context(), s.d.Store.DB(), r.PathValue("id"), since)
+	id := r.PathValue("id")
+	// A background agent Claude Code has not said the end of works, whatever
+	// its SubagentStop said: it fires when the agent stops to wait on work of
+	// its own (owner, 2026-11-24: "Subagents · 1 done" while it ran).
+	open, err := s.backgroundAgents(r.Context(), id)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	id := r.PathValue("id")
+	list, finished, err := store.SubagentsNow(r.Context(), s.d.Store.DB(), id, since, open)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 	recent, _ := strconv.Atoi(r.URL.Query().Get("recent"))
 	if recent <= 0 {
 		recent = recentSubagents
 	}
-	done, err := store.SubagentsDone(r.Context(), s.d.Store.DB(), id, since, min(recent, maxRecentSubagents))
+	done, err := store.SubagentsDone(r.Context(), s.d.Store.DB(), id, since, min(recent, maxRecentSubagents), open)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -193,6 +204,25 @@ func (s *Server) handleSessionSubagents(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// backgroundAgents is the session's background agents Claude Code has not
+// said the end of (backgroundFor), as a set; nil when none or the session is
+// unknown.
+func (s *Server) backgroundAgents(ctx context.Context, id string) (map[string]bool, error) {
+	sess, err := store.GetSession(ctx, s.d.Store.DB(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil // an unknown session has no background work
+	}
+	if err != nil {
+		return nil, err
+	}
+	main, err := store.LastEventsFiltered(ctx, s.d.Store.DB(), id, 1, store.EventFilter{MainOnly: true})
+	if err != nil || len(main) == 0 {
+		return nil, err
+	}
+	tasks, err := s.backgroundFor(ctx, sess, &main[0])
+	return store.BackgroundAgentIDs(tasks), err
 }
 
 // callDetail is the short line a call was given, as the cockpit's tool list
@@ -435,7 +465,16 @@ func (s *Server) handleSubagentDetail(w http.ResponseWriter, r *http.Request) {
 		Asking: tr.Asking, StartedAt: tr.StartedAt, LastAt: tr.LastAt, StoppedAt: tr.StoppedAt, Result: tr.Result,
 		Calls: make([]SubagentCallView, 0, end-start), Earlier: start,
 	}
+	open, err := s.backgroundAgents(r.Context(), r.PathValue("id"))
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
 	switch {
+	case open[tr.AgentID]:
+		// Stopped to wait on background work of its own, which still runs.
+		d.State = "working"
+		d.StoppedAt = 0
 	case tr.StoppedAt > 0:
 		d.State = "finished"
 	case tr.LastAt >= s.d.Now().Add(-liveSubagentWindow).UnixMilli():

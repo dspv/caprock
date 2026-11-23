@@ -39,14 +39,14 @@ func TestSubagentsLostToARestartReadStopped(t *testing.T) {
 	if err != nil || n != 1 {
 		t.Fatalf("live = %d, %v; want 1 (only new)", n, err)
 	}
-	working, finished, err := SubagentsNow(ctx, f.s.DB(), "s", since)
+	working, finished, err := SubagentsNow(ctx, f.s.DB(), "s", since, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(working) != 1 || working[0].AgentID != "new" || finished != 1 {
 		t.Fatalf("working %+v, finished %d; want new working and old finished", working, finished)
 	}
-	done, err := SubagentsDone(ctx, f.s.DB(), "s", since, 5)
+	done, err := SubagentsDone(ctx, f.s.DB(), "s", since, 5, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestSubagentsLostToARestartReadStopped(t *testing.T) {
 	if n, err := LiveSubagents(ctx, f.s.DB(), "s", since); err != nil || n != 0 {
 		t.Fatalf("live after the end = %d, %v; want 0", n, err)
 	}
-	done, err = SubagentsDone(ctx, f.s.DB(), "s", since, 5)
+	done, err = SubagentsDone(ctx, f.s.DB(), "s", since, 5, nil)
 	if err != nil || len(done) != 2 || done[0].Lost == "" || done[1].Lost == "" {
 		t.Fatalf("done after the end = %+v, %v; want both lost", done, err)
 	}
@@ -98,7 +98,7 @@ func TestQuietSubagentsBehindAnIdleParentReadStopped(t *testing.T) {
 	if err != nil || n != 2 {
 		t.Fatalf("live = %d, %v; want 2 (long, busy)", n, err)
 	}
-	done, err := SubagentsDone(ctx, f.s.DB(), "s", since, 5)
+	done, err := SubagentsDone(ctx, f.s.DB(), "s", since, 5, nil)
 	if err != nil || len(done) != 1 || done[0].AgentID != "quiet" || done[0].Lost != SubagentLostQuiet {
 		t.Fatalf("done = %+v, %v; want quiet lost as quiet", done, err)
 	}

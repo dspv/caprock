@@ -240,9 +240,38 @@ export function backgroundAgents(s: Pick<SessionSummary, 'status' | 'activity'>)
   return n > 0 ? n : 0
 }
 
-/** "Background agents working · 2": what such a session says. */
-export function backgroundLabel(n: number): string {
-  return `Background agents working · ${n}`
+/**
+ * How many background commands and Monitor watches keep a session working
+ * after its turn ended — the daemon's `activity.background_tasks` — or 0.
+ */
+export function backgroundTasks(s: Pick<SessionSummary, 'status' | 'activity'>): number {
+  if (s.status === 'ended') return 0
+  const n = s.activity?.background_tasks ?? 0
+  return n > 0 ? n : 0
+}
+
+/** What a session whose turn ended waits on, by kind. */
+export interface BackgroundCounts { agents: number; shells: number; monitors: number }
+
+/**
+ * The background work a session waits on, counted by kind: the agents from
+ * `activity.background` (it counts subagents the list may not name), the
+ * commands and watches from `background_work`, or all of
+ * `activity.background_tasks` as commands when the list is missing.
+ */
+export function backgroundCounts(s: Pick<SessionSummary, 'status' | 'activity' | 'background_work'>): BackgroundCounts {
+  const agents = backgroundAgents(s)
+  const tasks = backgroundTasks(s)
+  const work = s.background_work ?? []
+  const monitors = Math.min(tasks, work.filter((t) => t.kind === 'monitor').length)
+  return { agents, shells: tasks - monitors, monitors }
+}
+
+/** "Waiting on background work · 1 agent, 1 shell": what such a session says (owner, 2026-11-24). */
+export function backgroundLabel(c: BackgroundCounts): string {
+  const part = (n: number, one: string) => (n === 1 ? `1 ${one}` : n > 1 ? `${n} ${one}s` : '')
+  const parts = [part(c.agents, 'agent'), part(c.shells, 'shell'), part(c.monitors, 'monitor')].filter(Boolean)
+  return `Waiting on background work · ${parts.join(', ')}`
 }
 
 /** The state the character and the "now" line show. */

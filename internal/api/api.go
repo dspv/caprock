@@ -641,6 +641,9 @@ type Server struct {
 	// moves are the owner's "needs me?" / "not needed" over a guessed turn
 	// (needmove.go).
 	moves needMoves
+	// background is each session's background work by its main thread's
+	// newest event (background.go).
+	background backgroundCache
 	// pace keeps each plan window's measured slope by the newest sample it
 	// was computed from (pacecache.go).
 	pace paceCache
@@ -1176,6 +1179,11 @@ type SessionSummary struct {
 	// heard from within the last 30 minutes and not yet stopped. Zero for an
 	// ended session. The main thread is not counted.
 	LiveSubagents int `json:"live_subagents,omitempty"`
+	// BackgroundWork is what the session's main thread started in the
+	// background and has not heard the end of — subagents, commands, Monitor
+	// watches — oldest launch first (store.BackgroundWork). Omitted when
+	// none, and for a session that is ended or not Claude Code with hooks.
+	BackgroundWork []store.BackgroundTask `json:"background_work,omitempty"`
 	// TurnOpen marks a live Claude Code session with hooks whose main thread
 	// is in a turn and waits on the model: a prompt or Claude Code's own
 	// compaction with no Stop after it, and no call running (every tool.pre
@@ -1273,17 +1281,13 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 		la = s.d.ActiveLoops(sess.SessionID)
 	}
 	opt := narrate.Options{Now: s.d.Now(), IdleAfter: s.d.IdleAfter, Looping: la != nil, SessionEnded: sess.Status == store.StatusEnded}
+	var background []store.BackgroundTask
 	if sess.Status != store.StatusEnded {
-		// Counted before narrating: a turn that ended with subagents still at
-		// work is "working in background", not waiting on anyone.
-		n, err := store.LiveSubagents(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli())
-		if err != nil {
-			return SessionSummary{}, nil, err
-		}
-		opt.LiveSubagents = n
-		if n > 0 && !hasMainEvent(last) {
-			// Subagents filled the window; the main thread's newest event
-			// decides whether the parent's turn has ended.
+		// The main thread's newest event decides whether the parent's turn
+		// has ended, and keys its background work (backgroundFor). When
+		// subagents filled the window it is read on its own.
+		mainLast := newestMain(last)
+		if mainLast == nil {
 			main, err := readOnce(&rec.mu, &rec.mainLast, func() ([]event.Event, error) {
 				return store.LastEventsFiltered(ctx, q, sess.SessionID, 1, store.EventFilter{MainOnly: true})
 			})
@@ -1292,9 +1296,21 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 			}
 			if len(main) > 0 {
 				m := main[0]
+				mainLast = &m
 				opt.MainLast = &m
 			}
 		}
+		// Counted before narrating: a turn that ended with subagents, commands
+		// or watches it started still at work is "waiting on background
+		// work", not waiting on anyone.
+		if background, err = s.backgroundFor(ctx, sess, mainLast); err != nil {
+			return SessionSummary{}, nil, err
+		}
+		live, err := store.LiveSubagentIDs(ctx, q, sess.SessionID, s.d.Now().Add(-liveSubagentWindow).UnixMilli(), store.BackgroundAgentIDs(background))
+		if err != nil {
+			return SessionSummary{}, nil, err
+		}
+		opt.LiveSubagents, opt.BackgroundShells, opt.BackgroundMonitors = backgroundCounts(live, background)
 	}
 	if sess.Owned && sess.Status != store.StatusEnded {
 		if nd, ok := s.d.Agents.(nudger); ok {
@@ -1307,7 +1323,7 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 		opt.Move = &m
 	}
 	act := narrate.Summarize(last, opt)
-	if act.Health == narrate.HealthWorking && act.Background == 0 && !act.FromInput && sess.Status == store.StatusIdle {
+	if act.Health == narrate.HealthWorking && act.Background == 0 && act.BackgroundTasks == 0 && !act.FromInput && sess.Status == store.StatusIdle {
 		act.Health = narrate.HealthIdle
 		act.Phrase = "was " + act.Phrase
 	}
@@ -1352,6 +1368,7 @@ func (s *Server) summarizeAt(ctx context.Context, sess store.Session, rec *recen
 	}
 	sum.ModelDisplay = s.modelDisplay(sess.Model)
 	sum.LiveSubagents = opt.LiveSubagents
+	sum.BackgroundWork = background
 	// Context fill: last assistant turn's input+cache tokens vs the model's window.
 	// When it cannot be computed, say which of the two reasons applies. The
 	// dashboard used to caption every empty Context "unknown model", including
@@ -3700,16 +3717,6 @@ func (s *Server) handleKeepAwake(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.d.KeepAwake())
-}
-
-// hasMainEvent reports whether any of events is the main thread's own.
-func hasMainEvent(events []event.Event) bool {
-	for _, e := range events {
-		if !e.Subagent() {
-			return true
-		}
-	}
-	return false
 }
 
 // handleMail hands /v1/mail/* to Caprock Mail, after the pairing gate and the

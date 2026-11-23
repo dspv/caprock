@@ -599,6 +599,10 @@ SELECT COALESCE(SUM(e.cost_usd), 0) FROM task_assignments a JOIN sessions s ON s
 UPDATE tasks SET cost_usd = ? WHERE id = ?
     SEARCH tasks USING INDEX sqlite_autoindex_tasks_1 (id=?)
 
+## store.BackgroundWork, store.SubagentBoundsOf
+SELECT status FROM sessions WHERE session_id = ?
+    SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
 ## store.BatchPR
 SELECT number, url, title, head, created_at, updated_at FROM github_prs WHERE repo = ? AND state = 'open' AND seen_at >= ? ORDER BY number DESC LIMIT ?
     SEARCH github_prs USING PRIMARY KEY (repo=?)
@@ -2571,20 +2575,10 @@ SELECT COALESCE(SUM(cost_usd),0) FROM events WHERE ts >= ? AND internal = 0
     SEARCH events USING COVERING INDEX idx_events_ts_cover (ts>?)
 
 ## store.SubagentBoundsOf
-SELECT COALESCE(MAX(e.ts), 0) FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' AND COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.source'), '') <> 'compact'
-    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
-    SCALAR SUBQUERY 1
-        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
-## store.SubagentBoundsOf
 SELECT e.kind FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind IN ('turn.user', 'tool.pre', 'agent.stop') AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' ORDER BY e.ts DESC, e.id DESC LIMIT 1
     SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
     SCALAR SUBQUERY 1
         SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
-
-## store.SubagentBoundsOf
-SELECT status FROM sessions WHERE session_id = ?
-    SEARCH sessions USING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.SubagentTokensByModelSkip
 SELECT COALESCE(model,''), COALESCE(SUM(tokens_in),0), COALESCE(SUM(tokens_out),0), COALESCE(SUM(cache_read),0), COALESCE(SUM(cache_write),0), COALESCE(SUM(cache_write_1h),0) FROM events INDEXED BY idx_events_turn_agent WHERE kind = 'turn.assistant' AND ts >= ? AND ts < ? AND COALESCE(agent_id,'') <> '' AND cost_usd > 0 AND internal = 0 AND sid IN (SELECT sid FROM sessions WHERE COALESCE(agent,'claude') = 'claude') AND sid NOT IN (SELECT sid FROM sessions WHERE cwd IN ('/')) GROUP BY 1
@@ -2826,6 +2820,18 @@ SELECT sid, (SELECT session_id FROM sessions WHERE sessions.sid = events.sid), C
     CORRELATED SCALAR SUBQUERY 1
         SEARCH sessions USING INTEGER PRIMARY KEY (rowid=?)
     USE TEMP B-TREE FOR count(DISTINCT)
+
+## store.backgroundCallRows
+SELECT e.ts, e.tool, json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.tool_response.backgroundTaskId', '$.tool_response.isAsync', '$.tool_response.agentId', '$.tool_response.taskId', '$.tool_response.resumedAgentId', '$.tool_input.task_id', '$.tool_input.shell_id', '$.tool_input.description', '$.tool_input.command') FROM events e INDEXED BY idx_events_attr_work WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND e.kind = 'tool.post' AND e.source = 'hook' AND e.tool IN ('Bash', 'Agent', 'Task', 'Monitor', 'SendMessage', 'TaskStop', 'KillShell') AND COALESCE(e.agent_id, '') = '' ORDER BY e.ts, e.id
+    SEARCH e USING INDEX idx_events_attr_work (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
+
+## store.backgroundNotes
+SELECT e.ts, json_extract(e.payload, '$.prompt') FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND e.kind = 'turn.user' AND COALESCE(e.agent_id, '') = '' AND CASE WHEN json_valid(e.payload) THEN ltrim(json_extract(e.payload, '$.prompt')) END LIKE '<task-notification%' ORDER BY e.ts, e.id
+    SEARCH e USING INDEX idx_events_user_turn (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.brainEdgesAmong
 SELECT e.src, e.dst, e.kind, e.weight FROM brain_edges e WHERE e.src IN (SELECT value FROM json_each(?)) AND e.dst IN (SELECT value FROM json_each(?))
@@ -3116,6 +3122,12 @@ SELECT EXISTS (SELECT 1 FROM brain_vault_notes)
     SCAN CONSTANT ROW
     SCALAR SUBQUERY 1
         SCAN brain_vault_notes USING COVERING INDEX idx_brain_vault_notes_node
+
+## store.newestRestart
+SELECT COALESCE(MAX(e.ts), 0) FROM events e WHERE e.sid = (SELECT sid FROM sessions WHERE session_id = ?) AND e.ts >= ? AND +e.kind = 'agent.spawn' AND e.source = 'hook' AND COALESCE(e.agent_id, '') = '' AND COALESCE(json_extract((CASE WHEN typeof(e.payload) = 'blob' THEN zjson(e.payload) ELSE e.payload END), '$.source'), '') <> 'compact'
+    SEARCH e USING INDEX idx_events_session_ts (sid=? AND ts>?)
+    SCALAR SUBQUERY 1
+        SEARCH sessions USING COVERING INDEX sqlite_autoindex_sessions_1 (session_id=?)
 
 ## store.preInput
 SELECT (CASE WHEN typeof(payload) = 'blob' THEN zjson(payload) ELSE payload END) FROM events WHERE sid = (SELECT sid FROM sessions WHERE session_id = ?) AND key = ?

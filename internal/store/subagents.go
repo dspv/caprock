@@ -94,6 +94,13 @@ func boundsIfOpen(ctx context.Context, q Querier, sessionID string, groups []sub
 	return SubagentBounds{}, nil
 }
 
+// working is whether the group's agent works: no SubagentStop after its
+// newest event and not read as stopped without one, or held open as
+// background work.
+func (g subagentGroup) working(b SubagentBounds, open map[string]bool) bool {
+	return open[g.id] || (g.stopped < g.last && b.Lost(g.last, g.pending) == "")
+}
+
 // liveNow is the moment a caller's `since` was counted back from: every
 // caller passes now - LiveSubagentWindow.
 func liveNow(since int64) int64 { return since + LiveSubagentWindow.Milliseconds() }
@@ -104,8 +111,10 @@ func liveNow(since int64) int64 { return since + LiveSubagentWindow.Milliseconds
 // rule LiveSubagents counts by — newest activity first, and how many stopped
 // within the window after making at least one tool call, the lost ones
 // among them. Claude Code also fires SubagentStop for small internal agents
-// that run no tools; they are not counted.
-func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64) ([]SubagentActivity, int, error) {
+// that run no tools; they are not counted. An agent in open (the background
+// agents BackgroundWork holds open) works whatever its own events say: its
+// SubagentStop fires when it stops to wait on background work of its own.
+func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64, open map[string]bool) ([]SubagentActivity, int, error) {
 	groups, err := readSubagentGroups(ctx, q, sessionID, since, ` ORDER BY MAX(ts) DESC`)
 	if err != nil {
 		return nil, 0, err
@@ -118,7 +127,7 @@ func SubagentsNow(ctx context.Context, q Querier, sessionID string, since int64)
 	finished := 0
 	for _, g := range groups {
 		switch {
-		case g.stopped < g.last && b.Lost(g.last, g.pending) == "":
+		case g.working(b, open):
 			working = append(working, SubagentActivity{AgentID: g.id, StartedAt: g.first, LastAt: g.last})
 		case g.calls > 0:
 			finished++
@@ -326,8 +335,8 @@ func fillSubagent(ctx context.Context, q Querier, sessionID string, a *SubagentA
 // call, newest stop first: the ones SubagentsNow counts as finished.
 // StoppedAt is their SubagentStop; for one SubagentBounds reads as stopped
 // without one, Lost says why and StoppedAt is the restart, else its newest
-// event.
-func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64, limit int) ([]SubagentActivity, error) {
+// event. One in open (SubagentsNow) is working, not done.
+func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64, limit int, open map[string]bool) ([]SubagentActivity, error) {
 	groups, err := readSubagentGroups(ctx, q, sessionID, since, ``)
 	if err != nil {
 		return nil, err
@@ -338,7 +347,7 @@ func SubagentsDone(ctx context.Context, q Querier, sessionID string, since int64
 	}
 	var done []SubagentActivity
 	for _, g := range groups {
-		if g.calls == 0 {
+		if g.calls == 0 || open[g.id] {
 			continue
 		}
 		a := SubagentActivity{AgentID: g.id, StartedAt: g.first, LastAt: g.last, StoppedAt: g.stopped}

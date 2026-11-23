@@ -48,6 +48,10 @@ type Activity struct {
 	// they finish, so nothing is wanted from the user and Health is working.
 	// Zero otherwise.
 	Background int `json:"background,omitempty"`
+	// BackgroundTasks is, the same way, how many background commands and
+	// Monitor watches the main thread started still run (store.BackgroundWork).
+	// Zero otherwise.
+	BackgroundTasks int `json:"background_tasks,omitempty"`
 	// Provisional marks a status read from input Caprock typed into the
 	// session rather than from an event the session wrote: Enter at a
 	// waiting prompt reads working for NudgeWindow, and goes back to what
@@ -346,6 +350,12 @@ type Options struct {
 	// (store.LiveSubagents). With the main thread's turn ended, they make the
 	// session "working in background", not waiting on anyone.
 	LiveSubagents int
+	// BackgroundShells and BackgroundMonitors are the background commands
+	// and Monitor watches the main thread started and has not heard the end
+	// of (store.BackgroundWork). Like LiveSubagents, with the turn ended they
+	// make the session wait on background work, not on anyone.
+	BackgroundShells   int
+	BackgroundMonitors int
 	// MainLast is the main thread's newest event, for a caller that had to
 	// look it up because events holds none (a parent whose subagents logged
 	// more than the window). Nil means "find it in events".
@@ -359,10 +369,24 @@ type Options struct {
 	Nudge *Nudge
 }
 
-// BackgroundPhrase is what a session whose turn ended says while n of its
-// subagents still work.
-func BackgroundPhrase(n int) string {
-	return fmt.Sprintf("background agents working · %d", n)
+// BackgroundPhrase is what a session whose turn ended says while background
+// work it started still runs: "waiting on background work · 1 agent, 1
+// shell" (owner, 2026-11-24: it said "Done" while a background agent and a
+// release script ran). Each count is left out at zero.
+func BackgroundPhrase(agents, shells, monitors int) string {
+	var parts []string
+	add := func(n int, one string) {
+		switch {
+		case n == 1:
+			parts = append(parts, "1 "+one)
+		case n > 1:
+			parts = append(parts, fmt.Sprintf("%d %ss", n, one))
+		}
+	}
+	add(agents, "agent")
+	add(shells, "shell")
+	add(monitors, "monitor")
+	return "waiting on background work · " + strings.Join(parts, ", ")
 }
 
 // MainTurnEnded reports whether the main thread's newest event is a
@@ -550,14 +574,16 @@ func Summarize(events []event.Event, opt Options) Activity {
 	// session wants nothing from anyone: it read "waiting on you" beside "1
 	// subagent working" (owner, 2026-10-09). A permission dialog, the main
 	// thread's or a subagent's, still waits — that is the one thing that does.
-	if opt.LiveSubagents > 0 && last.Kind != event.KindPermissionPrompt && MainTurnEnded(events, opt.MainLast) {
+	tasks := opt.BackgroundShells + opt.BackgroundMonitors
+	if opt.LiveSubagents+tasks > 0 && last.Kind != event.KindPermissionPrompt && MainTurnEnded(events, opt.MainLast) {
 		switch act.Health {
 		case HealthWaiting, HealthDone, HealthWorking, HealthIdle:
 			act.Health = HealthWorking
-			act.Phrase = BackgroundPhrase(opt.LiveSubagents)
+			act.Phrase = BackgroundPhrase(opt.LiveSubagents, opt.BackgroundShells, opt.BackgroundMonitors)
 			act.Tool = ""
 			act.Repeats = 0
 			act.Background = opt.LiveSubagents
+			act.BackgroundTasks = tasks
 		}
 	}
 	if opt.Looping {
