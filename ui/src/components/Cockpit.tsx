@@ -18,6 +18,7 @@ import { live } from '@/lib/live'
 import { useSessionEvents } from '@/lib/sessionEvents'
 import { fmtAgo, fmtPct, fmtTokens, fmtUSD } from '@/lib/format'
 import { contextSize } from '@/lib/gaps'
+import { GapMark } from './GapMark'
 import { isUnpricedTurn } from '@/lib/sessionCost'
 import { useNow } from '@/lib/useNow'
 import { countdown, resetClock } from '@/lib/limitclock'
@@ -30,7 +31,7 @@ import { WINDOW_MS, pace } from '@/lib/pace'
 import { SessionChart, SpendBars, SpendChart, useSessionBars } from './SpendScrub'
 import { callsFromEvents } from '@/lib/scrub'
 import { everyWhileVisible } from '@/lib/visible'
-import { CHART_METRICS, HEADLINES, chartNote, costText, METRICS, SCOPE_NAMES, SPEND_SCOPES, WINDOW_NAMES, chartTotal, chartValueText, foldedFigures, isWholeSession, metricTitle, metricValue, periodChip, pickHero, pickSlot, rangeFigures, setSpendPrefs, setSpendScope, setSpendWindow, shownPick, shownSlots, spendFigures, spendLabel, useSpendPick, useSpendPrefs, windowFigures, windowPhrase, windowStart, windowsFor, withGaps, type ChartMetric, type Metric, type PeriodFigures, type RangeWindow, type SpendBar, type SpendFigures, type SpendPick, type SpendScope, type SpendView } from '@/lib/spendview'
+import { CHART_METRICS, HEADLINES, chartNote, costText, METRICS, SCOPE_NAMES, SPEND_SCOPES, WINDOW_NAMES, chartTotal, chartValueText, foldedFigures, isWholeSession, metricTitle, metricValue, shownGap, periodChip, pickHero, pickSlot, rangeFigures, setSpendPrefs, setSpendScope, setSpendWindow, shownPick, shownSlots, spendFigures, spendLabel, useSpendPick, useSpendPrefs, windowFigures, windowPhrase, windowStart, windowsFor, withGaps, type ChartMetric, type Metric, type PeriodFigures, type RangeWindow, type SpendBar, type SpendFigures, type SpendPick, type SpendScope, type SpendView } from '@/lib/spendview'
 import { UsualDelta } from './HeroUsual'
 import { paceOf, versus, type Usual } from '@/lib/usual'
 import { agentName } from './Characters'
@@ -711,7 +712,7 @@ function HeroMenu({ slot, hero, figures, label, end, onPick }: { slot: number; h
             <span className={`truncate text-[13px] ${at === slot ? 'font-semibold text-fg' : 'text-fg'}`}>
               {h.name}{other ? <span className="font-normal text-fg-faint"> · shown</span> : null}
             </span>
-            <span className="num text-[12px] text-fg-muted">{metricValue(h.id, figures)}</span>
+            <span className="num inline-flex items-center text-[12px] text-fg-muted" title={shownGap(h.id, figures)}>{metricValue(h.id, figures)}{shownGap(h.id, figures) && <GapMark why={shownGap(h.id, figures)!} decorative className="ml-1" />}</span>
             <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{h.hint}</span>
           </button>
         )
@@ -740,11 +741,16 @@ function HeadlineFigure({ figures, usual, end }: { figures: SpendFigures; usual?
   const choose = (m: Metric) => { setSpendPrefs({ hero: pickHero(hero, 0, m) }); setOpen(false) }
   const vs = versus(headline, figures, usual)
   const days = usual?.days ?? 30
+  const gap = shownGap(headline, figures)
   return (
     <div ref={box} className={`relative grid min-w-0 justify-items-start gap-[3px] ${end ? '@[280px]:justify-items-end' : ''}`} data-headline={headline}>
-      <span className="cockpit-hero-num num whitespace-nowrap font-semibold leading-none tracking-[-0.03em] text-fg" data-long={num.length >= 8 ? '' : undefined}
-        aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
-        {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
+      <span className="inline-flex items-center">
+        <span className="cockpit-hero-num num whitespace-nowrap font-semibold leading-none tracking-[-0.03em] text-fg" data-long={num.length >= 8 ? '' : undefined}
+          aria-label={`${meta.name} ${metricValue(headline, figures)}`} title={metricTitle(headline, figures)}>
+          {num}{unit && <span className="text-[16px] font-medium text-fg-muted">{unit}</span>}
+        </span>
+        {/* A dash the agent leaves (lib/gaps.ts) says why beside it. */}
+        {gap && <GapMark why={gap} className="ml-1.5" />}
       </span>
       {/* How the headline compares with the viewer's own usual, left of
         * its name; under 340px a long name steps down to its short word
@@ -784,8 +790,10 @@ function HeroSecondaries({ figures, end }: { figures: SpendFigures; end?: boolea
         const m = hero[i]!
         const meta = HEADLINES.find((h) => h.id === m)!
         const value = metricValue(m, figures)
+        const gap = shownGap(m, figures)
         return (
-          <button key={i} type="button" data-hero-line={m} aria-haspopup="menu" aria-expanded={open === i}
+          <span key={i} className="inline-flex items-center">
+          <button type="button" data-hero-line={m} aria-haspopup="menu" aria-expanded={open === i}
             aria-label={`${meta.name} ${value}. Choose what this line shows`} title={metricTitle(m, figures)}
             onClick={() => setOpen((o) => (o === i ? null : i))}
             className="inline-flex items-baseline gap-1 whitespace-nowrap rounded-[5px] px-1 text-[12px] leading-[18px] outline-none hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-[var(--color-accent)] aria-expanded:bg-panel-2">
@@ -793,6 +801,8 @@ function HeroSecondaries({ figures, end }: { figures: SpendFigures; end?: boolea
             <span className="text-[11px] text-fg-faint">{meta.short}</span>
             <span aria-hidden className="text-[9px] text-fg-faint">▾</span>
           </button>
+          {gap && <GapMark why={gap} className="ml-0 mr-1" />}
+          </span>
         )
       })}
       {open !== null && <HeroMenu slot={open} hero={hero} figures={figures} label={`What line ${open} shows`} end={end} onPick={(m) => choose(open, m)} />}
@@ -957,7 +967,7 @@ function ChartChooser({ metric, figures }: { metric: ChartMetric; figures: Perio
               onClick={() => { setSpendPrefs({ chartBy: m.id }); setOpen(false) }} title={m.hint}
               className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-[6px] px-2 py-1.5 text-left outline-none hover:bg-panel-2 focus-visible:bg-panel-2 aria-checked:bg-accent/10">
               <span className={`truncate text-[13px] text-fg ${m.id === metric ? 'font-semibold' : ''}`}>{m.name}</span>
-              <span className="num text-[12px] text-fg-muted">{chartValueText(m.id, chartTotal(m.id, figures))}</span>
+              <span className="num inline-flex items-center text-[12px] text-fg-muted" title={shownGap(m.id, figures)}>{chartValueText(m.id, chartTotal(m.id, figures))}{shownGap(m.id, figures) && <GapMark why={shownGap(m.id, figures)!} decorative className="ml-1" />}</span>
               <span className="col-span-2 truncate text-[11.5px] text-fg-muted">{m.hint}</span>
             </button>
           ))}
@@ -1038,6 +1048,7 @@ function SpendNumbers({ pick, hero, slots, figures, label }: { pick: SpendPick; 
           const value = metricValue(m, figures)
           const short = metricValue(m, figures, true)
           const title = metricTitle(m, figures, pick)
+          const gap = pick.scope === 'session' ? shownGap(m, figures) : undefined
           return (
             <div key={i} className="grid min-w-0 gap-0.5" data-slot={m}>
               <dt className="flex min-w-0">
@@ -1048,7 +1059,7 @@ function SpendNumbers({ pick, hero, slots, figures, label }: { pick: SpendPick; 
                 </button>
               </dt>
               <dd aria-label={`${meta.name}, ${when}: ${value}`} title={short === value ? title : `${value} · ${title}`} data-exact={short === value ? undefined : value}
-                className="num min-w-0 max-w-full truncate text-[18px] font-semibold leading-[22px] tracking-[-0.02em] text-fg">{short}</dd>
+                className="num min-w-0 max-w-full truncate text-[18px] font-semibold leading-[22px] tracking-[-0.02em] text-fg">{short}{gap && <GapMark why={gap} />}</dd>
             </div>
           )
         })}
@@ -1065,7 +1076,7 @@ function SpendNumbers({ pick, hero, slots, figures, label }: { pick: SpendPick; 
                 <span className={`min-w-0 truncate text-[12.5px] ${x.id === shown[open] ? 'font-semibold text-fg' : 'text-fg'}`}>
                   {x.name}{beside ? <span className="text-fg-faint"> · beside the agent</span> : null}
                 </span>
-                <span className="num text-[12px] text-fg-muted">{metricValue(x.id, figures)}</span>
+                <span className="num inline-flex items-center text-[12px] text-fg-muted" title={shownGap(x.id, figures)}>{metricValue(x.id, figures)}{shownGap(x.id, figures) && <GapMark why={shownGap(x.id, figures)!} decorative className="ml-1" />}</span>
               </button>
             )
           })}

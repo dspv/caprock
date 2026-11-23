@@ -1637,8 +1637,8 @@ describe('turns with no price', () => {
 // blank burn rate — "free, nothing used", an invented figure. Every figure
 // the agent does not record is a dash with its sentence (SessionSummary.gaps).
 describe('a cursor-agent chat', () => {
-  const TOK = "Cursor doesn't record token counts for this chat"
-  const COST = "Cursor doesn't record a cost for this chat"
+  const TOK = "Cursor CLI doesn't save token counts on this computer"
+  const COST = "Cursor CLI doesn't save what a chat costs on this computer"
   const hooked: Event[] = [
     { id: 21, ts: iso(30_000), session_id: 's1', source: 'hook', kind: 'turn.assistant', model: 'composer-2.5', payload: {}, cost_usd: 0 },
     { id: 22, ts: iso(10_000), session_id: 's1', source: 'hook', kind: 'turn.assistant', model: 'composer-2.5', payload: {}, cost_usd: 0 },
@@ -1647,7 +1647,7 @@ describe('a cursor-agent chat', () => {
     agent: 'cursor', model: 'composer-2.5', model_display: undefined, started_at: now - 600_000,
     stats: { session_id: 's1', turns: 2, tool_calls: 3, files_touched: 1, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
     savings: undefined, context: undefined,
-    gaps: { tokens: TOK, cost: COST, cache: "Cursor doesn't record cache reads or writes" },
+    gaps: { tokens: TOK, cost: COST, cache: "Cursor doesn't save cache reads or writes on this computer" },
   })
 
   it('shows a dash with the sentence for tokens, cost and burn, never 0 or $0.00', async () => {
@@ -1680,6 +1680,30 @@ describe('a cursor-agent chat', () => {
     expect(region).not.toHaveTextContent('$0.00')
   })
 
+  // The reason was a hover title alone, and a dash read as Caprock broken
+  // (owner, 2026-11-23): every dash the agent leaves has a mark beside it.
+  it('puts an info mark after every dash the agent leaves', async () => {
+    h.events = hooked
+    show(cli())
+    const said = (why: string) => `${why}, so there is nothing for Caprock to show.`
+    // The headline (burn, a cost gap) and the two lines under it.
+    const head = document.querySelector('[data-headline]')!
+    expect(within(head as HTMLElement).getByRole('button', { name: said(COST) })).toHaveAttribute('data-gap-mark')
+    const lines = Array.from(document.querySelectorAll('[data-hero-line]')).map((b) => b.parentElement!)
+    expect(lines.map((l) => l.querySelector('[data-gap-mark]')?.getAttribute('aria-label'))).toEqual([said(TOK), said(COST)])
+    // Hovering it says why.
+    fireEvent.pointerOver(within(head as HTMLElement).getByRole('button', { name: said(COST) }), { pointerType: 'mouse' })
+    expect(screen.getByRole('tooltip')).toHaveTextContent(said(COST))
+    // In a menu the item is the control: the glyph alone, the sentence its title.
+    fireEvent.click(screen.getByRole('button', { name: /Headline: Burn rate/ }))
+    const item = within(screen.getByRole('menu', { name: 'Headline figure' })).getByRole('menuitemradio', { name: /^Tokens/ })
+    expect(item.querySelector('[data-gap-mark="decorative"]')).not.toBeNull()
+    expect(within(item).queryByRole('button')).toBeNull()
+    // The chart's total.
+    const region = screen.getByRole('region', { name: 'Spend' })
+    await waitFor(() => expect(region.querySelector('[data-spend-total] [data-gap-mark]')).toHaveAttribute('aria-label', said(COST)))
+  })
+
   it('says so in the Numbers row too', () => {
     h.events = hooked
     show(cli())
@@ -1687,10 +1711,16 @@ describe('a cursor-agent chat', () => {
     const region = screen.getByRole('region', { name: 'Spend' })
     expect(region).not.toHaveTextContent('$0.00')
     expect(region).not.toHaveTextContent(/\b0 tok/)
+    // Each dash in it has its mark; a figure the agent keeps has none.
+    for (const dd of Array.from(region.querySelectorAll('[data-spend-numbers] dd'))) {
+      expect(!!dd.querySelector('[data-gap-mark]')).toBe(dd.textContent!.startsWith('—'))
+    }
+    expect(region.querySelectorAll('[data-spend-numbers] dd [data-gap-mark]').length).toBeGreaterThan(0)
   })
 
   it('keeps an editor chat with a cost from Cursor priced', () => {
-    show(agent({ agent: 'cursor', gaps: { cache: "Cursor doesn't record cache reads or writes" } }))
+    show(agent({ agent: 'cursor', gaps: { cache: "Cursor doesn't save cache reads or writes on this computer" } }))
     expect(screen.getByRole('button', { name: /^Cost \$1\.84\. Choose what this line shows/ })).toBeInTheDocument()
+    expect(document.querySelector('[data-gap-mark]')).toBeNull()
   })
 })

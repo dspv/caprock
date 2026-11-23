@@ -1150,7 +1150,7 @@ type SessionSummary struct {
 	// reactions. Empty whenever Context is present.
 	ContextNote string `json:"context_note,omitempty"`
 	// Gaps are the figures this session's agent does not record, field →
-	// "<Agent> doesn't record <what>" (agentcat.Gaps): the one wording every
+	// "<Agent> doesn't save <what> on this computer" (agentcat.Gaps): the one wording every
 	// agent's missing figure is said in, in the slot under its tile.
 	Gaps map[string]string `json:"gaps,omitempty"`
 	// Description tells this session from the others on the screen: the

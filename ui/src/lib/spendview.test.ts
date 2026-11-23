@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chartNote, costNote, costText, metricGap, metricTitle, withGaps, spendFigures, getSpendPick, periodChip, resetSpendPrefsForTest, setSpendScope, setSpendWindow, shownPick, spendLabel, windowFigures, windowStart, WHOLE_SESSION, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, rangeFigures, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
+import { chartNote, costNote, costText, metricGap, metricTitle, shownGap, withGaps, spendFigures, getSpendPick, periodChip, resetSpendPrefsForTest, setSpendScope, setSpendWindow, shownPick, spendLabel, windowFigures, windowStart, WHOLE_SESSION, barCarries, barValue, burnRate, chartTotal, chartValueText, foldedFigures, periodBurn, metricValue, migrateSpendPrefs, normalizeHero, normalizeSlots, normalizeSpendPrefs, rangeFigures, pickHero, pickSlot, shownSlots, type SpendBar, type SpendFigures } from './spendview'
 import type { CallPoint } from './scrub'
 import type { SessionSummary, Summary } from './api'
 
@@ -341,12 +341,12 @@ describe('a cost with unpriced turns', () => {
 // inspector read "0 tok · $0.00" (2026-11-23). A figure the agent does not
 // record is a dash with its sentence, in every view of the session.
 describe('figures the agent does not record', () => {
-  const TOK = "Cursor doesn't record token counts for this chat"
-  const COST = "Cursor doesn't record a cost for this chat"
+  const TOK = "Cursor CLI doesn't save token counts on this computer"
+  const COST = "Cursor CLI doesn't save what a chat costs on this computer"
   const cli = {
     session_id: 's', agent: 'cursor', started_at: 1_000, last_event_at: 9 * 60_000,
     stats: { session_id: 's', turns: 2, tool_calls: 3, files_touched: 0, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
-    gaps: { tokens: TOK, cost: COST, cache: "Cursor doesn't record cache reads or writes" },
+    gaps: { tokens: TOK, cost: COST, cache: "Cursor doesn't save cache reads or writes on this computer" },
   } as unknown as SessionSummary
   const calls = [call(1, 2 * 60_000, 0), call(2, 8 * 60_000, 0)]
 
@@ -361,21 +361,23 @@ describe('figures the agent does not record', () => {
     expect(metricTitle('burn', f)).toBe(COST)
     expect(metricTitle('tokens', f)).toBe(TOK)
     expect(metricGap('turns', f)).toBeUndefined()
-    expect(costNote(f)).toEqual({ state: 'unknown', short: `${COST}.`, title: COST })
+    expect(costNote(f)).toEqual({ state: 'unknown', short: `${COST}.`, title: COST, gap: true })
     // The chart: no total, the sentence in its place, for every metric it does not record.
     const pf = withGaps({ ...f, activeBurn: 0, series: { step: 60_000, bars: [] } }, cli.gaps)
     expect(chartTotal('cost', pf)).toBeUndefined()
     expect(chartTotal('burn', pf)).toBeUndefined()
     expect(chartTotal('tokens', pf)).toBeUndefined()
     expect(chartTotal('turns', pf)).toBe(2)
-    expect(chartNote('tokens', pf)).toEqual({ state: 'unknown', short: `${TOK}.`, title: TOK })
+    expect(chartNote('tokens', pf)).toEqual({ state: 'unknown', short: `${TOK}.`, title: TOK, gap: true })
+    expect(shownGap('tokens', pf)).toBe(TOK)
+    expect(shownGap('turns', pf)).toBeUndefined()
     expect(chartNote('turns', pf)).toBeUndefined()
     // Folded, the strip leaves the dashes out.
     expect(foldedFigures('cost', pf).map((x) => x.id)).toEqual(['turns', 'time'])
   })
 
   it('leaves a priced session alone', () => {
-    const priced = { ...cli, gaps: { cache: "Cursor doesn't record cache reads or writes" }, stats: { ...cli.stats!, tokens_in: 40, cost_usd: 0.42 } } as SessionSummary
+    const priced = { ...cli, gaps: { cache: "Cursor doesn't save cache reads or writes on this computer" }, stats: { ...cli.stats!, tokens_in: 40, cost_usd: 0.42 } } as SessionSummary
     const f = spendFigures(priced, [call(1, 2 * 60_000, 0.2), call(2, 8 * 60_000, 0.22)])
     expect(costText(f)).toBe('$0.42')
     expect(f.burn).toBeDefined()

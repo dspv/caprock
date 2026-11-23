@@ -230,11 +230,11 @@ describe('pulse track selection', () => {
 
   // A cursor-agent chat's hooks carry no cost: its row read $0.00, free.
   it('draws a dash with the sentence for an agent that keeps no cost', async () => {
-    const gap = "Cursor doesn't record a cost for this chat"
+    const gap = "Cursor CLI doesn't save what a chat costs on this computer"
     seeded.value = { s: [turn('s', NOW - 60_000, 0)] }
     render(
       <PulsePanel
-        sessions={[session({ session_id: 's', agent: 'cursor', gaps: { cost: gap }, stats: { cost_usd: 0 } as SessionSummary['stats'] })]}
+        sessions={[session({ session_id: 's', cwd: '/r/cur', agent: 'cursor', gaps: { cost: gap }, stats: { cost_usd: 0 } as SessionSummary['stats'] })]}
         now={NOW}
       />,
     )
@@ -243,6 +243,15 @@ describe('pulse track selection', () => {
     expect(cell).toHaveTextContent('—')
     expect(cell).toHaveAttribute('title', gap)
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+    // The reason is on the row, not only on hover: a mark after the dash.
+    expect(cell.querySelector('[data-gap-mark]')).toHaveAttribute('aria-label', `${gap}, so there is nothing for Caprock to show.`)
+    // A tap on the mark says why and does not fold the row open.
+    fireEvent.click(cell.querySelector('[data-gap-mark]')!)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(gap)
+    expect(document.querySelector('[data-pulse-facts="s"]')).toBeNull()
+    // Opened, the session's own line marks its cost dash too.
+    fireEvent.click(screen.getByRole('button', { name: /what is running in/i }))
+    await waitFor(() => expect(document.querySelector('[data-pulse-facts="s"] [data-gap-mark]')).toHaveAttribute('aria-label', `${gap}, so there is nothing for Caprock to show.`))
   })
 
   // Two rows read "dev/caprock master" and could not be told apart (owner,
