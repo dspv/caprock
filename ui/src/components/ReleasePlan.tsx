@@ -689,7 +689,7 @@ function keptWork(repo: WorkRepo, now: number): Work {
  * folded: pushed branches with no pull request and other open pull
  * requests. The pull request and agent rows of
  * 2026-10-18 are gone: the CI section lists the pull requests, the
- * Subagents section the agents.
+ * subagent tree in Now the agents.
  */
 export function CockpitRelease({ sessionId, repoRoot }: { sessionId: string; repoRoot?: string }) {
   const folded = useFolded()

@@ -11,8 +11,10 @@ describe('the cockpit’s section order', () => {
     expect(normalizeOrder(undefined)).toEqual(DEFAULT_ORDER)
     expect(normalizeOrder('spend')).toEqual(DEFAULT_ORDER)
     // Unknown and repeated names dropped; a missing section after the one before it by default.
-    expect(normalizeOrder(['now', 'tools', 'bogus', 'now', 'spend'])).toEqual(['now', 'context', 'limits', 'tools', 'changes', 'ci', 'release', 'processes', 'spend', 'subagents', 'tasks'])
-    expect(normalizeOrder(['changes', 'context'])).toEqual(['now', 'changes', 'ci', 'release', 'processes', 'context', 'limits', 'spend', 'subagents', 'tasks', 'tools'])
+    expect(normalizeOrder(['now', 'tools', 'bogus', 'now', 'spend'])).toEqual(['now', 'context', 'limits', 'tools', 'changes', 'ci', 'release', 'processes', 'spend', 'tasks'])
+    expect(normalizeOrder(['changes', 'context'])).toEqual(['now', 'changes', 'ci', 'release', 'processes', 'context', 'limits', 'spend', 'tasks', 'tools'])
+    // Subagents was a section until it merged into Now (2026-11-23): a stored order naming it loses it.
+    expect(normalizeOrder(['now', 'subagents', 'spend'])).not.toContain('subagents')
   })
 
   it('moves a section one place, never past an edge', () => {

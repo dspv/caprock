@@ -647,19 +647,21 @@ One window, three regions:
   it has run, or *Thinking* since the last one finished; while a permission
   prompt waits, who asks and what — "Subagent (general-purpose) wants to run
   Bash" over the command's first real step, the full text on hover, or "2
-  approvals waiting"), a *Subagents · N* section while any works (one row
-  each, five at most: a dot that pulses while its call runs, its type and the
-  task the parent gave it, its model ("Haiku 4.5") and how long it has
-  worked, its current call with how long it has run, how many calls it has
-  made and what it has cost, *waiting on you* while it has a prompt
-  outstanding; under them, muted, up to three that finished in the last 30
-  minutes with model, duration and cost, "+N finished" opening the rest as
-  rows; the header carries what all of the session's subagents cost — a
-  cost is shown only when every turn behind it was priced, never as $0;
-  every row opens in place, one at a time, to the task the parent gave it,
-  its own calls live, what it answered and its numbers — owner, 2026-10-12:
-  "can we expand the subagents to look inside?"; the hero's chips, groups
-  of four up to two rows of twelve, open a row too), its last seven tool calls with what each acted on, how it ended and how long ago (a repeat folded to ×N; the Inspector in [04-ui.md](04-ui.md)), the
+  approvals waiting"), under it the subagents as one tree inside Now
+  (owner, 2026-11-23, merging what was a *Subagents · N* section: a header
+  *Background agents · N* with what all of the session's subagents cost —
+  shown only when every turn behind it was priced, never as $0 — and how
+  long they have run, open while any works; an entry each in the order
+  they started, five then *Show all*, the finished of the last 30 minutes
+  folded into one *N done*; each entry opens in place to its newest calls,
+  live, and its own subagents, with *Task, result and numbers* one press
+  further — owner, 2026-10-12: "can we expand the subagents to look
+  inside?"; *Rows · Cards* in Now's header, Cards by default: a card is its
+  type, what it is doing, its current call and the figures picked in *Show
+  ▾* — model, time, calls, cost — *waiting on you* while it has a prompt
+  outstanding; a row one line, a dot, its phrase, its tool, cost · time;
+  04-ui.md § Inspector; the hero's chips, groups
+  of four up to two rows of twelve, open an entry too), its last seven tool calls with what each acted on, how it ended and how long ago (a repeat folded to ×N; the Inspector in [04-ui.md](04-ui.md)), the
   uncommitted changes, the plan windows of its agent (each a bar with a tick
   where an even pace would be by the clock, the percentage large, and one
   line — *resets in 4 h 56 min · ✓ enough* or *⚠ out at 23:50*, amber, red

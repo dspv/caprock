@@ -158,7 +158,7 @@ test('photographs the Release section in each phase, folded and unfolded', async
     await r.fulfill({ response: res, json: w })
   })
   const looks = (release: 'compact' | 'full') => page.evaluate((v) => localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({
-    ci: 'compact', release: v, changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', subagents: 'compact', tools: 'compact',
+    ci: 'compact', release: v, changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', tools: 'compact',
   })), release)
   await app.open()
   const alpha = app.session('alpha')
@@ -257,7 +257,7 @@ test('the unfolded Release section keeps its stage dots on one line and inside t
     await r.fulfill({ response: res, json: w })
   })
   await page.addInitScript(() => {
-    localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({ ci: 'compact', release: 'full', changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', subagents: 'compact', tools: 'compact' }))
+    localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({ ci: 'compact', release: 'full', changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', tools: 'compact' }))
   })
   await app.open()
   const alpha = app.session('alpha')
@@ -341,7 +341,7 @@ async function polishStub(page: Page, statsAnswer: () => object | Promise<object
 }
 
 const looksAll = (page: Page) => page.addInitScript(() => {
-  localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({ ci: 'full', release: 'full', changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', subagents: 'compact', tools: 'compact' }))
+  localStorage.setItem('caprock.app.cockpit-looks', JSON.stringify({ ci: 'full', release: 'full', changes: 'compact', processes: 'compact', tasks: 'compact', now: 'compact', tools: 'compact' }))
 })
 
 /** The elements matched whose text is cut (an ellipsis drawn): their content is wider than their box. */

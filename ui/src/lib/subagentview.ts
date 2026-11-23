@@ -1,5 +1,5 @@
 /**
- * The cockpit's Subagents rows as each viewer has set them (.ai/04-ui.md §
+ * The cockpit's subagent cards (Now's tree) as each viewer has set them (.ai/04-ui.md §
  * Inspector): which figures a row shows under its phrase, and the order the
  * rows stand in. Kept apart from the component so both are tested.
  *
