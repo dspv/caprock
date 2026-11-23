@@ -228,6 +228,23 @@ describe('pulse track selection', () => {
     expect(screen.queryByText(/4,053/)).not.toBeInTheDocument()
   })
 
+  // A cursor-agent chat's hooks carry no cost: its row read $0.00, free.
+  it('draws a dash with the sentence for an agent that keeps no cost', async () => {
+    const gap = "Cursor doesn't record a cost for this chat"
+    seeded.value = { s: [turn('s', NOW - 60_000, 0)] }
+    render(
+      <PulsePanel
+        sessions={[session({ session_id: 's', agent: 'cursor', gaps: { cost: gap }, stats: { cost_usd: 0 } as SessionSummary['stats'] })]}
+        now={NOW}
+      />,
+    )
+    await waitFor(() => expect(document.querySelector('[data-pulse-cost]')).not.toBeNull())
+    const cell = document.querySelector('[data-pulse-cost]')!
+    expect(cell).toHaveTextContent('—')
+    expect(cell).toHaveAttribute('title', gap)
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
   // Two rows read "dev/caprock master" and could not be told apart (owner,
   // 2026-10-14): the session's own name leads, in bold; the project, the
   // branch and the short id are the line under it.

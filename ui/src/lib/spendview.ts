@@ -14,6 +14,7 @@
 import { useSyncExternalStore } from 'react'
 import type { SessionSummary, Summary } from './api'
 import type { CallPoint } from './scrub'
+import type { Gaps } from './gaps'
 import { fmtCountCompact, fmtDuration, fmtPct, fmtTokens, fmtUSD, fmtUSDCompact } from './format'
 
 /** What a figure can be, beside the agent or in the Numbers row. */
@@ -426,6 +427,43 @@ export interface SpendFigures {
   unpriced?: number
   /** The models those turns ran on, when known. */
   unpricedModels?: string[]
+  /**
+   * What the session's agent does not record (`SessionSummary.gaps`, lib/gaps.ts):
+   * a figure it names is a dash, its sentence the hover, never a zero that
+   * reads as "free" or "nothing used" (a cursor-agent chat's hooks carry no
+   * tokens and no cost).
+   */
+  gaps?: Pick<Gaps, 'tokens' | 'cost' | 'cache'>
+}
+
+/** The gap a metric falls in, when the session's agent does not record it. */
+export function metricGap(m: Metric, f: Pick<PeriodFigures, 'gaps'>): string | undefined {
+  const g = f.gaps
+  if (!g) return undefined
+  switch (m) {
+    case 'tokens': return g.tokens
+    case 'cache': return g.tokens ?? g.cache
+    case 'cost': case 'burn': case 'last': return g.cost
+    default: return undefined
+  }
+}
+
+/**
+ * The figures with the session's gaps applied: a figure its agent does not
+ * record is undefined (a dash), and the gaps ride along for the hover. Cost
+ * stays as it is; costNote reads the gap and draws it unknown.
+ */
+export function withGaps<T extends PeriodFigures>(f: T, gaps: Gaps | undefined): T {
+  const g: Pick<Gaps, 'tokens' | 'cost' | 'cache'> = {}
+  if (gaps?.tokens) g.tokens = gaps.tokens
+  if (gaps?.cost) g.cost = gaps.cost
+  if (gaps?.cache) g.cache = gaps.cache
+  if (!g.tokens && !g.cost && !g.cache) return f
+  const out: T = { ...f, gaps: g }
+  if (g.tokens) { out.tokens = undefined; out.tokensOut = undefined }
+  if (g.tokens || g.cache) out.cache = undefined
+  if (g.cost) { out.burn = undefined; out.last = undefined; out.activeBurn = undefined }
+  return out
 }
 
 /**
@@ -437,7 +475,7 @@ export function spendFigures(s: SessionSummary, calls: readonly CallPoint[], unp
   const st = s.stats
   const tokens = st ? st.tokens_in + st.cache_read + st.cache_write : undefined
   const end = s.worked_at || s.last_event_at
-  return {
+  return withGaps({
     cost: st?.cost_usd ?? 0,
     burn: burnRate(calls, s.started_at),
     tokens,
@@ -450,7 +488,7 @@ export function spendFigures(s: SessionSummary, calls: readonly CallPoint[], unp
     ...(st?.unpriced_turns && st.unpriced_turns > 0
       ? { unpriced: st.unpriced_turns, unpricedModels: unpricedModels.length > 0 ? [...unpricedModels] : !(st.cost_usd > 0) ? [s.model || s.model_display || ''].filter(Boolean) : [] }
       : {}),
-  }
+  }, s.gaps)
 }
 
 /**
@@ -466,7 +504,11 @@ export interface CostNote {
   title: string
 }
 
-export function costNote(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels'>): CostNote | undefined {
+export function costNote(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels' | 'gaps'>): CostNote | undefined {
+  // The agent keeps no cost for this session and Caprock does not price it
+  // from its own table (Cursor, ADR-095): that, not the table, is why.
+  const gap = f.gaps?.cost
+  if (gap && !(f.cost !== undefined && f.cost > 0)) return { state: 'unknown', short: `${gap}.`, title: gap }
   const n = f.unpriced ?? 0
   if (n <= 0) return undefined
   const models = (f.unpricedModels ?? []).filter(Boolean).join(', ')
@@ -490,7 +532,7 @@ export function costNote(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedM
  * A cost as the figures draw it: a dash when unknown, a trailing + when
  * partial; `compact` for a narrow cell ($7.92k, lib/format fmtUSDCompact).
  */
-export function costText(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels'>, v = f.cost, compact = false): string {
+export function costText(f: Pick<PeriodFigures, 'cost' | 'unpriced' | 'unpricedModels' | 'gaps'>, v = f.cost, compact = false): string {
   const c = costNote(f)
   if (v === undefined || c?.state === 'unknown') return '—'
   const t = compact ? fmtUSDCompact(v) : fmtUSD(v)
@@ -529,6 +571,9 @@ export function metricValue(m: Metric, f: PeriodFigures, compact = false): strin
 
 /** What hovering a metric explains: what it is, and for a window or every session, whose and when. */
 export function metricTitle(m: Metric, f: PeriodFigures, pick: SpendPick = WHOLE_SESSION): string {
+  // A figure the agent does not record says so, and nothing else.
+  const gap = pick.scope === 'session' ? metricGap(m, f) : undefined
+  if (gap) return gap
   const base = metricTitleBase(m, f, shownPick(pick))
   const c = costNote(f)
   // Burn and the last call are summed from priced calls only.
@@ -697,12 +742,25 @@ export function foldedFigures(first: ChartMetric, f: PeriodFigures): { id: Metri
  * activity, is a different question).
  */
 export function chartTotal(m: ChartMetric, f: PeriodFigures): number | undefined {
+  if (metricGap(m, f)) return undefined
   switch (m) {
     case 'cost': return costNote(f)?.state === 'unknown' ? undefined : f.cost
     case 'burn': return f.activeBurn ?? periodBurn(f.series?.bars)
     case 'tokens': return f.tokens
     case 'turns': return f.turns
   }
+}
+
+/**
+ * What the chart says in place of its total: for cost, partial or unknown
+ * (costNote); for any metric the session's agent does not record, a dash
+ * with its sentence (`unknown`), so tokens and burn read as missing, not as
+ * an empty chart.
+ */
+export function chartNote(m: ChartMetric, f: PeriodFigures): CostNote | undefined {
+  if (m === 'cost') return costNote(f)
+  const gap = metricGap(m, f)
+  return gap ? { state: 'unknown', short: `${gap}.`, title: gap } : undefined
 }
 
 /**

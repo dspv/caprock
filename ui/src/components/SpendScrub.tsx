@@ -102,7 +102,12 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   chooser?: ReactNode
   /** The viewer's own 30-day baseline, for the burn rate's pace line. */
   usual?: Usual
-  /** For cost: some turns had no price, so the total is partial or unknown (lib/spendview costNote). */
+  /**
+   * For cost: some turns had no price, so the total is partial or unknown
+   * (lib/spendview costNote). For any metric, `unknown` also means the
+   * session's agent does not record it (lib/spendview chartGap): a dash and
+   * its sentence, never an empty chart read as zero.
+   */
   cost?: CostNote
   /** Whose spend, a ▾ at the top line's right in place of the scope's words (the cockpit's WhoseMenu). */
   whose?: ReactNode
@@ -140,13 +145,14 @@ export function SpendChart({ id, bars, step, now, total, scope, metric = 'cost',
   const rest = (
     <>
       {total !== undefined && <span data-spend-total data-cost-state={metric === 'cost' ? cost?.state : undefined} className={big} title={metric === 'cost' ? cost?.title : undefined}>{totalText}</span>}
-      {total === undefined && metric === 'cost' && cost?.state === 'unknown' && <span data-spend-total data-cost-state="unknown" className={big} title={cost.title}>—</span>}
+      {total === undefined && cost?.state === 'unknown' && <span data-spend-total data-cost-state="unknown" className={big} title={cost.title}>—</span>}
       {chooser}
       {whose ?? <span className="ml-auto min-w-0 truncate text-right text-[11px] leading-[18px] text-fg-faint" title={scope}>{scope}</span>}
     </>
   )
   if (bars.length === 0 || !known || max <= 0) {
-    const why = !known && bars.length > 0
+    const why = cost?.state === 'unknown' && metric !== 'cost' ? cost.short
+      : !known && bars.length > 0
       ? `No ${name} by time from this daemon: update Caprock to draw it.`
       : metric === 'burn' ? `No active hour ${scope} (five or more calls in one hour): no rate to draw.`
         : metric !== 'cost' ? `Nothing to draw, ${scope}.` : cost?.state === 'unknown' ? cost.short : total !== undefined && total > 0 ? 'No spend by time to draw for this period.' : `Nothing spent, ${scope}.`

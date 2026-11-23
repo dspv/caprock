@@ -1631,3 +1631,66 @@ describe('turns with no price', () => {
     expect(region.querySelector('[data-spend-total]')).toHaveAttribute('data-cost-state', 'partial')
   })
 })
+
+// A cursor-agent chat Caprock started (2026-11-23 report): Cursor's hooks
+// carry no tokens and no cost, and the hero read "0 tok · $0.00 cost" with a
+// blank burn rate — "free, nothing used", an invented figure. Every figure
+// the agent does not record is a dash with its sentence (SessionSummary.gaps).
+describe('a cursor-agent chat', () => {
+  const TOK = "Cursor doesn't record token counts for this chat"
+  const COST = "Cursor doesn't record a cost for this chat"
+  const hooked: Event[] = [
+    { id: 21, ts: iso(30_000), session_id: 's1', source: 'hook', kind: 'turn.assistant', model: 'composer-2.5', payload: {}, cost_usd: 0 },
+    { id: 22, ts: iso(10_000), session_id: 's1', source: 'hook', kind: 'turn.assistant', model: 'composer-2.5', payload: {}, cost_usd: 0 },
+  ]
+  const cli = () => agent({
+    agent: 'cursor', model: 'composer-2.5', model_display: undefined, started_at: now - 600_000,
+    stats: { session_id: 's1', turns: 2, tool_calls: 3, files_touched: 1, tokens_in: 0, tokens_out: 0, cache_read: 0, cache_write: 0, cost_usd: 0 },
+    savings: undefined, context: undefined,
+    gaps: { tokens: TOK, cost: COST, cache: "Cursor doesn't record cache reads or writes" },
+  })
+
+  it('shows a dash with the sentence for tokens, cost and burn, never 0 or $0.00', async () => {
+    h.events = hooked
+    show(cli())
+    // The headline, burn rate by default.
+    const head = document.querySelector('[data-headline]')!
+    expect(head).toHaveAttribute('data-headline', 'burn')
+    const num = head.querySelector('.cockpit-hero-num')!
+    expect(num).toHaveTextContent('—')
+    expect(num).toHaveAttribute('title', COST)
+    // The two lines under it: tokens and cost.
+    const tok = screen.getByRole('button', { name: /^Tokens —\. Choose what this line shows/ })
+    expect(tok).toHaveAttribute('title', TOK)
+    const cost = screen.getByRole('button', { name: /^Cost —\. Choose what this line shows/ })
+    expect(cost).toHaveAttribute('title', COST)
+    expect(document.querySelector('[data-hero-line="cost"]')).not.toHaveTextContent('$')
+    expect(document.querySelector('[data-hero-line="tokens"]')).not.toHaveTextContent('0')
+    // The menu offers the same dashes.
+    fireEvent.click(screen.getByRole('button', { name: /Headline: Burn rate/ }))
+    const menu = screen.getByRole('menu', { name: 'Headline figure' })
+    for (const name of [/^Cost/, /^Tokens/, /^Burn rate/, /^Cache hit rate/, /^Last call/]) {
+      expect(within(menu).getByRole('menuitemradio', { name })).toHaveTextContent('—')
+    }
+    expect(menu).not.toHaveTextContent('$0.00')
+    // The Spend chart says why, in the agent's sentence.
+    const region = screen.getByRole('region', { name: 'Spend' })
+    await waitFor(() => expect(region).toHaveTextContent(`${COST}.`))
+    expect(region.querySelector('[data-spend-total]')).toHaveTextContent('—')
+    expect(region).not.toHaveTextContent('$0.00')
+  })
+
+  it('says so in the Numbers row too', () => {
+    h.events = hooked
+    show(cli())
+    showNumbers()
+    const region = screen.getByRole('region', { name: 'Spend' })
+    expect(region).not.toHaveTextContent('$0.00')
+    expect(region).not.toHaveTextContent(/\b0 tok/)
+  })
+
+  it('keeps an editor chat with a cost from Cursor priced', () => {
+    show(agent({ agent: 'cursor', gaps: { cache: "Cursor doesn't record cache reads or writes" } }))
+    expect(screen.getByRole('button', { name: /^Cost \$1\.84\. Choose what this line shows/ })).toBeInTheDocument()
+  })
+})

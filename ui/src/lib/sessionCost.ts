@@ -23,12 +23,14 @@ export interface SessionCost {
 }
 
 export function sessionCost(stats: Pick<Stats, 'cost_usd' | 'unpriced_turns'>, model?: string, gap?: string): SessionCost {
+  // The agent keeps no cost for this session and Caprock does not price it
+  // from its own table (Cursor, ADR-095): that, not the table, is why. A
+  // cursor-agent chat seen through hooks has no unpriced turn either (no
+  // turn carries tokens), so this comes before the count.
+  if (gap && !(stats.cost_usd > 0)) return { state: 'unknown', value: '—', note: gap, title: gap }
   const n = stats.unpriced_turns ?? 0
   if (n <= 0) return { state: 'priced', value: fmtUSD(stats.cost_usd) }
   const who = model || 'This model'
-  // The agent keeps no cost for this session and Caprock does not price it
-  // from its own table (Cursor, ADR-095): that, not the table, is why.
-  if (gap && !(stats.cost_usd > 0)) return { state: 'unknown', value: '—', note: gap, title: gap }
   if (!(stats.cost_usd > 0)) {
     return {
       state: 'unknown',
@@ -44,6 +46,17 @@ export function sessionCost(stats: Pick<Stats, 'cost_usd' | 'unpriced_turns'>, m
     note: `+ ${turns}`,
     title: `${fmtUSD(stats.cost_usd)} is what could be priced. ${turns} ran on a model with no published price in Caprock's pricing table and are not in it.`,
   }
+}
+
+/**
+ * The sentence a session's cost figure is replaced by when its agent keeps
+ * no cost and nothing was priced (a cursor-agent chat: `gaps.cost`, "Cursor
+ * doesn't record a cost for this chat"); undefined when there is a figure.
+ * A row that would print "$0.00" prints "—" with this as its title.
+ */
+export function costGap(s: { stats?: Pick<Stats, 'cost_usd'>; gaps?: { cost?: string } }): string | undefined {
+  const gap = s.gaps?.cost
+  return gap && !((s.stats?.cost_usd ?? 0) > 0) ? gap : undefined
 }
 
 function hasTokens(e: Pick<Event, 'tokens'>): boolean {
