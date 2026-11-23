@@ -6,6 +6,7 @@
 import type { InboxItem, LimitsAnswer, RateWindow, SessionSummary, TabsAnswer } from './api'
 import { quotePath } from './xtermInput'
 import { needsYou, oldestFirst } from './needs'
+import { stalledAge } from './stalled'
 import { isNativeApp } from '@/native/platform'
 
 /**
@@ -149,13 +150,19 @@ export function keepFolds(f: Record<FoldKey, boolean>): void {
   try { localStorage.setItem(FOLDS_KEY, JSON.stringify(f)) } catch { /* this device only; not remembering is fine */ }
 }
 
-/** Continue folded: how many of its rows need you, work, are done and sit idle (ended rows are not counted). */
-export function continueCounts(rows: readonly SessionSummary[]): { waiting: number; working: number; done: number; idle: number } {
-  const n = { waiting: 0, working: 0, done: 0, idle: 0 }
+/**
+ * Continue folded: how many of its rows need you, work, got no reply, are
+ * done and sit idle (ended rows are not counted). A row is counted as its
+ * row reads: a stalled one (lib/stalled.ts, *no reply 2h* on the row) is
+ * *no reply*, whatever its health, never idle or working.
+ */
+export function continueCounts(rows: readonly SessionSummary[], now = Date.now()): { waiting: number; working: number; stalled: number; done: number; idle: number } {
+  const n = { waiting: 0, working: 0, stalled: 0, done: 0, idle: 0 }
   for (const s of rows) {
     if (s.status === 'ended') continue
     const h = s.activity?.health
-    if (h === 'waiting-on-you') n.waiting++
+    if (stalledAge(s, now) !== null) n.stalled++
+    else if (h === 'waiting-on-you') n.waiting++
     else if (h === 'working' || h === 'looping') n.working++
     else if (h === 'done') n.done++
     else n.idle++

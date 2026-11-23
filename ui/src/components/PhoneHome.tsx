@@ -427,13 +427,14 @@ function RecentChats({ list, now, canControl, ended }: { list: ChatList; now: nu
   )
 }
 
-/** Continue's line: *5 need you · 2 working · 3 done · 1 idle*, the counts that are not zero. */
-function ContinueSummary({ rows, source, loading }: { rows: SessionSummary[]; source: ContinueSource; loading: boolean }) {
+/** Continue's line: *5 need you · 2 working · 1 no reply · 3 done · 1 idle*, the counts that are not zero. */
+function ContinueSummary({ rows, source, loading, now }: { rows: SessionSummary[]; source: ContinueSource; loading: boolean; now: number }) {
   if (rows.length === 0) return <>{loading ? 'Reading your sessions…' : emptyContinue(source)}</>
-  const n = continueCounts(rows)
+  const n = continueCounts(rows, now)
   const parts = [
     n.waiting ? <span key="w" className="font-medium text-fg">{n.waiting} need you</span> : null,
     n.working ? <span key="k">{n.working} working</span> : null,
+    n.stalled ? <span key="s" data-continue-stalled className="text-warn" title={STALLED_TIP}>{n.stalled} no reply</span> : null,
     n.done ? <span key="d">{n.done} done</span> : null,
     n.idle ? <span key="i">{n.idle} idle</span> : null,
   ].filter(Boolean)
@@ -475,7 +476,7 @@ function Continue({ rows, source, now, loading, canControl, ended, folded, onTog
   return (
     <section aria-label="Continue" data-continue-source={source}>
       <FoldHeader label="Continue" folded={folded} onToggle={onToggle} controls="phone-continue-body"
-        summary={<ContinueSummary rows={rows.map(ended.view)} source={source} loading={loading} />}
+        summary={<ContinueSummary rows={rows.map(ended.view)} source={source} loading={loading} now={now} />}
         right={<a href="#/home" className="text-accent no-underline">All sessions</a>} />
       {folded ? null : rows.length === 0 ? (
         <div className="rounded-[12px] border border-border bg-panel px-3 py-4 text-[14px] text-fg-muted">

@@ -9,9 +9,10 @@
  */
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
+import { devices } from '@playwright/test'
 import { expect, stopAgent, test } from './fixtures'
 
-test('a turn with no reply for 15 minutes is marked on its sidebar row: amber dot, "no reply 20m"', async ({ app, page, stand }) => {
+test('a turn with no reply for 15 minutes is marked on its sidebar row: amber dot, "no reply 20m"', async ({ app, browser, page, stand }) => {
   const cwd = stand.sessions[1]!.cwd
   const post = (p: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${stand.daemonURL}${p}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body),
@@ -50,6 +51,28 @@ test('a turn with no reply for 15 minutes is marked on its sidebar row: amber do
     const open = app.sidebar.getByRole('group', { name: 'Open tabs' }).getByRole('button', { name: new RegExp(`\\b${name}\\b`) })
     await expect(open.locator('[data-stalled]')).toHaveText('no reply 20m')
     if (process.env.CAPROCK_E2E_SHOTS) await app.sidebar.screenshot({ path: path.join(process.env.CAPROCK_E2E_SHOTS, 'stalled-open-tab.png') })
+
+    // On a phone: its Continue row and Home's Sessions row say the same, and
+    // folded, Continue counts it as *no reply*, not idle.
+    const ctx = await browser.newContext({ ...devices['Pixel 7'], viewport: { width: 390, height: 800 }, screen: { width: 390, height: 800 } })
+    try {
+      const ph = await ctx.newPage()
+      await ph.addInitScript(() => localStorage.setItem('caprock.phone.installHint', '1'))
+      await ph.clock.install()
+      await ph.goto(`${stand.pageURL}/#/`)
+      await ph.clock.fastForward('20:00')
+      const cont = ph.locator(`[data-continue-row="${id}"]`)
+      await expect(cont.locator('[data-stalled]')).toHaveText('no reply 20m', { timeout: 15_000 })
+      await ph.getByRole('button', { name: /^Continue/ }).click()
+      await expect(ph.locator('[data-continue-stalled]')).toHaveText('1 no reply')
+      await ph.goto(`${stand.pageURL}/#/home`)
+      await ph.clock.fastForward('00:30')
+      const running = ph.getByRole('region', { name: 'Running sessions' }).locator(`a[href*="${id}"]`)
+      await expect(running.locator('[data-stalled]')).toHaveText('no reply 20m', { timeout: 15_000 })
+      await expect(running.locator('[data-stalled]')).toHaveAttribute('title', /Your last message got no reply\./)
+    } finally {
+      await ctx.close()
+    }
   } finally {
     await page.close()
     await stopAgent(stand.daemonURL, id)

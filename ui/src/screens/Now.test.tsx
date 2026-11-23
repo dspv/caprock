@@ -467,6 +467,28 @@ it('keeps the trend rows in place before the trends arrive, and asks through the
   expect(document.querySelector('[data-trend="cost"] [data-compare]')?.textContent).toBe('')
 })
 
+// The owner, 2026-11-22: a stuck agent is seen without opening it (lib/stalled.ts).
+it('on a phone, a running session whose turn got no reply says "no reply 2h" with an amber dot where its badge was', async () => {
+  const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
+  vi.stubGlobal('matchMedia', mq)
+  state.summary = emptySummary({ sessions: 2 })
+  state.status = { claude_available: true }
+  const old = Date.now() - 2 * 3_600_000 - 60_000
+  state.sessions = [
+    sess({ session_id: 'stuck', project: 'alpha', owned: true, turn_open: true, last_event_at: old, activity: { phrase: '', tool: '', at: '', health: 'idle', repeats: 1 } }),
+    sess({ session_id: 'quiet', project: 'beta', owned: true, last_event_at: old, activity: { phrase: '', tool: '', at: '', health: 'idle', repeats: 1 } }),
+  ]
+  render(<NowScreen />)
+  const list = await screen.findByRole('region', { name: 'Running sessions' })
+  const stuck = within(list).getByRole('link', { name: /alpha/ })
+  const mark = stuck.querySelector('[data-stalled]')!
+  expect(mark).toHaveTextContent('no reply 2h')
+  expect(mark).toHaveAttribute('title', 'Your last message got no reply. Open it to send again.')
+  expect(mark.querySelector('[data-stalled-dot]')!.className).toContain('bg-warn')
+  expect(within(list).getByRole('link', { name: /beta/ }).querySelector('[data-stalled]')).toBeNull()
+  vi.unstubAllGlobals()
+})
+
 it('on a phone, All sessions: End from a row Caprock started, one confirm, then the row stays, ended; a terminal’s own says why (rule 7)', async () => {
   const mq = (q: string) => ({ matches: q.includes('max-width: 639px'), media: q, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList
   vi.stubGlobal('matchMedia', mq)

@@ -417,6 +417,11 @@ describe('PhoneHome folds, limits and rows', () => {
     expect(stalled[0]).toHaveAttribute('title', 'Your last message got no reply. Open it to send again.')
     expect(document.querySelector('[data-continue-row="s1"] [data-stalled-dot]')!.className).toContain('bg-warn')
     expect(document.querySelector('[data-continue-row="s2"] [data-stalled-dot]')).toBeNull()
+    // Folded, the summary counts it as its row reads: no reply, not idle.
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    const summary = screen.getByRole('region', { name: 'Continue' }).querySelector('[data-fold-summary]')!
+    expect(summary.textContent).toBe('1 no reply · 1 idle')
+    expect(summary.querySelector('[data-continue-stalled]')).toHaveAttribute('title', 'Your last message got no reply. Open it to send again.')
   })
 })
 
