@@ -33,6 +33,9 @@ fn main() {
             "open_mail_window",
             "browser_tab",
             "app_log",
+            "dictation_status",
+            "dictation_start",
+            "dictation_stop",
         ]),
     ))
     .expect("tauri build");

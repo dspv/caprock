@@ -3,9 +3,14 @@
 <plist version="1.0">
 <dict>
 	<!-- Merged into Caprock.app's Info.plist by the Tauri bundler. macOS
-	     shows it in the microphone prompt when an agent in a Caprock
-	     terminal records, such as Claude Code's voice mode (ADR-045). -->
+	     shows it in the microphone prompt when the chat's microphone button
+	     listens (ADR-102), and when an agent in a Caprock terminal records,
+	     such as Claude Code's voice mode (ADR-045). -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>An agent running in a Caprock terminal wants the microphone, for example for voice input.</string>
+	<string>Caprock listens while you hold the microphone button in a chat, to type what you say into the message field. Agents running in a Caprock terminal may also ask for it, for example for voice input.</string>
+	<!-- The speech recognition prompt (ADR-102). Without this key, asking
+	     for speech recognition ends the process. -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Caprock turns what you say into text for the chat's message field. Recognition runs on this Mac; no audio is sent to Apple or anyone else.</string>
 </dict>
 </plist>

@@ -117,6 +117,12 @@ export const shell = {
   browserTab: (id: string, act: BrowserAct) => shellInvoke<void>('browser_tab', { id, act }),
   /** One line in the app's own log on this machine (`app.log` in the data directory), never sent anywhere: why the window had to recover. */
   appLog: (message: string) => shellInvoke<void>('app_log', { message }),
+  /** Whether the chat's voice input works here: macOS, from the app bundle (ADR-102, app/src-tauri/src/dictate.rs). */
+  dictationStatus: () => shellInvoke<{ supported: boolean; reason?: string }>('dictation_status'),
+  /** Listen for `lang` (BCP-47), on this Mac only; its words come as `caprock:dictation` events with the id returned. */
+  dictationStart: (lang: string) => shellInvoke<number>('dictation_start', { lang }),
+  /** Stop listening: the final words follow; with `cancel`, only the end. */
+  dictationStop: (id: number, cancel = false) => shellInvoke<void>('dictation_stop', { id, cancel }),
 }
 
 /**

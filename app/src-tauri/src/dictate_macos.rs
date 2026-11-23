@@ -1,0 +1,294 @@
+//! Dictation on macOS (`dictate.rs` says what the page sees): the microphone
+//! through AVAudioEngine into Apple's speech recogniser, with
+//! `requiresOnDeviceRecognition` set, so the audio is recognised on this Mac
+//! and never sent to Apple. A language with no on-device model here is
+//! refused before anything is heard (`on-device-unavailable`); there is no
+//! fallback to the server.
+//!
+//! Everything that touches a session runs on the main thread (the
+//! recogniser's queue is the main queue, and every command hops there), so
+//! the one running session lives in a thread-local. The permission answers
+//! come back on other threads and hop back the same way.
+
+use crate::dictate::{apple_error, Event, Sink, Status};
+use block2::RcBlock;
+use objc2::rc::Retained;
+use objc2::runtime::Bool;
+use objc2::AllocAnyThread;
+use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+use objc2_avf_audio::{AVAudioEngine, AVAudioPCMBuffer, AVAudioTime};
+use objc2_foundation::{NSBundle, NSError, NSLocale, NSOperationQueue, NSString};
+use objc2_speech::{
+    SFSpeechAudioBufferRecognitionRequest, SFSpeechRecognitionResult, SFSpeechRecognitionTask,
+    SFSpeechRecognizer, SFSpeechRecognizerAuthorizationStatus,
+};
+use std::cell::RefCell;
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tauri::{AppHandle, Runtime};
+
+/// The dictation asked for last; 0 once it was stopped. A start still
+/// waiting on a permission answer checks it before it listens, so a mic
+/// released while macOS asked does not start listening afterwards.
+static WANTED: AtomicU64 = AtomicU64::new(0);
+
+/// Frames per buffer the microphone hands over: about 20 ms at 48 kHz.
+const TAP_FRAMES: u32 = 1024;
+
+struct Session {
+    id: u64,
+    sink: Sink,
+    engine: Retained<AVAudioEngine>,
+    request: Retained<SFSpeechAudioBufferRecognitionRequest>,
+    task: Retained<SFSpeechRecognitionTask>,
+    _recognizer: Retained<SFSpeechRecognizer>,
+}
+
+impl Session {
+    /// The microphone off, and the recogniser told no more audio is coming.
+    fn hush(&self) {
+        unsafe {
+            if self.engine.isRunning() {
+                self.engine.stop();
+            }
+            self.engine.inputNode().removeTapOnBus(0);
+            self.request.endAudio();
+        }
+    }
+}
+
+thread_local! {
+    static ACTIVE: RefCell<Option<Session>> = const { RefCell::new(None) };
+}
+
+/// Running from an app bundle, whose Info.plist names why it asks: outside
+/// one (`cargo run`, a test binary) asking for speech recognition ends the
+/// process, so it is not offered there.
+fn bundled() -> bool {
+    let bundle = NSBundle::mainBundle();
+    bundle.bundleIdentifier().is_some() && bundle.bundlePath().to_string().ends_with(".app")
+}
+
+pub fn status() -> Status {
+    if bundled() {
+        Status {
+            supported: true,
+            reason: None,
+        }
+    } else {
+        Status {
+            supported: false,
+            reason: Some("unbundled"),
+        }
+    }
+}
+
+pub fn start<R: Runtime>(app: AppHandle<R>, id: u64, locale: String, sink: Sink) {
+    WANTED.store(id, Ordering::SeqCst);
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        // One at a time: the one running ends here.
+        end_active(Some("superseded"), true);
+        if !bundled() {
+            sink(Event::End {
+                id,
+                error: Some("unsupported"),
+            });
+            return;
+        }
+        authorize_speech(a, id, locale, sink);
+    });
+}
+
+pub fn stop<R: Runtime>(app: &AppHandle<R>, id: u64, cancel: bool) {
+    let _ = WANTED.compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst);
+    let _ = app.run_on_main_thread(move || {
+        let mine = ACTIVE.with_borrow(|a| a.as_ref().is_some_and(|s| s.id == id));
+        if !mine {
+            return; // already over, or still asking (WANTED ends that one)
+        }
+        if cancel {
+            end_active(None, true);
+        } else {
+            // The final words follow from the recogniser, then the end.
+            ACTIVE.with_borrow(|a| {
+                if let Some(s) = a.as_ref() {
+                    s.hush();
+                }
+            });
+        }
+    });
+}
+
+/// Ends the running session, if any: says so to its page with `error`.
+fn end_active(error: Option<&'static str>, cancel: bool) {
+    let Some(s) = ACTIVE.take() else {
+        return;
+    };
+    s.hush();
+    if cancel {
+        unsafe { s.task.cancel() };
+    }
+    (s.sink)(Event::End { id: s.id, error });
+}
+
+fn authorize_speech<R: Runtime>(app: AppHandle<R>, id: u64, locale: String, sink: Sink) {
+    match unsafe { SFSpeechRecognizer::authorizationStatus() } {
+        SFSpeechRecognizerAuthorizationStatus::Authorized => authorize_mic(app, id, locale, sink),
+        SFSpeechRecognizerAuthorizationStatus::NotDetermined => {
+            let done = RcBlock::new(move |s: SFSpeechRecognizerAuthorizationStatus| {
+                if s != SFSpeechRecognizerAuthorizationStatus::Authorized {
+                    sink(Event::End {
+                        id,
+                        error: Some("speech-denied"),
+                    });
+                    return;
+                }
+                let (a, l, k) = (app.clone(), locale.clone(), sink.clone());
+                let _ = app.run_on_main_thread(move || authorize_mic(a, id, l, k));
+            });
+            // macOS asks once, naming Caprock and NSSpeechRecognitionUsageDescription.
+            unsafe { SFSpeechRecognizer::requestAuthorization(&done) };
+        }
+        _ => sink(Event::End {
+            id,
+            error: Some("speech-denied"),
+        }),
+    }
+}
+
+fn authorize_mic<R: Runtime>(app: AppHandle<R>, id: u64, locale: String, sink: Sink) {
+    let Some(audio) = (unsafe { AVMediaTypeAudio }) else {
+        sink(Event::End {
+            id,
+            error: Some("no-microphone"),
+        });
+        return;
+    };
+    match unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio) } {
+        AVAuthorizationStatus::Authorized => begin(id, &locale, sink),
+        AVAuthorizationStatus::NotDetermined => {
+            let done = RcBlock::new(move |granted: Bool| {
+                if !granted.as_bool() {
+                    sink(Event::End {
+                        id,
+                        error: Some("mic-denied"),
+                    });
+                    return;
+                }
+                let (l, k) = (locale.clone(), sink.clone());
+                let _ = app.run_on_main_thread(move || begin(id, &l, k));
+            });
+            // macOS asks once, naming Caprock and NSMicrophoneUsageDescription.
+            unsafe { AVCaptureDevice::requestAccessForMediaType_completionHandler(audio, &done) };
+        }
+        _ => sink(Event::End {
+            id,
+            error: Some("mic-denied"),
+        }),
+    }
+}
+
+/// Listens: on the main thread, with both permissions granted.
+fn begin(id: u64, locale: &str, sink: Sink) {
+    let end = |error: &'static str| {
+        sink(Event::End {
+            id,
+            error: Some(error),
+        })
+    };
+    if WANTED.load(Ordering::SeqCst) != id {
+        // Released, or another started, while macOS asked.
+        sink(Event::End { id, error: None });
+        return;
+    }
+    let ns_locale =
+        NSLocale::initWithLocaleIdentifier(NSLocale::alloc(), &NSString::from_str(locale));
+    let Some(recognizer) =
+        (unsafe { SFSpeechRecognizer::initWithLocale(SFSpeechRecognizer::alloc(), &ns_locale) })
+    else {
+        return end("language-unsupported");
+    };
+    // The rule-4 line: only a language this Mac recognises by itself.
+    if !unsafe { recognizer.supportsOnDeviceRecognition() } {
+        return end("on-device-unavailable");
+    }
+    if !unsafe { recognizer.isAvailable() } {
+        return end("unavailable");
+    }
+    unsafe { recognizer.setQueue(&NSOperationQueue::mainQueue()) };
+
+    let request = unsafe { SFSpeechAudioBufferRecognitionRequest::new() };
+    unsafe {
+        request.setShouldReportPartialResults(true);
+        request.setRequiresOnDeviceRecognition(true);
+        request.setAddsPunctuation(true);
+    }
+
+    let engine = unsafe { AVAudioEngine::new() };
+    let input = unsafe { engine.inputNode() };
+    let format = unsafe { input.outputFormatForBus(0) };
+    if unsafe { format.channelCount() } == 0 || unsafe { format.sampleRate() } <= 0.0 {
+        return end("no-microphone");
+    }
+    let feed = request.clone();
+    let tap = RcBlock::new(
+        move |buffer: NonNull<AVAudioPCMBuffer>, _when: NonNull<AVAudioTime>| {
+            // SAFETY: the engine hands a valid buffer for the call's length.
+            unsafe { feed.appendAudioPCMBuffer(buffer.as_ref()) };
+        },
+    );
+    unsafe {
+        input.installTapOnBus_bufferSize_format_block(
+            0,
+            TAP_FRAMES,
+            Some(&format),
+            RcBlock::as_ptr(&tap),
+        );
+        engine.prepare();
+    }
+    if unsafe { engine.startAndReturnError() }.is_err() {
+        unsafe { input.removeTapOnBus(0) };
+        return end("no-microphone");
+    }
+
+    let handler = RcBlock::new(
+        move |result: *mut SFSpeechRecognitionResult, error: *mut NSError| {
+            heard(id, result, error);
+        },
+    );
+    let task = unsafe { recognizer.recognitionTaskWithRequest_resultHandler(&request, &handler) };
+    ACTIVE.set(Some(Session {
+        id,
+        sink,
+        engine,
+        request,
+        task,
+        _recognizer: recognizer,
+    }));
+}
+
+/// The recogniser's answer, on the main queue: words so far, the final
+/// words, or why it stopped.
+fn heard(id: u64, result: *mut SFSpeechRecognitionResult, error: *mut NSError) {
+    let sink = ACTIVE.with_borrow(|a| a.as_ref().filter(|s| s.id == id).map(|s| s.sink.clone()));
+    let Some(sink) = sink else {
+        return; // cancelled, or another one runs now
+    };
+    // SAFETY: nil or a valid result for the duration of the call.
+    if let Some(r) = unsafe { result.as_ref() } {
+        let text = unsafe { r.bestTranscription().formattedString() }.to_string();
+        if unsafe { r.isFinal() } {
+            sink(Event::Final { id, text });
+            end_active(None, false);
+        } else {
+            sink(Event::Partial { id, text });
+        }
+        return;
+    }
+    // SAFETY: nil or a valid NSError.
+    if let Some(e) = unsafe { error.as_ref() } {
+        let code = apple_error(&e.domain().to_string(), e.code());
+        end_active(code, false);
+    }
+}

@@ -1901,6 +1901,13 @@ and `ui/src/lib/composer.ts`.
 - **Look.** `.app-composer` in `tokens.css`: the slab's own ink at 5% over
   the terminal's ground, a hairline at rest, the accent edge and a 3px
   accent halo when it has the keyboard, in every terminal palette.
+- **Voice** (macOS app only, [ADR-102](08-decisions.md)). A microphone and
+  its language chip sit beside *Saved* and ⋯: hold to talk, or click to
+  start and click again; the words land in the box, not sent, recognised
+  on the Mac by Apple's on-device speech recognition through the shell
+  (`app/src-tauri/src/dictate.rs`, `dictate_macos.rs`). Hidden on Windows,
+  Linux and in a browser tab. The behaviour is the chat field's:
+  [04-ui.md § Voice input on a computer](04-ui.md).
 
 ## Quick replies
 
@@ -2688,6 +2695,13 @@ the fallback since the Developer ID; see *With a Developer ID*):
   the disclaim above stays. Terminals already running when the app updates
   keep running in their old holders and keep their old attribution until
   they end.
+- **The chat's microphone asks as Caprock** (ADR-102, 2026-11-23). Voice
+  input in the chat and the composer is the app's own process listening, so
+  macOS asks for Caprock.app, once each: the microphone
+  (`NSMicrophoneUsageDescription` names the chat) and speech recognition
+  (`NSSpeechRecognitionUsageDescription`; without it the request ends the
+  app). `scripts/check-app-mic.sh` checks both keys. Not Caprock Terminal,
+  which answers only for what runs in a terminal.
 - **The daemon's own background reads skip guarded places**
   (`tcc.Guarded`): Desktop, Documents, Downloads, iCloud Drive, cloud
   storage, Music, Movies, Pictures, `/Volumes`, and links into them. What

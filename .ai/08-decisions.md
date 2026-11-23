@@ -8007,3 +8007,81 @@ after is the helper's.
 **Revisit if** Apple changes how a disclaimed process's children are
 attributed, or Caprock's daemon moves into the app bundle as an
 `SMAppService` helper (ADR-040), which might let the app answer instead.
+
+## ADR-102 — Voice input in the desktop chat: Apple's recognition on the Mac only, through the app, for every agent
+
+**Date:** 2026-11-23 · **Status:** accepted (owner, 2026-11-23: the mockup
+with *Hold to talk*). Stands beside
+[ADR-045](#adr-045--the-app-and-its-daemon-may-ask-for-the-microphone) and
+[ADR-101](#adr-101--caprock-terminals-answer-to-macos-as-caprock-terminal-a-signed-helper-app),
+which are about agents recording in a terminal; the phone's voice
+([ADR-083](#adr-083--a-native-ios-app-the-phone-remote-in-a-capacitor-shell-with-native-pairing-voice-face-id-and-push),
+`lib/speech.ts`) is unchanged.
+
+**Context.** The owner wants to dictate into the chat on his Mac rather
+than rely on Claude Code's `/voice`, which has failed in Caprock terminals
+more than once (ADR-101) and exists for Claude Code alone: Codex, Cursor
+and the rest have none. The browser's Web Speech API is no answer in the
+app: WKWebView does not offer it, and where a browser does, it sends the
+audio to Apple or Google (rule 4).
+
+**The decision.**
+
+- **The app listens, not the page.** A microphone button in the chat
+  field (`TerminalKeys`) and in the composer under a terminal (`Composer`),
+  `components/DeskVoice.tsx`. It calls three shell commands
+  (`app/src-tauri/src/dictate.rs`): `dictation_status`, `dictation_start`
+  (a BCP-47 language, an id back) and `dictation_stop` (finish, or cancel);
+  the words come back to the same page as `caprock:dictation` events —
+  partial, final, end with a reason. Granted to the daemon's dashboard page
+  alone (`capabilities/daemon.json`): not the popover, Mail, a browser tab
+  or any other origin.
+- **On this Mac only.** `dictate_macos.rs` feeds the microphone
+  (AVAudioEngine) to `SFSpeechRecognizer` with
+  `requiresOnDeviceRecognition = true`. A language with no on-device model
+  here is refused before anything is recorded — the line reads *Ukrainian
+  isn't available on this Mac without sending audio to Apple* — and there
+  is no fallback to Apple's servers. Caprock gets only the text; nothing is
+  stored or sent, so rule 4 gains no outbound call.
+- **Hold to talk, or click.** Press and hold, speak, release: the words are
+  in the field, after anything typed, and not sent. A press shorter than
+  350 ms is a click: it starts listening, and the next click stops it.
+  Enter or Space on the focused button toggles. The words show in the
+  field as they are heard; the field is read-only while it listens, and
+  Enter sends what it shows and drops what comes after.
+- **The language is the phone's choice** (`lib/speechlang.ts`): a chip
+  beside the mic cycles through the viewer's languages and opens the long
+  list, remembered per viewer.
+- **Permissions name Caprock.** The app's Info.plist carries
+  `NSSpeechRecognitionUsageDescription` (without it the request ends the
+  process) and a microphone string that names the chat; macOS asks once for
+  each, on the first press, for Caprock.app — not Caprock Terminal, which
+  answers only for what runs in a terminal. A refusal says where to allow
+  it. Outside an app bundle (`cargo run`, tests) the status says
+  unsupported, so nothing asks.
+- **Where it shows.** The Mac app only. Windows and Linux shells answer
+  unsupported, an older app has no such command, and a browser tab has no
+  shell: the button is hidden in each. No shortcut.
+
+**Why not `/voice`.** It is Claude Code's alone, it records in the agent's
+own process (where macOS attributed the microphone to a per-version binary
+until ADR-101), and its text goes straight into the prompt with no chance to
+read it first. Dictating into Caprock's field works for every agent, is
+read before Send, and fails with a line in Caprock rather than silence in a
+terminal.
+
+**Rejected.**
+
+- *The Web Speech API in the webview.* Not offered by WKWebView, and a
+  server round-trip where it is offered.
+- *A local speech model in the daemon* (Whisper or the like). Hundreds of
+  megabytes, a second recogniser to keep, and the daemon would hold audio;
+  Apple's on-device recogniser is already on every Mac.
+- *SpeechAnalyzer (macOS 26).* Newer, but the app supports macOS 13, and
+  the Objective-C bindings the repository uses expose
+  `SFSpeechRecognizer`; it can replace the recogniser behind the same three
+  commands later.
+- *Server recognition as a fallback for a missing language.* Rule 4.
+
+**Revisit if** Windows or Linux gain an on-device recogniser worth binding,
+or Apple retires `SFSpeechRecognizer`'s on-device mode.

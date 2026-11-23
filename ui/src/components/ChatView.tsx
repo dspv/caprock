@@ -550,8 +550,10 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
   if (!canType && dragging) setDragging(false)
 
   // Dictation on a phone or a tablet, where typing is the slow part (owner's
-  // report, 2026-10-11). The desktop chat is unchanged: its keyboard is fast,
-  // and the OS has its own dictation key there.
+  // report, 2026-10-11). On a computer the Mac app has its own microphone
+  // instead (deskVoice, ADR-102): hold to talk, recognised on the Mac, for
+  // every agent rather than Claude Code's /voice alone. A browser tab, Windows
+  // and Linux show none.
   const [voice] = useState(() => phone || touchScreen())
 
   const stickRef = stick.ref
@@ -647,7 +649,7 @@ export function ChatView({ sessionId, earlier = NONE, canType, ended = false, cl
           {/* One click sends a reply (lib/quickReplies.ts); only while it can be typed into (rule 7). */}
           {/* Not on a phone, where the row crowds a small screen. */}
           {canType && !phone && <QuickReplies sessionId={sessionId} onSend={submitText} chat={chat} className="px-3" />}
-          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
+          <TerminalKeys send={send} attach={attachPhotos} attachIn={attachIn} sendPaths={sendPaths} state={inputState} sessionId={sessionId} submitText={submitText} chips pickers voice={voice} deskVoice={!voice} foldKeys={foldKeys ?? phone} placeholder={chat || phone || desk ? 'Message…' : undefined} />
         </div>
       )}
       {!showInput && footer && <div className="shrink-0 border-t border-border px-3 py-2.5 text-[13px] leading-snug text-fg-muted">{footer}</div>}
