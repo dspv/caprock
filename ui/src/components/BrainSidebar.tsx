@@ -35,8 +35,9 @@
  * small static glyph and the mode in words, *Second Brain · Up to date ·
  * 140 memories*, or while it builds *Building · 12 of 48* (the session
  * being read of all in reach) over a 2px bar. The glyph is the only thing that
- * moves, a slow pulse, and only while a read actually runs. The row lifts a
- * pixel on hover; a click opens the screen; the chevron unfolds the orb.
+ * moves, a slow pulse, and only while a read actually runs. The row lights up a
+ * little on hover, in place; a click opens the screen; the chevron unfolds
+ * the orb upward, so it points up while folded and down while open.
  * A fold the viewer saved is kept: only the default changed. Unfolded, the
  * orb is the calm one (`calm`): smaller, turning slower, fainter, with fewer
  * sparks than the screen's.
@@ -136,7 +137,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
       aria-label={open ? 'Fold Second Brain' : 'Unfold Second Brain'}
       className="flex h-[20px] w-[20px] shrink-0 items-center justify-center rounded-[5px] text-fg-muted hover:bg-[var(--app-row-hover)] hover:text-fg"
     >
-      <span className={`flex transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} aria-hidden>
+      <span className={`flex transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : '-rotate-90'}`} aria-hidden>
         <ChevronIcon size={10} />
       </span>
     </button>
@@ -166,7 +167,7 @@ export function BrainSidebar({ onOpen, working = 0 }: { onOpen: (hash: string) =
         aria-label={`Open Second Brain — ${mode}${metric ? `, ${metric}` : ''}`}
         onClick={go}
         onKeyDown={onKey}
-        className="mx-0.5 flex min-h-0 cursor-pointer flex-col rounded-[10px] outline-none transition-[background-color,transform,box-shadow] duration-150 hover:-translate-y-px hover:bg-[var(--app-row-hover)] hover:shadow-[0_1px_3px_color-mix(in_srgb,var(--color-fg)_10%,transparent)] focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+        className="mx-0.5 flex min-h-0 cursor-pointer flex-col rounded-[10px] outline-none transition-colors duration-150 hover:bg-[var(--app-row-hover)] focus-visible:ring-2 focus-visible:ring-accent/60 motion-reduce:transition-none"
         data-brain-block
       >
         {open ? (
