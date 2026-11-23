@@ -532,6 +532,23 @@ estimate, not a measurement: 260,000–300,000 (a quarter of the characters,
 or half for the Cyrillic ones, plus 4,300 overhead and about 1,400 answer
 tokens a call) — about one day of the default 300,000 limit.
 
+### 2026-11-23 — 0.191.0: a dash says why, and the release panel tells the truth
+
+A minor release, #1040. Wherever an agent does not save a figure — a Cursor CLI
+chat's tokens and cost, Cursor's cache — the "—" now has a small info mark
+that says so, on hover or tap. The release panel counts only what master
+holds (an open feature PR no longer moves the next version), says when
+master's checks are still running, draws its stages as labelled steps across
+the panel with the state whole underneath, lists the PRs still waiting as
+rows with their checks, and always shows the PR it is waiting for. A
+subagent's latest steps say what each command was for ("Run full vitest
+suite"), not "cd /Users/…". The folded Spend sits on two lines — figures on
+top, a full-width chart under them — and its numbers never spill past the
+edge. The update popover no longer offers an older version under a newer
+heading, re-checks until the app update is published, and never shows
+terminal commands while the app is updating itself. The CI block's Pipeline
+link sits in the middle.
+
 ### 2026-11-23 — 0.190.1: a Cursor CLI chat says it has no cost, not $0.00
 
 A patch release, #1031. Cursor's command-line agent records no tokens and no

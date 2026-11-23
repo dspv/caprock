@@ -12,6 +12,44 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.191.0] - 2026-11-23
+
+### Changed
+
+- **inspector:** the CI block's *Pipeline →* link sits in the middle under the list, so the block no longer ends in what looked like an empty gap.
+- **sessions:** a figure shown as "—" because the agent doesn't save it (Cursor CLI's tokens and cost, Cursor's cache, Gemini's cache writes) now has a small info mark after it, on the Session screen, the Now card, the inspector and the Live rows. Hover, focus or tap it for why, e.g. "Cursor CLI doesn't save token counts on this computer, so there is nothing for Caprock to show."
+- **release:** the right panel's Release section draws its five stages as a
+  stepper across the panel — circles joined by a line, one word under each
+  (*Merged*, *PR*, *Tagged*, *Build*, *Out*) — and says the state whole on
+  its own line under them (*Waiting for #1035 · checks running · 9 of 17*),
+  wrapping to a second line instead of being cut with an ellipsis. Screen
+  readers hear each step's name and state, the current one marked. The
+  folded line is unchanged.
+- **cockpit:** folded, Spend is two lines: the period and the figures on the
+  first, which give way from the last one instead of spilling past a narrow
+  cockpit's edge, and the bars 32px tall across the whole width on the second.
+- **release:** the hint *0.191.0 once the 5 open PRs land* lists those pull
+  requests as rows (number, kind, title, M W L checks), five then *+N more*,
+  in place of a bare list of numbers; the pull request the release waits for
+  is always on view, marked among the rows or linked from *Waiting for #N*.
+- **now:** a subagent's steps and the tool list say what a command did —
+  its description (*Run full vitest suite*), else the command past its
+  `cd <dir> &&` hops, `git -C <dir>` and long home paths — instead of four
+  rows of *Bash cd /Users/…*; the command itself is in the row's hover.
+
+### Fixed
+
+- **app:** right after a release the version panel no longer says "v0.190.0 is out" over a button that installs v0.189.1. The release check sees a new version a few minutes before the app's own update file is published; until it is, the panel says "v0.190.0 is being prepared — the app update is usually ready within 5 minutes of the release", offers no older install, looks again when it opens and every 2 minutes (at most 8 times), and then offers "Update to v0.190.0" in one jump. The app never installs an older update in a newer version's name, and Update automatically waits the same way.
+- **app:** the version panel no longer shows "Run in a terminal: brew update && brew upgrade --cask caprock-app" while the app is checking for, downloading or installing the update itself. It says "Checking for the app update…", "Downloading v0.190.1… 42%" with a thin bar, or "Installing v0.190.1 — the app restarts, sessions keep running". The terminal commands appear only for an install that cannot update itself and, as "Or update from a terminal:", under a failed update with its error and Try again.
+- **release:** the right panel's Release section takes only a release pull
+  request (`chore/release-X.Y.Z`) or a pull request marked as a batch
+  (`batch/…`) as the one the release goes out *via*; an ordinary open
+  feature pull request no longer adds its changelog entry to the next
+  release, bumps the version or shows as *via #N* — it stays under *Not in
+  it yet*. While the default branch's checks run or failed after a merge,
+  the section says *master checks running · 12 of 17* or *master checks
+  failed* instead of *Ready to release · not started*.
+
 ## [0.190.1] - 2026-11-23
 
 ### Fixed
