@@ -11,11 +11,16 @@
 //! why — arrives as `caprock:dictation` events on the same page, each with
 //! that id (`event_script`). `dictation_stop` ends it: the words heard so far
 //! are finished and sent as the final ones; with `cancel`, dropped.
+// The recogniser is macOS-only (dictate_macos.rs); elsewhere the events,
+// error codes and restart rules are built for the tests alone.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
 
 use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tauri::{Manager, Runtime, Webview};
+#[cfg(target_os = "macos")]
+use tauri::Manager;
+use tauri::{Runtime, Webview};
 
 /// The DOM event the page listens for (ui/src/lib/deskvoice.ts).
 pub const EVENT: &str = "caprock:dictation";
