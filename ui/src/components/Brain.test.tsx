@@ -243,8 +243,13 @@ describe('Second Brain', () => {
     expect(row.querySelector('[data-brain-mode]')).toHaveClass('text-fg-muted')
     expect(row.querySelector('[data-brain-glyph]')).toHaveAttribute('data-brain-glyph', 'still')
     expect(row.querySelector('.brain-glyph-reading, .brain-live-dot')).toBeNull()
-    expect(document.querySelector('[data-brain-block]')!.className).toMatch(/hover:-translate-y-px/)
-    fireEvent.click(screen.getByRole('button', { name: 'Unfold Second Brain' }))
+    // It lights up in place: no lift, which read as the block jumping.
+    expect(document.querySelector('[data-brain-block]')!.className).not.toMatch(/translate-y/)
+    // It opens upward, so the folded chevron points up, the open one down.
+    const chev = screen.getByRole('button', { name: 'Unfold Second Brain' })
+    expect(chev.querySelector('span')).toHaveClass('-rotate-90')
+    fireEvent.click(chev)
+    expect(screen.getByRole('button', { name: 'Fold Second Brain' }).querySelector('span')).toHaveClass('rotate-90')
     expect(localStorage.getItem('caprock.app.brain-fold')).toBe('open')
     await waitFor(() => expect(document.querySelector('[data-brain-orb]')).not.toBeNull())
     expect(m.brain).toHaveBeenCalledWith({ limit: 30 })
