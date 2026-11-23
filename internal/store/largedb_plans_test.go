@@ -254,18 +254,44 @@ func TestSessionCallsReadTheCoveringSessionIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := &planRecorder{Querier: s.db}
-	if _, err := SessionCalls(ctx, rec, "s1", 0); err != nil {
+	prev, err := readSessionCalls(ctx, rec, "s1", 0, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.seen) != 2 {
-		t.Fatalf("expected the calls and their tools, saw %d statements", len(rec.seen))
-	}
-	for _, r := range rec.seen {
-		plan := explainPlan(t, s, r)
-		if !strings.Contains(plan, "SEARCH e USING INDEX idx_events_attr_work (sid=?)") {
-			t.Fatalf("SessionCalls must walk idx_events_attr_work; plan: %s", plan)
+	reads := func(want ...string) {
+		t.Helper()
+		var got []recorded
+		for _, r := range rec.seen {
+			if !strings.Contains(r.sql, "session_gen") { // the mark: two index lookups
+				got = append(got, r)
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("expected %d reads, saw %d", len(want), len(got))
+		}
+		for i, r := range got {
+			if plan := explainPlan(t, s, r); !strings.Contains(plan, want[i]) {
+				t.Fatalf("read %d must use %s; plan: %s", i, want[i], plan)
+			}
 		}
 	}
+	// Whole: the calls, their tools, and the tool calls with no message id
+	// yet (index alone).
+	reads("SEARCH e USING INDEX idx_events_attr_work (sid=?)", "SEARCH e USING INDEX idx_events_attr_work (sid=?)",
+		"SEARCH e USING COVERING INDEX idx_events_attr_work (sid=?)")
+
+	// Extended, only the rows above the kept series' newest are read, and
+	// the pending tool calls by id.
+	ev2 := &event.Event{SessionID: "s1", Source: event.SourceTranscript, Kind: event.KindTurnAssistant,
+		Ts: time.UnixMilli(2000), Key: "a2", Payload: json.RawMessage(`{"text":"more"}`)}
+	if _, err := InsertEvent(ctx, s.db, ev2); err != nil {
+		t.Fatal(err)
+	}
+	rec.seen = nil
+	if _, err := readSessionCalls(ctx, rec, "s1", 0, prev); err != nil {
+		t.Fatal(err)
+	}
+	reads("SEARCH e USING INDEX idx_events_session_id (sid=? AND id>?)", "SEARCH e USING INTEGER PRIMARY KEY (rowid=?)")
 }
 
 // Each session's first priced turn is a seek and a short walk, never every

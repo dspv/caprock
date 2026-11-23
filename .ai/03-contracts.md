@@ -1571,7 +1571,7 @@ The dashboard route `#/session/{id}?at=<unix-ms>` reveals a moment in the timeli
 
 **Session todos.** `GET /v1/sessions/{id}/todos` → `{items: TodoItem[], updated_at}`: the task list the session's agent keeps for itself, rebuilt per request from its own `tool.pre` calls, nothing stored. Each `TodoItem` is `{id, text, status, active_form?}`, `status` one of `pending`, `in_progress`, `completed`, `cancelled` (OpenCode's `planned` and anything unknown read as `pending`); `updated_at` is the unix ms of the call that last changed the list, `0` with `items: []` when the session never kept one or the id is unknown — never `404`, never `null`. Four tools feed it. `TodoWrite` (Claude Code's older tool, and OpenCode's `todowrite`, stored under the same name) carries the whole list as `todos: [{content, status, activeForm}]`, so the newest call is the list; `update_plan` (Codex) the same as `plan: [{step, status}]`. `TaskCreate` (`{subject, description, activeForm}`) adds one task and `TaskUpdate` (`{taskId, status?, subject?, activeForm?, description?}`, `status: "deleted"` removes it) changes one; the ids are the ones Claude Code gives back (*Task #3 created successfully*), which number the creates 1, 2, 3 within the session, so the fold numbers them the same way rather than joining each `tool.post` — on a copy of the owner's database (2026-10-11) every session's highest `TaskUpdate` id equalled its count of `TaskCreate`. An update to an id the session never created changes nothing. Whichever of the two families changed last is the list. Only the main thread counts (a subagent's `TodoWrite` is its own list), and a call stored on both planes is folded once by `tool_use_id`. `TaskList` and `TaskGet` only read the list and are not read. The query pins `idx_events_todo` (migration 0066, § Task-list DDL), a partial index of the four tools' calls, so only they are read; through `idx_events_attr_work` it walked the session's whole index range, and SQLite's own choice, `idx_events_kind_id`, walks every `tool.pre` in the database. The cockpit's *Tasks* block reads it ([04-ui.md](04-ui.md)); a paired viewer may read it, as it may read the events it is made from.
 
-**Session calls.** `GET /v1/sessions/{id}/calls` → `SessionCall[]`, oldest first: the main thread's priced model calls — `turn.assistant` with a `cost_usd`, no `agent_id`, not a sidechain, not internal; the newest `limit` of them (default and ceiling 20,000). Each: `id` (the event's), `ts` (unix ms), `model`, `model_display` (the pricing table's short name; omitted when it does not know the model), `cost_usd`, `tokens` (`TokenDelta`; omitted when the call reported none), `tools` (the first six `tool.pre` of the main thread with the same `msg_id` — exact, a tool_use block and the usage billed for it share the message id — each `{tool, detail}` with the short line the subagent list uses; omitted when none is linked, which is also what an agent that records no message id gets) and `tool_count` (all of them). No prose and no tool results, so a session of thousands of calls is one small response. Both reads walk the session's rows on `idx_events_attr_work`, which holds the kind, cost and message id they test, so a row is read from the table only when it is a candidate; on the session's own `(sid, ts)` index every event was, 203,608 of them for the owner's longest session to return its 10,222 calls. The cockpit's spend scrubber reads it each time it opens, so an answer is kept by the session's events generation (`store.EventsGen`, read before the calls; at most 32 answers, 10 minutes each): asked again while the session's events are as they were it reads nothing, identical requests in flight share one read, and a new or changed turn moves the generation, so it shows on the next ask. A paired viewer may read it, as it may read the events it is made from.
+**Session calls.** `GET /v1/sessions/{id}/calls` → `SessionCall[]`, oldest first: the main thread's priced model calls — `turn.assistant` with a `cost_usd`, no `agent_id`, not a sidechain, not internal; the newest `limit` of them (default and ceiling 20,000). Each: `id` (the event's), `ts` (unix ms), `model`, `model_display` (the pricing table's short name; omitted when it does not know the model), `cost_usd`, `tokens` (`TokenDelta`; omitted when the call reported none), `tools` (the first six `tool.pre` of the main thread with the same `msg_id` — exact, a tool_use block and the usage billed for it share the message id — each `{tool, detail}` with the short line the subagent list uses; omitted when none is linked, which is also what an agent that records no message id gets) and `tool_count` (all of them). No prose and no tool results, so a session of thousands of calls is one small response. Both reads walk the session's rows on `idx_events_attr_work`, which holds the kind, cost and message id they test, so a row is read from the table only when it is a candidate; on the session's own `(sid, ts)` index every event was, 203,608 of them for the owner's longest session to return its 10,222 calls. The cockpit's spend scrubber reads it each time it opens, so an answer is kept by the session's events generation (`store.EventsGen`, read before the calls; at most 32 answers, 10 minutes each): asked again while the session's events are as they were it reads nothing, identical requests in flight share one read, and a new or changed turn moves the generation, so it shows on the next ask. On a working session that generation moves every few seconds, so beside the answers the daemon keeps, per session and `limit`, the series it last read (`store.CallsSeries`, same bounds) and **extends** it while the session's calls generation stands (§ Session calls generation DDL): in one read transaction it reads the calls mark, the rows above the series' newest id (a seek on `idx_events_session_id`) and, by row id, the tool calls the series saw with no message id, which the transcript's copy of a hook's tool call fills in later without moving the calls generation. A tool call that came before its model call is kept until that call comes, as a whole read would join them. The answer is the one a whole read gives (`TestSessionCallsExtendedMatchWhole` checks them against each other over randomised sessions with links, text merges, compression, a reprice and a delete). It reads the session whole on its first ask, when the calls generation moved, past 1,024 tool calls waiting for a message id or 4,096 (4 MB) waiting for their model call, and once its series is 10 minutes unasked. Why: the answers were kept by the generation, which the compression pass, the message-id link and the merged assistant text move on nearly every row of a working session (the owner's main session: gen 92,720 over 83,240 events, 2026-11-23), so every tab open read the session whole, every priced turn's and every tool call's payload included: the owner's largest reader, 3.1 GB of disk reads an hour over five minutes. On a synthetic 6,000-call session in the 1.6 GB seeded database, with a turn, two linked hook tool calls, a text merge and a compressed payload between asks and the file evicted from the OS cache before each, a tab open read **154 MB whole and 0.1 MB extended** (mean of five, 2026-11-23). A paired viewer may read it, as it may read the events it is made from.
 
 **An unmatched `/v1/` path is `404` with a JSON body**, not the dashboard. The UI is served from `/` so client-side routes resolve, which previously meant any unknown API path fell through to `index.html` — a caller that mistyped an endpoint, or used one removed in an upgrade, got `200` and a document, then failed later parsing HTML as JSON. Page routes (`/`, `/cost`, `/session/{id}`) still serve the SPA.
 
@@ -8107,6 +8107,69 @@ events, so a cached value is never older than its key. Rows are never deleted,
 so a removed session id seen again carries on from its old generation instead
 of reusing one. A migration that rebuilds the events table must recreate the
 triggers; `TestEventsGenTriggersExist` fails otherwise.
+
+Since migration 0091 an update that only stores a text payload compressed
+moves no generation (§ Session calls generation DDL).
+
+### Session calls generation DDL (migration 0091)
+
+```sql
+ALTER TABLE session_gen ADD COLUMN calls_gen INTEGER NOT NULL DEFAULT 0;
+
+DROP TRIGGER IF EXISTS events_gen_update;
+CREATE TRIGGER events_gen_update AFTER UPDATE ON events
+WHEN NOT (typeof(OLD.payload) = 'text' AND typeof(NEW.payload) = 'blob'
+  AND <every other column of NEW IS the same column of OLD>)
+BEGIN
+  -- gen + 1 for the session of NEW.sid, and of OLD.sid when the row moved
+  -- (as 0063 and 0073);
+  -- calls_gen + 1 for the session of NEW.sid when a column the calls read
+  -- changed: the row's id, ts, sid or kind; a turn.assistant's model,
+  -- cost_usd, tokens_in, tokens_out, cache_read, cache_write,
+  -- cache_write_1h, msg_id, agent_id, internal or payload sidechain mark
+  -- (the payload itself when either side is not valid JSON text); a
+  -- tool.pre's tool, agent_id, payload, or a msg_id it already had;
+  -- and for the session of OLD.sid when the row moved.
+END;
+
+DROP TRIGGER IF EXISTS events_gen_delete;
+CREATE TRIGGER events_gen_delete AFTER DELETE ON events BEGIN
+  -- gen + 1 and calls_gen + 1 for the session of OLD.sid
+END;
+```
+
+The full statements are in `internal/store/migrations/0091_session_calls_gen.sql`;
+moving legacy rows in (`store.MoveEventsStep`) moves both counters too.
+
+- **Compression moves nothing.** The compression pass is the only writer
+  that turns a text payload into a BLOB, and it stores the same JSON; every
+  reader of a tool row decompresses (§ Compressed tool payloads,
+  `TestEveryPayloadReadKnowsCompression`). The trigger recognises it by the
+  storage class going from text to BLOB with every other column the same.
+  Restoring a payload (BLOB to text) still moves both: another writer
+  rewrites a compressed payload as changed text, and a trigger cannot tell
+  the two apart without decompressing. A column added to `events` later must
+  be added to the comparison.
+- **`calls_gen`** is `GET /v1/sessions/{id}/calls`' own generation
+  (`store.CallsMark`, with the session's newest event id): it moves only when
+  an update changes what the calls read, or on a delete or a move. A
+  `tool.pre` whose `msg_id` goes from NULL to a value (`LinkToolCall`, the
+  repair's backfill) does not move it, and the reader reads those rows again
+  itself (§ Session calls); the assistant text merged into a turn, a tool
+  result rewritten, `touch_dir` or `inner_tool` filled in do not move it,
+  since the calls read none of them. `gen` still moves for all of these.
+- **Readers keyed on `gen`** see no change but the compression: the sessions
+  list and session page cache (`internal/api/recentcache.go`), Jarvis's
+  digest (same cache), the work board's per-session events
+  (`internal/daemon/workevents.go`), the summary and history parts and the
+  answer caches (`store.EventsMark`, `store.PartsCache`) and the calls'
+  answers. Each reads a tool row's payload through `ZPayload` or not at all,
+  so a compressed row reads as it did.
+
+`TestCallsGenMovesOnlyForWhatTheCallsRead` holds each kind of change to its
+counters. Why: on the owner's main session 50,000 of 92,720 generation moves
+were the compression pass and about 27,000 the message-id link (2026-11-23),
+so the calls were read whole on nearly every ask.
 
 ### Session key DDL (migration 0073)
 

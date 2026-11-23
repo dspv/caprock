@@ -40,8 +40,12 @@ func TestSessionCallsKeptByGeneration(t *testing.T) {
 	if _, err := e.rec.Record(ctx, ev, rollup.SessionInfo{Cwd: dir}); err != nil {
 		t.Fatal(err)
 	}
+	kept := e.api.calls.last("s1|0")
 	if got := calls(); len(got) != 2 {
 		t.Fatalf("a new turn must show at once: %+v", got)
+	}
+	if now := e.api.calls.last("s1|0"); kept == nil || now == nil || !kept.Mark.Older(now.Mark) || now.Mark.Gen != kept.Mark.Gen {
+		t.Fatalf("the kept series must move to the new turn's state: %+v -> %+v", kept, now)
 	}
 	if _, err := e.st.DB().ExecContext(ctx, `UPDATE events SET cost_usd = 9.5 WHERE key = 'msg:m2'`); err != nil {
 		t.Fatal(err)
