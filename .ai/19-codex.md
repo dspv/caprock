@@ -574,6 +574,21 @@ starting the TUI with it:
   `$CODEX_HOME/models_cache.json` (`visibility: "list"`, in `priority` order;
   `codex-auto-review` and other hidden entries are not offered), with the
   top-level `model` of `config.toml` as the default. "Default" sends no `-m`.
+  The list is then narrowed to what the sign-in can run, as Codex's own
+  picker does (`ModelPreset::filter_by_auth`, codex-rs/protocol
+  `src/openai_models.rs`, read 2026-11-23). The mode is `auth_mode` in
+  `$CODEX_HOME/auth.json`, else inferred as Codex does (`OPENAI_API_KEY` set
+  → `apikey`, otherwise `chatgpt`). On a sign-in that does not use the Codex
+  backend (`apikey`, Bedrock), an entry with `supported_in_api: false` is
+  left out. On a ChatGPT account, an entry whose `available_in_plans` lacks
+  the account's plan (the id_token's `chatgpt_plan_type` claim; only that
+  word is read) is left out: the server refuses it with "The 'gpt-6.2-sol'
+  model is not supported when using Codex with a ChatGPT account"
+  (2026-11-23). When a field is absent or there is no `auth.json` (Codex can
+  keep credentials in the keyring), the model stays listed; it is never made
+  the default, which is only ever `config.toml`'s. Current Codex drops
+  `available_in_plans` when it writes its cache, so for a ChatGPT account the
+  list is usually the cache as is, as in Codex's own picker.
 - **Permissions**, mapped from Claude's words onto Codex's two axes:
   `acceptEdits` → `--sandbox workspace-write --ask-for-approval on-request`;
   `plan` → `--sandbox read-only --ask-for-approval on-request`;

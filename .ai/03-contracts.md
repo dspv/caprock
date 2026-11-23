@@ -3981,7 +3981,10 @@ pause.
 
 **`GET /v1/agents/models?agent=`** — the models an agent's own CLI lists. For
 `codex`: the `visibility: "list"` entries of `$CODEX_HOME/models_cache.json` in
-`priority` order, and `default` from the top-level `model` in `config.toml`.
+`priority` order, less those the sign-in cannot run (`supported_in_api: false`
+on an API-key or Bedrock sign-in; `available_in_plans` without the ChatGPT
+plan; the rule in [19-codex.md](19-codex.md)), and `default` from the
+top-level `model` in `config.toml`.
 `claude`, `gemini`, `opencode`, `grok`, `hermes` and `cursor` answer an empty list; an unknown
 agent is a 400. No network I/O. Kept for older pages; the pickers read the
 catalog below.
