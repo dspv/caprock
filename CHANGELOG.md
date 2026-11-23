@@ -12,6 +12,76 @@ assembled into a version section here by `scripts/changelog.py` when a release i
 cut; `scripts/changelog.py preview` prints that section now. The format is in
 `changes/README.md`.
 
+## [0.192.0] - 2026-11-24
+
+### Added
+
+- **agents:** Effort at start, beside Model, in the New session dialog and in
+  New agent on another computer, for Claude Code (`--effort`) and Codex
+  (`model_reasoning_effort`). The level the agent would use on its own is
+  pre-selected and marked "default", read from its settings on the computer it
+  runs on, and moves with the model; keeping it passes nothing. A different
+  pick is passed for that session only and remembered per agent.
+- **brain:** 2nd Brain reads with whichever coding agent you have and are
+  signed in to — Claude Code, Codex, Cursor or Gemini CLI — not only Claude
+  Code. Settings → 2nd Brain → *Read with*: *Auto* (the agent you used most
+  in the last 30 days, Claude Code on a tie) or one of the installed
+  agents, with an optional model for each. Every read runs read-only, from
+  an empty folder, with no tools. Tokens are recorded where the agent
+  reports them (Claude Code, Codex, Gemini CLI) and marked *not reported*
+  where it does not (Cursor), never estimated; such reads count against a
+  daily reads limit (40 by default), so the daily cap still holds. When no
+  agent can read — none installed, the chosen one missing, or its reads
+  all failing — 2nd Brain says so in one sentence naming what is needed,
+  instead of an old "last built" date, and nothing is given up meanwhile
+  (ADR-103).
+
+### Changed
+
+- **release:** the per-OS check tiles in the release rows show each OS's own
+  glyph (an apple, four panes, a penguin) in place of the letters M, W and L;
+  the tile is neutral with a hairline border, and only the glyph carries the
+  state colour.
+
+### Fixed
+
+- **codex:** the New agent dialog offers only the Codex models your sign-in
+  can run, as Codex's own picker does: on an API key, models Codex marks as
+  not available in the API are left out; on a ChatGPT account, a model the
+  catalog says your plan does not include is left out, instead of failing at
+  start with "The model is not supported when using Codex with a ChatGPT
+  account". When Codex's files cannot tell, the model stays listed.
+- **codex:** a model Codex refused in a session Caprock started is
+  remembered for that sign-in for 30 days: the dialog lists it last as
+  "didn't run on your account", still pickable, never as the default. A
+  session that exits at once on it says "Your Codex sign-in can't use this
+  model. Pick another one."
+- **machines:** New agent on another computer offers the same model list as
+  the local New session dialog. Claude Code's and Gemini CLI's models are kept
+  by the page and never come in a computer's catalog, so the Model field there
+  was a bare "its default" box on every computer, Windows included; it now
+  opens on the same model as the local dialog.
+- **cockpit:** the CI section no longer vanishes. One refused GitHub read with
+  nothing in it replaced the kept list the CI and Release sections share, and
+  the section hid; that read is now kept back as the Pipeline page already
+  did, and with nothing in flight the section says so in one line (*Nothing in
+  flight · last: #1041 merged 2h ago* folded), or that GitHub refused the read.
+- **cockpit:** Fix CI shows on any open pull request whose checks failed, not only
+  the ones the session recorded: a pull request the lead session opened from a
+  subagent's branch had its red bar and cost in the CI list but no Fix CI
+  anywhere. Its row now reads its checks and offers Fix CI (the failed job and
+  its log go to the session, as before), and folded, a failing pull request of
+  the repository leads the line over the session's own green one.
+- **release:** a tagged release no longer draws its *Release PR* step as not
+  known. The release pull request is found by its head branch
+  (`chore/release-x.y.z`) as well as its title, and once the version is tagged
+  the step and its CI are done, with no number when none listed is it.
+- **now:** a subagent whose SubagentStop never came no longer reads "working"
+  forever: when its session's process started again (a resume) after its last
+  event, when the session ended, or when it went silent for 15 minutes with
+  no call in progress while the session sat at its prompt, it is listed as
+  stopped, with why on hover (*stopped when the session restarted*).
+
 ## [0.191.0] - 2026-11-23
 
 ### Changed
